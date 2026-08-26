@@ -3926,17 +3926,23 @@ involved.
   `SpacedValue`, `VarIndirect`, and `VariableReference`); its CST inventory and
   monomorphic node-shape checks pass, and this batch changes no node factory or
   node shape. Invariant-by-invariant adversarial reviews remain pending.
-- Performance evidence: no speed claim. Fixed-build A/B compared code candidate
-  `5fea88fea` with parent `d53902409` under Node 24.11.1, using identical
+- Performance evidence: no speed claim; wall-clock attribution is UNVERIFIED.
+  Fixed-build A/B compared final code candidate `f595c0cf1` with parent
+  `d53902409` under Node 24.11.1, using identical
   `benchmark.less` bytes and output (122320 bytes, SHA-256
   `dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85`).
-  Thirty interleaved pairs after eight warmups measured parse+render at
-  40.6637495 ms versus 40.0720415 ms (+1.48%, 11/30 wins), inside the documented
-  +/-1.9% harness noise and therefore inconclusive. Render-only measured
-  15.337438 ms versus 15.483396 ms (-0.94%, 16/30 wins), also not a performance
-  claim. The fixture's ordinary and reference compile-time imports resolve to
-  empty documents, so the comparison exercises the admitted empty-plan lane but
-  not terminal-row emission.
+  Forty-five interleaved pairs after twenty warmups measured parse+render at
+  40.6351 ms versus 37.1588 ms (+9.36%, 3/45 wins) and render-only at 14.5735 ms
+  versus 13.5659 ms (+7.43%, 16/45 wins). Those apparent regressions are not
+  attributable to the diff: a same-commit null calibration with byte-identical
+  `f595c0cf1` core artifacts (SHA-256 `40c0c5c9bb83af56…` in both roots) produced
+  a larger reversed root bias—parse+render 38.1467 versus 41.5314 ms (-8.15%,
+  42/45 wins) and render 14.5854 versus 15.4843 ms (-5.81%, 30/45 wins). The
+  cross-worktree instrument therefore cannot resolve this change in either
+  direction; deterministic operation/allocation counts are load-bearing. The
+  fixture's ordinary and reference compile-time imports resolve to empty
+  documents, so it exercises admission and the empty-plan lane, never terminal
+  rows or the output traversal.
 - Hot-path cost contracts:
 ```json
 [
@@ -3950,7 +3956,7 @@ involved.
     "dangerTokensJustification": "The existing import walk carries unique terminals in five lazy parallel arrays with integer next links and no per-terminal record objects; duplicates add only their node identity to the lazy output-suppression Set. Planner admission mirrors render: only optionless imports consume the existing import-once identity, while option-bearing and transitive multiple occurrences remain independent. Output consumes the integer chain once through the canonical buffer. The no-feature bypass is unchanged, deferred insertion relinks scalar indexes in O(1) without a segment object, and target suffix regexes plus tail slice/map/some materialization are deleted. No second import traversal, AST copy, byte reclassification, WeakMap, Error control lane, or speed claim is introduced.",
     "behaviorEvidence": "Focused core import coverage passes 57/57; the owner static-urls case now has only its intentional multiline-value residual.",
     "buildEvidence": "Dependency-order release build; full core; all-less; all-less-error; AST-v2 production ratchet; macro compilation with zero fallbacks; compose-integrity; materialization-frontier; render-buffer-frontier; guardrails; and aggressive-cutting contract pass. Shape stability remains red only on the inherited stale AST type inventory; CST inventory and the monomorphic node-shape check pass.",
-    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 15.337438, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 14.573459, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
   },
   {
     "id": "ast-extend-import-preflight",
@@ -3962,7 +3968,7 @@ involved.
     "buildEvidence": "Dependency-order release build and the named correctness/frontier gates in the companion contract pass; focused import coverage is 57/57.",
     "falsePath": {"fixture": "extend-preflight-contract:no-extend", "counters": {"calls": 1, "collectorCalls": 0, "overlaySubjects": 0, "overlayInstructions": 0, "loopPlacements": 0}},
     "featurePath": {"fixture": "extend-preflight-contract:imported-loop", "counters": {"importsVisited": 1, "loopPlacements": 2, "overlaySubjects": 2}},
-    "baseline": {"fixture": "benchmark.less", "phase": "parse-render", "currentMedianMs": 40.6637495, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
+    "baseline": {"fixture": "benchmark.less", "phase": "parse-render", "currentMedianMs": 40.635125, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
   }
 ]
 ```
