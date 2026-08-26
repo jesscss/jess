@@ -3909,9 +3909,26 @@ involved.
   import-once, `(multiple)`, `(reference)`, nested at-rule retention, and deferred
   insertion. The real `static-urls` fixture now places both imported CSS terminals
   first and retains only the separately ruled multiline-value spelling residual.
-  Full gates and adversarial reviews are pending this live batch.
-- Performance evidence: no speed claim. The deterministic cost argument above is
-  load-bearing; fixed-build A/B is pending final stabilization.
+  The dependency-order release build, full core suite (212 files, 3362 tests),
+  all-less (111/111), all-less-error (96/96), AST-v2 production ratchet (4/4),
+  macro compilation with zero interpreter fallbacks, compose-integrity,
+  materialization-frontier, render-buffer-frontier, guardrails, and the
+  aggressive-cutting contract gate all pass. `verify:shape-stability` remains
+  red on the inherited stale AST inventory (`BracketLookup`, `ImportAtRule`,
+  `SpacedValue`, `VarIndirect`, and `VariableReference`); its CST inventory and
+  monomorphic node-shape checks pass, and this batch changes no node factory or
+  node shape. Invariant-by-invariant adversarial reviews remain pending.
+- Performance evidence: no speed claim. Fixed-build A/B compared code candidate
+  `5fea88fea` with parent `d53902409` under Node 24.11.1, using identical
+  `benchmark.less` bytes and output (122320 bytes, SHA-256
+  `dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85`).
+  Thirty interleaved pairs after eight warmups measured parse+render at
+  40.6637495 ms versus 40.0720415 ms (+1.48%, 11/30 wins), inside the documented
+  +/-1.9% harness noise and therefore inconclusive. Render-only measured
+  15.337438 ms versus 15.483396 ms (-0.94%, 16/30 wins), also not a performance
+  claim. The fixture's ordinary and reference compile-time imports resolve to
+  empty documents, so the comparison exercises the admitted empty-plan lane but
+  not terminal-row emission.
 - Hot-path cost contracts:
 ```json
 [
@@ -3924,8 +3941,8 @@ involved.
     "why": "OPEN N9 records the candidate that parser-classified document-root CSS terminals from executed non-reference Less imports join the output prelude while compile-time documents retain lexical execution.",
     "dangerTokensJustification": "The existing import walk carries unique terminals in five lazy parallel arrays with integer next links and no per-terminal record objects; duplicates add only their node identity to the lazy output-suppression Set. Output consumes the integer chain once through the canonical buffer. The no-feature bypass is unchanged, deferred insertion is O(1), and target suffix regexes plus tail slice/map/some materialization are deleted. No second import traversal, AST copy, byte reclassification, WeakMap, Error control lane, or speed claim is introduced.",
     "behaviorEvidence": "Focused core import coverage passes 56/56; the owner static-urls case now has only its intentional multiline-value residual.",
-    "buildEvidence": "Core noEmit typecheck, focused import tests, and the aggressive-cutting contract gate pass; full dependency-order gates remain the landing boundary.",
-    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 14.748791, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
+    "buildEvidence": "Dependency-order release build; full core; all-less; all-less-error; AST-v2 production ratchet; macro compilation with zero fallbacks; compose-integrity; materialization-frontier; render-buffer-frontier; guardrails; and aggressive-cutting contract pass. Shape stability remains red only on the inherited stale AST type inventory; CST inventory and the monomorphic node-shape check pass.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 15.337438, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
   },
   {
     "id": "ast-extend-import-preflight",
@@ -3934,15 +3951,16 @@ involved.
     "why": "The loaded typed document remains the earliest authoritative source for imported extend placements and now also carries parser-classified CSS terminals during that same graph visit.",
     "dangerTokensJustification": "The false path still returns before collection. The admitted path adds one typed AtRuleStatement branch and flat-array rows for unique output terminals without a second graph walk or per-terminal object; existing extend collectors, overlays, and loop-placement tokens are unchanged.",
     "behaviorEvidence": "Focused import/preflight coverage passes, including no-extend imported bodies, reference visibility, source-order terminals, and deferred insertion.",
-    "buildEvidence": "Core noEmit typecheck and focused import tests pass.",
+    "buildEvidence": "Dependency-order release build and the named correctness/frontier gates in the companion contract pass; focused import coverage is 56/56.",
     "falsePath": {"fixture": "extend-preflight-contract:no-extend", "counters": {"calls": 1, "collectorCalls": 0, "overlaySubjects": 0, "overlayInstructions": 0, "loopPlacements": 0}},
     "featurePath": {"fixture": "extend-preflight-contract:imported-loop", "counters": {"importsVisited": 1, "loopPlacements": 2, "overlaySubjects": 2}},
-    "baseline": {"fixture": "benchmark.less", "phase": "parse-render", "currentMedianMs": 14.748791, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
+    "baseline": {"fixture": "benchmark.less", "phase": "parse-render", "currentMedianMs": 40.6637495, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
   }
 ]
 ```
-- Verdict: provisional pending full gates and invariant-by-invariant semantics
-  and performance reviews.
+- Verdict: provisional pending invariant-by-invariant semantics and performance
+  reviews; the named build, correctness, frontier, corpus, and contract gates are
+  complete.
 
 - Prior landed pass: 2026-08-25 typed URL value projection and Less `isurl()`.
   This is a bounded compatibility correction under OPEN ledger row V15, not a
