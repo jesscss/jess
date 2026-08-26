@@ -6,22 +6,22 @@ Reporting-only — outcomes measured, not gated. Each slice ran in an isolated, 
 
 ## Run provenance
 
-- Generated: `2026-08-08T20:23:03.787Z`
-- Jess commit: `a22594121e06c4e83ee26ef7f7ec466598036e42`
+- Generated: `2026-08-26T10:10:51.549Z`
+- Jess commit: `9efd656ee0284eb1c52fee6e25d71eadca9b7ed0`
 - Route: src-path Vitest renderer in packages/jess/test/less/_corpus-slice.test.ts
 - Configuration: base `output.collapseNesting: true`; getTestCases() fixture-local config merged for each expected output
-- Test data: `/Users/matthew/git/oss/less.js/packages/test-data` at `2f309b667df0fed192c83e1b32b4a72f045798f4`
+- Test data: `/Users/matthew/git/oss/less.js/packages/test-data` at `e7626e8c9936a67c80b5740c4f203731d82580e8`
 - Test-data working tree: clean
-- Runner: `v24.11.1` on `darwin/arm64`
+- Runner: `v25.9.0` on `darwin/arm64`
 
 
 ## Render corpus (expected CSS)
 
 | group | cases | pass | mismatch | error | timeout | crash |
 |---|--:|--:|--:|--:|--:|--:|
-| tests-unit | 91 | 69 | 9 | 13 | 0 | 0 |
-| tests-config | 43 | 25 | 14 | 4 | 0 | 0 |
-| **total** | **134** | **94** | **23** | **17** | **0** | **0** |
+| tests-unit | 91 | 70 | 9 | 12 | 0 | 0 |
+| tests-config | 43 | 26 | 14 | 3 | 0 | 0 |
+| **total** | **134** | **96** | **23** | **15** | **0** | **0** |
 
 ## Error corpus (`tests-error` — classify only)
 
@@ -46,12 +46,11 @@ Reporting-only — outcomes measured, not gated. Each slice ran in an isolated, 
 
 ## Render non-passes
 
-40 total — 34 already known to the gate (skipped/expected-failure), **6 NEW**.
+38 total — 33 already known to the gate (skipped/expected-failure), **5 NEW**.
 
 ### NEW (not skipped/expected-failure in the gate)
 
-- [error] `tests-unit/mixins-guards/mixins-guards.less` — Incomparable operands. '1' and 'true' share no common ground, so '<' has no answer.
-- [mismatch] `tests-unit/extract-and-length/extract-and-length.less`
+- [mismatch] `tests-unit/parser-slashed-combinator/parser-slashed-combinator.less`
 - [mismatch] `tests-config/sourcemaps/comprehensive/comprehensive.less`
 - [mismatch] `tests-config/debug/mediaquery/linenumbers-mediaquery.less`
 - [mismatch] `tests-config/debug/comments/linenumbers-comments.less`
@@ -59,13 +58,13 @@ Reporting-only — outcomes measured, not gated. Each slice ran in an isolated, 
 
 ### Known (gate already skips / expects-failure)
 
+- [mismatch] `tests-unit/variables/variables.less`
 - [error] `tests-unit/urls/urls.less`
 - [mismatch] `tests-unit/property-name-interp/property-name-interp.less`
 - [error] `tests-unit/plugin-preeval/plugin-preeval.less`
 - [error] `tests-unit/plugin-module/plugin-module.less`
 - [error] `tests-unit/plugin/plugin.less`
 - [error] `tests-unit/permissive-parse/permissive-parse.less`
-- [mismatch] `tests-unit/parser-slashed-combinator/parser-slashed-combinator.less`
 - [mismatch] `tests-unit/parse-interpolation/parse-interpolation.less`
 - [mismatch] `tests-unit/mixins/mixins.less`
 - [mismatch] `tests-unit/media/media.less`
@@ -76,11 +75,10 @@ Reporting-only — outcomes measured, not gated. Each slice ran in an isolated, 
 - [error] `tests-unit/ie-filters-REMOVED/legacy/ie-filters.less`
 - [error] `tests-unit/functions/functions.less`
 - [error] `tests-unit/functions/legacy/functions.less`
-- [mismatch] `tests-unit/detached-rulesets/detached-rulesets.less`
+- [mismatch] `tests-unit/extract-and-length/extract-and-length.less`
 - [mismatch] `tests-unit/color-functions/operations.less`
 - [error] `tests-unit/at-rule-variable-deprecated/at-rule-variable-deprecated.less`
 - [mismatch] `tests-config/visitorPlugin/visitor.less`
-- [mismatch] `tests-config/url-args/urls.less`
 - [mismatch] `tests-config/static-urls/urls.less`
 - [mismatch] `tests-config/sourcemaps-url/sourcemaps-url.less`
 - [mismatch] `tests-config/sourcemaps-rootpath/sourcemaps-rootpath.less`
@@ -92,4 +90,4 @@ Reporting-only — outcomes measured, not gated. Each slice ran in an isolated, 
 - [error] `tests-config/compression/compression.less`
 - [mismatch] `tests-config/at-rules-compressed-evaluation/at-rules-compressed-evaluation.less`
 - [mismatch] `tests-config/at-rules-compressed/at-rules-compressed.less`
-- [error] `tests-config/3rd-party/bootstrap4.less`
+- [mismatch] `tests-config/3rd-party/bootstrap4.less`
