@@ -3920,9 +3920,13 @@ involved.
   instructions/loop placements); branch comparisons rise 66 -> 73 because the
   formerly dropped nested pseudo is now matched. The timing delta is below the
   harness noise band and is not a speed claim.
-- Verdict: accepted provisionally as the smallest typed A7/X3 correction with
-  `performanceClaim: none`; exact-commit semantic and performance adversarial
-  reviews remain required before landing.
+- Verdict: accepted as the smallest typed A7/X3 correction with
+  `performanceClaim: none`. Exact-range semantic review approves invariants 1-8
+  and S1-S8 with no ledger action; exact-range performance review approves V8
+  invariants 1-11 and R1-R7 with the deterministic counts above. The broad
+  `verify:node-copy-frontier` and AST shape inventories remain inherited red on
+  the unrelated `bitset.ts` clone and stale corpus/`SpacedValue` allowlist;
+  monomorphic AST node shapes and every CST shape assertion pass.
 - Hot-path cost contracts:
 ```json
 [
@@ -3948,7 +3952,7 @@ involved.
     "why": "SETTLED A7 requires a visible extender to surface the matched branch of a hidden reference selector, and SETTLED X3 makes the existing structured :is() graft the canonical partial-match boundary. Preserving that graft through fused ampersand composition fixes the missing nested pseudo without a distribution surface.",
     "dangerTokensJustification": "The extend-free gate is unchanged. Only an exact structural & Simple may retain the typed parent graft; opaque text such as [title=\"&\"] stays on the prior string path. The admitted path performs bounded structural loops over composed levels, one parent compound, and one successful graft result; it reuses the matcher result array, creates no AST node, side table, predicate string, source scan, reparse, Cartesian product, or second matcher.",
     "behaviorEvidence": "Focused core coverage passes 75/75, the reference corpus selection passes 3/3, full core passes 3368 tests, all-less passes 112/112, and the AST-v2 production ratchet passes 4/4. Exact collapse-mode assertions retain authored :is() conditions, exclude hidden selector-list siblings, and prove opaque [title=\"&\"] text is not promoted to selector structure. Matched import-reference builds keep plan/preflight counts identical; comparisons rise 66 to 73 because the corrected nested pseudo now enters matching.",
-    "buildEvidence": "The dependency-order release build, zero-fallback check:macro, verify:compose-integrity, verify:aggressive-cutting-review, check:guardrails, and git diff --check pass. Exact-commit adversarial reviews remain pending.",
+    "buildEvidence": "The dependency-order release build, zero-fallback check:macro, verify:compose-integrity, verify:aggressive-cutting-review, check:guardrails, and git diff --check pass. Exact-range semantic invariants 1-8/S1-S8 and performance invariants 1-11/R1-R7 reviews approve with no blocker. The unrelated bitset clone and stale AST shape inventory remain inherited red; monomorphic node and CST shape assertions pass.",
     "baseline": {
       "fixture": "benchmark.less",
       "phase": "render",
