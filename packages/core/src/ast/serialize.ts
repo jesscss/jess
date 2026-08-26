@@ -13047,10 +13047,9 @@ function cssImportKey(node: AtRuleStatement, target: Quoted | Url): string | nul
       }
     }
     for (let index = 1; index < prelude.parts.length; index++) {
-      const part = prelude.parts[index]!;
-      if (part.type !== 'Any') {
-        return null;
-      }
+      /* The complete preceding pass proves every tail member is `Any`. */
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const part = prelude.parts[index]! as Any;
       if (index > 1) {
         tail += ' ';
       }
