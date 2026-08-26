@@ -3859,18 +3859,33 @@ involved.
   cached in the dispatch tracker, so C overload candidates still evaluate that
   source once while each candidate receives its own cleanup-owned snapshot.
   Direct variable classification and detached-block substitution share one
-  scope-chain lookup. Function and plugin argument evaluation thread one scalar
+  scope-chain lookup. Each evaluated group derives its URL-bearing mode and
+  canonical bytes once: the first group uses scalar fields and later distinct
+  groups use two lazy identity maps. Candidate snapshots read those facts in
+  O(1), including fixed, spread, and scalar-rest bindings. Function and plugin argument evaluation thread one scalar
   projection flag through the canonical typed evaluator, so alias/list/block/map
   recursion reads the activation map in O(1) without a parallel evaluator or
-  retained-group rewalk. Guard evaluation leaves that flag false. A sole evaluated
+  retained-group rewalk. Defaults do not enter the explicit-source tracker. For
+  a non-literal default, the canonical default resolver constructs one candidate
+  overlay and, for a direct variable, performs one scope lookup. That same hit
+  owns detached-block recognition, structural classification, typed/eager
+  evaluation, and raw-plugin projection; there is no parallel block resolver or
+  repeated overlay/lookup. The resolver allocates its retention closure only
+  when structural provenance or an eligible plugin root can create a retained
+  key, then transfers or deletes those keys with that candidate. Guard evaluation
+  leaves the projection flag false. A sole evaluated
   structural rest source performs one indexed pass over its M top-level members;
   N arguments or M members remain O(N+M), with no restart-at-zero or nested
-  candidate scan.
+  candidate scan. A structural rest prepares two M-slot parallel arrays once,
+  then C candidates read them by index while constructing their required C×M
+  snapshots; total work is O(S + E + C×A + M + C×M), not an unqualified O(N+M).
 - Ordinary lane: scalar/non-structural arguments allocate no new object, array,
   map, set, node, wrapper, or closure. EvalCtx adds one always-present nullable
   `mixinValueBindings` slot, retaining one fixed shape; the existing URL slot is
   unchanged. Feature Frames add the non-URL map only when selected structural
-  bindings require it. `BindState` replaces its one resolver field
+  bindings require it. All three activation Frame constructors declare the URL
+  and non-URL carrier slots in one fixed order before either receives a map, so
+  carrier combinations do not add hidden-class variants. `BindState` replaces its one resolver field
   with one resolver-bundle field; its field count and order stay fixed. An
   ordinary variadic bind adds one `leftover === 1` plus absent-resolver check,
   then follows the prior rest loop. Plugin-only tracking stores an undefined
@@ -3884,25 +3899,49 @@ involved.
   URL pair, non-URL structural values use the new pair, and an activation carrying
   both may own both. Transfer and rejected cleanup probe both policies in the same
   existing key pass. A fixed/default
-  binding still creates one eager `Any` snapshot. The first explicit source's
+  binding still creates one eager `Any` snapshot. Each non-literal default uses
+  one candidate-overlay `Frame` plus the existing declaration index/cells for
+  the parameters bound so far. A direct-variable default performs one
+  scope-chain lookup and reuses its result for every default policy decision.
+  The first structural or plugin-provenance default lazily creates one
+  default-value Map and one key array per participating candidate; losing
+  candidates delete those keys and selected candidates transfer them onto the
+  same activation carrier. Defaults that cannot retain provenance allocate no
+  retention closure. The first explicit source's
   evaluated group and authored bytes use scalar tracker caches; a second distinct
   source may lazily allocate one evaluated-group `Map` and, only when authored
-  spelling is required, one byte-result `Map`. A sole structural rest with M
-  semantic members creates exactly one semantic slots array, M eager `Any`
-  snapshots, and M carrier entries, replacing the one incorrect flattened
-  snapshot. A rest-only activation transfers that slots array directly to both
+  spelling is required, one byte-result `Map`. The first derived evaluated group
+  stores its mode/bytes in scalars; a second distinct group may lazily allocate
+  one mode map and one byte map. A structural spread reuses one exceptional
+  fixed-shape state/final-call record and one binding map; URL-bearing spread
+  items lazily add one Set. Expansion emits each item's bytes once, stores the
+  trimmed argument snapshot, and transports its URL mode without rewalking it
+  during candidate binding. A sole structural rest with M semantic members
+  creates two M-slot preparation arrays once, then one semantic slots array, M
+  eager `Any` snapshots, and M carrier entries per candidate, replacing the one
+  incorrect flattened snapshot without per-member hash maps. A rest-only activation transfers that slots array directly to both
   the rest binding and `@arguments`; when preceding parameter slots exist, the
   existing M-member append is required to form their combined `@arguments` list.
   No WeakMap, Error, per-entry tuple object, AST subtree copy, or source string is
-  added.
+  added. A value-tracking dispatch allocates one tracker record with ten bounded
+  closures; plugin-only tracking allocates five because typed evaluation, mode,
+  byte, and rest resolvers are not constructed. Exceptional cleanup adds three
+  tracked-only closures and discards active/unclaimed keys on synchronous throws
+  and promise rejection; the ordinary no-tracker dispatch retains its direct
+  selection path and allocates none of them.
 - Render/output path: ordinary declaration emission continues to read the eager
   bytes. `evalTyped(Any)` first takes one scalar projection branch: function/raw
   plugin arguments may read the non-URL carrier, while other typed consumers skip
   it; the existing URL lookup remains global under V15. All emitted strings still
   reach the canonical output writer; structure is never recovered from bytes.
-- Helper/API/metadata surface: `BoundSourceResolvers` and
+- Helper/API/metadata surface: `BoundSourceResolvers`, `DefaultResolver`, and
   `RestBoundSourceResolver` are core-internal module types, not package exports.
-  `classifyMixinValuePart`, `snapshotMixinValue`, the canonical typed evaluator's
+  The former parallel default-block resolver was deleted; `DefaultResolver`
+  alone owns candidate-overlay defaults and may return a by-reference block or
+  the one eager/provenance-bearing snapshot. `BoundSourceResolver` accepts only
+  explicit call-source values; fixed and suspended default branches bypass it
+  structurally rather than relying on a runtime `defaulted` rejection.
+  `classifyMixinValuePart`, `snapshotPreparedMixinValue`, the canonical typed evaluator's
   projection flag, and the sole-rest resolver own classification, snapshot
   construction, consumer visibility, and rest expansion once.
   Metadata mutation is limited to the existing render-local candidate/activation
@@ -3913,19 +3952,28 @@ involved.
   rest array only on the repaired lane; [map] the existing sparse URL carrier
   lifetime plus one sparse non-URL carrier lifetime, one second-source mode map, and up
   to two lazy second-source result maps as inventoried above;
-  [node construction] existing eager `Any`, or M required member snapshots for
-  sole structural rest; [array spread/copy] none; [WeakMap/Error/source scan]
+  [node construction] existing eager `Any`, or C×M required member snapshots for
+  sole structural rest; [array] two aligned M-slot rest preparation arrays plus
+  one candidate slots array; [tracker closures] ten value-tracking / five
+  plugin-only plus three tracked exceptional-cleanup closures; [array spread/copy] none; [WeakMap/Error/source scan]
   none; [public API] none.
-- Behavior evidence: focused core mixin binding passes 12/12. Focused Jess Less
+- Behavior evidence: focused core mixin binding passes 15/15. Focused Jess Less
   functions, rest arguments, and plugin diagnostics pass 40 active tests with 21
   pre-existing todos. The upstream `extract-and-length` fixture now differs from
   its maintained golden on exactly one independent custom-property spacing line;
   all fixed, variadic, defaulted, forwarded, spread, `@arguments`, and `.md-3D`
   structural list assertions match. The active expected-failure reason names only
   that remaining source-layout defect.
-- Build evidence: `pnpm --filter @jesscss/core build` passes. Full release,
-  corpus, ratchet, guardrail, and adversarial review evidence is recorded at the
-  batch boundary before landing.
+- Build evidence: dependency-order `build:release`, full core (212 files / 3367
+  tests), all-less (112/112), all-less-error (96/96), AST-v2 production ratchet
+  (4/4), package exports, macro zero-fallback, compose-integrity,
+  materialization-frontier, render-buffer-frontier, binding lookup,
+  diagnostic-cold-path, guardrails, and aggressive-cutting gates pass. Shape
+  stability retains its inherited stale AST inventory failures while the AST
+  monomorphic-shape and all CST assertions pass; node-copy-frontier retains its
+  inherited BitSet clone finding. The committed-state Less hot-path harness is
+  unverified because it exits before timing on the inherited numeric-leading
+  `@1` diagnostic; no timing conclusion is drawn.
 - Performance evidence: no timing or neutrality claim. The deterministic
   traversal/allocation counts above are the evidence; the repository timing
   harness is not used to waive compiler-path defects.
@@ -3939,9 +3987,9 @@ involved.
     "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
     "cases": ["ValueSlot-array-evaluation-and-authored-layout", "List-value-separator-and-Block-delimiter-facts", "reference-index-and-For-array-access", "Less-lazy-color-call-demand-boundary", "defineFunction-typed-positional-named-and-lazy-binding", "mixin-dispatch-ValueSlot-argument-resolution", "ValueLayout-provenance-side-table", "preserve-mode-calc-result-composition", "extend-composition-plan-and-fixpoint-solve", "Less-eager-bare-slash-precedence-and-parens-division", "recursive-ValueGroup-final-unit-validation", "async-declaration-dedup-output-order"],
     "why": "OPEN V17 keeps the existing eager Less bytes while retaining parser/evaluator-owned grouping at function and raw-plugin argument boundaries. A separate sparse non-URL carrier leaves V15 URL visibility and eager guard/comparison/declaration behavior unchanged and introduces neither a second evaluator nor an output route.",
-    "dangerTokensJustification": "One early-exit structural source pass classifies each explicit occurrence, and one dispatch-local scalar/lazy-map cache evaluates each explicit source once across overload candidates. Function/raw-plugin arguments thread one scalar projection flag through the canonical typed evaluator; guards leave it false. Later fixed/default/forwarded/spread/rest consumers use O(1) binding-map reads; transfer and cleanup probe URL and non-URL maps in the same key pass. Rest-only expansion transfers one semantic member array directly, while a preceding fixed-parameter prefix requires one append into the combined @arguments list. There is no source scan, reparse, WeakMap, tuple object, or pass-through clone.",
-    "behaviorEvidence": "Focused core mixin binding 12/12; focused Jess Less rest/plugin tests 16/16; all-less 112/112 including extract-and-length and mixins-guards; extract-and-length retains only one independent custom-property spacing mismatch.",
-    "buildEvidence": "pnpm --filter @jesscss/core build passes; final batch gates are recorded before landing.",
+    "dangerTokensJustification": "One early-exit structural source pass classifies each explicit occurrence, and one dispatch-local scalar/lazy-map cache evaluates each explicit source once across overload candidates. Evaluated group mode and canonical bytes are likewise derived once; spread preparation transports its bytes/mode, and sole-rest preparation uses two aligned M-slot arrays followed by indexed C×M snapshot construction. Function/raw-plugin arguments thread one scalar projection flag through the canonical typed evaluator; guards leave it false. Candidate-local transfer and normal/exceptional cleanup probe URL and non-URL maps in the same key pass. Rest-only expansion transfers one semantic member array directly, while a preceding fixed-parameter prefix requires one append into the combined @arguments list. There is no source scan, reparse, WeakMap, tuple object, or pass-through clone.",
+    "behaviorEvidence": "Focused core mixin binding 15/15; focused Jess Less rest/plugin tests 16/16; focused functions/rest/plugin 40 active / 21 pre-existing todo; all-less 112/112 including extract-and-length and mixins-guards; extract-and-length retains only one independent custom-property spacing mismatch.",
+    "buildEvidence": "Dependency-order build:release; full core 212 files / 3367 tests; all-less 112/112; all-less-error 96/96; AST-v2 ratchet 4/4; package exports; macro zero-fallback; compose-integrity; materialization/render/binding/diagnostic frontiers; guardrails; aggressive-cutting; and git diff --check pass. Shape/node-copy audits retain only the documented inherited findings. The Less hot-path harness is pre-timing red on inherited numeric-leading @1, so no timing claim is made.",
     "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 44.031520500000056, "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781", "outputBytes": 122534}
   }
 ]

@@ -5295,15 +5295,53 @@ function valueGroupNeedsMixinCarrier(value: ValueGroup): boolean {
     || value.type === 'Block' || value.type === 'Collection';
 }
 
+const MIXIN_GROUP_SCALAR = 0;
+const MIXIN_GROUP_VALUE = 1;
+const MIXIN_GROUP_URL = 2;
+type MixinGroupMode = typeof MIXIN_GROUP_SCALAR | typeof MIXIN_GROUP_VALUE | typeof MIXIN_GROUP_URL;
+
+/** Classify one evaluated group once for its candidate-local snapshot policy. */
+function mixinGroupMode(value: ValueGroup): MixinGroupMode {
+  if (!valueGroupNeedsMixinCarrier(value)) {
+    return MIXIN_GROUP_SCALAR;
+  }
+  return valueGroupHasUrl(value) ? MIXIN_GROUP_URL : MIXIN_GROUP_VALUE;
+}
+
+/** Construct one candidate-owned eager snapshot from already-derived source facts. */
+function snapshotPreparedMixinValue(
+  value: ValueGroup,
+  mode: MixinGroupMode,
+  bytes: string,
+  e: EvalCtx,
+  retain: (key: Binding) => void
+): Any {
+  const bound = any(bytes);
+  if (mode === MIXIN_GROUP_URL) {
+    (e.mixinUrlBindings ??= new Map()).set(bound, value);
+    retain(bound);
+  } else if (mode === MIXIN_GROUP_VALUE) {
+    (e.mixinValueBindings ??= new Map()).set(bound, value);
+    retain(bound);
+  }
+  return bound;
+}
+
 /** Snapshot one canonical result while retaining structure only when bytes would erase it. */
 function snapshotEvaluatedMixinValue(
   evaluated: MaybePromise<ValueGroup>,
   e: EvalCtx,
-  retain: (key: Binding) => void
+  retain: (key: Binding) => void,
+  preparedMode?: MaybePromise<MixinGroupMode>,
+  preparedBytes?: MaybePromise<string>
 ): MaybePromise<CallValue> {
-  return mapMaybe(evaluated, value => valueGroupNeedsMixinCarrier(value)
-    ? snapshotMixinValue(value, e, retain)
-    : any(emitValue(value)));
+  return mapMaybe(evaluated, value => mapMaybe(
+    preparedMode ?? mixinGroupMode(value),
+    mode => mapMaybe(
+      preparedBytes ?? emitValue(value),
+      bytes => snapshotPreparedMixinValue(value, mode, bytes, e, retain)
+    )
+  ));
 }
 
 /** Snapshot one authored structural result while retaining its original eager bytes. */
@@ -5311,38 +5349,13 @@ function resolveAuthoredMixinValue(
   source: ValueSlot,
   frame: Frame,
   e: EvalCtx,
-  retain: (key: Binding) => void,
-  evaluated?: MaybePromise<ValueGroup>,
-  authoredBytes?: (source: ValueSlot) => MaybePromise<string>
+  retain: (key: Binding) => void
 ): MaybePromise<CallValue> {
-  return mapMaybe(evaluated ?? evalTypedSlot(source, frame, e, true), (value) => {
-    if (!valueGroupNeedsMixinCarrier(value)) {
-      return any(emitValue(value));
-    }
-    if (valueGroupHasUrl(value)) {
-      return snapshotMixinValue(value, e, retain, true);
-    }
-    return mapMaybe(authoredBytes?.(source) ?? evalBytes(source, frame, e), bytes =>
-      snapshotMixinValue(value, e, retain, false, bytes));
+  return mapMaybe(evalTypedSlot(source, frame, e, true), (value) => {
+    const mode = mixinGroupMode(value);
+    const bytes = mode === MIXIN_GROUP_VALUE ? evalBytes(source, frame, e) : emitValue(value);
+    return mapMaybe(bytes, resolved => snapshotPreparedMixinValue(value, mode, resolved, e, retain));
   });
-}
-
-/** Bind one typed value through the ordinary eager Any snapshot. */
-function snapshotMixinValue(
-  value: ValueGroup,
-  e: EvalCtx,
-  retain: (key: Binding) => void,
-  urlBearing = valueGroupHasUrl(value),
-  bytes = emitValue(value)
-): Any {
-  const bound = any(bytes);
-  if (urlBearing) {
-    (e.mixinUrlBindings ??= new Map()).set(bound, value);
-  } else {
-    (e.mixinValueBindings ??= new Map()).set(bound, value);
-  }
-  retain(bound);
-  return bound;
 }
 
 /**
@@ -5363,6 +5376,18 @@ function resolvePluginBoundSource(
     return undefined;
   }
   const hit = resolveVarRef(frame, source.name, source.scope, e);
+  return resolvePluginBoundHit(source, hit, frame, e, retain, candidateRoot);
+}
+
+/** Snapshot one already-resolved direct variable for the legacy raw-plugin ABI. */
+function resolvePluginBoundHit(
+  source: Lookup,
+  hit: MixinValueHit,
+  frame: Frame,
+  e: EvalCtx,
+  retain: ((key: Binding) => void) | undefined,
+  candidateRoot: boolean
+): MaybePromise<CallValue> {
   if (!hit) {
     return mapMaybe(evalBytes(source, frame, e), any);
   }
@@ -5377,14 +5402,14 @@ function resolvePluginBoundSource(
   const rootWasCached = candidateRoot && e.pluginRawBindings?.has(value) === true;
   const typed = pluginRawRoot(value, e);
   if (candidateRoot && !rootWasCached) {
-    retain(value);
+    retain?.(value);
   }
   const snapshot = withExcluded(e, value, () => evalBytes(value, hit.frame, e));
   return mapMaybe(snapshot, (bytes) => {
     const bound = any(bytes);
     if (typed !== null) {
       e.pluginRawBindings!.set(bound, typed);
-      retain(bound);
+      retain?.(bound);
     }
     return bound;
   });
@@ -5485,9 +5510,8 @@ const TRACK_VALUE_SOURCE = 2;
 function boundSourceTracker(
   frame: Frame,
   e: EvalCtx,
-  homes: Map<MixinDefinition, Frame> | undefined,
   trackMode: number,
-  spreadValueBindings?: ReadonlyMap<Binding, ValueGroup>,
+  spreadValues?: ValueBearingSpreadCall,
   valueSources?: MixinValueSources
 ): BoundSourceTracker {
   const trackPlugin = (trackMode & TRACK_PLUGIN_SOURCE) !== 0;
@@ -5497,6 +5521,16 @@ function boundSourceTracker(
   let primaryBytes: MaybePromise<string> | undefined;
   let additionalValues: Map<CallValue, MaybePromise<ValueGroup>> | undefined;
   let additionalBytes: Map<CallValue, MaybePromise<string>> | undefined;
+  let primaryGroup: ValueGroup | undefined;
+  let primaryGroupMode: MixinGroupMode = MIXIN_GROUP_SCALAR;
+  let primaryGroupModeReady = false;
+  let primaryGroupBytes = '';
+  let primaryGroupBytesReady = false;
+  let additionalGroupModes: Map<ValueGroup, MixinGroupMode> | undefined;
+  let additionalGroupBytes: Map<ValueGroup, string> | undefined;
+  let restGroup: ValueGroup | undefined;
+  let restModes: MixinGroupMode[] | undefined;
+  let restBytes: string[] | undefined;
   const retain = (key: Binding): void => {
     (candidateKeys ??= []).push(key);
   };
@@ -5526,40 +5560,88 @@ function boundSourceTracker(
         return bytes;
       }
     : undefined;
-  const resolve: BoundSourceResolver = (value, boundSoFar, def, defaulted) => {
+  const preparedMode = trackValue
+    ? (value: ValueGroup): MixinGroupMode => {
+        if (primaryGroup === undefined) {
+          primaryGroup = value;
+        }
+        if (value === primaryGroup) {
+          if (!primaryGroupModeReady) {
+            primaryGroupMode = mixinGroupMode(value);
+            primaryGroupModeReady = true;
+          }
+          return primaryGroupMode;
+        }
+        let mode = additionalGroupModes?.get(value);
+        if (mode === undefined) {
+          mode = mixinGroupMode(value);
+          (additionalGroupModes ??= new Map()).set(value, mode);
+        }
+        return mode;
+      }
+    : undefined;
+  const preparedBytes = trackValue
+    ? (value: ValueGroup): string => {
+        if (primaryGroup === undefined) {
+          primaryGroup = value;
+        }
+        if (value === primaryGroup) {
+          if (!primaryGroupBytesReady) {
+            primaryGroupBytes = emitValue(value);
+            primaryGroupBytesReady = true;
+          }
+          return primaryGroupBytes;
+        }
+        let bytes = additionalGroupBytes?.get(value);
+        if (bytes === undefined) {
+          bytes = emitValue(value);
+          (additionalGroupBytes ??= new Map()).set(value, bytes);
+        }
+        return bytes;
+      }
+    : undefined;
+  const resolve: BoundSourceResolver = (value) => {
     if (isMixinCallValue(value)) {
       return undefined;
     }
-    const spreadValue = spreadValueBindings?.get(value);
-    let mode: MixinValueSourceMode = MIXIN_VALUE_NONE;
-    if (!defaulted) {
-      mode = value === valueSources?.valueSource
-        ? valueSources.valueSourceMode
-        : valueSources?.additionalValueSources?.get(value) ?? MIXIN_VALUE_NONE;
+    let spreadSnapshot: Any | undefined;
+    let spreadValue: ValueGroup | undefined;
+    if (!isValueSlotArray(value) && value.type === 'Any') {
+      spreadValue = spreadValues?.valueBindings.get(value);
+      if (spreadValue !== undefined) {
+        spreadSnapshot = value;
+      }
     }
+    let mode: MixinValueSourceMode = MIXIN_VALUE_NONE;
+    mode = value === valueSources?.valueSource
+      ? valueSources.valueSourceMode
+      : valueSources?.additionalValueSources?.get(value) ?? MIXIN_VALUE_NONE;
     const pluginEligible = trackPlugin && !isValueSlotArray(value) && !isMixinCallValue(value)
       && value.type === 'Lookup' && value.kind === 'var' && typeof value.name === 'string';
     if (spreadValue === undefined && mode === MIXIN_VALUE_NONE && !pluginEligible) {
       return undefined;
     }
-    let owner = frame;
-    if (defaulted) {
-      const home = homes?.get(def);
-      owner = home && home !== frame
-        ? { parent: home, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null, fallback: frame }
-        : { parent: frame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
-      if (pluginEligible && trackValue) {
-        mode = classifyMixinValueSource(value, owner, e);
-      }
-    }
     if (trackValue && (spreadValue !== undefined || mode !== MIXIN_VALUE_NONE)) {
       if (spreadValue !== undefined) {
-        return snapshotMixinValue(spreadValue, e, retain);
+        return snapshotPreparedMixinValue(
+          spreadValue,
+          spreadValues!.urlBindings?.has(spreadSnapshot!) === true
+            ? MIXIN_GROUP_URL
+            : MIXIN_GROUP_VALUE,
+          spreadSnapshot!.src,
+          e,
+          retain
+        );
       }
       const evaluated = evaluatedValue!(value);
-      return mode === MIXIN_VALUE_AUTHORED
-        ? resolveAuthoredMixinValue(value, owner, e, retain, evaluated, evaluatedBytes)
-        : snapshotEvaluatedMixinValue(evaluated, e, retain);
+      return mapMaybe(evaluated, (group) => {
+        const groupMode = preparedMode!(group);
+        const bytes = mode === MIXIN_VALUE_AUTHORED && groupMode === MIXIN_GROUP_VALUE
+          ? evaluatedBytes!(value)
+          : preparedBytes!(group);
+        return mapMaybe(bytes, resolved =>
+          snapshotPreparedMixinValue(group, groupMode, resolved, e, retain));
+      });
     }
     if (!pluginEligible || isValueSlotArray(value) || isMixinCallValue(value)
       || value.type !== 'Lookup' || value.kind !== 'var' || typeof value.name !== 'string') {
@@ -5567,10 +5649,10 @@ function boundSourceTracker(
     }
     return resolvePluginBoundSource(
       value,
-      owner,
+      frame,
       e,
       retain,
-      defaulted && boundSoFar.has(value.name)
+      false
     );
   };
   const resolveRest: RestBoundSourceResolver | undefined = trackValue
@@ -5578,7 +5660,14 @@ function boundSourceTracker(
         if (isMixinCallValue(value)) {
           return undefined;
         }
-        const spreadValue = spreadValueBindings?.get(value);
+        let spreadSnapshot: Any | undefined;
+        let spreadValue: ValueGroup | undefined;
+        if (!isValueSlotArray(value) && value.type === 'Any') {
+          spreadValue = spreadValues?.valueBindings.get(value);
+          if (spreadValue !== undefined) {
+            spreadSnapshot = value;
+          }
+        }
         const mode = value === valueSources?.valueSource
           ? valueSources.valueSourceMode
           : valueSources?.additionalValueSources?.get(value) ?? MIXIN_VALUE_NONE;
@@ -5593,13 +5682,39 @@ function boundSourceTracker(
               ? group.value
               : null;
           if (members === null) {
-            return [valueGroupNeedsMixinCarrier(group)
-              ? snapshotMixinValue(group, e, retain)
-              : any(emitValue(group))];
+            return [snapshotPreparedMixinValue(
+              group,
+              spreadSnapshot !== undefined && spreadValues!.urlBindings?.has(spreadSnapshot) === true
+                ? MIXIN_GROUP_URL
+                : spreadSnapshot !== undefined
+                  ? MIXIN_GROUP_VALUE
+                  : preparedMode!(group),
+              spreadSnapshot?.src ?? preparedBytes!(group),
+              e,
+              retain
+            )];
+          }
+          if (restGroup !== group) {
+            const modes = new Array<MixinGroupMode>(members.length);
+            const bytes = new Array<string>(members.length);
+            for (let index = 0; index < members.length; index++) {
+              const member = members[index]!;
+              modes[index] = mixinGroupMode(member);
+              bytes[index] = emitValue(member);
+            }
+            restGroup = group;
+            restModes = modes;
+            restBytes = bytes;
           }
           const slots: ValueSlot[] = [];
-          for (const member of members) {
-            slots.push(snapshotMixinValue(member, e, retain));
+          for (let index = 0; index < members.length; index++) {
+            slots.push(snapshotPreparedMixinValue(
+              members[index]!,
+              restModes![index]!,
+              restBytes![index]!,
+              e,
+              retain
+            ));
           }
           return slots;
         });
@@ -9427,6 +9542,7 @@ function emitDocumentStatements(
         if (e.referenceImportDepth !== 0) {
           break;
         }
+
         // A final call step can splice a detached ruleset at document level.
         const group: Leaf[] = [];
         const flush = (): MaybePromise<void> => {
@@ -9442,6 +9558,7 @@ function emitDocumentStatements(
         if (e.referenceImportDepth !== 0) {
           return expandReferenceAncestorFor(child, null, null, frame, e, false, false);
         }
+
         // a top-level `each(...)` loop — its body emits at the document level.
         const group: Leaf[] = [];
         const flush = (): MaybePromise<void> => {
@@ -11108,6 +11225,8 @@ function expandCall(
           declIndex: collectDeclIndex(def.rules, bindings), cells: cellsForParams(bindings), reassign: null,
           statements: def.rules,
           sourceOwner: sourceOwnerForBody(def.rules, frame, e),
+          mixinUrlBindings: undefined,
+          mixinValueBindings: undefined,
           ...(namespaced || homeFrame === frame ? {} : { fallback: frame })
         };
         takeMixinValueBindings(boundSourceKeys, e, callFrame);
@@ -11939,7 +12058,8 @@ function resolveForRuleset(
      * a `@map[k]` accessor (`@scheme: @color-schemes[@@name]; each(@scheme, …)` /
      * `@scheme[@color]`). Follow it through the same resolver.
      */
-    if (bound.type === 'Lookup' && bound.kind === 'var' || bound.type === 'Reference' || bound.type === 'Block') {
+    if ((bound.type === 'Lookup' && bound.kind === 'var')
+      || bound.type === 'Reference' || bound.type === 'Block') {
       return resolveForRuleset(bound, frame, e);
     }
     return null;
@@ -12276,6 +12396,8 @@ function dispatch(
   errorOnNoViable = false
 ): MaybePromise<Selection[]> {
   const resolveCaller = makeResolver(frame, e);
+  const trackPlugin = e.pluginHost?.invokeRawFunction !== undefined
+    && (e.scopedFunctionNames?.size ?? 0) > 0;
 
   /*
    * [closure] a guard resolves free variables in the mixin's DEFINITION scope, with
@@ -12316,39 +12438,65 @@ function dispatch(
     const overlay: Frame = home && home !== frame
       ? { parent: home, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null, fallback: frame }
       : { parent: frame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
-    const mode = classifyMixinValueSource(v, overlay, e);
-    if (mode === MIXIN_VALUE_NONE) {
+    let lookup: Lookup | undefined;
+    let lookupName: string | undefined;
+    if (!isValueSlotArray(v) && v.type === 'Lookup'
+      && v.kind === 'var' && typeof v.name === 'string') {
+      lookup = v;
+      lookupName = v.name;
+    }
+    const hit = lookup === undefined
+      ? undefined
+      : resolveVarRef(overlay, lookupName!, lookup.scope, e);
+    const hitValue = hit?.value;
+    if (hitValue !== undefined && !isValueSlotArray(hitValue)
+      && !isMixinCallValue(hitValue) && isValueBlock(hitValue)) {
+      return hitValue;
+    }
+    const mode = lookup !== undefined
+      ? classifyResolvedMixinValueSource(hit, e)
+      : classifyMixinValueSource(v, overlay, e);
+    const pluginEligible = trackPlugin && lookup !== undefined;
+    if (mode === MIXIN_VALUE_NONE && !pluginEligible) {
       return mapMaybe(evalBytes(v, overlay, e), any);
     }
-    const retain = (bound: Binding): void => {
-      const byBinding = defaultValueKeys ??= new Map();
-      const keys = byBinding.get(boundSoFar);
-      if (keys === undefined) {
-        byBinding.set(boundSoFar, [bound]);
-      } else {
-        keys.push(bound);
+    const candidateRoot = lookupName !== undefined && boundSoFar.has(lookupName);
+    const needsRetention = mode !== MIXIN_VALUE_NONE
+      || (hitValue !== undefined && !isMixinCallValue(hitValue)
+        && (candidateRoot || isTypedCallValue(hitValue)));
+    const retain = needsRetention
+      ? (bound: Binding): void => {
+          const byBinding = defaultValueKeys ??= new Map();
+          const keys = byBinding.get(boundSoFar);
+          if (keys === undefined) {
+            byBinding.set(boundSoFar, [bound]);
+          } else {
+            keys.push(bound);
+          }
+        }
+      : undefined;
+    if (mode === MIXIN_VALUE_AUTHORED) {
+      if (hitValue !== undefined && !isMixinCallValue(hitValue)) {
+        const evaluated = withExcluded(e, hitValue, () =>
+          evalTypedSlot(hitValue, hit!.frame, e, true));
+        return mapMaybe(evaluated, (group) => {
+          const groupMode = mixinGroupMode(group);
+          const bytes = groupMode === MIXIN_GROUP_VALUE
+            ? withExcluded(e, hitValue, () => evalBytes(hitValue, hit!.frame, e))
+            : emitValue(group);
+          return mapMaybe(bytes, resolved =>
+            snapshotPreparedMixinValue(group, groupMode, resolved, e, retain!));
+        });
       }
-    };
-    return mode === MIXIN_VALUE_AUTHORED
-      ? resolveAuthoredMixinValue(v, overlay, e, retain)
-      : snapshotEvaluatedMixinValue(evalTypedSlot(v, overlay, e, true), e, retain);
-  };
-
-  /*
-   * A default that NAMES a value block (`@breakpoints: @grid-breakpoints`) binds
-   * the block by reference, matching what `substituteClosureVarArgs` already does
-   * for a block passed explicitly. Anything else falls through to byte resolution.
-   */
-  const resolveDefaultBlock = (v: ValueSlot, boundSoFar: Map<string, CallValue>, def: MixinDefinition): ValueSlot | undefined => {
-    if (isValueSlotArray(v) || v.type !== 'Lookup' || v.kind !== 'var') {
-      return undefined;
+      return resolveAuthoredMixinValue(v, overlay, e, retain!);
     }
-    const home = homes?.get(def);
-    const overlay: Frame = home && home !== frame
-      ? { parent: home, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null, fallback: frame }
-      : { parent: frame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
-    const bound = lookupVar(overlay, literalName(v));
-    return bound && !isValueSlotArray(bound) && isValueBlock(bound) ? bound : undefined;
+    if (mode !== MIXIN_VALUE_NONE) {
+      const evaluated = hitValue !== undefined && !isMixinCallValue(hitValue)
+        ? withExcluded(e, hitValue, () => evalTypedSlot(hitValue, hit!.frame, e, true))
+        : evalTypedSlot(v, overlay, e, true);
+      return snapshotEvaluatedMixinValue(evaluated, e, retain!);
+    }
+    return resolvePluginBoundHit(lookup!, hit, overlay, e, retain, candidateRoot);
   };
 
   /*
@@ -12370,17 +12518,14 @@ function dispatch(
     const valueBearing = isValueBearingMixinCall(prepared);
     const call2 = valueBearing ? prepared.call : prepared;
     const trackValue = valueSpread || valueBearing;
-    const trackPlugin = e.pluginHost?.invokeRawFunction !== undefined
-      && (e.scopedFunctionNames?.size ?? 0) > 0;
     const trackMode = (trackPlugin ? TRACK_PLUGIN_SOURCE : 0)
       | (trackValue ? TRACK_VALUE_SOURCE : 0);
     const boundSources: BoundSourceTracker | undefined = trackMode !== 0
       ? boundSourceTracker(
           frame,
           e,
-          homes,
           trackMode,
-          spreadValueBindings,
+          valueSpread ? expanded : undefined,
           valueBearing ? prepared : undefined
         )
       : undefined;
@@ -12415,7 +12560,6 @@ function dispatch(
         e.ev,
         e.modes,
         resolveDefault,
-        resolveDefaultBlock,
         errorOnNoViable ? () => unresolvedMixinCall(call2, e) : undefined,
         boundSources
       );
@@ -12445,7 +12589,8 @@ function dispatch(
  * generated eager snapshots; value-ineligible spreads retain the byte split. */
 interface ValueBearingSpreadCall {
   readonly call: MixinCall;
-  readonly valueBindings: ReadonlyMap<Binding, ValueGroup>;
+  readonly valueBindings: Map<Any, ValueGroup>;
+  urlBindings: Set<Binding> | null;
 }
 
 type ExpandedSpreadArgs = MixinCall | ValueBearingSpreadCall;
@@ -12465,7 +12610,11 @@ function expandSpreadArgs(
     return call;
   }
   const args: CallArg[] = [];
-  let valueBindings: Map<Binding, ValueGroup> | undefined;
+  const expanded: MixinCall = {
+    type: 'MixinCall', name: call.name, args, path: call.path,
+    important: call.important, content: call.content, _s: call._s, _e: call._e
+  };
+  let valueState: ValueBearingSpreadCall | undefined;
   const step = (index: number): MaybePromise<ExpandedSpreadArgs> => {
     for (; index < call.args.length; index++) {
       const a = call.args[index]!;
@@ -12493,17 +12642,13 @@ function expandSpreadArgs(
       if (isThenable(spreadValue)) {
         const at = index;
         return spreadValue.then((settled) => {
-          valueBindings = pushTypedSpread(args, settled, valueBindings);
+          valueState = pushTypedSpread(args, expanded, settled, valueState);
           return step(at + 1);
         });
       }
-      valueBindings = pushTypedSpread(args, spreadValue, valueBindings);
+      valueState = pushTypedSpread(args, expanded, spreadValue, valueState);
     }
-    const expanded: MixinCall = {
-      type: 'MixinCall', name: call.name, args, path: call.path,
-      important: call.important, content: call.content, _s: call._s, _e: call._e
-    };
-    return valueBindings === undefined ? expanded : { call: expanded, valueBindings };
+    return valueState ?? expanded;
   };
   return step(0);
 }
@@ -12533,9 +12678,10 @@ function evalTypedSpread(
 /** Append one evaluated spread group, retaining typed positional items. */
 function pushTypedSpread(
   args: CallArg[],
+  call: MixinCall,
   value: ValueGroup,
-  valueBindings?: Map<Binding, ValueGroup>
-): Map<Binding, ValueGroup> | undefined {
+  state?: ValueBearingSpreadCall
+): ValueBearingSpreadCall | undefined {
   const items = isValueGroupArray(value)
     ? value
     : value.type === 'List'
@@ -12546,35 +12692,43 @@ function pushTypedSpread(
       if (!isValueGroupArray(value) && value.type === 'List' && value.sep === '/' && index !== 0) {
         args.push(callArg(any('/')));
       }
-      valueBindings = pushTypedSpreadItem(args, items[index]!, valueBindings);
+      state = pushTypedSpreadItem(args, call, items[index]!, state);
     }
-    return valueBindings;
+    return state;
   }
   if (!isValueGroupArray(value) && value.type === 'Url') {
-    return pushTypedSpreadItem(args, value, valueBindings);
+    return pushTypedSpreadItem(args, call, value, state);
   }
   pushSpread(args, emitValue(value));
-  return valueBindings;
+  return state;
 }
 
 /** Append one structural spread item as one eager snapshot. */
 function pushTypedSpreadItem(
   args: CallArg[],
+  call: MixinCall,
   value: ValueGroup,
-  valueBindings?: Map<Binding, ValueGroup>
-): Map<Binding, ValueGroup> | undefined {
+  state?: ValueBearingSpreadCall
+): ValueBearingSpreadCall | undefined {
   const bytes = emitValue(value).trim();
   if (bytes === '') {
-    return valueBindings;
+    return state;
   }
   const snapshot = any(bytes);
   args.push(callArg(snapshot));
   if (valueGroupNeedsMixinCarrier(value)) {
-    const bindings = valueBindings ?? new Map();
-    bindings.set(snapshot, value);
+    const bindings = state ?? {
+      call,
+      valueBindings: new Map<Any, ValueGroup>(),
+      urlBindings: null
+    };
+    bindings.valueBindings.set(snapshot, value);
+    if (valueGroupHasUrl(value)) {
+      (bindings.urlBindings ??= new Set()).add(snapshot);
+    }
     return bindings;
   }
-  return valueBindings;
+  return state;
 }
 
 /** Split one resolved spread argument into the positional args it splats to. */
@@ -16092,7 +16246,9 @@ function emitTransparentShells(
         mixins: collectMixins(shell.def.rules),
         declIndex: collectDeclIndex(shell.def.rules, shell.bindings), cells: cellsForParams(shell.bindings), reassign: null,
         statements: shell.def.rules,
-        sourceOwner: sourceOwnerForBody(shell.def.rules, frame, e)
+        sourceOwner: sourceOwnerForBody(shell.def.rules, frame, e),
+        mixinUrlBindings: undefined,
+        mixinValueBindings: undefined
       };
       takeMixinValueBindings(shell.boundSourceKeys, e, callFrame);
       captureArgDefFrames(shell.bindings, frame, callFrame, e);
@@ -16485,6 +16641,8 @@ function expandNestedCall(
             declIndex: collectDeclIndex(def.rules, bindings), cells: cellsForParams(bindings), reassign: null,
             statements: def.rules,
             sourceOwner: sourceOwnerForBody(def.rules, frame, e),
+            mixinUrlBindings: undefined,
+            mixinValueBindings: undefined,
             ...(namespaced || homeFrame === frame ? {} : { fallback: frame })
           };
           takeMixinValueBindings(boundSourceKeys, e, callFrame);
