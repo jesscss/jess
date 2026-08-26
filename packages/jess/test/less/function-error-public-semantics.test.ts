@@ -17,6 +17,31 @@ const invalidCalls = [
 ] as const;
 
 describe('Less built-in argument errors through the public AST route', () => {
+  it('evaluates a multiline final svg-gradient stop as one typed argument', async () => {
+    const compiler = new Compiler({
+      output: { collapseNesting: true },
+      compile: { functionMode: 'error' }
+    });
+    const source = `
+      @color: #800080;
+      .gradient-mixin(@color) {
+        background: svg-gradient(to bottom,
+          fade(@color, 0%) 0%,
+          fade(@color, 50%) 100%
+        );
+      }
+      .result { .gradient-mixin(@color); }
+    `;
+
+    const output = await compiler.renderString(source, {
+      filePath: 'entry.less',
+      extension: '.less'
+    });
+    expect(output).toContain('background: url(\'data:image/svg+xml,');
+    expect(output).toContain('offset%3D%22100%25%22');
+    expect(output).not.toContain('svg-gradient(');
+  });
+
   it('keeps all static CSS color calls deferred (comma spacing normalized) without dispatching an installed Less function', async () => {
     let calls = 0;
     const compiler = new Compiler({
@@ -67,8 +92,10 @@ describe('Less built-in argument errors through the public AST route', () => {
     await expect(strict.renderString(relativeSource, { filePath: 'entry.less', extension: '.less' }))
       .resolves.toContain('rgb(from red r g b)');
 
-    // The inner relative color is now demanded by `lighten`, so rejection belongs
-    // to the existing evaluator functionMode boundary—not to bare-call parsing.
+    /*
+     * The inner relative color is now demanded by `lighten`, so rejection belongs
+     * to the existing evaluator functionMode boundary—not to bare-call parsing.
+     */
     const demandedSource = '.entry { color: lighten(rgb(from red r g b), 10%); }';
     await expect(lenient.renderString(demandedSource, { filePath: 'entry.less', extension: '.less' }))
       .resolves.toContain('lighten(rgb(from red r g b), 10%)');

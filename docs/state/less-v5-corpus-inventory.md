@@ -170,14 +170,17 @@ payloads such as `[title="&"]` with parent references and had an unbounded
 work/memory shape. Under the owner ruling above, do not resume that lane as an
 implicit selector-list distribution mechanism.
 
-A separate discarded draft exposed one reproducible parser gap behind the earlier
-`tests-unit/urls/urls.less` import diagnostic: when the final `svg-gradient(...)`
-argument is followed by newline trivia before `)`, the raw call survives and a
-`false` value appears instead of the data URI. The narrow candidate was to let
-the existing zero-width `functionArgumentBoundaryAhead` recognize `)` after
-`functionTrivia`, alongside its existing comma/semicolon cases. That change was
-not reviewed or landed. Resume it later as an independent parser batch from the
-fixture-level negative control; no temporary patch is authoritative or required.
+The independent final-function-argument batch now fixes the parser gap exposed
+behind the earlier `tests-unit/urls/urls.less` import diagnostic. A typed value
+sequence such as `fade(@color, 50%) 100%` remains one argument when newline or
+comment trivia precedes the final `)`, so `svg-gradient(...)` reaches the Less
+function and emits its data URI instead of surviving as a raw call or becoming
+`false`. The landed shape does **not** extend the rejected zero-width trivia
+probe: `ArgumentValueSequence` declines only a following condition operator,
+while the enclosing argument list owns comma, semicolon, close, and their
+trivia. The 3×4 AST/CST matrix pins all three delimiters across adjacent,
+newline, block-comment, and line-comment boundaries; the named parent/candidate
+oracle moves only the two physical copies of the upstream svg-gradient fixture.
 
 ### OPEN N9 follow-up candidate from the import-path lane
 

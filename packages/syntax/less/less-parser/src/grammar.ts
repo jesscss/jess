@@ -3761,16 +3761,21 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     noTrivia(sequence(g.valuePiece, many(valueContinuation))),
     (children, _fields, _span, _rawChildren, triviaLog, state) => valuePieceReducerWithTrivia(children, triviaLog, state)
   );
-  // Function bodies use their own argument boundary rule, but comments *inside*
-  // an argument are still lexical trivia. This local value term therefore uses
-  // the same continuation boundary as ordinary values, while a completed
-  // argument's trailing trivia remains owned by `functionTrivia`.
+  /**
+   * Function bodies use their own argument delimiters, but comments *inside*
+   * an argument are still lexical trivia. This local value term therefore uses
+   * the same continuation boundary as ordinary values. The terminal condition
+   * check declines only when the next token belongs to FunctionCondition; the
+   * enclosing argument list owns comma, semicolon, close, and their trivia.
+   * This avoids speculatively parsing and rolling back that parent-owned
+   * boundary in the generated AST and CST tables.
+   */
   const ArgumentValueSequence = node(
     'FunctionValueSequence',
     noTrivia(sequence(
       g.valuePiece,
       many(functionArgumentValueContinuation),
-      functionArgumentBoundaryAhead
+      not(functionConditionStop)
     )),
     (children, _fields, _span, _rawChildren, triviaLog, state) => valuePieceReducerWithTrivia(children, triviaLog, state)
   );
