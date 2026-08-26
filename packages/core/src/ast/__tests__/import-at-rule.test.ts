@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { atRuleBlock, atRuleStatement } from '../at-rule.js';
 import type { AtRuleStatement } from '../at-rule.js';
 import type { Interpolation, List, Quoted, StyleImport, Url, ValueNode } from '../nodes.js';
-import { any, block, color, comment, importIsCompileTime, styleImport, spaced, complexSelector, compoundSelectorOf, decl, dimension, forNode, interpolatedSimpleSelector, interpolation, keyword, list, mixinCall, mixinDef, operation, quoted, reference, rule, sel, selist, stylesheet, url, variableDeclaration, variableReference } from '../nodes.js';
+import { any, block, color, comment, importIsCompileTime, styleImport, spaced, complexSelector, compoundSelectorOf, decl, dimension, forNode, interpolatedSimpleSelector, interpolation, keyword, list, mixinCall, mixinDef, operation, pseudoSelector, quoted, reference, rule, sel, selist, simpleSelector, stylesheet, url, variableDeclaration, variableReference } from '../nodes.js';
 import { createTriviaMapFromRanges, withBodySpan, withSourceSpan, withTriviaMap } from '../provenance.js';
 import { prepareStaticImports, serialize } from '../serialize.js';
 import { Context } from '../../context.js';
@@ -1001,6 +1001,47 @@ describe('StyleImport', () => {
     })).resolves.toEqual({
       css: '.card {\n  color: red;\n  border-color: red;\n}\n'
     });
+  });
+
+  it('pulls a nested pseudo from one arm of a reference selector list without distributing the list', async () => {
+    const hover = complexSelector([{
+      term: compoundSelectorOf([simpleSelector('&'), simpleSelector(':hover')])
+    }]);
+    const authoredIs = complexSelector([{
+      term: compoundSelectorOf([
+        simpleSelector('&'),
+        pseudoSelector(':is', selist(sel('.enabled'), sel('.focused')))
+      ])
+    }]);
+    const imported = stylesheet([
+      rule(selist(sel('.hidden'), sel('.target')), [
+        decl('color', keyword('green')),
+        rule(hover, [decl('color', keyword('darkgreen'))]),
+        rule(authoredIs, [decl('color', keyword('purple'))])
+      ])
+    ]);
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"reference.less"', 'reference.less', '"', false),
+        list([keyword('reference')], ',')
+      ),
+      rule('.visible', [], [{ target: selist(sel('.target')), partial: true }])
+    ]);
+    const render = (collapseNesting: boolean) => serialize(document, {
+      collapseNesting,
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'reference.less'
+        ? { document: imported, key: 'reference.less' }
+        : undefined)
+    });
+    const expected = {
+      css: '.visible {\n  color: green;\n}\n'
+        + '.visible:hover {\n  color: darkgreen;\n}\n'
+        + '.visible:is(.enabled, .focused) {\n  color: purple;\n}\n'
+    };
+
+    await expect(render(true)).resolves.toEqual(expected);
+    await expect(render(false)).resolves.toEqual(expected);
   });
 
   it('keeps reference-document trivia hidden while a nested fact import executes', async () => {

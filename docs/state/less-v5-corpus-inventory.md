@@ -82,12 +82,12 @@ above:
 - `tests-unit/import/import-inline.less`
 - `tests-unit/import/import-reference.less` (A7 reference visibility now works
   for direct and at-rule-contained rules, hidden selector ancestors, mixin pulls,
-  and inline imports; selected reference-mixin bodies now replay their parser-owned
+  inline imports, and a nested pseudo whose fused `&` crosses a compacted
+  selector-list arm; selected reference-mixin bodies replay their parser-owned
   inline and block-interior trivia in both output modes. The active mismatch is
-  settled v5 selector compaction, an existing selector-composition defect that
-  drops the trailing `:hover`, explicit nested output, the alpha golden's
-  omission of a source-asserted surviving inline comment, and invalid-inline
-  indentation)
+  settled v5 selector compaction and direct-self declaration coalescing, explicit
+  nested output, the alpha golden's omission of a source-asserted surviving inline
+  comment, and invalid-inline indentation)
 - `tests-unit/import/import.less`
 - `tests-unit/media/media.less`
 - `tests-unit/mixins/mixins.less` (fixture-local nested output vs flattened

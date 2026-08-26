@@ -685,7 +685,15 @@ function rewriteBranchPartial(
   let work = cloneBranch(b);
 
   // (1) recurse into `:is()` grafts (transitive chaining lives inside them).
-  work = recurseIntoGrafts(work, target, extenders, partial, extenderKeys, targetAtoms, outerSurrounding);
+  work = recurseIntoGrafts(
+    work,
+    target,
+    extenders,
+    partial,
+    extenderKeys,
+    targetAtoms,
+    outerSurrounding
+  );
 
   // (2) span substitution against the (possibly graft-updated) branch.
   const beforeSubstitution = work;
@@ -712,7 +720,9 @@ function rewriteBranchPartial(
  * `:is(<inner>)` distributes back over its compound's BARE text value, so those
  * value (unioned with the inherited `outerSurrounding`) become the outer conflict
  * context threaded into the inner apply — keeping the element/id guard aware of the
- * full enclosing compound one level down. */
+ * full enclosing compound one level down. When a hidden reference seed produces a
+ * visible rewrite, discard only the hidden arms from that rewritten graft; the
+ * caller retains the untouched hidden seed separately for chaining. */
 function recurseIntoGrafts(
   b: Branch,
   target: Branch,
@@ -722,6 +732,7 @@ function recurseIntoGrafts(
   targetAtoms: Set<string>,
   outerSurrounding: readonly string[]
 ): Branch {
+  const retainMatched = b.hidden !== true;
   return mkBranch(b.segments.map((seg) => {
     let graftOuter = outerSurrounding;
     for (const s of seg.compound.value) {
@@ -729,16 +740,41 @@ function recurseIntoGrafts(
         graftOuter = graftOuter === outerSurrounding ? [...outerSurrounding, s.text] : [...graftOuter, s.text];
       }
     }
+    const value: Simple[] = [];
+    for (let index = 0; index < seg.compound.value.length; index++) {
+      const s = seg.compound.value[index]!;
+      if (s.t !== 'is') {
+        value.push(s);
+        continue;
+      }
+      const inner = applyInstruction(s.branches, target, extenders, partial, extenderKeys, targetAtoms, false, graftOuter);
+      if (inner === null || retainMatched) {
+        value.push(inner === null ? s : { t: 'is', branches: inner });
+        continue;
+      }
+      let visibleCount = 0;
+      let soleVisible: Branch | null = null;
+      for (let branchIndex = 0; branchIndex < inner.length; branchIndex++) {
+        const branch = inner[branchIndex]!;
+        if (branch.hidden !== true) {
+          inner[visibleCount++] = branch;
+          soleVisible = branch;
+        }
+      }
+      inner.length = visibleCount;
+      if (visibleCount === 1 && soleVisible!.segments.length === 1) {
+        const visibleValue = soleVisible!.segments[0]!.compound.value;
+        for (let simple = 0; simple < visibleValue.length; simple++) {
+          value.push(cloneSimple(visibleValue[simple]!));
+        }
+      } else if (visibleCount > 0) {
+        value.push({ t: 'is', branches: inner });
+      }
+    }
     return {
       combinator: seg.combinator,
       compound: {
-        value: seg.compound.value.map((s): Simple => {
-          if (s.t !== 'is') {
-            return s;
-          }
-          const inner = applyInstruction(s.branches, target, extenders, partial, extenderKeys, targetAtoms, false, graftOuter);
-          return inner ? { t: 'is', branches: inner } : s;
-        })
+        value
       }
     };
   }));
