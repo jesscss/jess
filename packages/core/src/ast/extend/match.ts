@@ -732,7 +732,29 @@ function recurseIntoGrafts(
   targetAtoms: Set<string>,
   outerSurrounding: readonly string[]
 ): Branch {
-  const retainMatched = b.hidden !== true;
+  if (b.hidden !== true) {
+    return mkBranch(b.segments.map((seg) => {
+      let graftOuter = outerSurrounding;
+      for (const s of seg.compound.value) {
+        if (s.t === 'text') {
+          graftOuter = graftOuter === outerSurrounding ? [...outerSurrounding, s.text] : [...graftOuter, s.text];
+        }
+      }
+      return {
+        combinator: seg.combinator,
+        compound: {
+          value: seg.compound.value.map((s): Simple => {
+            if (s.t !== 'is') {
+              return s;
+            }
+            const inner = applyInstruction(s.branches, target, extenders, partial, extenderKeys, targetAtoms, false, graftOuter);
+            return inner === null ? s : { t: 'is', branches: inner };
+          })
+        }
+      };
+    }));
+  }
+
   return mkBranch(b.segments.map((seg) => {
     let graftOuter = outerSurrounding;
     for (const s of seg.compound.value) {
@@ -748,8 +770,8 @@ function recurseIntoGrafts(
         continue;
       }
       const inner = applyInstruction(s.branches, target, extenders, partial, extenderKeys, targetAtoms, false, graftOuter);
-      if (inner === null || retainMatched) {
-        value.push(inner === null ? s : { t: 'is', branches: inner });
+      if (inner === null) {
+        value.push(s);
         continue;
       }
       let visibleCount = 0;

@@ -1013,11 +1013,15 @@ describe('StyleImport', () => {
         pseudoSelector(':is', selist(sel('.enabled'), sel('.focused')))
       ])
     }]);
+    const opaqueAmp = complexSelector([{
+      term: compoundSelectorOf([simpleSelector('[title="&"]')])
+    }]);
     const imported = stylesheet([
       rule(selist(sel('.hidden'), sel('.target')), [
         decl('color', keyword('green')),
         rule(hover, [decl('color', keyword('darkgreen'))]),
-        rule(authoredIs, [decl('color', keyword('purple'))])
+        rule(authoredIs, [decl('color', keyword('purple'))]),
+        rule(opaqueAmp, [decl('color', keyword('red'))])
       ])
     ]);
     const document = stylesheet([

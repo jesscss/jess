@@ -121,16 +121,22 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
         value.push(cloneSimple(s));
         continue;
       }
-      if (!parentMultiSeg && structuredParent === undefined) {
-        structuredParent = structuredParentValue(parent);
+      if (!wrap && s.text === '&') {
+        structuredParent ??= structuredParentValue(parent);
+        if (structuredParent !== null) {
+          for (let index = 0; index < structuredParent.length; index++) {
+            value.push(structuredParent[index]!);
+          }
+          continue;
+        }
       }
-      if (!wrap && structuredParent === null) {
+      if (!wrap) {
         parentStr ??= branchText(parent);
         value.push({ t: 'text', text: s.text.split('&').join(parentStr) });
         continue;
       }
 
-      // Splice the structured parent in place of each `&`, preserving fused text.
+      // Splice the multi-segment parent in place of each `&`, preserving fused text.
       const parts = s.text.split('&');
       for (let i = 0; i < parts.length; i++) {
         if (parts[i]!.length > 0) {
@@ -139,13 +145,7 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
         if (i === parts.length - 1) {
           continue;
         }
-        if (wrap) {
-          value.push(isSimple([parent]));
-          continue;
-        }
-        for (let index = 0; index < structuredParent!.length; index++) {
-          value.push(structuredParent![index]!);
-        }
+        value.push(isSimple([parent]));
       }
     }
 

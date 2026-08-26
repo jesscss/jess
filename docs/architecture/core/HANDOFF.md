@@ -3843,8 +3843,11 @@ involved.
   Grammar, parser artifacts, canonical AST/CST schemas, Context/import resolution,
   output buffers, package exports, and owner-maintained CSS fixtures are unchanged.
 - Separation/duplication: the existing parent-token `:is()` remains the sole
-  selector-list compaction. Fused `&` composition now preserves that token as the
-  existing structured graft instead of serializing it into an opaque text simple.
+  selector-list compaction. A proven exact `&` Simple in a fused compound now
+  preserves that parent token as the existing structured graft instead of
+  serializing it into an opaque text simple. Opaque text containing an ampersand,
+  including `[title="&"]`, retains the prior text path and is never promoted to
+  selector structure.
   The existing graft matcher remains the sole extend matcher; no selector-list
   distributor, second propagation pass, byte scanner, or serializer-side matcher
   is added.
@@ -3869,7 +3872,8 @@ involved.
   result array in place and allocates no filter array, map, set, tuple, or side
   table. Collapsing a sole visible single-segment arm likewise transfers its
   immutable Simple pointers from the fresh matcher result before that result is
-  discarded.
+  discarded. Visible branches retain the prior exact-length `.map` construction;
+  only the hidden feature lane uses a variable-length compaction buffer.
 - Render path: a hidden parent list such as `.hidden, .target` still compacts to
   one `:is()` internally. Extending `.target` with `.visible` through nested
   `&:hover` now emits only `.visible:hover`; hidden siblings remain absent.
@@ -3899,7 +3903,8 @@ involved.
   212 files / 3,368 tests / 9 skipped / 2 todo; full all-less passes 112/112.
   The real `import-reference.less` output now contains both top-level and nested
   `.visible:hover`, and the exact diff no longer contains the classified trailing
-  pseudo loss. Targeted ESLint has zero errors and only inherited extend-file
+  pseudo loss. The same two-mode assertion proves `[title="&"]` stays hidden and
+  does not become `[title=".visible"]`. Targeted ESLint has zero errors and only inherited extend-file
   warnings; the AST-v2 production ratchet passes 4/4; `check:macro` reports zero
   interpreter fallbacks for all four grammars; `verify:compose-integrity`,
   `verify:aggressive-cutting-review`, `check:guardrails`, and `git diff --check`
@@ -3939,15 +3944,15 @@ involved.
       "async-declaration-dedup-output-order"
     ],
     "why": "SETTLED A7 requires a visible extender to surface the matched branch of a hidden reference selector, and SETTLED X3 makes the existing structured :is() graft the canonical partial-match boundary. Preserving that graft through fused ampersand composition fixes the missing nested pseudo without a distribution surface.",
-    "dangerTokensJustification": "The extend-free gate is unchanged. The admitted path performs bounded structural loops over composed levels, one parent compound, and one successful graft result; it reuses the matcher result array, creates no AST node, side table, predicate string, source scan, reparse, Cartesian product, or second matcher.",
-    "behaviorEvidence": "Focused core coverage passes 75/75, the reference corpus selection passes 3/3, full core passes 3368 tests, all-less passes 112/112, and the AST-v2 production ratchet passes 4/4. Exact collapse-mode assertions retain authored :is() conditions while excluding hidden selector-list siblings. Matched import-reference builds keep plan/preflight counts identical; comparisons rise 66 to 73 because the corrected nested pseudo now enters matching.",
+    "dangerTokensJustification": "The extend-free gate is unchanged. Only an exact structural & Simple may retain the typed parent graft; opaque text such as [title=\"&\"] stays on the prior string path. The admitted path performs bounded structural loops over composed levels, one parent compound, and one successful graft result; it reuses the matcher result array, creates no AST node, side table, predicate string, source scan, reparse, Cartesian product, or second matcher.",
+    "behaviorEvidence": "Focused core coverage passes 75/75, the reference corpus selection passes 3/3, full core passes 3368 tests, all-less passes 112/112, and the AST-v2 production ratchet passes 4/4. Exact collapse-mode assertions retain authored :is() conditions, exclude hidden selector-list siblings, and prove opaque [title=\"&\"] text is not promoted to selector structure. Matched import-reference builds keep plan/preflight counts identical; comparisons rise 66 to 73 because the corrected nested pseudo now enters matching.",
     "buildEvidence": "The dependency-order release build, zero-fallback check:macro, verify:compose-integrity, verify:aggressive-cutting-review, check:guardrails, and git diff --check pass. Exact-commit adversarial reviews remain pending.",
     "baseline": {
-      "fixture": "@less/test-data/tests-unit/import/import-reference.less",
+      "fixture": "benchmark.less",
       "phase": "render",
-      "currentMedianMs": 6.312,
-      "outputSha256": "c9215746b5c726287ee79e85626a27018f70756659836afce8e0d46791dba60a",
-      "outputBytes": 1378
+      "currentMedianMs": 53.41333350000002,
+      "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85",
+      "outputBytes": 122320
     }
   }
 ]
