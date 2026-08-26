@@ -62,7 +62,62 @@
     target is ONE shared lookup descriptor; adding a `lookup` or `keyKind` field to a
     reference node without it makes the duplication worse, not better.
 
-## SESSION HANDOFF — 2026-08-17, jess dev `6d7fbe82d` (CURRENT — read first)
+## SESSION HANDOFF — 2026-08-26, Jess alpha preparation
+
+**Wrap-up point:** the repository is mechanically much closer to another Jess alpha,
+but no alpha branch or npm release was pushed. The next candidate is expected to be
+`2.0.0-alpha.15`; the existing local snapshot `9bbef8b79` predates the final strict
+grammar-type repair and is stale. Delete/regenerate it rather than publishing it.
+
+### Landed release-path repairs
+
+- `c204a9ab1` raises the controlled-snapshot patch buffer and reports updater failures.
+- `9e3ecf777` adds the runtime-required `@jesscss/parser-shared` package to the alpha
+  publish closure and verifies packed CJS/ESM consumers.
+- `4c6ef38de` makes recovery-version restoration handle newly public packages.
+- `a106dda491` lets the controlled historical alpha snapshot bypass unrelated legacy
+  pre-commit lint while retaining its own preflight and dry-run gates.
+- `0c263ac70` restores truthful strict Jess/SCSS grammar contracts. Its 2,524-entry
+  parent/candidate AST+CST oracle is byte-identical; a deliberate negative control moved
+  43 AST entries before exact reversal, proving the oracle sees the changed reducer lane.
+
+### Exact verification at the wrap-up
+
+- `verify:types`: 25/25 production configs.
+- Jess parser: 510/510; SCSS parser: 622/622.
+- `check:macro`: every parser has zero interpreter fallbacks.
+- `verify:compose-integrity`, `verify:package-exports`, `check:guardrails`, and
+  `git diff --check`: green. Changed-file ESLint has zero errors (five inherited warnings).
+- `verify:parser-runtime-boundary` remains red on the same three parent/candidate
+  recognizer hashes (CSS `cst-host.ts`, Less `grammar.ts`, SCSS `grammar.ts`). This batch
+  introduces none of them; do not misreport the gate as green.
+- SCSS parse timing is confirmation-only: the current-parent run was order-biased and is
+  recorded `INCONCLUSIVE`, with no speed claim. The required long-range reference is
+  `ff40110d8` on Parseman 0.43.0; current uses Parseman 0.49.0, so those absolute numbers
+  are not directly comparable.
+
+### Release position and next step
+
+There is enough net-new value for another preview: substantially broader URL/import and
+reference handling, structural mixin arguments/defaults/rest/spread/`@arguments`, plugin
+raw arguments, selector/extend/reference behavior, trivia/diagnostics work, and Less
+function coverage. This is still an alpha, not a parity declaration. The current Less
+render corpus is 96 pass / 23 mismatch / 15 error across 134 cases, with every non-pass
+classified; browser compilation, sourcemaps, remote imports, legacy host APIs, and
+compression parity remain outside this snapshot's claim.
+
+Resume mechanically from a clean `origin/dev` worktree:
+
+1. Draft the owner-review release note under `docs/releases/` and land it on `dev` before
+   snapshotting, because the controlled alpha snapshot imports release evidence from dev.
+2. Recreate `alpha` with `scripts/release/update-alpha-from-dev.mjs --release-dry-run`;
+   never merge/rebase the divergent alpha history.
+3. Run `pnpm run release:alpha:dry-run` on the regenerated snapshot and record the exact
+   publish set/tarball evidence.
+4. Stop for owner review. Do not push `alpha`, tag, or publish npm packages without the
+   owner's explicit release authorization.
+
+## SESSION HANDOFF — 2026-08-17, jess dev `6d7fbe82d` (historical)
 
 **CURRENT FOCUS (owner, 2026-08-17): strengthen the Less compilation story so we can
 keep publishing alphas.** The v5 alpha IS jess (a thin wrapper over jess's `Compiler`),
