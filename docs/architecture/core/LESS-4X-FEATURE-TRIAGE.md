@@ -104,19 +104,20 @@ All names were checked by rendering one call per name through both engines — n
 sampled, and not read off an index. The mutable parity count and per-function
 status now live only in
 [`../../state/less-4x-function-triage.md`](../../state/less-4x-function-triage.md).
-This broader audit still owns the `style()` container-prelude parser gap below.
+This broader audit also found the formerly missing `style()` container-prelude
+position; that parser gap is now fixed below.
 `isurl` is fixed through the typed value domain under V15, and the achromatic
 `desaturate()` defect originally found here is fixed under ledger V14 (§4.6).
 The remaining colour-constructor differences are
 deliberate under F1/F5/V4, while `isdefined`/`isruleset`/`extract`/`length`
 surfaced the unrelated compact-property parser bug in §4.5.
 
-### Remaining function and position gaps
+### Function and position follow-up
 
 | Name | Status | Evidence |
 | --- | --- | --- |
 | `isurl` | **FIXED / V15** | `.x { a: isurl(url(x)); b: isurl(1); }` now emits `a: true; b: false`. Typed evaluation projects the parser-owned `Url` AST wrapper to `UrlValue` only for a typed consumer; ordinary URL output stays on the prior string path, and url-shaped quoted/keyword/call bytes remain false. |
-| `style` | **not a function gap — a PARSER gap** | In a declaration value, `style(@v)` renders identically in both engines, so as a *function* it is fine (`docs/state/less-4x-function-triage.md` §5). But in the position it exists for — a container style query — jess cannot parse it: `@container (style(--x: 1)) { .y { c: 1 } }` → less4 renders it unchanged; jess `parse/syntax-error: Missing closing parenthesis.` at 1:22. That doc records this prelude position as **not tested** (its §9); this row is the measurement. |
+| `style` | **FIXED — function and container-query position** | In a declaration value, `style(@v)` remains an ordinary function call (`docs/state/less-4x-function-triage.md` §5). The Less grammar now also constructs typed container style queries: `@container style(--x: 1) { .y { c: 1 } }` and the named `@container card style(--x: 1) { … }` both parse and re-emit exactly. Parser coverage is in `ast-grammar.test.ts` and `cst-public.test.ts`; `scroll-state(...)` and ordinary size queries share the same public at-rule path. |
 
 ### The eight not in the fns registry that are nonetheless reachable
 
@@ -249,9 +250,9 @@ opt-in; the parser still recognizes it so migration tooling can point at
 
 ## 4. Gaps found that are on no list — the highest-value output
 
-None of the six below is in the CHANGELOG's WIP list, none is in
-`known-failures.json`, and none is caught by any fixture. Two of them (§4.5,
-§4.6) produce a hard parse error or silently wrong colour on ordinary Less.
+None of the six original findings below was in the CHANGELOG's WIP list,
+`known-failures.json`, or the fixture corpus. Four are now fixed or deliberately
+resolved; §4.5 remains a reproducible compact-source parser gap.
 
 ### 4.1 FIXED — a variable declaration cannot be the last statement in a block without a trailing `;`
 
@@ -295,26 +296,29 @@ production, matching the property-declaration rule. One production.
 **Why no fixture caught it:** every upstream fixture that declares a variable in
 a block writes the semicolon.
 
-### 4.2 BUG — `name=value` function arguments evaluate to `false`
+### 4.2 FIXED — `name=value` function arguments evaluated to `false`
 
 ```less
 .x { filter: alpha(opacity=50); }   →  jess: filter: alpha(false)    less4: alpha(opacity=50)
 .x { a: foo(bar=1); }               →  jess: a: foo(false)           less4: foo(bar=1)
 ```
 
-Silent wrong output, no diagnostic. Less 4.x models this as a dedicated
-`Assignment` node (`less-4x/.../tree/assignment.js`, parsed at
-`.../parser/parser.js:715`); jess parses it as an equality comparison and emits
-the boolean. **This is generic**, not IE-specific — `foo(bar=1)` is affected.
+The Less grammar now recognizes this as `FunctionAssignmentArgument`, ahead of
+the comparison grammar, and preserves the authored assignment pair as one
+opaque argument value. Both examples above now emit `opacity=50` / `bar=1`
+rather than a boolean. This is generic, not IE-specific; exact parser and public
+render coverage includes whitespace variants and non-`alpha` function names.
 
 `progid:DXImageTransform…` is a hard `parse/syntax-error`; that one is covered by
 the deliberate `ie-filters-REMOVED` removal (`all-less.test.ts:257-260`) and is
 not filed here. The `name=value` argument form is not.
 
-**Cost to fix:** an `Assignment`-shaped call argument in the value grammar,
-preserved verbatim on emit.
+Less 4.x's dedicated `Assignment` node (`less-4x/.../tree/assignment.js`, parsed
+at `.../parser/parser.js:715`) was evidence for the construct, not the v5
+representation: v5 keeps the pair as authored bytes because its value is not
+evaluated independently.
 
-### 4.3 BUG — `@import` option keywords leak into emitted CSS
+### 4.3 FIXED — `@import` option keywords leaked into emitted CSS
 
 ```less
 @import (css) "imp-a";              →  jess: @import (css) "imp-a";      less4: @import "imp-a";
@@ -322,24 +326,29 @@ preserved verbatim on emit.
                                           .x { a: 1 }                            .x { a: 1 }
 ```
 
-The first emits a directive no browser understands. The second emits an
-`@import` for a file that was deliberately declared optional and does not exist.
-Both are invalid CSS in the output.
+The parser now owns typed import options. A CSS-terminal import consumes `(css)`
+without leaking it into the emitted at-rule, while an `(optional)` compile-time
+import still attempts normal resolution and suppresses only a missing-file
+failure. Existing files continue through the ordinary import path. Exact
+optional-missing and optional-present coverage is in core's
+`import-at-rule.test.ts`; Less parser CST coverage pins the option list.
 
-### 4.4 MISSING — `@import` with a media query does not wrap
+### 4.4 DELIBERATE — a compile-time `@import` cannot carry a media query
 
 ```less
 @import "imp-a" screen;
 ```
-less4 wraps the imported content in `@media screen { … }`; jess passes the
-`@import` through verbatim. Known internally (the `import.less` expected-failure
-reason at `all-less.test.ts:191-194` mentions it) but never stated as a feature
-row.
+Less 4.x wraps the imported content in `@media screen { … }`. V5 deliberately
+does not: under the settled §12.3b import rule, a postlude describes a linked CSS
+resource, while a compile-time import splices a parsed document. Combining the
+two is therefore a parse error. A plain CSS-terminal `@import "imp-a.css"
+screen;` remains valid and re-emits its postlude. Public coverage and the owner-
+maintained fixture disposition are in `import-media-query.test.ts` and
+`all-less.test.ts` respectively.
 
 ### 4.5 BUG — `prop:fn(@var)` with no space after the property colon is a parse error
 
-The single highest-impact finding here, because it is a hard failure on
-ordinary compact Less.
+This remains a hard failure on ordinary compact Less 4.x source.
 
 ```less
 @v: 1;
@@ -358,6 +367,17 @@ inside the call (`ceil(@v + 1)`), and of which function is called.
 
 Any minifier output, and a good deal of hand-written compact Less, hits this.
 
+**V5-alpha qualification (re-measured 2026-08-25):** the owner alpha parser also
+rejects the compact variable-bearing form while accepting the spaced form and
+the compact literal form. In Jess, the standalone `Declaration` production
+already parses `a:ceil(@v)`; the failure occurs only in a statement body, where
+the selector-first route reads `a:ceil(` as a functional pseudo and Parseman's
+selected dispatch branch commits when bare `@v` is invalid selector syntax.
+Widening pseudo arguments would change the language, and speculative full
+declaration/ruleset lookahead would parse the same source twice. This row needs
+a left-factored declaration/ruleset design (or an owner/Parseman routing
+decision), not a regex scan into the function body.
+
 ### 4.6 FIXED — `desaturate()` saturates an achromatic colour
 
 ```less
@@ -375,8 +395,8 @@ fixture status changed.
 
 ### Also recorded
 
-- **`isurl`** (§2) is fixed under V15; **`style()`** (§2) is reachable as a
-  function but still exposes the recorded container-prelude parser gap.
+- **`isurl`** (§2) is fixed under V15; **`style()`** (§2) is reachable both as a
+  function and as a typed container-query prelude.
 - **`dumpLineNumbers`** has no effect in either option bucket. Less 4.x
   deprecates it and `packages/config/src/types.ts:225-229` marks it `@removed`,
   so this is consistent with intent — recorded, not filed.

@@ -2354,11 +2354,13 @@ the desired direct compiler/plugin dependency shape, consumes the published
 green PR-head CI. Do not publish Less until the owner authorizes the Less release
 flow.
 
-#### Less compatibility pause point — 2026-08-22
+#### Less compatibility continuation point — 2026-08-25
 
-- The clean landed boundary is `d58eb0a99`. The selector-capture classification
-  and raw Less-grammar math-state default are landed without changing
-  owner-maintained `.css` fixtures. The executable lane remains
+- The clean landed boundary is `0b8b1d8c3`. In addition to the prior selector-
+  capture and raw Less-grammar math-state work, typed Less `UrlValue` provenance
+  now survives variables, mixin/default forwarding, URL-bearing groups, and
+  spread expansion, so `isurl()` follows the typed value rather than its emitted
+  bytes. No owner-maintained `.css` fixture changed. The executable lane remains
   `all-less.test.ts`; the derived
   release-facing partition is
   [`docs/state/less-v5-corpus-inventory.md`](../../state/less-v5-corpus-inventory.md).
@@ -2378,11 +2380,22 @@ flow.
   that prototype. Any renewed attempt first needs a parser/AST-owned structural
   parent occurrence and compact selector composition that preserves reference
   visibility without materializing the Cartesian product.
-- No production change, fixture expectation, or fragile worktree is part of this
-  pause point. Remaining active expected failures stay enumerated in the corpus
-  inventory and can be taken as independent future compatibility batches. That
-  inventory also records the reproduced, unlanded final-multiline-function-argument
-  parser gap; it is a future focused batch, not retained patch state.
+- The feature triage was re-audited from the public built compiler on 2026-08-25.
+  Its assignment-argument, import-option, and container-`style()` rows were
+  already fixed; compile-time import media postludes are a settled §12.3b
+  rejection, not a missing wrapper. The remaining compact `prop:fn(@var)` row is
+  real, but the same source also fails in the owner alpha parser. Jess's
+  standalone declaration grammar accepts it; only body routing fails because a
+  selector-first functional-pseudo dispatch commits at the bare variable. Do
+  not widen pseudo syntax or add a regex/lookahead scan through the function
+  body. It needs a left-factored declaration/ruleset route or an explicit owner/
+  Parseman routing decision.
+- No production change, fixture expectation, scratch patch, or extra worktree is
+  part of this continuation point. Remaining active expected failures stay
+  enumerated in the corpus inventory and can be taken as independent future
+  compatibility batches. That inventory also records the reproduced, unlanded
+  final-multiline-function-argument parser gap; it is a future focused batch,
+  not retained patch state.
 
 ## Router
 
@@ -2391,7 +2404,7 @@ flow.
 | Direct parser AST construction and legacy-builder deletion | [`AST-REORG-EXECUTION.md`](./AST-REORG-EXECUTION.md) |
 | Parser recognition, interpolation, and scanner cleanup | [`GRAMMAR-RELOCATION-DESIGN.md`](./GRAMMAR-RELOCATION-DESIGN.md) |
 | Feature/eval closure | [`AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md`](./AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md) |
-| **"Is Less 4.x feature X implemented?"** — feature-by-feature triage derived from Less 4.8.1 itself, each row a measurement against `lessc` 4.8.1 run directly. Records the four gaps that are on no other list, and corrects three of the seven WIP areas the alpha CHANGELOG declares | [`LESS-4X-FEATURE-TRIAGE.md`](./LESS-4X-FEATURE-TRIAGE.md) |
+| **"Is Less 4.x feature X implemented?"** — feature-by-feature triage derived from Less 4.8.1 itself, each row a measurement against `lessc` 4.8.1 run directly and re-measured before use. Records off-corpus gaps and their current resolutions, and corrects stale WIP classifications in the alpha CHANGELOG | [`LESS-4X-FEATURE-TRIAGE.md`](./LESS-4X-FEATURE-TRIAGE.md) |
 | Eval/render allocation, lookup, and traversal cuts | [`CORE-CLEANUP.md`](./CORE-CLEANUP.md) |
 | Deleting `packages/core/src/tree/` — public-surface inventory, `Context` decomposition, value-boundary options, extraction order | [`TREE-CUTOVER-SURFACE.md`](./TREE-CUTOVER-SURFACE.md) |
 | **The four-grammar rewrite** — the eight-to-four physical fold is complete; continue the spec/naming/documentation and current Parseman cleanup on the four surviving host-mode grammars. Start at its §0 | [`../../design/GRAMMAR-REBUILD-SPEC.md`](../../design/GRAMMAR-REBUILD-SPEC.md) |
@@ -3971,9 +3984,32 @@ involved.
   }
 ]
 ```
-- Verdict: focused implementation is review-ready; no speed claim. Required
-  performance, semantics, API-surface, full-suite, macro/compose, and landing
-  gates remain pending and must replace this provisional verdict.
+- Verdict: accepted and landed as `0b8b1d8c3`; no speed claim. Final evidence:
+  core 212 files passed / 1 skipped (3,360 tests passed / 9 skipped / 2 todo),
+  public Less functions 24 active / 21 todo, all-less 111/111, production
+  ratchet 4/4, aggressive cutting, `check:macro`, and compose-integrity green.
+  Semantics, performance-architecture, and API-surface reviews approved the
+  exact landed commit. `verify:shape-stability` remained red only on the known
+  stale broad AST inventory/`SpacedValue` allowlist; its monomorphic-shape and
+  CST checks passed.
+
+- Continuation audit: 2026-08-25 Less compatibility inventory refresh. This
+  follow-up changes documentation only: no production, parser, AST, fixture,
+  expected-failure, or package surface is modified.
+- New traversal: none. The compact declaration/ruleset experiment was read-only
+  and rejected precisely because the available speculative routes would add a
+  duplicate full parse or a source scan.
+- New node/materialization: none. No array, object, node, placement wrapper, or
+  metadata carrier is added.
+- Render path: unchanged; the refresh records existing public built-compiler
+  behavior and settled import policy only.
+- Helper/API surface: none added or removed. Metadata mutations: none.
+- Evidence: public built-artifact probes rechecked assignment arguments, import
+  options, container `style()`/`scroll-state()` queries, and the compact
+  declaration failure; exact focused tests already pin the three resolved
+  constructs. `git diff --check`, guardrails, and the aggressive-cutting review
+  gate are the required checks for this docs-only continuation.
+- Performance: shelved/not measured because the diff has no runtime code.
 
 - Prior landed pass: 2026-08-22 Less CSS-import boundary-trivia retention. This is a
   lexical-position correctness correction for the preceding N8 candidate, not a
