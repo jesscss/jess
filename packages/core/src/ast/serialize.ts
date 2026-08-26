@@ -13042,6 +13042,11 @@ function cssImportKey(node: AtRuleStatement, target: Quoted | Url): string | nul
   let tail = '';
   if (prelude.type === 'Sequence') {
     for (let index = 1; index < prelude.parts.length; index++) {
+      if (prelude.parts[index]!.type !== 'Any') {
+        return null;
+      }
+    }
+    for (let index = 1; index < prelude.parts.length; index++) {
       const part = prelude.parts[index]!;
       if (part.type !== 'Any') {
         return null;

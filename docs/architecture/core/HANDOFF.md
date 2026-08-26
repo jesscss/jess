@@ -3880,8 +3880,9 @@ involved.
   occurrences do not consume it.
 - Deleted work: `cssImportKey` no longer scans target text with two RegExp tests,
   slices a tail array, or builds `some`/`map` callback carriers. The parser-owned
-  statement classification is authoritative; one indexed tail validation/build
-  constructs only the semantic dedupe key that the existing root rule required.
+  statement classification is authoritative; one indexed type-only validation
+  pass precedes one indexed static-key build, so a mixed typed tail returns
+  without partial string materialization.
   A typed/dynamic tail that cannot supply that static key is still hoisted from
   parser classification and remains a distinct occurrence; keyability never
   controls placement.
