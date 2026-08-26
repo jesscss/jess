@@ -3911,9 +3911,11 @@ involved.
   pass. Matched committed-build `import-reference.less` runs used 20 warmups and
   45 samples: parent `692df4241` emitted 1,476 bytes at SHA-256
   `cc2a155ec10b96ad2a78719fb74e68ed68c88bacc36c68c3491dad128e415750`
-  with a 6.401 ms median; candidate `102acce84` emitted the corrected 1,378 bytes
+  with a 6.401 ms median; final production candidate `e61bb055b` emitted the corrected 1,378 bytes
   at SHA-256 `c9215746b5c726287ee79e85626a27018f70756659836afce8e0d46791dba60a`
-  with a 6.456 ms median. Planning/preflight counters are identical
+  with a 6.305 ms median on the immediate repeat. Its first same-commit run was
+  8.214 ms despite identical output and counters, demonstrating that this harness
+  cannot attribute the wall-clock spread to the diff. Planning/preflight counters are identical
   (`subjects=94`, `instructions=2`, `overlaySubjects=90`, zero overlay
   instructions/loop placements); branch comparisons rise 66 -> 73 because the
   formerly dropped nested pseudo is now matched. The timing delta is below the
