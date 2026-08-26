@@ -112,6 +112,7 @@ function capture(command, args, rootDir, { input, allowFailure = false } = {}) {
 
 function captureBuffer(command, args, rootDir) {
   const result = spawnSync(command, args, {
+    maxBuffer: 128 * 1024 * 1024,
     cwd: rootDir,
     stdio: ['ignore', 'pipe', 'pipe'],
     shell: process.platform === 'win32'
@@ -120,7 +121,9 @@ function captureBuffer(command, args, rootDir) {
     const stderr = Buffer.isBuffer(result.stderr)
       ? result.stderr.toString('utf8')
       : String(result.stderr ?? '');
-    throw new Error(stderr.trim() || `Command failed (${result.status ?? 1}): ${command} ${args.join(' ')}`);
+    throw new Error(stderr.trim()
+      || result.error?.message
+      || `Command failed (${result.status ?? 1}): ${command} ${args.join(' ')}`);
   }
   return Buffer.isBuffer(result.stdout) ? result.stdout : Buffer.from(result.stdout ?? '');
 }

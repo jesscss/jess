@@ -118,6 +118,25 @@ describe('update-alpha-from-dev release helper', () => {
     expect(verify.status, verify.stderr).toBe(0);
   });
 
+  it('imports a binary patch larger than the child-process default buffer', () => {
+    const { alpha, source } = createSandbox();
+    const largeSource = 'x'.repeat(2 * 1024 * 1024);
+    writeFileSync(path.join(source, 'src/large-source.txt'), largeSource);
+    commitAll(source, 'add large source');
+    run('git', ['push', '--quiet', 'origin', 'dev'], source);
+
+    const result = runResult(process.execPath, [
+      updateScript,
+      '--skip-install',
+      '--skip-push-check',
+      '--recovery-ref',
+      'alpha-pre-refresh-large-patch'
+    ], alpha);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(path.join(alpha, 'src/large-source.txt'), 'utf8')).toBe(largeSource);
+  });
+
   it('refuses to run outside the alpha branch', () => {
     const { source } = createSandbox();
     const result = runResult(process.execPath, [
