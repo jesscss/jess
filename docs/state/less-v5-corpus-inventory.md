@@ -176,9 +176,9 @@ the existing zero-width `functionArgumentBoundaryAhead` recognize `)` after
 not reviewed or landed. Resume it later as an independent parser batch from the
 fixture-level negative control; no temporary patch is authoritative or required.
 
-### Resolved follow-up from the import-path lane
+### OPEN N9 follow-up candidate from the import-path lane
 
-- Parser-classified CSS terminals from executed document-root Less imports now
+- The OPEN N9 candidate makes parser-classified CSS terminals from executed document-root Less imports
   join the output document prelude in lexical import order. The existing import
   planner carries their canonical node, typed target, lexical frame, and source
   callback during its one graph walk; compile-time documents still execute at

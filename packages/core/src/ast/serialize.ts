@@ -8523,12 +8523,9 @@ type ImportPlannerInput = {
   cssImports: CssImportPlan | null | undefined;
 };
 
-interface CssImportSegment {
+interface CssImportPlan {
   head: number;
   tail: number;
-}
-
-interface CssImportPlan extends CssImportSegment {
   nodes: Array<AtRuleStatement | null> | null;
   targets: Array<Quoted | Url | null> | null;
   frames: Array<Frame | null> | null;
@@ -8538,7 +8535,6 @@ interface CssImportPlan extends CssImportSegment {
 
 function appendCssImportPlan(
   plan: CssImportPlan,
-  segment: CssImportSegment,
   node: AtRuleStatement | null,
   target: Quoted | Url | null,
   frame: Frame | null,
@@ -8555,12 +8551,12 @@ function appendCssImportPlan(
   frames.push(frame);
   withinDocuments.push(withinDocument);
   next.push(-1);
-  if (segment.tail === -1) {
-    segment.head = index;
+  if (plan.tail === -1) {
+    plan.head = index;
   } else {
-    next[segment.tail] = index;
+    next[plan.tail] = index;
   }
-  segment.tail = index;
+  plan.tail = index;
   return index;
 }
 
@@ -8624,14 +8620,14 @@ function planImportedFacts(
   const visit = async (
     statements: readonly Statement[],
     scope: Frame,
-    cssSegment: CssImportSegment | null,
+    cssPlan: CssImportPlan | null,
     withinDocument: NonNullable<ImportDocumentTree['withinDocument']> | null
   ): Promise<void> => {
     const deferred: StyleImport[] = [];
     let deferredAnchors: number[] | null = null;
     let firstCssImportKey: string | null = null;
     let furtherCssImportKeys: Set<string> | null = null;
-    const visitImport = async (st: StyleImport, importCssSegment: CssImportSegment | null): Promise<void> => {
+    const visitImport = async (st: StyleImport, importCssPlan: CssImportPlan | null): Promise<void> => {
       recordAstExtendProfile?.('astExtend.preflight.importsVisited');
       const options = importRequestOptions(st.options);
       const specifier = importSpecifier(st, scope, e);
@@ -8712,7 +8708,7 @@ function planImportedFacts(
         await visit(
           loaded.document!.rules,
           childFrame,
-          reference ? null : importCssSegment,
+          reference ? null : importCssPlan,
           loaded.withinDocument ?? withinDocument
         );
       };
@@ -8725,7 +8721,7 @@ function planImportedFacts(
     for (const st of statements) {
       if (st.type === 'VariableDeclaration') {
         activateVariableDeclaration(st, scope, e);
-      } else if (st.type === 'AtRuleStatement' && cssSegment !== null) {
+      } else if (st.type === 'AtRuleStatement' && cssPlan !== null) {
         const target = cssImportTarget(st);
         if (target !== null) {
           const key = cssImportKey(st, target);
@@ -8738,20 +8734,20 @@ function planImportedFacts(
             }
             (e.hoistedCssImports ??= new Set()).add(st);
             if (!duplicate) {
-              appendCssImportPlan(cssImports!, cssSegment, st, target, scope, withinDocument);
+              appendCssImportPlan(cssPlan, st, target, scope, withinDocument);
             }
           }
         }
       } else if (st.type === 'StyleImport') {
         try {
-          await visitImport(st, cssSegment);
+          await visitImport(st, cssPlan);
         } catch (error) {
           if (!(error instanceof ImportPathNotReady)) {
             throw error;
           }
           deferred.push(st);
-          if (cssSegment !== null) {
-            const anchor = appendCssImportPlan(cssImports!, cssSegment, null, null, null, null);
+          if (cssPlan !== null) {
+            const anchor = appendCssImportPlan(cssPlan, null, null, null, null);
             (deferredAnchors ??= []).push(anchor);
           }
         }
@@ -8762,17 +8758,18 @@ function planImportedFacts(
     for (let index = 0; index < deferred.length; index++) {
       const pending = deferred[index]!;
       const anchor = deferredAnchors?.[index] ?? -1;
-      const inserted: CssImportSegment | null = anchor === -1 ? null : { head: -1, tail: -1 };
+      const previousTail = cssImports?.tail ?? -1;
       try {
-        await visitImport(pending, inserted);
-        if (anchor !== -1 && inserted !== null && inserted.head !== -1 && cssSegment !== null) {
+        await visitImport(pending, anchor === -1 ? null : cssImports);
+        if (anchor !== -1 && cssImports !== null && cssImports.tail !== previousTail && previousTail !== anchor) {
           const next = cssImports!.next!;
           const after = next[anchor]!;
-          next[anchor] = inserted.head;
-          next[inserted.tail] = after;
-          if (cssSegment.tail === anchor) {
-            cssSegment.tail = inserted.tail;
-          }
+          const insertedHead = next[previousTail]!;
+          const insertedTail = cssImports.tail;
+          next[previousTail] = -1;
+          next[anchor] = insertedHead;
+          next[insertedTail] = after;
+          cssImports.tail = previousTail;
         }
       } catch (error) {
         if (error instanceof ImportPathNotReady) {
