@@ -347,6 +347,46 @@ describe('the less-compat tree shim', () => {
     }
   }, 30000);
 
+  it('keeps eager list semantics and bytes unchanged when a plugin is unrelated', async () => {
+    const pluginSource = 'functions.add("noop", function () { return new tree.Anonymous("ok"); });';
+    const body = [
+      '@layout-map: alpha,',
+      '  beta;',
+      '@space-list: 1 2 3;',
+      '@comma-list: 1, 2, 3;',
+      '#ordered(@left; @right) when (@left < @right) {',
+      '  .guard-order { result: preserved; }',
+      '}',
+      '#layout(@value) {',
+      '  .layout {',
+      '    value: @value;',
+      '    length: length(@value);',
+      '    second: extract(@value, 2);',
+      '  }',
+      '}',
+      '#ordered(@space-list; @comma-list);',
+      '#layout(@layout-map);'
+    ].join('\n');
+    const plain = makeProject(pluginSource, body);
+    const withPlugin = makeProject(pluginSource, `@plugin "./p";\n${body}`);
+
+    for (const collapseNesting of [false, true]) {
+      const options = {
+        suppressWarnings: true,
+        output: { collapseNesting }
+      };
+      const control = await makeCompiler(plain.dir).renderToResult(plain.entry, options);
+      const candidate = await makeCompiler(withPlugin.dir).renderToResult(withPlugin.entry, options);
+
+      expect(candidate.errors).toEqual([]);
+      expect(candidate.css).toBe(control.css);
+      expect(candidate.css).toContain('result: preserved');
+      expect(candidate.css).toContain('value: alpha,\n    beta');
+      expect(candidate.css).toContain('length: 1');
+      expect(candidate.css).toContain('second: extract(');
+    }
+  }, 30000);
+
   it('refuses an unsupported tree member with an attributable error', async () => {
     const { dir, entry } = makeProject(
       'functions.add(\'nope\', function () { return new tree.Media(); });',
