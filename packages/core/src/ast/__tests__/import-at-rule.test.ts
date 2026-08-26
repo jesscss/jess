@@ -648,6 +648,140 @@ describe('StyleImport', () => {
     });
   });
 
+  it('hoists imported CSS terminals in document order and their authoring source scope', async () => {
+    const entryPath = '/virtual/entry.less';
+    const childPath = '/virtual/child.less';
+    const referencePath = '/virtual/reference.less';
+    const entry = stylesheet([
+      rule('.entry-before', [decl('color', keyword('red'))]),
+      authoredImport('@import', quoted('"entry.css"', 'entry.css', '"', false)),
+      authoredImport('@import', quoted('"child.less"', 'child.less', '"', false)),
+      authoredImport(
+        '@import',
+        quoted('"reference.less"', 'reference.less', '"', false),
+        list([keyword('reference')], ',')
+      ),
+      authoredImport('@import', quoted('"entry-after.css"', 'entry-after.css', '"', false)),
+      authoredImport('@import', quoted('"child.less"', 'child.less', '"', false)),
+      authoredImport(
+        '@import',
+        quoted('"child.less"', 'child.less', '"', false),
+        list([keyword('multiple')], ',')
+      ),
+      rule('.entry-after', [decl('color', keyword('blue'))])
+    ]);
+    const child = stylesheet([
+      rule('.child-before', [decl('color', keyword('green'))]),
+      authoredImport('@import', quoted('"child.css"', 'child.css', '"', false)),
+      authoredImport('@import', quoted('"child.css"', 'child.css', '"', false)),
+      atRuleBlock('@media', keyword('screen'), [
+        authoredImport('@import', quoted('"nested.css"', 'nested.css', '"', false))
+      ]),
+      rule('.child-after', [decl('color', keyword('purple'))])
+    ]);
+    const referenceDocument = stylesheet([
+      authoredImport('@import', quoted('"hidden.css"', 'hidden.css', '"', false))
+    ]);
+    const documents = new Map([
+      [entryPath, entry],
+      [childPath, child],
+      [referencePath, referenceDocument]
+    ]);
+
+    class ScopedImportPlugin extends AbstractPlugin {
+      name = 'scoped-import';
+      supportedExtensions = ['.less'];
+
+      override locate(paths: string[]) {
+        return paths.find(candidate => documents.has(candidate)) ?? null;
+      }
+
+      override async getSource(filePath: string) {
+        return filePath;
+      }
+
+      override safeParse(filePath: string) {
+        const document = documents.get(filePath);
+        return document === undefined ? { errors: [], warnings: [] } : { document, errors: [], warnings: [] };
+      }
+
+      override transformUrl({ value, kind, fromFilePath }: UrlTransformRequest) {
+        const source = fromFilePath?.slice(fromFilePath.lastIndexOf('/') + 1) ?? 'unknown';
+        return kind === 'import' ? `${source}:${value}` : value;
+      }
+    }
+
+    const context = new Context({}, [new ScopedImportPlugin()]);
+    const loadedEntry = await context.getTree(entryPath);
+    await expect(context.withDocument(loadedEntry.node, () => serialize(loadedEntry.node, { context }))).resolves.toEqual({
+      css: '@import "entry.less:entry.css";\n'
+        + '@import "child.less:child.css";\n'
+        + '@import "entry.less:entry-after.css";\n'
+        + '@import "child.less:child.css";\n'
+        + '.entry-before {\n  color: red;\n}\n'
+        + '.child-before {\n  color: green;\n}\n'
+        + '@media screen {\n  @import "child.less:nested.css";\n}\n'
+        + '.child-after {\n  color: purple;\n}\n'
+        + '.child-before {\n  color: green;\n}\n'
+        + '@media screen {\n  @import "child.less:nested.css";\n}\n'
+        + '.child-after {\n  color: purple;\n}\n'
+        + '.entry-after {\n  color: blue;\n}\n'
+    });
+  });
+
+  it('keeps a deferred imported CSS prelude at its original lexical position', async () => {
+    const entryPath = '/virtual/entry.less';
+    const providerPath = '/virtual/providers.less';
+    const targetPath = '/virtual/target-ready.less';
+    const entry = stylesheet([
+      authoredImport(
+        '@import',
+        interpolation([
+          { lit: '"target-' },
+          { ref: variableReference('segment', 'scoped'), unquote: true },
+          { lit: '.less"' }
+        ])
+      ),
+      authoredImport('@import', quoted('"providers.less"', 'providers.less', '"', false))
+    ]);
+    const providers = stylesheet([
+      variableDeclaration('segment', keyword('ready'), { mode: 'declare' }),
+      authoredImport('@import', quoted('"provider.css"', 'provider.css', '"', false))
+    ]);
+    const target = stylesheet([
+      authoredImport('@import', quoted('"deferred.css"', 'deferred.css', '"', false))
+    ]);
+    const documents = new Map([
+      [entryPath, entry],
+      [providerPath, providers],
+      [targetPath, target]
+    ]);
+
+    class DeferredImportPlugin extends AbstractPlugin {
+      name = 'deferred-import';
+      supportedExtensions = ['.less'];
+
+      override locate(paths: string[]) {
+        return paths.find(candidate => documents.has(candidate)) ?? null;
+      }
+
+      override async getSource(filePath: string) {
+        return filePath;
+      }
+
+      override safeParse(filePath: string) {
+        const document = documents.get(filePath);
+        return document === undefined ? { errors: [], warnings: [] } : { document, errors: [], warnings: [] };
+      }
+    }
+
+    const context = new Context({}, [new DeferredImportPlugin()]);
+    const loadedEntry = await context.getTree(entryPath);
+    await expect(context.withDocument(loadedEntry.node, () => serialize(loadedEntry.node, { context }))).resolves.toEqual({
+      css: '@import "deferred.css";\n@import "provider.css";\n'
+    });
+  });
+
   it('routes direct quoted CSS imports through import-path transformation without URL-only policy', async () => {
     const document = stylesheet([
       authoredImport(

@@ -240,7 +240,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-config/static-urls/urls.less',
-    'rootpath/relativeUrls now apply to url() (including variable-sourced values) and direct quoted CSS @import targets. Remaining diffs: imported CSS-terminal statements retain their lexical splice position instead of hoisting to the document prelude, and jess preserves the authored newline+indent in the multi-line `src: local(…),\\n url(…)` value under the v5 minimal-correctness rule while the 4.x golden collapses it'
+    'rootpath/relativeUrls apply to url() (including variable-sourced values) and direct quoted CSS @import targets, and imported CSS terminals now retain source scope while joining the document prelude. The sole remaining diff is intentional v5 minimal-correctness: jess preserves the authored newline+indent in the multi-line `src: local(…),\\n url(…)` value while the 4.x golden collapses it'
   ],
   [
     'tests-config/sourcemaps-basepath/sourcemaps-basepath.less',

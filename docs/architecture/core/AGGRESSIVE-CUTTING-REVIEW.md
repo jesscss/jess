@@ -110,7 +110,7 @@ a blanket optimization exemption or a new active architecture queue.
     },
     "sourceCheck": {
       "file": "packages/core/src/ast/serialize.ts",
-      "caller": "function planImportedExtends(",
+      "caller": "function planImportedFacts(",
       "guard": "bodyMayPlanExtend",
       "call": "collectPlacedExtendFacts",
       "profile": "recordAstExtendProfile"

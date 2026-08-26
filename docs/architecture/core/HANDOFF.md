@@ -3832,7 +3832,119 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: 2026-08-25 typed URL value projection and Less `isurl()`.
+- Latest pass: 2026-08-25 imported CSS-terminal document-prelude planning.
+  This is a bounded output-placement correction under OPEN ledger row N9, not a
+  speed or neutrality claim.
+- Architecture surface: canonical AST-v2 import planning and statement output
+  only. The Less grammar's N7 `AtRuleStatement` / `StyleImport` split, Context
+  loading, compile-time document execution, AST/CST node shapes, package exports,
+  and parser sources are unchanged.
+- Separation/duplication: the existing one-pass `planImportedFacts`
+  import-graph owner also carries each admitted document-root CSS terminal while
+  it already visits the loaded typed document. There is no second import-graph
+  traversal. The carried fact is the canonical statement, its typed target, the
+  planner lexical frame, and the driver-owned `withinDocument` callback; output
+  does not classify a suffix, reload a document, re-evaluate a target, scan
+  source, or reparse bytes. Compile-time documents still execute later at their
+  authored lexical splice.
+- New traversal: the existing source-ordered statement loop gains one
+  `AtRuleStatement` branch only when Context-owned CSS placement is active. The
+  new output loop follows integer indexes through five parallel arrays once and
+  writes their typed statements through the canonical buffer before the body
+  walk. Contiguous terminals authored by one loaded document share one
+  source-scope callback. The ordinary no-import / no-extend bypass retains the
+  existing direct-root scan and allocates no plan.
+- Complexity/order: ordinary and immediately loaded imports append one aligned
+  flat-array row in the planner's existing O(statements + imports) walk. A
+  genuinely unresolved typed import adds one null row at its lexical position;
+  its one later retry builds a local two-index segment and relinks integer indexes
+  in O(1), so later imports never need a sort, splice-array copy, path vector, or
+  restart-at-zero scan. At-rule-contained imports receive no root collector.
+  Reference imports receive no output collector. Import-once and `(multiple)`
+  reuse the planner's existing occurrence admission.
+- New node/materialization: no AST/CST node, node copy, wrapper `Rules`, public
+  materialization, or source metadata. An admitted collector allocates one fixed
+  plan object with `head`/`tail` and five nullable array slots. Those five arrays
+  are allocated together only at the first unique output terminal or deferred
+  placeholder; each unique terminal adds one scalar/reference cell to each
+  array, with no per-terminal record object. A duplicate adds only its canonical
+  node identity to the lazy render-local `Set<AtRuleStatement>` and adds no plan
+  row. A second distinct key within one document occurrence lazily allocates one
+  key Set. A deferred import exceptionally adds one all-null row, one lazy anchor
+  array beside the already-existing deferred-import array, and one two-index
+  insertion segment object; if it resolves to no terminal, the returned output
+  plan is null and no output walk runs.
+- Deleted work: `cssImportKey` no longer scans target text with two RegExp tests,
+  slices a tail array, or builds `some`/`map` callback carriers. The parser-owned
+  statement classification is authoritative; one indexed tail validation/build
+  constructs only the semantic dedupe key that the existing root rule required.
+- Render path: `emitPlannedCssImports` writes the original typed statement
+  through `emitAtRuleStatementRaw` and the canonical chunk buffer. Its source
+  callback preserves each imported file's rootpath/rewrite scope. The existing
+  identity Set makes the later lexical statement dispatcher silent, including
+  duplicate and `(multiple)` placements; no node or array is resolved merely to
+  stringify.
+- Helper/API surface: two private helpers are added. `appendCssImportPlan` is the
+  sole owner of flat-column alignment and integer relinking;
+  `emitPlannedCssImports` is the sole planned-output writer. They replace neither
+  a public operation nor the fallback root-only writer; the latter remains the
+  zero-import fast path. The private planner/result names now reflect the
+  broadened import-fact owner. No public type, option, method, export, or
+  compatibility alias is added.
+- Metadata mutations: none on AST/CST/source/provenance. Only the plan's
+  `head`/`tail`, flat `next` integers, aligned array cells, and the existing
+  hoisted-identity Set mutate. A deferred placeholder is an all-null row in the
+  same arrays rather than a second object shape.
+- Review-flagged diff tokens: [loop/traversal] one branch in the existing import
+  walk plus one integer-link output walk; [materialized object/array] one admitted
+  plan, five lazy parallel arrays, one cell per array per unique terminal, and
+  the rare deferred anchor/segment records above—no per-terminal object; [side
+  set] one existing output identity Set plus a per-document duplicate Set only
+  from the second distinct key; [callback] one driver-required source callback
+  per contiguous document run; [byte scan/reparse] deleted suffix regexes and no
+  replacement target scan; [node construction/copy] none; [routine Error] none
+  added.
+- Behavior evidence: focused core import coverage passes 56/56, including exact
+  lexical prelude order, authoring source transform, per-document dedupe,
+  import-once, `(multiple)`, `(reference)`, nested at-rule retention, and deferred
+  insertion. The real `static-urls` fixture now places both imported CSS terminals
+  first and retains only the separately ruled multiline-value spelling residual.
+  Full gates and adversarial reviews are pending this live batch.
+- Performance evidence: no speed claim. The deterministic cost argument above is
+  load-bearing; fixed-build A/B is pending final stabilization.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": ["ValueSlot-array-evaluation-and-authored-layout", "List-value-separator-and-Block-delimiter-facts", "reference-index-and-For-array-access", "Less-lazy-color-call-demand-boundary", "defineFunction-typed-positional-named-and-lazy-binding", "mixin-dispatch-ValueSlot-argument-resolution", "ValueLayout-provenance-side-table", "preserve-mode-calc-result-composition", "extend-composition-plan-and-fixpoint-solve", "Less-eager-bare-slash-precedence-and-parens-division", "recursive-ValueGroup-final-unit-validation", "async-declaration-dedup-output-order"],
+    "why": "OPEN N9 records the candidate that parser-classified document-root CSS terminals from executed non-reference Less imports join the output prelude while compile-time documents retain lexical execution.",
+    "dangerTokensJustification": "The existing import walk carries unique terminals in five lazy parallel arrays with integer next links and no per-terminal record objects; duplicates add only their node identity to the lazy output-suppression Set. Output consumes the integer chain once through the canonical buffer. The no-feature bypass is unchanged, deferred insertion is O(1), and target suffix regexes plus tail slice/map/some materialization are deleted. No second import traversal, AST copy, byte reclassification, WeakMap, Error control lane, or speed claim is introduced.",
+    "behaviorEvidence": "Focused core import coverage passes 56/56; the owner static-urls case now has only its intentional multiline-value residual.",
+    "buildEvidence": "Core noEmit typecheck, focused import tests, and the aggressive-cutting contract gate pass; full dependency-order gates remain the landing boundary.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 14.748791, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
+  },
+  {
+    "id": "ast-extend-import-preflight",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "why": "The loaded typed document remains the earliest authoritative source for imported extend placements and now also carries parser-classified CSS terminals during that same graph visit.",
+    "dangerTokensJustification": "The false path still returns before collection. The admitted path adds one typed AtRuleStatement branch and flat-array rows for unique output terminals without a second graph walk or per-terminal object; existing extend collectors, overlays, and loop-placement tokens are unchanged.",
+    "behaviorEvidence": "Focused import/preflight coverage passes, including no-extend imported bodies, reference visibility, source-order terminals, and deferred insertion.",
+    "buildEvidence": "Core noEmit typecheck and focused import tests pass.",
+    "falsePath": {"fixture": "extend-preflight-contract:no-extend", "counters": {"calls": 1, "collectorCalls": 0, "overlaySubjects": 0, "overlayInstructions": 0, "loopPlacements": 0}},
+    "featurePath": {"fixture": "extend-preflight-contract:imported-loop", "counters": {"importsVisited": 1, "loopPlacements": 2, "overlaySubjects": 2}},
+    "baseline": {"fixture": "benchmark.less", "phase": "parse-render", "currentMedianMs": 14.748791, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
+  }
+]
+```
+- Verdict: provisional pending full gates and invariant-by-invariant semantics
+  and performance reviews.
+
+- Prior landed pass: 2026-08-25 typed URL value projection and Less `isurl()`.
   This is a bounded compatibility correction under OPEN ledger row V15, not a
   speed or neutrality claim.
 - Architecture surface: canonical AST-v2 typed evaluation, the shared public

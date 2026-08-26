@@ -333,6 +333,16 @@ failure. Existing files continue through the ordinary import path. Exact
 optional-missing and optional-present coverage is in core's
 `import-at-rule.test.ts`; Less parser CST coverage pins the option list.
 
+The related output-placement gap is also implemented under OPEN N9:
+parser-classified CSS terminals from executed document-root Less imports join
+the document prelude without moving the imported document's lexical execution.
+The planner carries each terminal's authoring source scope, so `rootpath` and
+`rewriteUrls` still resolve against the file that wrote it. Focused core tests
+pin source order, per-document duplicate suppression, `(multiple)`,
+`(reference)`, nested at-rule non-hoisting, and late-resolved import order. The
+owner-maintained `static-urls` fixture now retains only its intentional authored
+multiline-value spelling difference.
+
 ### 4.4 DELIBERATE — a compile-time `@import` cannot carry a media query
 
 ```less

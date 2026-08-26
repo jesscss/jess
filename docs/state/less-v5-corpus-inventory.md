@@ -59,7 +59,8 @@ above:
 - `tests-config/sourcemaps-include-source/sourcemaps-include-source.less`
 - `tests-config/sourcemaps-rootpath/sourcemaps-rootpath.less`
 - `tests-config/sourcemaps-url/sourcemaps-url.less`
-- `tests-config/static-urls/urls.less`
+- `tests-config/static-urls/urls.less` (import placement/rootpath now works; the
+  active mismatch is only intentional authored multiline-value preservation)
 - `tests-unit/at-rule-variable-deprecated/at-rule-variable-deprecated.less`
 - `tests-unit/color-functions/operations.less`
 - `tests-unit/functions/functions.less`
@@ -176,6 +177,17 @@ not reviewed or landed. Resume it later as an independent parser batch from the
 fixture-level negative control; no temporary patch is authoritative or required.
 
 ### Resolved follow-up from the import-path lane
+
+- Parser-classified CSS terminals from executed document-root Less imports now
+  join the output document prelude in lexical import order. The existing import
+  planner carries their canonical node, typed target, lexical frame, and source
+  callback during its one graph walk; compile-time documents still execute at
+  their authored splice positions. Reference terminals stay hidden, import-once
+  and `(multiple)` retain their established occurrence policy, nested at-rule
+  imports stay nested, and late-resolved imports splice their terminal segment
+  back at the original lexical position. The `static-urls` fixture now differs
+  only because v5 preserves the authored newline/indent in its multiline
+  `src:` value while the maintained 4.x golden collapses it.
 
 - Root-hoisted CSS-terminal imports now retain parser-owned block-comment trivia
   at the typed target/tail boundaries for both direct quotes and `url(...)`, with

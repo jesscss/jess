@@ -6691,7 +6691,7 @@ interface Emit extends EvalCtx {
    */
   plannedForExtendPlacements: WeakMap<For, PlannedForExtendQueue> | null;
 
-  /** Root CSS-terminal imports already written in the required document prelude. */
+  /** Document-root CSS terminals already written in the required output prelude. */
   hoistedCssImports: Set<AtRuleStatement> | null;
 
   /** Block-comment trivia runs already replayed during this render. */
@@ -8501,26 +8501,77 @@ function collectPlacedExtendFacts(
   return run(0);
 }
 
-/** Build an extend-only document view for `(reference)` imports.  This is
- * deliberately separate from emission: it loads through the existing Context
- * capability, keeps import-once identity locally, activates only variables in
- * source order, and contributes the same parsed Ruleset identities solely to
- * extend planning. The render walk still owns source-order emission; this is
- * the one intentional pre-render planner view, never a reparse or tree bridge. */
-type ExtendPlannerInput = {
+/**
+ * Build the one pre-render view of the typed import graph. It loads through the
+ * existing Context capability, keeps import-once identity locally, activates
+ * variables in source order, contributes canonical Ruleset identities to extend
+ * planning, and optionally carries document-root CSS terminals to the output
+ * prelude. Less document execution remains on the later lexical render walk;
+ * this is never a reparse, tree bridge, or second import traversal.
+ */
+type ImportPlannerInput = {
   root: Stylesheet;
   hiddenRules: ReadonlySet<Ruleset>;
   referenceBoundaries: ReadonlyMap<Ruleset, object>;
   overlay: PlanOverlay;
+
+  /**
+   * `undefined` means this planner invocation did not own CSS-import placement;
+   * `null` means it did and found no terminal. A non-null chain is already in
+   * final document order and carries the source scope needed by URL transforms.
+   */
+  cssImports: CssImportPlan | null | undefined;
 };
 
-function planImportedExtends(
+interface CssImportSegment {
+  head: number;
+  tail: number;
+}
+
+interface CssImportPlan extends CssImportSegment {
+  nodes: Array<AtRuleStatement | null> | null;
+  targets: Array<Quoted | Url | null> | null;
+  frames: Array<Frame | null> | null;
+  withinDocuments: Array<NonNullable<ImportDocumentTree['withinDocument']> | null> | null;
+  next: number[] | null;
+}
+
+function appendCssImportPlan(
+  plan: CssImportPlan,
+  segment: CssImportSegment,
+  node: AtRuleStatement | null,
+  target: Quoted | Url | null,
+  frame: Frame | null,
+  withinDocument: NonNullable<ImportDocumentTree['withinDocument']> | null
+): number {
+  const nodes = plan.nodes ??= [];
+  const targets = plan.targets ??= [];
+  const frames = plan.frames ??= [];
+  const withinDocuments = plan.withinDocuments ??= [];
+  const next = plan.next ??= [];
+  const index = nodes.length;
+  nodes.push(node);
+  targets.push(target);
+  frames.push(frame);
+  withinDocuments.push(withinDocument);
+  next.push(-1);
+  if (segment.tail === -1) {
+    segment.head = index;
+  } else {
+    next[segment.tail] = index;
+  }
+  segment.tail = index;
+  return index;
+}
+
+function planImportedFacts(
   root: Stylesheet,
   frame: Frame,
   e: Emit,
   importDocument: SerializeOptions['importDocument'] | undefined,
-  deferUnreadyImports = false
-): MaybePromise<ExtendPlannerInput> {
+  deferUnreadyImports = false,
+  collectCssImports = false
+): MaybePromise<ImportPlannerInput> {
   recordAstExtendProfile?.('astExtend.preflight.calls');
 
   /*
@@ -8544,7 +8595,8 @@ function planImportedExtends(
         subjects: [],
         instructions: [],
         hiddenReferenceRules: null
-      }
+      },
+      cssImports: undefined
     };
   }
   const seen = new Set<string>();
@@ -8557,9 +8609,28 @@ function planImportedExtends(
     instructions: [],
     hiddenReferenceRules: null
   };
-  const visit = async (statements: readonly Statement[], scope: Frame): Promise<void> => {
+  const cssImports: CssImportPlan | null = collectCssImports
+    ? {
+        head: -1,
+        tail: -1,
+        nodes: null,
+        targets: null,
+        frames: null,
+        withinDocuments: null,
+        next: null
+      }
+    : null;
+  const visit = async (
+    statements: readonly Statement[],
+    scope: Frame,
+    cssSegment: CssImportSegment | null,
+    withinDocument: NonNullable<ImportDocumentTree['withinDocument']> | null
+  ): Promise<void> => {
     const deferred: StyleImport[] = [];
-    const visitImport = async (st: StyleImport): Promise<void> => {
+    let deferredAnchors: number[] | null = null;
+    let firstCssImportKey: string | null = null;
+    let furtherCssImportKeys: Set<string> | null = null;
+    const visitImport = async (st: StyleImport, importCssSegment: CssImportSegment | null): Promise<void> => {
       recordAstExtendProfile?.('astExtend.preflight.importsVisited');
       const options = importRequestOptions(st.options);
       const specifier = importSpecifier(st, scope, e);
@@ -8629,7 +8700,12 @@ function planImportedExtends(
         }
       }
       const collect = async (): Promise<void> => {
-        await visit(loaded.document!.rules, childFrame);
+        await visit(
+          loaded.document!.rules,
+          childFrame,
+          importHasOption(options, 'reference') ? null : importCssSegment,
+          loaded.withinDocument ?? withinDocument
+        );
       };
       if (loaded.withinDocument) {
         await loaded.withinDocument(collect);
@@ -8640,22 +8716,55 @@ function planImportedExtends(
     for (const st of statements) {
       if (st.type === 'VariableDeclaration') {
         activateVariableDeclaration(st, scope, e);
+      } else if (st.type === 'AtRuleStatement' && cssSegment !== null) {
+        const target = cssImportTarget(st);
+        if (target !== null) {
+          const key = cssImportKey(st, target);
+          if (key !== null) {
+            const duplicate = key === firstCssImportKey || furtherCssImportKeys?.has(key) === true;
+            if (firstCssImportKey === null) {
+              firstCssImportKey = key;
+            } else if (!duplicate) {
+              (furtherCssImportKeys ??= new Set()).add(key);
+            }
+            (e.hoistedCssImports ??= new Set()).add(st);
+            if (!duplicate) {
+              appendCssImportPlan(cssImports!, cssSegment, st, target, scope, withinDocument);
+            }
+          }
+        }
       } else if (st.type === 'StyleImport') {
         try {
-          await visitImport(st);
+          await visitImport(st, cssSegment);
         } catch (error) {
           if (!(error instanceof ImportPathNotReady)) {
             throw error;
           }
           deferred.push(st);
+          if (cssSegment !== null) {
+            const anchor = appendCssImportPlan(cssImports!, cssSegment, null, null, null, null);
+            (deferredAnchors ??= []).push(anchor);
+          }
         }
       } else if (st.type === 'AtRuleBlock') {
-        await visit(st.rules, scope);
+        await visit(st.rules, scope, null, withinDocument);
       }
     }
-    for (const pending of deferred) {
+    for (let index = 0; index < deferred.length; index++) {
+      const pending = deferred[index]!;
+      const anchor = deferredAnchors?.[index] ?? -1;
+      const inserted: CssImportSegment | null = anchor === -1 ? null : { head: -1, tail: -1 };
       try {
-        await visitImport(pending);
+        await visitImport(pending, inserted);
+        if (anchor !== -1 && inserted !== null && inserted.head !== -1 && cssSegment !== null) {
+          const next = cssImports!.next!;
+          const after = next[anchor]!;
+          next[anchor] = inserted.head;
+          next[inserted.tail] = after;
+          if (cssSegment.tail === anchor) {
+            cssSegment.tail = inserted.tail;
+          }
+        }
       } catch (error) {
         if (error instanceof ImportPathNotReady) {
           if (deferUnreadyImports) {
@@ -8667,9 +8776,20 @@ function planImportedExtends(
       }
     }
   };
-  return visit(root.rules, frame).then(() => ({
-    root, hiddenRules: new Set(), referenceBoundaries: new Map(), overlay
-  }));
+  return visit(root.rules, frame, cssImports, null).then(() => {
+    let plannedCssImports: CssImportPlan | null | undefined;
+    if (cssImports === null) {
+      plannedCssImports = undefined;
+    } else if (e.hoistedCssImports === null) {
+      plannedCssImports = null;
+    } else {
+      plannedCssImports = cssImports;
+    }
+    return {
+      root, hiddenRules: new Set(), referenceBoundaries: new Map(), overlay,
+      cssImports: plannedCssImports
+    };
+  });
 }
 
 export type PrepareStaticImportsOptions = Pick<
@@ -8751,7 +8871,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     if (!importDocument) {
       return { documents };
     }
-    const planned = planImportedExtends(root, plannerRootFrame, e, importDocument, true);
+    const planned = planImportedFacts(root, plannerRootFrame, e, importDocument, true);
     return mapMaybe(planned, () => ({ documents }));
   };
   return mapMaybe(prepare, plan);
@@ -8810,7 +8930,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     rootFrame.fnScope = rootFrame;
     rootFrame.fnScopeVersion = e.fnScopeVersion;
   }
-  const continueRender = (planned: ExtendPlannerInput): SerializeReturn => {
+  const continueRender = (planned: ImportPlannerInput): SerializeReturn => {
     const plannedRoot = planned.root;
 
     /*
@@ -8832,14 +8952,14 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
 
     /*
      * A caller-provided import handler owns terminal-import decisions itself. The
-     * public Context route has no such driver callback, so it uses this direct
-     * root-output rule while retaining Context loading for non-terminal imports.
+     * public Context route has no such driver callback, so it uses the typed
+     * document-prelude plan while retaining Context loading for non-terminals.
      */
-    if (!options?.importDocument) {
-      emitHoistedCssImports(root.rules, rootFrame, e);
-    }
-    emitLeadingDocumentBlockComments(e);
-    const emitted = emitDocumentStatements(root.rules, rootFrame, e, importDocument);
+    const hoisted = !options?.importDocument
+      ? planned.cssImports === undefined
+        ? emitHoistedCssImports(root.rules, rootFrame, e)
+        : emitPlannedCssImports(planned.cssImports, e)
+      : undefined;
     const finalize = (): SerializeResult => {
       /* [null] A declaration whose async value resolved to `null` is dropped here —
        * blanked rather than spliced, because a pending slot addresses BY INDEX. */
@@ -8865,11 +8985,15 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
       }
       return finalize();
     };
-    return mapMaybe(emitted, finish);
+    const emitBody = (): SerializeReturn => {
+      emitLeadingDocumentBlockComments(e);
+      return mapMaybe(emitDocumentStatements(root.rules, rootFrame, e, importDocument), finish);
+    };
+    return mapMaybe(hoisted, emitBody);
   };
 
   /*
-   * The reference-import planner owns an isolated lexical frame: planning must
+   * The import-fact planner owns an isolated lexical frame: planning must
    * never publish variables/mixins/rules into the later render frame.
    */
   const plannerRootFrame: Frame = {
@@ -8885,7 +9009,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
   }
   const prepare = prepareBodyPlugins(root.rules, rootFrame, e);
   const plan = (): SerializeReturn => {
-    const planned = planImportedExtends(root, plannerRootFrame, e, importDocument);
+    const planned = planImportedFacts(root, plannerRootFrame, e, importDocument, false, !options?.importDocument);
     return isThenable(planned) ? planned.then(continueRender) : continueRender(planned);
   };
   return mapMaybe(prepare, plan);
@@ -12901,52 +13025,96 @@ function emitHoistedCharset(rules: Statement[], frame: Frame, e: Emit): void {
 }
 
 /**
- * Less emits root CSS-terminal imports before ordinary rules and retains only
- * their first identical occurrence. This is a root-output rule, not import
- * resolution: loaded stylesheet imports still execute exactly at their source
- * position through Context. Keep this narrow until typed Less import options and
- * media wrapping are represented rather than guessed from source text.
+ * Fallback for a document whose import planner was not admitted: emit its direct
+ * CSS terminals before ordinary rules and retain only the first identical
+ * occurrence. When compile-time imports exist, the planner carries the same rule
+ * across their loaded documents without changing lexical Less execution.
  */
-function rootCssImportKey(node: AtRuleStatement, target: Quoted | Url): string | null {
+function cssImportKey(node: AtRuleStatement, target: Quoted | Url): string | null {
   /*
    * Only a dialect that TYPES its CSS-terminal import prelude participates. A
    * grammar that flattens the whole prelude to opaque bytes (plain CSS, jess)
    * keeps its authored statement order, and nothing here re-derives a target
    * from those bytes.
-  */
+   */
   const prelude = node.prelude!;
-  const tail = prelude.type === 'Sequence' ? prelude.parts.slice(1) : [];
-  if (tail.some(part => part.type !== 'Any')) {
-    return null;
-  }
-  const specifier = target.type === 'Quoted'
-    ? target.value
-    : target.value.type === 'Quoted'
-      ? target.value.value
-      : target.value.type === 'Any'
-        ? target.value.src
-        : null;
-  if (specifier === null) {
-    return null;
+  let tail = '';
+  if (prelude.type === 'Sequence') {
+    for (let index = 1; index < prelude.parts.length; index++) {
+      const part = prelude.parts[index]!;
+      if (part.type !== 'Any') {
+        return null;
+      }
+      if (index > 1) {
+        tail += ' ';
+      }
+      tail += part.src;
+    }
   }
 
   /*
    * A media/layer tail is NOT what makes an import CSS terminal — only the
-   * target is. `@import "a.less" screen` loads `a.less` and wraps its rules in
-   * `@media screen`, which `emitStyleImport` does from the typed tail; that form
-   * never reaches this statement node at all.
+   * parser-owned `AtRuleStatement` classification is. A compile-time import
+   * never reaches this statement node, so re-reading the target suffix here
+   * would duplicate and weaken that grammar decision.
    */
-  if (!/\.css(?:[?#].*)?$/iu.test(specifier) && !/^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu.test(specifier)) {
+  let emittedTarget: string;
+  if (target.type === 'Quoted') {
+    emittedTarget = target.src;
+  } else if (target.value.type === 'Quoted' || target.value.type === 'Any') {
+    emittedTarget = `url(${target.value.src})`;
+  } else {
     return null;
   }
+  return `${node.name}\u0000${emittedTarget}\u0000${tail}`;
+}
 
-  /* Every shape reaching here carries an authored `src`; read it structurally
-   * rather than asserting a narrower node type. */
-  const srcOf = (v: { readonly type: string } & Partial<Record<'src', string>>): string => v.src ?? '';
-  const emittedTarget = target.type === 'Quoted'
-    ? target.src
-    : `url(${target.value.type === 'Quoted' ? target.value.src : srcOf(target.value)})`;
-  return `${node.name}\u0000${emittedTarget}\u0000${tail.map(srcOf).join(' ')}`;
+/**
+ * Write the planner-carried CSS prelude in document order. Each item retains the
+ * lexical frame and driver-owned source scope in which its typed target was
+ * authored; the later import splice sees the same canonical node in the
+ * `hoistedCssImports` set and therefore emits no second copy.
+ */
+function emitPlannedCssImports(plan: CssImportPlan | null, e: Emit): MaybePromise<void> {
+  if (plan === null) {
+    return;
+  }
+  const nodes = plan.nodes!;
+  const targets = plan.targets!;
+  const frames = plan.frames!;
+  const withinDocuments = plan.withinDocuments!;
+  const links = plan.next!;
+  const run = (from: number): MaybePromise<void> => {
+    let index = from;
+    while (index !== -1) {
+      const node = nodes[index]!;
+      if (node === null) {
+        index = links[index]!;
+        continue;
+      }
+      const withinDocument = withinDocuments[index]!;
+      if (withinDocument === null) {
+        emitAtRuleStatementRaw(node, frames[index]!, e, targets[index]!);
+        index = links[index]!;
+        continue;
+      }
+      let next = index;
+      const emitted = withinDocument(() => {
+        while (next !== -1 && withinDocuments[next] === withinDocument) {
+          const scopedNode = nodes[next]!;
+          if (scopedNode !== null) {
+            emitAtRuleStatementRaw(scopedNode, frames[next]!, e, targets[next]!);
+          }
+          next = links[next]!;
+        }
+      });
+      if (isThenable(emitted)) {
+        return emitted.then(() => run(next));
+      }
+      index = next;
+    }
+  };
+  return run(plan.head);
 }
 
 function emitHoistedCssImports(rules: Statement[], frame: Frame, e: Emit): void {
@@ -12963,7 +13131,7 @@ function emitHoistedCssImports(rules: Statement[], frame: Frame, e: Emit): void 
     if (target === null) {
       continue;
     }
-    const key = rootCssImportKey(child, target);
+    const key = cssImportKey(child, target);
     if (key === null) {
       continue;
     }

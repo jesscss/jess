@@ -42,7 +42,7 @@ machinery:
 - `importSpecifier(...)` owns resolver-facing target extraction, including
   quoted targets, `url(...)`, and retryable unresolved interpolation.
 - `evalBytesSync(...)` / `evalQueryPreludeSync(...)` own option and tail bytes.
-- `planImportedExtends(...)` already handles source-order variable publication,
+- `planImportedFacts(...)` already handles source-order variable publication,
   deferred unresolved import paths, nested at-rule bodies, imported callable
   facts, `reference` hiding, and `multiple` de-duplication.
 
