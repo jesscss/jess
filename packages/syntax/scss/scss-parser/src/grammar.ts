@@ -18,12 +18,12 @@
  * route via Parseman's `hostMode`.
  */
 import { balanced, classifiedTrivia, choice, composeLeaf, dispatch, endsWith, expect, field, keywords, label, literal, makeWhen, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, token, when } from 'parseman' with { type: 'macro' };
-import type { Combinator, FusedRule } from 'parseman';
+import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { ScssImportPostludeError } from './parse-error.js';
-import { anonymousMixin, any, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, color, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, ifValue, importIsCompileTime, interpolation, interpolatedSimpleSelector, isComplexSelector, isForBinding, isModuleImport, isRelativeSelector, isToken, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { anonymousMixin, any, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, color, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, ifValue, importIsCompileTime, interpolation, interpolatedSimpleSelector, isComplexSelector, isForBinding, isModuleImport, isRelativeSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, CallArg, Collection, CollectionEntry, Color, Comment, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
 type ScssValueTail = { readonly kind: 'space' | 'slash'; readonly value: ValueNode; readonly separator: string };
@@ -92,7 +92,7 @@ type ScssRules = {
   NestedPropertyDeclaration: Combinator<Declaration>;
   ImportStatement: Combinator<StyleImport | AtRuleStatement>;
   UseNamespace: Combinator<string>;
-  ModuleDirective: Combinator<StyleImport | ModuleImport>;
+  ModuleDirective: Combinator<[string, StyleImport | ModuleImport]>;
   ImportUrl: Combinator<Url>;
   ImportLayer: Combinator<ValueNode>;
   ImportDeclaration: Combinator<ValueNode>;
@@ -148,9 +148,9 @@ type ScssRules = {
   AtRulePreludeQuoted: Combinator<Token>;
   AtRuleStatement: Combinator<AtRuleStatement>;
   AtRootFilterPrelude: Combinator<ValueNode>;
-  SassDirective: Combinator<AtRuleBlock | For | If | MixinCall | MixinDefinition | VariableDeclaration>;
-  SassNestedDirective: Combinator<AtRuleBlock | For | If | MixinCall | MixinDefinition>;
-  SassControlDirective: Combinator<For | If>;
+  SassDirective: Combinator<[string, unknown]>;
+  SassNestedDirective: Combinator<[string, unknown]>;
+  SassControlDirective: Combinator<[string, unknown]>;
   ScopeBlock: Combinator<AtRuleBlock>;
   NestedScopeBlock: Combinator<AtRuleBlock>;
   ConditionalBlock: Combinator<AtRuleBlock>;
@@ -188,7 +188,7 @@ type ScssRules = {
   RelativeComplex: Combinator<SelectorBranch>;
   SelectorList: Combinator<SelectorList>;
   NestedSelector: Combinator<SelectorList>;
-  Extend: Combinator<Ruleset>;
+  Extend: Combinator<ExtendInstruction>;
   OpaqueAtPrelude: Combinator<string | null>;
   OpaqueBody: Combinator<string>;
   ScssGenericAtRuleName: Combinator<string>;
@@ -779,7 +779,7 @@ function referenceKeyRaw(node: ValueNode): string {
  *  `$content(…)` Reference `raw`. Same read as {@link referenceKeyRaw}, plus the
  *  `$name:` prefix a named argument carries. */
 function contentArgRaw(arg: ScssCallArg): string {
-  const value = Array.isArray(arg.value) ? '' : referenceKeyRaw(arg.value);
+  const value = isValueSlotArray(arg.value) ? '' : referenceKeyRaw(arg.value);
   return arg.name === undefined ? value : `$${arg.name}: ${value}`;
 }
 
@@ -948,9 +948,7 @@ function scssConditionSource(value: ValueSlot): string {
     case 'Expression': return scssConditionSource(node.value);
     case 'FunctionCall': return `${node.name}(${node.args.map(argument => `${argument.name === undefined ? '' : `$${argument.name}: `}${scssConditionSource(argument.value)}`).join(', ')})`;
     case 'Operation': return `${scssConditionSource(node.left)} ${node.operator} ${scssConditionSource(node.right)}`;
-    case 'Block': return node.boundary
-      ? scssConditionSource(node.value)
-      : `${node.delimiter === 'square' ? '[' : '('}${scssConditionSource(node.value)}${node.delimiter === 'square' ? ']' : ')'}`;
+    case 'Block': return `${node.delimiter === 'square' ? '[' : '('}${scssConditionSource(node.value)}${node.delimiter === 'square' ? ']' : ')'}`;
     case 'Sequence': return node.parts.map(scssConditionSource).join(' ');
     case 'List': return node.value.map(scssConditionSource).join(node.sep === ',' ? ', ' : ' / ');
     default: throw new TypeError(`SCSS condition cannot preserve ${node.type}.`);
@@ -2188,7 +2186,7 @@ const scssFactory = (g: ScssInputRules) => {
        * colon is not a Sass named argument, and it is a parse error here today.
        */
       if (children.some(child => isToken(child) && child.value === ':')) {
-        if (Array.isArray(left) || left.type !== 'Lookup' || left.kind !== 'var' || typeof left.name !== 'string') {
+        if (isValueSlotArray(left) || left.type !== 'Lookup' || left.kind !== 'var' || typeof left.name !== 'string') {
           throw new TypeError('A named argument must be spelled `$name: value`.');
         }
         return callArg(requireValueSlot(children[children.length - 1]), left.name);
@@ -5943,24 +5941,24 @@ const scssFactory = (g: ScssInputRules) => {
   };
 };
 
-export const scssGrammar: Record<keyof ScssRules, FusedRule> = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
+export const scssGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
   { trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString] },
   scssFactory
 )]);
 
 /** AST artifact with Parseman line/column tracking enabled. */
-export const scssPositionsGrammar: Record<keyof ScssRules, FusedRule> = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
+export const scssPositionsGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
   { trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString], trackLines: true },
   scssFactory
 )]);
 
-export const scssCstGrammar: Record<keyof ScssRules, FusedRule> = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
+export const scssCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
   { trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString], hostMode: 'cst' },
   scssFactory
 )]);
 
 /** CST artifact with Parseman line/column tracking enabled. */
-export const scssCstPositionsGrammar: Record<keyof ScssRules, FusedRule> = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
+export const scssCstPositionsGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
   { trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString], hostMode: 'cst', trackLines: true },
   scssFactory
 )]);

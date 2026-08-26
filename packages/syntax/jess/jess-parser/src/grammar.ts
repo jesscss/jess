@@ -103,7 +103,7 @@ type JessRules = {
   CalcSequence: Combinator<ValueSlot>;
   calcFunctionArguments: Combinator<ValueSlot>;
   MathFunction: Combinator<FunctionCall>;
-  IdentifierOrFunction: Combinator<ValueNode>;
+  IdentifierOrFunction: Combinator<[string, FunctionCall | Keyword | Null | Url]>;
   CollectionEntry: Combinator<CollectionEntry>;
   Collection: Combinator<Collection>;
   SquareValue: Combinator<ValueNode>;
@@ -135,7 +135,7 @@ type JessRules = {
   NamespaceTypeSelector: Combinator<SimpleSelector>;
   AttributeSelector: Combinator<SimpleSelector>;
   PseudoSelector: Combinator<SimpleToken>;
-  PseudoSelectorArgument: Combinator<SelectorList>;
+  PseudoSelectorArgument: Combinator<SelectorList | string>;
   GenericPseudoText: Combinator<string>;
   GenericPseudoComment: Combinator<string>;
   GenericPseudoEscape: Combinator<string>;
@@ -260,6 +260,7 @@ type SharedSyntax = {
   SimpleSelectorToken: Combinator<string>;
   PseudoSelectorColon: Combinator<string>;
   MediaAtKeyword: Combinator<string>;
+  StatementAtRuleName: Combinator<string>;
   PreprocessorOpaqueAtRulePreludeCapture: Combinator<string | null>;
   PreprocessorOpaqueAtRuleBodyCapture: Combinator<string>;
 };
