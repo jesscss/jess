@@ -6,10 +6,11 @@ Reporting-only — outcomes measured, not gated. Each slice ran in an isolated, 
 
 ## Run provenance
 
-- Generated: `2026-08-26T10:10:51.549Z`
-- Jess commit: `9efd656ee0284eb1c52fee6e25d71eadca9b7ed0`
+- Generated: `2026-08-26T11:26:07.747Z`
+- Jess commit: `6333b59651a4fad0c321928f75874876d3967670`
 - Route: src-path Vitest renderer in packages/jess/test/less/_corpus-slice.test.ts
 - Configuration: base `output.collapseNesting: true`; getTestCases() fixture-local config merged for each expected output
+- Error configuration: functionMode:error + unitMode:strict; imported helper files excluded
 - Test data: `/Users/matthew/git/oss/less.js/packages/test-data` at `e7626e8c9936a67c80b5740c4f203731d82580e8`
 - Test-data working tree: clean
 - Runner: `v25.9.0` on `darwin/arm64`
@@ -25,36 +26,21 @@ Reporting-only — outcomes measured, not gated. Each slice ran in an isolated, 
 
 ## Error corpus (`tests-error` — classify only)
 
-- errored (matches Less): **88** / 100
-- **accepted — DIVERGENCE, needs review: 12**  _(Jess accepts what Less rejects: intentional repair or real gap)_
+- errored (matches Less): **94** / 95
+- **accepted — DIVERGENCE, needs review: 1**  _(Jess accepts what Less rejects: intentional repair or real gap)_
 - timeout: 0, crash: 0
 
 ### Divergences to review (accepted where Less errors)
 
-- `tests-error/eval/unit-function.less` (NEW)
-- `tests-error/eval/svg-gradient6.less` (NEW)
-- `tests-error/eval/svg-gradient5.less` (NEW)
-- `tests-error/eval/svg-gradient4.less` (NEW)
-- `tests-error/eval/svg-gradient3.less` (NEW)
-- `tests-error/eval/svg-gradient2.less` (NEW)
-- `tests-error/eval/svg-gradient1.less` (NEW)
-- `tests-error/eval/percentage-non-number-argument.less` (NEW)
-- `tests-error/eval/percentage-css-var.less` (NEW)
-- `tests-error/eval/color-func-invalid-color.less` (NEW)
-- `tests-error/eval/color-func-invalid-color-2.less` (NEW)
-- `tests-error/eval/imports/import-test.less` (NEW)
+- `tests-error/eval/color-func-invalid-color-2.less` (known)
 
 ## Render non-passes
 
-38 total — 33 already known to the gate (skipped/expected-failure), **5 NEW**.
+38 total — 38 already known to the gate (skipped/expected-failure), **0 NEW**.
 
 ### NEW (not skipped/expected-failure in the gate)
 
-- [mismatch] `tests-unit/parser-slashed-combinator/parser-slashed-combinator.less`
-- [mismatch] `tests-config/sourcemaps/comprehensive/comprehensive.less`
-- [mismatch] `tests-config/debug/mediaquery/linenumbers-mediaquery.less`
-- [mismatch] `tests-config/debug/comments/linenumbers-comments.less`
-- [mismatch] `tests-config/debug/all/linenumbers-all.less`
+- None.
 
 ### Known (gate already skips / expects-failure)
 
@@ -65,6 +51,7 @@ Reporting-only — outcomes measured, not gated. Each slice ran in an isolated, 
 - [error] `tests-unit/plugin-module/plugin-module.less`
 - [error] `tests-unit/plugin/plugin.less`
 - [error] `tests-unit/permissive-parse/permissive-parse.less`
+- [mismatch] `tests-unit/parser-slashed-combinator/parser-slashed-combinator.less`
 - [mismatch] `tests-unit/parse-interpolation/parse-interpolation.less`
 - [mismatch] `tests-unit/mixins/mixins.less`
 - [mismatch] `tests-unit/media/media.less`
@@ -84,9 +71,13 @@ Reporting-only — outcomes measured, not gated. Each slice ran in an isolated, 
 - [mismatch] `tests-config/sourcemaps-rootpath/sourcemaps-rootpath.less`
 - [mismatch] `tests-config/sourcemaps-include-source/sourcemaps-include-source.less`
 - [mismatch] `tests-config/sourcemaps-basepath/sourcemaps-basepath.less`
+- [mismatch] `tests-config/sourcemaps/comprehensive/comprehensive.less`
 - [error] `tests-config/preProcessorPlugin/preProcessor.less`
 - [mismatch] `tests-config/postProcessorPlugin/postProcessor.less`
 - [error] `tests-config/filemanagerPlugin/filemanager.less`
+- [mismatch] `tests-config/debug/mediaquery/linenumbers-mediaquery.less`
+- [mismatch] `tests-config/debug/comments/linenumbers-comments.less`
+- [mismatch] `tests-config/debug/all/linenumbers-all.less`
 - [error] `tests-config/compression/compression.less`
 - [mismatch] `tests-config/at-rules-compressed-evaluation/at-rules-compressed-evaluation.less`
 - [mismatch] `tests-config/at-rules-compressed/at-rules-compressed.less`

@@ -19,13 +19,23 @@ JESS_LESS_FIXTURE=tests-unit/ pnpm run test:less:test-data
 JESS_LESS_FIXTURE=tests-config/ pnpm run test:less:test-data
 ```
 
-## Current selection snapshot (2026-08-22)
+## Current selection snapshot (2026-08-26)
 
-The executable Vitest collection contains `80 unit` / `30 config` / `110
+The executable Vitest collection contains `81 unit` / `30 config` / `111
 public-route` cases, plus the harness's own timeout-sensitivity test. These are
 test-case counts: one source fixture may select more than one configured output.
 Regenerate them from `vitest list` rather than carrying the numbers forward by
 memory. The registry dispositions below are derived the same way.
+
+The separate full-corpus report now uses the same strict error-surfacing
+contract as the executable error gate (`functionMode:error`, `unitMode:strict`),
+and excludes imported helper files from standalone error-case discovery. At
+`6333b5965` it finds no unclassified render non-pass: all 38 are active expected
+failures, explicit `invalidLess` exclusions, or recursively nested deferred
+source-map/debug-output cases. The error corpus has 94 expected errors from 95
+standalone cases; the sole accepted case is the already-recorded v5 rule that
+preserves `darken(var(--x), …)` because a runtime CSS variable cannot be folded
+at build time.
 
 ### `expectedFailureFixtures` disposition — derived, not hand-counted
 

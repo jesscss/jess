@@ -29,8 +29,10 @@ const MODE = process.env.CORPUS_MODE;
 const testData = resolveLessTestDataRoot();
 const rel = (p: string) => path.relative(testData, p).split(path.sep).join('/');
 
-// Sync infinite-loopers block the event loop; the parent's SIGKILL still reaps
-// them, but skipping the known ones avoids a slow per-fixture kill cycle.
+/*
+ * Sync infinite-loopers block the event loop; the parent's SIGKILL still reaps
+ * them, but skipping the known ones avoids a slow per-fixture kill cycle.
+ */
 const KNOWN_HANG = new Set<string>([
   'tests-unit/variables/variable-advanced.less',
   'tests-unit/merge/merge.less',
@@ -41,6 +43,14 @@ const KNOWN_HANG = new Set<string>([
 const PER_FIXTURE_TIMEOUT_MS = 8000;
 
 interface Job { kind: 'render' | 'error'; file: string; lessPath: string; expectedFile?: string; config?: Partial<StylesConfig> }
+
+const errorCorpusConfig: Partial<StylesConfig> = {
+  compile: {
+    jsReadRoot: testData,
+    functionMode: 'error',
+    unitMode: 'strict'
+  }
+};
 
 const baseCompiler = new Compiler({
   output: { collapseNesting: true },
@@ -135,15 +145,19 @@ function discover(): Job[] {
       });
     });
   }
+
+  /* Imported helpers are inputs to error cases, not standalone error cases. */
   glob.sync(path.join(testData, 'tests-error/**/*.less'))
     .filter(f => !KNOWN_HANG.has(rel(f)))
+    .filter(f => !rel(f).includes('/imports/'))
     .forEach(lessPath => jobs.push({ kind: 'error', file: rel(lessPath), lessPath }));
   return jobs;
 }
 
 async function runJob(job: Job): Promise<{ file: string; kind: string; outcome: string; detail?: string }> {
   if (job.kind === 'error') {
-    const res = await withTimeout(() => makeTestCompiler({}).renderToResult(job.lessPath, { breakOnError: true }));
+    const res = await withTimeout(() => makeTestCompiler(errorCorpusConfig)
+      .renderToResult(job.lessPath, { breakOnError: true }));
     if ('timedOut' in res) {
       return { file: job.file, kind: 'error', outcome: 'timeout' };
     }

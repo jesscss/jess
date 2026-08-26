@@ -1,13 +1,14 @@
 {
   "provenance": {
-    "generatedAt": "2026-08-26T10:10:51.549Z",
-    "jessCommit": "9efd656ee0284eb1c52fee6e25d71eadca9b7ed0",
+    "generatedAt": "2026-08-26T11:26:07.747Z",
+    "jessCommit": "6333b59651a4fad0c321928f75874876d3967670",
     "route": "src-path Vitest renderer in packages/jess/test/less/_corpus-slice.test.ts",
     "configuration": {
       "baseOutput": {
         "collapseNesting": true
       },
-      "fixtureConfig": "getTestCases() fixture-local config merged for each expected output"
+      "fixtureConfig": "getTestCases() fixture-local config merged for each expected output",
+      "errorCorpus": "functionMode:error + unitMode:strict; imported helper files excluded"
     },
     "testData": {
       "root": "/Users/matthew/git/oss/less.js/packages/test-data",
@@ -871,57 +872,52 @@
       "detail": "Missing closing parenthesis."
     },
     {
-      "file": "tests-error/parse/imports/import-subfolder2.less",
-      "kind": "error",
-      "outcome": "errored",
-      "detail": "Unexpected Less input after a complete stylesheet."
-    },
-    {
-      "file": "tests-error/parse/imports/subfolder/parse-error-curly-bracket.less",
-      "kind": "error",
-      "outcome": "errored",
-      "detail": "Unexpected Less input after a complete stylesheet."
-    },
-    {
       "file": "tests-error/eval/unit-function.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Invalid function call"
     },
     {
       "file": "tests-error/eval/svg-gradient6.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Invalid function call"
     },
     {
       "file": "tests-error/eval/svg-gradient5.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Invalid function call"
     },
     {
       "file": "tests-error/eval/svg-gradient4.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Invalid function call"
     },
     {
       "file": "tests-error/eval/svg-gradient3.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Invalid function call"
     },
     {
       "file": "tests-error/eval/svg-gradient2.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Invalid function call"
     },
     {
       "file": "tests-error/eval/svg-gradient1.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Invalid function call"
     },
     {
       "file": "tests-error/eval/root-func-undefined-2.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes.js\" could not be loaded: Script path \"/Users/matthew/git/oss/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Function did not return a root node"
     },
     {
       "file": "tests-error/eval/root-func-undefined-1.less",
@@ -992,12 +988,14 @@
     {
       "file": "tests-error/eval/percentage-non-number-argument.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Invalid function call"
     },
     {
       "file": "tests-error/eval/percentage-css-var.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Invalid function call"
     },
     {
       "file": "tests-error/eval/namespacing-4.less",
@@ -1117,31 +1115,31 @@
       "file": "tests-error/eval/functions-9-expression.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin function \"test-expression\" threw"
     },
     {
       "file": "tests-error/eval/functions-8-element.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin function \"test-element\" threw"
     },
     {
       "file": "tests-error/eval/functions-7-dimension.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Function did not return a root node"
     },
     {
       "file": "tests-error/eval/functions-6-condition.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin function \"test-condition\" threw"
     },
     {
       "file": "tests-error/eval/functions-5-color.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Function did not return a root node"
     },
     {
       "file": "tests-error/eval/functions-5-color-2.less",
@@ -1153,55 +1151,55 @@
       "file": "tests-error/eval/functions-4-call.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin function \"test-call\" threw"
     },
     {
       "file": "tests-error/eval/functions-3-assignment.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin function \"test-assignment\" threw"
     },
     {
       "file": "tests-error/eval/functions-15-value.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Function did not return a root node"
     },
     {
       "file": "tests-error/eval/functions-14-url.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin function \"test-url\" threw"
     },
     {
       "file": "tests-error/eval/functions-13-selector.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin function \"test-selector\" threw"
     },
     {
       "file": "tests-error/eval/functions-12-quoted.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Function did not return a root node"
     },
     {
       "file": "tests-error/eval/functions-11-operation.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin function \"test-operation\" threw"
     },
     {
       "file": "tests-error/eval/functions-10-keyword.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Plugin function \"test-keyword\" threw"
     },
     {
       "file": "tests-error/eval/functions-1.less",
       "kind": "error",
       "outcome": "errored",
-      "detail": "Plugin \"../../plugin/plugin-tree-nodes\" could not be loaded: Script path \"/Users/matthew/git/oss/less.js/packages/test-data/plugin/plugin-tree-nodes.js\" is outside jsReadRoot \"/Users/matthew/git/oss/less.js/packages/test-data/tests-error/eval\""
+      "detail": "Function did not return a root node"
     },
     {
       "file": "tests-error/eval/extend-no-selector.less",
@@ -1248,7 +1246,8 @@
     {
       "file": "tests-error/eval/color-func-invalid-color.less",
       "kind": "error",
-      "outcome": "accepted"
+      "outcome": "errored",
+      "detail": "Invalid function call"
     },
     {
       "file": "tests-error/eval/color-func-invalid-color-2.less",
@@ -1278,23 +1277,6 @@
       "kind": "error",
       "outcome": "errored",
       "detail": "Invalid unit arithmetic"
-    },
-    {
-      "file": "tests-error/eval/imports/import-test.less",
-      "kind": "error",
-      "outcome": "accepted"
-    },
-    {
-      "file": "tests-error/eval/imports/import-subfolder1.less",
-      "kind": "error",
-      "outcome": "errored",
-      "detail": "Name not found"
-    },
-    {
-      "file": "tests-error/eval/imports/subfolder/mixin-not-defined.less",
-      "kind": "error",
-      "outcome": "errored",
-      "detail": "Name not found"
     }
   ]
 }
