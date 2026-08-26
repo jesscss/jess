@@ -122,7 +122,9 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
         continue;
       }
       if (!wrap && s.text === '&') {
-        structuredParent ??= structuredParentValue(parent);
+        if (structuredParent === undefined) {
+          structuredParent = structuredParentValue(parent);
+        }
         if (structuredParent !== null) {
           for (let index = 0; index < structuredParent.length; index++) {
             value.push(structuredParent[index]!);
