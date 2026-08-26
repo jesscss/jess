@@ -219,7 +219,11 @@ function main() {
   if (!hasStagedChanges(rootDir)) {
     throw new Error('Alpha refresh produced no staged changes.');
   }
-  run('git', ['commit', '-m', options.message], rootDir);
+
+  /* The snapshot stages the whole dev-to-alpha projection, so a per-commit
+   * staged-file hook would re-lint historical files. The release push-check
+   * and requested dry-run below own validation of the complete snapshot. */
+  run('git', ['commit', '--no-verify', '-m', options.message], rootDir);
   assertClean(rootDir);
 
   if (!options.skipPushCheck) {

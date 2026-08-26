@@ -84,6 +84,9 @@ Blocked from the initial alpha set (do not publish yet):
   then making one release-snapshot commit. `alpha` is a release-snapshot
   branch, not a normal integration branch: do not ordinary-merge or rebase
   `dev` into it.
+- The updater bypasses the ordinary per-commit staged-file hook for that bulk
+  snapshot. It still runs the alpha push-check and, when requested, the full
+  release dry-run against the complete projected tree.
 - Use lockstep versions for publishable packages (Changesets fixed group already configured).
 - Alpha publishes use npm dist-tag `alpha`.
 - For alpha publishes, package versions must include `-alpha.N`.

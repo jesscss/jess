@@ -137,6 +137,29 @@ describe('update-alpha-from-dev release helper', () => {
     expect(readFileSync(path.join(alpha, 'src/large-source.txt'), 'utf8')).toBe(largeSource);
   });
 
+  it('does not run per-commit hooks for the controlled release snapshot', () => {
+    const { alpha, source } = createSandbox();
+    writeFileSync(path.join(source, 'src/engine.mjs'), 'export const source = 3;\n');
+    commitAll(source, 'advance dev');
+    run('git', ['push', '--quiet', 'origin', 'dev'], source);
+
+    const hooks = path.join(alpha, '.git', 'test-hooks');
+    mkdirSync(hooks, { recursive: true });
+    writeFileSync(path.join(hooks, 'pre-commit'), '#!/bin/sh\nexit 86\n', { mode: 0o755 });
+    run('git', ['config', 'core.hooksPath', hooks], alpha);
+
+    const result = runResult(process.execPath, [
+      updateScript,
+      '--skip-install',
+      '--skip-push-check',
+      '--recovery-ref',
+      'alpha-pre-refresh-hook-test'
+    ], alpha);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(path.join(alpha, 'src/engine.mjs'), 'utf8')).toBe('export const source = 3;\n');
+  });
+
   it('refuses to run outside the alpha branch', () => {
     const { source } = createSandbox();
     const result = runResult(process.execPath, [
