@@ -672,6 +672,8 @@ describe('StyleImport', () => {
     const child = stylesheet([
       rule('.child-before', [decl('color', keyword('green'))]),
       variableDeclaration('width', dimension(1, 'px'), { mode: 'declare' }),
+      authoredImport('@import', quoted('"static.css"', 'static.css', '"', false)),
+      authoredImport('@import', quoted('"static.css"', 'static.css', '"', false)),
       authoredImport(
         '@import',
         quoted('"child.css"', 'child.css', '"', false),
@@ -716,8 +718,10 @@ describe('StyleImport', () => {
     const loadedEntry = await context.getTree(entryPath);
     await expect(context.withDocument(loadedEntry.node, () => serialize(loadedEntry.node, { context }))).resolves.toEqual({
       css: '@import "entry.less:entry.css";\n'
+        + '@import "child.less:static.css";\n'
         + '@import "child.less:child.css" (min-width: 1px);\n'
         + '@import "entry.less:entry-after.css";\n'
+        + '@import "child.less:static.css";\n'
         + '@import "child.less:child.css" (min-width: 1px);\n'
         + '.entry-before {\n  color: red;\n}\n'
         + '.child-before {\n  color: green;\n}\n'
