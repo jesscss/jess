@@ -87,12 +87,25 @@ export type BoundSourceResolver = (
 ) => MaybePromise<CallValue> | undefined;
 
 /**
+ * Exceptional sole-rest binding route for an evaluated structural argument.
+ * The returned slots are the semantic rest members; ordinary authored rest
+ * arguments return `undefined` and keep the existing one-argument boundary.
+ */
+export type RestBoundSourceResolver = (
+  value: CallValue
+) => MaybePromise<readonly ValueSlot[]> | undefined;
+
+export interface BoundSourceResolvers {
+  readonly resolve: BoundSourceResolver;
+  readonly resolveRest?: RestBoundSourceResolver;
+}
+
+/**
  * Candidate-local lifetime for provenance side entries created while binding.
  * A candidate's entries must remain available to its guard, but rejected
  * candidates must release them before dispatch returns.
  */
-export interface BoundSourceTracker {
-  readonly resolve: BoundSourceResolver;
+export interface BoundSourceTracker extends BoundSourceResolvers {
   begin(): void;
   finish(): readonly CallValue[] | null;
   discard(keys: readonly CallValue[]): void;
@@ -102,8 +115,9 @@ export interface BoundSourceTracker {
  * Bind a call's args to a definition's params. Returns the binding map, or
  * `null` if the def cannot accept these args (arity / pattern mismatch).
  * Args are resolved in the CALLER frame (Less semantics). Typed authored
- * values, including nested lists, stay structural across the binding boundary;
- * only computed caller values collapse to their resolved literal bytes.
+ * values, including nested lists, stay structural across the binding boundary.
+ * Dialect adapters may retain evaluated structure beside the eager snapshot;
+ * other computed caller values collapse to their resolved literal bytes.
  */
 /**
  * Mutable binding state. Allocated ONLY when a slot actually suspends: the
@@ -124,7 +138,7 @@ interface BindState {
   readonly resolveCaller: ValueResolver;
   readonly resolveDefault: DefaultResolver | undefined;
   readonly resolveDefaultBlock: DefaultBlockResolver | undefined;
-  readonly resolveBoundSource: BoundSourceResolver | undefined;
+  readonly boundSources: BoundSourceResolvers | undefined;
   pi: number;
 }
 
@@ -134,7 +148,7 @@ export function bindArgs(
   resolveCaller: ValueResolver,
   resolveDefault?: DefaultResolver,
   resolveDefaultBlock?: DefaultBlockResolver,
-  resolveBoundSource?: BoundSourceResolver
+  boundSources?: BoundSourceResolvers
 ): MaybePromise<Map<string, CallValue> | null> {
   const params = def.params;
   const positional: CallArg[] = [];
@@ -182,11 +196,11 @@ export function bindArgs(
     let argVal: MaybePromise<CallValue>;
     if (p.name !== undefined && named.has(p.name)) {
       const source = named.get(p.name)!.value;
-      argVal = (p.pattern === undefined ? resolveBoundSource?.(source, bound, def, false) : undefined)
+      argVal = (p.pattern === undefined ? boundSources?.resolve(source, bound, def, false) : undefined)
         ?? resolveEager(source, resolveCaller);
     } else if (pi < positional.length) {
       const source = positional[pi++]!.value;
-      argVal = (p.pattern === undefined ? resolveBoundSource?.(source, bound, def, false) : undefined)
+      argVal = (p.pattern === undefined ? boundSources?.resolve(source, bound, def, false) : undefined)
         ?? resolveEager(source, resolveCaller);
     } else if (p.default !== undefined) {
       /*
@@ -195,7 +209,7 @@ export function bindArgs(
        * scope (`@parameter: @parameterDefault` reads the def-scope
        * `@parameterDefault`, not a same-name caller var) — not the caller frame.
        */
-      argVal = (p.pattern === undefined ? resolveBoundSource?.(p.default, bound, def, true) : undefined)
+      argVal = (p.pattern === undefined ? boundSources?.resolve(p.default, bound, def, true) : undefined)
         ?? resolveEagerDefault(p.default, bound, def, resolveCaller, resolveDefault, resolveDefaultBlock);
     } else {
       return null; // required slot unfilled
@@ -204,7 +218,8 @@ export function bindArgs(
       const at = k;
       const carried: BindState = {
         def, params, fixedParams, positional, named, hasRest, restIndex,
-        bound, argumentSlots, resolveCaller, resolveDefault, resolveDefaultBlock, resolveBoundSource, pi
+        bound, argumentSlots, resolveCaller, resolveDefault, resolveDefaultBlock,
+        boundSources, pi
       };
       return argVal.then(settled => resumeFixed(carried, at, settled));
     }
@@ -216,7 +231,8 @@ export function bindArgs(
         const at = k;
         const carried: BindState = {
           def, params, fixedParams, positional, named, hasRest, restIndex,
-          bound, argumentSlots, resolveCaller, resolveDefault, resolveDefaultBlock, resolveBoundSource, pi
+          bound, argumentSlots, resolveCaller, resolveDefault, resolveDefaultBlock,
+          boundSources, pi
         };
         const settled = argVal;
         return patBytes.then(pat => (valueBytes(settled) === pat ? bindFixedFrom(carried, at + 1) : null));
@@ -245,7 +261,8 @@ export function bindArgs(
   }
   return bindRest({
     def, params, fixedParams, positional, named, hasRest, restIndex,
-    bound, argumentSlots, resolveCaller, resolveDefault, resolveDefaultBlock, resolveBoundSource, pi
+    bound, argumentSlots, resolveCaller, resolveDefault, resolveDefaultBlock,
+    boundSources, pi
   });
 }
 
@@ -280,14 +297,14 @@ function bindFixedFrom(st: BindState, from: number): MaybePromise<Map<string, Ca
     let argVal: MaybePromise<CallValue>;
     if (p.name !== undefined && st.named.has(p.name)) {
       const source = st.named.get(p.name)!.value;
-      argVal = (p.pattern === undefined ? st.resolveBoundSource?.(source, st.bound, st.def, false) : undefined)
+      argVal = (p.pattern === undefined ? st.boundSources?.resolve(source, st.bound, st.def, false) : undefined)
         ?? resolveEager(source, st.resolveCaller);
     } else if (st.pi < st.positional.length) {
       const source = st.positional[st.pi++]!.value;
-      argVal = (p.pattern === undefined ? st.resolveBoundSource?.(source, st.bound, st.def, false) : undefined)
+      argVal = (p.pattern === undefined ? st.boundSources?.resolve(source, st.bound, st.def, false) : undefined)
         ?? resolveEager(source, st.resolveCaller);
     } else if (p.default !== undefined) {
-      argVal = (p.pattern === undefined ? st.resolveBoundSource?.(p.default, st.bound, st.def, true) : undefined)
+      argVal = (p.pattern === undefined ? st.boundSources?.resolve(p.default, st.bound, st.def, true) : undefined)
         ?? resolveEagerDefault(p.default, st.bound, st.def, st.resolveCaller, st.resolveDefault, st.resolveDefaultBlock);
     } else {
       return null;
@@ -330,11 +347,18 @@ function bindRest(st: BindState): MaybePromise<Map<string, CallValue> | null> {
     return leftover > 0 ? null : finishBind(st);
   }
   const restParam = st.params[st.restIndex]!;
+  if (leftover === 1 && st.boundSources?.resolveRest !== undefined) {
+    const source = st.positional[st.pi]!.value;
+    const resolved = st.boundSources.resolveRest(source);
+    if (resolved !== undefined) {
+      return mapMaybe(resolved, slots => finishRest(st, restParam, slots));
+    }
+  }
   const restSlots: ValueSlot[] = [];
   const take = (index: number): MaybePromise<Map<string, CallValue> | null> => {
     for (let i = index; i < st.positional.length; i++) {
       const source = st.positional[i]!.value;
-      const value = st.resolveBoundSource?.(source, st.bound, st.def, false)
+      const value = st.boundSources?.resolve(source, st.bound, st.def, false)
         ?? resolveEager(source, st.resolveCaller);
       if (isThenable(value)) {
         const at = i;
@@ -351,21 +375,34 @@ function bindRest(st: BindState): MaybePromise<Map<string, CallValue> | null> {
       }
       restSlots.push(value);
     }
-    if (restParam.name !== undefined) {
-      /*
-       * A rest is a list of CALL ARGUMENTS, not a flattened value string. A sole
-       * authored `a b c` argument consequently remains one nested space-list,
-       * while comma/semicolon call groups retain their distinct argument slots
-       * for `length()` and `extract()`.
-       */
-      st.bound.set(restParam.name, restSlots);
-    }
-    for (const slot of restSlots) {
-      st.argumentSlots.push(slot);
-    }
-    return finishBind(st);
+    return finishRest(st, restParam, restSlots);
   };
   return take(st.pi);
+}
+
+function finishRest(
+  st: BindState,
+  restParam: MixinDefinition['params'][number],
+  restSlots: readonly ValueSlot[]
+): Map<string, CallValue> {
+  if (restParam.name !== undefined) {
+    /*
+     * A rest is a list of CALL ARGUMENTS, not a flattened value string. A sole
+     * authored `a b c` argument consequently remains one nested space-list,
+     * while comma/semicolon call groups retain their distinct argument slots.
+     * A sole evaluated structural argument may arrive as its semantic members
+     * through `resolveRest`; that distinction is parser/eval-owned.
+     */
+    st.bound.set(restParam.name, restSlots);
+  }
+  if (st.argumentSlots.length === 0) {
+    st.bound.set('arguments', restSlots);
+    return st.bound;
+  }
+  for (const slot of restSlots) {
+    st.argumentSlots.push(slot);
+  }
+  return finishBind(st);
 }
 
 function finishBind(st: BindState): Map<string, CallValue> {
@@ -566,7 +603,7 @@ export function selectDefinitions(
     for (; index < candidates.length; index++) {
       const def = candidates[index]!;
       boundSources.begin();
-      const bound = bindArgs(def, call, resolveCaller, resolveDefault, resolveDefaultBlock, boundSources.resolve);
+      const bound = bindArgs(def, call, resolveCaller, resolveDefault, resolveDefaultBlock, boundSources);
       if (isThenable(bound)) {
         const at = index;
         return bound.then((bindings) => {

@@ -272,6 +272,10 @@ const expectedFailureFixtures = new Map<string, string>([
     'OPEN F7(a): property-name interpolation renders byte-identically except that repeated `@{p}@{p}` loses the `/* foo */` source layout carried inside each complex interpolated value; interpolation-splice layout preservation awaits an owner ruling'
   ],
   [
+    'tests-unit/extract-and-length/extract-and-length.less',
+    'OPEN V17 typed structural mixin bindings now preserve nested list grouping through fixed, variadic, defaulted, forwarded, spread, and @arguments paths; the sole remaining mismatch is source-layout spacing on the custom property `--empty-value:   extract(~\'\', 1)` (jess emits one space after the colon)'
+  ],
+  [
     'tests-unit/variables/variables.less',
     'NOT a jess bug: `(@onePixel / @onePixel)` = `1px / 1px` — jess emits `1` (units cancel), which is the v5 ruling (RESOLVED-SEMANTICS-AND-NAMING §"2px / 1px → 2 — units cancel"). The golden encodes stale lessc-4.x `1px` (keeps left unit). Graduates once the owner v5 golden is updated to `1`'
   ],

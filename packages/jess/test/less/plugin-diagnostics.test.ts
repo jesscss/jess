@@ -347,7 +347,7 @@ describe('the less-compat tree shim', () => {
     }
   }, 30000);
 
-  it('keeps eager list semantics and bytes unchanged when a plugin is unrelated', async () => {
+  it('keeps typed list semantics and authored bytes independent of an unrelated plugin', async () => {
     const pluginSource = 'functions.add("noop", function () { return new tree.Anonymous("ok"); });';
     const body = [
       '@layout-map: alpha,',
@@ -382,8 +382,8 @@ describe('the less-compat tree shim', () => {
       expect(candidate.css).toBe(control.css);
       expect(candidate.css).toContain('result: preserved');
       expect(candidate.css).toContain('value: alpha,\n    beta');
-      expect(candidate.css).toContain('length: 1');
-      expect(candidate.css).toContain('second: extract(');
+      expect(candidate.css).toContain('length: 2');
+      expect(candidate.css).toContain('second: beta');
     }
   }, 30000);
 

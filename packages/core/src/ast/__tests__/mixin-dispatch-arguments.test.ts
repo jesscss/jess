@@ -116,7 +116,7 @@ describe('mixin @arguments (vs less@4.6.3)', () => {
       resolve,
       undefined,
       undefined,
-      route
+      { resolve: route }
     );
 
     expect(bound?.get('arguments')).toEqual([sourceA, defaultB, sourceC]);

@@ -3834,91 +3834,118 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: 2026-08-26 Less scalar function-argument boundary hot-path
-  correction. The emitted-CSS rule remains OPEN V16; this follow-up removes
-  parser work that the already-landed semantic correction left behind. It is
+- Latest pass: 2026-08-26 Less eager mixin structural-value retention. The
+  emitted-CSS and typed-consumer rule is OPEN V17; this is a semantics repair,
   not a speed claim.
-- Architecture surface: one private Less grammar assertion, its AST/CST contract
-  matrix, and the parser/performance architecture records. Core AST nodes,
-  reducers, evaluator, serializer, output buffer, package exports, public Less
-  behavior, and owner-maintained fixture bytes are unchanged.
-- Separation/duplication: `ArgumentValueSequence` already stops at its typed
-  condition boundary and lets `FunctionArguments` consume the delimiter.
-  `FunctionScalarArgument` still needs a boundary assertion so `MathSum` cannot
-  claim a prefix of a larger value sequence, but it no longer positively parses
-  comma, semicolon, close, or their trivia. The enclosing call's ambient
-  `functionTrivia` reaches the assertion first; the assertion rejects one
-  non-boundary code unit or end-of-input; `FunctionArguments` remains the sole
-  delimiter owner.
-- New traversal and complexity: none. On a successful scalar boundary the exact
-  parent generated parser entered a positive lookahead call ladder, published
-  one delimiter terminal, and rolled it back. The candidate performs one
-  capture-free recognizer call after the enclosing trivia scan. The enclosing
-  list then consumes its delimiter once on its existing path. There is no source
-  reparse, sibling scan, list walk, restart-at-zero loop, or recursive traversal.
-- New node/materialization: negative. The parent successful assertion allocated
-  one throwaway delimiter CST leaf plus its `{start,end}` span inside the active
-  node capture, then rolled that publication back. The candidate assertion
-  allocates neither object and publishes no trivia or child row. Relative to
-  exact parent `85a793530`, the built AST artifact is 11,399 bytes smaller and
-  the CST artifact is 563 bytes smaller. No empty token, wrapper node, side
-  map/set, copied array, or Error is added.
-- Parser/output path: the AST/CST matrix covers comma, semicolon, and close
-  across adjacent, newline, block-comment, and line-comment trivia. The
-  upstream-shaped multiline `svg-gradient` final stop is a
-  `FunctionValueSequence`, never `FunctionCondition`, and the public compiler
-  emits the data URI. Existing condition, assignment, and arithmetic controls
-  remain on their prior routes.
-- Helper/API/metadata surface: no helper, export, public type, AST/CST field,
-  source span, layout table, or metadata mutation is introduced. One existing
-  private const changes implementation and receives complete JSDoc.
-- Review-flagged diff tokens: [grammar assertion] positive `peek`/delimiter
-  tables become `not(regex(/[^,;)]|$/))`, a fixed one-code-unit-or-end negative
-  recognizer; [node/materialization] one terminal leaf/span publication and
-  rollback are deleted from each successful scalar assertion; [source
-  scan/reparse] none; [public API] none.
-- Behavior evidence: focused Less AST/CST grammar tests pass 219/219, including
-  direct exported-rule AST and CST rejection at end-of-input, and the
-  unchanged focused public Less function semantics pass 18/18. A same-install,
-  same-757-entry exact-parent/candidate oracle is byte-identical with unchanged
-  throw sets (AST 122, CST 0), AST aggregate
-  `d664b71097eb3bb253aca0e5e4c6c405b1357c1135eb1d42e4616065e2cb45a8`, CST
-  aggregate `b64abe78d7495b7fb2502eb6650aa510031d8957d767224106cb10a7f0206301`,
-  and zero named movers. The one-sided source marker is present once only in the
-  candidate (`not(regex(/[^,;)]|$/))`) while the retired positive delimiter table
-  is present once only in the parent, proving the comparison is not vacuous. The
-  checked-in oracle baseline is stale by 42 corpus entries and reports unrelated
-  movement, so it is recorded as red but is not used to attribute this change.
-  `build:release`,
-  `check:macro` (zero fallbacks for all four parsers),
-  `verify:compose-integrity`, `verify:aggressive-cutting-review`,
-  `check:guardrails`, `git diff --check`, `all-less` 111/111, and the AST-v2
-  production ratchet 4/4 pass. The full Less parser suite has one inherited red
-  test and 739 passing tests: the public dynamic-import assertion expects lexical
-  placement while current `origin/dev` hoists that CSS terminal. A fresh clean
-  parent build reproduces the identical failure, so it is not charged to V16.
-- Performance evidence: no speed claim. Exact generated artifact sizes and
-  deterministic operation/allocation counts above are load-bearing. A final
-  same-directory interleaved parent A/B (`4` rounds x `3` processes, warmup `8`,
-  timed `25`) is inconclusive: `benchmark.less` AST `22.957 -> 22.951 ms`
-  (`-0.0%`) and CST `29.985 -> 29.641 ms` (`-1.1%`); Bootstrap AST/CST
-  `-1.6%/-2.0%`; the available CSS controls move from `-2.1%` to `0.0%`.
-  The optional linked unit corpus was unavailable in the disposable final
-  measurement worktree and is therefore not claimed. The uniform direction of
-  the controls shows run-order/environment bias rather than an attributable
-  parser win, so timing supplies no verdict. The July 31 cleanup reference
-  `131cd9d1b` remains unbuildable
-  against the current canonical AST factories. The oldest buildable cleanup
-  source is `4fb05c560` (2026-08-12); a fresh reference tree required
-  `awaitable-pipe`/core before parser builds so `@jesscss/core/ast` declarations
-  existed. Against it, `benchmark.less` is `+2.3%/-1.7%` and the unit corpus is
-  `-0.3%/-2.5%` (AST/CST). The unchanged historical CSS surface reads
-  `+11.6%/+8.2%` on its large corpus, proving accumulated toolchain/worktree
-  drift rather than attributing that movement to this Less-only const. The
-  candidate uses Parseman `0.49.0`; the reference uses `0.48.1`; both use Node
-  `v25.9.0` and identical Less/CSS corpus hashes. The same-process current ratio
-  is Jess AST / lessc 4.6.3 `4.03x` (15 samples, p05 `3.397`, p95 `4.357`). No
-  long-range speed claim is made.
+- Architecture surface: core mixin argument binding/selection, AST-v2 typed
+  evaluation, Less fixture classification, and focused public compiler tests.
+  Grammar, parser artifacts, AST/CST schemas, output buffer, Context, plugin
+  API, package exports, and owner-maintained `.css` fixtures are unchanged.
+- Separation/duplication: the eager Less binding remains one `Any` byte snapshot.
+  The existing sparse `mixinUrlBindings` map remains the V15 owner for URL-bearing
+  groups visible to every typed consumer. A separate sparse
+  `mixinValueBindings` map retains non-URL grouping only for function-argument
+  and raw-plugin projection. Guards, comparisons, and ordinary declarations
+  continue to read the eager bytes. Direct self-contained typed values continue
+  to bind by reference. No function name or plugin-registration state gates
+  either fact, and URL values retain their one-transform path.
+- Traversal and complexity: `classifyMixinValuePart` makes one structural pass
+  over each argument source occurrence already admitted to mixin dispatch. It
+  returns immediately on a computed/canonical member and never serializes or
+  scans bytes. A carried binding is then an O(1) map read. An authored structural
+  alias performs one typed evaluation for grouping and the existing eager byte
+  evaluation for spelling; a computed source performs one typed evaluation and
+  emits that result without re-running the callable. Explicit-source results are
+  cached in the dispatch tracker, so C overload candidates still evaluate that
+  source once while each candidate receives its own cleanup-owned snapshot.
+  Direct variable classification and detached-block substitution share one
+  scope-chain lookup. Function and plugin argument evaluation thread one scalar
+  projection flag through the canonical typed evaluator, so alias/list/block/map
+  recursion reads the activation map in O(1) without a parallel evaluator or
+  retained-group rewalk. Guard evaluation leaves that flag false. A sole evaluated
+  structural rest source performs one indexed pass over its M top-level members;
+  N arguments or M members remain O(N+M), with no restart-at-zero or nested
+  candidate scan.
+- Ordinary lane: scalar/non-structural arguments allocate no new object, array,
+  map, set, node, wrapper, or closure. EvalCtx adds one always-present nullable
+  `mixinValueBindings` slot, retaining one fixed shape; the existing URL slot is
+  unchanged. Feature Frames add the non-URL map only when selected structural
+  bindings require it. `BindState` replaces its one resolver field
+  with one resolver-bundle field; its field count and order stay fixed. An
+  ordinary variadic bind adds one `leftover === 1` plus absent-resolver check,
+  then follows the prior rest loop. Plugin-only tracking stores an undefined
+  rest resolver and allocates no extra per-dispatch rest closure.
+- Feature allocations: the first eligible explicit source is stored directly in
+  one exceptional call wrapper with its integer mode; a second distinct source
+  lazily allocates one mode `Map` (the prior URL implementation used a `Set`). A
+  positive candidate uses the existing tracker record/lifecycle and one candidate
+  key array. Each policy category present allocates at most one render-staging
+  `Map` and one selected-activation `Map`: URL-bearing values use the pre-existing
+  URL pair, non-URL structural values use the new pair, and an activation carrying
+  both may own both. Transfer and rejected cleanup probe both policies in the same
+  existing key pass. A fixed/default
+  binding still creates one eager `Any` snapshot. The first explicit source's
+  evaluated group and authored bytes use scalar tracker caches; a second distinct
+  source may lazily allocate one evaluated-group `Map` and, only when authored
+  spelling is required, one byte-result `Map`. A sole structural rest with M
+  semantic members creates exactly one semantic slots array, M eager `Any`
+  snapshots, and M carrier entries, replacing the one incorrect flattened
+  snapshot. A rest-only activation transfers that slots array directly to both
+  the rest binding and `@arguments`; when preceding parameter slots exist, the
+  existing M-member append is required to form their combined `@arguments` list.
+  No WeakMap, Error, per-entry tuple object, AST subtree copy, or source string is
+  added.
+- Render/output path: ordinary declaration emission continues to read the eager
+  bytes. `evalTyped(Any)` first takes one scalar projection branch: function/raw
+  plugin arguments may read the non-URL carrier, while other typed consumers skip
+  it; the existing URL lookup remains global under V15. All emitted strings still
+  reach the canonical output writer; structure is never recovered from bytes.
+- Helper/API/metadata surface: `BoundSourceResolvers` and
+  `RestBoundSourceResolver` are core-internal module types, not package exports.
+  `classifyMixinValuePart`, `snapshotMixinValue`, the canonical typed evaluator's
+  projection flag, and the sole-rest resolver own classification, snapshot
+  construction, consumer visibility, and rest expansion once.
+  Metadata mutation is limited to the existing render-local candidate/activation
+  maps and key cleanup; AST nodes, parents, spans, source roots, and document
+  metadata are not mutated.
+- Review-flagged diff tokens: [recursive traversal] one source-structure
+  classification pass with early canonical exit; [array] one semantic M-member
+  rest array only on the repaired lane; [map] the existing sparse URL carrier
+  lifetime plus one sparse non-URL carrier lifetime, one second-source mode map, and up
+  to two lazy second-source result maps as inventoried above;
+  [node construction] existing eager `Any`, or M required member snapshots for
+  sole structural rest; [array spread/copy] none; [WeakMap/Error/source scan]
+  none; [public API] none.
+- Behavior evidence: focused core mixin binding passes 12/12. Focused Jess Less
+  functions, rest arguments, and plugin diagnostics pass 40 active tests with 21
+  pre-existing todos. The upstream `extract-and-length` fixture now differs from
+  its maintained golden on exactly one independent custom-property spacing line;
+  all fixed, variadic, defaulted, forwarded, spread, `@arguments`, and `.md-3D`
+  structural list assertions match. The active expected-failure reason names only
+  that remaining source-layout defect.
+- Build evidence: `pnpm --filter @jesscss/core build` passes. Full release,
+  corpus, ratchet, guardrail, and adversarial review evidence is recorded at the
+  batch boundary before landing.
+- Performance evidence: no timing or neutrality claim. The deterministic
+  traversal/allocation counts above are the evidence; the repository timing
+  harness is not used to waive compiler-path defects.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": ["ValueSlot-array-evaluation-and-authored-layout", "List-value-separator-and-Block-delimiter-facts", "reference-index-and-For-array-access", "Less-lazy-color-call-demand-boundary", "defineFunction-typed-positional-named-and-lazy-binding", "mixin-dispatch-ValueSlot-argument-resolution", "ValueLayout-provenance-side-table", "preserve-mode-calc-result-composition", "extend-composition-plan-and-fixpoint-solve", "Less-eager-bare-slash-precedence-and-parens-division", "recursive-ValueGroup-final-unit-validation", "async-declaration-dedup-output-order"],
+    "why": "OPEN V17 keeps the existing eager Less bytes while retaining parser/evaluator-owned grouping at function and raw-plugin argument boundaries. A separate sparse non-URL carrier leaves V15 URL visibility and eager guard/comparison/declaration behavior unchanged and introduces neither a second evaluator nor an output route.",
+    "dangerTokensJustification": "One early-exit structural source pass classifies each explicit occurrence, and one dispatch-local scalar/lazy-map cache evaluates each explicit source once across overload candidates. Function/raw-plugin arguments thread one scalar projection flag through the canonical typed evaluator; guards leave it false. Later fixed/default/forwarded/spread/rest consumers use O(1) binding-map reads; transfer and cleanup probe URL and non-URL maps in the same key pass. Rest-only expansion transfers one semantic member array directly, while a preceding fixed-parameter prefix requires one append into the combined @arguments list. There is no source scan, reparse, WeakMap, tuple object, or pass-through clone.",
+    "behaviorEvidence": "Focused core mixin binding 12/12; focused Jess Less rest/plugin tests 16/16; all-less 112/112 including extract-and-length and mixins-guards; extract-and-length retains only one independent custom-property spacing mismatch.",
+    "buildEvidence": "pnpm --filter @jesscss/core build passes; final batch gates are recorded before landing.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 44.031520500000056, "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781", "outputBytes": 122534}
+  }
+]
+```
 - Prior landed pass: 2026-08-25 imported reference-mixin body trivia ownership. This
   is a bounded emitted-CSS correction under SETTLED A7, G28, and N6, not a speed
   or neutrality claim.

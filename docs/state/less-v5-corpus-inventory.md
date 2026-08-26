@@ -63,6 +63,11 @@ above:
   active mismatch is only intentional authored multiline-value preservation)
 - `tests-unit/at-rule-variable-deprecated/at-rule-variable-deprecated.less`
 - `tests-unit/color-functions/operations.less`
+- `tests-unit/extract-and-length/extract-and-length.less` (OPEN V17 structural
+  mixin binding is implemented: fixed/rest/default/forwarding/spread and
+  `@arguments` preserve nested list grouping. The active mismatch is now only
+  source-layout spacing on `--empty-value:   extract(~'', 1)`; Jess emits one
+  space after the custom-property colon.)
 - `tests-unit/functions/functions.less`
 - `tests-unit/import/import-inline.less`
 - `tests-unit/import/import-reference.less` (A7 reference visibility now works
