@@ -30,7 +30,7 @@ memory. The registry dispositions below are derived the same way.
 The separate full-corpus report now uses the same strict error-surfacing
 contract as the executable error gate (`functionMode:error`, `unitMode:strict`),
 and excludes imported helper files from standalone error-case discovery. At
-`6333b5965` it finds no unclassified render non-pass: all 38 are active expected
+`4eed988b0` it finds no unclassified render non-pass: all 38 are active expected
 failures, explicit `invalidLess` exclusions, or recursively nested deferred
 source-map/debug-output cases. The error corpus has 94 expected errors from 95
 standalone cases; the sole accepted case is the already-recorded v5 rule that
@@ -235,6 +235,24 @@ oracle moves only the two physical copies of the upstream svg-gradient fixture.
 The remote import fixture is tracked in
 [`less-v5-release-plan.md`](../process/less-v5-release-plan.md) as a deferred
 Phase C import/security feature, not as a flaky expected failure.
+
+### Post-N10 actionable boundary (2026-08-26)
+
+The fresh full-corpus run at `4eed988b0` has no unclassified render non-pass and
+does not expose another owner-independent implementation batch in the current
+alpha scope. The remaining capability families have explicit boundaries rather
+than hidden fixture debt:
+
+- remote imports require a network/IO allowlist and security policy;
+- source maps require the still-open emit-time provenance model and a map-artifact
+  API/harness;
+- legacy pre/post-processors, visitors, and file managers are Phase E host APIs;
+- browser compilation is excluded from alpha.1; and
+- compressed output remains deferred under OPEN O3.
+
+This boundary does not reclassify any owner-maintained fixture and does not infer
+selector-list distribution. Less `each()` and Sass `@each` already share the core
+`For` construct as the explicit distribution mechanism.
 
 ### OPEN N10 document-root import facts
 

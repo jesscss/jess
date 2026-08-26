@@ -1,7 +1,7 @@
 {
   "provenance": {
-    "generatedAt": "2026-08-26T11:26:07.747Z",
-    "jessCommit": "6333b59651a4fad0c321928f75874876d3967670",
+    "generatedAt": "2026-08-26T14:23:47.345Z",
+    "jessCommit": "4eed988b05224d8c489ac954362b2b16cc112a70",
     "route": "src-path Vitest renderer in packages/jess/test/less/_corpus-slice.test.ts",
     "configuration": {
       "baseOutput": {

@@ -6,8 +6,8 @@ Reporting-only — outcomes measured, not gated. Each slice ran in an isolated, 
 
 ## Run provenance
 
-- Generated: `2026-08-26T11:26:07.747Z`
-- Jess commit: `6333b59651a4fad0c321928f75874876d3967670`
+- Generated: `2026-08-26T14:23:47.345Z`
+- Jess commit: `4eed988b05224d8c489ac954362b2b16cc112a70`
 - Route: src-path Vitest renderer in packages/jess/test/less/_corpus-slice.test.ts
 - Configuration: base `output.collapseNesting: true`; getTestCases() fixture-local config merged for each expected output
 - Error configuration: functionMode:error + unitMode:strict; imported helper files excluded
