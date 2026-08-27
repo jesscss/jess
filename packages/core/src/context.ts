@@ -311,6 +311,7 @@ export class DocumentContext {
   get options(): Readonly<ResolvedOptions> {
     return this._options;
   }
+
   isModule: boolean | undefined;
   file?: DocumentContextOptions['file'];
   plugin?: PluginInterface;
