@@ -68,6 +68,19 @@ function isBareAmp(seg: SelectorPart): boolean {
   return s.length === 1 && s[0]!.t === 'text' && s[0]!.text === '&';
 }
 
+/** The single-compound parent's structured selector value, or null when its
+ * substitution can stay on the existing text-only path. Called only after a fused
+ * ampersand is found; bare `&` and amp-free branches never pay this scan. */
+function structuredParentValue(parent: Branch): Simple[] | null {
+  const value = parent.segments[0]!.compound.value;
+  for (let index = 0; index < value.length; index++) {
+    if (value[index]!.t === 'is') {
+      return value;
+    }
+  }
+  return null;
+}
+
 /**
  * Substitute every `&` in `child` against the parent selector, producing a branch
  * whose `bnd` records each output segment's origin. A STANDALONE `&` (its own
@@ -75,12 +88,15 @@ function isBareAmp(seg: SelectorPart): boolean {
  * `bnd = parentBnd + 1` — so a multi-segment parent (`.outer .mid`) stays matchable
  * per segment. A `&` FUSED into a compound alongside other value keeps the prior
  * behavior: under a MULTI-segment parent it wraps in `:is(...)` so the compound
- * stays one element target (`.f&` → `.f:is(.outer .mid)`); under a single-compound
- * parent it substitutes the parent's bare text. Fused/own segments are `bnd = 0`.
+ * stays one element target (`.f&` → `.f:is(.outer .mid)`). A single-compound
+ * structured parent keeps its `:is()` graft typed so the extend matcher can still
+ * cross its arms; an ordinary text-only parent keeps the direct string substitution.
+ * Fused/own segments are `bnd = 0`.
  */
 function substituteAmp(child: Branch, parent: Branch): Branch {
-  const parentStr = branchText(parent);
   const parentMultiSeg = parent.segments.length > 1;
+  let parentStr: string | undefined;
+  let structuredParent: Simple[] | null | undefined;
   const outSegs: SelectorPart[] = [];
   const outBnd: number[] = [];
   for (const seg of child.segments) {
@@ -101,23 +117,37 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
     const wrap = parentMultiSeg && fused;
     const value: Simple[] = [];
     for (const s of seg.compound.value) {
-      if (s.t === 'text' && s.text.includes('&')) {
-        if (wrap) {
-          // Splice `:is(parent)` in place of each `&`, preserving any fused text.
-          const parts = s.text.split('&');
-          for (let i = 0; i < parts.length; i++) {
-            if (parts[i]!.length > 0) {
-              value.push({ t: 'text', text: parts[i]! });
-            }
-            if (i < parts.length - 1) {
-              value.push(isSimple([parent]));
-            }
-          }
-        } else {
-          value.push({ t: 'text', text: s.text.split('&').join(parentStr) });
-        }
-      } else {
+      if (s.t !== 'text' || !s.text.includes('&')) {
         value.push(cloneSimple(s));
+        continue;
+      }
+      if (!wrap && s.text === '&') {
+        if (structuredParent === undefined) {
+          structuredParent = structuredParentValue(parent);
+        }
+        if (structuredParent !== null) {
+          for (let index = 0; index < structuredParent.length; index++) {
+            value.push(structuredParent[index]!);
+          }
+          continue;
+        }
+      }
+      if (!wrap) {
+        parentStr ??= branchText(parent);
+        value.push({ t: 'text', text: s.text.split('&').join(parentStr) });
+        continue;
+      }
+
+      // Splice the multi-segment parent in place of each `&`, preserving fused text.
+      const parts = s.text.split('&');
+      for (let i = 0; i < parts.length; i++) {
+        if (parts[i]!.length > 0) {
+          value.push({ t: 'text', text: parts[i]! });
+        }
+        if (i === parts.length - 1) {
+          continue;
+        }
+        value.push(isSimple([parent]));
       }
     }
 
@@ -241,9 +271,11 @@ function rootLevel(level: Level): Branch[] {
  * Compose an ancestor path (outermost → own local) into a flat selector list,
  * wrapping a multi-branch inner level in `:is(...)` before composing (so the
  * parent is not distributed across the group). Every returned branch carries its
- * per-segment `bnd` origin.
+ * per-segment `bnd` origin. `hidden` stamps each intermediate selector-list branch
+ * while it is still structurally available, so a later `:is()` parent token retains
+ * per-arm reference visibility without changing authored structured pseudos.
  */
-export function composePath(levels: Level[]): Branch[] {
+export function composePath(levels: Level[], hidden = false): Branch[] {
   /*
    * [nesting] Peel the leading levels that root-normalize to nothing (a parentless
    * `&` guard block wrapping the real rules). The first level that survives IS the
@@ -255,6 +287,11 @@ export function composePath(levels: Level[]): Branch[] {
   for (; i < levels.length; i++) {
     result = rootLevel(levels[i]!);
     if (result.length > 0) {
+      if (hidden) {
+        for (let branch = 0; branch < result.length; branch++) {
+          result[branch]!.hidden = true;
+        }
+      }
       i++;
       break;
     }
@@ -264,7 +301,13 @@ export function composePath(levels: Level[]): Branch[] {
      * Every level was a bare root `&` (the guard block itself is the subject).
      * Keep the authored innermost level rather than resolving to nothing.
      */
-    return levels[levels.length - 1]!.map(cloneBranch);
+    result = levels[levels.length - 1]!.map(cloneBranch);
+    if (hidden) {
+      for (let branch = 0; branch < result.length; branch++) {
+        result[branch]!.hidden = true;
+      }
+    }
+    return result;
   }
 
   /*
@@ -273,6 +316,11 @@ export function composePath(levels: Level[]): Branch[] {
    */
   for (; i < levels.length; i++) {
     result = composeLevel(levels[i]!, result);
+    if (hidden) {
+      for (let branch = 0; branch < result.length; branch++) {
+        result[branch]!.hidden = true;
+      }
+    }
   }
   return result;
 }

@@ -139,4 +139,41 @@ describe('preserveRecoveryManifestVersion', () => {
       exports: { ['.']: './lib/index.js' }
     });
   });
+
+  it('assigns the recovery lockstep version to a package promoted from private', () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'jess-alpha-restore-promoted-'));
+    temporaryRoots.push(root);
+    writeManifest(root, { name: '@fixture/package', version: '2.0.0-alpha.10' });
+    writeManifest(root, {
+      name: '@fixture/promoted',
+      private: true,
+      version: '0.0.0'
+    }, 'promoted');
+    run('git', ['init', '--quiet'], root);
+    run('git', ['config', 'user.email', 'test@example.invalid'], root);
+    run('git', ['config', 'user.name', 'Release Test'], root);
+    run('git', ['add', '.'], root);
+    run('git', ['commit', '--quiet', '-m', 'recovery'], root);
+
+    writeManifest(root, {
+      name: '@fixture/promoted',
+      version: '2.0.0-alpha.5',
+      publishConfig: { access: 'public' }
+    }, 'promoted');
+    run('git', ['add', '.'], root);
+
+    const script = path.resolve('scripts/release/restore-alpha-package-versions.mjs');
+    const restored = spawnSync(process.execPath, [script, '--from', 'HEAD', '--stage'], {
+      cwd: root,
+      encoding: 'utf8'
+    });
+
+    expect(restored.status, restored.stderr).toBe(0);
+    expect(restored.stdout).toMatch(/packages\/promoted\/package\.json: promoted from private; 2\.0\.0-alpha\.5 -> 2\.0\.0-alpha\.10/u);
+    expect(JSON.parse(run('git', ['show', ':packages/promoted/package.json'], root))).toEqual({
+      name: '@fixture/promoted',
+      version: '2.0.0-alpha.10',
+      publishConfig: { access: 'public' }
+    });
+  });
 });

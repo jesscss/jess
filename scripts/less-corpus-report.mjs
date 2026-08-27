@@ -48,7 +48,8 @@ function corpusProvenance() {
     route: 'src-path Vitest renderer in packages/jess/test/less/_corpus-slice.test.ts',
     configuration: {
       baseOutput: { collapseNesting: true },
-      fixtureConfig: 'getTestCases() fixture-local config merged for each expected output'
+      fixtureConfig: 'getTestCases() fixture-local config merged for each expected output',
+      errorCorpus: 'functionMode:error + unitMode:strict; imported helper files excluded'
     },
     testData: {
       root: testDataRoot,
@@ -161,12 +162,35 @@ while (queue.length) {
  */
 const known = new Set();
 try {
-  const gateSrc = readFileSync(path.join(reportDir, 'all-less.test.ts'), 'utf8');
-  for (const m of gateSrc.matchAll(/['"`](tests-(?:unit|config|error)\/[^'"`]+\.less)['"`]/g)) {
-    known.add(m[1]);
+  for (const gateFile of ['all-less.test.ts', 'all-less-error.test.ts']) {
+    const gateSrc = readFileSync(path.join(reportDir, gateFile), 'utf8');
+    for (const m of gateSrc.matchAll(/['"`](tests-(?:unit|config|error)\/[^'"`]+\.less)['"`]/g)) {
+      known.add(m[1]);
+    }
   }
 } catch { /* gate file optional */ }
-const tag = file => (known.has(file.replace(/ \[\d+\/\d+\]$/, '')) ? 'known' : 'NEW');
+try {
+  const sharedSrc = readFileSync(path.join(repoRoot, 'packages', '_shared', 'index.ts'), 'utf8');
+  for (const m of sharedSrc.matchAll(/['"`](tests-(?:unit|config)\/[^'"`]+\.less)['"`]/g)) {
+    known.add(m[1]);
+  }
+} catch { /* shared exclusion file optional */ }
+
+/*
+ * These recursively nested config fixtures sit outside the public two-level
+ * fixture glob. They exercise deferred artifact/debug-output lanes rather than
+ * previously unknown CSS semantics.
+ */
+const knownOutsidePublicLane = [
+  'tests-config/debug/',
+  'tests-config/sourcemaps/'
+];
+const classifiedTag = (file) => {
+  const bare = file.replace(/ \[\d+\/\d+\]$/, '');
+  return known.has(bare) || knownOutsidePublicLane.some(prefix => bare.startsWith(prefix))
+    ? 'known'
+    : 'NEW';
+};
 
 const render = results.filter(r => r.kind === 'render');
 const error = results.filter(r => r.kind === 'error');
@@ -183,6 +207,7 @@ L.push(`- Generated: \`${provenance.generatedAt}\``);
 L.push(`- Jess commit: \`${provenance.jessCommit ?? 'unavailable'}\``);
 L.push(`- Route: ${provenance.route}`);
 L.push(`- Configuration: base \`output.collapseNesting: true\`; ${provenance.configuration.fixtureConfig}`);
+L.push(`- Error configuration: ${provenance.configuration.errorCorpus}`);
 L.push(`- Test data: \`${provenance.testData.root}\` at \`${provenance.testData.commit ?? 'unavailable'}\``);
 L.push(`- Test-data working tree: ${provenance.testData.scopedChanges.length ? `dirty (\`${provenance.testData.scopedChanges.join('`, `')}\`)` : 'clean'}`);
 L.push(`- Runner: \`${provenance.runner.node}\` on \`${provenance.runner.platform}/${provenance.runner.arch}\``, '');
@@ -201,19 +226,23 @@ L.push(`- timeout: ${count(error, 'timeout')}, crash: ${count(error, 'crash')}`,
 const accepted = error.filter(r => r.outcome === 'accepted');
 if (accepted.length) {
   L.push('### Divergences to review (accepted where Less errors)', '');
-  accepted.forEach(r => L.push(`- \`${r.file}\` (${tag(r.file)})`));
+  accepted.forEach(r => L.push(`- \`${r.file}\` (${classifiedTag(r.file)})`));
   L.push('');
 }
 const nonPass = render.filter(r => r.outcome !== 'pass');
-const newNonPass = nonPass.filter(r => tag(r.file) === 'NEW');
+const newNonPass = nonPass.filter(r => classifiedTag(r.file) === 'NEW');
 L.push('## Render non-passes', '');
 L.push(`${nonPass.length} total — ${nonPass.length - newNonPass.length} already known to the gate (skipped/expected-failure), **${newNonPass.length} NEW**.`, '');
 L.push('### NEW (not skipped/expected-failure in the gate)', '');
-for (const r of newNonPass) {
-  L.push(`- [${r.outcome}] \`${r.file}\`${r.detail ? ` — ${r.detail}` : ''}`);
+if (newNonPass.length === 0) {
+  L.push('- None.');
+} else {
+  for (const r of newNonPass) {
+    L.push(`- [${r.outcome}] \`${r.file}\`${r.detail ? ` — ${r.detail}` : ''}`);
+  }
 }
 L.push('', '### Known (gate already skips / expects-failure)', '');
-for (const r of nonPass.filter(r => tag(r.file) === 'known')) {
+for (const r of nonPass.filter(r => classifiedTag(r.file) === 'known')) {
   L.push(`- [${r.outcome}] \`${r.file}\``);
 }
 L.push('');

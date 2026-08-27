@@ -19,13 +19,23 @@ JESS_LESS_FIXTURE=tests-unit/ pnpm run test:less:test-data
 JESS_LESS_FIXTURE=tests-config/ pnpm run test:less:test-data
 ```
 
-## Current selection snapshot (2026-08-22)
+## Current selection snapshot (2026-08-26)
 
-The executable Vitest collection contains `80 unit` / `30 config` / `110
+The executable Vitest collection contains `81 unit` / `30 config` / `111
 public-route` cases, plus the harness's own timeout-sensitivity test. These are
 test-case counts: one source fixture may select more than one configured output.
 Regenerate them from `vitest list` rather than carrying the numbers forward by
 memory. The registry dispositions below are derived the same way.
+
+The separate full-corpus report now uses the same strict error-surfacing
+contract as the executable error gate (`functionMode:error`, `unitMode:strict`),
+and excludes imported helper files from standalone error-case discovery. At
+`4eed988b0` it finds no unclassified render non-pass: all 38 are active expected
+failures, explicit `invalidLess` exclusions, or recursively nested deferred
+source-map/debug-output cases. The error corpus has 94 expected errors from 95
+standalone cases; the sole accepted case is the already-recorded v5 rule that
+preserves `darken(var(--x), …)` because a runtime CSS variable cannot be folded
+at build time.
 
 ### `expectedFailureFixtures` disposition — derived, not hand-counted
 
@@ -63,17 +73,28 @@ above:
   active mismatch is only intentional authored multiline-value preservation)
 - `tests-unit/at-rule-variable-deprecated/at-rule-variable-deprecated.less`
 - `tests-unit/color-functions/operations.less`
+- `tests-unit/extract-and-length/extract-and-length.less` (OPEN V17 structural
+  mixin binding is implemented: fixed/rest/default/forwarding/spread and
+  `@arguments` preserve nested list grouping. The active mismatch is only the
+  maintained golden's three spaces after `--empty-value:` for
+  `extract(~'', 1)`; the current Less v5 public runtime and every neighboring
+  custom-property row canonicalize that boundary to one. This isolated layout
+  discrepancy is an owner-fixture reconciliation question, not evidence for a
+  missing structural `extract()`/`length()` feature.)
 - `tests-unit/functions/functions.less`
 - `tests-unit/import/import-inline.less`
 - `tests-unit/import/import-reference.less` (A7 reference visibility now works
   for direct and at-rule-contained rules, hidden selector ancestors, mixin pulls,
-  and inline imports; selected reference-mixin bodies now replay their parser-owned
+  inline imports, and a nested pseudo whose fused `&` crosses a compacted
+  selector-list arm; selected reference-mixin bodies replay their parser-owned
   inline and block-interior trivia in both output modes. The active mismatch is
-  settled v5 selector compaction, an existing selector-composition defect that
-  drops the trailing `:hover`, explicit nested output, the alpha golden's
-  omission of a source-asserted surviving inline comment, and invalid-inline
-  indentation)
-- `tests-unit/import/import.less`
+  settled v5 selector compaction and direct-self declaration coalescing, explicit
+  nested output, the alpha golden's omission of a source-asserted surviving inline
+  comment, and invalid-inline indentation)
+- `tests-unit/import/import.less` (OPEN N10 now makes the definition imported at
+  line 18 visible to the line-12 mixin call before output evaluation. The sole
+  active blocker is the maintained 4.x media-postlude form rejected by v5
+  §12.3b.)
 - `tests-unit/media/media.less`
 - `tests-unit/mixins/mixins.less` (fixture-local nested output vs flattened
   golden; the `.recursion` outer-mixin lookup is covered by core)
@@ -170,14 +191,17 @@ payloads such as `[title="&"]` with parent references and had an unbounded
 work/memory shape. Under the owner ruling above, do not resume that lane as an
 implicit selector-list distribution mechanism.
 
-A separate discarded draft exposed one reproducible parser gap behind the earlier
-`tests-unit/urls/urls.less` import diagnostic: when the final `svg-gradient(...)`
-argument is followed by newline trivia before `)`, the raw call survives and a
-`false` value appears instead of the data URI. The narrow candidate was to let
-the existing zero-width `functionArgumentBoundaryAhead` recognize `)` after
-`functionTrivia`, alongside its existing comma/semicolon cases. That change was
-not reviewed or landed. Resume it later as an independent parser batch from the
-fixture-level negative control; no temporary patch is authoritative or required.
+The independent final-function-argument batch now fixes the parser gap exposed
+behind the earlier `tests-unit/urls/urls.less` import diagnostic. A typed value
+sequence such as `fade(@color, 50%) 100%` remains one argument when newline or
+comment trivia precedes the final `)`, so `svg-gradient(...)` reaches the Less
+function and emits its data URI instead of surviving as a raw call or becoming
+`false`. The landed shape does **not** extend the rejected zero-width trivia
+probe: `ArgumentValueSequence` declines only a following condition operator,
+while the enclosing argument list owns comma, semicolon, close, and their
+trivia. The 3×4 AST/CST matrix pins all three delimiters across adjacent,
+newline, block-comment, and line-comment boundaries; the named parent/candidate
+oracle moves only the two physical copies of the upstream svg-gradient fixture.
 
 ### OPEN N9 follow-up candidate from the import-path lane
 
@@ -211,6 +235,44 @@ fixture-level negative control; no temporary patch is authoritative or required.
 The remote import fixture is tracked in
 [`less-v5-release-plan.md`](../process/less-v5-release-plan.md) as a deferred
 Phase C import/security feature, not as a flaky expected failure.
+
+### Post-N10 actionable boundary (2026-08-26)
+
+The fresh full-corpus run at `4eed988b0` has no unclassified render non-pass and
+does not expose another owner-independent implementation batch in the current
+alpha scope. The remaining capability families have explicit boundaries rather
+than hidden fixture debt:
+
+- remote imports require a network/IO allowlist and security policy;
+- source maps require the still-open emit-time provenance model and a map-artifact
+  API/harness;
+- legacy pre/post-processors, visitors, and file managers are Phase E host APIs;
+- browser compilation is excluded from alpha.1; and
+- compressed output remains deferred under OPEN O3.
+
+This boundary does not reclassify any owner-maintained fixture and does not infer
+selector-list distribution. Less `each()` and Sass `@each` already share the core
+`For` construct as the explicit distribution mechanism.
+
+### OPEN N10 document-root import facts
+
+- Static planning now publishes direct variables, mixin definitions, and root
+  ruleset/namespace facts from the complete document-root import graph before
+  output evaluation. A call or variable read can therefore precede the import
+  that supplies it, including through a transitive import and a `(reference)`
+  document. Imported bodies and CSS still execute at their authored splice.
+- Canonical statement identity prevents repeated `(multiple)` occurrences of one
+  loaded document from duplicating its callable/value facts, while the imported
+  body still emits once per occurrence. Reusing one opaque `PreparedImports`
+  result across concurrent renders republishes into each render's fresh root
+  frame without mutating the shared plan.
+- Focused public coverage pins both output modes and the transitive graph; core
+  coverage pins prepared-plan reuse, concurrent renders, `(multiple)` body/fact
+  separation, reference-before-call visibility, and the negative boundary that
+  keeps an at-rule import out of the document root while exposing it to later
+  statements inside that at-rule. No owner-maintained CSS fixture changed.
+  `tests-unit/import/import.less` stays expected-failure only because its
+  compile-time import postludes remain intentionally rejected under §12.3b.
 
 ### Resolved non-corpus function follow-up
 

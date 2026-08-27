@@ -308,6 +308,7 @@ diff reintroduces each applicable shape.
 | R5 | **20x7 choice fan-out** | 8 | Shared-prefix alternatives re-parsing the same prefix. Prefer factoring or first-set guards. |
 | R6 | **compose-integrity / stale-build degrade** | 9 | A grammar/macro change that falls back to the runtime interpreter or references a missing rule, masked by stale generated output. |
 | R7 | **repeated source derivation / eager suppressed diagnostics** | 10 | Constructing a warning, locating its source, splitting its code frame, or otherwise rediscovering a source-derived fact after an owner could have carried it. |
+| R8 | **speculative lookahead CST publication** | 5, 11 | A positive parser assertion whose terminals publish captured leaves/spans and then roll them back. Inspect the exact generated AST and CST functions; prefer parent-owned delimiter consumption or a proven capture-free recognizer. |
 
 When a new performance regression is fixed, add a row and, where possible, a
 deterministic detector. The catalogue and detector set must remain grounded in

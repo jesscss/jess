@@ -54,7 +54,7 @@
     "vitest": "^4.1.2"
   },
   "scripts": {
-    "ci": "pnpm run -r ci && pnpm run lint",
+    "ci": "pnpm run -r ci && pnpm run verify:core-public-types && pnpm run lint",
     "prepare": "husky install",
     "precommit:staged": "node scripts/precommit-staged-lint.mjs",
     "precommit:lint": "node scripts/precommit-staged-lint.mjs",
@@ -145,6 +145,7 @@
     "verify:surface-parity": "node scripts/verify-surface-parity.mjs",
     "verify:baseline": "node scripts/verify-baseline.mjs",
     "verify:types": "node scripts/verify-types.mjs",
+    "verify:core-public-types": "node scripts/verify-core-public-types.mjs",
     "verify:maybe-promise-truthiness": "node scripts/verify-maybe-promise-truthiness.mjs",
     "build:release": "pnpm -r --filter=!jess-docs --filter=!@jesscss/docs-less build",
     "verify:alpha:packed-consumer": "node scripts/release/verify-alpha-packed-consumer.mjs",

@@ -213,7 +213,7 @@ const expectedFailureFixtures = new Map<string, string>([
    */
   [
     'tests-unit/import/import-reference.less',
-    'A7 reference visibility and selected callable-body comment replay are implemented; remaining CSS differs in settled v5 :is() selector compaction, an existing selector-composition defect that drops the trailing :hover, explicit nested output under collapseNesting:false, preservation of the source-asserted inline comment omitted by the alpha golden, and invalid-inline indentation'
+    'A7 reference visibility, nested pseudo propagation, and selected callable-body comment replay are implemented; remaining CSS differs in settled v5 :is() selector compaction and direct-self declaration coalescing, explicit nested output under collapseNesting:false, preservation of the source-asserted inline comment omitted by the alpha golden, and invalid-inline indentation'
   ],
 
   /*
@@ -228,7 +228,7 @@ const expectedFailureFixtures = new Map<string, string>([
    */
   [
     'tests-unit/import/import.less',
-    'lines 17/21/23/25 carry a media postlude on a compile-time @import (e.g. `@import (less, multiple) "import/import-test-d.css" screen and (max-width: 601px);`), which §12.3b now rejects at parse time; the .css expectation still encodes the 4.x @media wrap. Behind that sits the pre-existing import-hoisting gap — Less resolves every @import before evaluating, so `.mixin()` at line 12 sees a definition from the file imported at line 18, while jess evaluates in source order'
+    'lines 17/21/23/25 carry a media postlude on a compile-time @import (e.g. `@import (less, multiple) "import/import-test-d.css" screen and (max-width: 601px);`), which §12.3b now rejects at parse time; the .css expectation still encodes the 4.x @media wrap. OPEN N10 now supplies the formerly missing later-import mixin/variable visibility, so the postlude syntax is the sole active blocker in this fixture'
   ],
   [
     'tests-unit/import/import-inline.less',
@@ -270,6 +270,10 @@ const expectedFailureFixtures = new Map<string, string>([
   [
     'tests-unit/property-name-interp/property-name-interp.less',
     'OPEN F7(a): property-name interpolation renders byte-identically except that repeated `@{p}@{p}` loses the `/* foo */` source layout carried inside each complex interpolated value; interpolation-splice layout preservation awaits an owner ruling'
+  ],
+  [
+    'tests-unit/extract-and-length/extract-and-length.less',
+    'OPEN V17 typed structural mixin bindings now preserve nested list grouping through fixed, variadic, defaulted, forwarded, spread, and @arguments paths; the sole remaining mismatch is source-layout spacing on the custom property `--empty-value:   extract(~\'\', 1)` (jess emits one space after the colon)'
   ],
   [
     'tests-unit/variables/variables.less',
@@ -360,10 +364,9 @@ const expectedFailureFixtures = new Map<string, string>([
 ]);
 
 const expectedFailureDiagnosticCodes = new Map<string, string>([
-  /*
-   * The §12.3b postlude rule now fires at PARSE time, ahead of the import-hoisting
-   * resolve failure this fixture used to surface (`resolve/name-not-found`).
-   */
+  /* The §12.3b postlude rule fires at parse time. OPEN N10 fixes the formerly
+   * earlier import-fact lookup failure, but this fixture still intentionally
+   * stops at the maintained 4.x postlude syntax. */
   ['tests-unit/import/import.less', 'parse/syntax-error'],
   ['tests-unit/import/import-inline.less', 'parse/syntax-error'],
   ['tests-unit/urls/urls.less', 'import/not-found']

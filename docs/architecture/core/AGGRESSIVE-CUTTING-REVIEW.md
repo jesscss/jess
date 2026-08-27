@@ -8,6 +8,14 @@ parser host, action registry, bridge, compatibility alias, source reparse, or
 fallback path. New traversal, allocation, copying, metadata, helper/API
 surface, and hot-path state need explicit ownership and measured evidence.
 
+For parser assertions, authored combinator shape is not allocation evidence.
+Inspect the exact generated AST and CST functions: a positive `peek(...)` over
+materializing terminals can publish captured leaves and source-span objects only
+to roll them back. A parser hot-path review must name the generated call ladder
+and publication/rollback count. Prefer an already parent-owned delimiter or a
+proven capture-free recognizer; a semantic AST/CST matrix alone cannot detect
+discarded parser objects.
+
 Before a queue pass, update the self-prosecution block in `HANDOFF.md` and run:
 
 ```sh

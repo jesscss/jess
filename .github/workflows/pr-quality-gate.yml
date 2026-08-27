@@ -95,6 +95,9 @@ jobs:
       - name: Gate — strict production types
         run: pnpm run verify:types
 
+      - name: Gate — core public type consumer
+        run: pnpm run verify:core-public-types
+
       # pnpm ci = per-package build + test, covering all parser and core suites.
       - name: Full CI (pnpm ci)
         run: pnpm run ci

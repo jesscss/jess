@@ -59,16 +59,25 @@ verified against Less 4.6.3 before this policy was recorded.
 
 ## Phase C — config-lane URL / import features
 
-| Fixture                                                    | Feature                                                                                | Why deferred                               | Target  |
-| ---------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------ | ------- |
-| `rewrite-urls-all`, `rewrite-urls-local`                   | `rewriteUrls` mode (all / local) — rebase `url()` paths relative to the importing file | URL rebasing not implemented               | Phase C |
-| `rootpath-rewrite-urls-all`, `rootpath-rewrite-urls-local` | `rootpath` + `rewriteUrls` combined                                                    | depends on rewriteUrls                     | Phase C |
-| `static-urls/urls`                                         | static `url()` handling under rewrite                                                  | depends on rewriteUrls                     | Phase C |
-| `url-args/urls`                                            | `urlArgs` — append a cache-busting arg to every `url()`                                | not implemented                            | Phase C |
-| `import/import-remote`                                     | Remote URL imports that fetch and inline external Less sources                         | needs explicit network/IO allowlisting     | Phase C |
+The local URL-rewrite portion of this phase has graduated. `rewriteUrls`,
+`rootpath`, their combined imported-file behavior, and `urlArgs` all run through
+the typed URL/import transform path. The full corpus now passes the dedicated
+rewrite/rootpath/url-args fixtures; `static-urls/urls` retains only the separately
+recorded authored multiline-value spelling difference. Remote source loading is
+the sole remaining Phase C feature and still needs an owner-approved network/IO
+allowlist.
 
-These are option-plumbing over the URL/import handling that the core already does;
-each is a contained addition once the render pipeline is stable post-flip.
+| Fixture                                                    | Feature                                                                                | Current disposition                                      |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `rewrite-urls-all`, `rewrite-urls-local`                   | `rewriteUrls` mode (all / local) — rebase `url()` paths relative to the importing file | **IMPLEMENTED**                                           |
+| `rootpath-rewrite-urls-all`, `rootpath-rewrite-urls-local` | `rootpath` + `rewriteUrls` combined                                                    | **IMPLEMENTED**                                           |
+| `static-urls/urls`                                         | static `url()` handling under rewrite                                                  | **IMPLEMENTED**; only authored-layout mismatch remains   |
+| `url-args/urls`                                            | `urlArgs` — append a cache-busting arg to every `url()`                                | **IMPLEMENTED**                                           |
+| `import/import-remote`                                     | Remote URL imports that fetch and inline external Less sources                         | **DEFERRED** — needs explicit network/IO allowlisting     |
+
+The implemented rows are option-plumbing over the URL/import handling that the
+core already owns. They are retained here to keep the original phase inventory
+auditable rather than silently deleting completed commitments.
 `process-imports/google.less` graduated on 2026-07-28: `processImports: false`
 now leaves remote/CSS imports un-inlined in the public alpha fixture lane.
 Remote URL import loading remains excluded from the alpha fixture lane until the

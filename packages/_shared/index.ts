@@ -91,9 +91,6 @@ export const invalidLess: string[] = [
   /** Numeric property name `{5:-}` on last line */
   'tests-unit/css-guards/css-guards.less',
 
-  /** `.3D` tokenized as DimensionNum instead of class selector */
-  'tests-unit/extract-and-length/extract-and-length.less',
-
   /** `*-z-${name}` splits into LegacyPropIdent + InterpolatedIdent */
   'tests-unit/parser-property-interp/parser-property-interp.less',
 

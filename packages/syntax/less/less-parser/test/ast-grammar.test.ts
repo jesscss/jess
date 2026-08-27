@@ -3969,6 +3969,54 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('keeps scalar math typed at every parent-owned function argument boundary', () => {
+    const delimiters = [',', ';', ')'] as const;
+    const trivia = ['', '\n', '/* boundary */', '// boundary\n'] as const;
+
+    for (const delimiter of delimiters) {
+      for (const gap of trivia) {
+        const suffix = delimiter === ')' ? `${gap})` : `${gap}${delimiter} blue)`;
+        const source = `x: sample(32 / 3${suffix};`;
+        const cst = parseLessCst(source);
+        const result = run(lessGrammar.Document, source, {
+          trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+        });
+        const expectedArgs: unknown[] = [{ value: { type: 'Operation', operator: '/' } }];
+        if (delimiter !== ')') {
+          expectedArgs.push({ value: { type: 'Keyword', src: 'blue' } });
+        }
+
+        expect(cstIssueCount(cst), source).toBe(0);
+        expect(findCstNodes(cst.tree, 'FunctionScalarArgument'), source)
+          .toHaveLength(delimiter === ')' ? 1 : 2);
+        expect(result.ok, source).toBe(true);
+        expect(result.unconsumedFrom, source).toBeNull();
+        expect(result.value, source).toMatchObject({
+          type: 'Stylesheet',
+          rules: [{
+            type: 'Declaration',
+            value: {
+              type: 'FunctionCall',
+              name: 'sample',
+              args: expectedArgs
+            }
+          }]
+        });
+      }
+    }
+  });
+
+  it('does not treat end-of-input as a function argument boundary', () => {
+    const source = '32 / 3';
+    const cst = parseLessCst(source, 'FunctionScalarArgument');
+    const result = run(lessGrammar.FunctionScalarArgument, source, {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    });
+
+    expect(cstIssueCount(cst)).toBeGreaterThan(0);
+    expect(result.ok).toBe(false);
+  });
+
   it('keeps an inter-argument block comment as function layout trivia', () => {
     const source = 'x: mix(blue, #FFF /* explanation */, 50%);';
     const result = run(lessGrammar.Document, source, {
@@ -5917,6 +5965,7 @@ describe('Less AST grammar facts', () => {
   it('parses multiline svg-gradient values inside a mixin definition directly', () => {
     const source =
       '.gradient-mixin(@color) {\n  background: svg-gradient(to bottom,\n    fade(@color, 0%) 0%,\n    fade(@color, 5%) 60%\n  );\n}';
+    const cst = parseLessCst(source);
     for (const candidate of [
       '.gradient-mixin(@color) { background: red; }',
       '.gradient-mixin(@color) { background: svg-gradient(red); }',
@@ -5934,6 +5983,9 @@ describe('Less AST grammar facts', () => {
     const result = run(lessGrammar.Document, source, {
       trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
     });
+    expect(cstIssueCount(cst)).toBe(0);
+    expect(findCstNodes(cst.tree, 'FunctionValueSequence')).toHaveLength(3);
+    expect(findCstNodes(cst.tree, 'FunctionCondition')).toHaveLength(0);
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
       rules: [
@@ -5945,12 +5997,75 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: 'background',
-              value: { type: 'FunctionCall', name: 'svg-gradient' }
+              value: {
+                type: 'FunctionCall',
+                name: 'svg-gradient',
+                args: [
+                  { value: [{ type: 'Keyword', src: 'to' }, { type: 'Keyword', src: 'bottom' }] },
+                  {
+                    value: [
+                      { type: 'FunctionCall', name: 'fade' },
+                      { type: 'Dimension', number: 0, unit: '%', src: '0%' }
+                    ]
+                  },
+                  {
+                    value: [
+                      { type: 'FunctionCall', name: 'fade' },
+                      { type: 'Dimension', number: 60, unit: '%', src: '60%' }
+                    ]
+                  }
+                ]
+              }
             }
           ]
         }
       ]
     });
+  });
+
+  it('keeps typed function value sequences at every authored argument boundary', () => {
+    const delimiters = [',', ';', ')'] as const;
+    const trivia = ['', '\n', '/* boundary */', '// boundary\n'] as const;
+
+    for (const delimiter of delimiters) {
+      for (const gap of trivia) {
+        const suffix = delimiter === ')' ? `${gap})` : `${gap}${delimiter} blue)`;
+        const source = `.sample { value: sample(fade(red, 5%) 60%${suffix}; }`;
+        const cst = parseLessCst(source);
+        const result = run(lessGrammar.Document, source, {
+          trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+        });
+        const expectedArgs: unknown[] = [{
+          value: [
+            { type: 'FunctionCall', name: 'fade' },
+            { type: 'Dimension', number: 60, unit: '%', src: '60%' }
+          ]
+        }];
+        if (delimiter !== ')') {
+          expectedArgs.push({ value: { type: 'Keyword', src: 'blue' } });
+        }
+
+        expect(cstIssueCount(cst), source).toBe(0);
+        expect(findCstNodes(cst.tree, 'FunctionValueSequence'), source).toHaveLength(1);
+        expect(findCstNodes(cst.tree, 'FunctionCondition'), source).toHaveLength(0);
+        expect(result.ok, source).toBe(true);
+        expect(result.unconsumedFrom, source).toBeNull();
+        expect(result.value, source).toMatchObject({
+          type: 'Stylesheet',
+          rules: [{
+            type: 'Ruleset',
+            rules: [{
+              type: 'Declaration',
+              value: {
+                type: 'FunctionCall',
+                name: 'sample',
+                args: expectedArgs
+              }
+            }]
+          }]
+        });
+      }
+    }
   });
 
   it('keeps CSS-escaped mixin names as direct canonical calls', () => {

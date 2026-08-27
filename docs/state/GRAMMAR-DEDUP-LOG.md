@@ -648,9 +648,9 @@ Not yet scheduled; recorded so nothing is lost. Promote into a lane when picked.
 
 ### Lane 2 — hoist module-private helpers (agent `abfdb806442e1919f`, base `bbda2ec9f`, landed `ef30b2579` on `refactor/hoist-grammar-helpers`, NOT pushed; backup `scratchpad/hoist-backup.patch`)
 
-Home = `@jesscss/core/ast` (NOT `parser-shared` — that is `private:true`, devDep-only,
-must not appear as a runtime import; core/ast already arrives as a runtime import so
-the helpers ride the same import-provenance mechanism compose needs). Hoisted 10
+Home = `@jesscss/core/ast` (NOT `parser-shared` — at the time of this lane it was
+private and dev-only; it is now published for cross-package grammar composition,
+but core semantic helpers still belong in core/ast). Hoisted 10
 values + 3 types (`withBlockBody`, `keywordOrNull`, `isToken`, `bodySpanFromRaw`, …).
 Gates: check:macro 0 fallbacks all 5 pkgs; css/less/scss/jess parser suites all green;
 core 3346/0; guardrails exit 0; artifacts −16 030 B total; CST artifacts byte-identical.

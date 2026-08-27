@@ -347,11 +347,12 @@ describe('the less-compat tree shim', () => {
     }
   }, 30000);
 
-  it('keeps eager list semantics and bytes unchanged when a plugin is unrelated', async () => {
+  it('keeps typed list semantics and authored bytes independent of an unrelated plugin', async () => {
     const pluginSource = 'functions.add("noop", function () { return new tree.Anonymous("ok"); });';
     const body = [
       '@layout-map: alpha,',
       '  beta;',
+      '@default-list: caller-a, caller-b, caller-c;',
       '@space-list: 1 2 3;',
       '@comma-list: 1, 2, 3;',
       '#ordered(@left; @right) when (@left < @right) {',
@@ -364,8 +365,29 @@ describe('the less-compat tree shim', () => {
       '    second: extract(@value, 2);',
       '  }',
       '}',
+      '#scope() {',
+      '  @default-list: def-a, def-b;',
+      '  #default-only(@value: @default-list) {',
+      '    .default-only {',
+      '      value: @value;',
+      '      length: length(@value);',
+      '      second: extract(@value, 2);',
+      '    }',
+      '  }',
+      '  #defaults(@explicit; @from-scope: @default-list; @from-prior: @explicit) {',
+      '    .defaults {',
+      '      scope-value: @from-scope;',
+      '      scope-length: length(@from-scope);',
+      '      prior-value: @from-prior;',
+      '      prior-length: length(@from-prior);',
+      '    }',
+      '  }',
+      '  #default-only();',
+      '  #defaults(@layout-map);',
+      '}',
       '#ordered(@space-list; @comma-list);',
-      '#layout(@layout-map);'
+      '#layout(@layout-map);',
+      '#scope();'
     ].join('\n');
     const plain = makeProject(pluginSource, body);
     const withPlugin = makeProject(pluginSource, `@plugin "./p";\n${body}`);
@@ -382,8 +404,16 @@ describe('the less-compat tree shim', () => {
       expect(candidate.css).toBe(control.css);
       expect(candidate.css).toContain('result: preserved');
       expect(candidate.css).toContain('value: alpha,\n    beta');
-      expect(candidate.css).toContain('length: 1');
-      expect(candidate.css).toContain('second: extract(');
+      expect(candidate.css).toContain('length: 2');
+      expect(candidate.css).toContain('second: beta');
+      expect(candidate.css).toContain('scope-value: def-a, def-b');
+      expect(candidate.css).toContain('scope-length: 2');
+      expect(candidate.css).toContain(
+        '.default-only {\n  value: def-a, def-b;\n  length: 2;\n  second: def-b;\n}'
+      );
+      expect(candidate.css).toContain('prior-value: alpha,\n    beta');
+      expect(candidate.css).toContain('prior-length: 2');
+      expect(candidate.css).not.toContain('caller-a');
     }
   }, 30000);
 

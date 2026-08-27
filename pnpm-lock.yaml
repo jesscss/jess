@@ -757,13 +757,14 @@ importers:
         version: 4.1.0(@types/node@20.19.30)(vite@6.4.3)
 
   packages/syntax/css/css-parser:
+    dependencies:
+      '@jesscss/parser-shared':
+        specifier: workspace:*
+        version: link:../../../parser-shared
     devDependencies:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../../../core
-      '@jesscss/parser-shared':
-        specifier: workspace:*
-        version: link:../../../parser-shared
       '@jesscss/shared':
         specifier: workspace:*
         version: link:../../../_shared

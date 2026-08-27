@@ -484,18 +484,13 @@ export function computeExtends(
   const rawOf = (s: PlanSubject): Branch[] => {
     let r = rawCache.get(s);
     if (r === undefined) {
-      r = composePath(s.path);
-
       /*
-       * [import:reference] a hidden subject's own seed branches are hidden; a visible
-       * extender folded in later carries its own (visible) provenance, so only the
-       * all-hidden case drops the whole rule.
+       * [import:reference] stamp each composed level while folding, not only the
+       * final branch. A multi-branch ancestor becomes a structured `:is()` graft;
+       * retaining the arms' provenance lets a visible extender replace one arm
+       * without exposing its hidden siblings. Authored `:is()` arms are untouched.
        */
-      if (s.hidden) {
-        for (const b of r) {
-          b.hidden = true;
-        }
-      }
+      r = composePath(s.path, s.hidden);
 
       /*
        * [placeholder] A placeholder seed branch is hidden PER BRANCH, not per

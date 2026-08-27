@@ -51,17 +51,6 @@ export class DefaultGuardAmbiguityError extends Error {
 }
 
 /**
- * Resolves a param DEFAULT that names a value block (`@breakpoints: @grid-breakpoints`)
- * to the block itself, so it binds BY REFERENCE exactly like a block passed
- * explicitly. Returns `undefined` when the default is an ordinary value.
- */
-export type DefaultBlockResolver = (
-  value: ValueSlot,
-  boundSoFar: Map<string, CallValue>,
-  def: MixinDefinition
-) => ValueSlot | undefined;
-
-/**
  * Resolve a DEFAULT parameter to its eager {@link CallValue} snapshot. Unlike a
  * call argument (resolved in the caller frame), a default is evaluated with the
  * parameters bound SO FAR in scope. Returning the snapshot, rather than only
@@ -80,19 +69,29 @@ export type DefaultResolver = (
  * the same eager snapshot the parameter will bind.
  */
 export type BoundSourceResolver = (
-  value: CallValue,
-  boundSoFar: Map<string, CallValue>,
-  def: MixinDefinition,
-  defaulted: boolean
+  value: CallValue
 ) => MaybePromise<CallValue> | undefined;
+
+/**
+ * Exceptional sole-rest binding route for an evaluated structural argument.
+ * The returned slots are the semantic rest members; ordinary authored rest
+ * arguments return `undefined` and keep the existing one-argument boundary.
+ */
+export type RestBoundSourceResolver = (
+  value: CallValue
+) => MaybePromise<readonly ValueSlot[]> | undefined;
+
+export interface BoundSourceResolvers {
+  readonly resolve: BoundSourceResolver;
+  readonly resolveRest?: RestBoundSourceResolver;
+}
 
 /**
  * Candidate-local lifetime for provenance side entries created while binding.
  * A candidate's entries must remain available to its guard, but rejected
  * candidates must release them before dispatch returns.
  */
-export interface BoundSourceTracker {
-  readonly resolve: BoundSourceResolver;
+export interface BoundSourceTracker extends BoundSourceResolvers {
   begin(): void;
   finish(): readonly CallValue[] | null;
   discard(keys: readonly CallValue[]): void;
@@ -102,8 +101,9 @@ export interface BoundSourceTracker {
  * Bind a call's args to a definition's params. Returns the binding map, or
  * `null` if the def cannot accept these args (arity / pattern mismatch).
  * Args are resolved in the CALLER frame (Less semantics). Typed authored
- * values, including nested lists, stay structural across the binding boundary;
- * only computed caller values collapse to their resolved literal bytes.
+ * values, including nested lists, stay structural across the binding boundary.
+ * Dialect adapters may retain evaluated structure beside the eager snapshot;
+ * other computed caller values collapse to their resolved literal bytes.
  */
 /**
  * Mutable binding state. Allocated ONLY when a slot actually suspends: the
@@ -123,8 +123,7 @@ interface BindState {
   readonly argumentSlots: ValueSlot[];
   readonly resolveCaller: ValueResolver;
   readonly resolveDefault: DefaultResolver | undefined;
-  readonly resolveDefaultBlock: DefaultBlockResolver | undefined;
-  readonly resolveBoundSource: BoundSourceResolver | undefined;
+  readonly boundSources: BoundSourceResolvers | undefined;
   pi: number;
 }
 
@@ -133,8 +132,7 @@ export function bindArgs(
   call: MixinCall,
   resolveCaller: ValueResolver,
   resolveDefault?: DefaultResolver,
-  resolveDefaultBlock?: DefaultBlockResolver,
-  resolveBoundSource?: BoundSourceResolver
+  boundSources?: BoundSourceResolvers
 ): MaybePromise<Map<string, CallValue> | null> {
   const params = def.params;
   const positional: CallArg[] = [];
@@ -182,11 +180,11 @@ export function bindArgs(
     let argVal: MaybePromise<CallValue>;
     if (p.name !== undefined && named.has(p.name)) {
       const source = named.get(p.name)!.value;
-      argVal = (p.pattern === undefined ? resolveBoundSource?.(source, bound, def, false) : undefined)
+      argVal = (p.pattern === undefined ? boundSources?.resolve(source) : undefined)
         ?? resolveEager(source, resolveCaller);
     } else if (pi < positional.length) {
       const source = positional[pi++]!.value;
-      argVal = (p.pattern === undefined ? resolveBoundSource?.(source, bound, def, false) : undefined)
+      argVal = (p.pattern === undefined ? boundSources?.resolve(source) : undefined)
         ?? resolveEager(source, resolveCaller);
     } else if (p.default !== undefined) {
       /*
@@ -194,9 +192,8 @@ export function bindArgs(
        * it can reference an earlier param), overlaid on the mixin's DEFINITION
        * scope (`@parameter: @parameterDefault` reads the def-scope
        * `@parameterDefault`, not a same-name caller var) — not the caller frame.
-       */
-      argVal = (p.pattern === undefined ? resolveBoundSource?.(p.default, bound, def, true) : undefined)
-        ?? resolveEagerDefault(p.default, bound, def, resolveCaller, resolveDefault, resolveDefaultBlock);
+      */
+      argVal = resolveEagerDefault(p.default, bound, def, resolveCaller, resolveDefault);
     } else {
       return null; // required slot unfilled
     }
@@ -204,7 +201,8 @@ export function bindArgs(
       const at = k;
       const carried: BindState = {
         def, params, fixedParams, positional, named, hasRest, restIndex,
-        bound, argumentSlots, resolveCaller, resolveDefault, resolveDefaultBlock, resolveBoundSource, pi
+        bound, argumentSlots, resolveCaller, resolveDefault,
+        boundSources, pi
       };
       return argVal.then(settled => resumeFixed(carried, at, settled));
     }
@@ -216,7 +214,8 @@ export function bindArgs(
         const at = k;
         const carried: BindState = {
           def, params, fixedParams, positional, named, hasRest, restIndex,
-          bound, argumentSlots, resolveCaller, resolveDefault, resolveDefaultBlock, resolveBoundSource, pi
+          bound, argumentSlots, resolveCaller, resolveDefault,
+          boundSources, pi
         };
         const settled = argVal;
         return patBytes.then(pat => (valueBytes(settled) === pat ? bindFixedFrom(carried, at + 1) : null));
@@ -245,7 +244,8 @@ export function bindArgs(
   }
   return bindRest({
     def, params, fixedParams, positional, named, hasRest, restIndex,
-    bound, argumentSlots, resolveCaller, resolveDefault, resolveDefaultBlock, resolveBoundSource, pi
+    bound, argumentSlots, resolveCaller, resolveDefault,
+    boundSources, pi
   });
 }
 
@@ -280,15 +280,14 @@ function bindFixedFrom(st: BindState, from: number): MaybePromise<Map<string, Ca
     let argVal: MaybePromise<CallValue>;
     if (p.name !== undefined && st.named.has(p.name)) {
       const source = st.named.get(p.name)!.value;
-      argVal = (p.pattern === undefined ? st.resolveBoundSource?.(source, st.bound, st.def, false) : undefined)
+      argVal = (p.pattern === undefined ? st.boundSources?.resolve(source) : undefined)
         ?? resolveEager(source, st.resolveCaller);
     } else if (st.pi < st.positional.length) {
       const source = st.positional[st.pi++]!.value;
-      argVal = (p.pattern === undefined ? st.resolveBoundSource?.(source, st.bound, st.def, false) : undefined)
+      argVal = (p.pattern === undefined ? st.boundSources?.resolve(source) : undefined)
         ?? resolveEager(source, st.resolveCaller);
     } else if (p.default !== undefined) {
-      argVal = (p.pattern === undefined ? st.resolveBoundSource?.(p.default, st.bound, st.def, true) : undefined)
-        ?? resolveEagerDefault(p.default, st.bound, st.def, st.resolveCaller, st.resolveDefault, st.resolveDefaultBlock);
+      argVal = resolveEagerDefault(p.default, st.bound, st.def, st.resolveCaller, st.resolveDefault);
     } else {
       return null;
     }
@@ -330,11 +329,18 @@ function bindRest(st: BindState): MaybePromise<Map<string, CallValue> | null> {
     return leftover > 0 ? null : finishBind(st);
   }
   const restParam = st.params[st.restIndex]!;
+  if (leftover === 1 && st.boundSources?.resolveRest !== undefined) {
+    const source = st.positional[st.pi]!.value;
+    const resolved = st.boundSources.resolveRest(source);
+    if (resolved !== undefined) {
+      return mapMaybe(resolved, slots => finishRest(st, restParam, slots));
+    }
+  }
   const restSlots: ValueSlot[] = [];
   const take = (index: number): MaybePromise<Map<string, CallValue> | null> => {
     for (let i = index; i < st.positional.length; i++) {
       const source = st.positional[i]!.value;
-      const value = st.resolveBoundSource?.(source, st.bound, st.def, false)
+      const value = st.boundSources?.resolve(source)
         ?? resolveEager(source, st.resolveCaller);
       if (isThenable(value)) {
         const at = i;
@@ -351,21 +357,34 @@ function bindRest(st: BindState): MaybePromise<Map<string, CallValue> | null> {
       }
       restSlots.push(value);
     }
-    if (restParam.name !== undefined) {
-      /*
-       * A rest is a list of CALL ARGUMENTS, not a flattened value string. A sole
-       * authored `a b c` argument consequently remains one nested space-list,
-       * while comma/semicolon call groups retain their distinct argument slots
-       * for `length()` and `extract()`.
-       */
-      st.bound.set(restParam.name, restSlots);
-    }
-    for (const slot of restSlots) {
-      st.argumentSlots.push(slot);
-    }
-    return finishBind(st);
+    return finishRest(st, restParam, restSlots);
   };
   return take(st.pi);
+}
+
+function finishRest(
+  st: BindState,
+  restParam: MixinDefinition['params'][number],
+  restSlots: readonly ValueSlot[]
+): Map<string, CallValue> {
+  if (restParam.name !== undefined) {
+    /*
+     * A rest is a list of CALL ARGUMENTS, not a flattened value string. A sole
+     * authored `a b c` argument consequently remains one nested space-list,
+     * while comma/semicolon call groups retain their distinct argument slots.
+     * A sole evaluated structural argument may arrive as its semantic members
+     * through `resolveRest`; that distinction is parser/eval-owned.
+     */
+    st.bound.set(restParam.name, restSlots);
+  }
+  if (st.argumentSlots.length === 0) {
+    st.bound.set('arguments', restSlots);
+    return st.bound;
+  }
+  for (const slot of restSlots) {
+    st.argumentSlots.push(slot);
+  }
+  return finishBind(st);
 }
 
 function finishBind(st: BindState): Map<string, CallValue> {
@@ -429,23 +448,12 @@ function resolveEagerDefault(
   boundSoFar: Map<string, CallValue>,
   def: MixinDefinition,
   resolveCaller: ValueResolver,
-  resolveDefault?: DefaultResolver,
-  resolveDefaultBlock?: DefaultBlockResolver
+  resolveDefault?: DefaultResolver
 ): MaybePromise<CallValue> {
   if ('type' in v && isValueBlock(v)) {
     return v;
   }
 
-  /*
-   * `#m(@map: @some-detached-ruleset)` must bind the BLOCK, not its bytes — the
-   * same by-reference rule an explicitly passed block already gets. Without this
-   * the callee sees a flattened literal and every structural read of the block
-   * (a plugin's `ruleset.rules`, a lookup) fails.
-   */
-  const block = resolveDefaultBlock?.(v, boundSoFar, def);
-  if (block !== undefined) {
-    return block;
-  }
   if (isTypedCallValue(v)) {
     return v;
   }
@@ -481,7 +489,6 @@ export function selectDefinitions(
   ev: ValueEvaluator | null,
   modes: EvalModes,
   resolveDefault?: DefaultResolver,
-  resolveDefaultBlock?: DefaultBlockResolver,
   onNoViable?: () => void,
   boundSources?: BoundSourceTracker
 ): MaybePromise<Selection[]> {
@@ -542,11 +549,14 @@ export function selectDefinitions(
    */
   const viable: Viable[] = [];
   const keysByOrder: Array<readonly CallValue[] | null | undefined> | null = boundSources === undefined ? null : [];
+  let discardKeys: ((keys: readonly CallValue[] | null) => void) | undefined;
+  let discardUnclaimed: (() => void) | undefined;
+  let failTracked: ((error: unknown, active?: boolean) => never) | undefined;
   const prefilter = (index: number): MaybePromise<void> => {
     if (boundSources === undefined) {
       for (; index < candidates.length; index++) {
         const def = candidates[index]!;
-        const bound = bindArgs(def, call, resolveCaller, resolveDefault, resolveDefaultBlock);
+        const bound = bindArgs(def, call, resolveCaller, resolveDefault);
         if (isThenable(bound)) {
           const at = index;
           return bound.then((bindings) => {
@@ -566,26 +576,34 @@ export function selectDefinitions(
     for (; index < candidates.length; index++) {
       const def = candidates[index]!;
       boundSources.begin();
-      const bound = bindArgs(def, call, resolveCaller, resolveDefault, resolveDefaultBlock, boundSources.resolve);
+      let bound: MaybePromise<Map<string, CallValue> | null>;
+      try {
+        bound = bindArgs(def, call, resolveCaller, resolveDefault, boundSources);
+      } catch (error) {
+        return failTracked!(error, true);
+      }
       if (isThenable(bound)) {
         const at = index;
-        return bound.then((bindings) => {
-          const keys = boundSources.finish();
-          if (bindings !== null) {
-            viable.push({ def, bindings, order: at });
-            keysByOrder![at] = keys;
-          } else if (keys !== null) {
-            boundSources.discard(keys);
-          }
-          return prefilter(at + 1);
-        });
+        return bound.then(
+          (bindings) => {
+            const keys = boundSources.finish();
+            if (bindings !== null) {
+              viable.push({ def, bindings, order: at });
+              keysByOrder![at] = keys;
+            } else {
+              discardKeys!(keys);
+            }
+            return prefilter(at + 1);
+          },
+          error => failTracked!(error, true)
+        );
       }
       const keys = boundSources.finish();
       if (bound !== null) {
         viable.push({ def, bindings: bound, order: index });
         keysByOrder![index] = keys;
-      } else if (keys !== null) {
-        boundSources.discard(keys);
+      } else {
+        discardKeys!(keys);
       }
     }
     return undefined;
@@ -654,28 +672,70 @@ export function selectDefinitions(
     );
   };
 
+  if (boundSources === undefined) {
+    return mapMaybe(prefilter(0), () => {
+      if (viable.length === 0 && candidates.length > 0) {
+        onNoViable?.();
+      }
+      return mapMaybe(select(), (matched) => {
+        matched.sort((a, b) => a.order - b.order);
+        return matched.map(v => ({
+          def: v.def,
+          bindings: v.bindings,
+          boundSourceKeys: null
+        }));
+      });
+    });
+  }
+
+  discardKeys = (keys): void => {
+    if (keys !== null) {
+      boundSources.discard(keys);
+    }
+  };
+  discardUnclaimed = (): void => {
+    for (let index = 0; index < keysByOrder!.length; index++) {
+      const keys = keysByOrder![index];
+      if (keys !== undefined && keys !== null) {
+        keysByOrder![index] = null;
+        boundSources.discard(keys);
+      }
+    }
+  };
+  failTracked = (error, active = false): never => {
+    if (active) {
+      discardKeys!(boundSources.finish());
+    }
+    discardUnclaimed!();
+    throw error;
+  };
+
   return mapMaybe(prefilter(0), () => {
     if (viable.length === 0 && candidates.length > 0) {
       onNoViable?.();
     }
-    return mapMaybe(select(), (matched) => {
+    const finishSelection = (matched: Viable[]): Selection[] => {
       matched.sort((a, b) => a.order - b.order);
       const selections = matched.map(v => ({
         def: v.def,
         bindings: v.bindings,
-        boundSourceKeys: keysByOrder === null ? null : keysByOrder[v.order] ?? null
+        boundSourceKeys: keysByOrder![v.order] ?? null
       }));
-      if (boundSources !== undefined) {
-        for (const candidate of matched) {
-          keysByOrder![candidate.order] = null;
-        }
-        for (const keys of keysByOrder!) {
-          if (keys !== undefined && keys !== null) {
-            boundSources.discard(keys);
-          }
-        }
+      for (const candidate of matched) {
+        keysByOrder![candidate.order] = null;
       }
+      discardUnclaimed!();
       return selections;
-    });
+    };
+    let selected: MaybePromise<Viable[]>;
+    try {
+      selected = select();
+    } catch (error) {
+      return failTracked!(error);
+    }
+    if (!isThenable(selected)) {
+      return finishSelection(selected);
+    }
+    return selected.then(finishSelection, error => failTracked!(error));
   });
 }

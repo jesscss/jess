@@ -151,6 +151,24 @@ function main() {
       continue;
     }
     const recoveryManifest = JSON.parse(recoveryRaw);
+    if (recoveryManifest.private === true && importedManifest.private !== true) {
+      if (recoveryVersion === null || importedManifest.version === recoveryVersion) {
+        console.log(`${relativePath}: promoted from private; keeping ${
+          importedManifest.version ?? '(missing)'
+        }`);
+        continue;
+      }
+      writeFileSync(
+        pkg.packageJsonPath,
+        `${JSON.stringify({ ...importedManifest, version: recoveryVersion }, null, 2)}\n`
+      );
+      changed += 1;
+      changedPaths.push(relativePath);
+      console.log(`${relativePath}: promoted from private; ${
+        importedManifest.version ?? '(missing)'
+      } -> ${recoveryVersion}`);
+      continue;
+    }
     const restoredManifest = preserveRecoveryManifestVersion(
       importedManifest,
       recoveryManifest
