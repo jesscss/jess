@@ -128,7 +128,7 @@ scope-stack holder, and the option resolver all at once.
 
 Concerns:
 1. **Option resolution** — `ContextOptions`/`ResolvedOptions`/`OPTION_DEFAULTS`/
-   `resolveOptions`/`setOption` (73–223, 372).
+   `resolveOptions` and document-owned parser defaults (73–223, 372).
 2. **Warnings & deprecation finalization** — `warn`, `warnDeprecation`, `finalizeWarnings`
    (434–635, ~200 lines). This is a substantial, self-contained subsystem that duplicates the
    *domain* of `warnings.ts` — the finalization/dedup/suppression logic should live with the

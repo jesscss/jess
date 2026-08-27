@@ -31,15 +31,19 @@ export type ScssPluginOptions = {
 type ExtendSelectorKind = 'class' | 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 
 const sassValueEvaluator = buildEvaluator(makeSassRegistry());
+type ScssDialectDefaults = Required<Pick<
+  NonNullable<ISafeParseResult['dialectDefaults']>,
+  'unitMode'
+>>;
 
 export class ScssPlugin extends AbstractPlugin {
   name = 'scss';
   supportedExtensions = ['.scss'];
-  unitMode: UnitMode;
+  readonly #dialectDefaults: ScssDialectDefaults;
 
   constructor(public opts: ScssPluginOptions = {}) {
     super();
-    this.unitMode = opts.unitMode ?? 'preserve';
+    this.#dialectDefaults = Object.freeze({ unitMode: opts.unitMode ?? 'preserve' });
   }
 
   expandImport(importPath: string) {
@@ -50,9 +54,6 @@ export class ScssPlugin extends AbstractPlugin {
   setContext(context: Context): void {
     if (context.documentContext?.plugin !== this) {
       return;
-    }
-    if (context.opts.unitMode === undefined) {
-      context.setOption('unitMode', this.unitMode);
     }
     context.registerValueEvaluator(sassValueEvaluator);
   }
@@ -65,7 +66,12 @@ export class ScssPlugin extends AbstractPlugin {
    */
   safeParse(filePath: string, source: string): ISafeParseResult {
     try {
-      return { document: parse(source), errors: [], warnings: [] };
+      return {
+        document: parse(source),
+        dialectDefaults: this.#dialectDefaults,
+        errors: [],
+        warnings: []
+      };
     } catch (error) {
       return {
         errors: [parserDiagnostic({ dialect: 'SCSS', error, filePath, source })],

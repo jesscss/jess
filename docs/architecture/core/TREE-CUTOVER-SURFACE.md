@@ -371,13 +371,13 @@ worktree, so no result here comes from the main checkout's sources.
 **Context members accessed at runtime from `jess` / plugins / `fns` — 15, none tree-typed:**
 `errors`, `warnings`, `finalizeWarnings`, `getPluginModule`, `getTree`,
 `parseString`, `resolveImportPath`, `sourceTrees`, `pluginHost`, `plugins`,
-`setOption`, `opts`, `readBinary`, `evaluator`, `registerValueEvaluator`, `withDocument`.
+`opts`, `readBinary`, `evaluator`, `registerValueEvaluator`, `withDocument`.
 
-Union (four overlap): **25 distinct externally-reachable members, zero
+Union (four overlap): **24 distinct externally-reachable members, zero
 tree-typed.** The constructor is `(opts?: ContextOptions, plugins?: PluginInterface[])`
 — both parameters tree-free.
 
-Bodies checked too, not just signatures: **25 of 25** externally-reachable
+Bodies checked too, not just signatures: **24 of 24** externally-reachable
 members have bodies containing no reference to any tree-typed `Context` member
 and no reference to any of the 14 tree symbols `context.ts` imports.
 

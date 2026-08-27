@@ -3832,9 +3832,116 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: 2026-08-25 imported reference-mixin body trivia ownership. This
-  is a bounded emitted-CSS correction under SETTLED A7, G28, and N6, not a speed
-  or neutrality claim.
+- Latest pass: 2026-08-25 entry-dialect defaults and public Context API cut. This
+  preserves the existing session-owned option policy while tightening the alpha
+  surface; it is not an emitted CSS change or speed claim.
+- Architecture surface: parser-plugin success results, canonical
+  `DocumentContext` registration, Context source-owner option-pointer switching,
+  and Less/SCSS plugin activation. AST/CST nodes, parser grammars, import
+  admission, selector composition, output writing, and owner-maintained fixtures
+  are unchanged.
+- Separation/duplication: a successful parser result may carry its plugin's
+  resolved dialect defaults. Context accepts only the entry parser's fact, folds
+  constructor options over it once for the session, freezes that flat policy
+  object, and gives every canonical document the same pointer. Imported parsers
+  cannot reconfigure the session. This preserves the old first-plugin
+  `setOption` ownership without live mutation. The
+  former Context option-version scalar, hidden document version slot, stale-cache
+  checks, and lazy refresh route are deleted.
+- Cumulative node weight: AST/CST node factories and node fields change by zero.
+  Every Context loses one numeric version field and every canonical
+  `DocumentContext` loses one hidden numeric symbol slot. A Less plugin replaces
+  six public scalar option fields with one private pointer to one five-field
+  document-default object; SCSS replaces one public scalar with one private
+  pointer to one one-field object. A successful Less/SCSS parse result carries
+  that existing pointer without copying the object.
+- New traversal: none. The first canonical-document registration performs one
+  existing `resolveOptions` field fold; later documents reuse that pointer.
+  Source re-entry is two pointer stores on entry and
+  two on restoration. No document walk, option-key enumeration, source scan,
+  parser replay, value traversal, or restart-at-zero loop is added.
+- New node/materialization: no node, Rules wrapper, source string, Map, Set,
+  WeakMap, Error, or per-entry carrier. Each dialect plugin allocates one small
+  frozen document-default object at plugin construction. Successful parse results
+  retain one readonly pointer to it. Entry registration constructs exactly one
+  frozen compile-folded `ResolvedOptions` object for the session; later
+  `DocumentContext` instances retain that pointer. There is no discarded
+  constructor-default or per-import policy object. This
+  replaces the first Less activation's five sequential
+  `setOption` calls and five replacement `ResolvedOptions` objects (SCSS: one),
+  plus all version-refresh replacement objects.
+- Render path: unchanged. Evaluators continue to read one flat
+  `context.options.X` field; this pass changes how the resolved pointer is owned,
+  not how values or CSS are materialized.
+- Helper/API surface: public `Context.setOption` is deleted. The private option
+  version symbol, version getter/setter, activation refresher, and restoration
+  refresher are also deleted. `ISafeParseResult` gains one optional declarative
+  `dialectDefaults` fact; exported `LessPlugin` and `ScssPlugin` lose their
+  mutable-looking public resolved-option fields. Resolved compile-option keys on
+  `Context.opts` resolved keys and the `Context.options` view are now readonly;
+  each resolved object is frozen, so JavaScript callers also cannot mutate
+  active document policy behind Context's source-owner switching. The public
+  type no longer advertises a
+  mutation that cannot refresh `Context.options`. The implementation-only
+  `DocumentContext` constructor and `DocumentContextOptions` type are removed
+  from the package root rather than exposing the new one-resolve construction
+  seam. No compatibility alias or shim remains.
+- Metadata mutations: parser plugins attach `dialectDefaults` only to successful
+  result records. The shared plugin-lifetime fact is frozen and readonly, so one
+  result cannot mutate later parse defaults. Context copies no plugin option
+  object and mutates no AST node; it accepts the first successful result's fact
+  as the session fallback and ignores later imported defaults. Source entry/exit
+  only saves and restores
+  `_documentContext` and `options`.
+- Review-flagged diff tokens: [loop/traversal] none; [array
+  spread/materialization] none on the new ownership route; [materialized object]
+  one frozen plugin-lifetime defaults object per Less/SCSS plugin and one
+  frozen compile-folded options object per Context session, plus one
+  `Object.freeze` on each pre-existing legacy-tree/Context option resolution;
+  [side map/set] none;
+  [node construction/copy] none; [source scan/reparse] none; [routine Error]
+  none; [public API] one mutator, seven public plugin option fields, and two
+  implementation-only document-context exports deleted; one declarative
+  parse-result fact added.
+- Evidence: focused Context source-owner/option switching, core numeric operation,
+  Less plugin normalization/defaults, SCSS parser defaults, compiler reuse,
+  strict-preset, strict-unit, and Jess/Less operation suites pass. The Context
+  test pins compile-over-entry-dialect precedence, imported-source policy
+  stability, and runtime absence of `setOption`.
+- Behavior evidence: focused core tests pass 89/89; Less plugin tests pass 14/14;
+  SCSS plugin tests pass 2/2; focused public compiler/option tests pass 74/74.
+- Build evidence: core, Less plugin, and SCSS plugin builds pass in dependency
+  order, and `pnpm run verify:package-exports` passes.
+- Boundary evidence: fresh core declarations contain no `Context.setOption`;
+  `ISafeParseResult.dialectDefaults` is the sole new readonly typed handoff,
+  `DocumentContext` construction is absent from the package root, and generated
+  Less/SCSS declarations expose no removed scalar compatibility fields.
+- Performance evidence: no speed claim. Deterministic deletion counts above are
+  the evidence; timing is not used to convert this ownership/API cut into a
+  performance claim.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "core-context-emit-selector-contract",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
+    "cases": ["Context-plugin-source-parser-dispatch", "emit-walk-context-output-option", "Ruleset-interpolated-selector-boundary", "selector-match-string-and-node-combinators", "extend-index-tagged-graft-atoms", "Sequence-subclass-preserving-evaluation", "callable-output-root-property-guard", "serializer-at-rule-and-selector-surface"],
+    "why": "The entry dialect's defaults establish the existing session-owned fallback policy; explicit constructor options still win. Carrying that typed fact on the successful parser result removes live Context mutation without allowing imported parsers to reconfigure evaluator or output policy.",
+    "dangerTokensJustification": "The pass deletes public Context.setOption, the package-root DocumentContext construction surface, one Context version field, one hidden DocumentContext version slot, three refresh helpers, and the Less/SCSS live-mutation ladders. Each dialect plugin constructs one frozen defaults object once and successful parse results retain its readonly pointer; Context accepts the entry result, performs one fixed-field resolve for the session, freezes that sole policy object, and shares it with every internal DocumentContext. Imported defaults do not trigger another resolve. The pre-existing Context/legacy-tree resolve sites also freeze their one flat result so the public readonly view is enforced at runtime. Source re-entry uses direct resolved-pointer stores with no version comparison, replacement options object, collection, traversal, source scan, node materialization, output buffer, compatibility shim, or speed claim.",
+    "behaviorEvidence": "Focused Context, numeric operation, Less/SCSS plugin, compiler reuse, strict option, and public operation tests pass; compile-over-entry precedence, imported-source stability, immutable runtime views, and absence of the mutator are pinned.",
+    "buildEvidence": "Core, Less plugin, and SCSS plugin builds plus package-export verification pass; full release/corpus/frontier evidence is recorded before landing.",
+    "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 14.573459, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
+  }
+]
+```
+- Verdict: accepted provisionally as a machinery/API deletion; full release,
+  corpus, contract gates, and adversarial reviews remain required before landing.
+
+- Prior landed pass: 2026-08-25 imported reference-mixin body trivia ownership.
+  This is a bounded emitted-CSS correction under SETTLED A7, G28, and N6, not a
+  speed or neutrality claim.
 - Architecture surface: canonical AST-v2 Context source identity, callable-body
   trivia replay, and the collapsed/nested leaf writers. Parser grammar, AST/CST
   nodes and spans, import resolution/admission, selector composition, plugin
@@ -3843,10 +3950,10 @@ involved.
   deliberately re-enter the imported call site's source owner; `markImportant`
   remains a render-local sink mutation and needs no source switch.
 - Separation/duplication: each parsed canonical document already owns one
-  `TriviaMap`. `rememberDocumentContext` now reads that existing side-table fact
-  once and retains its pointer plus one compile-option version scalar in two
-  private-symbol slots attached only to the canonical document's existing
-  `DocumentContext`; legacy `TreeContext` instances gain no duplicate slot. The
+  `TriviaMap`. `rememberDocumentContext` reads that existing side-table fact
+  once and retains its pointer in one private-symbol slot attached only to the
+  canonical document's existing `DocumentContext`; legacy `TreeContext`
+  instances gain no duplicate slot. The
   class declaration is unchanged, and the core-internal accessor is not
   re-exported from the package root.
   The existing render `Frame.sourceOwner` pointer remains the only per-activation
@@ -3874,10 +3981,10 @@ involved.
   pre-existing compatibility source fallback remains confined to the ordinary
   declaration writer.
 - Complexity and ordinary lane: only a canonical AST `DocumentContext` gains one
-  fixed trivia pointer and one numeric option-version slot; exported class
+  fixed trivia pointer; exported class
   declarations and legacy `TreeContext` instances are unchanged. Remembering a
-  canonical document adds exactly one `triviaMapOf(document)` lookup, one scalar
-  version store, and no collection. Each ordinary collapsed
+  canonical document adds exactly one `triviaMapOf(document)` lookup and no
+  collection. Each ordinary collapsed
   or nested leaf adds local reads of `frame.sourceOwner` and `e.context`, followed
   by null/context-identity checks; identity-equal leaves call the prior writer
   directly. Each ordinary source-owner activation adds one document-identity
@@ -3886,12 +3993,12 @@ involved.
   mismatch performs `instanceof`, one trivia-identity comparison, direct saved
   pointer swaps for the already-resolved document options/source identity/trivia,
   and callback wrappers around the existing Context source-owner callback.
-  Registration retains one compile-folded `ResolvedOptions` object after the
-  `DocumentContext` constructor's initial resolved object. Ordinary source re-entry
-  reads the matching version and allocates no replacement `ResolvedOptions` object.
-  The public `setOption` reconfiguration lane increments
-  one Context scalar and lazily refreshes each stale document once; restoration
-  refreshes the caller only when that version changed inside the entered scope.
+  Entry registration constructs one frozen compile-folded `ResolvedOptions`
+  object and shares it with every `DocumentContext` in the session. Parser
+  plugins carry dialect defaults on successful parse results; Context accepts
+  the entry fact and ignores later imported defaults. Ordinary source re-entry swaps
+  the already-resolved pointer and allocates no replacement `ResolvedOptions`
+  object.
   Collapsed and nested buffers coalesce consecutive mismatched leaves,
   so that cost is once per contiguous owner run rather than once per declaration.
   A uniform merge retains that one-run cost. A mixed-source merge reuses the
@@ -3905,10 +4012,10 @@ involved.
   source-owner callback.
 - New node/materialization: no AST/CST node, copied body, wrapper Rules, source
   string, per-leaf carrier, Map, Set, WeakMap, or Error on the ordinary and
-  uniform-source lanes. Each canonical AST `DocumentContext` object gains two
-  hidden fixed slots; its public declaration and every legacy-tree instance are
-  unchanged. Canonical-document registration allocates the constructor's initial
-  `ResolvedOptions`, one replacement compile-folded `ResolvedOptions`, and the
+  uniform-source lanes. Each canonical AST `DocumentContext` object gains one
+  hidden fixed slot; its public declaration and every legacy-tree instance are
+  unchanged. Entry registration allocates one compile-folded frozen
+  `ResolvedOptions` for the session; each canonical-document registration adds the
   `{ value: trivia }` descriptor used to attach the hidden trivia pointer; these
   are cold once-per-document facts, not source-re-entry allocations. The
   mixed-source merge uses the same name array, merge `Map`, and
@@ -3938,8 +4045,7 @@ involved.
   gain no field, export alias, compatibility facade, option, or node type.
 - Metadata mutations: canonical AST/CST nodes, source spans, body spans, trivia
   tables, parents, and roots are never mutated. The private document-trivia slot
-  is defined once when a canonical document enters Context; the private option
-  version advances only after explicit live `setOption` reconfiguration. On a
+  is defined once when a canonical document enters Context. On a
   cross-document callback, `e.trivia`
   is restored in both sync, async, and throwing exits. Existing
   `EmittedTrivia` bits remain the single per-render ownership guard.
@@ -3948,8 +4054,7 @@ involved.
   nested selected-body lane, the existing merge-admission scan followed by one
   admitted-group owner scan, and two
   mixed-source merge passes; [materialized
-  object/array] one fixed canonical-document source pointer and numeric version,
-  one cold body cursor,
+  object/array] one fixed canonical-document source pointer, one cold body cursor,
   lazy semantic comment arrays, one module empty singleton, and mismatch-only
   callback closures; [side map/set] only the merge
   lane's existing name-to-member map is present;
@@ -3994,7 +4099,7 @@ involved.
     "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
     "cases": ["ValueSlot-array-evaluation-and-authored-layout", "List-value-separator-and-Block-delimiter-facts", "reference-index-and-For-array-access", "Less-lazy-color-call-demand-boundary", "defineFunction-typed-positional-named-and-lazy-binding", "mixin-dispatch-ValueSlot-argument-resolution", "ValueLayout-provenance-side-table", "preserve-mode-calc-result-composition", "extend-composition-plan-and-fixpoint-solve", "Less-eager-bare-slash-precedence-and-parens-division", "recursive-ValueGroup-final-unit-validation", "async-declaration-dedup-output-order"],
     "why": "SETTLED A7 makes a reference-imported callable visible only when selected, SETTLED G28 requires both emitters to replay block-interior comments, and SETTLED N6 keeps authored comments and spacing in parser-owned side-table provenance. The selected body therefore reuses its document's existing TriviaMap rather than copying nodes or deriving placement from bytes.",
-    "dangerTokensJustification": "The existing sourceOwner pointer selects one existing document trivia table. One sparse cursor consumes each admitted body run monotonically; exact statement-end offsets leave declaration-tail comments to the indexed leaf or merge writer. Empty tables reject before span reads/materialization, pending comment arrays transfer ownership without cloning, empty flushes reuse one singleton and skip indentation, and contiguous cross-document leaves re-enter Context once per owner run using already-resolved option pointers. Canonical-document registration has one initial and one replacement compile-folded ResolvedOptions object plus one hidden-trivia property descriptor; ordinary unchanged-version re-entry allocates no replacement options object. A mixed-source merge retains the existing early-exit admission scan, then classifies the admitted group's owners in one pass with an immediate mismatch exit; it reuses its existing name array/map/member indexes and makes one name-capture plus one emission pass. Anchored values re-enter only mismatched contiguous member-owner runs, use indexed comment bounds, and preserve evaluation order. Delayed source-reading legacy-plugin capabilities and failures capture and re-enter that same owner when the worker calls back. No AST copy, source-delimiter rescan, reparse, new per-member carrier, Error control lane, or speed claim is introduced.",
+    "dangerTokensJustification": "The existing sourceOwner pointer selects one existing document trivia table. One sparse cursor consumes each admitted body run monotonically; exact statement-end offsets leave declaration-tail comments to the indexed leaf or merge writer. Empty tables reject before span reads/materialization, pending comment arrays transfer ownership without cloning, empty flushes reuse one singleton and skip indentation, and contiguous cross-document leaves re-enter Context once per owner run using already-resolved option pointers. Entry registration has one compile-folded session ResolvedOptions object and each canonical document adds one hidden-trivia property descriptor; ordinary source re-entry allocates no replacement options object. A mixed-source merge retains the existing early-exit admission scan, then classifies the admitted group's owners in one pass with an immediate mismatch exit; it reuses its existing name array/map/member indexes and makes one name-capture plus one emission pass. Anchored values re-enter only mismatched contiguous member-owner runs, use indexed comment bounds, and preserve evaluation order. Delayed source-reading legacy-plugin capabilities and failures capture and re-enter that same owner when the worker calls back. No AST copy, source-delimiter rescan, reparse, new per-member carrier, Error control lane, or speed claim is introduced.",
     "behaviorEvidence": "Focused public reference-mixin, block-interior-comment, and function controls pass, including both output modes, comment-only and mixed-source merge bodies, delayed variable/built-in/logger success, async-raw-argument currentFileInfo, rejection file/line attribution, and caller restoration; filtered import-reference remains an expected failure only for separately classified residuals.",
     "buildEvidence": "Dependency-order build:release; full core (212 files / 3364 tests); all-less (111/111); all-less-error (96/96); AST-v2 production ratchet (4/4); package exports; macro zero-fallback; compose-integrity; materialization-frontier; render-buffer-frontier; guardrails; aggressive-cutting; and git diff --check pass. Shape stability is inherited red only on the stale AST inventory; CST inventory and AST monomorphic-shape assertion pass. The committed-state Less hot-path sanity harness is unverified because candidate and clean origin/dev fail before timing on the inherited numeric-leading @1 diagnostic; no timing conclusion is drawn.",
     "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 14.573459, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
@@ -4006,7 +4111,7 @@ involved.
     "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
     "cases": ["Context-plugin-source-parser-dispatch", "emit-walk-context-output-option", "Ruleset-interpolated-selector-boundary", "selector-match-string-and-node-combinators", "extend-index-tagged-graft-atoms", "Sequence-subclass-preserving-evaluation", "callable-output-root-property-guard", "serializer-at-rule-and-selector-surface"],
     "why": "A deferred callable already restores its parser/plugin/file DocumentContext. Retaining that same document's parser-owned trivia pointer in a private slot makes comment provenance follow the established source-owner boundary without changing resolution, loading, options, selector policy, emitted value semantics, or the public Context declaration.",
-    "dangerTokensJustification": "One hidden readonly trivia pointer and one numeric option version are populated only when a canonical document context is remembered; the public class declaration and legacy TreeContext shape remain unchanged. Registration retains one compile-folded replacement after the DocumentContext constructor's initial resolved options. The common identity-equal callback invokes its work directly; ordinary cross-document owner runs and delayed source-reading plugin capabilities save and restore matching Context option/source pointers plus the render trivia pointer. Only explicit live setOption reconfiguration increments the Context version and lazily rebuilds each stale document's options once, including version-aware caller restoration. No ordinary source-reentry replacement options object, new Context collection, import walk, parser host, node materialization, selector traversal, or output buffer is introduced.",
+    "dangerTokensJustification": "One hidden readonly trivia pointer is populated only when a canonical document context is remembered; the public class declaration and legacy TreeContext shape remain unchanged. Entry registration creates the sole compile-folded session options object and every DocumentContext shares it. Parser plugins carry frozen dialect defaults on successful parse results, Context accepts the entry fact once, and ordinary source re-entry swaps matching Context option/source pointers plus the render trivia pointer. No live option mutation, version refresh, ordinary source-reentry replacement options object, new Context collection, import walk, parser host, node materialization, selector traversal, or output buffer is introduced.",
     "behaviorEvidence": "Both output modes preserve imported statement-bearing, comment-only, mixed-source merge-inline, and trailing comments exactly; delayed plugin variable/built-in/logger success, async-raw-argument currentFileInfo, rejection file/line attribution, and caller restoration are pinned; focused import and comment controls pass.",
     "buildEvidence": "Dependency-order build:release and package-export verification pass, together with the full correctness/corpus/frontier/contract gates in the companion record.",
     "baseline": {"fixture": "benchmark.less", "phase": "render", "currentMedianMs": 14.573459, "outputSha256": "dbf75658b339ba3f17ce5847471bfbce575a2124d8651b6a0aa12e207df15e85", "outputBytes": 122320}
