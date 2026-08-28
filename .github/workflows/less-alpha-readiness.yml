@@ -56,8 +56,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # `jess...` (trailing ellipsis) builds jess AND its workspace dependencies
+      # in topological order; a bare `--filter jess` builds only jess and fails on
+      # a clean checkout because styles-config / @jesscss/compiler-preset have no
+      # emitted lib/ + .d.ts yet. --workspace-concurrency=1 keeps the parser
+      # builds serial (they gate on each other).
       - name: Verify public Jess CLI
-        run: pnpm --filter jess build && pnpm --filter jess test -- cli.test.ts --run --globals
+        run: pnpm --filter "jess..." --workspace-concurrency=1 build && pnpm --filter jess test -- cli.test.ts --run --globals
 
   less-alpha-readiness:
     runs-on: ubuntu-latest
