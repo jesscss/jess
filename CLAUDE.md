@@ -56,6 +56,12 @@ do not edit), the rule is stated in
 
 For hot-path perf work (core tree/eval/render, grammar/parser, extend/selector):
 
+- **to RUN the standard perf tests or find old perf data, start at
+  `docs/perf/BENCHMARKS.md`** — the command-first index of every canonical
+  harness (perf-gate = jess-vs-lessc-4.x parse ratio, measure:less:hotpath =
+  render, perf:ab = jess-vs-old-jess, bench:jess:parse), the standard fixtures
+  (benchmark.less, bootstrap4.less), and the history/baseline files. Do not
+  search for or invent a harness.
 - the canonical checklist is `docs/perf/V8-ARCHITECTURE.md` (numbered invariants,
   1-11 at `facb641dd` — count them in the file, do not trust a number here — plus
   the regression-fixture catalogue); enforcement design is
