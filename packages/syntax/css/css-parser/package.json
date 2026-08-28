@@ -101,7 +101,7 @@
     "@jesscss/core": "workspace:*",
     "@jesscss/shared": "workspace:*",
     "parseman": "^0.50.1",
-    "postcss": "8.5.23",
+    "postcss": "8.5.24",
     "tsx": "~4.21.0"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
