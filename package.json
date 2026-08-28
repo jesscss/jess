@@ -100,7 +100,7 @@
     "verify:import-graph:report": "node scripts/verify-import-graph.mjs --report",
     "verify:import-graph:write": "node scripts/verify-import-graph.mjs --write",
     "verify:jess-api": "pnpm --filter jess verify:api",
-    "verify:less-alpha": "pnpm --filter @jesscss/parser-shared build && pnpm --filter @jesscss/awaitable-pipe build && pnpm --filter @jesscss/core build && pnpm --filter @jesscss/css-parser build && pnpm --filter @jesscss/less-parser build && pnpm --filter @jesscss/fns build && pnpm --filter styles-config build && pnpm --filter @jesscss/style-resolver build && pnpm --filter @jesscss/plugin-node-modules build && pnpm --filter @jesscss/plugin-less-compat build && pnpm --filter @jesscss/plugin-less build && pnpm --filter @jesscss/compiler build && pnpm --filter jess build && pnpm run verify:package-exports && pnpm run verify:jess-api && pnpm run test:jess-public-api && pnpm run test:jess-path-resolution && pnpm run test:less:test-data:unit && pnpm run test:less:test-data:config",
+    "verify:less-alpha": "pnpm -r --workspace-concurrency=1 --filter='!jess-docs' --filter='!@jesscss/docs-less' --filter='!@jesscss/docs-content' build && pnpm run verify:package-exports && pnpm run verify:jess-api && pnpm run test:jess-public-api && pnpm run test:jess-path-resolution && pnpm run test:less:test-data:unit && pnpm run test:less:test-data:config",
     "verify:node-constructor-metadata": "node scripts/verify-node-constructor-metadata.mjs",
     "verify:agents": "node scripts/verify-agent-definitions.mjs",
     "verify:config-syntax": "node scripts/verify-config-syntax.mjs",
