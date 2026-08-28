@@ -206,8 +206,23 @@ describe("@jesscss/plugin-less", () => {
     });
 
     expect(normalized).not.toBe(configured);
-    expect(normalized).toMatchObject({ name: 'less', mathMode: 'parens' });
+    expect(normalized.name).toBe('less');
+    expect(normalized.safeParse?.('entry.less', '.entry {}').dialectDefaults).toMatchObject({
+      mathMode: 'parens'
+    });
     resolver.dispose();
+  });
+
+  it('shares immutable dialect defaults across parse results', () => {
+    const plugin = lessPlugin({ mathMode: 'parens' });
+    const first = plugin.safeParse!('first.less', '.first {}');
+
+    expect(Object.keys(plugin)).not.toContain('dialectDefaults');
+    expect(Object.isFrozen(first.dialectDefaults)).toBe(true);
+    expect(Reflect.set(first.dialectDefaults!, 'mathMode', 'always')).toBe(false);
+    expect(plugin.safeParse!('second.less', '.second {}').dialectDefaults).toMatchObject({
+      mathMode: 'parens'
+    });
   });
 
   it('keeps direct import rewriting distinct from URL query arguments', () => {

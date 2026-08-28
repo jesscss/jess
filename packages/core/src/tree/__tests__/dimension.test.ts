@@ -236,8 +236,8 @@ describe('Dimension', () => {
     it('should cancel units in strict mode', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'px']);
-      context.setOption('unitMode', 'strict');
-      await expect(renderOperate(left, right, '/', context)).resolves.toBe('5');
+      const strictContext = new Context({ unitMode: 'strict' });
+      await expect(renderOperate(left, right, '/', strictContext)).resolves.toBe('5');
     });
   });
 
@@ -265,7 +265,7 @@ describe('Dimension', () => {
 
   describe('strict mode', () => {
     beforeEach(() => {
-      context.setOption('unitMode', 'strict');
+      context = new Context({ unitMode: 'strict' });
     });
     it('should throw when adding incompatible units', () => {
       let left = dimension([10, 'px']);
@@ -296,7 +296,7 @@ describe('Dimension', () => {
 
   describe('preserve mode', () => {
     beforeEach(() => {
-      context.setOption('unitMode', 'preserve');
+      context = new Context({ unitMode: 'preserve' });
     });
 
     /*

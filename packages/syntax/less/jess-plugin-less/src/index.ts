@@ -19,6 +19,10 @@ import { expandLessImportCandidates } from '@jesscss/style-resolver';
 import { safeParse as safeParseLess } from '@jesscss/less-parser';
 
 export type LessPluginOptions = LessOptions;
+type LessDialectDefaults = Required<Pick<
+  NonNullable<ISafeParseResult['dialectDefaults']>,
+  'mathMode' | 'unitMode' | 'leakyScope' | 'bubbleRootAtRules' | 'processImports'
+>>;
 
 /**
  * The Less plugin's default option values — the single source of truth for the
@@ -284,12 +288,7 @@ function jsDelivrPackageSpecifier(candidate: string): string | null {
 export class LessPlugin extends AbstractPlugin {
   name = 'less';
   supportedExtensions = ['.less'];
-  mathMode: MathMode;
-  unitMode: UnitMode;
-  leakyScope: boolean;
-  bubbleRootAtRules: boolean;
-  processImports: boolean;
-  collapseNesting: boolean;
+  readonly #dialectDefaults: LessDialectDefaults;
   private readonly pluginHosts = new WeakMap<Context, PluginHost>();
 
   constructor(public opts: LessPluginOptions = {}) {
@@ -314,7 +313,6 @@ export class LessPlugin extends AbstractPlugin {
     } else {
       mathMode = lessPluginDefaults.mathMode;
     }
-    this.mathMode = mathMode;
 
     // Handle deprecated strictUnits option -> unitMode conversion
     let unitMode: UnitMode;
@@ -325,11 +323,13 @@ export class LessPlugin extends AbstractPlugin {
     } else {
       unitMode = lessPluginDefaults.unitMode;
     }
-    this.unitMode = unitMode;
-    this.leakyScope = opts.leakyScope ?? lessPluginDefaults.leakyScope;
-    this.bubbleRootAtRules = opts.bubbleRootAtRules ?? lessPluginDefaults.bubbleRootAtRules;
-    this.processImports = opts.processImports ?? lessPluginDefaults.processImports;
-    this.collapseNesting = opts.collapseNesting ?? lessPluginDefaults.collapseNesting;
+    this.#dialectDefaults = Object.freeze({
+      mathMode,
+      unitMode,
+      leakyScope: opts.leakyScope ?? lessPluginDefaults.leakyScope,
+      bubbleRootAtRules: opts.bubbleRootAtRules ?? lessPluginDefaults.bubbleRootAtRules,
+      processImports: opts.processImports ?? lessPluginDefaults.processImports
+    });
   }
 
   transformUrl({ value, quoted, kind, fromFilePath, entryFilePath }: UrlTransformRequest): string {
@@ -383,27 +383,6 @@ export class LessPlugin extends AbstractPlugin {
       return;
     }
 
-    /*
-     * The Less adapter owns the language defaults, while Context owns the
-     * session-level option store consumed by the AST evaluator.  A caller's
-     * explicit compile option (and a matching file/language option already
-     * folded into context.opts) always wins; fill only unset fields here.
-     */
-    if (context.opts.mathMode === undefined) {
-      context.setOption('mathMode', this.mathMode);
-    }
-    if (context.opts.unitMode === undefined) {
-      context.setOption('unitMode', this.unitMode);
-    }
-    if (context.opts.leakyScope === undefined) {
-      context.setOption('leakyScope', this.leakyScope);
-    }
-    if (context.opts.bubbleRootAtRules === undefined) {
-      context.setOption('bubbleRootAtRules', this.bubbleRootAtRules);
-    }
-    if (context.opts.processImports === undefined) {
-      context.setOption('processImports', this.processImports);
-    }
     context.registerValueEvaluator(lessValueEvaluator);
 
     let host = this.pluginHosts.get(context);
@@ -521,15 +500,18 @@ export class LessPlugin extends AbstractPlugin {
    * policy decides at parse whether each operation computes with no enclosing
    * math context, and the answer is written onto the node.
    *
-   * The precedence here reproduces exactly what {@link setContext} applies
-   * later — explicit compile option first, this plugin's resolved default
-   * second — without depending on `documentContext`, which is only populated
-   * AFTER the parse returns.
+   * The grammar receives the same compile-over-document precedence that Context
+   * installs after parsing, without depending on `documentContext`, which is
+   * populated only after the parse returns.
    */
   safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
-    return safeParseLess(filePath, source, {
-      mathMode: parseOptions?.compilerOptions?.mathMode ?? this.mathMode
+    const result = safeParseLess(filePath, source, {
+      mathMode: parseOptions?.compilerOptions?.mathMode ?? this.#dialectDefaults.mathMode
     });
+    if (result.document) {
+      result.dialectDefaults = this.#dialectDefaults;
+    }
+    return result;
   }
 }
 

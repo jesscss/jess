@@ -21,7 +21,7 @@
     "bin"
   ],
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": "^20.19.0 || >=22.18.0"
   },
   "dependencies": {
     "@jesscss/compiler": "workspace:*",

@@ -113,7 +113,7 @@ describe('string-normalized eval', () => {
      * Keyword; recast to a Dimension so `1px * 5` yields `5px` instead of
      * throwing "Cannot operate on Keyword".
      */
-    context.setOption('unitMode', 'preserve');
+    context = new Context({ unitMode: 'preserve' });
     const node = list([new Operation([keyword('1px'), '*', num(5)])]);
     expect(node.render(context)).toBe('5px');
   });
@@ -124,7 +124,7 @@ describe('string-normalized eval', () => {
      * through math without a "Cannot operate on Keyword" crash.
      */
     const node = list([new Operation([dimension({ number: 1, unit: 'px' }), '*', num(5)])]);
-    context.setOption('unitMode', 'preserve');
+    context = new Context({ unitMode: 'preserve' });
     expect(node.render(context)).toBe('5px');
   });
 });

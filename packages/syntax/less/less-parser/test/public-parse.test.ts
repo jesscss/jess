@@ -1375,7 +1375,7 @@ describe('public Less parse()', () => {
     expect(
       serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css
     ).toBe(
-      '.asset {\n  image: url(icons/path.svg);\n  template: url(theme/icon.svg);\n}\n@import url(theme.css);\n@media screen {\n  .media {\n    color: red;\n  }\n}\n@supports (display: grid) {\n  .supports {\n    display: grid;\n  }\n}\n@keyframes fade {\n  from {\n    opacity: 0;\n  }\n}\n'
+      '@import url(theme.css);\n.asset {\n  image: url(icons/path.svg);\n  template: url(theme/icon.svg);\n}\n@media screen {\n  .media {\n    color: red;\n  }\n}\n@supports (display: grid) {\n  .supports {\n    display: grid;\n  }\n}\n@keyframes fade {\n  from {\n    opacity: 0;\n  }\n}\n'
     );
 
     for (const invalid of [
