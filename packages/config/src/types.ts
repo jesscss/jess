@@ -177,7 +177,7 @@ export interface LessOptions {
 
   /**
    * @deprecated Use `unitMode` instead. If `true`, sets `unitMode` to 'strict'.
-   * If `false`, sets the unitMode to 'loose.
+   * If `false`, sets the unitMode to 'loose'.
    * If undefined, uses the `unitMode` value (defaults to 'preserve').
    * @default false
    */

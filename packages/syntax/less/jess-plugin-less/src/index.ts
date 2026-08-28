@@ -320,6 +320,8 @@ export class LessPlugin extends AbstractPlugin {
       unitMode = opts.unitMode;
     } else if (opts.strictUnits === true) {
       unitMode = 'strict';
+    } else if (opts.strictUnits === false) {
+      unitMode = 'loose';
     } else {
       unitMode = lessPluginDefaults.unitMode;
     }
