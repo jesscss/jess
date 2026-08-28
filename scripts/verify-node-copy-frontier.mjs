@@ -111,7 +111,7 @@ function isCommentLine(line) {
 }
 
 function isBitSetCloneLine(relativeFile, line) {
-  return relativeFile === 'packages/core/src/tree/util/bitset.ts'
+  return relativeFile === 'packages/core/src/util/bitset.ts'
     || /\.keySet\.clone\(\)/u.test(line)
     || /\.visibleKeySet\.clone\(\)/u.test(line)
     || /\.requiredKeySet\.clone\(\)/u.test(line)
