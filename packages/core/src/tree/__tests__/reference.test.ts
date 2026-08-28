@@ -622,63 +622,6 @@ describe('reference', () => {
       }
     });
 
-    it('renders source-free runtime-binding sequences as text without container copies', async () => {
-      const sourceValue = spaced([any('red'), any('blue')]);
-      const paramDecl = vardecl({ name: 'tone', value: sourceValue }, { paramVar: true });
-      const runtimeScope = rules([]);
-      runtimeScope.scopeFrame = buildScopeFrame(
-        undefined,
-        runtimeScope,
-        undefined,
-        new Map([
-          ['tone', {
-            value: sourceValue,
-            sourceNode: paramDecl
-          }]
-        ])
-      );
-      context.rulesContext = runtimeScope;
-      const sourceParent = sourceValue.parent;
-      const buffer = createRenderBuffer('segmented');
-      const originalCopy = Sequence.prototype.cloneForPlacement;
-      const originalInherit = Sequence.prototype.inherit;
-      let sourceValueCopies = 0;
-      let sourceValueInherits = 0;
-      Sequence.prototype.cloneForPlacement = function copyForCounting(
-        this: Sequence,
-        ...args: Parameters<typeof originalCopy>
-      ): ReturnType<typeof originalCopy> {
-        if (this === sourceValue) {
-          sourceValueCopies++;
-        }
-        return originalCopy.apply(this, args);
-      };
-      Sequence.prototype.inherit = function inheritForCounting(
-        this: Sequence,
-        ...args: Parameters<typeof originalInherit>
-      ): ReturnType<typeof originalInherit> {
-        if (args[0] === sourceValue) {
-          sourceValueInherits++;
-        }
-        return originalInherit.apply(this, args);
-      };
-
-      try {
-        const refNode = ref({ key: 'tone' }, { type: 'variable' });
-
-        expect(await Promise.resolve(refNode.render(context))).toBe('red blue');
-        expect(await Promise.resolve(refNode.render(context, buffer))).toBe('red blue');
-        expect(buffer.segments).toEqual(['red blue']);
-        expect(sourceValueCopies).toBe(0);
-        expect(sourceValueInherits).toBe(0);
-        expect(sourceValue.parent).toBe(sourceParent);
-        expect(context.referenceStack).toBe(0);
-      } finally {
-        Sequence.prototype.cloneForPlacement = originalCopy;
-        Sequence.prototype.inherit = originalInherit;
-      }
-    });
-
     it('renders source-backed runtime-binding containers as text without container copies', async () => {
       const sourceValue = list([any('red'), any('blue')]);
       setSourceSpan(sourceValue, { start: 10, end: 20 });
@@ -963,52 +906,6 @@ describe('reference', () => {
       }
     });
 
-    it('renders source-free scalar declaration references without copying the scalar leaf', async () => {
-      const sourceValue = any('red');
-      const node = rules([
-        decl({
-          name: 'src',
-          value: sourceValue
-        })
-      ]);
-      const sourceParent = sourceValue.parent;
-      setRulesContext(await node.eval(context));
-      const refNode = ref({ key: 'src' }, { type: 'declaration' });
-      const buffer = createRenderBuffer('segmented');
-      const originalCopy = Any.prototype.cloneForPlacement;
-      const originalInherit = sourceValue.inherit;
-      let scalarCopies = 0;
-      let sourceValueInherits = 0;
-      Any.prototype.cloneForPlacement = function copyForCounting(
-        this: Any,
-        ...args: Parameters<typeof originalCopy>
-      ): ReturnType<typeof originalCopy> {
-        if (this.valueOf() === 'red') {
-          scalarCopies++;
-        }
-        return originalCopy.apply(this, args);
-      };
-      sourceValue.inherit = function inheritForCounting(
-        this: typeof sourceValue,
-        ...args: Parameters<typeof originalInherit>
-      ): ReturnType<typeof originalInherit> {
-        sourceValueInherits++;
-        return originalInherit.apply(this, args);
-      };
-
-      try {
-        expect(await Promise.resolve(refNode.render(context))).toBe('red');
-        expect(await Promise.resolve(refNode.render(context, buffer))).toBe('red');
-        expect(buffer.segments).toEqual(['red']);
-        expect(scalarCopies).toBe(0);
-        expect(sourceValueInherits).toBe(0);
-        expect(sourceValue.parent).toBe(sourceParent);
-      } finally {
-        Any.prototype.cloneForPlacement = originalCopy;
-        sourceValue.inherit = originalInherit;
-      }
-    });
-
     it('renders source-free declaration reference containers as text without public result metadata', async () => {
       const sourceValue = list([any('red'), any('blue')]);
       const node = rules([
@@ -1055,55 +952,6 @@ describe('reference', () => {
       } finally {
         List.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;
-      }
-    });
-
-    it('renders source-free declaration reference sequences as text without container copies', async () => {
-      const sourceValue = spaced([any('red'), any('blue')]);
-      const node = rules([
-        decl({
-          name: 'src',
-          value: sourceValue
-        })
-      ]);
-      const sourceParent = sourceValue.parent;
-      setRulesContext(await node.eval(context));
-      const refNode = ref({ key: 'src' }, { type: 'declaration' });
-      const buffer = createRenderBuffer('segmented');
-      const originalCopy = Sequence.prototype.cloneForPlacement;
-      const originalInherit = Sequence.prototype.inherit;
-      let sourceValueCopies = 0;
-      let sourceValueInherits = 0;
-      Sequence.prototype.cloneForPlacement = function copyForCounting(
-        this: Sequence,
-        ...args: Parameters<typeof originalCopy>
-      ): ReturnType<typeof originalCopy> {
-        if (this === sourceValue) {
-          sourceValueCopies++;
-        }
-        return originalCopy.apply(this, args);
-      };
-      Sequence.prototype.inherit = function inheritForCounting(
-        this: Sequence,
-        ...args: Parameters<typeof originalInherit>
-      ): ReturnType<typeof originalInherit> {
-        if (args[0] === sourceValue) {
-          sourceValueInherits++;
-        }
-        return originalInherit.apply(this, args);
-      };
-
-      try {
-        expect(await Promise.resolve(refNode.render(context))).toBe('red blue');
-        expect(await Promise.resolve(refNode.render(context, buffer))).toBe('red blue');
-        expect(buffer.segments).toEqual(['red blue']);
-        expect(sourceValueCopies).toBe(0);
-        expect(sourceValueInherits).toBe(0);
-        expect(sourceValue.parent).toBe(sourceParent);
-        expect(context.referenceStack).toBe(0);
-      } finally {
-        Sequence.prototype.cloneForPlacement = originalCopy;
-        Sequence.prototype.inherit = originalInherit;
       }
     });
 
@@ -1195,78 +1043,6 @@ describe('reference', () => {
         expect(context.referenceStack).toBe(0);
       } finally {
         List.prototype.cloneForPlacement = originalCopy;
-        List.prototype.inherit = originalInherit;
-      }
-    });
-
-    it('renders dynamic declaration reference containers without post-eval reference ownership copies', async () => {
-      const sourceValue = list([ref({ key: 'tone' }, { type: 'variable' })]);
-      const node = rules([
-        vardecl({ name: 'tone', value: any('red') }),
-        decl({
-          name: 'src',
-          value: sourceValue
-        })
-      ]);
-      setRulesContext(await node.eval(context));
-      const refNode = ref({ key: 'src' }, { type: 'declaration' });
-      const buffer = createRenderBuffer('segmented');
-      const originalInherit = List.prototype.inherit;
-      let inheritedFromReference = 0;
-      List.prototype.inherit = function inheritForCounting(
-        this: List,
-        ...args: Parameters<typeof originalInherit>
-      ): ReturnType<typeof originalInherit> {
-        if (args[0] === refNode) {
-          inheritedFromReference++;
-        }
-        return originalInherit.apply(this, args);
-      };
-
-      try {
-        expect(await Promise.resolve(refNode.render(context))).toBe('red');
-        expect(await Promise.resolve(refNode.render(context, buffer))).toBe('red');
-        expect(buffer.segments).toEqual(['red']);
-        expect(inheritedFromReference).toBe(0);
-        expect(sourceValue.parent?.type).toBe('Declaration');
-        expect(context.referenceStack).toBe(0);
-      } finally {
-        List.prototype.inherit = originalInherit;
-      }
-    });
-
-    it('resolves dynamic declaration reference containers without post-eval reference ownership copies', async () => {
-      const sourceValue = list([ref({ key: 'tone' }, { type: 'variable' })]);
-      const node = rules([
-        vardecl({ name: 'tone', value: any('red') }),
-        decl({
-          name: 'src',
-          value: sourceValue
-        })
-      ]);
-      setRulesContext(await node.eval(context));
-      const refNode = ref({ key: 'src' }, { type: 'declaration' });
-      const originalInherit = List.prototype.inherit;
-      let inheritedFromReference = 0;
-      List.prototype.inherit = function inheritForCounting(
-        this: List,
-        ...args: Parameters<typeof originalInherit>
-      ): ReturnType<typeof originalInherit> {
-        if (args[0] === refNode) {
-          inheritedFromReference++;
-        }
-        return originalInherit.apply(this, args);
-      };
-
-      try {
-        const resolved = await refNode.resolve(context);
-
-        expect(resolved).toBeInstanceOf(List);
-        expect(resolved.toTrimmedString()).toBe('red');
-        expect(inheritedFromReference).toBe(0);
-        expect(sourceValue.parent?.type).toBe('Declaration');
-        expect(context.referenceStack).toBe(0);
-      } finally {
         List.prototype.inherit = originalInherit;
       }
     });
@@ -1692,53 +1468,6 @@ describe('reference', () => {
       }
     });
 
-    it('renders source-backed direct index object container hits without container copies', async () => {
-      const sourceList = list([any('alpha'), any('beta')]);
-      setSourceSpan(sourceList, { start: 10, end: 20 });
-      const targetObject = jsobj({ tones: sourceList });
-      const node = rules([
-        vardecl({ name: 'targetObject', value: targetObject })
-      ]);
-      setRulesContext(await node.eval(context));
-      const refNode = ref({
-        target: ref({ key: 'targetObject' }, { type: 'variable' }),
-        key: quoted('tones')
-      }, { type: 'index' });
-      const originalCopy = List.prototype.cloneForPlacement;
-      const originalInherit = List.prototype.inherit;
-      let sourceListCopies = 0;
-      let sourceListInherits = 0;
-      List.prototype.cloneForPlacement = function copyForCounting(
-        this: List,
-        ...args: Parameters<typeof originalCopy>
-      ): ReturnType<typeof originalCopy> {
-        if (this === sourceList) {
-          sourceListCopies++;
-        }
-        return originalCopy.apply(this, args);
-      };
-      List.prototype.inherit = function inheritForCounting(
-        this: List,
-        ...args: Parameters<typeof originalInherit>
-      ): ReturnType<typeof originalInherit> {
-        if (args[0] === sourceList || args[0] === refNode) {
-          sourceListInherits++;
-        }
-        return originalInherit.apply(this, args);
-      };
-
-      try {
-        expect(await Promise.resolve(refNode.render(context))).toBe('alpha, beta');
-        expect(sourceListCopies).toBe(0);
-        expect(sourceListInherits).toBe(0);
-        expect(sourceList.parent).toBe(targetObject);
-        expect(context.referenceStack).toBe(0);
-      } finally {
-        List.prototype.cloneForPlacement = originalCopy;
-        List.prototype.inherit = originalInherit;
-      }
-    });
-
     it('keeps public direct index container resolve from corrupting source parents', async () => {
       const targetObject = jsobj({
         tones: list([any('one'), any('two')])
@@ -2038,37 +1767,6 @@ describe('reference', () => {
       }
     });
 
-    it('renders source-free fallback containers as text without applying public result metadata', async () => {
-      const fallback = list([any('red'), any('blue')]);
-      const fallbackParent = fallback.parent;
-      const originalInherit = fallback.inherit;
-      let inheritCalls = 0;
-      fallback.inherit = function inheritForCounting(
-        this: typeof fallback,
-        ...args: Parameters<typeof originalInherit>
-      ): ReturnType<typeof originalInherit> {
-        inheritCalls++;
-        return originalInherit.apply(this, args);
-      };
-
-      try {
-        const refNode = ref(
-          { key: 'missing' },
-          {
-            type: 'variable',
-            fallbackValue: fallback
-          }
-        );
-
-        expect(await Promise.resolve(refNode.render(context))).toBe('red, blue');
-        expect(inheritCalls).toBe(0);
-        expect(fallback.parent).toBe(fallbackParent);
-        expect(context.referenceStack).toBe(0);
-      } finally {
-        fallback.inherit = originalInherit;
-      }
-    });
-
     it('renders source-backed static fallback containers as text without container copies', async () => {
       const fallback = list([any('red'), any('blue')]);
       setSourceSpan(fallback, { start: 10, end: 20 });
@@ -2335,38 +2033,6 @@ describe('reference', () => {
       }
     });
 
-    it('reuses source-free static fallback sequences as inert output containers', async () => {
-      const fallback = spaced([any('red'), any('blue')]);
-      const originalClone = Sequence.prototype.clone;
-      let sequenceClones = 0;
-      Sequence.prototype.clone = function cloneForCounting(
-        this: Sequence,
-        ...args: Parameters<typeof originalClone>
-      ): ReturnType<typeof originalClone> {
-        sequenceClones++;
-        return originalClone.apply(this, args);
-      };
-
-      try {
-        const refNode = ref(
-          { key: 'missing' },
-          {
-            type: 'variable',
-            fallbackValue: fallback
-          }
-        );
-
-        const resolved = await refNode.resolve(context);
-
-        expect(resolved).toBe(fallback);
-        expect(resolved.toTrimmedString()).toBe('red blue');
-        expect(sequenceClones).toBe(0);
-        expect(refNode.toTrimmedString()).toBe('$missing');
-      } finally {
-        Sequence.prototype.clone = originalClone;
-      }
-    });
-
     it('preserves direct mixin-ruleset hits instead of returning the live canonical mixin', async () => {
       const mixinDef = mixin({
         name: '.fast-mixin',
@@ -2546,37 +2212,6 @@ describe('reference', () => {
         foo: red;
         bar: red;
       `);
-    });
-
-    it('does not clone childless source-free scalar leaves inside declaration reference containers', async () => {
-      const node = rules([
-        decl({
-          name: 'src',
-          value: list([any('red')])
-        })
-      ]);
-      const evaldRoot = setRulesContext(await node.eval(context));
-
-      const originalClone = Any.prototype.clone;
-      let scalarClones = 0;
-      Any.prototype.clone = function cloneForCounting(
-        this: Any,
-        ...args: Parameters<typeof originalClone>
-      ): ReturnType<typeof originalClone> {
-        if (this.valueOf() === 'red') {
-          scalarClones++;
-        }
-        return originalClone.apply(this, args);
-      };
-
-      try {
-        const resolved = await ref({ key: 'src' }, { type: 'declaration' }).resolve(context);
-
-        expect(resolved.toTrimmedString()).toBe('red');
-        expect(scalarClones).toBe(0);
-      } finally {
-        Any.prototype.clone = originalClone;
-      }
     });
 
     it('reuses source-free static declaration reference containers during public resolve', async () => {

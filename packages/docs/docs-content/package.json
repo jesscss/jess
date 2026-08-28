@@ -2,6 +2,7 @@
   "name": "@jesscss/docs-content",
   "version": "0.1.0-alpha.1",
   "private": true,
+  "type": "module",
   "description": "Canonical docs content source for Jess and Less sites",
   "scripts": {
     "import:less": "node ./scripts/import-less-docs.mjs",

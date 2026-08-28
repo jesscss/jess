@@ -196,7 +196,13 @@ export default defineConfig({
      * time. No-op for files without the macro attribute, so it's safe globally.
      */
     parseman.vite(),
-    circleDependency()
+
+    /*
+     * Circular-import detection is a CI/pre-push guardrail, not a per-run need:
+     * it only warns (no failing gate) yet runs on every module transform. Gate it
+     * behind an env flag so local/watch test runs skip the transform overhead.
+     */
+    ...(process.env.VITEST_CIRCULAR === 'true' ? [circleDependency()] : [])
   ],
   resolve: {
     alias: workspaceSrcAliases(),
@@ -213,6 +219,17 @@ export default defineConfig({
      * },
      */
     watch: false,
+
+    /*
+     * Share one module registry across test files within a worker instead of
+     * re-executing the whole source-aliased graph per file. Every `@jesscss/*`
+     * resolves to `src/*` here (see workspaceSrcAliases), so isolate:true made
+     * each of ~478 files re-transform and re-run the entire core AST/eval graph
+     * — measured as tens of seconds of import per package with sub-2s of actual
+     * test time. The handful of tests that need a fresh module capture (extend
+     * profile-counter gates) force their own via `vi.resetModules()`.
+     */
+    isolate: false,
 
     // Set TEST environment variable for packages that depend on it
     env: {

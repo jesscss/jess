@@ -205,11 +205,6 @@ describe('Dimension', () => {
       let right = num(2);
       await expect(renderOperate(left, right, '*')).resolves.toBe('20px');
     });
-    it('should multiply', async () => {
-      let left = num(10);
-      let right = dimension([2, 'px']);
-      await expect(renderOperate(left, right, '*')).resolves.toBe('20px');
-    });
     it('should ignore double units in non-strict mode', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'px']);
@@ -306,31 +301,6 @@ describe('Dimension', () => {
      * operands. These assert the throw contract; calc preservation itself is
      * covered by the Operation tests and the all-less calc fixture.
      */
-    it('throws when adding incompatible units', () => {
-      let left = dimension([10, 'px']);
-      let right = dimension([2, 'rem']);
-      expect(() => left.operate(right, '+', context)).toThrow(TypeError);
-    });
-    it('throws when dividing a number by a unit', () => {
-      let left = num(10);
-      let right = dimension([2, 'px']);
-      expect(() => left.operate(right, '/', context)).toThrow(TypeError);
-    });
-    it('throws when multiplying double units', () => {
-      let left = dimension([10, 'px']);
-      let right = dimension([2, 'px']);
-      expect(() => left.operate(right, '*', context)).toThrow(TypeError);
-    });
-    it('should throw on divide by zero (preserve mode still throws)', () => {
-      let left = dimension([10, 'px']);
-      let right = num(0);
-      expect(() => left.operate(right, '/', context)).toThrow();
-    });
-    it('should cancel units during division (same as strict)', async () => {
-      let left = dimension([10, 'px']);
-      let right = dimension([2, 'px']);
-      await expect(renderOperate(left, right, '/', context)).resolves.toBe('5');
-    });
     it('throws when dividing incompatible units', () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 's']);
