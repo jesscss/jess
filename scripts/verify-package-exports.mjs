@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 
 const rootDir = path.resolve(import.meta.dirname, '..');
 const packagesDir = path.join(rootDir, 'packages');
@@ -12,6 +14,7 @@ const allowedRootRenderBufferExports = new Set([
   'FlatRenderBuffer',
   'RenderBuffer'
 ]);
+const retiredCoreRootExports = ['DocumentContext', 'DocumentContextOptions'];
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -40,6 +43,11 @@ const failures = [];
 const coreIndexPath = path.join(rootDir, 'packages/core/src/index.ts');
 if (fs.existsSync(coreIndexPath)) {
   const coreIndexSource = fs.readFileSync(coreIndexPath, 'utf8');
+  for (const name of retiredCoreRootExports) {
+    if (new RegExp(`\\b${name}\\b`, 'u').test(coreIndexSource)) {
+      failures.push(`@jesscss/core root export: retired ${name} is still present in src/index.ts`);
+    }
+  }
   for (const match of coreIndexSource.matchAll(rootRenderBufferExportPattern)) {
     const exported = match.groups?.exports;
     if (!exported || exported === '*') {
@@ -56,6 +64,19 @@ if (fs.existsSync(coreIndexPath)) {
       if (!allowedRootRenderBufferExports.has(name)) {
         failures.push(`@jesscss/core root export: ${name} is not an allowed render-buffer root export`);
       }
+    }
+  }
+}
+
+const coreEsmPath = path.join(rootDir, 'packages/core/lib/index.js');
+const coreCjsPath = path.join(rootDir, 'packages/core/lib/index.cjs');
+if (fs.existsSync(coreEsmPath) && fs.existsSync(coreCjsPath)) {
+  const cacheKey = `package-export-check=${fs.statSync(coreEsmPath).mtimeMs}`;
+  const esm = await import(`${pathToFileURL(coreEsmPath).href}?${cacheKey}`);
+  const cjs = createRequire(import.meta.url)(coreCjsPath);
+  for (const name of retiredCoreRootExports) {
+    if (Object.hasOwn(esm, name) || Object.hasOwn(cjs, name)) {
+      failures.push(`@jesscss/core built root export: retired ${name} remains in ESM or CJS output`);
     }
   }
 }

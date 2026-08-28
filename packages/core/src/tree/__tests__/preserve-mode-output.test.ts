@@ -3,8 +3,7 @@ import { dimension, num, op } from '../index.js';
 import { Context } from '../../context.js';
 
 describe('Preserve Mode Output Examples', () => {
-  const context = new Context();
-  context.setOption('unitMode', 'preserve');
+  const context = new Context({ unitMode: 'preserve' });
 
   async function renderOperation(nodes: Parameters<typeof op>[0]): Promise<string> {
     const result = await op(nodes).eval(context);

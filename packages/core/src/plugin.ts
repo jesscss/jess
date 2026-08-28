@@ -1,7 +1,7 @@
 import type { Stylesheet } from './ast/nodes.js';
 import type { ImportOptions } from './import-options.js';
 export type { ImportOptions } from './import-options.js';
-import type { Context, ContextOptions } from './context.js';
+import type { Context, ContextOptions, ResolvedOptions } from './context.js';
 import { join, isAbsolute, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
@@ -11,6 +11,14 @@ import type { ApplySelectorKind, ExtendSelectorKind } from './types/config.js';
 export type ISafeParseResult = {
   /** Canonical parser document on successful parsing. */
   document?: Stylesheet;
+
+  /**
+   * Dialect-owned defaults proposed by a successful parser. Context accepts the
+   * entry parser's set once, folds constructor-supplied compile options over it,
+   * and retains that immutable policy for the session. Imported parsers cannot
+   * reconfigure the live Context.
+   */
+  dialectDefaults?: Readonly<Partial<ResolvedOptions>>;
 
   /**
    * Normalized errors from parsing.
