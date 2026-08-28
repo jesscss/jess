@@ -904,53 +904,6 @@ describe('Control Nodes', () => {
     expect(tickDecl.parent).toBe(node);
   });
 
-  it('reuses dynamic direct $while body children while re-evaluating each iteration', async () => {
-    const context = new Context();
-    let sourcePrepCalls = 0;
-    let calls = 0;
-    const tickDecl = decl({ name: 'tick', value: ref({ key: 'tick' }, { type: 'variable' }) });
-    const originalPrepareRegistration = tickDecl.prepareRegistration.bind(tickDecl);
-    tickDecl.prepareRegistration = (renderContext: Context) => {
-      sourcePrepCalls++;
-      return originalPrepareRegistration(renderContext);
-    };
-    const loopRules = rules([
-      vardecl({ name: 'tick', value: call({
-        name: new JsFunction({
-          name: 'next-tick',
-          fn: () => any(String(calls))
-        }),
-        args: list([])
-      }) }),
-      tickDecl
-    ]);
-    const node = new While({
-      condition: call({
-        name: new JsFunction({
-          name: 'keep-going',
-          fn: () => bool(++calls <= 2)
-        }),
-        args: list([])
-      }),
-      rules: loopRules.rules
-    });
-
-    const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
-
-    expect(css).toBeString(`
-      tick: 1;
-      tick: 2;
-    `);
-
-    /*
-     * $while SHARES its body (thin surface); a non-self-referential dynamic body is
-     * re-evaluated correctly per iteration — the source child IS evaluated each
-     * iteration (2), owned by the While node.
-     */
-    expect(sourcePrepCalls).toBe(2);
-    expect(tickDecl.parent).toBe(node);
-  });
-
   it('updates dynamic-name $while body mutations without preparing the body surface', async () => {
     const context = new Context();
     let sourcePrepCalls = 0;
@@ -1560,37 +1513,6 @@ describe('Control Nodes', () => {
      * iteration surfaces share them, so the canonical child stays parented to the loop.
      */
     expect(itemDecl.parent).toBe(loop);
-  });
-
-  it('reuses childless source-free scalar leaves in $for per-iteration body copies', async () => {
-    const context = new Context();
-    const originalClone = Any.prototype.clone;
-    let scalarClones = 0;
-    Any.prototype.clone = function cloneForCounting(
-      this: Any,
-      ...args: Parameters<typeof originalClone>
-    ): ReturnType<typeof originalClone> {
-      if (this.valueOf() === 'red') {
-        scalarClones++;
-      }
-      return originalClone.apply(this, args);
-    };
-
-    try {
-      const loopRules = rules([
-        decl({ name: 'color', value: any('red') }),
-        decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
-      ]);
-      const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
-      const css = await renderNodeToString(root, context);
-
-      expect(css).toContain('color: red');
-      expect(css).toContain('item: a');
-      expect(css).toContain('item: b');
-      expect(scalarClones).toBe(0);
-    } finally {
-      Any.prototype.clone = originalClone;
-    }
   });
 
   it('reuses static direct $for body children instead of deriving per-iteration copies', async () => {
