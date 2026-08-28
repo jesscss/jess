@@ -660,6 +660,7 @@ export function branchTextIsPlaceholder(text: string): boolean {
       return true;
     }
     const before = text.charCodeAt(at - 1);
+
     // space, `>`, `+`, `~`, `,`
     if (before === 32 || before === 62 || before === 43 || before === 126 || before === 44) {
       return true;

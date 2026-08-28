@@ -4024,6 +4024,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         return combineAll([l, r], values =>
           literal(`${emitValue(values[0]!)} ${node.operator} ${emitValue(values[1]!)}`));
       }
+
       /*
        * §4.6 — an operation AUTHORED inside a css-values-4 §10 math function
        * preserves its authorship: `calc($val / 2)` resolves the variable and
@@ -4820,7 +4821,10 @@ function resolveReferenceResult(
   let valueFrame = frame;
   let sourceOwner = frame?.sourceOwner ?? null;
   if (!isValueSlotArray(value) && value.type === 'Lookup' && value.kind === 'var') {
-    const resolved = resolveVarRef(valueFrame, value.name as string, value.scope, e);
+    if (typeof value.name !== 'string') {
+      return null;
+    }
+    const resolved = resolveVarRef(valueFrame, value.name, value.scope, e);
     if (!resolved) {
       return null;
     }
@@ -4867,7 +4871,10 @@ function resolveReferenceResult(
        */
       while (!isValueSlotArray(value)) {
         if (value.type === 'Lookup' && value.kind === 'var') {
-          const aliased = resolveVarRef(valueFrame, value.name as string, value.scope, e);
+          if (typeof value.name !== 'string') {
+            break;
+          }
+          const aliased = resolveVarRef(valueFrame, value.name, value.scope, e);
           if (!aliased) {
             break;
           }
@@ -4985,8 +4992,8 @@ function resolveReferenceResult(
          * It is not a `$name` read from the caller's declaration timeline.
          */
         matched = map.byProp.get(propKey);
-      } else {
-        const key = evalBytesSync(step.name as ValueNode, valueFrame, e);
+      } else if (typeof step.name === 'object') {
+        const key = evalBytesSync(step.name, valueFrame, e);
         missingSymbol = step.kind === 'var'
           ? `@${key}`
           : step.kind === 'prop' ? `$${key}` : key;
