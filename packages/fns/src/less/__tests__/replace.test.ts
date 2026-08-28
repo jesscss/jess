@@ -5,8 +5,8 @@ import {
   makeKeyword,
   makeList,
   makeQuoted
-} from '@jesscss/core/value';
-import type { Fn, FnCtx, List, ValueGroup } from '@jesscss/core/value';
+} from '@jesscss/core';
+import type { Fn, FnCtx, List, ValueGroup } from '@jesscss/core';
 import replace from '../replace.js';
 import { lessFns } from '../registry.js';
 
@@ -34,10 +34,10 @@ describe('replace()', () => {
     expect(replace.name).toBe('replace');
     expect(replace.variadic).toBe(true);
     expect(replace.params).toEqual([
-      { kinds: 'any' },
-      { kinds: 'any' },
-      { kinds: 'any' },
-      { kinds: 'any', optional: true }
+      { type: 'any' },
+      { type: 'any' },
+      { type: 'any' },
+      { type: 'any', optional: true }
     ]);
     expect(lessFns.find(fn => fn.name === 'replace')).toBe(replace);
   });

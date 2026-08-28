@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Context } from '../context.js';
+import { Context, TreeContext } from '../context.js';
 import { createTestContext } from '../tree/__tests__/context-test-helpers.js';
 import { rules, ruleset, sellist, sel, el, decl, spaced, any as anyNode } from '../tree/index.js';
 import { stylesheet } from '../ast/nodes.js';
@@ -285,14 +285,14 @@ line 5`;
       ]);
 
       // Set file context with source
-      context.treeContext = {
+      context.treeContext = new TreeContext({
         file: {
           name: 'warning-lines.jess',
           path: '/test',
           fullPath: filePath,
           source
         }
-      };
+      });
 
       context.sourceTrees.set(filePath, tree);
       context.opts.breakOnError = false;

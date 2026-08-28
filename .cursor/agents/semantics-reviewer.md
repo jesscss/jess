@@ -52,6 +52,15 @@ reviewed (branch / range / files).
   either a fix or the erasure of an intended divergence. Demand the recorded
   expectation for that fixture before reading it either way. Incident S2 is
   exactly this mistake.
+- **"The differential showed no change."** A differential is only as good as its
+  corpus, and an unchanged output is not evidence until the corpus is shown to
+  contain the construct the diff is stated over. Require a **negative control**:
+  break the emitting path deliberately and show the differential moves. Measured
+  on the parser side, a differential over 408 files / 673 kB reported 0 diffs for
+  the change *and* 0 diffs for a deliberately-broken control, and became
+  sensitive only after 10 targeted fixtures were built. An unfalsified null
+  result is `UNVERIFIED`, never a pass — and "the corpus does not exercise this
+  construct" is itself a reportable finding.
 
 Every invariant and every applicable catalogue row gets a line with **cited
 evidence**: a file:line, a ledger row ID, a byte comparison, or an explicit

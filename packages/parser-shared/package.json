@@ -1,8 +1,14 @@
 {
   "name": "@jesscss/parser-shared",
-  "private": true,
-  "version": "0.0.0",
+  "version": "2.0.0-alpha.15",
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.18.0"
+  },
+  "description": "Shared Parseman grammar facts for Jess syntax parsers",
   "exports": {
     "./recognition": {
       "types": "./lib/recognition.d.ts",
@@ -25,10 +31,19 @@
   ],
   "scripts": {
     "build": "pnpm compile",
-    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck"
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly"
+  },
+  "peerDependencies": {
+    "parseman": "^0.50.1"
   },
   "devDependencies": {
-    "parseman": "^0.41.0",
+    "parseman": "^0.50.1",
     "tsdown": "~0.21.7"
-  }
+  },
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jesscss/jess/issues"
+  },
+  "homepage": "https://github.com/jesscss/jess#readme"
 }

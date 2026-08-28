@@ -3,6 +3,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { Position } from 'vscode-languageserver-types';
 import { parseLessDoc } from '@jesscss/less-parser/cst';
 import { parseScssDoc } from '@jesscss/scss-parser/cst';
+import { parseJessDoc } from '@jesscss/jess-parser/cst';
 import { createEngine } from '../engine.js';
 import { cstSemanticTokens, cstVariableNames, cstDeclaredSymbols } from '../cst-syntactic.js';
 
@@ -122,6 +123,13 @@ describe('cst-syntactic pure functions', () => {
       const { vars, mixins } = cstDeclaredSymbols(parseScssDoc(doc.getText()).tree, doc);
       expect(vars.has('primary')).toBe(true);
       expect(mixins.has('foo')).toBe(true);
+    });
+
+    it('collects Jess Less-style mixins from single-node CST definitions', () => {
+      const doc = TextDocument.create('file:///x.jess', 'jess', 1, '$primary: red;\n.button() { color: $primary; }');
+      const { vars, mixins } = cstDeclaredSymbols(parseJessDoc(doc.getText()).tree, doc);
+      expect(vars.has('primary')).toBe(true);
+      expect(mixins.has('button')).toBe(true);
     });
   });
 });

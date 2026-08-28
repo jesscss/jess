@@ -37,6 +37,24 @@ describe("Less ordinary value comments", () => {
     expect(rendered).not.toContain("/* private */");
   });
 
+  /* A list separator is matched by `sepBy`/`oneOrMoreSep` and contributes no
+   * `children` entry, but a trivia insert index addresses `rawChildren`, where
+   * the separator is still present. Reading the index against `children` drops
+   * exactly the comments that sit either side of a separator — silently, with a
+   * successful parse — so pin one comment on each side of each list form. */
+  it('keeps comments sitting either side of a list separator', () => {
+    const source = [
+      '.bg { background-image: linear-gradient(#333 /* before */, /* after */ #111); }',
+      '.sel { color: grey /* before */, /* after */ orange; }',
+      '@media screen /* before */, /* after */ print, handheld { body { font-size: 12pt; } }'
+    ].join('\n');
+    const rendered = serialize(parse(source)).css;
+
+    expect(rendered).toContain('linear-gradient(#333 /* before */, /* after */ #111)');
+    expect(rendered).toContain('color: grey /* before */, /* after */ orange;');
+    expect(rendered).toContain('@media screen /* before */, /* after */ print, handheld');
+  });
+
   it("keeps newline-bearing value layout as parser trivia", () => {
     const source = [
       ".card {",

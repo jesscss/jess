@@ -10,7 +10,7 @@
 > interaction · deferred sub-cases · owner-confirm items**.
 >
 > Branch of record: `experiment/tree2-cleanroom-20260715`. Roadmap row:
-> [`TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md` § R2](../TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md).
+> [`TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md` § R2](./TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md).
 > This spec was authored on a doc-only spec branch (no build); the "must
 > change" call-outs are against the code as it stands on the branch of record.
 

@@ -13,6 +13,19 @@ For repo-wide rules, read `AGENTS.md`. For the active architecture roadmap, use:
 
 (`PERFORMANCE-HANDOFF.md` was listed here until 2026-07-24 and does not exist.)
 
+## Current focus (2026-08-17, dev `6d7fbe82d`)
+
+**Strengthen the Less compilation story so we can keep publishing alphas.** Measure the
+`packages/jess/test/less/**` baseline as a NAMED per-case set (build `lib/` first — stale
+`parser-shared`/`core` masks real failures), triage each red case (parse error vs wrong
+emitted CSS vs genuine feature gap), then fix. Baseline drifts — capture your own, cite a
+SHA. The CURRENT session handoff at the top of `HANDOFF.md` has the full landed-work
+summary; in short: **parseman 0.49.0 is published and jess is bumped**; **P28**
+(all four dialects' selector-tower CST converged to css's canonical names, byte-identical
+AST) and **P29** (nested relative selectors / CSS Nesting `> .child`, additive) landed;
+the compose **DEDUP is PARKED** with `cssBaseRules` proven to fuse on dev — the resume
+point is `docs/design/COMPOSE-MIGRATION-SPEC.md`.
+
 ## Package Build Shape
 
 If package B depends on package A, build A before testing B against local
@@ -20,14 +33,37 @@ changes.
 
 Common dependency shape:
 
-- leaves: `@jesscss/awaitable-pipe`, `@jesscss/shared`,
-  `@jesscss/patch-css`, `@jesscss/style-resolver`, `@jesscss/config`
-- core/parsers: `@jesscss/core`, `@jesscss/css-parser`,
-  `@jesscss/less-parser`, `@jesscss/scss-parser`, `@jesscss/fns`
-- app/plugins: `@jesscss/parser`, `@jesscss/jess-plugin`,
-  `@jesscss/plugin-node-modules`, `@jesscss/jess-plugin-less`,
-  `@jesscss/jess-plugin-scss`, `@jesscss/jess-plugin-less-compat`,
-  `@jesscss/language-service`, `@jesscss/jess`
+Regenerate this list rather than trusting it — it carried five wrong names until the
+2026-07-30 docs audit, including `@jesscss/parser`, which does not exist:
+
+```bash
+node -e "const fs=require('fs'),path=require('path');
+(function w(d){for(const e of fs.readdirSync(d,{withFileTypes:true})){if(e.name==='node_modules')continue;
+const p=path.join(d,e.name); if(e.isDirectory()){
+if(fs.existsSync(path.join(p,'package.json'))){const j=JSON.parse(fs.readFileSync(path.join(p,'package.json')));
+console.log(j.name,'|',p,j.private?'(private)':'');} w(p);}}})('packages');" | sort
+```
+
+As of `facb641dd` (31 workspace packages, 9 `private`, 22 publishable):
+
+- leaves: `@jesscss/awaitable-pipe`, `@jesscss/shared` (`packages/_shared`),
+  `@jesscss/patch-css`, `@jesscss/style-resolver`, **`styles-config`**
+  (`packages/config` — unscoped, deliberately)
+- core/parsers: `@jesscss/core`, `@jesscss/parser-shared`, and the four parsers
+  now under `packages/syntax/<lang>/`: `@jesscss/css-parser`,
+  `@jesscss/less-parser`, `@jesscss/scss-parser`, `@jesscss/jess-parser`;
+  plus `@jesscss/fns`
+- compiler/diagnostics: `@jesscss/compiler`, `@jesscss/compiler-preset`,
+  `@jesscss/diagnostics-core`, `@jesscss/lint`
+- app/plugins: `@jesscss/jess-plugin`, `@jesscss/plugin-node-modules`,
+  `@jesscss/plugin-js`, **`@jesscss/plugin-less`**, **`@jesscss/plugin-scss`**,
+  **`@jesscss/plugin-less-compat`**, **`@jesscss/plugin-jess`**,
+  `@jesscss/language-service` (`packages/editor/language-service`), `jess`
+
+*(Corrected 2026-07-30: the old list said `@jesscss/config`, `@jesscss/jess-plugin-less`,
+`@jesscss/jess-plugin-scss`, `@jesscss/jess-plugin-less-compat` — none of which is the
+declared `name` — and `@jesscss/parser`, which exists nowhere in the workspace. It also
+omitted `@jesscss/plugin-jess`, `@jesscss/jess-parser`, and the compiler/diagnostics tier.)*
 
 Practical example: after changing `packages/core`, build core before running
 Jess package fixture tests that import `@jesscss/core` from built output.
@@ -65,6 +101,55 @@ files as suspect unless their expectations have been revalidated against
 upstream Less test-data, Less.js behavior, or a documented Jess-specific
 contract.
 
+## Triaging a branch queue: reverse-apply, never compare SHAs
+
+`dev` rebases constantly, so a landed change reappears on its branch under a new
+hash. `git cherry`, "N commits ahead", and comparing SHAs all then report a
+branch as unmerged when its content is already shipped. After a 90+ commit day
+this made the queue unreadable: 31 branches showed commits ahead, and most were
+content-merged.
+
+Ask whether the branch's CONTENT is on `dev` by trying to take it back OUT:
+
+```sh
+mb=$(git merge-base origin/dev "origin/$branch")
+git diff "$mb" "origin/$branch" > /tmp/b.patch
+git apply --check -R /tmp/b.patch   # clean => already on dev
+```
+
+Run it per file when the whole-patch check fails; `present`/`absent` counts
+separate "fully landed" from "partly landed" from "genuinely outstanding". Then
+classify into three lists — **already-merged**, **superseded** (the change was
+made differently on `dev`), **genuinely unmerged** — and report before landing
+anything.
+
+Three traps this caught, all of which a SHA comparison misses:
+
+- **A branch can be BEHIND on the same file it "adds".** `lane/cheat-sheet-complete`
+  asserted a `0.45.0` parseman floor and was 467 lines *smaller* than the sheet
+  already on `dev`. `lane/grammar-tournament-harness` differed from `dev` by one
+  hunk — a self-contradicting version string `dev` had already fixed. Landing
+  either would have been a regression.
+- **A stale branch reverts newer work through its conflicts.**
+  `fix/keyword-boundary-ident-continue` predated the P20 refactor; its side of the
+  `recognition.ts` conflicts carried an unsplit seven-name `descriptorAtKeyword`
+  that would have re-broken `@font-palette-values`, `@view-transition` and
+  `@position-try` in SCSS. Resolve such hunks to `dev` and re-apply the branch's
+  actual contribution on top of `dev`'s structure.
+- **Additive conflicts drop a side silently.** Where both sides ADD to the same
+  list, take the union: `dev` had `@keyframesé`, the branch had
+  `@supportsé`/`@mediaé`/`@containeré`, and either side taken wholesale loses the
+  other.
+
+Two verification rules that go with it: the oracles read `lib/`, so any
+post-rebase measurement without a rebuild is meaningless; and a branch's own
+recorded baseline may be stale in a way that hides its contribution — isolate by
+building at `dev`, digesting, then building the change and digesting again.
+
+Check paths still exist before triaging content. Branches predating the
+`packages/syntax/<lang>/` move or the `parser-shared` rename name files that are
+simply gone, which is a faster "dead" verdict than any diff.
+
 ## Known-red baseline (measured 2026-07-24 on `e34bb24b3`)
 
 Measured in a clean worktree after `pnpm install --frozen-lockfile` and
@@ -81,7 +166,8 @@ count, and do not inherit one from a doc without re-deriving it.
 This block used to list `verify:types` and `verify:baseline` as pre-existing
 reds. Both are fixed:
 
-- `pnpm run verify:types` — **GREEN, 22/22 configs.** The `less-parser`
+- `pnpm run verify:types` — **GREEN. The gate prints its own config count (25 at
+  `facb641dd`); do not carry a number here — `22/22` was stale.** The `less-parser`
   `CssAstSyntaxUnicodeRange` diagnostic (introduced `c1782031e`) is gone.
 - `pnpm run verify:baseline` — no longer stops at `verify:node-copy-frontier`.
   The `unit.clone()` in `jess-plugin-js/src/runtime-worker.ts` belongs to the
@@ -150,15 +236,113 @@ A stale `parser-shared` build masks real failures. Rebuild the workspace
 before trusting any count; a partial build makes the `all-less` number
 bogus.
 
+### Measure against the BUILT lib, not the edited source
+
+Two instrument failures in one session, both of which printed a clean
+result while measuring nothing:
+
+- `pnpm … | tail -N` reports the exit status of `tail`, so a **failed**
+  build reads as exit 0. Grep the log for `error TS`/`ELIFECYCLE`
+  instead of trusting the status of a pipeline.
+- `pnpm oracle:less:byte-identity` rebuilds first; invoking
+  `node …/oracle-byte-identity.mjs` directly does **not**. Running the
+  latter after a source edit silently digests the OLD lib. It reported
+  "0 entries moved" — plausible, and wrong.
+
+Standing habit: before any measurement, assert a known-discriminating
+fact against the built artifact (e.g. `parseCssCst('a{font-family:file{X}test}').ok === false`),
+and feed the detector a known-positive input to confirm it fires. A
+count that did not move when you predicted it would is the signal.
+
+### less byte-identity baseline is STALE on dev (needs owner sign-off)
+
+`packages/syntax/less/less-parser/test/oracle-byte-identity.baseline.json`
+was last written at `59f695d4a`. Measured at `131cd9d1b` with a clean
+build and the CST fix reverted, it already FAILS:
+
+- `ast` 709/709 shared entries moved, `threw` 120 → 118
+- `cst` 709/709 shared entries moved, `threw` 0 → 0
+- corpus GAINED 5 entries, lost 0 — all five are new upstream fixtures
+  under `node_modules/@less/test-data` (a dependency bump, not a jess
+  change)
+
+`harness` is byte-identical across both reports, and the harness
+fingerprint is a **frozen hand-built canary** that deliberately parses
+nothing — so it proves the projection/serializer is unchanged and says
+nothing about parser output. Every entry moving on BOTH surfaces with
+zero unchanged is the shape of a representation-level change, not
+per-file grammar drift, which would move a subset. ~40 parser commits
+landed since the baseline, including two parseman floor bumps
+(`f292fdd8f` 0.43→0.44, `75002c4a3` →0.45), the root-trivia capture
+migration (`b2f888070`), the per-node trivia stride fix (`d10e2238d`),
+span-builder monomorphization (`553d3a76e`) and AST source-provenance
+inlining (`39a9ca346`). Note the `cst` surface digests the WHOLE result
+object, not just `.tree`.
+
+No movement corresponds to a detected regression: all four parser
+suites, `diagnostics-core`, and the throw classification are consistent
+(`tests-error/parse` 26 throw / 3 not; `tests-error/eval` 67 parse
+cleanly, which is correct for a parser).
+
+**Attributed — and the answer is not drift. The baseline is not
+reproducible from the commit that introduced it.** Measured by building
+at four points, each gated on `parse('a{color:red}')` succeeding BEFORE
+digesting and on the corpus entry count:
+
+| commit | parseman | ast aggregate | vs baseline |
+| --- | --- | --- | --- |
+| `59f695d4a` (wrote baseline) | 0.41 | *cannot build* | — |
+| `8083e2615` | 0.43 | `67fdc10e…` | 709/709 moved |
+| `824f99480` | 0.43 | `04cd8e15…` | 709/709 moved |
+| `f292fdd8f` | 0.44 | *cannot build* | — |
+| `131cd9d1b` (HEAD) | 0.45 | `86f420dc…` | 709/709 moved |
+
+1. The 0.44 root-trivia migration (`b2f888070`) is **NOT** the cause:
+   movement is already total at `824f99480`, hundreds of commits and one
+   parseman minor earlier.
+2. There is no single cause. Three coherent points give three distinct
+   aggregates, none equal to the baseline — accumulated drift over
+   **673 commits** and parseman 0.41→0.45.
+3. **At `59f695d4a` both the css and less AST parsers throw
+   `TypeError: withBodySpan is not a function` on every input.** Both
+   `grammar.ts` files import `withBodySpan` from `@jesscss/core/ast`;
+   nothing in the repo exports it. Both packages built with `--noCheck`
+   then (dropped later at `bc0415c85`/`adfacc87c`), so it was never
+   caught. The baseline records `ast threw=120`, not 714, so it cannot
+   have come from that tree.
+
+Two commits are not measurable points at all: `59f695d4a`, and
+`f292fdd8f` (bumps the floor to 0.44 while the code is still
+0.43-shaped; the adaptation lands separately at `b2f888070`).
+
+So this is not a gate that drifted — it is an artifact that never
+corresponded to a buildable state of the repo it was committed into.
+Re-deriving it is the only way to get a gate. Still needs owner
+sign-off; do not rebaseline unilaterally.
+
+### Oracle instrument notes
+
+- The `cst` surface digests the WHOLE result object (`parseLessCst(src)`),
+  not just `.tree`, so any change to `ok`/`errors`/`rootTrivia` moves every
+  entry. Recommend it digest `.tree` only, with `ok`/`unconsumedFrom`
+  asserted separately — otherwise every trivia change forces a rebaseline.
+- `loadCorpus` returns `{entries:[{id,source}]}` at parseman 0.43/0.44 and
+  `{ids, read}` in the local harness. Assert the entry count on BOTH sides
+  before comparing; a short corpus yields a clean digest over a subset.
+- The `@less/test-data` symlink is location-relative; under `/tmp` it
+  resolves short without erroring.
+
 ## Current Focus
 
 No active debugging focus is recorded here.
 
 **Before starting anything, read the WORK IN FLIGHT table at the top of
 `docs/architecture/core/HANDOFF.md`.** Several lanes have a live agent or branch
-on them as of 2026-07-24 (parseman `0.34.0` adoption, gate classification, the
-fns per-dialect registry, and the numeric-precision landing). Coordinate rather
-than duplicating one.
+on them as of 2026-07-24 (gate classification, the fns per-dialect registry, and the
+numeric-precision landing). Coordinate rather than duplicating one. *(The "parseman
+`0.34.0` adoption" lane listed here is closed and was three floors stale: the repo is on
+`^0.47.1` (after `75002c4a3` took it to `^0.45.0` and `ff685793a` took it to
+`^0.46.0`).)*
 
 For current implementation work, use the active handoffs listed at the top of
 this file. When a debugging session starts, fill in only these fields and delete

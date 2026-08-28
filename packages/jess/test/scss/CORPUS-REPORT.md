@@ -8,28 +8,28 @@ per-construct evidence is in `scss-construct-support.test.ts`.
 
 ## Run provenance
 
-- Generated: `2026-07-25T01:11:31.396Z`
+- Generated: `2026-08-08T23:21:17.073Z`
 - Bootstrap: `5.3.8`
 - Runner: `v24.11.1` on `darwin/arm64`
 
 ## Parse lane (all `bootstrap/scss/**/*.scss`)
 
-- files: **92**, parsed: **29**, failed: **63**
+- files: **92**, parsed: **43**, failed: **49**
 
 Blocking constructs, by number of failing files that contain them. Files
 usually hit several blockers, so these counts overlap by design.
 
 | blocking construct | failing files |
 |---|--:|
-| interpolation as a standalone selector compound | 42 |
 | interpolation inside a var() name | 41 |
-| bare-truthy @if condition | 29 |
-| leading combinator (implicit &) | 22 |
-| @include with a trailing content block | 20 |
-| @content | 5 |
-| @warn / @error / @debug | 5 |
+| interpolation as a standalone selector compound | 38 |
+| bare-truthy @if condition | 22 |
+| leading combinator (implicit &) | 19 |
+| @include with a trailing content block | 17 |
 | multiline nested paren list | 4 |
 | interpolated pseudo-element | 3 |
+| @content | 2 |
+| @warn / @error / @debug | 2 |
 | @while | 2 |
 | line comment inside a paren list | 1 |
 
@@ -37,69 +37,55 @@ usually hit several blockers, so these counts overlap by design.
 
 | file | gave up at | source | blockers |
 |---|---|---|---|
-| `_accordion.scss` | 31:0 | `.accordion-button {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
-| `_alert.scss` | 5:0 | `.alert {` | interpolation as a standalone selector compound; interpolation inside a var() name |
+| `_accordion.scss` | 36:15 | `padding: var(--#{$prefix}accordion-btn-padding-y) var(--#{$prefix}accordion-btn-padding-x);` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
+| `_alert.scss` | 13:61 | `--#{$prefix}alert-border: #{$alert-border-width} solid var(--#{$prefix}alert-border-color);` | interpolation as a standalone selector compound; interpolation inside a var() name |
 | `_badge.scss` | 6:0 | `.badge {` | interpolation as a standalone selector compound; interpolation inside a var() name |
 | `_breadcrumb.scss` | 1:0 | `.breadcrumb {` | interpolation as a standalone selector compound; interpolation inside a var() name; leading combinator (implicit &) |
-| `_button-group.scss` | 2:0 | `.btn-group,` | interpolation as a standalone selector compound; leading combinator (implicit &) |
 | `_buttons.scss` | 5:0 | `.btn {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name |
-| `_card.scss` | 5:0 | `.card {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
-| `_carousel.scss` | 87:0 | `.carousel-control-prev,` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block |
+| `_card.scss` | 32:14 | `height: var(--#{$prefix}card-height);` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
+| `_carousel.scss` | 102:14 | `filter: var(--#{$prefix}carousel-control-icon-filter);` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block |
 | `_close.scss` | 6:0 | `.btn-close {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block |
-| `_containers.scss` | 5:0 | `@if $enable-container-classes {` | bare-truthy @if condition; @include with a trailing content block |
+| `_containers.scss` | 29:10 | `.container#{breakpoint-infix($name, $grid-breakpoints)} {` | bare-truthy @if condition; @include with a trailing content block |
 | `_dropdown.scss` | 19:0 | `.dropdown-menu {` | interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
-| `_functions.scss` | 7:0 | `@mixin _assert-ascending($map, $map-name) {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @warn / @error / @debug; @while |
-| `_grid.scss` | 11:0 | `@if $enable-grid-classes {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; leading combinator (implicit &) |
-| `_list-group.scss` | 5:0 | `.list-group {` | interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
-| `_maps.scss` | 52:0 | `@if $enable-dark-mode {` | bare-truthy @if condition; interpolation inside a var() name; multiline nested paren list |
-| `_modal.scss` | 10:0 | `.modal {` | interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
+| `_functions.scss` | 43:21 | `@return rgba(var(--#{$prefix}#{$identifier}-bg-rgb), var(--#{$prefix}#{$target}-opacity));` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @warn / @error / @debug; @while |
+| `_grid.scss` | 12:2 | `.row {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; leading combinator (implicit &) |
+| `_list-group.scss` | 32:29 | `@include border-radius(var(--#{$prefix}list-group-border-radius));` | interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
+| `_maps.scss` | 114:26 | `"primary-emphasis": var(--#{$prefix}primary-text-emphasis),` | bare-truthy @if condition; interpolation inside a var() name; multiline nested paren list |
+| `_modal.scss` | 38:15 | `z-index: var(--#{$prefix}modal-zindex);` | interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
 | `_nav.scss` | 6:0 | `.nav {` | interpolation as a standalone selector compound; interpolation inside a var() name; leading combinator (implicit &) |
-| `_navbar.scss` | 6:0 | `.navbar {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
+| `_navbar.scss` | 35:15 | `padding: var(--#{$prefix}navbar-padding-y) var(--#{$prefix}navbar-padding-x);` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
 | `_offcanvas.scss` | — | `` | interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block |
 | `_pagination.scss` | 1:0 | `.pagination {` | interpolation as a standalone selector compound; interpolation inside a var() name |
 | `_popover.scss` | 1:0 | `.popover {` | interpolation as a standalone selector compound; interpolation inside a var() name; leading combinator (implicit &) |
-| `_progress.scss` | 4:0 | `@if $enable-transitions {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name |
-| `_reboot.scss` | 28:0 | `:root {` | bare-truthy @if condition; interpolation inside a var() name; leading combinator (implicit &) |
+| `_progress.scss` | 5:2 | `@keyframes progress-bar-stripes {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name |
+| `_reboot.scss` | 30:27 | `@include font-size(var(--#{$prefix}root-font-size));` | bare-truthy @if condition; interpolation inside a var() name; leading combinator (implicit &) |
 | `_root.scss` | 1:0 | `:root,` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block |
-| `_spinners.scss` | 5:0 | `.spinner-grow,` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name |
-| `_tables.scss` | 5:0 | `.table {` | interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
+| `_spinners.scss` | 9:13 | `width: var(--#{$prefix}spinner-width);` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name |
+| `_tables.scss` | 26:20 | `border-color: var(--#{$prefix}table-border-color);` | interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
 | `_toasts.scss` | 1:0 | `.toast {` | interpolation as a standalone selector compound; interpolation inside a var() name; leading combinator (implicit &) |
 | `_tooltip.scss` | 2:0 | `.tooltip {` | interpolation as a standalone selector compound; interpolation inside a var() name |
-| `_type.scss` | 88:0 | `.blockquote {` | leading combinator (implicit &) |
-| `_utilities.scss` | 5:21 | `$utilities: map-merge(` | interpolation inside a var() name; multiline nested paren list; line comment inside a paren list |
+| `_utilities.scss` | 6:2 | `(` | interpolation inside a var() name; multiline nested paren list; line comment inside a paren list |
 | `_variables.scss` | 358:0 | `$escaped-characters: (` | interpolation as a standalone selector compound; interpolation inside a var() name; multiline nested paren list |
-| `bootstrap-grid.scss` | 24:28 | `$utilities: map-get-multiple(` | multiline nested paren list |
-| `forms/_floating-labels.scss` | 1:0 | `.form-floating {` | interpolation as a standalone selector compound; interpolation inside a var() name; leading combinator (implicit &) |
-| `forms/_form-check.scss` | 29:0 | `.form-check-input {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
-| `forms/_form-control.scss` | 5:0 | `.form-control {` | bare-truthy @if condition |
-| `forms/_form-select.scss` | 6:0 | `.form-select {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block |
-| `forms/_input-group.scss` | 5:0 | `.input-group {` | interpolation as a standalone selector compound; leading combinator (implicit &) |
-| `helpers/_color-bg.scss` | 2:0 | `@each $color, $value in $theme-colors {` | interpolation inside a var() name |
-| `helpers/_colored-links.scss` | 2:0 | `@each $color, $value in $theme-colors {` | interpolation inside a var() name |
-| `helpers/_focus-ring.scss` | 1:0 | `.focus-ring:focus {` | interpolation inside a var() name |
-| `helpers/_icon-link.scss` | 1:0 | `.icon-link {` | interpolation inside a var() name; leading combinator (implicit &) |
-| `helpers/_position.scss` | 20:0 | `@each $breakpoint in map-keys($grid-breakpoints) {` | @include with a trailing content block |
-| `helpers/_ratio.scss` | 3:0 | `.ratio {` | interpolation as a standalone selector compound; interpolation inside a var() name; leading combinator (implicit &) |
+| `bootstrap-grid.scss` | 25:12 | `$utilities,` | multiline nested paren list |
+| `forms/_floating-labels.scss` | 21:20 | `color: rgba(var(--#{$prefix}body-color-rgb), #{$form-floating-label-opacity});` | interpolation as a standalone selector compound; interpolation inside a var() name; leading combinator (implicit &) |
+| `forms/_form-check.scss` | 38:24 | `background-color: var(--#{$prefix}form-check-bg);` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
+| `forms/_form-select.scss` | 19:24 | `background-image: var(--#{$prefix}form-select-bg-img), var(--#{$prefix}form-select-bg-icon, none);` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block |
+| `helpers/_color-bg.scss` | 4:64 | `color: color-contrast($value) if($enable-important-utilities, !important, null);` | interpolation inside a var() name |
+| `helpers/_colored-links.scss` | 4:20 | `color: RGBA(var(--#{$prefix}#{$color}-rgb), var(--#{$prefix}link-opacity, 1)) if($enable-important-utilities, !important` | interpolation inside a var() name |
+| `helpers/_focus-ring.scss` | 4:18 | `box-shadow: var(--#{$prefix}focus-ring-x, 0) var(--#{$prefix}focus-ring-y, 0) var(--#{$prefix}focus-ring-blur, 0) var(--` | interpolation inside a var() name |
+| `helpers/_icon-link.scss` | 5:34 | `text-decoration-color: rgba(var(--#{$prefix}link-color-rgb), var(--#{$prefix}link-opacity, .5));` | interpolation inside a var() name; leading combinator (implicit &) |
+| `helpers/_ratio.scss` | 9:21 | `padding-top: var(--#{$prefix}aspect-ratio);` | interpolation as a standalone selector compound; interpolation inside a var() name; leading combinator (implicit &) |
 | `helpers/_stretched-link.scss` | 5:0 | `.stretched-link {` | interpolated pseudo-element |
-| `mixins/_alert.scss` | 4:0 | `@mixin alert-variant($background, $border, $color) {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name |
-| `mixins/_border-radius.scss` | 18:0 | `@mixin border-radius($radius: $border-radius, $fallback-border-radius: false) {` | bare-truthy @if condition |
-| `mixins/_box-shadow.scss` | 1:0 | `@mixin box-shadow($shadow...) {` | bare-truthy @if condition |
-| `mixins/_breakpoints.scss` | 17:0 | `@function breakpoint-next($name, $breakpoints: $grid-breakpoints, $breakpoint-names: map-keys($breakpoints)) {` | bare-truthy @if condition; @include with a trailing content block; @content; @warn / @error / @debug |
-| `mixins/_buttons.scss` | 7:0 | `@mixin button-variant(` | interpolation as a standalone selector compound |
-| `mixins/_caret.scss` | 29:0 | `@mixin caret(` | bare-truthy @if condition |
-| `mixins/_color-mode.scss` | 2:0 | `@mixin color-mode($mode: light, $root: false) {` | @content |
-| `mixins/_color-scheme.scss` | 2:0 | `@mixin color-scheme($name) {` | interpolation as a standalone selector compound; @content |
-| `mixins/_container.scss` | 3:0 | `@mixin make-container($gutter: $container-padding-x) {` | interpolation as a standalone selector compound; interpolation inside a var() name |
-| `mixins/_deprecate.scss` | 6:0 | `@mixin deprecate($name, $deprecate-version, $remove-version, $ignore-warning: false) {` | interpolation as a standalone selector compound; @warn / @error / @debug |
-| `mixins/_forms.scss` | 5:0 | `@mixin form-validation-state-selector($state) {` | bare-truthy @if condition; interpolation as a standalone selector compound; @include with a trailing content block; @content; leading combinator (implicit &); interpolated pseudo-element |
-| `mixins/_gradients.scss` | 4:0 | `@mixin gradient-bg($color: null) {` | bare-truthy @if condition; interpolation inside a var() name |
-| `mixins/_grid.scss` | 5:0 | `@mixin make-row($gutter: $grid-gutter-width) {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
-| `mixins/_pagination.scss` | 4:0 | `@mixin pagination-size($padding-y, $padding-x, $font-size, $border-radius) {` | interpolation as a standalone selector compound |
-| `mixins/_table-variants.scss` | 2:0 | `@mixin table-variant($state, $background) {` | interpolation as a standalone selector compound; interpolation inside a var() name |
-| `mixins/_transition.scss` | 2:0 | `@mixin transition($transition...) {` | bare-truthy @if condition; @warn / @error / @debug |
-| `mixins/_utilities.scss` | 3:0 | `@mixin generate-utility($utility, $infix: "", $is-rfs-media-query: false) {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolated pseudo-element |
-| `utilities/_api.scss` | 2:0 | `@each $breakpoint in map-keys($grid-breakpoints) {` | bare-truthy @if condition; @include with a trailing content block |
-| `vendor/_rfs.scss` | 15:0 | `@if $rfs-unit != rem and $rfs-unit != px {` | bare-truthy @if condition; interpolation as a standalone selector compound; @include with a trailing content block; @content; @warn / @error / @debug; @while |
+| `mixins/_alert.scss` | 11:26 | `background-image: var(--#{$prefix}gradient);` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name |
+| `mixins/_buttons.scss` | 67:14 | `@include rfs($font-size, --#{$prefix}btn-font-size);` | interpolation as a standalone selector compound |
+| `mixins/_container.scss` | 7:26 | `padding-right: calc(var(--#{$prefix}gutter-x) * .5); // stylelint-disable-line function-disallowed-list` | interpolation as a standalone selector compound; interpolation inside a var() name |
+| `mixins/_forms.scss` | 7:24 | `.was-validated #{if(&, "&", "")}:#{$state},` | bare-truthy @if condition; interpolation as a standalone selector compound; @include with a trailing content block; @content; leading combinator (implicit &); interpolated pseudo-element |
+| `mixins/_gradients.scss` | 8:26 | `background-image: var(--#{$prefix}gradient);` | bare-truthy @if condition; interpolation inside a var() name |
+| `mixins/_grid.scss` | 11:28 | `margin-top: calc(-1 * var(--#{$prefix}gutter-y)); // stylelint-disable-line function-disallowed-list` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
+| `mixins/_pagination.scss` | 7:14 | `@include rfs($font-size, --#{$prefix}pagination-font-size);` | interpolation as a standalone selector compound |
+| `mixins/_table-variants.scss` | 20:15 | `color: var(--#{$prefix}table-color);` | interpolation as a standalone selector compound; interpolation inside a var() name |
+| `mixins/_utilities.scss` | 29:65 | `$infix: if($property-class == "" and str-slice($infix, 1, 1) == "-", str-slice($infix, 2), $infix);` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolated pseudo-element |
+| `vendor/_rfs.scss` | 56:39 | `$sign: if($dividend > 0 and $divisor > 0 or $dividend < 0 and $divisor < 0, 1, -1);` | bare-truthy @if condition; interpolation as a standalone selector compound; @include with a trailing content block; @content; @warn / @error / @debug; @while |
 
 ## Eval lane (self-contained entry points)
 
@@ -107,7 +93,9 @@ usually hit several blockers, so these counts overlap by design.
 
 | entry | outcome | detail |
 |---|---|---|
-| `bootstrap.scss` | fail | SCSS parser error. |
-| `bootstrap-grid.scss` | fail | SCSS parser error. |
-| `bootstrap-reboot.scss` | fail | SCSS parser error. |
-| `bootstrap-utilities.scss` | fail | SCSS parser error. |
+| `bootstrap.scss` | fail | Missing closing parenthesis. |
+| `bootstrap-grid.scss` | fail | Missing closing parenthesis. |
+| `bootstrap-reboot.scss` | fail | Missing closing parenthesis. |
+| `bootstrap-utilities.scss` | fail | Missing closing parenthesis. |
+
+<!-- HAND-MAINTAINED BELOW — the generator never writes past this line. -->

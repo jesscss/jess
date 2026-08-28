@@ -46,7 +46,7 @@ describe('Less custom properties', () => {
   for (const [label, source, expected, important = false] of ACCEPTED) {
     it(`accepts ${label}`, () => {
       expect(parse(source)).toMatchObject({
-        children: [{ type: 'Rule', body: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: expected }, important }] }]
+        rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: expected }, important }] }]
       });
     });
   }
@@ -54,7 +54,7 @@ describe('Less custom properties', () => {
   for (const name of NAMES) {
     it(`accepts the custom-property name \`${name}\``, () => {
       expect(parse(`a { ${name}: red; }`)).toMatchObject({
-        children: [{ type: 'Rule', body: [{ type: 'Declaration', name, value: { type: 'Any', src: 'red' } }] }]
+        rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name, value: { type: 'Any', src: 'red' } }] }]
       });
     });
   }
@@ -71,9 +71,9 @@ describe('Less custom properties', () => {
 
   it('accepts an interpolated custom-property name', () => {
     expect(parse('@p: q; a { --@{p}x: red; }')).toMatchObject({
-      children: [
+      rules: [
         { type: 'VariableDeclaration' },
-        { type: 'Rule', body: [{ type: 'Declaration', name: { type: 'Interpolation' } }] }
+        { type: 'Ruleset', rules: [{ type: 'Declaration', name: { type: 'Interpolation' } }] }
       ]
     });
   });
@@ -84,7 +84,7 @@ describe('Less custom properties', () => {
 
   it('accepts a custom-property reference in a var() consumer', () => {
     expect(parse('a { color: var(--x, blue); }')).toMatchObject({
-      children: [{ type: 'Rule', body: [{ type: 'Declaration', name: 'color' }] }]
+      rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: 'color' }] }]
     });
   });
 
@@ -92,17 +92,17 @@ describe('Less custom properties', () => {
     const document = parse('@value: #fff; :root { --color: @value; --fallback: solid @value; }');
 
     expect(document).toMatchObject({
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'value' },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             {
               type: 'Declaration',
               name: '--color',
               value: {
                 type: 'Interpolation',
-                parts: [{ ref: { type: 'VariableReference', name: 'value', lookup: 'scoped' }, unquote: false }]
+                parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'value', raw: '@value', scope: 'scoped' }, unquote: false }]
               }
             },
             {
@@ -112,7 +112,7 @@ describe('Less custom properties', () => {
                 type: 'Interpolation',
                 parts: [
                   { lit: 'solid ' },
-                  { ref: { type: 'VariableReference', name: 'value', lookup: 'scoped' }, unquote: false }
+                  { ref: { type: 'Lookup', kind: 'var', name: 'value', raw: '@value', scope: 'scoped' }, unquote: false }
                 ]
               }
             }
@@ -132,11 +132,11 @@ describe('Less custom properties', () => {
     const document = parse('@value: "red"; :root { --raw: @value; --strict: @{value}; }');
 
     expect(document).toMatchObject({
-      children: [
+      rules: [
         { type: 'VariableDeclaration', name: 'value' },
         {
-          type: 'Rule',
-          body: [
+          type: 'Ruleset',
+          rules: [
             { type: 'Declaration', name: '--raw', value: { type: 'Interpolation', parts: [{ unquote: false }] } },
             { type: 'Declaration', name: '--strict', value: { type: 'Interpolation', parts: [{ unquote: true }] } }
           ]
@@ -153,7 +153,7 @@ describe('Less custom properties', () => {
 
   it('keeps known at-rule-looking custom-property bytes opaque', () => {
     expect(parse('.card { --x:red @media all {x:y} }')).toMatchObject({
-      children: [{ type: 'Rule', body: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: 'red @media all {x:y} ' } }] }]
+      rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: 'red @media all {x:y} ' } }] }]
     });
   });
 
@@ -165,9 +165,9 @@ describe('Less custom properties', () => {
       .map(run => source.slice(run.start, run.end));
 
     expect(document).toMatchObject({
-      children: [{ type: 'VariableDeclaration', name: 'n' }, {
-        type: 'Rule',
-        body: [
+      rules: [{ type: 'VariableDeclaration', name: 'n' }, {
+        type: 'Ruleset',
+        rules: [
           { type: 'Declaration', name: '--a', value: { type: 'Any', src: 'redblue' } },
           { type: 'Declaration', name: '--b', value: { type: 'Any', src: 'f(ab)' } },
           { type: 'Declaration', name: '--c', value: { type: 'Any', src: '[ab]' } },

@@ -1,7 +1,7 @@
-import { defineFunction, groupItems, makeList, type ValueGroup } from '@jesscss/core/value';
+import { defineFunction, groupItems, makeList, type ValueGroup } from '@jesscss/core';
 
 const zip = defineFunction('zip', {
-  params: [{ name: 'lists', kinds: 'any', rest: true }] as const,
+  params: [{ name: 'lists', type: 'any', rest: true }] as const,
   variadic: true,
   body: (args) => {
     const itemLists = groupItems(args).map(groupItems);

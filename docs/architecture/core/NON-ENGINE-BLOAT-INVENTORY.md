@@ -128,7 +128,7 @@ scope-stack holder, and the option resolver all at once.
 
 Concerns:
 1. **Option resolution** — `ContextOptions`/`ResolvedOptions`/`OPTION_DEFAULTS`/
-   `resolveOptions`/`setOption` (73–223, 372).
+   `resolveOptions` and document-owned parser defaults (73–223, 372).
 2. **Warnings & deprecation finalization** — `warn`, `warnDeprecation`, `finalizeWarnings`
    (434–635, ~200 lines). This is a substantial, self-contained subsystem that duplicates the
    *domain* of `warnings.ts` — the finalization/dedup/suppression logic should live with the
@@ -141,7 +141,7 @@ Concerns:
 4. **Import / module loading** — `getTree`, `resolveImportPath`, `readBinary`, `parseString`,
    `getModule`, `findParserPlugin` (953–1179). File I/O + parser dispatch, a distinct
    subsystem.
-5. **Misc eval helpers** — `hashClass`, `shouldOperate`, `registerSpineVisitor`,
+5. **Misc eval helpers** — `hashClass`, `shouldOperate`, `registerEmitVisitor`,
    `generateId`/`idChars` (1179+, 250, 635).
 
 **Lean target:** lift warnings finalization (#2) into `warnings.ts`/a `warning-sink.ts`; move

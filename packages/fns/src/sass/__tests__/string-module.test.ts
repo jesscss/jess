@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { emitValue, makeDimension, makeKeyword, makeList, makeQuoted, serializeValue, type Fn, type ValueGroup } from '@jesscss/core/value';
+import { emitValue, makeDimension, makeKeyword, makeList, makeQuoted, serializeValue, type Fn, type ValueGroup } from '@jesscss/core';
+import * as sassGlobals from '../index.js';
+import { sassFns } from '../registry.js';
 import * as stringModule from '../string/index.js';
 import * as stringGlobals from '../string/globals.js';
 
@@ -96,7 +98,7 @@ describe('sass:string — index', () => {
     expect(bytes(index, k('Hello'), k('ll'))).toBe('3');
     // Code-point indexing: the emoji counts as one character.
     expect(bytes(index, q('😊abc'), q('abc'))).toBe('2');
-    expect(call(index, q('cde'), q('f'))).toMatchObject({ type: 'Nil' });
+    expect(call(index, q('cde'), q('f'))).toMatchObject({ type: 'Null' });
   });
 });
 
@@ -194,5 +196,11 @@ describe('sass:string — module and global names', () => {
     // `length` are two different functions; only a per-module table can hold both.
     expect(stringModule.length.name).toBe('length');
     expect(stringGlobals.strLength.name).toBe('str-length');
+  });
+
+  it('registers str-length through the Sass dialect index', () => {
+    expect(sassGlobals.strLength).toBe(stringGlobals.strLength);
+    expect(sassFns.map(fn => fn.name)).toContain('str-length');
+    expect(bytes(sassGlobals.strLength, q('fblthp abatement'))).toBe('16');
   });
 });

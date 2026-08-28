@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { resolve, relative, join, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = resolve(new URL('..', import.meta.url).pathname);
+const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
 /**
  * Repo-native replacement for the ripgrep shell-outs this gate used to do.

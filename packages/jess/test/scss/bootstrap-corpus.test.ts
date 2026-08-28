@@ -24,16 +24,19 @@
  * this file measures how far it reaches across a real-world codebase.
  *
  * `JESS_SCSS_CORPUS_REPORT=1` rewrites CORPUS-REPORT.json / CORPUS-REPORT.md
- * next to this file.
+ * next to this file — everything except the hand-maintained tail of the `.md`,
+ * which `corpus-report-tail.ts` copies through untouched.
  */
 import { describe, expect, it } from 'vitest';
 import * as glob from 'glob';
 import * as path from 'node:path';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { parse } from '@jesscss/scss-parser';
 import { Compiler } from '../../src/index.js';
 import scssPlugin from '@jesscss/plugin-scss';
+import { writeReportPreservingTail } from './corpus-report-tail.js';
 
 const req = createRequire(import.meta.url);
 const bootstrapRoot = path.dirname(req.resolve('bootstrap/package.json'));
@@ -58,18 +61,29 @@ const PER_FILE_TIMEOUT_MS = 30_000;
  * Blocking constructs, each validated in isolation by
  * `scss-construct-support.test.ts`. A file is attributed to every blocker it
  * contains — files usually hit several, so these counts overlap by design.
+ *
+ * An entry is REMOVED when the construct starts parsing, not left at zero.
+ * This is `foundation-corpus.test.ts`'s doctrine, adopted here verbatim, and it
+ * binds HARDER in this file than it does there. The match is a presence regex,
+ * so a construct that parses keeps attracting every file that merely CONTAINS
+ * it while failing for an unrelated reason. Foundation can absorb that, because
+ * it also ranks by the blocker sitting at each file's reported failure POSITION
+ * (`blockerAt`) and reads the truth off that column. This file has no such
+ * column — `contains` is the ONLY column — so a stale entry has nothing to
+ * correct it and silently OVERSTATES what is blocking.
+ *
+ * Closed and removed on 2026-08-08, each verified by feeding a reduced snippet
+ * to `@jesscss/scss-parser` directly rather than by inferring from corpus
+ * movement: `@while`, `@content`, `@include` with a trailing content block, and
+ * `@warn` / `@error` / `@debug`.
  */
 const BLOCKERS: Array<[string, RegExp]> = [
   ['bare-truthy @if condition', /@(?:if|else if)\s+(?:not\s+)?[(]?(?:\$[\w-]+\s*[{)]|[a-z-]+\()/],
   ['interpolation as a standalone selector compound', /(?:^|[\s,>+~])#\{/m],
   ['interpolation inside a var() name', /var\(\s*--[^)]*#\{/],
-  ['@include with a trailing content block', /@include[^;{]*\{\s*$/m],
-  ['@content', /@content/],
-  ['@warn / @error / @debug', /@(?:warn|error|debug)\b/],
   ['leading combinator (implicit &)', /^\s*[>+~]\s*\S/m],
   ['interpolated pseudo-element', /::?#\{/],
   ['multiline nested paren list', /\(\s*\n(?:[^()\n]*\n)*?\s*\(/],
-  ['@while', /@while/],
   ['line comment inside a paren list', /\(\s*\n\s*\/\//]
 ];
 
@@ -207,35 +221,49 @@ describe(`Bootstrap ${bootstrapVersion} SCSS corpus`, () => {
  * removing a name, which is visible in review.
  */
 const PARSE_PASS_BASELINE: readonly string[] = [
+  '_button-group.scss',
   '_forms.scss',
   '_helpers.scss',
   '_images.scss',
   '_mixins.scss',
   '_placeholders.scss',
   '_transitions.scss',
+  '_type.scss',
   '_variables-dark.scss',
   'bootstrap-reboot.scss',
   'bootstrap-utilities.scss',
   'bootstrap.scss',
+  'forms/_form-control.scss',
   'forms/_form-range.scss',
   'forms/_form-text.scss',
+  'forms/_input-group.scss',
   'forms/_labels.scss',
   'forms/_validation.scss',
   'helpers/_clearfix.scss',
+  'helpers/_position.scss',
   'helpers/_stacks.scss',
   'helpers/_text-truncation.scss',
   'helpers/_visually-hidden.scss',
   'helpers/_vr.scss',
   'mixins/_backdrop.scss',
   'mixins/_banner.scss',
+  'mixins/_border-radius.scss',
+  'mixins/_breakpoints.scss',
+  'mixins/_box-shadow.scss',
+  'mixins/_caret.scss',
   'mixins/_clearfix.scss',
+  'mixins/_color-mode.scss',
+  'mixins/_color-scheme.scss',
+  'mixins/_deprecate.scss',
   'mixins/_image.scss',
   'mixins/_list-group.scss',
   'mixins/_lists.scss',
   'mixins/_reset-text.scss',
   'mixins/_resize.scss',
   'mixins/_text-truncate.scss',
-  'mixins/_visually-hidden.scss'
+  'mixins/_transition.scss',
+  'mixins/_visually-hidden.scss',
+  'utilities/_api.scss'
 ];
 
 /** Entry points known to evaluate end-to-end. Add each one as it graduates. */
@@ -288,7 +316,7 @@ describe('Bootstrap SCSS corpus ratchet', () => {
 // ── report ───────────────────────────────────────────────────────────────────
 
 function writeReport(parseLane: LaneResult[], evalLane: LaneResult[]) {
-  const here = path.dirname(new URL(import.meta.url).pathname);
+  const here = path.dirname(fileURLToPath(import.meta.url));
   const failed = parseLane.filter(r => r.outcome === 'fail');
 
   const counts = BLOCKERS.map(([name]) => ({
@@ -345,5 +373,5 @@ function writeReport(parseLane: LaneResult[], evalLane: LaneResult[]) {
     `| \`${r.file}\` | ${r.outcome} | ${r.detail ?? (r.bytes ? `${r.bytes}B css` : '—')} |`
   ));
   l.push('');
-  writeFileSync(path.join(here, 'CORPUS-REPORT.md'), l.join('\n'), 'utf8');
+  writeReportPreservingTail(path.join(here, 'CORPUS-REPORT.md'), l.join('\n'));
 }

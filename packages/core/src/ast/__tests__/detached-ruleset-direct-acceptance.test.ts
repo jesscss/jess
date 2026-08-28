@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildEvaluator } from '../evaluator.js';
 import {
-  condition, decl, reference, anonymousMixin, dimension, funcCall, keyword,
+  decl, reference, anonymousMixin, dimension, ifValue, keyword,
   mixinCall, mixinDef, stylesheet, rule, variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
@@ -32,10 +32,12 @@ describe('variable-call canonical AST emission', () => {
   it('selects a conditional detached-ruleset branch without materializing it as a value', () => {
     const document = stylesheet([
       variableDeclaration('enabled', keyword('true'), { mode: 'declare' }),
-      variableDeclaration('content', funcCall('if', [
-        condition({ g: 'truth', value: variableReference('enabled', 'scoped') }, '@enabled'),
-        anonymousMixin([decl('display', keyword('grid'))]),
-        anonymousMixin([decl('display', keyword('none'))])
+      variableDeclaration('content', ifValue([
+        {
+          guard: { g: 'truth', value: variableReference('enabled', 'scoped') },
+          value: anonymousMixin([decl('display', keyword('grid'))])
+        },
+        { guard: null, value: anonymousMixin([decl('display', keyword('none'))]) }
       ]), { mode: 'declare' }),
       rule('.panel', [reference(variableReference('content', 'scoped'), [{ type: 'Call', args: [] }], '@content()')])
     ]);

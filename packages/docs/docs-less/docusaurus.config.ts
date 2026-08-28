@@ -174,6 +174,11 @@ export default {
           position: 'left'
         },
         {
+          href: 'https://lesscss.org/less-preview/',
+          label: 'Playground',
+          position: 'left'
+        },
+        {
           href: 'https://github.com/less/less.js',
           label: 'GitHub',
           position: 'right'
@@ -192,7 +197,19 @@ export default {
           items: [
             {
               label: 'Overview',
-              to: 'docs/home'
+              to: '/docs/home'
+            },
+            {
+              label: 'Getting Started',
+              to: '/docs/home/getting-started'
+            },
+            {
+              label: 'Language',
+              to: '/docs/features-overview'
+            },
+            {
+              label: 'Functions',
+              to: '/docs/functions/math-functions'
             }
           ]
         },
@@ -200,8 +217,16 @@ export default {
           title: 'More',
           items: [
             {
+              label: 'Playground',
+              href: 'https://lesscss.org/less-preview/'
+            },
+            {
               label: 'GitHub',
               href: 'https://github.com/less/less.js'
+            },
+            {
+              label: 'Documentation issues',
+              href: 'https://github.com/less/less-docs/issues'
             }
           ]
         }

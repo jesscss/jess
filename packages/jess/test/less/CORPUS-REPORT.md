@@ -6,76 +6,47 @@ Reporting-only — outcomes measured, not gated. Each slice ran in an isolated, 
 
 ## Run provenance
 
-- Generated: `2026-07-22T18:03:58.582Z`
-- Jess commit: `393387594cbaf77ce42198cae4e56efeea3f9f2d`
+- Generated: `2026-08-26T14:23:47.345Z`
+- Jess commit: `4eed988b05224d8c489ac954362b2b16cc112a70`
 - Route: src-path Vitest renderer in packages/jess/test/less/_corpus-slice.test.ts
 - Configuration: base `output.collapseNesting: true`; getTestCases() fixture-local config merged for each expected output
-- Test data: `/Users/matthew/git/oss/less.js/packages/test-data` at `805c89ea399ce88d180a32d1f79f724aafdf543e`
-- Test-data working tree: dirty (`M packages/test-data/package.json`)
-- Runner: `v24.11.1` on `darwin/arm64`
+- Error configuration: functionMode:error + unitMode:strict; imported helper files excluded
+- Test data: `/Users/matthew/git/oss/less.js/packages/test-data` at `e7626e8c9936a67c80b5740c4f203731d82580e8`
+- Test-data working tree: clean
+- Runner: `v25.9.0` on `darwin/arm64`
 
 
 ## Render corpus (expected CSS)
 
 | group | cases | pass | mismatch | error | timeout | crash |
 |---|--:|--:|--:|--:|--:|--:|
-| tests-unit | 88 | 65 | 13 | 10 | 0 | 0 |
-| tests-config | 43 | 19 | 20 | 4 | 0 | 0 |
-| **total** | **131** | **84** | **33** | **14** | **0** | **0** |
+| tests-unit | 91 | 70 | 9 | 12 | 0 | 0 |
+| tests-config | 43 | 26 | 14 | 3 | 0 | 0 |
+| **total** | **134** | **96** | **23** | **15** | **0** | **0** |
 
 ## Error corpus (`tests-error` — classify only)
 
-- errored (matches Less): **74** / 99
-- **accepted — DIVERGENCE, needs review: 25**  _(Jess accepts what Less rejects: intentional repair or real gap)_
+- errored (matches Less): **94** / 95
+- **accepted — DIVERGENCE, needs review: 1**  _(Jess accepts what Less rejects: intentional repair or real gap)_
 - timeout: 0, crash: 0
 
 ### Divergences to review (accepted where Less errors)
 
-- `tests-error/parse/mixins-guards-cond-expected.less` (NEW)
-- `tests-error/eval/unit-function.less` (NEW)
-- `tests-error/eval/svg-gradient6.less` (NEW)
-- `tests-error/eval/svg-gradient5.less` (NEW)
-- `tests-error/eval/svg-gradient4.less` (NEW)
-- `tests-error/eval/svg-gradient3.less` (NEW)
-- `tests-error/eval/svg-gradient2.less` (NEW)
-- `tests-error/eval/svg-gradient1.less` (NEW)
-- `tests-error/eval/root-func-undefined-1.less` (NEW)
-- `tests-error/eval/recursive-variable.less` (NEW)
-- `tests-error/eval/recursive-property.less` (NEW)
-- `tests-error/eval/property-undefined.less` (NEW)
-- `tests-error/eval/percentage-non-number-argument.less` (NEW)
-- `tests-error/eval/namespacing-4.less` (NEW)
-- `tests-error/eval/namespacing-2.less` (NEW)
-- `tests-error/eval/namespace-variable-not-found.less` (NEW)
-- `tests-error/eval/namespace-property-not-found.less` (NEW)
-- `tests-error/eval/multiple-guards-on-css-selectors2.less` (NEW)
-- `tests-error/eval/mixin-not-matched2.less` (NEW)
-- `tests-error/eval/mixin-not-matched.less` (NEW)
-- `tests-error/eval/functions-5-color-2.less` (NEW)
-- `tests-error/eval/detached-ruleset-5.less` (NEW)
-- `tests-error/eval/color-func-invalid-color.less` (NEW)
-- `tests-error/eval/color-func-invalid-color-2.less` (NEW)
-- `tests-error/eval/imports/import-test.less` (NEW)
+- `tests-error/eval/color-func-invalid-color-2.less` (known)
 
 ## Render non-passes
 
-47 total — 40 already known to the gate (skipped/expected-failure), **7 NEW**.
+38 total — 38 already known to the gate (skipped/expected-failure), **0 NEW**.
 
 ### NEW (not skipped/expected-failure in the gate)
 
-- [mismatch] `tests-unit/operations/operations.less`
-- [mismatch] `tests-unit/extract-and-length/extract-and-length.less`
-- [mismatch] `tests-config/sourcemaps/comprehensive/comprehensive.less`
-- [mismatch] `tests-config/functions-harness/functions-harness.less`
-- [mismatch] `tests-config/debug/mediaquery/linenumbers-mediaquery.less`
-- [mismatch] `tests-config/debug/comments/linenumbers-comments.less`
-- [mismatch] `tests-config/debug/all/linenumbers-all.less`
+- None.
 
 ### Known (gate already skips / expects-failure)
 
-- [error] `tests-unit/variables-in-at-rules/variables-in-at-rules.less`
-- [mismatch] `tests-unit/urls/urls.less`
-- [error] `tests-unit/property-name-interp/property-name-interp.less`
+- [mismatch] `tests-unit/variables/variables.less`
+- [error] `tests-unit/urls/urls.less`
+- [mismatch] `tests-unit/property-name-interp/property-name-interp.less`
 - [error] `tests-unit/plugin-preeval/plugin-preeval.less`
 - [error] `tests-unit/plugin-module/plugin-module.less`
 - [error] `tests-unit/plugin/plugin.less`
@@ -87,29 +58,27 @@ Reporting-only — outcomes measured, not gated. Each slice ran in an isolated, 
 - [error] `tests-unit/javascript-REMOVED/legacy/javascript.less`
 - [error] `tests-unit/import/import.less`
 - [mismatch] `tests-unit/import/import-reference.less`
+- [error] `tests-unit/import/import-inline.less`
 - [error] `tests-unit/ie-filters-REMOVED/legacy/ie-filters.less`
-- [mismatch] `tests-unit/functions-each/functions-each.less`
-- [mismatch] `tests-unit/functions/functions.less`
+- [error] `tests-unit/functions/functions.less`
 - [error] `tests-unit/functions/legacy/functions.less`
-- [mismatch] `tests-unit/detached-rulesets/detached-rulesets.less`
-- [mismatch] `tests-unit/container/container.less`
+- [mismatch] `tests-unit/extract-and-length/extract-and-length.less`
 - [mismatch] `tests-unit/color-functions/operations.less`
+- [error] `tests-unit/at-rule-variable-deprecated/at-rule-variable-deprecated.less`
 - [mismatch] `tests-config/visitorPlugin/visitor.less`
-- [mismatch] `tests-config/url-args/urls.less`
 - [mismatch] `tests-config/static-urls/urls.less`
 - [mismatch] `tests-config/sourcemaps-url/sourcemaps-url.less`
 - [mismatch] `tests-config/sourcemaps-rootpath/sourcemaps-rootpath.less`
 - [mismatch] `tests-config/sourcemaps-include-source/sourcemaps-include-source.less`
 - [mismatch] `tests-config/sourcemaps-basepath/sourcemaps-basepath.less`
-- [mismatch] `tests-config/process-imports/google.less`
+- [mismatch] `tests-config/sourcemaps/comprehensive/comprehensive.less`
 - [error] `tests-config/preProcessorPlugin/preProcessor.less`
 - [mismatch] `tests-config/postProcessorPlugin/postProcessor.less`
-- [mismatch] `tests-config/namespacing/namespacing-media.less`
-- [mismatch] `tests-config/namespacing/namespacing-functions.less`
-- [mismatch] `tests-config/namespacing/namespacing-8.less`
-- [mismatch] `tests-config/namespacing/namespacing-5.less`
 - [error] `tests-config/filemanagerPlugin/filemanager.less`
+- [mismatch] `tests-config/debug/mediaquery/linenumbers-mediaquery.less`
+- [mismatch] `tests-config/debug/comments/linenumbers-comments.less`
+- [mismatch] `tests-config/debug/all/linenumbers-all.less`
 - [error] `tests-config/compression/compression.less`
 - [mismatch] `tests-config/at-rules-compressed-evaluation/at-rules-compressed-evaluation.less`
 - [mismatch] `tests-config/at-rules-compressed/at-rules-compressed.less`
-- [error] `tests-config/3rd-party/bootstrap4.less`
+- [mismatch] `tests-config/3rd-party/bootstrap4.less`

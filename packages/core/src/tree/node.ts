@@ -14,7 +14,7 @@ import { Node } from './node-base.js';
 // Import dependencies needed for patching (these import from node-base, not node)
 import { Nil } from './nil.js';
 import { Any } from './any.js';
-import { type Operator } from './util/calculate.js';
+import { type Operator } from '../util/calculate.js';
 
 export type { TreeContext } from '../context.js';
 

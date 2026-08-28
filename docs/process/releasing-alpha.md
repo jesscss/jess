@@ -16,15 +16,25 @@ dispatch normally and malformed arities use the existing evaluator
 
 ## Initial publish scope
 
-The alpha stream publishes only allowlisted packages in `scripts/release/alpha-allowlist.json`:
+The alpha stream publishes only allowlisted packages in `scripts/release/alpha-allowlist.json`.
+**That file is the contract; this list is a copy and has drifted from it before.** Regenerate
+with `node -e "console.log(require('./scripts/release/alpha-allowlist.json').join('\n'))"`
+rather than trusting the transcription below.
+
+The current allowlist holds:
 
 - `@jesscss/awaitable-pipe`
+- `@jesscss/compiler`
+- `@jesscss/compiler-preset`
 - `@jesscss/core`
+- `@jesscss/parser-shared`
 - `@jesscss/css-parser`
+- `@jesscss/diagnostics-core`
 - `@jesscss/jess-parser`
 - `@jesscss/less-parser`
 - `@jesscss/scss-parser`
 - `@jesscss/fns`
+- `@jesscss/lint`
 - `styles-config`
 - `@jesscss/style-resolver`
 - `@jesscss/plugin-jess`
@@ -33,15 +43,22 @@ The alpha stream publishes only allowlisted packages in `scripts/release/alpha-a
 - `@jesscss/plugin-node-modules`
 - `@jesscss/plugin-js`
 - `@jesscss/plugin-less-compat`
-- `@jesscss/compiler`
 - `@jesscss/patch-css`
 - `jess`
+
+*(Corrected 2026-07-30: this list omitted `@jesscss/compiler-preset`,
+`@jesscss/diagnostics-core`, and `@jesscss/lint` — three packages that ship to npm and were
+undocumented here. The step below that requires updating this list when the allowlist changes
+was skipped when those three were added.)*
 
 > **Dialect closure.** `jess` statically registers the direct AST parser plugins
 > for `.jess`, `.less`, and `.scss`, so their parser/plugin dependency closures
 > are in the alpha set. There is no `.css` plugin: CSS is not a separate
 > compilation mode. `@jesscss/css-parser` remains in the set because the shipped
 > dialect grammars depend on its shared CSS grammar.
+> `@jesscss/parser-shared` is also in the runtime closure: the published CSS
+> grammar keeps its composed recognition facts external so downstream dialect
+> grammars can follow them across the package boundary.
 >
 > **`@jesscss/scss-parser` + `@jesscss/plugin-scss` were promoted into the alpha
 > set** (owner decision, commit `d939fb3`): `jess` statically imports
@@ -67,6 +84,9 @@ Blocked from the initial alpha set (do not publish yet):
   then making one release-snapshot commit. `alpha` is a release-snapshot
   branch, not a normal integration branch: do not ordinary-merge or rebase
   `dev` into it.
+- The updater bypasses the ordinary per-commit staged-file hook for that bulk
+  snapshot. It still runs the alpha push-check and, when requested, the full
+  release dry-run against the complete projected tree.
 - Use lockstep versions for publishable packages (Changesets fixed group already configured).
 - Alpha publishes use npm dist-tag `alpha`.
 - For alpha publishes, package versions must include `-alpha.N`.

@@ -86,6 +86,25 @@ invent either import form. The resulting Jess parse must still construct the
 same call/binding node relationship; the observed fact changes target module
 settings, not the semantic node family.
 
+### Less math-mode expression projection
+
+Less value-position math and comparison are not ordinary CSS adjacency. The Less
+parser lowers them to expression structure according to the active `mathMode`;
+the converter must preserve that expression fact by emitting an explicit Jess
+`$(...)` expression. A Less variable reference inside that generated expression
+projects to the Jess scoped/final read form, not to a normal live `$foo` read.
+The preferred Jess syntax is an expression-only `^foo` atom, so a source value
+such as `@foo + 1` projects structurally as `$(^foo + 1)`. Like the
+expression-only `.foo` declaration/property lookup, plain `^foo` must be illegal
+in ordinary Jess value positions.
+
+This projection is based on the parsed Less `Operation`/comparison tree plus
+`mathMode`, never on a source-text sniff. If `mathMode` would leave the same
+tokens as a plain CSS value/list, the converter must not invent a Jess
+expression. If the Less expression contains a construct with no Jess expression
+equivalent, emit the compiled fragment with a conversion diagnostic rather than
+guessing a partial expression.
+
 ## Candidate next observed facts
 
 These require evidence before becoming conversion features:

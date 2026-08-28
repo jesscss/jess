@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { Color, Dimension } from '@jesscss/core';
-import { makeColorRgb, RGB } from '@jesscss/core/value';
+import {
+  colorRawRgb,
+  colorRgbRounded,
+  makeColorHsl,
+  makeColorRgb,
+  makeDimension,
+  HSL,
+  RGB,
+  type Color
+} from '@jesscss/core';
 import { lessFns } from '../registry.js';
 import { hue } from '../hue.js';
 import { saturation } from '../saturation.js';
@@ -10,40 +18,25 @@ import { luminance } from '../luminance.js';
 import { hsvhue } from '../hsvhue.js';
 import { hsvsaturation } from '../hsvsaturation.js';
 import { hsvvalue } from '../hsvvalue.js';
-import { toHSV } from '../../util/to-hsv.js';
+import { toHsv } from '../color-helper.js';
 
 function legacyLuminanceOracle(color: Color): { number: number; bytes: string } {
+  const [r, g, b] = colorRgbRounded(color);
   const luminance =
-    (0.2126 * color.rgb[0]! / 255)
-    + (0.7152 * color.rgb[1]! / 255)
-    + (0.0722 * color.rgb[2]! / 255);
-  const result = new Dimension({
-    number: luminance * color.alpha * 100,
-    unit: '%'
-  });
-  return { number: result.number, bytes: result.toString() };
-}
-
-function toCanonicalColor(color: Color) {
-  /*
-   * The old reader consumes the public rounded/clamped `rgb` and `alpha`
-   * views. Preserve those exact source facts in the canonical value without
-   * invoking the removed legacy function wrapper.
-   */
-  return makeColorRgb(color._rgb, color.alpha, RGB);
+    (0.2126 * r / 255)
+    + (0.7152 * g / 255)
+    + (0.0722 * b / 255);
+  const result = makeDimension(luminance * Math.min(Math.max(color.alpha, 0), 1) * 100, '%');
+  return { number: result.number, bytes: result.bytes };
 }
 
 describe('luma/luminance/hsv channels', () => {
   it('computes luma and luminance as percentages', () => {
-    const legacyColor = new Color({
-      rgb: [255, 0, 0],
-      alpha: 0.5
-    });
-    const color = toCanonicalColor(legacyColor);
+    const color = makeColorRgb([255, 0, 0], 0.5, RGB);
 
     const lumaResult = luma(color);
     const luminanceResult = luminance(color);
-    const expected = legacyLuminanceOracle(legacyColor);
+    const expected = legacyLuminanceOracle(color);
 
     expect(lumaResult.unit).toBe('%');
     expect(luminanceResult.unit).toBe('%');
@@ -55,16 +48,11 @@ describe('luma/luminance/hsv channels', () => {
   });
 
   it('extracts hsv hue/saturation/value channels', () => {
-    const legacyColor = new Color({
-      rgb: [0, 255, 0],
-      alpha: 1
-    });
     const color = makeColorRgb([0, 255, 0], 1, RGB);
 
-    const typedColor = makeColorRgb(legacyColor._rgb, legacyColor.alpha, RGB);
-    const hueResult = hsvhue(typedColor);
-    const saturationResult = hsvsaturation(typedColor);
-    const value = hsvvalue(typedColor);
+    const hueResult = hsvhue(color);
+    const saturationResult = hsvsaturation(color);
+    const value = hsvvalue(color);
 
     expect(hueResult.number).toBe(120);
     expect(saturationResult.number).toBe(100);
@@ -87,18 +75,18 @@ describe('luma/luminance/hsv channels', () => {
 
   it('matches the legacy luminance oracle across source shapes and channel bounds', () => {
     const vectors = [
-      new Color({ rgb: [255, 0, 0], alpha: 0.5 }),
-      new Color({ rgb: [64.4, 127.6, 0.2], alpha: 0.5 }),
-      new Color({ hsl: [210, 0.333333, 0.444444], alpha: 0.7 }),
-      new Color({ rgb: [-10, 300, 128.9], alpha: 1.1 }),
-      new Color({ hsl: [-20, 0.2, 0.8], alpha: 0.25 }),
-      new Color({ rgb: [0, 0, 0], alpha: -0.5 }),
-      new Color({ rgb: [255, 255, 255], alpha: 2 })
+      makeColorRgb([255, 0, 0], 0.5, RGB),
+      makeColorRgb([64.4, 127.6, 0.2], 0.5, RGB),
+      makeColorHsl([210, 0.333333, 0.444444], 0.7, HSL),
+      makeColorRgb([-10, 300, 128.9], 1.1, RGB),
+      makeColorHsl([-20, 0.2, 0.8], 0.25, HSL),
+      makeColorRgb([0, 0, 0], -0.5, RGB),
+      makeColorRgb([255, 255, 255], 2, RGB)
     ];
 
-    for (const legacyColor of vectors) {
-      const expected = legacyLuminanceOracle(legacyColor);
-      const result = luminance(toCanonicalColor(legacyColor));
+    for (const color of vectors) {
+      const expected = legacyLuminanceOracle(color);
+      const result = luminance(color);
       expect(result.number).toBe(expected.number);
       expect(result.bytes).toBe(expected.bytes);
       expect(result.unit).toBe('%');
@@ -113,17 +101,19 @@ describe('luma/luminance/hsv channels', () => {
     };
 
     for (let index = 0; index < 1024; index++) {
-      const legacyColor = index % 2 === 0
-        ? new Color({
-          rgb: [random() * 400 - 100, random() * 400 - 100, random() * 400 - 100],
-          alpha: random() * 2 - 0.5
-        })
-        : new Color({
-          hsl: [random() * 900 - 450, random() * 2 - 0.5, random() * 2 - 0.5],
-          alpha: random() * 2 - 0.5
-        });
-      const expected = legacyLuminanceOracle(legacyColor);
-      const result = luminance(toCanonicalColor(legacyColor));
+      const color = index % 2 === 0
+        ? makeColorRgb(
+            [random() * 400 - 100, random() * 400 - 100, random() * 400 - 100],
+            random() * 2 - 0.5,
+            RGB
+          )
+        : makeColorHsl(
+            [random() * 900 - 450, random() * 2 - 0.5, random() * 2 - 0.5],
+            random() * 2 - 0.5,
+            HSL
+          );
+      const expected = legacyLuminanceOracle(color);
+      const result = luminance(color);
       expect(result.number).toBe(expected.number);
       expect(result.bytes).toBe(expected.bytes);
     }
@@ -131,23 +121,23 @@ describe('luma/luminance/hsv channels', () => {
 
   it('matches the pre-cutover HSV oracle byte-for-byte across source shapes', () => {
     const vectors = [
-      new Color({ rgb: [64.4, 127.6, 0.2], alpha: 0.5 }),
-      new Color({ hsl: [210, 0.333333, 0.444444], alpha: 0.7 }),
-      new Color({ rgb: [-10, 300, 128.9], alpha: 1.1 }),
-      new Color({ hsl: [-20, 0.2, 0.8], alpha: 0.25 })
+      makeColorRgb([64.4, 127.6, 0.2], 0.5, RGB),
+      makeColorHsl([210, 0.333333, 0.444444], 0.7, HSL),
+      makeColorRgb([-10, 300, 128.9], 1.1, RGB),
+      makeColorHsl([-20, 0.2, 0.8], 0.25, HSL)
     ];
 
-    for (const legacyColor of vectors) {
+    for (const color of vectors) {
       /*
-       * `toHSV` is the exact pre-cutover Less reader oracle. The canonical
+       * `toHsv` is the exact pre-cutover Less reader oracle. The canonical
        * value must receive the raw source RGB so HSL-backed colors retain the
        * same unrounded channel facts the old reader used.
        */
-      const expected = toHSV(legacyColor);
-      const typedColor = makeColorRgb(legacyColor._rgb, legacyColor.alpha, RGB);
-      const expectedHue = new Dimension({ number: expected.h }).toString();
-      const expectedSaturation = new Dimension({ number: expected.s * 100, unit: '%' }).toString();
-      const expectedValue = new Dimension({ number: expected.v * 100, unit: '%' }).toString();
+      const [h, s, v] = toHsv(color);
+      const typedColor = makeColorRgb(colorRawRgb(color), color.alpha, RGB);
+      const expectedHue = makeDimension(h).bytes;
+      const expectedSaturation = makeDimension(s * 100, '%').bytes;
+      const expectedValue = makeDimension(v * 100, '%').bytes;
 
       expect(hsvhue(typedColor).bytes).toBe(expectedHue);
       expect(hsvsaturation(typedColor).bytes).toBe(expectedSaturation);

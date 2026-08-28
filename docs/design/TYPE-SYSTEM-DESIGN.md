@@ -12,11 +12,14 @@ shares the same underlying primitive and is sketched in
 [§13](#13-follow-on-the-transform-face) but is **out of scope for this doc**.
 
 ### Owner decisions locked in review
-- **Notation stays `<spacing>`** (angle brackets, beside `<length>`). CSS-native
-  wins; the DX "reads like JSX/generics" concern is noted as an open risk
-  ([§16](#16-adversarial-review-outcomes)), not adopted.
-- **Scale forms: BOTH** a stepped range (`0..96px step 4px`) *and* an explicit
-  enum (`a | b | c`). Detailed interaction deferred.
+- **Notation stays CSS-native**: built-in CSS types use names like `<length>`;
+  Jess custom types use the same brackets but must start with a capital letter,
+  such as `<Spacing>`. The DX "reads like JSX/generics" concern is noted as an
+  open risk ([§16](#16-adversarial-review-outcomes)), not adopted.
+- **Scale forms: BOTH** a CSS numeric range (`<length [0,96px]>`) *and* an
+  explicit enum (`a | b | c`). Regular step constraints are useful for design
+  scales, but the syntax is still open; do not use the old double-dot spelling
+  in new docs.
 - **Strictness-vs-severity model is OPEN** — needs worked examples before
   deciding whether to keep two knobs or collapse to one. See [§6](#6-strictness-vs-severity--open).
 
@@ -41,9 +44,9 @@ cannot see, or shipping before Less v5 parity.
 
 There is **one** type system, applied at every place a value is bound:
 
-- property value slots — `padding: <spacing>`
+- property value slots — `padding: <Spacing>`
 - custom properties — `--gutter: <length>`
-- mixin / function parameters — `mixin($a: <number>, $b: <number>)`
+- mixin / function parameters — `mixin(<number> $a, <number> $b)`
 - variable declarations — `$gutter: <length> = 16px`
 
 **Gradual, like TypeScript.** Everything is `any` until annotated.
@@ -53,17 +56,27 @@ escape hatch. Typing is opt-in per binding site.
 
 ```
 mixin($a, $b) { … }                       // params: any, any — nothing breaks
-mixin($a: <number>, $b: <number>) { … }   // opt-in → mixin("one","two") is a TypeError
+mixin(<number> $a, <number> $b) { … }     // opt-in → mixin("one","two") is a TypeError
 ```
 
-> **Argument order is name-first, colon-type, everywhere** — `$a: <number>`,
-> matching `$gutter: <length>`. (Review fix: the earlier `<number> $a`
-> type-first form contradicted the variable form; dropped.)
+> **Parameter annotations are type-first** — `<number> $a` for direct CSS type
+> references, or `[ none | solid ] $mode` for grouped keyword/value grammars.
+> Square brackets mark the boundary only when `<...>` does not.
+
+Less/Jess value-pattern parameters are already strict signature constraints:
+
+```less
+.mixin(dark, $color) { … }
+.mixin(light, $color) { … }
+```
+
+The literal `dark` is both a value pattern and an explicit literal type
+constraint for that overload. It should not be recorded as an inferred type.
 
 Caveat surfaced in review: this is **grounded in but not delivered by**
 `defineFunction`. Its `validateValue`/`isValidType` do an `instanceof`/`typeof`
 check (`Dimension`, `Quoted`) — they carry no notion of `<length>` vs
-`<spacing>`, value membership, or CSS grammar. See the honest ledger in
+`<Spacing>`, value membership, or CSS grammar. See the honest ledger in
 [§16](#16-adversarial-review-outcomes).
 
 ---
@@ -75,7 +88,8 @@ properties** (the Values & Units "value definition syntax"; the subset MDN's
 "Formal syntax" and `@property`'s `syntax` descriptor already use):
 
 - type references: `<length>`, `<color>`, `<integer>`, and **user types**
-  `<spacing>` sitting beside them (owner-locked — user types keep angle brackets)
+  such as `<Spacing>` sitting beside them (owner-locked — user types keep angle
+  brackets and start with a capital letter)
 - combinators/multipliers: `A B`, `A && B`, `A || B`, `A | B`, `[ … ]`, `?`,
   `*`, `+`, `{m,n}`, `#`
 
@@ -95,23 +109,23 @@ type is referenced in many places (a property slot *and* a mixin param):
 
 ```less
 @-types {
-  spacing: 0..96px step 4px;             // stepped RANGE form (preferred where regular)
-  radius:  0 | 2px | 4px | 8px | 9999px; // ENUM form (irregular / ramps)
+  Spacing: <length [0,96px]>;                  // bounded RANGE form
+  Radius:  0 | 2px | 4px | 8px | 9999px;       // ENUM form (irregular / ramps)
 }
 
 @-constrain {
-  padding: <spacing>;          // refine a known property (see §5)
-  gap:     <spacing>;
-  --my-gap: <spacing>{1,2};    // full grammar for a custom property (see §5)
+  padding: <Spacing>;          // refine a known property (see §5)
+  gap:     <Spacing>;
+  --my-gap: <Spacing>{1,2};    // full grammar for a custom property (see §5)
   z-index: 0 | 10 | 20 | 30;   // inline anonymous enum — never reused
 }
 ```
 
-- **Both scale forms are supported** (owner-locked): a **stepped range**
-  (`0..96px step 4px`) — builds on the existing `Range` node, computes
-  nearest-value hints, survives arithmetic reasoning, no hand-typed list — and an
-  **explicit enum** (`a | b | c`) for genuinely irregular scales. Detailed
-  interaction (mixing them, ranges of non-length units) is deferred.
+- **Both scale forms are supported** (owner-locked): a CSS **numeric range**
+  (`<length [0,96px]>`) and an **explicit enum** (`a | b | c`) for genuinely
+  irregular scales. Regular step constraints remain desirable for nearest-value
+  hints and scale membership, but their spelling is deferred so the core type
+  syntax can stay aligned with CSS value definition syntax.
 - `@-types` declares reusable named types; `@-constrain` applies them; inline
   anonymous types allowed for one-offs.
 - **Dash-prefixed** compiler at-rules (same family as `@-use`/`@-compose`); a
@@ -129,7 +143,7 @@ a substitution** of the named subtype into the property's native grammar,
 inheriting arity and sibling alternatives:
 
 - `padding: 1rem 2rem` ✅ (arity `{1,4}` inherited)
-- `padding: 21px` ❌ (not `<spacing>`)
+- `padding: 21px` ❌ (not `<Spacing>`)
 - `padding: 50%` ✅ (percentage alternative preserved)
 - `padding: inherit` ✅ (**CSS-wide keyword carve-out — always admitted**)
 
@@ -144,13 +158,13 @@ Two forms:
 
 | You write | Meaning | Composition |
 |---|---|---|
-| `padding: <spacing>` | refine the length token | **intersect** (alternates + arity inherited) |
-| `padding: <spacing>{1,4}` | full grammar | **replace** native |
-| `--my-gap: <spacing>#` | define a custom prop's grammar | **free** (no native ceiling) |
+| `padding: <Spacing>` | refine the length token | **intersect** (alternates + arity inherited) |
+| `padding: <Spacing>{1,4}` | full grammar | **replace** native |
+| `--my-gap: <Spacing>#` | define a custom prop's grammar | **free** (no native ceiling) |
 
 **The invalid-CSS ceiling.** For a *known* property the native grammar is the
 ceiling: carve any subset, but anything that would permit output CSS rejects is a
-**compile error** (`padding: <spacing>#` → "padding does not accept
+**compile error** (`padding: <Spacing>#` → "padding does not accept
 comma-separated values; the `#` multiplier would emit invalid CSS"). This is the
 existing **"Sass+ rejects invalid CSS"** invariant. "Widening" is only meaningful
 — and only allowed — for constructs CSS has no grammar for (**custom properties,
@@ -185,7 +199,9 @@ language-service autocomplete.
 Two concerns were provisionally split:
 - **Strictness** (semantic — *what counts as a violation*, e.g. does an
   unverifiable value violate; does bare `16` satisfy `16px`) — on the **type**;
-  coercion consumes existing `equalityMode`.
+  coercion consumes the existing comparison primitives — `=` loose, `==`
+  type-equal — not a mode, because there is no `equalityMode` to consume
+  (`RESOLVED-SEMANTICS-AND-NAMING.md` §5.1).
 - **Severity** (reporting — *how loud*: warn/error/off) — on the **constraint**,
   as a bang-suffix mirroring `!important`.
 
@@ -210,8 +226,8 @@ Indirection is **assignability at the use site, not inheritance** — TypeScript
 `padding: var(--gutter)` is legal iff `--gutter`'s declared type is assignable to
 padding's constraint:
 
-- `--gutter: <spacing>` into `<spacing>` slot → ✅ (same type or subtype)
-- `--gutter: <length>` into `<spacing>` slot → ❌ flagged (supertype not
+- `--gutter: <Spacing>` into `<Spacing>` slot → ✅ (same type or subtype)
+- `--gutter: <length>` into `<Spacing>` slot → ❌ flagged (supertype not
   assignable to subtype — `const s: Spacing = someLength` errors in TS too)
 - `--gutter` untyped → see [§9](#9-check-points--verdicts)
 
@@ -294,7 +310,7 @@ Notes (with review corrections):
 
 - **`@property { syntax }` is the keystone bridge**: real CSS the compiler emits,
   a bidirectional type source, tooling-visible. Duplication to resolve
-  (review): for a custom prop, `@-constrain { --gap: <spacing> }` should **emit**
+  (review): for a custom prop, `@-constrain { --gap: <Spacing> }` should **emit**
   the `@property` *and* add compile-only membership on top — one authoring site,
   two outputs — because `@property syntax` cannot express enums/value-membership.
 - **Default starting point = config.** `unitMode: 'strict'` ships today on
@@ -331,9 +347,10 @@ Gradual ladder; low rungs work on `.less` today: **observe** (report only) →
 
 **`jess infer-types`**: walk the parsed AST, histogram dimensions by unit,
 cluster deltas to a step, histogram colors, emit a candidate `@-types`/token
-module + a report of outliers ("you use 4/8/12/16/24/32 → `spacing = 0..32px step
-4px`; 4 values don't fit"). Automates the discipline Tailwind's scale required by
-hand; the LLM-era migration story.
+module + a report of outliers: "you use 4/8/12/16/24/32; candidate type is
+`Spacing: <length [4px,32px]>`; step appears to be `4px`; 4 values don't fit."
+Automates the discipline Tailwind's scale required by hand; the LLM-era
+migration story.
 
 ---
 
@@ -355,18 +372,21 @@ to an opt-in visitor. Deserves its own doc.
 ## 14. Grounding (existing machinery to reuse)
 
 - `packages/core/src/tree/range.ts` — `Range` node (`start`/`end`/`step`,
-  inclusive/exclusive); `evalNode` is a **parse-only no-op** today. Add
-  `contains(value)` (~15 lines) → the stepped-range wedge.
+  inclusive/exclusive); `evalNode` is a **parse-only no-op** today. Useful
+  implementation reference for bounded membership and a future step constraint,
+  but not the author-facing type syntax.
 - `packages/core/src/define-function.ts` — typed params, overloads. **But**
   `isValidType` is `instanceof`/`typeof` only (no value membership, no CSS
   grammar) — see ledger in §16.
 - `packages/core/src/ast/serialize.ts` — `emitLeaf` / `case 'Declaration'`: the
   single choke point for post-op checks and (later) transform dispatch.
-- `packages/config/src/types.ts` — `unitMode`/`equalityMode`/`functionMode`/
-  `strict` + per-glob `input[]`/`output[]`: the type system **consumes** these.
+- `packages/config/src/types.ts` — `unitMode`/`functionMode`/`strict` + per-glob
+  `input[]`/`output[]`: the type system **consumes** these. There is no
+  `equalityMode` here; equality is decided by the primitive the dialect lowers
+  to, and the type system reads that node rather than a config flag.
 - `known-css-properties` (dep of `less-parser`) + `mdn-data` — property→grammar.
 - `packages/docs-content/docs/jess/02-Language/09-values-and-types.mdx` —
-  existing experimental notation (list-arity, `10px..20px` ranges).
+  older experimental notation to retire in favor of CSS value definition syntax.
 
 ---
 
@@ -379,9 +399,13 @@ to an opt-in visitor. Deserves its own doc.
    constant-folder for the on-scale case? (§9)
 4. **`var()` propagation depth** — chains (`--a: var(--b)`), partially-typed
    graphs. (Cycles are fine — type-to-type, not value.)
-5. **Coercion policy detail** — how `equalityMode` maps to satisfies-relations
-   (does `16` satisfy `16px`? `<length>` satisfy `<length-percentage>`?).
-6. **Multiple supertypes** — `<spacing>` is a subtype of `<length>`,
+5. **Coercion policy detail** — how the comparison primitives map to
+   satisfies-relations (does `16` satisfy `16px`? `<length>` satisfy
+   `<length-percentage>`?). The coercions the language already admits are
+   `=`'s common ground and `==`'s refusal of it
+   (`RESOLVED-SEMANTICS-AND-NAMING.md` §4.1); this question is whether
+   satisfies-relations reuse them.
+6. **Multiple supertypes** — `<Spacing>` is a subtype of `<length>`,
    `<length-percentage>`, `<dimension>`… which token does substitution target?
    (tie-break: most-specific matching token.)
 7. **At-rule naming** — `@-constrain` vs `@-refine` vs `@-slots`; lock before code.
@@ -400,13 +424,15 @@ Two adversarial passes (DX + cross-type-system; edge-case + soundness). Status:
   normalization + unitless `0` (§5.4); `var()` fallback-literal check,
   unreduced-`calc()` as a second can't-verify family, softened end-to-end claim,
   `any`-param-must-not-throw (§9); cross-scope composition = intersection (§5,
-  §10); config-home LS eager-resolve as a requirement (§10); argument order
-  name-first everywhere (§2); bang-vocabulary collapse (§6).
+  §10); config-home LS eager-resolve as a requirement (§10); parameter
+  annotations type-first with `<...>` or `[ ... ]` boundaries (§2);
+  bang-vocabulary collapse (§6).
 
 **Owner-decided in review:**
-- Notation stays `<spacing>` (DX "JSX/generics collision" concern noted, not
-  adopted). Scale forms: both range + enum. Strictness/severity: deferred pending
-  examples.
+- Notation stays CSS-native, with capital-start custom type names like
+  `<Spacing>` (DX "JSX/generics collision" concern noted, not adopted). Scale
+  forms: CSS numeric range + enum; regular step syntax deferred.
+  Strictness/severity: deferred pending examples.
 
 **Open / recommended, needs owner call:**
 - Adoption defaults → observe-first/injection-off (strong DX recommendation; §8).
@@ -430,8 +456,8 @@ Two adversarial passes (DX + cross-type-system; edge-case + soundness). Status:
 constraints are property-global, so market this as scale-enforcement, not
 TS-gradual, for slots; Flow/mypy/Sorbet → per-file opt-in header, default
 nothing-enforced; mypy `--strict` → make it a ladder of named flags, not one
-boolean; F#/units-of-measure → the stepped range (now adopted) beats a raw enum
-for arithmetic + nearest-value hints; Vanilla-Extract/Panda → the genuine
+boolean; F#/units-of-measure → bounded ranges plus a future step constraint beat
+a raw enum for arithmetic + nearest-value hints; Vanilla-Extract/Panda → the genuine
 differentiator is **enforcement at the literal in native syntax with no import**,
 but they beat us on autocomplete unless the LS offers "insert nearest scale
 value".

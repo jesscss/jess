@@ -90,6 +90,48 @@ describe('public direct-AST extend contracts', () => {
     ].join('\n'));
   });
 
+  /*
+   * The parser-side pin for this lives in less-parser's `ast-grammar.test.ts`
+   * and asserts only that a body extend carries no `subject`. That alone would
+   * stay green if `plan.ts` inverted its subject ternary, so the rendered
+   * consequence is pinned here: absent subject MUST extend every branch, and an
+   * inline extend MUST still bind to its own branch alone.
+   */
+  it('extends every branch of a comma-list rule from a body-form extend', async () => {
+    const css = await render([
+      '.foo { color: red; }',
+      '.ext3, .ext4 { &:extend(.foo all); }'
+    ].join('\n'));
+
+    expect(css).toBe([
+      '.foo,',
+      '.ext3,',
+      '.ext4 {',
+      '  color: red;',
+      '}',
+      ''
+    ].join('\n'));
+  });
+
+  it('binds an inline extend to its own branch, not its comma-siblings', async () => {
+    const css = await render([
+      '.foo { color: red; }',
+      '.ext3:extend(.foo all), .ext4 { border: 0; }'
+    ].join('\n'));
+
+    expect(css).toBe([
+      '.foo,',
+      '.ext3 {',
+      '  color: red;',
+      '}',
+      '.ext3,',
+      '.ext4 {',
+      '  border: 0;',
+      '}',
+      ''
+    ].join('\n'));
+  });
+
   it('rejects a comma-list parent in a non-leading ampersand merge template', async () => {
     await expect(render([
       '@list-quoted: ~\'apple, satsuma, banana, pear\';',

@@ -1,4 +1,4 @@
-import { BitSetLibrary, isSubsetOf } from '../bitset.js';
+import { BitSetLibrary, isSubsetOf } from '../../../util/bitset.js';
 import { keySetOf, visibleKeySetOf } from '../selector-analysis.js';
 import { compound, el, sel, pseudo, co, num, ComplexSelector } from '../../index.js';
 import { Context } from '../../../context.js';

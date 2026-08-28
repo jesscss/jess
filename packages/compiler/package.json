@@ -5,9 +5,9 @@
     "access": "public"
   },
   "description": "Generic compiler host for Jess-compatible stylesheet language plugins",
-  "version": "2.0.0-alpha.14",
+  "version": "2.0.0-alpha.15",
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": "^20.19.0 || >=22.18.0"
   },
   "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
@@ -43,7 +43,7 @@
   },
   "dependencies": {
     "@jesscss/core": "workspace:*",
-    "linecraft": "0.2.6",
+    "linecraft": "0.2.8",
     "lodash-es": "^4.17.21",
     "styles-config": "workspace:*"
   },

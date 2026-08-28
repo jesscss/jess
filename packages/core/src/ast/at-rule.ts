@@ -6,8 +6,8 @@
  *   - `AtRuleBlock`  — a block-bearing at-rule (`@media`, `@font-face`,
  *     `@keyframes`, `@page`, `@supports`, `@counter-style`, unknown block
  *     at-rules). Carries a `name` (`@media`), an optional `prelude` value node
- *     (media query / keyframes name / selector), and a `body` of statements.
- *     The body is a fresh nesting/output context: its direct declarations emit
+ *     (media query / keyframes name / selector), and `rules` statements.
+ *     The rules form a fresh nesting/output context: direct declarations emit
  *     inside the block, nested rulesets compose among themselves (collapse-
  *     nesting within the block), nested at-rules stay nested. v5 does NOT merge
  *     sibling `@media` blocks — each stays its own block.
@@ -29,14 +29,25 @@
  * modules (`node`, `nodes`) — never the legacy tree.
  */
 
-import type { Interpolation, List, Quoted, Statement, Url, ValueNode } from './nodes.js';
+import { NO_SPAN, type BodySpanSlots, type SpanSlots } from './provenance.js';
+import type { Interpolation, Quoted, Statement, Url, ValueNode } from './nodes.js';
+
+const importStartKey = Symbol.for('jess.ast.import-source-start');
+const importEndKey = Symbol.for('jess.ast.import-source-end');
+const importTailStartKey = Symbol.for('jess.ast.import-tail-start');
+
+interface ImportSourceSlots {
+  [importStartKey]?: number;
+  [importEndKey]?: number;
+  [importTailStartKey]?: number;
+}
 
 /** A block-bearing at-rule: `@name prelude { …body }`. */
-export interface AtRuleBlock {
+export interface AtRuleBlock extends SpanSlots, BodySpanSlots {
   readonly type: 'AtRuleBlock';
   readonly name: string;
   readonly prelude: ValueNode | null;
-  readonly body: Statement[];
+  readonly rules: Statement[];
 }
 
 /**
@@ -47,7 +58,7 @@ export interface AtRuleBlock {
  * stays literal (Less resolves only `@{…}` in a statement prelude), so the common
  * case round-trips byte-for-byte.
  */
-export interface AtRuleStatement {
+export interface AtRuleStatement extends SpanSlots, ImportSourceSlots {
   readonly type: 'AtRuleStatement';
   readonly name: string;
   readonly prelude: ValueNode | null;
@@ -60,29 +71,11 @@ export interface AtRuleStatement {
  * producing grammar keeps opaque; the core serializer must not try to evaluate,
  * inspect, or recursively render those bytes.
  */
-export interface OpaqueAtRuleBlock {
+export interface OpaqueAtRuleBlock extends SpanSlots {
   readonly type: 'OpaqueAtRuleBlock';
   readonly name: string;
   readonly prelude: string | null;
   readonly rawBody: string;
-}
-
-/** A typed import statement. Context/plugin document loading owns resolution. */
-export interface ImportAtRule {
-  readonly type: 'ImportAtRule';
-  readonly name: string;
-
-  /** Grammar-owned comma list inside the parenthesized option clause. */
-  readonly options: List | null;
-
-  /** A quoted path, `url(…)`, or interpolated quoted template. */
-  readonly target: Quoted | Url | Interpolation;
-
-  /** Grammar-owned `as …` clause, if the dialect admits one. */
-  readonly alias: ValueNode | null;
-
-  /** Grammar-owned media/layer/supports tail, if present. */
-  readonly tail: ValueNode | null;
 }
 
 /**
@@ -107,25 +100,70 @@ export interface Plugin {
 export const atRuleBlock = (
   name: string,
   prelude: ValueNode | null,
-  body: Statement[]
-): AtRuleBlock => ({ type: 'AtRuleBlock', name, prelude, body });
+  rules: Statement[]
+): AtRuleBlock => ({ type: 'AtRuleBlock', name, prelude, rules, _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN });
 
-export const atRuleStatement = (name: string, prelude: ValueNode | null): AtRuleStatement =>
-  ({ type: 'AtRuleStatement', name, prelude });
+export const atRuleStatement = (
+  name: string,
+  prelude: ValueNode | null
+): AtRuleStatement => {
+  const statement: AtRuleStatement = {
+    type: 'AtRuleStatement',
+    name,
+    prelude,
+    _s: NO_SPAN,
+    _e: NO_SPAN,
+    [importStartKey]: NO_SPAN,
+    [importEndKey]: NO_SPAN,
+    [importTailStartKey]: NO_SPAN
+  };
+  return statement;
+};
+
+/** Retain the parser-owned start of an import's typed tail in its fixed slot. */
+export function withImportTailStart<T extends AtRuleStatement>(
+  statement: T,
+  start: number
+): T {
+  statement[importTailStartKey] = start;
+  return statement;
+}
+
+/**
+ * Retain parser-owned CSS import offsets without changing public source
+ * provenance. Every AtRuleStatement factory result owns the same three Smi
+ * symbol slots, so this is a same-map store rather than a shape transition.
+ */
+export function withImportSourceSpan<T extends AtRuleStatement>(
+  statement: T,
+  start: number,
+  end: number
+): T {
+  statement[importStartKey] = start;
+  statement[importEndKey] = end;
+  return statement;
+}
+
+/** CSS import statement start, or NO_SPAN for every other at-rule statement. */
+export function importSourceStartOf(statement: AtRuleStatement): number {
+  return statement[importStartKey] ?? NO_SPAN;
+}
+
+/** CSS import statement end, or NO_SPAN for every other at-rule statement. */
+export function importSourceEndOf(statement: AtRuleStatement): number {
+  return statement[importEndKey] ?? NO_SPAN;
+}
+
+/** Typed import tail start, or NO_SPAN when the import has no tail. */
+export function importTailStartOf(statement: AtRuleStatement): number {
+  return statement[importTailStartKey] ?? NO_SPAN;
+}
 
 export const opaqueAtRuleBlock = (
   name: string,
   prelude: string | null,
   rawBody: string
-): OpaqueAtRuleBlock => ({ type: 'OpaqueAtRuleBlock', name, prelude, rawBody });
-
-export const importAtRule = (
-  name: string,
-  target: Quoted | Url | Interpolation,
-  options: List | null = null,
-  alias: ValueNode | null = null,
-  tail: ValueNode | null = null
-): ImportAtRule => ({ type: 'ImportAtRule', name, options, target, alias, tail });
+): OpaqueAtRuleBlock => ({ type: 'OpaqueAtRuleBlock', name, prelude, rawBody, _s: NO_SPAN, _e: NO_SPAN });
 
 export const plugin = (
   target: Quoted | Url | Interpolation,

@@ -61,6 +61,74 @@ describe('setDataProviders (custom CSS data)', () => {
     expect(h && typeof h.contents === 'object' && 'value' in h.contents ? String(h.contents.value) : '').toContain('@tailwind');
   });
 
+  it('custom data participates in diagnostics', () => {
+    const { engine, doc } = engineWith('css', [
+      '@tailwind base;',
+      '.a { -my-custom-prop: project-layout; }',
+      '.a:--project-state::--project-part { color: red; }'
+    ].join('\n'));
+    engine.setDataProviders([{
+      atDirectives: [{ name: '@tailwind', description: 'Tailwind directive.' }],
+      properties: [{
+        name: '-my-custom-prop',
+        description: 'A custom property.',
+        values: [{ name: 'project-layout' }]
+      }],
+      pseudoClasses: [{ name: ':--project-state', description: 'A project pseudo-class.' }],
+      pseudoElements: [{ name: '::--project-part', description: 'A project pseudo-element.' }]
+    }]);
+
+    const codes = engine.getDiagnostics(doc.uri).map(diagnostic => diagnostic.code);
+    expect(codes).not.toContain('lint/unknown-at-rule');
+    expect(codes).not.toContain('lint/unknown-property');
+    expect(codes).not.toContain('lint/unknown-property-value');
+    expect(codes).not.toContain('lint/selector-pseudo-class-no-unknown');
+    expect(codes).not.toContain('lint/selector-pseudo-element-no-unknown');
+  });
+
+  it('custom property value metadata still reports definite invalid values', () => {
+    const { engine, doc } = engineWith('css', '.a { -my-custom-prop: wrong; }');
+    engine.setDataProviders([{
+      properties: [{
+        name: '-my-custom-prop',
+        description: 'A custom property.',
+        values: [{ name: 'project-layout' }]
+      }]
+    }]);
+
+    const diagnostic = engine.getDiagnostics(doc.uri).find(item => item.code === 'lint/unknown-property-value');
+    expect(diagnostic?.message).toContain('wrong');
+  });
+
+  it('custom descriptor data participates in diagnostics for CSS descriptor blocks', () => {
+    const { engine, doc } = engineWith('css', '@font-face { project-mode: compact; project-tone: loud; }');
+    engine.setDataProviders([{
+      properties: [
+        {
+          name: 'project-mode',
+          atRule: '@font-face',
+          description: 'Project mode.',
+          values: [{ name: 'compact' }]
+        },
+        {
+          name: 'project-tone',
+          atRule: '@font-face',
+          description: 'Project tone.',
+          values: [{ name: 'quiet' }]
+        }
+      ]
+    }]);
+
+    const diagnostics = engine.getDiagnostics(doc.uri);
+    const codes = diagnostics.map(diagnostic => diagnostic.code);
+    expect(codes).not.toContain('lint/at-rule-descriptor-no-unknown');
+    expect(diagnostics
+      .filter(diagnostic => diagnostic.code === 'lint/at-rule-descriptor-value-no-unknown')
+      .map(diagnostic => diagnostic.message)).toEqual([
+      'Unknown value "loud" for descriptor "project-tone" in @font-face'
+    ]);
+  });
+
   it('.jess: custom data applies too', () => {
     const { engine, doc } = engineWith('jess', '.a { -my- }');
     engine.setDataProviders([{ properties: [{ name: '-my-custom-prop', description: 'x' }] }]);

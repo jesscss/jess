@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parse } from '@jesscss/scss-parser';
+import type { AtRuleBlock, Declaration } from '@jesscss/core/ast';
 
 /**
  * A conditional at-rule prelude is the CSS "value hole": a composite shape whose
@@ -20,18 +21,34 @@ import { parse } from '@jesscss/scss-parser';
  *
  * Node vocabulary (canonical AST v2): a parenthesized feature is a `Block`
  * (`delimiter: 'paren'`) wrapping an `Operation`; a bare boolean feature wraps a
- * `Keyword`; whitespace-joined query terms are a `SpacedValue`; a comma-separated
+ * `Keyword`; whitespace-joined query terms are a `Sequence`; a comma-separated
  * media-query list is a `List`. There is deliberately no `MediaFeature` node.
  */
 
 const kw = (src: string) => ({ type: 'Keyword', src });
 const dim = (src: string) => ({ type: 'Dimension', src });
-const paren = (inner: unknown) => ({ type: 'Block', delimiter: 'paren', inner });
+const paren = (inner: unknown) => ({ type: 'Block', delimiter: 'paren', value: inner });
 const op = (operator: string, left: unknown, right: unknown) => ({ type: 'Operation', operator, left, right });
 const ratio = (n: string, d: string) => op('/', dim(n), dim(d));
-const call = (name: string, args: unknown[]) => ({ type: 'FunctionCall', name, args });
+
+/* A `FunctionCall` argument is a `CallArg`, so the payload sits under `value`. */
+const call = (name: string, args: unknown[]) => ({ type: 'FunctionCall', name, args: args.map(value => ({ value })) });
 const staticUrl = (src: string) => ({ type: 'Url', value: { type: 'Any', src } });
 const list = (...value: unknown[]) => ({ type: 'List', sep: ',', value });
+
+function isAtRuleBlock(value: unknown): value is AtRuleBlock {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'AtRuleBlock';
+}
+
+function isDeclaration(value: unknown): value is Declaration {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Declaration';
+}
 
 /**
  * `<ratio>` — mediaqueries-4 §2.1, `<number> [ / <number> ]?`. The slash is a
@@ -121,10 +138,10 @@ const FUNCTION_VALUE: Array<[string, string, object]> = [
   ['a function as a name-first range bound', '@media (width >= var(--w)) { a { color: red; } }', paren(op('>=', kw('width'), call('var', [kw('--w')])))],
   ['a function as a value-first range bound', '@media (var(--w) < width) { a { color: red; } }', paren(op('<', call('var', [kw('--w')]), kw('width')))],
   ['a function value in an and chain', '@media screen and (min-width: var(--w)) { a { color: red; } }',
-    { type: 'SpacedValue', parts: [kw('screen'), kw('and'), paren(op(':', kw('min-width'), call('var', [kw('--w')])))] }],
+    { type: 'Sequence', parts: [kw('screen'), kw('and'), paren(op(':', kw('min-width'), call('var', [kw('--w')])))] }],
   ['a function value in @container', '@container (min-width: var(--w)) { a { color: red; } }', paren(op(':', kw('min-width'), call('var', [kw('--w')])))],
   ['a function value in a named @container', '@container card (min-width: env(x)) { a { color: red; } }',
-    { type: 'SpacedValue', parts: [kw('card'), paren(op(':', kw('min-width'), call('env', [kw('x')])))] }]
+    { type: 'Sequence', parts: [kw('card'), paren(op(':', kw('min-width'), call('env', [kw('x')])))] }]
 ];
 
 /**
@@ -146,32 +163,32 @@ const DESCRIPTOR: Array<[string, string, object]> = [
 
 /**
  * Query-term composition: a media type, the `only` modifier, and `and`/`or`
- * chains join into a `SpacedValue` whose connectives are ordinary `Keyword`
+ * chains join into a `Sequence` whose connectives are ordinary `Keyword`
  * parts. A named `@container` is the same shape (name, then the feature block).
  */
 const COMPOSITION: Array<[string, string, object]> = [
   ['a media type with a feature', '@media screen and (min-width: 600px) { a { color: red; } }',
-    { type: 'SpacedValue', parts: [kw('screen'), kw('and'), paren(op(':', kw('min-width'), dim('600px')))] }],
+    { type: 'Sequence', parts: [kw('screen'), kw('and'), paren(op(':', kw('min-width'), dim('600px')))] }],
   ['an only-modified media type', '@media only screen and (hover) { a { color: red; } }',
-    { type: 'SpacedValue', parts: [kw('only'), kw('screen'), kw('and'), paren(kw('hover'))] }],
+    { type: 'Sequence', parts: [kw('only'), kw('screen'), kw('and'), paren(kw('hover'))] }],
   ['an and chain of two features', '@media (min-width: 600px) and (max-width: 900px) { a { color: red; } }',
-    { type: 'SpacedValue', parts: [paren(op(':', kw('min-width'), dim('600px'))), kw('and'), paren(op(':', kw('max-width'), dim('900px')))] }],
+    { type: 'Sequence', parts: [paren(op(':', kw('min-width'), dim('600px'))), kw('and'), paren(op(':', kw('max-width'), dim('900px')))] }],
   ['an or chain of two features', '@media (hover) or (pointer) { a { color: red; } }',
-    { type: 'SpacedValue', parts: [paren(kw('hover')), kw('or'), paren(kw('pointer'))] }],
+    { type: 'Sequence', parts: [paren(kw('hover')), kw('or'), paren(kw('pointer'))] }],
   ['a range combined with a ratio', '@media (min-aspect-ratio: 16/9) and (width >= 600px) { a { color: red; } }',
-    { type: 'SpacedValue', parts: [paren(op(':', kw('min-aspect-ratio'), ratio('16', '9'))), kw('and'), paren(op('>=', kw('width'), dim('600px')))] }],
+    { type: 'Sequence', parts: [paren(op(':', kw('min-aspect-ratio'), ratio('16', '9'))), kw('and'), paren(op('>=', kw('width'), dim('600px')))] }],
   ['a named @container', '@container card (min-width: 400px) { a { color: red; } }',
-    { type: 'SpacedValue', parts: [kw('card'), paren(op(':', kw('min-width'), dim('400px')))] }],
+    { type: 'Sequence', parts: [kw('card'), paren(op(':', kw('min-width'), dim('400px')))] }],
   ['an and chain in @container', '@container (min-width: 400px) and (min-height: 400px) { a { color: red; } }',
-    { type: 'SpacedValue', parts: [paren(op(':', kw('min-width'), dim('400px'))), kw('and'), paren(op(':', kw('min-height'), dim('400px')))] }],
+    { type: 'Sequence', parts: [paren(op(':', kw('min-width'), dim('400px'))), kw('and'), paren(op(':', kw('min-height'), dim('400px')))] }],
   ['a comma-separated media-query list', '@media screen, print { a { color: red; } }', list(kw('screen'), kw('print'))],
   ['a three-item media-query list', '@media screen, print, tv { a { color: red; } }', list(kw('screen'), kw('print'), kw('tv'))],
   ['a list of parenthesized features', '@media (min-width: 1px), (max-width: 2px) { a { color: red; } }',
     list(paren(op(':', kw('min-width'), dim('1px'))), paren(op(':', kw('max-width'), dim('2px'))))],
   ['a list whose first query is only-modified', '@media only screen, print { a { color: red; } }',
-    list({ type: 'SpacedValue', parts: [kw('only'), kw('screen')] }, kw('print'))],
+    list({ type: 'Sequence', parts: [kw('only'), kw('screen')] }, kw('print'))],
   ['a list whose first query is an and chain', '@media screen and (hover), print { a { color: red; } }',
-    list({ type: 'SpacedValue', parts: [kw('screen'), kw('and'), paren(kw('hover'))] }, kw('print'))],
+    list({ type: 'Sequence', parts: [kw('screen'), kw('and'), paren(kw('hover'))] }, kw('print'))],
   ['a comma-separated @container query list', '@container (width > 1px), (height > 1px) { a { color: red; } }',
     list(paren(op('>', kw('width'), dim('1px'))), paren(op('>', kw('height'), dim('1px'))))]
 ];
@@ -192,40 +209,40 @@ const NOT_A_LINTER: Array<[string, string, object]> = [
 /**
  * `@supports` — css-conditional-3 §2. A supported declaration is the same
  * `Block(Operation)` as a media feature; `not`/`and`/`or` compose into a
- * `SpacedValue`. A form the dialect does not model as a declaration — a
+ * `Sequence`. A form the dialect does not model as a declaration — a
  * `selector()` test, or a custom property, whose value grammar is
- * `<declaration-value>` — is preserved as `GeneralEnclosed` rather than being
- * flattened to raw text.
+ * `<declaration-value>` — is preserved as a call / block over one grammar-owned
+ * `Interpolation` rather than being flattened to raw text.
  */
 const SUPPORTS: Array<[string, string, object]> = [
   ['a supported declaration', '@supports (display: grid) { a { color: red; } }', paren(op(':', kw('display'), kw('grid')))],
   ['a negated condition', '@supports not (display: grid) { a { color: red; } }',
-    { type: 'SpacedValue', parts: [kw('not'), paren(op(':', kw('display'), kw('grid')))] }],
+    { type: 'Sequence', parts: [kw('not'), paren(op(':', kw('display'), kw('grid')))] }],
   ['an and chain', '@supports (display: grid) and (gap: 1px) { a { color: red; } }',
-    { type: 'SpacedValue', parts: [paren(op(':', kw('display'), kw('grid'))), kw('and'), paren(op(':', kw('gap'), dim('1px')))] }],
+    { type: 'Sequence', parts: [paren(op(':', kw('display'), kw('grid'))), kw('and'), paren(op(':', kw('gap'), dim('1px')))] }],
   ['an or chain', '@supports (display: grid) or (display: flex) { a { color: red; } }',
-    { type: 'SpacedValue', parts: [paren(op(':', kw('display'), kw('grid'))), kw('or'), paren(op(':', kw('display'), kw('flex')))] }],
-  ['a selector() test', '@supports selector(a:hover) { a { color: red; } }', { type: 'GeneralEnclosed', name: 'selector' }],
-  ['a complex selector() test', '@supports selector(h2 > p) { a { color: red; } }', { type: 'GeneralEnclosed', name: 'selector' }],
-  ['a font-tech() test', '@supports font-tech(color-COLRv1) { a { color: red; } }', { type: 'GeneralEnclosed', name: 'font-tech' }],
-  ['a font-format() test', '@supports font-format(opentype) { a { color: red; } }', { type: 'GeneralEnclosed', name: 'font-format' }],
-  ['a custom-property test', '@supports (--x: red) { a { color: red; } }', { type: 'GeneralEnclosed' }]
+    { type: 'Sequence', parts: [paren(op(':', kw('display'), kw('grid'))), kw('or'), paren(op(':', kw('display'), kw('flex')))] }],
+  ['a selector() test', '@supports selector(a:hover) { a { color: red; } }', { type: 'FunctionCall', name: 'selector' }],
+  ['a complex selector() test', '@supports selector(h2 > p) { a { color: red; } }', { type: 'FunctionCall', name: 'selector' }],
+  ['a font-tech() test', '@supports font-tech(color-COLRv1) { a { color: red; } }', { type: 'FunctionCall', name: 'font-tech' }],
+  ['a font-format() test', '@supports font-format(opentype) { a { color: red; } }', { type: 'FunctionCall', name: 'font-format' }],
+  ['a custom-property test', '@supports (--x: red) { a { color: red; } }', { type: 'Block', delimiter: 'paren' }]
 ];
 
 function descriptorValue(source: string): unknown {
-  const first = parse(source).children[0];
-  if (first === undefined || !('body' in first)) {
+  const first = parse(source).rules[0];
+  if (!isAtRuleBlock(first)) {
     throw new TypeError(`Expected an at-rule block for: ${source}`);
   }
-  const declaration = first.body[0];
-  if (declaration === undefined || !('value' in declaration)) {
+  const declaration = first.rules[0];
+  if (!isDeclaration(declaration)) {
     throw new TypeError(`Expected an @property descriptor for: ${source}`);
   }
   return declaration.value;
 }
 
 function prelude(source: string): unknown {
-  const first = parse(source).children[0];
+  const first = parse(source).rules[0];
   if (first === undefined || !('prelude' in first)) {
     throw new TypeError(`Expected an at-rule prelude for: ${source}`);
   }
@@ -260,7 +277,7 @@ describe('SCSS conditional at-rule value holes', () => {
    */
   it('keeps the custom-property !important tail out of the preserved value', () => {
     expect(parse('a { --x: red !important; }')).toMatchObject({
-      children: [{ type: 'Rule', body: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: 'red' }, important: true }] }]
+      rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: 'red' }, important: true }] }]
     });
   });
 
@@ -327,15 +344,15 @@ describe('SCSS conditional at-rule value holes', () => {
    */
   it('declaration list: reads an unterminated declaration before a nested qualified rule as a Sass nested property', () => {
     expect(parse('a { color: red b { x: 1 } }')).toMatchObject({
-      children: [{
-        type: 'Rule',
-        body: [{
+      rules: [{
+        type: 'Ruleset',
+        rules: [{
           type: 'Declaration',
           name: 'color',
           value: {
             type: 'Collection',
             base: [{ type: 'Keyword', src: 'red' }, { type: 'Keyword', src: 'b' }],
-            entries: [{ type: 'Declaration', name: 'x', value: { type: 'Dimension', src: '1' } }]
+            entries: [{ type: 'CollectionEntry', key: { type: 'Keyword', src: 'x' }, value: { type: 'Dimension', src: '1' } }]
           }
         }]
       }]
@@ -360,7 +377,7 @@ describe('SCSS conditional at-rule value holes', () => {
 
   it('preserves a custom-property value verbatim inside a conditional at-rule', () => {
     expect(parse('@media (min-width: 600px) { a { --x: 1px solid black; } }')).toMatchObject({
-      children: [{ type: 'AtRuleBlock', body: [{ type: 'Rule', body: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: '1px solid black' } }] }] }]
+      rules: [{ type: 'AtRuleBlock', rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: '1px solid black' } }] }] }]
     });
   });
 

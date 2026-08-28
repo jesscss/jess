@@ -9,11 +9,15 @@ The Less grammar, layered on the CSS base parser, with core-free CST entry point
 
 ## What it is
 
-The Less grammar is the shared CSS grammar plus a Less delta:
-`lessGrammar = compose([cssGrammar, <Less delta>])`. It adds `@variable` /
-`@{interpolation}`, mixins, and the rest of Less on top of the spec-aligned CSS
-base in [`@jesscss/css-parser`](https://www.npmjs.com/package/@jesscss/css-parser),
-built on [parseman](https://www.npmjs.com/package/parseman) — **the fastest
+The Less grammar extends the spec-aligned CSS base in
+[`@jesscss/css-parser`](https://www.npmjs.com/package/@jesscss/css-parser):
+unchanged CSS structure remains CSS-owned, and Less changes only the smallest
+child, value slot, or reference its syntax requires. It adds `@variable` /
+`@{interpolation}`, mixins, and the rest of Less. Parseman currently compiles
+the CSS and Less host factories from shared recognition artifacts rather than
+literally composing a terminal `cssGrammar` artifact; that macro boundary does
+not relax the ownership rule. It is built on
+[parseman](https://www.npmjs.com/package/parseman) — **the fastest
 general-purpose JavaScript parser** in its
 [published benchmarks](https://matthew-dean.github.io/parseman/guide/benchmarks)
 (see `@jesscss/css-parser` for figures and engineering details). It is the parser
@@ -73,8 +77,48 @@ Pass a different `startRule` (any capitalized grammar rule, e.g. `'SelectorList'
 | --- | --- | --- |
 | `@jesscss/less-parser/cst` | `parseLessCst` | Core-free parse of a Less string to a CST. |
 | `@jesscss/less-parser/cst` | `LessCstNode`, `LessCstLeaf`, `LessCstError`, `LessCstChild`, `LessCstParseResult`, `LessCstType` (types) | CST type definitions (aliases of the shared `@jesscss/css-parser/cst` types). |
-| `@jesscss/less-parser/grammar` | `lessGrammar` | The compiled Less grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. |
+| `@jesscss/less-parser/grammar` | `lessGrammar` | The compiled Less AST grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. See the variant table below. |
 | `@jesscss/less-parser` (`.`) | `parse` | Parse Less directly to canonical AST v2 `Stylesheet`. It does not load the CST grammar. |
+
+### Line-aware entries
+
+`parse` and the CST parsers come in two bindings, one per compiled table, so an
+entry never loads a table it does not parse with:
+
+| Entry | Export | Tree | Positions |
+| --- | --- | --- | --- |
+| `@jesscss/less-parser` (`.`) | `parse` | AST | no |
+| `@jesscss/less-parser/positions` | `parse` | AST | yes |
+| `@jesscss/less-parser/cst` | `parseLessCst`, `parseLessDoc` | CST | no |
+| `@jesscss/less-parser/cst/positions` | `parseLessCst`, `parseLessDoc` | CST | yes |
+
+The `/positions` entries export the same names bound to the line-aware table:
+switching is a change of import specifier, not of call site.
+
+### Choosing a grammar build
+
+Each compiled grammar is a standalone multi-megabyte artifact, so the four
+variants ship as four separate files. Importing one never loads the others.
+Pick by the two questions the subpath name answers — which tree, and whether
+source positions are tracked:
+
+| Subpath | Export | Tree | Positions |
+| --- | --- | --- | --- |
+| `@jesscss/less-parser/grammar/ast` | `lessGrammar` | AST | no |
+| `@jesscss/less-parser/grammar/ast/positions` | `lessPositionsGrammar` | AST | yes |
+| `@jesscss/less-parser/grammar/cst` | `lessCstGrammar` | CST | no |
+| `@jesscss/less-parser/grammar/cst/positions` | `lessCstPositionsGrammar` | CST | yes |
+
+`@jesscss/less-parser/grammar` is an alias for `/grammar/ast`, the build the
+shipping `parse()` route uses. It is not a barrel: it exposes the AST variant
+only, so importing it cannot pull the other three in.
+
+The positions variants set `startLine`/`startColumn` on every span. There is no
+`trackLines` option: an option would force one module to name both tables, and
+Node executes every module it statically imports, so the choice is which entry
+you import. Error tolerance is not a property of a build — the CST runner
+collects `result.errors` on either CST variant.
+
 
 ## Default CST shape
 
@@ -95,7 +139,7 @@ Parsing `@c: red;\n.foo { color: @c; }` yields (abridged):
     { "_tag": "node", "type": "VarDeclaration", "grammarType": "VarDeclaration", "span": { "start": 0, "end": 8 },
       "children": [
         { "_tag": "leaf", "value": "@c" }, { "_tag": "leaf", "value": ":" },
-        { "_tag": "node", "type": "NamedColor", "grammarType": "NamedColor",
+        { "_tag": "node", "type": "Keyword", "grammarType": "Keyword",
           "children": [ { "_tag": "leaf", "value": "red" } ] },
         { "_tag": "leaf", "value": ";" }
       ] },
@@ -115,9 +159,9 @@ Parsing `@c: red;\n.foo { color: @c; }` yields (abridged):
 }
 ```
 
-Note the Less-specific nodes: a top-level `@c: …` becomes a `VarDeclaration`, a `@c` value becomes a `Reference`, and the color keyword `red` parses as `NamedColor` (the CSS-only grammar has no such rule — see `@jesscss/css-parser`).
+Note the Less-specific nodes: a top-level `@c: …` becomes a `VarDeclaration`, and a `@c` value becomes a `Reference`. The color keyword `red` parses as a plain `Keyword` — the same node every dialect uses (NamedColor→Keyword convergence); its colour-ness is resolved only when it is operated on.
 
-Pass `{ collapse: true }` to unwrap single-child wrapper types (`Reference`, `NamedColor`, `InterpolatedSelector`) into their child.
+Pass `{ collapse: true }` to unwrap single-child wrapper types (`Reference`, `InterpolatedSelector`) into their child.
 
 ### Name-independent condition arguments
 
@@ -133,7 +177,7 @@ The grammar is decoupled from the tree it builds. Every capitalized rule is a pa
 import { run } from 'parseman'
 import { lessGrammar } from '@jesscss/less-parser/grammar'
 
-const myHost = (type, children, fields, span) => ({ type, span, children: children.filter(Boolean) })
+const myHost = (type, children, fields, span) => ({ type, span, rules: children.filter(Boolean) })
 
 const result = run(lessGrammar.Stylesheet, '@c: red; .foo { color: @c; }', {
   build: myHost,
@@ -148,7 +192,7 @@ The `BuildHost` signature (from parseman):
 ```ts
 type BuildHost = (
   type: string,
-  children: readonly unknown[],
+  rules: readonly unknown[],
   fields: FieldMap | undefined,
   span: { start: number; end: number },
   rawChildren: readonly unknown[],

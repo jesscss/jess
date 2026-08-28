@@ -12,9 +12,14 @@ Ported because they contain valid Jess-specific behavior:
 - `jess-parser-ast-contract`
 - `jess-function-library-testing`
 - `jess-aggressive-cutting-review`
+
+Claimed as ported but **not actually present** in `~/.codex/skills` (verified
+2026-07-30 — the seven above do exist there; this one does not):
+
 - `jess-perf-architecture` (source: `.cursor/skills/perf-architecture/`; the
-  7 V8-architecture invariants + regression catalogue from
-  `docs/perf/V8-ARCHITECTURE.md`)
+  numbered V8-architecture invariants + regression catalogue from
+  `docs/perf/V8-ARCHITECTURE.md` — read the invariant list from that file
+  rather than restating a count here, since the list grows)
 
 Recommendation (see `docs/architecture/llm-quality-enforcement-design.md`): keep each
 skill's authored source in-repo under `.cursor/skills/` and treat

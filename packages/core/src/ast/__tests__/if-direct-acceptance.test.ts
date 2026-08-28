@@ -2,13 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import { atRuleBlock } from '../at-rule.js';
-import { condition, decl, dimension, funcCall, ifNode, keyword, mixinCall, mixinDef, stylesheet, rule, variableDeclaration, variableReference } from '../nodes.js';
+import { expression, condition, decl, dimension, ifNode, keyword, mixinCall, mixinDef, stylesheet, rule, variableDeclaration, variableReference } from '../nodes.js';
 import { serialize } from '../serialize.js';
 
 const evaluator = buildEvaluator(makeLessRegistry());
 
 describe('If canonical AST emission', () => {
-  it('evaluates condition values as typed operands for logical function comparisons', () => {
+  /* `boolean(<cond>)` is not a call — the Less grammar lowers it to the `$( … )`
+   * expression boundary (§4.5.3a), so the canonical shape under test is a
+   * boundary block over a `Condition`, not `funcCall('boolean', …)`. */
+  it('evaluates condition values as typed operands inside an expression boundary', () => {
     const gtLeft = condition({
       g: 'cmp',
       op: '>',
@@ -23,12 +26,12 @@ describe('If canonical AST emission', () => {
     }, '(3 > 2)');
     const document = stylesheet([
       rule('.boolean', [
-        decl('value', funcCall('boolean', [condition({
+        decl('value', expression(condition({
           g: 'cmp',
           op: '=',
           left: gtLeft,
           right: gtRight
-        }, '(2 > 1) = (3 > 2)')]))
+        }, '(2 > 1) = (3 > 2)')))
       ])
     ]);
 
@@ -39,9 +42,9 @@ describe('If canonical AST emission', () => {
     const document = stylesheet([
       variableDeclaration('theme', keyword('dark'), { mode: 'declare' }),
       ifNode([
-        { guard: { g: 'cmp', op: '=', left: variableReference('theme', 'scoped'), right: keyword('light') }, body: [rule('.wrong', [decl('color', keyword('black'))])] },
-        { guard: { g: 'cmp', op: '=', left: variableReference('theme', 'scoped'), right: keyword('dark') }, body: [rule('.card', [decl('color', keyword('white'))])] },
-        { guard: null, body: [rule('.fallback', [decl('color', keyword('gray'))])] }
+        { guard: { g: 'cmp', op: '=', left: variableReference('theme', 'scoped'), right: keyword('light') }, rules: [rule('.wrong', [decl('color', keyword('black'))])] },
+        { guard: { g: 'cmp', op: '=', left: variableReference('theme', 'scoped'), right: keyword('dark') }, rules: [rule('.card', [decl('color', keyword('white'))])] },
+        { guard: null, rules: [rule('.fallback', [decl('color', keyword('gray'))])] }
       ])
     ]);
 
@@ -52,10 +55,10 @@ describe('If canonical AST emission', () => {
     const document = stylesheet([
       variableDeclaration('tone', keyword('blue'), { mode: 'declare' }),
       rule('.box', [
-        ifNode([{ guard: { g: 'truth', value: keyword('true') }, body: [decl('color', variableReference('tone', 'scoped'))] }]),
+        ifNode([{ guard: { g: 'truth', value: keyword('true') }, rules: [decl('color', variableReference('tone', 'scoped'))] }]),
         ifNode([
-          { guard: { g: 'truth', value: keyword('false') }, body: [rule('.wrong', [decl('color', keyword('red'))])] },
-          { guard: null, body: [ifNode([{ guard: { g: 'truth', value: keyword('true') }, body: [rule('.right', [decl('color', keyword('green'))])] }])] }
+          { guard: { g: 'truth', value: keyword('false') }, rules: [rule('.wrong', [decl('color', keyword('red'))])] },
+          { guard: null, rules: [ifNode([{ guard: { g: 'truth', value: keyword('true') }, rules: [rule('.right', [decl('color', keyword('green'))])] }])] }
         ])
       ])
     ]);
@@ -67,8 +70,8 @@ describe('If canonical AST emission', () => {
     const document = stylesheet([
       atRuleBlock('@media', keyword('screen'), [
         ifNode([
-          { guard: { g: 'truth', value: keyword('false') }, body: [rule('.wrong', [decl('color', keyword('red'))])] },
-          { guard: null, body: [rule('.card', [ifNode([{ guard: { g: 'truth', value: keyword('true') }, body: [decl('color', keyword('green'))] }])])] }
+          { guard: { g: 'truth', value: keyword('false') }, rules: [rule('.wrong', [decl('color', keyword('red'))])] },
+          { guard: null, rules: [rule('.card', [ifNode([{ guard: { g: 'truth', value: keyword('true') }, rules: [decl('color', keyword('green'))] }])])] }
         ])
       ])
     ]);
@@ -82,7 +85,7 @@ describe('If canonical AST emission', () => {
     const document = stylesheet([
       mixin('a'),
       rule('.before', [mixinCall('.paint')]),
-      ifNode([{ guard: { g: 'truth', value: keyword('true') }, body: [mixin('b')] }]),
+      ifNode([{ guard: { g: 'truth', value: keyword('true') }, rules: [mixin('b')] }]),
       mixin('c'),
       rule('.after', [mixinCall('.paint')])
     ]);
@@ -95,9 +98,9 @@ describe('If canonical AST emission', () => {
     const mixin = (color: string) => mixinDef('.paint', [], [decl('color', keyword(color))]);
     const document = stylesheet([
       mixin('a'),
-      ifNode([{ guard: { g: 'truth', value: keyword('true') }, body: [
+      ifNode([{ guard: { g: 'truth', value: keyword('true') }, rules: [
         mixin('b'),
-        ifNode([{ guard: { g: 'truth', value: keyword('true') }, body: [mixin('nested')] }])
+        ifNode([{ guard: { g: 'truth', value: keyword('true') }, rules: [mixin('nested')] }])
       ] }]),
       mixin('c'),
       rule('.after', [mixinCall('.paint')])
@@ -109,14 +112,14 @@ describe('If canonical AST emission', () => {
   it('does not publish a false branch mixin and keeps each selected definition in its activation closure', () => {
     const document = stylesheet([
       mixinDef('.outer', [{ name: 'tone' }], [
-        ifNode([{ guard: { g: 'truth', value: keyword('true') }, body: [
+        ifNode([{ guard: { g: 'truth', value: keyword('true') }, rules: [
           mixinDef('.inner', [], [decl('color', variableReference('tone', 'scoped'))])
         ] }]),
         mixinCall('.inner')
       ]),
       mixinDef('.inner', [], [decl('fallback', keyword('root'))]),
       mixinDef('.base', [], [decl('color', keyword('base'))]),
-      ifNode([{ guard: { g: 'truth', value: keyword('false') }, body: [
+      ifNode([{ guard: { g: 'truth', value: keyword('false') }, rules: [
         mixinDef('.base', [], [decl('color', keyword('wrong'))])
       ] }]),
       rule('.one', [mixinCall('.outer', [{ value: keyword('red') }]), mixinCall('.base')]),
@@ -132,13 +135,13 @@ describe('If canonical AST emission', () => {
   it('publishes reached branch mixins through nested and at-rule walkers in both output modes', () => {
     const document = stylesheet([
       rule('.outer', [
-        ifNode([{ guard: { g: 'truth', value: keyword('true') }, body: [
+        ifNode([{ guard: { g: 'truth', value: keyword('true') }, rules: [
           mixinDef('.nested', [], [decl('color', keyword('purple'))])
         ] }]),
         rule('.inner', [mixinCall('.nested')])
       ]),
       atRuleBlock('@media', keyword('screen'), [
-        ifNode([{ guard: { g: 'truth', value: keyword('true') }, body: [
+        ifNode([{ guard: { g: 'truth', value: keyword('true') }, rules: [
           mixinDef('.media', [], [decl('color', keyword('green'))])
         ] }]),
         rule('.card', [mixinCall('.media')])

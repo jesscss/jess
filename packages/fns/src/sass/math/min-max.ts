@@ -1,5 +1,5 @@
-import type { Dimension, ValueGroup, ValueObj } from '@jesscss/core/value';
-import { emitValue, groupItems, isValueGroupArray } from '@jesscss/core/value';
+import type { Dimension, ValueGroup, Value } from '@jesscss/core';
+import { emitValue, groupItems, isValueGroupArray } from '@jesscss/core';
 import { compareSassNumbers } from './compare.js';
 
 const isDimension = (value: ValueGroup): value is Dimension =>
@@ -54,7 +54,7 @@ const isDimension = (value: ValueGroup): value is Dimension =>
  * that commit's citations as unverified; these were re-checked against the
  * installed corpus and the binary.
  */
-export function sassMinMax(isMin: boolean, list: ValueGroup, strict: boolean): ValueObj {
+export function sassMinMax(isMin: boolean, list: ValueGroup, strict: boolean): Value {
   const name = isMin ? 'min' : 'max';
   const args = groupItems(list).flatMap(groupItems);
   if (args.length === 0) {

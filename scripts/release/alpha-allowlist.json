@@ -3,6 +3,7 @@
   "@jesscss/compiler",
   "@jesscss/compiler-preset",
   "@jesscss/core",
+  "@jesscss/parser-shared",
   "@jesscss/css-parser",
   "@jesscss/diagnostics-core",
   "@jesscss/jess-parser",

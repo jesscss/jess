@@ -2,8 +2,8 @@
 
 `@jesscss/docs-content` is the single source of truth for docs content used by:
 
-- `jess-docs` (`packages/docs`) for the Jess-facing site
-- `@jesscss/docs-less` (`packages/docs-less`) for the Less-facing site
+- `jess-docs` (`packages/docs/docs-jess`) for the Jess-facing site
+- `@jesscss/docs-less` (`packages/docs/docs-less`) for the Less-facing site
 
 ## Content layout
 
@@ -13,7 +13,7 @@
 ## Scripts
 
 - `pnpm --filter @jesscss/docs-content run import:less -- --source /path/to/less-docs`
-  - Imports markdown from `less-docs/content/**` into `packages/docs-content/docs/less/**`
+  - Imports markdown from `less-docs/content/**` into `packages/docs/docs-content/docs/less/**`
 - `pnpm --filter @jesscss/docs-content run normalize`
   - Normalizes frontmatter defaults for docs metadata
 - `pnpm --filter @jesscss/docs-content run validate`

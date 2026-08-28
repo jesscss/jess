@@ -1,9 +1,30 @@
 # `packages/fns` dialect classification audit
 
+> **SUPERSEDED SNAPSHOT — DO NOT ACT ON §10.** (banner added 2026-07-30)
+>
+> - **§10's migration plan is largely already done.** In particular **B-1**
+>   ("introduce a second registry"), which §10.2 frames as the blocking
+>   prerequisite for every `sass/` move, **has landed**:
+>   `packages/syntax/scss/jess-plugin-scss/src/index.ts:12` imports
+>   `makeSassRegistry` from `@jesscss/fns/sass/registry` and line 42 builds a
+>   separate `sassValueEvaluator`. The doc's premise that "there is exactly one
+>   registry" (§2) is no longer true.
+> - **The file:line references throughout this document are dead.** They point at
+>   a `packages/fns/src/builtins/` directory that no longer exists, at
+>   pre-reorg `packages/jess-plugin-scss/` paths, and at `serialize.ts` lines
+>   that have moved by ~900. Individual known-bad refs are corrected inline
+>   below, but treat *every* uncorrected line number here as unverified.
+> - Use this file as the original evidence trail for the classification
+>   *reasoning*. Do not use it as a work plan or a status tracker.
+
 **Branch base:** `origin/dev` @ `ad1bbd1bf05f6030e276a8b13cabab48ea07cf2f` (the brief cited
 `3202ff246`; that is the SHA of the main checkout at `~/git/oss/jess`, which had moved
 ahead by the time this audit ran — see §9.3).
-**Status:** read-only audit. No source file in `packages/fns/` was modified.
+**Status:** historical read-only audit snapshot. Its evidence and counts describe
+the branch named above, not the current `codex/ast-v2-dx-fns` implementation.
+The current branch has since moved Sass globals to the value-domain registry
+surface, including `type-of`, `comparable`, and `str-length`; use this file as
+the original evidence trail, not as a live status tracker.
 
 ## 0. The rule being applied
 
@@ -41,18 +62,29 @@ means **the function does not exist in that dialect**, not that it returned a st
 
 This matters because it determines which moves can change output.
 
-There is exactly **one** registry. `packages/fns/src/builtins/index.ts` exports
+> **NO LONGER TRUE (2026-07-30).** This section described a single shared
+> registry built from a `packages/fns/src/builtins/` directory. That directory
+> does not exist, `makeBuiltinRegistry` is gone, and `packages/jess/src/index.ts`
+> is a 24-line file containing none of the code quoted below. There are now
+> **two** registries: `makeLessRegistry()` (`packages/fns/src/less/registry.ts:15`)
+> and `makeSassRegistry()` (`packages/fns/src/sass/registry.ts:15`), and
+> `packages/syntax/scss/jess-plugin-scss/src/index.ts:42` builds its own
+> `sassValueEvaluator` from the latter. The paragraph below is retained only to
+> show what the classification reasoning was written against.
+
+~~There is exactly **one** registry. `packages/fns/src/builtins/index.ts` exports
 `builtinLessFns` (83 entries); `builtins/registry.ts` turns it into an `FnRegistry`;
-`packages/jess/src/index.ts:34,39` does:
+`packages/jess/src/index.ts:34,39` does:~~
 
 ```ts
 import { makeBuiltinRegistry } from '@jesscss/fns/builtins';
 const astValueEvaluator = buildEvaluator(makeBuiltinRegistry());
 ```
 
-That single evaluator serves **every** dialect. `packages/jess-plugin-scss/src/index.ts`
-contributes no function registry at all. Consequence, confirmed by running jess on a `.scss`
-file:
+~~That single evaluator serves **every** dialect.
+`packages/syntax/scss/jess-plugin-scss/src/index.ts` contributes no function
+registry at all.~~ Consequence as observed at the time, by running jess on a
+`.scss` file:
 
 ```
 $ cat k.scss
@@ -75,9 +107,14 @@ output because the code is not reachable from the evaluator.
 Third: several Less constructs never reach the registry at all. `isdefined`, `isruleset`,
 and the logical family are special-formed inside core:
 
-- `packages/core/src/ast/serialize.ts:3174` — `if (node.name === 'isdefined')`
-- `packages/core/src/ast/serialize.ts:3182` — `if (node.name === 'isruleset')`
-- `packages/core/src/ast/serialize.ts:3293` — `LOGICAL_FNS = new Set(['if','boolean','not','and','or'])`
+- `packages/core/src/ast/serialize.ts`, `evalIntrospection` — `if (node.name === 'isdefined')`
+- `packages/core/src/ast/serialize.ts`, `evalIntrospection` — `if (node.name === 'isruleset')`
+- `packages/core/src/ast/serialize.ts` — `const LOGICAL_FNS = new Set(['if','boolean','not','and','or'])`
+
+Locate them with
+`grep -n "function evalIntrospection\|^const LOGICAL_FNS" packages/core/src/ast/serialize.ts`.
+(The line numbers previously given here — `:3174`, `:3182`, `:3293` — were ~900
+lines stale; `serialize.ts` is ~13.6k lines and line refs into it rot fast.)
 
 So `less/isdefined.ts`, `less/isruleset.ts`, `less/logical.ts`, `less/iif.ts`, and
 `less/each.ts` are dead relative to compiled output.
@@ -87,16 +124,36 @@ So `less/isdefined.ts`, `less/isruleset.ts`, `less/logical.ts`, `less/iif.ts`, a
 Two incompatible `defineFunction` signatures coexist:
 
 - **value domain** — `defineFunction(name, { params, body })` from
-  `@jesscss/core/value` (`packages/core/src/ast/value-dispatch.ts:181`). Produces `Fn`.
+  `@jesscss/core/value` (`packages/core/src/ast/value-dispatch.ts`, the
+  `defineFunction` overload set — ~`:220`–`:237`). Produces `Fn`.
   This is what `FnRegistry.registerAll` accepts.
 - **legacy tree-node** — `defineFunction(name, fn, { params })` from `@jesscss/core`
-  (`packages/core/src/define-function.ts:295`). Operates on `Color`/`Dimension`/`Quoted`/
+  (`packages/core/src/define-function.ts`, ~`:312`). Operates on `Color`/`Dimension`/`Quoted`/
   `Node`/`Collection` instances. Pre-dates the ast-v2 cutover. **Not** an `Fn`; cannot be
   registered.
 
-### 3.1 The "42 of 60" claim — VERIFIED
+### 3.1 The "42 of 60" claim — NO LONGER REPRODUCES
 
-`sass/index.ts` has exactly 60 exports. 18 are value-domain, 42 are legacy tree-node.
+> **Recounted 2026-07-30 on `facb641dd`: `packages/fns/src/sass/index.ts` exports
+> **62** distinct names (`less/index.ts` exports **83**), which is what
+> `HANDOFF.md` independently records. The 60/42/18 split below describes the
+> audit's branch base, not current `dev`.**
+>
+> A line-oriented `grep` undercounts this file badly — `grep -c '^export'` gives
+> 31 and a `^export \{…\}` extraction gives 40, because many export blocks span
+> multiple lines. Enumerate the NAMES, and prefer the resulting list to any count:
+>
+> ```bash
+> node -e "const s=require('fs').readFileSync('packages/fns/src/sass/index.ts','utf8');
+> const n=new Set();
+> for(const m of s.matchAll(/export\s*\{([^}]*)\}/g))
+>   for(let x of m[1].split(',')){x=x.trim();if(!x)continue;
+>     const a=x.split(/\s+as\s+/); n.add((a[1]||a[0]).trim());}
+> for(const m of s.matchAll(/export\s+(?:const|function|class)\s+(\w+)/g)) n.add(m[1]);
+> console.log([...n].sort().join('\n'));"
+> ```
+
+~~`sass/index.ts` has exactly 60 exports. 18 are value-domain, 42 are legacy tree-node.~~
 
 **Value domain (18):** `abs`, `ceil`, `floor`, `round` (shared/math), `red`, `green`,
 `blue`, `alpha` (shared/color), `ieHexStr` (→ `less/argb.ts` → `builtins/argb.ts`), and the
@@ -376,8 +433,14 @@ Internal import paths and assembly lists may break freely. Compiled **Less** CSS
 
 ### 10.1 Class A — cannot change output
 
-Nothing here is reachable from `makeBuiltinRegistry()`. Verify with
-`grep -n "from './<name>.js'" packages/fns/src/builtins/index.ts` before each move.
+> **This verification recipe is unrunnable (2026-07-30).** There is no
+> `packages/fns/src/builtins/` directory and no `makeBuiltinRegistry()`. The
+> equivalent reachability check today is against the per-dialect indexes:
+> `grep -n "<name>" packages/fns/src/less/index.ts packages/fns/src/sass/index.ts`
+> (the registries are `packages/fns/src/{less,sass}/registry.ts`).
+
+~~Nothing here is reachable from `makeBuiltinRegistry()`. Verify with
+`grep -n "from './<name>.js'" packages/fns/src/builtins/index.ts` before each move.~~
 
 **A-1. Delete the three corrupting dormant files.** `builtins/abs.ts`, `builtins/ceil.ts`,
 `builtins/floor.ts` (§8.1). No importer exists. This removes the single largest footgun in
@@ -416,15 +479,30 @@ After A, `shared/` contains exactly `abs`, `ceil`, `floor`, `alpha`.
 
 ### 10.2 Class B — changes SCSS output only
 
-SCSS is far from a stable baseline (`packages/jess/test/scss/bootstrap-corpus.test.ts:201–202`,
-`PARSE_PASS_FLOOR = 29`, `EVAL_PASS_FLOOR = 0` — verified), so these are cheap. They are
-also the whole point of the exercise.
+SCSS is far from a stable baseline, so these are cheap. They are also the whole
+point of the exercise.
 
-**B-1. Introduce a second registry.** `makeSassRegistry()` alongside `makeBuiltinRegistry()`,
-and have the dialect selection in `packages/jess/src/index.ts:39` pick per input dialect
-rather than building one evaluator for everything. Until this lands, no `sass/` classification
-can take effect. This is the enabling step; on its own (empty Sass registry) it turns the
-currently-wrong SCSS answers into `no fn:` errors, which is a truthful regression.
+> **Stale gate reference (2026-07-30).** `PARSE_PASS_FLOOR = 29` and
+> `EVAL_PASS_FLOOR = 0` no longer exist. Commit `c3db7e53e` converted the SCSS
+> corpus gate from numeric floors to named fixture sets:
+> `PARSE_PASS_BASELINE` (`packages/jess/test/scss/bootstrap-corpus.test.ts:209`)
+> and `EVAL_PASS_BASELINE` (`:242`), compared by name via `baselineDrift`.
+
+**B-1. Introduce a second registry. — ✅ LANDED; this is no longer a
+prerequisite for anything.** `makeSassRegistry()`
+(`packages/fns/src/sass/registry.ts:15`) exists alongside `makeLessRegistry()`
+(`packages/fns/src/less/registry.ts:15`), and
+`packages/syntax/scss/jess-plugin-scss/src/index.ts:42` builds a dedicated
+`sassValueEvaluator` from it. The original text below — "until this lands, no
+`sass/` classification can take effect… this is the enabling step" — is
+historical and must not be read as blocking work.
+
+~~`makeSassRegistry()` alongside `makeBuiltinRegistry()`, and have the dialect
+selection in `packages/jess/src/index.ts:39` pick per input dialect rather than
+building one evaluator for everything. Until this lands, no `sass/`
+classification can take effect. This is the enabling step; on its own (empty
+Sass registry) it turns the currently-wrong SCSS answers into `no fn:` errors,
+which is a truthful regression.~~
 
 **B-2. Port the Sass value-domain set.** The 42 legacy tree-node exports (§3.1) must be
 rewritten as `Fn` before they can be registered. Order by dependency: `sass:math`

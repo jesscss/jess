@@ -10,18 +10,21 @@ import type {
 } from './tree/index.js';
 import type { ImportOptions } from './import-options.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
-import { type Operator } from './tree/util/calculate.js';
+import { type Operator } from './util/calculate.js';
 import type { ISafeParseResult, ParsedDocument, PluginInterface, UrlTransformRequest } from './plugin.js';
 import type { Stylesheet } from './ast/nodes.js';
 import type { StylesConfig } from './types.js';
 import type { TriviaMap } from './types/index.js';
-import type { ExtendSelectorKind } from './types/config.js';
+import type { ApplySelectorKind, ExtendSelectorKind } from './types/config.js';
 import type { PluginHost, ValueEvaluator } from './ast/value-eval.js';
-import { EqualityMode, FunctionMode, MathMode, UnitMode } from './types/modes.js';
+import { FunctionMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
-import { type ErrorDiagnostic, type WarningDiagnostic, JessError, toDiagnostic, makeJessErrorFromDiagnostic, ERR } from './jess-error.js';
+import { type ErrorDiagnostic, type WarningDiagnostic, JessError, makeJessErrorFromDiagnostic, ERR } from './jess-error.js';
+import { NO_SPAN, sourceStartOf, triviaMapOf } from './ast/provenance.js';
+import { extractRelevantLines, lineColAt } from './error/code-frame.js';
+import { type JessErrorCode, type Phase, resolveTemplate } from './error/codes.js';
 import type { Deprecation } from './deprecation.js';
 import {
   type WarningsConfigInput,
@@ -36,24 +39,24 @@ import {
 } from './warnings.js';
 import type { Call } from './tree/call.js';
 import { CallMap } from './tree/util/recursion-helper.js';
-import { BitSetLibrary } from './tree/util/bitset.js';
+import { BitSetLibrary } from './util/bitset.js';
 import { selectorAnalysisFor, type SelectorAnalysis } from './tree/util/selector-analysis.js';
 import type { PrintOptions } from './tree/util/print.js';
 
 /**
- * The single-pass EMIT visitor contract (design §6.1/§6.6). `enter` receives the
- * RESOLVED output node and either returns VOID (inspect / invisibly-annotate — the
- * node is emitted unchanged) or returns a NEW node (an output-affecting REPLACE —
+ * The single-pass emit visitor contract (design §6.1/§6.6). `enter` receives the
+ * resolved output node and either returns void (inspect / invisibly annotate: the
+ * node is emitted unchanged) or returns a new node (an output-affecting replace:
  * a fresh transient serialized in place, never mutating the shared canonical node
- * in a byte-/reuse-affecting way, §6.4). No `ctx`, no frame — the node is already
+ * in a byte-/reuse-affecting way, §6.4). No `ctx`, no frame: the node is already
  * resolved. `exit` (optional) fires after the node's children, kept solely for the
  * `inline-urls` enter/exit proof (§6.6).
  */
-export type SpineVisitorEnter = (node: Node) => Node | void;
-export type SpineVisitorExit = (node: Node) => void;
-export interface SpineVisitor {
-  enter: SpineVisitorEnter;
-  exit?: SpineVisitorExit;
+export type EmitVisitorEnter = (node: Node) => Node | void;
+export type EmitVisitorExit = (node: Node) => void;
+export interface EmitVisitor {
+  enter: EmitVisitorEnter;
+  exit?: EmitVisitorExit;
 }
 
 const SCRIPT_MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts']);
@@ -123,10 +126,10 @@ export interface ContextOptions {
   mathMode?: MathMode;
   unitMode?: UnitMode;
   functionMode?: FunctionMode;
-  equalityMode?: EqualityMode;
 
   /** See LessOptions.allowOverloadedImport. Enforcement pending its definition. */
   allowOverloadedImport?: boolean;
+  allowApplySelectors?: ApplySelectorKind[];
   processImports?: boolean;
   disableScriptModules?: boolean;
 
@@ -222,7 +225,7 @@ export interface ContextOptions {
 /**
  * The flat, fully-resolved option set read on the eval fast path. Every field is
  * present (no `undefined`), so a read-site is a single property access —
- * `context.options.equalityMode` — with no `?? treeContext ?? default` chain and
+ * `context.options.unitMode` — with no `?? treeContext ?? default` chain and
  * no per-read merge. Resolved once and cached on {@link Context}; recomputed only
  * when `context.treeContext` switches (see its setter), so crossing into an
  * imported file is one recompute, not a cost paid on every option read.
@@ -231,7 +234,6 @@ export interface ResolvedOptions {
   mathMode: MathMode;
   unitMode: UnitMode;
   functionMode: FunctionMode;
-  equalityMode: EqualityMode;
   leakyScope: boolean;
   bubbleRootAtRules: boolean;
   processImports: boolean;
@@ -245,7 +247,6 @@ const OPTION_DEFAULTS: ResolvedOptions = {
   mathMode: 'parens-division',
   unitMode: 'preserve',
   functionMode: 'preserve',
-  equalityMode: 'less',
   leakyScope: false,
   bubbleRootAtRules: false,
   processImports: true
@@ -262,16 +263,15 @@ const OPTION_DEFAULTS: ResolvedOptions = {
 export function resolveOptions(
   compile: Partial<ResolvedOptions> | undefined,
   tree: Partial<ResolvedOptions> | undefined
-): ResolvedOptions {
-  return {
+): Readonly<ResolvedOptions> {
+  return Object.freeze({
     mathMode: compile?.mathMode ?? tree?.mathMode ?? OPTION_DEFAULTS.mathMode,
     unitMode: compile?.unitMode ?? tree?.unitMode ?? OPTION_DEFAULTS.unitMode,
     functionMode: compile?.functionMode ?? tree?.functionMode ?? OPTION_DEFAULTS.functionMode,
-    equalityMode: compile?.equalityMode ?? tree?.equalityMode ?? OPTION_DEFAULTS.equalityMode,
     leakyScope: compile?.leakyScope ?? tree?.leakyScope ?? OPTION_DEFAULTS.leakyScope,
     bubbleRootAtRules: compile?.bubbleRootAtRules ?? tree?.bubbleRootAtRules ?? OPTION_DEFAULTS.bubbleRootAtRules,
     processImports: compile?.processImports ?? tree?.processImports ?? OPTION_DEFAULTS.processImports
-  };
+  });
 }
 
 export interface DocumentContextOptions extends ContextOptions {
@@ -297,26 +297,57 @@ export interface DocumentContextOptions extends ContextOptions {
   plugin?: PluginInterface;
 }
 
+/** Private parser-provenance slot on the exported document identity. */
+const DOCUMENT_TRIVIA: unique symbol = Symbol('jess.context.document-trivia');
+
 /**
  * Source identity carried by canonical AST documents for one Context session.
  * It intentionally has no legacy node scope, selector cache, or placement state.
  */
 export class DocumentContext {
-  options: ResolvedOptions;
+  private _options: Readonly<ResolvedOptions>;
+
+  /** Immutable view of the resolved policy owned by the active source. */
+  get options(): Readonly<ResolvedOptions> {
+    return this._options;
+  }
+
   isModule: boolean | undefined;
   file?: DocumentContextOptions['file'];
   plugin?: PluginInterface;
 
-  constructor(opts: DocumentContextOptions = {}) {
-    this.options = resolveOptions(undefined, opts);
+  constructor(options: Readonly<ResolvedOptions>, opts: DocumentContextOptions = {}) {
+    this._options = options;
     this.isModule = opts.isModule;
     this.file = opts.file;
     this.plugin = opts.plugin;
   }
+
+  /** @internal Replace the cached pointer when a legacy TreeContext is attached. */
+  replaceResolvedOptions(options: Readonly<ResolvedOptions>): void {
+    this._options = options;
+  }
+}
+
+/** Attach canonical-document trivia without changing the public class declaration. */
+function attachDocumentFacts(
+  context: DocumentContext,
+  trivia: TriviaMap | undefined
+): void {
+  Object.defineProperty(context, DOCUMENT_TRIVIA, { value: trivia });
+}
+
+/** Core-internal access; intentionally absent from the package-root exports. */
+export function documentTriviaOf(context: DocumentContext): TriviaMap | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- canonical contexts receive this module-private slot in rememberDocumentContext.
+  return (context as DocumentContext & {
+    readonly [DOCUMENT_TRIVIA]: TriviaMap | undefined;
+  })[DOCUMENT_TRIVIA];
 }
 
 /** The source facts shared by canonical documents and retained legacy trees. */
 export type SourceContext = Pick<DocumentContext, 'options' | 'file' | 'plugin'>;
+type DiagnosticFile = NonNullable<DocumentContextOptions['file']>;
 
 function isAsyncDocumentWork<T>(value: T | Promise<T>): value is Promise<T> {
   return value instanceof Promise;
@@ -341,6 +372,9 @@ export interface TreeContextOptions extends DocumentContextOptions {
 
   /** Plugin-supplied allow-list of extend selector kinds. */
   allowExtendSelectors?: ExtendSelectorKind[];
+
+  /** Plugin-supplied allow-list of Jess `$apply` selector kinds. */
+  allowApplySelectors?: ApplySelectorKind[];
 }
 
 const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('');
@@ -381,7 +415,7 @@ export class TreeContext extends DocumentContext {
      * Context folds that in on attach). Structural identity stays on the
      * instance; every other unknown key is transient `opts` data.
      */
-    super(opts);
+    super(resolveOptions(undefined, opts), opts);
     const { isModule, file, plugin, ...rest } = opts;
     void isModule;
     void file;
@@ -389,7 +423,6 @@ export class TreeContext extends DocumentContext {
     delete rest.mathMode;
     delete rest.unitMode;
     delete rest.functionMode;
-    delete rest.equalityMode;
     delete rest.leakyScope;
     delete rest.bubbleRootAtRules;
     delete rest.processImports;
@@ -413,10 +446,12 @@ const PLUGIN_SCRIPT_EXTENSIONS = ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'];
 
 export class Context {
   readonly plugins: PluginInterface[];
-  readonly opts: ContextOptions;
+  readonly opts: Omit<ContextOptions, keyof ResolvedOptions>
+    & Readonly<Pick<ContextOptions, keyof ResolvedOptions>>;
 
   private _treeContext: TreeContext | undefined;
   private _documentContext: DocumentContext | undefined;
+  private sessionOptions: Readonly<ResolvedOptions> | undefined;
   private readonly loadedImportCache = new Map<string, Promise<LoadedImportResult> | LoadedImportResult>();
   private readonly pluginPathCache = new Map<string, Promise<ResolvedPathResult> | ResolvedPathResult>();
   private readonly pluginModuleCache = new Map<string, Promise<LoadedPluginModuleResult> | LoadedPluginModuleResult>();
@@ -425,13 +460,18 @@ export class Context {
   private nextPluginCacheId = 0;
 
   /**
-   * Flat, fully-resolved options for the currently-active tree context — the one
+   * Flat, fully-resolved options for the currently-active source context — the one
    * place to read a resolved option (`context.options.unitMode`). Every field is
-   * present, so there is no `??` and no per-read merge. Written only by the
-   * `treeContext` setter (and shared with that tree context); do not assign it
-   * directly. See {@link ResolvedOptions}.
+   * present, so there is no `??` and no per-read merge. Context source switches
+   * keep it shared with the active tree/document context;
+   * consumers must not assign it directly. See {@link ResolvedOptions}.
    */
-  options: ResolvedOptions;
+  private _options: Readonly<ResolvedOptions>;
+
+  /** Immutable view of the resolved policy for the currently active source. */
+  get options(): Readonly<ResolvedOptions> {
+    return this._options;
+  }
 
   private _evaluator?: ValueEvaluator;
 
@@ -472,14 +512,14 @@ export class Context {
      * hit one resolved set with nothing left to merge. Idempotent on re-entry
      * (compile ?? already-folded === already-folded).
      */
-    this.options = resolveOptions(this.opts, this._documentContext?.options ?? tc?.options);
+    this._options = resolveOptions(this.opts, this._documentContext?.options ?? tc?.options);
     if (tc) {
-      tc.options = this.options;
+      tc.replaceResolvedOptions(this._options);
     }
   }
 
   /** Active canonical AST source identity, independent of legacy tree state. */
-  get documentContext(): DocumentContext | undefined {
+  get documentContext(): SourceContext | undefined {
     return this._documentContext;
   }
 
@@ -490,14 +530,6 @@ export class Context {
   get entryFilePath(): string {
     const entry = this.document ? this.documentContexts.get(this.document) : undefined;
     return entry?.file?.fullPath ?? '';
-  }
-
-  private setDocumentContext(dc: DocumentContext | undefined): void {
-    this._documentContext = dc;
-    this.options = resolveOptions(this.opts, dc?.options ?? this._treeContext?.options);
-    if (dc) {
-      dc.options = this.options;
-    }
   }
 
   /** Active source facts for resolver, diagnostics, and file-reading consumers. */
@@ -547,29 +579,82 @@ export class Context {
   }
 
   /**
-   * Change a compile-level option and refresh the resolved-options cache. Prefer
-   * passing options at construction; this exists for dynamic reconfiguration (and
-   * tests) that need to change an option on a live context — mutating `opts`
-   * directly would leave {@link options} stale.
-   */
-  setOption<K extends keyof ResolvedOptions>(key: K, value: ResolvedOptions[K]): void {
-    this.opts[key] = value;
-    this.options = resolveOptions(this.opts, this._documentContext?.options ?? this._treeContext?.options);
-  }
-
-  /**
    * Collected errors during safeParse/safeRender.
    * Only populated when using safe methods.
    */
   errors: ErrorDiagnostic[] = [];
 
-  /**
-   * Collected warnings during safeParse/safeRender.
-   * Only populated when using safe methods. Prefer routing warnings through
-   * {@link warn} rather than pushing here directly, so silencing / fatal
-   * promotion / de-duplication / the tail summary all apply uniformly.
+  /*
+   * Warning rows deliberately stay columnar until a public result or renderer
+   * asks for them. A warning is an expected compiler event—not an exception—so
+   * eval must not allocate a JessError and then another diagnostic object just
+   * to retain it. Parser/plugin boundaries may still hand us their public
+   * WarningDiagnostic objects; those are copied into these scalar columns.
    */
-  warnings: WarningDiagnostic[] = [];
+  private readonly _warningCodes: string[] = [];
+  private readonly _warningPhases: Phase[] = [];
+  private readonly _warningMessages: string[] = [];
+  private readonly _warningReasons: string[] = [];
+  private readonly _warningFixes: string[] = [];
+  private readonly _warningNotes: Array<string | undefined> = [];
+  private readonly _warningFiles: Array<DiagnosticFile | undefined> = [];
+  private readonly _warningFilePaths: Array<string | undefined> = [];
+  private readonly _warningSources: Array<string | undefined> = [];
+  private readonly _warningOffsets: number[] = [];
+  private readonly _warningLines: number[] = [];
+  private readonly _warningColumns: number[] = [];
+  private readonly _warningEndLines: Array<number | undefined> = [];
+  private readonly _warningEndColumns: Array<number | undefined> = [];
+  private _warningsSnapshot?: WarningDiagnostic[];
+
+  /**
+   * Public compatibility view. Materialization is intentionally a boundary
+   * operation: normal compile throughput reads {@link warningCount} instead.
+   */
+  get warnings(): WarningDiagnostic[] {
+    if (this._warningsSnapshot === undefined) {
+      const includeLines = this.warnConfig.display === 'frame';
+      const rows: WarningDiagnostic[] = [];
+      for (let index = 0; index < this._warningCodes.length; index++) {
+        const source = this._warningSources[index];
+        const file = this._warningFiles[index];
+        const offset = this._warningOffsets[index]!;
+        const location = source !== undefined && offset >= 0
+          ? lineColAt(source, offset, file)
+          : undefined;
+        const line = location?.line ?? this._warningLines[index]!;
+        const column = location?.column ?? this._warningColumns[index]!;
+        rows.push({
+          code: this._warningCodes[index]!,
+          phase: this._warningPhases[index]!,
+          message: this._warningMessages[index]!,
+          reason: this._warningReasons[index]!,
+          fix: this._warningFixes[index]!,
+          note: this._warningNotes[index],
+          file: file === undefined
+            ? undefined
+            : {
+                name: file.name,
+                path: file.path,
+                fullPath: file.fullPath
+              },
+          filePath: this._warningFilePaths[index],
+          line,
+          column,
+          endLine: this._warningEndLines[index],
+          endColumn: this._warningEndColumns[index],
+          lines: includeLines ? extractRelevantLines(source, line, 1, file) : undefined
+        });
+      }
+      this._warningsSnapshot = rows;
+    }
+    return this._warningsSnapshot;
+  }
+
+  /** Number of admitted warning rows without forcing public materialization. */
+  get warningCount(): number {
+    return this._warningCodes.length;
+  }
 
   /** Lazily-resolved warnings config (folded from compile options). */
   private _warnConfig?: ResolvedWarningsConfig;
@@ -609,63 +694,158 @@ export class Context {
    * The unified warnings entry point. Accepts a {@link JessError} (from
    * `WARN.x(...)`) or an already-normalized {@link WarningDiagnostic} and
    * applies, in order: silencing, fatal promotion, then de-duplication +
-   * per-code site capping before pushing onto {@link warnings}.
+   * per-code site capping. It normalizes to a display diagnostic only after the
+   * warning survives those policy decisions.
    *
    * Pass `options.code` to override the diagnostic code used for matching /
    * dedup / summary (e.g. deprecations routed as `deprecation/<id>`).
    */
   warn(warning: JessError | WarningDiagnostic, options?: { code?: string }): void {
-    const diag: WarningDiagnostic = warning instanceof JessError
-      ? toDiagnostic(warning) as WarningDiagnostic
-      : warning;
-    if (options?.code) {
-      diag.code = options.code;
+    const code = options?.code ?? warning.code;
+    if (warnCodeMatchesAny(code, this.warnConfig.silence)) {
+      return;
     }
-    const code = diag.code;
-    const cfg = this.warnConfig;
+    const source = warning instanceof JessError
+      ? warning.source ?? warning.fileObj?.source
+      : undefined;
+    const file = warning instanceof JessError ? warning.fileObj : undefined;
+    const line = warning.line;
+    const column = warning.column;
+    if (!this.admitWarning(code, warning.phase, `${warning.filePath ?? ''}:${line}:${column}`, () => warning.message)) {
+      return;
+    }
+    this.appendWarning(
+      code,
+      warning.phase,
+      warning.message,
+      warning.reason,
+      warning.fix,
+      warning.note,
+      file,
+      warning.filePath,
+      source,
+      -1,
+      line,
+      column,
+      warning.endLine,
+      warning.endColumn
+    );
+  }
 
-    if (warnCodeMatchesAny(code, cfg.silence)) {
+  /**
+   * Record a Jess-originated warning at an AST node without allocating a
+   * JessError or WarningDiagnostic. Template strings and source line/column are
+   * resolved only after warning policy admits the row; lines/frame remain lazy.
+   */
+  warnAtNode(
+    templateCode: JessErrorCode,
+    phase: Phase,
+    node: object,
+    meta: Record<string, unknown>,
+    options?: { code?: string; note?: string }
+  ): void {
+    const code = options?.code ?? templateCode;
+    if (warnCodeMatchesAny(code, this.warnConfig.silence)) {
       return;
     }
 
+    /* Read the inline span slot, and only past the silence gate: a silenced
+     * warning must construct nothing (V8-ARCH #10). */
+    const file = this.sourceContext?.file;
+    const source = file?.source;
+    const offset = source === undefined ? NO_SPAN : sourceStartOf(node);
+    const site = offset >= 0
+      ? `${file?.fullPath ?? ''}:@${offset}`
+      : `${file?.fullPath ?? ''}:1:1`;
+    if (!this.admitWarning(code, phase, site, () => resolveTemplate(templateCode, meta).summary)) {
+      return;
+    }
+    const template = resolveTemplate(templateCode, meta);
+    this.appendWarning(
+      code,
+      phase,
+      template.summary,
+      template.reason,
+      template.fix,
+      options?.note,
+      file,
+      file?.fullPath,
+      source,
+      offset,
+      1,
+      1,
+      undefined,
+      undefined
+    );
+  }
+
+  private admitWarning(
+    code: string,
+    phase: Phase,
+    site: string,
+    fatalMessage: () => string
+  ): boolean {
+    const cfg = this.warnConfig;
     if (warnCodeMatchesAny(code, cfg.fatal)) {
-      const base = warning instanceof JessError ? warning.message : diag.message;
-      const error = new Error(`${base}\n\nThis is only an error because you've set ${code} to be fatal.\n`
+      const message = fatalMessage();
+      const error = new Error(`${message}\n\nThis is only an error because you've set ${code} to be fatal.\n`
         + 'Remove this setting if you need to keep using this feature.');
       error.name = 'FatalWarningError';
       throw error;
     }
-
-    const capping = cfg.limitRepetition && !cfg.verbose;
-    if (!capping) {
-      this.warnings.push(diag);
-      return;
+    if (!cfg.limitRepetition || cfg.verbose) {
+      return true;
     }
-
-    const key = `${code}@${diag.filePath ?? ''}:${diag.line}:${diag.column}`;
     let stats = this._warnStats.get(code);
     if (!stats) {
       stats = {
-        phase: diag.phase,
+        phase,
         emittedSites: new Set<string>(),
         suppressedSites: new Set<string>(),
         suppressedCount: 0
       };
       this._warnStats.set(code, stats);
     }
-
-    /*
-     * A previously-emitted site repeating, or a new site over the per-code cap:
-     * count it for the summary and drop it.
-     */
-    if (stats.emittedSites.has(key) || stats.emittedSites.size >= cfg.maxSitesPerCode) {
+    if (stats.emittedSites.has(site) || stats.emittedSites.size >= cfg.maxSitesPerCode) {
       stats.suppressedCount++;
-      stats.suppressedSites.add(key);
-      return;
+      stats.suppressedSites.add(site);
+      return false;
     }
+    stats.emittedSites.add(site);
+    return true;
+  }
 
-    stats.emittedSites.add(key);
-    this.warnings.push(diag);
+  private appendWarning(
+    code: string,
+    phase: Phase,
+    message: string,
+    reason: string,
+    fix: string,
+    note: string | undefined,
+    file: DiagnosticFile | undefined,
+    filePath: string | undefined,
+    source: string | undefined,
+    offset: number,
+    line: number,
+    column: number,
+    endLine: number | undefined,
+    endColumn: number | undefined
+  ): void {
+    this._warningCodes.push(code);
+    this._warningPhases.push(phase);
+    this._warningMessages.push(message);
+    this._warningReasons.push(reason);
+    this._warningFixes.push(fix);
+    this._warningNotes.push(note);
+    this._warningFiles.push(file);
+    this._warningFilePaths.push(filePath);
+    this._warningSources.push(source);
+    this._warningOffsets.push(offset);
+    this._warningLines.push(line);
+    this._warningColumns.push(column);
+    this._warningEndLines.push(endLine);
+    this._warningEndColumns.push(endColumn);
+    this._warningsSnapshot = undefined;
   }
 
   /**
@@ -692,7 +872,23 @@ export class Context {
     }
     for (const [code, stats] of this._warnStats) {
       if (stats.suppressedCount > 0) {
-        this.warnings.push(makeSuppressionSummary(code, stats));
+        const summary = makeSuppressionSummary(code, stats);
+        this.appendWarning(
+          summary.code,
+          summary.phase,
+          summary.message,
+          summary.reason,
+          summary.fix,
+          summary.note,
+          undefined,
+          summary.filePath,
+          undefined,
+          -1,
+          summary.line,
+          summary.column,
+          summary.endLine,
+          summary.endColumn
+        );
       }
     }
   }
@@ -710,9 +906,9 @@ export class Context {
   topImports?: Node[];
 
   /**
-   * This is set when entering rulesets so that child nodes
-   * can use this to look up values. Jess `$!variable` carries explicit
-   * source-position read mode for the live-binding model.
+   * This is set when entering rulesets so child nodes can look up values in
+   * their containing rule context. Current Jess source uses `$name` for live
+   * lookup and `$^name` for scoped lookup; the old `$!name` spelling is retired.
    */
   rulesContext?: Rules;
 
@@ -802,19 +998,19 @@ export class Context {
   extendRoots!: ExtendRootRegistry;
 
   /**
-   * Generic single-pass EMIT visitors (design §6). An ordered, initially-EMPTY
-   * list of `(node) => Node | void` hooks (with an optional `exit`) the spine
-   * fires at each resolved output node's emit moment. The list being empty is
-   * the ZERO-COST common case (§6.5 / §4.0-style gate): the spine checks
-   * `spineVisitors === undefined` and skips all hook machinery. `node` is the
-   * RESOLVED output node — no ctx, no frame (§6, decision table). Native Jess
-   * visitors and the less-compat bridge (registered only when ≥1 real Less
-   * visitor exists — NOT built here) coexist as plain list entries; core owns no
-   * chaining / REMOVE / ABORT / per-type dispatch.
+   * Generic single-pass emit visitors (design §6). An ordered, initially-empty
+   * list of `(node) => Node | void` hooks (with an optional `exit`) fired at each
+   * resolved output node's emit moment. The list being empty is the zero-cost
+   * common case (§6.5 / §4.0-style gate): emit checks `emitVisitors === undefined`
+   * and skips all hook machinery. `node` is the resolved output node: no ctx, no
+   * frame (§6, decision table). Native Jess visitors and the less-compat bridge
+   * (registered only when at least one real Less visitor exists, not built here)
+   * coexist as plain list entries; core owns no chaining / remove / abort /
+   * per-type dispatch.
    *
    * @see docs/architecture/core/UNIFIED-EVAL-EMIT-DESIGN.md §6.
    */
-  spineVisitors?: SpineVisitor[];
+  emitVisitors?: EmitVisitor[];
 
   /**
    * The active single-pass spine `+:`/`+_:` merge plan for the body currently
@@ -831,14 +1027,14 @@ export class Context {
   spineMergePlan?: import('./tree/util/spine-merge.js').SpineMergePlan;
 
   /**
-   * Append a generic EMIT visitor (design §6.5). Deterministic registration
+   * Append a generic emit visitor (design §6.5). Deterministic registration
    * order; the pass threads each node through `enter` (`shape = enter(shape) ??
    * shape`) and fires `exit` (if registered) after the node's children. No
    * auto-registration — the list stays undefined (zero-cost) until a caller
    * registers.
    */
-  registerSpineVisitor(enter: SpineVisitorEnter, options?: { exit?: SpineVisitorExit }): void {
-    (this.spineVisitors ??= []).push({ enter, exit: options?.exit });
+  registerEmitVisitor(enter: EmitVisitorEnter, options?: { exit?: EmitVisitorExit }): void {
+    (this.emitVisitors ??= []).push({ enter, exit: options?.exit });
   }
 
   /**
@@ -1038,7 +1234,7 @@ export class Context {
      * Seed resolved options from compile config (no tree context yet); the
      * treeContext setter recomputes this once a file's context is active.
      */
-    this.options = resolveOptions(opts, undefined);
+    this._options = resolveOptions(opts, undefined);
     this.plugins = plugins ?? [];
     this.extendRoots = new ExtendRootRegistry();
     if (opts.output?.compress !== undefined) {
@@ -1056,9 +1252,11 @@ export class Context {
     document: Stylesheet,
     filePath: string,
     source: string | undefined,
-    plugin: PluginInterface
+    plugin: PluginInterface,
+    dialectDefaults: Readonly<Partial<ResolvedOptions>> | undefined
   ): void {
-    this.documentContexts.set(document, new DocumentContext({
+    this.sessionOptions ??= resolveOptions(this.opts, dialectDefaults);
+    const documentContext = new DocumentContext(this.sessionOptions, {
       file: {
         name: path.basename(filePath),
         path: path.dirname(filePath),
@@ -1066,7 +1264,9 @@ export class Context {
         ...(source === undefined ? {} : { source })
       },
       plugin
-    }));
+    });
+    attachDocumentFacts(documentContext, triviaMapOf(document));
+    this.documentContexts.set(document, documentContext);
   }
 
   /**
@@ -1076,25 +1276,7 @@ export class Context {
    * remain one session-owned path.
    */
   withDocument<T>(document: Stylesheet, run: () => T | Promise<T>): T | Promise<T> {
-    const next = this.documentContexts.get(document);
-    if (!next) {
-      return run();
-    }
-    const previous = this._documentContext;
-    this.setDocumentContext(next);
-    try {
-      const result = run();
-      if (isAsyncDocumentWork(result)) {
-        return result.finally(() => {
-          this.setDocumentContext(previous);
-        });
-      }
-      this.setDocumentContext(previous);
-      return result;
-    } catch (error) {
-      this.setDocumentContext(previous);
-      throw error;
-    }
+    return this.withSourceOwner(this.documentContexts.get(document), run);
   }
 
   /**
@@ -1102,7 +1284,7 @@ export class Context {
    * document. The entry/source paths are provenance facts already retained by
    * this Context; this does not perform resolution, loading, or parsing.
    */
-  transformUrl(value: string, quoted: boolean): string {
+  transformUrl(value: string, quoted: boolean, kind: NonNullable<UrlTransformRequest['kind']> = 'url'): string {
     const document = this.sourceContext;
     const transform = document?.plugin?.transformUrl;
     if (!transform) {
@@ -1112,6 +1294,7 @@ export class Context {
     const request: UrlTransformRequest = {
       value,
       quoted,
+      kind,
       ...(document?.file?.fullPath === undefined ? {} : { fromFilePath: document.file.fullPath }),
       ...(entry?.file?.fullPath === undefined ? {} : { entryFilePath: entry.file.fullPath })
     };
@@ -1137,25 +1320,7 @@ export class Context {
    * completed its own async imports or IO, then restores the caller scope.
    */
   withDocumentBody<T>(body: object, run: () => T | Promise<T>): T | Promise<T> {
-    const next = this.documentBodyContexts.get(body);
-    if (!next) {
-      return run();
-    }
-    const previous = this._documentContext;
-    this.setDocumentContext(next);
-    try {
-      const result = run();
-      if (isAsyncDocumentWork(result)) {
-        return result.finally(() => {
-          this.setDocumentContext(previous);
-        });
-      }
-      this.setDocumentContext(previous);
-      return result;
-    } catch (error) {
-      this.setDocumentContext(previous);
-      throw error;
-    }
+    return this.withSourceOwner(this.documentBodyContexts.get(body), run);
   }
 
   /** Opaque source identity carried by render-local frames/bindings. */
@@ -1169,18 +1334,23 @@ export class Context {
       return run();
     }
     const previous = this._documentContext;
-    this.setDocumentContext(owner);
+    const previousOptions = this._options;
+    this._documentContext = owner;
+    this._options = owner.options;
     try {
       const result = run();
       if (isAsyncDocumentWork(result)) {
         return result.finally(() => {
-          this.setDocumentContext(previous);
+          this._documentContext = previous;
+          this._options = previousOptions;
         });
       }
-      this.setDocumentContext(previous);
+      this._documentContext = previous;
+      this._options = previousOptions;
       return result;
     } catch (error) {
-      this.setDocumentContext(previous);
+      this._documentContext = previous;
+      this._options = previousOptions;
       throw error;
     }
   }
@@ -1351,7 +1521,9 @@ export class Context {
 
     // Collect normalized errors and warnings from plugin
     this.errors.push(...parseResult.errors);
-    this.warnings.push(...parseResult.warnings);
+    for (const warning of parseResult.warnings) {
+      this.warn(warning);
+    }
 
     // Check if we have errors and should break
     if (parseResult.errors.length > 0 && this.opts.breakOnError !== false) {
@@ -1365,7 +1537,7 @@ export class Context {
       if (!this.document) {
         this.document = document;
       }
-      this.rememberDocumentContext(document, resolvedPath, source, plugin);
+      this.rememberDocumentContext(document, resolvedPath, source, plugin, parseResult.dialectDefaults);
 
       this.parsedSourceTrees.set(parsedSourceKey, document);
       if (type === undefined) {
@@ -1493,7 +1665,9 @@ export class Context {
       compilerOptions: this.opts
     });
     this.errors.push(...result.errors);
-    this.warnings.push(...result.warnings);
+    for (const warning of result.warnings) {
+      this.warn(warning);
+    }
     if (result.errors.length > 0 && this.opts.breakOnError !== false) {
       throw makeJessErrorFromDiagnostic(result.errors[0]!);
     }
@@ -1512,7 +1686,7 @@ export class Context {
     if (!this.document) {
       this.document = document;
     }
-    this.rememberDocumentContext(document, virtualPath, content, plugin);
+    this.rememberDocumentContext(document, virtualPath, content, plugin, result.dialectDefaults);
 
     return {
       node: document,

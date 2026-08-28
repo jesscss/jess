@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { atRuleBlock, atRuleStatement } from '../at-rule.js';
 import { buildEvaluator } from '../evaluator.js';
-import {
-  block, decl, dimension, generalEnclosed, interpolation, keyword, operation, reference, spaced, stylesheet, rule, sel, variableDeclaration, variableReference, type Stylesheet
+import { cssBaseMathOutsideParens,
+  block, decl, dimension, funcCall, interpolation, keyword, operation, reference, spaced, stylesheet, rule, sel, variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
 import { makeLessRegistry } from '@jesscss/fns';
@@ -29,7 +29,7 @@ describe('At-rule canonical AST emission', () => {
 
   it('preserves media feature parens when a prelude reference resolves to a block value', () => {
     const document = stylesheet([
-      variableDeclaration('feature', block(operation(':', keyword('min-width'), dimension(480, 'px'))), { mode: 'declare' }),
+      variableDeclaration('feature', block(operation(':', keyword('min-width'), dimension(480, 'px'), false, cssBaseMathOutsideParens(':'))), { mode: 'declare' }),
       atRuleBlock('@media', spaced([
         keyword('not'),
         keyword('all'),
@@ -78,9 +78,9 @@ describe('At-rule canonical AST emission', () => {
   it('renders general-enclosed supports syntax inertly without normalizing its content', () => {
     const document = stylesheet([
       atRuleBlock('@supports', spaced([
-        generalEnclosed('function', 'selector', interpolation([{ lit: '  .card /* keep  */ ' }])),
+        funcCall('selector', [interpolation([{ lit: '  .card /* keep  */ ' }])]),
         keyword('and'),
-        generalEnclosed('paren', null, interpolation([{ lit: ' font-tech(  color-COLRv1  ) ' }]))
+        block(interpolation([{ lit: ' font-tech(  color-COLRv1  ) ' }]))
       ]), [rule('.card', [decl('display', keyword('grid'))])])
     ]);
 
@@ -93,9 +93,9 @@ describe('At-rule canonical AST emission', () => {
 
   it('preserves authored private-use bytes inside general-enclosed content', () => {
     const document = stylesheet([
-      atRuleBlock('@supports', generalEnclosed('function', 'selector', interpolation([
+      atRuleBlock('@supports', funcCall('selector', [interpolation([
         { lit: '\uE000  .card\uE001 ' }
-      ])), [rule('.card', [decl('display', keyword('grid'))])])
+      ])]), [rule('.card', [decl('display', keyword('grid'))])])
     ]);
 
     expect(render(document)).toContain('@supports selector(\uE000  .card\uE001 )');
@@ -104,9 +104,9 @@ describe('At-rule canonical AST emission', () => {
   it('resolves general-enclosed interpolation without treating its name as a call', () => {
     const document = stylesheet([
       variableDeclaration('feature', keyword('.card'), { mode: 'declare' }),
-      atRuleBlock('@supports', generalEnclosed('function', 'selector', interpolation([
+      atRuleBlock('@supports', funcCall('selector', [interpolation([
         { lit: ':is(' }, { ref: variableReference('feature', 'scoped'), unquote: false }, { lit: ')' }
-      ])), [rule('.card', [decl('display', keyword('grid'))])])
+      ])]), [rule('.card', [decl('display', keyword('grid'))])])
     ]);
 
     expect(render(document)).toContain('@supports selector(:is(.card))');

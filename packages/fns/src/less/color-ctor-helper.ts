@@ -6,8 +6,8 @@
  *
  * HARD MODULE BOUNDARY: value domain only.
  */
-import type { Color, Dimension, ValueGroup } from '@jesscss/core/value';
-import { groupSeparator, isValueGroupArray } from '@jesscss/core/value';
+import type { Color, Dimension, ValueGroup } from '@jesscss/core';
+import { groupSeparator, isValueGroupArray } from '@jesscss/core';
 
 /** Clamp to the 0-1 range (alpha / saturation / lightness). */
 export const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));

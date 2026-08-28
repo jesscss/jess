@@ -2,19 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import {
-  decl, collection, dimension, keyword, list, mixinCall, mixinDef, propertyReference, reference, stylesheet, rule,
-  variableDeclaration, varIndirect, variableReference, type Stylesheet
+  decl, collection, collectionEntry, declarationReference, dimension, keyword, list, mixinCall, mixinDef, propertyReference, reference, stylesheet, rule,
+  variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
 
 const evaluator = buildEvaluator(makeLessRegistry());
 const render = (document: Stylesheet): string | undefined => serialize(document, { evaluator }).css;
+const entry = (name: string, value: Parameters<typeof collectionEntry>[1]): ReturnType<typeof collectionEntry> =>
+  collectionEntry(keyword(name), value);
 
 describe('direct canonical value access', () => {
   it('resolves indirect variables, typed map members, and prior property values', () => {
     const tokens = collection([
-      decl('gap', dimension(8, 'px')),
-      variableDeclaration('tone', keyword('navy'), { mode: 'declare' })
+      entry('gap', dimension(8, 'px')),
+      entry('tone', keyword('navy'))
     ]);
     const document = stylesheet([
       variableDeclaration('indirect-name', keyword('width'), { mode: 'declare' }),
@@ -22,9 +24,11 @@ describe('direct canonical value access', () => {
       variableDeclaration('tokens', tokens, { mode: 'declare' }),
       variableDeclaration('member-name', keyword('tone'), { mode: 'declare' }),
       rule('.card', [
-        decl('width', varIndirect(variableReference('indirect-name', 'scoped'), 'scoped')),
-        decl('gap', reference(variableReference('tokens', 'scoped'), [{ type: 'BracketLookup', key: keyword('gap'), keyKind: 'prop' }], '@tokens[gap]')),
-        decl('color', reference(variableReference('tokens', 'scoped'), [{ type: 'BracketLookup', key: variableReference('member-name', 'scoped'), keyKind: 'var' }], '@tokens[@member-name]')),
+        /* `@@indirect-name` — a var lookup whose NAME is a node, which is what
+         * `varIndirect` used to be a separate kind for. */
+        decl('width', variableReference(variableReference('indirect-name', 'scoped'), 'scoped')),
+        decl('gap', reference(variableReference('tokens', 'scoped'), [{ type: 'LookupStep', name: keyword('gap'), kind: 'prop' }], '@tokens[gap]')),
+        decl('color', reference(variableReference('tokens', 'scoped'), [{ type: 'LookupStep', name: variableReference('member-name', 'scoped'), kind: 'var' }], '@tokens[@member-name]')),
         decl('min-width', propertyReference('width'))
       ])
     ]);
@@ -39,15 +43,15 @@ describe('direct canonical value access', () => {
 
   it('errors for missing property and map accessors', () => {
     const tokens = collection([
-      decl('gap', dimension(8, 'px')),
-      variableDeclaration('tone', keyword('navy'), { mode: 'declare' })
+      entry('gap', dimension(8, 'px')),
+      entry('tone', keyword('navy'))
     ]);
 
     expect(() => render(stylesheet([
       variableDeclaration('tokens', tokens, { mode: 'declare' }),
       rule('.card', [decl('gap', reference(
         variableReference('tokens', 'scoped'),
-        [{ type: 'BracketLookup', key: keyword('missing'), keyKind: 'prop' }],
+        [{ type: 'LookupStep', name: keyword('missing'), kind: 'prop' }],
         '@tokens[missing]'
       ))])
     ]))).toThrow(/Name not found/);
@@ -60,12 +64,12 @@ describe('direct canonical value access', () => {
   it('follows ordered dot then bracket reference steps without byte recovery', () => {
     const document = stylesheet([
       variableDeclaration('theme', collection([
-        variableDeclaration('palette', collection([decl('accent', keyword('teal'))]), { mode: 'declare' })
+        entry('palette', collection([entry('accent', keyword('teal'))]))
       ]), { mode: 'declare' }),
       rule('.card', [
         decl('color', reference(
           variableReference('theme', 'scoped'),
-          [{ type: 'DotLookup', name: 'palette' }, { type: 'BracketLookup', key: keyword('accent'), keyKind: 'prop' }],
+          [{ type: 'LookupStep', kind: 'member', name: 'palette' }, { type: 'LookupStep', name: keyword('accent'), kind: 'prop' }],
           '@theme.palette[accent]'
         ))
       ])
@@ -74,18 +78,54 @@ describe('direct canonical value access', () => {
     expect(render(document)).toBe('.card {\n  color: teal;\n}\n');
   });
 
+  it('resolves declaration-member references across property and variable namespaces', () => {
+    const document = stylesheet([
+      variableDeclaration('tokens', collection([entry('tone', keyword('blue'))]), { mode: 'declare' }),
+      rule('.card', [
+        variableDeclaration('local', keyword('green'), { mode: 'declare' }),
+        decl('tone', keyword('red')),
+        decl('from-ns', reference(declarationReference('$'), [{ type: 'LookupStep', kind: 'member', name: 'tokens' }, { type: 'LookupStep', kind: 'member', name: 'tone' }], '$tokens.tone')),
+        decl('from-root', reference(declarationReference('$'), [{ type: 'LookupStep', kind: 'member', name: 'tokens' }, { type: 'LookupStep', kind: 'member', name: 'tone' }], '$.tokens.tone')),
+        decl('from-var', reference(declarationReference('$'), [{ type: 'LookupStep', kind: 'member', name: 'local' }], '$.local')),
+        decl('from-prop', reference(declarationReference('$'), [{ type: 'LookupStep', kind: 'member', name: 'tone' }], '$.tone'))
+      ])
+    ]);
+
+    expect(render(document)).toBe('.card {\n'
+      + '  tone: red;\n'
+      + '  from-ns: blue;\n'
+      + '  from-root: blue;\n'
+      + '  from-var: green;\n'
+      + '  from-prop: red;\n'
+      + '}\n');
+    expect(() => render(stylesheet([
+      rule('.card', [
+        variableDeclaration('same', keyword('blue'), { mode: 'declare' }),
+        decl('same', keyword('red')),
+        decl('value', reference(declarationReference('$'), [{ type: 'LookupStep', kind: 'member', name: 'same' }], '$.same'))
+      ])
+    ]))).toThrow(/Ambiguous reference member: same/);
+    expect(() => render(stylesheet([
+      rule('.card', [
+        variableDeclaration('same', collection([entry('tone', keyword('blue'))]), { mode: 'declare' }),
+        decl('same', keyword('red')),
+        decl('value', reference(declarationReference('$'), [{ type: 'LookupStep', kind: 'member', name: 'same' }, { type: 'LookupStep', kind: 'member', name: 'tone' }], '$same.tone'))
+      ])
+    ]))).toThrow(/Ambiguous reference member: same/);
+  });
+
   it('resolves an indirect map-member name in the accessor frame, not the map owner', () => {
     const document = stylesheet([
       variableDeclaration('schemes', collection([
-        variableDeclaration('primary', collection([decl('color', keyword('blue'))]), { mode: 'declare' })
+        entry('primary', collection([entry('color', keyword('blue'))]))
       ]), { mode: 'declare' }),
       rule('.entry', [
         variableDeclaration('scheme-name', keyword('primary'), { mode: 'declare' }),
         decl('color', reference(
           variableReference('schemes', 'scoped'),
           [
-            { type: 'BracketLookup', key: varIndirect(variableReference('scheme-name', 'scoped'), 'scoped'), keyKind: 'var' },
-            { type: 'BracketLookup', key: keyword('color'), keyKind: 'prop' }
+            { type: 'LookupStep', name: variableReference(variableReference('scheme-name', 'scoped'), 'scoped'), kind: 'var' },
+            { type: 'LookupStep', name: keyword('color'), kind: 'prop' }
           ],
           '@schemes[@@scheme-name][color]'
         ))
@@ -100,8 +140,8 @@ describe('direct canonical value access', () => {
     const document = stylesheet([
       variableDeclaration('sizes', sizes, { mode: 'declare' }),
       rule('.card', [
-        decl('first', reference(variableReference('sizes', 'live'), [{ type: 'BracketLookup', key: 0, keyKind: 'index', indexBase: 0 }], '$sizes[0]')),
-        decl('last', reference(variableReference('sizes', 'live'), [{ type: 'BracketLookup', key: -1, keyKind: 'index', indexBase: 0 }], '$sizes[-1]'))
+        decl('first', reference(variableReference('sizes', 'live'), [{ type: 'LookupStep', name: 0, kind: 'index', indexBase: 0 }], '$sizes[0]')),
+        decl('last', reference(variableReference('sizes', 'live'), [{ type: 'LookupStep', name: -1, kind: 'index', indexBase: 0 }], '$sizes[-1]'))
       ])
     ]);
 
@@ -109,11 +149,11 @@ describe('direct canonical value access', () => {
   });
 
   it('reads namespace call variable members from the callee, not a caller shadow', () => {
-    const member = (name: string) => [{ type: 'BracketLookup' as const, key: variableReference(name, 'scoped'), keyKind: 'var' as const }];
+    const member = (name: string) => [{ type: 'LookupStep' as const, name: variableReference(name, 'scoped'), kind: 'var' as const }];
     const namespaceCall = mixinCall('#ns1');
     const libraryCall = {
       type: 'MixinCall' as const,
-      name: '.m', args: [], path: [{ comb: ' ' as const, sel: '#library' }], important: false
+      name: '.m', args: [], path: [{ combinator: ' ' as const, selector: '#library' }], important: false, content: null
     };
     const document = stylesheet([
       variableDeclaration('foo', keyword('caller-foo'), { mode: 'declare' }),
@@ -142,7 +182,7 @@ describe('direct canonical value access', () => {
       rule('.entry', [
         decl('width', reference(
           mixinCall('.add', [{ value: dimension(10, 'px') }, { value: dimension(10, 'px') }]),
-          [{ type: 'BracketLookup', key: -1, keyKind: 'index' }],
+          [{ type: 'LookupStep', name: -1, kind: 'index' }],
           '.add(10px, 10px)[-1]'
         ))
       ])
@@ -154,7 +194,7 @@ describe('direct canonical value access', () => {
   it('keeps the empty-accessor fallback scoped to the final index and final selected callee', () => {
     const last = (key: number) => reference(
       mixinCall('.pick'),
-      [{ type: 'BracketLookup' as const, key, keyKind: 'index' as const }],
+      [{ type: 'LookupStep' as const, name: key, kind: 'index' as const }],
       `.pick()[${key}]`
     );
     const document = stylesheet([
@@ -232,10 +272,10 @@ describe('direct canonical value access', () => {
      * remains a cascade boundary in the authored enclosing declaration order.
      */
     const setLateColor = {
-      type: 'MixinDef' as const,
+      type: 'MixinDefinition' as const,
       name: '.set-late-color',
       params: [],
-      body: [decl('color', keyword('yellow'))]
+      rules: [decl('color', keyword('yellow'))]
     };
     const document = stylesheet([
       setLateColor,
@@ -261,10 +301,10 @@ describe('direct canonical value access', () => {
 
   it('resolves a mixin property read after the caller timeline has spliced later declarations', () => {
     const readColor = {
-      type: 'MixinDef' as const,
+      type: 'MixinDefinition' as const,
       name: '.read-color',
       params: [],
-      body: [decl('from-mixin', propertyReference('color'))]
+      rules: [decl('from-mixin', propertyReference('color'))]
     };
     const document = stylesheet([
       readColor,

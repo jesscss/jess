@@ -1,14 +1,15 @@
 import { createServer } from 'vite';
 import { run } from 'parseman';
+import { fileURLToPath } from 'node:url';
 
 function isGrammarModule(value: unknown): value is typeof import('../src/grammar.js') {
-  return typeof value === 'object' && value !== null && 'scssAstGrammar' in value;
+  return typeof value === 'object' && value !== null && 'scssGrammar' in value;
 }
 
 test('canonical SCSS grammar macro-fuses recognition leaves with no runtime import', async () => {
   const server = await createServer({
-    root: new URL('..', import.meta.url).pathname,
-    configFile: new URL('../vitest.config.ts', import.meta.url).pathname,
+    root: fileURLToPath(new URL('..', import.meta.url)),
+    configFile: fileURLToPath(new URL('../vitest.config.ts', import.meta.url)),
     server: { middlewareMode: true }
   });
   try {
@@ -18,19 +19,19 @@ test('canonical SCSS grammar macro-fuses recognition leaves with no runtime impo
 
     const loaded = await server.ssrLoadModule('/src/grammar.ts');
     if (!isGrammarModule(loaded)) {
-      throw new Error('Expected coverage module to expose the SCSS AST grammar.');
+      throw new Error('Expected coverage module to expose the canonical SCSS grammar.');
     }
     const grammarModule = loaded;
     const property = run(
-      grammarModule.scssAstGrammar.Stylesheet,
+      grammarModule.scssGrammar.Stylesheet,
       '@property --accent { syntax: "<color>"; inherits: false; }',
-      { trivia: grammarModule.scssAstGrammar.whitespace }
+      { trivia: grammarModule.scssGrammar.whitespace }
     );
     expect(property.ok).toBe(true);
     expect(property.unconsumedFrom).toBeNull();
     expect(property.value).toMatchObject({
       type: 'Stylesheet',
-      children: [{ type: 'AtRuleBlock', name: '@property', prelude: { type: 'Keyword', src: '--accent' } }]
+      rules: [{ type: 'AtRuleBlock', name: '@property', prelude: { type: 'Keyword', src: '--accent' } }]
     });
   } finally {
     await server.close();
@@ -39,8 +40,8 @@ test('canonical SCSS grammar macro-fuses recognition leaves with no runtime impo
 
 test('compiler-facing SCSS entrypoint does not load the CST grammar', async () => {
   const server = await createServer({
-    root: new URL('..', import.meta.url).pathname,
-    configFile: new URL('../vitest.config.ts', import.meta.url).pathname,
+    root: fileURLToPath(new URL('..', import.meta.url)),
+    configFile: fileURLToPath(new URL('../vitest.config.ts', import.meta.url)),
     server: { middlewareMode: true }
   });
   try {

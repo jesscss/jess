@@ -10,24 +10,23 @@
  *
  * NODE SHAPES (raw `grammarType`, confirmed empirically across css/less/scss):
  *   - string literal      → `Quoted`
- *   - variable reference   → `Reference`      (`@primary` / `$primary`)
- *   - variable declaration → `VarDeclaration` (`@primary: red;`)
- *   - mixin definition     → `MixinOrQualifiedRule` (`.button() { … }`) / `ScssMixin` (`@mixin foo`)
- *   - mixin call           → `MixinCall`      (`.button();`) / `ScssInclude` (`@include foo`)
- *   - scss function def    → `ScssFunction`   (`@function bar`)
+ *   - variable reference   → `Reference` / `VariableReference` (`@primary` / `$primary`)
+ *   - variable declaration → `VarDeclaration` / `VariableDeclaration` (`@primary: red;`)
+ *   - mixin definition     → `SelectorBranch` + `MixinDefinition` (`.button() { … }`) / `MixinDefinition` (`@mixin foo`)
+ *   - mixin call           → `SelectorBranch` + `MixinCall` (`.button();`) / `MixinCall` (`@include foo`)
+ *   - scss function def    → `FunctionRule`   (`@function bar`)
  *   - numbers              → `Num` / `Dimension` / `Color`
  *   - at-rules             → `AtRuleBlock` / `AtRuleStatement` / `QueryAtRuleBlock` / `ScssUse` …
  * Comments are trivia (not CST nodes), so comment tokens are recovered by a
  * source scan for `/* … *​/` blocks.
  *
- * SPAN MODEL: the CST stores PARENT-RELATIVE spans, so absolute offsets for nodes
- * come from `buildCstIndex(root).spanOf`, and a leaf's absolute offset is the
- * containing node's absolute start plus the (relative) leaf span.
+ * SPAN MODEL: CST nodes and leaves carry absolute source spans. Node spans come
+ * from `buildCstIndex(root).spanOf`; leaf spans can be read directly.
  */
 import type { CssCstChild, CssCstNode } from '@jesscss/css-parser';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 import { Position } from 'vscode-languageserver-types';
-import { buildCstIndex } from './cst-analysis.js';
+import { buildCstIndex, cstChildrenOf, cstHasTag } from './cst-analysis.js';
 
 export type JessLangLike = 'css' | 'less' | 'scss' | 'jess';
 
@@ -52,6 +51,9 @@ export type SemanticTokenType = (typeof SEMANTIC_TOKEN_TYPES)[number];
 const SEMANTIC_TOKEN_TYPE_INDEX = new Map<SemanticTokenType, number>(SEMANTIC_TOKEN_TYPES.map((t, i) => [t, i]));
 
 const NUMBER_TYPES = new Set(['Num', 'Dimension', 'Color']);
+const VARIABLE_REFERENCE_TYPES = new Set(['Reference', 'VariableReference']);
+const VARIABLE_DECLARATION_TYPES = new Set(['VariableDeclaration']);
+const STATIC_SIMPLE_SELECTOR_TYPES = new Set(['BasicSelector', 'ClassSelector', 'SimpleSelector']);
 
 /*
  * Genuine at-rule grammarTypes whose leading `@keyword` is a `namespace` token.
@@ -63,7 +65,6 @@ const NUMBER_TYPES = new Set(['Num', 'Dimension', 'Color']);
 const NAMESPACE_KEYWORD_TYPES = new Set([
   'AtRuleBlock',
   'AtRuleStatement',
-  'ImportAtRule',
   'UnknownAtRuleBlock',
   'QueryAtRuleBlock',
   'ScssUse',
@@ -75,7 +76,9 @@ const NAMESPACE_KEYWORD_TYPES = new Set([
  * SCSS callable statements: `@mixin foo` / `@include foo` / `@function bar`. The
  * `@keyword` is a `namespace` token and the name that follows is a `function`.
  */
-const SCSS_CALLABLE_TYPES = new Set(['ScssMixin', 'ScssInclude', 'ScssFunction']);
+const SCSS_CALLABLE_TYPES = new Set(['MixinDefinition', 'MixinCall', 'FunctionRule']);
+const LESS_SELECTOR_TYPES = new Set(['SelectorBranch', 'CompoundSelector']);
+const LESS_MIXIN_STATEMENT_TYPE = 'MixinStatement';
 
 function isCstNode(c: CssCstChild): c is CssCstNode {
   return c._tag === 'node';
@@ -88,12 +91,83 @@ function varNameOf(slice: string): string {
   return head.trim().replace(/^[$@]/, '').trim();
 }
 
-/** Bare mixin identifier from a `MixinCall`/`MixinOrQualifiedRule` (Less) or a
- * `ScssMixin` (`@mixin foo`) slice: head before `(`/`{`, then the SCSS keyword or
- * the Less `.`/`#` combinator dropped. */
+/** Bare mixin identifier from a `MixinCall`/`MixinDefinition` (Less/Jess)
+ * or a SCSS callable slice: head before `(`/`{`, then the SCSS keyword or the
+ * Less/Jess `.`/`#` combinator dropped. */
 function mixinIdentOf(slice: string): string {
   const head = slice.split(/[({]/)[0]!.trim().replace(/^@(?:mixin|include|function)\s+/, '');
   return head.replace(/^[.#]/, '').trim();
+}
+
+function onlyTriviaBetween(source: string, start: number, end: number): boolean {
+  for (let i = start; i < end; i++) {
+    const code = source.charCodeAt(i);
+    if (code !== 9 && code !== 10 && code !== 12 && code !== 13 && code !== 32) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function previousLessSelectorName(
+  entries: readonly { readonly node: CssCstNode; readonly start: number; readonly end: number }[],
+  source: string,
+  start: number
+): string {
+  let best: { readonly node: CssCstNode; readonly start: number; readonly end: number } | null = null;
+  for (const entry of entries) {
+    if (
+      !LESS_SELECTOR_TYPES.has(entry.node.grammarType)
+      || entry.end > start
+      || !onlyTriviaBetween(source, entry.end, start)
+    ) {
+      continue;
+    }
+    if (
+      best === null
+      || entry.end > best.end
+      || (entry.end === best.end && entry.start < best.start)
+      || (entry.end === best.end && entry.start === best.start && entry.node.grammarType === 'SelectorBranch')
+    ) {
+      best = entry;
+    }
+  }
+  return best === null ? '' : mixinIdentOf(source.slice(best.start, best.end));
+}
+
+function hasDescendantOfType(node: CssCstNode, grammarType: string): boolean {
+  for (const child of cstChildrenOf(node)) {
+    if (!isCstNode(child)) {
+      continue;
+    }
+    if (child.grammarType === grammarType || hasDescendantOfType(child, grammarType)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isIdentStart(code: number): boolean {
+  return (code >= 65 && code <= 90)
+    || (code >= 97 && code <= 122)
+    || code === 95
+    || code >= 128;
+}
+
+function isIdentChar(code: number): boolean {
+  return isIdentStart(code) || (code >= 48 && code <= 57) || code === 45;
+}
+
+function classSelectorNameOf(slice: string): string | null {
+  if (slice.length <= 1 || slice.charCodeAt(0) !== 46 || !isIdentStart(slice.charCodeAt(1))) {
+    return null;
+  }
+  for (let i = 2; i < slice.length; i++) {
+    if (!isIdentChar(slice.charCodeAt(i))) {
+      return null;
+    }
+  }
+  return slice.slice(1);
 }
 
 /**
@@ -108,13 +182,22 @@ export function cstDeclaredSymbols(root: CssCstNode, doc: TextDocument): { vars:
   const mixins = new Set<string>();
   for (const { node, start, end } of index.nodes) {
     const gt = node.grammarType;
-    if (gt === 'VarDeclaration') {
+    if (VARIABLE_DECLARATION_TYPES.has(gt)) {
       const name = varNameOf(src.slice(start, end));
       if (name) {
         vars.add(name);
       }
-    } else if (gt === 'MixinOrQualifiedRule' || gt === 'MixinDefinition' || gt === 'Mixin' || gt === 'ScssMixin') {
-      const name = mixinIdentOf(src.slice(start, end));
+    } else if (gt === LESS_MIXIN_STATEMENT_TYPE && hasDescendantOfType(node, 'MixinDefinition')) {
+      const name = previousLessSelectorName(index.nodes, src, start);
+      if (name) {
+        mixins.add(name);
+      }
+    } else if (gt === 'MixinDefinition') {
+      const slice = src.slice(start, end);
+      const previousSelectorName = previousLessSelectorName(index.nodes, src, start);
+      const name = slice.trim().startsWith('@') || previousSelectorName === ''
+        ? mixinIdentOf(slice)
+        : previousSelectorName;
       if (name) {
         mixins.add(name);
       }
@@ -134,7 +217,7 @@ export function cstVariableNames(root: CssCstNode, doc: TextDocument): string[] 
   const out: string[] = [];
   const seen = new Set<string>();
   for (const { node, start, end } of index.nodes) {
-    if (node.grammarType !== 'VarDeclaration') {
+    if (!VARIABLE_DECLARATION_TYPES.has(node.grammarType)) {
       continue;
     }
     const name = varNameOf(src.slice(start, end));
@@ -146,13 +229,47 @@ export function cstVariableNames(root: CssCstNode, doc: TextDocument): string[] 
   return out;
 }
 
+/**
+ * Static class selector names in source order, mined from CSS `ClassSelector`
+ * nodes and the still-broad dialect `Simple` selector nodes. This intentionally
+ * ignores compound text, interpolation, attributes, and pseudo arguments until
+ * richer selector facts exist across all dialect CSTs.
+ */
+export function cstClassSelectorNames(root: CssCstNode, doc: TextDocument): string[] {
+  const index = buildCstIndex(root);
+  const src = doc.getText();
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const { node, start, end } of index.nodes) {
+    if (!cstHasTag(node, 'Selector') && !STATIC_SIMPLE_SELECTOR_TYPES.has(node.grammarType)) {
+      continue;
+    }
+    const name = classSelectorNameOf(src.slice(start, end));
+    if (name !== null && !seen.has(name)) {
+      seen.add(name);
+      out.push(name);
+    }
+  }
+  return out;
+}
+
 type Cand = { start: number; end: number; typeIdx: number };
+
+function tailVariablePattern(lang: JessLangLike): RegExp {
+  if (lang === 'less') {
+    return /@[-_a-zA-Z0-9]+/g;
+  }
+  if (lang === 'scss' || lang === 'jess') {
+    return /\$[-_a-zA-Z0-9]+/g;
+  }
+  return /--[-_a-zA-Z0-9]+/g;
+}
 
 /**
  * CST-grounded semantic-token classification. Walks the tolerant CST and emits
  * the LSP delta-encoded token array, mirroring the AST classifier: strings
  * (`Quoted`, split into quote / string / interpolation pieces), variables
- * (`Reference`), mixins (`MixinCall`), numbers (`Num`/`Dimension`/`Color`),
+ * (`Reference`/`VariableReference`), mixins (`MixinCall`), numbers (`Num`/`Dimension`/`Color`),
  * at-rule keywords (`@keyword` → namespace), and comments (source-scanned
  * `/* … *​/`). Sourced from the CST so tokens survive half-typed input where the
  * eval AST yields nothing.
@@ -218,58 +335,54 @@ export function cstSemanticTokens(root: CssCstNode, doc: TextDocument, lang: Jes
   };
 
   // Absolute span of a node's first leaf child (the name token of a call).
-  const firstLeafSpan = (node: CssCstNode, nodeStart: number): { start: number; end: number } | null => {
-    for (const c of node.children) {
+  const firstLeafSpan = (node: CssCstNode): { start: number; end: number } | null => {
+    for (const c of cstChildrenOf(node)) {
       if (!isCstNode(c)) {
-        return { start: nodeStart + Number(c.span.start), end: nodeStart + Number(c.span.end) };
+        return { start: Number(c.span.start), end: Number(c.span.end) };
       }
     }
     return null;
   };
 
   /*
-   * Absolute span of a `Reference`'s leading `$` sigil leaf, when the grammar
-   * captured the sigil separately from the name. `null` when the reference is a
-   * single leaf (css/less/scss), so those keep one variable token.
+   * Absolute span of a `Reference`'s leading `$` sigil. Prefer the CST child when
+   * the grammar captured the sigil separately; fall back to the node source span
+   * for current Jess value references, whose CST has one `$foo` leaf.
    */
-  const sigilLeafSpan = (node: CssCstNode, nodeStart: number): { start: number; end: number } | null => {
-    const first = node.children[0];
-    if (!first || isCstNode(first)) {
+  const sigilLeafSpan = (node: CssCstNode): { start: number; end: number } | null => {
+    const first = cstChildrenOf(node)[0];
+    if (first && !isCstNode(first)) {
+      const s = Number(first.span.start);
+      const e = Number(first.span.end);
+      if (e === s + 1 && text.charAt(s) === '$') {
+        return { start: s, end: e };
+      }
+    }
+    const start = Number(node.span.start);
+    const end = Number(node.span.end);
+    if (!Number.isFinite(start) || end <= start + 1 || text.charAt(start) !== '$') {
       return null;
     }
-    const s = nodeStart + Number(first.span.start);
-    const e = nodeStart + Number(first.span.end);
-    return e === s + 1 && text.charAt(s) === '$' ? { start: s, end: e } : null;
+    return { start, end: start + 1 };
   };
 
   for (const { node, start, end } of index.nodes) {
     const gt = node.grammarType;
-    if (gt === 'Reference') {
+    if (VARIABLE_REFERENCE_TYPES.has(gt)) {
       /*
        * .jess treats `$` as a distinct sigil/operator (it also heads control-flow
        * `$…{}`, scope `${}`, mutation `:=`), so the `$` and the variable name are
-       * coloured as SEPARATE tokens rather than one blob. The jess grammar already
-       * captures them as two leaves (`$` then the bare name), so the split is read
-       * off the CST — never re-derived from source bytes. css/less/scss keep the
-       * conventional single-token variable.
+       * coloured as SEPARATE tokens rather than one blob. Prefer a separate `$`
+       * leaf when present; current value references expose one `$foo` leaf, so the
+       * editor fallback splits at the CST node's source start. css/less/scss keep
+       * the conventional single-token variable.
        */
-      const sigil = lang === 'jess' ? sigilLeafSpan(node, start) : null;
+      const sigil = lang === 'jess' ? sigilLeafSpan(node) : null;
       if (sigil) {
         push(sigil.start, sigil.end, 'operator');
         push(sigil.end, end, 'variable');
       } else {
         push(start, end, 'variable');
-      }
-    } else if (gt === 'MixinCall') {
-      const leaf = firstLeafSpan(node, start);
-      if (leaf) {
-        push(leaf.start, leaf.end, 'function');
-      }
-    } else if (NUMBER_TYPES.has(gt)) {
-      push(start, end, 'number');
-    } else if (gt === 'Quoted') {
-      if (looksQuoted(start, end)) {
-        emitStringRegion(start, end);
       }
     } else if (SCSS_CALLABLE_TYPES.has(gt)) {
       /*
@@ -280,11 +393,22 @@ export function cstSemanticTokens(root: CssCstNode, doc: TextDocument, lang: Jes
       const kw = /^@[-\w]+/.exec(slice);
       if (kw) {
         push(start, start + kw[0].length, 'namespace');
+        const nm = /^@[-\w]+\s+([\w-]+)/.exec(slice);
+        if (nm?.[1]) {
+          const nameStart = start + nm[0].length - nm[1].length;
+          push(nameStart, nameStart + nm[1].length, 'function');
+        }
+      } else if (gt === 'MixinCall') {
+        const leaf = firstLeafSpan(node);
+        if (leaf) {
+          push(leaf.start, leaf.end, 'function');
+        }
       }
-      const nm = /^@[-\w]+\s+([\w-]+)/.exec(slice);
-      if (nm?.[1]) {
-        const nameStart = start + nm[0].length - nm[1].length;
-        push(nameStart, nameStart + nm[1].length, 'function');
+    } else if (NUMBER_TYPES.has(gt)) {
+      push(start, end, 'number');
+    } else if (gt === 'Quoted') {
+      if (looksQuoted(start, end)) {
+        emitStringRegion(start, end);
       }
     } else if (NAMESPACE_KEYWORD_TYPES.has(gt)) {
       /*
@@ -295,6 +419,25 @@ export function cstSemanticTokens(root: CssCstNode, doc: TextDocument, lang: Jes
       const head = /^@[-\w]+/.exec(slice);
       if (head) {
         push(start, start + head[0].length, 'namespace');
+      }
+    }
+  }
+
+  /*
+   * If the tolerant CST stops before an invalid tail, keep coloring references
+   * to variables already declared in the parsed prefix. This is LS recovery, not
+   * a parser claim: no synthetic CST node is invented.
+   */
+  const parsedEnd = Number(root.span.end);
+  if (Number.isFinite(parsedEnd) && parsedEnd < text.length) {
+    const declared = new Set(cstVariableNames(root, doc));
+    const re = tailVariablePattern(lang);
+    re.lastIndex = Math.max(0, parsedEnd);
+    for (let m: RegExpExecArray | null; (m = re.exec(text));) {
+      const raw = m[0];
+      const name = varNameOf(raw);
+      if (name && declared.has(name)) {
+        push(m.index, m.index + raw.length, 'variable');
       }
     }
   }

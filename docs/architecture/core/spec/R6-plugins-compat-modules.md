@@ -1,7 +1,7 @@
 # R6 — Plugin/visitor hook · less-compat · module semantics
 
 > DESIGN SPEC for roadmap rung **R6**
-> ([`TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md` §3 R6](../TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md), arch F/G in
+> ([`TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md` §3 R6](../archive/TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md), arch F/G in
 > [`UNIFIED-EVAL-EMIT-DESIGN.md` §6–§7](../UNIFIED-EVAL-EMIT-DESIGN.md)). Same
 > shape as [`TREE2-DESIGN-SPEC.md` §R0](../TREE2-DESIGN-SPEC.md): **data model ·
 > algorithm · invariants · reference · owner-confirm**. This is a DESIGN doc — no
@@ -533,12 +533,12 @@ same source-level variable operations as native Jess:
 
 | SCSS | Jess canonical source | Required semantic result |
 |---|---|---|
-| `$foo: bar;` | `$foo: bar;` or `$$foo: bar;` | declaration creates or updates both bindings |
-| `$foo: bar !default;` | `$$foo?: bar;` | test the scoped/final map, then create/update both only on a miss |
-| `$foo: bar !global;` | `$$foo := bar;` | update the scoped/final binding |
+| `$foo: bar;` | `$foo: bar;` or `$^foo: bar;` | declaration creates or updates both bindings |
+| `$foo: bar !default;` | `$^foo?: bar;` | test the scoped/final map, then create/update both only on a miss |
+| `$foo: bar !global;` | `$^foo := bar;` | update the scoped/final binding |
 
-`$foo` is the live/current reference and `$$foo` is the scoped/final reference;
-`$!` is retired. Both `$foo:` and `$$foo:` create or update both bindings, so a
+`$foo` is the live/current reference and `$^foo` is the scoped/final reference;
+`$!`/`$$` are retired. Both `$foo:` and `$^foo:` create or update both bindings, so a
 declaration has no sigil-selected binding kind. `?:` and `:=` use the target
 reference's lookup mode. The evaluator semantics are the binding-system rules in
 `RESOLVER-SHAPE-SPEC.md`: scoped declarations use immutable lazy stacks plus a

@@ -12,7 +12,7 @@ import { branchSharesAtom, branchText, cloneBranch, collectBranchAtoms } from '.
 import type { Branch } from './ir.js';
 import { composePath } from './compose.js';
 import { applyInstruction } from './match.js';
-import { reaches } from './plan.js';
+import { reaches, recordAstExtendProfile } from './plan.js';
 import type { Plan, PlanInstruction, PlanSubject } from './plan.js';
 
 /** An instruction's precomputed composed extender branches + their text keys. */
@@ -28,11 +28,35 @@ export interface Contrib {
 }
 export type ContribMap = Map<PlanInstruction, Contrib>;
 
-/** Precompute each instruction's composed extender branches (+ their text keys)
- * for the fixpoint. */
-export function buildContribs(instructions: PlanInstruction[]): ContribMap {
-  const contribs: ContribMap = new Map();
+/**
+ * Precompute each instruction's composed extender branches (+ their text keys)
+ * for the fixpoint.
+ *
+ * A `Contrib` depends ONLY on its instruction — `composePath(inst.extenderPath)`,
+ * `inst.extenderHidden` and `collectBranchAtoms(inst.target)` never read the subject
+ * being solved — so passing `memo` (a caller-owned, render-scoped map) computes each
+ * instruction AT MOST ONCE per plan instead of once per admitted subject. Already-
+ * present entries are skipped; the memo is filled in place and returned, so it may
+ * legitimately be a SUPERSET of `instructions` (`groupInstructions` only ever looks
+ * up the reachable subset it was handed).
+ *
+ * SHARING INVARIANT (what makes the memo sound): a memoized contrib's branches are
+ * reachable from more than one subject's result list, so they must never be mutated
+ * after this function stamps them. That is already the engine's contract, not a new
+ * constraint — `pushExtender` (match.ts) clones before forcing `hidden`, `cloneBranch`
+ * carries provenance onto fresh objects, and every span rewrite builds a new branch
+ * (see the `Branch.key` memo note in ir.ts, which relies on the same immutability).
+ * The `ext`/`hidden` stamps below are pure functions of `inst`, so a per-subject
+ * recompute produced byte-identical flags anyway; only the allocation was per-subject.
+ */
+export function buildContribs(instructions: PlanInstruction[], memo?: ContribMap): ContribMap {
+  recordAstExtendProfile?.('astExtend.buildContribs.calls');
+  const contribs: ContribMap = memo ?? new Map();
   for (const inst of instructions) {
+    if (contribs.has(inst)) {
+      continue;
+    }
+    recordAstExtendProfile?.('astExtend.buildContribs.instructionsComposed');
     const extenders = composePath(inst.extenderPath);
 
     /*
@@ -81,7 +105,7 @@ export interface SolveResult {
  * this never recomposes. Returns the RAW seed with `changed: false` on a prefilter
  * miss or a no-op fixpoint, else the extended list with `changed: true`.
  */
-export function solveComposed(seed: Branch[], subject: PlanSubject, plan: Plan): SolveResult {
+export function solveComposed(seed: Branch[], subject: PlanSubject, plan: Plan, contribMemo?: ContribMap): SolveResult {
   /*
    * Target-atom PREFILTER: the fixpoint can only ever change a subject whose
    * composed seed shares at least one individual simple atom with some instruction
@@ -106,7 +130,7 @@ export function solveComposed(seed: Branch[], subject: PlanSubject, plan: Plan):
   if (reachable.length === 0) {
     return { list: seed, changed: false };
   }
-  return runFixpoint(seed.map(cloneBranch), reachable, buildContribs(reachable));
+  return runFixpoint(seed.map(cloneBranch), reachable, buildContribs(reachable, contribMemo));
 }
 
 /**

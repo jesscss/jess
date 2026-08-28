@@ -1,4 +1,4 @@
-import { defineFunction, isValueGroupArray, makeKeyword } from '@jesscss/core/value';
+import { defineFunction, isValueGroupArray, makeKeyword, namedColor } from '@jesscss/core';
 
 /**
  * Sass `meta.type-of($value)` / the global `type-of()`.
@@ -25,19 +25,27 @@ import { defineFunction, isValueGroupArray, makeKeyword } from '@jesscss/core/va
  *                  `calc(var(--c))` / `clamp(1%, 1px, 2px)` are `calculation`
  */
 const typeOf = defineFunction('type-of', {
-  params: [{ name: 'value', kinds: 'any' }] as const,
+  params: [{ name: 'value', type: 'any' }] as const,
   body: (value) => {
     if (isValueGroupArray(value)) {
       return makeKeyword('list');
     }
     switch (value.type) {
       case 'Dimension': return makeKeyword('number');
+
+      /*
+       * A keyword that names a CSS color is a color (`type-of(red)` → `color`,
+       * per `spec/core_functions/meta/type_of.hrx`). NamedColor→Keyword
+       * convergence keeps `red` a keyword at parse; its colour-ness is consulted
+       * here, at the point of use.
+       */
+      case 'Keyword': return makeKeyword(namedColor(value.text) !== undefined ? 'color' : 'string');
       case 'Quoted':
-      case 'Keyword':
-      case 'Any': return makeKeyword('string');
+      case 'Any':
+      case 'Url': return makeKeyword('string');
       case 'Color': return makeKeyword('color');
       case 'Bool': return makeKeyword('bool');
-      case 'Nil': return makeKeyword('null');
+      case 'Null': return makeKeyword('null');
       case 'Collection': return makeKeyword('map');
       case 'List':
       case 'Block': return makeKeyword('list');

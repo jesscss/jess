@@ -2,10 +2,11 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 
 const temporaryRoots: string[] = [];
-const repositoryRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../..');
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const recordScript = path.join(repositoryRoot, 'scripts/release/record-alpha-source-provenance.mjs');
 const updateScript = path.join(repositoryRoot, 'scripts/release/update-alpha-from-dev.mjs');
 const verifyScript = path.join(repositoryRoot, 'scripts/release/verify-alpha-source-sync.mjs');
@@ -115,6 +116,48 @@ describe('update-alpha-from-dev release helper', () => {
     expect(provenance.sourceCommit).toBe(run('git', ['rev-parse', 'origin/dev'], alpha).trim());
     const verify = runResult(process.execPath, [verifyScript], alpha);
     expect(verify.status, verify.stderr).toBe(0);
+  });
+
+  it('imports a binary patch larger than the child-process default buffer', () => {
+    const { alpha, source } = createSandbox();
+    const largeSource = 'x'.repeat(2 * 1024 * 1024);
+    writeFileSync(path.join(source, 'src/large-source.txt'), largeSource);
+    commitAll(source, 'add large source');
+    run('git', ['push', '--quiet', 'origin', 'dev'], source);
+
+    const result = runResult(process.execPath, [
+      updateScript,
+      '--skip-install',
+      '--skip-push-check',
+      '--recovery-ref',
+      'alpha-pre-refresh-large-patch'
+    ], alpha);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(path.join(alpha, 'src/large-source.txt'), 'utf8')).toBe(largeSource);
+  });
+
+  it('does not run per-commit hooks for the controlled release snapshot', () => {
+    const { alpha, source } = createSandbox();
+    writeFileSync(path.join(source, 'src/engine.mjs'), 'export const source = 3;\n');
+    commitAll(source, 'advance dev');
+    run('git', ['push', '--quiet', 'origin', 'dev'], source);
+
+    const hooks = path.join(alpha, '.git', 'test-hooks');
+    mkdirSync(hooks, { recursive: true });
+    writeFileSync(path.join(hooks, 'pre-commit'), '#!/bin/sh\nexit 86\n', { mode: 0o755 });
+    run('git', ['config', 'core.hooksPath', hooks], alpha);
+
+    const result = runResult(process.execPath, [
+      updateScript,
+      '--skip-install',
+      '--skip-push-check',
+      '--recovery-ref',
+      'alpha-pre-refresh-hook-test'
+    ], alpha);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(path.join(alpha, 'src/engine.mjs'), 'utf8')).toBe('export const source = 3;\n');
   });
 
   it('refuses to run outside the alpha branch', () => {

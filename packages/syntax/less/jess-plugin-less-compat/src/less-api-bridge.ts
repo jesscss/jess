@@ -15,8 +15,8 @@ import {
   type PluginHost,
   type PluginRawArgument,
   type ValueGroup,
-  type ValueObj
-} from '@jesscss/core/value';
+  type Value
+} from '@jesscss/core';
 export type NativeLessFunction = (...args: unknown[]) => unknown;
 export type ContextualPluginFunction = (
   args: readonly unknown[],
@@ -178,7 +178,7 @@ class LazyValueList {
   readonly type = 'Value';
   #value: readonly unknown[] | undefined;
 
-  constructor(private readonly source: Extract<ValueObj, { type: 'List' }>) {}
+  constructor(private readonly source: Extract<Value, { type: 'List' }>) {}
 
   get value(): readonly unknown[] {
     return this.#value ??= this.source.value.map(toNativeLessValue);
@@ -264,7 +264,7 @@ export function toNativeLessValue(value: PluginRawArgument | ValueGroup): unknow
   }
 }
 
-function isNativeValue(value: unknown): value is ValueObj {
+function isNativeValue(value: unknown): value is Value {
   return value !== null
     && typeof value === 'object'
     && 'bytes' in value

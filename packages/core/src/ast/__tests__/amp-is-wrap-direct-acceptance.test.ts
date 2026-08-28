@@ -26,7 +26,7 @@ const header = (css: string | undefined): string =>
 
 // `.c:not(&)` — `.c` followed by a STRUCTURED `:not()` whose sole arg is a bare `&`.
 const cNotAmp = (): ComplexSelector => complexSelector([{
-  compound: compoundSelectorOf([simpleSelector('.c'), pseudoSelector(':not', selist(sel('&')))])
+  term: compoundSelectorOf([simpleSelector('.c'), pseudoSelector(':not', selist(sel('&')))])
 }]);
 
 describe('selector-reference `&` over a multi-item parent list wraps as `:is()`', () => {
@@ -36,19 +36,19 @@ describe('selector-reference `&` over a multi-item parent list wraps as `:is()`'
 
   it('combinator `& + &` wraps each hole in `:is(parents)`', () => {
     const child = complexSelector([
-      { compound: compoundSelector('&') },
-      { comb: '+', compound: compoundSelector('&') }
+      { term: compoundSelector('&') },
+      { combinator: '+', term: compoundSelector('&') }
     ]);
     expect(header(nest(['.a', '#b'], child))).toBe(':is(.a, #b) + :is(.a, #b)');
   });
 
   it('compound-sibling `&.mod` wraps `&` in `:is(parents)`', () => {
-    const child = complexSelector([{ compound: compoundSelectorOf([simpleSelector('&'), simpleSelector('.mod')]) }]);
+    const child = complexSelector([{ term: compoundSelectorOf([simpleSelector('&'), simpleSelector('.mod')]) }]);
     expect(header(nest(['.a', '#b'], child))).toBe(':is(.a, #b).mod');
   });
 
   it('compound-sibling `&:hover` wraps `&` in `:is(parents)`', () => {
-    const child = complexSelector([{ compound: compoundSelectorOf([simpleSelector('&'), simpleSelector(':hover')]) }]);
+    const child = complexSelector([{ term: compoundSelectorOf([simpleSelector('&'), simpleSelector(':hover')]) }]);
     expect(header(nest(['.a', '#b'], child))).toBe(':is(.a, #b):hover');
   });
 
@@ -83,14 +83,14 @@ describe('selector-reference `&` over a multi-item parent list wraps as `:is()`'
   });
 
   it('single parent: `&.mod` substitutes bare', () => {
-    const child = complexSelector([{ compound: compoundSelectorOf([simpleSelector('&'), simpleSelector('.mod')]) }]);
+    const child = complexSelector([{ term: compoundSelectorOf([simpleSelector('&'), simpleSelector('.mod')]) }]);
     expect(header(nest(['.a'], child))).toBe('.a.mod');
   });
 
   it('single parent: `& + &`', () => {
     const child = complexSelector([
-      { compound: compoundSelector('&') },
-      { comb: '+', compound: compoundSelector('&') }
+      { term: compoundSelector('&') },
+      { combinator: '+', term: compoundSelector('&') }
     ]);
     expect(header(nest(['.a'], child))).toBe('.a + .a');
   });

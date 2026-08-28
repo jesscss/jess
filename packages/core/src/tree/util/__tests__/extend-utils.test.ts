@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { el } from '../../../index.js';
+import { el } from '../../index.js';
 import { applyExtendsToSelector, ExtendInstruction } from '../extend.js';
 
 describe('extend utility helpers - applyExtendsToSelector', () => {

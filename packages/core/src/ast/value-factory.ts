@@ -7,7 +7,7 @@
  * HARD MODULE BOUNDARY: imports only the value domain + the free serializer.
  */
 import type {
-  Any, Block, Bool, Collection, CollectionEntry, Color, Dimension, Keyword, Quoted, List, ListSeparator, ValueGroup
+  Any, Block, Bool, Collection, CollectionEntry, Color, Dimension, Keyword, Null, Quoted, List, ListSeparator, UrlValue, ValueGroup
 } from './value-eval.js';
 import { colorRgb, colorSourceRgb, rgbToHsl, serializeColor } from './color.js';
 import { serializeDimension, serializeQuoted, serializeValue } from './serialize-value.js';
@@ -71,29 +71,33 @@ export function makeCompoundDimension(
   unit: string,
   numerator: readonly string[],
   denominator: readonly string[],
-  backupUnit: string | undefined
+  backupUnit: string | undefined,
+  preserved?: string
 ): Dimension {
   const n: Mutable<Dimension> = { type: 'Dimension', number, unit, numerator, denominator, bytes: '' };
   if (backupUnit !== undefined) {
     n.backupUnit = backupUnit;
   }
+  if (preserved !== undefined) {
+    n.preserved = preserved;
+  }
   n.bytes = serializeDimension(n);
   return n;
 }
 
-/** Build a color from an RGB source. `node` (verbatim spelling) is optional. */
+/** Build a color from an RGB source. `src` (verbatim spelling) is optional. */
 export function makeColorRgb(
   rgb: readonly [number, number, number],
   alpha: number,
   format: number,
-  opts?: { modernSyntax?: boolean; node?: string; rgbPct?: readonly (number | undefined)[]; alphaPct?: number }
+  opts?: { modernSyntax?: boolean; src?: string; rgbPct?: readonly (number | undefined)[]; alphaPct?: number }
 ): Color {
   const c: Mutable<Color> = { type: 'Color', rgb, alpha, format, bytes: '' };
   if (opts?.modernSyntax) {
     c.modernSyntax = true;
   }
-  if (opts?.node !== undefined) {
-    c.node = opts.node;
+  if (opts?.src !== undefined) {
+    c.src = opts.src;
   }
   if (opts?.rgbPct !== undefined) {
     c.rgbPct = opts.rgbPct;
@@ -137,8 +141,24 @@ export const makeKeyword = (text: string): Keyword => ({ type: 'Keyword', text, 
 
 export const makeAny = (bytes: string): Any => ({ type: 'Any', bytes });
 
+/** Project an evaluated AST `Url` into the typed value domain. */
+export const makeUrlValue = (bytes: string): UrlValue => ({ type: 'Url', bytes });
+
 /** A boolean value result (`true`/`false` — the shape guards and `is*` predicates emit). */
 export const makeBool = (value: boolean): Bool => ({ type: 'Bool', value, bytes: value ? 'true' : 'false' });
+
+/**
+ * The canonical empty / absent value (§4.3). TWO frozen singletons, one per
+ * PROVENANCE — an authored `null` and an absent/unbound value are the same value
+ * and a different fact. Both share one shape, so no `Null` allocates and none
+ * splits the hidden class.
+ */
+export const NULL: Null = { type: 'Null', explicit: false, bytes: '' };
+
+/** The AUTHOR-WRITTEN `null` literal. */
+export const NULL_LITERAL: Null = { type: 'Null', explicit: true, bytes: '' };
+
+export const makeNull = (explicit = false): Null => (explicit ? NULL_LITERAL : NULL);
 
 export function makeList(
   value: readonly ValueGroup[],
@@ -166,11 +186,11 @@ export function makeCollection(entries: readonly CollectionEntry[], base?: Value
 
 /** Wrap a value in an explicit paren/square delimiter fact. */
 export function makeBlock(
-  inner: ValueGroup,
+  value: ValueGroup,
   delimiter: Block['delimiter'],
   escaped = false
 ): Block {
-  const block: Mutable<Block> = { type: 'Block', inner, delimiter, bytes: '' };
+  const block: Mutable<Block> = { type: 'Block', value, delimiter, bytes: '' };
   if (escaped) {
     block.escaped = true;
   }

@@ -33,19 +33,3 @@ export type UnitMode = 'loose' | 'preserve' | 'strict';
  * imported functions are non-optional references and always error.
  */
 export type FunctionMode = 'preserve' | 'error';
-
-/**
- * Equality compatibility modes for the shared guard/comparison evaluator. The
- * names describe established source-compatibility rules; they do not select a
- * dialect-specific engine. Less 4.x and Sass are NOT a strictness gradient —
- * they diverge in OPPOSITE directions (Less coerces unit↔unitless numbers but
- * treats quoted vs unquoted text as distinct; Sass is the reverse):
- *
- * - `less`: Less 4.x equality. `2px = 2` ✓ (numeric coercion); `a = "a"` ✗ and
- *   `red = "red"` ✗ (quoted vs unquoted differ).
- * - `sass`: Dart Sass equality. `2px == 2` ✗ (unit-strict); `a == "a"` ✓
- *   (quote-insensitive strings); `red == "red"` ✗ (Color vs string).
- * - `exact`: no coercion — operands must be the same node type. Stricter than
- *   both (`2px = 2` ✗, `a = "a"` ✗).
- */
-export type EqualityMode = 'less' | 'sass' | 'exact';

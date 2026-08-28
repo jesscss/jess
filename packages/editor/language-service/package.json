@@ -22,6 +22,7 @@
     "lib"
   ],
   "dependencies": {
+    "@csstools/selector-specificity": "^6.0.0",
     "@jesscss/css-parser": "workspace:*",
     "@jesscss/diagnostics-core": "workspace:*",
     "@jesscss/jess-parser": "workspace:*",
@@ -30,6 +31,7 @@
     "@jesscss/style-resolver": "workspace:*",
     "@vscode/web-custom-data": "^0.6.2",
     "known-css-properties": "~0.37.0",
+    "postcss-selector-parser": "^7.1.4",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.12",
     "vscode-languageserver-types": "3.17.5"
@@ -43,7 +45,7 @@
   },
   "scripts": {
     "build": "pnpm compile",
-    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "dev": "tsdown --tsconfig tsconfig.build.json --watch",
     "test": "vitest --watch=false",
     "test:unit": "vitest --watch=false"

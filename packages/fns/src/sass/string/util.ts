@@ -10,13 +10,13 @@
  * Indexing is by UNICODE CODE POINT, not UTF-16 code unit: dart-sass answers
  * `str-length("😊")` with `1` and `str-index("😊abc","abc")` with `2`.
  */
-import type { Keyword, Nil, Quoted } from '@jesscss/core/value';
-import { makeKeyword, makeQuoted } from '@jesscss/core/value';
+import type { Keyword, Quoted } from '@jesscss/core';
+import { makeKeyword, makeQuoted, NULL } from '@jesscss/core';
 
 /** The two value-domain shapes a Sass string arrives as. */
 export type SassString = Quoted | Keyword;
 
-/** The param `kinds` every `sass:string` string slot declares. */
+/** The param `type` every `sass:string` string slot declares. */
 export const STRING_KINDS = ['Quoted', 'Keyword'] as const;
 
 /**
@@ -25,7 +25,7 @@ export const STRING_KINDS = ['Quoted', 'Keyword'] as const;
  * only producer. Its bytes are empty — jess emits `b: ;` where dart-sass DROPS
  * the whole declaration, a serializer-level difference this module cannot reach.
  */
-export const NIL: Nil = { type: 'Nil', bytes: '' };
+export { NULL };
 
 /** A Sass string's characters, with its quoting flag discarded. */
 export const stringText = (value: SassString): string =>

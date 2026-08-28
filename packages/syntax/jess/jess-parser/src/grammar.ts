@@ -4,243 +4,274 @@
  * CSS base: ../../../css/css-parser/src/grammar.ts
  *
  * Jess adds and overrides:
- * - $variables, modules, apply/mixin constructs, guards, ranges, collections,
- *   boundary blocks, and Jess interpolation forms.
- * - Jess-specific expression and selector capture syntax.
- * - Jess is a sibling grammar over CSS/shared syntax; shared preprocessor
- *   constructs belong in parser-shared only after they prove real reuse.
+ * - Language-specific features: $variables, modules, apply/mixin constructs,
+ *   guards, ranges, collections, boundary blocks, declaration lookups, and
+ *   Jess interpolation forms.
+ * - Expanded CSS shapes: expression-bearing values, selector captures, static
+ *   CSS headers/descriptors that deliberately reject Jess runtime forms, and
+ *   the narrow dynamic at-rule/header leaves Jess actually supports.
+ * - Jess extends CSS: unchanged CSS structure stays CSS-owned and this grammar
+ *   overrides only the smallest changed child, value slot, or reference.
+ * - The one place that rule is knowingly broken is the `calc()` math family
+ *   (`CalcValue`/`CalcParen`/`CalcProduct`/`CalcSum`/`CalcFunction`), which is
+ *   PORTED from the CSS base rather than referenced, because parseman cannot
+ *   share a mutually recursive, AST-reducing family across packages. See the
+ *   comment on those consts. Less and SCSS model the same ladder as
+ *   `MathProduct`/`MathSum`; converging the four is an open decision.
+ *   Shared preprocessor constructs belong in parser-shared only after they
+ *   prove real reuse.
  *
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { attempt, balanced, choice, composeLeaf, dispatch, field, literal, makeWhen, many, noTrivia, node, not, oneOrMore, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, startsWith, token, trivia, when } from 'parseman' with { type: 'macro' };
+import { attempt, balanced, choice, classifiedTrivia, composeLeaf, dispatch, endsWith, expect, field, keywords, label, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, token, when, word } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, boundaryBlock, color, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, collection, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Color, ComplexSelector, CompoundSelector, Declaration, Collection, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDef, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference, GuardNode } from '@jesscss/core/ast';
-
-type Token = { readonly value: string };
+import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, isComplexSelector, isForBinding, isModuleImport, isRelativeSelector, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, cssBaseMathOutsideParens, propertyReference, pseudoSelector, quoted, range, reference, relativeSelector, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { Token, AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Combinator as AstCombinator, Declaration, Collection, CollectionEntry, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Sequence, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, LookupStep, GuardNode, While } from '@jesscss/core/ast';
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
 type JessOperatorFact = { readonly value: string; readonly src: string };
 type JessReferenceTail = { readonly step: Reference['steps'][number]; readonly src: string };
-type JessComplexTail = { readonly comb: ' ' | '>' | '+' | '~' | '||'; readonly compound: CompoundSelector };
-type JessStaticAtQueryProperty = { readonly property: Keyword };
+type JessComplexTail = { readonly combinator: ' ' | '>' | '+' | '~' | '||'; readonly term: SelectorTerm };
+type JessSelectorSegment = { combinator?: AstCombinator; term: SelectorTerm };
+type JessQueryFeatureName = { readonly property: Keyword };
 type JessAtRuleHeader = { readonly name: string; readonly prelude: ValueNode | null };
 type JessMixinCallArgument = MixinCall['args'][number];
 
 type JessRules = {
   Stylesheet: Combinator<Stylesheet>;
-  JessAstDocument: Combinator<Stylesheet>;
-  DirectJessVarDeclaration: Combinator<VariableDeclaration>;
-  DirectJessValueBlockDeclaration: Combinator<VariableDeclaration>;
-  DirectJessBlockLambda: Combinator<AnonymousMixin>;
-  DirectJessExprLambda: Combinator<AnonymousMixin>;
-  DirectJessValueBlock: Combinator<ValueNode>;
-  DirectJessVarReference: Combinator<VariableReference>;
-  DirectJessReferenceTail: Combinator<JessReferenceTail>;
-  DirectJessReferenceCallTail: Combinator<JessReferenceTail>;
-  DirectJessDollarValue: Combinator<ValueNode>;
-  DirectJessDollarBrace: Combinator<Interpolation>;
-  DirectJessExpressionDollarBrace: Combinator<ExpressionFact>;
-  DirectJessDollarInterp: Combinator<Interpolation>;
-  DirectJessInterpolatedValue: Combinator<Interpolation>;
-  DirectJessExpressionDollarInterp: Combinator<ExpressionFact>;
-  DirectJessExpression: Combinator<Interpolation>;
-  DirectJessExpressionInterpolation: Combinator<ExpressionFact>;
-  DirectJessExpressionQuoted: Combinator<ExpressionFact>;
-  DirectJessExpressionAtom: Combinator<ExpressionFact>;
-  DirectJessExpressionProduct: Combinator<ExpressionFact>;
-  DirectJessExpressionSum: Combinator<ExpressionFact>;
-  DirectJessExpressionCompare: Combinator<ExpressionFact>;
-  DirectJessUnwrappedProductRest: Combinator<ExpressionFact>;
-  DirectJessGuardValue: Combinator<GuardNode>;
-  DirectJessGuardCompare: Combinator<GuardNode>;
-  DirectJessGuardCall: Combinator<GuardNode>;
-  DirectJessGuardPrimary: Combinator<GuardNode>;
-  DirectJessGuardAnd: Combinator<GuardNode>;
-  DirectJessGuardOr: Combinator<GuardNode>;
-  DirectJessMixinGuard: Combinator<GuardNode>;
-  DirectJessKeyword: Combinator<Keyword>;
-  DirectJessQuoted: Combinator<Quoted | Interpolation>;
-  DirectJessStaticQuoted: Combinator<Quoted>;
-  DirectJessDimension: Combinator<Dimension>;
-  DirectJessColor: Combinator<Color>;
-  DirectJessUrl: Combinator<Url>;
-  DirectJessInterpolatedUrl: Combinator<Url>;
-  DirectJessUrlInterpolatedValue: Combinator<Interpolation>;
-  DirectJessCallComponent: Combinator<ValueSlot>;
-  DirectJessCallArgument: Combinator<ValueSlot>;
-  DirectJessCall: Combinator<FunctionCall>;
-  DirectJessCollectionEntry: Combinator<Declaration>;
-  DirectJessCollection: Combinator<Collection>;
-  DirectJessValueAtom: Combinator<ValueNode>;
-  DirectJessValueSpaceGroup: Combinator<ValueSlot>;
-  DirectJessValueTerm: Combinator<ValueSlot>;
-  DirectJessValue: Combinator<ValueSlot>;
-  DirectJessImportant: Combinator<true>;
-  DirectJessCustomPropertyValue: Combinator<Keyword>;
-  DirectJessCustomPropertyName: Combinator<string | Interpolation>;
-  DirectJessCustomPart: Combinator<unknown>;
-  DirectJessCustomInnerPart: Combinator<unknown>;
-  DirectJessCustomParen: Combinator<readonly unknown[]>;
-  DirectJessCustomSquare: Combinator<readonly unknown[]>;
-  DirectJessCustomCurly: Combinator<readonly unknown[]>;
-  DirectJessCustomValue: Combinator<ValueNode>;
-  DirectJessCustomDeclaration: Combinator<Declaration>;
-  DirectJessDeclaration: Combinator<Declaration>;
-  DirectJessMixinParam: Combinator<Param>;
-  DirectJessMixinParams: Combinator<Param[]>;
-  DirectJessMixinCallArg: Combinator<JessMixinCallArgument>;
-  DirectJessMixinCall: Combinator<MixinCall>;
-  DirectJessReferenceCall: Combinator<Reference>;
-  DirectJessApply: Combinator<Apply>;
-  DirectJessExtend: Combinator<ExtendInstruction[]>;
-  DirectJessMixinDef: Combinator<MixinDef>;
-  DirectJessSimple: Combinator<SimpleSelector>;
-  DirectJessParent: Combinator<SimpleSelector>;
-  DirectJessInterpolatedSimple: Combinator<SimpleSelector>;
-  DirectJessInterpolatedParentSuffix: Combinator<SimpleSelector>;
-  DirectJessAttribute: Combinator<SimpleSelector>;
-  DirectJessPseudo: Combinator<SimpleToken>;
-  DirectJessStaticPseudoArgument: Combinator<SelectorList | string>;
-  DirectJessGenericPseudoArgument: Combinator<SelectorList | string>;
-  DirectJessCompound: Combinator<CompoundSelector>;
-  DirectJessStaticCompound: Combinator<CompoundSelector>;
-  DirectJessStaticComplexTail: Combinator<JessComplexTail>;
-  DirectJessStaticComplex: Combinator<ComplexSelector>;
-  DirectJessStaticSelectorTail: Combinator<ComplexSelector>;
-  DirectJessStaticSelector: Combinator<SelectorList>;
-  DirectJessSelectorCapture: Combinator<SelectorCapture>;
-  DirectJessComplexTail: Combinator<JessComplexTail>;
-  DirectJessComplex: Combinator<ComplexSelector>;
-  DirectJessSelectorTail: Combinator<ComplexSelector>;
-  DirectJessSelector: Combinator<SelectorList>;
-  DirectJessRule: Combinator<Rule>;
+  VariableDeclaration: Combinator<VariableDeclaration>;
+  ValueBlockDeclaration: Combinator<VariableDeclaration>;
+  BlockLambda: Combinator<AnonymousMixin>;
+  ExpressionLambda: Combinator<AnonymousMixin>;
+  ValueBlock: Combinator<ValueNode>;
+  VariableReference: Combinator<Lookup>;
+  ExpressionScopedReference: Combinator<Lookup>;
+  DeclarationReference: Combinator<Lookup>;
+  ReferenceTail: Combinator<JessReferenceTail>;
+  ReferenceCallTail: Combinator<JessReferenceTail>;
+  DollarValue: Combinator<ValueNode>;
+  DollarBrace: Combinator<Interpolation>;
+  ExpressionDollarBrace: Combinator<ExpressionFact>;
+  DollarInterp: Combinator<Interpolation>;
+  InterpolatedValue: Combinator<Interpolation>;
+  ExpressionDollarInterp: Combinator<ExpressionFact>;
+  Expression: Combinator<Interpolation>;
+  ExpressionInterpolation: Combinator<ExpressionFact>;
+  ExpressionQuoted: Combinator<ExpressionFact>;
+  ExpressionDeclarationReference: Combinator<ExpressionFact>;
+  ExpressionCallArgument: Combinator<JessMixinCallArgument>;
+  ExpressionReferenceCallTail: Combinator<JessReferenceTail>;
+  ExpressionAtom: Combinator<ExpressionFact>;
+  ExpressionProduct: Combinator<ExpressionFact>;
+  ExpressionSum: Combinator<ExpressionFact>;
+  ExpressionCompare: Combinator<ExpressionFact>;
+  ExpressionNot: Combinator<ExpressionFact>;
+  ExpressionLogicalOperand: Combinator<ExpressionFact>;
+  ExpressionAnd: Combinator<ExpressionFact>;
+  ExpressionOr: Combinator<ExpressionFact>;
+  ExpressionLogical: Combinator<ExpressionFact>;
+  GuardValue: Combinator<GuardNode>;
+  GuardCompare: Combinator<GuardNode>;
+  GuardCall: Combinator<GuardNode>;
+  GuardPrimary: Combinator<GuardNode>;
+  GuardAnd: Combinator<GuardNode>;
+  GuardOr: Combinator<GuardNode>;
+  MixinGuard: Combinator<GuardNode>;
+  Keyword: Combinator<Keyword>;
+  Quoted: Combinator<Quoted | Interpolation>;
+  LiteralQuoted: Combinator<Quoted>;
+  Dimension: Combinator<Dimension>;
+  Color: Combinator<Color>;
+  Url: Combinator<Url>;
+  PlainUrlInner: Combinator<string>;
+  UnquotedUrlText: Combinator<string>;
+  UrlInterpolatedValue: Combinator<Interpolation>;
+  CallComponent: Combinator<ValueSlot>;
+  CallArgument: Combinator<ValueSlot>;
+  KeywordValue: Combinator<Keyword | Null>;
+  NullLiteral: Combinator<Null>;
+  VarCall: Combinator<FunctionCall>;
+  UnicodeRange: Combinator<ValueNode>;
+  CalcValue: Combinator<ValueNode>;
+  CalcParen: Combinator<ValueNode>;
+  CalcProduct: Combinator<ValueNode>;
+  CalcSum: Combinator<ValueNode>;
+  MathDollarValue: Combinator<ValueNode>;
+  CalcSequence: Combinator<ValueSlot>;
+  calcFunctionArguments: Combinator<ValueSlot>;
+  MathFunction: Combinator<FunctionCall>;
+  IdentifierOrFunction: Combinator<[string, FunctionCall | Keyword | Null | Url]>;
+  CollectionEntry: Combinator<CollectionEntry>;
+  Collection: Combinator<Collection>;
+  SquareValue: Combinator<ValueNode>;
+  ValueAtom: Combinator<ValueNode>;
+  ValueSpaceGroup: Combinator<ValueSlot>;
+  ValueTerm: Combinator<ValueSlot>;
+  Value: Combinator<ValueSlot>;
+  Important: Combinator<true>;
+  CustomPropertyValue: Combinator<Keyword>;
+  InterpolatedCustomPropertyName: Combinator<string | Interpolation>;
+  CustomPart: Combinator<unknown>;
+  CustomInnerPart: Combinator<unknown>;
+  CustomGroup: Combinator<readonly unknown[]>;
+  CustomValue: Combinator<ValueNode>;
+  CustomDeclaration: Combinator<Declaration>;
+  Declaration: Combinator<Declaration>;
+  MixinParam: Combinator<Param>;
+  MixinParams: Combinator<Param[]>;
+  MixinCallArgument: Combinator<JessMixinCallArgument>;
+  MixinCall: Combinator<MixinCall>;
+  ReferenceCall: Combinator<Reference>;
+  Apply: Combinator<Apply>;
+  Extend: Combinator<ExtendInstruction[]>;
+  MixinDefinition: Combinator<MixinDefinition>;
+  BasicSelector: Combinator<SimpleSelector>;
+  Parent: Combinator<SimpleSelector>;
+  InterpolatedSimple: Combinator<SimpleSelector>;
+  InterpolatedParentSuffix: Combinator<SimpleSelector>;
+  NamespaceTypeSelector: Combinator<SimpleSelector>;
+  AttributeSelector: Combinator<SimpleSelector>;
+  PseudoSelector: Combinator<SimpleToken>;
+  PseudoSelectorArgument: Combinator<SelectorList | string>;
+  GenericPseudoText: Combinator<string>;
+  GenericPseudoComment: Combinator<string>;
+  GenericPseudoEscape: Combinator<string>;
+  GenericPseudoItem: Combinator<string>;
+  GenericPseudoGroup: Combinator<string>;
+  GenericPseudoArgument: Combinator<string>;
+  CompoundSelector: Combinator<SelectorTerm>;
+  PseudoSelectorCompound: Combinator<SelectorTerm>;
+  PseudoSelectorComplex: Combinator<SelectorBranch>;
+  PseudoSelectorTail: Combinator<SelectorBranch>;
+  PseudoSelectorList: Combinator<SelectorList>;
+  SelectorCapture: Combinator<SelectorCapture>;
+  ComplexSelector: Combinator<SelectorBranch>;
+  SelectorList: Combinator<SelectorList>;
+  NestedSelectorList: Combinator<SelectorList>;
+  Ruleset: Combinator<Ruleset>;
+  NestedRuleset: Combinator<Ruleset>;
   ForName: Combinator<string>;
   ForBinding: Combinator<ForBinding>;
   ForRangeBound: Combinator<ValueNode>;
   ForRange: Combinator<Range>;
   ForSource: Combinator<ValueNode>;
   For: Combinator<For>;
-  DirectJessIfCondition: Combinator<GuardNode>;
-  DirectJessIfGuardValue: Combinator<GuardNode>;
-  DirectJessIfGuardCompare: Combinator<GuardNode>;
-  DirectJessIfGuardPrimary: Combinator<GuardNode>;
-  DirectJessIfGuardAnd: Combinator<GuardNode>;
-  DirectJessIfGuardOr: Combinator<GuardNode>;
-  DirectJessIfGuard: Combinator<GuardNode>;
-  DirectJessIfBody: Combinator<Statement[]>;
-  DirectJessElseIfBranch: Combinator<IfBranch>;
-  DirectJessElseBranch: Combinator<IfBranch>;
-  DirectJessIf: Combinator<If>;
-  DirectJessStyleImport: Combinator<StyleImport>;
-  DirectJessModuleSpecifier: Combinator<ModuleImportSpecifier>;
-  DirectJessModuleImport: Combinator<ModuleImport>;
-  DirectJessStaticValueAtom: Combinator<ValueNode>;
-  DirectJessStaticValue: Combinator<ValueSlot>;
-  DirectJessStaticCallArgument: Combinator<ValueSlot>;
-  DirectJessStaticCall: Combinator<FunctionCall>;
-  DirectJessStaticAtNonOnlyKeyword: Combinator<Keyword>;
-  DirectJessStaticAtNonOnlyAtom: Combinator<ValueNode>;
-  DirectJessStaticAtQuery: Combinator<ValueNode>;
-  DirectJessStaticAtDashedIdent: Combinator<Keyword>;
-  DirectJessStaticAtPreludeTerm: Combinator<ValueNode>;
-  DirectJessStaticAtPrelude: Combinator<ValueNode | null>;
-  DirectJessMediaPrelude: Combinator<ValueNode | null>;
-  DirectJessStaticAtRuleHeader: Combinator<JessAtRuleHeader>;
-  DirectJessAtRuleHeader: Combinator<JessAtRuleHeader>;
-  DirectJessSupportsAtom: Combinator<ValueNode>;
-  DirectJessGeneralTemplate: Combinator<Interpolation>;
-  DirectJessGeneralTemplateParen: Combinator<Interpolation>;
-  DirectJessGeneralTemplateSquare: Combinator<Interpolation>;
-  DirectJessGeneralTemplateBrace: Combinator<Interpolation>;
-  DirectJessGeneralTemplateDoubleQuoted: Combinator<Interpolation>;
-  DirectJessGeneralTemplateSingleQuoted: Combinator<Interpolation>;
-  DirectJessGeneralQuotedTemplate: Combinator<Interpolation>;
-  DirectJessGeneralQuotedTemplateParen: Combinator<Interpolation>;
-  DirectJessGeneralQuotedTemplateSquare: Combinator<Interpolation>;
-  DirectJessGeneralQuotedTemplateBrace: Combinator<Interpolation>;
-  DirectJessGeneralQuotedTemplateDoubleQuoted: Combinator<Interpolation>;
-  DirectJessGeneralQuotedTemplateSingleQuoted: Combinator<Interpolation>;
-  DirectJessGeneralEnclosed: Combinator<GeneralEnclosed>;
-  DirectJessSupportsNot: Combinator<Keyword>;
-  DirectJessSupportsLogical: Combinator<Keyword>;
-  DirectJessSupportsFeature: Combinator<ValueNode>;
-  DirectJessSupportsInParens: Combinator<ValueNode>;
-  DirectJessSupportsCondition: Combinator<ValueNode>;
-  CssImportTarget: Combinator<Quoted | Url>;
-  DirectJessImportTailFunction: Combinator<FunctionCall>;
-  DirectJessCssImportPrelude: Combinator<ValueNode>;
-  DirectJessCharset: Combinator<AtRuleStatement>;
-  DirectJessCssImport: Combinator<AtRuleStatement>;
-  DirectJessSupportsAtRuleBlock: Combinator<AtRuleBlock>;
-  DirectJessPropertyName: Combinator<Keyword>;
-  DirectJessStaticPropertyDescriptor: Combinator<Declaration>;
-  DirectJessPropertyAtRule: Combinator<AtRuleBlock>;
-  DirectJessKeyframeSelector: Combinator<SimpleSelector>;
-  DirectJessKeyframeBlock: Combinator<Rule>;
-  DirectJessKeyframes: Combinator<AtRuleBlock>;
-  DirectJessOpaquePrelude: Combinator<string | null>;
-  DirectJessOpaqueBody: Combinator<string>;
-  DirectJessOpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
-  DirectJessScopeBlock: Combinator<AtRuleBlock>;
-  DirectJessAtRuleBlock: Combinator<AtRuleBlock>;
-  DirectJessAtRuleStatement: Combinator<AtRuleStatement>;
+  IfCondition: Combinator<GuardNode>;
+  IfGuardCompare: Combinator<GuardNode>;
+  IfGuardPrimary: Combinator<GuardNode>;
+  IfGuardAnd: Combinator<GuardNode>;
+  IfGuardOr: Combinator<GuardNode>;
+  IfGuard: Combinator<GuardNode>;
+  IfBody: Combinator<Statement[]>;
+  ElseIfBranch: Combinator<IfBranch>;
+  ElseBranch: Combinator<IfBranch>;
+  If: Combinator<If>;
+  While: Combinator<While>;
+  StyleImport: Combinator<StyleImport>;
+  ModuleSpecifier: Combinator<ModuleImportSpecifier>;
+  ModuleImport: Combinator<ModuleImport>;
+  HeaderValueAtom: Combinator<ValueNode>;
+  HeaderValue: Combinator<ValueSlot>;
+  HeaderCallArgument: Combinator<ValueSlot>;
+  QueryValue: Combinator<ValueNode>;
+  QueryFeatureName: Combinator<JessQueryFeatureName>;
+  QueryComparisonFeature: Combinator<ValueNode>;
+  QueryNonOnlyKeyword: Combinator<Keyword>;
+  QueryTerm: Combinator<ValueNode>;
+  QueryFeature: Combinator<ValueNode>;
+  QueryDashedIdentifier: Combinator<Keyword>;
+  QueryClause: Combinator<ValueNode>;
+  QueryPrelude: Combinator<ValueNode>;
+  AtRulePrelude: Combinator<ValueNode | null>;
+  ContainerQueryClause: Combinator<ValueNode>;
+  ContainerQueryPrelude: Combinator<ValueNode>;
+  ContainerPrelude: Combinator<ValueNode>;
+  MediaPrelude: Combinator<ValueNode | null>;
+  AtRuleStatementHeader: Combinator<JessAtRuleHeader>;
+  AtRuleHeader: Combinator<JessAtRuleHeader>;
+  SupportsAtom: Combinator<ValueNode>;
+  GeneralTemplate: Combinator<Interpolation>;
+  GeneralTemplateGroup: Combinator<Interpolation>;
+  GeneralTemplateQuoted: Combinator<Interpolation>;
+  GeneralQuotedTemplate: Combinator<Interpolation>;
+  GeneralQuotedTemplateGroup: Combinator<Interpolation>;
+  Enclosed: Combinator<FunctionCall | Block>;
+  SupportsNot: Combinator<Keyword>;
+  SupportsLogical: Combinator<Keyword>;
+  SupportsFeature: Combinator<ValueNode>;
+  SupportsInParens: Combinator<ValueNode>;
+  SupportsCondition: Combinator<ValueNode>;
+  Charset: Combinator<AtRuleStatement>;
+  ImportStatement: Combinator<AtRuleStatement>;
+  SupportsAtRuleBlock: Combinator<AtRuleBlock>;
+  PropertyName: Combinator<Keyword>;
+  PropertyDescriptor: Combinator<Declaration>;
+  PropertyAtRule: Combinator<AtRuleBlock>;
+  Percentage: Combinator<string>;
+  KeyframeSelector: Combinator<SimpleSelector>;
+  KeyframeBlock: Combinator<Ruleset>;
+  Keyframes: Combinator<AtRuleBlock>;
+  OpaqueAtPrelude: Combinator<string | null>;
+  OpaqueBody: Combinator<string>;
+  OpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
+  ScopeBlock: Combinator<AtRuleBlock>;
+  AtRuleBlock: Combinator<AtRuleBlock>;
+  AtRuleStatement: Combinator<AtRuleStatement>;
   rw: Combinator<unknown>;
   whitespace: Combinator<unknown>;
+  typedAtRuleHeader: Combinator<unknown>;
+  identifierOrFunction: Combinator<string>;
 };
 
-type SharedCssSyntax = {
-  CssSyntaxAttributeModifier: Combinator<string>;
-  CssSyntaxAttributeOperator: Combinator<string>;
-  CssSyntaxDoubleQuotedText: Combinator<string>;
-  CssSyntaxHexColor: Combinator<string>;
-  CssSyntaxImportant: Combinator<string>;
-  CssSyntaxKeyframesAtKeyword: Combinator<string>;
-  CssSyntaxKeyword: Combinator<string>;
-  CssSyntaxNth: Combinator<string>;
-  CssSyntaxNthChildName: Combinator<string>;
-  CssSyntaxNthTypeName: Combinator<string>;
-  CssSyntaxNthName: Combinator<string>;
-  CssSyntaxSelectorArgPseudoName: Combinator<string>;
-  CssSyntaxOfKeyword: Combinator<string>;
-  CssSyntaxPseudoCloseAhead: Combinator<string>;
-  CssSyntaxNumber: Combinator<string>;
-  CssSyntaxProperty: Combinator<string>;
-  CssSyntaxInterpolatedPropertyStart: Combinator<string>;
-  CssSyntaxInterpolatedPropertyTail: Combinator<string>;
-  CssSyntaxCustomProperty: Combinator<string>;
-  CssSyntaxCustomOuterContent: Combinator<string>;
-  CssSyntaxCustomInnerContent: Combinator<string>;
-  CssSyntaxCustomSingleQuoted: Combinator<string>;
-  CssSyntaxCustomDoubleQuoted: Combinator<string>;
-  CssSyntaxQueryAndOr: Combinator<string>;
-  CssSyntaxQueryNot: Combinator<string>;
-  CssSyntaxQueryOnly: Combinator<string>;
-  CssSyntaxQueryComparisonOperator: Combinator<string>;
-  CssSyntaxContainerAtKeyword: Combinator<string>;
-  CssSyntaxSingleQuotedText: Combinator<string>;
-  CssSyntaxDimensionUnit: Combinator<string>;
-  CssSyntaxUrlOpen: Combinator<string>;
-  CssSyntaxUrlInner: Combinator<string>;
-  CssSyntaxStaticUrlInner: Combinator<string>;
-  CssSyntaxGenericAtRuleName: Combinator<string>;
-  CssSyntaxSimple: Combinator<string>;
-  CssSyntaxPseudoColon: Combinator<string>;
-  CssSyntaxMediaAtKeyword: Combinator<string>;
-  JessAstOpaqueStaticPrelude: Combinator<string | null>;
-  JessAstOpaqueBody: Combinator<string>;
+type SharedSyntax = {
+  AttributeModifier: Combinator<string>;
+  AttributeOperator: Combinator<string>;
+  DoubleQuotedText: Combinator<string>;
+  HexColor: Combinator<string>;
+  ImportantToken: Combinator<string>;
+  KeyframesAtKeyword: Combinator<string>;
+  Identifier: Combinator<string>;
+  NthExpression: Combinator<string>;
+  NthOfKeyword: Combinator<string>;
+  PseudoSelectorCloseAhead: Combinator<string>;
+  NumberToken: Combinator<string>;
+  InterpolatedPropertyStart: Combinator<string>;
+  InterpolatedPropertyTail: Combinator<string>;
+  CustomPropertyName: Combinator<string>;
+  CustomOuterContent: Combinator<string>;
+  CustomInnerContent: Combinator<string>;
+  CustomSingleQuoted: Combinator<string>;
+  CustomDoubleQuoted: Combinator<string>;
+  QueryAndOr: Combinator<string>;
+  QueryNot: Combinator<string>;
+  QueryOnly: Combinator<string>;
+  QueryComparisonOperator: Combinator<string>;
+  ContainerAtKeyword: Combinator<string>;
+  SupportsAtKeyword: Combinator<string>;
+  SingleQuotedText: Combinator<string>;
+  DimensionUnit: Combinator<string>;
+  UnicodeRangeToken: Combinator<string>;
+  UrlOpen: Combinator<string>;
+  UrlInner: Combinator<string>;
+  GenericAtRuleName: Combinator<string>;
+  SimpleSelectorToken: Combinator<string>;
+  PseudoSelectorColon: Combinator<string>;
+  MediaAtKeyword: Combinator<string>;
+  StatementAtRuleName: Combinator<string>;
+  PreprocessorOpaqueAtRulePreludeCapture: Combinator<string | null>;
+  PreprocessorOpaqueAtRuleBodyCapture: Combinator<string>;
 };
 
 function requireToken(value: unknown): Token {
   if (typeof value !== 'object' || value === null || !('value' in value)) {
-    throw new TypeError('Direct Jess AST grammar produced a non-token child.');
+    throw new TypeError('Jess grammar produced a non-token child.');
   }
   const token = value as { readonly value: unknown };
   if (typeof token.value !== 'string') {
-    throw new TypeError('Direct Jess AST grammar produced a non-token child.');
+    throw new TypeError('Jess grammar produced a non-token child.');
   }
   return { value: token.value };
 }
@@ -248,13 +279,53 @@ function requireToken(value: unknown): Token {
 function requireFields(fields: FieldMap | undefined, name: string): readonly FieldCapture[] {
   const field = fields?.[name];
   if (field === undefined) {
-    throw new TypeError(`Direct Jess AST grammar lost required ${name} field.`);
+    throw new TypeError(`Jess grammar lost required ${name} field.`);
   }
   return Array.isArray(field) ? field : [field];
 }
 
-function isToken(value: unknown): value is Token {
-  return typeof value === 'object' && value !== null && 'value' in value && typeof value.value === 'string';
+function jessCombinator(value: Token): JessComplexTail['combinator'] {
+  if (value.value === '>' || value.value === '+' || value.value === '~' || value.value === '||') {
+    return value.value;
+  }
+  return ' ';
+}
+
+/*
+ * A NESTING leading combinator (`.parent { > .child }`) is one of `>`/`+`/`~`,
+ * mirroring css's `relativeSelectorCombinator`. The column combinator `||` is a
+ * compound separator, not a relative one, so it is excluded here.
+ */
+function jessRelativeCombinator(child: unknown): '>' | '+' | '~' {
+  if (isToken(child) && (child.value === '>' || child.value === '+')) {
+    return child.value;
+  }
+  return '~';
+}
+
+/*
+ * Decompose an already-built `SelectorBranch` back into `{combinator, term}`
+ * segments so a leading relative combinator can be prepended. Mirrors css's
+ * `branchSegments`: a bare term is one segment; a `RelativeSelector` skips its
+ * own leading combinator at index 0.
+ */
+function branchSegments(branch: SelectorBranch): [JessSelectorSegment, ...JessSelectorSegment[]] {
+  if (branch.type !== 'ComplexSelector' && branch.type !== 'RelativeSelector') {
+    return [{ term: branch }];
+  }
+  const segments: JessSelectorSegment[] = [];
+  let combinator: AstCombinator = ' ';
+  const start = branch.type === 'RelativeSelector' ? 1 : 0;
+  for (let index = start; index < branch.value.length; index++) {
+    const part = branch.value[index]!;
+    if (typeof part === 'string') {
+      combinator = part;
+    } else {
+      segments.push(segments.length === 0 ? { term: part } : { combinator, term: part });
+      combinator = ' ';
+    }
+  }
+  return [segments[0]!, ...segments.slice(1)];
 }
 
 function isExpressionFact(value: unknown): value is ExpressionFact {
@@ -271,7 +342,7 @@ function isJessAtRuleHeader(value: unknown): value is JessAtRuleHeader {
 
 function requireJessAtRuleHeader(value: unknown): JessAtRuleHeader {
   if (!isJessAtRuleHeader(value)) {
-    throw new TypeError('Direct Jess AST grammar produced an invalid at-rule header.');
+    throw new TypeError('Jess grammar produced an invalid at-rule header.');
   }
   return value;
 }
@@ -282,8 +353,9 @@ function isAtRuleNameToken(value: unknown): value is Token {
     && value.value.startsWith('@');
 }
 
-function isCompound(value: unknown): value is CompoundSelector {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'CompoundSelector' && 'simples' in value && Array.isArray(value.simples);
+function isSelectorTerm(value: unknown): value is SelectorTerm {
+  return isSimpleToken(value)
+    || (typeof value === 'object' && value !== null && 'type' in value && value.type === 'CompoundSelector' && 'value' in value && Array.isArray(value.value));
 }
 
 function isSimpleSelector(value: unknown): value is SimpleSelector {
@@ -293,24 +365,15 @@ function isSimpleSelector(value: unknown): value is SimpleSelector {
     && 'interp' in value && (isInterpolation(value.interp) || value.interp === null);
 }
 
-function isComplexSelector(value: unknown): value is ComplexSelector {
-  return typeof value === 'object' && value !== null
-    && 'type' in value && value.type === 'ComplexSelector'
-    && 'head' in value && isCompound(value.head)
-    && 'tail' in value && Array.isArray(value.tail);
+function isSelectorBranch(value: unknown): value is SelectorBranch {
+  return isSelectorTerm(value) || isComplexSelector(value) || isRelativeSelector(value);
 }
 
 function isSelectorList(value: unknown): value is SelectorList {
   return typeof value === 'object' && value !== null
     && 'type' in value && value.type === 'SelectorList'
     && 'selectors' in value && Array.isArray(value.selectors)
-    && value.selectors.every(isComplexSelector);
-}
-
-function isJessComplexTail(value: unknown): value is JessComplexTail {
-  return typeof value === 'object' && value !== null
-    && 'comb' in value && (value.comb === ' ' || value.comb === '>' || value.comb === '+' || value.comb === '~' || value.comb === '||')
-    && 'compound' in value && isCompound(value.compound);
+    && value.selectors.every(isSelectorBranch);
 }
 
 function isJessReferenceTail(value: unknown): value is JessReferenceTail {
@@ -327,71 +390,46 @@ function isSimpleToken(value: unknown): value is SimpleToken {
   return isSimpleSelector(value) || isPseudoSelector(value);
 }
 
-function requireSimpleToken(value: unknown): SimpleToken {
-  if (!isSimpleToken(value)) {
-    throw new TypeError('Direct Jess AST grammar produced a non-simple-token child.');
-  }
-  return value;
-}
-
-function requireCompound(value: unknown): CompoundSelector {
-  if (!isCompound(value)) {
-    throw new TypeError('Direct Jess AST grammar produced a non-compound selector child.');
-  }
-  return value;
-}
-
-function requireComplexSelector(value: unknown): ComplexSelector {
-  if (!isComplexSelector(value)) {
-    throw new TypeError('Direct Jess AST grammar produced a non-complex selector child.');
-  }
-  return value;
-}
+const selectorTermFromTokens = (tokens: readonly SimpleToken[]): SelectorTerm =>
+  selectorTermOf([tokens[0]!, ...tokens.slice(1)]);
 
 function requireSelectorList(value: unknown): SelectorList {
   if (!isSelectorList(value)) {
-    throw new TypeError('Direct Jess AST grammar produced a non-selector-list child.');
-  }
-  return value;
-}
-
-function requireJessComplexTail(value: unknown): JessComplexTail {
-  if (!isJessComplexTail(value)) {
-    throw new TypeError('Direct Jess AST grammar produced an invalid selector tail.');
+    throw new TypeError('Jess grammar produced a non-selector-list child.');
   }
   return value;
 }
 
 function requireJessReferenceTail(value: unknown): JessReferenceTail {
   if (!isJessReferenceTail(value)) {
-    throw new TypeError('Direct Jess AST grammar produced an invalid reference tail.');
+    throw new TypeError('Jess grammar produced an invalid reference tail.');
   }
   return value;
 }
 
 function requireString(value: unknown): string {
   if (typeof value !== 'string') {
-    throw new TypeError('Direct Jess AST grammar produced a non-string child.');
+    throw new TypeError('Jess grammar produced a non-string child.');
   }
   return value;
 }
 
 function requireInterpolation(value: unknown): Interpolation {
   if (!isInterpolation(value)) {
-    throw new TypeError('Direct Jess AST grammar produced a non-interpolation child.');
+    throw new TypeError('Jess grammar produced a non-interpolation child.');
   }
   return value;
 }
 
 function requireKeyword(value: unknown): Keyword {
   if (!isValueNode(value) || value.type !== 'Keyword') {
-    throw new TypeError('Direct Jess AST grammar produced a non-keyword child.');
+    throw new TypeError('Jess grammar produced a non-keyword child.');
   }
   return value;
 }
 
 function staticSelectorText(selector: SelectorList): string {
-  return selector.selectors.map(complexCanonical).join(', ');
+  return selector.selectors.map(selectorBranchCanonical).join(', ');
 }
 
 /*
@@ -407,6 +445,20 @@ function isExtendInstruction(value: unknown): value is ExtendInstruction {
   return typeof value === 'object' && value !== null
     && 'target' in value && 'partial' in value
     && typeof value.partial === 'boolean';
+}
+
+/*
+ * A `MixinParams` child: the only param-shaped reduction the grammar produces,
+ * distinguished from every AST node by carrying `name` without a `type` tag.
+ * The list form is what a lambda or mixin definition finds among its children,
+ * and an empty parameter list is still that list.
+ */
+function isParam(value: unknown): value is Param {
+  return typeof value === 'object' && value !== null && !('type' in value) && 'name' in value;
+}
+
+function isParamList(value: unknown): value is Param[] {
+  return Array.isArray(value) && value.every(isParam);
 }
 
 function isMixinCallArray(value: unknown): value is MixinCall[] {
@@ -428,10 +480,10 @@ function isValueNode(value: unknown): value is ValueNode {
      */
     && (value.type === 'Any'
       || value.type === 'Keyword'
+      || value.type === 'Null'
       || value.type === 'Quoted'
-      || value.type === 'VariableReference'
+      || value.type === 'Lookup'
       || value.type === 'Reference'
-      || value.type === 'PropertyReference'
       || value.type === 'Color'
       || value.type === 'Dimension'
       || value.type === 'SelectorCapture'
@@ -439,10 +491,10 @@ function isValueNode(value: unknown): value is ValueNode {
       || value.type === 'Operation'
       || value.type === 'Condition'
       || value.type === 'Interpolation'
-      || value.type === 'GeneralEnclosed'
-      || value.type === 'SpacedValue'
+      || value.type === 'Sequence'
       || value.type === 'List'
       || value.type === 'Block'
+      || value.type === 'Expression'
       || value.type === 'Url'
       || value.type === 'AnonymousMixin'
       || value.type === 'Collection'
@@ -461,17 +513,17 @@ function valueSlot(value: ValueSlot): ValueSlot {
   if (isValueSlotArray(value)) {
     return value;
   }
-  if (value.type === 'SpacedValue') {
+  if (value.type === 'Sequence') {
     return value.parts;
   }
-  if (value.type === 'Block' && isSpacedValue(value.inner)) {
-    return { ...value, inner: value.inner.parts };
+  if (value.type === 'Block' && isSequence(value.value)) {
+    return { ...value, value: value.value.parts };
   }
   return value;
 }
 
-function isSpacedValue(value: ValueSlot): value is SpacedValue {
-  return isValueNode(value) && value.type === 'SpacedValue';
+function isSequence(value: ValueSlot): value is Sequence {
+  return isValueNode(value) && value.type === 'Sequence';
 }
 
 function isValueSlotValue(value: unknown): value is ValueSlot {
@@ -483,12 +535,15 @@ function requireValueSlot(value: unknown): ValueSlot {
 }
 
 function isJessMixinCallArgument(value: unknown): value is JessMixinCallArgument {
-  return typeof value === 'object' && value !== null && 'value' in value && isValueSlotValue(value.value);
+  /* `name` is ALWAYS present — `undefined` is what positional means — so its
+   * absence is a reduced-shape defect, not a positional argument. */
+  return typeof value === 'object' && value !== null && 'value' in value && isValueSlotValue(value.value)
+    && 'name' in value && (value.name === undefined || typeof value.name === 'string');
 }
 
 function requireValueNode(value: unknown): ValueNode {
   if (!isValueNode(value)) {
-    throw new TypeError('Direct Jess AST grammar produced a non-value child.');
+    throw new TypeError('Jess grammar produced a non-value child.');
   }
   return value;
 }
@@ -503,6 +558,7 @@ function isGuardNode(value: unknown): value is GuardNode {
     case 'truth':
       return 'value' in value && isValueNode(value.value);
     case 'cmp':
+    case 'match':
       return 'op' in value && typeof value.op === 'string'
         && 'left' in value && isValueNode(value.left)
         && 'right' in value && isValueNode(value.right);
@@ -522,7 +578,7 @@ function isGuardNode(value: unknown): value is GuardNode {
 
 function requireGuardNode(value: unknown): GuardNode {
   if (!isGuardNode(value)) {
-    throw new TypeError('Direct Jess AST grammar produced a non-guard child.');
+    throw new TypeError('Jess grammar produced a non-guard child.');
   }
   return value;
 }
@@ -624,7 +680,7 @@ function customValueFromChildren(children: readonly unknown[]): ValueNode {
 function requireExpressionFact(value: unknown): ExpressionFact {
   if (typeof value !== 'object' || value === null || !('value' in value) || !('src' in value)
     || typeof value.src !== 'string' || !isValueNode(value.value)) {
-    throw new TypeError('Direct Jess AST grammar produced an invalid expression fact.');
+    throw new TypeError('Jess grammar produced an invalid expression fact.');
   }
   return { value: value.value, src: value.src };
 }
@@ -636,7 +692,7 @@ function requireExpressionFact(value: unknown): ExpressionFact {
  * also carries a block comment, which the operator-boundary productions recognize
  * as grammar structure rather than trimming out of a token.
  */
-function requireOperatorFact(value: unknown): JessOperatorFact {
+function requireJessOperatorFact(value: unknown): JessOperatorFact {
   if (typeof value === 'object' && value !== null && 'value' in value && 'src' in value
     && typeof value.value === 'string' && typeof value.src === 'string') {
     return { value: value.value, src: value.src };
@@ -648,13 +704,15 @@ function requireOperatorFact(value: unknown): JessOperatorFact {
 function foldExpression(children: readonly unknown[]): ExpressionFact {
   let fact = requireExpressionFact(children[0]);
   for (let index = 1; index < children.length; index += 2) {
-    const operator = requireOperatorFact(children[index]);
+    const operator = requireJessOperatorFact(children[index]);
     const right = requireExpressionFact(children[index + 1]);
     fact = {
       value: operation(
         operator.value,
         fact.value,
-        right.value
+        right.value,
+        false,
+        cssBaseMathOutsideParens(operator.value)
       ),
       src: `${fact.src}${operator.src}${right.src}`
     };
@@ -662,17 +720,83 @@ function foldExpression(children: readonly unknown[]): ExpressionFact {
   return fact;
 }
 
+/**
+ * A {@link Lookup} name is `string | ValueNode` now that `@@indirect` is spelled
+ * as a node-valued name; a literal name is its own spelling, a node-valued one
+ * defers to the expression printer.
+ */
+function lookupNameSource(name: string | ValueNode): string {
+  return typeof name === 'string' ? name : expressionSource(name);
+}
+
 function expressionSource(value: ValueNode): string {
   switch (value.type) {
-    case 'Keyword': case 'Color': case 'Dimension': case 'Quoted': case 'Any': return value.src;
-    case 'VariableReference': return `$${value.name}`;
+    case 'Keyword': case 'Null': case 'Color': case 'Dimension': case 'Quoted': case 'Any': return value.src;
+    case 'Lookup': return value.kind === 'var'
+      ? `${value.scope === 'scoped' ? '^' : '$'}${lookupNameSource(value.name)}`
+      : value.raw;
     case 'Reference': return value.raw;
-    case 'PropertyReference': return value.raw;
     case 'Operation': return `${expressionSource(value.left)} ${value.operator} ${expressionSource(value.right)}`;
     case 'Condition': return value.src;
     case 'Interpolation': return value.parts.map(part => 'lit' in part ? part.lit : expressionSource(part.ref)).join('');
-    default: throw new TypeError(`Direct Jess expression cannot preserve source for ${value.type}.`);
+    default: throw new TypeError(`Jess expression cannot preserve source for ${value.type}.`);
   }
+}
+
+/**
+ * Fold one logical rung left-associatively (§4.5.5). The result is an
+ * `Operation` carrying the word itself as its operator — the node that means
+ * "return one of these operands, short-circuiting" — so the transpiled `.jess`
+ * still reads `$a or $default` rather than a rewritten `$if` that duplicates
+ * the operand and no direct author would write.
+ */
+function foldLogicalExpression(kind: 'and' | 'or', children: readonly unknown[]): ExpressionFact {
+  const facts = children.filter(isExpressionFact);
+  let fact = requireExpressionFact(facts[0]);
+  for (let index = 1; index < facts.length; index += 1) {
+    const right = facts[index]!;
+    fact = {
+      value: operation(kind, fact.value, right.value, false, cssBaseMathOutsideParens(kind)),
+      src: `${fact.src} ${kind} ${right.src}`
+    };
+  }
+  return fact;
+}
+
+function referenceBaseSource(value: ValueNode): string {
+  switch (value.type) {
+    case 'Lookup':
+      if (value.kind === 'var') {
+        return `${value.scope === 'scoped' ? '^' : '$'}${lookupNameSource(value.name)}`;
+      }
+      if (value.kind === 'entry') {
+        return value.raw;
+      }
+      throw new TypeError(`Jess expression reference cannot start from ${value.type}.`);
+    default: throw new TypeError(`Jess expression reference cannot start from ${value.type}.`);
+  }
+}
+
+/** A member step is a `LookupStep` whose name is a literal — the old `DotLookup`. */
+function isMemberStep(step: JessReferenceTail['step'] | undefined): boolean {
+  return step?.type === 'LookupStep' && typeof step.name === 'string';
+}
+
+function declarationMemberReferenceFromVariableBase(
+  base: Lookup,
+  tails: readonly JessReferenceTail[]
+): Reference | null {
+  if (base.scope !== 'live' || base.name === 'type' || !isMemberStep(tails[0]?.step)) {
+    return null;
+  }
+  return reference(
+    declarationReference('$'),
+    [
+      lookupStep('member', base.name),
+      ...tails.map(tail => tail.step)
+    ],
+    `$${lookupNameSource(base.name)}${tails.map(tail => tail.src).join('')}`
+  );
 }
 
 function interpolationFromChildren(
@@ -691,7 +815,7 @@ function interpolationFromChildren(
         span
       );
     }
-    return interpolation([{ ref: varIndirect(
+    return interpolation([{ ref: variableReference(
       ref,
       'live'
     ), unquote: true }]);
@@ -731,7 +855,7 @@ function dollarBraceInterpolation(
   children: readonly unknown[],
   span?: { readonly start: number; readonly end: number }
 ): Interpolation {
-  if (requireToken(children[0]).value !== '${[') {
+  if (requireToken(children[1]).value !== '[') {
     const ref = variableReference(
       requireToken(children[1]).value,
       'live'
@@ -744,10 +868,10 @@ function dollarBraceInterpolation(
     }
     return interpolation([{ ref, unquote: true }]);
   }
-  const head = requireToken(children[1]).value;
+  const head = requireToken(children[2]).value;
   if (head === '$') {
     const named = variableReference(
-      requireToken(children[2]).value,
+      requireToken(children[3]).value,
       'live'
     );
     if (span) {
@@ -756,12 +880,12 @@ function dollarBraceInterpolation(
         span
       );
     }
-    return interpolation([{ ref: varIndirect(
+    return interpolation([{ ref: variableReference(
       named,
       'live'
     ), unquote: true }]);
   }
-  const name = head === '"' || head === '\'' ? requireToken(children[2]).value : head;
+  const name = head === '"' || head === '\'' ? requireToken(children[3]).value : head;
   return interpolation([{ ref: propertyReference(
     name,
     tokenSource(children)
@@ -782,9 +906,12 @@ function referenceArgSource(value: JessMixinCallArgument['value']): string {
     return '';
   }
   switch (value.type) {
-    case 'Keyword': case 'Color': case 'Dimension': case 'Quoted': case 'Any': return value.src;
-    case 'VariableReference': return `$${value.name}`;
-    case 'Reference': case 'PropertyReference': return value.raw;
+    case 'Keyword': case 'Null': case 'Color': case 'Dimension': case 'Quoted': case 'Any': return value.src;
+    case 'Lookup': return value.kind === 'var'
+      ? `${value.scope === 'scoped' ? '$^' : '$'}${lookupNameSource(value.name)}`
+      : value.raw;
+    case 'Reference': return value.raw;
+    case 'Operation': case 'Condition': case 'Interpolation': return expressionSource(value);
     default: return '';
   }
 }
@@ -793,13 +920,22 @@ function tokenSource(children: readonly unknown[]): string {
   return children.map(requireToken).map(token => token.value).join('');
 }
 
+function sourceFromState(state: unknown): string | undefined {
+  return typeof state === 'object'
+    && state !== null
+    && 'source' in state
+    && typeof state.source === 'string'
+    ? state.source
+    : undefined;
+}
+
 function interpolationValue(child: unknown): Interpolation {
   if (isInterpolation(child)) {
     return child;
   }
   const fact = requireExpressionFact(child);
   if (!isInterpolation(fact.value)) {
-    throw new TypeError('Direct Jess quoted expression produced a non-interpolation fact.');
+    throw new TypeError('Jess quoted expression produced a non-interpolation fact.');
   }
   return fact.value;
 }
@@ -857,7 +993,7 @@ function quotedExpressionFact(children: readonly unknown[]): ExpressionFact {
       ? requireExpressionFact(child).src
       : isInterpolation(child)
         ? (() => {
-            throw new TypeError('Direct Jess expression quote lost interpolation source.');
+            throw new TypeError('Jess expression quote lost interpolation source.');
           })()
         : requireToken(child).value).join('');
   return { value, src };
@@ -877,15 +1013,22 @@ function reduceColonFeature(children: readonly unknown[], lostMessage: string): 
     : block(operation(
         ':',
         keyword(propertyName),
-        value
+        value,
+        false,
+        cssBaseMathOutsideParens(':')
       ));
+}
+
+function functionOpenName(child: unknown): string {
+  const value = requireToken(child).value;
+  return value.endsWith('(') ? value.slice(0, -1) : value;
 }
 
 function requireStatements(children: readonly unknown[]): Statement[] {
   const statements: Statement[] = [];
   for (const child of children) {
-    if (!isVarDeclaration(child) && !isMixinDef(child) && !isMixinCall(child) && !isApply(child) && !isReferenceCall(child) && !isRule(child) && !isFor(child) && !isIf(child) && !isDeclaration(child) && !isStyleImport(child) && !isModuleImport(child) && !isAtRuleBlock(child) && !isAtRuleStatement(child) && !isOpaqueAtRuleBlock(child)) {
-      throw new TypeError('Direct Jess AST grammar produced a non-statement child.');
+    if (!isVarDeclaration(child) && !isMixinDefinition(child) && !isMixinCall(child) && !isApply(child) && !isReferenceCall(child) && !isRuleset(child) && !isFor(child) && !isIf(child) && !isWhile(child) && !isDeclaration(child) && !isStyleImport(child) && !isModuleImport(child) && !isAtRuleBlock(child) && !isAtRuleStatement(child) && !isOpaqueAtRuleBlock(child)) {
+      throw new TypeError('Jess grammar produced a non-statement child.');
     }
     statements.push(child);
   }
@@ -919,7 +1062,7 @@ function collectBodyStatements(children: readonly unknown[], open: number): Stat
 
 function requireStatementList(value: unknown): Statement[] {
   if (!Array.isArray(value)) {
-    throw new TypeError('Direct Jess AST grammar produced a non-statement list.');
+    throw new TypeError('Jess grammar produced a non-statement list.');
   }
   return requireStatements(value);
 }
@@ -927,19 +1070,19 @@ function requireStatementList(value: unknown): Statement[] {
 function isIfBranch(value: unknown): value is IfBranch {
   return typeof value === 'object' && value !== null
     && 'guard' in value && (value.guard === null || isGuardNode(value.guard))
-    && 'body' in value && Array.isArray(value.body);
+    && 'rules' in value && Array.isArray(value.rules);
 }
 
 function requireIfBranch(value: unknown): IfBranch {
   if (!isIfBranch(value)) {
-    throw new TypeError('Direct Jess AST grammar produced an invalid conditional branch.');
+    throw new TypeError('Jess grammar produced an invalid conditional branch.');
   }
-  return { guard: value.guard, body: requireStatementList(value.body) };
+  return { guard: value.guard, rules: requireStatementList(value.rules) };
 }
 
 function requireIfBranchArray(value: unknown): IfBranch[] {
   if (!Array.isArray(value)) {
-    throw new TypeError('Direct Jess AST grammar produced an invalid conditional branch list.');
+    throw new TypeError('Jess grammar produced an invalid conditional branch list.');
   }
   return value.map(requireIfBranch);
 }
@@ -947,26 +1090,14 @@ function requireIfBranchArray(value: unknown): IfBranch[] {
 function requireIfBranchTuple(value: IfBranch[]): [IfBranch, ...IfBranch[]] {
   const first = value[0];
   if (first === undefined) {
-    throw new TypeError('Direct Jess AST grammar produced an empty conditional branch list.');
+    throw new TypeError('Jess grammar produced an empty conditional branch list.');
   }
   return [first, ...value.slice(1)];
 }
 
-function isForBinding(value: unknown): value is ForBinding {
-  if (typeof value !== 'object' || value === null || !('kind' in value)) {
-    return false;
-  }
-  if (value.kind === 'single') {
-    return 'name' in value && typeof value.name === 'string';
-  }
-  return (value.kind === 'comma' || value.kind === 'bracket' || value.kind === 'tuple')
-    && 'names' in value && Array.isArray(value.names)
-    && value.names.every(name => name === undefined || typeof name === 'string');
-}
-
 function requireForBinding(value: unknown): ForBinding {
   if (!isForBinding(value)) {
-    throw new TypeError('Direct Jess AST grammar produced an invalid for binding.');
+    throw new TypeError('Jess grammar produced an invalid for binding.');
   }
   return value;
 }
@@ -991,10 +1122,6 @@ function isApply(value: unknown): value is Apply {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Apply';
 }
 
-function isModuleImport(value: unknown): value is ModuleImport {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'ModuleImport';
-}
-
 function isReferenceCall(value: unknown): value is Reference {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Reference';
 }
@@ -1003,9 +1130,26 @@ function isQuoted(value: unknown): value is Quoted {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Quoted';
 }
 
-function requireStaticQuoted(value: unknown): Quoted {
+function isUrl(value: unknown): value is Url {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Url'
+    && 'value' in value
+    && isValueNode(value.value);
+}
+
+function urlFromChildren(children: readonly unknown[]): Url {
+  if (children.length === 2) {
+    return url(any(''));
+  }
+  const body = children[1];
+  return isValueNode(body) ? url(body) : url(any(requireToken(body).value));
+}
+
+function requireLiteralQuoted(value: unknown): Quoted {
   if (!isQuoted(value)) {
-    throw new TypeError('Direct Jess module syntax requires a static quoted path.');
+    throw new TypeError('Jess module syntax requires a literal quoted path.');
   }
   return value;
 }
@@ -1022,12 +1166,23 @@ function isDeclaration(value: unknown): value is Declaration {
       || (Array.isArray(value.value) && value.value.every(isValueNode)));
 }
 
-function isRule(value: unknown): value is Rule {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Rule';
+function isCollectionEntry(value: unknown): value is CollectionEntry {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'CollectionEntry'
+    && 'key' in value
+    && isValueSlotValue(value.key)
+    && 'value' in value
+    && isValueSlotValue(value.value);
 }
 
-function isMixinDef(value: unknown): value is MixinDef {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'MixinDef';
+function isRuleset(value: unknown): value is Ruleset {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Ruleset';
+}
+
+function isMixinDefinition(value: unknown): value is MixinDefinition {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'MixinDefinition';
 }
 
 function isMixinCall(value: unknown): value is MixinCall {
@@ -1054,9 +1209,19 @@ function isIf(value: unknown): value is If {
     && Array.isArray(value.branches);
 }
 
+function isWhile(value: unknown): value is While {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'While'
+    && 'guard' in value
+    && 'rules' in value
+    && Array.isArray(value.rules);
+}
+
 function requireExactToken(value: unknown, expected: string): void {
   if (requireToken(value).value !== expected) {
-    throw new TypeError(`Direct Jess AST grammar produced ${requireToken(value).value} where ${expected} was required.`);
+    throw new TypeError(`Jess grammar produced ${requireToken(value).value} where ${expected} was required.`);
   }
 }
 
@@ -1073,15 +1238,34 @@ function isVarDeclaration(value: unknown): value is VariableDeclaration {
 
 /*
  * Shared guard reducers. `$if` and mixin guards recognize the same GuardNode
- * shapes through distinct combinator arms; only the recognition differs, so the
- * reduction bodies are identical and shared here.
+ * shapes through distinct combinator arms, so the logical and truth reductions
+ * are identical and shared here. COMPARISON is the one rung where the two
+ * positions genuinely differ (§4.2a) and it gets a reducer each, below.
  */
 function reduceGuardTruth(children: readonly unknown[]): GuardNode {
   return { g: 'truth', value: requireExpressionFact(children[0]).value };
 }
-function reduceGuardCompare(children: readonly unknown[]): GuardNode {
+
+/*
+ * The two comparison POSITIONS (§4.2a). `$if` asserts — a groundless relational
+ * pair raises, because the author asked which value is greater and there is no
+ * answer. A mixin `when` clause TESTS — a groundless pair means this definition
+ * does not apply, which is an answer, and raising there would turn a non-match
+ * into a hard compile stop. Same operands, same ground; only the verdict on a
+ * groundless pair differs, so they are two `g` spellings over one shape rather
+ * than one node plus an eval-time context read.
+ */
+function reduceIfCompare(children: readonly unknown[]): GuardNode {
   return {
     g: 'cmp',
+    op: requireToken(children[1]).value.trim(),
+    left: requireExpressionFact(children[0]).value,
+    right: requireExpressionFact(children[2]).value
+  };
+}
+function reduceGuardCompare(children: readonly unknown[]): GuardNode {
+  return {
+    g: 'match',
     op: requireToken(children[1]).value.trim(),
     left: requireExpressionFact(children[0]).value,
     right: requireExpressionFact(children[2]).value
@@ -1105,14 +1289,14 @@ function reduceVarDeclaration(children: readonly unknown[]): VariableDeclaration
   const operatorIndex = children.findIndex(child => isToken(child)
     && (child.value === ':' || child.value === '?:' || child.value === ':='));
   if (operatorIndex < 1) {
-    throw new TypeError('Direct Jess variable declaration lost its assignment operator.');
+    throw new TypeError('Jess variable declaration lost its assignment operator.');
   }
   const operator = requireToken(children[operatorIndex]).value;
   const lookup = operatorIndex === 3 ? 'scoped' as const : 'live' as const;
   const write = operator === '?:'
-    ? { mode: 'if-absent' as const, lookup }
+    ? { mode: 'if-absent' as const, scope: lookup }
     : operator === ':='
-      ? { mode: 'reassign' as const, lookup }
+      ? { mode: 'reassign' as const, scope: lookup }
       : { mode: 'declare' as const };
   return variableDeclaration(
     requireToken(children[operatorIndex - 1]).value,
@@ -1130,9 +1314,9 @@ function reduceVarDeclaration(children: readonly unknown[]): VariableDeclaration
 function reduceLambda(children: readonly unknown[]): AnonymousMixin {
   const bodyOpen = children.findIndex(child => isToken(child) && child.value === '{');
   if (bodyOpen < 0) {
-    throw new TypeError('Direct Jess AST grammar produced a lambda without a body.');
+    throw new TypeError('Jess grammar produced a lambda without a body.');
   }
-  const params = children.find(Array.isArray) as Param[] | undefined ?? [];
+  const params = children.find(isParamList) ?? [];
   return anonymousMixin(
     collectBodyStatements(
       children,
@@ -1147,25 +1331,218 @@ function reduceLambda(children: readonly unknown[]): AnonymousMixin {
  * in their recognition arms (static excludes interpolation); the compound,
  * complex, tail, and list reductions are structurally identical.
  */
-function reduceCompound(children: readonly unknown[]): CompoundSelector {
-  return compoundSelectorOf(children.map(requireSimpleToken));
+function reduceCompound(children: readonly unknown[]): SelectorTerm {
+  return selectorTermFromTokens(children.filter(isSimpleToken));
 }
-function reduceComplex(children: readonly unknown[]): ComplexSelector {
-  return complexSelector([
-    { compound: requireCompound(children[0]) },
-    ...children.slice(1).map(requireJessComplexTail).map(tail => ({ comb: tail.comb, compound: tail.compound }))
-  ]);
-}
-function reduceSelectorTail(children: readonly unknown[]): ComplexSelector {
-  return requireComplexSelector(children[1]);
+function reduceSelectorTail(children: readonly unknown[]): SelectorBranch {
+  return children.find(isSelectorBranch)!;
 }
 function reduceSelectorList(children: readonly unknown[]): SelectorList {
-  return selist(...children.map(requireComplexSelector));
+  return selist(...children.filter(isSelectorBranch));
+}
+
+/*
+ * Left-fold a `operand (operator operand)*` run into nested Operations. The
+ * operator token carries its own padding (calc's additive operators require
+ * it), so the spelling is trimmed back to the bare operator.
+ */
+function isCalcOperator(text: string): boolean {
+  return text === '+' || text === '-' || text === '*' || text === '/' || text === '%';
+}
+
+/*
+ * Operands and operator characters, in authored order, with the operators'
+ * padding interleaved. The pads are their own terms, so an operator no longer
+ * sits a constant distance from its operand and the fold reads the shape rather
+ * than a fixed stride — and a pad can hold a comment whose own `/` and `*` would
+ * defeat any attempt to recover the operator from the padded text.
+ */
+function dollarValueFromChildren(children: readonly unknown[]): ValueNode {
+  const base = requireValueNode(children[0]);
+  if (children.length === 1) {
+    if (base.type !== 'Lookup' || base.kind !== 'var') {
+      throw new TypeError('Jess reference base must be a variable reference.');
+    }
+    return base;
+  }
+  const rest = children.slice(1);
+  if (base.type === 'Lookup' && base.kind === 'entry') {
+    const name = requireToken(rest[0]).value;
+    const tails = rest.slice(1).map(requireJessReferenceTail);
+    return reference(
+      base,
+      [
+        lookupStep('member', name),
+        ...tails.map(tail => tail.step)
+      ],
+      `${base.raw}.${name}${tails.map(tail => tail.src).join('')}`
+    );
+  }
+  if (base.type !== 'Lookup' || base.kind !== 'var') {
+    throw new TypeError('Jess reference base must be a variable reference.');
+  }
+  if (isJessReferenceTail(rest[0])) {
+    const tails = rest.map(requireJessReferenceTail);
+    const memberReference = declarationMemberReferenceFromVariableBase(base, tails);
+    if (memberReference) {
+      return memberReference;
+    }
+    return reference(
+      base,
+      tails.map(tail => tail.step),
+      `${base.scope === 'scoped' ? '$^' : '$'}${lookupNameSource(base.name)}${tails.map(tail => tail.src).join('')}`
+    );
+  }
+  if (rest.some(child => isToken(child) && child.value === '/')) {
+    return list(
+      [base, requireValueNode(rest.at(-1))],
+      '/'
+    );
+  }
+  throw new TypeError('Jess dollar value matched an unknown continuation.');
+}
+
+function foldCalcOperation(children: readonly unknown[]): ValueNode {
+  const first = children.find(isValueNode);
+  if (first === undefined) {
+    throw new TypeError('Jess calc grammar requires an operand.');
+  }
+  let result = first;
+  let operator: string | undefined;
+  for (let index = children.indexOf(first) + 1; index < children.length; index += 1) {
+    const child = children[index];
+    if (isValueNode(child)) {
+      if (operator === undefined) {
+        throw new TypeError('Jess calc grammar lost an operator operand.');
+      }
+
+      /*
+       * `inMathFunction` is TRUE for every pair this fold builds: the ladder is
+       * reachable only from a css-values-4 §10 math function, so an operation
+       * arriving here was AUTHORED inside one. The flag records that positional
+       * fact and nothing more — whether it then folds is decided downstream,
+       * together with `unitMode` and `mathMode`.
+       */
+      result = operation(
+        operator,
+        result,
+        child,
+        true,
+        cssBaseMathOutsideParens(operator)
+      );
+      operator = undefined;
+      continue;
+    }
+    if (child === undefined || child === null) {
+      continue;
+    }
+    const text = requireToken(child).value;
+    if (isCalcOperator(text)) {
+      operator = text;
+    }
+  }
+  if (operator !== undefined) {
+    throw new TypeError('Jess calc grammar lost an operator operand.');
+  }
+  return result;
 }
 
 const rawWhitespace = regex(/[ \t\n\r\f]+/);
+
+/*
+ * calc() arithmetic, ported from the CSS base
+ * (`../../../css/css-parser/src/grammar.ts`, `CalcValue`/`CalcProduct`/
+ * `CalcSum`/`CalcParen`/`CalcFunction`). The operator spellings are CSS's and
+ * are not a Jess divergence: the multiplicative operators bind tighter than
+ * `+`/`-`, and the additive operators REQUIRE surrounding whitespace because
+ * `+`/`-` are sign-ambiguous against a following number (css-values-4 §10.1).
+ * The product class also admits `%`, which §10 does not define as a calc
+ * operator; that over-acceptance is inherited from the CSS base verbatim
+ * rather than introduced here, and narrowing it belongs in CSS, not Jess.
+ *
+ * These rules cannot be hoisted into `@jesscss/parser-shared`: that package's
+ * artifacts are `g.`-free by contract (`rules(_g => ...)`) so a consuming
+ * grammar can inline them at its own macro-fusion site, and the calc family is
+ * mutually recursive through `g.` and carries AST reductions. `CalcValue` is
+ * the only rule below that differs SEMANTICALLY from CSS — it admits Jess
+ * operands. `CalcParen`/`CalcProduct`/`CalcSum`/`CalcFunction` are the CSS
+ * bodies with Jess's typed reducers substituted; arm ORDER inside `CalcValue`
+ * differs from CSS (first sets are disjoint, so the accept set is unchanged).
+ */
+/*
+ * `valueTrivia` is the padding every value interior admits. The value ladder
+ * runs under `noTrivia`, so an interior that admits authored padding has to
+ * spell it, and it must spell THIS rather than a bare `rawWhitespace` run:
+ * css-syntax-3 §4 makes a comment trivia wherever whitespace is trivia, so a
+ * bare whitespace run is never the right spelling in a trivia slot. Both Jess
+ * comment forms count, matching the document trivia table above.
+ *
+ * The operator pads keep the sum operator's whitespace REQUIREMENT
+ * (css-values-4 §10.1: real whitespace on both sides of `+`/`-`, which a comment
+ * does not supply), so the sum pad is `comment* ws+ (comment ws*)*` while the
+ * product pad, which needs no whitespace, is `ws* (comment ws*)*`. Both keep
+ * their comment and whitespace arms on disjoint first characters and no inner
+ * group matches empty, so the match stays linear.
+ *
+ * Each pad is its OWN term rather than part of the operator regex, so the
+ * operator token stays exactly the operator character. Folding the padding in
+ * would leave `foldCalcOperation` recovering the operator from bytes that can
+ * now contain a comment's own `/` and `*` — the parser handing core a value to
+ * re-parse. With the pads as terms the operator no longer sits a constant
+ * distance from its operand, so the fold reads the shape, not a fixed stride.
+ */
+const valueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)+/);
+
+/*
+ * The css-values-4 §10 math functions, as glued function OPENERS.
+ *
+ * CANONICAL TABLE: `CSS_MATH_FUNCTIONS` in `@jesscss/core/ast`
+ * (`packages/core/src/ast/math-functions.ts`). Add or remove a name THERE
+ * first; `test/math-function-table.test.ts` fails if this literal drifts.
+ *
+ * Spelled as a LITERAL because a dispatch key must be macro-visible: parseman's
+ * plugin const-folds these at build time and cannot follow an imported binding
+ * (measured — every import spelling fails the build with `composeLeaf() must
+ * macro-fuse`).
+ */
+const CSS_MATH_FUNCTION_OPENERS = [
+  'calc(',
+  'min(', 'max(', 'clamp(',
+  'round(', 'mod(', 'rem(',
+  'sin(', 'cos(', 'tan(', 'asin(', 'acos(', 'atan(', 'atan2(',
+  'pow(', 'sqrt(', 'hypot(', 'log(', 'exp(',
+  'abs(', 'sign('
+];
+
+/*
+ * A `+`/`-` GLUED to the number after it. Following a run separator inside a
+ * math function this is never a run item — `calc(1px +2px)` is an ASYMMETRIC
+ * additive operator, which css-values-4 §10.1 rejects. A leading `-` that
+ * starts an identifier (`-webkit-foo`) is not this shape.
+ */
+const signedNumericStart = regex(/[-+](?=[.0-9])/);
+const calcProductPad = regex(/[ \t\n\r\f]*(?:(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)[ \t\n\r\f]*)*/);
+const calcSumPad = regex(/(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)*[ \t\n\r\f]+(?:(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\n\r]*)[ \t\n\r\f]*)*/);
+const calcProductOperator = sequence(
+  calcProductPad,
+  regex(/[*/%]/),
+  calcProductPad
+);
+const calcSumOperator = sequence(
+  calcSumPad,
+  regex(/[-+]/),
+  calcSumPad
+);
+
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const commentTrivia = regex(/\/(?:\*(?:[^*]|\*(?!\/))*\*\/|\/[^\n\r]*)/);
+
+/* Keep custom-value comments visible as source trivia without making them
+ * semantic custom-value parts. Jess names every comment `comment` in its
+ * document trivia, and root capture is selected against that one table, so the
+ * custom-value arm carries the same category name. */
+const customValueBlockCommentRun = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
+const customValueCommentTrivia = classifiedTrivia({ comment: customValueBlockCommentRun });
 
 /*
  * Comments are Jess trivia. Block comments can still survive through the AST
@@ -1173,20 +1550,36 @@ const commentTrivia = regex(/\/(?:\*(?:[^*]|\*(?!\/))*\*\/|\/[^\n\r]*)/);
  * never reach CSS output. URL bodies disable trivia below, so
  * `url(//host/path)` stays URL content.
  */
-const whitespace = trivia(oneOrMore(choice(
-  rawWhitespace,
-  commentTrivia
-)));
+const whitespace = classifiedTrivia({
+  whitespace: rawWhitespace,
+  comment: commentTrivia
+});
 const plainDoubleQuotedText = regex(/(?:[^"\\$]|\\[\s\S]|\$(?![\[({]))*/);
 const plainSingleQuotedText = regex(/(?:[^'\\$]|\\[\s\S]|\$(?![\[({]))*/);
 const interpolatedDoubleQuotedText = regex(/(?:[^"\\$]|\\[\s\S]|\$(?![\[({]))+/);
 const interpolatedSingleQuotedText = regex(/(?:[^'\\$]|\\[\s\S]|\$(?![\[({]))+/);
 
 /*
+ * Opaque Jess spans must not terminate inside a static quoted string. These
+ * skippers reject `$` forms that the dialect treats as structural, so raw
+ * scanner consumers still leave interpolation to their typed grammar.
+ */
+const scanSkipDoubleQuoted = sequence(
+  literal('"'),
+  plainDoubleQuotedText,
+  literal('"')
+);
+const scanSkipSingleQuoted = sequence(
+  literal('\''),
+  plainSingleQuotedText,
+  literal('\'')
+);
+
+/*
  * Jess's live `$` grammar does not permit CSS escapes in names. Keep that
  * dialect-local fact explicit while the value keyword leaf remains shared.
  */
-const jessDollarName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+const dollarName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 
 /*
  * An operator boundary inside a Jess expression is whitespace, and a block
@@ -1194,10 +1587,10 @@ const jessDollarName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]
  * the comment as part of the boundary keeps the operator symbol a separate
  * grammar fact, so no reduction has to strip comment bytes back out of a token.
  */
-const jessExprBoundary = regex(/(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
-const jessExprProductSymbol = regex(/[*/%]/);
-const jessExprSumSymbol = regex(/[-+]/);
-const jessExprCompareSymbol = regex(/>=|<=|>|<|=/);
+const expressionBoundary = regex(/(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
+const expressionProductSymbol = regex(/[*/%]/);
+const expressionSumSymbol = regex(/[-+]/);
+const expressionCompareSymbol = regex(/>=|<=|==|>|<|=/);
 
 /*
  * `$if` conditions retain the CST's comparison spelling, which permits both
@@ -1205,30 +1598,22 @@ const jessExprCompareSymbol = regex(/>=|<=|>|<|=/);
  * expression interpolation, whose arithmetic/comparison grammar requires
  * spaces to avoid value-position ambiguity.
  */
-const jessIfGuardCompareOperator = regex(/[ \t\n\r\f]*(?:>=|<=|>|<|=)[ \t\n\r\f]*/);
-
-/*
- * The unwrapped value form deliberately excludes `/` and `%`: `/` remains a
- * structured slash list in value position, and `%` has no documented unwrapped
- * spelling. Wrapped `$(...)` remains the complete arithmetic syntax.
- */
-const jessUnwrappedProductOperator = regex(/[ \t\n\r\f]+\*[ \t\n\r\f]+/);
-const jessUnwrappedSumOperator = regex(/[ \t\n\r\f]+[-+][ \t\n\r\f]+/);
+const ifGuardCompareOperator = regex(/[ \t\n\r\f]*(?:>=|<=|==|>|<|=)[ \t\n\r\f]*/);
 
 /*
  * This is intentionally the type-predicate namespace, not general function
  * syntax in a guard. The existing GuardNode evaluator accepts these names;
  * recognition retains a typed argument list and never routes through source.
  */
-const jessGuardUnaryTypePredicate = regex(/\$type\.(?:iscolor|isnumber|isstring|iskeyword|ispixel|ispercentage|isem)(?![-_a-zA-Z0-9\u0080-\uffff])/);
-const jessGuardIsUnitPredicate = regex(/\$type\.isunit(?![-_a-zA-Z0-9\u0080-\uffff])/);
+const guardUnaryTypePredicate = regex(/\$type\.(?:iscolor|isnumber|isstring|iskeyword|ispixel|ispercentage|isem)(?![-_a-zA-Z0-9\u0080-\uffff])/);
+const guardIsUnitPredicate = regex(/\$type\.isunit(?![-_a-zA-Z0-9\u0080-\uffff])/);
 
 /*
  * The reserved guard-predicate namespace. An expression atom uses this as a
  * negative lookahead so `$type.*` can never take a generic call tail and bypass
  * the closed, arity-checked predicate grammar above.
  */
-const jessTypeNamespace = regex(/\$type\./);
+const typeNamespace = regex(/\$type\./);
 
 /*
  * `${…}` — the interpolation form for every NAME, SELECTOR, and STRING position.
@@ -1253,71 +1638,89 @@ const jessTypeNamespace = regex(/\$type\./);
  * Bare interpolation (no braces) is impossible because `-` is an identifier byte,
  * so `--$name-color` has no unambiguous name boundary.
  *
- * The `${[` / `]}` openers are ONE literal each so that the bracketed arms carry
- * the same child layout as `jessDollarInterpStructure` and share its reducer —
- * two reducers for one body grammar would drift.
+ * Consume `${` once, then branch on `[` versus a bare name; the bracket body
+ * branches again on `$`, a name, or a quote. Those are disjoint continuation
+ * sets, so this is structural factoring rather than five competing `${...}`
+ * alternatives.
  */
-const jessDollarBraceStructure = noTrivia(choice(
-  sequence(
-    literal('${['),
-    literal('$'),
-    jessDollarName,
-    literal(']}')
-  ),
-  sequence(
-    literal('${['),
-    jessDollarName,
-    literal(']}')
-  ),
-  sequence(
-    literal('${['),
-    literal('\''),
-    regex(/(?:[^'\\]|\\[\s\S])*/),
-    literal('\''),
-    literal(']}')
-  ),
-  sequence(
-    literal('${['),
-    literal('"'),
-    regex(/(?:[^"\\]|\\[\s\S])*/),
-    literal('"'),
-    literal(']}')
-  ),
-  sequence(
-    literal('${'),
-    jessDollarName,
-    literal('}')
+const dollarBraceStructure = noTrivia(sequence(
+  literal('${'),
+  choice(
+    sequence(
+      literal('['),
+      choice(
+        sequence(
+          literal('$'),
+          dollarName,
+          literal(']}')
+        ),
+        sequence(
+          dollarName,
+          literal(']}')
+        ),
+        sequence(
+          literal('\''),
+          regex(/(?:[^'\\]|\\[\s\S])*/),
+          literal('\''),
+          literal(']}')
+        ),
+        sequence(
+          literal('"'),
+          regex(/(?:[^"\\]|\\[\s\S])*/),
+          literal('"'),
+          literal(']}')
+        )
+      )
+    ),
+    sequence(
+      dollarName,
+      literal('}')
+    )
   )
 ));
-const jessDollarInterpStructure = noTrivia(choice(
-  sequence(
-    literal('$['),
-    literal('$'),
-    jessDollarName,
-    literal(']')
-  ),
-  sequence(
-    literal('$['),
-    jessDollarName,
-    literal(']')
-  ),
-  sequence(
-    literal('$['),
-    literal('\''),
-    regex(/(?:[^'\\]|\\[\s\S])*/),
-    literal('\''),
-    literal(']')
-  ),
-  sequence(
-    literal('$['),
-    literal('"'),
-    regex(/(?:[^"\\]|\\[\s\S])*/),
-    literal('"'),
-    literal(']')
+
+/*
+ * Direct `$[...]` lookup is value/expression-only. Unlike `${...}`, it never
+ * appears in a selector/name interpolation position.
+ */
+const dollarInterpolationStructure = noTrivia(sequence(
+  literal('$['),
+  choice(
+    sequence(
+      literal('$'),
+      dollarName,
+      literal(']')
+    ),
+    sequence(
+      dollarName,
+      literal(']')
+    ),
+    sequence(
+      literal('\''),
+      regex(/(?:[^'\\]|\\[\s\S])*/),
+      literal('\''),
+      literal(']')
+    ),
+    sequence(
+      literal('"'),
+      regex(/(?:[^"\\]|\\[\s\S])*/),
+      literal('"'),
+      literal(']')
+    )
   )
 ));
-const jessCustomPropertyChunk = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
-const jessSelectorTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
+const customPropertyChunk = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+const selectorTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
+
+/*
+ * A CSS-namespaces prefix: `<ident>|`, `*|`, or bare `|`, glued (no whitespace
+ * around `|` \u2014 CSS Namespaces \u00a72, selectors-4 \u00a75.1). It prefixes a type/universal
+ * selector (`svg|circle`, `*|a`, `|a`) and an attribute name (`[svg|attr]`), so
+ * one recognizer serves both \u2014 the same shape the CSS base and the other dialects
+ * use (one representation per construct). `(?!=)` keeps the attribute operator
+ * `|=` (selectors-4 \u00a76.3) on its own route so `[a|=b]` is `a` matched by `|=`.
+ */
+const attributeNamespace = regex(/(?:-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)?\|(?!=)/);
 
 /*
  * The parent selector. `&` alone is a selector reference; `&` fused with an
@@ -1331,7 +1734,7 @@ const jessSelectorTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
  * positioned parse error in `.jess` \u2014 `-1` is not an identifier \u2014 and `&(-1)` is
  * its explicit spelling.
  */
-const jessAmpersand = regex(/&(?:--(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)?/);
+const ampersand = regex(/&(?:--(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)?/);
 
 /*
  * `&(X)` is the explicit spelling of the fused append: `&(-1)` appends `-1` to
@@ -1343,28 +1746,32 @@ const jessAmpersand = regex(/&(?:--(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F
  * `nil` is not a Jess keyword. Neither may degrade into "append nothing", so the
  * payload is non-empty and excludes a bare `nil`.
  */
-const jessAmpersandAppendPayload = regex(/(?!nil\))[-_a-zA-Z0-9\u0080-\uffff]+/);
+const ampersandAppendPayload = regex(/(?!nil\))[-_a-zA-Z0-9\u0080-\uffff]+/);
 
 /*
  * The literal tail an authored value-position interpolation may carry: a unit
  * (`$(20)px`), a percent sign, or an identifier suffix (`$[name]-suffix`).
  */
-const jessInterpolatedValueTail = regex(/[-_a-zA-Z0-9\u0080-\uffff%]+/);
+const interpolatedValueTail = regex(/[-_a-zA-Z0-9\u0080-\uffff%]+/);
 
 /*
  * One value-term slash boundary, with its authored whitespace on either side.
  * The negative lookahead keeps a comment opener (`/*`) out of the boundary so a
  * commented value still fails exactly where it did before.
  */
-const jessValueSlashBoundary = regex(/[ \t\n\r\f]*\/(?!\*)[ \t\n\r\f]*/);
-const jessGeneralTemplateText = regex(/(?:[^$()\[\]{}'"\\]|\\[\s\S])+/);
+const valueSlashBoundary = regex(/[ \t\n\r\f]*\/(?!\*)[ \t\n\r\f]*/);
+const generalTemplateText = regex(/(?:[^$()\[\]{}'"\\]|\\[\s\S])+/);
+
+/* CSS at-rule URL bodies stay closed to Jess value syntax. */
+const plainUrlInner = regex(/(?:[^"'()\\$ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 
 /*
- * An unquoted Jess URL keeps literal URL-token bytes and `$[…]` segments as
- * separate grammar facts. Whitespace, quotes, parentheses, and any other `$`
- * form remain outside this closed URL slice rather than becoming raw payload.
+ * An unquoted declaration-value URL recognizes `${...}` as its sole dynamic
+ * segment. Every other `$` remains CSS URL-token text, so `$foo` and
+ * `$[key]` do not become Jess value lookups. Whitespace, quotes, and
+ * parentheses stay outside this closed URL slice.
  */
-const jessUrlInterpolatedText = regex(/(?:[^"'()$\ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+const unquotedUrlText = regex(/(?:[^"'()$\ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|\$(?!\{)|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 
 /*
  * Jess's compiler namespace: the `@-\u2026` names a module directive lowers to. They
@@ -1372,61 +1779,103 @@ const jessUrlInterpolatedText = regex(/(?:[^"'()$\ \t\n\r\f\x00-\x08\x0B\x0E-\x1
  * or captured as opaque bytes \u2014 their own typed productions own them, and a
  * malformed one must report its own error rather than silently degrade.
  */
-const jessCompilerAtRuleName = regex(/@-(?:use|compose|export|import|from)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+const compilerAtRuleName = keywords(
+  ['@-use', '@-compose', '@-export', '@-import', '@-from'],
+  { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF', caseInsensitive: true }
+);
+
+const charsetAtRuleName = word('@charset', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
+const importAtRuleName = word('@import', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
+const propertyAtRuleName = word('@property', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
+const scopeAtRuleName = word('@scope', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
+
+/** The `null` LITERAL's word (§4.3). Boundary-guarded, so `nullish` stays an ordinary identifier. */
+const nullWord = word('null', '-_a-zA-Z0-9\\u0080-\\uFFFF');
+const keyframeEndpoint = keywords(
+  ['from', 'to'],
+  { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF', caseInsensitive: true }
+);
 
 /*
- * The exclusion list is dispatch, not vocabulary: every name here HAS a typed
- * production. Media and container are excluded so the header choice can lead
- * every arm with a concrete `@` first-set (their dedicated arms own those
- * names); keeping `media`/`container` out of the generic name is what lets the
- * whole at-rule subtree be `@`-dispatched instead of speculatively entered at
- * every rule. Only the five compiler names are excluded from the `@-\u2026` space \u2014
- * which at-rules exist is a language-service fact, so an ordinary vendor prefix
- * (`@-webkit-anything`, `@-moz-document`) is plain unknown CSS and passes.
+ * NOT exported, and must never be. The body is written entirely in parseman's
+ * macro vocabulary (`makeWord`, `sequence`, `node`, ...), which exists only at
+ * build time -- the macro plugin lowers each call site into inline JS and the
+ * package emits no runtime `parseman` combinator import. Exporting the factory
+ * makes the plugin emit a live runtime binding for it whose body still names
+ * the macro-only identifiers, so the export throws
+ * `ReferenceError: makeWord is not defined` the first time anyone calls it.
+ * That artifact shipped until 205eba3c4 split each compiled grammar into its
+ * own entry and tree-shook the factory out. `scripts/check-macro-buildable.mjs`
+ * now fails the build if any built module references an undefined identifier.
  */
-const jessGenericCssAtRuleName = regex(/@(?!(?:charset|import|supports|property|media|container|-use|-compose|-export|-import|-from|(?:-[a-z]+-)?keyframes)(?![-_a-zA-Z0-9\u0080-\uffff]))-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
-const jessCharsetAtRuleName = regex(/@charset(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const jessImportAtRuleName = regex(/@import(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const jessSupportsAtRuleName = regex(/@supports(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const jessPropertyAtRuleName = regex(/@property(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const jessScopeAtRuleName = regex(/@scope(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const jessKeyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const jessKeyframePercent = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)%/);
+const jessFactory = (g: JessRules & SharedSyntax) => {
+  const caseInsensitiveWhen = makeWhen({ caseInsensitive: true });
+  const syntaxWord = makeWord('-_a-zA-Z0-9\\u0080-\\uFFFF');
 
-export const jessFactory = (g: JessRules & SharedCssSyntax) => {
-  const jessCase = makeWhen({ caseInsensitive: true });
+  /*
+   * CSS identifier-or-function positions consume the adjacent `(` as one
+   * routed opener. Jess reuses the same opener for values and pseudo selectors;
+   * only their selected tails differ.
+   */
+  const identifierOrFunction = token(noTrivia(sequence(
+    g.Identifier,
+    optional(literal('('))
+  )));
+  const typedAtRuleHeaderNames = [
+    '@keyframes', '@charset', '@import', '@supports', '@property',
+    '@-use', '@-compose', '@-export', '@-import', '@-from'
+  ];
 
-  const DirectJessVarReference = node<VariableReference>(
-    'DirectJessVarReference',
+  const VariableReference = node<Lookup>(
+    'VariableReference',
     choice(
       noTrivia(sequence(
-        literal('$$'),
-        jessDollarName
+        literal('$^'),
+        dollarName
       )),
       noTrivia(sequence(
         literal('$'),
-        jessDollarName
+        dollarName
       ))
     ),
     (children, _fields, span) => withSourceSpan(
       variableReference(
         requireToken(children.at(-1)).value,
-        requireToken(children[0]).value === '$$' ? 'scoped' : 'live'
+        requireToken(children[0]).value === '$^' ? 'scoped' : 'live'
       ),
       span
     )
   );
-  const DirectJessDollarBrace = node<Interpolation>(
-    'DirectJessDollarBrace',
-    jessDollarBraceStructure,
+  const ExpressionScopedReference = node<Lookup>(
+    'VariableReference',
+    noTrivia(sequence(
+      literal('^'),
+      dollarName
+    )),
+    (children, _fields, span) => withSourceSpan(
+      variableReference(
+        requireToken(children[1]).value,
+        'scoped'
+      ),
+      span
+    )
+  );
+  const DeclarationReference = node<Lookup>(
+    'DeclarationReference',
+    noTrivia(literal('$')),
+    (_children, _fields, span) => withSourceSpan(declarationReference('$'), span)
+  );
+  const DollarBrace = node<Interpolation>(
+    'DollarBrace',
+    dollarBraceStructure,
     (children, _fields, span) => dollarBraceInterpolation(
       children,
       span
     )
   );
-  const DirectJessDollarInterp = node<Interpolation>(
-    'DirectJessDollarInterp',
-    jessDollarInterpStructure,
+  const DollarInterp = node<Interpolation>(
+    'DollarInterp',
+    dollarInterpolationStructure,
     (children, _fields, span) => interpolationFromChildren(
       children,
       span
@@ -1437,9 +1886,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * The expression-context spelling of `${…}`, for the quoted-string family that
    * reduces to an `ExpressionFact` rather than a bare `Interpolation`.
    */
-  const DirectJessExpressionDollarBrace = node<ExpressionFact>(
-    'DirectJessExpressionDollarBrace',
-    jessDollarBraceStructure,
+  const ExpressionDollarBrace = node<ExpressionFact>(
+    'ExpressionDollarBrace',
+    dollarBraceStructure,
     (children, _fields, span) => {
       return { value: dollarBraceInterpolation(
         children,
@@ -1447,47 +1896,123 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       ), src: tokenSource(children) };
     }
   );
-  const DirectJessExpressionDollarInterp = node<ExpressionFact>(
-    'DirectJessExpressionDollarInterp',
-    jessDollarInterpStructure,
+  const ExpressionDollarInterp = node<ExpressionFact>(
+    'ExpressionDollarInterp',
+    dollarInterpolationStructure,
     (children, _fields, span) => ({ value: interpolationFromChildren(
       children,
       span
     ), src: tokenSource(children) })
   );
-  const DirectJessExpressionProductOperator = node<JessOperatorFact>(
-    'DirectJessExpressionProductOperator',
+  const ExpressionProductOperator = node<JessOperatorFact>(
+    'ExpressionProductOperator',
     noTrivia(sequence(
-      jessExprBoundary,
-      jessExprProductSymbol,
-      jessExprBoundary
+      expressionBoundary,
+      expressionProductSymbol,
+      expressionBoundary
     )),
     children => ({ value: requireToken(children[1]).value, src: tokenSource(children) })
   );
-  const DirectJessExpressionSumOperator = node<JessOperatorFact>(
-    'DirectJessExpressionSumOperator',
+  const ExpressionSumOperator = node<JessOperatorFact>(
+    'ExpressionSumOperator',
     noTrivia(sequence(
-      jessExprBoundary,
-      jessExprSumSymbol,
-      jessExprBoundary
+      expressionBoundary,
+      expressionSumSymbol,
+      expressionBoundary
     )),
     children => ({ value: requireToken(children[1]).value, src: tokenSource(children) })
   );
-  const DirectJessExpressionCompareOperator = node<JessOperatorFact>(
-    'DirectJessExpressionCompareOperator',
+  const ExpressionCompareOperator = node<JessOperatorFact>(
+    'ExpressionCompareOperator',
     noTrivia(sequence(
-      jessExprBoundary,
-      jessExprCompareSymbol,
-      jessExprBoundary
+      expressionBoundary,
+      expressionCompareSymbol,
+      expressionBoundary
     )),
     children => ({ value: requireToken(children[1]).value, src: tokenSource(children) })
   );
-  const DirectJessExpressionAtom = node<ExpressionFact>(
-    'DirectJessExpressionAtom',
+  const ExpressionDeclarationReference = node<ExpressionFact>(
+    'ExpressionDeclarationReference',
+
+    /*
+     * The optional `$` is only the explicit declaration-root spelling. A
+     * leading `.` remains expression-only because this production is reachable
+     * only from ExpressionAtom, while `.1` stays on the Dimension path.
+     */
+    noTrivia(sequence(
+      optional(g.DeclarationReference),
+      literal('.'),
+      dollarName,
+      many(choice(
+        g.ExpressionReferenceCallTail,
+        g.ReferenceTail
+      ))
+    )),
+    (children, _fields, span) => {
+      const rooted = children.some(child => isValueNode(child) && child.type === 'Lookup' && child.kind === 'entry');
+      const name = requireToken(children.find((child): child is Token => isToken(child) && child.value !== '.')).value;
+      const sourceRoot = rooted ? '$' : '';
+      const base = withSourceSpan(declarationReference('$'), span);
+      const tails = children.filter(isJessReferenceTail);
+      const raw = `${sourceRoot}.${name}${tails.map(tail => tail.src).join('')}`;
+      return { value: reference(
+        base,
+        [
+          lookupStep('member', name),
+          ...tails.map(tail => tail.step)
+        ],
+        raw
+      ), src: raw };
+    }
+  );
+  const ExpressionCallArgument = node<JessMixinCallArgument>(
+    'ExpressionCallArgument',
+    choice(
+      sequence(
+        literal('$'),
+        dollarName,
+        literal(':'),
+        g.ExpressionLogical
+      ),
+      g.ExpressionLogical
+    ),
+    (children) => {
+      const fact = children.find(isExpressionFact);
+      if (fact === undefined) {
+        throw new TypeError('Jess expression call argument lost its value.');
+      }
+      const name = children.find((child): child is Token => isToken(child) && child.value !== '$' && child.value !== ':');
+      return callArg(fact.value, name?.value);
+    }
+  );
+  const ExpressionReferenceCallTail = node<JessReferenceTail>(
+    'ExpressionReferenceCallTail',
+    noTrivia(sequence(
+      literal('('),
+      parser(
+        { trivia: whitespace },
+        optional(oneOrMoreSep(
+          g.ExpressionCallArgument,
+          literal(',')
+        ))
+      ),
+      optional(rawWhitespace),
+      literal(')')
+    )),
+    (children) => {
+      const args = children.filter(isJessMixinCallArgument);
+      return {
+        step: { type: 'Call', args },
+        src: `(${args.map(arg => (arg.name === undefined ? '' : `$${arg.name}: `) + referenceArgSource(arg.value)).join(', ')})`
+      };
+    }
+  );
+  const ExpressionAtom = node<ExpressionFact>(
+    'ExpressionAtom',
 
     /*
      * `$name` references dominate expression atoms; try VarReference before the
-     * `$[` interpolation form (disjoint on the char after `$`) so a plain
+     * `$[` lookup form (disjoint on the char after `$`) so a plain
      * reference does not first enter and roll back the DollarInterp node frame.
      * The reference keeps its accessor AND call tails here so a member read and
      * a call are the SAME grammar facts in arithmetic position that they already
@@ -1497,7 +2022,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
      *
      * The `$type.` namespace is the one exception, and it gets the second arm:
      * this atom is shared with `$if`/`when`, where `$type.isnumber($x)` must
-     * keep reducing through the arity-checked `DirectJessGuardCall` predicate
+     * keep reducing through the arity-checked `GuardCall` predicate
      * syntax. Letting it take a generic call tail would silently admit
      * `$type.unknown($x)` and every wrong-arity spelling the guard grammar
      * exists to reject. Bare-name calls stay out of the atom entirely for the
@@ -1505,24 +2030,32 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
      */
     choice(
       noTrivia(sequence(
-        not(jessTypeNamespace),
-        g.DirectJessVarReference,
+        not(typeNamespace),
+        g.VariableReference,
         many(choice(
-          g.DirectJessReferenceCallTail,
-          g.DirectJessReferenceTail
+          g.ExpressionReferenceCallTail,
+          g.ReferenceTail
         ))
       )),
       noTrivia(sequence(
-        g.DirectJessVarReference,
-        many(g.DirectJessReferenceTail)
+        g.ExpressionScopedReference,
+        many(choice(
+          g.ExpressionReferenceCallTail,
+          g.ReferenceTail
+        ))
       )),
-      g.DirectJessExpressionDollarInterp,
-      g.DirectJessDimension,
-      g.DirectJessColor,
-      g.DirectJessExpressionQuoted,
+      noTrivia(sequence(
+        g.VariableReference,
+        many(g.ReferenceTail)
+      )),
+      g.ExpressionDeclarationReference,
+      g.ExpressionDollarInterp,
+      g.Dimension,
+      g.Color,
+      g.ExpressionQuoted,
       sequence(
         literal('('),
-        g.DirectJessExpressionCompare,
+        g.ExpressionLogical,
         literal(')')
       ),
 
@@ -1533,7 +2066,15 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
        * make `default()` a legal condition. Dispatch reaches an expression only
        * through the `$fn(…)` reference tail above, which cannot spell `default()`.
        */
-      g.DirectJessKeyword
+      /*
+       * `null` is the LITERAL (§4.3), tried before the generic identifier so an
+       * expression operand carries the absent VALUE rather than an identifier
+       * that spells one — that is what makes `$(1 + null)` be `1` and
+       * `$if (null)` take the false branch. The word boundary keeps `nullish`
+       * an ordinary keyword.
+       */
+      g.NullLiteral,
+      g.Keyword
     ),
     (children) => {
       if (isToken(children[0]) && requireToken(children[0]).value === '(') {
@@ -1542,11 +2083,17 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       }
       if (isJessReferenceTail(children[1])) {
         const base = requireValueNode(children[0]);
-        if (base.type !== 'VariableReference') {
-          throw new TypeError('Direct Jess expression reference base must be a variable reference.');
+        if (base.type !== 'Lookup' || (base.kind !== 'var' && base.kind !== 'entry')) {
+          throw new TypeError('Jess expression reference base must be a variable or declaration reference.');
         }
         const tails = children.slice(1).map(requireJessReferenceTail);
-        const raw = `${base.lookup === 'scoped' ? '$$' : '$'}${base.name}${tails.map(tail => tail.src).join('')}`;
+        if (base.kind === 'var') {
+          const memberReference = declarationMemberReferenceFromVariableBase(base, tails);
+          if (memberReference) {
+            return { value: memberReference, src: memberReference.raw };
+          }
+        }
+        const raw = `${referenceBaseSource(base)}${tails.map(tail => tail.src).join('')}`;
         return { value: reference(
           base,
           tails.map(tail => tail.step),
@@ -1560,35 +2107,35 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return { value, src: expressionSource(value) };
     }
   );
-  const DirectJessExpressionProduct = node<ExpressionFact>(
-    'DirectJessExpressionProduct',
+  const ExpressionProduct = node<ExpressionFact>(
+    'ExpressionProduct',
     noTrivia(sequence(
-      g.DirectJessExpressionAtom,
+      g.ExpressionAtom,
       many(sequence(
-        DirectJessExpressionProductOperator,
-        g.DirectJessExpressionAtom
+        ExpressionProductOperator,
+        g.ExpressionAtom
       ))
     )),
     children => foldExpression(children)
   );
-  const DirectJessExpressionSum = node<ExpressionFact>(
-    'DirectJessExpressionSum',
+  const ExpressionSum = node<ExpressionFact>(
+    'ExpressionSum',
     noTrivia(sequence(
-      g.DirectJessExpressionProduct,
+      g.ExpressionProduct,
       many(sequence(
-        DirectJessExpressionSumOperator,
-        g.DirectJessExpressionProduct
+        ExpressionSumOperator,
+        g.ExpressionProduct
       ))
     )),
     children => foldExpression(children)
   );
-  const DirectJessExpressionCompare = node<ExpressionFact>(
-    'DirectJessExpressionCompare',
+  const ExpressionCompare = node<ExpressionFact>(
+    'ExpressionCompare',
     noTrivia(sequence(
-      g.DirectJessExpressionSum,
+      g.ExpressionSum,
       optional(sequence(
-        DirectJessExpressionCompareOperator,
-        g.DirectJessExpressionSum
+        ExpressionCompareOperator,
+        g.ExpressionSum
       ))
     )),
     (children) => {
@@ -1596,7 +2143,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         return requireExpressionFact(children[0]);
       }
       const left = requireExpressionFact(children[0]);
-      const operator = requireOperatorFact(children[1]);
+      const operator = requireJessOperatorFact(children[1]);
       const right = requireExpressionFact(children[2]);
       const src = `${left.src}${operator.src}${right.src}`;
       return { value: condition(
@@ -1607,21 +2154,86 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
 
   /*
-   * Shared sum-level operand for unwrapped arithmetic: an ExpressionAtom folded
-   * with any `*` product operators. `DirectJessDollarValue` reuses this for the
-   * products that follow the first (whitespace-flanked) sum operator; the first
-   * product is rebuilt there from the already-parsed leading reference.
+   * `not` / `and` / `or` in EXPRESSION VALUE position (§4.5.5). They are
+   * operators in their own right, never calls: `and` / `or` return an OPERAND
+   * and short-circuit (`$a or $default` is `$a` when truthy), and `not` returns
+   * a `Bool`. Conditions truthiness-test the result (§4.4), which is what makes
+   * `truthy($a and $b)` exactly `truthy($a) and truthy($b)` and lets ONE
+   * semantics serve both this ladder and the guard ladder.
+   *
+   * This ladder and `IfGuardAnd`/`IfGuardOr` stay DISTINCT productions even
+   * though they agree observationally in condition position (§4.5.5): one folds
+   * VALUES, the other folds guard nodes.
+   *
+   * §4.5.4's two constraints are structural here, not checks bolted on:
+   *   - `not` ALWAYS takes parens, because `literal('(')` follows the keyword
+   *     with nothing optional between them — `not true` never matches.
+   *   - a bare comparison is not an `and`/`or` operand, because the operand is
+   *     `ExpressionSum`; `($x = 1px or $x = 2px)` therefore stays a parse error
+   *     while `(($x = 1px) or ($x = 2px))` reaches the same operand through the
+   *     atom's parenthesized arm.
    */
-  const DirectJessUnwrappedProductRest = node<ExpressionFact>(
-    'DirectJessUnwrappedProductRest',
-    noTrivia(sequence(
-      g.DirectJessExpressionAtom,
-      many(sequence(
-        jessUnwrappedProductOperator,
-        g.DirectJessExpressionAtom
+  const ExpressionNot = node<ExpressionFact>(
+    'ExpressionNot',
+    sequence(
+      regex(/not(?![-_a-zA-Z0-9\u0080-\uffff])/),
+      literal('('),
+      g.ExpressionLogical,
+      literal(')')
+    ),
+    (children) => {
+      const inner = requireExpressionFact(children[2]);
+      const src = `not(${inner.src})`;
+      return { value: condition({ g: 'not', inner: { g: 'truth', value: inner.value } }, src), src };
+    }
+  );
+  const ExpressionLogicalOperand = node<ExpressionFact>(
+    'ExpressionLogicalOperand',
+    choice(
+      g.ExpressionNot,
+      g.ExpressionSum
+    ),
+    children => requireExpressionFact(children[0])
+  );
+  const ExpressionAnd = node<ExpressionFact>(
+    'ExpressionAnd',
+    sequence(
+      g.ExpressionLogicalOperand,
+      oneOrMore(sequence(
+        regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        g.ExpressionLogicalOperand
       ))
-    )),
-    foldExpression
+    ),
+    children => foldLogicalExpression('and', children)
+  );
+  const ExpressionOr = node<ExpressionFact>(
+    'ExpressionOr',
+    sequence(
+      g.ExpressionLogicalOperand,
+      oneOrMore(sequence(
+        regex(/or(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        g.ExpressionLogicalOperand
+      ))
+    ),
+    children => foldLogicalExpression('or', children)
+  );
+  const ExpressionLogical = node<ExpressionFact>(
+    'ExpressionLogical',
+
+    /*
+     * Both chained arms share their first operand with the shorter forms, so
+     * they are transactional for the same reason `IfGuard` makes its comparison
+     * arm transactional: a missing `and` must return recognition to `or`, and a
+     * missing operator to the bare comparison, rather than committing the head.
+     * Mixed chains group explicitly, exactly as the guard ladder requires.
+     */
+    choice(
+      attempt(g.ExpressionAnd),
+      attempt(g.ExpressionOr),
+      g.ExpressionNot,
+      g.ExpressionCompare
+    ),
+    children => requireExpressionFact(children[0])
   );
 
   /*
@@ -1630,36 +2242,36 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * and/or chain must be parenthesized; mixed chains must group explicitly.
    * No source string is retained or reparsed after recognition.
    */
-  const DirectJessGuardValue = node<GuardNode>(
-    'DirectJessGuardValue',
-    g.DirectJessExpressionSum,
+  const GuardValue = node<GuardNode>(
+    'GuardValue',
+    g.ExpressionSum,
     reduceGuardTruth
   );
-  const DirectJessGuardCompare = node<GuardNode>(
-    'DirectJessGuardCompare',
+  const GuardCompare = node<GuardNode>(
+    'GuardCompare',
     sequence(
-      g.DirectJessExpressionSum,
-      regex(/>=|<=|>|<|=/),
-      g.DirectJessExpressionSum
+      g.ExpressionSum,
+      regex(/>=|<=|==|>|<|=/),
+      g.ExpressionSum
     ),
     reduceGuardCompare
   );
-  const DirectJessGuardCall = node<GuardNode>(
-    'DirectJessGuardCall',
+  const GuardCall = node<GuardNode>(
+    'GuardCall',
     choice(
       sequence(
-        jessGuardUnaryTypePredicate,
+        guardUnaryTypePredicate,
         literal('('),
-        g.DirectJessValueTerm,
+        g.ValueTerm,
         literal(')')
       ),
       sequence(
-        jessGuardIsUnitPredicate,
+        guardIsUnitPredicate,
         literal('('),
-        g.DirectJessValueTerm,
+        g.ValueTerm,
         optional(sequence(
           literal(','),
-          g.DirectJessValueTerm
+          g.ValueTerm
         )),
         literal(')')
       )
@@ -1670,18 +2282,18 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       args: children.filter(isValueNode)
     })
   );
-  const DirectJessGuardPrimary = node<GuardNode>(
-    'DirectJessGuardPrimary',
+  const GuardPrimary = node<GuardNode>(
+    'GuardPrimary',
     choice(
       sequence(
         regex(/not(?![-_a-zA-Z0-9\u0080-\uffff])/),
         literal('('),
-        g.DirectJessMixinGuard,
+        g.MixinGuard,
         literal(')')
       ),
       sequence(
         literal('('),
-        g.DirectJessMixinGuard,
+        g.MixinGuard,
         literal(')')
       ),
       sequence(
@@ -1689,8 +2301,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         literal('('),
         literal(')')
       ),
-      g.DirectJessGuardCall,
-      g.DirectJessGuardValue
+      g.GuardCall,
+      g.GuardValue
     ),
     (children) => {
       if (children.length === 1) {
@@ -1705,60 +2317,61 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return { g: 'default' };
     }
   );
-  const DirectJessGuardAnd = node<GuardNode>(
-    'DirectJessGuardAnd',
+  const GuardAnd = node<GuardNode>(
+    'GuardAnd',
     sequence(
-      g.DirectJessGuardPrimary,
+      g.GuardPrimary,
       oneOrMore(sequence(
         regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.DirectJessGuardPrimary
+        g.GuardPrimary
       ))
     ),
     reduceGuardAnd
   );
-  const DirectJessGuardOr = node<GuardNode>(
-    'DirectJessGuardOr',
+  const GuardOr = node<GuardNode>(
+    'GuardOr',
     sequence(
-      g.DirectJessGuardPrimary,
+      g.GuardPrimary,
       oneOrMore(sequence(
         regex(/or(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.DirectJessGuardPrimary
+        g.GuardPrimary
       ))
     ),
     reduceGuardOr
   );
-  const DirectJessMixinGuard = node<GuardNode>(
-    'DirectJessMixinGuard',
+  const MixinGuard = node<GuardNode>(
+    'MixinGuard',
     choice(
-      g.DirectJessGuardAnd,
-      g.DirectJessGuardOr,
-      g.DirectJessGuardCompare,
-      g.DirectJessGuardPrimary
+      g.GuardAnd,
+      g.GuardOr,
+      g.GuardCompare,
+      g.GuardPrimary
     ),
     children => requireGuardNode(children[0])
   );
-  const DirectJessExpression = node<Interpolation>(
-    'DirectJessExpression',
+  const Expression = node<Interpolation>(
+    'Expression',
     sequence(
       literal('$('),
-      g.DirectJessExpressionCompare,
+      g.ExpressionLogical,
       literal(')')
     ),
 
     /*
      * `$()` is the explicit arithmetic boundary. Preserve that execution fact
      * in the canonical value graph so division operates under parens-division.
-     * The block is a BOUNDARY, not an authored group: the parens are the `$(`
-     * and `)` of this very spelling, so they open the math context without ever
-     * reaching output — otherwise `$(foo)` emits a paren pair nobody wrote.
+     * An `Expression` is a COMPUTATION BOUNDARY, not an authored group: the
+     * parens are the `$(` and `)` of this very spelling, so they open the math
+     * context without ever reaching output — otherwise `$(foo)` would emit a
+     * paren pair nobody wrote.
      */
-    children => interpolation([{ ref: boundaryBlock(requireExpressionFact(children.find(isExpressionFact)).value), unquote: true }])
+    children => interpolation([{ ref: expression(requireExpressionFact(children.find(isExpressionFact)).value), unquote: true }])
   );
-  const DirectJessExpressionInterpolation = node<ExpressionFact>(
-    'DirectJessExpressionInterpolation',
+  const ExpressionInterpolation = node<ExpressionFact>(
+    'ExpressionInterpolation',
     sequence(
       literal('$('),
-      g.DirectJessExpressionCompare,
+      g.ExpressionLogical,
       literal(')')
     ),
     (children) => {
@@ -1770,7 +2383,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
        * parens-division semantics depending on where the expression appears.
        */
       return {
-        value: interpolation([{ ref: boundaryBlock(body.value), unquote: true }]),
+        value: interpolation([{ ref: expression(body.value), unquote: true }]),
         src: children.map(child => isExpressionFact(child) ? body.src : requireToken(child).value).join('')
       };
     }
@@ -1788,91 +2401,75 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * from every `$( … )` in the document and `$( 1px + 1px )` stops parsing.
    * These two re-enter the ambient trivia for the nested expression only.
    */
-  const directJessQuotedExpression = parser(
+  const quotedExpressionParser = parser(
     { trivia: whitespace },
-    g.DirectJessExpression
+    g.Expression
   );
-  const directJessQuotedExpressionInterpolation = parser(
+  const quotedExpressionInterpolationParser = parser(
     { trivia: whitespace },
-    g.DirectJessExpressionInterpolation
-  );
-  const directJessEscapedStaticQuoted = choice(
-    noTrivia(sequence(
-      literal('~'),
-      literal('"'),
-      plainDoubleQuotedText,
-      literal('"')
-    )),
-    noTrivia(sequence(
-      literal('~'),
-      literal('\''),
-      plainSingleQuotedText,
-      literal('\'')
-    ))
+    g.ExpressionInterpolation
   );
 
   /*
-   * Shared static plain-quoted arms. The escaped, double-, and single-quoted
-   * static prefix is identical across the value, static, and expression quoted
-   * families; only the interp-bearing arms and the reducer differ.
+   * The escape is an OPTIONAL PREFIX on the quoted body, not a second spelling
+   * of it. `~` used to lead its own full copy of each arm, so the body was
+   * written twice per quote character and the two copies were free to drift —
+   * the same one-fact-several-copies shape that let SCSS module paths lose
+   * their escape arm. `optional` emits no child when absent, so the reducers'
+   * positional indices are the ones they always were: `~` at 0 when written,
+   * the opening quote at 0 otherwise.
+   * Shared across the value, static, and expression quoted families; only the
+   * interp-bearing arms and the reducer differ.
    */
-  const directJessPlainDoubleQuoted = noTrivia(sequence(
+  const staticDoubleQuoted = noTrivia(sequence(
+    optional(literal('~')),
     literal('"'),
     plainDoubleQuotedText,
     literal('"')
   ));
-  const directJessPlainSingleQuoted = noTrivia(sequence(
+  const staticSingleQuoted = noTrivia(sequence(
+    optional(literal('~')),
     literal('\''),
     plainSingleQuotedText,
     literal('\'')
   ));
-  const DirectJessQuoted = node<Quoted | Interpolation>(
-    'DirectJessQuoted',
+  const Quoted = node<Quoted | Interpolation>(
+    'Quoted',
     choice(
-      directJessEscapedStaticQuoted,
-      directJessPlainDoubleQuoted,
-      directJessPlainSingleQuoted,
+      staticDoubleQuoted,
+      staticSingleQuoted,
 
       /*
-       * An escaped string that carries interpolation IS representable: the
-       * escape drops the quotes, so the value is exactly the Interpolation of
-       * its content parts with no quote literals around them. Only the static
-       * arm needs the separate `Quoted` escaped fact.
+       * The same optional `~` leads the interp-bearing arms, so the escape is
+       * written once per quote character rather than once per arm.
+       *
+       * DEFECT, NOT A CONTRACT: the reducer below still DROPS the `~` and both
+       * quote tokens when an escaped string carries interpolation, so
+       * `~"a$(b)"` reduces to a bare `Interpolation` while `"a$(b)"` keeps its
+       * quote literals as parts. What the escape MEANS — that it strips the
+       * delimiters — is an eval-time decision that has leaked into the parser,
+       * and the resulting tree cannot say the escape was written at all. The
+       * fix is one `Quoted` node carrying `escaped`, as the static arm already
+       * does and as `Block` does for `~(`/`~[`; that needs `Quoted.value` to
+       * admit an interpolation, which is an AST model change, not a grammar
+       * one. Left as-is here so this arm collapse stays output-neutral.
        */
       noTrivia(sequence(
-        literal('~'),
+        optional(literal('~')),
         literal('"'),
         many(choice(
-          g.DirectJessDollarBrace,
-          directJessQuotedExpression,
+          g.DollarBrace,
+          quotedExpressionParser,
           interpolatedDoubleQuotedText
         )),
         literal('"')
       )),
       noTrivia(sequence(
-        literal('~'),
+        optional(literal('~')),
         literal('\''),
         many(choice(
-          g.DirectJessDollarBrace,
-          directJessQuotedExpression,
-          interpolatedSingleQuotedText
-        )),
-        literal('\'')
-      )),
-      noTrivia(sequence(
-        literal('"'),
-        many(choice(
-          g.DirectJessDollarBrace,
-          directJessQuotedExpression,
-          interpolatedDoubleQuotedText
-        )),
-        literal('"')
-      )),
-      noTrivia(sequence(
-        literal('\''),
-        many(choice(
-          g.DirectJessDollarBrace,
-          directJessQuotedExpression,
+          g.DollarBrace,
+          quotedExpressionParser,
           interpolatedSingleQuotedText
         )),
         literal('\'')
@@ -1902,12 +2499,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * grammar recognition, rather than reaching a reducer that could throw a
    * non-SyntaxError from the public parse path.
    */
-  const DirectJessStaticQuoted = node<Quoted>(
-    'DirectJessStaticQuoted',
+  const LiteralQuoted = node<Quoted>(
+    'Quoted',
     choice(
-      directJessEscapedStaticQuoted,
-      directJessPlainDoubleQuoted,
-      directJessPlainSingleQuoted
+      staticDoubleQuoted,
+      staticSingleQuoted
     ),
     (children) => {
       if (requireToken(children[0]).value === '~') {
@@ -1936,125 +2532,142 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * the static authored path/binding structure; Context-dispatched plugins own
    * loading, target classification, and execution.
    */
-  const directJessImportName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-  const directJessAsClause = sequence(
-    regex(/as(?![-_a-zA-Z0-9\u0080-\uffff])/),
-    directJessImportName
+  const moduleBindingName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+  const moduleAsClause = sequence(
+    syntaxWord('as'),
+    moduleBindingName
   );
-  const directJessStyleAsClause = sequence(
-    regex(/as(?![-_a-zA-Z0-9\u0080-\uffff])/),
+  const styleImportAsClause = sequence(
+    syntaxWord('as'),
     choice(
       literal('*'),
-      directJessImportName
+      moduleBindingName
     )
   );
-  const DirectJessStyleImport = node<StyleImport>(
-    'DirectJessStyleImport',
-    choice(
-      sequence(
-        regex(/@-compose(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.DirectJessQuoted,
-        optional(directJessStyleAsClause),
-        optional(literal(';'))
+  const styleImportDirective = keywords(['@-compose', '@-export', '@-import'], {
+    boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF'
+  });
+  const StyleImport = node<StyleImport>(
+    'StyleImport',
+    dispatch(
+      styleImportDirective,
+      when(
+        '@-compose',
+        sequence(
+          routed(),
+          g.Quoted,
+          optional(styleImportAsClause),
+          optional(literal(';'))
+        )
       ),
-      sequence(
-        regex(/@-export(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.DirectJessQuoted,
-        optional(literal(';'))
+      when(
+        '@-export',
+        sequence(
+          routed(),
+          g.Quoted,
+          optional(literal(';'))
+        )
       ),
-      sequence(
-        regex(/@-import(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.DirectJessQuoted,
-        optional(literal(';'))
+      when(
+        '@-import',
+        sequence(
+          routed(),
+          g.Quoted,
+          optional(literal(';'))
+        )
       )
     ),
     (children) => {
       const source = requireToken(children[0]).value;
-      const path = requireStaticQuoted(children[1]);
+      const path = requireLiteralQuoted(children[1]);
       const names = children.slice(2).filter(isToken)
         .map(requireToken).map(token => token.value);
       if (source === '@-compose') {
-        return styleImport(
-          path,
-          'compose',
-          names.find(name => name !== 'as' && name !== ';') ?? null,
-          false
-        );
+        return styleImport('@-compose', path, {
+          mode: 'compose',
+          namespace: names.find(name => name !== 'as' && name !== ';') ?? null
+        });
       }
       if (source === '@-export') {
-        return styleImport(
-          path,
-          'compose',
-          null,
-          true
-        );
+        return styleImport('@-export', path, { mode: 'compose', forward: true });
       }
       if (source === '@-import') {
-        return styleImport(
-          path,
-          'import'
-        );
+        return styleImport('@-import', path, { mode: 'import' });
       }
-      throw new TypeError('Direct Jess AST grammar produced an unknown style import form.');
+      throw new TypeError('Jess grammar produced an unknown style import form.');
     }
   );
-  const DirectJessModuleSpecifier = node<ModuleImportSpecifier>(
-    'DirectJessModuleSpecifier',
+  const ModuleSpecifier = node<ModuleImportSpecifier>(
+    'ModuleSpecifier',
     sequence(
-      directJessImportName,
-      optional(directJessAsClause)
+      moduleBindingName,
+      optional(moduleAsClause)
     ),
     children => ({
       name: requireToken(children[0]).value,
       alias: children.length === 3 ? requireToken(children[2]).value : null
     })
   );
-  const DirectJessModuleImport = node<ModuleImport>(
-    'DirectJessModuleImport',
-    choice(
-      sequence(
-        regex(/@-use(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.DirectJessQuoted,
-        optional(directJessStyleAsClause),
-        optional(literal(';'))
+  const moduleSpecifierList = oneOrMoreSep(
+    g.ModuleSpecifier,
+    literal(',')
+  );
+  const moduleImportDirective = keywords(['@-use', '@-from'], {
+    boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF'
+  });
+  const ModuleImport = node<ModuleImport>(
+    'ModuleImport',
+    dispatch(
+      moduleImportDirective,
+      when(
+        '@-use',
+        sequence(
+          routed(),
+          g.Quoted,
+          optional(styleImportAsClause),
+          optional(literal(';'))
+        )
       ),
-      sequence(
-        regex(/@-from(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.DirectJessQuoted,
-        regex(/import(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        choice(
-          sequence(
-            literal('*'),
-            directJessAsClause
+      when(
+        '@-from',
+        sequence(
+          routed(),
+          g.Quoted,
+          syntaxWord('import'),
+
+          /*
+           * Left-factored on the specifier: as two arms, every plain
+           * `import a;` parsed it, failed the `,`, and parsed it again. The
+           * three arms now start on `*`, `(` and an identifier — disjoint, so
+           * nothing backtracks and arm order is inert.
+           */
+          choice(
+            sequence(
+              literal('*'),
+              moduleAsClause
+            ),
+            sequence(
+              literal('('),
+              moduleSpecifierList,
+              literal(')')
+            ),
+            sequence(
+              g.ModuleSpecifier,
+              optional(sequence(
+                literal(','),
+                literal('('),
+                moduleSpecifierList,
+                literal(')')
+              ))
+            )
           ),
-          sequence(
-            g.DirectJessModuleSpecifier,
-            literal(','),
-            literal('('),
-            g.DirectJessModuleSpecifier,
-            many(sequence(
-              literal(','),
-              g.DirectJessModuleSpecifier
-            )),
-            literal(')')
-          ),
-          g.DirectJessModuleSpecifier,
-          sequence(
-            literal('('),
-            g.DirectJessModuleSpecifier,
-            many(sequence(
-              literal(','),
-              g.DirectJessModuleSpecifier
-            )),
-            literal(')')
-          )
-        ),
-        optional(literal(';'))
+          optional(literal(';'))
+        )
       )
     ),
     (children) => {
       const source = requireToken(children[0]).value;
-      const path = requireStaticQuoted(children[1]);
+      const path = requireLiteralQuoted(children[1]);
       if (source === '@-use') {
         const names = children.slice(2).filter(isToken)
           .map(requireToken).map(token => token.value);
@@ -2065,7 +2678,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         );
       }
       if (source !== '@-from') {
-        throw new TypeError('Direct Jess AST grammar produced an unknown module import form.');
+        throw new TypeError('Jess grammar produced an unknown module import form.');
       }
       const star = children.find((child): child is Token => isToken(child) && child.value === '*');
       if (star !== undefined) {
@@ -2082,7 +2695,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       const hasNamedGroup = children.some(child => isToken(child) && child.value === '(');
       if (!hasNamedGroup) {
         if (imports.length !== 1) {
-          throw new TypeError('Direct Jess AST grammar produced invalid default module import bindings.');
+          throw new TypeError('Jess grammar produced invalid default module import bindings.');
         }
         return moduleImport(
           path,
@@ -2109,17 +2722,16 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           );
     }
   );
-  const DirectJessExpressionQuoted = node<ExpressionFact>(
-    'DirectJessExpressionQuoted',
+  const ExpressionQuoted = node<ExpressionFact>(
+    'ExpressionQuoted',
     choice(
-      directJessEscapedStaticQuoted,
-      directJessPlainDoubleQuoted,
-      directJessPlainSingleQuoted,
+      staticDoubleQuoted,
+      staticSingleQuoted,
       noTrivia(sequence(
         literal('"'),
         many(choice(
-          g.DirectJessExpressionDollarBrace,
-          directJessQuotedExpressionInterpolation,
+          g.ExpressionDollarBrace,
+          quotedExpressionInterpolationParser,
           interpolatedDoubleQuotedText
         )),
         literal('"')
@@ -2127,8 +2739,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       noTrivia(sequence(
         literal('\''),
         many(choice(
-          g.DirectJessExpressionDollarBrace,
-          directJessQuotedExpressionInterpolation,
+          g.ExpressionDollarBrace,
+          quotedExpressionInterpolationParser,
           interpolatedSingleQuotedText
         )),
         literal('\'')
@@ -2149,16 +2761,45 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return { value, src: value.src };
     }
   );
-  const DirectJessKeyword = node<Keyword>(
-    'DirectJessKeyword',
-    g.CssSyntaxKeyword,
+  const Keyword = node<Keyword>(
+    'Keyword',
+    g.Identifier,
     children => keyword(requireToken(children[0]).value)
   );
-  const DirectJessDimension = node<Dimension>(
-    'DirectJessDimension',
+
+  /*
+   * The `null` LITERAL (§4.3) — a rule of its own, so the identifier positions
+   * that must keep reading `null` as a plain name (a lookup key, a media/container
+   * name, a @keyframes name) are untouched: only the positions that reference this
+   * rule admit the literal.
+   */
+  const NullLiteral = node<Null>(
+    'Null',
+    nullWord,
+    () => NULL_NODE
+  );
+
+  /*
+   * `<percentage>` — css-values-4 §8.2: "a `<number>` immediately followed by a
+   * percent sign `%`", i.e. `<percentage> = <number> %`. It is a NAMED CSS value
+   * type, referenced by name from many productions — `<keyframe-selector> = from
+   * | to | <percentage>` (css-animations-1 §4), `image-set()`, `color-mix()`,
+   * `<position>` — so it is a rule here rather than a shape each consumer
+   * re-spells. Three dialects previously carried three different hand-rolled
+   * numeric regexes for it, none referenceable and none agreeing with this
+   * grammar's own `<number>` token.
+   *
+   * This does NOT add an AST node type: a percentage is still a `Dimension`
+   * whose unit is `%`, which is why this is a token rule and not a `node()`.
+   * `noTrivia` enforces the "immediately followed by" of the spec, so `50 %`
+   * is not a percentage.
+   */
+  const Percentage = token(noTrivia(sequence(g.NumberToken, literal('%'))));
+  const Dimension = node<Dimension>(
+    'Dimension',
     noTrivia(sequence(
-      g.CssSyntaxNumber,
-      optional(g.CssSyntaxDimensionUnit)
+      g.NumberToken,
+      optional(g.DimensionUnit)
     )),
     (children) => {
       const numberText = requireToken(children[0]).value;
@@ -2170,23 +2811,40 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       );
     }
   );
-  const DirectJessColor = node<Color>(
-    'DirectJessColor',
-    g.CssSyntaxHexColor,
+  const Color = node<Color>(
+    'Color',
+    g.HexColor,
     children => color(requireToken(children[0]).value)
   );
-  const DirectJessUrlInterpolatedValue = node<Interpolation>(
-    'DirectJessUrlInterpolatedValue',
+
+  /*
+   * A `<urange>` is one opaque CSS token, so it must be recognized before the
+   * identifier atom: `U+0-7F` split at the `+` leaves `+0`/`-7F` to be re-read
+   * as signed numbers, which serializes valid CSS back out as `U +0 -7F`.
+   * Jess had no `<urange>` rule at all, so `a { b: U+0-7F }` — plain CSS the
+   * other three dialects accept — did not parse.
+   *
+   * The CSS base is the precedent, not an argument from first principles:
+   * `../../../css/css-parser/src/grammar.ts:1739` defines it and admits it in
+   * BOTH ladders, the ordinary value atom (`:2699`, `:2765`) and the calc rung
+   * (`:2205`) — and the comment above that rung says why in as many words, that
+   * `CalcValue` must be a SUPERSET of the ordinary typed value atom rather than
+   * a narrower cousin of it, with `min(U+0-7F)` named as the measured case.
+   * Jess ports that family rather than referencing it, so it owes both arms.
+   */
+  const UnicodeRange = node<ValueNode>(
+    'UnicodeRange',
+    g.UnicodeRangeToken,
+    children => any(requireToken(children[0]).value)
+  );
+  const UrlInterpolatedValue = node<Interpolation>(
+    'UrlInterpolatedValue',
     noTrivia(sequence(
-      optional(jessUrlInterpolatedText),
-      choice(
-        g.DirectJessDollarBrace,
-        g.DirectJessExpression
-      ),
+      optional(unquotedUrlText),
+      g.DollarBrace,
       many(choice(
-        jessUrlInterpolatedText,
-        g.DirectJessDollarBrace,
-        g.DirectJessExpression
+        unquotedUrlText,
+        g.DollarBrace
       ))
     )),
     (children) => {
@@ -2203,43 +2861,23 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
 
   /*
-   * Static CSS at-rule headers use this closed URL production. Dynamic URL
-   * segments are admitted only by the value and CSS-import productions below.
+   * Static CSS at-rule headers use this closed URL production. Value-position
+   * URLs route through IdentifierOrFunction below, where dynamic Jess segments
+   * are a deliberate override of this static CSS leaf.
    */
-  const DirectJessUrl = node<Url>(
-    'DirectJessUrl',
+  const Url = node<Url>(
+    'Url',
     sequence(
-      g.CssSyntaxUrlOpen,
-      optional(choice(
-        g.DirectJessStaticQuoted,
-        g.CssSyntaxStaticUrlInner
-      )),
-      literal(')')
+      g.UrlOpen,
+      noTrivia(sequence(
+        optional(choice(
+          g.LiteralQuoted,
+          g.PlainUrlInner
+        )),
+        literal(')')
+      ))
     ),
-    (children) => {
-      if (children.length === 2) {
-        return url(any(''));
-      }
-      const body = children[1];
-      return isValueNode(body) ? url(body) : url(any(requireToken(body).value));
-    }
-  );
-
-  /*
-   * Ordinary Jess value URLs retain `$[…]` as typed interpolation, instead of
-   * lowering it to opaque URL text or a generic function call.
-   */
-  const DirectJessInterpolatedUrl = node<Url>(
-    'DirectJessInterpolatedUrl',
-    sequence(
-      g.CssSyntaxUrlOpen,
-      choice(
-        g.DirectJessQuoted,
-        g.DirectJessUrlInterpolatedValue
-      ),
-      literal(')')
-    ),
-    children => url(requireValueNode(children[1]))
+    urlFromChildren
   );
 
   /*
@@ -2248,9 +2886,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * never need to parse a value. Keeping that dependency one-way avoids a
    * recording-phase forward-reference cycle.
    */
-  const DirectJessSimple = node<SimpleSelector>(
-    'DirectJessSimple',
-    g.CssSyntaxSimple,
+  const BasicSelector = node<SimpleSelector>(
+    'BasicSelector',
+    g.SimpleSelectorToken,
     children => simpleSelector(requireToken(children[0]).value)
   );
 
@@ -2260,15 +2898,15 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * The parenthesized arm leads: the fused terminal would otherwise commit the
    * bare `&` of `&(-1)` and strand its payload.
    */
-  const DirectJessParent = node<SimpleSelector>(
-    'DirectJessParent',
+  const Parent = node<SimpleSelector>(
+    'SimpleSelector',
     choice(
       sequence(
         literal('&('),
-        jessAmpersandAppendPayload,
+        ampersandAppendPayload,
         literal(')')
       ),
-      jessAmpersand
+      ampersand
     ),
     (children) => {
       const head = requireToken(children[0]).value;
@@ -2277,25 +2915,25 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
 
   /*
-   * Cheap superset lookahead so an ordinary `.card` simple selector does not
-   * consume its `[.#]`+text run, fail the required `$[…]`, and backtrack a
-   * re-parse through DirectJessSimple. The predicate mirrors this arm's own
+   * Cheap `${…}` lookahead so an ordinary `.card` simple selector does not
+   * consume its `[.#]`+text run, fail the required interpolation, and backtrack a
+   * re-parse through BasicSelector. The predicate mirrors this arm's own
    * leading shape (optional class/id sigil + selector-text run) and requires an
    * interpolation opener immediately after it, so the opener is bound to THIS
    * simple selector and a sibling selector's interpolation never falsely admits
    * a plain one.
    */
-  const directInterpSimpleAhead = not(not(regex(/[.#]?[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/)));
-  const DirectJessInterpolatedSimple = node<SimpleSelector>(
-    'DirectJessInterpolatedSimple',
+  const interpolatedSimpleAhead = peek(regex(/[.#]?[-_a-zA-Z0-9\u0080-\uffff]*\$\{/));
+  const InterpolatedSimple = node<SimpleSelector>(
+    'InterpolatedSimple',
     noTrivia(sequence(
-      directInterpSimpleAhead,
+      interpolatedSimpleAhead,
       optional(regex(/[.#]/)),
-      many(jessSelectorTextRun),
-      g.DirectJessDollarBrace,
+      many(selectorTextRun),
+      g.DollarBrace,
       many(choice(
-        g.DirectJessDollarBrace,
-        jessSelectorTextRun
+        g.DollarBrace,
+        selectorTextRun
       ))
     )),
     (children) => {
@@ -2313,7 +2951,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           child.parts.forEach(append);
         } else {
           /*
-           * The superset lookahead emits a throwaway match token (`…$[`). Real
+           * The superset lookahead emits a throwaway match token (`…${`). Real
            * selector-text chunks never contain `$`, so this content check drops
            * only that throwaway, independent of its position.
            */
@@ -2329,65 +2967,79 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
 
   /*
-   * `&` glued to a `$[…]` template is ONE parent-suffix selector atom, not a
+   * `&` glued to a `${...}` template is ONE parent-suffix selector atom, not a
    * parent reference followed by a second compound member. Only the fused shape
    * distributes the concatenation per parent; a split one would resolve the bare
    * `&` to `:is(parents)` first and then append to that.
    *
-   * The literal run between `&` and the template is a template FRAGMENT, not a
+   * The literal run between `&` and the template is a template fragment, not a
    * completed identifier, so the fused terminal's identifier rule does not apply
-   * to it: `&-$[tone]` is the authored spelling of `&-primary`. The lookahead is
-   * the same fast reject `DirectJessInterpolatedSimple` uses, so an ordinary `&`
-   * compound member never pays a failed template scan.
+   * to it: `&-${tone}` is the authored spelling of `&-primary`. The required
+   * `DollarBrace` is the decisive continuation, so this production owns that
+   * decision directly rather than pre-scanning it with `peek(...)`.
    */
-  const directInterpParentAhead = not(not(regex(/&[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/)));
-  const DirectJessInterpolatedParentSuffix = node<SimpleSelector>(
-    'DirectJessInterpolatedParentSuffix',
+  const InterpolatedParentSuffix = node<SimpleSelector>(
+    'InterpolatedParentSuffix',
     noTrivia(sequence(
-      directInterpParentAhead,
       literal('&'),
-      many(jessSelectorTextRun),
-      g.DirectJessDollarBrace,
+      many(selectorTextRun),
+      g.DollarBrace,
       many(choice(
-        g.DirectJessDollarBrace,
-        jessSelectorTextRun
+        g.DollarBrace,
+        selectorTextRun
       ))
     )),
-    children => interpolatedSimpleSelector(templateInterpolationFromChildren(children.filter(child => !isToken(child) || !child.value.includes('$'))))
+    children => interpolatedSimpleSelector(templateInterpolationFromChildren(children))
   );
-  const directJessAttributeDoubleQuoted = noTrivia(sequence(
-    literal('"'),
-    g.CssSyntaxDoubleQuotedText,
-    literal('"')
-  ));
-  const directJessAttributeSingleQuoted = noTrivia(sequence(
-    literal('\''),
-    g.CssSyntaxSingleQuotedText,
-    literal('\'')
-  ));
-  const DirectJessAttribute = node<SimpleSelector>(
-    'DirectJessAttribute',
+
+  /*
+   * `ns|E` / `*|E` / `|E` is ONE type selector with a namespace prefix
+   * (selectors-4 §5.1), not two compounds joined by a `|` combinator — Jess's
+   * combinator set already excludes `|`, so before this arm the whole selector
+   * was rejected. It leads the compound choice because its prefix shares a first
+   * char with a plain type selector; `noTrivia` keeps the prefix glued. The
+   * reduced value is a plain `SimpleSelector` carrying the whole `svg|circle`
+   * text, matching the CSS base and the other dialects (one representation per
+   * construct).
+   */
+  const NamespaceTypeSelector = node<SimpleSelector>(
+    'NamespaceTypeSelector',
+    noTrivia(sequence(
+      attributeNamespace,
+      choice(g.Identifier, literal('*'))
+    )),
+    children => simpleSelector(children.map(child => requireToken(child).value).join(''))
+  );
+
+  /*
+   * CSS owns the attribute frame. Its quoted value is static selector syntax,
+   * so the Jess-specific string override is the restricted LiteralQuoted slot.
+   * A namespaced attribute name (`[svg|attr]`, `[*|attr]`, `[|attr]`) takes the
+   * same glued `attributeNamespace` prefix the CSS base uses.
+   */
+  const AttributeSelector = node<SimpleSelector>(
+    'AttributeSelector',
     sequence(
       literal('['),
-      g.CssSyntaxKeyword,
+      optional(attributeNamespace),
+      g.Identifier,
       optional(sequence(
-        g.CssSyntaxAttributeOperator,
+        g.AttributeOperator,
         choice(
-          directJessAttributeDoubleQuoted,
-          directJessAttributeSingleQuoted,
-          g.CssSyntaxKeyword
+          g.LiteralQuoted,
+          g.Identifier
         ),
-        optional(g.CssSyntaxAttributeModifier)
+        optional(g.AttributeModifier)
       )),
       literal(']')
     ),
-    children => simpleSelector(children.map(requireToken).map(token => token.value).join(''))
+    children => attributeSelector(children.map(child => isQuoted(child) ? child.src : requireToken(child).value))
   );
 
   /*
    * `:nth-child`/`:nth-last-child` argument: a bare `<An+B>` OR `<An+B> of S`
    * (Selectors-4 §6.6.2, https://www.w3.org/TR/selectors-4/#the-nth-child-pseudo).
-   * The shared `g.CssSyntaxNth`/`g.CssSyntaxOfKeyword`/`g.CssSyntaxPseudoCloseAhead`
+   * The shared `g.NthExpression`/`g.NthOfKeyword`/`g.PseudoSelectorCloseAhead`
    * recognitions replace the inlined `<An+B> of` regex; `of` keeps its authored
    * surrounding whitespace (explicit `rawWhitespace`, not trivia) so `2n+1of .a`
    * cannot be silently normalized into the distinct `2n+1 of .a` syntax. The
@@ -2395,25 +3047,26 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * accepted as before; typed An+B is tried first so `-n+2` is not claimed as a
    * static `-n` selector.
    */
-  const DirectJessStaticNthChildArgument = node<SelectorList | string>(
-    'DirectJessStaticNthChildArgument',
-    choice(
-      sequence(
-        g.CssSyntaxNth,
-        optional(sequence(
-          rawWhitespace,
-          g.CssSyntaxOfKeyword,
-          rawWhitespace,
-          parser(
-            { trivia: whitespace },
-            g.DirectJessStaticSelector
-          )
-        )),
-        g.CssSyntaxPseudoCloseAhead
-      ),
+  const NthChildArgument = node<SelectorList | string>(
+    'NthChildArgument',
+    sequence(
+      not(noTrivia(sequence(
+        g.NthExpression,
+        g.NthOfKeyword
+      ))),
       parser(
         { trivia: whitespace },
-        g.DirectJessStaticSelector
+        choice(
+          sequence(
+            g.NthExpression,
+            optional(sequence(
+              g.NthOfKeyword,
+              g.PseudoSelectorList
+            )),
+            g.PseudoSelectorCloseAhead
+          ),
+          g.PseudoSelectorList
+        )
       )
     ),
     (children) => {
@@ -2421,7 +3074,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       const nth = children.find(isToken);
       if (nth === undefined) {
         if (selector === undefined) {
-          throw new TypeError('Direct Jess nth-child pseudo argument lost its selector.');
+          throw new TypeError('Jess nth-child pseudo argument lost its selector.');
         }
         return selector;
       }
@@ -2438,24 +3091,24 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * `n of .a`, `-n+3 of .a` fail rather than being re-captured as a descendant
    * selector — the CSS-aligned owner decision (PSEUDO-ARGUMENT-CONSOLIDATION §7.1).
    */
-  const DirectJessStaticNthTypeArgument = node<SelectorList | string>(
-    'DirectJessStaticNthTypeArgument',
+  const NthTypeArgument = node<SelectorList | string>(
+    'NthTypeArgument',
     choice(
       sequence(
-        g.CssSyntaxNth,
-        g.CssSyntaxPseudoCloseAhead
+        g.NthExpression,
+        g.PseudoSelectorCloseAhead
       ),
-      sequence(
-        not(parser(
-          { trivia: whitespace },
-          sequence(
-            g.CssSyntaxNth,
-            g.CssSyntaxOfKeyword
-          )
-        )),
-        parser(
-          { trivia: whitespace },
-          g.DirectJessStaticSelector
+      parser(
+        { trivia: whitespace },
+        sequence(
+          not(parser(
+            { trivia: whitespace },
+            sequence(
+              g.NthExpression,
+              g.NthOfKeyword
+            )
+          )),
+          g.PseudoSelectorList
         )
       )
     ),
@@ -2464,80 +3117,80 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       const nth = children.find(isToken);
       if (nth === undefined) {
         if (selector === undefined) {
-          throw new TypeError('Direct Jess nth-of-type pseudo argument lost its selector.');
+          throw new TypeError('Jess nth-of-type pseudo argument lost its selector.');
         }
         return selector;
       }
       return nth.value;
     }
   );
-  const DirectJessPseudo = node<SimpleToken>(
-    'DirectJessPseudo',
+  const PseudoSelector = node<SimpleToken>(
+    'PseudoSelector',
 
     /*
      * Insignificant whitespace may surround a functional pseudo's argument inside
      * its parens (`:not( .b )`, `:nth-child( 2n+1 )`). Consume it here so valid
      * CSS is accepted in the .jess dialect exactly as the canonical CSS grammar
      * accepts it; it is trivia, so the serialized argument stays normalized.
-     * The nth families dispatch by NAME (shared `g.CssSyntaxNthChildName`/
-     * `g.CssSyntaxNthTypeName`) so `of S` is accepted only on the child index
-     * and rejected on the type index. The selector-argument pseudos
-     * (`:is`/`:where`/`:not`/`:has`/`:matches`) dispatch by their own shared name
-     * class and take a selector-ONLY argument with no any-value fallback, so
-     * `:not(2n+1)` fails the selector and rejects the whole pseudo. Everything
-     * else is the general-any class. Both guards are restated as negative
-     * lookaheads on that last arm so a failed selector or malformed nth argument
-     * cannot fall through to the any-value scan; a bare, paren-less nth name
-     * (`:nth-child`) still rejects rather than becoming a keyword pseudo.
+     * The one glued name/function opener routes nth and selector-only names to
+     * their own argument grammars, so `of S` stays child-index-only and
+     * `:not(2n+1)` cannot fall through to general-any text. A bare nth or
+     * selector-only name rejects rather than becoming a keyword pseudo.
      */
     sequence(
-      g.CssSyntaxPseudoColon,
-      choice(
-        sequence(
-          g.CssSyntaxNthChildName,
-          literal('('),
-          optional(rawWhitespace),
-          DirectJessStaticNthChildArgument,
-          optional(rawWhitespace),
-          literal(')')
-        ),
-        sequence(
-          g.CssSyntaxNthTypeName,
-          literal('('),
-          optional(rawWhitespace),
-          DirectJessStaticNthTypeArgument,
-          optional(rawWhitespace),
-          literal(')')
-        ),
-        sequence(
-          g.CssSyntaxSelectorArgPseudoName,
-          literal('('),
-          optional(rawWhitespace),
-          g.DirectJessStaticPseudoArgument,
-          optional(rawWhitespace),
-          literal(')')
-        ),
-        sequence(
-          not(g.CssSyntaxSelectorArgPseudoName),
-          not(g.CssSyntaxNthName),
-          g.CssSyntaxKeyword,
-          optional(sequence(
-            literal('('),
-            g.DirectJessGenericPseudoArgument,
+      g.PseudoSelectorColon,
+      dispatch(
+        g.identifierOrFunction,
+        caseInsensitiveWhen(
+          ['nth-child(', 'nth-last-child('],
+          sequence(
+            routed(),
+            optional(rawWhitespace),
+            NthChildArgument,
+            optional(rawWhitespace),
             literal(')')
+          )
+        ),
+        caseInsensitiveWhen(
+          ['nth-of-type(', 'nth-last-of-type('],
+          sequence(
+            routed(),
+            optional(rawWhitespace),
+            NthTypeArgument,
+            optional(rawWhitespace),
+            literal(')')
+          )
+        ),
+        caseInsensitiveWhen(
+          ['is(', 'where(', 'not(', 'has(', 'matches('],
+          sequence(
+            routed(),
+            optional(rawWhitespace),
+            g.PseudoSelectorArgument,
+            optional(rawWhitespace),
+            literal(')')
+          )
+        ),
+        caseInsensitiveWhen(
+          [
+            'nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type',
+            'is', 'where', 'not', 'has', 'matches'
+          ],
+          not(routed())
+        ),
+        when(
+          endsWith('('),
+          noTrivia(sequence(
+            routed(),
+            g.GenericPseudoArgument
           ))
-        )
+        ),
+        otherwise(routed())
       )
     ),
     (children) => {
-      const head = `${requireToken(children[0]).value}${requireToken(children[1]).value}`;
-
-      /*
-       * The argument reduces to a `SelectorList` or a plain An+B string; the
-       * colon, name, parens, and surrounding-whitespace children are all tokens,
-       * so a find on those two shapes locates the argument regardless of whether
-       * optional whitespace is present.
-       */
+      const pseudoName = functionOpenName(children[1]);
+      const head = `${requireToken(children[0]).value}${pseudoName}`;
       const arg = children.find((child): child is SelectorList | string => isSelectorList(child) || typeof child === 'string');
       if (arg === undefined) {
         return simpleSelector(head);
@@ -2549,7 +3202,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
        * owns the inline `:is(a, b)` rule (`pseudoCanonical`). The nth/opaque path
        * still collapses to canonical SimpleSelector text via `staticSelectorText`.
        */
-      if (isSelectorList(arg) && STRUCTURED_PSEUDOS.has(requireToken(children[1]).value.toLowerCase())) {
+      if (isSelectorList(arg) && STRUCTURED_PSEUDOS.has(pseudoName.toLowerCase())) {
         return pseudoSelector(
           head,
           arg
@@ -2559,70 +3212,69 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return simpleSelector(`${head}(${argText})`);
     }
   );
-  const DirectJessStaticCompound = node<CompoundSelector>(
-    'DirectJessStaticCompound',
+  const PseudoSelectorCompound = node<SelectorTerm>(
+    'PseudoSelectorCompound',
     noTrivia(oneOrMore(choice(
       parser(
         { trivia: whitespace },
-        g.DirectJessAttribute
+        g.AttributeSelector
       ),
-      g.DirectJessPseudo,
-      g.DirectJessParent,
-      g.DirectJessSimple
+      g.PseudoSelector,
+      g.Parent,
+      g.NamespaceTypeSelector,
+      g.BasicSelector
     ))),
     reduceCompound
   );
-  const directJessCombinator = choice(
+  const selectorCombinator = choice(
     literal('||'),
     literal('>'),
     literal('+'),
     literal('~')
   );
-  const DirectJessStaticComplexTail = node<JessComplexTail>(
-    'DirectJessStaticComplexTail',
+  const PseudoSelectorComplex = node<SelectorBranch>(
+    'PseudoSelectorComplex',
     sequence(
-      optional(directJessCombinator),
-      g.DirectJessStaticCompound
+      g.PseudoSelectorCompound,
+      many(sequence(
+        optional(selectorCombinator),
+        g.PseudoSelectorCompound
+      ))
     ),
     (children) => {
-      const compound = children.find(isCompound);
-      if (compound === undefined) {
-        throw new TypeError('Direct Jess static selector requires a compound tail.');
+      const segments: Array<{ combinator?: JessComplexTail['combinator']; term: SelectorTerm }> = [];
+      let combinator: JessComplexTail['combinator'] = ' ';
+      for (const child of children) {
+        if (isSelectorTerm(child)) {
+          segments.push(segments.length === 0 ? { term: child } : { combinator, term: child });
+          combinator = ' ';
+          continue;
+        }
+        if (isToken(child)) {
+          combinator = jessCombinator(child);
+        }
       }
-      const token = children.find(isToken);
-      const comb = token?.value ?? ' ';
-      if (comb !== ' ' && comb !== '>' && comb !== '+' && comb !== '~' && comb !== '||') {
-        throw new TypeError('Direct Jess static selector produced an invalid combinator.');
-      }
-      return { comb, compound };
+      return selectorBranchOf([segments[0]!, ...segments.slice(1)]);
     }
   );
-  const DirectJessStaticComplex = node<ComplexSelector>(
-    'DirectJessStaticComplex',
-    sequence(
-      g.DirectJessStaticCompound,
-      many(g.DirectJessStaticComplexTail)
-    ),
-    reduceComplex
-  );
-  const DirectJessStaticSelectorTail = node<ComplexSelector>(
-    'DirectJessStaticSelectorTail',
+  const PseudoSelectorTail = node<SelectorBranch>(
+    'PseudoSelectorTail',
     parser(
       { trivia: whitespace },
       sequence(
         literal(','),
-        g.DirectJessStaticComplex
+        g.PseudoSelectorComplex
       )
     ),
     reduceSelectorTail
   );
-  const DirectJessStaticSelector = node<SelectorList>(
-    'DirectJessStaticSelector',
+  const PseudoSelectorList = node<SelectorList>(
+    'PseudoSelectorList',
     parser(
       { trivia: whitespace },
       sequence(
-        g.DirectJessStaticComplex,
-        many(g.DirectJessStaticSelectorTail)
+        g.PseudoSelectorComplex,
+        many(g.PseudoSelectorTail)
       )
     ),
     reduceSelectorList
@@ -2636,18 +3288,18 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * source text. Retain the parsed `SelectorList` rather than collapsing it to
    * text: a whitelisted selector-function pseudo (`:is`/`:not`/…) keeps it as
    * structured `args` and never canonicalizes at parse (the inner `_canon` memos
-   * stay unpopulated); `DirectJessPseudo` derives opaque SimpleSelector text otherwise.
+   * stay unpopulated); `PseudoSelector` derives opaque SimpleSelector text otherwise.
    */
-  const DirectJessStaticPseudoArgument = node<SelectorList | string>(
-    'DirectJessStaticPseudoArgument',
+  const PseudoSelectorArgument = node<SelectorList | string>(
+    'PseudoSelectorArgument',
     parser(
       { trivia: whitespace },
-      g.DirectJessStaticSelector
+      g.PseudoSelectorList
     ),
     (children) => {
       const selector = children.find(isSelectorList);
       if (selector === undefined) {
-        throw new TypeError('Direct Jess static pseudo argument lost its selector.');
+        throw new TypeError('Jess static pseudo argument lost its selector.');
       }
       return selector;
     }
@@ -2657,74 +3309,84 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * A functional pseudo this grammar has no typed argument for is still
    * well-formed CSS: Selectors-4 §3.5 gives an unknown functional pseudo-class an
    * `<any-value>` argument, and WHETHER a pseudo exists is a language-service
-   * fact, not a parse decision — `a:totally-made-up(1)` and `:lang("en-US")` lost
-   * the whole stylesheet. The selector arm is tried first so every argument that
-   * already parsed keeps its structured `SelectorList` byte-for-byte; only what
-   * previously rejected reaches the delimiter-aware verbatim scan the other
-   * dialects already run for this class. A top-level `$` ends the scan, so the
-   * required `)` then fails: a Jess interpolation in a pseudo
-   * argument still rejects rather than being flattened into opaque text.
+   * fact, not a parse decision — `a:totally-made-up(1)` and `:lang("en-US")` keep
+   * the whole stylesheet parseable. This is its own structural `<any-value>`
+   * production, not a speculative selector parse: only the explicitly routed
+   * selector pseudo names accept `PseudoSelectorArgument`. A top-level `$` ends
+   * this structured argument, so the required `)` then fails and a Jess
+   * interpolation cannot become a generic pseudo-argument byte sequence.
    */
-  const jessPseudoRawDoubleQuoted = sequence(
-    literal('"'),
-    plainDoubleQuotedText,
-    literal('"')
+  const GenericPseudoText = node<string>(
+    'GenericPseudoText',
+    regex(/(?:[^$()[\]{}'"\\/]|\/(?!\*))+/),
+    children => requireToken(children[0]).value
   );
-  const jessPseudoRawSingleQuoted = sequence(
-    literal('\''),
-    plainSingleQuotedText,
-    literal('\'')
+
+  /*
+   * The entry points scan opaque runs with `scanSkip: [blockComment, quoted…]`,
+   * so a `)` inside a comment or a string is argument content everywhere the
+   * scanner owns the run. This structured `<any-value>` argument replaces that
+   * scanner (a top-level `$` has to end it), so it owns the same three skips:
+   * quoted text below, groups below, and a block comment here. The comment is
+   * not semantic payload — it is a non-terminating byte of an opaque capture,
+   * retained because the capture is byte-preserving.
+   */
+  const GenericPseudoComment = node<string>(
+    'GenericPseudoComment',
+    regex(/\/\*(?:[^*]|\*(?!\/))*\*\//),
+    children => requireToken(children[0]).value
   );
-  const jessPseudoRawArgument = scanTo(
-    choice(
-      literal('$'),
-      literal(')')
-    ),
-    {
-      skip: [
-        balanced(
-          '(',
-          ')',
-          { skip: [jessPseudoRawDoubleQuoted, jessPseudoRawSingleQuoted] }
-        ),
-        balanced(
-          '[',
-          ']',
-          { skip: [jessPseudoRawDoubleQuoted, jessPseudoRawSingleQuoted] }
-        ),
-        jessPseudoRawDoubleQuoted,
-        jessPseudoRawSingleQuoted,
-        blockComment
-      ]
-    }
+  const GenericPseudoEscape = node<string>(
+    'GenericPseudoEscape',
+    regex(/\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])/),
+    children => requireToken(children[0]).value
   );
-  const DirectJessGenericPseudoArgument = node<SelectorList | string>(
-    'DirectJessGenericPseudoArgument',
-    choice(
-      sequence(
-        optional(rawWhitespace),
-        g.DirectJessStaticPseudoArgument,
-        optional(rawWhitespace)
-      ),
-      jessPseudoRawArgument
-    ),
+  const GenericPseudoItem = node<string>(
+    'GenericPseudoItem',
+    noTrivia(choice(
+      g.GenericPseudoText,
+      g.GenericPseudoComment,
+      g.GenericPseudoEscape,
+      g.LiteralQuoted,
+      g.GenericPseudoGroup
+    )),
     (children) => {
-      const selector = children.find(isSelectorList);
-      if (selector !== undefined) {
-        return selector;
-      }
-      return children.length === 0 ? '' : requireToken(children[0]).value;
+      const child = children[0];
+      return isQuoted(child) ? child.src : requireString(child);
     }
   );
-  const DirectJessSelectorCapture = node<SelectorCapture>(
-    'DirectJessSelectorCapture',
+  const GenericPseudoGroup = node<string>(
+    'GenericPseudoGroup',
+    choice(
+      sequence(literal('('), many(g.GenericPseudoItem), literal(')')),
+      sequence(literal('['), many(g.GenericPseudoItem), literal(']')),
+      sequence(literal('{'), many(g.GenericPseudoItem), literal('}'))
+    ),
+    children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
+  );
+  const GenericPseudoArgument = node<string>(
+    'GenericPseudoArgument',
+    noTrivia(sequence(
+      many(g.GenericPseudoItem),
+      literal(')')
+    )),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => {
+      const source = sourceFromState(state);
+      if (source !== undefined && span.end > span.start) {
+        return source.slice(span.start, span.end - 1);
+      }
+      return children.filter((child): child is string => typeof child === 'string').join('');
+    }
+  );
+  const SelectorCapture = node<SelectorCapture>(
+    'SelectorCapture',
     sequence(
       literal('*['),
-      g.DirectJessStaticSelector,
+      g.PseudoSelectorList,
       literal(']')
     ),
     (children) => {
-      const branches = requireSelectorList(children[1]).selectors.map(complexCanonical);
+      const branches = requireSelectorList(children[1]).selectors.map(selectorBranchCanonical);
       return selectorCapture(
         branches,
         `*[${branches.join(', ')}]`
@@ -2738,15 +3400,15 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * remains unavailable as unwrapped Jess arithmetic, and a second or dangling
    * separator cannot fall back to a generic function or raw value.
    */
-  const DirectJessCallComponent = node<ValueSlot>(
-    'DirectJessCallComponent',
+  const CallComponent = node<ValueSlot>(
+    'CallComponent',
     sequence(
-      g.DirectJessValueSpaceGroup,
+      g.ValueSpaceGroup,
       optional(sequence(
         optional(rawWhitespace),
         literal('/'),
         optional(rawWhitespace),
-        g.DirectJessValueSpaceGroup
+        g.ValueSpaceGroup
       ))
     ),
     (children) => {
@@ -2766,19 +3428,26 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           '/'
         );
       }
-      throw new TypeError('Direct Jess AST call component produced unexpected children.');
+      throw new TypeError('Jess call component produced unexpected children.');
     }
   );
-  const DirectJessCallArgument = node<ValueSlot>(
-    'DirectJessCallArgument',
+
+  /*
+   * An argument comma admits padding on BOTH sides. Unlike a value-list comma
+   * there is no competing punctuation reading inside an argument list, so
+   * `f(c , d)` and `f(c /* z *\/, d)` are plain padded separators.
+   */
+  const CallArgument = node<ValueSlot>(
+    'CallArgument',
     sequence(
+      optional(valueTrivia),
       literal(','),
-      optional(regex(/[ \t\n\r\f]+/)),
-      g.DirectJessCallComponent
+      optional(valueTrivia),
+      g.CallComponent
     ),
     (children) => {
-      if ((children.length !== 2 && children.length !== 3) || requireToken(children[0]).value !== ',') {
-        throw new TypeError('Direct Jess AST call argument produced unexpected children.');
+      if (!children.some(child => isToken(child) && child.value === ',')) {
+        throw new TypeError('Jess call argument lost its comma.');
       }
       const value = children.at(-1);
       return Array.isArray(value) ? value : requireValueNode(value);
@@ -2786,39 +3455,264 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
 
   /*
+   * CSS keeps custom-property values as their own atom; ordinary identifiers
+   * and glued function openers are the routed family. Route that consumed
+   * spelling exactly once: `url(` keeps its dedicated body, `var(` retains its
+   * comma rule, generic functions own Call, and a bare identifier remains a
+   * Keyword. This prevents a malformed known URL from falling through to
+   * GenericCall after its URL production rejects.
+   */
+  const CustomPropertyValue = node<Keyword>(
+    'CustomPropertyValue',
+    g.CustomPropertyName,
+    children => keyword(requireToken(children[0]).value)
+  );
+  const KeywordValue = node<Keyword | Null>(
+    'Keyword',
+    routed(),
+    children => keywordOrNull(requireToken(children[0]).value)
+  );
+  const VarCall = node<FunctionCall>(
+    'VarCall',
+    sequence(
+      routed(),
+      optional(valueTrivia),
+      g.CustomPropertyValue,
+      optional(valueTrivia),
+      optional(sequence(
+        literal(','),
+        optional(valueTrivia),
+        optional(g.Value),
+        optional(valueTrivia)
+      )),
+      literal(')')
+    ),
+    children => funcCall(
+      functionOpenName(children[0]),
+      children.filter(isValueSlotValue)
+    )
+  );
+
+  /*
    * A direct call owns its argument boundaries and recursive call shape. Its
    * components retain the existing Jess value-term contract, including
    * variable-led expressions (documented function arguments); the new slash
    * separator does not make `/` available as bare Jess arithmetic. Dynamic
-   * `$[...]` interpolation and named arguments remain outside this slice until
-   * they have typed reductions.
+   * `$[...]` lookup remains outside this slice until it has a typed reduction;
+   * a named argument now has one — `FunctionCall.args` is a `CallArg[]`, the
+   * same node a mixin-call argument is. `var()` is the one CSS-defined exception that
+   * permits the comma without a following value, so it routes before the
+   * generic continuation instead of relaxing every function call.
    */
-  const DirectJessCall = node<FunctionCall>(
-    'DirectJessCall',
+  const GenericCall = node<FunctionCall>(
+    'Call',
     sequence(
-      not(regex(/url(?=\()/i)),
-      g.CssSyntaxKeyword,
-      literal('('),
+      routed(),
+      optional(valueTrivia),
       optional(sequence(
-        g.DirectJessCallComponent,
-        many(g.DirectJessCallArgument)
+        g.CallComponent,
+        many(g.CallArgument)
       )),
+      optional(valueTrivia),
       literal(')')
     ),
-    (children) => {
-      if (children.length < 3 || requireToken(children[1]).value !== '(' || requireToken(children.at(-1)).value !== ')') {
-        throw new TypeError('Direct Jess AST call produced unexpected children.');
+    children => funcCall(
+      functionOpenName(children[0]),
+      children.slice(1, -1).filter(isValueSlotValue)
+    )
+  );
+  const UrlFunction = node<Url>(
+    'Url',
+    sequence(
+      routed(),
+      noTrivia(sequence(
+        optional(choice(
+          g.Quoted,
+          g.UrlInterpolatedValue,
+          g.UnquotedUrlText
+        )),
+        literal(')')
+      ))
+    ),
+    urlFromChildren
+  );
+
+  /*
+   * The single Jess divergence from the CSS calc family: an operand may be any
+   * Jess value form ($var, `$.`-lookup, and the three interpolation spellings).
+   * They resolve to an operand — Jess does not REDUCE the arithmetic here, it
+   * only records the structure, exactly as CSS does for `var()`.
+   */
+  const CalcValue = node<ValueNode>(
+    'CalcValue',
+    choice(
+      g.Dimension,
+      g.Color,
+      g.UnicodeRange,
+      g.MathDollarValue,
+      g.InterpolatedValue,
+      g.CalcParen,
+      g.IdentifierOrFunction,
+      g.Quoted,
+      g.CustomPropertyValue
+    ),
+    { project: 0 }
+  );
+
+  /*
+   * CSS arithmetic parentheses are structural only inside calc(), where they
+   * preserve math precedence in the AST.
+   */
+  const CalcParen = node<ValueNode>(
+    'CalcParen',
+    noTrivia(sequence(
+      literal('('),
+      optional(valueTrivia),
+      g.CalcSum,
+      optional(valueTrivia),
+      literal(')')
+    )),
+    children => block(requireValueNode(children.find(isValueNode)))
+  );
+
+  const CalcProduct = node<ValueNode>(
+    'CalcProduct',
+    noTrivia(sequence(
+      g.CalcValue,
+      many(sequence(
+        calcProductOperator,
+        g.CalcValue
+      ))
+    )),
+    foldCalcOperation
+  );
+  const CalcSum = node<ValueNode>(
+    'CalcSum',
+    noTrivia(sequence(
+      g.CalcProduct,
+      many(sequence(
+        calcSumOperator,
+        g.CalcProduct
+      ))
+    )),
+    foldCalcOperation
+  );
+
+  /*
+   * The SEQUENCE rung, and the reason routing every §10 name to the ladder is a
+   * widening rather than a narrowing. `CalcSum` has no space-separated-run
+   * derivation because `calc()` never needed one, but `min(1px 2px)`,
+   * `clamp(1px 2px, 3px)` and `min(red blue)` are shapes the grammar accepts
+   * today — the parser accepts SHAPES, not semantics, so narrowing them would
+   * be a regression.
+   *
+   * The separator is REQUIRED between run items, which is the adjacency
+   * question (ledger G24) and the one deliberate difference from an ordinary
+   * value run: at top level `1rem+1vw` is two adjacent component values, but
+   * inside a math function css-values-4 §10.1 requires real whitespace on both
+   * sides of `+`/`-`, so `calc(1rem+1vw)` must be REJECTED. It is rejected by
+   * the absence of an adjacent-items arm, not by any production re-spelling
+   * what a separator looks like.
+   */
+  const CalcSequence = node<ValueSlot>(
+    'CalcSequence',
+    noTrivia(sequence(
+      g.CalcSum,
+      many(sequence(
+        field(
+          'separator',
+          regex(/[ \t\n\r\f]+/)
+        ),
+        not(signedNumericStart),
+        g.CalcSum
+      ))
+    )),
+    (children, fields) => {
+      const values = children.filter(isValueSlotValue);
+      if (values.length === 1) {
+        return values[0]!;
       }
-      const args: ValueSlot[] = [];
-      for (let index = 2; index < children.length - 1; index += 1) {
-        const value = children[index];
-        args.push(Array.isArray(value) ? value : requireValueNode(value));
-      }
-      return funcCall(
-        requireToken(children[0]).value,
-        args
+      const separators = fields?.separator === undefined
+        ? []
+        : requireFields(
+            fields,
+            'separator'
+          ).map(separator => typeof separator.value === 'string'
+            ? separator.value
+            : requireToken(separator.value).value);
+      return withValueLayout(
+        values,
+        separators
       );
     }
+  );
+  const mathArgumentComma = noTrivia(sequence(
+    optional(valueTrivia),
+    literal(','),
+    optional(valueTrivia)
+  ));
+
+  /*
+   * `<calc-sum>#`. `round()` additionally takes an optional leading
+   * `<rounding-strategy>` keyword (`round(up, 1.2px, 1px)`), which needs no arm
+   * of its own — a bare keyword is already a `CalcValue`, so the strategy
+   * arrives as the first argument. The grammar is therefore NOT uniformly
+   * `<calc-sum>#`, and enforcing which name takes what is the language
+   * service's job, not the parser's.
+   */
+  const calcFunctionArguments = oneOrMoreSep(
+    g.CalcSequence,
+    mathArgumentComma
+  );
+
+  /*
+   * The css-values-4 §10 math functions — `calc` and the other twenty — share
+   * ONE tail. `calc()` computes nothing; it is a spelling the parser detects so
+   * the operations inside it keep their authorship, and every other §10 name
+   * has exactly that relationship to the grammar.
+   */
+  const MathFunction = node<FunctionCall>(
+    'Call',
+    noTrivia(sequence(
+      routed(),
+      optional(valueTrivia),
+      g.calcFunctionArguments,
+      optional(valueTrivia),
+      literal(')')
+    )),
+    children => funcCall(
+      functionOpenName(children[0]),
+      children.slice(1).filter(isValueSlotValue)
+    )
+  );
+
+  const IdentifierOrFunction = dispatch(
+    g.identifierOrFunction,
+    caseInsensitiveWhen(
+      'url(',
+      UrlFunction
+    ),
+    caseInsensitiveWhen(
+      'var(',
+      g.VarCall
+    ),
+
+    /*
+     * ONE multi-key arm, not twenty. parseman compiles `dispatch` to a linear
+     * if/else chain with each tail fully INLINED, so twenty arms would inline
+     * twenty copies of this tail — measured at roughly 1.4 MB of generated code
+     * across css+jess against roughly 70 KB for the multi-key form. The tail is
+     * a `g.`-rule reference for the same reason.
+     */
+    caseInsensitiveWhen(
+      CSS_MATH_FUNCTION_OPENERS,
+      g.MathFunction
+    ),
+    when(
+      endsWith('('),
+      GenericCall
+    ),
+    otherwise(g.KeywordValue)
   );
 
   /*
@@ -2827,37 +3721,40 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * declaration names/values for bracket `$for` bindings; lower it directly
    * instead of preserving a CST-shaped collection node or opaque source bytes.
    */
-  const DirectJessCollectionEntry = node<Declaration>(
-    'DirectJessCollectionEntry',
+  const CollectionEntry = node<CollectionEntry>(
+    'CollectionEntry',
     sequence(
-      g.CssSyntaxProperty,
+      g.Identifier,
       literal(':'),
       parser(
         { trivia: whitespace },
-        g.DirectJessValue
+        choice(
+          g.ValueBlock,
+          g.Value
+        )
       ),
       optional(literal(';'))
     ),
     (children) => {
       const value = children[2];
-      return decl(
-        requireToken(children[0]).value,
+      return collectionEntry(
+        keyword(requireToken(children[0]).value),
         Array.isArray(value) ? value : valueSlot(requireValueNode(value))
       );
     }
   );
-  const DirectJessCollection = node<Collection>(
-    'DirectJessCollection',
+  const Collection = node<Collection>(
+    'Collection',
     sequence(
       literal('{'),
       parser(
         { trivia: whitespace },
-        many(g.DirectJessCollectionEntry)
+        many(g.CollectionEntry)
       ),
       optional(rawWhitespace),
       literal('}')
     ),
-    children => collection(children.filter(isDeclaration))
+    children => collection(children.filter(isCollectionEntry))
   );
 
   /*
@@ -2865,45 +3762,45 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * plain `$name` retains the existing VariableReference reduction, while the
    * authored chain stays one typed Reference without a post-parse walk.
    */
-  const DirectJessReferenceTail = choice(
+  const ReferenceTail = choice(
     node<JessReferenceTail>(
-      'DirectJessReferenceDotTail',
+      'ReferenceDotTail',
       noTrivia(sequence(
         literal('.'),
-        jessDollarName
+        dollarName
       )),
       (children) => {
         const name = requireToken(children[1]).value;
-        return { step: { type: 'DotLookup', name }, src: `.${name}` };
+        return { step: lookupStep('member', name), src: `.${name}` };
       }
     ),
     node<JessReferenceTail>(
-      'DirectJessReferenceBracketTail',
+      'ReferenceBracketTail',
       noTrivia(sequence(
         literal('['),
         choice(
-          g.DirectJessVarReference,
-          g.DirectJessQuoted,
+          g.VariableReference,
+          g.Quoted,
           regex(/[+-]?\d+(?:\.\d+)?/),
-          g.DirectJessKeyword
+          g.Keyword
         ),
         literal(']')
       )),
       (children) => {
         const key = children[1];
-        if (isValueNode(key) && key.type === 'VariableReference') {
-          return { step: { type: 'BracketLookup', key, keyKind: 'var' }, src: `[${key.lookup === 'scoped' ? '$$' : '$'}${key.name}]` };
+        if (isValueNode(key) && key.type === 'Lookup' && key.kind === 'var') {
+          return { step: lookupStep('var', key), src: `[${key.scope === 'scoped' ? '$^' : '$'}${lookupNameSource(key.name)}]` };
         }
         if (isValueNode(key) && key.type === 'Quoted') {
-          return { step: { type: 'BracketLookup', key, keyKind: 'member' }, src: `[${key.src}]` };
+          return { step: lookupStep('member', key), src: `[${key.src}]` };
         }
         if (isToken(key)) {
-          return { step: { type: 'BracketLookup', key: Number(key.value), keyKind: 'index', indexBase: 0 }, src: `[${key.value}]` };
+          return { step: lookupStep('index', Number(key.value), 0), src: `[${key.value}]` };
         }
         if (isValueNode(key) && key.type === 'Keyword') {
-          return { step: { type: 'BracketLookup', key, keyKind: 'member' }, src: `[${key.src}]` };
+          return { step: lookupStep('member', key), src: `[${key.src}]` };
         }
-        throw new TypeError('Direct Jess reference bracket key must be a typed value.');
+        throw new TypeError('Jess reference bracket key must be a typed value.');
       }
     )
   );
@@ -2913,24 +3810,21 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * It reuses the mixin argument production verbatim, so a lambda call binds
    * positionally, by name, and against defaults through the ONE binder a named
    * mixin call already uses. It is deliberately NOT folded INTO the shared
-   * `DirectJessReferenceTail`, which stays access-only: `$type.*()` must keep
-   * reducing through the dedicated `DirectJessGuardCall` mixin-guard syntax
+   * `ReferenceTail`, which stays access-only: `$type.*()` must keep
+   * reducing through the dedicated `GuardCall` mixin-guard syntax
    * instead of collapsing into an ordinary member-call chain. Expression and
    * condition positions opt in to dispatch by listing this tail alongside the
-   * access tail (see `DirectJessExpressionAtom`, `DirectJessDollarValue`).
+   * access tail (see `ExpressionAtom`, `DollarValue`).
    */
-  const DirectJessReferenceCallTail = node<JessReferenceTail>(
-    'DirectJessReferenceCallTail',
+  const ReferenceCallTail = node<JessReferenceTail>(
+    'ReferenceCallTail',
     noTrivia(sequence(
       literal('('),
       parser(
         { trivia: whitespace },
-        optional(sequence(
-          g.DirectJessMixinCallArg,
-          many(sequence(
-            literal(','),
-            g.DirectJessMixinCallArg
-          ))
+        optional(oneOrMoreSep(
+          g.MixinCallArgument,
+          literal(',')
         ))
       ),
       optional(rawWhitespace),
@@ -2946,157 +3840,127 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
 
   /*
-   * Left-factored `$`/`$$`+name so the ubiquitous dollar value is parsed ONCE.
-   * The leading `DirectJessVarReference` is shared across all four continuations
-   * — plain reference, accessor-tail chain, unwrapped `/` slash list, and
-   * unwrapped `+ - *` arithmetic — which are disjoint by their next token
-   * (`.`/`[` tails, `/` slash, whitespace-flanked operators). Previously each
-   * arm re-parsed `$name` (up to four VariableReference builds per plain ref,
-   * each allocating a discarded source-spanned node); this reduction preserves
-   * every prior AST shape while recognizing the reference exactly once.
+   * The first dollar-family characters determine the base unambiguously:
+   * `$.` starts declaration access, `$^name` starts a scoped variable, and
+   * `$name` starts a live variable. Consume that complete normal-value opener
+   * once and route the selected semantic tail; a speculative declaration arm
+   * would otherwise consume `$` and reparse every ordinary variable value.
+   * `$(` and `$[` deliberately do not match this opener, so Expression and
+   * DollarInterp retain their distinct value-position syntax.
+   *
+   * Arithmetic and comparison stay in the explicit `$(...)` expression grammar
+   * so normal value position cannot admit expression-only forms like leading-dot
+   * declaration lookup.
    */
-  const DirectJessDollarValue = node<ValueNode>(
-    'DirectJessDollarValue',
-    noTrivia(sequence(
-      g.DirectJessVarReference,
-      optional(choice(
-
-        /*
-         * Slash list: `/` is intentionally not an unwrapped Operation. Preserve
-         * the authored value boundary as an explicit slash List; `$( $w / 2 )`
-         * is the arithmetic spelling.
-         */
-        sequence(
-          optional(rawWhitespace),
-          literal('/'),
-          optional(rawWhitespace),
-          g.DirectJessValueAtom
-        ),
-
-        /*
-         * Unwrapped arithmetic. The documented `$var + 1` form folds with the
-         * same left-associative product-before-sum grouping as `$(...)`: at
-         * least one operator is required (else this is a plain reference), and
-         * `*` binds tighter than `+`/`-`.
-         */
-        choice(
-          sequence(
-            oneOrMore(sequence(
-              jessUnwrappedProductOperator,
-              g.DirectJessExpressionAtom
-            )),
-            many(sequence(
-              jessUnwrappedSumOperator,
-              g.DirectJessUnwrappedProductRest
-            ))
-          ),
-          sequence(
-            many(sequence(
-              jessUnwrappedProductOperator,
-              g.DirectJessExpressionAtom
-            )),
-            oneOrMore(sequence(
-              jessUnwrappedSumOperator,
-              g.DirectJessUnwrappedProductRest
-            ))
-          )
-        ),
-
-        /* Accessor-tail chain (`.name`, `[key]`). */
-        oneOrMore(choice(
-          g.DirectJessReferenceCallTail,
-          g.DirectJessReferenceTail
-        ))
-      ))
-    )),
-    (children) => {
-      const base = requireValueNode(children[0]);
-      if (base.type !== 'VariableReference') {
-        throw new TypeError('Direct Jess reference base must be a variable reference.');
-      }
-      if (children.length === 1) {
-        return base;
-      }
-      const rest = children.slice(1);
-      if (isJessReferenceTail(rest[0])) {
-        const tails = rest.map(requireJessReferenceTail);
-        return reference(
-          base,
-          tails.map(tail => tail.step),
-          `${base.lookup === 'scoped' ? '$$' : '$'}${base.name}${tails.map(tail => tail.src).join('')}`
-        );
-      }
-      if (rest.some(child => isToken(child) && child.value === '/')) {
-        return list(
-          [base, requireValueNode(rest.at(-1))],
-          '/'
-        );
-      }
-
-      /*
-       * Arithmetic: rebuild the first product (leading reference plus its `*`
-       * operators), then fold the whitespace-flanked sum operators over the
-       * remaining pre-folded products.
-       */
-      const firstProduct: unknown[] = [{ value: base, src: expressionSource(base) }];
-      let index = 0;
-      while (index < rest.length && isToken(rest[index]) && requireToken(rest[index]).value.trim() === '*') {
-        firstProduct.push(
-          rest[index],
-          rest[index + 1]
-        );
-        index += 2;
-      }
-      const sumParts: unknown[] = [foldExpression(firstProduct)];
-      while (index < rest.length) {
-        sumParts.push(
-          rest[index],
-          rest[index + 1]
-        );
-        index += 2;
-      }
-      return requireExpressionFact(foldExpression(sumParts)).value;
+  const dollarValueHead = token(noTrivia(choice(
+    literal('$.'),
+    sequence(literal('$^'), dollarName),
+    sequence(literal('$'), dollarName)
+  )));
+  const RoutedDeclarationReference = node<Lookup>(
+    'DeclarationReference',
+    routed(),
+    (_children, _fields, span) => withSourceSpan(declarationReference('$'), span)
+  );
+  const RoutedVariableReference = node<Lookup>(
+    'VariableReference',
+    routed(),
+    (children, _fields, span) => {
+      /* The discriminator carries the full `$name` or `$^name` opener. */
+      const raw = requireToken(children[0]).value;
+      const scoped = raw.startsWith('$^');
+      return withSourceSpan(
+        variableReference(raw.slice(scoped ? 2 : 1), scoped ? 'scoped' : 'live'),
+        span
+      );
     }
   );
 
   /*
-   * A CSS custom-property token is an ordinary component value (`var(--accent)`),
-   * not a Jess declaration name. It is not a CSS ident, so it cannot reach the
-   * Keyword leaf; give it its own arm just ahead of Keyword, which shares the
-   * leading `-` but can never match a second one.
+   * The same tail WITHOUT the slash-list arm, for use inside a css-values-4 §10
+   * math function.
+   *
+   * In ordinary value position a `/` after a variable is an authored value
+   * boundary, not division — that is a deliberate `.jess` rule and `$( $w / 2 )`
+   * is the arithmetic spelling. Inside a math function the same bytes ARE
+   * division: `calc($val / 2)` must come back as `calc(8px / 2)`, one preserved
+   * operation, and the slash-list arm was swallowing the `/` before the math
+   * ladder could see it — which is why that row emitted `8px / 2` with the
+   * wrapper dropped.
    */
-  const DirectJessCustomPropertyValue = node<Keyword>(
-    'DirectJessCustomPropertyValue',
-    g.CssSyntaxCustomProperty,
-    children => keyword(requireToken(children[0]).value)
+  const mathVariableDollarValueTail = sequence(
+    RoutedVariableReference,
+    optional(oneOrMore(choice(
+      g.ReferenceCallTail,
+      g.ReferenceTail
+    )))
   );
-  const keywordToken = choice(
-    token(g.CssSyntaxCustomProperty),
-    token(g.CssSyntaxKeyword)
+  const variableDollarValueTail = sequence(
+    RoutedVariableReference,
+    optional(choice(
+
+      /*
+       * Slash list: `/` is intentionally not an unwrapped Operation. Preserve
+       * the authored value boundary as an explicit slash List; `$( $w / 2 )`
+       * is the arithmetic spelling.
+       */
+      sequence(
+        optional(rawWhitespace),
+        literal('/'),
+        optional(rawWhitespace),
+        g.ValueAtom
+      ),
+
+      /* Accessor-tail chain (`.name`, `[key]`). */
+      oneOrMore(choice(
+        g.ReferenceCallTail,
+        g.ReferenceTail
+      ))
+    ))
   );
-  const CustomPropertyValue = node<Keyword>(
-    'DirectJessCustomPropertyValue',
-    routed(),
-    children => keyword(requireToken(children[0]).value)
-  );
-  const KeywordValue = node<Keyword>(
-    'DirectJessKeyword',
-    routed(),
-    children => keyword(requireToken(children[0]).value)
+  const DollarValue = node<ValueNode>(
+    'DollarValue',
+    noTrivia(dispatch(
+      dollarValueHead,
+      when(
+        '$.',
+        sequence(
+          RoutedDeclarationReference,
+          dollarName,
+          many(choice(
+            g.ReferenceCallTail,
+            g.ReferenceTail
+          ))
+        )
+      ),
+      otherwise(variableDollarValueTail)
+    )),
+    dollarValueFromChildren
   );
 
   /*
-   * Custom-property values and ordinary identifiers are both value keywords once
-   * reduced. Route the already-read token so the `--*` special case does not sit
-   * beside a second identifier-shaped keyword arm in value atoms.
+   * `DollarValue` for math positions: same reduction, slash-free tail. Sharing
+   * ONE reducer keeps the two spellings from drifting — the difference between
+   * them is exactly which continuations the tail admits.
    */
-  const KeywordLikeValue = dispatch(
-    keywordToken,
-    when(
-      startsWith('--'),
-      CustomPropertyValue
-    ),
-    otherwise(KeywordValue)
+  const MathDollarValue = node<ValueNode>(
+    'DollarValue',
+    noTrivia(dispatch(
+      dollarValueHead,
+      when(
+        '$.',
+        sequence(
+          RoutedDeclarationReference,
+          dollarName,
+          many(choice(
+            g.ReferenceCallTail,
+            g.ReferenceTail
+          ))
+        )
+      ),
+      otherwise(mathVariableDollarValueTail)
+    )),
+    dollarValueFromChildren
   );
 
   /*
@@ -3106,17 +3970,17 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * Recognizing the `$(`/`$[` head ONCE and folding the optional tail here keeps
    * the plain (tail-free) form a single parse with its existing Interpolation.
    */
-  const DirectJessInterpolatedValue = node<Interpolation>(
-    'DirectJessInterpolatedValue',
+  const InterpolatedValue = node<Interpolation>(
+    'InterpolatedValue',
     noTrivia(sequence(
       choice(
-        g.DirectJessExpression,
-        g.DirectJessDollarInterp
+        g.Expression,
+        g.DollarInterp
       ),
       many(choice(
-        jessInterpolatedValueTail,
-        g.DirectJessExpression,
-        g.DirectJessDollarInterp
+        interpolatedValueTail,
+        g.Expression,
+        g.DollarInterp
       ))
     )),
     (children) => {
@@ -3136,37 +4000,68 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
 
   /*
-   * The three `$`-headed arms (DollarValue `$name`, the `$(`/`$[` interpolation
+   * `[a]` in value position — CSS `<line-names>`, and the same bytes Sass spells
+   * as a bracketed list. Mirrors the CSS base's `SquareValue` so `.jess` stays a
+   * superset; named for the delimiter rather than for grid, because the shape has
+   * more than one consumer.
+   *
+   * It belongs in the continuation set, unlike `Collection`: `]` terminates it, so
+   * a following atom has an unambiguous start. `$[ … ]` lookup is unaffected — that
+   * form is claimed by `DollarValue`, whose `$` head this arm never sees.
+   *
+   * The empty interior is the EMPTY SLOT `[]`, exactly as the CSS base spells it —
+   * not `any('')`. A contentless `Any` erases the only fact `[]` carries, so
+   * `isTruthy` read a non-empty group and answered TRUTHY for the empty list
+   * (§4.4's fourth falsy row is EMPTINESS). The emptiness is stored here, losslessly,
+   * rather than re-derived downstream from an empty `src`.
+   */
+  const SquareValue = node<ValueNode>(
+    'SquareValue',
+    noTrivia(sequence(
+      literal('['),
+      optional(valueTrivia),
+      optional(g.Value),
+      optional(valueTrivia),
+      literal(']')
+    )),
+    children => block(
+      children.find(isValueSlotValue) ?? [],
+      'square'
+    )
+  );
+
+  /*
+   * The three `$`-headed arms (DollarValue `$name`, the `$(` expression / `$[` lookup
    * family, and the `$[` accessor inside it) are mutually exclusive on the
    * character after `$`, so their relative order is behaviour-neutral. Plain
-   * `$name` references dominate real values, so DollarValue leads the `$` group:
-   * parseman tries it first on any `$`, matching references without first
-   * entering (and rolling back) the `$(` / `$[` node frames. `$(`/`$[` cost one
-   * fast VarReference reject instead.
+   * `$name` references dominate real values, so DollarValue leads the `$` group.
+   * Its complete `$name` / `$^name` head rejects `$(`/`$[` before dispatch, so
+   * those forms enter only their own node families rather than a failed variable
+   * route.
    * Every value atom EXCEPT a brace-delimited block. A block is self-terminating,
    * which is exactly why it may only ever be a value's FIRST atom: once a value
    * has started, a following `{ … }` would have no unambiguous end for the value
    * that precedes it. Keeping the block out of the continuation set is what makes
    * `$foo: bar { … }` a positioned parse error instead of a silent two-value read.
    */
-  const directJessNonBlockValueAtom = choice(
-    g.DirectJessDollarValue,
-    g.DirectJessExprLambda,
-    g.DirectJessInterpolatedValue,
-    g.DirectJessSelectorCapture,
-    g.DirectJessUrl,
-    g.DirectJessInterpolatedUrl,
-    g.DirectJessCall,
-    g.DirectJessQuoted,
-    g.DirectJessColor,
-    g.DirectJessDimension,
-    KeywordLikeValue
+  const nonBlockValueAtom = choice(
+    g.SquareValue,
+    g.DollarValue,
+    g.ExpressionLambda,
+    g.InterpolatedValue,
+    g.SelectorCapture,
+    g.CustomPropertyValue,
+    g.UnicodeRange,
+    g.IdentifierOrFunction,
+    g.Quoted,
+    g.Color,
+    g.Dimension
   );
-  const DirectJessValueAtom = node<ValueNode>(
-    'DirectJessValueAtom',
+  const ValueAtom = node<ValueNode>(
+    'ValueAtom',
     choice(
-      g.DirectJessCollection,
-      directJessNonBlockValueAtom
+      g.Collection,
+      nonBlockValueAtom
     ),
     children => requireValueNode(children[0])
   );
@@ -3175,16 +4070,16 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * The authored space-adjacency run: the value atoms between two slash
    * boundaries, or the whole term when the value carries no slash.
    */
-  const DirectJessValueSpaceGroup = node<ValueSlot>(
-    'DirectJessValueSpaceGroup',
+  const ValueSpaceGroup = node<ValueSlot>(
+    'ValueSpaceGroup',
     noTrivia(sequence(
-      g.DirectJessValueAtom,
+      g.ValueAtom,
       many(sequence(
         field(
           'separator',
           regex(/[ \t\n\r\f]+/)
         ),
-        directJessNonBlockValueAtom
+        nonBlockValueAtom
       ))
     )),
     (children, fields) => {
@@ -3215,13 +4110,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * each side stays ONE authored space group (flattening it would render
    * `1 / 2 / sans-serif`), and `/` still never becomes unwrapped arithmetic.
    */
-  const DirectJessValueTerm = node<ValueSlot>(
-    'DirectJessValueTerm',
+  const ValueTerm = node<ValueSlot>(
+    'ValueTerm',
     noTrivia(sequence(
-      g.DirectJessValueSpaceGroup,
+      g.ValueSpaceGroup,
       many(sequence(
-        jessValueSlashBoundary,
-        g.DirectJessValueSpaceGroup
+        valueSlashBoundary,
+        g.ValueSpaceGroup
       ))
     )),
     (children) => {
@@ -3234,14 +4129,14 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           );
     }
   );
-  const DirectJessValue = node<ValueSlot>(
-    'DirectJessValue',
+  const Value = node<ValueSlot>(
+    'Value',
     sequence(
-      g.DirectJessValueTerm,
+      g.ValueTerm,
       many(sequence(
         literal(','),
         optional(regex(/[ \t\n\r\f]+/)),
-        g.DirectJessValueTerm
+        g.ValueTerm
       ))
     ),
     (children) => {
@@ -3256,9 +4151,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
 
   /*
-   * The static CSS component value: the leaves an authored CSS position admits
+   * The plain CSS component value: the leaves an authored CSS position admits
    * once every Jess execution form (`$…`, `$[…]`, `$(…)`, arithmetic, lambdas,
-   * collections) is excluded. Both static positions — a conditional at-rule
+   * collections) is excluded. Both constrained positions — a conditional at-rule
    * header and an `@property` descriptor — take exactly this set, so they share
    * one production instead of drifting two copies apart.
    *
@@ -3266,26 +4161,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * is rejected rather than hidden in an Any/raw prelude. Extend this with
    * another typed form when Jess gives that form semantics.
    */
-  const DirectJessStaticValueAtom = node<ValueNode>(
-    'DirectJessStaticValueAtom',
-    choice(
-      g.DirectJessUrl,
-      g.DirectJessStaticCall,
-      g.DirectJessStaticQuoted,
-      g.DirectJessColor,
-      g.DirectJessDimension,
-      g.DirectJessCustomPropertyValue,
-      g.DirectJessKeyword
-    ),
-    children => requireValueNode(children[0])
-  );
-  const DirectJessStaticValue = node<ValueSlot>(
-    'DirectJessStaticValue',
+  const HeaderValue = node<ValueSlot>(
+    'Value',
     noTrivia(sequence(
-      g.DirectJessStaticValueAtom,
+      g.HeaderValueAtom,
       many(sequence(
         regex(/[ \t\n\r\f]+/),
-        g.DirectJessStaticValueAtom
+        g.HeaderValueAtom
       ))
     )),
     (children) => {
@@ -3293,12 +4175,12 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return values.length === 1 ? values[0]! : values;
     }
   );
-  const DirectJessStaticCallArgument = node<ValueSlot>(
-    'DirectJessStaticCallArgument',
+  const HeaderCallArgument = node<ValueSlot>(
+    'CallArgument',
     sequence(
       literal(','),
       optional(regex(/[ \t\n\r\f]+/)),
-      g.DirectJessStaticValue
+      g.HeaderValue
     ),
     (children) => {
       const value = children.at(-1);
@@ -3315,53 +4197,84 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * No function NAME is excluded. Which functions carry meaning in a media
    * feature or an `@property` descriptor is a language-service fact; a parser
    * that rejects `var()` here turns a diagnosable squiggle into a lost file.
-   * `url(` needs no exclusion either: the dedicated Url leaf precedes this arm
-   * in DirectJessStaticValueAtom and takes it first.
+   * The shared identifier/function opener is routed below, so the static URL
+   * leaf, generic call, and bare keyword never reread one another's prefix.
    */
-  const DirectJessStaticCall = node<FunctionCall>(
-    'DirectJessStaticCall',
+  const HeaderCall = node<FunctionCall>(
+    'Call',
     sequence(
-      noTrivia(sequence(
-        g.CssSyntaxKeyword,
-        literal('(')
-      )),
+      routed(),
       optional(sequence(
-        g.DirectJessStaticValue,
-        many(g.DirectJessStaticCallArgument)
+        g.HeaderValue,
+        many(g.HeaderCallArgument)
       )),
       literal(')')
     ),
     (children) => {
-      if (children.length < 3 || requireToken(children[1]).value !== '(' || requireToken(children.at(-1)).value !== ')') {
-        throw new TypeError('Direct Jess static function call lost its call boundaries.');
+      if (children.length < 2 || requireToken(children.at(-1)).value !== ')') {
+        throw new TypeError('Jess plain function call lost its call boundaries.');
       }
       return funcCall(
-        requireToken(children[0]).value,
-        children.slice(
-          2,
-          -1
-        ).filter(isValueSlotValue)
+        functionOpenName(children[0]),
+        children.slice(1, -1).filter(isValueSlotValue)
       );
     }
   );
 
   /*
+   * Header URLs deliberately retain the CSS-only URL payload. The normal Jess
+   * value route replaces this child with its dynamic URL override, but media,
+   * supports, and descriptor headers are not value positions. Routing after the
+   * shared glued opener keeps that narrow override local without a competing
+   * `Url` / `Call` / `Keyword` choice.
+   */
+  const HeaderUrl = node<Url>(
+    'Url',
+    sequence(
+      routed(),
+      optional(choice(
+        g.LiteralQuoted,
+        g.PlainUrlInner
+      )),
+      literal(')')
+    ),
+    urlFromChildren
+  );
+  const HeaderIdentifierOrFunction = dispatch(
+    g.identifierOrFunction,
+    caseInsensitiveWhen('url(', HeaderUrl),
+    when(endsWith('('), HeaderCall),
+    otherwise(g.KeywordValue)
+  );
+  const HeaderValueAtom = node<ValueNode>(
+    'ValueAtom',
+    choice(
+      g.LiteralQuoted,
+      g.Color,
+      g.Dimension,
+      g.CustomPropertyValue,
+      HeaderIdentifierOrFunction
+    ),
+    children => requireValueNode(children[0])
+  );
+
+  /*
    * A media/container feature value may be a `<ratio>` — media-queries-4 §2.1,
-   * `<number> [ / <number> ]?` — as in `(aspect-ratio: 16/9)`. The static header
+   * `<number> [ / <number> ]?` — as in `(aspect-ratio: 16/9)`. The constrained header
    * atoms carry no slash of their own, so the query value takes the ratio tail
    * explicitly and reduces to the same typed Operation the prelude already uses
    * for `:` and the range comparisons. Left-factored on the atom: the no-slash
    * majority takes an absent optional tail instead of a doomed ratio arm.
    */
-  const DirectJessStaticAtQueryValue = node<ValueNode>(
-    'DirectJessStaticAtQueryValue',
+  const QueryValue = node<ValueNode>(
+    'QueryValue',
     sequence(
-      g.DirectJessStaticValueAtom,
+      g.HeaderValueAtom,
       optional(sequence(
         optional(rawWhitespace),
         literal('/'),
         optional(rawWhitespace),
-        g.DirectJessStaticValueAtom
+        g.HeaderValueAtom
       ))
     ),
     (children) => {
@@ -3373,60 +4286,62 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         : operation(
             '/',
             numerator,
-            denominator
+            denominator,
+            false,
+            cssBaseMathOutsideParens('/')
           );
     }
   );
-  const DirectJessStaticAtQueryProperty = node<JessStaticAtQueryProperty>(
-    'DirectJessStaticAtQueryProperty',
-    g.CssSyntaxKeyword,
+  const QueryFeatureName = node<JessQueryFeatureName>(
+    'QueryFeatureName',
+    g.Identifier,
     children => ({ property: keyword(requireToken(children[0]).value) })
   );
-  const DirectJessStaticAtComparisonQuery = node<ValueNode>(
-    'DirectJessStaticAtComparisonQuery',
+  const QueryComparisonFeature = node<ValueNode>(
+    'QueryComparisonFeature',
     choice(
       sequence(
         literal('('),
         optional(rawWhitespace),
-        DirectJessStaticAtQueryProperty,
+        g.QueryFeatureName,
         optional(rawWhitespace),
         field(
           'comparison',
-          g.CssSyntaxQueryComparisonOperator
+          g.QueryComparisonOperator
         ),
         optional(rawWhitespace),
-        DirectJessStaticAtQueryValue,
+        g.QueryValue,
         optional(rawWhitespace),
         literal(')')
       ),
       sequence(
         literal('('),
         optional(rawWhitespace),
-        DirectJessStaticAtQueryValue,
+        g.QueryValue,
         optional(rawWhitespace),
         field(
           'comparison',
-          g.CssSyntaxQueryComparisonOperator
+          g.QueryComparisonOperator
         ),
         optional(rawWhitespace),
-        DirectJessStaticAtQueryProperty,
+        g.QueryFeatureName,
         optional(sequence(
           optional(rawWhitespace),
           field(
             'comparison',
-            g.CssSyntaxQueryComparisonOperator
+            g.QueryComparisonOperator
           ),
           optional(rawWhitespace),
-          DirectJessStaticAtQueryValue
+          g.QueryValue
         )),
         optional(rawWhitespace),
         literal(')')
       )
     ),
     (children, fields) => {
-      const propertyFact = children.find((child): child is JessStaticAtQueryProperty => typeof child === 'object' && child !== null && 'property' in child);
+      const propertyFact = children.find((child): child is JessQueryFeatureName => typeof child === 'object' && child !== null && 'property' in child);
       if (propertyFact === undefined) {
-        throw new TypeError('Direct Jess static query comparison lost its property.');
+        throw new TypeError('Jess query comparison lost its property.');
       }
       const values = children.filter(isValueNode);
 
@@ -3444,7 +4359,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
             'comparison'
           ).map(capture => typeof capture.value === 'string' ? capture.value : requireToken(capture.value).value);
       if (values.length === 0 || operators.length === 0) {
-        throw new TypeError('Direct Jess static query comparison lost an operand.');
+        throw new TypeError('Jess query comparison lost an operand.');
       }
       const propertyIndex = children.indexOf(propertyFact);
       const firstValueIndex = children.findIndex(isValueNode);
@@ -3452,46 +4367,52 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         ? operation(
             operators[0]!,
             propertyFact.property,
-            values[0]!
+            values[0]!,
+            false,
+            cssBaseMathOutsideParens(operators[0]!)
           )
         : operation(
             operators[0]!,
             values[0]!,
-            propertyFact.property
+            propertyFact.property,
+            false,
+            cssBaseMathOutsideParens(operators[0]!)
           );
       if (operators.length === 2) {
         const trailing = values.at(-1);
         if (trailing === undefined) {
-          throw new TypeError('Direct Jess static query comparison lost its range end.');
+          throw new TypeError('Jess query comparison lost its range end.');
         }
         result = operation(
           operators[1]!,
           result,
-          trailing
+          trailing,
+          false,
+          cssBaseMathOutsideParens(operators[1]!)
         );
       }
       return block(result);
     }
   );
-  const DirectJessStaticAtQuery = node<ValueNode>(
-    'DirectJessStaticAtQuery',
+  const QueryFeature = node<ValueNode>(
+    'QueryFeature',
     noTrivia(choice(
-      DirectJessStaticAtComparisonQuery,
+      g.QueryComparisonFeature,
       sequence(
         literal('('),
         optional(rawWhitespace),
-        g.CssSyntaxKeyword,
+        g.Identifier,
         optional(rawWhitespace),
         literal(':'),
         optional(rawWhitespace),
-        DirectJessStaticAtQueryValue,
+        g.QueryValue,
         optional(rawWhitespace),
         literal(')')
       ),
       sequence(
         literal('('),
         optional(rawWhitespace),
-        g.CssSyntaxKeyword,
+        g.Identifier,
         optional(rawWhitespace),
         literal(')')
       )
@@ -3502,7 +4423,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       }
       return reduceColonFeature(
         children,
-        'Direct Jess CSS at-rule query lost its property name.'
+        'Jess CSS at-rule query lost its property name.'
       );
     }
   );
@@ -3512,11 +4433,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * parenthesized-condition form. The generic at-rule prelude still shares
    * the same term combinator, but this branch keeps that syntactic boundary.
    */
-  const DirectJessStaticAtNonOnlyKeyword = node<Keyword>(
-    'DirectJessStaticAtNonOnlyKeyword',
+  const QueryNonOnlyKeyword = node<Keyword>(
+    'QueryNonOnlyKeyword',
     sequence(
-      not(g.CssSyntaxQueryOnly),
-      g.DirectJessKeyword
+      not(g.QueryOnly),
+      g.Keyword
     ),
     children => requireKeyword(children.at(-1))
   );
@@ -3529,56 +4450,79 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * reuses that shared leaf rather than restating the character class; the
    * reduction is the plain `Keyword` less produces for the same header.
    */
-  const DirectJessStaticAtDashedIdent = node<Keyword>(
-    'DirectJessStaticAtDashedIdent',
-    g.CssSyntaxCustomProperty,
+  const QueryDashedIdentifier = node<Keyword>(
+    'QueryDashedIdentifier',
+    g.CustomPropertyName,
     children => keyword(requireToken(children[0]).value)
   );
-  const DirectJessStaticAtNonOnlyAtom = node<ValueNode>(
-    'DirectJessStaticAtNonOnlyAtom',
+  const QueryTerm = node<ValueNode>(
+    'QueryTerm',
     choice(
-      g.DirectJessStaticAtQuery,
-      g.DirectJessStaticAtDashedIdent,
+      g.QueryFeature,
+      g.QueryDashedIdentifier,
       sequence(
-        not(g.CssSyntaxQueryOnly),
-        g.DirectJessStaticValueAtom
+        not(g.QueryOnly),
+        g.HeaderValueAtom
       )
     ),
     children => requireValueNode(children.at(-1))
   );
-  const DirectJessStaticAtPreludeTerm = node<ValueNode>(
-    'DirectJessStaticAtPreludeTerm',
-    noTrivia(sequence(choice(
-      sequence(
-        g.CssSyntaxQueryOnly,
+
+  /*
+   * This is the CSS media-query clause shape, named identically so the AST and
+   * CST retain the shared semantic concept. It stays local only because direct
+   * cross-artifact CSS AST builders cannot macro-fuse; Jess changes the term
+   * leaf, not the clause/list structure.
+   */
+  const queryClause = noTrivia(sequence(choice(
+    sequence(
+      g.QueryOnly,
+      regex(/[ \t\n\r\f]+/),
+      g.QueryNonOnlyKeyword,
+      many(sequence(
         regex(/[ \t\n\r\f]+/),
-        DirectJessStaticAtNonOnlyKeyword,
-        many(sequence(
-          regex(/[ \t\n\r\f]+/),
-          DirectJessStaticAtNonOnlyAtom
-        ))
-      ),
-      sequence(
-        DirectJessStaticAtNonOnlyAtom,
-        many(sequence(
-          regex(/[ \t\n\r\f]+/),
-          DirectJessStaticAtNonOnlyAtom
-        ))
-      )
-    ))),
+        g.QueryTerm
+      ))
+    ),
+    sequence(
+      g.QueryTerm,
+      many(sequence(
+        regex(/[ \t\n\r\f]+/),
+        g.QueryTerm
+      ))
+    )
+  )));
+  const QueryClause = node<ValueNode>(
+    'QueryClause',
+    queryClause,
     (children) => {
       const values = children.filter(isValueNode);
       const startsWithOnly = children.some(child => isToken(child) && requireToken(child).value.toLowerCase() === 'only');
       return startsWithOnly ? spaced([keyword('only'), ...values]) : values.length === 1 ? values[0]! : spaced(values);
     }
   );
-  const DirectJessStaticAtPrelude = node<ValueNode | null>(
-    'DirectJessStaticAtPrelude',
+  const QueryPrelude = node<ValueNode>(
+    'QueryPrelude',
+    oneOrMoreSep(g.QueryClause, literal(',')),
+    (children) => {
+      const values = children.filter(isValueNode);
+      return values.length === 1 ? values[0]! : list(values, ',');
+    }
+  );
+
+  /*
+   * A generic at-rule prelude is a comma-separated `<media-query-list>` that
+   * may also be absent, so its clause is `QueryClause` exactly as `QueryPrelude`'s
+   * is. It carried a second name for its CALLER, `AtRulePreludeTerm`, and that
+   * is what kept a byte-identical copy alive.
+   */
+  const AtRulePrelude = node<ValueNode | null>(
+    'AtRulePrelude',
     sequence(
-      optional(g.DirectJessStaticAtPreludeTerm),
+      optional(g.QueryClause),
       many(sequence(
         literal(','),
-        g.DirectJessStaticAtPreludeTerm
+        g.QueryClause
       ))
     ),
     (children) => {
@@ -3594,6 +4538,60 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     }
   );
 
+  const containerNameReserved = keywords(
+    ['none'],
+    { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF', caseInsensitive: true }
+  );
+  const containerName = sequence(
+    not(containerNameReserved),
+    g.Keyword
+  );
+  const ContainerQueryClause = node<ValueNode>(
+    'ContainerQueryClause',
+    sequence(
+      g.QueryFeature,
+      many(sequence(
+        g.QueryAndOr,
+        g.QueryFeature
+      ))
+    ),
+    (children) => {
+      const values = children
+        .filter((child): child is Token | ValueNode => isToken(child) || isValueNode(child))
+        .map(child => isToken(child) ? keyword(child.value) : child);
+      return values.length === 1
+        ? values[0]!
+        : spaced(values);
+    }
+  );
+  const ContainerQueryPrelude = node<ValueNode>(
+    'ContainerQueryPrelude',
+    oneOrMoreSep(g.ContainerQueryClause, literal(',')),
+    (children) => {
+      const values = children.filter(isValueNode);
+      return values.length === 1
+        ? values[0]!
+        : list(
+            values,
+            ','
+          );
+    }
+  );
+  const ContainerPrelude = node<ValueNode>(
+    'ContainerPrelude',
+    choice(
+      sequence(
+        containerName,
+        optional(g.ContainerQueryPrelude)
+      ),
+      g.ContainerQueryPrelude
+    ),
+    (children) => {
+      const values = children.filter(isValueNode);
+      return values.length === 1 ? values[0]! : spaced(values);
+    }
+  );
+
   /*
    * An at-rule prelude is an IDENTIFIER position, so its dynamic form is the
    * same `${…}` every other name position takes — no prelude-local spelling.
@@ -3601,47 +4599,79 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * its bare-identifier semantics differ from a name splice, which is exactly
    * the confusion one form per position removes.
    */
-  const DirectJessMediaPrelude = node<ValueNode | null>(
-    'DirectJessMediaPrelude',
+  const MediaPrelude = node<ValueNode | null>(
+    'MediaPrelude',
     choice(
-      g.DirectJessDollarBrace,
-      g.DirectJessStaticAtPrelude
+      g.DollarBrace,
+      g.QueryPrelude
     ),
     children => children[0] === null ? null : requireValueNode(children[0])
   );
 
   /*
-   * Statement headers remain fully static. The documented deferred media form
-   * is a block-only construct, so it cannot silently become `@media $(x);`.
-   * Every arm leads with a concrete `@`-first recognizer (no leading `not(...)`),
-   * so the whole header — and the `DirectJessAtRuleStatement`/`AtRuleBlock` that
-   * wrap it — keeps a `{@}` first-set. That lets parseman fast-reject non-`@`
-   * statements at the leading char instead of entering this node frame and
-   * running the media/container lookaheads at every rule. The former arm-2
-   * `not(@media)` / `not(@container only)` guards are folded into the dedicated
-   * media/container arms plus the `media`/`container` exclusion in
-   * `jessGenericCssAtRuleName`, preserving the exact accept/reject set.
+   * CSS owns the broad statement at-keyword token. Jess routes it once here
+   * because the consumed spelling decides the media/container/generic header
+   * family. The blocked spellings have dedicated typed productions elsewhere;
+   * reject them here instead of letting a generic header steal their input.
    */
-  const DirectJessStaticAtRuleHeader = node<JessAtRuleHeader>(
-    'DirectJessStaticAtRuleHeader',
-    choice(
-      sequence(
-        g.CssSyntaxMediaAtKeyword,
-        not(choice(
-          literal('{'),
-          literal(';')
-        )),
-        g.DirectJessStaticAtPrelude
+  const atRuleHeaderKeyword = token(noTrivia(g.StatementAtRuleName));
+  const typedAtRuleHeader = not(routed());
+
+  /*
+   * The compiler route rejects this slot normally. The public CST route is
+   * tolerant, so retain the same rejection as a positioned diagnostic instead
+   * of silently dropping an invalid at-rule list item after the committed
+   * routed header.
+   */
+  const requiredContainerPrelude = expect(g.ContainerPrelude, 'container prelude');
+
+  /*
+   * Statement headers remain interpolation-free. The documented deferred media form
+   * is a block-only construct, so it cannot silently become `@media $(x);`.
+   * The one consumed at-keyword routes `@media` to its stricter statement
+   * form, rejects names owned by another typed production, and gives every
+   * remaining CSS name the generic prelude. This is a routed token family, not
+   * a late-delimiter choice.
+   */
+  const AtRuleStatementHeader = node<JessAtRuleHeader>(
+    'AtRuleStatementHeader',
+    dispatch(
+      atRuleHeaderKeyword,
+      caseInsensitiveWhen(
+        '@media',
+        sequence(
+          routed(),
+          not(choice(
+            literal('{'),
+            literal(';')
+          )),
+          g.AtRulePrelude
+        )
       ),
-      sequence(
-        g.CssSyntaxContainerAtKeyword,
-        not(g.CssSyntaxQueryOnly),
-        g.DirectJessStaticAtPrelude
-      ),
-      sequence(
-        jessGenericCssAtRuleName,
-        g.DirectJessStaticAtPrelude
-      )
+      caseInsensitiveWhen(typedAtRuleHeaderNames, g.typedAtRuleHeader),
+      when(endsWith('-keyframes'), g.typedAtRuleHeader, { caseInsensitive: true }),
+      otherwise(sequence(
+        routed(),
+        g.AtRulePrelude
+      ))
+    ),
+    (children) => {
+      const name = requireToken(children.find(isToken)!).value;
+      const prelude = children.find(isValueNode) ?? null;
+      return { name, prelude };
+    }
+  );
+
+  /*
+   * The generic block-header branch has already consumed its at-keyword in
+   * `AtRuleHeader`. It retains the semantic statement-header CST owner rather
+   * than inventing a routed/provenance node name for the same concept.
+   */
+  const RoutedAtRuleStatementHeader = node<JessAtRuleHeader>(
+    'AtRuleStatementHeader',
+    sequence(
+      routed(),
+      g.AtRulePrelude
     ),
     (children) => {
       const name = requireToken(children.find(isToken)!).value;
@@ -3652,23 +4682,37 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
 
   /*
    * Keep the dynamic extension scoped to documented block `@media $(…)`.
-   * Every other header, including `@container`, stays on the static grammar;
-   * mixing the deferred form with query terms remains rejected.
+   * The routed keyword itself decides media/container/generic ownership; each
+   * selected branch then owns its distinct prelude. Mixing the deferred media
+   * form with query terms remains rejected by `MediaPrelude`.
    */
-  const DirectJessAtRuleHeader = node<JessAtRuleHeader>(
-    'DirectJessAtRuleHeader',
-    choice(
-      sequence(
-        g.CssSyntaxMediaAtKeyword,
-        not(literal('{')),
-        g.DirectJessMediaPrelude
+  const AtRuleHeader = node<JessAtRuleHeader>(
+    'AtRuleHeader',
+    dispatch(
+      atRuleHeaderKeyword,
+      caseInsensitiveWhen(
+        '@media',
+        sequence(
+          routed(),
+          not(literal('{')),
+          g.MediaPrelude
+        )
       ),
-      g.DirectJessStaticAtRuleHeader
+      caseInsensitiveWhen(
+        '@container',
+        sequence(
+          routed(),
+          requiredContainerPrelude
+        )
+      ),
+      caseInsensitiveWhen(typedAtRuleHeaderNames, g.typedAtRuleHeader),
+      when(endsWith('-keyframes'), g.typedAtRuleHeader, { caseInsensitive: true }),
+      otherwise(RoutedAtRuleStatementHeader)
     ),
     (children) => {
-      const staticHeader = children.find(isJessAtRuleHeader);
-      if (staticHeader !== undefined) {
-        return staticHeader;
+      const statementHeader = children.find(isJessAtRuleHeader);
+      if (statementHeader !== undefined) {
+        return statementHeader;
       }
       const name = requireToken(children.find(isAtRuleNameToken)!).value;
       const prelude = children.find(isValueNode) ?? null;
@@ -3678,17 +4722,17 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
 
   /*
    * `@supports` is not a generic CSS header: its condition grammar owns every
-   * parenthesis and logical connective.  Keep this deliberately static until a
+   * parenthesis and logical connective. Keep this interpolation-free until a
    * typed model exists for general-enclosed forms such as `selector(...)`.
    * In particular, do not hide their arguments in Any/raw header bytes.
-   * A supported declaration's value is the same static CSS component value a
+   * A supported declaration's value is the same plain CSS component value a
    * media feature takes — `@supports (width: min(1px, 2px))` and
    * `@supports (background: url(a.png))` are ordinary CSS. A third private copy
-   * of the leaf set is what let those degrade to opaque GeneralEnclosed text.
+   * of the leaf set is what let those degrade to opaque general-enclosed text.
    */
-  const DirectJessSupportsAtom = node<ValueNode>(
-    'DirectJessSupportsAtom',
-    g.DirectJessStaticValueAtom,
+  const SupportsAtom = node<ValueNode>(
+    'SupportsAtom',
+    g.HeaderValueAtom,
     children => requireValueNode(children[0])
   );
 
@@ -3708,74 +4752,46 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * still string content and must stay permissive. Rejecting `$(…)` only at the
    * top level would mean an extra paren unlocks the spelling
    * (`@supports foo($(x))` rejected but `@supports foo(($(x)))` accepted), so the
-   * strict chain mirrors ALL its non-quoted wrappers and the permissive chain
-   * mirrors all five of its own.
-   *
-   * The duplication is deliberate and required: grammar dedup here admits only
-   * parameterless combinator consts and plain reducers, and a factory would
-   * degrade the macro-compiled artifact into the interpreter. The ONLY difference
-   * between the two chains is the `g.DirectJessExpression` arm.
+   * strict chain mirrors every non-quoted wrapper and the permissive chain
+   * mirrors every wrapper of its own. Within one chain, delimiter spellings are
+   * first-set-disjoint alternatives of one semantic group or quoted template;
+   * only the `g.Expression` arm distinguishes the two chains.
    */
 
   /*
    * STRICT chain — the general-enclosed body and its non-quoted wrappers. Its
    * quoted arms hand off to the permissive chain below and never come back.
    */
-  const DirectJessGeneralTemplateParen = node<Interpolation>(
-    'DirectJessGeneralTemplateParen',
-    sequence(
-      literal('('),
-      g.DirectJessGeneralTemplate,
-      literal(')')
+  const GeneralTemplateGroup = node<Interpolation>(
+    'GeneralTemplateGroup',
+    choice(
+      sequence(literal('('), g.GeneralTemplate, literal(')')),
+      sequence(literal('['), g.GeneralTemplate, literal(']')),
+      sequence(literal('{'), g.GeneralTemplate, literal('}'))
     ),
     templateInterpolationFromChildren
   );
-  const DirectJessGeneralTemplateSquare = node<Interpolation>(
-    'DirectJessGeneralTemplateSquare',
-    sequence(
-      literal('['),
-      g.DirectJessGeneralTemplate,
-      literal(']')
+
+  /*
+   * The single door into the permissive chain, from EITHER side: a string body
+   * is permissive wherever the quote was written, so this rung is chain-
+   * independent and shared. Only the wrappers below actually differ.
+   */
+  const GeneralTemplateQuoted = node<Interpolation>(
+    'GeneralTemplateQuoted',
+    choice(
+      sequence(literal('"'), g.GeneralQuotedTemplate, literal('"')),
+      sequence(literal('\''), g.GeneralQuotedTemplate, literal('\''))
     ),
     templateInterpolationFromChildren
   );
-  const DirectJessGeneralTemplateBrace = node<Interpolation>(
-    'DirectJessGeneralTemplateBrace',
-    sequence(
-      literal('{'),
-      g.DirectJessGeneralTemplate,
-      literal('}')
-    ),
-    templateInterpolationFromChildren
-  );
-  const DirectJessGeneralTemplateDoubleQuoted = node<Interpolation>(
-    'DirectJessGeneralTemplateDoubleQuoted',
-    sequence(
-      literal('"'),
-      g.DirectJessGeneralQuotedTemplate,
-      literal('"')
-    ),
-    templateInterpolationFromChildren
-  );
-  const DirectJessGeneralTemplateSingleQuoted = node<Interpolation>(
-    'DirectJessGeneralTemplateSingleQuoted',
-    sequence(
-      literal('\''),
-      g.DirectJessGeneralQuotedTemplate,
-      literal('\'')
-    ),
-    templateInterpolationFromChildren
-  );
-  const DirectJessGeneralTemplate = node<Interpolation>(
-    'DirectJessGeneralTemplate',
+  const GeneralTemplate = node<Interpolation>(
+    'GeneralTemplate',
     many(choice(
-      g.DirectJessDollarBrace,
-      g.DirectJessGeneralTemplateParen,
-      g.DirectJessGeneralTemplateSquare,
-      g.DirectJessGeneralTemplateBrace,
-      g.DirectJessGeneralTemplateDoubleQuoted,
-      g.DirectJessGeneralTemplateSingleQuoted,
-      jessGeneralTemplateText
+      g.DollarBrace,
+      g.GeneralTemplateGroup,
+      g.GeneralTemplateQuoted,
+      generalTemplateText
     )),
     templateInterpolationFromChildren
   );
@@ -3785,286 +4801,174 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * Reached ONLY through the two quoted arms above, and closed under its own
    * wrappers so nesting never escapes back to the strict chain.
    */
-  const DirectJessGeneralQuotedTemplateParen = node<Interpolation>(
-    'DirectJessGeneralQuotedTemplateParen',
-    sequence(
-      literal('('),
-      g.DirectJessGeneralQuotedTemplate,
-      literal(')')
+  const GeneralQuotedTemplateGroup = node<Interpolation>(
+    'GeneralQuotedTemplateGroup',
+    choice(
+      sequence(literal('('), g.GeneralQuotedTemplate, literal(')')),
+      sequence(literal('['), g.GeneralQuotedTemplate, literal(']')),
+      sequence(literal('{'), g.GeneralQuotedTemplate, literal('}'))
     ),
     templateInterpolationFromChildren
   );
-  const DirectJessGeneralQuotedTemplateSquare = node<Interpolation>(
-    'DirectJessGeneralQuotedTemplateSquare',
-    sequence(
-      literal('['),
-      g.DirectJessGeneralQuotedTemplate,
-      literal(']')
-    ),
-    templateInterpolationFromChildren
-  );
-  const DirectJessGeneralQuotedTemplateBrace = node<Interpolation>(
-    'DirectJessGeneralQuotedTemplateBrace',
-    sequence(
-      literal('{'),
-      g.DirectJessGeneralQuotedTemplate,
-      literal('}')
-    ),
-    templateInterpolationFromChildren
-  );
-  const DirectJessGeneralQuotedTemplateDoubleQuoted = node<Interpolation>(
-    'DirectJessGeneralQuotedTemplateDoubleQuoted',
-    sequence(
-      literal('"'),
-      g.DirectJessGeneralQuotedTemplate,
-      literal('"')
-    ),
-    templateInterpolationFromChildren
-  );
-  const DirectJessGeneralQuotedTemplateSingleQuoted = node<Interpolation>(
-    'DirectJessGeneralQuotedTemplateSingleQuoted',
-    sequence(
-      literal('\''),
-      g.DirectJessGeneralQuotedTemplate,
-      literal('\'')
-    ),
-    templateInterpolationFromChildren
-  );
-  const DirectJessGeneralQuotedTemplate = node<Interpolation>(
-    'DirectJessGeneralQuotedTemplate',
+  const GeneralQuotedTemplate = node<Interpolation>(
+    'GeneralQuotedTemplate',
     many(choice(
-      g.DirectJessDollarBrace,
-      g.DirectJessExpression,
-      g.DirectJessGeneralQuotedTemplateParen,
-      g.DirectJessGeneralQuotedTemplateSquare,
-      g.DirectJessGeneralQuotedTemplateBrace,
-      g.DirectJessGeneralQuotedTemplateDoubleQuoted,
-      g.DirectJessGeneralQuotedTemplateSingleQuoted,
-      jessGeneralTemplateText
+      g.DollarBrace,
+      g.Expression,
+      g.GeneralQuotedTemplateGroup,
+      g.GeneralTemplateQuoted,
+      generalTemplateText
     )),
     templateInterpolationFromChildren
   );
-  const DirectJessGeneralEnclosed = node<GeneralEnclosed>(
-    'DirectJessGeneralEnclosed',
+  const Enclosed = node<FunctionCall | Block>(
+    'Enclosed',
     choice(
       sequence(
-        g.CssSyntaxKeyword,
+        g.Identifier,
         literal('('),
-        g.DirectJessGeneralTemplate,
+        g.GeneralTemplate,
         literal(')')
       ),
       sequence(
         literal('('),
-        g.DirectJessGeneralTemplate,
+        g.GeneralTemplate,
         literal(')')
       )
     ),
     children => children.length === 4
-      ? generalEnclosed(
-          'function',
+      ? funcCall(
           requireToken(children[0]).value,
-          requireInterpolation(children[2])
+          [requireInterpolation(children[2])]
         )
-      : generalEnclosed(
-          'paren',
-          null,
-          requireInterpolation(children[1])
-        )
+      : block(requireInterpolation(children[1]))
   );
-  const DirectJessSupportsNot = node<Keyword>(
-    'DirectJessSupportsNot',
-    g.CssSyntaxQueryNot,
+  const SupportsNot = node<Keyword>(
+    'SupportsNot',
+    g.QueryNot,
     children => keyword(requireToken(children[0]).value)
   );
-  const DirectJessSupportsLogical = node<Keyword>(
-    'DirectJessSupportsLogical',
-    g.CssSyntaxQueryAndOr,
+  const SupportsLogical = node<Keyword>(
+    'SupportsLogical',
+    g.QueryAndOr,
     children => keyword(requireToken(children[0]).value)
   );
-  const DirectJessSupportsFeature = node<ValueNode>(
-    'DirectJessSupportsFeature',
+  const SupportsFeature = node<ValueNode>(
+    'SupportsFeature',
     noTrivia(choice(
       sequence(
         literal('('),
         optional(rawWhitespace),
-        g.CssSyntaxKeyword,
+        g.Identifier,
         optional(rawWhitespace),
         literal(':'),
         optional(rawWhitespace),
-        g.DirectJessSupportsAtom,
+        g.SupportsAtom,
         optional(rawWhitespace),
         literal(')')
       ),
       sequence(
         literal('('),
         optional(rawWhitespace),
-        g.CssSyntaxKeyword,
+        g.Identifier,
         optional(rawWhitespace),
         literal(')')
       )
     )),
     children => reduceColonFeature(
       children,
-      'Direct Jess supports feature lost its property name.'
+      'Jess supports feature lost its property name.'
     )
   );
-  const DirectJessSupportsInParens = node<ValueNode>(
-    'DirectJessSupportsInParens',
+  const SupportsInParens = node<ValueNode>(
+    'SupportsInParens',
     choice(
       sequence(
         literal('('),
-        g.DirectJessSupportsCondition,
+        g.SupportsCondition,
         literal(')')
       ),
-      g.DirectJessSupportsFeature,
-      g.DirectJessGeneralEnclosed
+      g.SupportsFeature,
+      g.Enclosed
     ),
     (children) => {
       const value = children.find(isValueNode);
       if (value === undefined) {
-        throw new TypeError('Direct Jess supports parenthesis lost its typed condition.');
+        throw new TypeError('Jess supports parenthesis lost its typed condition.');
       }
       return isValueNode(children[0]) ? value : block(value);
     }
   );
-  const DirectJessSupportsCondition = node<ValueNode>(
-    'DirectJessSupportsCondition',
+  const SupportsCondition = node<ValueNode>(
+    'SupportsCondition',
     choice(
       sequence(
-        g.DirectJessSupportsNot,
-        g.DirectJessSupportsInParens
+        g.SupportsNot,
+        g.SupportsInParens
       ),
       sequence(
-        g.DirectJessSupportsInParens,
+        g.SupportsInParens,
         many(sequence(
-          g.DirectJessSupportsLogical,
-          g.DirectJessSupportsInParens
+          g.SupportsLogical,
+          g.SupportsInParens
         ))
       )
     ),
     (children) => {
       const values = children.filter(isValueNode);
       if (values.length === 0) {
-        throw new TypeError('Direct Jess supports condition lost every typed part.');
+        throw new TypeError('Jess supports condition lost every typed part.');
       }
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
-  const DirectJessCharset = node<AtRuleStatement>(
-    'DirectJessCharset',
+  const Charset = node<AtRuleStatement>(
+    'Charset',
     sequence(
-      jessCharsetAtRuleName,
-      g.DirectJessStaticQuoted,
+      charsetAtRuleName,
+      g.LiteralQuoted,
       literal(';')
     ),
     children => atRuleStatement(
       requireToken(children[0]).value,
-      requireStaticQuoted(children[1])
+      requireLiteralQuoted(children[1])
     )
-  );
-  const CssImportTarget = node<Quoted | Url>(
-    'CssImportTarget',
-    choice(
-      g.DirectJessStaticQuoted,
-      sequence(
-        g.CssSyntaxUrlOpen,
-        literal(')')
-      ),
-      sequence(
-        g.CssSyntaxUrlOpen,
-        choice(
-          g.DirectJessQuoted,
-          g.DirectJessUrlInterpolatedValue,
-          g.CssSyntaxStaticUrlInner
-        ),
-        literal(')')
-      )
-    ),
-    (children) => {
-      if (children.length === 1) {
-        return requireStaticQuoted(children[0]);
-      }
-      if (children.length === 2) {
-        return url(any(''));
-      }
-      const inner = children.find(isValueNode);
-      return url(inner ?? keyword(requireToken(children[1]).value));
-    }
   );
 
   /*
-   * The two functional `@import` conditions — `supports(<condition>)` and
-   * `layer(<layer-name>)`, css-cascade-5 §2.1. Neither is an ordinary media
-   * query term, so the static prelude term could not recognize either and a
-   * conditional import lost the whole stylesheet. `supports(...)` reuses the
-   * typed `@supports` condition this grammar already owns rather than restating
-   * it, and both reduce to the `FunctionCall` scss produces for the same tail.
-   * Kept local to the import tail: the general at-rule value grammar is not
-   * widened, so no other header gains a function-call spelling here.
+   * A bare Jess `@import` is CSS only. The target is the existing static CSS
+   * quoted/URL family and its tail is the existing CSS-shaped opaque prelude.
+   * Top-level `$` remains a sentinel, so compiler values cannot be flattened
+   * into an authored import. Compiler loading is explicitly `@-import`.
    */
-  const importTailFunctionName = token(noTrivia(sequence(
-    g.CssSyntaxKeyword,
-    not(not(literal('(')))
-  )));
-  const DirectJessImportTailFunction = node<FunctionCall>(
-    'DirectJessImportTailFunction',
-    dispatch(
-      importTailFunctionName,
-
-      /*
-       * `<supports-condition>` already owns its own parentheses, so the
-       * `supports(` opener IS the condition's leading paren — no second pair.
-       */
-      jessCase(
-        'supports',
-        sequence(
-          routed(),
-          g.DirectJessSupportsCondition
-        )
-      ),
-      jessCase(
-        'layer',
-        sequence(
-          routed(),
-          literal('('),
-          g.DirectJessKeyword,
-          literal(')')
-        )
-      )
-    ),
-    children => funcCall(
-      requireToken(children[0]).value,
-      [requireValueNode(children.find(isValueNode))]
-    )
-  );
-  const DirectJessCssImportPrelude = node<ValueNode>(
-    'DirectJessCssImportPrelude',
-    noTrivia(sequence(
-      g.CssImportTarget,
-      many(sequence(
-        regex(/[ \t\n\r\f]+/),
-        choice(
-          g.DirectJessImportTailFunction,
-          g.DirectJessStaticAtPreludeTerm
-        )
-      ))
-    )),
-    (children) => {
-      const values = children.filter(isValueNode);
-      return values.length === 1 ? values[0]! : spaced(values);
-    }
-  );
-  const DirectJessCssImport = node<AtRuleStatement>(
-    'DirectJessCssImport',
+  const ImportStatement = node<AtRuleStatement>(
+    'ImportStatement',
     sequence(
-      jessImportAtRuleName,
-      g.DirectJessCssImportPrelude,
+      importAtRuleName,
+      choice(
+        g.LiteralQuoted,
+        g.Url
+      ),
+      g.OpaqueAtPrelude,
       literal(';')
     ),
-    children => atRuleStatement(
-      requireToken(children[0]).value,
-      requireValueNode(children[1])
-    )
+    (children) => {
+      const target = children[1];
+      if (!isQuoted(target) && !isUrl(target)) {
+        throw new TypeError('Jess CSS import lost its static target.');
+      }
+      const tail = children[2];
+      if (tail !== null && typeof tail !== 'string') {
+        throw new TypeError('Jess CSS import lost its opaque tail.');
+      }
+      const targetText = target.type === 'Quoted'
+        ? target.src
+        : `url(${expressionSource(target.value)})`;
+      return atRuleStatement(
+        requireToken(children[0]).value,
+        any(tail === null ? targetText : `${targetText} ${tail}`)
+      );
+    }
   );
 
   /*
@@ -4073,30 +4977,31 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * as one local const so the macro fuses a single shared choice instead of
    * re-emitting it per block.
    *
-   * The `@`-headed cluster is placed AFTER DirectJessRule: a rule requires a
+   * The `@`-headed cluster is placed AFTER Ruleset: a ruleset requires a
    * selector (never `@`) and every at-rule requires `@`, so the two are disjoint
    * and this ordering is behaviour-neutral. Because rules dominate block bodies,
-   * trying Rule first means a non-`@` statement never enters (and rolls back) the
+   * trying Ruleset first means a non-`@` statement never enters (and rolls back) the
    * at-rule recognizers — only genuine `@` statements reach the cluster.
     */
-  const directJessAtBlockStatement = choice(
-    g.DirectJessMixinCall,
-    g.DirectJessValueBlockDeclaration,
-    g.DirectJessVarDeclaration,
-    g.DirectJessDeclaration,
-    g.DirectJessMixinDef,
-    g.DirectJessReferenceCall,
-    g.DirectJessApply,
-    g.DirectJessExtend,
+  const atBlockStatement = choice(
+    g.MixinCall,
+    g.ValueBlockDeclaration,
+    g.VariableDeclaration,
+    g.Declaration,
+    g.MixinDefinition,
+    g.ReferenceCall,
+    g.Apply,
+    g.Extend,
     g.For,
-    g.DirectJessIf,
-    g.DirectJessRule,
-    g.DirectJessSupportsAtRuleBlock,
-    g.DirectJessKeyframes,
-    g.DirectJessOpaqueAtRuleBlock,
-    g.DirectJessScopeBlock,
-    g.DirectJessAtRuleBlock,
-    g.DirectJessAtRuleStatement,
+    g.If,
+    g.While,
+    g.NestedRuleset,
+    g.SupportsAtRuleBlock,
+    g.Keyframes,
+    g.OpaqueAtRuleBlock,
+    g.ScopeBlock,
+    g.AtRuleBlock,
+    g.AtRuleStatement,
     literal(';')
   );
 
@@ -4104,42 +5009,43 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * Shared nested-scope statement set for `$mixin`/`$for`/`$if` bodies: identical
    * 15-rule choice with no bare `;` or `$extend` arm.
     */
-  const directJessNestedBodyStatement = choice(
+  const nestedBodyStatement = choice(
     literal(';'),
-    g.DirectJessMixinCall,
-    g.DirectJessValueBlockDeclaration,
-    g.DirectJessVarDeclaration,
-    g.DirectJessDeclaration,
-    g.DirectJessMixinDef,
+    g.MixinCall,
+    g.ValueBlockDeclaration,
+    g.VariableDeclaration,
+    g.Declaration,
+    g.MixinDefinition,
     g.For,
-    g.DirectJessIf,
-    g.DirectJessReferenceCall,
-    g.DirectJessApply,
-    g.DirectJessRule,
-    g.DirectJessSupportsAtRuleBlock,
-    g.DirectJessKeyframes,
-    g.DirectJessOpaqueAtRuleBlock,
-    g.DirectJessScopeBlock,
-    g.DirectJessAtRuleBlock,
-    g.DirectJessAtRuleStatement
+    g.If,
+    g.While,
+    g.ReferenceCall,
+    g.Apply,
+    g.NestedRuleset,
+    g.SupportsAtRuleBlock,
+    g.Keyframes,
+    g.OpaqueAtRuleBlock,
+    g.ScopeBlock,
+    g.AtRuleBlock,
+    g.AtRuleStatement
   );
-  const DirectJessSupportsAtRuleBlock = node<AtRuleBlock>(
-    'DirectJessSupportsAtRuleBlock',
+  const SupportsAtRuleBlock = node<AtRuleBlock>(
+    'SupportsAtRuleBlock',
     sequence(
-      jessSupportsAtRuleName,
-      g.DirectJessSupportsCondition,
+      g.SupportsAtKeyword,
+      g.SupportsCondition,
       literal('{'),
-      many(directJessAtBlockStatement),
+      many(atBlockStatement),
       literal('}')
     ),
-    children => atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       requireValueNode(children[1]),
       collectBlockStatements(
         children,
         3
       )
-    )
+    ), rawChildren), span)
   );
 
   /*
@@ -4147,120 +5053,128 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * prelude. Retaining the contiguous `--` prefix as grammar structure blocks
    * a dynamic or malformed header from falling through the generic at-rule arm.
    */
-  const DirectJessPropertyName = node<Keyword>(
-    'DirectJessPropertyName',
+  const PropertyName = node<Keyword>(
+    'PropertyName',
     noTrivia(sequence(
       literal('--'),
-      g.CssSyntaxKeyword
+      g.Identifier
     )),
     children => keyword(`${requireToken(children[0]).value}${requireToken(children[1]).value}`)
   );
 
   /*
    * Registered-property descriptors are authored CSS component values, but they
-   * are not Jess value positions: they take the shared static component value
-   * above, never DirectJessValue (which admits variable references,
+   * are not Jess value positions: they take the shared plain component value
+   * above, never Value (which admits variable references,
    * interpolation, arithmetic, and collections) and never Any/raw source.
    */
-  const DirectJessStaticPropertyDescriptor = node<Declaration>(
-    'DirectJessStaticPropertyDescriptor',
+  const PropertyDescriptor = node<Declaration>(
+    'PropertyDescriptor',
     sequence(
-      g.CssSyntaxProperty,
-      literal(':'),
-      g.DirectJessStaticValue,
+
+      /* Statement span, terminator excluded — see `Declaration`. */
+      field('statement', sequence(
+        g.Identifier,
+        literal(':'),
+        g.HeaderValue
+      )),
       literal(';')
     ),
-    (children) => {
+    (children, fields) => {
       const value = children[2];
-      return decl(
+      const node = decl(
         requireToken(children[0]).value,
         Array.isArray(value) ? value : valueSlot(requireValueNode(value))
       );
+      const statement = fields?.statement;
+      return statement === undefined || Array.isArray(statement)
+        ? node
+        : withSourceSpan(node, statement.span);
     }
   );
-  const DirectJessPropertyAtRule = node<AtRuleBlock>(
-    'DirectJessPropertyAtRule',
+  const PropertyAtRule = node<AtRuleBlock>(
+    'PropertyAtRule',
     sequence(
-      jessPropertyAtRuleName,
-      g.DirectJessPropertyName,
+      propertyAtRuleName,
+      g.PropertyName,
       literal('{'),
-      many(g.DirectJessStaticPropertyDescriptor),
+      many(g.PropertyDescriptor),
       literal('}')
     ),
-    children => atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       requireKeyword(children[1]),
       requireStatements(children.slice(
         3,
         -1
       ))
-    )
+    ), rawChildren), span)
   );
 
   /*
-   * Keyframes already fit the canonical AtRuleBlock + Rule model.  Keep the
+   * Keyframes already fit the canonical AtRuleBlock + Ruleset model.  Keep the
    * header and selector boundary static until Jess has typed interpolation for
    * those positions; never turn either into a source-text prelude.
    */
-  const DirectJessKeyframeSelector = node<SimpleSelector>(
-    'DirectJessKeyframeSelector',
+  const KeyframeSelector = node<SimpleSelector>(
+    'SimpleSelector',
     choice(
-      jessKeyframeEndpoint,
-      jessKeyframePercent
+      keyframeEndpoint,
+      g.Percentage
     ),
     children => simpleSelector(requireToken(children[0]).value)
   );
-  const DirectJessKeyframeBlock = node<Rule>(
-    'DirectJessKeyframeBlock',
+  const KeyframeBlock = node<Ruleset>(
+    'KeyframeBlock',
     sequence(
-      g.DirectJessKeyframeSelector,
+      g.KeyframeSelector,
       many(sequence(
         literal(','),
-        g.DirectJessKeyframeSelector
+        g.KeyframeSelector
       )),
       literal('{'),
       many(choice(
-        g.DirectJessDeclaration,
+        g.Declaration,
         literal(';')
       )),
       literal('}')
     ),
-    (children) => {
+    (children, _fields, _span, rawChildren) => {
       const selectors = children.filter((child): child is SimpleSelector => typeof child === 'object' && child !== null && 'type' in child && child.type === 'SimpleSelector')
-        .map(selector => complexSelector([{ compound: compoundSelectorOf([selector]) }]));
+        .map(selector => selector);
       const bodyOpen = children.findIndex(child => isToken(child) && child.value === '{');
       if (bodyOpen < 0) {
-        throw new TypeError('Direct Jess keyframe block lost its body boundary.');
+        throw new TypeError('Jess keyframe block lost its body boundary.');
       }
-      return rule(
+      return withBlockBody(rule(
         selist(...selectors),
         requireStatements(children.slice(
           bodyOpen + 1,
           -1
         ).filter(isDeclaration))
-      );
+      ), rawChildren);
     }
   );
-  const DirectJessKeyframes = node<AtRuleBlock>(
-    'DirectJessKeyframes',
+  const Keyframes = node<AtRuleBlock>(
+    'Keyframes',
     sequence(
-      g.CssSyntaxKeyframesAtKeyword,
+      g.KeyframesAtKeyword,
       choice(
-        g.DirectJessKeyword,
-        g.DirectJessStaticQuoted
+        g.Keyword,
+        g.LiteralQuoted
       ),
       literal('{'),
-      many(g.DirectJessKeyframeBlock),
+      many(g.KeyframeBlock),
       literal('}')
     ),
-    children => atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
       requireValueNode(children[1]),
       requireStatements(children.slice(
         3,
         -1
       ))
-    )
+    ), rawChildren), span)
   );
 
   /*
@@ -4268,23 +5182,23 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * block-valued variable declaration. Both reduce with `reduceVarDeclaration`,
    * which reads the operator by position, so the head must stay one shape.
    */
-  const directJessAssignHead = choice(
+  const assignHead = choice(
     noTrivia(sequence(
       literal('$'),
-      literal('$'),
-      jessDollarName,
+      literal('^'),
+      dollarName,
       literal('?:')
     )),
     noTrivia(sequence(
       literal('$'),
-      jessDollarName,
+      dollarName,
       literal('?:')
     )),
     sequence(
       noTrivia(sequence(
         literal('$'),
-        literal('$'),
-        jessDollarName
+        literal('^'),
+        dollarName
       )),
       choice(
         literal(':='),
@@ -4294,7 +5208,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     sequence(
       noTrivia(sequence(
         literal('$'),
-        jessDollarName
+        dollarName
       )),
       choice(
         literal(':='),
@@ -4306,15 +5220,15 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   /*
    * A variable assignment IS a declaration, so `;` separates it from the next
    * declaration rather than terminating it (css-syntax-3 §5.4.7) — exactly the
-   * rule `DirectJessDeclaration` already follows. The last declaration in a list
+   * rule `Declaration` already follows. The last declaration in a list
    * needs no `;`, so the terminator is optional here too; there is no separate
    * "variable assignment" termination category.
    */
-  const DirectJessVarDeclaration = node<VariableDeclaration>(
-    'DirectJessVarDeclaration',
+  const VariableDeclaration = node<VariableDeclaration>(
+    'VariableDeclaration',
     sequence(
-      directJessAssignHead,
-      g.DirectJessValue,
+      assignHead,
+      g.Value,
       optional(literal(';'))
     ),
     reduceVarDeclaration
@@ -4326,15 +5240,15 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * `$foo: @() > { … }` need no `;` and whatever follows the brace begins a new
    * statement. Less has the same rule for a detached ruleset bound to a variable.
    * The block must be the WHOLE value — a value can never precede it (there is no
-   * `DirectJessValueBlock` arm in the space-group continuation), because that is
+   * `ValueBlock` arm in the space-group continuation), because that is
    * exactly the case where the value's end would be ambiguous. Compose instead:
    * bind the block first (`$foo: {}`), then use it (`$bar: $foo bar;`).
    */
-  const DirectJessValueBlockDeclaration = node<VariableDeclaration>(
-    'DirectJessValueBlockDeclaration',
+  const ValueBlockDeclaration = node<VariableDeclaration>(
+    'ValueBlockDeclaration',
     sequence(
-      directJessAssignHead,
-      g.DirectJessValueBlock,
+      assignHead,
+      g.ValueBlock,
       optional(literal(';'))
     ),
     reduceVarDeclaration
@@ -4342,19 +5256,19 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
 
   /*
    * Priority is a Declaration field in the canonical AST, so this is ordinary
-   * direct grammar construction rather than a Jess-specific compatibility path.
+   * host-mode grammar construction rather than a Jess-specific compatibility path.
    * Comments around the marker/name are ambient trivia, not value children.
    */
-  const DirectJessImportant = node<true>(
-    'DirectJessImportant',
+  const Important = node<true>(
+    'Important',
     sequence(
       literal('!'),
-      g.CssSyntaxImportant
+      g.ImportantToken
     ),
     (children) => {
       const marker = children.find((child): child is Token => isToken(child) && child.value === '!');
       if (marker === undefined) {
-        throw new TypeError('Direct Jess AST grammar lost its declaration-priority marker.');
+        throw new TypeError('Jess grammar lost its declaration-priority marker.');
       }
       requireExactToken(
         marker,
@@ -4367,25 +5281,25 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   /*
    * A property interpolation is an existing Declaration.name Interpolation, never a
    * raw name string. Static identifier segments come from shared CSS syntax;
-   * Jess owns only its `$[…]` segment grammar and direct AST reduction.
+   * Jess owns only its `${...}` segment grammar and AST reduction.
    * Cheap superset lookahead so an ordinary `color: …` declaration does not
    * enter the interpolated-property arm, consume the whole property name via
    * the optional literal start, fail the required interpolation, and backtrack a
-   * property re-parse through CssSyntaxProperty. Skip this arm unless a
-   * `$[` or `${` actually precedes the next `:`/`;`/brace. A property name never
+   * property re-parse through Identifier. Skip this arm unless a
+   * `${` actually precedes the next `:`/`;`/brace. A property name never
    * contains `:`, `;`, `{`, or `}`, so the predicate is a strict superset: a
    * real interpolated property is never skipped.
    */
-  const directInterpPropertyAhead = not(not(regex(/[^{};:]*\$[[{]/)));
-  const DirectJessInterpolatedProperty = node<Interpolation>(
-    'DirectJessInterpolatedProperty',
+  const interpolatedPropertyAhead = peek(regex(/[^{};:]*\$\{/));
+  const InterpolatedProperty = node<Interpolation>(
+    'InterpolatedProperty',
     noTrivia(sequence(
-      directInterpPropertyAhead,
-      optional(g.CssSyntaxInterpolatedPropertyStart),
-      g.DirectJessDollarBrace,
+      interpolatedPropertyAhead,
+      optional(g.InterpolatedPropertyStart),
+      g.DollarBrace,
       many(choice(
-        g.CssSyntaxInterpolatedPropertyTail,
-        g.DirectJessDollarBrace
+        g.InterpolatedPropertyTail,
+        g.DollarBrace
       ))
     )),
     (children) => {
@@ -4395,7 +5309,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           parts.push(...child.parts);
         } else {
           /*
-           * The superset lookahead emits a throwaway match token (`…$[`). Real
+           * The superset lookahead emits a throwaway match token (`…${`). Real
            * property-name chunks never contain `$`, so this content check drops
            * only that throwaway, independent of its position.
            */
@@ -4414,22 +5328,22 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * A custom property is plain CSS in every dialect, so Jess composes the same
    * recognition the CSS base does rather than routing `--x` through the ordinary
    * property terminal (a CSS ident, which cannot start with `--`). The name is
-   * the custom-property leaf, or that leaf's `--` prefix followed by `$[…]`
+   * the custom-property leaf, or that leaf's `--` prefix followed by `${...}`
    * segments.
    */
-  const DirectJessCustomPropertyName = node<string | Interpolation>(
-    'DirectJessCustomPropertyName',
+  const InterpolatedCustomPropertyName = node<string | Interpolation>(
+    'InterpolatedCustomPropertyName',
     choice(
       noTrivia(sequence(
         literal('--'),
-        many(jessCustomPropertyChunk),
-        g.DirectJessDollarBrace,
+        many(customPropertyChunk),
+        g.DollarBrace,
         many(choice(
-          jessCustomPropertyChunk,
-          g.DirectJessDollarBrace
+          customPropertyChunk,
+          g.DollarBrace
         ))
       )),
-      g.CssSyntaxCustomProperty
+      g.CustomPropertyName
     ),
     (children) => {
       if (!children.some(isInterpolation)) {
@@ -4453,60 +5367,38 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * reference. Delimiters recurse as grammar children rather than being captured
    * as one opaque span, so an inner `;` or `}` cannot end the declaration.
    */
-  const DirectJessCustomParen = node<readonly unknown[]>(
-    'DirectJessCustomParen',
-    noTrivia(sequence(
-      literal('('),
-      many(g.DirectJessCustomInnerPart),
-      literal(')')
-    )),
+  const CustomGroup = node<readonly unknown[]>(
+    'CustomGroup',
+    parser({ trivia: customValueCommentTrivia },
+      choice(
+        sequence(literal('('), many(g.CustomInnerPart), literal(')')),
+        sequence(literal('['), many(g.CustomInnerPart), literal(']')),
+        sequence(literal('{'), many(g.CustomInnerPart), literal('}'))
+      )
+    ),
     children => children.slice()
   );
-  const DirectJessCustomSquare = node<readonly unknown[]>(
-    'DirectJessCustomSquare',
-    noTrivia(sequence(
-      literal('['),
-      many(g.DirectJessCustomInnerPart),
-      literal(']')
-    )),
-    children => children.slice()
+  const CustomInnerPart: Combinator<unknown> = choice(
+    g.DollarBrace,
+    g.CustomInnerContent,
+    g.CustomSingleQuoted,
+    g.CustomDoubleQuoted,
+    g.CustomGroup
   );
-  const DirectJessCustomCurly = node<readonly unknown[]>(
-    'DirectJessCustomCurly',
-    noTrivia(sequence(
-      literal('{'),
-      many(g.DirectJessCustomInnerPart),
-      literal('}')
-    )),
-    children => children.slice()
+  const CustomPart: Combinator<unknown> = choice(
+    g.DollarBrace,
+    g.CustomOuterContent,
+    g.CustomSingleQuoted,
+    g.CustomDoubleQuoted,
+    g.CustomGroup
   );
-  const DirectJessCustomInnerPart: Combinator<unknown> = choice(
-    g.DirectJessDollarBrace,
-    g.CssSyntaxCustomInnerContent,
-    blockComment,
-    g.CssSyntaxCustomSingleQuoted,
-    g.CssSyntaxCustomDoubleQuoted,
-    g.DirectJessCustomParen,
-    g.DirectJessCustomSquare,
-    g.DirectJessCustomCurly
+  const CustomValue = node<ValueNode>(
+    'CustomValue',
+    parser({ trivia: customValueCommentTrivia }, many(g.CustomPart)),
+    (children, _fields, span) => withSourceSpan(customValueFromChildren(children), span)
   );
-  const DirectJessCustomPart: Combinator<unknown> = choice(
-    g.DirectJessDollarBrace,
-    g.CssSyntaxCustomOuterContent,
-    blockComment,
-    g.CssSyntaxCustomSingleQuoted,
-    g.CssSyntaxCustomDoubleQuoted,
-    g.DirectJessCustomParen,
-    g.DirectJessCustomSquare,
-    g.DirectJessCustomCurly
-  );
-  const DirectJessCustomValue = node<ValueNode>(
-    'DirectJessCustomValue',
-    noTrivia(many(g.DirectJessCustomPart)),
-    children => customValueFromChildren(children)
-  );
-  const DirectJessCustomDeclaration = node<Declaration>(
-    'DirectJessCustomDeclaration',
+  const CustomDeclaration = node<Declaration>(
+    'CustomDeclaration',
 
     /*
      * A trailing `!important` is declaration priority, not value text: css-syntax-3
@@ -4516,16 +5408,16 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
      * declaration tail below.
      */
     sequence(
-      g.DirectJessCustomPropertyName,
+      g.InterpolatedCustomPropertyName,
       literal(':'),
-      g.DirectJessCustomValue,
-      optional(g.DirectJessImportant),
+      g.CustomValue,
+      optional(g.Important),
       optional(literal(';'))
     ),
     (children) => {
       const name = children[0];
       if (typeof name !== 'string' && !isInterpolation(name)) {
-        throw new TypeError('Direct Jess AST grammar produced a custom declaration without a name.');
+        throw new TypeError('Jess grammar produced a custom declaration without a name.');
       }
 
       /*
@@ -4534,7 +5426,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
        */
       const value = children[2];
       if (!isValueNode(value)) {
-        throw new TypeError('Direct Jess AST grammar produced an incomplete custom declaration.');
+        throw new TypeError('Jess grammar produced an incomplete custom declaration.');
       }
       return decl(
         name,
@@ -4544,22 +5436,52 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       );
     }
   );
-  const DirectJessDeclaration = node<Declaration>(
-    'DirectJessDeclaration',
+  const Declaration = node<Declaration>(
+    'Declaration',
     choice(
-      g.DirectJessCustomDeclaration,
+      g.CustomDeclaration,
       sequence(
+
+        /*
+         * The statement `;` is OUTSIDE this field on purpose. The field span is
+         * the declaration's source span, and it has to end at the end of the
+         * VALUE: the renderer treats a comment run beginning exactly at that
+         * offset as the declaration's INLINE trailing comment, and a span that
+         * reached past the semicolon would both mis-claim that run and swallow
+         * any comment authored between the value and the `;`. Less gets the
+         * same end for free — its declaration production never contained the
+         * terminator.
+         */
+        field('statement', sequence(
+          choice(
+            InterpolatedProperty,
+            g.Identifier
+          ),
+          literal(':'),
+          g.Value,
+
+          /*
+           * The CSS base's declaration-vs-nested-rule decision, unchanged:
+           * `css-parser/src/grammar.ts` puts `not(literal('{'))` in exactly this
+           * position so an ident-colon construct followed by a block falls
+           * through to `Ruleset` instead of matching as a declaration.
+           */
+          not(literal('{')),
+          optional(g.Important)
+        )),
+
+        /*
+         * A declaration may not strand a selector comma — see the same guard in
+         * `scss-parser/src/grammar.ts`. Without it `div:hover, .b { … }` matches
+         * as `div: hover` and strands `, .b { … }`.
+         */
         choice(
-          DirectJessInterpolatedProperty,
-          g.CssSyntaxProperty
-        ),
-        literal(':'),
-        g.DirectJessValue,
-        optional(g.DirectJessImportant),
-        optional(literal(';'))
+          literal(';'),
+          not(literal(','))
+        )
       )
     ),
-    (children) => {
+    (children, fields) => {
       /*
        * The custom-property arm is a single completed Declaration child; pass it
        * through so every body that admits a declaration admits a custom property
@@ -4569,12 +5491,16 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       if (children.length === 1 && isDeclaration(custom)) {
         return custom;
       }
-      return decl(
+      const node = decl(
         isToken(children[0]) ? requireToken(children[0]).value : requireInterpolation(children[0]),
         requireValueSlot(children[2]),
         null,
         children.includes(true)
       );
+      const statement = fields?.statement;
+      return statement === undefined || Array.isArray(statement)
+        ? node
+        : withSourceSpan(node, statement.span);
     }
   );
 
@@ -4587,56 +5513,56 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * declaration-list body; Jess reduces to the byte-identical shape by reusing
    * the shared static prelude capture — which stops at a top-level `$`, so a
    * dynamic `@scope ($sel)` still rejects instead of being hidden in raw bytes.
-   * Ordered ahead of `DirectJessAtRuleBlock`, whose generic name also admits
+   * Ordered ahead of `AtRuleBlock`, whose generic name also admits
    * `@scope`; the statement form (`@scope;`) has no `{` and still falls through.
    */
-  const DirectJessScopeBlock = node<AtRuleBlock>(
-    'DirectJessScopeBlock',
+  const ScopeBlock = node<AtRuleBlock>(
+    'ScopeBlock',
     sequence(
-      jessScopeAtRuleName,
+      scopeAtRuleName,
       noTrivia(sequence(
-        g.DirectJessOpaquePrelude,
+        g.OpaqueAtPrelude,
         literal('{')
       )),
-      many(directJessAtBlockStatement),
+      many(atBlockStatement),
       literal('}')
     ),
-    (children) => {
+    (children, _fields, span, rawChildren) => {
       const prelude = children[1];
       if (prelude !== null && typeof prelude !== 'string') {
-        throw new TypeError('Direct Jess scope at-rule lost its grammar-owned prelude.');
+        throw new TypeError('Jess scope at-rule lost its grammar-owned prelude.');
       }
-      return atRuleBlock(
+      return withSourceSpan(withBlockBody(atRuleBlock(
         requireToken(children[0]).value,
         prelude === null ? null : any(prelude),
         collectBlockStatements(
           children,
           2
         )
-      );
+      ), rawChildren), span);
     }
   );
-  const DirectJessAtRuleBlock = node<AtRuleBlock>(
-    'DirectJessAtRuleBlock',
+  const AtRuleBlock = node<AtRuleBlock>(
+    'AtRuleBlock',
     sequence(
-      g.DirectJessAtRuleHeader,
+      g.AtRuleHeader,
       literal('{'),
-      many(directJessAtBlockStatement),
+      many(atBlockStatement),
       literal('}')
     ),
-    children => atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireJessAtRuleHeader(children[0]).name,
       requireJessAtRuleHeader(children[0]).prelude,
       collectBlockStatements(
         children,
         2
       )
-    )
+    ), rawChildren), span)
   );
-  const DirectJessAtRuleStatement = node<AtRuleStatement>(
-    'DirectJessAtRuleStatement',
+  const AtRuleStatement = node<AtRuleStatement>(
+    'AtRuleStatement',
     sequence(
-      g.DirectJessStaticAtRuleHeader,
+      g.AtRuleStatementHeader,
       literal(';')
     ),
     (children) => {
@@ -4659,28 +5585,28 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * one child, matching the explicit wrapper shape the other dialects use for
    * optional opaque captures.
    */
-  const DirectJessOpaquePrelude = node<string | null>(
-    'DirectJessOpaquePrelude',
-    g.JessAstOpaqueStaticPrelude,
+  const OpaqueAtPrelude = node<string | null>(
+    'OpaqueAtPrelude',
+    g.PreprocessorOpaqueAtRulePreludeCapture,
     (children) => {
       const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
       return text === '' ? null : text;
     }
   );
-  const DirectJessOpaqueBody = node<string>(
-    'DirectJessOpaqueBody',
-    g.JessAstOpaqueBody,
+  const OpaqueBody = node<string>(
+    'OpaqueBody',
+    g.PreprocessorOpaqueAtRuleBodyCapture,
     children => children.length === 0 ? '' : requireToken(children[0]).value
   );
-  const DirectJessOpaqueAtRuleBlock = node<OpaqueAtRuleBlock>(
-    'DirectJessOpaqueAtRuleBlock',
+  const OpaqueAtRuleBlock = node<OpaqueAtRuleBlock>(
+    'OpaqueAtRuleBlock',
     sequence(
-      not(jessCompilerAtRuleName),
-      g.CssSyntaxGenericAtRuleName,
+      not(compilerAtRuleName),
+      g.GenericAtRuleName,
       noTrivia(sequence(
-        g.DirectJessOpaquePrelude,
+        g.OpaqueAtPrelude,
         literal('{'),
-        g.DirectJessOpaqueBody,
+        g.OpaqueBody,
         literal('}')
       ))
     ),
@@ -4688,7 +5614,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       const prelude = children[1];
       const rawBody = children[3];
       if ((prelude !== null && typeof prelude !== 'string') || typeof rawBody !== 'string') {
-        throw new TypeError('Direct Jess opaque at-rule lost its grammar-owned raw facts.');
+        throw new TypeError('Jess opaque at-rule lost its grammar-owned raw facts.');
       }
       return opaqueAtRuleBlock(
         requireToken(children[0]).value,
@@ -4699,20 +5625,20 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   );
 
   /*
-   * Jess shares the core MixinDef/MixinCall model with the other dialects, but
+   * Jess shares the core MixinDefinition/MixinCall model with the other dialects, but
    * owns its `$ >` invocation spelling and Less/Sass-style names here. Guards
    * and selector interpolation remain separate typed families; named arguments
    * already have the canonical CallArg fact and reduce directly to it.
    */
-  const directJessMixinName = regex(/[.#]?-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-  const DirectJessMixinParam = node<Param>(
-    'DirectJessMixinParam',
+  const mixinNameToken = regex(/[.#]?-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+  const MixinParam = node<Param>(
+    'MixinParam',
     sequence(
       literal('$'),
-      jessDollarName,
+      dollarName,
       optional(sequence(
         literal(':'),
-        g.DirectJessValueTerm
+        g.ValueTerm
       ))
     ),
     (children) => {
@@ -4722,58 +5648,52 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         : { name: requireToken(children[1]).value, default: defaultValue };
     }
   );
-  const DirectJessMixinParams = node<Param[]>(
-    'DirectJessMixinParams',
+  const MixinParams = node<Param[]>(
+    'MixinParams',
     sequence(
       literal('('),
-      optional(sequence(
-        g.DirectJessMixinParam,
-        many(sequence(
-          literal(','),
-          g.DirectJessMixinParam
-        ))
+      optional(oneOrMoreSep(
+        g.MixinParam,
+        literal(',')
       )),
       literal(')')
     ),
-    children => children.filter((child): child is Param => typeof child === 'object' && child !== null && !('type' in child) && 'name' in child)
+    children => children.filter(isParam)
   );
-  const DirectJessMixinCallArg = node<JessMixinCallArgument>(
-    'DirectJessMixinCallArg',
+  const MixinCallArgument = node<JessMixinCallArgument>(
+    'MixinCallArgument',
     choice(
       sequence(
         literal('$'),
-        jessDollarName,
+        dollarName,
         literal(':'),
-        g.DirectJessValueTerm
+        g.ValueTerm
       ),
-      g.DirectJessValueTerm
+      g.ValueTerm
     ),
     (children) => {
       const value = children.find(isValueNode);
       if (value === undefined) {
-        throw new TypeError('Direct Jess AST grammar produced a mixin argument without a value.');
+        throw new TypeError('Jess grammar produced a mixin argument without a value.');
       }
       const name = children.find((child): child is Token => isToken(child) && child.value !== '$' && child.value !== ':');
-      return name === undefined ? { value } : { name: name.value, value };
+      return callArg(value, name?.value);
     }
   );
-  const DirectJessMixinCall = node<MixinCall>(
-    'DirectJessMixinCall',
+  const MixinCall = node<MixinCall>(
+    'MixinCall',
     sequence(
       literal('$'),
       literal('>'),
-      directJessMixinName,
+      mixinNameToken,
       many(sequence(
         literal('>'),
-        directJessMixinName
+        mixinNameToken
       )),
       literal('('),
-      optional(sequence(
-        g.DirectJessMixinCallArg,
-        many(sequence(
-          literal(','),
-          g.DirectJessMixinCallArg
-        ))
+      optional(oneOrMoreSep(
+        g.MixinCallArgument,
+        literal(',')
       )),
       literal(')'),
       optional(literal(';'))
@@ -4785,7 +5705,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       const args = children.filter(isJessMixinCallArgument);
       const name = names.at(-1);
       if (name === undefined) {
-        throw new TypeError('Direct Jess AST grammar produced a mixin call without a name.');
+        throw new TypeError('Jess grammar produced a mixin call without a name.');
       }
       const call = mixinCall(
         name,
@@ -4796,7 +5716,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         : { ...call, path: names.slice(
             0,
             -1
-          ).map(sel => ({ comb: '>' as const, sel })) };
+          ).map(selector => ({ combinator: '>' as const, selector })) };
     }
   );
 
@@ -4804,11 +5724,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * A variable-held callable has an explicit target and empty argument array.
    * Argument-bearing syntax remains intentionally closed in the Jess grammar.
    */
-  const DirectJessReferenceCall = node<Reference>(
-    'DirectJessReferenceCall',
+  const ReferenceCall = node<Reference>(
+    'ReferenceCall',
     sequence(
       literal('$'),
-      jessDollarName,
+      dollarName,
       literal('('),
       literal(')'),
       optional(literal(';'))
@@ -4825,36 +5745,36 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       );
     }
   );
-  const DirectJessMixinDef = node<MixinDef>(
-    'DirectJessMixinDef',
+  const MixinDefinition = node<MixinDefinition>(
+    'MixinDefinition',
     sequence(
-      directJessMixinName,
-      g.DirectJessMixinParams,
+      mixinNameToken,
+      g.MixinParams,
       optional(sequence(
-        regex(/when(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        syntaxWord('when'),
         literal('('),
-        g.DirectJessMixinGuard,
+        g.MixinGuard,
         literal(')')
       )),
       literal('{'),
-      many(directJessNestedBodyStatement),
+      many(nestedBodyStatement),
       literal('}')
     ),
-    (children) => {
+    (children, _fields, _span, rawChildren) => {
       const bodyOpen = children.findIndex(child =>
         isToken(child) && child.value === '{');
       if (bodyOpen < 0) {
-        throw new TypeError('Direct Jess AST grammar produced a mixin definition without a body.');
+        throw new TypeError('Jess grammar produced a mixin definition without a body.');
       }
-      return mixinDef(
+      return withBlockBody(mixinDef(
         requireToken(children[0]).value,
-        children.find(Array.isArray) as Param[] | undefined ?? [],
+        children.find(isParamList) ?? [],
         collectBodyStatements(
           children,
           bodyOpen + 1
         ),
         children.find((child): child is GuardNode => typeof child === 'object' && child !== null && 'g' in child)
-      );
+      ), rawChildren);
     }
   );
 
@@ -4864,9 +5784,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * definition is not. Re-establish the ordinary trivia scope at the reference so
    * the one shared rule keeps one recognition mode in both positions.
    */
-  const directJessLambdaParams = parser(
+  const lambdaParamsParser = parser(
     { trivia: whitespace },
-    g.DirectJessMixinParams
+    g.MixinParams
   );
 
   /*
@@ -4875,7 +5795,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * CALL spelling (`$ > name()`) uses: `@(params) > { … }` is a FUNCTION whose
    * block body yields its `result:` entry, `@(params) { … }` / `@{ … }` is a
    * plain anonymous mixin whose body is spliced. There is no `$function` node —
-   * this is the same `AnonymousMixin` (with the same `params` shape a `MixinDef`
+   * this is the same `AnonymousMixin` (with the same `params` shape a `MixinDefinition`
    * uses) that an SCSS user `@function` already lowers to, so one core binder and
    * one `result:` convention serve both dialects.
    *
@@ -4885,21 +5805,21 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * auto-terminates its assignment: `$f: @() > { }` needs no `;`, while
    * `$f: @() > expr;` does.
    */
-  const DirectJessBlockLambda = node<AnonymousMixin>(
-    'DirectJessBlockLambda',
+  const BlockLambda = node<AnonymousMixin>(
+    'BlockLambda',
     sequence(
       literal('@'),
       choice(
         sequence(
-          directJessLambdaParams,
+          lambdaParamsParser,
           optional(literal('>')),
           literal('{'),
-          many(directJessNestedBodyStatement),
+          many(nestedBodyStatement),
           literal('}')
         ),
         sequence(
           literal('{'),
-          many(directJessNestedBodyStatement),
+          many(nestedBodyStatement),
           literal('}')
         )
       )
@@ -4913,20 +5833,20 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * uniformly "an anonymous mixin that assigns `result`", so evaluation never
    * has to know which spelling produced it.
    */
-  const DirectJessExprLambda = node<AnonymousMixin>(
-    'DirectJessExprLambda',
+  const ExpressionLambda = node<AnonymousMixin>(
+    'ExpressionLambda',
     parser(
       { trivia: whitespace },
       sequence(
         literal('@'),
-        g.DirectJessMixinParams,
+        g.MixinParams,
         literal('>'),
         not(literal('{')),
-        g.DirectJessValue
+        g.Value
       )
     ),
     (children) => {
-      const params = children.find(Array.isArray) as Param[] | undefined ?? [];
+      const params = children.find(isParamList) ?? [];
       const value = children.at(-1);
       return anonymousMixin(
         [decl(
@@ -4943,11 +5863,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * terminate an assignment without a `;`, so it has its own rule: everything
    * that reaches this rule is brace-delimited and self-terminating.
    */
-  const DirectJessValueBlock = node<ValueNode>(
-    'DirectJessValueBlock',
+  const ValueBlock = node<ValueNode>(
+    'ValueBlock',
     choice(
-      g.DirectJessBlockLambda,
-      g.DirectJessCollection
+      g.BlockLambda,
+      g.Collection
     ),
     children => requireValueNode(children[0])
   );
@@ -4955,7 +5875,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'ForName',
     sequence(
       literal('$'),
-      jessDollarName
+      dollarName
     ),
     children => requireToken(children[1]).value
   );
@@ -4996,7 +5916,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       if (names.length === 2 || names.length === 3) {
         return { kind: 'comma', names: [names[0]!, names[1]!, names[2]] };
       }
-      throw new TypeError('Direct Jess AST grammar produced an invalid $for binding.');
+      throw new TypeError('Jess grammar produced an invalid $for binding.');
     }
   );
 
@@ -5008,8 +5928,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const ForRangeBound = node<ValueNode>(
     'ForRangeBound',
     choice(
-      g.DirectJessVarReference,
-      g.DirectJessDimension
+      g.VariableReference,
+      g.Dimension
     ),
     children => requireValueNode(children[0])
   );
@@ -5018,18 +5938,18 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     sequence(
       optional(literal('>')),
       g.ForRangeBound,
-      regex(/to(?![-_a-zA-Z0-9\u0080-\uffff])/),
+      syntaxWord('to'),
       optional(literal('<')),
       g.ForRangeBound,
       optional(sequence(
-        regex(/step(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        syntaxWord('step'),
         g.ForRangeBound
       ))
     ),
     (children) => {
       const bounds = children.filter(isValueNode);
       if (bounds.length < 2 || bounds.length > 3) {
-        throw new TypeError('Direct Jess AST grammar produced an invalid $for range.');
+        throw new TypeError('Jess grammar produced an invalid $for range.');
       }
       const tokens = children.filter(isToken);
       return range(
@@ -5053,11 +5973,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const ForSource = node<ValueNode>(
     'ForSource',
     sequence(
-      g.DirectJessValueAtom,
+      g.ValueAtom,
       many(sequence(
         literal(','),
         optional(rawWhitespace),
-        g.DirectJessValueAtom
+        g.ValueAtom
       ))
     ),
     (children) => {
@@ -5083,7 +6003,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       ),
       literal(')'),
       literal('{'),
-      many(directJessNestedBodyStatement),
+      many(nestedBodyStatement),
       literal('}')
     ),
     children => forNode(
@@ -5103,36 +6023,34 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * pure `or` trees. In particular, `default()` and `$type.*()` are mixin
    * dispatch syntax, not `$if` syntax. A comparison in an `and`/`or` chain
    * must be parenthesized and mixed chains must group explicitly.
+   *
+   * The divergence is in the LADDER, not every rung: a bare truth value is
+   * `GuardValue` in both, so `$if` shares that rung rather than mirroring it.
    */
-  const DirectJessIfGuardValue = node<GuardNode>(
-    'DirectJessIfGuardValue',
-    g.DirectJessExpressionSum,
-    reduceGuardTruth
-  );
-  const DirectJessIfGuardCompare = node<GuardNode>(
-    'DirectJessIfGuardCompare',
+  const IfGuardCompare = node<GuardNode>(
+    'IfGuardCompare',
     noTrivia(sequence(
-      g.DirectJessExpressionSum,
-      jessIfGuardCompareOperator,
-      g.DirectJessExpressionSum
+      g.ExpressionSum,
+      ifGuardCompareOperator,
+      g.ExpressionSum
     )),
-    reduceGuardCompare
+    reduceIfCompare
   );
-  const DirectJessIfGuardPrimary = node<GuardNode>(
-    'DirectJessIfGuardPrimary',
+  const IfGuardPrimary = node<GuardNode>(
+    'IfGuardPrimary',
     choice(
       sequence(
         regex(/not(?![-_a-zA-Z0-9\u0080-\uffff])/),
         literal('('),
-        g.DirectJessIfGuard,
+        g.IfGuard,
         literal(')')
       ),
       sequence(
         literal('('),
-        g.DirectJessIfGuard,
+        g.IfGuard,
         literal(')')
       ),
-      g.DirectJessIfGuardValue
+      g.GuardValue
     ),
     (children) => {
       if (children.length === 1) {
@@ -5143,30 +6061,30 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         : requireGuardNode(children[1]);
     }
   );
-  const DirectJessIfGuardAnd = node<GuardNode>(
-    'DirectJessIfGuardAnd',
+  const IfGuardAnd = node<GuardNode>(
+    'IfGuardAnd',
     sequence(
-      g.DirectJessIfGuardPrimary,
+      g.IfGuardPrimary,
       oneOrMore(sequence(
         regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.DirectJessIfGuardPrimary
+        g.IfGuardPrimary
       ))
     ),
     reduceGuardAnd
   );
-  const DirectJessIfGuardOr = node<GuardNode>(
-    'DirectJessIfGuardOr',
+  const IfGuardOr = node<GuardNode>(
+    'IfGuardOr',
     sequence(
-      g.DirectJessIfGuardPrimary,
+      g.IfGuardPrimary,
       oneOrMore(sequence(
         regex(/or(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.DirectJessIfGuardPrimary
+        g.IfGuardPrimary
       ))
     ),
     reduceGuardOr
   );
-  const DirectJessIfGuard = node<GuardNode>(
-    'DirectJessIfGuard',
+  const IfGuard = node<GuardNode>(
+    'IfGuard',
 
     /*
      * A comparison shares its left operand with the documented bare-truth
@@ -5174,24 +6092,24 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
      * comparison operator returns recognition to the primary truth reduction.
      */
     choice(
-      attempt(g.DirectJessIfGuardCompare),
-      g.DirectJessIfGuardAnd,
-      g.DirectJessIfGuardOr,
-      g.DirectJessIfGuardPrimary
+      attempt(g.IfGuardCompare),
+      g.IfGuardAnd,
+      g.IfGuardOr,
+      g.IfGuardPrimary
     ),
     children => requireGuardNode(children[0])
   );
-  const DirectJessIfCondition = node<GuardNode>(
-    'DirectJessIfCondition',
+  const IfCondition = node<GuardNode>(
+    'IfCondition',
     sequence(
       literal('('),
-      g.DirectJessIfGuard,
+      g.IfGuard,
       literal(')')
     ),
     children => requireGuardNode(children[1])
   );
-  const DirectJessIfBody = node<Statement[]>(
-    'DirectJessIfBody',
+  const IfBody = node<Statement[]>(
+    'IfBody',
     sequence(
       literal('{'),
 
@@ -5201,7 +6119,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
        * execute calls and loops here; imports and placement-sensitive extends
        * remain held until their respective models are available.
        */
-      many(directJessNestedBodyStatement),
+      many(nestedBodyStatement),
       literal('}')
     ),
     children => collectBodyStatements(
@@ -5209,35 +6127,35 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       1
     )
   );
-  const DirectJessElseIfBranch = node<IfBranch>(
-    'DirectJessElseIfBranch',
+  const ElseIfBranch = node<IfBranch>(
+    'ElseIfBranch',
     sequence(
       regex(/\$else(?![-_a-zA-Z0-9\u0080-\uffff])/),
       regex(/if(?![-_a-zA-Z0-9\u0080-\uffff])/),
-      g.DirectJessIfCondition,
-      g.DirectJessIfBody
+      g.IfCondition,
+      g.IfBody
     ),
-    children => ({ guard: requireGuardNode(children[2]), body: requireStatementList(children[3]) })
+    children => ({ guard: requireGuardNode(children[2]), rules: requireStatementList(children[3]) })
   );
-  const DirectJessElseBranch = node<IfBranch>(
-    'DirectJessElseBranch',
+  const ElseBranch = node<IfBranch>(
+    'ElseBranch',
     sequence(
       regex(/\$else(?![-_a-zA-Z0-9\u0080-\uffff])/),
-      g.DirectJessIfBody
+      g.IfBody
     ),
-    children => ({ guard: null, body: requireStatementList(children[1]) })
+    children => ({ guard: null, rules: requireStatementList(children[1]) })
   );
-  const DirectJessIf = node<If>(
-    'DirectJessIf',
+  const If = node<If>(
+    'If',
     sequence(
       regex(/\$if(?![-_a-zA-Z0-9\u0080-\uffff])/),
-      g.DirectJessIfCondition,
-      g.DirectJessIfBody,
-      many(g.DirectJessElseIfBranch),
-      optional(g.DirectJessElseBranch)
+      g.IfCondition,
+      g.IfBody,
+      many(g.ElseIfBranch),
+      optional(g.ElseBranch)
     ),
     (children) => {
-      const branches: IfBranch[] = [{ guard: requireGuardNode(children[1]), body: requireStatementList(children[2]) }];
+      const branches: IfBranch[] = [{ guard: requireGuardNode(children[1]), rules: requireStatementList(children[2]) }];
       for (const child of children.slice(3)) {
         if (Array.isArray(child)) {
           branches.push(...requireIfBranchArray(child));
@@ -5248,119 +6166,209 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return ifNode(requireIfBranchTuple(branches));
     }
   );
-  const DirectJessCompound = node<CompoundSelector>(
-    'DirectJessCompound',
+
+  /*
+   * `$while (…) { … }` — the third control statement, built from the SAME
+   * `IfCondition` and `IfBody` rungs `$if` uses. It is a node of its own and not
+   * a `$for` because the condition is re-read BETWEEN iterations: `$for`
+   * iterates an iterable decided once, and no `$for` spelling reproduces that.
+   *
+   * Like `$if`, a control block is not a scope, so the body's declarations
+   * publish into the containing frame — which is what lets the next condition
+   * observe the counter the last iteration wrote.
+   */
+  const While = node<While>(
+    'While',
+    sequence(
+      regex(/\$while(?![-_a-zA-Z0-9\u0080-\uffff])/),
+      g.IfCondition,
+      g.IfBody
+    ),
+    children => whileNode(
+      requireGuardNode(children[1]),
+      requireStatementList(children[2])
+    )
+  );
+
+  const CompoundSelector = node<SelectorTerm>(
+    'CompoundSelector',
     noTrivia(oneOrMore(choice(
       parser(
         { trivia: whitespace },
-        g.DirectJessAttribute
+        g.AttributeSelector
       ),
-      g.DirectJessPseudo,
-      g.DirectJessInterpolatedParentSuffix,
-      g.DirectJessInterpolatedSimple,
-      g.DirectJessParent,
-      g.DirectJessSimple
+      g.PseudoSelector,
+      g.InterpolatedParentSuffix,
+      g.InterpolatedSimple,
+      g.Parent,
+      g.NamespaceTypeSelector,
+      g.BasicSelector
     ))),
     reduceCompound
   );
-  const DirectJessComplexTail = node<JessComplexTail>(
-    'DirectJessComplexTail',
+
+  /*
+   * The separator between compound selectors may be an explicit combinator
+   * (`>`, `+`, `~`, `||`) or just ambient trivia, which is treated as the
+   * descendant combinator. Combinators are folded inline exactly as the CSS
+   * base does — there is no `ComplexTail` wrapper node, so the concrete tree
+   * converges to CSS's `ComplexSelector` shape.
+   */
+  const ComplexSelector = node<SelectorBranch>(
+    'ComplexSelector',
     sequence(
-      optional(directJessCombinator),
-      g.DirectJessCompound
+      g.CompoundSelector,
+      many(sequence(
+        optional(selectorCombinator),
+        g.CompoundSelector
+      ))
     ),
     (children) => {
-      const compound = children.find((child): child is CompoundSelector => typeof child === 'object' && child !== null && 'simples' in child);
-      if (compound === undefined) {
-        throw new TypeError('Direct Jess selector tail requires a compound.');
+      const segments: Array<{ combinator?: JessComplexTail['combinator']; term: SelectorTerm }> = [];
+      let combinator: JessComplexTail['combinator'] = ' ';
+      for (const child of children) {
+        if (isSelectorTerm(child)) {
+          segments.push(segments.length === 0 ? { term: child } : { combinator, term: child });
+          combinator = ' ';
+          continue;
+        }
+        if (isToken(child)) {
+          combinator = jessCombinator(child);
+        }
       }
-      const combinator = children.find(isToken);
-      const comb = combinator?.value ?? ' ';
-      if (comb !== ' ' && comb !== '>' && comb !== '+' && comb !== '~' && comb !== '||') {
-        throw new TypeError('Direct Jess selector tail produced an invalid combinator.');
-      }
-      return { comb, compound };
+      return selectorBranchOf([segments[0]!, ...segments.slice(1)]);
     }
   );
-  const DirectJessComplex = node<ComplexSelector>(
-    'DirectJessComplex',
-    sequence(
-      g.DirectJessCompound,
-      many(g.DirectJessComplexTail)
+
+  /*
+   * A ruleset's selector list carries the STATEMENT's start offset: the
+   * renderer reads `sourceStartOf(node.selector)` for a `Ruleset`, because a
+   * `Ruleset` itself has no span of its own. Without it the root trivia cursor
+   * never advances past a rule. Spanned here rather than in the shared
+   * `reduceSelectorList`, which `PseudoSelectorList` also uses: a pseudo
+   * argument is never a `Ruleset`'s selector, so a span there would move the
+   * tree for nothing. Less draws the same line.
+   */
+  const SelectorList = node<SelectorList>(
+    'SelectorList',
+    oneOrMoreSep(
+      g.ComplexSelector,
+      literal(',')
     ),
-    reduceComplex
+    (children, _fields, span) => withSourceSpan(reduceSelectorList(children), span)
   );
-  const DirectJessSelectorTail = node<ComplexSelector>(
-    'DirectJessSelectorTail',
-    sequence(
-      literal(','),
-      g.DirectJessComplex
-    ),
-    reduceSelectorTail
+
+  /*
+   * A NESTING leading combinator: CSS Nesting lets a nested selector open with a
+   * combinator (`.parent { > .child { … } }`), where `>` relates to the implicit
+   * parent (`.parent > .child`). This reuses `g.ComplexSelector` behind an
+   * optional leading `>`/`+`/`~`, yielding a `RelativeSelector` when the
+   * combinator is present and a bare `ComplexSelector` otherwise. Mirrors css's
+   * `RelativeComplexSelector` (css `grammar.ts`) and scss's `RelativeComplex`.
+   */
+  const relativeSelectorCombinator = choice(
+    literal('>'),
+    literal('+'),
+    literal('~')
   );
-  const DirectJessSelector = node<SelectorList>(
-    'DirectJessSelector',
+  const RelativeComplexSelector = node<SelectorBranch>(
+    'RelativeComplexSelector',
     sequence(
-      g.DirectJessComplex,
-      many(g.DirectJessSelectorTail)
-    ),
-    reduceSelectorList
-  );
-  const DirectJessApply = node<Apply>(
-    'DirectJessApply',
-    sequence(
-      regex(/\$apply(?![-\w])/),
-      g.DirectJessStaticCompound,
-      many(sequence(
-        literal(','),
-        g.DirectJessStaticCompound
-      )),
-      optional(literal(';'))
-    ),
-    children => apply(children.filter(isCompound))
-  );
-  const DirectJessExtend = node<ExtendInstruction[]>(
-    'DirectJessExtend',
-    sequence(
-      regex(/\$extend(?![-\w])/),
-      g.DirectJessStaticComplex,
-      many(sequence(
-        literal(','),
-        g.DirectJessStaticComplex
-      )),
-      optional(regex(/!exact(?![-\w])/)),
-      optional(literal(';'))
-    ),
-    children => children.filter((child): child is ComplexSelector => typeof child === 'object' && child !== null && 'type' in child && child.type === 'ComplexSelector')
-      .map(target => ({ target: selist(target), partial: !children.some(child => isToken(child) && child.value === '!exact') }))
-  );
-  const DirectJessRule = node<Rule>(
-    'DirectJessRule',
-    sequence(
-      g.DirectJessSelector,
-      literal('{'),
-      many(choice(
-        literal(';'),
-        g.DirectJessMixinCall,
-        g.DirectJessValueBlockDeclaration,
-        g.DirectJessVarDeclaration,
-        g.DirectJessDeclaration,
-        g.DirectJessMixinDef,
-        g.For,
-        g.DirectJessIf,
-        g.DirectJessReferenceCall,
-        g.DirectJessApply,
-        g.DirectJessExtend,
-        g.DirectJessRule,
-        g.DirectJessSupportsAtRuleBlock,
-        g.DirectJessOpaqueAtRuleBlock,
-        g.DirectJessScopeBlock,
-        g.DirectJessAtRuleBlock,
-        g.DirectJessAtRuleStatement
-      )),
-      literal('}')
+      optional(relativeSelectorCombinator),
+      g.ComplexSelector
     ),
     (children) => {
+      const branch = children.find(isSelectorBranch)!;
+      if (children.length === 1) {
+        return branch;
+      }
+      const lead = jessRelativeCombinator(children[0]);
+      return relativeSelector(lead, branchSegments(branch));
+    }
+  );
+
+  /*
+   * The NESTED ruleset's selector list carries the ORDINARY selector item shapes
+   * (`SimpleSelector`/`CompoundSelector`/`ComplexSelector`, whatever each item
+   * reduces to) and, because this is a nesting context, ADDS `RelativeSelector`
+   * as one more admissible item — produced only when an item opens with a
+   * leading combinator. Items MIX freely (`> .a, .b`). The node NAME is the
+   * canonical `SelectorList` (only the rules-map KEY differs); the TOP-LEVEL
+   * `SelectorList` admits no leading combinator, so a stylesheet-root `> .a` —
+   * with no parent to relate to — is still rejected.
+   */
+  const NestedSelectorList = node<SelectorList>(
+    'SelectorList',
+    oneOrMoreSep(
+      RelativeComplexSelector,
+      literal(',')
+    ),
+    (children, _fields, span) => withSourceSpan(reduceSelectorList(children), span)
+  );
+  const Apply = node<Apply>(
+    'Apply',
+    sequence(
+      regex(/\$apply(?![-_a-zA-Z0-9\u0080-\uffff])/),
+      g.PseudoSelectorCompound,
+      many(sequence(
+        literal(','),
+        g.PseudoSelectorCompound
+      )),
+      optional(literal(';'))
+    ),
+    children => apply(children.filter(isSelectorTerm))
+  );
+  const Extend = node<ExtendInstruction[]>(
+    'Extend',
+    sequence(
+      regex(/\$extend(?![-_a-zA-Z0-9\u0080-\uffff])/),
+      g.PseudoSelectorComplex,
+      many(sequence(
+        literal(','),
+        g.PseudoSelectorComplex
+      )),
+      optional(regex(/!exact(?![-_a-zA-Z0-9\u0080-\uffff])/)),
+      optional(literal(';'))
+    ),
+    children => children.filter(isSelectorBranch)
+      .map(target => ({ target: selist(target), partial: !children.some(child => isToken(child) && child.value === '!exact') }))
+  );
+
+  /*
+   * A ruleset body nests via `g.NestedRuleset` (relative-capable) regardless of
+   * whether the CARRYING ruleset is top-level or nested — once inside a block, a
+   * child rule always has a parent to relate to. Shared by both `Ruleset` and
+   * `NestedRuleset` so the two differ ONLY in their selector-list rule.
+   */
+  const rulesetBodyItem = choice(
+    literal(';'),
+    g.MixinCall,
+    g.ValueBlockDeclaration,
+    g.VariableDeclaration,
+    g.Declaration,
+    g.MixinDefinition,
+    g.For,
+    g.If,
+    g.While,
+    g.ReferenceCall,
+    g.Apply,
+    g.Extend,
+    g.NestedRuleset,
+    g.SupportsAtRuleBlock,
+    g.OpaqueAtRuleBlock,
+    g.ScopeBlock,
+    g.AtRuleBlock,
+    g.AtRuleStatement
+  );
+  const Ruleset = node<Ruleset>(
+    'Ruleset',
+    sequence(
+      g.SelectorList,
+      literal('{'),
+      many(rulesetBodyItem),
+      literal('}')
+    ),
+    (children, _fields, _span, rawChildren) => {
       requireExactToken(
         children[1],
         '{'
@@ -5370,20 +6378,48 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         '}'
       );
       const extensions = children.filter(isExtendInstructionArray).flat();
-      return rule(
+      return withBlockBody(rule(
         requireSelectorList(children[0]),
         collectBlockStatements(
           children,
           2
         ),
         extensions.length ? extensions : undefined
+      ), rawChildren);
+    }
+  );
+  const NestedRuleset = node<Ruleset>(
+    'NestedRuleset',
+    sequence(
+      g.NestedSelectorList,
+      literal('{'),
+      many(rulesetBodyItem),
+      literal('}')
+    ),
+    (children, _fields, _span, rawChildren) => {
+      requireExactToken(
+        children[1],
+        '{'
       );
+      requireExactToken(
+        children.at(-1),
+        '}'
+      );
+      const extensions = children.filter(isExtendInstructionArray).flat();
+      return withBlockBody(rule(
+        requireSelectorList(children[0]),
+        collectBlockStatements(
+          children,
+          2
+        ),
+        extensions.length ? extensions : undefined
+      ), rawChildren);
     }
   );
   const Stylesheet = node<Stylesheet>(
     'Stylesheet',
     sequence(
-      optional(g.DirectJessCharset),
+      optional(g.Charset),
 
       /*
        * Compiler directives and variable declarations may precede a CSS import:
@@ -5391,31 +6427,32 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
        * activated in source order. CSS imports still cannot appear after a rule.
        */
       many(choice(
-        g.DirectJessStyleImport,
-        g.DirectJessModuleImport,
-        g.DirectJessValueBlockDeclaration,
-        g.DirectJessVarDeclaration,
-        g.DirectJessCssImport
+        g.StyleImport,
+        g.ModuleImport,
+        g.ValueBlockDeclaration,
+        g.VariableDeclaration,
+        g.ImportStatement
       )),
       many(choice(
-        g.DirectJessMixinCall,
-        g.DirectJessStyleImport,
-        g.DirectJessModuleImport,
-        g.DirectJessValueBlockDeclaration,
-        g.DirectJessVarDeclaration,
-        g.DirectJessMixinDef,
+        g.MixinCall,
+        g.StyleImport,
+        g.ModuleImport,
+        g.ValueBlockDeclaration,
+        g.VariableDeclaration,
+        g.MixinDefinition,
         g.For,
-        g.DirectJessIf,
-        g.DirectJessReferenceCall,
-        g.DirectJessApply,
-        g.DirectJessRule,
-        g.DirectJessSupportsAtRuleBlock,
-        g.DirectJessPropertyAtRule,
-        g.DirectJessKeyframes,
-        g.DirectJessOpaqueAtRuleBlock,
-        g.DirectJessScopeBlock,
-        g.DirectJessAtRuleBlock,
-        g.DirectJessAtRuleStatement
+        g.If,
+        g.While,
+        g.ReferenceCall,
+        g.Apply,
+        g.Ruleset,
+        g.SupportsAtRuleBlock,
+        g.PropertyAtRule,
+        g.Keyframes,
+        g.OpaqueAtRuleBlock,
+        g.ScopeBlock,
+        g.AtRuleBlock,
+        g.AtRuleStatement
       ))
     ),
     children => stylesheet(requireStatements(children.flatMap(child => isMixinCallArray(child) ? child : Array.isArray(child) ? [] : [child])))
@@ -5423,175 +6460,209 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
 
   return {
     Stylesheet,
-    JessAstDocument: Stylesheet,
-    DirectJessVarDeclaration,
-    DirectJessValueBlockDeclaration,
-    DirectJessBlockLambda,
-    DirectJessExprLambda,
-    DirectJessValueBlock,
-    DirectJessVarReference,
-    DirectJessReferenceTail,
-    DirectJessReferenceCallTail,
-    DirectJessDollarValue,
-    DirectJessDollarBrace,
-    DirectJessExpressionDollarBrace,
-    DirectJessDollarInterp,
-    DirectJessExpressionDollarInterp,
-    DirectJessExpression,
-    DirectJessExpressionInterpolation,
-    DirectJessExpressionQuoted,
-    DirectJessExpressionAtom,
-    DirectJessExpressionProduct,
-    DirectJessExpressionSum,
-    DirectJessExpressionCompare,
-    DirectJessUnwrappedProductRest,
-    DirectJessGuardValue,
-    DirectJessGuardCompare,
-    DirectJessGuardCall,
-    DirectJessGuardPrimary,
-    DirectJessGuardAnd,
-    DirectJessGuardOr,
-    DirectJessMixinGuard,
-    DirectJessKeyword,
-    DirectJessQuoted,
-    DirectJessStaticQuoted,
-    DirectJessStyleImport,
-    DirectJessModuleSpecifier,
-    DirectJessModuleImport,
-    DirectJessStaticValueAtom,
-    DirectJessStaticValue,
-    DirectJessStaticCallArgument,
-    DirectJessStaticCall,
-    DirectJessStaticAtNonOnlyKeyword,
-    DirectJessStaticAtNonOnlyAtom,
-    DirectJessStaticAtQuery,
-    DirectJessStaticAtDashedIdent,
-    DirectJessStaticAtPreludeTerm,
-    DirectJessStaticAtPrelude,
-    DirectJessMediaPrelude,
-    DirectJessStaticAtRuleHeader,
-    DirectJessAtRuleHeader,
-    DirectJessSupportsAtom,
-    DirectJessGeneralTemplate,
-    DirectJessGeneralTemplateParen,
-    DirectJessGeneralTemplateSquare,
-    DirectJessGeneralTemplateBrace,
-    DirectJessGeneralTemplateDoubleQuoted,
-    DirectJessGeneralTemplateSingleQuoted,
-    DirectJessGeneralQuotedTemplate,
-    DirectJessGeneralQuotedTemplateParen,
-    DirectJessGeneralQuotedTemplateSquare,
-    DirectJessGeneralQuotedTemplateBrace,
-    DirectJessGeneralQuotedTemplateDoubleQuoted,
-    DirectJessGeneralQuotedTemplateSingleQuoted,
-    DirectJessGeneralEnclosed,
-    DirectJessSupportsNot,
-    DirectJessSupportsLogical,
-    DirectJessSupportsFeature,
-    DirectJessSupportsInParens,
-    DirectJessSupportsCondition,
-    CssImportTarget,
-    DirectJessImportTailFunction,
-    DirectJessCssImportPrelude,
-    DirectJessUrlInterpolatedValue,
-    DirectJessCharset,
-    DirectJessCssImport,
-    DirectJessSupportsAtRuleBlock,
-    DirectJessPropertyName,
-    DirectJessStaticPropertyDescriptor,
-    DirectJessPropertyAtRule,
-    DirectJessKeyframeSelector,
-    DirectJessKeyframeBlock,
-    DirectJessKeyframes,
-    DirectJessOpaquePrelude,
-    DirectJessOpaqueBody,
-    DirectJessOpaqueAtRuleBlock,
-    DirectJessScopeBlock,
-    DirectJessAtRuleBlock,
-    DirectJessAtRuleStatement,
-    DirectJessDimension,
-    DirectJessColor,
-    DirectJessUrl,
-    DirectJessInterpolatedUrl,
-    DirectJessCallComponent,
-    DirectJessCallArgument,
-    DirectJessCall,
-    DirectJessCollectionEntry,
-    DirectJessCollection,
-    DirectJessInterpolatedValue,
-    DirectJessValueAtom,
-    DirectJessValueSpaceGroup,
-    DirectJessValueTerm,
-    DirectJessValue,
-    DirectJessImportant,
-    DirectJessCustomPropertyValue,
-    DirectJessCustomPropertyName,
-    DirectJessCustomPart,
-    DirectJessCustomInnerPart,
-    DirectJessCustomParen,
-    DirectJessCustomSquare,
-    DirectJessCustomCurly,
-    DirectJessCustomValue,
-    DirectJessCustomDeclaration,
-    DirectJessDeclaration,
-    DirectJessMixinParam,
-    DirectJessMixinParams,
-    DirectJessMixinCallArg,
-    DirectJessMixinCall,
-    DirectJessReferenceCall,
-    DirectJessApply,
-    DirectJessExtend,
-    DirectJessMixinDef,
-    DirectJessSimple,
-    DirectJessParent,
-    DirectJessInterpolatedSimple,
-    DirectJessInterpolatedParentSuffix,
-    DirectJessAttribute,
-    DirectJessPseudo,
-    DirectJessStaticPseudoArgument,
-    DirectJessGenericPseudoArgument,
-    DirectJessCompound,
-    DirectJessStaticCompound,
-    DirectJessStaticComplexTail,
-    DirectJessStaticComplex,
-    DirectJessStaticSelectorTail,
-    DirectJessStaticSelector,
-    DirectJessSelectorCapture,
-    DirectJessComplexTail,
-    DirectJessComplex,
-    DirectJessSelectorTail,
-    DirectJessSelector,
-    DirectJessRule,
+    VariableDeclaration,
+    ValueBlockDeclaration,
+    BlockLambda,
+    ExpressionLambda,
+    ValueBlock,
+    VariableReference,
+    ExpressionScopedReference,
+    DeclarationReference,
+    ReferenceTail,
+    ReferenceCallTail,
+    DollarValue,
+    DollarBrace,
+    ExpressionDollarBrace,
+    DollarInterp,
+    ExpressionDollarInterp,
+    Expression,
+    ExpressionInterpolation,
+    ExpressionQuoted,
+    ExpressionDeclarationReference,
+    ExpressionCallArgument,
+    ExpressionReferenceCallTail,
+    ExpressionAtom,
+    ExpressionProduct,
+    ExpressionSum,
+    ExpressionCompare,
+    ExpressionNot,
+    ExpressionLogicalOperand,
+    ExpressionAnd,
+    ExpressionOr,
+    ExpressionLogical,
+    GuardValue,
+    GuardCompare,
+    GuardCall,
+    GuardPrimary,
+    GuardAnd,
+    GuardOr,
+    MixinGuard,
+    Keyword,
+    Quoted,
+    LiteralQuoted,
+    StyleImport,
+    ModuleSpecifier,
+    ModuleImport,
+    HeaderValueAtom,
+    HeaderValue,
+    HeaderCallArgument,
+    QueryValue,
+    QueryFeatureName,
+    QueryComparisonFeature,
+    QueryNonOnlyKeyword,
+    QueryTerm,
+    QueryFeature,
+    QueryDashedIdentifier,
+    QueryClause,
+    QueryPrelude,
+    AtRulePrelude,
+    ContainerQueryClause,
+    ContainerQueryPrelude,
+    ContainerPrelude,
+    MediaPrelude,
+    AtRuleStatementHeader,
+    AtRuleHeader,
+    SupportsAtom,
+    GeneralTemplate,
+    GeneralTemplateGroup,
+    GeneralTemplateQuoted,
+    GeneralQuotedTemplate,
+    GeneralQuotedTemplateGroup,
+    Enclosed,
+    SupportsNot,
+    SupportsLogical,
+    SupportsFeature,
+    SupportsInParens,
+    SupportsCondition,
+    UrlInterpolatedValue,
+    PlainUrlInner: plainUrlInner,
+    UnquotedUrlText: unquotedUrlText,
+    Charset,
+    ImportStatement,
+    SupportsAtRuleBlock,
+    PropertyName,
+    PropertyDescriptor,
+    PropertyAtRule,
+    Percentage,
+    KeyframeSelector,
+    KeyframeBlock,
+    Keyframes,
+    OpaqueAtPrelude,
+    OpaqueBody,
+    OpaqueAtRuleBlock,
+    ScopeBlock,
+    AtRuleBlock,
+    AtRuleStatement,
+    Dimension,
+    Color,
+    Url,
+    CallComponent,
+    CallArgument,
+    KeywordValue,
+    NullLiteral,
+    VarCall,
+    UnicodeRange,
+    CalcValue,
+    CalcParen,
+    CalcProduct,
+    CalcSum,
+    MathDollarValue,
+    CalcSequence,
+    calcFunctionArguments,
+    MathFunction,
+    IdentifierOrFunction,
+    CollectionEntry,
+    Collection,
+    SquareValue,
+    InterpolatedValue,
+    ValueAtom,
+    ValueSpaceGroup,
+    ValueTerm,
+    Value,
+    Important,
+    CustomPropertyValue,
+    InterpolatedCustomPropertyName,
+    CustomPart,
+    CustomInnerPart,
+    CustomGroup,
+    CustomValue,
+    CustomDeclaration,
+    Declaration,
+    MixinParam,
+    MixinParams,
+    MixinCallArgument,
+    MixinCall,
+    ReferenceCall,
+    Apply,
+    Extend,
+    MixinDefinition,
+    BasicSelector,
+    Parent,
+    InterpolatedSimple,
+    InterpolatedParentSuffix,
+    NamespaceTypeSelector,
+    AttributeSelector,
+    PseudoSelector,
+    PseudoSelectorArgument,
+    GenericPseudoText,
+    GenericPseudoComment,
+    GenericPseudoEscape,
+    GenericPseudoItem,
+    GenericPseudoGroup,
+    GenericPseudoArgument,
+    CompoundSelector,
+    PseudoSelectorCompound,
+    PseudoSelectorComplex,
+    PseudoSelectorTail,
+    PseudoSelectorList,
+    SelectorCapture,
+    ComplexSelector,
+    SelectorList,
+    NestedSelectorList,
+    Ruleset,
+    NestedRuleset,
     ForName,
     ForBinding,
     ForRangeBound,
     ForRange,
     ForSource,
     For,
-    DirectJessIfGuardValue,
-    DirectJessIfGuardCompare,
-    DirectJessIfGuardPrimary,
-    DirectJessIfGuardAnd,
-    DirectJessIfGuardOr,
-    DirectJessIfGuard,
-    DirectJessIfCondition,
-    DirectJessIfBody,
-    DirectJessElseIfBranch,
-    DirectJessElseBranch,
-    DirectJessIf,
+    IfGuardCompare,
+    IfGuardPrimary,
+    IfGuardAnd,
+    IfGuardOr,
+    IfGuard,
+    IfCondition,
+    IfBody,
+    ElseIfBranch,
+    ElseBranch,
+    If,
+    While,
     rw: whitespace,
-    whitespace
+    whitespace,
+    typedAtRuleHeader,
+    identifierOrFunction
   };
 };
 
 export const jessGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
-  { trivia: whitespace },
+  { trivia: whitespace, scanSkip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted] },
   jessFactory
 )]);
 
-export const jessAstGrammar = jessGrammar;
+/** AST artifact with Parseman line/column tracking enabled. */
+export const jessPositionsGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
+  { trivia: whitespace, scanSkip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted], trackLines: true },
+  jessFactory
+)]);
 
 export const jessCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
-  { trivia: whitespace, hostMode: 'cst' },
+  { trivia: whitespace, scanSkip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted], hostMode: 'cst' },
+  jessFactory
+)]);
+
+/** CST artifact with Parseman line/column tracking enabled. */
+export const jessCstPositionsGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
+  { trivia: whitespace, scanSkip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted], hostMode: 'cst', trackLines: true },
   jessFactory
 )]);

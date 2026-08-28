@@ -29,6 +29,10 @@ This repo uses a **path-scoped Cursor context system** so day-to-day work does n
 | User-level | `~/.cursor/agents` | Personal orchestration defaults reusable across projects | No |
 | Repo-level | `.cursor/agents` | Jess-specific specialists with repo precedence on disagreements | Yes |
 
+`.claude/agents` is a symlink to `.cursor/agents`, so Claude Code loads the same
+definitions from the same files — add an agent once, in `.cursor/agents`.
+`pnpm verify:agents` fails if the two ever stop exposing the same set.
+
 - Keep both layers.
 - Prefer user-level agents for cross-repo orchestration patterns.
 - Keep repo-level agents for project semantics and workflows that should be consistent in-team.

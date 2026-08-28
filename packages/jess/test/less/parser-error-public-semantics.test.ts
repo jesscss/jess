@@ -240,7 +240,15 @@ describe('Less parser errors through the public AST route', () => {
     expect(valid.errors).toEqual([]);
   });
 
-  it('summarizes value-position parser failures without leaking atom internals', async () => {
+  it('summarizes selector-context parser failures without leaking atom internals', async () => {
+    /*
+     * The failure lands on the `:` at line 6, column 9. Under correct 0.48.1
+     * narrowing the deepest frame is a rule/selector position (a block,
+     * combinator, class/id selector, or mixin call could continue), NOT a value
+     * position — it only looked like one while the 0.46.0 OP_CHOICE union bug
+     * widened the expected set into the value-atom signature. The clean summary
+     * must name that frame in prose and never print the raw selector regex.
+     */
     const source = [
       '.theme() {',
       '  foo: bar;',
@@ -258,17 +266,22 @@ describe('Less parser errors through the public AST route', () => {
 
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]).toMatchObject({
-      code: 'parse/invalid-value',
+      code: 'parse/syntax-error',
       phase: 'parse',
-      message: 'Invalid value.',
-      reason: 'Less expected a value here, but this token cannot start one.',
-      fix: 'Rewrite this position as a valid value or move the syntax into a statement position.',
+      message: 'Expected a selector, mixin call, or block.',
+      reason: 'Less expected a selector, mixin call, or block to continue here, but this token starts none of them.',
+      fix: 'Continue the selector, call a mixin, or open a block with \'{\'.',
       line: 6,
       column: 9,
       file: { source }
     });
-    expect(result.errors[0]?.reason).not.toContain('CssSyntaxNumber');
+
+    // The hard requirement: no parser internals reach the user, for any frame.
+    expect(result.errors[0]?.reason).not.toContain('NumberToken');
     expect(result.errors[0]?.reason).not.toContain('not(peek)');
+    expect(result.errors[0]?.reason).not.toContain('[.#]');
+    expect(result.errors[0]?.reason).not.toContain('u0080');
+    expect(result.errors[0]?.reason).not.toContain('The parser expected');
   });
 
   it('summarizes missing closing delimiters without raw expected-token text', async () => {

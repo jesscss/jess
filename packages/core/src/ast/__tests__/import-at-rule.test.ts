@@ -1,17 +1,44 @@
 import { describe, expect, it, vi } from 'vitest';
-import { atRuleBlock, importAtRule } from '../at-rule.js';
-import { any, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, interpolatedSimpleSelector, interpolation, keyword, list, mixinCall, mixinDef, quoted, reference, rule, sel, selist, spaced, stylesheet, url, variableDeclaration, variableReference } from '../nodes.js';
-import { createTriviaMapFromRanges, withTriviaMap } from '../provenance.js';
+import { atRuleBlock, atRuleStatement } from '../at-rule.js';
+import type { AtRuleStatement } from '../at-rule.js';
+import type { Interpolation, List, Quoted, StyleImport, Url, ValueNode } from '../nodes.js';
+import { any, block, color, comment, importIsCompileTime, styleImport, spaced, complexSelector, compoundSelectorOf, decl, dimension, forNode, interpolatedSimpleSelector, interpolation, keyword, list, mixinCall, mixinDef, operation, pseudoSelector, quoted, reference, rule, sel, selist, simpleSelector, stylesheet, url, variableDeclaration, variableReference } from '../nodes.js';
+import { createTriviaMapFromRanges, withBodySpan, withSourceSpan, withTriviaMap } from '../provenance.js';
 import { prepareStaticImports, serialize } from '../serialize.js';
 import { Context } from '../../context.js';
-import { AbstractPlugin } from '../../plugin.js';
+import { AbstractPlugin, type UrlTransformRequest } from '../../plugin.js';
 
-describe('ImportAtRule', () => {
+/*
+ * The parse-time split, spelled exactly as every grammar spells it: a plain CSS
+ * `@import` is an `AtRuleStatement`, and a compile-time import is a `StyleImport`.
+ * Tests author source-shaped imports and let the one shared predicate choose.
+ *
+ * A postlude on the compile-time branch throws here for the same reason the four
+ * grammars throw on it: a media/layer/supports query describes a linked CSS
+ * resource, and `StyleImport` has no field to put one in.
+ */
+const authoredImport = (
+  name: string,
+  target: Quoted | Url | Interpolation,
+  options: List | null = null,
+  alias: ValueNode | null = null,
+  tail: ValueNode | null = null
+): StyleImport | AtRuleStatement => {
+  if (importIsCompileTime(name, target, options, alias)) {
+    if (tail !== null) {
+      throw new SyntaxError('A compile-time @import cannot carry a media query.');
+    }
+    return styleImport(name, target, { options, alias, mode: 'import' });
+  }
+  return atRuleStatement(name, tail === null ? target : spaced([target, tail]));
+};
+
+describe('StyleImport', () => {
   it('reuses loaded imports for repeated renders of the same source document', async () => {
     const entryPath = '/virtual/entry.less';
     const tokensPath = '/virtual/tokens.less';
     const entry = stylesheet([
-      importAtRule('@import', quoted('"tokens.less"', 'tokens.less', '"', false)),
+      authoredImport('@import', quoted('"tokens.less"', 'tokens.less', '"', false)),
       rule('.entry', [decl('color', keyword('red'))])
     ]);
     const tokens = stylesheet([
@@ -69,7 +96,7 @@ describe('ImportAtRule', () => {
     const entryPath = '/virtual/entry.less';
     const tokensPath = '/virtual/tokens.less';
     const entry = stylesheet([
-      importAtRule('@import', quoted('"tokens.less"', 'tokens.less', '"', false)),
+      authoredImport('@import', quoted('"tokens.less"', 'tokens.less', '"', false)),
       rule('.entry', [decl('color', keyword('red'))])
     ]);
     const tokens = stylesheet([
@@ -124,12 +151,109 @@ describe('ImportAtRule', () => {
     expect(plugin.parseCalls).toBe(2);
   });
 
+  it('republishes prepared later-import facts into each fresh render frame', async () => {
+    const imported = stylesheet([
+      mixinDef('later', [], [decl('value', keyword('ready'))]),
+      rule('.later-rule', [decl('rule-value', keyword('ready'))])
+    ]);
+    const entry = stylesheet([
+      rule('.before', [mixinCall('later', []), mixinCall('.later-rule', [])]),
+      authoredImport('@import', quoted('"library.less"', 'library.less', '"', false)),
+      rule('.after', [decl('order', keyword('last'))])
+    ]);
+    const importDocument = vi.fn(({ specifier }) => Promise.resolve(
+      specifier === 'library.less'
+        ? { document: imported, key: 'library.less' }
+        : undefined
+    ));
+    const preparedImports = await prepareStaticImports(entry, { importDocument });
+
+    const render = () => Promise.resolve(serialize(entry, { importDocument, preparedImports }));
+    const expected = {
+      css: '.before {\n  value: ready;\n  rule-value: ready;\n}\n'
+        + '.later-rule {\n  rule-value: ready;\n}\n'
+        + '.after {\n  order: last;\n}\n'
+    };
+    await expect(Promise.all([render(), render()])).resolves.toEqual([expected, expected]);
+    expect(importDocument).toHaveBeenCalledTimes(1);
+  });
+
+  it('publishes repeated multiple-import facts once while executing each body', async () => {
+    const imported = stylesheet([
+      mixinDef('later', [], [decl('value', keyword('ready'))]),
+      rule('.imported', [decl('order', keyword('middle'))])
+    ]);
+    const multiple = () => authoredImport(
+      '@import',
+      quoted('"library.less"', 'library.less', '"', false),
+      list([keyword('multiple')], ',')
+    );
+    const entry = stylesheet([
+      rule('.before', [mixinCall('later', [])]),
+      multiple(),
+      multiple(),
+      rule('.after', [mixinCall('later', [])])
+    ]);
+
+    await expect(Promise.resolve(serialize(entry, {
+      importDocument: ({ specifier }) => specifier === 'library.less'
+        ? { document: imported, key: 'library.less' }
+        : undefined
+    }))).resolves.toEqual({
+      css: '.before {\n  value: ready;\n}\n'
+        + '.imported {\n  order: middle;\n}\n'
+        + '.imported {\n  order: middle;\n}\n'
+        + '.after {\n  value: ready;\n}\n'
+    });
+  });
+
+  it('keeps an at-rule import fact inside its nested lexical scope', async () => {
+    const imported = stylesheet([
+      mixinDef('.nested', [], [decl('value', keyword('ready'))])
+    ]);
+    const empty = stylesheet([]);
+    const load = ({ specifier }: { specifier: string }) => {
+      if (specifier === 'nested.less') {
+        return { document: imported, key: 'nested.less' };
+      }
+      return specifier === 'planner.less'
+        ? { document: empty, key: 'planner.less' }
+        : undefined;
+    };
+    const nestedImport = () => authoredImport(
+      '@import',
+      quoted('"nested.less"', 'nested.less', '"', false)
+    );
+    const plannerImport = () => authoredImport(
+      '@import',
+      quoted('"planner.less"', 'planner.less', '"', false)
+    );
+
+    await expect(Promise.resolve(serialize(stylesheet([
+      rule('.before', [mixinCall('.nested', [])]),
+      atRuleBlock('@media', keyword('screen'), [nestedImport()]),
+      plannerImport()
+    ]), { importDocument: load }))).rejects.toMatchObject({
+      code: 'resolve/name-not-found'
+    });
+
+    await expect(Promise.resolve(serialize(stylesheet([
+      atRuleBlock('@media', keyword('screen'), [
+        nestedImport(),
+        rule('.inside', [mixinCall('.nested', [])])
+      ]),
+      plannerImport()
+    ]), { importDocument: load }))).resolves.toEqual({
+      css: '@media screen {\n  .inside {\n    value: ready;\n  }\n}\n'
+    });
+  });
+
   it('loads duplicate static imports once during prepare and render', async () => {
     const entryPath = '/virtual/entry.less';
     const tokensPath = '/virtual/tokens.less';
     const entry = stylesheet([
-      importAtRule('@import', quoted('"tokens.less"', 'tokens.less', '"', false)),
-      importAtRule('@import', quoted('"tokens.less"', 'tokens.less', '"', false)),
+      authoredImport('@import', quoted('"tokens.less"', 'tokens.less', '"', false)),
+      authoredImport('@import', quoted('"tokens.less"', 'tokens.less', '"', false)),
       rule('.entry', [decl('color', keyword('red'))])
     ]);
     const tokens = stylesheet([
@@ -190,7 +314,7 @@ describe('ImportAtRule', () => {
     const entryPath = '/virtual/entry.less';
     const tokensPath = '/virtual/tokens.less';
     const entry = stylesheet([
-      importAtRule('@import', quoted('"tokens.less"', 'tokens.less', '"', false)),
+      authoredImport('@import', quoted('"tokens.less"', 'tokens.less', '"', false)),
       rule('.entry', [decl('color', keyword('red'))])
     ]);
     const tokens = stylesheet([
@@ -346,6 +470,67 @@ describe('ImportAtRule', () => {
     expect(lessAgain.parseCalls).toBe(1);
   });
 
+  it('routes dash import css targets through the Less parser while bare css imports stay terminal', async () => {
+    const filePath = '/virtual/tokens.css';
+    const imported = stylesheet([
+      rule('.from-less-parser', [decl('color', keyword('red'))])
+    ]);
+    const dashImport = stylesheet([
+      authoredImport('@-import', quoted(`"${filePath}"`, filePath, '"', false)),
+      rule('.entry', [decl('color', keyword('blue'))])
+    ]);
+    const bareImport = stylesheet([
+      authoredImport('@import', quoted(`"${filePath}"`, filePath, '"', false)),
+      rule('.entry', [decl('color', keyword('blue'))])
+    ]);
+
+    class MemoryFilePlugin extends AbstractPlugin {
+      name = 'files';
+      sourceCalls = 0;
+
+      override locate(paths: string[]) {
+        return paths.includes(filePath) ? filePath : null;
+      }
+
+      override async getSource() {
+        this.sourceCalls++;
+        return '.from-less-parser { color: red; }\n';
+      }
+    }
+
+    class MemoryLessPlugin extends AbstractPlugin {
+      name = 'less';
+      supportedExtensions = ['.less'];
+      parseCalls = 0;
+
+      safeParse(_filePath: string, _source: string, options?: { importOptions?: { type?: string } }) {
+        this.parseCalls++;
+        expect(options?.importOptions?.type).toBe('less');
+        return { document: imported, errors: [], warnings: [] };
+      }
+    }
+
+    const files = new MemoryFilePlugin();
+    const less = new MemoryLessPlugin();
+    const context = new Context({}, [files, less]);
+
+    await expect(context.withDocument(dashImport, () => serialize(dashImport, { context }))).resolves.toEqual({
+      css: '.from-less-parser {\n  color: red;\n}\n.entry {\n  color: blue;\n}\n'
+    });
+    expect(files.sourceCalls).toBe(1);
+    expect(less.parseCalls).toBe(1);
+
+    /*
+     * A bare `.css` import is a plain CSS at-rule the parser already classified,
+     * so nothing is asked of Context and the render never lifts to async.
+     */
+    expect(context.withDocument(bareImport, () => serialize(bareImport, { context }))).toEqual({
+      css: `@import "${filePath}";\n.entry {\n  color: blue;\n}\n`
+    });
+    expect(files.sourceCalls).toBe(1);
+    expect(less.parseCalls).toBe(1);
+  });
+
   it('loads a claimed external import through Context without a core network resolver', async () => {
     const remoteSpecifier = 'https://styles.example.test/tokens.less';
     const mappedPath = '/virtual/tokens.less';
@@ -362,7 +547,7 @@ describe('ImportAtRule', () => {
     context.sourceTrees.set(mappedPath, imported);
 
     const document = stylesheet([
-      importAtRule('@import', url(quoted(`"${remoteSpecifier}"`, remoteSpecifier, '"', false)), list([keyword('reference')], ',')),
+      authoredImport('@import', url(quoted(`"${remoteSpecifier}"`, remoteSpecifier, '"', false)), list([keyword('reference')], ',')),
       rule('.uses-token', [decl('color', variableReference('tone', 'scoped'))])
     ]);
 
@@ -380,7 +565,7 @@ describe('ImportAtRule', () => {
       }
     }]);
     const document = stylesheet([
-      importAtRule('@import', url(quoted('"https://styles.example.test/theme.less"', 'https://styles.example.test/theme.less', '"', false)))
+      authoredImport('@import', url(quoted('"https://styles.example.test/theme.less"', 'https://styles.example.test/theme.less', '"', false)))
     ]);
 
     await expect(serialize(document, { context })).resolves.toEqual({
@@ -388,23 +573,55 @@ describe('ImportAtRule', () => {
     });
   });
 
-  it('keeps optional imports off Context resolution', async () => {
-    const context = new Context({}, [{
-      name: 'must-not-resolve',
-      resolve: () => {
-        throw new Error('optional import should not resolve');
-      }
-    }]);
+  it('drops an optional import whose file cannot be located', async () => {
+    /*
+     * `(optional)` selects what happens when the load FAILS, so the import is
+     * still attempted. A missing file then contributes nothing at all — not a
+     * diagnostic, and not a `@import (optional) …` CSS terminal, which no
+     * browser understands. Matches Less 4.x.
+     */
+    const context = new Context({}, [{ name: 'never-locates', locate: () => null }]);
     const document = stylesheet([
-      importAtRule('@import', quoted('"missing.less"', 'missing.less', '"', false), list([keyword('optional')], ','))
+      authoredImport('@import', quoted('"missing.less"', 'missing.less', '"', false), list([keyword('optional')], ',')),
+      rule('.x', [decl('color', keyword('red'))])
     ]);
 
-    await expect(serialize(document, { context })).resolves.toEqual({ css: '@import (optional) "missing.less";\n' });
+    await expect(serialize(document, { context })).resolves.toEqual({ css: '.x {\n  color: red;\n}\n' });
+  });
+
+  it('resolves an optional import normally when the file exists', async () => {
+    const imported = stylesheet([rule('.a', [decl('color', keyword('red'))])]);
+    const document = stylesheet([
+      authoredImport('@import', quoted('"present.less"', 'present.less', '"', false), list([keyword('optional')], ','))
+    ]);
+
+    await expect(Promise.resolve(serialize(document, {
+      importDocument: ({ specifier }) => specifier === 'present.less' ? { document: imported } : undefined
+    }))).resolves.toEqual({ css: '.a {\n  color: red;\n}\n' });
+  });
+
+  it('never writes the option clause into a CSS-terminal import', () => {
+    /*
+     * `(css)` forces the CSS terminal, and the option list is import machinery
+     * with no CSS meaning: `@import (css) "a";` is not something a browser
+     * parses. The tail is real CSS syntax and stays.
+     */
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"theme"', 'theme', '"', false),
+        list([keyword('css')], ','),
+        null,
+        any('screen')
+      )
+    ]);
+
+    expect(serialize(document)).toEqual({ css: '@import "theme" screen;\n' });
   });
 
   it('keeps imported loop extend placements isolated per concrete iteration', async () => {
     const loopSelector = complexSelector([{
-      compound: compoundSelectorOf([interpolatedSimpleSelector(interpolation([
+      term: compoundSelectorOf([interpolatedSimpleSelector(interpolation([
         { lit: '.from-' }, { ref: variableReference('name', 'scoped'), unquote: true }
       ]))])
     }]);
@@ -416,7 +633,7 @@ describe('ImportAtRule', () => {
       )
     ]);
     const document = stylesheet([
-      importAtRule('@import', quoted('"loop.less"', 'loop.less', '"', false)),
+      authoredImport('@import', quoted('"loop.less"', 'loop.less', '"', false)),
 
       /*
        * The root's unrelated extend engages the imported-fact preflight without
@@ -430,20 +647,36 @@ describe('ImportAtRule', () => {
     })).resolves.toEqual({ css: '.target,\n.from-one,\n.from-two {\n  color: red;\n}\n' });
   });
 
-  it('loads a stylesheet import with a media tail into one typed wrapper', async () => {
+  /*
+   * A media postlude on a loadable target is a PARSE ERROR, so no `StyleImport`
+   * can reach the serializer carrying one and there is no `@media` wrapper left
+   * to build. Less 4.x accepts this source and emits the wrapper; the divergence
+   * is intended. The loaded document simply executes at its lexical position.
+   */
+  it('rejects a media tail on a loadable import instead of wrapping the loaded document', () => {
+    expect(() => authoredImport(
+      '@import',
+      quoted('"imported.less"', 'imported.less', '"', false),
+      list([any('multiple')], ','),
+      null,
+      any('screen and (max-width: 600px)')
+    )).toThrow(SyntaxError);
+  });
+
+  it('loads a stylesheet import at its lexical position', async () => {
     const imported = stylesheet([rule('body', [decl('width', keyword('100%'))])]);
     const document = stylesheet([
-      importAtRule('@import', quoted('"imported.less"', 'imported.less', '"', false), any('multiple'), null, any('screen and (max-width: 600px)'))
+      authoredImport('@import', quoted('"imported.less"', 'imported.less', '"', false), list([any('multiple')], ','))
     ]);
 
     await expect(Promise.resolve(serialize(document, {
       importDocument: ({ specifier }) => specifier === 'imported.less' ? { document: imported } : undefined
-    }))).resolves.toEqual({ css: '@media screen and (max-width: 600px) {\n  body {\n    width: 100%;\n  }\n}\n' });
+    }))).resolves.toEqual({ css: 'body {\n  width: 100%;\n}\n' });
   });
 
   it('keeps an async duplicate import inside nested @media ahead of a later sibling', async () => {
     const imported = stylesheet([rule('.imported', [decl('background', color('green'))])]);
-    const importNode = () => importAtRule('@import', quoted('"imported.less"', 'imported.less', '"', false));
+    const importNode = () => authoredImport('@import', quoted('"imported.less"', 'imported.less', '"', false));
     const document = stylesheet([
       importNode(),
       atRuleBlock('@media', any('(max-width: 768px)'), [
@@ -466,7 +699,7 @@ describe('ImportAtRule', () => {
   it('awaits an async loaded document inside a bubbleable at-rule before deciding the block is empty', async () => {
     const imported = stylesheet([rule('.inside', [decl('color', color('red'))])]);
     const document = stylesheet([
-      atRuleBlock('@layer', keyword('legacy'), [importAtRule('@import', quoted('"nested.less"', 'nested.less', '"', false))])
+      atRuleBlock('@layer', keyword('legacy'), [authoredImport('@import', quoted('"nested.less"', 'nested.less', '"', false))])
     ]);
 
     await expect(serialize(document, {
@@ -476,21 +709,21 @@ describe('ImportAtRule', () => {
 
   it('writes a typed target and optional typed tail as one terminal statement', () => {
     const document = stylesheet([
-      importAtRule('@import', quoted('"theme.css"', 'theme.css', '"', false), null, null, any('layer(theme) screen'))
+      authoredImport('@import', quoted('"theme.css"', 'theme.css', '"', false), null, null, any('layer(theme) screen'))
     ]);
 
     expect(serialize(document)).toEqual({ css: '@import "theme.css" layer(theme) screen;\n' });
   });
 
   it('keeps a canonical opaque url target terminal', () => {
-    expect(serialize(stylesheet([importAtRule('@import', url(any('theme.css')))]))).toEqual({
+    expect(serialize(stylesheet([authoredImport('@import', url(any('theme.css')))]))).toEqual({
       css: '@import url(theme.css);\n'
     });
   });
 
   it('owns one target-to-tail separator and never strips tail bytes', () => {
     const document = stylesheet([
-      importAtRule('@import', quoted('"theme.css"', 'theme.css', '"', false), null, null, any('  /* grammar-owned tail */ screen'))
+      authoredImport('@import', quoted('"theme.css"', 'theme.css', '"', false), null, null, any('  /* grammar-owned tail */ screen'))
     ]);
 
     expect(serialize(document)).toEqual({
@@ -499,12 +732,12 @@ describe('ImportAtRule', () => {
   });
 
   it('hoists and de-duplicates static CSS-terminal root imports without touching loaded style imports', () => {
-    const cssImport = importAtRule('@import', quoted('"theme.css"', 'theme.css', '"', false), null, null, any('screen'));
+    const cssImport = authoredImport('@import', quoted('"theme.css"', 'theme.css', '"', false), null, null, any('screen'));
     const document = stylesheet([
       rule('.before', [decl('color', keyword('red'))]),
       cssImport,
       rule('.after', [decl('color', keyword('blue'))]),
-      importAtRule('@import', quoted('"theme.css"', 'theme.css', '"', false), null, null, any('screen'))
+      authoredImport('@import', quoted('"theme.css"', 'theme.css', '"', false), null, null, any('screen'))
     ]);
 
     expect(serialize(document)).toEqual({
@@ -512,31 +745,261 @@ describe('ImportAtRule', () => {
     });
   });
 
+  it('hoists imported CSS terminals after a reference-first occurrence in their authoring source scope', async () => {
+    const entryPath = '/virtual/entry.less';
+    const childPath = '/virtual/child.less';
+    const entry = stylesheet([
+      rule('.entry-before', [decl('color', keyword('red'))]),
+      authoredImport('@import', quoted('"entry.css"', 'entry.css', '"', false)),
+      authoredImport(
+        '@import',
+        quoted('"child.less"', 'child.less', '"', false),
+        list([keyword('reference')], ',')
+      ),
+      authoredImport('@import', quoted('"child.less"', 'child.less', '"', false)),
+      authoredImport('@import', quoted('"entry-after.css"', 'entry-after.css', '"', false)),
+      authoredImport('@import', quoted('"child.less"', 'child.less', '"', false)),
+      authoredImport(
+        '@import',
+        quoted('"child.less"', 'child.less', '"', false),
+        list([keyword('multiple')], ',')
+      ),
+      rule('.entry-after', [decl('color', keyword('blue'))])
+    ]);
+    const child = stylesheet([
+      rule('.child-before', [decl('color', keyword('green'))]),
+      variableDeclaration('width', dimension(1, 'px'), { mode: 'declare' }),
+      authoredImport('@import', quoted('"static.css"', 'static.css', '"', false)),
+      authoredImport('@import', quoted('"static.css"', 'static.css', '"', false)),
+      authoredImport(
+        '@import',
+        quoted('"child.css"', 'child.css', '"', false),
+        null,
+        null,
+        block(operation(':', keyword('min-width'), variableReference('width', 'scoped'), false, false))
+      ),
+      atRuleBlock('@media', keyword('screen'), [
+        authoredImport('@import', quoted('"nested.css"', 'nested.css', '"', false))
+      ]),
+      rule('.child-after', [decl('color', keyword('purple'))])
+    ]);
+    const documents = new Map([
+      [entryPath, entry],
+      [childPath, child]
+    ]);
+
+    class ScopedImportPlugin extends AbstractPlugin {
+      name = 'scoped-import';
+      supportedExtensions = ['.less'];
+
+      override locate(paths: string[]) {
+        return paths.find(candidate => documents.has(candidate)) ?? null;
+      }
+
+      override async getSource(filePath: string) {
+        return filePath;
+      }
+
+      override safeParse(filePath: string) {
+        const document = documents.get(filePath);
+        return document === undefined ? { errors: [], warnings: [] } : { document, errors: [], warnings: [] };
+      }
+
+      override transformUrl({ value, kind, fromFilePath }: UrlTransformRequest) {
+        const source = fromFilePath?.slice(fromFilePath.lastIndexOf('/') + 1) ?? 'unknown';
+        return kind === 'import' ? `${source}:${value}` : value;
+      }
+    }
+
+    const context = new Context({}, [new ScopedImportPlugin()]);
+    const loadedEntry = await context.getTree(entryPath);
+    await expect(context.withDocument(loadedEntry.node, () => serialize(loadedEntry.node, { context }))).resolves.toEqual({
+      css: '@import "entry.less:entry.css";\n'
+        + '@import "child.less:static.css";\n'
+        + '@import "child.less:child.css" (min-width: 1px);\n'
+        + '@import "entry.less:entry-after.css";\n'
+        + '@import "child.less:static.css";\n'
+        + '@import "child.less:child.css" (min-width: 1px);\n'
+        + '.entry-before {\n  color: red;\n}\n'
+        + '.child-before {\n  color: green;\n}\n'
+        + '@media screen {\n  @import "child.less:nested.css";\n}\n'
+        + '.child-after {\n  color: purple;\n}\n'
+        + '.child-before {\n  color: green;\n}\n'
+        + '@media screen {\n  @import "child.less:nested.css";\n}\n'
+        + '.child-after {\n  color: purple;\n}\n'
+        + '.entry-after {\n  color: blue;\n}\n'
+    });
+  });
+
+  it('keeps option-bearing import occurrences aligned between their CSS terminals and bodies', async () => {
+    const entryPath = '/virtual/entry.less';
+    const childPath = '/virtual/child.less';
+    const imported = stylesheet([
+      authoredImport('@import', quoted('"child.css"', 'child.css', '"', false)),
+      rule('.child', [decl('color', keyword('green'))])
+    ]);
+    for (const option of ['less', 'optional']) {
+      const entry = stylesheet([
+        authoredImport('@import', quoted('"child.less"', 'child.less', '"', false), list([keyword(option)], ',')),
+        authoredImport('@import', quoted('"child.less"', 'child.less', '"', false), list([keyword(option)], ','))
+      ]);
+      const documents = new Map([
+        [entryPath, entry],
+        [childPath, imported]
+      ]);
+
+      class OptionImportPlugin extends AbstractPlugin {
+        name = 'less';
+        supportedExtensions = ['.less'];
+
+        override locate(paths: string[]) {
+          return paths.find(candidate => documents.has(candidate)) ?? null;
+        }
+
+        override async getSource(filePath: string) {
+          return filePath;
+        }
+
+        override safeParse(filePath: string) {
+          const document = documents.get(filePath);
+          return document === undefined ? { errors: [], warnings: [] } : { document, errors: [], warnings: [] };
+        }
+      }
+
+      const context = new Context({}, [new OptionImportPlugin()]);
+      const loadedEntry = await context.getTree(entryPath);
+      await expect(context.withDocument(loadedEntry.node, () => serialize(loadedEntry.node, { context }))).resolves.toEqual({
+        css: '@import "child.css";\n@import "child.css";\n'
+          + '.child {\n  color: green;\n}\n.child {\n  color: green;\n}\n'
+      });
+    }
+  });
+
+  it('keeps a deferred imported CSS prelude at its original lexical position', async () => {
+    const entryPath = '/virtual/entry.less';
+    const providerPath = '/virtual/providers.less';
+    const targetPath = '/virtual/target-ready.less';
+    const entry = stylesheet([
+      authoredImport(
+        '@import',
+        interpolation([
+          { lit: '"target-' },
+          { ref: variableReference('segment', 'scoped'), unquote: true },
+          { lit: '.less"' }
+        ])
+      ),
+      authoredImport('@import', quoted('"providers.less"', 'providers.less', '"', false))
+    ]);
+    const providers = stylesheet([
+      variableDeclaration('segment', keyword('ready'), { mode: 'declare' }),
+      authoredImport('@import', quoted('"provider.css"', 'provider.css', '"', false))
+    ]);
+    const target = stylesheet([
+      authoredImport('@import', quoted('"deferred.css"', 'deferred.css', '"', false))
+    ]);
+    const documents = new Map([
+      [entryPath, entry],
+      [providerPath, providers],
+      [targetPath, target]
+    ]);
+
+    class DeferredImportPlugin extends AbstractPlugin {
+      name = 'deferred-import';
+      supportedExtensions = ['.less'];
+
+      override locate(paths: string[]) {
+        return paths.find(candidate => documents.has(candidate)) ?? null;
+      }
+
+      override async getSource(filePath: string) {
+        return filePath;
+      }
+
+      override safeParse(filePath: string) {
+        const document = documents.get(filePath);
+        return document === undefined ? { errors: [], warnings: [] } : { document, errors: [], warnings: [] };
+      }
+    }
+
+    const context = new Context({}, [new DeferredImportPlugin()]);
+    const loadedEntry = await context.getTree(entryPath);
+    await expect(context.withDocument(loadedEntry.node, () => serialize(loadedEntry.node, { context }))).resolves.toEqual({
+      css: '@import "deferred.css";\n@import "provider.css";\n'
+    });
+  });
+
+  it('routes direct quoted CSS imports through import-path transformation without URL-only policy', async () => {
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"theme.css"', 'theme.css', '"', false),
+        null,
+        null,
+        any('screen')
+      ),
+      authoredImport('@import', url(quoted('"theme.css"', 'theme.css', '"', false)))
+    ]);
+    const kinds: Array<UrlTransformRequest['kind']> = [];
+
+    class ImportTransformPlugin extends AbstractPlugin {
+      name = 'import-transform';
+      supportedExtensions = ['.test'];
+
+      override safeParse() {
+        return { document, errors: [], warnings: [] };
+      }
+
+      override transformUrl(request: UrlTransformRequest) {
+        kinds.push(request.kind);
+        return request.kind === 'import'
+          ? `root/${request.value}`
+          : `${request.value}?url-only`;
+      }
+    }
+
+    const context = new Context({}, [new ImportTransformPlugin()]);
+    const parsed = await context.parseString('', { filePath: '/virtual/entry.test' });
+    const result = await context.withDocument(parsed.node, () => serialize(parsed.node, { context }));
+
+    expect(result).toEqual({
+      css: '@import "root/theme.css" screen;\n@import url("theme.css?url-only");\n'
+    });
+    expect(kinds).toEqual(['import', 'url']);
+  });
+
   it('keeps directive syntax structured without making resolution part of the AST', () => {
     const document = stylesheet([
       variableDeclaration('theme', keyword('night'), { mode: 'declare' }),
-      importAtRule(
+      styleImport(
         '@-export',
         url(interpolation([
           { lit: '"themes/' },
           { ref: variableReference('theme', 'scoped'), unquote: true },
           { lit: '.less"' }
         ])),
-        list([keyword('less'), keyword('reference')], ','),
-        keyword('tokens'),
-        any('screen and (min-width: 40rem)')
+        {
+          options: list([keyword('less'), keyword('reference')], ','),
+          alias: keyword('tokens'),
+          forward: true
+        }
       )
     ]);
 
+    /*
+     * The option list stays a structured AST fact but is consumed by the import
+     * machinery, never serialized — only the interpolated target and the alias
+     * are syntax. There is no postlude: `StyleImport` has no field for one, and
+     * the grammars reject the syntax that used to produce it.
+     */
     expect(serialize(document)).toEqual({
-      css: '@-export (less, reference) url("themes/night.less") as tokens screen and (min-width: 40rem);\n'
+      css: '@-export url("themes/night.less") as tokens;\n'
     });
   });
 
   it('keeps an import fact inside its canonical rule placement', () => {
     const document = stylesheet([
       rule('.card', [
-        importAtRule('@import', url(quoted('"nested.css"', 'nested.css', '"', false))),
+        authoredImport('@import', url(quoted('"nested.css"', 'nested.css', '"', false))),
         decl('color', keyword('red'))
       ])
     ]);
@@ -551,7 +1014,7 @@ describe('ImportAtRule', () => {
 
   it('keeps an import fact inside the rule where a mixin expands it', () => {
     const document = stylesheet([
-      mixinDef('imported', [], [importAtRule('@import', quoted('"mixin.css"', 'mixin.css', '"', false))]),
+      mixinDef('imported', [], [authoredImport('@import', quoted('"mixin.css"', 'mixin.css', '"', false))]),
       rule('.card', [mixinCall('imported')])
     ]);
 
@@ -561,7 +1024,7 @@ describe('ImportAtRule', () => {
   it('awaits a raw inline import inside a flattened rule instead of buffering it as a leaf', async () => {
     const document = stylesheet([
       rule('.source-only', [
-        importAtRule(
+        authoredImport(
           '@import',
           quoted('"payload.css"', 'payload.css', '"', false),
           list([keyword('inline')], ',')
@@ -580,7 +1043,7 @@ describe('ImportAtRule', () => {
       rule('.card', [
         decl('before', keyword('one')),
         rule('.child', [decl('inside', keyword('two'))]),
-        importAtRule('@import', quoted('"after.css"', 'after.css', '"', false))
+        authoredImport('@import', quoted('"after.css"', 'after.css', '"', false))
       ])
     ]);
 
@@ -595,7 +1058,7 @@ describe('ImportAtRule', () => {
       mixinDef('accent', [], [decl('border-color', variableReference('tone', 'scoped'))])
     ]);
     const document = stylesheet([
-      importAtRule('@import', quoted('"tokens.less"', 'tokens.less', '"', false)),
+      authoredImport('@import', quoted('"tokens.less"', 'tokens.less', '"', false)),
       rule('.card', [
         decl('color', variableReference('tone', 'scoped')),
         mixinCall('accent')
@@ -619,15 +1082,15 @@ describe('ImportAtRule', () => {
       rule('.hidden', [decl('color', keyword('red'))])
     ]);
     const document = stylesheet([
-      importAtRule(
-        '@import',
-        quoted('"tokens.less"', 'tokens.less', '"', false),
-        list([keyword('reference')], ',')
-      ),
       rule('.card', [
         decl('color', variableReference('tone', 'scoped')),
         mixinCall('accent')
-      ])
+      ]),
+      authoredImport(
+        '@import',
+        quoted('"tokens.less"', 'tokens.less', '"', false),
+        list([keyword('reference')], ',')
+      )
     ]);
 
     await expect(serialize(document, {
@@ -635,6 +1098,353 @@ describe('ImportAtRule', () => {
     })).resolves.toEqual({
       css: '.card {\n  color: red;\n  border-color: red;\n}\n'
     });
+  });
+
+  it('pulls a nested pseudo from one arm of a reference selector list without distributing the list', async () => {
+    const hover = complexSelector([{
+      term: compoundSelectorOf([simpleSelector('&'), simpleSelector(':hover')])
+    }]);
+    const authoredIs = complexSelector([{
+      term: compoundSelectorOf([
+        simpleSelector('&'),
+        pseudoSelector(':is', selist(sel('.enabled'), sel('.focused')))
+      ])
+    }]);
+    const opaqueAmp = complexSelector([{
+      term: compoundSelectorOf([simpleSelector('[title="&"]')])
+    }]);
+    const imported = stylesheet([
+      rule(selist(sel('.hidden'), sel('.target')), [
+        decl('color', keyword('green')),
+        rule(hover, [decl('color', keyword('darkgreen'))]),
+        rule(authoredIs, [decl('color', keyword('purple'))]),
+        rule(opaqueAmp, [decl('color', keyword('red'))])
+      ])
+    ]);
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"reference.less"', 'reference.less', '"', false),
+        list([keyword('reference')], ',')
+      ),
+      rule('.visible', [], [{ target: selist(sel('.target')), partial: true }])
+    ]);
+    const render = (collapseNesting: boolean) => serialize(document, {
+      collapseNesting,
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'reference.less'
+        ? { document: imported, key: 'reference.less' }
+        : undefined)
+    });
+    const expected = {
+      css: '.visible {\n  color: green;\n}\n'
+        + '.visible:hover {\n  color: darkgreen;\n}\n'
+        + '.visible:is(.enabled, .focused) {\n  color: purple;\n}\n'
+    };
+
+    await expect(render(true)).resolves.toEqual(expected);
+    await expect(render(false)).resolves.toEqual(expected);
+  });
+
+  it('keeps reference-document trivia hidden while a nested fact import executes', async () => {
+    const lead = '/* hidden document comment */\n';
+    const importedSource = `${lead}@import "facts.less";\n`;
+    const nestedImport = withSourceSpan(
+      authoredImport('@import', quoted('"facts.less"', 'facts.less', '"', false)),
+      { start: lead.length, end: importedSource.length }
+    );
+    const imported = withTriviaMap(
+      stylesheet([nestedImport]),
+      createTriviaMapFromRanges(importedSource, [{ start: 0, end: lead.length }])
+    );
+    const facts = stylesheet([
+      variableDeclaration('fact', keyword('loaded'), { mode: 'declare' })
+    ]);
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"reference.less"', 'reference.less', '"', false),
+        list([keyword('reference')], ',')
+      )
+    ]);
+
+    await expect(serialize(document, {
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'reference.less'
+        ? { document: imported, key: 'reference.less' }
+        : specifier === 'facts.less'
+          ? { document: facts, key: 'facts.less' }
+          : undefined)
+    })).resolves.toEqual({ css: '' });
+  });
+
+  it('drops leading reference-document trivia but retains a pulled rule body comment', async () => {
+    const lead = '/* hidden document comment */\n';
+    const importedSource = `${lead}.target { /* pulled body */ color: blue; }\n`;
+    const selectorStart = lead.length;
+    const bodyStart = importedSource.indexOf('{', selectorStart) + 1;
+    const declarationStart = importedSource.indexOf('color:', bodyStart);
+    const declarationEnd = importedSource.indexOf(';', declarationStart) + 1;
+    const bodyEnd = importedSource.indexOf('}', declarationEnd);
+    const targetSelector = withSourceSpan(selist(sel('.target')), {
+      start: selectorStart,
+      end: selectorStart + '.target'.length
+    });
+    const targetDeclaration = withSourceSpan(decl('color', keyword('blue')), {
+      start: declarationStart,
+      end: declarationEnd
+    });
+    const target = withBodySpan(
+      withSourceSpan(rule(targetSelector, [targetDeclaration]), {
+        start: selectorStart,
+        end: bodyEnd + 1
+      }),
+      { start: bodyStart, end: bodyEnd }
+    );
+    const imported = withTriviaMap(
+      stylesheet([target]),
+      createTriviaMapFromRanges(importedSource, [
+        { start: 0, end: lead.length },
+        { start: bodyStart, end: declarationStart }
+      ])
+    );
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"reference.less"', 'reference.less', '"', false),
+        list([keyword('reference')], ',')
+      ),
+      rule('.visible', [], [{ target: selist(sel('.target')), partial: true }])
+    ]);
+
+    await expect(serialize(document, {
+      collapseNesting: true,
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'reference.less'
+        ? { document: imported, key: 'reference.less' }
+        : undefined)
+    })).resolves.toEqual({
+      css: '.visible {\n  /* pulled body */\n  color: blue;\n}\n'
+    });
+  });
+
+  it('emits only a visibly extended rule from a reference-imported at-rule', async () => {
+    const imported = stylesheet([
+      atRuleBlock('@media', keyword('print'), [
+        rule('.target', [decl('color', keyword('blue'))]),
+        rule('.hidden-parent', [
+          decl('must-not', keyword('leak')),
+          rule('.target', [decl('border-color', keyword('blue'))])
+        ]),
+        rule('.hidden', [decl('color', keyword('red'))])
+      ])
+    ]);
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"reference.less"', 'reference.less', '"', false),
+        list([keyword('reference')], ',')
+      ),
+      rule('.visible', [], [{ target: selist(sel('.target')), partial: true }])
+    ]);
+
+    await expect(serialize(document, {
+      collapseNesting: false,
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'reference.less'
+        ? { document: imported, key: 'reference.less' }
+        : undefined)
+    })).resolves.toEqual({
+      css: '@media print {\n  .visible {\n    color: blue;\n  }\n  .hidden-parent .visible {\n    border-color: blue;\n  }\n}\n'
+    });
+  });
+
+  it('suppresses emitting calls and loop leaves while retaining a visible reference loop rule', async () => {
+    const imported = stylesheet([
+      mixinDef('emit-hidden', [], [
+        rule('.from-hidden-call', [decl('must-not', keyword('leak'))])
+      ]),
+      mixinCall('emit-hidden'),
+      forNode(
+        spaced([keyword('one')]),
+        [
+          decl('must-not-loop', keyword('leak')),
+          rule('.loop-target', [decl('color', keyword('blue'))])
+        ],
+        { kind: 'single', name: 'name' }
+      )
+    ]);
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"reference.less"', 'reference.less', '"', false),
+        list([keyword('reference')], ',')
+      ),
+      rule('.visible', [], [{ target: selist(sel('.loop-target')), partial: true }])
+    ]);
+
+    await expect(serialize(document, {
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'reference.less'
+        ? { document: imported, key: 'reference.less' }
+        : undefined)
+    })).resolves.toEqual({
+      css: '.visible {\n  color: blue;\n}\n'
+    });
+  });
+
+  it('suppresses emitting siblings in a visible reference at-rule loop', async () => {
+    const loopSelector = complexSelector([{
+      term: compoundSelectorOf([interpolatedSimpleSelector(interpolation([
+        { lit: '.loop-target-' }, { ref: variableReference('name', 'scoped'), unquote: true }
+      ]))])
+    }]);
+    const imported = stylesheet([
+      atRuleBlock('@media', keyword('print'), [
+        mixinDef('emit-hidden', [], [
+          rule('.from-hidden-call', [decl('must-not', keyword('leak'))])
+        ]),
+        mixinCall('emit-hidden'),
+        forNode(
+          spaced([keyword('one'), keyword('two')]),
+          [
+            decl('must-not-loop', keyword('leak')),
+            rule(loopSelector, [decl('color', keyword('blue'))])
+          ],
+          { kind: 'single', name: 'name' }
+        )
+      ])
+    ]);
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"reference.less"', 'reference.less', '"', false),
+        list([keyword('reference')], ',')
+      ),
+      rule('.visible', [], [{ target: selist(sel('.loop-target-one')), partial: true }])
+    ]);
+
+    await expect(serialize(document, {
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'reference.less'
+        ? { document: imported, key: 'reference.less' }
+        : undefined)
+    })).resolves.toEqual({
+      css: '@media print {\n  .visible {\n    color: blue;\n  }\n}\n'
+    });
+  });
+
+  it('keeps planned reference-loop items in source order when one canonical loop is reused', async () => {
+    const loopSelector = complexSelector([{
+      term: compoundSelectorOf([interpolatedSimpleSelector(interpolation([
+        { lit: '.loop-target-' }, { ref: variableReference('name', 'scoped'), unquote: true }
+      ]))])
+    }]);
+    const sharedLoop = forNode(
+      variableReference('items', 'scoped'),
+      [rule(loopSelector, [decl('color', keyword('blue'))])],
+      { kind: 'single', name: 'name' }
+    );
+    const first = stylesheet([
+      variableDeclaration('items', keyword('one'), { mode: 'declare' }),
+      sharedLoop
+    ]);
+    const second = stylesheet([
+      variableDeclaration('items', keyword('two'), { mode: 'declare' }),
+      sharedLoop
+    ]);
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"first.less"', 'first.less', '"', false),
+        list([keyword('reference')], ',')
+      ),
+      authoredImport(
+        '@import',
+        quoted('"second.less"', 'second.less', '"', false),
+        list([keyword('reference')], ',')
+      ),
+      rule('.visible', [], [{ target: selist(sel('.loop-target-one')), partial: true }])
+    ]);
+
+    await expect(serialize(document, {
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'first.less'
+        ? { document: first, key: 'first.less' }
+        : specifier === 'second.less'
+          ? { document: second, key: 'second.less' }
+          : undefined)
+    })).resolves.toEqual({
+      css: '.visible {\n  color: blue;\n}\n'
+    });
+  });
+
+  it('keeps a visible self-extend after its identical hidden branch deduplicates', async () => {
+    const imported = stylesheet([
+      rule('.class', [decl('color', keyword('blue'))])
+    ]);
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"reference.less"', 'reference.less', '"', false),
+        list([keyword('reference')], ',')
+      ),
+      rule('.class', [], [{ target: selist(sel('.class')), partial: true }])
+    ]);
+
+    await expect(serialize(document, {
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'reference.less'
+        ? { document: imported, key: 'reference.less' }
+        : undefined)
+    })).resolves.toEqual({
+      css: '.class {\n  color: blue;\n}\n'
+    });
+  });
+
+  it('keeps a byte-identical visible self-extend inside a hidden selector ancestor', async () => {
+    const imported = stylesheet([
+      atRuleBlock('@supports', keyword('feature'), [
+        rule('.hidden-parent', [
+          decl('must-not', keyword('leak')),
+          rule('.target', [decl('color', keyword('blue'))])
+        ])
+      ])
+    ]);
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"reference.less"', 'reference.less', '"', false),
+        list([keyword('reference')], ',')
+      ),
+      rule('.target', [], [{ target: selist(sel('.target')), partial: true }])
+    ]);
+
+    await expect(serialize(document, {
+      collapseNesting: false,
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'reference.less'
+        ? { document: imported, key: 'reference.less' }
+        : undefined)
+    })).resolves.toEqual({
+      css: '@supports feature {\n  .hidden-parent .target {\n    color: blue;\n  }\n}\n'
+    });
+  });
+
+  it('keeps inline bytes hidden when the containing import is reference-only', async () => {
+    const imported = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"raw.css"', 'raw.css', '"', false),
+        list([keyword('inline'), keyword('multiple')], ',')
+      )
+    ]);
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"reference.less"', 'reference.less', '"', false),
+        list([keyword('reference')], ',')
+      )
+    ]);
+
+    await expect(serialize(document, {
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'reference.less'
+        ? { document: imported, key: 'reference.less' }
+        : specifier === 'raw.css'
+          ? { inline: 'this is hidden' }
+          : undefined)
+    })).resolves.toEqual({ css: '' });
   });
 
   it('does not expose an exact extender defined by a reference import', async () => {
@@ -653,7 +1463,7 @@ describe('ImportAtRule', () => {
       }])
     ]);
     const document = stylesheet([
-      importAtRule(
+      authoredImport(
         '@import',
         quoted('"reference.less"', 'reference.less', '"', false),
         list([keyword('reference')], ',')
@@ -673,10 +1483,10 @@ describe('ImportAtRule', () => {
       rule('.mixin', [decl('was', keyword('included'))])
     ]);
     const namespacedCall = mixinCall('.mixin');
-    namespacedCall.path = [{ comb: '>' as const, sel: '#Namespace' }];
+    namespacedCall.path = [{ combinator: '>' as const, selector: '#Namespace' }];
     const document = stylesheet([
       rule('#Namespace', [
-        importAtRule(
+        authoredImport(
           '@import',
           quoted('"nested.less"', 'nested.less', '"', false),
           list([keyword('reference')], ',')
@@ -701,13 +1511,13 @@ describe('ImportAtRule', () => {
       comment('/* tralala */'),
       rule('.fix', [decl('fix', keyword('fix'))]),
       rule('.something', [
-        importAtRule('@import', quoted('"hidden.less"', 'hidden.less', '"', false), list([keyword('reference')], ',')),
+        authoredImport('@import', quoted('"hidden.less"', 'hidden.less', '"', false), list([keyword('reference')], ',')),
         decl('inside', keyword('something'))
       ])
     ]);
     const document = stylesheet([
       rule('show-all-content', [
-        importAtRule('@import', quoted('"multiple.less"', 'multiple.less', '"', false), list([keyword('multiple')], ','))
+        authoredImport('@import', quoted('"multiple.less"', 'multiple.less', '"', false), list([keyword('multiple')], ','))
       ])
     ]);
 
@@ -733,7 +1543,7 @@ describe('ImportAtRule', () => {
     );
     const document = stylesheet([
       rule('show-all-content', [
-        importAtRule('@import', quoted('"multiple.less"', 'multiple.less', '"', false), list([keyword('multiple')], ','))
+        authoredImport('@import', quoted('"multiple.less"', 'multiple.less', '"', false), list([keyword('multiple')], ','))
       ])
     ]);
 
@@ -756,7 +1566,7 @@ describe('ImportAtRule', () => {
       variableDeclaration('segment', keyword('ready'), { mode: 'declare' })
     ]);
     const document = stylesheet([
-      importAtRule(
+      authoredImport(
         '@import',
         interpolation([
           { lit: '"target-' },
@@ -764,7 +1574,7 @@ describe('ImportAtRule', () => {
           { lit: '.less"' }
         ])
       ),
-      importAtRule('@import', quoted('"providers.less"', 'providers.less', '"', false)),
+      authoredImport('@import', quoted('"providers.less"', 'providers.less', '"', false)),
       rule('.card', [decl('color', variableReference('answer', 'scoped'))])
     ]);
 
@@ -783,7 +1593,7 @@ describe('ImportAtRule', () => {
 
   it('reports a structured unresolved-target diagnostic after its one retry without loading it', async () => {
     const document = stylesheet([
-      importAtRule('@import', interpolation([
+      authoredImport('@import', interpolation([
         { lit: '"target-' },
         { ref: variableReference('never', 'scoped'), unquote: true },
         { lit: '.less"' }
@@ -805,7 +1615,7 @@ describe('ImportAtRule', () => {
 
   it('leaves unresolved dynamic import targets for render-time handling during static prep', async () => {
     const document = stylesheet([
-      importAtRule('@import', interpolation([
+      authoredImport('@import', interpolation([
         { lit: '"target-' },
         { ref: variableReference('never', 'scoped'), unquote: true },
         { lit: '.less"' }
@@ -835,7 +1645,7 @@ describe('ImportAtRule', () => {
 
   it('does not retry a Context loader failure as an unresolved import target', async () => {
     const document = stylesheet([
-      importAtRule('@import', quoted('"broken.less"', 'broken.less', '"', false))
+      authoredImport('@import', quoted('"broken.less"', 'broken.less', '"', false))
     ]);
     let loads = 0;
 
@@ -850,7 +1660,7 @@ describe('ImportAtRule', () => {
 
   it('surfaces Context loader failures during static import preparation', async () => {
     const document = stylesheet([
-      importAtRule('@import', quoted('"broken.less"', 'broken.less', '"', false))
+      authoredImport('@import', quoted('"broken.less"', 'broken.less', '"', false))
     ]);
     let loads = 0;
 
@@ -870,12 +1680,12 @@ describe('ImportAtRule', () => {
     const importedCall = {
       type: 'MixinCall' as const,
       name: '.add-one', args: [{ value: dimension(1, 'px', '1px') }],
-      path: [{ comb: ' ' as const, sel: '#library' }], important: false
+      path: [{ combinator: ' ' as const, selector: '#library' }], important: false, content: null
     };
     const document = stylesheet([
-      importAtRule('@import', quoted('"library.less"', 'library.less', '"', false)),
+      authoredImport('@import', quoted('"library.less"', 'library.less', '"', false)),
       rule('#library', [mixinDef('.add-one', [{ name: 'value' }], [variableDeclaration('return', dimension(3, 'px', '3px'), { mode: 'declare' })])]),
-      rule('.bar', [decl('height', reference(importedCall, [{ type: 'BracketLookup', keyKind: 'var', key: variableReference('return', 'scoped') }], '#library.add-one(1px)[@return]'))])
+      rule('.bar', [decl('height', reference(importedCall, [{ type: 'LookupStep', kind: 'var', name: variableReference('return', 'scoped') }], '#library.add-one(1px)[@return]'))])
     ]);
 
     await expect(serialize(document, {
@@ -892,12 +1702,12 @@ describe('ImportAtRule', () => {
     const importedCall = {
       type: 'MixinCall' as const,
       name: '.add-one', args: [{ value: dimension(1, 'px', '1px') }],
-      path: [{ comb: ' ' as const, sel: '#library' }], important: false
+      path: [{ combinator: ' ' as const, selector: '#library' }], important: false, content: null
     };
     const document = stylesheet([
-      importAtRule('@import', quoted('"library.less"', 'library.less', '"', false)),
+      authoredImport('@import', quoted('"library.less"', 'library.less', '"', false)),
       rule('.bar', [decl('height', reference(importedCall, [
-        { type: 'BracketLookup', keyKind: 'var', key: variableReference('return', 'scoped') }
+        { type: 'LookupStep', kind: 'var', name: variableReference('return', 'scoped') }
       ], '#library.add-one(1px)[@return]'))])
     ]);
 
@@ -908,17 +1718,17 @@ describe('ImportAtRule', () => {
 
   it('preserves a CSS import when the driver declines its typed request', async () => {
     const document = stylesheet([
-      importAtRule('@import', quoted('"theme.css"', 'theme.css', '"', false))
+      authoredImport('@import', quoted('"theme"', 'theme', '"', false))
     ]);
 
     await expect(serialize(document, {
       importDocument: () => Promise.resolve(undefined)
-    })).resolves.toEqual({ css: '@import "theme.css";\n' });
+    })).resolves.toEqual({ css: '@import "theme";\n' });
   });
 
   it('suppresses imports when processImports is false', () => {
     const document = stylesheet([
-      importAtRule('@import', url(quoted('"https://fonts.example.test/css?family=Open+Sans"', 'https://fonts.example.test/css?family=Open+Sans', '"', false))),
+      authoredImport('@import', url(quoted('"https://fonts.example.test/css?family=Open+Sans"', 'https://fonts.example.test/css?family=Open+Sans', '"', false))),
       rule('.a', [decl('b', keyword('c'))])
     ]);
 
@@ -929,7 +1739,7 @@ describe('ImportAtRule', () => {
 
   it('does not load Less imports when processImports is false', () => {
     const document = stylesheet([
-      importAtRule('@import', quoted('"library.less"', 'library.less', '"', false)),
+      authoredImport('@import', quoted('"library.less"', 'library.less', '"', false)),
       rule('.a', [decl('b', keyword('c'))])
     ]);
     const importDocument = vi.fn(() => Promise.resolve({
@@ -943,15 +1753,31 @@ describe('ImportAtRule', () => {
     expect(importDocument).not.toHaveBeenCalled();
   });
 
-  it('emits a driver-provided inline import raw, with its typed media tail', async () => {
+  it('emits a driver-provided inline import raw', async () => {
     const document = stylesheet([
-      importAtRule('@import', url(quoted('"raw.css"', 'raw.css', '"', false)), list([keyword('inline')]), null, any('(min-width:600px)'))
+      authoredImport('@import', url(quoted('"raw.css"', 'raw.css', '"', false)), list([keyword('inline')]))
     ]);
 
     await expect(serialize(document, {
-      importDocument: ({ specifier, tail }) => Promise.resolve(specifier === 'raw.css' ? { inline: '#raw { color: yellow; }', media: tail } : undefined)
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'raw.css' ? { inline: '#raw { color: yellow; }' } : undefined)
     })).resolves.toEqual({
-      css: '@media (min-width: 600px) {\n  #raw { color: yellow; }\n}\n'
+      css: '#raw { color: yellow; }\n'
     });
+  });
+
+  /*
+   * `(inline)` makes an import compile-time — it reads bytes off disk — so a
+   * postlude on it is rejected at parse time like any other compile-time import.
+   * Less 4.x instead wraps the spliced bytes in `@media (min-width: 600px)`;
+   * that wrap and the syntax reaching it are both deliberately gone.
+   */
+  it('rejects a media postlude on an inline import instead of wrapping the splice', () => {
+    expect(() => authoredImport(
+      '@import',
+      url(quoted('"raw.css"', 'raw.css', '"', false)),
+      list([keyword('inline')]),
+      null,
+      any('(min-width:600px)')
+    )).toThrow(SyntaxError);
   });
 });

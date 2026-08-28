@@ -1,4 +1,4 @@
-import { el, sel, sellist, compound, is, co, attr, quoted, pseudo } from '../../../index.js';
+import { el, sel, sellist, compound, is, co, attr, quoted, pseudo } from '../../index.js';
 import { matchSelectors } from '../find-extendable-locations.js';
 
 /**

@@ -1,4 +1,4 @@
-import { defineFunction, makeDimension } from '@jesscss/core/value';
+import { defineFunction, makeDimension } from '@jesscss/core';
 
 /**
  * Sass `math.round($number)` / the global `round()`.
@@ -15,8 +15,8 @@ const roundHalfAwayFromZero = (n: number): number =>
 
 const round = defineFunction('round', {
   params: [
-    { name: 'number', kinds: ['Dimension'] },
-    { name: 'step', kinds: ['Dimension'], optional: true }
+    { name: 'number', type: 'Dimension' },
+    { name: 'step', type: 'Dimension', optional: true }
   ] as const,
   body: (number, step) => {
     if (step === undefined) {

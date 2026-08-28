@@ -16,8 +16,9 @@
  */
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(new URL('..', import.meta.url).pathname);
+const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 
 // The canonical perf-doc set every agent surface must point at.
 const CANONICAL_DOCS = [

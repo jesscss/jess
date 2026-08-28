@@ -11,7 +11,7 @@ manager plugins, or a full Less tree AST adapter.
 
 ## How it works
 
-- **Native functions only** — pass `Fn` values from `@jesscss/core/value`; their
+- **Native functions only** — pass `Fn` values from `@jesscss/core`; their
   bodies receive typed values and `FnCtx` capabilities.
 - **Less plugin function bridge** — pass Less-style plugins with
   `install(less, manager, functions)` through `plugins`. The bridge supplies a
@@ -24,11 +24,11 @@ to a typed function and register it through `functions`:
 
 ```ts
 import { Compiler } from 'jess';
-import { defineFunction, makeDimension } from '@jesscss/core/value';
+import { defineFunction, makeDimension } from '@jesscss/core';
 import lessCompatPlugin from '@jesscss/plugin-less-compat';
 
 const increment = defineFunction('increment', {
-  params: [{ kinds: ['Dimension'] }] as const,
+  params: [{ type: 'Dimension' }] as const,
   body: value => makeDimension(value.number + 1, value.unit)
 });
 
@@ -54,7 +54,9 @@ const compiler = new Compiler({
 ```
 
 Less-shaped values are boundary values only. Jess owns their conversion back
-into typed AST-v2 values.
+into typed AST-v2 values. The current bridge supports function registration and
+value conversion; it does not install a broad Less tree facade for visitors or
+prototype-patching plugins.
 
 ## Status
 

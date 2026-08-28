@@ -10,35 +10,98 @@
  * HARD MODULE BOUNDARY: imports only the value domain, the factory, and the shared
  * units table.
  */
-import { isValueGroupArray, type Color, type Dimension, type EvalModes, type ValueGroup, type ValueObj } from './value-eval.js';
+import Big from 'big.js';
+import { UnitArithmeticError, isValueGroupArray, type Color, type Dimension, type EvalModes, type ValueGroup, type Value } from './value-eval.js';
 import { HEX } from './color.js';
 import { colorRawRgb, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword } from './value-factory.js';
+import { coerceNamedColorKeyword } from './literal-tag.js';
 import { convertValue } from './value-units.js';
 
 /* --------------------------------------------------------- arithmetic */
 
-export class UnitArithmeticError extends TypeError {
-  constructor(message: string) {
-    super(message);
-    this.name = 'UnitArithmeticError';
-  }
-}
+/*
+ * Re-exported, not defined here: comparison raises the same error for the same
+ * defect (`2px > 1em`), and `value-guards.ts`'s module boundary does not admit
+ * this module. The class lives in the value domain both import. See its JSDoc.
+ */
+export { UnitArithmeticError } from './value-eval.js';
 
+/**
+ * Scalar arithmetic for dimension operands — the one choke point for `+ - * / %`
+ * in the AST-v2 engine.
+ *
+ * `+`, `-` and `*` run in EXACT BASE 10. A CSS author writes decimals; IEEE-754
+ * stores binary, and a terminating decimal such as `0.1` or `0.33333333333333`
+ * is a repeating binary fraction. Chained arithmetic then accumulates that error
+ * and, when it subtracts near-equal quantities, cancels away the significant
+ * digits — `1 - 0.33333333333333` three times lands 1.2% away from the true
+ * decimal `1e-14`. Every one of those float subtractions is correctly rounded
+ * (measured: 0 ulp error per step), so the loss is the BASE, not the operation,
+ * and no reassociation recovers it.
+ *
+ * This is NOT a rounding step. Ledger **V5** forbids quantizing at construction
+ * because it compounds; **V4** puts the sole quantization at output
+ * (`formatNumber`, shortest decimal within 1e-10 relative). Exact arithmetic
+ * REMOVES error rather than introducing it, and leaves the output policy alone.
+ *
+ * `/` DELIBERATELY STAYS ON FLOAT, and this is a correctness decision rather
+ * than a performance one. big.js `div` rounds to `Big.DP` DECIMAL PLACES (20 by
+ * default), not significant digits, so it under-resolves small magnitudes:
+ * `1e-15 / 3` gives `3.3333e-16` (5 significant digits) where float gives
+ * `3.3333333333333336e-16` (17). Routing division through it would make jess
+ * LESS accurate for exactly the small magnitudes this work is about — the same
+ * class of mistake as the 8-decimal-place floor removed in `f42decf7f` /
+ * `137cfa8fa`, which annihilated colour magnitudes below ~5e-9. No fixed `DP`
+ * fixes it: `DP` is absolute and magnitudes are not. There is also nothing to
+ * preserve — a quotient of terminating decimals is generally non-terminating, so
+ * unlike `+ - *` there is no exact decimal answer being thrown away.
+ *
+ * Operands arrive as `number`. Constructing the `Big` from the parsed double is
+ * exact and needs no source-text plumbing: `String(double)` is the SHORTEST
+ * round-tripping decimal (verified: 0 failures in 200k random doubles), so it
+ * recovers the authored decimal for any literal a double can represent, and
+ * `Big(0.33333333333333)` and `Big('0.33333333333333')` are the same value.
+ */
 function calculate(a: number, op: string, b: number): number {
   switch (op) {
-    case '+': return a + b;
-    case '-': return a - b;
-    case '*': return a * b;
+    case '+': return exact(a, b, ADD, a + b);
+    case '-': return exact(a, b, SUB, a - b);
+    case '*': return exact(a, b, MUL, a * b);
     case '/': return a / b;
-    case '%': return a % b;
+    case '%': return exact(a, b, MOD, a % b);
   }
   throw new TypeError(`Unknown operator ${op}`);
+}
+
+const ADD = 0, SUB = 1, MUL = 2, MOD = 3;
+
+/**
+ * Run one exact base-10 operation, falling back to the already-computed float
+ * result when either operand is non-finite (big.js throws on NaN/Infinity, and a
+ * numeric oddity must not become a hard error) or when the operands are integers
+ * — integers below 2^53 are exact in a double already, so base 10 buys nothing.
+ */
+function exact(a: number, b: number, kind: number, fallback: number): number {
+  if (!Number.isFinite(a) || !Number.isFinite(b)) {
+    return fallback;
+  }
+  if (Number.isSafeInteger(a) && Number.isSafeInteger(b)) {
+    return fallback;
+  }
+  const x = new Big(String(a));
+  const y = new Big(String(b));
+  switch (kind) {
+    case ADD: return Number(x.plus(y));
+    case SUB: return Number(x.minus(y));
+    case MUL: return Number(x.times(y));
+    default: return Number(x.mod(y));
+  }
 }
 
 /* ---------------------------------------------------------- color math */
 
 /** Color arithmetic: color ⊕ dimension (per-channel scalar) or color ⊕ color (per-channel + alpha compositing). */
-function colorOperate(a: Color, b: ValueObj, op: string): Color {
+function colorOperate(a: Color, b: Value, op: string): Color {
   const aRGB = colorRawRgb(a);
   let newAlpha = a.alpha;
   let out: [number, number, number];
@@ -106,18 +169,46 @@ function cancel(u: UnitSet): void {
 }
 
 /**
+ * Compose `b`'s unit multiset into `a`'s under `*` or `/`, then cancel — the
+ * shared half of `*`/`/` unit arithmetic.
+ */
+function composeUnits(u: UnitSet, bu: UnitSet, op: string): void {
+  if (op === '*') {
+    u.num = u.num.concat(bu.num);
+    u.den = u.den.concat(bu.den);
+  } else {
+    u.num = u.num.concat(bu.den);
+    u.den = u.den.concat(bu.num);
+  }
+  cancel(u);
+}
+
+/**
+ * Whether a composed unit set has a CSS spelling. Exactly two shapes do: one
+ * surviving numerator unit (`4em / 2cm` → `em`), and the empty set, which is a
+ * genuine unitless number (`2px / 1px` → `2`). Anything else — a unit PRODUCT
+ * (`px·px`, `px·%`) or a bare reciprocal (`px⁻¹`) — has no CSS unit at all, and
+ * naming one means fabricating it out of `backupUnit` or a denominator.
+ */
+function expressible(u: UnitSet): boolean {
+  return u.num.length === 1 || (u.num.length === 0 && u.den.length === 0);
+}
+
+/**
  * less.js `Unit.genCSS` display rule: a singular numerator emits that unit;
  * else the `backupUnit`; else the first denominator; else empty (a pure number).
  * Strict-mode singularity is validated only when the final value is consumed;
  * intermediate compound units must remain available for a later operation to
- * cancel. A fully cancelled strict result is therefore a unitless number even
- * when its intermediate `backupUnit` was authored (e.g. `1px / 1px` → `1`).
+ * cancel. A fully cancelled result is a unitless number in EVERY mode even when
+ * its intermediate `backupUnit` was authored (`2px / 1px` → `2`, §4 row g2):
+ * like units cancelling is the one composition that is honestly expressible, so
+ * reaching for the backup there would re-attach a unit the value no longer has.
  */
-function displayUnit(u: UnitSet, isStrict: boolean): string {
+function displayUnit(u: UnitSet): string {
   if (u.num.length === 1) {
     return u.num[0]!;
   }
-  if (isStrict && u.num.length === 0 && u.den.length === 0) {
+  if (u.num.length === 0 && u.den.length === 0) {
     return '';
   }
   if (u.backup) {
@@ -133,15 +224,22 @@ function displayUnit(u: UnitSet, isStrict: boolean): string {
  * Validate unit singularity at a final typed-value boundary. Arithmetic keeps
  * compound numerator/denominator facts through the whole operation chain so a
  * later operation can cancel them; only final materialization/emission applies
- * Less strict-units' singularity rule.
+ * the singularity rule.
+ *
+ * `demandExpressible` raises the rule ABOVE `unitMode`, for a value produced at
+ * a boundary that is itself a demand for an expressible result. `unitMode` is a
+ * LESS-COMPAT lever (`.less` decides between Less 4.x's dimensionally false fold,
+ * a preserved `calc(…)`, and an error); a construct that means "compute this and
+ * give me the value" has no such choice to offer, because there is no value to
+ * give when the result has no CSS spelling. See {@link Expression}.
  */
-export function validateFinalUnits(value: ValueGroup, modes: EvalModes): void {
-  if (modes.unitMode !== 'strict') {
+export function validateFinalUnits(value: ValueGroup, modes: EvalModes, demandExpressible = false): void {
+  if (!demandExpressible && modes.unitMode !== 'strict') {
     return;
   }
   if (isValueGroupArray(value)) {
     for (const item of value) {
-      validateFinalUnits(item, modes);
+      validateFinalUnits(item, modes, demandExpressible);
     }
     return;
   }
@@ -155,12 +253,12 @@ export function validateFinalUnits(value: ValueGroup, modes: EvalModes): void {
   }
   if (value.type === 'List') {
     for (const item of value.value) {
-      validateFinalUnits(item, modes);
+      validateFinalUnits(item, modes, demandExpressible);
     }
     return;
   }
   if (value.type === 'Block') {
-    validateFinalUnits(value.inner, modes);
+    validateFinalUnits(value.value, modes, demandExpressible);
   }
 }
 
@@ -199,26 +297,41 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
       }
       value = calculate(a.number, op, bVal);
     }
-  } else if (op === '*') {
-    u.num = u.num.concat(bu.num);
-    u.den = u.den.concat(bu.den);
-    cancel(u);
-  } else if (op === '/') {
-    u.num = u.num.concat(bu.den);
-    u.den = u.den.concat(bu.num);
-    cancel(u);
+  } else if (op === '*' || op === '/') {
+    composeUnits(u, bu, op);
   }
 
-  const unit = displayUnit(u, isStrict);
+  const unit = displayUnit(u);
 
   /*
    * Persist the multiset only when it isn't a plain single numerator (so chained
    * ops can still cancel); a singular/empty unit round-trips through `makeDimension`.
+   *
+   * An expressible result NEVER carries a preserved spelling, which is what lets
+   * a chain come back from an unexpressible intermediate: `1px * 1px` has no CSS
+   * unit and preserves, then `/ 1px` cancels the multiset to a plain `px` and the
+   * value is spelled `1px` again. Dropping the spelling here is the whole reason
+   * the ladder can afford to keep computing.
    */
   if (u.num.length === 1 && u.den.length === 0) {
     return makeDimension(value, unit);
   }
-  return makeCompoundDimension(value, unit, u.num, u.den, u.backup);
+  return makeCompoundDimension(value, unit, u.num, u.den, u.backup,
+    modes.unitMode === 'preserve' && !expressible(u) ? preservedSpelling(a, op, b) : undefined);
+}
+
+/**
+ * The authored expression for a preserved result, in AUTHORED OPERAND ORDER
+ * (`10% * 1px` stays `10% * 1px`; dart-sass reorders it, we do not).
+ *
+ * An operand that is itself preserved contributes its own spelling rather than
+ * its bytes, which is what flattens a chain into ONE expression
+ * (`(1.4em * 14px) * 10cm` → `1.4em * 14px * 10cm`) instead of nesting `calc()`
+ * inside `calc()`. CSS flattens nested calc anyway, so the flat form is also the
+ * one CSS would have produced.
+ */
+function preservedSpelling(a: Dimension, op: string, b: Dimension): string {
+  return `${a.preserved ?? a.bytes} ${op} ${b.preserved ?? b.bytes}`;
 }
 
 /** Dimension ⊕ Color: coerce the dimension to a color (unit ignored, per less.js
@@ -321,10 +434,12 @@ function calcSafe(op: string, a: Dimension, b: Dimension): boolean {
  * Binary operation. Guard order (byte-faithful):
  *   1. a `calc(...)` keyword operand → splice its inner expression (flat calc),
  *   2. an un-operable keyword operand → preserve source `l op r`,
- *   3. else direct arithmetic; a unit-clash `TypeError` in `preserve` mode →
+ *   3. inside `calc(…)`, a cross-unit dimension op → flat `calc(l op r)`,
+ *   4. a §4.7 unexpressible unit composition in `preserve` mode → `calc(l op r)`,
+ *   5. else direct arithmetic; a unit-clash `TypeError` in `preserve` mode →
  *      `calc(l op r)` fallback.
  */
-export function operate(op: string, left: ValueObj, right: ValueObj, modes: EvalModes): ValueObj {
+export function operate(op: string, left: Value, right: Value, modes: EvalModes): Value {
   /*
    * Guard 1: calc-wrapper keyword operand → flat calc splice.
    * byte-faithful: opaque operand, no structured node — at the seam a calc
@@ -332,6 +447,32 @@ export function operate(op: string, left: ValueObj, right: ValueObj, modes: Eval
    * FunctionCall was folded to bytes upstream), and a computed preserve-mode
    * `calc(...)` fallback result has no node at all, so both are string-unwrapped.
    */
+  /*
+   * [null] `null` is ABSENT, not an operand: it contributes nothing and the other
+   * side stands (§4.3, measured on dart-sass 1.101.0 — `b: 1 + null` is `b: 1`).
+   * Two nulls stay null. This sits ABOVE the calc/keyword guards so `null` never
+   * gets spliced into a preserved `calc(…)` as the bare text `null`.
+   */
+  if (left.type === 'Null') {
+    return right;
+  }
+  if (right.type === 'Null') {
+    return left;
+  }
+
+  /*
+   * NamedColor→Keyword convergence: an arithmetic operand that is a named-color
+   * keyword (`red`) is a color HERE, at the point of use. This restores less's
+   * `red + #111` → `#ff1111`, `red * 2` → `#ff0000`, `(red / 2)` → `#800000`, and
+   * bare `red / 2` under `math: always` → `#800000` (the bare-slash promotion in
+   * serialize.ts admits the named-color leaf, then this fold runs) — matching hex
+   * colors and lessc 4.x. A non-color keyword still hits the preserve guard below.
+   * Coercion runs before the calc/keyword guards so the color operand reaches
+   * `colorOperate` instead of being preserved as bytes. See DESIGN-DECISIONS V13.
+   */
+  left = coerceNamedColorKeyword(left);
+  right = coerceNamedColorKeyword(right);
+
   const leftInner = left.type === 'Keyword' ? calcInner(left.bytes) : null;
   const rightInner = right.type === 'Keyword' ? calcInner(right.bytes) : null;
   if (leftInner !== null || rightInner !== null) {
@@ -355,15 +496,21 @@ export function operate(op: string, left: ValueObj, right: ValueObj, modes: Eval
   }
 
   /*
-   * A percentage product has no standalone CSS dimensional value. Preserve it
-   * as calc in the dialect's preserve mode even before an explicit calc wrapper;
-   * otherwise a lazy variable binding such as `@x: 100% * 100%` collapses to the
-   * invented scalar `10000%` and later composition cannot recover its semantics.
+   * §4.7's ladder is deliberately NOT a guard here. `preserve` governs how an
+   * UNEXPRESSIBLE RESULT IS SPELLED, not whether the arithmetic happens — an
+   * operated value must compute in every mode, and `dimensionOperate` is what
+   * computes it. Declining the operation here instead (returning an opaque
+   * `calc(…)` keyword) discarded the magnitude and the unit multiset at the first
+   * unexpressible INTERMEDIATE, so `1px * 1px / 1px` could never cancel back to
+   * `1px`, `8cats * 9dogs / 4cats` could never reach `18dogs`, and `unit()` — a
+   * function whose entire job is to read the magnitude and replace the unit — got
+   * a keyword it had to decline, emitting `unit(calc(…))` into the stylesheet.
+   *
+   * The three rungs part company on the RESULT: `loose` fabricates a unit from
+   * `backupUnit`, `preserve` carries the authored spelling (`Dimension.preserved`),
+   * and `strict` carries neither, so `validateFinalUnits` rejects the non-singular
+   * unit at the consuming boundary. One computation, three spellings.
    */
-  if (modes.unitMode === 'preserve' && op === '*' && left.type === 'Dimension' && right.type === 'Dimension'
-    && left.unit === '%' && right.unit === '%') {
-    return makeKeyword(`calc(${left.bytes} ${op} ${right.bytes})`);
-  }
   try {
     if (left.type === 'Dimension' && right.type === 'Dimension') {
       return dimensionOperate(left, right, op, modes);

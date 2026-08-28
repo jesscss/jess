@@ -16,7 +16,7 @@ import {
 import { PseudoSelector } from '../selector-pseudo.js';
 import { applyExtendsToSelector, type ExtendInstruction } from './extend.js';
 import { findExtendableLocations } from './extend-helpers.js';
-import { isDisjoint, isSubsetOf } from './bitset.js';
+import { isDisjoint, isSubsetOf } from '../../util/bitset.js';
 import { keySetOf, requiredKeySetOf, visibleKeySetOf } from './selector-analysis.js';
 import { isNode } from './is-node.js';
 import { isCombinator } from './combinator.js';
@@ -176,8 +176,15 @@ function getParentSelector(ruleset: Ruleset): Selector | undefined {
   }
 }
 
-/** Snapshot of eval'd value before any extend modifications */
-let preExtendSelectors = new WeakMap<Ruleset, SelectorLike>();
+/*
+ * Snapshot of eval'd value before any extend modifications.
+ *
+ * Pass-scoped, not weak: it is filled at the top of the pass and dropped
+ * wholesale in the pass `finally`, so no key can outlive the pass. A WeakMap
+ * would buy nothing here and cost one ephemeron entry per ruleset for the
+ * collector to resolve during marking.
+ */
+const preExtendSelectors = new Map<Ruleset, SelectorLike>();
 
 function withSelectorBitLibrary<T extends Selector>(selector: T, ...sources: Array<Selector | undefined>): T {
   if (selector.keySetLibrary) {
@@ -551,11 +558,18 @@ function analyzeNonPartialExtends(
 }
 
 export class ExtendRootRegistry {
-  private parentRoot = new WeakMap<Rules, Rules>();
-  private childrenRoots = new WeakMap<Rules, Set<Rules>>();
-  private layerName = new WeakMap<Rules, string>();
-  private isProtected = new WeakMap<Rules, boolean>();
-  private isCompose = new WeakMap<Rules, boolean>();
+  /*
+   * Not weak. `registerRoot` adds every key of these five tables to `allRoots`
+   * (and, where applicable, to `rootsByLayerName` / `rootsByNamespace`) — all
+   * strong `Set`/`Map`s on this same object. The registry therefore already
+   * pins every key for its own lifetime, so weak keys buy no earlier collection
+   * and only add ephemeron entries for the collector to resolve.
+   */
+  private parentRoot = new Map<Rules, Rules>();
+  private childrenRoots = new Map<Rules, Set<Rules>>();
+  private layerName = new Map<Rules, string>();
+  private isProtected = new Map<Rules, boolean>();
+  private isCompose = new Map<Rules, boolean>();
 
   /*
    * TODO(dev): consume a namespace as a one-boundary filter during extend
@@ -799,7 +813,7 @@ export function processExtends(context: Context): void {
      * This ensures getEffectiveSelector composes with original value,
      * not ones already modified by earlier extends in this pass.
      */
-    preExtendSelectors = new WeakMap<Ruleset, Selector>();
+    preExtendSelectors.clear();
     for (const [, rulesetSet] of rulesetsByRoot) {
       for (const rs of rulesetSet) {
         const sel = selectorOrUndefined(rs.selector);
@@ -1338,6 +1352,7 @@ export function processExtends(context: Context): void {
   } finally {
     endExtendMatchPass();
     rulesetsByRoot.clear();
+    preExtendSelectors.clear();
     if (extendProfileNow) {
       recordExtendProfile?.('processExtends.calls');
       recordExtendProfile?.('processExtends.ms', extendProfileNow() - extendPassStart);

@@ -11,7 +11,7 @@ import { isValueGroupArray, type Block, type List, type ListSeparator, type Valu
 /** Unwrap only delimiter blocks; sequence structure never comes from bytes. */
 function unwrapBlock(value: ValueGroup): { value: ValueGroup; block?: Block } {
   if (!isValueGroupArray(value) && value.type === 'Block') {
-    const inner = unwrapBlock(value.inner);
+    const inner = unwrapBlock(value.value);
     return { value: inner.value, block: value };
   }
   return { value };

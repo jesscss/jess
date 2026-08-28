@@ -8,32 +8,32 @@
 ## 🎯 Auto-Select Rules (File-Specific)
 @.cursor/rules/debugging-state.mdc <!-- Applies to: .cursor/**, docs/state/** -->
 @.cursor/rules/domains/cli_app.mdc <!-- Applies to: packages/jess/** -->
-@.cursor/rules/domains/core_ast_eval.mdc <!-- Applies to: packages/core/src/tree/**, packages/core/src/define-function.ts, packages/core/src/**/__tests__/** -->
+@.cursor/rules/domains/core_ast_eval.mdc <!-- Applies to: packages/core/src/ast/**, packages/core/src/tree/**, packages/core/src/define-function.ts, packages/core/src/**/__tests__/** -->
 @.cursor/rules/domains/docs.mdc <!-- Applies to: docs/**, packages/docs/**, README.md -->
-@.cursor/rules/domains/language_tooling.mdc <!-- Applies to: packages/language-service/**, packages/vscode/**, packages/language-service-tests/** -->
-@.cursor/rules/domains/parsers.mdc <!-- Applies to: packages/css-parser/**, packages/less-parser/**, packages/scss-parser/**, packages/jess-parser/**, packages/parser-shared/** -->
+@.cursor/rules/domains/language_tooling.mdc <!-- Applies to: packages/editor/language-service/**, packages/editor/vscode/**, packages/editor/language-service-tests/** -->
+@.cursor/rules/domains/parsers.mdc <!-- Applies to: packages/syntax/*/*-parser/**, packages/parser-shared/** -->
 @.cursor/rules/main.mdc <!-- Applies to: .cursor/** -->
 @.cursor/rules/package-scripts.mdc <!-- Applies to: .cursor/** -->
 @.cursor/rules/packages/awaitable-pipe.mdc <!-- Applies to: packages/awaitable-pipe/** -->
 @.cursor/rules/packages/config.mdc <!-- Applies to: packages/config/** -->
 @.cursor/rules/packages/core.mdc <!-- Applies to: packages/core/** -->
-@.cursor/rules/packages/css-parser.mdc <!-- Applies to: packages/css-parser/** -->
+@.cursor/rules/packages/css-parser.mdc <!-- Applies to: packages/syntax/css/css-parser/** -->
 @.cursor/rules/packages/docs-site.mdc <!-- Applies to: packages/docs/** -->
 @.cursor/rules/packages/fns.mdc <!-- Applies to: packages/fns/** -->
 @.cursor/rules/packages/jess-plugin.mdc <!-- Applies to: packages/jess-plugin/** -->
 @.cursor/rules/packages/jess.mdc <!-- Applies to: packages/jess/** -->
-@.cursor/rules/packages/language-service.mdc <!-- Applies to: packages/language-service/** -->
-@.cursor/rules/packages/less-parser.mdc <!-- Applies to: packages/less-parser/** -->
+@.cursor/rules/packages/language-service.mdc <!-- Applies to: packages/editor/language-service/** -->
+@.cursor/rules/packages/less-parser.mdc <!-- Applies to: packages/syntax/less/less-parser/** -->
 @.cursor/rules/packages/patch-css.mdc <!-- Applies to: packages/patch-css/** -->
-@.cursor/rules/packages/plugin-less-compat.mdc <!-- Applies to: packages/jess-plugin-less-compat/** -->
-@.cursor/rules/packages/plugin-less.mdc <!-- Applies to: packages/jess-plugin-less/** -->
+@.cursor/rules/packages/plugin-less-compat.mdc <!-- Applies to: packages/syntax/less/jess-plugin-less-compat/** -->
+@.cursor/rules/packages/plugin-less.mdc <!-- Applies to: packages/syntax/less/jess-plugin-less/** -->
 @.cursor/rules/packages/plugin-node-modules.mdc <!-- Applies to: packages/jess-plugin-node-modules/** -->
-@.cursor/rules/packages/plugin-scss.mdc <!-- Applies to: packages/jess-plugin-scss/** -->
+@.cursor/rules/packages/plugin-scss.mdc <!-- Applies to: packages/syntax/scss/jess-plugin-scss/** -->
 @.cursor/rules/packages/rollup-plugin-jess.mdc <!-- Applies to: packages/rollup-plugin-jess/** -->
-@.cursor/rules/packages/scss-parser.mdc <!-- Applies to: packages/scss-parser/** -->
+@.cursor/rules/packages/scss-parser.mdc <!-- Applies to: packages/syntax/scss/scss-parser/** -->
 @.cursor/rules/packages/shared.mdc <!-- Applies to: packages/_shared/** -->
 @.cursor/rules/packages/style-resolver.mdc <!-- Applies to: packages/style-resolver/** -->
-@.cursor/rules/packages/vscode-extension.mdc <!-- Applies to: packages/vscode/** -->
+@.cursor/rules/packages/vscode-extension.mdc <!-- Applies to: packages/editor/vscode/** -->
 @.cursor/rules/project-standards/RULE.mdc <!-- Applies to: .cursor/** -->
 @.cursor/rules/subtrees/core__extend.mdc <!-- Applies to: packages/core/src/tree/util/extend*.ts, packages/core/src/tree/util/**/extend-*.test.ts, packages/core/src/tree/__tests__/extend-*.test.ts, packages/core/src/tree/util/EXTEND_RULES.md, packages/core/src/tree/util/__tests__/EXTEND_TEST_INDEX.md -->
 @.cursor/rules/subtrees/core__tree.mdc <!-- Applies to: packages/core/src/tree/** -->
@@ -48,10 +48,23 @@ Start with `AGENTS.md`.
 
 Do not keep branch-stage snapshots, pass counts, or transient failure notes here.
 
+**An agent may not redefine, narrow, or close an owner requirement** — escalate
+instead. The requirements are verbatim in `docs/OWNER-REQUIREMENTS.md` (owner-owned;
+do not edit), the rule is stated in
+`docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md` and
+`.cursor/rules/00-global.mdc`, and `pnpm check:guardrails` enforces both halves.
+
 For hot-path perf work (core tree/eval/render, grammar/parser, extend/selector):
 
-- the canonical checklist is `docs/perf/V8-ARCHITECTURE.md` (9 invariants +
-  regression-fixture catalogue); enforcement design is
+- **to RUN the standard perf tests or find old perf data, start at
+  `docs/perf/BENCHMARKS.md`** — the command-first index of every canonical
+  harness (perf-gate = jess-vs-lessc-4.x parse ratio, measure:less:hotpath =
+  render, perf:ab = jess-vs-old-jess, bench:jess:parse), the standard fixtures
+  (benchmark.less, bootstrap4.less), and the history/baseline files. Do not
+  search for or invent a harness.
+- the canonical checklist is `docs/perf/V8-ARCHITECTURE.md` (numbered invariants,
+  1-11 at `facb641dd` — count them in the file, do not trust a number here — plus
+  the regression-fixture catalogue); enforcement design is
   `docs/architecture/llm-quality-enforcement-design.md`
 - load the `perf-architecture` skill before editing; use the
   `perf-architecture-reviewer` (evidence per invariant, not a verdict) before landing
@@ -67,13 +80,16 @@ selector composition, dialect recognition):
 - use the `semantics-reviewer` (evidence per invariant); "matches less.js" is
   not a valid justification
 
-For grammar work (any of the eight `*-parser/src/{,ast/}grammar.ts` files):
+For grammar work (any of the **four** `packages/syntax/*/*-parser/src/grammar.ts`
+files — the eight-to-four host-mode fold landed and the `src/ast/grammar.ts`
+twins are deleted):
 
 - the rebuild spec — goal, current status, plan, gating, dispatchable units — is
   `docs/design/GRAMMAR-REBUILD-SPEC.md`; **start at its §0**
 - the standing brief is `docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md`
-  (14 checklist items applied to **every `const`**, hard constraints, oracle
-  verification loop, definition of done)
+  (numbered checklist items applied to **every `const`** — 1-16 at `facb641dd`,
+  items 15/16 are the byte-identity oracle and the naming law — plus hard
+  constraints, oracle verification loop, definition of done)
 - use the `grammar-reviewer` (evidence per const, not a verdict); "tests pass"
   and a sampled review are both invalid results
 

@@ -19,7 +19,7 @@
  * exercise the memo directly, no rendering required.
  */
 import { describe, it, expect } from 'vitest';
-import { el, sel, co } from '../../../index.js';
+import { el, sel, co } from '../../index.js';
 import {
   wouldExtendChange,
   beginExtendMatchPass,

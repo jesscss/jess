@@ -15,11 +15,21 @@ function stats(tree: CstNode) {
     if (node._tag === 'node') {
       types.add(node.type);
       grammarTypes.set(node.grammarType, (grammarTypes.get(node.grammarType) ?? 0) + 1);
-      node.children.forEach(visit);
+      node.rules.forEach(visit);
     }
   };
   visit(tree);
   return { leaves, grammarTypes, types };
+}
+
+function isModeLabel(type: string): boolean {
+  return type.startsWith('Direct') || type.startsWith('Static') || type.includes('Ast') || type.includes('Cst');
+}
+
+function expectNoModeLabels(tree: CstNode) {
+  const { grammarTypes, types } = stats(tree);
+  expect([...grammarTypes.keys()].filter(isModeLabel)).toEqual([]);
+  expect([...types].filter(isModeLabel)).toEqual([]);
 }
 
 describe('@jesscss/jess-parser/cst', () => {
@@ -29,7 +39,31 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.tree.type).toBe('StyleSheet');
-    expect(result.tree.children.some(c => c._tag === 'node' && c.grammarType === 'DirectJessVarDeclaration')).toBe(true);
+    expect(result.tree.rules.some(c => c._tag === 'node' && c.grammarType === 'VariableDeclaration')).toBe(true);
+    expectNoModeLabels(result.tree);
+  });
+
+  it('uses one semantic custom-value group label for every balanced delimiter', () => {
+    const result = parseJessCst('.a { --x: fn([a {b:c}]); }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('CustomGroup')).toBe(3);
+    expect(['CustomParen', 'CustomSquare', 'CustomCurly'].some(type => grammarTypes.has(type))).toBe(false);
+  });
+
+  it('keeps supports general-enclosed template boundaries semantic', () => {
+    const result = parseJessCst('$kind: card; @supports selector(([${kind}] {"( $(.theme) )"})) { .a { color: red; } }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('Enclosed')).toBe(1);
+    expect(grammarTypes.get('GeneralTemplateGroup')).toBe(3);
+    expect(grammarTypes.get('GeneralTemplateQuoted')).toBe(1);
+    expect(grammarTypes.get('GeneralQuotedTemplateGroup')).toBe(1);
+    expect([...grammarTypes.keys()].some(type => /General(?:Quoted)?Template(?:Paren|Square|Brace|DoubleQuoted|SingleQuoted)$/.test(type))).toBe(false);
   });
 
   it('keeps collapse mode from dropping leaves or inventing Unknown nodes', () => {
@@ -46,9 +80,11 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(collapsed.errors).toHaveLength(0);
     expect([...stats(expanded.tree).types]).not.toContain('Unknown');
     expect([...stats(collapsed.tree).types]).not.toContain('Unknown');
-    expect(stats(expanded.tree).types).toContain('DirectJessVarDeclaration');
+    expect(stats(expanded.tree).types).toContain('VariableDeclaration');
     expect(stats(collapsed.tree).leaves).toBe(stats(expanded.tree).leaves);
-    expect(collapsed.tree.children.some(c => c._tag === 'node' && c.grammarType === 'DirectJessVarDeclaration')).toBe(true);
+    expect(collapsed.tree.rules.some(c => c._tag === 'node' && c.grammarType === 'VariableDeclaration')).toBe(true);
+    expectNoModeLabels(expanded.tree);
+    expectNoModeLabels(collapsed.tree);
   });
 
   it('uses structural interpolation nodes in selector interpolation', () => {
@@ -56,8 +92,81 @@ describe('@jesscss/jess-parser/cst', () => {
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
-    expect(stats(result.tree).grammarTypes.get('DirectJessInterpolatedSimple')).toBe(1);
-    expect(stats(result.tree).grammarTypes.get('DirectJessDollarBrace')).toBe(2);
+    expect(stats(result.tree).grammarTypes.get('InterpolatedSimple')).toBe(1);
+    expect(stats(result.tree).grammarTypes.get('DollarBrace')).toBe(2);
+  });
+
+  it('uses semantic CST labels for quoted and pseudo-selector syntax', () => {
+    const result = parseJessCst('@charset "UTF-8"; .a:not(.b) { color: red; } .c:nth-child(2n of .d) { color: blue; }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('Quoted')).toBe(1);
+    expect(grammarTypes.get('PseudoSelectorArgument')).toBe(1);
+    expect(grammarTypes.get('PseudoSelectorList')).toBeGreaterThan(0);
+    expect(grammarTypes.get('PseudoSelectorCompound')).toBeGreaterThan(0);
+    expect(grammarTypes.get('NthChildArgument')).toBe(1);
+    expect([...grammarTypes.keys()].filter(type => type.startsWith('Static'))).toEqual([]);
+  });
+
+  it('gives unknown functional pseudos one structural generic argument', () => {
+    const result = parseJessCst('.a:future-thing(foo(bar[qux])) { color: red; }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('GenericPseudoArgument')).toBe(1);
+    expect(grammarTypes.get('PseudoSelectorArgument')).toBeUndefined();
+  });
+
+  it('reuses the semantic Quoted slot for static attribute values', () => {
+    const result = parseJessCst('[data-kind="primary" i] { color: red; }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('AttributeSelector')).toBe(1);
+    expect(grammarTypes.get('Quoted')).toBe(1);
+    expectNoModeLabels(result.tree);
+  });
+
+  it('uses semantic CST labels for CSS at-rule preludes and headers', () => {
+    const result = parseJessCst('@media screen and (width >= 1px), print { .a { color: red; } } @container card (width > 1px), (height > 1px) { .b { color: blue; } } @unknown screen;');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('AtRulePrelude')).toBeGreaterThan(0);
+    expect(grammarTypes.get('QueryFeature')).toBeGreaterThan(0);
+    expect(grammarTypes.get('QueryComparisonFeature')).toBeGreaterThan(0);
+    expect(grammarTypes.get('QueryFeatureName')).toBeGreaterThan(0);
+    expect(grammarTypes.get('QueryValue')).toBeGreaterThan(0);
+
+    /*
+     * Two from the `@media` list, one from the `@unknown` prelude: a generic
+     * at-rule prelude is a `<media-query-list>`, so its clause is the same
+     * production and carries the same label.
+     */
+    expect(grammarTypes.get('QueryClause')).toBe(3);
+    expect(grammarTypes.get('QueryPrelude')).toBeGreaterThan(0);
+    expect(grammarTypes.get('ContainerQueryClause')).toBe(2);
+    expect(grammarTypes.get('ContainerQueryPrelude')).toBe(1);
+    expect(grammarTypes.get('AtRuleStatementHeader')).toBe(1);
+    expect([...grammarTypes.keys()].filter(type => type.startsWith('Static'))).toEqual([]);
+  });
+
+  it('keeps constrained CSS-header value helpers private to the Jess grammar', () => {
+    const result = parseJessCst('@property --theme { syntax: fn(1px, "x"); }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('ValueAtom')).toBeGreaterThan(0);
+    expect(grammarTypes.get('Value')).toBeGreaterThan(0);
+    expect(grammarTypes.get('CallArgument')).toBeGreaterThan(0);
+    expect(grammarTypes.get('Call')).toBeGreaterThan(0);
+    expect([...grammarTypes.keys()].filter(type => type.startsWith('Plain'))).toEqual([]);
   });
 
   /*
@@ -66,13 +175,13 @@ describe('@jesscss/jess-parser/cst', () => {
    * interpolation are SEPARATE routes because they occupy disjoint positions — the editor has to
    * reject what the compiler rejects, not merely accept what it accepts.
    */
-  it('uses structural DirectJessDollarBrace nodes for the ${…} interpolation form', () => {
+  it('uses structural DollarBrace nodes for the ${…} interpolation form', () => {
     const result = parseJessCst('.widget-${side}-${[theme]} { color: red; }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
-    expect(stats(result.tree).grammarTypes.get('DirectJessInterpolatedSimple')).toBe(1);
-    expect(stats(result.tree).grammarTypes.get('DirectJessDollarBrace')).toBe(2);
+    expect(stats(result.tree).grammarTypes.get('InterpolatedSimple')).toBe(1);
+    expect(stats(result.tree).grammarTypes.get('DollarBrace')).toBe(2);
   });
 
   // The position split, in the route the editor actually uses.
@@ -102,38 +211,71 @@ describe('@jesscss/jess-parser/cst', () => {
 
     expect(interpolated.errors).toHaveLength(0);
     expect(interpolated.unconsumedFrom).toBeNull();
-    expect(stats(interpolated.tree).grammarTypes.get('DirectJessDollarBrace')).toBe(1);
+    expect(stats(interpolated.tree).grammarTypes.get('DollarBrace')).toBe(1);
 
     // A lone `$` that opens nothing stays literal text inside the flat string.
     const plain = parseJessCst('.a { content: "costs $5 and $x too"; }');
 
     expect(plain.errors).toHaveLength(0);
     expect(plain.unconsumedFrom).toBeNull();
-    expect(stats(plain.tree).grammarTypes.get('DirectJessDollarBrace')).toBeUndefined();
+    expect(stats(plain.tree).grammarTypes.get('DollarBrace')).toBeUndefined();
   });
 
-  it('uses structural interpolation nodes in ordinary and @import url targets', () => {
-    const result = parseJessCst('@import url(${path}) print; .asset { image: url(images/${file}.svg); }');
+  it('keeps CSS import targets static while unquoted value URLs retain ${…} templates', () => {
+    const result = parseJessCst('@import url(theme.css) supports(display: grid); .asset { image: url(images/${file}.svg); }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
-    expect(stats(result.tree).grammarTypes.get('DirectJessInterpolatedUrl')).toBeGreaterThan(0);
-    expect(stats(result.tree).grammarTypes.get('DirectJessUrlInterpolatedValue')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('ImportStatement')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('Url')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('UrlInterpolatedValue')).toBeGreaterThan(0);
   });
 
-  it('keeps the documented unwrapped variable-led arithmetic syntax in the public CST route', () => {
-    const result = parseJessCst('$w: 2px; .card { width: $w * 2 + 1px; slash: $w / 2; }');
+  it('rejects runtime values in a bare CSS @import', () => {
+    for (const source of [
+      '@import url(${path});',
+      '@import "${path}.css";',
+      '@import "theme.css" $media;'
+    ]) {
+      const result = parseJessCst(source);
+      expect(result.errors.length + Number(result.unconsumedFrom !== null), source).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps documented expression arithmetic in the public CST route', () => {
+    const result = parseJessCst('$w: 2px; .card { width: $($w * 2 + 1px); slash: $($w / 2); }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
 
     /*
-     * CST labels its operation node by output type, while the direct AST route
-     * has the named DirectJessUnwrappedArithmetic reduction. This confirms the
-     * historical public CST still recognizes the authored spelling.
+     * Expression operators belong behind `$()`. A normal value position should
+     * not accept this arithmetic grammar directly.
      */
-    expect(stats(result.tree).grammarTypes.get('DirectJessUnwrappedProductRest')).toBeGreaterThan(0);
-    expect(stats(result.tree).grammarTypes.get('DirectJessExpressionAtom')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('ExpressionProduct')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('ExpressionAtom')).toBeGreaterThan(0);
+    expectNoModeLabels(result.tree);
+
+    const normalValue = parseJessCst('$w: 2px; .card { width: $w * 2 + 1px; }');
+    expect(normalValue.errors.length + Number(normalValue.unconsumedFrom !== null)).toBeGreaterThan(0);
+  });
+
+  it('keeps leading-dot declaration lookup expression-only in the public CST route', () => {
+    const result = parseJessCst('$tokens: { tone: blue; }; .card { value: $(.type.isnumber(.math.e)); root: $($.tokens.tone); ns: $($tokens.tone); decimal: $(.1); }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(stats(result.tree).grammarTypes.get('ExpressionDeclarationReference')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('ReferenceDotTail')).toBeGreaterThan(0);
+    expect(stats(result.tree).grammarTypes.get('ExpressionAtom')).toBeGreaterThan(0);
+    expectNoModeLabels(result.tree);
+
+    const normalLookup = parseJessCst('.card { value: .type.isnumber(.math.e); }');
+    expect(normalLookup.errors.length + Number(normalLookup.unconsumedFrom !== null)).toBeGreaterThan(0);
+
+    const normalDecimal = parseJessCst('.card { value: .1; }');
+    expect(normalDecimal.errors).toHaveLength(0);
+    expect(normalDecimal.unconsumedFrom).toBeNull();
   });
 
   it('uses unprefixed structural nodes for documented $for loops', () => {
@@ -142,7 +284,7 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     expect(stats(result.tree).grammarTypes.get('For')).toBe(1);
-    expect(stats(result.tree).grammarTypes.get('DirectJessFor')).toBeUndefined();
+    expectNoModeLabels(result.tree);
   });
 
   it('rejects malformed selector interpolation instead of swallowing it as a token', () => {

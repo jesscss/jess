@@ -12,8 +12,8 @@
  * mechanism.
  *
  * These consolidate the previously divergent nth-name boundaries and the
- * `of`/close lookaheads. The An+B leaf `CssSyntaxNth` and the
- * `CssSyntaxMalformedPseudoNumericArgument` gate live in `recognition.ts`
+ * `of`/close lookaheads. The An+B leaf `NthExpression` and the
+ * `MalformedPseudoSelectorNumericArgument` gate live in `recognition.ts`
  * and are reused from there — they are not duplicated here.
  */
 import { regex, rules, word } from 'parseman' with { type: 'macro' };
@@ -29,9 +29,9 @@ const nthTypeNameWithArg = regex(/nth-(?:last-)?of-type(?=\()/i);
  * following `(`. A generic keyword-pseudo arm excludes this so a paren-less nth
  * name (`:nth-child`, `:nth-of-type`) cannot be reclassified as a bare keyword
  * pseudo — it must reach the structured nth arms with an immediate `(` or be
- * rejected. This is the shared form of Less's `directStaticNthPseudoNameBoundary`.
+ * rejected. This is the shared form of the former Less-specific nth-name boundary.
  */
-const nthNameBoundary = regex(/nth-(?:last-)?(?:child|of-type)(?![-_a-zA-Z0-9-\uFFFF])/i);
+const nthNameBoundary = regex(/nth-(?:last-)?(?:child|of-type)(?![-_a-zA-Z0-9\u0080-\uFFFF])/i);
 
 /**
  * The selector-argument functional pseudos (`:is`/`:where`/`:not`/`:has`/
@@ -54,10 +54,10 @@ const pseudoOfKeyword = word(
 const pseudoCloseAhead = regex(/(?=[ \t\n\r\f]*\))/i);
 
 export const cssPseudoSyntax = rules(_g => ({
-  CssSyntaxNthChildName: nthChildNameWithArg,
-  CssSyntaxNthTypeName: nthTypeNameWithArg,
-  CssSyntaxNthName: nthNameBoundary,
-  CssSyntaxSelectorArgPseudoName: selectorArgPseudoName,
-  CssSyntaxOfKeyword: pseudoOfKeyword,
-  CssSyntaxPseudoCloseAhead: pseudoCloseAhead
+  NthChildPseudoSelectorName: nthChildNameWithArg,
+  NthTypePseudoSelectorName: nthTypeNameWithArg,
+  NthPseudoSelectorName: nthNameBoundary,
+  SelectorArgumentPseudoSelectorName: selectorArgPseudoName,
+  NthOfKeyword: pseudoOfKeyword,
+  PseudoSelectorCloseAhead: pseudoCloseAhead
 }));

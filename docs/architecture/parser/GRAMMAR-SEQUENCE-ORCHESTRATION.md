@@ -13,10 +13,17 @@ after reading the Stage 3 CSS Phase A/B evidence.
 ## Current floor
 
 The rewrite is no longer blocked on the original host-mode prerequisite.
-`parseman@0.41.0` is published and installed from the registry. The root
+`parseman@0.43.0` is published and installed from the registry. The root
 manifest, `@jesscss/parser-shared`, and all four parser package dependency/peer
-ranges require `^0.41.0`; `pnpm-lock.yaml` resolves the active checkout to
-`parseman@0.41.0`.
+ranges require `^0.43.0`; `pnpm-lock.yaml` resolves the active checkout to
+`parseman@0.43.0`.
+
+This release does not make a terminal `composeLeaf(...)` artifact composable:
+`compose(...)` still rejects one. CSS semantic ownership is therefore an
+authoring rule enforced by targeted, same-named production overrides, not a
+claim that a derived package literally imports a finished CSS grammar map today.
+Do not use that macro boundary to justify copying an unchanged CSS structure;
+the long-term composition boundary remains a Parseman/base-grammar design task.
 
 The current floor includes the earlier architecture features (`hostMode`, `peek`,
 `oneOrMoreSep`, `analyzeGatingRules`, `analyzeDuplicationRules`) plus the
@@ -24,7 +31,7 @@ keyword ergonomics needed for grammar cleanup:
 `word(str, { caseInsensitive: true })`,
 `word(str, boundary, { caseInsensitive: true })`, and
 `makeWord(boundary?, { caseInsensitive: true })`. Defaults remain
-case-sensitive across the API. Parseman 0.41.0 also provides the complete
+case-sensitive across the API. Parseman 0.43.0 also provides the complete
 grammar-routing and projection surface this rebuild should use:
 `dispatch(combinator, when(...), otherwise(...))`,
 `when(..., { caseInsensitive: true })`, `makeWhen(...)`, string-array cases,
@@ -38,12 +45,60 @@ Parseman grammar: parse shared structure outside the dispatcher, consume the
 smallest decisive combinator once, and let the branch table decide what tail
 owns that routed value. The generic case belongs inside the same
 `dispatch(...)` through `otherwise(...)`; do not keep a separate outer generic
-`choice(...)` arm for the same token family. A matched `when(...)` commits to its
-tail, so malformed known syntax does not fall through to generic syntax.
+`choice(...)` arm for the same token family. Before landing an at-rule
+dispatcher, prove the routed value shape and surrounding fallbacks preserve the
+known-syntax commitment: malformed known CSS at-rules must report their own
+error and must not be consumed by a generic/opaque statement or block path.
 This is the scannerless Parseman story: the grammar does not need a separate
 tokenizer to get token-like routing. It can route at the meaningful grammar
 boundary after a shared prefix has been consumed, so overlapping lexical shapes
 do not automatically imply broad backtracking.
+
+CSS-derived grammar rule, 2026-07-29: Less, SCSS, and Jess are overlays on CSS,
+not parallel grammars. Each derived grammar should be as lean as possible and
+describe only syntax it adds or the exact CSS substructure it changes. A changed
+value form, interpolated leaf, guard, or nested body language does not justify
+copying an entire CSS production; compose the CSS rule and override the smallest
+changed child/reference. If that small override is not expressible yet, record
+the specific blocker rather than restating the whole CSS shape locally.
+
+Minimal override bar, 2026-07-29: aim for the lightest CSS-derived grammars the
+codebase can sustain. A downstream file should read as a list of additions and
+pinpoint overrides, not a second rendering of CSS with dialect seasoning. Before
+adding or keeping any downstream production that resembles CSS, write down the
+one CSS slot it overrides or the one added language feature it introduces. If
+the answer is "this rule is mostly CSS but with a different quoted string,
+identifier, value leaf, interpolation point, guard, or body item," the rule is
+too broad until proven otherwise. Move that difference into a semantic slot such
+as `Quoted`, `Keyword`, `Value`, `Selector`, `AtRulePrelude`, or a narrower
+recorded split. A split is allowed only when implementation pressure shows that
+one shared slot cannot express the needed override policy without breaking a
+different context.
+
+Horizontal cleanup rule, 2026-07-29: CSS may be cleaned vertically until it is
+spotless, because it is the base grammar. Derived grammar cleanup should move by
+production family across Less, SCSS, and Jess. If the work touches imports,
+at-rules, quoted values, identifiers/functions, pseudo selectors, selector
+starts, query/supports/container forms, guards, or custom-property values, check
+the same family in all four grammars and land the shared shape plus the smallest
+necessary overrides. Do not fix `@supports`, an import tail, or a quoted-value
+rule in one dialect by creating a local structure that the next dialect will
+need to rediscover.
+
+Custom-property comment rule, 2026-07-30: `CustomValue`, its direct parts, and
+its nested delimiter groups own semantic value bytes only. Block comments in
+those positions are parser trivia in all three compiled overlays, never an
+`Any`/raw-text child or a dialect-specific comment node. The value retains its
+source span so the shared renderer replays the exact comment ranges from the
+document trivia map. Keep the one local labeled block-comment terminal only to
+classify the already-consumed trivia range; it is not a second scanner or a
+semantic leaf. Legacy composed Parseman trivia can advertise a comment label
+while recording the concrete chunk as generic whitespace. In that narrow
+compatibility case an empty labeled result must fall through to the existing
+source-gap detector; a nonempty labeled result remains the sparse fast path.
+Tests must cover outer, parenthesized, square, curly, and interpolation-adjacent
+positions, plus rendered replay. This does not settle the separate CSS-base
+general-enclosed and opaque-at-rule comment debt.
 
 Current integration warning: the physical fold blocker is paid: CSS, Less, SCSS,
 and Jess now each ship AST and CST from one host-mode grammar source. Older
@@ -77,11 +132,89 @@ Current priority order:
 Side-lane grammar cleanup still matters: comments are trivia, not semantic AST
 nodes; short spec-aligned production names beat migration prefixes; `Value` is
 one atomic value piece while `ValueSequence` and `ValueList` compose values; and
-Parseman 0.41+ idioms such as `dispatch(...)`, `routed()`, `makeWhen(...)`,
+Parseman 0.43+ idioms such as `dispatch(...)`, `routed()`, `makeWhen(...)`,
 `word(...)`, separated-list helpers, and composition should be used where they
 remove real duplicated recognition or make the grammar clearer.
 
-Live alpha evidence, 2026-07-27: registry `parseman@0.41.0` is installed;
+Scanner cleanup priority, 2026-07-29: treat `scanTo(..., { skip })` and
+`balanced(..., { skip })` as review findings, not neutral plumbing. The first
+question is whether the bytes can be parsed as structured grammar or handled by
+the grammar's trivia / ambient `scanSkip`; a retained scanner-local skip proves
+only that the current source region needs opaque acceptance, not that
+`scanTo(...)` is its final recognition shape. Record the lost structural fact,
+the CST/AST byte contract, and why an available structured combinator cannot
+preserve it before retaining one. Do not tune a scanner skip list as a
+substitute for moving the language back into grammar structure. In the same
+pass, keep burning down false migration prefixes and use
+`dispatch(...)` when `choice(...)` is re-reading one routed opener, one
+decisive delimiter, or one same-family known/generic token. Treat `peek(...)`
+as a temporary exception: if a branch only works by looking ahead, first ask
+what shared opener or delimiter could be consumed once and routed instead.
+
+Current scanner-skip inventory, 2026-07-29: CSS custom/value scans are now mostly
+reduced to local balanced-group exceptions, with `customSlash` kept only inside
+the reusable balanced helpers. The remaining CSS pseudo raw-argument scan still
+uses a local quote/balanced/comment policy and should be reviewed separately
+against the pseudo argument grammar, not swept together with custom values.
+`packages/parser-shared/src/opaque-at-rule.ts` remains the shared opaque
+at-rule capture hotspot: its CSS and preprocessor bodies are accepted opaque
+exceptions for now, but they should move toward a trivia-aware structured
+unknown-at-rule helper before adding more scanner policy there. Less
+`lessOpaqueBodyBrace`, `lessOpaqueBodyCapture`, and `atPreludeGroup` now inherit
+the root ambient `scanSkip`; the remaining Less scanner debt is the
+function-condition branch probe, statement-position mixin/ruleset/property
+ambiguity, and the larger opaque-helper design, not local string/comment skip
+duplication. The function-condition probe must not settle as a cosmetic
+`peek(...)` rewrite; it needs a structural condition-argument boundary or value-sensitive
+combinator shape. SCSS `QueryFunction` remains a separate follow-up: it has
+ambient scan skips but also routes through composed quoted syntax. Jess generic
+pseudo raw arguments now inherit one root `scanSkip` policy for comments and
+static quoted strings; their local scanner keeps only the genuinely local
+nested-paren and nested-bracket exceptions. The quoted skippers reject Jess
+`$` forms, so the opaque pseudo path still cannot flatten structural
+interpolation.
+
+SCSS conditional-at-rule dispatch probe, 2026-07-29: CSS already owns the
+`@container` rule through `ContainerPrelude`; do not invent a second local
+container language while replacing repeated `choice(@media, @container + guard)`
+arms. A local SCSS dispatch probe accepted `@container only; screen { ... }`
+because the malformed known-rule header fell through as an at-rule statement
+plus a ruleset. That is the historical rejection path to preserve: malformed
+known CSS must fail as known CSS, not be rescued by a generic at-rule branch.
+The next attempt should compose the CSS conditional/container structure
+directly, or introduce one committed known-at-rule dispatcher whose routed arms
+reuse the CSS-owned prelude and prove public CST and AST rejection unchanged.
+Less lookahead inventory, 2026-07-29 current-dev recheck: grammar sources are
+clean for `Direct*` / `CssAst*` prefixes and explicit `not(not(...))` probes.
+The declaration-head interpolated-property gate was
+reduced to an honest `peek(...)` because it is already a bounded positive
+lookahead inside a declaration context. Do not apply that as a blanket pattern:
+the remaining function-condition argument probe needs a structural condition
+argument boundary. The former `.foo`/`#foo` mixin-vs-ruleset scan gate is gone:
+the class/id statement route now retains one typed selector prefix, then uses
+the actual `(`/`;`/ruleset continuation to construct the selected statement.
+A cosmetic `peek(...)` swap at the function-condition site would still preserve
+the wrong architecture.
+The declaration interpolated-property helper is a collapsed
+`InterpolatedProperty` node over that gate and the semantic production: it must
+not introduce a second public CST name for the same property concept.
+Less mixin-reference routing, 2026-07-29: the value-position
+`mixinReferenceAhead` probe was replaced by a typed shared mixin-reference base
+plus `dispatch(...)` on the first accessor delimiter (`[]`, `[`, `.`, or `(`).
+Patch-only evidence versus clean `HEAD`: AST aggregate unchanged
+(`c00bbb90...`, 117 throws), CST moved 14 named entries because the routed base
+is now explicit, and `check:macro` / `verify:compose-integrity` still report 0
+interpreter fallbacks. The next related cut is not another `peek(...)` rewrite:
+statement-position Less selectors should parse the opening selector shape once
+and route by early syntax. Class/id starts split into qualified rule versus a
+mixin dispatcher; that mixin dispatcher then decides definition versus call
+from the parsed continuation and should preserve the original branch error once
+the branch is known. Plain identifiers split into qualified rule versus property
+dispatch. Other selector starts remain qualified-rule parsing. This mirrors the
+old Chevrotain "parse wide once, store the losing-side error, then throw the
+selected original error" strategy without backtracking or broad lookahead.
+
+Live alpha evidence, refreshed 2026-07-29: registry `parseman@0.43.0` is installed;
 dependency-order parser/plugin/jess builds pass; `pnpm run check:macro` and
 `pnpm run verify:compose-integrity` both pass with 0 interpreter fallbacks.
 `pnpm run verify:less-alpha` passes its Less parser, Less plugin, `jess`,
@@ -168,16 +301,16 @@ const UrlFunction = node('UrlFunction',
   children => urlFunction(children[0].value.slice(0, -1), children[1])
 );
 
-const Identifier = node('Identifier',
+const RoutedKeyword = node('Keyword',
   routed(),
-  children => identifier(children[0].value)
+  children => keyword(children[0].value)
 );
 
 const Value = dispatch(
   identOrFunctionOpen(cssIdent),
   caseOf('url(', UrlFunction),
   when(endsWith('('), GenericFunction),
-  otherwise(Identifier)
+  otherwise(RoutedKeyword)
 );
 ```
 
@@ -204,7 +337,7 @@ fix the surviving host-mode grammar and its tests.
 | jess | `src/grammar.ts` | deleted |
 
 This makes the remaining target concrete: four folded grammar factories must
-become small, readable, well-documented, and idiomatic Parseman 0.41 grammars.
+become small, readable, well-documented, and idiomatic Parseman 0.43 grammars.
 
 ## Current copy/paste goal
 
@@ -212,7 +345,7 @@ Act as the grammar-cleanup orchestrator in `/Users/matthew/git/oss/jess`.
 Assume the physical eight-to-four fold is complete: CSS, Less, SCSS, and Jess
 each ship AST and CST from one `src/grammar.ts`, and the deleted
 `src/ast/grammar.ts` files are historical evidence only. The active objective is
-to make the four surviving grammars exemplary Parseman 0.41 grammars.
+to make the four surviving grammars exemplary Parseman 0.43 grammars.
 Do not spend effort re-planning the fold or reviving old AST/CST grammar pairs;
 the fold is paid, and all remaining work happens inside the four surviving
 host-mode grammar bodies plus their direct tests/docs.
@@ -228,7 +361,15 @@ known-or-generic choices with current Parseman `dispatch(...)`, `makeWhen(...)`,
 `routed()`, matcher cases, `word(...)`, `keywords(...)`, and separated-list
 helpers where they are the better shape. Parse shared openers once; do not
 reparse selectors, values, at-rules, functions, pseudos, variables, or
-interpolation after recognition.
+interpolation after recognition. Treat every explicit `scanTo(..., { skip })`
+or `balanced(..., { skip })` as a small design review: first ask whether the
+region can become structured grammar or rely on trivia / ambient `scanSkip`,
+then document the lost structural fact and byte contract before retaining an
+opaque scan. A current opaque requirement is not evidence that `scanTo(...)` is
+the final shape. Dispatch is not a blanket replacement for `choice(...)`; use
+it where a shared already-consumed token can be refined and routed, and keep `choice(...)`
+for truly disjoint constructs, closed spelling tables, lists, and context
+decisions whose delimiter has not been consumed yet.
 
 Current priority order: finish CSS value/at-rule/pseudo cleanup, aggressively
 simplify Less value/function/selector/at-rule families on the single grammar
@@ -262,18 +403,93 @@ base and summarize their local deltas. The obsolete Less
 `lessFoldProbeCstGrammar` export is gone; tests and public CST parsing use
 `lessCstGrammar` directly.
 
-Current prefix inventory, 2026-07-27: CSS is clean for `CssAst*` in
-`packages/syntax/css/css-parser/src/grammar.ts`. The dialect grammar sources
-still carry the migration namespaces and should burn them down by reviewed
-families, not by blind whole-file replacement. Current counts are: Less has
-801 `DirectLess*`/`directLess*` references across 184 distinct names after the
-import, value-leaf, interpolation/reference, value-family, query/supports, and
-glued function-opener cleanup; SCSS has 1160 `DirectScss*`/`directScss*`
-references across 195 distinct names after the first public-name cleanup; and
-Jess has 1074 `DirectJess*`/`directJess*` references across 178 distinct names.
-Use these as a progress inventory, not an acceptance metric; a name may remain
-only when the rule really recognizes a dialect-specific language shape and that
-divergence is documented near the rule.
+Current prefix inventory, 2026-07-29: CSS is clean for `CssAst*` in
+`packages/syntax/css/css-parser/src/grammar.ts`, and Less is clean for
+`DirectLess*` / `directLess*` in
+`packages/syntax/less/less-parser/src/grammar.ts`. The remaining dialect
+grammar source prefix debt should burn down by reviewed families, not by blind
+whole-file replacement. Current counts are: SCSS is clean for
+`DirectScss*` / `directScss*` in
+`packages/syntax/scss/scss-parser/src/grammar.ts`, and Jess is clean for
+`DirectJess*` / `directJess*` in
+`packages/syntax/jess/jess-parser/src/grammar.ts`. Use these as a progress
+inventory, not an acceptance metric; a name may remain only when the rule really
+recognizes a dialect-specific language shape and that divergence is documented
+near the rule.
+
+CSS ownership re-audit, 2026-07-29: downstream grammars should use CSS for
+every construct they do not actually change. A downstream change does not give
+the dialect permission to replace the whole CSS production: override only the
+specific child, value reference, or body item that accepts a different language,
+then let the original CSS frame consume that override. The naming target is
+semantic, generic, and shared: a guard is `Guard`, a mixin is `Mixin`, a selector
+is a `Selector`, a quoted value is `Quoted`, and a pseudo selector is
+`PseudoSelector`, not bare `Pseudo` or a dialect/provenance-prefixed alias.
+`Css*` grammar rules and CST labels are findings by default for the same reason
+`Direct*`, `Ast*`, and `Core*` names are findings: they describe the current
+owner, not the language concept. Provenance-prefixed parser-shared leaves are
+transition debt, not an architectural exception. The target is semantic slots
+such as `Keyword`, `Quoted`, `AttributeOperator`, `Nth`,
+`AtKeyword`, and `PseudoSelector` that CSS-owned structure calls through `g.*`;
+Less, SCSS, and Jess override those slots granularly when their syntax differs.
+Only split one of those slots when implementation pressure proves that contexts
+with the same visible concept need different override behavior, and record that
+proof near the split.
+
+At-rule naming decision, 2026-07-29: the top-level family is `AtRule`.
+Concrete public CST/AST node kinds may distinguish statement and block forms
+with `AtRuleStatement` and `AtRuleBlock` / `AtRuleWithBlock`, but the dispatcher
+or family rule should not be named for the caller (`StylesheetAtRule`,
+`DeclarationListAtRule`) or for provenance (`CssAtRulePrelude`) unless that
+context changes the accepted language. A future Parseman/CST ergonomics pass
+may add a separate family/category tag so consumers can ask "is this an
+AtRule?" while preserving a concrete kind such as `AtRuleStatement`; do not
+block grammar cleanup on that primitive.
+
+CSS duplication audit, 2026-07-29: Hypatia's read-only audit found these
+highest-priority non-Parseman grammar surfaces:
+
+- Jess CSS `@import` is the clearest remaining composition cleanup. Jess
+  `@import` is CSS only; Jess extends CSS and its module/script imports are the
+  `@-...` family. The local `ImportTarget` and `ImportPrelude` wrappers were
+  removed: one `ImportStatement` now owns the CSS-shaped statement frame, with
+  only the real Jess delta visible in its static quoted/URL target leaves. The
+  larger follow-up is still to make that shared frame CSS-owned, with only real
+  Jess holes parameterized (`$`-reserved URL handling and interpolation policy).
+  Do not grow this back into a Jess-local CSS import parser.
+- Jess constrained CSS headers deliberately use private `HeaderValue*` helpers
+  because they exclude Jess execution forms while reusing the same value
+  semantics. Their public CST labels are `ValueAtom`, `Value`, `CallArgument`,
+  and `Call`, never the private helper names. This is the narrow-helper rule:
+  the restriction earns a private grammar name, not a second public vocabulary.
+- Custom-property values in Less, SCSS, and Jess repeat the same CSS
+  declaration-value balanced-group frame. Replace that with a shared skeleton
+  parameterized by dialect interpolation/reference leaves; comments remain
+  trivia and the custom-property stream is not an ordinary evaluated
+  `ValueList`.
+- Query/media/container/supports grammar repeats the CSS frame across Less,
+  SCSS, and Jess. Downstream value leaves and interpolation policy can differ,
+  but property/comparison/range/boolean/list framing should be shared instead of
+  restated under `StaticAt*` or dialect-prefixed names.
+- Keyframe endpoint and selector framing duplicate CSS. Fold `from` / `to` and
+  the selector frame only after settling percentage differences explicitly.
+- SCSS still carries local CSS-like leaves (`pseudoColon`, `hexColor`,
+  `numberValue`, comments, at-keyword leaves) because cross-composed
+  shared leaves have macro first-set limits. That is a temporary blocker, not
+  an architectural exception; either make the shared semantic slots
+  macro-visible or fix the Parseman compose limitation before calling the
+  duplication done.
+- SCSS `propertyName` is documented as byte-identical to the CSS property-name
+  leaf but accepts optional leading `*`. Either use the shared semantic slot or
+  rename and document it as a deliberate legacy `*property` override.
+- CSS at-rule block frames in SCSS and Jess restate at-rule headers/tails with
+  dialect body substitutions. Share the at-rule frame/reducer pattern where the
+  accepted header language is unchanged; keep local bodies where the dialect
+  admits extra statements.
+- Less `AtRulePrelude` is the raw-prelude skeleton plus Less interpolation.
+  Share the whitespace/comma/group/quoted/text skeleton and keep only the Less
+  interpolation override local; do not reintroduce a `Css*` provenance name for
+  the grammar-family node.
 
 Less naming/composition rule, 2026-07-27: `DirectLess*` is migration scaffolding,
 not grammar vocabulary. When a Less rule is the dialect version of a CSS
@@ -293,6 +509,17 @@ and `ValueList` are grouping combinators over value pieces, not a second
 list-level concept named "value". Do not introduce
 replacement adjective stacks such as `DirectLess...`, `LessDirect...`, or
 mode-prefixed aliases.
+
+Less import routing audit, 2026-07-29: `.less` import spelling is `@import` or
+`@-import`; `@-export` is not implemented for Less and must not be accepted as a
+Less import synonym. The grammar currently preserves `@import` / `@-import` in
+one `ImportAtRule` fact with typed options, target, and tail. The later import
+bridge applies the CSS-pass-through versus source-fold heuristic from that fact,
+but it does not yet give `@-import` its distinct explicit source-fold route.
+That is the remaining fix: parse the import head once, keep option/target/tail
+facts typed, and route bare `@import` through the Less heuristic while routing
+`@-import` through the explicit-fold path. Do not re-scan source text to recover
+the distinction, and do not add Less `@-export` while doing this.
 
 Active orchestration note, 2026-07-27: keep roughly four current sidecars on
 disjoint grammar-polish slices when the tool pool allows. The current pool is
@@ -364,7 +591,7 @@ asserts that folded SCSS does not expose Less-only grammar keys such as
 `.a { &:extend(.b all); }` through both public CST and AST recognition. Focused
 verification: `pnpm --filter @jesscss/scss-parser test --
 test/compose-integrity.test.ts --reporter=dot` passes (2 tests). This is only a
-guardrail; broad `DirectScss*` naming cleanup remains open.
+guardrail; SCSS grammar naming and shape cleanup remains open.
 
 Rejected Parseman-idiom probe: rewriting CSS `SupportsCondition` from
 `SupportsInParens (and|or SupportsInParens)*` to a direct `oneOrMoreSep(...)`
@@ -375,7 +602,7 @@ shape that both tsdown and Vite macro transforms lower identically.
 
 Rejected Less separator-helper probe, 2026-07-27: the four comma-prelude rules
 `QueryPrelude`, `MediaQueryPrelude`,
-`ContainerQueryPrelude`, and `DirectLessStaticAtRulePrelude` are real
+`ContainerQueryPrelude`, and `AtRulePreludeValue` are real
 comma-separated lists, but direct `oneOrMoreSep(item, field('separator',
 regex(/,[ \t\n\r\f]*/)))` rewrites are not currently byte-safe. Focused Less
 parser tests still passed (5 files / 436 tests), but
@@ -466,7 +693,7 @@ state.
 ## Stale or risky assumptions
 
 - Older sections of `GRAMMAR-REBUILD-SPEC.md` still preserve 0.37/0.38 planning
-  history. The current manifests supersede that history: `0.41.0` is resolved,
+  history. The current manifests supersede that history: `0.43.0` is resolved,
   `hostMode`, `dispatch(...)`, and `node(..., { project })` exist, and the
   architecture floor is paid.
 - CSS Phase A disproved the early "AST grammar is mostly deletable reducer
@@ -486,10 +713,37 @@ state.
 
 ## Working sequence
 
+Canonical grammar artifact naming, 2026-07-30: `cssGrammar`, `lessGrammar`,
+`scssGrammar`, and `jessGrammar` are the default AST artifacts. The four
+artifacts per dialect are a 2×2 of surface × position tracking, and the names
+say which cell: `*Grammar` / `*PositionsGrammar` for AST, `*CstGrammar` /
+`*CstPositionsGrammar` for CST. `*LineGrammar` and `*DiagnosticCstGrammar` were
+the former names; the latter was a misnomer, since that artifact differs only
+by `trackLines` and has nothing to do with diagnostics — error tolerance is a
+property of the CST runner, available on either CST artifact. The redundant
+`*AstGrammar` and `*AstLineGrammar` exports were deleted from every public
+`./grammar` subpath. Do not reintroduce any of them as compatibility aliases:
+the grammar name is the stable concept, not an implementation mode.
+
+The public parse entries mirror that 2×2 for the same reason Node gives: `.` and
+`./cst` bind the offsets-only artifacts, `./positions` and `./cst/positions`
+bind the line-aware ones, and no entry names an artifact it does not parse with.
+The `parseXDiagnosticCst`/`parseXDiagnosticDoc` functions are gone with the
+`*DiagnosticCstGrammar` misnomer they were named after: they were `parseXCst`
+over the positions artifact, which is now what `./cst/positions` exports.
+
+Each artifact is its own build output — `lib/grammar/ast.js`,
+`lib/grammar/ast/positions.js`, `lib/grammar/cst.js`,
+`lib/grammar/cst/positions.js` — behind matching `./grammar/*` subpath exports,
+with `./grammar` aliasing the AST build. They are built one entry at a time
+(`tools/tsdown/grammar-variants.mts`) because a single build with four entries
+hoists the shared factory into one chunk that every entry re-imports, which is
+what made a consumer of one artifact load all four.
+
 1. **CSS folded; continue focused quality cleanup without blocking dialect
    repair.** CSS now has
    one `src/grammar.ts`, one `cssFactory`, and two macro-compiled host outputs:
-   `cssGrammar` / `cssAstGrammar` for AST mode and `cssCstGrammar` for CST
+   `cssGrammar` for the default mode and `cssCstGrammar` for CST
    mode. The physical CSS fold is paid; do not recreate
    `src/ast/grammar.ts`. The current Less byte-identity oracle is red in the
    integrated checkout because of later folded Less CST ownership deltas, so do
@@ -513,13 +767,15 @@ state.
 2. **Less folded; make it exemplary and classify CST residue.** Less now ships
    AST and CST from one
    host-mode grammar source. `packages/syntax/less/less-parser/src/ast/grammar.ts`
-   is deleted, the old CST bridge body is gone, and `lessAstGrammar` /
+   is deleted, the old CST bridge body is gone, and `lessGrammar` /
    `lessCstGrammar` compile the same Less-owned factory in the appropriate host
    mode. The active Less work is now quality plus CST residue classification:
    delete `DirectLess*` migration names as each family is reviewed, replace broad
-   known/generic `choice(...)` arms with Parseman 0.41
+known/generic `choice(...)` arms with Parseman 0.43
    `dispatch(...)`/`routed()` routes, keep selector and value regions parsed
-   once, document Less-specific deviations from CSS placement rules, and resolve
+   once, replace statement-position class/id and identifier lookahead with
+   parse-once routing, document Less-specific deviations from CSS placement
+   rules, and resolve
    the current folded at-rule/prelude CST oracle delta before claiming a clean
    byte-identity baseline.
    SCSS-only seams have already been cut from Less; do not restore them to make
@@ -590,15 +846,15 @@ state.
    workspace package layout rather than obsolete flat `packages/*` paths.
 3. **SCSS folded; keep it a sibling, not a Less child.** SCSS now ships from one
    host-mode grammar source and no longer composes through Less. The remaining
-   SCSS work is quality cleanup on that source: remove `DirectScss*` migration
-   names, rebuild SCSS deliberately against CSS/preprocessor concepts, and lift
-   only demonstrated common syntax into `parser-shared`. Less `~"..."`, guards,
-   variable and call syntax, `:extend(...)`, property merge, detached-ruleset
-   assignment, and namespace lookup stay Less-only unless a Sass fixture proves
-   otherwise.
+   SCSS work is quality cleanup on that source: rebuild SCSS deliberately
+   against CSS/preprocessor concepts, refine the value spine and dispatch/choice
+   shapes, and lift only demonstrated common syntax into `parser-shared`. Less
+   `~"..."`, guards, variable and call syntax, `:extend(...)`, property merge,
+   detached-ruleset assignment, and namespace lookup stay Less-only unless a
+   Sass fixture proves otherwise.
 4. **Jess folded; keep only Jess-specific syntax.** Jess now ships from one
    host-mode grammar source. Reuse CSS/preprocessor concepts, route shared
-   opener families with Parseman 0.41, and do not copy Less/SCSS shapes unless
+opener families with Parseman 0.43, and do not copy Less/SCSS shapes unless
    they are shared language with shared names.
 
 ## Batch rule
@@ -643,7 +899,7 @@ Superseded failed probe, 2026-07-25: a standalone AST-only cleanup tried two
 variants before the AST factory extraction:
 
 1. Rename `CssAstColor`/`CssAstDimension` to `Color`/`Dimension` and switch the
-   leading leaves to `g.CssSyntaxHexColor`/`g.CssSyntaxNumber`.
+   leading leaves to `g.HexColor`/`g.NumberToken`.
 2. Keep CSS's local `hexColor`/`numberValue` leading leaves, but still rename the
    AST rule keys and local `g.` references.
 
@@ -950,8 +1206,8 @@ byte-identity oracle passed against the 708-entry baseline.
 Latest query-function follow-up: the CSS CST and direct CSS AST grammars now
 represent query/general-enclosed function openers as glued
 `noTrivia(sequence(ident, literal('(')))` structures. Parser-shared exports the
-new `CssSyntaxQueryFunctionOpen` for CSS direct-AST use but keeps the old
-`CssSyntaxQueryFunctionName` export for dialect AST grammars until their own
+new `QueryFunctionOpen` for CSS direct-AST use but keeps the old
+`QueryFunctionName` export for dialect AST grammars until their own
 cleanup passes. This is intentionally staged: changing the shared name in-place
 would force Less/SCSS/Jess consumer rewrites before the CSS batch has finished.
 Focused CSS tests now cover `selector (.grid)` as invalid. The slice passed the
@@ -1625,7 +1881,7 @@ rule keys only: the import URL and tail helpers are now `ImportUrl*` /
 `ImportTail*`, but they remain import-local and explicitly covered by
 macro/focused tests. A later verified follow-up did rename the prelude and
 opaque block helpers to
-`AtPrelude`, `StatementPrelude`, `OpaqueAtPrelude`, `OpaqueBody`, and
+`AtRulePrelude`, `StatementPrelude`, `OpaqueAtPrelude`, `OpaqueBody`, and
 `OpaqueAtRuleBlock`; do not use this older statement-key slice as evidence that
 those names must remain prefixed.
 
@@ -1858,7 +2114,7 @@ slice yet:
 
 ## Parseman dispatch guidance
 
-`parseman@0.41.0` is the Jess grammar floor. Treat dispatch as a current
+`parseman@0.43.0` is the Jess grammar floor. Treat dispatch as a current
 authoring primitive, not a future dependency. Use it wherever sibling arms share
 an opener, route by the value already consumed, and include a generic
 continuation for the same token family.
@@ -2001,7 +2257,7 @@ Latest dispatch pressure-test against the live Jess grammars, 2026-07-26:
   `@-from`) are a later narrow dispatch target, after CSS/Less prove the
   at-rule router and after Jess itself is the active dialect.
 - Function and pseudo-name dispatch are first-class cleanup targets now that
-  `0.41.0` is resolved. They require a routing combinator that consumes either a
+  `0.43.0` is resolved. They require a routing combinator that consumes either a
   bare name or a glued `name(` opener, exact cases written against the full
   opener (`when('url(')`, not `when('url')`), a generic `endsWith('(')` case for
   other functions, and `otherwise(...)` for bare names.
@@ -2020,7 +2276,7 @@ Latest dispatch pressure-test against the live Jess grammars, 2026-07-26:
   `makeWord(...)` in the emitted grammar module, so tests fail at runtime with
   `ReferenceError: makeWord is not defined`.
 - A factory-local alias inside the `rules(...)` factory DOES macro-lower under
-  the current `parseman@0.41.0`. That makes `const asciiWord = makeWord(...);`
+  the current `parseman@0.43.0`. That makes `const asciiWord = makeWord(...);`
   / `const identWord = makeWord(...);` a good CSS grammar-factory cleanup, while
   the same alias at module scope remains unsafe.
 - For CSS now, prefer factory-local `makeWord(...)` aliases where several rules
@@ -2037,7 +2293,7 @@ now imports `makeWord` and defines factory-local `asciiWord` / `identWord`
 helpers inside `cssFactory`. This removes repeated `word(..., { caseInsensitive:
 true })` calls for fixed CSS words and at-keywords without changing the
 known/generic at-rule router. Evidence: a direct `transformMacro` probe against
-the current `parseman@0.41.0` showed top-level aliases leave `makeWord(...)` in the
+the current `parseman@0.43.0` showed top-level aliases leave `makeWord(...)` in the
 emitted module, while factory-local aliases, direct chained `makeWord(...)`, and
 `word(...)` all lower without runtime parseman calls.
 
@@ -2375,7 +2631,7 @@ AST threw 120, CST threw 0).
 
 Latest CSS direct-AST at-rule prelude / opaque helper-key follow-up: the direct
 CSS AST grammar now uses concept keys for grammar-owned at-rule prelude and
-opaque block helpers: `CssAstAtPrelude` became `AtPrelude`,
+opaque block helpers: `CssAstAtPrelude` became `AtRulePrelude`,
 `CssAstStatementPrelude` became `StatementPrelude`, `CssAstOpaqueAtPrelude`
 became `OpaqueAtPrelude`, `CssAstOpaqueBody` became `OpaqueBody`, and
 `CssAstOpaqueAtRuleBlock` became `OpaqueAtRuleBlock`. This matches the core AST
@@ -2563,8 +2819,9 @@ Latest shared CSS recognition naming follow-up: `parser-shared` now exposes the
 shared CSS lexical artifact as `cssSyntax` and the shared pseudo-argument
 artifact as `cssPseudoSyntax`, with shared rule keys moved from
 `CssAstSyntax*` to `CssSyntax*`. CSS opaque capture leaves likewise moved from
-`CssAstOpaqueCapture*` to `CssOpaqueCapture*`, and the accidental
-`ScssAstSyntax*` compile-mode names became `ScssSyntax*`.
+`CssAstOpaqueCapture*` to concept names (`OpaqueAtRulePreludeCapture` /
+`OpaqueAtRuleBodyCapture`), and the accidental `ScssAstSyntax*` compile-mode
+names became `ScssSyntax*`.
 
 Superseded pre-fold note: `cssAstGrammar` compatibility naming was retained
 until the CSS host-mode fold. CSS now ships from
@@ -2699,7 +2956,7 @@ reserved-word identifier guards, or using a known-only dispatch beside the old
 unknown fallback. The former wants `identExcept(...)`-style structure; the
 latter makes commitment semantics non-local and easier to misuse.
 
-Parseman 0.41.0 is resolved: use case-insensitive `when(...)`, matcher cases,
+Parseman 0.43.0 is resolved: use case-insensitive `when(...)`, matcher cases,
 `makeWhen(...)`, `routed()`, and declarative node projection in the actual
 grammar cleanup. Documentation may use domain-flavoured examples, but production
 grammar helpers should be consolidated by matching policy.
@@ -2818,9 +3075,9 @@ removed, so SCSS no longer inherits Less-only grammar hooks or CST-only
 acceptance paths. The full SCSS parser suite passes:
 `pnpm --filter @jesscss/scss-parser test` (8 files / 291 tests), and
 `pnpm --filter @jesscss/scss-parser build` passes. Remaining SCSS work is
-quality cleanup on the surviving grammar: remove `DirectScss*` migration names,
-rename the value spine to shared/spec concepts, and replace broad shared-opener
-choices with current Parseman `dispatch(...)` / `makeWhen(...)` / `routed()`.
+quality cleanup on the surviving grammar: keep refining the value spine to
+shared/spec concepts and replace broad shared-opener choices with current
+Parseman `dispatch(...)` / `makeWhen(...)` / `routed()`.
 
 Latest Jess fold status, 2026-07-27: Jess is now one host-mode grammar source.
 `packages/syntax/jess/jess-parser/src/ast/grammar.ts` is deleted,
@@ -2828,15 +3085,18 @@ Latest Jess fold status, 2026-07-27: Jess is now one host-mode grammar source.
 `jessGrammar` / `jessAstGrammar`, and `jessCstGrammar`, and public CST uses the
 host-mode artifact. The full Jess parser suite passes:
 `pnpm --filter @jesscss/jess-parser test` (6 files / 249 tests), and
-`pnpm --filter @jesscss/jess-parser build` passes. The tests now assert folded
-CST grammar labels such as `DirectJessSelectorCapture`,
-`DirectJessAtRuleBlock`, and `DirectJessDollarBrace`, and the old CST-only
-acceptance of invalid slash-function forms has been removed. Remaining Jess work
-is quality cleanup on the surviving grammar: remove `DirectJess*` migration
-names, classify each touched `choice(...)`, use current Parseman `dispatch(...)`
-only for routed token families with a deciding opener and same-family generic
-fallback, keep construct/context choices as `choice(...)` or left-factor helpers,
-and replace broad keyword regexes with the shared word helper policy.
+`pnpm --filter @jesscss/jess-parser build` passes. The old CST-only acceptance
+of invalid slash-function forms has been removed. Later naming cleanup passes
+have moved the selector, control, declaration, import, at-rule, and
+general-enclosed template families toward semantic CST/AST-aligned labels; the
+uppercase `DirectJess*` grammar-key pass and lowercase `directJess*`
+parser-local helper pass are drained in `src/grammar.ts`. Remaining Jess work is
+grammar-shape, trivia, dispatch/choice, and cross-dialect naming quality cleanup
+on the surviving grammar, not a second grammar contract. Continue to classify
+each touched `choice(...)`, use current Parseman `dispatch(...)` only for routed
+token families with a deciding opener and same-family generic fallback, keep
+construct/context choices as `choice(...)` or left-factor helpers, and replace
+broad keyword regexes with the shared word helper policy.
 
 Quality bar for the surviving Less grammar: simplify aggressively after the
 fold, using the folded CSS grammar as the model. Every significant rule should
@@ -2993,13 +3253,13 @@ SCSS Less-inheritance cut, 2026-07-27: `packages/syntax/scss/scss-parser`
 no longer imports `lessGrammar`, no longer declares `@jesscss/less-parser` as a
 package dependency, and the CST grammar no longer includes the obvious Less-only
 statement/selector arms (`VarCall`, `ExtendStatement`, `EachFor`, `MixinCall`,
-`MixinOrQualifiedRule`, `DetachedRuleset`, `AnonymousMixinDefinition`,
+`MixinDefinition`, `DetachedRuleset`, `AnonymousMixinDefinition`,
 `LessAmpersand`, `interpOrBasic`). The current SCSS grammar is a single
 host-mode grammar and is macro-buildable. A follow-up query-clause cleanup
 left-factored the inner
-`choice(sequence(CssSyntaxQueryAndOr, DirectScssQueryInParens),
+`choice(sequence(QueryAndOr, DirectScssQueryInParens),
 DirectScssQueryInParens)` into
-`sequence(optional(CssSyntaxQueryAndOr), DirectScssQueryInParens)`. Focused SCSS
+`sequence(optional(QueryAndOr), DirectScssQueryInParens)`. Focused SCSS
 conditional/macro/compose/CST tests passed, and the package build passed.
 
 Latest Less dispatch pressure-test, 2026-07-27: do not route generic Less
@@ -3057,10 +3317,10 @@ rewriting choices.
   extend collection keeps its context-owned selector-list path. Keep nth-family
   pseudos outside this dispatcher, and keep selector-capture pseudos static-only
   so dynamic interpolation-bearing arguments still reject in static capture
-  positions. This preserves the old public CST branch ownership
-  (`DirectLessStaticSelectorPseudo`, `DirectLessStaticNonSelectorPseudo`, and
-  `DirectLessInterpolatedArgumentPseudo`) while avoiding function-opener
-  reparsing in ordinary selector positions.
+  positions. This preserves semantic CST branch ownership
+  (`PseudoSelector`, `GenericPseudo`, and `InterpolatedArgumentPseudo`) while
+  avoiding function-opener reparsing in ordinary selector positions; the old
+  `DirectLess*` labels are historical only.
 
 Evidence after the namespace/media fixes: `pnpm --filter @jesscss/less-parser
 test -- ast-grammar.test.ts public-parse.test.ts cst-public.test.ts
@@ -3173,13 +3433,27 @@ shared-opener work this way:
    ownership.
 3. Less selector branches with inline extends: this is probably not an outer
    `dispatch(...)` target. The target is one context-aware selector branch that
-   parses the branch once, collects inline extends, and removes the broad
-   `DirectLessSelectorBranch` / `DirectLessDynamicSelectorBranch` fallback
-   competition.
-4. Less mixin statement family: mixin definitions, mixin calls, and bare mixin
-   calls still restart from the same name/path surface. A routed consumed mixin
-   opener plus suffix routing is plausible, but it must preserve the boundary
-   between `MixinOrQualifiedRule`, `MixinCall`, bare calls, and rulesets.
+   parses the branch once, collects inline extends, and removes the static /
+   dynamic selector-branch fallback competition. Its semantic public owner is
+   `SelectorBranch`; historical `DirectLess*` labels are not a contract.
+4. Less mixin statement family: the class/id router parses the prefix once.
+   `.a.b`, `.a .b`, and `.a > .b` retain their compound/complex selector facts
+   until `(`/`;` selects a namespace call or the ruleset continuation selects
+   `:extend`, `,`, `when`, or `{`. A definition is permitted only for one
+   class/id name, so `.a.b() {}` remains rejected. `MixinInterior` consumes
+   the opening `(`, each item, and separators once; `MixinStatementTail` then
+   owns the single closing `)` before choosing the continuation. A bare `@name`
+   is a binding only at a comma,
+   semicolon, or closing-parenthesis boundary; `@name - 1` therefore remains
+   a positional call value. `MixinDefinitionContinuation` and
+   `MixinCallContinuation` begin after that shared delimiter, so no arm retries
+   it or the parenthesized interior. The continuation remains a `choice(...)`:
+   `when` / `{` versus the optional call suffix is decided by later delimiter
+   context, not a routed same-family opener.
+   The public parameter-list entry reuses that same interior and reduces it to
+   `Param[]`. The generic positional-value fallback is intentionally local to
+   an already-open interior; do not turn it into a class/id prefix scanner or
+   a route that reparses the selector.
 5. Less query feature parentheses: several `(`-led query arms decide only after
    entering the parentheses. This may become a dispatch/left-factor target, but
    public `QueryAtRuleBlock` CST children and media/container query AST shapes
@@ -3309,8 +3583,9 @@ Less opaque at-rule checkpoint, 2026-07-27: Less now has a narrow
 `OpaqueAtRuleBlock` fallback for CSS-valid unknown block bodies such as
 `@future {!!:foo > ; > ?bar}`. The body capture is Less-local rather than
 composed from `opaqueAtRuleRecognition`, so `lessCstGrammar` exposes
-`OpaqueAtRuleBlock` but does not leak `CssOpaqueCapturePrelude` or
-`CssOpaqueCaptureBody` into the public Less CST rule catalog. Dynamic Less
+`OpaqueAtRuleBlock` but does not leak the CSS opaque capture leaves
+(`OpaqueAtRulePreludeCapture` / `OpaqueAtRuleBodyCapture`) into the public Less
+CST rule catalog. Dynamic Less
 headers such as `@custom foo@{query};` and variable declarations such as
 `@theme: { ... };` remain outside that opaque block route.
 
@@ -3343,11 +3618,10 @@ Fresh verification for that checkpoint:
   `tests-unit/charsets/charsets.less`, `tests-unit/tailwind/tailwind.less`, CSS
   `atrule-empty.css`, `atrule-inside.css`, and
   `packages/jess/test/files/include.css`. Sample CST probes show generic at-rule
-  preludes now owned by
-  `DirectLessStaticAtRulePrelude > DirectLessStaticAtRuleTerm >
-  DirectLessStaticAtRuleAtom`, while pseudo probes still use the intended
-  `DirectLessStaticSelectorPseudo`, `DirectLessStaticNonSelectorPseudo`,
-  `DirectLessInterpolatedArgumentPseudo`, and `ExtendPseudo` owners. Treat this
+  preludes now owned by `AtRulePreludeValue > AtRulePreludeValueTerm >
+  AtRulePreludeValueAtom`, while pseudo probes use their semantic
+  `PseudoSelector`, `GenericPseudo`, `PseudoArgument...`, and `ExtendPseudo`
+  owners. Treat this
   as unresolved folded at-rule/prelude CST classification, not as a pseudo
   dispatch regression or as a clean byte-identity baseline.
 
@@ -3555,19 +3829,15 @@ CSS/Less dispatch-vs-choice hotspot queue, 2026-07-27:
   baseline, with the known folded aggregates
   `ast=1ad5b5183e984dd4e7fc596ba392e747c89205c32b32c895ead7c3a52ff68c03`
   and `cst=8880f56555332407b722652c7b48865746350bdb275dea4897ee5523991a1698`.
-- Less pseudo shared-opener dispatch landed, 2026-07-27: `DirectLessPseudo` and
-  `DirectLessStaticPseudo` now route one `:name` / glued `:name(` opener through
-  `dispatch(...)`, with selector-function, generic-function, interpolation
-  argument, and bare-pseudo branches consuming the opener via `routed()`. This
-  removes the previous function-opener-then-bare-fallback split. Public CST owner
-  names stay `DirectLessStaticSelectorPseudo`,
-  `DirectLessStaticNonSelectorPseudo`, and
-  `DirectLessInterpolatedArgumentPseudo`, and `ast-grammar.test.ts` now pins the
-  bare/function routed cases. The next cleanup in this area is naming only:
-  names should move toward `PseudoFunction`, `SelectorPseudo`, `OpaquePseudo`,
-  and `InterpolatedPseudo` when the public CST contract is deliberately migrated;
-  adjective stacks like `DirectLessStaticNonSelectorPseudoRouted` remain review
-  findings unless the accepted language really diverges.
+- Less pseudo shared-opener dispatch landed, 2026-07-27: one `:name` / glued
+  `:name(` opener routes through `dispatch(...)`, with selector-function,
+  generic-function, interpolation-argument, and bare-pseudo branches consuming
+  it through `routed()`. This removes the previous function-opener-then-bare
+  fallback split. The semantic CST owners are `PseudoSelector`, `GenericPseudo`,
+  `PseudoArgumentSelector`, `PseudoArgumentText`, and
+  `InterpolatedArgumentPseudo`; historical `DirectLess*` labels were removed
+  rather than preserved as a contract. `ast-grammar.test.ts` pins the
+  bare/function routed cases.
 - Evidence for the Less pseudo shared-opener slice: the focused Less parser set
   (`cst-public.test.ts ast-grammar.test.ts macro-compiled.test.ts
   public-parse.test.ts`) passed 330 tests; `pnpm run check:macro` passed with
@@ -3698,10 +3968,10 @@ with 0 throws; this slice did not expand the current oracle delta.
 
 Less `@media`/`@container` dispatch pressure-test, 2026-07-27: do not rewrite
 `MediaContainerBlock` to route through the broad
-`CssSyntaxMediaContainerAtKeyword` helper in the current fold. Conceptually the
+`MediaContainerAtKeyword` helper in the current fold. Conceptually the
 two arms are a shared at-keyword family, but the broad helper changes public CST
-terminal ownership from the specific `CssSyntaxMediaAtKeyword` /
-`CssSyntaxContainerAtKeyword` facts to the grouped token. That is not a neutral
+terminal ownership from the specific `MediaAtKeyword` /
+`ContainerAtKeyword` facts to the grouped token. That is not a neutral
 grammar cleanup while language-service consumers still see those keys.
 
 The attempted broad dispatch passed focused parser tests and `check:macro`, but
@@ -3710,7 +3980,7 @@ The attempted broad dispatch passed focused parser tests and `check:macro`, but
 with 116 throws and
 `cst=01cc6d52784b53c45a414684b90a8cba1c5847e647676d2a2bb4a3383f6b2db3`
 with 0 throws. A variant that dispatched over
-`choice(CssSyntaxMediaAtKeyword, CssSyntaxContainerAtKeyword)` preserved the
+`choice(MediaAtKeyword, ContainerAtKeyword)` preserved the
 specific recognizers but left the original `@`/`@` opener overlap inside the
 dispatcher, so it had no meaningful recognition benefit. The accepted path is
 to keep the current `choice(...)` until Parseman or the CST migration provides a
@@ -3938,19 +4208,21 @@ publicly pinned scaffolding names `DirectScssValueAtom`, `DirectScssImport`, and
 `DirectScssMixinCallArg` to `ScssValueAtom`, `ScssImport`, and
 `ScssMixinCallArg` in the folded SCSS grammar and direct CST/compose tests.
 `DirectScssVarDeclaration` is already absent; the rule is `VariableDeclaration`.
-This is only the first SCSS naming pass: many `DirectScss*` names remain and
-must be burned down by reviewed families.
+This was only the first SCSS naming pass; later reviewed family slices drained
+the remaining `DirectScss*` / `directScss*` source vocabulary, and the later
+SCSS value/mixin argument semantic-name cleanup below replaced the temporary
+`ScssValueAtom` / `ScssMixinCallArg` labels.
 
-Evidence for the SCSS public-name cleanup: `pnpm --filter
+Evidence for the SCSS grammar-name cleanup: `pnpm --filter
 @jesscss/scss-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
 test/ast-macro-compiled.test.ts test/compose-integrity.test.ts --reporter=dot`
-passed 4 files / 103 tests. The renamed `ScssMixinCallArg` still emits an
-existing Parseman gating warning; that is follow-up grammar structure debt, not
-a failed rename.
+passed 4 files / 103 tests. The same mixin argument shape still emits an
+existing Parseman gating warning, now under `MixinCallArgument`; that is
+follow-up grammar structure debt, not a failed rename.
 
-Jess `$for` public-name cleanup, 2026-07-27: the folded Jess grammar's loop
+Jess `$for` grammar-name cleanup, 2026-07-27: the folded Jess grammar's loop
 family now uses `ForName`, `ForBinding`, `ForRangeBound`, `ForRange`,
-`ForSource`, and `For` instead of `DirectJessFor*`. The public CST test pins
+`ForSource`, and `For` instead of `DirectJessFor*`. The CST shape test pins
 `grammarType === 'For'` and rejects `DirectJessFor`, and the direct AST test now
 targets `jessAstGrammar.For`. This is a naming cleanup only: Parseman still
 reports `choice @ For` as ungated through the broad `ForSource` arm, so the
@@ -3960,6 +4232,737 @@ Evidence for the Jess `$for` cleanup: `pnpm --filter @jesscss/jess-parser exec
 vitest --run test/ast-grammar.test.ts -t '\$for' --reporter=dot` passed 7 tests
 with 97 skipped, and `pnpm --filter @jesscss/jess-parser exec vitest --run
 test/cst-public.test.ts -t '\$for' --reporter=dot` passed 1 test with 9 skipped.
+
+Jess expression-name cleanup, 2026-07-29: the folded Jess grammar's expression
+family now uses syntax-shaped rule keys instead of parser-mode labels:
+`Expression`, `ExpressionInterpolation`, `ExpressionQuoted`,
+`ExpressionDeclarationReference`, `ExpressionCallArgument`,
+`ExpressionReferenceCallTail`, `ExpressionAtom`, `ExpressionProduct`,
+`ExpressionSum`, and `ExpressionCompare` instead of `DirectJessExpression*`.
+This is a naming cleanup only. Expression arithmetic still belongs only behind
+the explicit `$()` boundary, and the expression-only leading-dot declaration
+lookup remains in `ExpressionDeclarationReference`.
+
+Evidence for the Jess expression-name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests.
+`pnpm --filter @jesscss/jess-parser build` passed after rebuilding
+`parser-shared`; `pnpm run check:macro` passed with all parser packages fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed. Existing gating warnings in adjacent guard/value families remain
+follow-up grammar-shape debt.
+
+Jess contextual CSS-only name cleanup, 2026-07-29: the folded Jess grammar no
+longer uses parser-mode terminology for constrained quoted and pseudo-selector
+contexts. The private `LiteralQuoted` helper recognizes quoted syntax without a
+Jess interpolation but still emits the semantic `Quoted` CST label;
+`NthChildArgument`, `NthTypeArgument`, `PseudoSelectorArgument`,
+`PseudoSelectorCompound`, `PseudoSelectorComplex`, and `PseudoSelectorList`
+name the selector context that intentionally excludes Jess dynamic value and
+expression forms. This is not a license to keep a `Static*` family: remaining
+at-rule/header restrictions must be named by their owning context or collapsed
+into a CSS slot when their accepted language does not genuinely differ.
+
+Evidence for the Jess contextual CSS-only name cleanup: the public CST test
+pins `Quoted`, `PseudoSelectorArgument`, `PseudoSelectorList`,
+`PseudoSelectorCompound`, and `NthChildArgument` labels and rejects the old
+`Static*` family on the exercised source. Rebuild the parser dependency chain,
+then run `pnpm run check:macro` and `pnpm run verify:compose-integrity` before
+landing any related grammar change. The remaining at-rule/header grammar
+warnings are separate left-factor/dispatch-review debt under their semantic
+owner names.
+
+Shared opaque at-rule name cleanup, 2026-07-29: parser-shared's preprocessor
+opaque capture terminals are no longer mode- or dialect-labelled
+`JessAstOpaque*` / `ScssAstOpaque*` / `JessOpaque*` / `ScssOpaque*`. Jess and
+SCSS now consume one shared preprocessor pair:
+`PreprocessorOpaqueAtRulePreludeCapture` and
+`PreprocessorOpaqueAtRuleBodyCapture`. CSS consumes the plain CSS pair:
+`OpaqueAtRulePreludeCapture` and `OpaqueAtRuleBodyCapture`. The preprocessor
+name is the real distinction: line-comment skipping and top-level `$` sentinels
+are shared by Jess/SCSS and are not a dialect provenance label.
+
+Evidence for the shared opaque at-rule name cleanup: `pnpm --filter
+@jesscss/parser-shared build` passed; `pnpm --filter @jesscss/scss-parser test
+-- test/cst-public.test.ts test/ast-grammar.test.ts test/ast-macro-compiled.test.ts
+test/compose-integrity.test.ts --reporter=dot` passed 4 files / 104 tests;
+`pnpm --filter @jesscss/jess-parser test -- test/cst-public.test.ts
+test/ast-grammar.test.ts test/macro-compiled-ast.test.ts --reporter=dot`
+passed 3 files / 117 tests; `pnpm --filter @jesscss/scss-parser build` and
+`pnpm --filter @jesscss/jess-parser build` passed after rebuilding
+`parser-shared`; `pnpm run check:macro` passed with all parser packages fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed. Remaining capture warnings under the new concept names are the existing
+bounded-capture/trivia-aware-helper queue, not a naming contract.
+
+Jess root rule name cleanup, 2026-07-29: the stale `JessAstDocument` grammar
+alias has been removed. Direct AST parser tests now target `Stylesheet`, which
+already matched the parse entry and CST default entry. This is an intentional
+root-name alignment; there is no separate AST-only document
+semantic to preserve under a dialect/mode label.
+
+Evidence for the Jess root rule name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests;
+`pnpm --filter @jesscss/jess-parser build` passed after rebuilding
+`parser-shared`; `pnpm run check:macro` passed with all parser packages fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed.
+
+Jess value/call rule name cleanup, 2026-07-29: the Jess value-leaf and function
+call grammar keys now use semantic names (`Keyword`, `Dimension`, `Color`,
+`Url`, `InterpolatedUrl`, `UrlInterpolatedValue`, `CallComponent`,
+`CallArgument`, and `Call`) instead of `DirectJess*` mode labels. This aligns
+the grammar object names with the comparable CSS/Less/SCSS value concepts. The
+Jess README CST example was refreshed from built parser output so docs no longer
+show `DirectJessVarDeclaration` / `DirectJessColor` as surface node names.
+
+Evidence for the Jess value/call rule name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests;
+`pnpm --filter @jesscss/jess-parser build` passed after rebuilding
+`parser-shared`; built `parseJessCst("$brand: #3366ff;")` reported
+`VariableDeclaration` and `Color` CST node names; `pnpm run check:macro` passed
+with all parser packages fully compiled and 0 interpreter fallbacks; and
+`pnpm run verify:compose-integrity` passed.
+
+Jess guard/dollar rule name cleanup, 2026-07-29: the Jess mixin-guard and dollar
+interpolation/value grammar keys now use semantic names (`GuardValue`,
+`GuardCompare`, `GuardCall`, `GuardPrimary`, `GuardAnd`, `GuardOr`,
+`MixinGuard`, `DollarValue`, `DollarBrace`, `DollarInterp`, and
+`InterpolatedValue`) instead of `DirectJess*` mode labels. This is a naming-only
+alignment with the syntax those productions own; the remaining guard/value
+gating warnings now report those names where the underlying grammar debt still
+exists.
+
+Evidence for the Jess guard/dollar rule name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests;
+`pnpm --filter @jesscss/jess-parser build` passed after rebuilding
+`parser-shared`; `pnpm run check:macro` passed with all parser packages fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed.
+
+Jess reference rule name cleanup, 2026-07-29: the Jess lookup/reference grammar
+keys now use the same semantic names as the AST value concepts:
+`VariableReference`, `DeclarationReference`, `ReferenceTail`, and
+`ReferenceCallTail` instead of `DirectJess*` mode labels. This aligns the
+grammar object surface with the declaration/property/member lookup semantics the
+AST already exposes: `$name` remains a variable reference unless the
+declaration/member ambiguity rules convert it, `$name.member` and `$.member`
+remain declaration/member lookup forms, and expression-only leading-dot lookup
+continues to live behind the explicit `$()` expression boundary.
+
+Evidence for the Jess reference rule name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests;
+`pnpm --filter @jesscss/parser-shared build && pnpm --filter
+@jesscss/jess-parser build` passed; `pnpm run check:macro` passed with
+parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
+fallbacks; `pnpm run verify:compose-integrity` passed; and `git diff --check`
+passed. The old `ReferenceTail#1` gating debt now reports under the semantic
+rule name instead of `DirectJessReferenceTail#1`.
+
+Jess collection/value rule name cleanup, 2026-07-29: the Jess collection,
+ordinary value-grouping, and `!important` grammar keys now use semantic names
+(`CollectionEntry`, `Collection`, `ValueAtom`, `ValueSpaceGroup`, `ValueTerm`,
+`Value`, and `Important`) instead of `DirectJess*` mode labels. This is a
+naming-only alignment with the syntax those productions own. Ordinary value
+positions still route through `Value`/`ValueTerm`; expression-only arithmetic,
+comparison, and leading-dot declaration lookup remain restricted to the explicit
+`$()` expression grammar.
+
+Evidence for the Jess collection/value rule name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests;
+`pnpm --filter @jesscss/parser-shared build && pnpm --filter
+@jesscss/jess-parser build` passed; `pnpm run check:macro` passed with
+parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
+fallbacks; `pnpm run verify:compose-integrity` passed; and `git diff --check`
+passed. The old `DirectJessValueAtom#0/#2` gating debt now reports under the
+semantic `ValueAtom#0/#2` rule names.
+
+Jess declaration/block/mixin rule name cleanup, 2026-07-29: the Jess variable
+declaration, value-block/lambda, mixin parameter/call/definition, reference
+call, `$apply`, and `$extend` grammar keys now use semantic names
+(`VariableDeclaration`, `ValueBlockDeclaration`, `BlockLambda`,
+`ExpressionLambda`, `ValueBlock`, `MixinParam`, `MixinParams`,
+`MixinCallArgument`, `MixinCall`, `ReferenceCall`, `Apply`, `Extend`, and
+`MixinDef`) instead of `DirectJess*` mode labels. The node labels also spell out
+`ExpressionLambda`, `ExpressionCallArgument`, and `MixinCallArgument` rather
+than the older `ExprLambda` / `*CallArg`
+abbreviations. This is a naming-only cleanup: block-valued assignments still
+auto-terminate only at brace-delimited value blocks, expression-bodied lambdas
+still require the ordinary declaration terminator, and expression-only forms
+remain behind `$()`.
+
+Evidence for the Jess declaration/block/mixin rule name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests;
+`pnpm --filter @jesscss/parser-shared build && pnpm --filter
+@jesscss/jess-parser build` passed; `pnpm run check:macro` passed with
+parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
+fallbacks; `pnpm run verify:compose-integrity` passed; and `git diff --check`
+passed. Existing argument/value gating debt now reports under
+`ExpressionCallArgument` and `MixinCallArgument`.
+
+Jess selector rule name cleanup, 2026-07-29: the Jess selector-family grammar
+keys now use the same syntax labels as their AST concepts (`Simple`,
+`Parent`, `InterpolatedSimple`, `InterpolatedParentSuffix`, `Attribute`,
+`Pseudo`, `GenericPseudoArgument`, `Compound`, `SelectorCapture`,
+`ComplexTail`, `Complex`, `SelectorTail`, `Selector`, and `Rule`) instead of
+`DirectJess*` mode labels. This is a naming-only alignment. The selector
+construct choices remain unchanged and still classify as selector construct
+families/contextual selector pieces, not same-opener dispatch candidates.
+
+Evidence for the Jess selector rule name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests;
+`pnpm --filter @jesscss/parser-shared build && pnpm --filter
+@jesscss/jess-parser build` passed; `pnpm run check:macro` passed with
+parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
+fallbacks; `pnpm run verify:compose-integrity` passed; and `git diff --check`
+passed. Existing selector/pseudo gating debt now reports under
+`Pseudo#0/#1/#2` without the old selector-owner prefix.
+
+Jess if/guard rule name cleanup, 2026-07-29: the Jess `$if` condition, guard,
+body, and branch grammar keys now use their semantic node labels
+(`IfGuardValue`, `IfGuardCompare`, `IfGuardPrimary`, `IfGuardAnd`, `IfGuardOr`,
+`IfGuard`, `IfCondition`, `IfBody`, `ElseIfBranch`, `ElseBranch`, and `If`)
+instead of `DirectJess*` mode labels. This is a naming-only alignment. `$if`
+still owns the stricter historical control-condition grammar and does not reuse
+the broader mixin guard language.
+
+Evidence for the Jess if/guard rule name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests;
+`pnpm --filter @jesscss/parser-shared build && pnpm --filter
+@jesscss/jess-parser build` passed; `pnpm run check:macro` passed with
+parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
+fallbacks; `pnpm run verify:compose-integrity` passed; and `git diff --check`
+passed. Existing `$if` guard gating debt now reports under `IfGuard` and
+`IfGuardPrimary` without the old dialect-owner prefix.
+
+Jess quoted/import rule name cleanup, 2026-07-29: the Jess quoted value and
+style/module import grammar keys now use semantic AST/CST-aligned labels
+(`Quoted`, `StyleImport`, `ModuleSpecifier`, and `ModuleImport`) instead of
+`DirectJess*` mode labels. This is a naming-only alignment. Import recognition
+still parses static authored paths/specifiers only; plugin/context dispatch
+continues to own loading and execution after parse.
+
+Evidence for the Jess quoted/import rule name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests;
+`pnpm --filter @jesscss/parser-shared build && pnpm --filter
+@jesscss/jess-parser build` passed; `pnpm run check:macro` passed with
+parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
+fallbacks; `pnpm run verify:compose-integrity` passed; and `git diff --check`
+passed.
+
+Jess custom/declaration rule name cleanup, 2026-07-29: the Jess custom-property
+and ordinary declaration grammar keys now use semantic AST/CST-aligned labels
+(`CustomPropertyValue`, `CustomPropertyName`, `CustomPart`, `CustomInnerPart`,
+`CustomParen`, `CustomSquare`, `CustomCurly`, `CustomValue`,
+`CustomDeclaration`, `InterpolatedProperty`, and `Declaration`) instead of
+`DirectJess*` mode labels. This is a naming-only alignment. The custom-property
+value capture remains the same bounded grammar recursion through balanced
+groups, strings, comments, and Jess interpolation; the local routed
+`RoutedCustomPropertyValue` helper is private to the existing keyword dispatch.
+
+Evidence for the Jess custom/declaration rule name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed with 3 files and 117
+tests; `pnpm --filter @jesscss/parser-shared build` passed; `pnpm --filter
+@jesscss/jess-parser build` passed; `pnpm run check:macro` reported
+parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
+fallbacks; and `pnpm run verify:compose-integrity` passed.
+
+Jess at-rule/keyframe name cleanup, 2026-07-29: the Jess CSS-compatible
+at-rule, supports, import, registered-property, keyframe, scope, and opaque
+grammar keys now use semantic AST/CST-aligned labels (`MediaPrelude`,
+`AtRuleHeader`, `SupportsAtom`, `SupportsNot`, `SupportsLogical`,
+`SupportsFeature`, `SupportsInParens`, `SupportsCondition`,
+`Charset`, `ImportStatement`,
+`SupportsAtRuleBlock`, `PropertyName`, `PropertyAtRule`, `KeyframeSelector`,
+`KeyframeBlock`, `Keyframes`, `OpaqueAtPrelude`, `OpaqueBody`,
+`OpaqueAtRuleBlock`, `ScopeBlock`, `AtRuleBlock`, and `AtRuleStatement`)
+instead of `DirectJess*` mode labels. The shared body helpers were renamed to
+`atBlockStatement` and `nestedBodyStatement`. This is a naming-only alignment:
+statement/body arms remain construct-family `choice(...)` clusters, while the
+CSS-only import is one semantic `ImportStatement` with static target leaves.
+The `GeneralTemplate` / `GeneralQuotedTemplate` chains remain a separate,
+documented strict-vs-permissive cleanup surface.
+
+Evidence for the Jess at-rule/keyframe name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 118 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/jess-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed. The previous at-rule/supports/import gating warnings now report under
+semantic rule names such as `AtRuleHeader`, `MediaPrelude`,
+`SupportsCondition`, and `ImportPrelude`.
+
+Jess general-enclosed template name cleanup, 2026-07-29: the final Jess
+`DirectJess*` grammar keys now use semantic AST/CST-aligned labels
+(`GeneralTemplate`, `GeneralTemplateParen`, `GeneralTemplateSquare`,
+`GeneralTemplateBrace`, `GeneralTemplateDoubleQuoted`,
+`GeneralTemplateSingleQuoted`, `GeneralQuotedTemplate`,
+`GeneralQuotedTemplateParen`, `GeneralQuotedTemplateSquare`,
+`GeneralQuotedTemplateBrace`, `GeneralQuotedTemplateDoubleQuoted`,
+`GeneralQuotedTemplateSingleQuoted`, and `GeneralEnclosed`). This is a
+naming-only alignment. The strict general-enclosed chain still excludes Jess
+`Expression`; the quoted permissive chain still includes it. The local
+`choice(...)` clusters remain literal delimiter wrappers and token-template
+segment families, not dispatch candidates, because no single already-consumed
+token routes known cases plus a same-family generic fallback.
+
+Evidence for the Jess general-enclosed template name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 118 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/jess-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed.
+
+Jess parser-local source vocabulary cleanup, 2026-07-29: the remaining
+lowercase `directJess*` helper names were renamed to semantic local names
+(`quotedExpressionParser`, `quotedExpressionInterpolationParser`,
+`escapedPlainQuoted`, `plainDoubleQuoted`, `plainSingleQuoted`,
+`moduleBindingName`, `moduleAsClause`, `styleImportAsClause`,
+`attributeDoubleQuoted`, `attributeSingleQuoted`, `selectorCombinator`,
+`nonBlockValueAtom`, `assignHead`, `mixinNameToken`, and
+`lambdaParamsParser`), and stale "Direct Jess" reducer diagnostics now use
+plain Jess wording. This is a naming-only alignment: no grammar branch,
+CST/AST node label, reducer shape, or comment trivia behavior changed.
+
+Evidence for the Jess parser-local source vocabulary cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 118 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/jess-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed.
+
+Jess parser-local interpolation-guard vocabulary follow-up, 2026-07-29: the
+remaining generic lowercase `direct*` helper names in the Jess grammar were
+renamed to semantic guard names (`interpolatedSimpleAhead`,
+`interpolatedParentSuffixAhead`, and `interpolatedPropertyAhead`), and nearby
+comments now describe host-mode grammar construction / AST reduction rather
+than a direct parser mode. This is a source-only naming alignment: no grammar
+branch, CST/AST node label, regex body, reducer shape, or comment trivia
+behavior changed. The touched sites were not dispatch candidates; they are
+zero-width context predicates that keep ordinary selector/property arms from
+entering interpolation-only productions unless a `${` opener appears
+in the same syntactic span.
+
+Evidence for the Jess parser-local interpolation-guard vocabulary follow-up:
+`pnpm --filter @jesscss/jess-parser test -- test/cst-public.test.ts
+test/ast-grammar.test.ts test/macro-compiled-ast.test.ts
+test/compose-integrity.test.ts --reporter=dot` passed with 4 files and 118
+tests; `pnpm --filter @jesscss/parser-shared build` passed; `pnpm --filter
+@jesscss/jess-parser build` passed; `pnpm run check:macro` reported
+parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
+fallbacks; and `pnpm run verify:compose-integrity` passed. `rg` now finds no
+lowercase direct-mode helper names in
+`packages/syntax/jess/jess-parser/src/grammar.ts`.
+
+Jess parser-local fact-name cleanup, 2026-07-29: Jess reducer-only fact types
+and guards now use semantic local names (`OperatorFact`, `ReferenceTailFact`,
+`ComplexTailFact`, `StaticAtQueryPropertyFact`, `AtRuleHeaderFact`, and
+`MixinCallArgumentFact`) instead of `Jess*`-prefixed names. This is a
+source-only naming alignment: public grammar/CST labels such as
+`ReferenceTail`, `ComplexTail`, `AtRuleHeader`, and `MixinCallArgument` did not
+change, and AST reducer output/acceptance stayed unchanged. The touched
+`choice(...)` sites were not rewritten in this slice; they remain existing
+expression/reference/selector construct and context choices, not routed
+token-family dispatch candidates. This does not classify every surviving
+`Jess*` source identifier as migration debt; real dialect-owned concepts still
+need the ordinary const-level review.
+
+Evidence for the Jess parser-local fact-name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 118 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/jess-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed.
+
+Jess parser-local terminal vocabulary cleanup, 2026-07-29: private lexical
+terminal/helper names in `packages/syntax/jess/jess-parser/src/grammar.ts` no
+longer carry a redundant lowercase `jess*` owner prefix. The renamed names are
+semantic local grammar facts (`dollarName`, `expressionBoundary`,
+`expressionProductSymbol`, `expressionSumSymbol`, `expressionCompareSymbol`,
+`ifGuardCompareOperator`, `guardUnaryTypePredicate`, `guardIsUnitPredicate`,
+`typeNamespace`, `dollarBraceStructure`, `dollarInterpolationStructure`,
+`customPropertyChunk`, `selectorTextRun`, `ampersand`,
+`ampersandAppendPayload`, `interpolatedValueTail`, `valueSlashBoundary`,
+`generalTemplateText`, `urlInterpolatedText`, `pseudoRawDoubleQuoted`,
+`pseudoRawSingleQuoted`, `pseudoRawArgument`, and `caseInsensitiveWhen`). This
+is source-only naming cleanup: exported dialect entrypoints such as
+`jessFactory`, `jessGrammar`, and `jessCstGrammar` name the package surface,
+and no grammar branch, public CST/AST node label, reducer
+shape, regex body, or scanner/trivia behavior changed.
+
+Evidence for the Jess parser-local terminal vocabulary cleanup: `rg` finds no
+remaining lowercase `jess[A-Z]` identifiers in
+`packages/syntax/jess/jess-parser/src/grammar.ts` except the exported dialect
+entrypoints; `pnpm --filter @jesscss/jess-parser test --
+test/cst-public.test.ts test/ast-grammar.test.ts test/macro-compiled-ast.test.ts
+test/compose-integrity.test.ts --reporter=dot` passed; `pnpm --filter
+@jesscss/parser-shared build` passed; `pnpm --filter @jesscss/jess-parser
+build` passed; `pnpm run check:macro` reported parser-shared, CSS, Less, SCSS,
+and Jess all fully compiled and 0 interpreter fallbacks; and `pnpm run
+verify:compose-integrity` passed.
+
+Jess keyword-terminal combinator cleanup, 2026-07-29: Jess-local keyword-shaped
+terminals now use Parseman's `word(...)`, `keywords(...)`, or a local
+`makeWord(...)` factory instead of hand-spelled keyword regexes. This covers
+the CSS-compatible `@charset` / `@import` / `@supports` / `@property` /
+`@scope` leaves, the compiler namespace exclusion set, keyframe `from` / `to`,
+module `as` / `import` / `@-use` / `@-from` / `@-compose` / `@-export` /
+`@-import`, and `$for` range `to` / `step`. Boundary strings retain the old
+Unicode identifier stop set, and case sensitivity follows the previous regex
+flags: CSS-compatible at-keywords and keyframe endpoints stay
+case-insensitive, while module directive spellings and `$for` separators stay
+case-sensitive. This is not the final module-at-keyword dispatch cleanup; the
+same-opener `StyleImport` / `ModuleImport` branch choices remain a separate
+routed-shape review surface.
+
+Evidence for the Jess keyword-terminal combinator cleanup: `rg` finds no
+remaining Jess-local keyword regexes for `as`, module/compiler at-keywords,
+CSS-compatible at-keyword leaves, keyframe endpoints, or `$for` `to` / `step`;
+`pnpm --filter @jesscss/jess-parser test -- test/cst-public.test.ts
+test/ast-grammar.test.ts test/macro-compiled-ast.test.ts
+test/compose-integrity.test.ts --reporter=dot` passed with 4 files and 119
+tests; `pnpm --filter @jesscss/jess-parser build` passed after rebuilding
+`parser-shared`; `pnpm run check:macro` reported parser-shared, CSS, Less,
+SCSS, and Jess all fully compiled and 0 interpreter fallbacks; and `pnpm run
+verify:compose-integrity` passed.
+
+SCSS custom/declaration rule name cleanup, 2026-07-29: the SCSS declaration and
+custom-property grammar keys now use semantic AST/CST-aligned labels
+(`InterpolatedProperty`, `CustomPropertyName`, `CustomPart`, `CustomInnerPart`,
+`CustomParen`, `CustomSquare`, `CustomCurly`, `CustomValue`,
+`CustomDeclaration`, and `Declaration`) instead of `DirectScss*` mode labels.
+This is a naming-only alignment. The custom-property value capture still owns
+the same bounded CSS declaration-value stream with nested groups, quoted
+strings, comments, and SCSS interpolation.
+
+Evidence for the SCSS custom/declaration rule name cleanup: `pnpm --filter
+@jesscss/scss-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/ast-macro-compiled.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 104 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/scss-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed.
+
+SCSS selector/rule name cleanup, 2026-07-29: the SCSS selector-family grammar
+keys now use their semantic AST/CST-aligned labels (`Simple`,
+`InterpolatedSimple`, `Placeholder`, `Attribute`, `PseudoArgument`, `Pseudo`,
+`NestingSelector`, `Compound`, `ComplexTail`, `Complex`, `SelectorTail`,
+`Selector`, `Extend`, and `Rule`) instead of `DirectScss*` mode labels. The
+selector-private routed pseudo helpers were renamed too. This is a naming-only
+alignment; the pseudo dispatch table remains the same routed-token-family shape
+over the glued `:name` / `:name(` opener, and selector body choices remain
+construct-family choices.
+
+Evidence for the SCSS selector/rule name cleanup: `pnpm --filter
+@jesscss/scss-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/ast-macro-compiled.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 104 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/scss-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed. The previous selector compound gating warning now reports under the
+semantic `Compound` rule name.
+
+SCSS at-rule/keyframe name cleanup, 2026-07-29: the SCSS CSS-compatible
+at-rule and keyframe grammar keys now use their semantic AST/CST-aligned labels
+(`AtRuleStatement`, `ScopeBlock`, `NestedScopeBlock`, `ConditionalBlock`,
+`StartingStyleBlock`, `LayerBlock`, `DocumentBlock`, `PageMarginBox`,
+`PageBlock`, `FontFeatureValueBlock`, `FontFeatureValuesBlock`,
+`NestedConditionalBlock`, `NestedStartingStyleBlock`, `NestedLayerBlock`,
+`FontFace`, `CounterStyle`, `PropertyName`, `PropertyAtRule`,
+`KeyframeSelector`, `KeyframeBlock`, and `Keyframes`) instead of
+`DirectScss*` mode labels. This intentionally lets SCSS override the shared CSS
+semantic names where the same concept needs an SCSS body/header policy. The body
+lists stay as `choice(...)` construct-family choices because the decision is a
+statement/body item family, not one already-consumed routed token. The
+comment-as-trivia and opaque/raw-capture names remain separate cleanup queues.
+
+Evidence for the SCSS at-rule/keyframe name cleanup: `pnpm --filter
+@jesscss/scss-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/ast-macro-compiled.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 104 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/scss-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed.
+
+SCSS opaque at-rule name cleanup, 2026-07-29: the remaining SCSS opaque/raw
+capture grammar keys now use their semantic AST/CST-aligned labels
+(`OpaqueAtPrelude`, `OpaqueBody`, `OpaqueAtRuleBlock`, and
+`OpaqueAtRuleStatement`) instead of `DirectScss*` mode labels. This is a
+naming-only alignment: the shared recognition artifact still owns the bounded
+balanced/string/comment capture, and the statement-vs-block split remains a
+construct-family `choice(...)` at each body position because `{` vs `;` is the
+local tail decision after the generic at-keyword. After this pass, the comment
+grammar key remained the last uppercase `DirectScss*` cleanup surface; that is
+now handled by the SCSS comment name cleanup below.
+
+Evidence for the SCSS opaque at-rule name cleanup: `pnpm --filter
+@jesscss/scss-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/ast-macro-compiled.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 104 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/scss-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed.
+
+SCSS comment grammar-key cleanup, 2026-07-29: the SCSS block-comment grammar key
+now uses the semantic AST/CST-aligned label `Comment` instead of
+`DirectScssComment`. This is a naming-only alignment: the public CST label was
+already `Comment`, block comments still produce renderable `Comment` AST nodes,
+and `//` line comments remain lexical trivia through `whitespace`. The touched
+body/list `choice(...)` sites remain construct-family choices because comment
+items are disjoint `/`-led grammar facts, not a routed token family with a
+same-family generic fallback.
+
+Evidence for the SCSS comment grammar-key cleanup: `pnpm --filter
+@jesscss/scss-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/ast-macro-compiled.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 104 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/scss-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed.
+
+SCSS parser-local source vocabulary cleanup, 2026-07-29: the remaining
+lowercase `directScss*` helper names were renamed to semantic local names
+(`keyframeSelectorListFromChildren`, `interpolatedUrlChunk`, and
+`propertyNameChunk`), and stale "Direct SCSS" reducer diagnostics/comments now
+use plain SCSS wording. This is a naming-only alignment: no grammar branch,
+CST/AST node label, reducer shape, or comment trivia behavior changed.
+
+Evidence for the SCSS parser-local source vocabulary cleanup: `pnpm --filter
+@jesscss/scss-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/ast-macro-compiled.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 104 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/scss-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed.
+
+SCSS parser-local direct-mode vocabulary follow-up, 2026-07-29: the remaining
+generic lowercase `direct*` helper names in the SCSS grammar were renamed to
+semantic local names (`doubleQuotedText`, `singleQuotedText`,
+`staticDoubleQuotedPath`, `staticSingleQuotedPath`,
+`nestedPropertyBlockAhead`, `mixinNameToken`, and
+`mixinParamSigilName`), and neighboring comments now describe host-mode AST
+facts, public parse behavior, or the actual syntax slice instead of a direct
+parser mode. This is a source-only naming alignment: no grammar branch,
+CST/AST node label, regex body, reducer shape, or comment trivia behavior
+changed. The touched `choice(...)` sites were not rewritten; quoted/static
+path arms remain delimiter-family choices, the nested-property gate remains a
+zero-width context predicate, and mixin arguments still depend on later `:` /
+`...` facts rather than one routed opener token.
+
+Evidence for the SCSS parser-local direct-mode vocabulary follow-up:
+`pnpm --filter @jesscss/scss-parser test -- test/cst-public.test.ts
+test/ast-grammar.test.ts test/macro-compiled-ast.test.ts
+test/compose-integrity.test.ts --reporter=dot` passed with 3 files and 102
+tests; `pnpm --filter @jesscss/parser-shared build` passed; `pnpm --filter
+@jesscss/scss-parser build` passed; `pnpm run check:macro` reported
+parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
+fallbacks; and `pnpm run verify:compose-integrity` passed. `rg` now finds no
+lowercase direct-mode helper names in
+`packages/syntax/scss/scss-parser/src/grammar.ts`; remaining matches are
+ordinary Sass module "directive(s)" wording.
+
+SCSS value/mixin argument semantic-name cleanup, 2026-07-29: the SCSS value atom
+and mixin call argument grammar keys now use the cross-dialect semantic labels
+`ValueAtom` and `MixinCallArgument` instead of the temporary
+`ScssValueAtom` / `ScssMixinCallArg` labels. The related parser-local reducer
+fact types were renamed to `ValuePairFact`, `ValueTailFact`,
+`MixinCallArgumentFact`, and `ComplexTailFact`. This intentionally changes the
+public CST rule labels toward the AST/CST naming alignment target while keeping
+the same AST reducers and accept set. The touched `choice(...)` clusters remain
+construct/context choices: `ValueAtom` chooses between distinct value atom
+constructs, `MathUnary` preserves the existing sign/context split, and
+`MixinCallArgument` still needs a later `:` / `...` fact to distinguish named,
+spread, and positional arguments, so it is not a routed token-family dispatch
+candidate.
+
+Evidence for the SCSS value/mixin argument semantic-name cleanup: `pnpm
+--filter @jesscss/scss-parser test -- test/cst-public.test.ts
+test/ast-grammar.test.ts test/ast-macro-compiled.test.ts
+test/compose-integrity.test.ts --reporter=dot` passed with 4 files and 104
+tests; `pnpm --filter @jesscss/parser-shared build` passed; `pnpm --filter
+@jesscss/scss-parser build` passed; `pnpm run check:macro` reported
+parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
+fallbacks; and `pnpm run verify:compose-integrity` passed. The previous
+`ScssMixinCallArg` gating warning now reports under semantic
+`MixinCallArgument`.
+
+SCSS mixin frame CST alignment, 2026-07-30: `MixinCallRule` and
+`MixinDefinitionRule` remain private grammar-context names because their body
+call sites make that distinction useful, but both produce the canonical core
+facts. Their public CST labels are therefore `MixinCall` and
+`MixinDefinition`, matching Less and Jess. This is a per-const naming-only
+conversion: the existing `@include`/`@mixin` word-boundary recognition and the
+body-family `choice(...)` ordering are unchanged; neither production is a
+shared-opener dispatch candidate.
+
+Verification for that alignment: parser-shared then SCSS builds; SCSS public
+CST, macro-compiled AST, compose-integrity, and mixin-focused AST tests; root
+`check:macro` (zero interpreter fallbacks); and root compose integrity passed.
+At the time, the full SCSS AST grammar suite had three unrelated-looking stack
+overflows. A control run with the prior CST labels reproduced them unchanged;
+the immediately following custom-property slice identified and repaired their
+shared recursion route.
+
+SCSS custom-property leaf repair, 2026-07-30: CSS recognition now exposes its
+static `CustomPropertyToken` separately from the overridable
+`CustomPropertyName` slot. SCSS uses that CSS-owned token for ordinary
+value-position custom-property keywords and as the non-interpolated fallback
+inside its declaration-name override. This removes the accidental
+`CustomPropertyName -> CustomPropertyName` recursion introduced by composing an
+override through the same rule key. The SCSS override remains only for the
+actual dialect expansion, `--name-#{...}` declaration names; value-position
+`--name#{...}` remains rejected. This is a targeted override repair, not a
+replacement of CSS custom-property structure.
+
+Verification: parser-shared then SCSS build and the full SCSS AST/CST/macro/
+compose set passed (107 tests); root `check:macro` reported zero interpreter
+fallbacks in all four parsers; root compose integrity passed. A CPU profile of
+the old rejected SCSS corpus had `CustomPropertyName` as its dominant parser
+frame. The post-fix profile has no `CustomPropertyName` recursion. The harness
+now classifies 1,906 inputs as rejected instead of 1,915, so its post-fix
+18.4688 ms AST / 12.5288 ms CST medians (warmup 8, timed 25) are useful
+directionally but are not a valid before/after performance claim.
+
+Parser timing and profiling priority, 2026-07-30: built-artifact baselines
+were taken separately for CSS, Less, SCSS, and Jess with 8 warmup and 25 timed
+samples. The largest regular corpus medians were Less `test-data-unit` (136
+files / 136.7 KB: 41.8113 ms AST, 39.6980 ms CST) and SCSS Sass-spec rejected
+inputs before the recursion repair (1,915 files / 126.0 KB: 57.0349 ms AST,
+48.8716 ms CST). CSS `test-data-css` (151 files / 285.8 KB) was 10.1300 ms
+AST / 9.9393 ms CST; the small Jess corpus does not yet identify a comparable
+hot route. The next optimization profiling target is a loaded-source, parse-
+only profile of Less `test-data-unit`, then SCSS expected-error allocation and
+the surviving `MathUnary`/`ValueAtom` path. Use diagnostics to select a
+specific construct family from those profiles; do not turn broad `@`-led body
+choices or routine error allocation into speculative dispatch rewrites.
+
+CSS at-rule prelude scanner-skip cleanup, 2026-07-29: CSS `AtRulePreludeGroup`
+now relies on the grammar-level ambient `scanSkip` / trivia policy for balanced
+paren and square groups instead of restating local
+`balanced(..., { skip: [...] })` lists. This keeps the structured unknown
+at-rule prelude route as the model: comments and quoted strings are not
+semantic prelude children, but they also do not terminate a balanced group. The
+touched `choice(...)` remains a delimiter-family choice between `(...)` and
+`[...]`; it is not a dispatch candidate because no routed known/generic token
+family is involved.
+
+At-rule prelude semantic-name alignment, 2026-07-29: CSS now calls the shared
+generic header family `AtRulePrelude*` (`AtRulePreludeWhitespace`,
+`AtRulePreludeComma`, `AtRulePreludeGroup`, `AtRulePreludeQuoted`,
+`AtRulePreludeText`, `AtRulePreludeSegments`, and `AtRulePrelude`), matching
+Less, Jess, and SCSS. SCSS likewise replaced its mode-labelled
+`StaticAtPrelude*` / `StaticMediaPrelude` / `StaticStatementPrelude` CST keys
+with `AtRulePrelude*` / `MediaPrelude` / `StatementPrelude`. This changes
+grammar and public CST names only: `AtRulePreludeSegments` remains a
+delimiter-and-segment `choice(...)` family, while `StatementPrelude` remains
+the distinct semicolon-bounded statement-header capture. Neither is a
+single-consumed-opener route, so `dispatch(...)` would be the wrong structure.
+
+Evidence for the CSS at-rule prelude scanner-skip cleanup: `pnpm --filter
+@jesscss/css-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 2 files and 102 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/css-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed. A narrow A/B parser workload over generic at-rule statements with
+grouped preludes measured the old local-skip shape at 50.324 ms median and the
+ambient-skip shape at 48.141 ms median for 160 parses on the same dirty
+worktree; treat this only as route sanity, not a general parser speed claim.
+
+CSS query-function scanner-skip cleanup, 2026-07-29: CSS `QueryFunction` and
+`RoutedQueryFunction` now keep only the local nested-parenthesis exception in
+their raw argument `scanTo(...)` skip lists. Comment, escape, and quoted-string
+protection comes from grammar-level trivia / ambient `scanSkip`, which
+`scanTo(...)` already resolves before explicit skips. This is a scanner-policy
+deletion inside the existing structured query route, not a dispatch rewrite:
+the routed function opener is already owned by `queryIdentOrFunctionTerm` /
+`RoutedQueryFunction`, and the raw argument span remains the narrow accepted
+representation for general-enclosed query functions.
+
+Evidence for the CSS query-function scanner-skip cleanup: `pnpm --filter
+@jesscss/css-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 2 files and 102 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/css-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed. Existing parseman gating warnings remain visible for broader queue
+items such as balanced groups, opaque prelude capture, and several CSS construct
+choices; this slice makes no broad speed claim.
+
+CSS custom/value scanner-skip cleanup, 2026-07-29: the shared CSS
+`balancedParens`, `balancedBrackets`, and `balancedBraces` helpers now keep only
+their local `customSlash` exception and inherit comment, escape, and quoted
+string protection from grammar-level `scanSkip`. The custom-property value,
+import-tail group, var()-fallback, and raw parenthesized-value scans now list
+only the nested balanced groups that are local to those opaque spans, or no
+explicit skip at all when ambient `scanSkip` is sufficient. This relies on
+Parseman 0.43.0's documented scanner contract: `scanTo(...)` merges grammar
+trivia plus ambient `scanSkip`, and `balanced(...)` merges ambient `scanSkip`
+unless the combinator is raw. It is still scanner-local cleanup for accepted
+opaque CSS component text, not a replacement for future structured parsing
+where a value family can be grammar-owned instead.
+
+Evidence for the CSS custom/value scanner-skip cleanup: `pnpm --filter
+@jesscss/css-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 2 files and 102 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/css-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed. This slice makes no broad speed claim.
+
+Less ambient scanner-skip cleanup, 2026-07-29: Less `lessOpaqueBodyBrace`,
+`lessOpaqueBodyCapture`, and `atPreludeGroup` now inherit comment and quoted
+string protection from the grammar-level `scanSkip` declared on every Less AST,
+line, and CST artifact. `lessOpaqueBodyCapture` keeps only the nested
+`lessOpaqueBodyBrace` scanner-local exception; `atPreludeGroup` keeps no local
+skip list because the balanced group combinators can inherit ambient scan
+skips. This is the Less version of the CSS ambient-skip cleanup: scanner-local
+cleanup for still-accepted opaque/prelude spans, not a claim that those spans
+are the final structured grammar target.
+
+Evidence for the Less ambient scanner-skip cleanup: `pnpm --filter
+@jesscss/less-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 2 files and 261 tests; dependency-order `pnpm --filter
+@jesscss/parser-shared build`, `pnpm --filter @jesscss/css-parser build`, and
+`pnpm --filter @jesscss/less-parser build` passed; `pnpm run check:macro`
+reported parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0
+interpreter fallbacks; and `pnpm run verify:compose-integrity` passed. The Less
+byte-identity oracle remains red on the current dirty integration surface, but
+an A/B check that temporarily restored only the old local skip lists produced
+the same aggregates as the cleaned shape:
+`ast=c00bbb9033f8b99fd8f6a280fb264c017f7601dce96e914035e75c46bb514a37`
+with 117 throws and
+`cst=591d44a6f0c4608459903c221c210684bac332161b0d901b0c1fc3caa5cee714`
+with 0 throws. Treat the oracle red as pre-existing dirty-surface movement, not
+movement from this scanner-skip slice. This slice makes no broad speed claim.
 
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or
@@ -3984,6 +4987,21 @@ A/B proof. The matching `pnpm run check:macro` pass reported parser-shared, CSS,
 Less, SCSS, and Jess fully compiled with 0 interpreter fallbacks; Less reported
 3512 `charCodeAt` vs 304 `RegExp.exec`.
 
+Less parse-performance follow-up, 2026-07-29: after the value-position
+`MixinReference` delimiter-dispatch slice, the same case filter on the
+patch-only worktree reported one-shot medians of `benchmark.less` 28.1948 ms AST
+/ 17.2576 ms CST; `bootstrap-port` 47.3880 ms AST / 38.8403 ms CST;
+`test-data-unit` 51.6589 ms AST / 41.4608 ms CST; `css-corpus-ok` 2.1233 ms
+AST / 2.1212 ms CST; `css-corpus-err` 0.0489 ms AST / 0.0409 ms CST; and
+`css-corpus-ok-joined` 1.8781 ms AST / 1.8757 ms CST. The interleaved
+same-worktree A/B command
+`BENCH_CASES=benchmark.less,bootstrap-port,test-data-unit,css-corpus-ok,css-corpus-err,css-corpus-ok-joined node packages/syntax/less/less-parser/test/ab-compare.mjs 2 2 4 12`
+read as neutral on the real corpora: `bootstrap-port` -0.4% AST / 0.0% CST and
+`test-data-unit` -0.7% AST / -0.3% CST. The one-file `benchmark.less` medians
+were noisily slower (+6.2% AST / +13.0% CST) and should not be reported as a
+clean regression without a larger A/B run because the broader corpus controls
+did not corroborate it.
+
 Dispatch pressure update, 2026-07-27: continue converting shared-opener routes
 to `dispatch(...)`/`routed()` only where the branch can reuse the consumed
 discriminator instead of reparsing the same lexical shape. Less value-position
@@ -4005,3 +5023,421 @@ removal. The target is comments in Parseman/core trivia, with render-time
 empty-rule behavior fixed against trivia spans instead of comment AST children.
 Avoid half-measures that merely hide comments inside separator text; the end
 state is no semantic comment nodes for parser comments.
+
+Jess module directive routing, 2026-07-30: Jess `StyleImport` and
+`ModuleImport` now consume their preprocessor directive word once with
+case-sensitive `keywords(...)`, then route the selected tail through
+`dispatch(...)` / `when(...)` / `routed()`. This removes two same-family
+directive `choice(...)` clusters without changing the public AST/CST labels or
+turning Jess keywords into case-insensitive CSS words. The nested
+`@-from ... import ...` binding form remains a `choice(...)` because the branch
+is decided by later delimiter/context facts (`* as`, default plus grouped
+named imports, single default, or grouped named imports), not by the already
+consumed `@-from` directive.
+
+Evidence for the Jess module directive routing: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 119 tests. `ast-grammar.test.ts` now rejects uppercase
+Jess module/style directive words and uppercase `IMPORT`/`AS` in those forms,
+pinning the current case-sensitive keyword policy. `pnpm --filter
+@jesscss/jess-parser build` passed after rebuilding parser-shared; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled with 0 interpreter fallbacks; `pnpm run verify:compose-integrity`
+passed; and `git diff --check` passed. This slice makes no speed claim.
+
+Jess module specifier-list cleanup, 2026-07-30: the two grouped
+`@-from ... import (...)` named-import runs now use one local
+`oneOrMoreSep(g.ModuleSpecifier, literal(','))` helper instead of repeating
+`ModuleSpecifier, many(',' ModuleSpecifier)` by hand. This is a separated-list
+cleanup inside the already-routed `ModuleImport` tail. The outer binding-form
+`choice(...)` remains a context decision because `* as`, default import,
+default plus grouped named imports, and grouped named imports are decided by
+later delimiter facts after `@-from` and `import` are already consumed.
+
+Evidence for the Jess module specifier-list cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/ast-grammar.test.ts --reporter=dot` passed
+with 1 file and 105 tests; `pnpm --filter @jesscss/jess-parser test --
+test/cst-public.test.ts test/ast-grammar.test.ts test/macro-compiled-ast.test.ts
+test/compose-integrity.test.ts --reporter=dot` passed with 4 files and 119
+tests; `pnpm --filter @jesscss/jess-parser build` passed after rebuilding
+parser-shared; `pnpm run check:macro` reported parser-shared, CSS, Less, SCSS,
+and Jess all fully compiled with 0 interpreter fallbacks; `pnpm run
+verify:compose-integrity` passed; and `git diff --check` passed. This slice
+makes no speed claim.
+
+Jess mixin-guard keyword cleanup, 2026-07-30: `MixinDef` now uses the same
+case-sensitive `syntaxWord('when')` helper as Jess `$for` range `to` / `step`
+instead of a hand-spelled keyword regex. Jess syntax keywords are not CSS
+at-keywords, so they should stay case-sensitive unless a deliberate Less 4.x
+compatibility adapter proves and owns a different Less-only lowering policy.
+The AST guard test rejects uppercase `WHEN` to pin that boundary.
+
+Jess call/parameter separated-list cleanup, 2026-07-30: Jess
+`ExpressionReferenceCallTail`, `ReferenceCallTail`, `MixinParams`, and
+`MixinCall` now use `optional(oneOrMoreSep(..., literal(',')))` for optional
+non-empty comma lists instead of spelling `item, many(',' item)` at each call
+site. This is a separated-list cleanup: the list delimiter carries no special
+semantic fact in these four contexts, and each reducer already filters the
+typed `ExpressionCallArgument`, `MixinCallArgument`, or `Param` payloads.
+Expression operator chains, authored value spacing, slash/comma value layout,
+selector target lists, and `$apply` / `$extend` target lists were intentionally
+left for separate review because their separators carry precedence, layout, or
+target semantics.
+
+Evidence for the Jess mixin-guard keyword and call/parameter separated-list
+cleanup: `pnpm --filter @jesscss/jess-parser test --
+test/ast-grammar.test.ts --reporter=dot` passed with 1 file and 105 tests;
+`pnpm --filter @jesscss/jess-parser test -- test/cst-public.test.ts
+test/ast-grammar.test.ts test/macro-compiled-ast.test.ts
+test/compose-integrity.test.ts --reporter=dot` passed with 4 files and 119
+tests; `pnpm --filter @jesscss/jess-parser build` passed after rebuilding
+parser-shared; `pnpm run check:macro` reported parser-shared, CSS, Less, SCSS,
+and Jess all fully compiled with 0 interpreter fallbacks; `pnpm run
+verify:compose-integrity` passed; and `git diff --check` passed. This slice
+makes no speed claim.
+
+Horizontal routing reset, 2026-07-30: grammar cleanup now proceeds by grammar
+family across CSS/Less/SCSS/Jess, not by dialect-local sweeps. All CSS structure
+is CSS-owned unless a downstream grammar changes that exact structure, and even
+then the derived grammar overrides only the smallest changed child, value slot,
+or reference. A dialect change is not a license to replace the whole CSS rule.
+The three CSS-derived grammars should stay lean overlays: describe only the
+syntax they add or the specific CSS substructure they change, and otherwise link
+back to CSS-owned structure. Downstream interpolation support is a leaf/value
+extension point, not a reason to reimplement the surrounding CSS production from
+scratch. At-rules are one current high-priority example: consume the at-keyword
+once, select tails with `dispatch(...)` and a grammar-local `makeWhen(...)`, and
+use `routed()` so the selected node owns the consumed keyword/span. Do not
+replace at-keyword regexes with `word(...)` / `makeWord(...)` as a final cleanup
+shape. `@supports` is the same CSS structural at-rule in every downstream
+grammar unless a dialect actually changes `@supports` syntax; downstream
+grammars may plug in their own body item set or interpolation-capable value
+leaves, but they should not keep custom `@supports` terminals or a bespoke
+structural route.
+
+Evidence slice, 2026-07-30: SCSS and Jess now reuse the shared CSS
+`@supports` keyword leaf instead of spelling dialect-local `@supports`
+terminals. A CSS `ConditionalBlock` / `NestedConditionalBlock` dispatch rewrite
+was tested and intentionally not landed: a selected malformed header still
+rejects in the AST host, but becomes a root-level nonrecoverable `ok: false`
+in the CST host instead of the existing recoverable diagnostic tree. The next
+at-rule dispatch slice needs Parseman support for preserving selected-tail CST
+recovery while retaining committed AST rejection. Verification for the landed
+leaf-reuse/docs slice: `pnpm --filter @jesscss/parser-shared build`;
+`pnpm --filter @jesscss/css-parser test -- test/conditional-at-rule-value.test.ts
+test/ast-grammar.test.ts test/cst-public.test.ts test/macro-compiled.test.ts
+--reporter=dot`; `pnpm --filter @jesscss/scss-parser test --
+test/conditional-at-rule-value.test.ts test/ast-grammar.test.ts
+test/cst-public.test.ts test/ast-macro-compiled.test.ts
+test/compose-integrity.test.ts --reporter=dot`; `pnpm --filter
+@jesscss/jess-parser test -- test/conditional-at-rule-value.test.ts
+test/ast-grammar.test.ts test/cst-public.test.ts test/macro-compiled-ast.test.ts
+test/compose-integrity.test.ts --reporter=dot`; parser builds for CSS, SCSS,
+and Jess; `pnpm run check:macro` with 0 interpreter fallbacks across
+parser-shared/CSS/Less/SCSS/Jess; `pnpm run verify:compose-integrity`; and `git
+diff --check`.
+
+Evidence slice, 2026-07-30: SCSS no longer carries grammar-local regex leaves
+for CSS-owned at-keywords whose structure it only specializes below the keyword:
+`@media`, `@container`, `@starting-style`, `@layer`, `@scope`, `@document`,
+`@page`, and `@font-feature-values` now use the shared semantic at-keyword
+leaves from parser-shared. The SCSS grammar still owns the downstream prelude
+and body choices where Sass syntax changes the CSS shape. This is leaf reuse
+only, not the final at-rule dispatch route; the analyzer now reports the
+remaining same-`@` `IfBodyConditionalBlock`, `ConditionalBlock`, and
+`NestedConditionalBlock` choices as the next routed-family work. Verification:
+`pnpm --filter @jesscss/parser-shared build`; `pnpm --filter
+@jesscss/scss-parser test -- test/conditional-at-rule-value.test.ts
+test/ast-grammar.test.ts test/public-parse.test.ts test/cst-public.test.ts
+test/ast-macro-compiled.test.ts test/compose-integrity.test.ts --reporter=dot`;
+`pnpm --filter @jesscss/scss-parser build`; `pnpm run check:macro` with 0
+interpreter fallbacks across parser-shared/CSS/Less/SCSS/Jess; `pnpm run
+verify:compose-integrity`; and `git diff --check`. No speed claim.
+
+Jess static media-query alignment, 2026-07-30: `MediaPrelude` now overrides
+only the whole-prelude `${...}` extension. Its static branch uses local
+`QueryClause` / `QueryPrelude` productions with the CSS semantic names and the
+same clause/list shape; generic at-rule headers continue to use the distinct
+`AtRulePrelude` family. Direct cross-artifact reuse of CSS AST builders is not
+macro-fusible under Parseman host mode, so those local productions share the
+same parser body while keeping direct reducers visible to the macro. This is
+not a Jess-specific media grammar: it restores CSS-aligned AST/CST query labels
+for unchanged static syntax. Verify with the Jess AST/CST/macro/compose suite,
+then `pnpm --filter @jesscss/jess-parser build`, `pnpm run check:macro`, and
+`pnpm run verify:compose-integrity`.
+
+SCSS query-list separator cleanup, 2026-07-30: `QueryPrelude` now uses
+`oneOrMoreSep(QueryClause, ',')`, matching the CSS list shape. The deleted
+`QueryPreludeTail` was a temporary CST/AST wrapper that only threw away its
+comma; it was not a semantic production or a dialect extension. `QueryClause`
+and all SCSS-specific query terms remain unchanged. Verify with the SCSS
+AST/CST/public/macro/compose suite, then the parser build, `check:macro`, and
+`verify:compose-integrity`. No speed claim.
+
+SCSS selector-pseudo single-parse cleanup, 2026-07-29: the selector-argument
+pseudo route no longer scans a raw `PseudoSelectorArgumentText*` preflight and
+then reparses the same source as `SelectorOnlyPseudoArgument`. `StructuredPseudo`
+now applies `expect(...)` directly to that one structural selector parse. The
+public CST accordingly exposes `SelectorOnlyPseudoArgument`, not the deleted
+raw preflight labels. This keeps structured selector arguments, interpolation
+rejection, relative `:has()` arguments, and diagnostic ownership on the same
+grammar production. Verification: parser-shared then SCSS build; SCSS public
+CST, macro, compose-integrity, and selector-pseudo AST tests; `pnpm run
+check:macro` with 0 interpreter fallbacks; `pnpm run verify:compose-integrity`;
+and `git diff --check`. The broader SCSS AST file has three pre-existing
+custom-property recursion failures on the restored `origin/dev` baseline, so it
+is not used as evidence for this slice.
+
+Jess interpolated-parent selector cleanup, 2026-07-30:
+`InterpolatedParentSuffix` now consumes its actual continuation directly:
+`&`, an optional selector-text fragment, and the required `${...}`
+interpolation. Direct Jess `$[...]` lookup is value-position syntax and is not
+part of this selector production; `${[...]}` remains the deliberate lookup body
+of the selector/name interpolation form. The removed
+`interpolatedParentSuffixAhead` was a broad zero-width scan that emitted a
+throwaway token which its reducer had to discard.
+This is an exact later-continuation decision inside one selector atom, so it is
+owned by the production itself rather than a `dispatch(...)` route: no one
+consumed token can distinguish the static `Parent` sibling until the required
+interpolation starts. `InterpolatedSimple` and `InterpolatedProperty` retain
+their separate `${...}`-only preflight classifications because their broad first sets cover
+the common non-interpolated selector/declaration paths; do not treat this local
+removal as permission to delete them without a routed or left-factored shape and
+an A/B result.
+
+Evidence: parser-shared then Jess builds passed; Jess AST/CST focused tests
+passed (2 files / 121 tests), including parent-template, ordinary-parent, and
+the direct `$[...]` rejection boundary; the full Jess parser suite passed (6
+files / 259 tests). `check:macro` passed with zero interpreter fallbacks and
+`verify:compose-integrity` passed. A fresh macro-compiled snapshot was taken
+with `test/parse-bench.mjs` (warmup 8, timed 25); its sub-millisecond corpus is
+too small and noisy for a speed claim.
+
+Jess `${...}` interpolation factoring, 2026-07-30: `dollarBraceStructure`
+previously made five alternatives reconsume the same `${` prefix. It now
+consumes `${` once, uses a `choice(...)` on the next disjoint `[` versus name
+continuation, and uses another disjoint choice for the bracket body (`$`, name,
+single quote, or double quote). `DollarBrace` remains the CST/AST node; the
+reducer reads the factored token layout directly, preserving source spans and
+the bare-variable, property-lookup, quoted-key, and computed-key reductions.
+This is left factoring, not `dispatch(...)`: no meaningful routed token exists
+until the common opener has been consumed, and the subsequent terminals have
+disjoint first sets. Direct `$[...]` remains value/expression-only, while
+`${[...]}` remains the bracketed body available to a selector/name interpolation.
+
+Evidence: the generated Parseman diagnostic no longer reports
+`dollarBraceStructure`; the independent direct-value
+`dollarInterpolationStructure` diagnostic remains for later work. The Jess
+AST/CST focus and full parser suite passed, including a single-quoted bracketed
+`${...}` lookup assertion. `check:macro` reported zero interpreter fallbacks and
+`verify:compose-integrity` passed. The same built-artifact snapshot moved from
+0.4831ms to 0.4568ms AST median and from 0.4720ms to 0.4652ms CST median for
+the 1.9KB Jess-data corpus (warmup 12, timed 45); the sample is too small and
+noisy to claim a speedup.
+
+Jess direct `$[...]` lookup factoring, 2026-07-30: the value/expression-only
+`dollarInterpolationStructure` now consumes its common `$[` literal once and
+chooses the disjoint computed-key, bare-key, single-quoted, or double-quoted
+body. Unlike the `${...}` change, this preserves the existing reducer child
+layout exactly, so `interpolationFromChildren` and the public `DollarInterp` /
+`ExpressionDollarInterp` nodes are unchanged. Generated Parseman diagnostics no
+longer report either `$` interpolation structure. The focused AST/CST suite and
+the full Jess parser suite passed; the coverage now asserts all four direct
+lookup body forms. `check:macro` had zero interpreter fallbacks and
+`verify:compose-integrity` passed. The 1.9KB snapshot was noisy and mixed
+(0.4933ms AST / 0.4460ms CST medians, warmup 12, timed 45), so it is not a
+speed claim.
+
+Jess identifier/function horizontal alignment, 2026-07-30: CSS treats
+`CustomPropertyValue` as a sibling typed value atom, not an identifier/function
+opener. Jess now follows that frame: `IdentifierOrFunction` consumes only the
+ordinary CSS `Identifier` plus an optional glued `(`, while
+`CustomPropertyValue` precedes it in the value-atom family. This deletes the
+overlapping `choice(CustomPropertyName, Identifier)` and the now-unneeded routed
+custom-property keyword branch; `var(--name)` remains owned by the CSS-shaped
+`VarCall` body. The generated Parseman `IdentifierOrFunction#0` diagnostic is
+gone. Parser-shared then Jess builds, the focused AST/CST tests, the full Jess
+parser suite, `check:macro` (zero interpreter fallbacks), and
+`verify:compose-integrity` passed. No performance claim was made.
+
+Jess value-only `$[...]` boundary, 2026-07-30: the selector and property
+interpolation preflights now recognize `${` only. Their bodies consume
+`DollarBrace`, so treating `$[` as an opener could only enter a doomed
+non-value path before failing. The change leaves the preflights in place for
+the real `${...}` continuation, but removes that stale route for direct lookup
+syntax. `$[...]` remains legal only as a value/expression lookup; it is not a
+selector, declaration-name, custom-property-name, or quoted-string
+interpolation form. Parser-shared then Jess builds and the focused Jess AST/CST
+suite (2 files / 121 tests) passed. No performance claim was made.
+
+Less parser profiling ladder, 2026-07-30: a loaded-source CPU profile of the
+built AST parser on `tests-unit` puts the value/math family first:
+`Value`, `ValueSequence`, `ValueList`, `MathUnary`, `TopProduct`, and `TopSum`.
+The per-const review finds that product/sum continuation is already correctly
+operator-led (`many(sequence(operator, atom))`), so those are not dispatch
+candidates. `ValueList`'s accessor-bearing `MixinReference` route has already
+consumed and dispatched its first `[]` / `[` / `.` / `(` delimiter; its outer
+`attempt(...)` remains necessary because the same `.foo` / `#fff` lexical
+prefix can still be an ordinary value or color until a complete reference tail
+exists. Do not replace it with a broad prefix scan or a premature router.
+
+Parseman 0.43's three-pass profile adds the allocation boundary to that CPU
+evidence. On 129 accepted files from the 136-file Less unit corpus (117,354
+bytes), AST recognition took 102.641 ms, structural capture took 81.460 ms for
+64,481 grammar nodes / 94,183 child slots / 93,612 raw slots / 11,676 trivia
+slots, and direct AST construction took 104.640 ms with no generic build-host
+calls. The CST surface accepted 130 files (126,710 bytes): 106.908 ms
+recognition, 87.461 ms structural capture for 72,450 nodes, and 47,790 CST host
+calls. These are single profiling passes, not benchmark deltas; their stable
+counts identify the recognizer-side value/condition and opaque-scan routes as
+the next queue, rather than a generic CST-allocation cleanup.
+
+Less unary-value left-factor, 2026-07-30: `MathUnary` now consumes its optional
+glued `-` once and then parses `Value` once. This is a left-factor, not a
+dispatch: the sign is a local optional prefix and has no known/generic routed
+family. The AST child layout stays `[value]` for an ordinary value and
+`['-', value]` for glued `-@x` / `-(...)`; spaced `- @x` remains outside the
+unary branch. The focused AST/public-rendering math tests cover both boundaries.
+
+Less function-argument condition routing, 2026-07-30: `FunctionArgument` first
+accepts scalar and adjacent-value forms only when they reach their real `,`,
+`;`, or `)` boundary. Its local value continuation stops before a top-level Less
+comparison/logical marker; only then can the existing structural
+`FunctionCondition` own that syntax. A nested call is one value piece, so
+`boolean(foo(1 = 1))` retains an ordinary outer `foo(...)` value while that
+call's argument independently becomes a condition. The sole bounded opener
+test is immediate `not(`, needed because that valid condition has no later
+operator boundary. This replaces the former broad `peek(scanTo(...))` detector;
+the scan inventory remains governed by the question "can this be structured or
+trivia-owned?" and keeps `scanTo(...)` only for genuinely opaque syntax.
+
+Quoted/header semantic-name alignment, 2026-07-30: Less, SCSS, and Jess name
+the private non-interpolated quoted slot `LiteralQuoted`, not `PlainQuoted`.
+It is a real restricted recognition slot: module/import paths, static CSS import
+targets, scanner skips, selector attributes, and header-only leaves must reject
+the dialect's quoted interpolation forms, while the universal `Quoted` override
+remains the ordinary value/string production. Jess also calls its restricted CSS-header value spine
+`HeaderValueAtom`, `HeaderValue`, `HeaderCallArgument`, and `HeaderCall`: those
+rules serve typed at-rule/descriptors, never normal Jess values, and therefore
+exclude execution forms without inventing a second public vocabulary. Every
+affected node continues to emit `Quoted`, `ValueAtom`, `Value`, `CallArgument`,
+or `Call` in CST mode. This is a horizontal private-name cleanup across the two
+interpolating dialects; it does not change the grammar's accepted language.
+
+Jess query-list separator alignment, 2026-07-30: Jess's local `QueryPrelude`
+and `ContainerQueryPrelude` now use `oneOrMoreSep(..., ',')`, matching the CSS
+and Less list frame. Jess still owns their clauses only because it changes the
+contained header-value leaf; the comma-list structure itself is unchanged CSS.
+The AST reducers continue to discard separator tokens and emit the same single
+value or comma list. The CST test exercises two media and container clauses and
+asserts the shared semantic clause counts. Parser-shared then Jess builds and
+the focused AST/CST/public/macro/compose suite passed. No performance claim was
+made.
+
+SCSS module-prefix routing, 2026-07-30: the document-prefix module family now
+parses one shared `RoutedAtRuleKeyword` token and dispatches it to the existing
+`UseRule` or `ForwardRule` tail. This is a real routed family: the prefix allows
+only those two Sass module directives, their keyword decides the continuation,
+and each continuation owns the consumed keyword through `routed()` so its
+semantic CST node and source span stay intact. `@import` is intentionally not a
+third arm because it is ordinary stylesheet syntax, not prefix-only module
+syntax. The dispatcher itself remains unlabeled routing machinery; public CST
+continues to expose `UseRule` and `ForwardRule`. The wider stylesheet/body
+at-rule choices remain a separate context-sensitive dispatch design task, not a
+reason to reintroduce individual `@use` / `@forward` opener regexes. The former
+`ForwardTail` opaque `scanTo(';')` was deleted: no accepted SCSS module form
+needs that raw tail, and the `literal(';')` in `ForwardRule` now rejects every
+unsupported modifier at its actual grammar boundary instead of scanning and
+discarding it.
+
+SCSS `@at-root` routing, 2026-07-30: `@at-root` is Sass-only structure, so
+SCSS owns its route rather than copying a CSS at-rule rule. Every allowed body
+context now reaches one `AtRootDirective` dispatcher: it consumes the shared
+at-keyword exactly once and routes the selected continuation through
+`routed()`. The remaining `choice(AtRootFilter, AtRootBlock)` is intentional:
+both continuations share that opener, and only the subsequent `(`-led filter
+prelude versus ordinary prelude/block decides which syntax applies. The
+dispatcher stays unlabeled; the CST continues to expose `AtRootFilter` and
+`AtRootBlock`, which are the semantic AST/CST-aligned shapes. Focused AST and
+public-CST tests now cover both forms, including their route through the public
+stylesheet entry.
+
+SCSS `@at-root` prelude cleanup, 2026-07-30: the ordinary form has no prelude
+and the only supported non-empty continuation is its parenthesized filter. The
+grammar now gives `AtRootBlock` the literal `{` directly and gives
+`AtRootFilterPrelude` one `balanced('(', ')')` production. This deletes both
+raw `scanTo('{')` captures and their local nested-paren skip lists; ambient
+`scanSkip` still protects comments and quoted selector text inside the actual
+filter. The resulting continuation choice is first-set-disjoint (`(` filter or
+`{` bare block), and unsupported selector/text preludes reject at their real
+delimiter instead of being stored as `Any` bytes.
+
+SCSS Sass-directive routing, 2026-07-30: repeated `@include`, `@mixin`,
+`@function`, `@if`, `@each`, `@for`, and `@at-root` opener regexes no longer
+appear in every stylesheet/body choice. `SassDirective`, `SassNestedDirective`,
+and `SassControlDirective` consume one shared at-keyword and route to the
+existing semantic `routed()` tails. They are deliberately context-specific:
+the full family admits `@function`, restricted nested bodies do not, and a
+function body admits only the control forms. CSS at-rule blocks remain outside
+these dispatchers because their body structure is CSS-owned and varies by
+context. The router nodes are unlabeled; the public CST exposes the existing
+`MixinDefinition`, `MixinCall`, `FunctionRule`, `EachRule`, `ForRule`, `IfRule`,
+and `AtRootBlock`/`AtRootFilter` labels. A public mixed-directive CST fixture
+pins that contract and verifies no `SassDirective` label leaks into the tree.
+
+Custom-value group consolidation, 2026-07-30: Less, SCSS, and Jess each keep
+their own interpolation/reference part because that is the real dialect delta,
+but the three balanced delimiter productions are one concept. `CustomGroup`
+uses a first-set-disjoint `choice` for `(`, `[`, and `{`, recurses only through
+the existing `CustomInnerPart`, and reduces to exactly the same child parts as
+the former delimiter-specific wrappers. This deliberately makes the public CST
+describe the common semantic group instead of incidental delimiter provenance;
+the AST remains a `CustomValue` with the same literal and interpolation parts.
+
+Opaque at-rule scan re-audit, 2026-07-30: unknown at-rule preludes and bodies
+must currently preserve arbitrary authored bytes, including quoted closers,
+comments, and nested braces. That validates an opaque byte contract, not the
+current `scanTo(...)` implementation as an architectural exception. In
+particular, Parseman's `balanced('{', '}')` includes the delimiters, whereas the
+public `OpaqueBody` CST value and the `OpaqueAtRuleBlock.rawBody` AST fact are
+the interior only. Any replacement must therefore decide how to preserve that
+interior CST/AST contract (or intentionally revise it) before changing the
+recognizer. Until then, the scanner remains explicit design debt rather than a
+declared final shape.
+
+General-enclosed template consolidation, 2026-07-30: SCSS and Jess now name
+the same supports general-enclosed facts `GeneralEnclosed`, `GeneralTemplate`,
+`GeneralTemplateGroup`, and `GeneralTemplateQuoted`, rather than preserving
+supports-context or delimiter provenance in public CST labels. The group and
+quoted alternatives have disjoint first sets, so a `choice(...)` is the direct
+recognition shape. Jess additionally retains `GeneralQuotedTemplate` with its
+own group/quoted children because only quoted subtemplates admit `$(...)`
+expressions; that recursion-policy difference is real language structure, not
+a reason to restore five delimiter-specific wrappers per chain.
+
+SCSS at-rule-prelude alignment, 2026-07-30: SCSS's static known-block header
+capture retains its local Sass comment and interpolation-reservation policy,
+but its parenthesis/square and quote delimiter wrappers are unchanged CSS
+structure. They now use the CSS-aligned `AtRulePreludeGroup` and
+`AtRulePreludeQuoted` CST labels, each with a first-set-disjoint `choice(...)`,
+instead of four delimiter-provenance productions.
+
+Pseudo-argument group consolidation, 2026-07-30: Less and SCSS generic
+functional-pseudo arguments both recurse through quoted text, comments where
+applicable, literal chunks, and further parenthesis/bracket groups. The
+delimiters do not alter the resulting string fact, so both grammars now expose
+one `PseudoArgumentGroup` node with a first-set-disjoint `choice(...)` rather
+than a separate `PseudoArgumentSquare` production.
+
+Generic functional pseudo ownership, 2026-07-30: CSS and Jess route only the
+explicit selector-pseudo names (`:is`, `:where`, `:not`, `:has`, and
+`:matches`) to their selector grammar. Every other glued pseudo function owns
+one `GenericPseudoArgument` structural `<any-value>` capture instead: it is not
+a speculative selector, and it is not an undifferentiated byte capture. Its bounded content
+recognizer keeps nested parenthesis/bracket groups from terminating the outer
+argument, while CSS's ambient scan policy owns strings/comments. Jess adds the
+single real dialect rule at that slot: a top-level `$` ends the capture so a
+Jess interpolation cannot become generic pseudo content. The generic node owns
+the final `)` as part of its complete production, which eliminates the former
+partial-selector continuation and keeps the CSS/Jess AST/CST family aligned.

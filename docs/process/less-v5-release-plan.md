@@ -59,16 +59,25 @@ verified against Less 4.6.3 before this policy was recorded.
 
 ## Phase C — config-lane URL / import features
 
-| Fixture                                                    | Feature                                                                                | Why deferred                               | Target  |
-| ---------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------ | ------- |
-| `rewrite-urls-all`, `rewrite-urls-local`                   | `rewriteUrls` mode (all / local) — rebase `url()` paths relative to the importing file | URL rebasing not implemented               | Phase C |
-| `rootpath-rewrite-urls-all`, `rootpath-rewrite-urls-local` | `rootpath` + `rewriteUrls` combined                                                    | depends on rewriteUrls                     | Phase C |
-| `static-urls/urls`                                         | static `url()` handling under rewrite                                                  | depends on rewriteUrls                     | Phase C |
-| `url-args/urls`                                            | `urlArgs` — append a cache-busting arg to every `url()`                                | not implemented                            | Phase C |
-| `import/import-remote`                                     | Remote URL imports that fetch and inline external Less sources                         | needs explicit network/IO allowlisting     | Phase C |
+The local URL-rewrite portion of this phase has graduated. `rewriteUrls`,
+`rootpath`, their combined imported-file behavior, and `urlArgs` all run through
+the typed URL/import transform path. The full corpus now passes the dedicated
+rewrite/rootpath/url-args fixtures; `static-urls/urls` retains only the separately
+recorded authored multiline-value spelling difference. Remote source loading is
+the sole remaining Phase C feature and still needs an owner-approved network/IO
+allowlist.
 
-These are option-plumbing over the URL/import handling that the core already does;
-each is a contained addition once the render pipeline is stable post-flip.
+| Fixture                                                    | Feature                                                                                | Current disposition                                      |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `rewrite-urls-all`, `rewrite-urls-local`                   | `rewriteUrls` mode (all / local) — rebase `url()` paths relative to the importing file | **IMPLEMENTED**                                           |
+| `rootpath-rewrite-urls-all`, `rootpath-rewrite-urls-local` | `rootpath` + `rewriteUrls` combined                                                    | **IMPLEMENTED**                                           |
+| `static-urls/urls`                                         | static `url()` handling under rewrite                                                  | **IMPLEMENTED**; only authored-layout mismatch remains   |
+| `url-args/urls`                                            | `urlArgs` — append a cache-busting arg to every `url()`                                | **IMPLEMENTED**                                           |
+| `import/import-remote`                                     | Remote URL imports that fetch and inline external Less sources                         | **DEFERRED** — needs explicit network/IO allowlisting     |
+
+The implemented rows are option-plumbing over the URL/import handling that the
+core already owns. They are retained here to keep the original phase inventory
+auditable rather than silently deleting completed commitments.
 `process-imports/google.less` graduated on 2026-07-28: `processImports: false`
 now leaves remote/CSS imports un-inlined in the public alpha fixture lane.
 Remote URL import loading remains excluded from the alpha fixture lane until the
@@ -116,13 +125,30 @@ upstream fixture to the public alpha lane.
 - **Eval-path correctness cluster** (property/namespace lookup crashes, mixin
   "no matching", nested-render failures) — deferred to the **D-EVAL flip** (Phase
   B); the spine subsuming nested-render/lookup is expected to graduate many at once
-  rather than needing independent fixes. Tracked in `CUTOVER-STATUS.md`.
+  rather than needing independent fixes. **The `CUTOVER-STATUS.md` tracker is
+  retired** — it now lives at
+  `docs/architecture/core/archive/CUTOVER-STATUS-2026-07-18.md`, and
+  `docs/architecture/core/README.md` says archived files are for archaeology and
+  must never be cited as current. Use `docs/architecture/core/HANDOFF.md` as the
+  live entry point instead.
 - **Permissive `--*` custom-property parsing** (`permissive-parse.less`) —
-  **owner-decided (2026-07-11): a real gap to FIX, not defer.** Custom-property
-  values must accept arbitrary token streams (CSS-spec `<declaration-value>`),
-  implemented at the **CSS-parser base level** so it propagates to less/scss/jess
-  via grammar composition. (Fix dispatched — active, not deferred.)
-- **Bare selector capture `*[...]`** (`parse-interpolation.less`) — NOT a
-  deprecation. A NEW feature already implemented in the `.jess` parser
-  (`jess-parser` `SelectorCapture`, `grammar.ts:369`); being **ported into `.less`**.
-  A real work item, not an owner decision. (Port dispatched.)
+  implemented at the **CSS-parser base level** and pinned by
+  `css-parser/test/custom-property.test.ts`; there is no remaining custom-property
+  grammar feature in this fixture. The fixture itself remains outside the v5 lane
+  because it begins with bare `@function-name` interpolation in an at-rule prelude,
+  which settled P7 rejects in favor of `@{function-name}`. Its later golden rows
+  also encode bare-variable custom-property evaluation that settled P2 leaves
+  literal unless explicitly interpolated.
+- **Bare selector capture `*[...]`** (`parse-interpolation.less`) — implemented
+  in both the Jess and Less parsers; there is no remaining selector-capture
+  feature work in this fixture. Its final mismatch is an **intended output-policy
+  divergence** (owner ruling 2026-08-22): local `collapseNesting:false` preserves
+  the captured parent/suffix-ampersand child boundary, while explicit collapse
+  produces the golden `.fruit-cap-apple, …` branches. Less `each()` is the opt-in
+  for one emitted rule per ordinary list item without changing global nesting.
+  The same fixture also exposes two independent OPEN O8 output-policy questions: whether
+  an interpolated multi-branch nested header keeps the canonical one-branch-per-line
+  form, and whether leading whitespace inside an escaped quoted selector is
+  preserved at the header boundary. The maintained golden also has `foo: bar`
+  where the quoted-case source says `foo: baz`. Those rows require owner
+  reconciliation; they are not remaining selector-capture implementation work.

@@ -45,7 +45,7 @@ describe('AST extend preflight cost contract', () => {
 
   it('records only concrete imported-loop placements and their typed IR facts', async () => {
     const loopSelector = ast.complexSelector([{
-      compound: ast.compoundSelectorOf([ast.interpolatedSimpleSelector(ast.interpolation([
+      term: ast.compoundSelectorOf([ast.interpolatedSimpleSelector(ast.interpolation([
         { lit: '.from-' }, { ref: ast.variableReference('name', 'scoped'), unquote: true }
       ]))])
     }]);
@@ -57,7 +57,7 @@ describe('AST extend preflight cost contract', () => {
       )
     ]);
     const document = ast.stylesheet([
-      atRule.importAtRule('@import', ast.quoted('"loop.less"', 'loop.less', '"', false)),
+      ast.styleImport('@import', ast.quoted('"loop.less"', 'loop.less', '"', false), { mode: 'import' }),
       ast.rule('.target', [ast.decl('color', ast.color('red'))], [{ target: ast.selist(ast.sel('.does-not-match')), partial: true }])
     ]);
 

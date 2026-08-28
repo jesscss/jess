@@ -88,7 +88,7 @@ Use `@-import` for the first pass, then promote real modules to `@-compose`.
 
 ### Variable declarations
 
-Both Jess `$name: value` and `$$name: value` create or update both live and
+Both Jess `$name: value` and `$^name: value` create or update both live and
 scoped bindings. The reference sigil, rather than the declaration, selects
 lookup behavior.
 
@@ -122,7 +122,7 @@ lookup behavior.
   </div>
   <div style={{ flex: 1 }}>
   ```less
-  value: $$color;
+  value: $^color;
   ```
   </div>
 </div>
@@ -131,7 +131,7 @@ lookup behavior.
 
 :::info
 
-Jess `$color` is the live/current reference form. `$$color` is the scoped/final
+Jess `$color` is the live/current reference form. `$^color` is the scoped/final
 lookup.
 
 :::
@@ -172,11 +172,14 @@ Use:
   </div>
   <div style={{ flex: 1 }}>
   ```less
-  value: $($$width + 1);
-  value: $($$width / 2);
+  value: $(^width + 1);
+  value: $(^width / 2);
   ```
   </div>
 </div>
+
+SCSS variable math keeps the `$` variable spelling inside the Jess expression,
+for example `$width + 1` lowers to `$($width + 1)`.
 
 #### Sass-to-Jess
 

@@ -2,7 +2,7 @@ import { setSourceSpan, sourceSpanOf } from '../util/provenance.js';
 import { color, dimension, num, op } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
-import { type Operator } from '../util/calculate.js';
+import { type Operator } from '../../util/calculate.js';
 import { OutputWriter } from '../util/print.js';
 
 class CountingWriter extends OutputWriter {
@@ -236,8 +236,8 @@ describe('Dimension', () => {
     it('should cancel units in strict mode', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'px']);
-      context.setOption('unitMode', 'strict');
-      await expect(renderOperate(left, right, '/', context)).resolves.toBe('5');
+      const strictContext = new Context({ unitMode: 'strict' });
+      await expect(renderOperate(left, right, '/', strictContext)).resolves.toBe('5');
     });
   });
 
@@ -265,7 +265,7 @@ describe('Dimension', () => {
 
   describe('strict mode', () => {
     beforeEach(() => {
-      context.setOption('unitMode', 'strict');
+      context = new Context({ unitMode: 'strict' });
     });
     it('should throw when adding incompatible units', () => {
       let left = dimension([10, 'px']);
@@ -296,7 +296,7 @@ describe('Dimension', () => {
 
   describe('preserve mode', () => {
     beforeEach(() => {
-      context.setOption('unitMode', 'preserve');
+      context = new Context({ unitMode: 'preserve' });
     });
 
     /*

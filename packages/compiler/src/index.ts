@@ -526,7 +526,7 @@ export class Compiler {
 
     /*
      * Expand the `strict` convenience preset once, on the compile config, so the
-     * bundle it sets (unitMode/equalityMode/leakyScope/allowOverloadedImport)
+     * bundle it sets (unitMode/leakyScope/allowOverloadedImport)
      * reaches eval via `context.opts` (contextOptions spreads compile). Individual
      * options already set always win.
      */
@@ -952,14 +952,14 @@ export class Compiler {
 
     const context = new Context(contextOptions, plugins);
     if (usesDeprecatedDisablePluginRule) {
-      context.warnings.push(toDiagnostic(WARN.deprecated({
+      context.warn(WARN.deprecated({
         filePath: resolved.filePath,
         meta: {
           what: 'disablePluginRule',
           use: 'disableScriptModules',
           deprecation: Deprecation.fromId('disable-plugin-rule-option') ?? Deprecation.userAuthored
         }
-      })));
+      }));
     }
     return context;
   }
@@ -1113,7 +1113,7 @@ export class Compiler {
       const document = await this.prepareStylesheet(context, resolved, { filePath }, profile);
       const preparedImports = await this.prepareStaticImportsForStylesheet(document, context, profile);
 
-      if (context.errors.length > 0 || context.warnings.length > 0) {
+      if (context.errors.length > 0 || context.warningCount > 0) {
         outputDiagnostics(context.errors, context.warnings, {
           suppressWarnings: options?.suppressWarnings ?? false,
           breakOnError: options?.breakOnError ?? true,
@@ -1128,11 +1128,11 @@ export class Compiler {
         method: 'compile',
         filePath,
         errors: context.errors.length,
-        warnings: context.warnings.length
+        warnings: context.warningCount
       });
       return { document, context, preparedImports };
     } catch (err: unknown) {
-      if (context.errors.length > 0 || context.warnings.length > 0) {
+      if (context.errors.length > 0 || context.warningCount > 0) {
         outputDiagnostics(context.errors, context.warnings, {
           suppressWarnings: options?.suppressWarnings ?? false,
           breakOnError: options?.breakOnError ?? true,
@@ -1148,7 +1148,7 @@ export class Compiler {
         method: 'compile',
         filePath,
         errors: context.errors.length,
-        warnings: context.warnings.length,
+        warnings: context.warningCount,
         failed: true,
         errorMessage: thrownMessage(err)
       });
@@ -1163,7 +1163,7 @@ export class Compiler {
    * invisible, so they are always surfaced here.
    */
   private reportCollected(context: Context, options?: Partial<ConfigOptions>): void {
-    if (context.errors.length === 0 && context.warnings.length === 0) {
+    if (context.errors.length === 0 && context.warningCount === 0) {
       return;
     }
     outputDiagnostics(context.errors, context.warnings, {
@@ -1191,7 +1191,7 @@ export class Compiler {
         method: 'render',
         filePath,
         errors: context.errors.length,
-        warnings: context.warnings.length
+        warnings: context.warningCount
       });
       return css;
     } catch (err: unknown) {
@@ -1203,7 +1203,7 @@ export class Compiler {
         method: 'render',
         filePath,
         errors: context.errors.length,
-        warnings: context.warnings.length,
+        warnings: context.warningCount,
         failed: true,
         errorMessage: thrownMessage(err)
       });
@@ -1233,7 +1233,7 @@ export class Compiler {
         method: 'renderString',
         filePath,
         errors: context.errors.length,
-        warnings: context.warnings.length
+        warnings: context.warningCount
       });
       return css;
     } catch (err: unknown) {
@@ -1245,7 +1245,7 @@ export class Compiler {
         method: 'renderString',
         filePath,
         errors: context.errors.length,
-        warnings: context.warnings.length,
+        warnings: context.warningCount,
         failed: true,
         errorMessage: thrownMessage(err)
       });
@@ -1290,7 +1290,7 @@ export class Compiler {
         method: 'renderToResult',
         filePath,
         errors: context.errors.length,
-        warnings: context.warnings.length
+        warnings: context.warningCount
       });
       return {
         css,
@@ -1365,7 +1365,7 @@ export class Compiler {
         method: 'safeCompile',
         filePath,
         errors: context.errors.length,
-        warnings: context.warnings.length
+        warnings: context.warningCount
       });
       return {
         document,
@@ -1425,7 +1425,7 @@ export class Compiler {
         method: 'safeRender',
         filePath,
         errors: context.errors.length,
-        warnings: context.warnings.length
+        warnings: context.warningCount
       });
       return {
         css,

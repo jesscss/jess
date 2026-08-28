@@ -33,10 +33,43 @@ misses. This was about half of the observed C++ time.
 
 **INCIDENT:** polymorphic AST node shapes across parsers/eval.
 
-**DETECTOR:** the construction-time shape-stability harness records each
-`type`'s field-key signature and fails on a second signature. ESLint also
-guards known reshape forms. Any new bypass must be fixed structurally, not
-waived by making the node loosely typed.
+**DETECTOR:** `pnpm verify:shape-stability` (`test/ast-shape/`), in two halves.
+`shape-stability.test.ts` parses a less/scss/jess corpus and records each AST
+node `type`'s ordered field-key signature, failing on any signature outside
+`SHAPE_DEBT_ALLOWLIST`. `cst-shape-stability.test.ts` does the same for the CST
+across all four dialects plus the diagnostic artifact, asserting NAMED signature
+sets for the node / leaf / span families — the diagnostic parse is included
+because it is the only mode that populates line/column, so it is the only mode
+in which the conditional-span builders' line branch runs at all. Both report
+members, never counts. `pnpm audit:shape-stability` prints the full inventory.
+
+Any new bypass must be fixed structurally, not waived by making the node
+loosely typed.
+
+*Status — read before trusting this:* the gate is **advisory**. It is green on
+clean `dev` and it is collected by the root vitest project, so `pnpm test` runs
+it; it is deliberately NOT wired into `prepush-dispatch.mjs` or `verify:pr`.
+There is **no ESLint reshape rule** — an earlier version of this line claimed
+one, and none exists (`no-node-keyed-side-map` is a side-table rule, not a
+reshape rule). Enabling it as a blocking gate is an owner decision:
+
+1. `pnpm verify:shape-stability` — confirm green on an untouched checkout.
+2. Decide the debt policy. Three AST types are allowlisted-polymorphic today
+   (`MixinDefinition`, `Ruleset`, `SpacedValue`). Blocking mode pins them; it
+   does not fix them. Monomorphizing is separate (Phase B).
+3. Add it to `scripts/prepush-dispatch.mjs` under the tier that already covers
+   `packages/core/src/ast/**` and `packages/syntax/**`.
+4. Note the corpus is the coverage boundary — see "what this does NOT catch".
+
+*What this does NOT catch.* The gate sees only shapes its corpus REALIZES, and
+six factories in `ast/nodes.ts` author arms the corpus never reaches: `decl`
+(`valueOnNewLine`), `collectionEntry` (same), `collection` (`base`), `block`
+(`escaped`) together with `boundaryBlock` (`boundary`) for three `Block` arms,
+`rawInline` (`media`), and `anonymousMixin` (`params`). Each shows as
+monomorphic here purely because no corpus source takes the other branch.
+`rule()` authors FOUR arms from two independent conditional spreads and the
+corpus realizes two. Widening the corpus narrows this gap; a green run is
+evidence about the corpus, not a proof about the factories.
 
 ## 2. Never re-derive structure or materialize it into bytes early
 
@@ -178,6 +211,87 @@ SCSS output passed while a clean rebuild failed.
 missing-rule and runtime-fallback output. It is also part of the PR-quality
 workflow.
 
+## 10. Source-derived facts are constructed once, then read
+
+**RULE:** every fact derived from source bytes—line starts, code-frame lines,
+token classes, selector atoms, import boundaries, lookup keys—has one owner and
+one construction point. All later consumers read that fact. They do not scan,
+split, re-parse, or rediscover the same source region. Policy must reject a
+diagnostic before constructing it; surviving line/frame diagnostics use a lazy,
+file-owned index and only slice the lines their display tier needs.
+
+*Why:* compiler work that can be determined once must not scale with every
+consumer or every recoverable event. Repeated source derivation is hidden
+O(consumers × source length) time plus allocation, often mislabeled as general
+evaluation or GC cost.
+
+**INCIDENT:** suppressed preserved-function warnings scanned a 288 KB source
+and split it into every line per call, consuming 39.3% of samples in a
+CSS-heavy Less workload.
+
+**DETECTOR:** `verify:diagnostic-cold-path` enforces the incident's
+policy-before-normalization, capping, indexed frame, and display-tier contracts;
+the PR workflow runs it. Reviewers must extend the same one-owner proof to any
+new source-derived runtime fact rather than adding a one-off cache afterward.
+
+## 11. The reference class is a compiler, not an application
+
+**RULE:** on these paths, judge code against what a compiler engineer considers
+table stakes — not against idiomatic general-purpose JavaScript. Specifically,
+all four of the following are defects here regardless of how ordinary they look
+elsewhere:
+
+- **Restarting a scan at index 0 inside a per-item loop** over source-ordered
+  data. Carry a monotonic cursor, or binary-search once. This is invariant 8 at
+  a smaller scale, and it is the most common instance.
+- **Allocating to evaluate a predicate** — building an array, string, or object
+  only to test `.length`, emptiness, or membership. Answer the question without
+  materializing the answer.
+- **Per-node weak side tables.** V8 backs `WeakMap` with an
+  `EphemeronHashTable`; every live entry is individually tracked and resolved by
+  a fixed-point iteration during marking, which V8 documents as able to degrade
+  to quadratic. When keys die with the document, weak semantics buy nothing and
+  the ephemeron cost is pure loss. Prefer indices into flat arrays, or a
+  document-scoped map dropped wholesale.
+- **Per-entry objects for fixed small tuples.** A `{ start, end }` pair per node
+  is an object header and a hash slot to hold two integers. Prefer flat parallel
+  arrays behind a lazy view.
+
+*Why:* the bad version usually looks *better* — shorter, more readable, more
+idiomatic. That is exactly why review does not catch it and why it must be
+countable. None of these change emitted bytes, so correctness gates,
+byte-identity gates, and the full corpus all pass while the work is quadratic
+or allocating.
+
+**INCIDENT:** `emitBlockCommentTriviaBetween` re-iterated `commentRuns()` from
+index 0 once per emitted statement — O(statements × runs) — while
+`blockCommentsIn()` re-scanned source with `indexOf('/*')` and allocated a
+fresh `string[]` *inside conditions that only tested `.length`*. In the same
+file, four module-global `WeakMap`s keyed by AST node stored
+`Readonly<{start,end}>` objects: 18,628 individually GC-tracked entries per
+render. Every gate was green throughout.
+
+**DETECTOR:** counts, not timings — `indexOf` calls, allocations, and
+inner-loop iterations per render against a committed named baseline. Counts
+have no noise floor, which matters because the timing harnesses cannot resolve
+small effects (eleven identical processes on the CSS gate corpus spanned
+−11.8% to +26.4%). Reviewers apply the `AGGRESSIVE-CUTTING-REVIEW.md` tokens
+(**[loop/traversal]**, **[array spread/materialization]**,
+**[materialized array/object]**) to core hot-path diffs, not only to grammar
+work.
+
+> **Scope is part of the invariant.** These rules bind
+> `packages/core/src/ast/**` — including `serialize.ts`, `provenance.ts`, and
+> `extend/**` — as much as they bind the grammars. That was not true in
+> practice for five days after the `e96d1035d` regroup: the routing globs in
+> `CLAUDE.md` and the `perf-architecture` skill still named
+> `packages/*-parser/**` (moved to `packages/syntax/`) and
+> `packages/core/src/tree/**` (the legacy engine) while omitting
+> `packages/core/src/ast/**`. The incident above landed in that window. **A
+> guardrail pointed at a deleted directory is indistinguishable from a
+> guardrail that passed** — when a path here stops resolving, fix it in the same
+> change.
+
 ---
 
 ## Regression-fixture catalogue (reviewer must always catch)
@@ -193,6 +307,8 @@ diff reintroduces each applicable shape.
 | R4 | **polymorphic node shapes** | 1 | A sometimes-present field or branch-varying shape that de-optimizes a hot call site. |
 | R5 | **20x7 choice fan-out** | 8 | Shared-prefix alternatives re-parsing the same prefix. Prefer factoring or first-set guards. |
 | R6 | **compose-integrity / stale-build degrade** | 9 | A grammar/macro change that falls back to the runtime interpreter or references a missing rule, masked by stale generated output. |
+| R7 | **repeated source derivation / eager suppressed diagnostics** | 10 | Constructing a warning, locating its source, splitting its code frame, or otherwise rediscovering a source-derived fact after an owner could have carried it. |
+| R8 | **speculative lookahead CST publication** | 5, 11 | A positive parser assertion whose terminals publish captured leaves/spans and then roll them back. Inspect the exact generated AST and CST functions; prefer parent-owned delimiter consumption or a proven capture-free recognizer. |
 
 When a new performance regression is fixed, add a row and, where possible, a
 deterministic detector. The catalogue and detector set must remain grounded in

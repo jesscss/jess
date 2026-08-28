@@ -21,7 +21,7 @@ describe('@jesscss/plugin-jess', () => {
       filePath: 'entry.jess',
       line: 2,
       column: 1,
-      message: expect.stringMatching(/^Jess parser error\./),
+      message: 'Unexpected Jess input after a complete stylesheet.',
       file: { source }
     });
     expect(result.errors[0]?.lines?.[2]).toContain('!broken');

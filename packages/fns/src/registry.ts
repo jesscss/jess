@@ -7,17 +7,15 @@
  * dialect registers exactly what its index exports, so adding a fn to a dialect
  * folder plus a line in that folder's index is the whole change.
  *
- * A dialect index may still export modules that have not been converted to the
- * value domain (legacy tree-node callables). Those are not `Fn`s, so they are
- * skipped here rather than listed somewhere as an exception — converting one in
- * place is what registers it.
+ * The predicate below also keeps non-callable namespace exports out if an index
+ * ever grows one, but the dialect callable surfaces themselves are value-domain
+ * `Fn`s. There is no legacy tree-node fallback here.
  */
-import { createFnRegistry, type Fn, type FnRegistry } from '@jesscss/core/value';
+import { createFnRegistry, type Fn, type FnRegistry } from '@jesscss/core';
 
 /**
  * Whether a dialect-index export is a value-domain {@link Fn}. The value-domain
- * factory attaches `params` directly to the callable; the legacy tree-node
- * factory attaches `options`/`_internal` instead and never a bare `params`.
+ * factory attaches `params` directly to the callable.
  */
 function isFn(value: unknown): value is Fn {
   if (typeof value !== 'function') {

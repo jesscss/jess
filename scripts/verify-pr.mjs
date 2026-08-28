@@ -63,6 +63,14 @@ function run(command, args, { capture = false } = {}) {
   return combined;
 }
 
+/*
+ * 0. Guardrails first, because it is instant and because a violation here is a
+ * process failure, not a code failure: an agent that redefined an owner
+ * requirement should be stopped before anything is built.
+ */
+heading('Guardrails: owner requirements + closure attribution');
+run('node', ['scripts/check-guardrails.mjs']);
+
 // 1. Clean all package libs.
 heading('Clean: removing package lib outputs');
 const removedLibDirs = removePackageLibDirs(ROOT);
@@ -91,11 +99,19 @@ run('node', ['scripts/verify-compose-integrity.mjs', '--log', buildLogPath]);
 
 /*
  * 3b. Macro-buildability against the artifacts step 2 just produced. Compose
- * degrade is only half the concern: a single rule can stop lowering while
- * the grammar as a whole still composes, and that shows up ONLY as
- * `_rp[N].parse(` in the built bundle. `--no-build` so this reads step 2's
+ * degrade is only half the concern: a single rule can stop lowering while the
+ * grammar as a whole still composes, and that shows up in the artifact as a
+ * surviving parseman combinator import. `--no-build` so this reads step 2's
  * output instead of paying for a second clean rebuild.
+ *
+ * The detector's own two-canary test runs FIRST. Both gates above are only as
+ * good as the detector they share, and a detector that has stopped firing looks
+ * exactly like a clean build — which is how the retired `_rp[N].parse(` marker
+ * sat here inert. The canary pair costs ~100 ms and is the only thing that
+ * distinguishes the two.
  */
+heading('Fallback-detector canaries');
+run('node', ['--test', 'scripts/__tests__/parseman-fallback-detector.test.mjs']);
 heading('Macro-buildability');
 run('node', ['scripts/check-macro-buildable.mjs', '--no-build']);
 
@@ -117,10 +133,26 @@ for (const script of [
   'verify:config-syntax',
 
   /*
+   * CLAUDE.md mandates three reviewer agents. They live in `.cursor/agents` and
+   * Claude Code loads `.claude/agents` — when only the first exists, every one
+   * of those mandates names an agent no session can load, and nothing says so.
+   */
+  'verify:agents',
+
+  /*
    * A truthiness test on a possibly-awaitable value silently takes one branch
    * instead of crashing, and neither tsc nor no-unnecessary-condition sees it.
    */
   'verify:maybe-promise-truthiness',
+
+  /*
+   * Node does not tree-shake, so one named import of a plain const from a
+   * module that also imports a compiled grammar table costs every consumer of
+   * that entry point the whole table at load time. No test, output diff, or
+   * throughput gate can see it. Reads step 2's build output.
+   */
+  'verify:import-graph',
+
   'verify:aggressive-cutting-review',
   'verify:node-copy-frontier',
   'verify:materialization-frontier',

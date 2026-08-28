@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      # The supported set is `^20.19.0 || >=22.12.0` — see `engines` in all 19
+      # The supported set is `^20.19.0 || >=22.18.0` — see `engines` in all 19
       # publishable package.json files. That is two disjoint ranges, so this
       # matrix pins the LOWEST version of each one explicitly: a floor that is
       # never installed is an assertion, not a tested claim, and the `lts/-N`
@@ -25,8 +25,10 @@ jobs:
       # 20.19+, never 20.19.0 itself).
       #
       # Exact pins for the two floors, moving aliases for the ceiling:
-      #   20.19.0  floor of the `^20.19.0` range
-      #   22.12.0  floor of the `>=22.12.0` range
+      #   20.19.0  floor of the `^20.19.0` range — Node 20 with require(ESM) backported
+      #   22.18.0  floor of the `>=22.18.0` range — first 22 where require(ESM) is
+      #            stable (22.12.0 emitted an ExperimentalWarning to stderr on
+      #            diagnostics-core's require of the ESM-only html-tags)
       #   lts/*    newest LTS line, follows Node without edits
       #   current  latest release, early warning for the next line
       #
@@ -37,7 +39,7 @@ jobs:
       matrix:
         node:
           - '20.19.0'
-          - '22.12.0'
+          - '22.18.0'
           - lts/*
           - current
     steps:
@@ -56,14 +58,33 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # `jess...` (trailing ellipsis) builds jess AND its workspace dependencies
+      # in topological order; a bare `--filter jess` builds only jess and fails on
+      # a clean checkout because styles-config / @jesscss/compiler-preset have no
+      # emitted lib/ + .d.ts yet. --workspace-concurrency=1 keeps the parser
+      # builds serial (they gate on each other).
       - name: Verify public Jess CLI
-        run: pnpm --filter jess build && pnpm --filter jess test -- cli.test.ts --run --globals
+        run: pnpm --filter "jess..." --workspace-concurrency=1 build && pnpm --filter jess test -- cli.test.ts --run --globals
 
   less-alpha-readiness:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # The verify:less-alpha corpus lanes (test:less:test-data:*) render the
+      # owner-maintained @less/test-data corpus, which package.json links as
+      # `link:../less.js/packages/test-data` — a sibling checkout that does not
+      # exist in CI. Check the public corpus repo out here and point the tests at
+      # it via LESS_TEST_DATA_ROOT (honored by both vitest.config.ts and
+      # test-utils resolveLessTestDataRoot). Without this the corpus tests throw
+      # at load and the job fails on a corpus it was never given.
+      - name: Checkout Less.js corpus (matthew-dean/less.js@alpha)
+        uses: actions/checkout@v4
+        with:
+          repository: matthew-dean/less.js
+          ref: alpha
+          path: less-corpus
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -78,4 +99,6 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Verify Less alpha readiness
+        env:
+          LESS_TEST_DATA_ROOT: ${{ github.workspace }}/less-corpus/packages/test-data
         run: pnpm run verify:less-alpha

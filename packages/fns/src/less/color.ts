@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core/value';
-import { colorRgbRounded, makeColorRgb, defineFunction, HEX, parseHex, namedColor } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core';
+import { colorRgbRounded, makeColorRgb, defineFunction, HEX, parseHex, namedColor } from '@jesscss/core';
 
 const HEX_RE = /^#([A-Fa-f0-9]{8}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{3,4})$/;
 
@@ -17,11 +17,11 @@ const HEX_RE = /^#([A-Fa-f0-9]{8}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{3,4})$/;
  * = Less 4.x for the quoted cases).
  */
 export const color: Fn = defineFunction('color', {
-  params: [{ kinds: ['Color', 'Quoted'] }],
+  params: [{ type: ['Color', 'Quoted'] }],
   body: (arg) => {
     if (arg.type === 'Color') {
       const c = arg;
-      const named = typeof c.node === 'string' ? namedColor(c.node) : undefined;
+      const named = typeof c.src === 'string' ? namedColor(c.src) : undefined;
       if (named) {
         return makeColorRgb(colorRgbRounded(c), c.alpha, HEX);
       }
@@ -37,7 +37,7 @@ export const color: Fn = defineFunction('color', {
     }
     if (HEX_RE.test(value)) {
       const { rgb, alpha } = parseHex(value);
-      return makeColorRgb(rgb, alpha, HEX, { node: value });
+      return makeColorRgb(rgb, alpha, HEX, { src: value });
     }
     throw new Error('argument must be a color keyword or 3|4|6|8 digit hex e.g. #FFF');
   }

@@ -48,10 +48,15 @@ interface StylesConfig {
     mathMode?: 'always' | 'parens-division' | 'parens' | 'strict';
     unitMode?: 'loose' | 'preserve' | 'strict';
     functionMode?: 'preserve' | 'error';
-    equalityMode?: 'less' | 'sass' | 'exact';
   };
   input?: InputOptions | InputOptions[];
   output?: OutputOptions | OutputOptions[];
+  lint?: {
+    files?: string | string[];
+    ignoreFiles?: string | string[];
+    reportSyntax?: boolean;
+    rules?: Record<string, LintRuleSetting>;
+  };
   language?: {
     less?: LessOptions;
     scss?: Record<string, any>;
@@ -65,7 +70,6 @@ interface InputOptions {
   file?: string;  // Path or glob pattern to match input files
   mathMode?: MathMode;
   unitMode?: UnitMode;
-  equalityMode?: EqualityMode;
   // ... any compile or language options to override
 }
 
@@ -76,7 +80,25 @@ interface OutputOptions {
   sourceMap?: boolean;
   // ... any output options to override
 }
+
+type LintSeverity = 'off' | 'warn' | 'error';
+type LintRuleSetting = LintSeverity | null | readonly [
+  LintSeverity | null,
+  { ignore?: readonly string[]; include?: readonly string[] }?
+];
 ```
+
+### Equality is not a configurable mode
+
+There is no `equalityMode` option. Which comparison `==` or `=` means is
+carried by the node the dialect front end lowers to, not by a flag the
+evaluator reads from this config: `.less` `=` and `.jess` `=` lower to the
+loose comparison, `.jess` `==` lowers to the type-equal comparison, and
+`.scss` `==` lowers to the named `sass-equal` primitive (type-equal for a
+numeric pair, loose otherwise). `sass-equal` still dispatches on operand type
+at evaluation, because the operand types are not known until then — that
+dispatch is the primitive's definition, not an ambient mode. See
+`docs/design/RESOLVED-SEMANTICS-AND-NAMING.md` §5.1 and §7.3.
 
 ### Example Configuration
 
@@ -86,7 +108,6 @@ export default {
   compile: {
     mathMode: 'parens-division',
     unitMode: 'loose',
-    equalityMode: 'less',
     searchPaths: ['./src/styles', './node_modules']
   },
   input: [
@@ -101,6 +122,13 @@ export default {
     // Override for minified builds
     { file: '**/*.min.css', compress: true, sourceMap: false }
   ],
+  lint: {
+    files: ['src/**/*.{css,less,scss,jess}'],
+    rules: {
+      'property-no-unknown': 'error',
+      'declaration-block-no-duplicate-properties': ['warn', { ignore: ['consecutive-duplicates'] }]
+    }
+  },
   language: {
     less: {
       strictImports: false

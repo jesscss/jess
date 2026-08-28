@@ -11,6 +11,71 @@ required to read them.
 
 ---
 
+## Read this first — owner requirements are not yours to close
+
+**An agent may not redefine, narrow, or close an owner requirement.** When a
+requirement conflicts with a tool constraint, a technical limit, or an
+implementation difficulty, **STOP AND ESCALATE**. Record the constraint, the
+evidence, the options and a recommendation. Do NOT record the decision.
+(`CLOSURE-QUOTED:`) Writing "settled" / "do not re-propose" / "do not revisit"
+about an owner requirement is itself the violation — it removes every later agent's permission
+to reopen it. Only the owner closes an owner requirement. Corollary: a commit
+that removes a shared mechanism must say so in its body.
+
+- `docs/OWNER-REQUIREMENTS.md` — every standing owner requirement, verbatim,
+  with a stable `OR-*` ID. **Owner-owned. Do not edit it.**
+- `pnpm check:guardrails` enforces both halves: the file is hash-frozen, and any
+  closure directive in `docs/`, `.cursor/rules/`, `CLAUDE.md` or `AGENTS.md`
+  must carry an attribution marker. It runs on every push and in `verify:pr`.
+- Full statement and the live overruled instances:
+  `docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md`; ledger row **E8**.
+
+---
+
+## Start Here — the parseman table lowering, and what "done" means
+
+**If you are working on parseman's table lowering (`src/table/`), or on anything
+downstream of it, read this before the section below.**
+
+The table is **not** a second lowering that lives alongside codegen. It is meant to
+**replace** it — `DESIGN-DECISIONS` **G4**, *one input grammar, one compiled output*.
+Several lanes drifted into treating it as an opt-in prototype and fixing it piecemeal.
+
+**Owner, 2026-08-01:** *"why would i accept ANY PR until you PROVE ./table works, has
+acceptable speed trade-offs, and is finalized as working, and if so, all other parsing /
+codegen paths are deleted and replaced with table paths."* And: *"we CAN'T TELL IF WE KEEP
+THIS WHOLE ARCHITECTURE YET because you haven't FINISHED it to where it's PROVEN against
+all Jess grammars."*
+
+So:
+
+- **The deliverable is a WORKING, FAST table design — not a verdict.** *(Corrected
+  2026-08-01.)* Nothing merges until the design is proven against all four jess grammars,
+  and fixes land as branches until then — but a disappointing measurement is the problem
+  statement, not an answer. Owner: *"we're close enough that you have to make this right.
+  if we're on the wrong side of speed, you work night and day until we fix it"* — and the
+  fix must be **within the table design**, not a pivot away from it.
+- **Proven means, in order:** every combinator emits · all four grammars emit as modules ·
+  an emitted module parses **identically to the interpreter on the real corpora** ·
+  per-dialect speed and size the owner accepts. Only then is codegen deleted.
+- **A limitation is not a scope decision.** `balanced()`/`scanTo()` non-emission was
+  written up as a documented limitation; that framing is withdrawn. It is what makes the
+  design unmeasurable — no shipping grammar can be written to a module at all.
+- **Report unfavourable results early and loudly.** If a construct genuinely cannot be
+  data, or a cost cannot come down, that is the most valuable finding available. An
+  approach is withdrawn only when proven impossible or its premise proven false.
+
+Current state, so nobody quotes a friendlier number: the table **loses 41 of 111** all-less
+cases against the interpreter on identical combinators, **throws on 40 of 136** corpus
+files where the interpreter succeeds, **differs silently in bytes on 2 more**, and
+**mis-parses jess wholesale**. `113 B/rule` and `~2.65×` are 16-rule-ladder and json
+figures — not evidence about real grammars, and not to be quoted as if they were.
+
+Full state and the ordered next steps: `docs/architecture/core/HANDOFF.md`, the
+**THE GOAL** and **NEXT UP** sections.
+
+---
+
 ## Start Here — the largest active project
 
 **The four-grammar rewrite.** Each of the four dialect parsers (`css`, `less`,
@@ -19,7 +84,8 @@ required to read them.
 shipping compile path). **The physical eight-to-four fold has landed:** each
 dialect now ships AST and CST from one host-mode grammar source. The active work
 is polishing the surviving grammars so they are small, readable, spec-shaped,
-well documented, and idiomatic Parseman 0.41.
+well documented, and idiomatic Parseman (the floor is `^0.47.1` as of 2026-08-12;
+re-check `package.json` rather than trusting a version written here).
 
 **The spec is [`docs/design/GRAMMAR-REBUILD-SPEC.md`](docs/design/GRAMMAR-REBUILD-SPEC.md).
 Read its §0 first** — it states the goal in the owner's own words, the current
@@ -30,8 +96,9 @@ claim in it. The per-`const` review checklist that governs any grammar edit is
 Two things to know before you plan anything:
 
 - **The parseman hostMode floor is paid.** The mechanism that lets one grammar
-  file serve both the AST and the CST is parseman's `hostMode`, and the repo now
-  resolves registry `parseman@0.41.0` through `^0.41.0` ranges. Publishing
+  file serve both the AST and the CST is parseman's `hostMode`, and the repo
+  resolves registry `parseman@0.47.1` through `^0.47.1` ranges
+  (`pnpm-lock.yaml` has a sole parseman entry). Publishing
   future parseman releases is still owner-only. Spec §0.2 says exactly what to
   check and how.
 - **Order is `css` → `less` → `scss` → `jess`.** CSS is the base; the dialects
@@ -164,6 +231,42 @@ This prohibition is about AST construction hosts. It does not ban a Parseman
 grammar-level routing combinator such as `dispatch(combinator, when(...),
 otherwise(...))`, whose job is recognition and macro-compilable branch
 selection.
+
+## Parser-Owned Shape Rules
+
+Parsers own AST validity. Core nodes are cheap value objects that assume their
+inputs are already right. View every parser/AST shape decision through the
+repo's performance pressure: prefer grammar-time decisions, macro-compilable
+Parseman structure, simple value objects, and typed construction over runtime
+branching. Do not push parser-shape enforcement into hot-path runtime
+constructors, node methods, eval/render visitors, or compatibility facades. If
+a shape can be made invalid only by parser construction, fix the parser
+reduction and pin it with parser AST tests. Diagnostics may optionally audit or
+report invalid shapes, but diagnostics are not the source of truth that makes
+nodes valid.
+
+Selector parsers must emit the smallest authored selector shape:
+
+- A selector-list branch with no combinator is a selector term, not a
+  `ComplexSelector`.
+- A `CompoundSelector` is only for multiple adjacent simple selector tokens. A
+  single simple, basic, pseudo, or parent selector remains that selector.
+- A `ComplexSelector` is only for selector-term/combinator/selector-term
+  sequences and must contain at least one combinator. It must never wrap one
+  selector term.
+- A `RelativeSelector` is only for combinator-leading relative selector branches
+  and must contain that leading combinator followed by at least one selector
+  term.
+- Combinators remain primitive strings in selector sequences; do not wrap them
+  in objects.
+- Do not admit leading-combinator branches through a generic selector
+  production. Contextualize the grammar so relative selectors are accepted only
+  where the language permits them, such as nested selector position or selector
+  function arguments that allow relative selectors.
+- Do not enforce these invariants with runtime shape rejection in core nodes.
+  Parser reductions should coalesce into legal shapes, and parser AST tests
+  should assert that one-item compounds, one-term complex selectors, and
+  out-of-context relative selectors are not produced.
 
 ## Parser Runtime Boundary
 
@@ -314,7 +417,12 @@ Before writing or reviewing code on a hot path (core tree/eval/render,
 grammar/parser, extend/selector algorithms), work from the canonical perf
 checklist:
 
-- `docs/perf/V8-ARCHITECTURE.md` — the **9 invariants** ("before you write X,
+- **`docs/perf/BENCHMARKS.md` — the command-first index of the standard perf
+  tests and old perf data.** To measure anything (jess vs Less 4.x, render
+  hot-path, jess vs an older commit) or find historical/baseline numbers, start
+  there instead of searching the tree. Never invent a benchmark harness.
+- `docs/perf/V8-ARCHITECTURE.md` — the **numbered invariants** (1-11 at `facb641dd`;
+  count them in the file rather than trusting a number here) ("before you write X,
   check Y") plus the regression-fixture catalogue of real incidents
   (`selectorAtoms` re-derivation, the `documentHasExtend` tree-walk, extend
   `.includes()` `O(n·m)`, polymorphic node shapes, the 20×7 `choice` fan-out,
@@ -370,6 +478,68 @@ instead.
 
 - Run the smallest relevant test first while iterating.
 - Before claiming completion, run the appropriate baseline or verification command for the affected area.
+- **Done means landed on `origin/dev`, not "committed on my branch."** An agent
+  finishes its own work: gates run and reported by name, an adversarial review
+  passed, then rebase onto `origin/dev`, verify the fast-forward, and push. A
+  branch that stops at "ready for someone else to merge" is unfinished, and the
+  context needed to finish it dies with the agent that had it. The definition of
+  done is:
+  1. **Gates green, named.** Not a count, not "tests pass" — the specific gates
+     for the touched surface, each named with its result, and any red one
+     explained against its known baseline.
+  2. **Adversarially reviewed.** Use the reviewer that matches the surface —
+     `.cursor/agents/grammar-reviewer.md` (evidence per `const`),
+     `perf-architecture-reviewer.md` (evidence per invariant),
+     `semantics-reviewer.md`. A bare verdict, "tests pass", or a sampled review
+     is an invalid result.
+  3. **Landed.** `git fetch`, rebase or merge `origin/dev`, confirm the push is
+     a fast-forward, push, then confirm `HEAD..origin/dev` is 0.
+  A coordinator may sequence merges when lanes genuinely interact — but
+  sequencing is an exception that must be stated with its reason, not the
+  default. Defaulting to "hand it back" converts every finished lane into
+  someone else's unfinished one.
+- **Never push a red `dev`.** If landing would break it, say so and stop with
+  the specific failure — that is the one legitimate reason not to finish.
+- **On hot paths the reference class is a compiler, not an application.** Hot
+  paths are `packages/core/src/ast/**` (`serialize.ts`, `provenance.ts`,
+  `extend/**`), `packages/syntax/*/*-parser/src/**`, `packages/parser-shared/**`,
+  and `packages/core/src/tree/**`. Idiomatic general-purpose JavaScript is not
+  the bar: restarting a scan at index 0 inside a per-item loop over ordered
+  data, allocating an array or string only to test `.length` or emptiness,
+  per-node `WeakMap` side tables, and per-entry objects holding two integers are
+  all defects here no matter how ordinary or readable they look. The bad version
+  usually looks *better*, which is why it must be caught by counts rather than
+  by reading. Full statement and incidents: `docs/perf/V8-ARCHITECTURE.md`
+  invariant 11.
+- **None of that class changes emitted bytes**, so correctness gates,
+  byte-identity, and the full corpus stay green while the work is quadratic.
+  Prove hot-path changes with counts — allocations, `indexOf` calls, iterations
+  per render — not with timings; the timing harnesses currently cannot resolve
+  small effects.
+- **If a scope glob in `CLAUDE.md`, a `.cursor/rules/**` header, or a skill no
+  longer resolves, fix it in the same change.** A guardrail pointed at a deleted
+  directory is indistinguishable from a guardrail that passed. The `e96d1035d`
+  regroup left every parser rule pointing at `packages/*-parser/**` and left
+  `packages/core/src/ast/**` uncovered entirely; real invariant violations
+  landed in that window.
+- Before committing a parser-grammar change, run its parse-performance gate on
+  the built artifact. Capture a named before/after comparison using the same
+  fixture, Node runtime, warm-up, and timed samples; record the resolved parser
+  and Parseman paths/versions with the result. The gate is mandatory even for a
+  readability or cleanup change: grammar routing can change hot-path work
+  accidentally. Treat a difference inside the documented harness noise as
+  inconclusive, not a win or regression; investigate a material regression
+  before committing. The parser review standard names the dialect harnesses and
+  required correctness gates.
+- **A before/after against your parent commit is not enough.** "Sub-noise means
+  inconclusive" plus a reference point that moves every commit means a `+2%`
+  change lands as noise and becomes the new baseline; twenty of those compound
+  to `+49%` with every gate green. Also measure against the oldest cleanup-era
+  commit you can build, record both deltas, and treat a *consistently positive
+  direction* across consecutive commits as a real regression even when each
+  magnitude is inside the band. Do not let the grammar cleanup slowly degrade
+  parse performance. See the drift gate in
+  `docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md`.
 - If package B depends on package A, build A first when the workspace layout requires built outputs.
 - When debugging, record what was tried, what happened, and the next step in the repo’s transient state files instead of expanding permanent guidance.
 

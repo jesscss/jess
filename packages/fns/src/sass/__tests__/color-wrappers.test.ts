@@ -15,8 +15,8 @@
  * this file pins the NON-ALIAS relationships specifically.
  */
 import { describe, expect, it } from 'vitest';
-import { makeColorRgb, makeDimension, makeList, isValueGroupArray, HEX, RGB } from '@jesscss/core/value';
-import type { Color, Fn, FnCtx, ValueGroup, ValueObj } from '@jesscss/core/value';
+import { makeColorRgb, makeDimension, makeList, isValueGroupArray, HEX, RGB } from '@jesscss/core';
+import type { Color, Fn, FnCtx, ValueGroup, Value } from '@jesscss/core';
 import { fadeIn } from '../color/fade-in.js';
 import { fadeOut } from '../color/fade-out.js';
 import { opacify } from '../color/opacify.js';
@@ -36,7 +36,7 @@ const ctx: FnCtx = {
   stringify: v => (isValueGroupArray(v) ? '' : v.bytes)
 };
 
-function call(fn: Fn, ...args: ValueObj[]): ValueObj {
+function call(fn: Fn, ...args: Value[]): Value {
   const result = fn(makeList(args as readonly ValueGroup[], ','), ctx);
   if (result instanceof Promise || isValueGroupArray(result)) {
     throw new TypeError('Expected a single value result.');
@@ -44,7 +44,7 @@ function call(fn: Fn, ...args: ValueObj[]): ValueObj {
   return result;
 }
 
-function color(value: ValueObj): Color {
+function color(value: Value): Color {
   if (value.type !== 'Color') {
     throw new TypeError('Expected a Color result.');
   }
@@ -52,8 +52,8 @@ function color(value: ValueObj): Color {
 }
 
 const half = makeColorRgb([255, 0, 0], 0.5, RGB);
-const pct = (n: number): ValueObj => makeDimension(n, '%');
-const num = (n: number): ValueObj => makeDimension(n);
+const pct = (n: number): Value => makeDimension(n, '%');
+const num = (n: number): Value => makeDimension(n);
 
 describe('Sass alpha functions are NOT Less’s fadein/fadeout', () => {
   it('take a 0-1 fraction where Less takes a percentage', () => {
@@ -63,8 +63,10 @@ describe('Sass alpha functions are NOT Less’s fadein/fadeout', () => {
     expect(color(call(fadeOut, half, num(0.1))).alpha).toBeCloseTo(0.4);
     expect(color(call(transparentize, half, num(0.1))).alpha).toBeCloseTo(0.4);
 
-    // Less reads the SAME numeral as a percentage — 0.1% — so the two scales
-    // cannot share one body.
+    /*
+     * Less reads the SAME numeral as a percentage — 0.1% — so the two scales
+     * cannot share one body.
+     */
     expect(color(call(lessFadein, half, num(0.1))).alpha).toBeCloseTo(0.501);
   });
 
@@ -99,8 +101,9 @@ describe('ie-hex-str is NOT Less’s argb', () => {
   it('differs from argb by CASE, so the Less body cannot be reused', () => {
     // dart-sass: ie-hex-str(rgba(255,0,0,0.5)) → #80FF0000
     expect(ieHexString(half)).toBe('#80FF0000');
+
     // lessc 4.8: argb(rgba(255,0,0,0.5)) → #80ff0000
-    expect(color(call(lessArgb, half)).node).toBe('#80ff0000');
+    expect(color(call(lessArgb, half)).src).toBe('#80ff0000');
     expect(ieHexStr).not.toBe(lessArgb);
     expect(ieHexStr.name).toBe('ie-hex-str');
   });
@@ -108,13 +111,13 @@ describe('ie-hex-str is NOT Less’s argb', () => {
   it('emits the colour carrying that exact hex spelling', () => {
     const out = color(call(ieHexStr, half));
     expect(out.format).toBe(HEX);
-    expect(out.node).toBe('#80FF0000');
+    expect(out.src).toBe('#80FF0000');
   });
 });
 
 describe('grayscale / adjust-hue are pure renames — but still Sass-owned', () => {
   it('compute what greyscale / spin compute', () => {
-    const maroon = makeColorRgb([136, 0, 0], 1, HEX, { node: '#800' });
+    const maroon = makeColorRgb([136, 0, 0], 1, HEX, { src: '#800' });
     expect(color(call(grayscale, maroon)).bytes).toBe(color(call(lessGreyscale, maroon)).bytes);
     expect(color(call(adjustHue, maroon, num(45))).bytes)
       .toBe(color(call(lessSpin, maroon, num(45))).bytes);
@@ -128,6 +131,7 @@ describe('grayscale / adjust-hue are pure renames — but still Sass-owned', () 
 
   it('adjust-hue converts a true angle unit, where Less’s spin reads the raw number', () => {
     const red = makeColorRgb([255, 0, 0], 1, RGB);
+
     // dart-sass: adjust-hue(red, 60rad) → rgb(0, 179.576224164, 255)
     const sassHue = color(call(adjustHue, red, makeDimension(60, 'rad')));
     expect(sassHue.hsl?.[0]).toBeCloseTo(197.7467707849, 6);

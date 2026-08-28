@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { builtinModules } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import parseman from 'parseman/plugin';
 
-const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname));
+const repoRoot = path.dirname(fileURLToPath(import.meta.url));
 const packagesRoot = path.join(repoRoot, 'packages');
 const sharedNodeModules = fs.realpathSync(path.join(repoRoot, 'node_modules'));
 const sharedRepoRoot = path.dirname(sharedNodeModules);
@@ -18,7 +19,17 @@ const excludedExternalAliases = [
   'eslint',
   'tsdown',
   'cross-env',
-  '@types/'
+  '@types/',
+
+  /*
+   * parseman is a normally-resolvable published package with SUBPATH exports
+   * (`./table`, `./plugin`, `./diagnostics`). A bare `parseman` → directory alias
+   * shadows those subpaths (vite string-aliases `parseman/table` to `<dir>/table`,
+   * which does not exist — the export maps it to `dist/table/index.js`), so the
+   * built parsers' `import { tableRules } from 'parseman/table'` fails
+   * `ERR_MODULE_NOT_FOUND` and env-reds the whole Less lane. Let node resolve it.
+   */
+  'parseman'
 ];
 
 type PackageJson = {

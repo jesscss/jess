@@ -2,6 +2,7 @@
 description: "Core AST + evaluation engine (`@jesscss/core`): tree structure, evaluation passes, extend/mixin hotspots"
 globs:
   - "packages/core/src/tree/**"
+  - "packages/core/src/ast/**"
   - "packages/core/src/define-function.ts"
   - "packages/core/src/**/__tests__/**"
 ---
@@ -30,7 +31,8 @@ Never dismiss nested-mode correctness as "moot" or "deferred". See
 
 - Follow `AGENTS.md` for repo-wide goals.
 - For hot-path perf, the canonical checklist is `docs/perf/V8-ARCHITECTURE.md`
-  (9 invariants + regression-fixture catalogue); enforcement design is
+  (each numbered invariant, 1-11 at time of writing, + the regression-fixture
+  catalogue); enforcement design is
   `docs/architecture/llm-quality-enforcement-design.md`. Load the `perf-architecture`
   skill before editing eval/render/extend, and use the
   `perf-architecture-reviewer` (evidence per invariant) before landing.

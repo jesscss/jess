@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildEvaluator } from '../evaluator.js';
 import {
-  collection, decl, dimension, funcCall, keyword, quoted,
+  collection, collectionEntry, decl, dimension, funcCall, keyword, quoted,
   rule, stylesheet, variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
@@ -11,18 +11,20 @@ import { makeSassRegistry } from '@jesscss/fns';
 
 const evaluator = buildEvaluator(makeSassRegistry());
 const render = (document: Stylesheet): string | undefined => serialize(document, { evaluator }).css;
+const entry = (name: string, value: Parameters<typeof collectionEntry>[1]): ReturnType<typeof collectionEntry> =>
+  collectionEntry(keyword(name), value);
 
 /**
- * The DATA half of the two-role Collection model: a Collection reaching a
- * value/arg position evaluates to the VALUE-DOMAIN map, not to the bytes it
- * renders to. Before this existed the map arrived at a function as one opaque
- * sniffed `Keyword`, so no map function could be written against it and any that
- * tried would have had to re-derive structure from bytes.
+ * A Collection reaching value/argument position evaluates to the VALUE-DOMAIN
+ * map, not to the bytes it renders to. Before this existed the map arrived at a
+ * function as one opaque sniffed `Keyword`, so no map function could be written
+ * against it and any that tried would have had to re-derive structure from
+ * bytes.
  */
 describe('Collection as a value-domain map', () => {
   const map = (): ReturnType<typeof collection> => collection([
-    decl('a', dimension(1)),
-    decl('b', dimension(2))
+    entry('a', dimension(1)),
+    entry('b', dimension(2))
   ]);
 
   /**
@@ -54,7 +56,7 @@ describe('Collection as a value-domain map', () => {
 
   /** An entry VALUE stays typed, so a nested map does not collapse to bytes. */
   it('keeps a nested map a map', () => {
-    const nested = collection([decl('a', collection([decl('c', dimension(3))]))]);
+    const nested = collection([entry('a', collection([entry('c', dimension(3))]))]);
     const document = stylesheet([
       rule('.x', [decl('p', funcCall('length', [funcCall('nth', [nested, dimension(1)])]))])
     ]);
@@ -76,7 +78,7 @@ describe('Collection as a value-domain map', () => {
     expect(collectionEntries(built)).toHaveLength(1);
 
     const document = stylesheet([
-      rule('.x', [decl('q', funcCall('nth', [collection([decl('1', keyword('v'))]), dimension(1)]))])
+      rule('.x', [decl('q', funcCall('nth', [collection([entry('1', keyword('v'))]), dimension(1)]))])
     ]);
     expect(render(document)).toBe('.x {\n  q: 1 v;\n}\n');
   });
@@ -89,6 +91,7 @@ describe('Collection as a value-domain map', () => {
     ]);
 
     expect(collectionKeyIndex(built, { type: 'Keyword', text: 'a', bytes: 'a' })).toBe(0);
+
     // Sass string equality ignores quoting, so `"a"` finds the `a` entry.
     expect(collectionKeyIndex(built, { type: 'Quoted', value: 'a', quote: '"', escaped: false, bytes: '"a"' })).toBe(0);
     expect(collectionKeyIndex(built, { type: 'Dimension', number: 2, unit: '', bytes: '2' })).toBe(1);
@@ -130,7 +133,7 @@ describe('Collection as a value-domain map', () => {
   /** A quoted entry value keeps its quotes through the map. */
   it('carries a quoted entry value verbatim', () => {
     const document = stylesheet([
-      rule('.x', [decl('q', funcCall('nth', [collection([decl('a', quoted('"s"'))]), dimension(1)]))])
+      rule('.x', [decl('q', funcCall('nth', [collection([entry('a', quoted('"s"'))]), dimension(1)]))])
     ]);
     expect(render(document)).toBe('.x {\n  q: a "s";\n}\n');
   });

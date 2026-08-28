@@ -11,10 +11,15 @@
  *
  * `shared/` carries only fns whose behaviour is identical in Less and Sass.
  *
- * `if`/`boolean`/`not`/`and`/`or`, `isdefined`, `isruleset` and `each` are NOT
- * here: core special-forms all of them during serialization
- * (`serialize.ts:3207`, `:3215`, `LOGICAL_FNS` at `:3326`), so a fn module for
- * them was dead code in the compiled path and is deleted.
+ * `if`/`boolean`/`not`/`and`/`or` are NOT here and must never be added: they are
+ * SYNTAX, not functions (§4.5.3a). Their arguments are CONDITIONS, and a call
+ * argument is value position, so a registry entry would imply an argument shape
+ * the language forbids. The Less grammar lowers them to the `$( … )` expression
+ * boundary and the value-position `$if` before anything reaches dispatch.
+ *
+ * `isdefined`, `isruleset` and `each` are NOT here either: core special-forms
+ * them during serialization (`evalIntrospection`), so a fn module for them was
+ * dead code in the compiled path and is deleted.
  */
 
 /** Math — shared with Sass (identical behaviour). */
@@ -105,7 +110,7 @@ export { e } from './e.js';
 
 /** Type-introspection predicates. */
 export {
-  iscolor, isnumber, isstring, iskeyword, isunit, ispixel, ispercentage, isem
+  iscolor, isnumber, isstring, iskeyword, isurl, isunit, ispixel, ispercentage, isem
 } from './types.js';
 
 /** URL / IO producers. */

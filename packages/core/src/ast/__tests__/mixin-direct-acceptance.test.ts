@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
-import {
+import { cssBaseMathOutsideParens,
   compoundSelectorOf, complexSelector, decl, dimension, funcCall, interpolatedSimpleSelector, interpolation, keyword, operation, quoted, selist, spaced, stylesheet, rule, variableDeclaration, variableReference,
-  type MixinCall, type MixinDef, type Stylesheet, type Statement
+  type MixinCall, type MixinDefinition, type Stylesheet, type Statement
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
 import { Context } from '../../context.js';
@@ -13,15 +13,15 @@ const render = (document: Stylesheet, collapseNesting = true): string | undefine
   serialize(document, { evaluator, collapseNesting }).css;
 
 const call = (name: string, args: MixinCall['args'] = []): MixinCall => ({
-  type: 'MixinCall', name, args, path: [], important: false
+  type: 'MixinCall', name, args, path: [], important: false, content: null
 });
 
 const mixin = (
   name: string,
-  params: MixinDef['params'],
-  body: Statement[],
-  guard?: MixinDef['guard']
-): MixinDef => ({ type: 'MixinDef', name, params, body, ...(guard ? { guard } : {}) });
+  params: MixinDefinition['params'],
+  rules: Statement[],
+  guard?: MixinDefinition['guard']
+): MixinDefinition => ({ type: 'MixinDefinition', name, params, rules, ...(guard ? { guard } : {}) });
 
 describe('Mixin canonical AST emission', () => {
   it('errors for an unresolved mixin independently of functionMode', () => {
@@ -70,7 +70,7 @@ describe('Mixin canonical AST emission', () => {
   it('terminates guarded recursion through direct guard and operation nodes', () => {
     const loop = mixin('.loop', [{ name: 'n' }], [
       decl('step', variableReference('n', 'scoped')),
-      call('.loop', [{ value: operation('-', variableReference('n', 'scoped'), dimension(1)) }])
+      call('.loop', [{ value: operation('-', variableReference('n', 'scoped'), dimension(1), false, cssBaseMathOutsideParens('-')) }])
     ], {
       g: 'cmp', op: '>', left: variableReference('n', 'scoped'), right: dimension(0)
     });
@@ -91,7 +91,7 @@ describe('Mixin canonical AST emission', () => {
   });
 
   it('selects an overload while evaluating a default in the callee closure', () => {
-    const small = mixin('.space', [{ name: 'n' }, { name: 'gap', default: operation('+', variableReference('n', 'scoped'), dimension(1)) }], [
+    const small = mixin('.space', [{ name: 'n' }, { name: 'gap', default: operation('+', variableReference('n', 'scoped'), dimension(1), false, cssBaseMathOutsideParens('+')) }], [
       decl('kind', { type: 'Keyword', src: 'small' }),
       decl('gap', variableReference('gap', 'scoped'))
     ], { g: 'cmp', op: '<', left: variableReference('n', 'scoped'), right: dimension(10) });
@@ -176,6 +176,14 @@ describe('Mixin canonical AST emission', () => {
       + '.out {\n  box-shadow: first, second;\n}\n');
   });
 
+  /*
+   * An escaped quoted operand stays TYPED — it lowers to opaque unquoted bytes,
+   * not to a bare identifier — and takes §4.1's STRING ground against the number:
+   * `"5" > "4"`. Less 4.x answered `false` to both `<` and `>` here and selected
+   * only the `not(=)` overload; §4.2 forbids that pair of falses, so the `>`
+   * overload now selects too. The ground is the same one equality reads, which is
+   * why `not(@a = @b)` still matches.
+   */
   it('keeps an escaped quoted guard operand typed instead of re-materializing its bytes', () => {
     const less = mixin('.m', [{ name: 'a' }, { name: 'b' }], [decl('order', keyword('less'))], {
       g: 'cmp', op: '<', left: variableReference('a', 'scoped'), right: variableReference('b', 'scoped')
@@ -193,7 +201,7 @@ describe('Mixin canonical AST emission', () => {
       rule('.out', [call('.m', [{ value: dimension(5) }, { value: quoted('~"4"', '4', '"', true) }])])
     ]);
 
-    expect(render(document)).toBe('.out {\n  order: unequal;\n}\n');
+    expect(render(document)).toBe('.out {\n  order: greater;\n  order: unequal;\n}\n');
   });
 
   it('preserves typed space-list units through a mixin guard binding', () => {
@@ -237,11 +245,11 @@ describe('Mixin canonical AST emission', () => {
     ]);
     const guardedCall: MixinCall = {
       type: 'MixinCall', name: '.mixin', args: [],
-      path: [{ comb: '>' as const, sel: '#guarded' }], important: false
+      path: [{ combinator: '>' as const, selector: '#guarded' }], important: false, content: null
     };
     const deeperCall: MixinCall = {
       type: 'MixinCall', name: '.mixin', args: [{ value: dimension(1) }],
-      path: [{ comb: '>' as const, sel: '#top' }, { comb: '>' as const, sel: '#deeper' }], important: false
+      path: [{ combinator: '>' as const, selector: '#top' }, { combinator: '>' as const, selector: '#deeper' }], important: false, content: null
     };
     const document = stylesheet([
       variableDeclaration('namespaceGuard', dimension(1), { mode: 'declare' }),
@@ -322,7 +330,7 @@ describe('Mixin canonical AST emission', () => {
 
   it('groups only adjacent equal evaluated root headers in nested output', () => {
     const evaluatedSame = selist(complexSelector([{
-      compound: compoundSelectorOf([interpolatedSimpleSelector(interpolation([
+      term: compoundSelectorOf([interpolatedSimpleSelector(interpolation([
         { lit: '.' }, { ref: variableReference('name', 'scoped'), unquote: true }
       ]))])
     }]));
@@ -342,7 +350,7 @@ describe('Mixin canonical AST emission', () => {
 
   it('publishes an explicit mixin ruleset placement for a later namespaced call', () => {
     const namedPerson = rule(selist(complexSelector([{
-      compound: compoundSelectorOf([interpolatedSimpleSelector(interpolation([
+      term: compoundSelectorOf([interpolatedSimpleSelector(interpolation([
         { lit: '.' }, { ref: variableReference('name', 'scoped'), unquote: true }
       ]))])
     }])), [
@@ -352,7 +360,7 @@ describe('Mixin canonical AST emission', () => {
     const person = mixin('.Person', [{ name: 'name' }, { name: 'gender' }], [namedPerson]);
     const sayGender: MixinCall = {
       type: 'MixinCall', name: '.sayGender', args: [],
-      path: [{ comb: ' ' as const, sel: '.person' }], important: false
+      path: [{ combinator: ' ' as const, selector: '.person' }], important: false, content: null
     };
     const document = stylesheet([
       person,
@@ -387,5 +395,59 @@ describe('Mixin canonical AST emission', () => {
     expect(nested).toContain('.explicit-host {\n  &-literal {\n    x: 2;\n  }\n}\n');
     expect(nested).toContain('.multi {\n  &-literal {\n    .inside {\n      x: 1;\n    }\n    .inside {\n      x: 1;\n    }\n  }\n}\n');
     expect(render(document)).toContain('.host-one .inside {\n  x: 1;\n}\n');
+  });
+
+  /*
+   * §4.2a. A groundless relational in GUARD position is a NON-MATCH, not a
+   * compile error: `.generic(1, true)` selects only the definitions whose guards
+   * can answer, and the `<` / `>` overloads simply do not apply. lessc 4.6.3
+   * emits exactly this, and so does the owner-maintained expected CSS for
+   * `tests-unit/mixins-guards/mixins-guards.less`.
+   *
+   * Erroring here is the regression this pins: one non-matching candidate in an
+   * overload set would fail a stylesheet that never selects it.
+   */
+  it('treats a groundless relational mixin guard as a non-match, not an error', () => {
+    const params: MixinDefinition['params'] = [{ name: 'a' }, { name: 'b' }];
+    const left = variableReference('a', 'scoped');
+    const right = variableReference('b', 'scoped');
+    const document = stylesheet([
+      mixin('.generic', params, [decl('content', keyword('less'))], { g: 'match', op: '<', left, right }),
+      mixin('.generic', params, [decl('content', keyword('greater'))], { g: 'match', op: '>', left, right }),
+      mixin('.generic', params, [decl('content', keyword('unequal'))], {
+        g: 'not', inner: { g: 'match', op: '=', left, right }
+      }),
+      rule('.out', [call('.generic', [{ value: dimension(1) }, { value: keyword('true') }])])
+    ]);
+
+    expect(render(document)).toBe('.out {\n  content: unequal;\n}\n');
+  });
+
+  /*
+   * The same operand pair in VALUE position still raises (§4.2). The two
+   * positions are distinguished by the node's own `g` and by nothing else, so
+   * pinning one without the other would not show the distinction exists.
+   */
+  it('still errors for the same groundless pair in value position', () => {
+    const document = stylesheet([
+      mixin('.generic', [{ name: 'a' }, { name: 'b' }], [decl('content', keyword('less'))], {
+        g: 'cmp', op: '<', left: variableReference('a', 'scoped'), right: variableReference('b', 'scoped')
+      }),
+      rule('.out', [call('.generic', [{ value: dimension(1) }, { value: keyword('true') }])])
+    ]);
+
+    /*
+     * Asserted on the STRUCTURED error, not on `message`. The raise is wrapped
+     * into `eval/incomparable-operands` at the arithmetic site, so the summary
+     * is the code's and the operand prose lives in `reason` — checking the code
+     * plus the reason pins both the classification and the explanation, where a
+     * regex over `message` pinned neither.
+     */
+    expect(() => render(document)).toThrow(
+      expect.objectContaining({
+        code: 'eval/incomparable-operands',
+        reason: expect.stringContaining('share no common ground')
+      })
+    );
   });
 });

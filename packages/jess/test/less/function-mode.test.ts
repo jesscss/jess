@@ -10,7 +10,7 @@ import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 /**
  * `functionMode` — mirrors `unitMode`. Governs an optional/global function call
  * that matched a registered function but couldn't be evaluated (bad args, or the
- * function threw). Default `'preserve'` renders the call as-is + warns;
+ * function threw). Default `'preserve'` renders the call as-is silently;
  * `'error'` throws the underlying error (Less 4.x parity).
  */
 const TD = resolveLessTestDataRoot();
@@ -32,17 +32,15 @@ function makeCompiler(compileExtra: Record<string, unknown> = {}) {
 }
 
 describe('functionMode', () => {
-  it('default \'preserve\' renders the call as-is and warns', async () => {
+  it('default \'preserve\' renders the call as-is silently', async () => {
     for (const f of FIXTURES) {
       const r = await makeCompiler().renderToResult(path.join(TD, `${f}.less`), { breakOnError: true } as any);
       // renders (no error) …
       expect(r.errors ?? []).toHaveLength(0);
       expect(r.css.length).toBeGreaterThan(0);
-      // … and emits exactly the function/unresolved warning
-      const warnCodes = (r.warnings ?? []).map((w: any) => w.code);
-      expect(warnCodes, `${f} should warn`).toContain('function/unresolved');
-      expect(warnCodes.filter((code: string) => code === 'function/unresolved'), `${f} should emit one unresolved-function diagnostic`)
-        .toHaveLength(1);
+
+      // … without treating valid CSS-compatible output as a warning.
+      expect(r.warnings ?? [], `${f} should preserve silently`).toHaveLength(0);
     }
   }, 60000);
 
@@ -62,8 +60,7 @@ describe('functionMode', () => {
     const file = path.join(dir, 'a.less');
     writeFileSync(file, '.a { x: calc(1px + 2px); y: madeup(1, 2); }');
     const r = await makeCompiler({ functionMode: 'error' }).renderToResult(file, { breakOnError: true } as any);
-    const warnCodes = (r.warnings ?? []).map((w: any) => w.code);
-    expect(warnCodes).not.toContain('function/unresolved');
+    expect(r.warnings ?? []).toHaveLength(0);
     expect(r.css).toContain('madeup(1, 2)');
   }, 60000);
 });

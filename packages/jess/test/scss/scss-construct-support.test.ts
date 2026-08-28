@@ -20,8 +20,10 @@ interface Construct {
   group: string;
   name: string;
   src: string;
+
   /** Whether the SCSS parser currently accepts it. */
   supported: boolean;
+
   /** For gaps: the narrower form that DOES work, when one exists. */
   note?: string;
 }
@@ -48,20 +50,8 @@ const CONSTRUCTS: Construct[] = [
   { group: 'maps', name: 'function call in map value', src: '$m: (a: rgba(0,0,0,.5));', supported: true },
   { group: 'maps', name: 'map-get / map-keys / map-merge', src: '$u: map-merge(\n  (\n    "a": 1\n  ),\n  $x\n);', supported: true },
   { group: 'maps', name: 'nested paren list, single line', src: '$e: (("<", "%3c"), (">", "%3e"));', supported: true },
-  {
-    group: 'maps',
-    name: 'nested paren list, multiline',
-    src: '$e: (\n  ("<", "%3c"),\n  (">", "%3e")\n);',
-    supported: false,
-    note: 'the single-line form parses; a newline before the inner `(` does not'
-  },
-  {
-    group: 'maps',
-    name: 'multiline paren list as a function argument',
-    src: '$u: f(\n  $x,\n  (\n    "a",\n    "b"\n  )\n);',
-    supported: false,
-    note: 'same boundary as the multiline nested paren list'
-  },
+  { group: 'maps', name: 'nested paren list, multiline', src: '$e: (\n  ("<", "%3c"),\n  (">", "%3e")\n);', supported: true },
+  { group: 'maps', name: 'multiline paren list as a function argument', src: '$u: f(\n  $x,\n  (\n    "a",\n    "b"\n  )\n);', supported: true },
   {
     group: 'maps',
     name: 'line comment inside a paren list',
@@ -75,39 +65,15 @@ const CONSTRUCTS: Construct[] = [
   { group: 'control flow', name: '@if with `and` of comparisons', src: '@if $x != 1 and $y != 2 { c: red; }', supported: true },
   { group: 'control flow', name: '@else / @else if', src: '@if $x == 1 { c: red; } @else if $y == 2 { c: blue; } @else { c: green; }', supported: true },
   { group: 'control flow', name: '@if with a boolean literal', src: '@if true { c: red; }', supported: true },
-  {
-    group: 'control flow',
-    name: '@if with a bare truthy variable',
-    src: '@if $x { c: red; }',
-    supported: false,
-    note: 'the condition grammar requires a binary comparison; a bare operand is rejected'
-  },
-  {
-    group: 'control flow',
-    name: '@if with a bare function call',
-    src: '@if fn($x) { c: red; }',
-    supported: false,
-    note: 'same bare-operand boundary'
-  },
-  {
-    group: 'control flow',
-    name: '@if with `not`',
-    src: '@if not $x { c: red; }',
-    supported: false,
-    note: 'same bare-operand boundary'
-  },
-  {
-    group: 'control flow',
-    name: '@if with a parenthesized bare operand',
-    src: '@if ($x) { c: red; }',
-    supported: false,
-    note: 'same bare-operand boundary'
-  },
+  { group: 'control flow', name: '@if with a bare truthy variable', src: '@if $x { c: red; }', supported: true },
+  { group: 'control flow', name: '@if with a bare function call', src: '@if fn($x) { c: red; }', supported: true },
+  { group: 'control flow', name: '@if with `not`', src: '@if not $x { c: red; }', supported: true },
+  { group: 'control flow', name: '@if with a parenthesized bare operand', src: '@if ($x) { c: red; }', supported: true },
   { group: 'control flow', name: '@each over a list', src: '@each $x in a, b { .#{$x}-y { color: red; } }', supported: true },
   { group: 'control flow', name: '@each with destructuring', src: '@each $k, $v in $map { .k-#{$k} { color: $v; } }', supported: true },
   { group: 'control flow', name: '@each over a function call', src: '@each $b in map-keys($grid) { .b-#{$b} { color: red; } }', supported: true },
   { group: 'control flow', name: '@for', src: '@for $i from 1 through 3 { .a-#{$i} { width: $i; } }', supported: true },
-  { group: 'control flow', name: '@while', src: '@while $i > 0 { .a { width: 1px; } }', supported: false },
+  { group: 'control flow', name: '@while', src: '@while $i > 0 { .a { width: 1px; } }', supported: true },
 
   // ── mixins and functions ───────────────────────────────────────────────────
   { group: 'mixins', name: '@mixin without args', src: '@mixin m { color: red; }', supported: true },
@@ -122,12 +88,38 @@ const CONSTRUCTS: Construct[] = [
     group: 'mixins',
     name: '@include with a trailing content block',
     src: '.a { @include m { color: red; } }',
-    supported: false,
-    note: 'argument-only @include parses'
+    supported: true,
+    note: 'lowers to `$ > m(): @{ … }` — the block on MixinCall.content'
   },
-  { group: 'mixins', name: '@content', src: '@mixin m { @content; }', supported: false },
-  { group: 'mixins', name: '@content with args', src: '@mixin m { @content($a); }', supported: false },
+  {
+    group: 'mixins',
+    name: '@include with a using() content block',
+    src: '.a { @include m using ($t) { color: $t; } }',
+    supported: true,
+    note: 'using() names the content block AnonymousMixin.params'
+  },
+  {
+    group: 'mixins',
+    name: '@content',
+    src: '@mixin m { @content; }',
+    supported: true,
+    note: 'lowers to the documented built-in `$content()`'
+  },
+  {
+    group: 'mixins',
+    name: '@content with args',
+    src: '@mixin m { @content($a); }',
+    supported: true,
+    note: 'parses; EVALUATING a parameterised content call is a separate core gap'
+  },
   { group: 'mixins', name: '@function / @return', src: '@function f($a) { @return $a * 2; }', supported: true },
+  {
+    group: 'mixins',
+    name: '@return nested inside @if/@else',
+    src: '@function f($v) { @if $v { @return 1; } @else { @return 2; } }',
+    supported: true,
+    note: 'the same `result:` lowering, reached from the @if body'
+  },
   { group: 'mixins', name: '@extend', src: '.a { @extend .b; }', supported: true },
   { group: 'mixins', name: 'placeholder selector', src: '%p { color: red; } .a { @extend %p; }', supported: true },
 
@@ -138,20 +130,8 @@ const CONSTRUCTS: Construct[] = [
   { group: 'selectors', name: 'attribute selector', src: '[data-bs-theme="light"] { color: red; }', supported: true },
   { group: 'selectors', name: 'bare pseudo-class, nested', src: '.a { :last-child { margin: 0; } }', supported: true },
   { group: 'selectors', name: 'explicit & with combinator', src: '.a { & > :last-child { margin: 0; } }', supported: true },
-  {
-    group: 'selectors',
-    name: 'leading combinator (implicit &)',
-    src: '.a { > .b { margin: 0; } }',
-    supported: false,
-    note: 'the explicit `& > .b` form parses; the implicit-& shorthand does not'
-  },
-  {
-    group: 'selectors',
-    name: 'interpolation as a standalone compound',
-    src: '#{$x} .b { color: red; }',
-    supported: false,
-    note: 'glued forms (`.#{$x}`, `a#{$x}`) parse; a compound that is ONLY interpolation does not'
-  },
+  { group: 'selectors', name: 'leading combinator (implicit &)', src: '.a { > .b { margin: 0; } }', supported: true },
+  { group: 'selectors', name: 'interpolation as a standalone compound', src: '#{$x} .b { color: red; }', supported: true },
   {
     group: 'selectors',
     name: 'interpolated pseudo-element',
@@ -189,22 +169,11 @@ const CONSTRUCTS: Construct[] = [
   { group: 'module system', name: '@import', src: '@import "x";', supported: true },
   { group: 'module system', name: '@use', src: '@use "sass:math";', supported: true },
   { group: 'module system', name: '@forward', src: '@forward "x";', supported: true },
-  {
-    group: 'module system',
-    name: 'namespaced module function call',
-    src: '.a { w: math.div(1, 2); }',
-    supported: false,
-    note: '@use itself parses, but the `ns.fn()` call form does not. Bootstrap 5.3 uses the legacy global functions, so this blocks no Bootstrap file.'
-  },
-  {
-    group: 'module system',
-    name: 'namespaced module variable',
-    src: '.a { w: math.$pi; }',
-    supported: false
-  },
-  { group: 'diagnostics', name: '@warn', src: '@mixin m { @warn "x"; }', supported: false },
-  { group: 'diagnostics', name: '@error', src: '@mixin m { @error "x"; }', supported: false },
-  { group: 'diagnostics', name: '@debug', src: '@debug "x";', supported: false },
+  { group: 'module system', name: 'namespaced module function call', src: '.a { w: math.div(1, 2); }', supported: true },
+  { group: 'module system', name: 'namespaced module variable', src: '.a { w: math.$pi; }', supported: true },
+  { group: 'diagnostics', name: '@warn', src: '@mixin m { @warn "x"; }', supported: true },
+  { group: 'diagnostics', name: '@error', src: '@mixin m { @error "x"; }', supported: true },
+  { group: 'diagnostics', name: '@debug', src: '@debug "x";', supported: true },
   { group: 'misc', name: '@at-root', src: '.a { @at-root .b { color: red; } }', supported: false },
   { group: 'misc', name: 'if() function in a value', src: '.a { w: if($x, 1, 2); }', supported: true },
   { group: 'misc', name: 'interpolation in a media query', src: '@media (min-width: #{$x}) { .a { color: red; } }', supported: true },
@@ -232,8 +201,10 @@ describe('SCSS construct support matrix', () => {
   describe('known gaps — recorded, not gated', () => {
     CONSTRUCTS.filter(c => !c.supported).forEach((c) => {
       it(`${c.group}: ${c.name}${c.note ? ` (${c.note})` : ''}`, () => {
-        // Reporting-only. If this starts parsing, the inventory is stale — flip
-        // `supported` to true so the construct becomes a real gate.
+        /*
+         * Reporting-only. If this starts parsing, the inventory is stale — flip
+         * `supported` to true so the construct becomes a real gate.
+         */
         expect(
           parses(c.src),
           `${c.name} now PARSES — flip \`supported: true\` in this matrix`

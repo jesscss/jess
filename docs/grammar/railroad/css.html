@@ -1,0 +1,1969 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSS grammar</title>
+<style>
+svg.railroad-diagram {
+    background-color: hsl(30,20%,95%);
+}
+svg.railroad-diagram path {
+    stroke-width: 3;
+    stroke: black;
+    fill: rgba(0,0,0,0);
+}
+svg.railroad-diagram text {
+    font: bold 14px monospace;
+    text-anchor: middle;
+}
+svg.railroad-diagram text.label {
+    text-anchor: start;
+}
+svg.railroad-diagram text.comment {
+    font: italic 12px monospace;
+}
+svg.railroad-diagram rect {
+    stroke-width: 3;
+    stroke: black;
+    fill: hsl(120,100%,90%);
+}
+
+
+  /* The railroad SVGs ship a fixed light background, so the page commits to a
+     light theme for a consistent look regardless of the viewer's OS setting. */
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 2rem 2.5rem;
+         color: #1a1a1a; background: #fff; }
+  h1 { font-size: 1.6rem; margin: 0 0 0.25rem; }
+  .subtitle { color: #666; margin: 0 0 2rem; }
+  .toc { columns: 3 12rem; margin: 0 0 2.5rem; padding: 1rem 1.25rem; background: #f6f4f1; border-radius: 8px; }
+  .toc a { display: block; color: #0b6; text-decoration: none; font-family: monospace; padding: 1px 0; }
+  .toc a:hover { text-decoration: underline; }
+  .rule { margin: 0 0 2.75rem; padding-top: 0.5rem; border-top: 1px solid #eee; }
+  .rule h2 { font-size: 1.1rem; font-family: monospace; margin: 0 0 0.75rem; }
+  .rule h2 a { color: #bbb; text-decoration: none; font-weight: normal; }
+  .rule h2 a:hover { color: #0b6; }
+  .ebnf { margin: 0.5rem 0 0; padding: 0.5rem 0.75rem; background: #f6f4f1; border-radius: 6px;
+          font-family: monospace; font-size: 12px; white-space: pre-wrap; overflow-x: auto; }
+  .diagram { overflow-x: auto; }
+  /* The vendored library sizes each shape as (chars * 8 + padding), which assumes
+     an 8px glyph advance (0.5em at 16px). Its own 14px-bold CSS actually advances
+     ~8.4px/char, so long terminals crowd the box edges. Drop the text to 13px
+     (advance ~7.8px) to restore comfortable side padding, and nudge the baked
+     baseline (y+4) down slightly so glyphs sit vertically centered in the shapes. */
+  svg.railroad-diagram text { font-size: 13px; }
+  svg.railroad-diagram text:not(.comment) { transform: translateY(0.75px); }
+
+</style>
+</head>
+<body>
+<h1>CSS grammar</h1>
+<p class="subtitle">Syntax diagrams generated from the parser grammar.</p>
+<nav class="toc">
+    <a href="#rule-Identifier">Identifier</a>
+    <a href="#rule-AttributeOperator">AttributeOperator</a>
+    <a href="#rule-AttributeModifier">AttributeModifier</a>
+    <a href="#rule-DoubleQuotedText">DoubleQuotedText</a>
+    <a href="#rule-SingleQuotedText">SingleQuotedText</a>
+    <a href="#rule-UrlOpen">UrlOpen</a>
+    <a href="#rule-UrlInner">UrlInner</a>
+    <a href="#rule-SimpleSelectorToken">SimpleSelectorToken</a>
+    <a href="#rule-PseudoSelectorColon">PseudoSelectorColon</a>
+    <a href="#rule-NthExpression">NthExpression</a>
+    <a href="#rule-MalformedPseudoSelectorNumericArgument">MalformedPseudoSelectorNumericArgument</a>
+    <a href="#rule-BlockCommentToken">BlockCommentToken</a>
+    <a href="#rule-LineComment">LineComment</a>
+    <a href="#rule-MediaModifier">MediaModifier</a>
+    <a href="#rule-ImportantToken">ImportantToken</a>
+    <a href="#rule-HexColor">HexColor</a>
+    <a href="#rule-UnicodeRangeToken">UnicodeRangeToken</a>
+    <a href="#rule-ConditionalAtKeyword">ConditionalAtKeyword</a>
+    <a href="#rule-MediaContainerAtKeyword">MediaContainerAtKeyword</a>
+    <a href="#rule-MediaAtKeyword">MediaAtKeyword</a>
+    <a href="#rule-ContainerAtKeyword">ContainerAtKeyword</a>
+    <a href="#rule-SupportsAtKeyword">SupportsAtKeyword</a>
+    <a href="#rule-StartingStyleAtKeyword">StartingStyleAtKeyword</a>
+    <a href="#rule-PageAtKeyword">PageAtKeyword</a>
+    <a href="#rule-MarginAtKeyword">MarginAtKeyword</a>
+    <a href="#rule-QueryNot">QueryNot</a>
+    <a href="#rule-QueryOnly">QueryOnly</a>
+    <a href="#rule-QueryAndOr">QueryAndOr</a>
+    <a href="#rule-QueryComparisonOperator">QueryComparisonOperator</a>
+    <a href="#rule-QueryFunctionName">QueryFunctionName</a>
+    <a href="#rule-QueryFunctionOpen">QueryFunctionOpen</a>
+    <a href="#rule-ScopeAtKeyword">ScopeAtKeyword</a>
+    <a href="#rule-DescriptorAtKeyword">DescriptorAtKeyword</a>
+    <a href="#rule-DocumentAtKeyword">DocumentAtKeyword</a>
+    <a href="#rule-LayerAtKeyword">LayerAtKeyword</a>
+    <a href="#rule-KeyframesAtKeyword">KeyframesAtKeyword</a>
+    <a href="#rule-StatementAtRuleName">StatementAtRuleName</a>
+    <a href="#rule-GenericAtRuleName">GenericAtRuleName</a>
+    <a href="#rule-AtRuleKeyword">AtRuleKeyword</a>
+    <a href="#rule-TypedAtKeyword">TypedAtKeyword</a>
+    <a href="#rule-TypedAtKeywordSharedRoutes">TypedAtKeywordSharedRoutes</a>
+    <a href="#rule-ImportAtKeyword">ImportAtKeyword</a>
+    <a href="#rule-AtIdentifier">AtIdentifier</a>
+    <a href="#rule-FontFeatureValuesAtKeyword">FontFeatureValuesAtKeyword</a>
+    <a href="#rule-FontFeatureValueAtKeyword">FontFeatureValueAtKeyword</a>
+    <a href="#rule-NumberToken">NumberToken</a>
+    <a href="#rule-DimensionUnit">DimensionUnit</a>
+    <a href="#rule-InterpolatedPropertyStart">InterpolatedPropertyStart</a>
+    <a href="#rule-InterpolatedPropertyTail">InterpolatedPropertyTail</a>
+    <a href="#rule-CustomPropertyName">CustomPropertyName</a>
+    <a href="#rule-CustomPropertyToken">CustomPropertyToken</a>
+    <a href="#rule-CustomOuterContent">CustomOuterContent</a>
+    <a href="#rule-CustomInnerContent">CustomInnerContent</a>
+    <a href="#rule-CustomSingleQuoted">CustomSingleQuoted</a>
+    <a href="#rule-CustomDoubleQuoted">CustomDoubleQuoted</a>
+    <a href="#rule-OpaqueAtRulePreludeCapture">OpaqueAtRulePreludeCapture</a>
+    <a href="#rule-OpaqueAtRuleBodyCapture">OpaqueAtRuleBodyCapture</a>
+    <a href="#rule-PreprocessorOpaqueAtRulePreludeCapture">PreprocessorOpaqueAtRulePreludeCapture</a>
+    <a href="#rule-PreprocessorOpaqueAtRuleBodyCapture">PreprocessorOpaqueAtRuleBodyCapture</a>
+    <a href="#rule-NthChildPseudoSelectorName">NthChildPseudoSelectorName</a>
+    <a href="#rule-NthTypePseudoSelectorName">NthTypePseudoSelectorName</a>
+    <a href="#rule-NthPseudoSelectorName">NthPseudoSelectorName</a>
+    <a href="#rule-SelectorArgumentPseudoSelectorName">SelectorArgumentPseudoSelectorName</a>
+    <a href="#rule-NthOfKeyword">NthOfKeyword</a>
+    <a href="#rule-PseudoSelectorCloseAhead">PseudoSelectorCloseAhead</a>
+    <a href="#rule-TypedValueSequence">TypedValueSequence</a>
+    <a href="#rule-ValueSequence">ValueSequence</a>
+    <a href="#rule-Quoted">Quoted</a>
+    <a href="#rule-SelectorList">SelectorList</a>
+    <a href="#rule-pseudoArgumentContent">pseudoArgumentContent</a>
+    <a href="#rule-LeadingDashPseudoArgument">LeadingDashPseudoArgument</a>
+    <a href="#rule-LeadingDashRawPseudoArgument">LeadingDashRawPseudoArgument</a>
+    <a href="#rule-TypedNthPseudoArgument">TypedNthPseudoArgument</a>
+    <a href="#rule-LeadingDashOfTypePseudoArgument">LeadingDashOfTypePseudoArgument</a>
+    <a href="#rule-TypedOfTypePseudoArgument">TypedOfTypePseudoArgument</a>
+    <a href="#rule-ComplexSelector">ComplexSelector</a>
+    <a href="#rule-PseudoArgument">PseudoArgument</a>
+    <a href="#rule-OfTypePseudoArgument">OfTypePseudoArgument</a>
+    <a href="#rule-NestingSelector">NestingSelector</a>
+    <a href="#rule-AttributeSelector">AttributeSelector</a>
+    <a href="#rule-PseudoSelector">PseudoSelector</a>
+    <a href="#rule-BasicSelector">BasicSelector</a>
+    <a href="#rule-CompoundSelector">CompoundSelector</a>
+    <a href="#rule-TopLevelCompoundSelector">TopLevelCompoundSelector</a>
+    <a href="#rule-TopLevelComplexSelector">TopLevelComplexSelector</a>
+    <a href="#rule-valueFunctionArguments">valueFunctionArguments</a>
+    <a href="#rule-CalcSum">CalcSum</a>
+    <a href="#rule-VarFallback">VarFallback</a>
+    <a href="#rule-VarCall">VarCall</a>
+    <a href="#rule-VarFallbackCall">VarFallbackCall</a>
+    <a href="#rule-TypedValue">TypedValue</a>
+    <a href="#rule-VarFallbackParen">VarFallbackParen</a>
+    <a href="#rule-VarFallbackBracket">VarFallbackBracket</a>
+    <a href="#rule-VarFallbackBrace">VarFallbackBrace</a>
+    <a href="#rule-VarFallbackPunctuation">VarFallbackPunctuation</a>
+    <a href="#rule-VarFallbackTerm">VarFallbackTerm</a>
+    <a href="#rule-VarFallbackEmpty">VarFallbackEmpty</a>
+    <a href="#rule-VarFallbackItem">VarFallbackItem</a>
+    <a href="#rule-CustomPropertyValue">CustomPropertyValue</a>
+    <a href="#rule-Percentage">Percentage</a>
+    <a href="#rule-Dimension">Dimension</a>
+    <a href="#rule-Color">Color</a>
+    <a href="#rule-CalcIdentOrFunction">CalcIdentOrFunction</a>
+    <a href="#rule-CalcParen">CalcParen</a>
+    <a href="#rule-CalcValue">CalcValue</a>
+    <a href="#rule-CalcProduct">CalcProduct</a>
+    <a href="#rule-ValueList">ValueList</a>
+    <a href="#rule-RawParenValue">RawParenValue</a>
+    <a href="#rule-RoutedKeyword">RoutedKeyword</a>
+    <a href="#rule-UnicodeRange">UnicodeRange</a>
+    <a href="#rule-ParenValue">ParenValue</a>
+    <a href="#rule-SquareValue">SquareValue</a>
+    <a href="#rule-PunctuationValue">PunctuationValue</a>
+    <a href="#rule-Value">Value</a>
+    <a href="#rule-CustomProperty">CustomProperty</a>
+    <a href="#rule-CustomValue">CustomValue</a>
+    <a href="#rule-Important">Important</a>
+    <a href="#rule-Property">Property</a>
+    <a href="#rule-ImportUrlUnquoted">ImportUrlUnquoted</a>
+    <a href="#rule-ImportTailRaw">ImportTailRaw</a>
+    <a href="#rule-ImportTailBody">ImportTailBody</a>
+    <a href="#rule-ImportUrl">ImportUrl</a>
+    <a href="#rule-ImportTail">ImportTail</a>
+    <a href="#rule-StatementPrelude">StatementPrelude</a>
+    <a href="#rule-AtRulePreludeWhitespace">AtRulePreludeWhitespace</a>
+    <a href="#rule-AtRulePreludeComma">AtRulePreludeComma</a>
+    <a href="#rule-AtRulePreludeGroup">AtRulePreludeGroup</a>
+    <a href="#rule-AtRulePreludeQuoted">AtRulePreludeQuoted</a>
+    <a href="#rule-AtRulePreludeText">AtRulePreludeText</a>
+    <a href="#rule-AtRulePreludeSegments">AtRulePreludeSegments</a>
+    <a href="#rule-OpaqueAtPrelude">OpaqueAtPrelude</a>
+    <a href="#rule-OpaqueBody">OpaqueBody</a>
+    <a href="#rule-QueryValue">QueryValue</a>
+    <a href="#rule-QueryBareFeature">QueryBareFeature</a>
+    <a href="#rule-QueryRangeFeature">QueryRangeFeature</a>
+    <a href="#rule-Keyword">Keyword</a>
+    <a href="#rule-QueryFeature">QueryFeature</a>
+    <a href="#rule-QueryTerm">QueryTerm</a>
+    <a href="#rule-QueryClause">QueryClause</a>
+    <a href="#rule-QueryFunction">QueryFunction</a>
+    <a href="#rule-ContainerQueryClause">ContainerQueryClause</a>
+    <a href="#rule-ContainerQueryPrelude">ContainerQueryPrelude</a>
+    <a href="#rule-GeneralEnclosedContent">GeneralEnclosedContent</a>
+    <a href="#rule-GeneralEnclosedQuoted">GeneralEnclosedQuoted</a>
+    <a href="#rule-GeneralEnclosedGroup">GeneralEnclosedGroup</a>
+    <a href="#rule-SupportsCondition">SupportsCondition</a>
+    <a href="#rule-GeneralEnclosed">GeneralEnclosed</a>
+    <a href="#rule-SupportsInParens">SupportsInParens</a>
+    <a href="#rule-Declaration">Declaration</a>
+    <a href="#rule-declarationListDeclaration">declarationListDeclaration</a>
+    <a href="#rule-NestedConditionalBlock">NestedConditionalBlock</a>
+    <a href="#rule-DeclarationListAtRule">DeclarationListAtRule</a>
+    <a href="#rule-Ruleset">Ruleset</a>
+    <a href="#rule-ConditionalBlock">ConditionalBlock</a>
+    <a href="#rule-ConditionalGroupAtRule">ConditionalGroupAtRule</a>
+    <a href="#rule-TopLevelRuleset">TopLevelRuleset</a>
+    <a href="#rule-StylesheetAtRule">StylesheetAtRule</a>
+    <a href="#rule-declarationListItem">declarationListItem</a>
+    <a href="#rule-stylesheetBodyItem">stylesheetBodyItem</a>
+    <a href="#rule-MarginAtRule">MarginAtRule</a>
+    <a href="#rule-KeyframeBlock">KeyframeBlock</a>
+    <a href="#rule-FeatureValueBlock">FeatureValueBlock</a>
+    <a href="#rule-AtRulePrelude">AtRulePrelude</a>
+    <a href="#rule-declarationListBlock">declarationListBlock</a>
+    <a href="#rule-stylesheetBodyBlock">stylesheetBodyBlock</a>
+    <a href="#rule-routedStylesheetBody">routedStylesheetBody</a>
+    <a href="#rule-routedDeclarationListBody">routedDeclarationListBody</a>
+    <a href="#rule-descriptorBodyBlock">descriptorBodyBlock</a>
+    <a href="#rule-RoutedAtRuleStatement">RoutedAtRuleStatement</a>
+    <a href="#rule-ScopeBlock">ScopeBlock</a>
+    <a href="#rule-DescriptorBlock">DescriptorBlock</a>
+    <a href="#rule-PageBlock">PageBlock</a>
+    <a href="#rule-Keyframes">Keyframes</a>
+    <a href="#rule-FontFeatureValuesBlock">FontFeatureValuesBlock</a>
+    <a href="#rule-DocumentBlock">DocumentBlock</a>
+    <a href="#rule-OpaqueAtRuleBlock">OpaqueAtRuleBlock</a>
+    <a href="#rule-LayerBlock">LayerBlock</a>
+    <a href="#rule-StartingStyleBlock">StartingStyleBlock</a>
+    <a href="#rule-NestedLayerBlock">NestedLayerBlock</a>
+    <a href="#rule-NestedStartingStyleBlock">NestedStartingStyleBlock</a>
+    <a href="#rule-keyframeSelector">keyframeSelector</a>
+    <a href="#rule-TopLevelSelectorList">TopLevelSelectorList</a>
+    <a href="#rule-SupportsPrelude">SupportsPrelude</a>
+    <a href="#rule-QueryPrelude">QueryPrelude</a>
+    <a href="#rule-ContainerPrelude">ContainerPrelude</a>
+    <a href="#rule-ImportStatement">ImportStatement</a>
+    <a href="#rule-LayerStatement">LayerStatement</a>
+    <a href="#rule-Stylesheet">Stylesheet</a>
+    <a href="#rule-Url">Url</a>
+    <a href="#rule-Call">Call</a>
+    <a href="#rule-CalcCall">CalcCall</a>
+    <a href="#rule-TypedValueList">TypedValueList</a>
+    <a href="#rule-AtRuleStatement">AtRuleStatement</a>
+    <a href="#rule-whitespace">whitespace</a>
+    <a href="#rule-rw">rw</a>
+</nav>
+  <section class="rule" id="rule-Identifier">
+    <h2><a href="#rule-Identifier">§</a> Identifier</h2>
+    <div class="diagram" data-rule="Identifier"></div>
+    <div class="ebnf">Identifier ::= IDENT (escapes allowed)</div>
+  </section>
+  <section class="rule" id="rule-AttributeOperator">
+    <h2><a href="#rule-AttributeOperator">§</a> AttributeOperator</h2>
+    <div class="diagram" data-rule="AttributeOperator"></div>
+    <div class="ebnf">AttributeOperator ::= &quot;*=&quot; | &quot;~=&quot; | &quot;|=&quot; | &quot;^=&quot; | &quot;$=&quot; | &quot;=&quot;</div>
+  </section>
+  <section class="rule" id="rule-AttributeModifier">
+    <h2><a href="#rule-AttributeModifier">§</a> AttributeModifier</h2>
+    <div class="diagram" data-rule="AttributeModifier"></div>
+    <div class="ebnf">AttributeModifier ::= /[a-zA-Z]/</div>
+  </section>
+  <section class="rule" id="rule-DoubleQuotedText">
+    <h2><a href="#rule-DoubleQuotedText">§</a> DoubleQuotedText</h2>
+    <div class="diagram" data-rule="DoubleQuotedText"></div>
+    <div class="ebnf">DoubleQuotedText ::= DOUBLE-QUOTED BODY</div>
+  </section>
+  <section class="rule" id="rule-SingleQuotedText">
+    <h2><a href="#rule-SingleQuotedText">§</a> SingleQuotedText</h2>
+    <div class="diagram" data-rule="SingleQuotedText"></div>
+    <div class="ebnf">SingleQuotedText ::= SINGLE-QUOTED BODY</div>
+  </section>
+  <section class="rule" id="rule-UrlOpen">
+    <h2><a href="#rule-UrlOpen">§</a> UrlOpen</h2>
+    <div class="diagram" data-rule="UrlOpen"></div>
+    <div class="ebnf">UrlOpen ::= &quot;url(&quot;</div>
+  </section>
+  <section class="rule" id="rule-UrlInner">
+    <h2><a href="#rule-UrlInner">§</a> UrlInner</h2>
+    <div class="diagram" data-rule="UrlInner"></div>
+    <div class="ebnf">UrlInner ::= /(?:[^&quot;'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/</div>
+  </section>
+  <section class="rule" id="rule-SimpleSelectorToken">
+    <h2><a href="#rule-SimpleSelectorToken">§</a> SimpleSelectorToken</h2>
+    <div class="diagram" data-rule="SimpleSelectorToken"></div>
+    <div class="ebnf">SimpleSelectorToken ::= SIMPLE SELECTOR or PERCENTAGE</div>
+  </section>
+  <section class="rule" id="rule-PseudoSelectorColon">
+    <h2><a href="#rule-PseudoSelectorColon">§</a> PseudoSelectorColon</h2>
+    <div class="diagram" data-rule="PseudoSelectorColon"></div>
+    <div class="ebnf">PseudoSelectorColon ::= &quot;:&quot; or &quot;::&quot;</div>
+  </section>
+  <section class="rule" id="rule-NthExpression">
+    <h2><a href="#rule-NthExpression">§</a> NthExpression</h2>
+    <div class="diagram" data-rule="NthExpression"></div>
+    <div class="ebnf">NthExpression ::= NTH</div>
+  </section>
+  <section class="rule" id="rule-MalformedPseudoSelectorNumericArgument">
+    <h2><a href="#rule-MalformedPseudoSelectorNumericArgument">§</a> MalformedPseudoSelectorNumericArgument</h2>
+    <div class="diagram" data-rule="MalformedPseudoSelectorNumericArgument"></div>
+    <div class="ebnf">MalformedPseudoSelectorNumericArgument ::= MALFORMED NTH ARGUMENT</div>
+  </section>
+  <section class="rule" id="rule-BlockCommentToken">
+    <h2><a href="#rule-BlockCommentToken">§</a> BlockCommentToken</h2>
+    <div class="diagram" data-rule="BlockCommentToken"></div>
+    <div class="ebnf">BlockCommentToken ::= COMMENT</div>
+  </section>
+  <section class="rule" id="rule-LineComment">
+    <h2><a href="#rule-LineComment">§</a> LineComment</h2>
+    <div class="diagram" data-rule="LineComment"></div>
+    <div class="ebnf">LineComment ::= /\/\/[^\n\r]*/</div>
+  </section>
+  <section class="rule" id="rule-MediaModifier">
+    <h2><a href="#rule-MediaModifier">§</a> MediaModifier</h2>
+    <div class="diagram" data-rule="MediaModifier"></div>
+    <div class="ebnf">MediaModifier ::= /(?:[^${}()\[\];&quot;'#]|#(?!\{))+/</div>
+  </section>
+  <section class="rule" id="rule-ImportantToken">
+    <h2><a href="#rule-ImportantToken">§</a> ImportantToken</h2>
+    <div class="diagram" data-rule="ImportantToken"></div>
+    <div class="ebnf">ImportantToken ::= &quot;important&quot;</div>
+  </section>
+  <section class="rule" id="rule-HexColor">
+    <h2><a href="#rule-HexColor">§</a> HexColor</h2>
+    <div class="diagram" data-rule="HexColor"></div>
+    <div class="ebnf">HexColor ::= HEX COLOR</div>
+  </section>
+  <section class="rule" id="rule-UnicodeRangeToken">
+    <h2><a href="#rule-UnicodeRangeToken">§</a> UnicodeRangeToken</h2>
+    <div class="diagram" data-rule="UnicodeRangeToken"></div>
+    <div class="ebnf">UnicodeRangeToken ::= UNICODE RANGE</div>
+  </section>
+  <section class="rule" id="rule-ConditionalAtKeyword">
+    <h2><a href="#rule-ConditionalAtKeyword">§</a> ConditionalAtKeyword</h2>
+    <div class="diagram" data-rule="ConditionalAtKeyword"></div>
+    <div class="ebnf">ConditionalAtKeyword ::= &quot;@container&quot; | &quot;@supports&quot; | &quot;@media&quot;</div>
+  </section>
+  <section class="rule" id="rule-MediaContainerAtKeyword">
+    <h2><a href="#rule-MediaContainerAtKeyword">§</a> MediaContainerAtKeyword</h2>
+    <div class="diagram" data-rule="MediaContainerAtKeyword"></div>
+    <div class="ebnf">MediaContainerAtKeyword ::= &quot;@container&quot; | &quot;@media&quot;</div>
+  </section>
+  <section class="rule" id="rule-MediaAtKeyword">
+    <h2><a href="#rule-MediaAtKeyword">§</a> MediaAtKeyword</h2>
+    <div class="diagram" data-rule="MediaAtKeyword"></div>
+    <div class="ebnf">MediaAtKeyword ::= &quot;@media&quot;</div>
+  </section>
+  <section class="rule" id="rule-ContainerAtKeyword">
+    <h2><a href="#rule-ContainerAtKeyword">§</a> ContainerAtKeyword</h2>
+    <div class="diagram" data-rule="ContainerAtKeyword"></div>
+    <div class="ebnf">ContainerAtKeyword ::= &quot;@container&quot;</div>
+  </section>
+  <section class="rule" id="rule-SupportsAtKeyword">
+    <h2><a href="#rule-SupportsAtKeyword">§</a> SupportsAtKeyword</h2>
+    <div class="diagram" data-rule="SupportsAtKeyword"></div>
+    <div class="ebnf">SupportsAtKeyword ::= &quot;@supports&quot;</div>
+  </section>
+  <section class="rule" id="rule-StartingStyleAtKeyword">
+    <h2><a href="#rule-StartingStyleAtKeyword">§</a> StartingStyleAtKeyword</h2>
+    <div class="diagram" data-rule="StartingStyleAtKeyword"></div>
+    <div class="ebnf">StartingStyleAtKeyword ::= &quot;@starting-style&quot;</div>
+  </section>
+  <section class="rule" id="rule-PageAtKeyword">
+    <h2><a href="#rule-PageAtKeyword">§</a> PageAtKeyword</h2>
+    <div class="diagram" data-rule="PageAtKeyword"></div>
+    <div class="ebnf">PageAtKeyword ::= &quot;@page&quot;</div>
+  </section>
+  <section class="rule" id="rule-MarginAtKeyword">
+    <h2><a href="#rule-MarginAtKeyword">§</a> MarginAtKeyword</h2>
+    <div class="diagram" data-rule="MarginAtKeyword"></div>
+    <div class="ebnf">MarginAtKeyword ::= &quot;@bottom-right-corner&quot; | &quot;@bottom-left-corner&quot; | &quot;@top-right-corner&quot; | &quot;@top-left-corner&quot; | &quot;@bottom-center&quot; | &quot;@bottom-right&quot; | &quot;@right-middle&quot; | &quot;@right-bottom&quot; | &quot;@bottom-left&quot; | &quot;@left-middle&quot; | &quot;@left-bottom&quot; | &quot;@top-center&quot; | &quot;@top-right&quot; | &quot;@right-top&quot; | &quot;@top-left&quot; | &quot;@left-top&quot;</div>
+  </section>
+  <section class="rule" id="rule-QueryNot">
+    <h2><a href="#rule-QueryNot">§</a> QueryNot</h2>
+    <div class="diagram" data-rule="QueryNot"></div>
+    <div class="ebnf">QueryNot ::= &quot;not&quot;</div>
+  </section>
+  <section class="rule" id="rule-QueryOnly">
+    <h2><a href="#rule-QueryOnly">§</a> QueryOnly</h2>
+    <div class="diagram" data-rule="QueryOnly"></div>
+    <div class="ebnf">QueryOnly ::= &quot;only&quot;</div>
+  </section>
+  <section class="rule" id="rule-QueryAndOr">
+    <h2><a href="#rule-QueryAndOr">§</a> QueryAndOr</h2>
+    <div class="diagram" data-rule="QueryAndOr"></div>
+    <div class="ebnf">QueryAndOr ::= &quot;and&quot; | &quot;or&quot;</div>
+  </section>
+  <section class="rule" id="rule-QueryComparisonOperator">
+    <h2><a href="#rule-QueryComparisonOperator">§</a> QueryComparisonOperator</h2>
+    <div class="diagram" data-rule="QueryComparisonOperator"></div>
+    <div class="ebnf">QueryComparisonOperator ::= &quot;&lt;=&quot; | &quot;&gt;=&quot; | &quot;&lt;&quot; | &quot;=&quot; | &quot;&gt;&quot;</div>
+  </section>
+  <section class="rule" id="rule-QueryFunctionName">
+    <h2><a href="#rule-QueryFunctionName">§</a> QueryFunctionName</h2>
+    <div class="diagram" data-rule="QueryFunctionName"></div>
+    <div class="ebnf">QueryFunctionName ::= /-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*(?=\()/</div>
+  </section>
+  <section class="rule" id="rule-QueryFunctionOpen">
+    <h2><a href="#rule-QueryFunctionOpen">§</a> QueryFunctionOpen</h2>
+    <div class="diagram" data-rule="QueryFunctionOpen"></div>
+    <div class="ebnf">QueryFunctionOpen ::= IDENT (escapes allowed) &quot;(&quot;</div>
+  </section>
+  <section class="rule" id="rule-ScopeAtKeyword">
+    <h2><a href="#rule-ScopeAtKeyword">§</a> ScopeAtKeyword</h2>
+    <div class="diagram" data-rule="ScopeAtKeyword"></div>
+    <div class="ebnf">ScopeAtKeyword ::= &quot;@scope&quot;</div>
+  </section>
+  <section class="rule" id="rule-DescriptorAtKeyword">
+    <h2><a href="#rule-DescriptorAtKeyword">§</a> DescriptorAtKeyword</h2>
+    <div class="diagram" data-rule="DescriptorAtKeyword"></div>
+    <div class="ebnf">DescriptorAtKeyword ::= &quot;@counter-style&quot; | &quot;@font-face&quot; | &quot;@property&quot; | &quot;@font-palette-values&quot; | &quot;@view-transition&quot; | &quot;@color-profile&quot; | &quot;@position-try&quot;</div>
+  </section>
+  <section class="rule" id="rule-DocumentAtKeyword">
+    <h2><a href="#rule-DocumentAtKeyword">§</a> DocumentAtKeyword</h2>
+    <div class="diagram" data-rule="DocumentAtKeyword"></div>
+    <div class="ebnf">DocumentAtKeyword ::= &quot;@-moz-document&quot; | &quot;@document&quot;</div>
+  </section>
+  <section class="rule" id="rule-LayerAtKeyword">
+    <h2><a href="#rule-LayerAtKeyword">§</a> LayerAtKeyword</h2>
+    <div class="diagram" data-rule="LayerAtKeyword"></div>
+    <div class="ebnf">LayerAtKeyword ::= &quot;@layer&quot;</div>
+  </section>
+  <section class="rule" id="rule-KeyframesAtKeyword">
+    <h2><a href="#rule-KeyframesAtKeyword">§</a> KeyframesAtKeyword</h2>
+    <div class="diagram" data-rule="KeyframesAtKeyword"></div>
+    <div class="ebnf">KeyframesAtKeyword ::= @keyframes (vendor-prefixable)</div>
+  </section>
+  <section class="rule" id="rule-StatementAtRuleName">
+    <h2><a href="#rule-StatementAtRuleName">§</a> StatementAtRuleName</h2>
+    <div class="diagram" data-rule="StatementAtRuleName"></div>
+    <div class="ebnf">StatementAtRuleName ::= !(&quot;@import&quot;) AT-KEYWORD</div>
+  </section>
+  <section class="rule" id="rule-GenericAtRuleName">
+    <h2><a href="#rule-GenericAtRuleName">§</a> GenericAtRuleName</h2>
+    <div class="diagram" data-rule="GenericAtRuleName"></div>
+    <div class="ebnf">GenericAtRuleName ::= !(&quot;@counter-style&quot; | &quot;@font-face&quot; | &quot;@property&quot; | &quot;@font-palette-values&quot; | &quot;@view-transition&quot; | &quot;@color-profile&quot; | &quot;@position-try&quot; | &quot;@-moz-document&quot; | &quot;@document&quot; | &quot;@font-feature-values&quot; | @keyframes (vendor-prefixable) | &quot;@starting-style&quot; | &quot;@page&quot; | &quot;@scope&quot; | &quot;@layer&quot;) !(&quot;@container&quot; | &quot;@supports&quot; | &quot;@media&quot;) !(&quot;@import&quot;) AT-KEYWORD</div>
+  </section>
+  <section class="rule" id="rule-AtRuleKeyword">
+    <h2><a href="#rule-AtRuleKeyword">§</a> AtRuleKeyword</h2>
+    <div class="diagram" data-rule="AtRuleKeyword"></div>
+    <div class="ebnf">AtRuleKeyword ::= &quot;@counter-style&quot; | &quot;@font-face&quot; | &quot;@property&quot; | &quot;@font-palette-values&quot; | &quot;@view-transition&quot; | &quot;@color-profile&quot; | &quot;@position-try&quot; | &quot;@-moz-document&quot; | &quot;@document&quot; | &quot;@font-feature-values&quot; | @keyframes (vendor-prefixable) | &quot;@starting-style&quot; | &quot;@page&quot; | &quot;@scope&quot; | &quot;@layer&quot; | !(&quot;@container&quot; | &quot;@supports&quot; | &quot;@media&quot;) !(&quot;@import&quot;) AT-KEYWORD</div>
+  </section>
+  <section class="rule" id="rule-TypedAtKeyword">
+    <h2><a href="#rule-TypedAtKeyword">§</a> TypedAtKeyword</h2>
+    <div class="diagram" data-rule="TypedAtKeyword"></div>
+    <div class="ebnf">TypedAtKeyword ::= &quot;@counter-style&quot; | &quot;@font-face&quot; | &quot;@property&quot; | &quot;@font-palette-values&quot; | &quot;@view-transition&quot; | &quot;@color-profile&quot; | &quot;@position-try&quot; | &quot;@-moz-document&quot; | &quot;@document&quot; | &quot;@font-feature-values&quot; | @keyframes (vendor-prefixable) | &quot;@starting-style&quot; | &quot;@page&quot; | &quot;@scope&quot; | &quot;@layer&quot;</div>
+  </section>
+  <section class="rule" id="rule-TypedAtKeywordSharedRoutes">
+    <h2><a href="#rule-TypedAtKeywordSharedRoutes">§</a> TypedAtKeywordSharedRoutes</h2>
+    <div class="diagram" data-rule="TypedAtKeywordSharedRoutes"></div>
+    <div class="ebnf">TypedAtKeywordSharedRoutes ::= &quot;@counter-style&quot; | &quot;@font-face&quot; | &quot;@property&quot; | &quot;@-moz-document&quot; | &quot;@document&quot; | &quot;@font-feature-values&quot; | @keyframes (vendor-prefixable) | &quot;@starting-style&quot; | &quot;@page&quot; | &quot;@scope&quot; | &quot;@layer&quot;</div>
+  </section>
+  <section class="rule" id="rule-ImportAtKeyword">
+    <h2><a href="#rule-ImportAtKeyword">§</a> ImportAtKeyword</h2>
+    <div class="diagram" data-rule="ImportAtKeyword"></div>
+    <div class="ebnf">ImportAtKeyword ::= &quot;@import&quot;</div>
+  </section>
+  <section class="rule" id="rule-AtIdentifier">
+    <h2><a href="#rule-AtIdentifier">§</a> AtIdentifier</h2>
+    <div class="diagram" data-rule="AtIdentifier"></div>
+    <div class="ebnf">AtIdentifier ::= AT-KEYWORD</div>
+  </section>
+  <section class="rule" id="rule-FontFeatureValuesAtKeyword">
+    <h2><a href="#rule-FontFeatureValuesAtKeyword">§</a> FontFeatureValuesAtKeyword</h2>
+    <div class="diagram" data-rule="FontFeatureValuesAtKeyword"></div>
+    <div class="ebnf">FontFeatureValuesAtKeyword ::= &quot;@font-feature-values&quot;</div>
+  </section>
+  <section class="rule" id="rule-FontFeatureValueAtKeyword">
+    <h2><a href="#rule-FontFeatureValueAtKeyword">§</a> FontFeatureValueAtKeyword</h2>
+    <div class="diagram" data-rule="FontFeatureValueAtKeyword"></div>
+    <div class="ebnf">FontFeatureValueAtKeyword ::= &quot;@character-variant&quot; | &quot;@historical-forms&quot; | &quot;@annotation&quot; | &quot;@stylistic&quot; | &quot;@ornaments&quot; | &quot;@styleset&quot; | &quot;@swash&quot;</div>
+  </section>
+  <section class="rule" id="rule-NumberToken">
+    <h2><a href="#rule-NumberToken">§</a> NumberToken</h2>
+    <div class="diagram" data-rule="NumberToken"></div>
+    <div class="ebnf">NumberToken ::= NUMBER</div>
+  </section>
+  <section class="rule" id="rule-DimensionUnit">
+    <h2><a href="#rule-DimensionUnit">§</a> DimensionUnit</h2>
+    <div class="diagram" data-rule="DimensionUnit"></div>
+    <div class="ebnf">DimensionUnit ::= /-?[_a-zA-Z\u0080-\uFFFF](?:[_a-zA-Z0-9\u0080-\uFFFF]|-(?![0-9]))*|%/</div>
+  </section>
+  <section class="rule" id="rule-InterpolatedPropertyStart">
+    <h2><a href="#rule-InterpolatedPropertyStart">§</a> InterpolatedPropertyStart</h2>
+    <div class="diagram" data-rule="InterpolatedPropertyStart"></div>
+    <div class="ebnf">InterpolatedPropertyStart ::= /(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/</div>
+  </section>
+  <section class="rule" id="rule-InterpolatedPropertyTail">
+    <h2><a href="#rule-InterpolatedPropertyTail">§</a> InterpolatedPropertyTail</h2>
+    <div class="diagram" data-rule="InterpolatedPropertyTail"></div>
+    <div class="ebnf">InterpolatedPropertyTail ::= NAME (escapes allowed)</div>
+  </section>
+  <section class="rule" id="rule-CustomPropertyName">
+    <h2><a href="#rule-CustomPropertyName">§</a> CustomPropertyName</h2>
+    <div class="diagram" data-rule="CustomPropertyName"></div>
+    <div class="ebnf">CustomPropertyName ::= CUSTOM PROPERTY NAME</div>
+  </section>
+  <section class="rule" id="rule-CustomPropertyToken">
+    <h2><a href="#rule-CustomPropertyToken">§</a> CustomPropertyToken</h2>
+    <div class="diagram" data-rule="CustomPropertyToken"></div>
+    <div class="ebnf">CustomPropertyToken ::= CUSTOM PROPERTY NAME</div>
+  </section>
+  <section class="rule" id="rule-CustomOuterContent">
+    <h2><a href="#rule-CustomOuterContent">§</a> CustomOuterContent</h2>
+    <div class="diagram" data-rule="CustomOuterContent"></div>
+    <div class="ebnf">CustomOuterContent ::= /(?:(?![ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*important(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*[;}])(?:\\[^\n\r\f]|[^(){}[\];'&quot;\\/#$]|\/(?!\*)|#(?!\{)|\$(?![[({])))+/</div>
+  </section>
+  <section class="rule" id="rule-CustomInnerContent">
+    <h2><a href="#rule-CustomInnerContent">§</a> CustomInnerContent</h2>
+    <div class="diagram" data-rule="CustomInnerContent"></div>
+    <div class="ebnf">CustomInnerContent ::= /(?:\\[^\n\r\f]|[^(){}[\]'&quot;\\/#$]|\/(?!\*)|#(?!\{)|\$(?![[({]))+/</div>
+  </section>
+  <section class="rule" id="rule-CustomSingleQuoted">
+    <h2><a href="#rule-CustomSingleQuoted">§</a> CustomSingleQuoted</h2>
+    <div class="diagram" data-rule="CustomSingleQuoted"></div>
+    <div class="ebnf">CustomSingleQuoted ::= SINGLE-QUOTED STRING</div>
+  </section>
+  <section class="rule" id="rule-CustomDoubleQuoted">
+    <h2><a href="#rule-CustomDoubleQuoted">§</a> CustomDoubleQuoted</h2>
+    <div class="diagram" data-rule="CustomDoubleQuoted"></div>
+    <div class="ebnf">CustomDoubleQuoted ::= DOUBLE-QUOTED STRING</div>
+  </section>
+  <section class="rule" id="rule-OpaqueAtRulePreludeCapture">
+    <h2><a href="#rule-OpaqueAtRulePreludeCapture">§</a> OpaqueAtRulePreludeCapture</h2>
+    <div class="diagram" data-rule="OpaqueAtRulePreludeCapture"></div>
+    <div class="ebnf">OpaqueAtRulePreludeCapture ::= /* … */?</div>
+  </section>
+  <section class="rule" id="rule-OpaqueAtRuleBodyCapture">
+    <h2><a href="#rule-OpaqueAtRuleBodyCapture">§</a> OpaqueAtRuleBodyCapture</h2>
+    <div class="diagram" data-rule="OpaqueAtRuleBodyCapture"></div>
+    <div class="ebnf">OpaqueAtRuleBodyCapture ::= /* … */</div>
+  </section>
+  <section class="rule" id="rule-PreprocessorOpaqueAtRulePreludeCapture">
+    <h2><a href="#rule-PreprocessorOpaqueAtRulePreludeCapture">§</a> PreprocessorOpaqueAtRulePreludeCapture</h2>
+    <div class="diagram" data-rule="PreprocessorOpaqueAtRulePreludeCapture"></div>
+    <div class="ebnf">PreprocessorOpaqueAtRulePreludeCapture ::= /* … */?</div>
+  </section>
+  <section class="rule" id="rule-PreprocessorOpaqueAtRuleBodyCapture">
+    <h2><a href="#rule-PreprocessorOpaqueAtRuleBodyCapture">§</a> PreprocessorOpaqueAtRuleBodyCapture</h2>
+    <div class="diagram" data-rule="PreprocessorOpaqueAtRuleBodyCapture"></div>
+    <div class="ebnf">PreprocessorOpaqueAtRuleBodyCapture ::= /* … */</div>
+  </section>
+  <section class="rule" id="rule-NthChildPseudoSelectorName">
+    <h2><a href="#rule-NthChildPseudoSelectorName">§</a> NthChildPseudoSelectorName</h2>
+    <div class="diagram" data-rule="NthChildPseudoSelectorName"></div>
+    <div class="ebnf">NthChildPseudoSelectorName ::= /nth-(?:last-)?child(?=\()/</div>
+  </section>
+  <section class="rule" id="rule-NthTypePseudoSelectorName">
+    <h2><a href="#rule-NthTypePseudoSelectorName">§</a> NthTypePseudoSelectorName</h2>
+    <div class="diagram" data-rule="NthTypePseudoSelectorName"></div>
+    <div class="ebnf">NthTypePseudoSelectorName ::= /nth-(?:last-)?of-type(?=\()/</div>
+  </section>
+  <section class="rule" id="rule-NthPseudoSelectorName">
+    <h2><a href="#rule-NthPseudoSelectorName">§</a> NthPseudoSelectorName</h2>
+    <div class="diagram" data-rule="NthPseudoSelectorName"></div>
+    <div class="ebnf">NthPseudoSelectorName ::= nth-child / nth-last-child / nth-of-type / nth-last-of-type</div>
+  </section>
+  <section class="rule" id="rule-SelectorArgumentPseudoSelectorName">
+    <h2><a href="#rule-SelectorArgumentPseudoSelectorName">§</a> SelectorArgumentPseudoSelectorName</h2>
+    <div class="diagram" data-rule="SelectorArgumentPseudoSelectorName"></div>
+    <div class="ebnf">SelectorArgumentPseudoSelectorName ::= /(?:is|where|not|has|matches)(?=\()/</div>
+  </section>
+  <section class="rule" id="rule-NthOfKeyword">
+    <h2><a href="#rule-NthOfKeyword">§</a> NthOfKeyword</h2>
+    <div class="diagram" data-rule="NthOfKeyword"></div>
+    <div class="ebnf">NthOfKeyword ::= &quot;of&quot;</div>
+  </section>
+  <section class="rule" id="rule-PseudoSelectorCloseAhead">
+    <h2><a href="#rule-PseudoSelectorCloseAhead">§</a> PseudoSelectorCloseAhead</h2>
+    <div class="diagram" data-rule="PseudoSelectorCloseAhead"></div>
+    <div class="ebnf">PseudoSelectorCloseAhead ::= /(?=[ \t\n\r\f]*\))/</div>
+  </section>
+  <section class="rule" id="rule-TypedValueSequence">
+    <h2><a href="#rule-TypedValueSequence">§</a> TypedValueSequence</h2>
+    <div class="diagram" data-rule="TypedValueSequence"></div>
+    <div class="ebnf">TypedValueSequence ::= TypedValue (WHITESPACE or COMMENT TypedValue | TypedValue)*</div>
+  </section>
+  <section class="rule" id="rule-ValueSequence">
+    <h2><a href="#rule-ValueSequence">§</a> ValueSequence</h2>
+    <div class="diagram" data-rule="ValueSequence"></div>
+    <div class="ebnf">ValueSequence ::= Value (WHITESPACE or COMMENT Value | Value)*</div>
+  </section>
+  <section class="rule" id="rule-Quoted">
+    <h2><a href="#rule-Quoted">§</a> Quoted</h2>
+    <div class="diagram" data-rule="Quoted"></div>
+    <div class="ebnf">Quoted ::= '&quot;' DoubleQuotedText '&quot;' | &quot;'&quot; SingleQuotedText &quot;'&quot; | '~&quot;' DoubleQuotedText '&quot;' | &quot;~'&quot; SingleQuotedText &quot;'&quot;</div>
+  </section>
+  <section class="rule" id="rule-SelectorList">
+    <h2><a href="#rule-SelectorList">§</a> SelectorList</h2>
+    <div class="diagram" data-rule="SelectorList"></div>
+    <div class="ebnf">SelectorList ::= ComplexSelector (&quot;,&quot; ComplexSelector)*</div>
+  </section>
+  <section class="rule" id="rule-pseudoArgumentContent">
+    <h2><a href="#rule-pseudoArgumentContent">§</a> pseudoArgumentContent</h2>
+    <div class="diagram" data-rule="pseudoArgumentContent"></div>
+    <div class="ebnf">pseudoArgumentContent ::= /* … */</div>
+  </section>
+  <section class="rule" id="rule-LeadingDashPseudoArgument">
+    <h2><a href="#rule-LeadingDashPseudoArgument">§</a> LeadingDashPseudoArgument</h2>
+    <div class="diagram" data-rule="LeadingDashPseudoArgument"></div>
+    <div class="ebnf">LeadingDashPseudoArgument ::= &quot;-&quot; NthExpression (NthOfKeyword SelectorList)? PseudoSelectorCloseAhead</div>
+  </section>
+  <section class="rule" id="rule-LeadingDashRawPseudoArgument">
+    <h2><a href="#rule-LeadingDashRawPseudoArgument">§</a> LeadingDashRawPseudoArgument</h2>
+    <div class="diagram" data-rule="LeadingDashRawPseudoArgument"></div>
+    <div class="ebnf">LeadingDashRawPseudoArgument ::= &quot;-&quot; PseudoSelectorCloseAhead | !MalformedPseudoSelectorNumericArgument &quot;-&quot; WHITESPACE pseudoArgumentContent | &quot;-&quot; &quot;-&quot; pseudoArgumentContent</div>
+  </section>
+  <section class="rule" id="rule-TypedNthPseudoArgument">
+    <h2><a href="#rule-TypedNthPseudoArgument">§</a> TypedNthPseudoArgument</h2>
+    <div class="diagram" data-rule="TypedNthPseudoArgument"></div>
+    <div class="ebnf">TypedNthPseudoArgument ::= NthExpression (NthOfKeyword SelectorList)? PseudoSelectorCloseAhead</div>
+  </section>
+  <section class="rule" id="rule-LeadingDashOfTypePseudoArgument">
+    <h2><a href="#rule-LeadingDashOfTypePseudoArgument">§</a> LeadingDashOfTypePseudoArgument</h2>
+    <div class="diagram" data-rule="LeadingDashOfTypePseudoArgument"></div>
+    <div class="ebnf">LeadingDashOfTypePseudoArgument ::= &quot;-&quot; NthExpression PseudoSelectorCloseAhead</div>
+  </section>
+  <section class="rule" id="rule-TypedOfTypePseudoArgument">
+    <h2><a href="#rule-TypedOfTypePseudoArgument">§</a> TypedOfTypePseudoArgument</h2>
+    <div class="diagram" data-rule="TypedOfTypePseudoArgument"></div>
+    <div class="ebnf">TypedOfTypePseudoArgument ::= NthExpression PseudoSelectorCloseAhead</div>
+  </section>
+  <section class="rule" id="rule-ComplexSelector">
+    <h2><a href="#rule-ComplexSelector">§</a> ComplexSelector</h2>
+    <div class="diagram" data-rule="ComplexSelector"></div>
+    <div class="ebnf">ComplexSelector ::= CompoundSelector ((&quot;||&quot; | &quot;&gt;&quot; | &quot;+&quot; | &quot;~&quot; | &quot;|&quot;)? CompoundSelector)*</div>
+  </section>
+  <section class="rule" id="rule-PseudoArgument">
+    <h2><a href="#rule-PseudoArgument">§</a> PseudoArgument</h2>
+    <div class="diagram" data-rule="PseudoArgument"></div>
+    <div class="ebnf">PseudoArgument ::= LeadingDashPseudoArgument | LeadingDashRawPseudoArgument | TypedNthPseudoArgument | SelectorList | !MalformedPseudoSelectorNumericArgument pseudoArgumentContent</div>
+  </section>
+  <section class="rule" id="rule-OfTypePseudoArgument">
+    <h2><a href="#rule-OfTypePseudoArgument">§</a> OfTypePseudoArgument</h2>
+    <div class="diagram" data-rule="OfTypePseudoArgument"></div>
+    <div class="ebnf">OfTypePseudoArgument ::= LeadingDashOfTypePseudoArgument | LeadingDashRawPseudoArgument | TypedOfTypePseudoArgument | !(NthExpression NthOfKeyword) (SelectorList | !MalformedPseudoSelectorNumericArgument pseudoArgumentContent)</div>
+  </section>
+  <section class="rule" id="rule-NestingSelector">
+    <h2><a href="#rule-NestingSelector">§</a> NestingSelector</h2>
+    <div class="diagram" data-rule="NestingSelector"></div>
+    <div class="ebnf">NestingSelector ::= &quot;&amp;&quot;</div>
+  </section>
+  <section class="rule" id="rule-AttributeSelector">
+    <h2><a href="#rule-AttributeSelector">§</a> AttributeSelector</h2>
+    <div class="diagram" data-rule="AttributeSelector"></div>
+    <div class="ebnf">AttributeSelector ::= &quot;[&quot; Identifier (AttributeOperator (Quoted | Identifier) AttributeModifier?)? &quot;]&quot;</div>
+  </section>
+  <section class="rule" id="rule-PseudoSelector">
+    <h2><a href="#rule-PseudoSelector">§</a> PseudoSelector</h2>
+    <div class="diagram" data-rule="PseudoSelector"></div>
+    <div class="ebnf">PseudoSelector ::= &quot;:&quot; or &quot;::&quot; Identifier &quot;(&quot;? (PseudoArgument &quot;)&quot; | OfTypePseudoArgument &quot;)&quot; | ((&quot;&gt;&quot; | &quot;+&quot; | &quot;~&quot;)? ComplexSelector) (&quot;,&quot; ((&quot;&gt;&quot; | &quot;+&quot; | &quot;~&quot;)? ComplexSelector))* &quot;)&quot; | pseudoArgumentContent &quot;)&quot; | !NthPseudoSelectorName)</div>
+  </section>
+  <section class="rule" id="rule-BasicSelector">
+    <h2><a href="#rule-BasicSelector">§</a> BasicSelector</h2>
+    <div class="diagram" data-rule="BasicSelector"></div>
+    <div class="ebnf">BasicSelector ::= SIMPLE SELECTOR or PERCENTAGE</div>
+  </section>
+  <section class="rule" id="rule-CompoundSelector">
+    <h2><a href="#rule-CompoundSelector">§</a> CompoundSelector</h2>
+    <div class="diagram" data-rule="CompoundSelector"></div>
+    <div class="ebnf">CompoundSelector ::= (NestingSelector | AttributeSelector | PseudoSelector | BasicSelector)+</div>
+  </section>
+  <section class="rule" id="rule-TopLevelCompoundSelector">
+    <h2><a href="#rule-TopLevelCompoundSelector">§</a> TopLevelCompoundSelector</h2>
+    <div class="diagram" data-rule="TopLevelCompoundSelector"></div>
+    <div class="ebnf">TopLevelCompoundSelector ::= (AttributeSelector | PseudoSelector | BasicSelector)+</div>
+  </section>
+  <section class="rule" id="rule-TopLevelComplexSelector">
+    <h2><a href="#rule-TopLevelComplexSelector">§</a> TopLevelComplexSelector</h2>
+    <div class="diagram" data-rule="TopLevelComplexSelector"></div>
+    <div class="ebnf">TopLevelComplexSelector ::= TopLevelCompoundSelector ((&quot;||&quot; | &quot;&gt;&quot; | &quot;+&quot; | &quot;~&quot; | &quot;|&quot;)? TopLevelCompoundSelector)*</div>
+  </section>
+  <section class="rule" id="rule-valueFunctionArguments">
+    <h2><a href="#rule-valueFunctionArguments">§</a> valueFunctionArguments</h2>
+    <div class="diagram" data-rule="valueFunctionArguments"></div>
+    <div class="ebnf">valueFunctionArguments ::= (TypedValueSequence (WHITESPACE or COMMENT? &quot;,&quot; WHITESPACE or COMMENT? TypedValueSequence)*)?</div>
+  </section>
+  <section class="rule" id="rule-CalcSum">
+    <h2><a href="#rule-CalcSum">§</a> CalcSum</h2>
+    <div class="diagram" data-rule="CalcSum"></div>
+    <div class="ebnf">CalcSum ::= CalcProduct (WHITESPACE or COMMENT /[-+]/ WHITESPACE or COMMENT CalcProduct)*</div>
+  </section>
+  <section class="rule" id="rule-VarFallback">
+    <h2><a href="#rule-VarFallback">§</a> VarFallback</h2>
+    <div class="diagram" data-rule="VarFallback"></div>
+    <div class="ebnf">VarFallback ::= VarFallbackItem (&quot;,&quot; WHITESPACE or COMMENT? VarFallbackItem)*</div>
+  </section>
+  <section class="rule" id="rule-VarCall">
+    <h2><a href="#rule-VarCall">§</a> VarCall</h2>
+    <div class="diagram" data-rule="VarCall"></div>
+    <div class="ebnf">VarCall ::= (&quot;var&quot;) &quot;(&quot; WHITESPACE or COMMENT? CustomPropertyValue WHITESPACE or COMMENT? (&quot;,&quot; WHITESPACE or COMMENT? (VarFallback | VarFallbackEmpty) WHITESPACE or COMMENT?)? &quot;)&quot;</div>
+  </section>
+  <section class="rule" id="rule-VarFallbackCall">
+    <h2><a href="#rule-VarFallbackCall">§</a> VarFallbackCall</h2>
+    <div class="diagram" data-rule="VarFallbackCall"></div>
+    <div class="ebnf">VarFallbackCall ::= IDENT (not a calc/url/var call) &quot;(&quot; (!&quot;)&quot; VarFallbackItem (&quot;,&quot; WHITESPACE or COMMENT? VarFallbackItem)*)? &quot;)&quot;</div>
+  </section>
+  <section class="rule" id="rule-TypedValue">
+    <h2><a href="#rule-TypedValue">§</a> TypedValue</h2>
+    <div class="diagram" data-rule="TypedValue"></div>
+    <div class="ebnf">TypedValue ::= Percentage | Dimension | Color | Quoted | CustomPropertyValue | UnicodeRange | CalcIdentOrFunction</div>
+  </section>
+  <section class="rule" id="rule-VarFallbackParen">
+    <h2><a href="#rule-VarFallbackParen">§</a> VarFallbackParen</h2>
+    <div class="diagram" data-rule="VarFallbackParen"></div>
+    <div class="ebnf">VarFallbackParen ::= !(&quot;(&quot; /* … */ &quot;[&quot; /* … */ &quot;)&quot; | &quot;(&quot; /* … */ &quot;{&quot; /* … */ &quot;)&quot;) &quot;(&quot; WHITESPACE or COMMENT? VarFallback? WHITESPACE or COMMENT? &quot;)&quot;</div>
+  </section>
+  <section class="rule" id="rule-VarFallbackBracket">
+    <h2><a href="#rule-VarFallbackBracket">§</a> VarFallbackBracket</h2>
+    <div class="diagram" data-rule="VarFallbackBracket"></div>
+    <div class="ebnf">VarFallbackBracket ::= !(&quot;[&quot; /* … */ &quot;(&quot; /* … */ &quot;]&quot; | &quot;[&quot; /* … */ &quot;{&quot; /* … */ &quot;]&quot;) &quot;[&quot; /* … */ &quot;]&quot;</div>
+  </section>
+  <section class="rule" id="rule-VarFallbackBrace">
+    <h2><a href="#rule-VarFallbackBrace">§</a> VarFallbackBrace</h2>
+    <div class="diagram" data-rule="VarFallbackBrace"></div>
+    <div class="ebnf">VarFallbackBrace ::= !(&quot;{&quot; /* … */ &quot;(&quot; /* … */ &quot;}&quot; | &quot;{&quot; /* … */ &quot;[&quot; /* … */ &quot;}&quot;) &quot;{&quot; /* … */ &quot;}&quot;</div>
+  </section>
+  <section class="rule" id="rule-VarFallbackPunctuation">
+    <h2><a href="#rule-VarFallbackPunctuation">§</a> VarFallbackPunctuation</h2>
+    <div class="diagram" data-rule="VarFallbackPunctuation"></div>
+    <div class="ebnf">VarFallbackPunctuation ::= (ESCAPE | &quot;+&quot; | &quot;-&quot; | &quot;*&quot; | &quot;/&quot; | &quot;=&quot; | &quot;&lt;&quot; | &quot;&gt;&quot; | &quot;|&quot; | &quot;~&quot; | &quot;^&quot; | &quot;?&quot; | &quot;$&quot; | &quot;@&quot; | &quot;%&quot; | &quot;&amp;&quot; | &quot;:&quot; | &quot;.&quot;)+</div>
+  </section>
+  <section class="rule" id="rule-VarFallbackTerm">
+    <h2><a href="#rule-VarFallbackTerm">§</a> VarFallbackTerm</h2>
+    <div class="diagram" data-rule="VarFallbackTerm"></div>
+    <div class="ebnf">VarFallbackTerm ::= (VarCall | VarFallbackCall | TypedValue | VarFallbackParen | VarFallbackBracket | VarFallbackBrace | VarFallbackPunctuation) (WHITESPACE or COMMENT? (VarCall | VarFallbackCall | TypedValue | VarFallbackParen | VarFallbackBracket | VarFallbackBrace | VarFallbackPunctuation))*</div>
+  </section>
+  <section class="rule" id="rule-VarFallbackEmpty">
+    <h2><a href="#rule-VarFallbackEmpty">§</a> VarFallbackEmpty</h2>
+    <div class="diagram" data-rule="VarFallbackEmpty"></div>
+    <div class="ebnf">VarFallbackEmpty ::= &amp;&quot;,&quot; | &amp;&quot;)&quot;</div>
+  </section>
+  <section class="rule" id="rule-VarFallbackItem">
+    <h2><a href="#rule-VarFallbackItem">§</a> VarFallbackItem</h2>
+    <div class="diagram" data-rule="VarFallbackItem"></div>
+    <div class="ebnf">VarFallbackItem ::= VarFallbackTerm | VarFallbackEmpty</div>
+  </section>
+  <section class="rule" id="rule-CustomPropertyValue">
+    <h2><a href="#rule-CustomPropertyValue">§</a> CustomPropertyValue</h2>
+    <div class="diagram" data-rule="CustomPropertyValue"></div>
+    <div class="ebnf">CustomPropertyValue ::= CustomPropertyName</div>
+  </section>
+  <section class="rule" id="rule-Percentage">
+    <h2><a href="#rule-Percentage">§</a> Percentage</h2>
+    <div class="diagram" data-rule="Percentage"></div>
+    <div class="ebnf">Percentage ::= NUMBER &quot;%&quot;</div>
+  </section>
+  <section class="rule" id="rule-Dimension">
+    <h2><a href="#rule-Dimension">§</a> Dimension</h2>
+    <div class="diagram" data-rule="Dimension"></div>
+    <div class="ebnf">Dimension ::= /[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)(?!%)/ /-?[_a-zA-Z\u0080-\uFFFF](?:[_a-zA-Z0-9\u0080-\uFFFF]|-(?![0-9]))*/?</div>
+  </section>
+  <section class="rule" id="rule-Color">
+    <h2><a href="#rule-Color">§</a> Color</h2>
+    <div class="diagram" data-rule="Color"></div>
+    <div class="ebnf">Color ::= HEX COLOR</div>
+  </section>
+  <section class="rule" id="rule-CalcIdentOrFunction">
+    <h2><a href="#rule-CalcIdentOrFunction">§</a> CalcIdentOrFunction</h2>
+    <div class="diagram" data-rule="CalcIdentOrFunction"></div>
+    <div class="ebnf">CalcIdentOrFunction ::= IDENT (escapes allowed) &quot;(&quot;? (WHITESPACE? (Quoted | UrlInner)? WHITESPACE? &quot;)&quot; | WHITESPACE or COMMENT? CalcSum WHITESPACE or COMMENT? &quot;)&quot; | WHITESPACE or COMMENT? CustomPropertyValue WHITESPACE or COMMENT? (&quot;,&quot; WHITESPACE or COMMENT? (VarFallback | VarFallbackEmpty) WHITESPACE or COMMENT?)? &quot;)&quot; | WHITESPACE or COMMENT? valueFunctionArguments WHITESPACE or COMMENT? &quot;)&quot; | RoutedKeyword)</div>
+  </section>
+  <section class="rule" id="rule-CalcParen">
+    <h2><a href="#rule-CalcParen">§</a> CalcParen</h2>
+    <div class="diagram" data-rule="CalcParen"></div>
+    <div class="ebnf">CalcParen ::= &quot;(&quot; WHITESPACE or COMMENT? CalcSum WHITESPACE or COMMENT? &quot;)&quot;</div>
+  </section>
+  <section class="rule" id="rule-CalcValue">
+    <h2><a href="#rule-CalcValue">§</a> CalcValue</h2>
+    <div class="diagram" data-rule="CalcValue"></div>
+    <div class="ebnf">CalcValue ::= Percentage | Dimension | Color | CalcIdentOrFunction | CalcParen | Quoted | CustomPropertyValue</div>
+  </section>
+  <section class="rule" id="rule-CalcProduct">
+    <h2><a href="#rule-CalcProduct">§</a> CalcProduct</h2>
+    <div class="diagram" data-rule="CalcProduct"></div>
+    <div class="ebnf">CalcProduct ::= CalcValue (WHITESPACE or COMMENT? /[*/%]/ WHITESPACE or COMMENT? CalcValue)*</div>
+  </section>
+  <section class="rule" id="rule-ValueList">
+    <h2><a href="#rule-ValueList">§</a> ValueList</h2>
+    <div class="diagram" data-rule="ValueList"></div>
+    <div class="ebnf">ValueList ::= ValueSequence (&quot;,&quot; WHITESPACE or COMMENT? ValueSequence)*</div>
+  </section>
+  <section class="rule" id="rule-RawParenValue">
+    <h2><a href="#rule-RawParenValue">§</a> RawParenValue</h2>
+    <div class="diagram" data-rule="RawParenValue"></div>
+    <div class="ebnf">RawParenValue ::= &quot;(&quot; /* … */ &quot;)&quot;</div>
+  </section>
+  <section class="rule" id="rule-RoutedKeyword">
+    <h2><a href="#rule-RoutedKeyword">§</a> RoutedKeyword</h2>
+    <div class="diagram" data-rule="RoutedKeyword"></div>
+    <div class="ebnf">RoutedKeyword ::= /* empty */</div>
+  </section>
+  <section class="rule" id="rule-UnicodeRange">
+    <h2><a href="#rule-UnicodeRange">§</a> UnicodeRange</h2>
+    <div class="diagram" data-rule="UnicodeRange"></div>
+    <div class="ebnf">UnicodeRange ::= UnicodeRangeToken</div>
+  </section>
+  <section class="rule" id="rule-ParenValue">
+    <h2><a href="#rule-ParenValue">§</a> ParenValue</h2>
+    <div class="diagram" data-rule="ParenValue"></div>
+    <div class="ebnf">ParenValue ::= &quot;(&quot; WHITESPACE or COMMENT? ValueList? WHITESPACE or COMMENT? &quot;)&quot;</div>
+  </section>
+  <section class="rule" id="rule-SquareValue">
+    <h2><a href="#rule-SquareValue">§</a> SquareValue</h2>
+    <div class="diagram" data-rule="SquareValue"></div>
+    <div class="ebnf">SquareValue ::= &quot;[&quot; WHITESPACE or COMMENT? ValueList? WHITESPACE or COMMENT? &quot;]&quot;</div>
+  </section>
+  <section class="rule" id="rule-PunctuationValue">
+    <h2><a href="#rule-PunctuationValue">§</a> PunctuationValue</h2>
+    <div class="diagram" data-rule="PunctuationValue"></div>
+    <div class="ebnf">PunctuationValue ::= &quot;/&quot; !&quot;*&quot; (&amp;(&quot;.&quot; | /[0-9]/ | /[ \t\n\r\f]/) | (ESCAPE | &quot;+&quot; | &quot;-&quot; | &quot;*&quot; | &quot;/&quot; | &quot;=&quot; | &quot;&lt;&quot; | &quot;&gt;&quot; | &quot;|&quot; | &quot;~&quot; | &quot;^&quot; | &quot;?&quot; | &quot;$&quot; | &quot;@&quot; | &quot;%&quot; | &quot;&amp;&quot; | &quot;:&quot; | &quot;.&quot;)*) | (ESCAPE | &quot;+&quot; | &quot;-&quot; | &quot;*&quot; | &quot;=&quot; | &quot;&lt;&quot; | &quot;&gt;&quot; | &quot;|&quot; | &quot;~&quot; | &quot;^&quot; | &quot;?&quot; | &quot;$&quot; | /@(?!-?(?:[-_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])))/ | &quot;%&quot; | &quot;&amp;&quot; | &quot;:&quot; | &quot;.&quot;) (ESCAPE | &quot;+&quot; | &quot;-&quot; | &quot;*&quot; | &quot;/&quot; | &quot;=&quot; | &quot;&lt;&quot; | &quot;&gt;&quot; | &quot;|&quot; | &quot;~&quot; | &quot;^&quot; | &quot;?&quot; | &quot;$&quot; | &quot;@&quot; | &quot;%&quot; | &quot;&amp;&quot; | &quot;:&quot; | &quot;.&quot;)*</div>
+  </section>
+  <section class="rule" id="rule-Value">
+    <h2><a href="#rule-Value">§</a> Value</h2>
+    <div class="diagram" data-rule="Value"></div>
+    <div class="ebnf">Value ::= Percentage | Dimension | Color | UnicodeRange | IDENT (escapes allowed) &quot;(&quot;? (WHITESPACE? (Quoted | UrlInner)? WHITESPACE? &quot;)&quot; | WHITESPACE or COMMENT? CalcSum WHITESPACE or COMMENT? &quot;)&quot; | WHITESPACE or COMMENT? CustomPropertyValue WHITESPACE or COMMENT? (&quot;,&quot; WHITESPACE or COMMENT? (VarFallback | VarFallbackEmpty) WHITESPACE or COMMENT?)? &quot;)&quot; | WHITESPACE or COMMENT? (ValueSequence (WHITESPACE or COMMENT? &quot;,&quot; WHITESPACE or COMMENT? ValueSequence)*)? WHITESPACE or COMMENT? &quot;)&quot; | WHITESPACE or COMMENT RawParenValue | RoutedKeyword) | ParenValue | SquareValue | Quoted | CustomPropertyValue | PunctuationValue</div>
+  </section>
+  <section class="rule" id="rule-CustomProperty">
+    <h2><a href="#rule-CustomProperty">§</a> CustomProperty</h2>
+    <div class="diagram" data-rule="CustomProperty"></div>
+    <div class="ebnf">CustomProperty ::= CustomPropertyName</div>
+  </section>
+  <section class="rule" id="rule-CustomValue">
+    <h2><a href="#rule-CustomValue">§</a> CustomValue</h2>
+    <div class="diagram" data-rule="CustomValue"></div>
+    <div class="ebnf">CustomValue ::= /* … */</div>
+  </section>
+  <section class="rule" id="rule-Important">
+    <h2><a href="#rule-Important">§</a> Important</h2>
+    <div class="diagram" data-rule="Important"></div>
+    <div class="ebnf">Important ::= &quot;!&quot; ImportantToken</div>
+  </section>
+  <section class="rule" id="rule-Property">
+    <h2><a href="#rule-Property">§</a> Property</h2>
+    <div class="diagram" data-rule="Property"></div>
+    <div class="ebnf">Property ::= Identifier</div>
+  </section>
+  <section class="rule" id="rule-ImportUrlUnquoted">
+    <h2><a href="#rule-ImportUrlUnquoted">§</a> ImportUrlUnquoted</h2>
+    <div class="diagram" data-rule="ImportUrlUnquoted"></div>
+    <div class="ebnf">ImportUrlUnquoted ::= UrlInner</div>
+  </section>
+  <section class="rule" id="rule-ImportTailRaw">
+    <h2><a href="#rule-ImportTailRaw">§</a> ImportTailRaw</h2>
+    <div class="diagram" data-rule="ImportTailRaw"></div>
+    <div class="ebnf">ImportTailRaw ::= &quot;(&quot; /* … */ &quot;)&quot; | &quot;[&quot; /* … */ &quot;]&quot; | '&quot;' DOUBLE-QUOTED BODY '&quot;' | &quot;'&quot; SINGLE-QUOTED BODY &quot;'&quot; | /[^()[\]&quot;'\/; \t\n\r\f]+/ | &quot;/&quot;</div>
+  </section>
+  <section class="rule" id="rule-ImportTailBody">
+    <h2><a href="#rule-ImportTailBody">§</a> ImportTailBody</h2>
+    <div class="diagram" data-rule="ImportTailBody"></div>
+    <div class="ebnf">ImportTailBody ::= ImportTailRaw (ImportTailRaw | WHITESPACE)*</div>
+  </section>
+  <section class="rule" id="rule-ImportUrl">
+    <h2><a href="#rule-ImportUrl">§</a> ImportUrl</h2>
+    <div class="diagram" data-rule="ImportUrl"></div>
+    <div class="ebnf">ImportUrl ::= (&quot;url&quot;) &quot;(&quot; (Quoted | ImportUrlUnquoted)? &quot;)&quot;</div>
+  </section>
+  <section class="rule" id="rule-ImportTail">
+    <h2><a href="#rule-ImportTail">§</a> ImportTail</h2>
+    <div class="diagram" data-rule="ImportTail"></div>
+    <div class="ebnf">ImportTail ::= WHITESPACE* ImportTailBody</div>
+  </section>
+  <section class="rule" id="rule-StatementPrelude">
+    <h2><a href="#rule-StatementPrelude">§</a> StatementPrelude</h2>
+    <div class="diagram" data-rule="StatementPrelude"></div>
+    <div class="ebnf">StatementPrelude ::= AtRulePreludeSegments</div>
+  </section>
+  <section class="rule" id="rule-AtRulePreludeWhitespace">
+    <h2><a href="#rule-AtRulePreludeWhitespace">§</a> AtRulePreludeWhitespace</h2>
+    <div class="diagram" data-rule="AtRulePreludeWhitespace"></div>
+    <div class="ebnf">AtRulePreludeWhitespace ::= WHITESPACE</div>
+  </section>
+  <section class="rule" id="rule-AtRulePreludeComma">
+    <h2><a href="#rule-AtRulePreludeComma">§</a> AtRulePreludeComma</h2>
+    <div class="diagram" data-rule="AtRulePreludeComma"></div>
+    <div class="ebnf">AtRulePreludeComma ::= &quot;,&quot;</div>
+  </section>
+  <section class="rule" id="rule-AtRulePreludeGroup">
+    <h2><a href="#rule-AtRulePreludeGroup">§</a> AtRulePreludeGroup</h2>
+    <div class="diagram" data-rule="AtRulePreludeGroup"></div>
+    <div class="ebnf">AtRulePreludeGroup ::= balanced ( … ) or [ … ]</div>
+  </section>
+  <section class="rule" id="rule-AtRulePreludeQuoted">
+    <h2><a href="#rule-AtRulePreludeQuoted">§</a> AtRulePreludeQuoted</h2>
+    <div class="diagram" data-rule="AtRulePreludeQuoted"></div>
+    <div class="ebnf">AtRulePreludeQuoted ::= &quot;'&quot; SINGLE-QUOTED BODY &quot;'&quot; | '&quot;' DOUBLE-QUOTED BODY '&quot;'</div>
+  </section>
+  <section class="rule" id="rule-AtRulePreludeText">
+    <h2><a href="#rule-AtRulePreludeText">§</a> AtRulePreludeText</h2>
+    <div class="diagram" data-rule="AtRulePreludeText"></div>
+    <div class="ebnf">AtRulePreludeText ::= /(?:\\[\s\S]|\/(?!\*)|[^\\/ \t\n\r\f,;{}()[\]&quot;'])+/</div>
+  </section>
+  <section class="rule" id="rule-AtRulePreludeSegments">
+    <h2><a href="#rule-AtRulePreludeSegments">§</a> AtRulePreludeSegments</h2>
+    <div class="diagram" data-rule="AtRulePreludeSegments"></div>
+    <div class="ebnf">AtRulePreludeSegments ::= (AtRulePreludeWhitespace | AtRulePreludeComma | AtRulePreludeGroup | AtRulePreludeQuoted | AtRulePreludeText)*</div>
+  </section>
+  <section class="rule" id="rule-OpaqueAtPrelude">
+    <h2><a href="#rule-OpaqueAtPrelude">§</a> OpaqueAtPrelude</h2>
+    <div class="diagram" data-rule="OpaqueAtPrelude"></div>
+    <div class="ebnf">OpaqueAtPrelude ::= OpaqueAtRulePreludeCapture</div>
+  </section>
+  <section class="rule" id="rule-OpaqueBody">
+    <h2><a href="#rule-OpaqueBody">§</a> OpaqueBody</h2>
+    <div class="diagram" data-rule="OpaqueBody"></div>
+    <div class="ebnf">OpaqueBody ::= OpaqueAtRuleBodyCapture</div>
+  </section>
+  <section class="rule" id="rule-QueryValue">
+    <h2><a href="#rule-QueryValue">§</a> QueryValue</h2>
+    <div class="diagram" data-rule="QueryValue"></div>
+    <div class="ebnf">QueryValue ::= TypedValue (&quot;/&quot; TypedValue)?</div>
+  </section>
+  <section class="rule" id="rule-QueryBareFeature">
+    <h2><a href="#rule-QueryBareFeature">§</a> QueryBareFeature</h2>
+    <div class="diagram" data-rule="QueryBareFeature"></div>
+    <div class="ebnf">QueryBareFeature ::= &quot;(&quot; Property &quot;)&quot;</div>
+  </section>
+  <section class="rule" id="rule-QueryRangeFeature">
+    <h2><a href="#rule-QueryRangeFeature">§</a> QueryRangeFeature</h2>
+    <div class="diagram" data-rule="QueryRangeFeature"></div>
+    <div class="ebnf">QueryRangeFeature ::= &quot;(&quot; QueryValue QueryComparisonOperator Property (QueryComparisonOperator QueryValue)? &quot;)&quot;</div>
+  </section>
+  <section class="rule" id="rule-Keyword">
+    <h2><a href="#rule-Keyword">§</a> Keyword</h2>
+    <div class="diagram" data-rule="Keyword"></div>
+    <div class="ebnf">Keyword ::= Identifier</div>
+  </section>
+  <section class="rule" id="rule-QueryFeature">
+    <h2><a href="#rule-QueryFeature">§</a> QueryFeature</h2>
+    <div class="diagram" data-rule="QueryFeature"></div>
+    <div class="ebnf">QueryFeature ::= QueryBareFeature | &quot;(&quot; Property &quot;:&quot; QueryValue &quot;)&quot; | &quot;(&quot; Property QueryComparisonOperator QueryValue (QueryComparisonOperator QueryValue)? &quot;)&quot; | QueryRangeFeature</div>
+  </section>
+  <section class="rule" id="rule-QueryTerm">
+    <h2><a href="#rule-QueryTerm">§</a> QueryTerm</h2>
+    <div class="diagram" data-rule="QueryTerm"></div>
+    <div class="ebnf">QueryTerm ::= QueryFeature | !((&quot;layer&quot; | &quot;only&quot;) !&quot;(&quot;) IDENT (escapes allowed) &quot;(&quot;? (/* … */ &quot;)&quot; | /* empty */)</div>
+  </section>
+  <section class="rule" id="rule-QueryClause">
+    <h2><a href="#rule-QueryClause">§</a> QueryClause</h2>
+    <div class="diagram" data-rule="QueryClause"></div>
+    <div class="ebnf">QueryClause ::= QueryOnly !(&quot;layer&quot; | &quot;only&quot;) Keyword (QueryAndOr QueryTerm)* | QueryTerm QueryTerm*</div>
+  </section>
+  <section class="rule" id="rule-QueryFunction">
+    <h2><a href="#rule-QueryFunction">§</a> QueryFunction</h2>
+    <div class="diagram" data-rule="QueryFunction"></div>
+    <div class="ebnf">QueryFunction ::= IDENT (escapes allowed) &quot;(&quot; /* … */ &quot;)&quot;</div>
+  </section>
+  <section class="rule" id="rule-ContainerQueryClause">
+    <h2><a href="#rule-ContainerQueryClause">§</a> ContainerQueryClause</h2>
+    <div class="diagram" data-rule="ContainerQueryClause"></div>
+    <div class="ebnf">ContainerQueryClause ::= (QueryFeature | QueryFunction) QueryTerm*</div>
+  </section>
+  <section class="rule" id="rule-ContainerQueryPrelude">
+    <h2><a href="#rule-ContainerQueryPrelude">§</a> ContainerQueryPrelude</h2>
+    <div class="diagram" data-rule="ContainerQueryPrelude"></div>
+    <div class="ebnf">ContainerQueryPrelude ::= ContainerQueryClause (&quot;,&quot; ContainerQueryClause)*</div>
+  </section>
+  <section class="rule" id="rule-GeneralEnclosedContent">
+    <h2><a href="#rule-GeneralEnclosedContent">§</a> GeneralEnclosedContent</h2>
+    <div class="diagram" data-rule="GeneralEnclosedContent"></div>
+    <div class="ebnf">GeneralEnclosedContent ::= (COMMENT | /(?:\\[\s\S]|\/(?!\*)|[^\\/'&quot;()[\]{}]+)+/ | GeneralEnclosedQuoted | GeneralEnclosedGroup)*</div>
+  </section>
+  <section class="rule" id="rule-GeneralEnclosedQuoted">
+    <h2><a href="#rule-GeneralEnclosedQuoted">§</a> GeneralEnclosedQuoted</h2>
+    <div class="diagram" data-rule="GeneralEnclosedQuoted"></div>
+    <div class="ebnf">GeneralEnclosedQuoted ::= '&quot;' DOUBLE-QUOTED BODY '&quot;' | &quot;'&quot; SINGLE-QUOTED BODY &quot;'&quot;</div>
+  </section>
+  <section class="rule" id="rule-GeneralEnclosedGroup">
+    <h2><a href="#rule-GeneralEnclosedGroup">§</a> GeneralEnclosedGroup</h2>
+    <div class="diagram" data-rule="GeneralEnclosedGroup"></div>
+    <div class="ebnf">GeneralEnclosedGroup ::= &quot;(&quot; GeneralEnclosedContent &quot;)&quot; | &quot;[&quot; GeneralEnclosedContent &quot;]&quot; | &quot;{&quot; GeneralEnclosedContent &quot;}&quot;</div>
+  </section>
+  <section class="rule" id="rule-SupportsCondition">
+    <h2><a href="#rule-SupportsCondition">§</a> SupportsCondition</h2>
+    <div class="diagram" data-rule="SupportsCondition"></div>
+    <div class="ebnf">SupportsCondition ::= QueryNot SupportsInParens | SupportsInParens (QueryAndOr SupportsInParens)*</div>
+  </section>
+  <section class="rule" id="rule-GeneralEnclosed">
+    <h2><a href="#rule-GeneralEnclosed">§</a> GeneralEnclosed</h2>
+    <div class="diagram" data-rule="GeneralEnclosed"></div>
+    <div class="ebnf">GeneralEnclosed ::= QueryFunctionOpen GeneralEnclosedContent &quot;)&quot; | &quot;(&quot; GeneralEnclosedContent &quot;)&quot;</div>
+  </section>
+  <section class="rule" id="rule-SupportsInParens">
+    <h2><a href="#rule-SupportsInParens">§</a> SupportsInParens</h2>
+    <div class="diagram" data-rule="SupportsInParens"></div>
+    <div class="ebnf">SupportsInParens ::= &quot;(&quot; SupportsCondition &quot;)&quot; | QueryFeature | GeneralEnclosed</div>
+  </section>
+  <section class="rule" id="rule-Declaration">
+    <h2><a href="#rule-Declaration">§</a> Declaration</h2>
+    <div class="diagram" data-rule="Declaration"></div>
+    <div class="ebnf">Declaration ::= CustomProperty &quot;:&quot; CustomValue Important? | Property &quot;:&quot; ValueList !&quot;{&quot; Important?</div>
+  </section>
+  <section class="rule" id="rule-declarationListDeclaration">
+    <h2><a href="#rule-declarationListDeclaration">§</a> declarationListDeclaration</h2>
+    <div class="diagram" data-rule="declarationListDeclaration"></div>
+    <div class="ebnf">declarationListDeclaration ::= Declaration (&quot;;&quot; | &amp;&quot;}&quot;)</div>
+  </section>
+  <section class="rule" id="rule-NestedConditionalBlock">
+    <h2><a href="#rule-NestedConditionalBlock">§</a> NestedConditionalBlock</h2>
+    <div class="diagram" data-rule="NestedConditionalBlock"></div>
+    <div class="ebnf">NestedConditionalBlock ::= SupportsAtKeyword SupportsPrelude declarationListBlock | MediaAtKeyword QueryPrelude declarationListBlock | ContainerAtKeyword ContainerPrelude declarationListBlock</div>
+  </section>
+  <section class="rule" id="rule-DeclarationListAtRule">
+    <h2><a href="#rule-DeclarationListAtRule">§</a> DeclarationListAtRule</h2>
+    <div class="diagram" data-rule="DeclarationListAtRule"></div>
+    <div class="ebnf">DeclarationListAtRule ::= AtRuleKeyword (RoutedAtRuleStatement | NestedLayerBlock | RoutedAtRuleStatement | NestedStartingStyleBlock | RoutedAtRuleStatement | ScopeBlock | RoutedAtRuleStatement | DescriptorBlock | RoutedAtRuleStatement | PageBlock | RoutedAtRuleStatement | Keyframes | RoutedAtRuleStatement | FontFeatureValuesBlock | RoutedAtRuleStatement | DocumentBlock | RoutedAtRuleStatement | OpaqueAtRuleBlock)</div>
+  </section>
+  <section class="rule" id="rule-Ruleset">
+    <h2><a href="#rule-Ruleset">§</a> Ruleset</h2>
+    <div class="diagram" data-rule="Ruleset"></div>
+    <div class="ebnf">Ruleset ::= SelectorList &quot;{&quot; declarationListItem* &quot;}&quot;</div>
+  </section>
+  <section class="rule" id="rule-ConditionalBlock">
+    <h2><a href="#rule-ConditionalBlock">§</a> ConditionalBlock</h2>
+    <div class="diagram" data-rule="ConditionalBlock"></div>
+    <div class="ebnf">ConditionalBlock ::= SupportsAtKeyword SupportsPrelude &quot;{&quot; (ConditionalBlock | ConditionalGroupAtRule | TopLevelRuleset)* &quot;}&quot; | MediaAtKeyword QueryPrelude &quot;{&quot; (ConditionalBlock | ConditionalGroupAtRule | TopLevelRuleset)* &quot;}&quot; | ContainerAtKeyword ContainerPrelude &quot;{&quot; (ConditionalBlock | ConditionalGroupAtRule | TopLevelRuleset)* &quot;}&quot;</div>
+  </section>
+  <section class="rule" id="rule-ConditionalGroupAtRule">
+    <h2><a href="#rule-ConditionalGroupAtRule">§</a> ConditionalGroupAtRule</h2>
+    <div class="diagram" data-rule="ConditionalGroupAtRule"></div>
+    <div class="ebnf">ConditionalGroupAtRule ::= AtRuleKeyword (LayerBlock | StartingStyleBlock | ScopeBlock | DescriptorBlock | PageBlock | Keyframes | FontFeatureValuesBlock | DocumentBlock | OpaqueAtRuleBlock)</div>
+  </section>
+  <section class="rule" id="rule-TopLevelRuleset">
+    <h2><a href="#rule-TopLevelRuleset">§</a> TopLevelRuleset</h2>
+    <div class="diagram" data-rule="TopLevelRuleset"></div>
+    <div class="ebnf">TopLevelRuleset ::= TopLevelSelectorList &quot;{&quot; declarationListItem* &quot;}&quot;</div>
+  </section>
+  <section class="rule" id="rule-StylesheetAtRule">
+    <h2><a href="#rule-StylesheetAtRule">§</a> StylesheetAtRule</h2>
+    <div class="diagram" data-rule="StylesheetAtRule"></div>
+    <div class="ebnf">StylesheetAtRule ::= AtRuleKeyword (RoutedAtRuleStatement | LayerBlock | RoutedAtRuleStatement | StartingStyleBlock | RoutedAtRuleStatement | ScopeBlock | RoutedAtRuleStatement | DescriptorBlock | RoutedAtRuleStatement | PageBlock | RoutedAtRuleStatement | Keyframes | RoutedAtRuleStatement | FontFeatureValuesBlock | RoutedAtRuleStatement | DocumentBlock | RoutedAtRuleStatement | OpaqueAtRuleBlock)</div>
+  </section>
+  <section class="rule" id="rule-declarationListItem">
+    <h2><a href="#rule-declarationListItem">§</a> declarationListItem</h2>
+    <div class="diagram" data-rule="declarationListItem"></div>
+    <div class="ebnf">declarationListItem ::= declarationListDeclaration | NestedConditionalBlock | DeclarationListAtRule | Ruleset | &quot;;&quot;</div>
+  </section>
+  <section class="rule" id="rule-stylesheetBodyItem">
+    <h2><a href="#rule-stylesheetBodyItem">§</a> stylesheetBodyItem</h2>
+    <div class="diagram" data-rule="stylesheetBodyItem"></div>
+    <div class="ebnf">stylesheetBodyItem ::= ConditionalBlock | StylesheetAtRule | TopLevelRuleset</div>
+  </section>
+  <section class="rule" id="rule-MarginAtRule">
+    <h2><a href="#rule-MarginAtRule">§</a> MarginAtRule</h2>
+    <div class="diagram" data-rule="MarginAtRule"></div>
+    <div class="ebnf">MarginAtRule ::= MarginAtKeyword descriptorBodyBlock</div>
+  </section>
+  <section class="rule" id="rule-KeyframeBlock">
+    <h2><a href="#rule-KeyframeBlock">§</a> KeyframeBlock</h2>
+    <div class="diagram" data-rule="KeyframeBlock"></div>
+    <div class="ebnf">KeyframeBlock ::= keyframeSelector (&quot;,&quot; keyframeSelector)* descriptorBodyBlock</div>
+  </section>
+  <section class="rule" id="rule-FeatureValueBlock">
+    <h2><a href="#rule-FeatureValueBlock">§</a> FeatureValueBlock</h2>
+    <div class="diagram" data-rule="FeatureValueBlock"></div>
+    <div class="ebnf">FeatureValueBlock ::= FontFeatureValueAtKeyword descriptorBodyBlock</div>
+  </section>
+  <section class="rule" id="rule-AtRulePrelude">
+    <h2><a href="#rule-AtRulePrelude">§</a> AtRulePrelude</h2>
+    <div class="diagram" data-rule="AtRulePrelude"></div>
+    <div class="ebnf">AtRulePrelude ::= AtRulePreludeSegments</div>
+  </section>
+  <section class="rule" id="rule-declarationListBlock">
+    <h2><a href="#rule-declarationListBlock">§</a> declarationListBlock</h2>
+    <div class="diagram" data-rule="declarationListBlock"></div>
+    <div class="ebnf">declarationListBlock ::= &quot;{&quot; declarationListItem* &quot;}&quot;</div>
+  </section>
+  <section class="rule" id="rule-stylesheetBodyBlock">
+    <h2><a href="#rule-stylesheetBodyBlock">§</a> stylesheetBodyBlock</h2>
+    <div class="diagram" data-rule="stylesheetBodyBlock"></div>
+    <div class="ebnf">stylesheetBodyBlock ::= &quot;{&quot; stylesheetBodyItem* &quot;}&quot;</div>
+  </section>
+  <section class="rule" id="rule-routedStylesheetBody">
+    <h2><a href="#rule-routedStylesheetBody">§</a> routedStylesheetBody</h2>
+    <div class="diagram" data-rule="routedStylesheetBody"></div>
+    <div class="ebnf">routedStylesheetBody ::= AtRulePrelude stylesheetBodyBlock</div>
+  </section>
+  <section class="rule" id="rule-routedDeclarationListBody">
+    <h2><a href="#rule-routedDeclarationListBody">§</a> routedDeclarationListBody</h2>
+    <div class="diagram" data-rule="routedDeclarationListBody"></div>
+    <div class="ebnf">routedDeclarationListBody ::= AtRulePrelude declarationListBlock</div>
+  </section>
+  <section class="rule" id="rule-descriptorBodyBlock">
+    <h2><a href="#rule-descriptorBodyBlock">§</a> descriptorBodyBlock</h2>
+    <div class="diagram" data-rule="descriptorBodyBlock"></div>
+    <div class="ebnf">descriptorBodyBlock ::= &quot;{&quot; (declarationListDeclaration | &quot;;&quot;)* &quot;}&quot;</div>
+  </section>
+  <section class="rule" id="rule-RoutedAtRuleStatement">
+    <h2><a href="#rule-RoutedAtRuleStatement">§</a> RoutedAtRuleStatement</h2>
+    <div class="diagram" data-rule="RoutedAtRuleStatement"></div>
+    <div class="ebnf">RoutedAtRuleStatement ::= StatementPrelude &quot;;&quot;</div>
+  </section>
+  <section class="rule" id="rule-ScopeBlock">
+    <h2><a href="#rule-ScopeBlock">§</a> ScopeBlock</h2>
+    <div class="diagram" data-rule="ScopeBlock"></div>
+    <div class="ebnf">ScopeBlock ::= routedDeclarationListBody</div>
+  </section>
+  <section class="rule" id="rule-DescriptorBlock">
+    <h2><a href="#rule-DescriptorBlock">§</a> DescriptorBlock</h2>
+    <div class="diagram" data-rule="DescriptorBlock"></div>
+    <div class="ebnf">DescriptorBlock ::= AtRulePrelude descriptorBodyBlock</div>
+  </section>
+  <section class="rule" id="rule-PageBlock">
+    <h2><a href="#rule-PageBlock">§</a> PageBlock</h2>
+    <div class="diagram" data-rule="PageBlock"></div>
+    <div class="ebnf">PageBlock ::= AtRulePrelude &quot;{&quot; (declarationListDeclaration | MarginAtRule | &quot;;&quot;)* &quot;}&quot;</div>
+  </section>
+  <section class="rule" id="rule-Keyframes">
+    <h2><a href="#rule-Keyframes">§</a> Keyframes</h2>
+    <div class="diagram" data-rule="Keyframes"></div>
+    <div class="ebnf">Keyframes ::= AtRulePrelude &quot;{&quot; KeyframeBlock* &quot;}&quot;</div>
+  </section>
+  <section class="rule" id="rule-FontFeatureValuesBlock">
+    <h2><a href="#rule-FontFeatureValuesBlock">§</a> FontFeatureValuesBlock</h2>
+    <div class="diagram" data-rule="FontFeatureValuesBlock"></div>
+    <div class="ebnf">FontFeatureValuesBlock ::= AtRulePrelude &quot;{&quot; FeatureValueBlock* &quot;}&quot;</div>
+  </section>
+  <section class="rule" id="rule-DocumentBlock">
+    <h2><a href="#rule-DocumentBlock">§</a> DocumentBlock</h2>
+    <div class="diagram" data-rule="DocumentBlock"></div>
+    <div class="ebnf">DocumentBlock ::= routedStylesheetBody</div>
+  </section>
+  <section class="rule" id="rule-OpaqueAtRuleBlock">
+    <h2><a href="#rule-OpaqueAtRuleBlock">§</a> OpaqueAtRuleBlock</h2>
+    <div class="diagram" data-rule="OpaqueAtRuleBlock"></div>
+    <div class="ebnf">OpaqueAtRuleBlock ::= OpaqueAtPrelude &quot;{&quot; OpaqueBody &quot;}&quot;</div>
+  </section>
+  <section class="rule" id="rule-LayerBlock">
+    <h2><a href="#rule-LayerBlock">§</a> LayerBlock</h2>
+    <div class="diagram" data-rule="LayerBlock"></div>
+    <div class="ebnf">LayerBlock ::= routedStylesheetBody</div>
+  </section>
+  <section class="rule" id="rule-StartingStyleBlock">
+    <h2><a href="#rule-StartingStyleBlock">§</a> StartingStyleBlock</h2>
+    <div class="diagram" data-rule="StartingStyleBlock"></div>
+    <div class="ebnf">StartingStyleBlock ::= routedStylesheetBody</div>
+  </section>
+  <section class="rule" id="rule-NestedLayerBlock">
+    <h2><a href="#rule-NestedLayerBlock">§</a> NestedLayerBlock</h2>
+    <div class="diagram" data-rule="NestedLayerBlock"></div>
+    <div class="ebnf">NestedLayerBlock ::= routedDeclarationListBody</div>
+  </section>
+  <section class="rule" id="rule-NestedStartingStyleBlock">
+    <h2><a href="#rule-NestedStartingStyleBlock">§</a> NestedStartingStyleBlock</h2>
+    <div class="diagram" data-rule="NestedStartingStyleBlock"></div>
+    <div class="ebnf">NestedStartingStyleBlock ::= routedDeclarationListBody</div>
+  </section>
+  <section class="rule" id="rule-keyframeSelector">
+    <h2><a href="#rule-keyframeSelector">§</a> keyframeSelector</h2>
+    <div class="diagram" data-rule="keyframeSelector"></div>
+    <div class="ebnf">keyframeSelector ::= &quot;from&quot; | &quot;to&quot; | Percentage</div>
+  </section>
+  <section class="rule" id="rule-TopLevelSelectorList">
+    <h2><a href="#rule-TopLevelSelectorList">§</a> TopLevelSelectorList</h2>
+    <div class="diagram" data-rule="TopLevelSelectorList"></div>
+    <div class="ebnf">TopLevelSelectorList ::= TopLevelComplexSelector (&quot;,&quot; TopLevelComplexSelector)*</div>
+  </section>
+  <section class="rule" id="rule-SupportsPrelude">
+    <h2><a href="#rule-SupportsPrelude">§</a> SupportsPrelude</h2>
+    <div class="diagram" data-rule="SupportsPrelude"></div>
+    <div class="ebnf">SupportsPrelude ::= SupportsCondition (&quot;,&quot; SupportsCondition)*</div>
+  </section>
+  <section class="rule" id="rule-QueryPrelude">
+    <h2><a href="#rule-QueryPrelude">§</a> QueryPrelude</h2>
+    <div class="diagram" data-rule="QueryPrelude"></div>
+    <div class="ebnf">QueryPrelude ::= QueryClause (&quot;,&quot; QueryClause)*</div>
+  </section>
+  <section class="rule" id="rule-ContainerPrelude">
+    <h2><a href="#rule-ContainerPrelude">§</a> ContainerPrelude</h2>
+    <div class="diagram" data-rule="ContainerPrelude"></div>
+    <div class="ebnf">ContainerPrelude ::= !QueryFunctionOpen !(&quot;none&quot;) Keyword ContainerQueryPrelude? | ContainerQueryPrelude</div>
+  </section>
+  <section class="rule" id="rule-ImportStatement">
+    <h2><a href="#rule-ImportStatement">§</a> ImportStatement</h2>
+    <div class="diagram" data-rule="ImportStatement"></div>
+    <div class="ebnf">ImportStatement ::= (&quot;@import&quot;) (Quoted | ImportUrl) ImportTail? &quot;;&quot;</div>
+  </section>
+  <section class="rule" id="rule-LayerStatement">
+    <h2><a href="#rule-LayerStatement">§</a> LayerStatement</h2>
+    <div class="diagram" data-rule="LayerStatement"></div>
+    <div class="ebnf">LayerStatement ::= LayerAtKeyword StatementPrelude &quot;;&quot;</div>
+  </section>
+  <section class="rule" id="rule-Stylesheet">
+    <h2><a href="#rule-Stylesheet">§</a> Stylesheet</h2>
+    <div class="diagram" data-rule="Stylesheet"></div>
+    <div class="ebnf">Stylesheet ::= (ImportStatement | LayerStatement)* stylesheetBodyItem*</div>
+  </section>
+  <section class="rule" id="rule-Url">
+    <h2><a href="#rule-Url">§</a> Url</h2>
+    <div class="diagram" data-rule="Url"></div>
+    <div class="ebnf">Url ::= (&quot;url&quot;) &quot;(&quot; WHITESPACE? (Quoted | UrlInner)? WHITESPACE? &quot;)&quot;</div>
+  </section>
+  <section class="rule" id="rule-Call">
+    <h2><a href="#rule-Call">§</a> Call</h2>
+    <div class="diagram" data-rule="Call"></div>
+    <div class="ebnf">Call ::= IDENT (not a calc/url/var call) &quot;(&quot; WHITESPACE or COMMENT? valueFunctionArguments WHITESPACE or COMMENT? &quot;)&quot;</div>
+  </section>
+  <section class="rule" id="rule-CalcCall">
+    <h2><a href="#rule-CalcCall">§</a> CalcCall</h2>
+    <div class="diagram" data-rule="CalcCall"></div>
+    <div class="ebnf">CalcCall ::= (&quot;calc&quot;) &quot;(&quot; WHITESPACE or COMMENT? CalcSum WHITESPACE or COMMENT? &quot;)&quot;</div>
+  </section>
+  <section class="rule" id="rule-TypedValueList">
+    <h2><a href="#rule-TypedValueList">§</a> TypedValueList</h2>
+    <div class="diagram" data-rule="TypedValueList"></div>
+    <div class="ebnf">TypedValueList ::= TypedValueSequence (&quot;,&quot; WHITESPACE or COMMENT? TypedValueSequence)*</div>
+  </section>
+  <section class="rule" id="rule-AtRuleStatement">
+    <h2><a href="#rule-AtRuleStatement">§</a> AtRuleStatement</h2>
+    <div class="diagram" data-rule="AtRuleStatement"></div>
+    <div class="ebnf">AtRuleStatement ::= StatementAtRuleName StatementPrelude &quot;;&quot;</div>
+  </section>
+  <section class="rule" id="rule-whitespace">
+    <h2><a href="#rule-whitespace">§</a> whitespace</h2>
+    <div class="diagram" data-rule="whitespace"></div>
+    <div class="ebnf">whitespace ::= (WHITESPACE | COMMENT)+</div>
+  </section>
+  <section class="rule" id="rule-rw">
+    <h2><a href="#rule-rw">§</a> rw</h2>
+    <div class="diagram" data-rule="rw"></div>
+    <div class="ebnf">rw ::= (WHITESPACE | COMMENT)+</div>
+  </section>
+<script>
+/*
+Railroad Diagrams
+by Tab Atkins Jr. (and others)
+http://xanthir.com
+http://twitter.com/tabatkins
+http://github.com/tabatkins/railroad-diagrams
+
+This document and all associated files in the github project are licensed under CC0: http://creativecommons.org/publicdomain/zero/1.0/
+This means you can reuse, remix, or otherwise appropriate this project for your own use WITHOUT RESTRICTION.
+(The actual legal meaning can be found at the above link.)
+Don't ask me for permission to use any part of this project, JUST USE IT.
+I would appreciate attribution, but that is not required by the license.
+*/
+
+/*
+This file uses a module pattern to avoid leaking names into the global scope.
+The only accidental leakage is the name "temp".
+The exported names can be found at the bottom of this file;
+simply change the names in the array of strings to change what they are called in your application.
+
+As well, several configuration constants are passed into the module function at the bottom of this file.
+At runtime, these constants can be found on the Diagram class.
+*/
+
+(function(options) {
+	function subclassOf(baseClass, superClass) {
+		baseClass.prototype = Object.create(superClass.prototype);
+		baseClass.prototype.$super = superClass.prototype;
+	}
+
+	function unnull(/* children */) {
+		return [].slice.call(arguments).reduce(function(sofar, x) { return sofar !== undefined ? sofar : x; });
+	}
+
+	function determineGaps(outer, inner) {
+		var diff = outer - inner;
+		switch(Diagram.INTERNAL_ALIGNMENT) {
+			case 'left': return [0, diff]; break;
+			case 'right': return [diff, 0]; break;
+			case 'center':
+			default: return [diff/2, diff/2]; break;
+		}
+	}
+
+	function wrapString(value) {
+		return ((typeof value) == 'string') ? new Terminal(value) : value;
+	}
+
+
+	function SVG(name, attrs, text) {
+		attrs = attrs || {};
+		text = text || '';
+		var el = document.createElementNS("http://www.w3.org/2000/svg",name);
+		for(var attr in attrs) {
+			el.setAttribute(attr, attrs[attr]);
+		}
+		el.textContent = text;
+		return el;
+	}
+
+	function FakeSVG(tagName, attrs, text){
+		if(!(this instanceof FakeSVG)) return new FakeSVG(tagName, attrs, text);
+		if(text) this.children = text;
+		else this.children = [];
+		this.tagName = tagName;
+		this.attrs = unnull(attrs, {});
+		return this;
+	};
+	FakeSVG.prototype.format = function(x, y, width) {
+		// Virtual
+	};
+	FakeSVG.prototype.addTo = function(parent) {
+		if(parent instanceof FakeSVG) {
+			parent.children.push(this);
+			return this;
+		} else {
+			var svg = this.toSVG();
+			parent.appendChild(svg);
+			return svg;
+		}
+	};
+	FakeSVG.prototype.escapeString = function(string) {
+                // Escape markdown and HTML special characters
+		return string.replace(/[*_\`\[\]<&]/g, function(charString) {
+			return '&#' + charString.charCodeAt(0) + ';';
+		});
+	};
+	FakeSVG.prototype.toSVG = function() {
+		var el = SVG(this.tagName, this.attrs);
+		if(typeof this.children == 'string') {
+			el.innerHTML = FakeSVG.prototype.escapeString(this.children);
+		} else {
+			this.children.forEach(function(e) {
+				el.appendChild(e.toSVG());
+			});
+		}
+		return el;
+	};
+	FakeSVG.prototype.toString = function() {
+		var str = '<' + this.tagName;
+		var group = this.tagName == "g" || this.tagName == "svg";
+		for(var attr in this.attrs) {
+			str += ' ' + attr + '="' + (this.attrs[attr]+'').replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '"';
+		}
+		str += '>';
+		if(group) str += "\n";
+		if(typeof this.children == 'string') {
+			str += FakeSVG.prototype.escapeString(this.children);
+		} else {
+			this.children.forEach(function(e) {
+				str += e;
+			});
+		}
+		str += '</' + this.tagName + '>\n';
+		return str;
+	}
+
+	function Path(x,y) {
+		if(!(this instanceof Path)) return new Path(x,y);
+		FakeSVG.call(this, 'path');
+		this.attrs.d = "M"+x+' '+y;
+	}
+	subclassOf(Path, FakeSVG);
+	Path.prototype.m = function(x,y) {
+		this.attrs.d += 'm'+x+' '+y;
+		return this;
+	}
+	Path.prototype.h = function(val) {
+		this.attrs.d += 'h'+val;
+		return this;
+	}
+	Path.prototype.right = Path.prototype.h;
+	Path.prototype.left = function(val) { return this.h(-val); }
+	Path.prototype.v = function(val) {
+		this.attrs.d += 'v'+val;
+		return this;
+	}
+	Path.prototype.down = Path.prototype.v;
+	Path.prototype.up = function(val) { return this.v(-val); }
+	Path.prototype.arc = function(sweep){
+		var x = Diagram.ARC_RADIUS;
+		var y = Diagram.ARC_RADIUS;
+		if(sweep[0] == 'e' || sweep[1] == 'w') {
+			x *= -1;
+		}
+		if(sweep[0] == 's' || sweep[1] == 'n') {
+			y *= -1;
+		}
+		if(sweep == 'ne' || sweep == 'es' || sweep == 'sw' || sweep == 'wn') {
+			var cw = 1;
+		} else {
+			var cw = 0;
+		}
+		this.attrs.d += "a"+Diagram.ARC_RADIUS+" "+Diagram.ARC_RADIUS+" 0 0 "+cw+' '+x+' '+y;
+		return this;
+	}
+	Path.prototype.format = function() {
+		// All paths in this library start/end horizontally.
+		// The extra .5 ensures a minor overlap, so there's no seams in bad rasterizers.
+		this.attrs.d += 'h.5';
+		return this;
+	}
+
+	function Diagram(items) {
+		if(!(this instanceof Diagram)) return new Diagram([].slice.call(arguments));
+		FakeSVG.call(this, 'svg', {class: Diagram.DIAGRAM_CLASS});
+		this.items = items.map(wrapString);
+		this.items.unshift(new Start);
+		this.items.push(new End);
+		this.width = this.items.reduce(function(sofar, el) { return sofar + el.width + (el.needsSpace?20:0)}, 0)+1;
+		this.up = Math.max.apply(null, this.items.map(function (x) { return x.up; }));
+		this.down = Math.max.apply(null, this.items.map(function (x) { return x.down; }));
+		this.formatted = false;
+	}
+	subclassOf(Diagram, FakeSVG);
+	for(var option in options) {
+		Diagram[option] = options[option];
+	}
+	Diagram.prototype.format = function(paddingt, paddingr, paddingb, paddingl) {
+		paddingt = unnull(paddingt, 20);
+		paddingr = unnull(paddingr, paddingt, 20);
+		paddingb = unnull(paddingb, paddingt, 20);
+		paddingl = unnull(paddingl, paddingr, 20);
+		var x = paddingl;
+		var y = paddingt;
+		y += this.up;
+		var g = FakeSVG('g', Diagram.STROKE_ODD_PIXEL_LENGTH ? {transform:'translate(.5 .5)'} : {});
+		for(var i = 0; i < this.items.length; i++) {
+			var item = this.items[i];
+			if(item.needsSpace) {
+				Path(x,y).h(10).addTo(g);
+				x += 10;
+			}
+			item.format(x, y, item.width).addTo(g);
+			x += item.width;
+			if(item.needsSpace) {
+				Path(x,y).h(10).addTo(g);
+				x += 10;
+			}
+		}
+		this.attrs.width = this.width + paddingl + paddingr;
+		this.attrs.height = this.up + this.down + paddingt + paddingb;
+		this.attrs.viewBox = "0 0 "  + this.attrs.width + " " + this.attrs.height;
+		g.addTo(this);
+		this.formatted = true;
+		return this;
+	}
+	Diagram.prototype.addTo = function(parent) {
+		var scriptTag = document.getElementsByTagName('script');
+		scriptTag = scriptTag[scriptTag.length - 1];
+		var parentTag = scriptTag.parentNode;
+		parent = parent || parentTag;
+		return this.$super.addTo.call(this, parent);
+	}
+	Diagram.prototype.toSVG = function() {
+		if (!this.formatted) {
+			this.format();
+		}
+		return this.$super.toSVG.call(this);
+	}
+	Diagram.prototype.toString = function() {
+		if (!this.formatted) {
+			this.format();
+		}
+		return this.$super.toString.call(this);
+	}
+
+	function ComplexDiagram() {
+		var diagram = new Diagram([].slice.call(arguments));
+                var items = diagram.items;
+		items.shift();
+		items.pop();
+		items.unshift(new Start(false));
+		items.push(new End(false));
+		diagram.items = items;
+		return diagram;
+        }
+
+	function Sequence(items) {
+		if(!(this instanceof Sequence)) return new Sequence([].slice.call(arguments));
+		FakeSVG.call(this, 'g');
+		this.items = items.map(wrapString);
+		this.width = this.items.reduce(function(sofar, el) { return sofar + el.width + (el.needsSpace?20:0)}, 0);
+		this.up = this.items.reduce(function(sofar,el) { return Math.max(sofar, el.up)}, 0);
+		this.down = this.items.reduce(function(sofar,el) { return Math.max(sofar, el.down)}, 0);
+	}
+	subclassOf(Sequence, FakeSVG);
+	Sequence.prototype.format = function(x,y,width) {
+		// Hook up the two sides if this is narrower than its stated width.
+		var gaps = determineGaps(width, this.width);
+		Path(x,y).h(gaps[0]).addTo(this);
+		Path(x+gaps[0]+this.width,y).h(gaps[1]).addTo(this);
+		x += gaps[0];
+
+		for(var i = 0; i < this.items.length; i++) {
+			var item = this.items[i];
+			if(item.needsSpace) {
+				Path(x,y).h(10).addTo(this);
+				x += 10;
+			}
+			item.format(x, y, item.width).addTo(this);
+			x += item.width;
+			if(item.needsSpace) {
+				Path(x,y).h(10).addTo(this);
+				x += 10;
+			}
+		}
+		return this;
+	}
+
+	function Choice(normal, items) {
+		if(!(this instanceof Choice)) return new Choice(normal, [].slice.call(arguments,1));
+		FakeSVG.call(this, 'g');
+		if( typeof normal !== "number" || normal !== Math.floor(normal) ) {
+			throw new TypeError("The first argument of Choice() must be an integer.");
+		} else if(normal < 0 || normal >= items.length) {
+			throw new RangeError("The first argument of Choice() must be an index for one of the items.");
+		} else {
+			this.normal = normal;
+		}
+		this.items = items.map(wrapString);
+		this.width = this.items.reduce(function(sofar, el){return Math.max(sofar, el.width)},0) + Diagram.ARC_RADIUS*4;
+		this.up = this.down = 0;
+		for(var i = 0; i < this.items.length; i++) {
+			var item = this.items[i];
+			if(i < normal) { this.up += Math.max(Diagram.ARC_RADIUS,item.up + item.down + Diagram.VERTICAL_SEPARATION); }
+			if(i == normal) { this.up += Math.max(Diagram.ARC_RADIUS, item.up); this.down += Math.max(Diagram.ARC_RADIUS, item.down); }
+			if(i > normal) { this.down += Math.max(Diagram.ARC_RADIUS,Diagram.VERTICAL_SEPARATION + item.up + item.down); }
+		}
+	}
+	subclassOf(Choice, FakeSVG);
+	Choice.prototype.format = function(x,y,width) {
+		// Hook up the two sides if this is narrower than its stated width.
+		var gaps = determineGaps(width, this.width);
+		Path(x,y).h(gaps[0]).addTo(this);
+		Path(x+gaps[0]+this.width,y).h(gaps[1]).addTo(this);
+		x += gaps[0];
+
+		var last = this.items.length -1;
+		var innerWidth = this.width - Diagram.ARC_RADIUS*4;
+
+		// Do the elements that curve above
+		for(var i = this.normal - 1; i >= 0; i--) {
+			var item = this.items[i];
+			if( i == this.normal - 1 ) {
+				var distanceFromY = Math.max(Diagram.ARC_RADIUS*2, this.items[i+1].up + Diagram.VERTICAL_SEPARATION + item.down);
+			}
+			Path(x,y).arc('se').up(distanceFromY - Diagram.ARC_RADIUS*2).arc('wn').addTo(this);
+			item.format(x+Diagram.ARC_RADIUS*2,y - distanceFromY,innerWidth).addTo(this);
+			Path(x+Diagram.ARC_RADIUS*2+innerWidth, y-distanceFromY).arc('ne').down(distanceFromY - Diagram.ARC_RADIUS*2).arc('ws').addTo(this);
+			distanceFromY += Math.max(Diagram.ARC_RADIUS, item.up + Diagram.VERTICAL_SEPARATION + (i == 0 ? 0 : this.items[i-1].down));
+		}
+
+		// Do the straight-line path.
+		Path(x,y).right(Diagram.ARC_RADIUS*2).addTo(this);
+		this.items[this.normal].format(x+Diagram.ARC_RADIUS*2, y, innerWidth).addTo(this);
+		Path(x+Diagram.ARC_RADIUS*2+innerWidth, y).right(Diagram.ARC_RADIUS*2).addTo(this);
+
+		// Do the elements that curve below
+		for(var i = this.normal+1; i <= last; i++) {
+			var item = this.items[i];
+			if( i == this.normal + 1 ) {
+				var distanceFromY = Math.max(Diagram.ARC_RADIUS*2, this.items[i-1].down + Diagram.VERTICAL_SEPARATION + item.up);
+			}
+			Path(x,y).arc('ne').down(distanceFromY - Diagram.ARC_RADIUS*2).arc('ws').addTo(this);
+			item.format(x+Diagram.ARC_RADIUS*2, y+distanceFromY, innerWidth).addTo(this);
+			Path(x+Diagram.ARC_RADIUS*2+innerWidth, y+distanceFromY).arc('se').up(distanceFromY - Diagram.ARC_RADIUS*2).arc('wn').addTo(this);
+			distanceFromY += Math.max(Diagram.ARC_RADIUS, item.down + Diagram.VERTICAL_SEPARATION + (i == last ? 0 : this.items[i+1].up));
+		}
+
+		return this;
+	}
+
+	function Optional(item, skip) {
+		if( skip === undefined )
+			return Choice(1, Skip(), item);
+		else if ( skip === "skip" )
+			return Choice(0, Skip(), item);
+		else
+			throw "Unknown value for Optional()'s 'skip' argument.";
+	}
+
+	function OneOrMore(item, rep) {
+		if(!(this instanceof OneOrMore)) return new OneOrMore(item, rep);
+		FakeSVG.call(this, 'g');
+		rep = rep || (new Skip);
+		this.item = wrapString(item);
+		this.rep = wrapString(rep);
+		this.width = Math.max(this.item.width, this.rep.width) + Diagram.ARC_RADIUS*2;
+		this.up = this.item.up;
+		this.down = Math.max(Diagram.ARC_RADIUS*2, this.item.down + Diagram.VERTICAL_SEPARATION + this.rep.up + this.rep.down);
+	}
+	subclassOf(OneOrMore, FakeSVG);
+	OneOrMore.prototype.needsSpace = true;
+	OneOrMore.prototype.format = function(x,y,width) {
+		// Hook up the two sides if this is narrower than its stated width.
+		var gaps = determineGaps(width, this.width);
+		Path(x,y).h(gaps[0]).addTo(this);
+		Path(x+gaps[0]+this.width,y).h(gaps[1]).addTo(this);
+		x += gaps[0];
+
+		// Draw item
+		Path(x,y).right(Diagram.ARC_RADIUS).addTo(this);
+		this.item.format(x+Diagram.ARC_RADIUS,y,this.width-Diagram.ARC_RADIUS*2).addTo(this);
+		Path(x+this.width-Diagram.ARC_RADIUS,y).right(Diagram.ARC_RADIUS).addTo(this);
+
+		// Draw repeat arc
+		var distanceFromY = Math.max(Diagram.ARC_RADIUS*2, this.item.down+Diagram.VERTICAL_SEPARATION+this.rep.up);
+		Path(x+Diagram.ARC_RADIUS,y).arc('nw').down(distanceFromY-Diagram.ARC_RADIUS*2).arc('ws').addTo(this);
+		this.rep.format(x+Diagram.ARC_RADIUS, y+distanceFromY, this.width - Diagram.ARC_RADIUS*2).addTo(this);
+		Path(x+this.width-Diagram.ARC_RADIUS, y+distanceFromY).arc('se').up(distanceFromY-Diagram.ARC_RADIUS*2).arc('en').addTo(this);
+
+		return this;
+	}
+
+	function ZeroOrMore(item, rep, skip) {
+		return Optional(OneOrMore(item, rep), skip);
+	}
+
+	function Start(simpleType) {
+		if(!(this instanceof Start)) return new Start();
+		FakeSVG.call(this, 'path');
+		this.width = 20;
+		this.up = 10;
+		this.down = 10;
+		this.simpleType = simpleType;
+	}
+	subclassOf(Start, FakeSVG);
+	Start.prototype.format = function(x,y) {
+		if (this.simpleType === false) {
+			this.attrs.d = 'M '+x+' '+(y-10)+' v 20 m 0 -10 h 20.5';
+		} else {
+			this.attrs.d = 'M '+x+' '+(y-10)+' v 20 m 10 -20 v 20 m -10 -10 h 20.5';
+		}
+		return this;
+	}
+
+	function End(simpleType) {
+		if(!(this instanceof End)) return new End();
+		FakeSVG.call(this, 'path');
+		this.width = 20;
+		this.up = 10;
+		this.down = 10;
+		this.simpleType = simpleType;
+	}
+	subclassOf(End, FakeSVG);
+	End.prototype.format = function(x,y) {
+		if (this.simpleType === false) {
+			this.attrs.d = 'M '+x+' '+y+' h 20 m 0 -10 v 20';
+		} else {
+			this.attrs.d = 'M '+x+' '+y+' h 20 m -10 -10 v 20 m 10 -20 v 20';
+		}
+		return this;
+	}
+
+	function Terminal(text) {
+		if(!(this instanceof Terminal)) return new Terminal(text);
+		FakeSVG.call(this, 'g');
+		this.text = text;
+		this.width = text.length * 8 + 20; /* Assume that each char is .5em, and that the em is 16px */
+		this.up = 11;
+		this.down = 11;
+	}
+	subclassOf(Terminal, FakeSVG);
+	Terminal.prototype.needsSpace = true;
+	Terminal.prototype.format = function(x, y, width) {
+		// Hook up the two sides if this is narrower than its stated width.
+		var gaps = determineGaps(width, this.width);
+		Path(x,y).h(gaps[0]).addTo(this);
+		Path(x+gaps[0]+this.width,y).h(gaps[1]).addTo(this);
+		x += gaps[0];
+
+		FakeSVG('rect', {x:x, y:y-11, width:this.width, height:this.up+this.down, rx:10, ry:10}).addTo(this);
+		FakeSVG('text', {x:x+this.width/2, y:y+4}, this.text).addTo(this);
+		return this;
+	}
+
+	function NonTerminal(text) {
+		if(!(this instanceof NonTerminal)) return new NonTerminal(text);
+		FakeSVG.call(this, 'g');
+		this.text = text;
+		this.width = text.length * 8 + 20;
+		this.up = 11;
+		this.down = 11;
+	}
+	subclassOf(NonTerminal, FakeSVG);
+	NonTerminal.prototype.needsSpace = true;
+	NonTerminal.prototype.format = function(x, y, width) {
+		// Hook up the two sides if this is narrower than its stated width.
+		var gaps = determineGaps(width, this.width);
+		Path(x,y).h(gaps[0]).addTo(this);
+		Path(x+gaps[0]+this.width,y).h(gaps[1]).addTo(this);
+		x += gaps[0];
+
+		FakeSVG('rect', {x:x, y:y-11, width:this.width, height:this.up+this.down}).addTo(this);
+		FakeSVG('text', {x:x+this.width/2, y:y+4}, this.text).addTo(this);
+		return this;
+	}
+
+	function Comment(text) {
+		if(!(this instanceof Comment)) return new Comment(text);
+		FakeSVG.call(this, 'g');
+		this.text = text;
+		this.width = text.length * 7 + 10;
+		this.up = 11;
+		this.down = 11;
+	}
+	subclassOf(Comment, FakeSVG);
+	Comment.prototype.needsSpace = true;
+	Comment.prototype.format = function(x, y, width) {
+		// Hook up the two sides if this is narrower than its stated width.
+		var gaps = determineGaps(width, this.width);
+		Path(x,y).h(gaps[0]).addTo(this);
+		Path(x+gaps[0]+this.width,y).h(gaps[1]).addTo(this);
+		x += gaps[0];
+
+		FakeSVG('text', {x:x+this.width/2, y:y+5, class:'comment'}, this.text).addTo(this);
+		return this;
+	}
+
+	function Skip() {
+		if(!(this instanceof Skip)) return new Skip();
+		FakeSVG.call(this, 'g');
+		this.width = 0;
+		this.up = 0;
+		this.down = 0;
+	}
+	subclassOf(Skip, FakeSVG);
+	Skip.prototype.format = function(x, y, width) {
+		Path(x,y).right(width).addTo(this);
+		return this;
+	}
+	
+	var root;
+	if (typeof define === 'function' && define.amd) {
+		// AMD. Register as an anonymous module.
+		root = {};
+		define([], function() {
+			return root;
+		});
+	} else if (typeof exports === 'object') {
+		// CommonJS for node
+		root = exports;
+	} else {
+		// Browser globals (root is window)
+		root = this;
+	}
+
+	var temp = [Diagram, ComplexDiagram, Sequence, Choice, Optional, OneOrMore, ZeroOrMore, Terminal, NonTerminal, Comment, Skip];
+	/*
+	These are the names that the internal classes are exported as.
+	If you would like different names, adjust them here.
+	*/
+	['Diagram', 'ComplexDiagram', 'Sequence', 'Choice', 'Optional', 'OneOrMore', 'ZeroOrMore', 'Terminal', 'NonTerminal', 'Comment', 'Skip']
+		.forEach(function(e,i) { root[e] = temp[i]; });
+}).call(this,
+	{
+	VERTICAL_SEPARATION: 8,
+	ARC_RADIUS: 10,
+	DIAGRAM_CLASS: 'railroad-diagram',
+	STROKE_ODD_PIXEL_LENGTH: true,
+	INTERNAL_ALIGNMENT: 'center',
+	}
+);
+
+</script>
+<script>
+(function () {
+  var rules = [
+  { name: "Identifier", dsl: function(){ return Diagram(Terminal("IDENT (escapes allowed)")); } },
+  { name: "AttributeOperator", dsl: function(){ return Diagram(Choice(0, Terminal("*="), Terminal("~="), Terminal("|="), Terminal("^="), Terminal("$="), Terminal("="))); } },
+  { name: "AttributeModifier", dsl: function(){ return Diagram(Terminal("/[a-zA-Z]/")); } },
+  { name: "DoubleQuotedText", dsl: function(){ return Diagram(Terminal("DOUBLE-QUOTED BODY")); } },
+  { name: "SingleQuotedText", dsl: function(){ return Diagram(Terminal("SINGLE-QUOTED BODY")); } },
+  { name: "UrlOpen", dsl: function(){ return Diagram(Terminal("url(")); } },
+  { name: "UrlInner", dsl: function(){ return Diagram(Terminal("/(?:[^\"'()\\\\ \\t\\n\\f\\r\\x00-\\x08\\x0B\\x0E-\\x1F\\x7F]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))+/")); } },
+  { name: "SimpleSelectorToken", dsl: function(){ return Diagram(Terminal("SIMPLE SELECTOR or PERCENTAGE")); } },
+  { name: "PseudoSelectorColon", dsl: function(){ return Diagram(Terminal("\":\" or \"::\"")); } },
+  { name: "NthExpression", dsl: function(){ return Diagram(Terminal("NTH")); } },
+  { name: "MalformedPseudoSelectorNumericArgument", dsl: function(){ return Diagram(Terminal("MALFORMED NTH ARGUMENT")); } },
+  { name: "BlockCommentToken", dsl: function(){ return Diagram(Terminal("COMMENT")); } },
+  { name: "LineComment", dsl: function(){ return Diagram(Terminal("/\\/\\/[^\\n\\r]*/")); } },
+  { name: "MediaModifier", dsl: function(){ return Diagram(Terminal("/(?:[^${}()\\[\\];\"'#]|#(?!\\{))+/")); } },
+  { name: "ImportantToken", dsl: function(){ return Diagram(Choice(0, Terminal("important"))); } },
+  { name: "HexColor", dsl: function(){ return Diagram(Terminal("HEX COLOR")); } },
+  { name: "UnicodeRangeToken", dsl: function(){ return Diagram(Terminal("UNICODE RANGE")); } },
+  { name: "ConditionalAtKeyword", dsl: function(){ return Diagram(Choice(0, Terminal("@container"), Terminal("@supports"), Terminal("@media"))); } },
+  { name: "MediaContainerAtKeyword", dsl: function(){ return Diagram(Choice(0, Terminal("@container"), Terminal("@media"))); } },
+  { name: "MediaAtKeyword", dsl: function(){ return Diagram(Choice(0, Terminal("@media"))); } },
+  { name: "ContainerAtKeyword", dsl: function(){ return Diagram(Choice(0, Terminal("@container"))); } },
+  { name: "SupportsAtKeyword", dsl: function(){ return Diagram(Choice(0, Terminal("@supports"))); } },
+  { name: "StartingStyleAtKeyword", dsl: function(){ return Diagram(Choice(0, Terminal("@starting-style"))); } },
+  { name: "PageAtKeyword", dsl: function(){ return Diagram(Choice(0, Terminal("@page"))); } },
+  { name: "MarginAtKeyword", dsl: function(){ return Diagram(Choice(0, Terminal("@bottom-right-corner"), Terminal("@bottom-left-corner"), Terminal("@top-right-corner"), Terminal("@top-left-corner"), Terminal("@bottom-center"), Terminal("@bottom-right"), Terminal("@right-middle"), Terminal("@right-bottom"), Terminal("@bottom-left"), Terminal("@left-middle"), Terminal("@left-bottom"), Terminal("@top-center"), Terminal("@top-right"), Terminal("@right-top"), Terminal("@top-left"), Terminal("@left-top"))); } },
+  { name: "QueryNot", dsl: function(){ return Diagram(Choice(0, Terminal("not"))); } },
+  { name: "QueryOnly", dsl: function(){ return Diagram(Choice(0, Terminal("only"))); } },
+  { name: "QueryAndOr", dsl: function(){ return Diagram(Choice(0, Terminal("and"), Terminal("or"))); } },
+  { name: "QueryComparisonOperator", dsl: function(){ return Diagram(Choice(0, Terminal("<="), Terminal(">="), Terminal("<"), Terminal("="), Terminal(">"))); } },
+  { name: "QueryFunctionName", dsl: function(){ return Diagram(Terminal("/-?(?:[_a-zA-Z\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))*(?=\\()/")); } },
+  { name: "QueryFunctionOpen", dsl: function(){ return Diagram(Sequence(Terminal("IDENT (escapes allowed)"), Terminal("("))); } },
+  { name: "ScopeAtKeyword", dsl: function(){ return Diagram(Choice(0, Terminal("@scope"))); } },
+  { name: "DescriptorAtKeyword", dsl: function(){ return Diagram(Choice(0, Terminal("@counter-style"), Terminal("@font-face"), Terminal("@property"), Terminal("@font-palette-values"), Terminal("@view-transition"), Terminal("@color-profile"), Terminal("@position-try"))); } },
+  { name: "DocumentAtKeyword", dsl: function(){ return Diagram(Choice(0, Terminal("@-moz-document"), Terminal("@document"))); } },
+  { name: "LayerAtKeyword", dsl: function(){ return Diagram(Choice(0, Terminal("@layer"))); } },
+  { name: "KeyframesAtKeyword", dsl: function(){ return Diagram(Terminal("@keyframes (vendor-prefixable)")); } },
+  { name: "StatementAtRuleName", dsl: function(){ return Diagram(Sequence(Sequence(Comment("not"), Choice(0, Terminal("@import"))), Terminal("AT-KEYWORD"))); } },
+  { name: "GenericAtRuleName", dsl: function(){ return Diagram(Sequence(Sequence(Comment("not"), Choice(0, Terminal("@counter-style"), Terminal("@font-face"), Terminal("@property"), Terminal("@font-palette-values"), Terminal("@view-transition"), Terminal("@color-profile"), Terminal("@position-try"), Terminal("@-moz-document"), Terminal("@document"), Terminal("@font-feature-values"), Terminal("@keyframes (vendor-prefixable)"), Terminal("@starting-style"), Terminal("@page"), Terminal("@scope"), Terminal("@layer"))), Sequence(Comment("not"), Choice(0, Terminal("@container"), Terminal("@supports"), Terminal("@media"))), Sequence(Comment("not"), Choice(0, Terminal("@import"))), Terminal("AT-KEYWORD"))); } },
+  { name: "AtRuleKeyword", dsl: function(){ return Diagram(Choice(0, Terminal("@counter-style"), Terminal("@font-face"), Terminal("@property"), Terminal("@font-palette-values"), Terminal("@view-transition"), Terminal("@color-profile"), Terminal("@position-try"), Terminal("@-moz-document"), Terminal("@document"), Terminal("@font-feature-values"), Terminal("@keyframes (vendor-prefixable)"), Terminal("@starting-style"), Terminal("@page"), Terminal("@scope"), Terminal("@layer"), Sequence(Sequence(Comment("not"), Choice(0, Terminal("@container"), Terminal("@supports"), Terminal("@media"))), Sequence(Comment("not"), Choice(0, Terminal("@import"))), Terminal("AT-KEYWORD")))); } },
+  { name: "TypedAtKeyword", dsl: function(){ return Diagram(Choice(0, Terminal("@counter-style"), Terminal("@font-face"), Terminal("@property"), Terminal("@font-palette-values"), Terminal("@view-transition"), Terminal("@color-profile"), Terminal("@position-try"), Terminal("@-moz-document"), Terminal("@document"), Terminal("@font-feature-values"), Terminal("@keyframes (vendor-prefixable)"), Terminal("@starting-style"), Terminal("@page"), Terminal("@scope"), Terminal("@layer"))); } },
+  { name: "TypedAtKeywordSharedRoutes", dsl: function(){ return Diagram(Choice(0, Terminal("@counter-style"), Terminal("@font-face"), Terminal("@property"), Terminal("@-moz-document"), Terminal("@document"), Terminal("@font-feature-values"), Terminal("@keyframes (vendor-prefixable)"), Terminal("@starting-style"), Terminal("@page"), Terminal("@scope"), Terminal("@layer"))); } },
+  { name: "ImportAtKeyword", dsl: function(){ return Diagram(Choice(0, Terminal("@import"))); } },
+  { name: "AtIdentifier", dsl: function(){ return Diagram(Terminal("AT-KEYWORD")); } },
+  { name: "FontFeatureValuesAtKeyword", dsl: function(){ return Diagram(Choice(0, Terminal("@font-feature-values"))); } },
+  { name: "FontFeatureValueAtKeyword", dsl: function(){ return Diagram(Choice(0, Terminal("@character-variant"), Terminal("@historical-forms"), Terminal("@annotation"), Terminal("@stylistic"), Terminal("@ornaments"), Terminal("@styleset"), Terminal("@swash"))); } },
+  { name: "NumberToken", dsl: function(){ return Diagram(Terminal("NUMBER")); } },
+  { name: "DimensionUnit", dsl: function(){ return Diagram(Terminal("/-?[_a-zA-Z\\u0080-\\uFFFF](?:[_a-zA-Z0-9\\u0080-\\uFFFF]|-(?![0-9]))*|%/")); } },
+  { name: "InterpolatedPropertyStart", dsl: function(){ return Diagram(Terminal("/(?:[_a-zA-Z\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))(?:[-_a-zA-Z0-9\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f]))*/")); } },
+  { name: "InterpolatedPropertyTail", dsl: function(){ return Diagram(Terminal("NAME (escapes allowed)")); } },
+  { name: "CustomPropertyName", dsl: function(){ return Diagram(Terminal("CUSTOM PROPERTY NAME")); } },
+  { name: "CustomPropertyToken", dsl: function(){ return Diagram(Terminal("CUSTOM PROPERTY NAME")); } },
+  { name: "CustomOuterContent", dsl: function(){ return Diagram(Terminal("/(?:(?![ \\t\\n\\r\\f]*!(?:[ \\t\\n\\r\\f]|\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\/)*important(?:[ \\t\\n\\r\\f]|\\/\\*(?:[^*]|\\*(?!\\/))*\\*\\/)*[;}])(?:\\\\[^\\n\\r\\f]|[^(){}[\\];'\"\\\\/#$]|\\/(?!\\*)|#(?!\\{)|\\$(?![[({])))+/")); } },
+  { name: "CustomInnerContent", dsl: function(){ return Diagram(Terminal("/(?:\\\\[^\\n\\r\\f]|[^(){}[\\]'\"\\\\/#$]|\\/(?!\\*)|#(?!\\{)|\\$(?![[({]))+/")); } },
+  { name: "CustomSingleQuoted", dsl: function(){ return Diagram(Terminal("SINGLE-QUOTED STRING")); } },
+  { name: "CustomDoubleQuoted", dsl: function(){ return Diagram(Terminal("DOUBLE-QUOTED STRING")); } },
+  { name: "OpaqueAtRulePreludeCapture", dsl: function(){ return Diagram(Optional(Comment("…"))); } },
+  { name: "OpaqueAtRuleBodyCapture", dsl: function(){ return Diagram(Comment("…")); } },
+  { name: "PreprocessorOpaqueAtRulePreludeCapture", dsl: function(){ return Diagram(Optional(Comment("…"))); } },
+  { name: "PreprocessorOpaqueAtRuleBodyCapture", dsl: function(){ return Diagram(Comment("…")); } },
+  { name: "NthChildPseudoSelectorName", dsl: function(){ return Diagram(Terminal("/nth-(?:last-)?child(?=\\()/")); } },
+  { name: "NthTypePseudoSelectorName", dsl: function(){ return Diagram(Terminal("/nth-(?:last-)?of-type(?=\\()/")); } },
+  { name: "NthPseudoSelectorName", dsl: function(){ return Diagram(Terminal("nth-child / nth-last-child / nth-of-type / nth-last-of-type")); } },
+  { name: "SelectorArgumentPseudoSelectorName", dsl: function(){ return Diagram(Terminal("/(?:is|where|not|has|matches)(?=\\()/")); } },
+  { name: "NthOfKeyword", dsl: function(){ return Diagram(Choice(0, Terminal("of"))); } },
+  { name: "PseudoSelectorCloseAhead", dsl: function(){ return Diagram(Terminal("/(?=[ \\t\\n\\r\\f]*\\))/")); } },
+  { name: "TypedValueSequence", dsl: function(){ return Diagram(Sequence(NonTerminal("TypedValue"), ZeroOrMore(Choice(0, Sequence(Terminal("WHITESPACE or COMMENT"), NonTerminal("TypedValue")), NonTerminal("TypedValue"))))); } },
+  { name: "ValueSequence", dsl: function(){ return Diagram(Sequence(NonTerminal("Value"), ZeroOrMore(Choice(0, Sequence(Terminal("WHITESPACE or COMMENT"), NonTerminal("Value")), NonTerminal("Value"))))); } },
+  { name: "Quoted", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("\""), NonTerminal("DoubleQuotedText"), Terminal("\"")), Sequence(Terminal("'"), NonTerminal("SingleQuotedText"), Terminal("'")), Sequence(Terminal("~\""), NonTerminal("DoubleQuotedText"), Terminal("\"")), Sequence(Terminal("~'"), NonTerminal("SingleQuotedText"), Terminal("'")))); } },
+  { name: "SelectorList", dsl: function(){ return Diagram(OneOrMore(NonTerminal("ComplexSelector"), Terminal(","))); } },
+  { name: "pseudoArgumentContent", dsl: function(){ return Diagram(Comment("…")); } },
+  { name: "LeadingDashPseudoArgument", dsl: function(){ return Diagram(Sequence(Terminal("-"), NonTerminal("NthExpression"), Optional(Sequence(NonTerminal("NthOfKeyword"), NonTerminal("SelectorList"))), NonTerminal("PseudoSelectorCloseAhead"))); } },
+  { name: "LeadingDashRawPseudoArgument", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("-"), NonTerminal("PseudoSelectorCloseAhead")), Sequence(Sequence(Comment("not"), NonTerminal("MalformedPseudoSelectorNumericArgument")), Terminal("-"), Terminal("WHITESPACE"), NonTerminal("pseudoArgumentContent")), Sequence(Terminal("-"), Terminal("-"), NonTerminal("pseudoArgumentContent")))); } },
+  { name: "TypedNthPseudoArgument", dsl: function(){ return Diagram(Sequence(NonTerminal("NthExpression"), Optional(Sequence(NonTerminal("NthOfKeyword"), NonTerminal("SelectorList"))), NonTerminal("PseudoSelectorCloseAhead"))); } },
+  { name: "LeadingDashOfTypePseudoArgument", dsl: function(){ return Diagram(Sequence(Terminal("-"), NonTerminal("NthExpression"), NonTerminal("PseudoSelectorCloseAhead"))); } },
+  { name: "TypedOfTypePseudoArgument", dsl: function(){ return Diagram(Sequence(NonTerminal("NthExpression"), NonTerminal("PseudoSelectorCloseAhead"))); } },
+  { name: "ComplexSelector", dsl: function(){ return Diagram(Sequence(NonTerminal("CompoundSelector"), ZeroOrMore(Sequence(Optional(Choice(0, Terminal("||"), Terminal(">"), Terminal("+"), Terminal("~"), Terminal("|"))), NonTerminal("CompoundSelector"))))); } },
+  { name: "PseudoArgument", dsl: function(){ return Diagram(Choice(0, NonTerminal("LeadingDashPseudoArgument"), NonTerminal("LeadingDashRawPseudoArgument"), NonTerminal("TypedNthPseudoArgument"), NonTerminal("SelectorList"), Sequence(Sequence(Comment("not"), NonTerminal("MalformedPseudoSelectorNumericArgument")), NonTerminal("pseudoArgumentContent")))); } },
+  { name: "OfTypePseudoArgument", dsl: function(){ return Diagram(Choice(0, NonTerminal("LeadingDashOfTypePseudoArgument"), NonTerminal("LeadingDashRawPseudoArgument"), NonTerminal("TypedOfTypePseudoArgument"), Sequence(Sequence(Comment("not"), Sequence(NonTerminal("NthExpression"), NonTerminal("NthOfKeyword"))), Choice(0, NonTerminal("SelectorList"), Sequence(Sequence(Comment("not"), NonTerminal("MalformedPseudoSelectorNumericArgument")), NonTerminal("pseudoArgumentContent")))))); } },
+  { name: "NestingSelector", dsl: function(){ return Diagram(Terminal("&")); } },
+  { name: "AttributeSelector", dsl: function(){ return Diagram(Sequence(Terminal("["), NonTerminal("Identifier"), Optional(Sequence(NonTerminal("AttributeOperator"), Choice(0, NonTerminal("Quoted"), NonTerminal("Identifier")), Optional(NonTerminal("AttributeModifier")))), Terminal("]"))); } },
+  { name: "PseudoSelector", dsl: function(){ return Diagram(Sequence(Terminal("\":\" or \"::\""), NonTerminal("Identifier"), Optional(Terminal("(")), Choice(0, Sequence(NonTerminal("PseudoArgument"), Terminal(")")), Sequence(NonTerminal("OfTypePseudoArgument"), Terminal(")")), Sequence(OneOrMore(Sequence(Optional(Choice(0, Terminal(">"), Terminal("+"), Terminal("~"))), NonTerminal("ComplexSelector")), Terminal(",")), Terminal(")")), Sequence(NonTerminal("pseudoArgumentContent"), Terminal(")")), Sequence(Comment("not"), NonTerminal("NthPseudoSelectorName"))))); } },
+  { name: "BasicSelector", dsl: function(){ return Diagram(Terminal("SIMPLE SELECTOR or PERCENTAGE")); } },
+  { name: "CompoundSelector", dsl: function(){ return Diagram(OneOrMore(Choice(0, NonTerminal("NestingSelector"), NonTerminal("AttributeSelector"), NonTerminal("PseudoSelector"), NonTerminal("BasicSelector")))); } },
+  { name: "TopLevelCompoundSelector", dsl: function(){ return Diagram(OneOrMore(Choice(0, NonTerminal("AttributeSelector"), NonTerminal("PseudoSelector"), NonTerminal("BasicSelector")))); } },
+  { name: "TopLevelComplexSelector", dsl: function(){ return Diagram(Sequence(NonTerminal("TopLevelCompoundSelector"), ZeroOrMore(Sequence(Optional(Choice(0, Terminal("||"), Terminal(">"), Terminal("+"), Terminal("~"), Terminal("|"))), NonTerminal("TopLevelCompoundSelector"))))); } },
+  { name: "valueFunctionArguments", dsl: function(){ return Diagram(Optional(OneOrMore(NonTerminal("TypedValueSequence"), Sequence(Optional(Terminal("WHITESPACE or COMMENT")), Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")))))); } },
+  { name: "CalcSum", dsl: function(){ return Diagram(Sequence(NonTerminal("CalcProduct"), ZeroOrMore(Sequence(Terminal("WHITESPACE or COMMENT"), Terminal("/[-+]/"), Terminal("WHITESPACE or COMMENT"), NonTerminal("CalcProduct"))))); } },
+  { name: "VarFallback", dsl: function(){ return Diagram(OneOrMore(NonTerminal("VarFallbackItem"), Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT"))))); } },
+  { name: "VarCall", dsl: function(){ return Diagram(Sequence(Choice(0, Terminal("var")), Terminal("("), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("CustomPropertyValue"), Optional(Terminal("WHITESPACE or COMMENT")), Optional(Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), Choice(0, NonTerminal("VarFallback"), NonTerminal("VarFallbackEmpty")), Optional(Terminal("WHITESPACE or COMMENT")))), Terminal(")"))); } },
+  { name: "VarFallbackCall", dsl: function(){ return Diagram(Sequence(Terminal("IDENT (not a calc/url/var call)"), Terminal("("), Optional(Sequence(Sequence(Comment("not"), Terminal(")")), OneOrMore(NonTerminal("VarFallbackItem"), Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")))))), Terminal(")"))); } },
+  { name: "TypedValue", dsl: function(){ return Diagram(Choice(0, NonTerminal("Percentage"), NonTerminal("Dimension"), NonTerminal("Color"), NonTerminal("Quoted"), NonTerminal("CustomPropertyValue"), NonTerminal("UnicodeRange"), NonTerminal("CalcIdentOrFunction"))); } },
+  { name: "VarFallbackParen", dsl: function(){ return Diagram(Sequence(Sequence(Comment("not"), Choice(0, Sequence(Terminal("("), Comment("…"), Terminal("["), Comment("…"), Terminal(")")), Sequence(Terminal("("), Comment("…"), Terminal("{"), Comment("…"), Terminal(")")))), Terminal("("), Optional(Terminal("WHITESPACE or COMMENT")), Optional(NonTerminal("VarFallback")), Optional(Terminal("WHITESPACE or COMMENT")), Terminal(")"))); } },
+  { name: "VarFallbackBracket", dsl: function(){ return Diagram(Sequence(Sequence(Comment("not"), Choice(0, Sequence(Terminal("["), Comment("…"), Terminal("("), Comment("…"), Terminal("]")), Sequence(Terminal("["), Comment("…"), Terminal("{"), Comment("…"), Terminal("]")))), Terminal("["), Comment("…"), Terminal("]"))); } },
+  { name: "VarFallbackBrace", dsl: function(){ return Diagram(Sequence(Sequence(Comment("not"), Choice(0, Sequence(Terminal("{"), Comment("…"), Terminal("("), Comment("…"), Terminal("}")), Sequence(Terminal("{"), Comment("…"), Terminal("["), Comment("…"), Terminal("}")))), Terminal("{"), Comment("…"), Terminal("}"))); } },
+  { name: "VarFallbackPunctuation", dsl: function(){ return Diagram(OneOrMore(Choice(0, Terminal("ESCAPE"), Terminal("+"), Terminal("-"), Terminal("*"), Terminal("/"), Terminal("="), Terminal("<"), Terminal(">"), Terminal("|"), Terminal("~"), Terminal("^"), Terminal("?"), Terminal("$"), Terminal("@"), Terminal("%"), Terminal("&"), Terminal(":"), Terminal(".")))); } },
+  { name: "VarFallbackTerm", dsl: function(){ return Diagram(Sequence(Choice(0, NonTerminal("VarCall"), NonTerminal("VarFallbackCall"), NonTerminal("TypedValue"), NonTerminal("VarFallbackParen"), NonTerminal("VarFallbackBracket"), NonTerminal("VarFallbackBrace"), NonTerminal("VarFallbackPunctuation")), ZeroOrMore(Sequence(Optional(Terminal("WHITESPACE or COMMENT")), Choice(0, NonTerminal("VarCall"), NonTerminal("VarFallbackCall"), NonTerminal("TypedValue"), NonTerminal("VarFallbackParen"), NonTerminal("VarFallbackBracket"), NonTerminal("VarFallbackBrace"), NonTerminal("VarFallbackPunctuation")))))); } },
+  { name: "VarFallbackEmpty", dsl: function(){ return Diagram(Choice(0, Sequence(Comment("peek"), Terminal(",")), Sequence(Comment("peek"), Terminal(")")))); } },
+  { name: "VarFallbackItem", dsl: function(){ return Diagram(Choice(0, NonTerminal("VarFallbackTerm"), NonTerminal("VarFallbackEmpty"))); } },
+  { name: "CustomPropertyValue", dsl: function(){ return Diagram(NonTerminal("CustomPropertyName")); } },
+  { name: "Percentage", dsl: function(){ return Diagram(Sequence(Terminal("NUMBER"), Terminal("%"))); } },
+  { name: "Dimension", dsl: function(){ return Diagram(Sequence(Terminal("/[+-]?(?:\\d*\\.\\d+(?:[eE][+-]?\\d+)?|\\d+(?:[eE][+-]?\\d+)?|\\d+)(?!%)/"), Optional(Terminal("/-?[_a-zA-Z\\u0080-\\uFFFF](?:[_a-zA-Z0-9\\u0080-\\uFFFF]|-(?![0-9]))*/")))); } },
+  { name: "Color", dsl: function(){ return Diagram(Terminal("HEX COLOR")); } },
+  { name: "CalcIdentOrFunction", dsl: function(){ return Diagram(Sequence(Terminal("IDENT (escapes allowed)"), Optional(Terminal("(")), Choice(0, Sequence(Optional(Terminal("WHITESPACE")), Optional(Choice(0, NonTerminal("Quoted"), NonTerminal("UrlInner"))), Optional(Terminal("WHITESPACE")), Terminal(")")), Sequence(Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("CalcSum"), Optional(Terminal("WHITESPACE or COMMENT")), Terminal(")")), Sequence(Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("CustomPropertyValue"), Optional(Terminal("WHITESPACE or COMMENT")), Optional(Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), Choice(0, NonTerminal("VarFallback"), NonTerminal("VarFallbackEmpty")), Optional(Terminal("WHITESPACE or COMMENT")))), Terminal(")")), Sequence(Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("valueFunctionArguments"), Optional(Terminal("WHITESPACE or COMMENT")), Terminal(")")), NonTerminal("RoutedKeyword")))); } },
+  { name: "CalcParen", dsl: function(){ return Diagram(Sequence(Terminal("("), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("CalcSum"), Optional(Terminal("WHITESPACE or COMMENT")), Terminal(")"))); } },
+  { name: "CalcValue", dsl: function(){ return Diagram(Choice(0, NonTerminal("Percentage"), NonTerminal("Dimension"), NonTerminal("Color"), NonTerminal("CalcIdentOrFunction"), NonTerminal("CalcParen"), NonTerminal("Quoted"), NonTerminal("CustomPropertyValue"))); } },
+  { name: "CalcProduct", dsl: function(){ return Diagram(Sequence(NonTerminal("CalcValue"), ZeroOrMore(Sequence(Terminal("WHITESPACE or COMMENT?"), Terminal("/[*/%]/"), Terminal("WHITESPACE or COMMENT?"), NonTerminal("CalcValue"))))); } },
+  { name: "ValueList", dsl: function(){ return Diagram(OneOrMore(NonTerminal("ValueSequence"), Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT"))))); } },
+  { name: "RawParenValue", dsl: function(){ return Diagram(Sequence(Terminal("("), Comment("…"), Terminal(")"))); } },
+  { name: "RoutedKeyword", dsl: function(){ return Diagram(Skip()); } },
+  { name: "UnicodeRange", dsl: function(){ return Diagram(NonTerminal("UnicodeRangeToken")); } },
+  { name: "ParenValue", dsl: function(){ return Diagram(Sequence(Terminal("("), Optional(Terminal("WHITESPACE or COMMENT")), Optional(NonTerminal("ValueList")), Optional(Terminal("WHITESPACE or COMMENT")), Terminal(")"))); } },
+  { name: "SquareValue", dsl: function(){ return Diagram(Sequence(Terminal("["), Optional(Terminal("WHITESPACE or COMMENT")), Optional(NonTerminal("ValueList")), Optional(Terminal("WHITESPACE or COMMENT")), Terminal("]"))); } },
+  { name: "PunctuationValue", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("/"), Sequence(Comment("not"), Terminal("*")), Choice(0, Sequence(Comment("peek"), Choice(0, Terminal("."), Terminal("/[0-9]/"), Terminal("/[ \\t\\n\\r\\f]/"))), ZeroOrMore(Choice(0, Terminal("ESCAPE"), Terminal("+"), Terminal("-"), Terminal("*"), Terminal("/"), Terminal("="), Terminal("<"), Terminal(">"), Terminal("|"), Terminal("~"), Terminal("^"), Terminal("?"), Terminal("$"), Terminal("@"), Terminal("%"), Terminal("&"), Terminal(":"), Terminal("."))))), Sequence(Choice(0, Terminal("ESCAPE"), Terminal("+"), Terminal("-"), Terminal("*"), Terminal("="), Terminal("<"), Terminal(">"), Terminal("|"), Terminal("~"), Terminal("^"), Terminal("?"), Terminal("$"), Terminal("/@(?!-?(?:[-_a-zA-Z\\u0080-\\uffff]|\\\\(?:[0-9a-fA-F]{1,6}[ \\t\\n\\r\\f]?|[^\\n\\r\\f])))/"), Terminal("%"), Terminal("&"), Terminal(":"), Terminal(".")), ZeroOrMore(Choice(0, Terminal("ESCAPE"), Terminal("+"), Terminal("-"), Terminal("*"), Terminal("/"), Terminal("="), Terminal("<"), Terminal(">"), Terminal("|"), Terminal("~"), Terminal("^"), Terminal("?"), Terminal("$"), Terminal("@"), Terminal("%"), Terminal("&"), Terminal(":"), Terminal(".")))))); } },
+  { name: "Value", dsl: function(){ return Diagram(Choice(0, NonTerminal("Percentage"), NonTerminal("Dimension"), NonTerminal("Color"), NonTerminal("UnicodeRange"), Sequence(Terminal("IDENT (escapes allowed)"), Optional(Terminal("(")), Choice(0, Sequence(Optional(Terminal("WHITESPACE")), Optional(Choice(0, NonTerminal("Quoted"), NonTerminal("UrlInner"))), Optional(Terminal("WHITESPACE")), Terminal(")")), Sequence(Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("CalcSum"), Optional(Terminal("WHITESPACE or COMMENT")), Terminal(")")), Sequence(Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("CustomPropertyValue"), Optional(Terminal("WHITESPACE or COMMENT")), Optional(Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT")), Choice(0, NonTerminal("VarFallback"), NonTerminal("VarFallbackEmpty")), Optional(Terminal("WHITESPACE or COMMENT")))), Terminal(")")), Sequence(Optional(Terminal("WHITESPACE or COMMENT")), Optional(OneOrMore(NonTerminal("ValueSequence"), Sequence(Optional(Terminal("WHITESPACE or COMMENT")), Terminal(","), Optional(Terminal("WHITESPACE or COMMENT"))))), Optional(Terminal("WHITESPACE or COMMENT")), Terminal(")")), Sequence(Terminal("WHITESPACE or COMMENT"), NonTerminal("RawParenValue")), NonTerminal("RoutedKeyword"))), NonTerminal("ParenValue"), NonTerminal("SquareValue"), NonTerminal("Quoted"), NonTerminal("CustomPropertyValue"), NonTerminal("PunctuationValue"))); } },
+  { name: "CustomProperty", dsl: function(){ return Diagram(NonTerminal("CustomPropertyName")); } },
+  { name: "CustomValue", dsl: function(){ return Diagram(Comment("…")); } },
+  { name: "Important", dsl: function(){ return Diagram(Sequence(Terminal("!"), NonTerminal("ImportantToken"))); } },
+  { name: "Property", dsl: function(){ return Diagram(NonTerminal("Identifier")); } },
+  { name: "ImportUrlUnquoted", dsl: function(){ return Diagram(NonTerminal("UrlInner")); } },
+  { name: "ImportTailRaw", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("("), Comment("…"), Terminal(")")), Sequence(Terminal("["), Comment("…"), Terminal("]")), Sequence(Terminal("\""), Terminal("DOUBLE-QUOTED BODY"), Terminal("\"")), Sequence(Terminal("'"), Terminal("SINGLE-QUOTED BODY"), Terminal("'")), Terminal("/[^()[\\]\"'\\/; \\t\\n\\r\\f]+/"), Terminal("/"))); } },
+  { name: "ImportTailBody", dsl: function(){ return Diagram(Sequence(NonTerminal("ImportTailRaw"), ZeroOrMore(Choice(0, NonTerminal("ImportTailRaw"), Terminal("WHITESPACE"))))); } },
+  { name: "ImportUrl", dsl: function(){ return Diagram(Sequence(Choice(0, Terminal("url")), Terminal("("), Optional(Choice(0, NonTerminal("Quoted"), NonTerminal("ImportUrlUnquoted"))), Terminal(")"))); } },
+  { name: "ImportTail", dsl: function(){ return Diagram(Sequence(ZeroOrMore(Terminal("WHITESPACE")), NonTerminal("ImportTailBody"))); } },
+  { name: "StatementPrelude", dsl: function(){ return Diagram(NonTerminal("AtRulePreludeSegments")); } },
+  { name: "AtRulePreludeWhitespace", dsl: function(){ return Diagram(Terminal("WHITESPACE")); } },
+  { name: "AtRulePreludeComma", dsl: function(){ return Diagram(Terminal(",")); } },
+  { name: "AtRulePreludeGroup", dsl: function(){ return Diagram(Terminal("balanced ( … ) or [ … ]")); } },
+  { name: "AtRulePreludeQuoted", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("'"), Terminal("SINGLE-QUOTED BODY"), Terminal("'")), Sequence(Terminal("\""), Terminal("DOUBLE-QUOTED BODY"), Terminal("\"")))); } },
+  { name: "AtRulePreludeText", dsl: function(){ return Diagram(Terminal("/(?:\\\\[\\s\\S]|\\/(?!\\*)|[^\\\\/ \\t\\n\\r\\f,;{}()[\\]\"'])+/")); } },
+  { name: "AtRulePreludeSegments", dsl: function(){ return Diagram(ZeroOrMore(Choice(0, NonTerminal("AtRulePreludeWhitespace"), NonTerminal("AtRulePreludeComma"), NonTerminal("AtRulePreludeGroup"), NonTerminal("AtRulePreludeQuoted"), NonTerminal("AtRulePreludeText")))); } },
+  { name: "OpaqueAtPrelude", dsl: function(){ return Diagram(NonTerminal("OpaqueAtRulePreludeCapture")); } },
+  { name: "OpaqueBody", dsl: function(){ return Diagram(NonTerminal("OpaqueAtRuleBodyCapture")); } },
+  { name: "QueryValue", dsl: function(){ return Diagram(Sequence(NonTerminal("TypedValue"), Optional(Sequence(Terminal("/"), NonTerminal("TypedValue"))))); } },
+  { name: "QueryBareFeature", dsl: function(){ return Diagram(Sequence(Terminal("("), NonTerminal("Property"), Terminal(")"))); } },
+  { name: "QueryRangeFeature", dsl: function(){ return Diagram(Sequence(Terminal("("), NonTerminal("QueryValue"), NonTerminal("QueryComparisonOperator"), NonTerminal("Property"), Optional(Sequence(NonTerminal("QueryComparisonOperator"), NonTerminal("QueryValue"))), Terminal(")"))); } },
+  { name: "Keyword", dsl: function(){ return Diagram(NonTerminal("Identifier")); } },
+  { name: "QueryFeature", dsl: function(){ return Diagram(Choice(0, NonTerminal("QueryBareFeature"), Sequence(Terminal("("), NonTerminal("Property"), Terminal(":"), NonTerminal("QueryValue"), Terminal(")")), Sequence(Terminal("("), NonTerminal("Property"), NonTerminal("QueryComparisonOperator"), NonTerminal("QueryValue"), Optional(Sequence(NonTerminal("QueryComparisonOperator"), NonTerminal("QueryValue"))), Terminal(")")), NonTerminal("QueryRangeFeature"))); } },
+  { name: "QueryTerm", dsl: function(){ return Diagram(Choice(0, NonTerminal("QueryFeature"), Sequence(Sequence(Comment("not"), Sequence(Choice(0, Terminal("layer"), Terminal("only")), Sequence(Comment("not"), Terminal("(")))), Terminal("IDENT (escapes allowed)"), Optional(Terminal("(")), Choice(0, Sequence(Comment("…"), Terminal(")")), Skip())))); } },
+  { name: "QueryClause", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("QueryOnly"), Sequence(Comment("not"), Choice(0, Terminal("layer"), Terminal("only"))), NonTerminal("Keyword"), ZeroOrMore(Sequence(NonTerminal("QueryAndOr"), NonTerminal("QueryTerm")))), Sequence(NonTerminal("QueryTerm"), ZeroOrMore(NonTerminal("QueryTerm"))))); } },
+  { name: "QueryFunction", dsl: function(){ return Diagram(Sequence(Terminal("IDENT (escapes allowed)"), Terminal("("), Comment("…"), Terminal(")"))); } },
+  { name: "ContainerQueryClause", dsl: function(){ return Diagram(Sequence(Choice(0, NonTerminal("QueryFeature"), NonTerminal("QueryFunction")), ZeroOrMore(NonTerminal("QueryTerm")))); } },
+  { name: "ContainerQueryPrelude", dsl: function(){ return Diagram(OneOrMore(NonTerminal("ContainerQueryClause"), Terminal(","))); } },
+  { name: "GeneralEnclosedContent", dsl: function(){ return Diagram(ZeroOrMore(Choice(0, Terminal("COMMENT"), Terminal("/(?:\\\\[\\s\\S]|\\/(?!\\*)|[^\\\\/'\"()[\\]{}]+)+/"), NonTerminal("GeneralEnclosedQuoted"), NonTerminal("GeneralEnclosedGroup")))); } },
+  { name: "GeneralEnclosedQuoted", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("\""), Terminal("DOUBLE-QUOTED BODY"), Terminal("\"")), Sequence(Terminal("'"), Terminal("SINGLE-QUOTED BODY"), Terminal("'")))); } },
+  { name: "GeneralEnclosedGroup", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("("), NonTerminal("GeneralEnclosedContent"), Terminal(")")), Sequence(Terminal("["), NonTerminal("GeneralEnclosedContent"), Terminal("]")), Sequence(Terminal("{"), NonTerminal("GeneralEnclosedContent"), Terminal("}")))); } },
+  { name: "SupportsCondition", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("QueryNot"), NonTerminal("SupportsInParens")), Sequence(NonTerminal("SupportsInParens"), ZeroOrMore(Sequence(NonTerminal("QueryAndOr"), NonTerminal("SupportsInParens")))))); } },
+  { name: "GeneralEnclosed", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("QueryFunctionOpen"), NonTerminal("GeneralEnclosedContent"), Terminal(")")), Sequence(Terminal("("), NonTerminal("GeneralEnclosedContent"), Terminal(")")))); } },
+  { name: "SupportsInParens", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("("), NonTerminal("SupportsCondition"), Terminal(")")), NonTerminal("QueryFeature"), NonTerminal("GeneralEnclosed"))); } },
+  { name: "Declaration", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("CustomProperty"), Terminal(":"), NonTerminal("CustomValue"), Optional(NonTerminal("Important"))), Sequence(NonTerminal("Property"), Terminal(":"), NonTerminal("ValueList"), Sequence(Comment("not"), Terminal("{")), Optional(NonTerminal("Important"))))); } },
+  { name: "declarationListDeclaration", dsl: function(){ return Diagram(Sequence(NonTerminal("Declaration"), Choice(0, Terminal(";"), Sequence(Comment("peek"), Terminal("}"))))); } },
+  { name: "NestedConditionalBlock", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("SupportsAtKeyword"), NonTerminal("SupportsPrelude"), NonTerminal("declarationListBlock")), Sequence(NonTerminal("MediaAtKeyword"), NonTerminal("QueryPrelude"), NonTerminal("declarationListBlock")), Sequence(NonTerminal("ContainerAtKeyword"), NonTerminal("ContainerPrelude"), NonTerminal("declarationListBlock")))); } },
+  { name: "DeclarationListAtRule", dsl: function(){ return Diagram(Sequence(NonTerminal("AtRuleKeyword"), Choice(0, NonTerminal("RoutedAtRuleStatement"), NonTerminal("NestedLayerBlock"), NonTerminal("RoutedAtRuleStatement"), NonTerminal("NestedStartingStyleBlock"), NonTerminal("RoutedAtRuleStatement"), NonTerminal("ScopeBlock"), NonTerminal("RoutedAtRuleStatement"), NonTerminal("DescriptorBlock"), NonTerminal("RoutedAtRuleStatement"), NonTerminal("PageBlock"), NonTerminal("RoutedAtRuleStatement"), NonTerminal("Keyframes"), NonTerminal("RoutedAtRuleStatement"), NonTerminal("FontFeatureValuesBlock"), NonTerminal("RoutedAtRuleStatement"), NonTerminal("DocumentBlock"), NonTerminal("RoutedAtRuleStatement"), NonTerminal("OpaqueAtRuleBlock")))); } },
+  { name: "Ruleset", dsl: function(){ return Diagram(Sequence(NonTerminal("SelectorList"), Terminal("{"), ZeroOrMore(NonTerminal("declarationListItem")), Terminal("}"))); } },
+  { name: "ConditionalBlock", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("SupportsAtKeyword"), NonTerminal("SupportsPrelude"), Terminal("{"), ZeroOrMore(Choice(0, NonTerminal("ConditionalBlock"), NonTerminal("ConditionalGroupAtRule"), NonTerminal("TopLevelRuleset"))), Terminal("}")), Sequence(NonTerminal("MediaAtKeyword"), NonTerminal("QueryPrelude"), Terminal("{"), ZeroOrMore(Choice(0, NonTerminal("ConditionalBlock"), NonTerminal("ConditionalGroupAtRule"), NonTerminal("TopLevelRuleset"))), Terminal("}")), Sequence(NonTerminal("ContainerAtKeyword"), NonTerminal("ContainerPrelude"), Terminal("{"), ZeroOrMore(Choice(0, NonTerminal("ConditionalBlock"), NonTerminal("ConditionalGroupAtRule"), NonTerminal("TopLevelRuleset"))), Terminal("}")))); } },
+  { name: "ConditionalGroupAtRule", dsl: function(){ return Diagram(Sequence(NonTerminal("AtRuleKeyword"), Choice(0, NonTerminal("LayerBlock"), NonTerminal("StartingStyleBlock"), NonTerminal("ScopeBlock"), NonTerminal("DescriptorBlock"), NonTerminal("PageBlock"), NonTerminal("Keyframes"), NonTerminal("FontFeatureValuesBlock"), NonTerminal("DocumentBlock"), NonTerminal("OpaqueAtRuleBlock")))); } },
+  { name: "TopLevelRuleset", dsl: function(){ return Diagram(Sequence(NonTerminal("TopLevelSelectorList"), Terminal("{"), ZeroOrMore(NonTerminal("declarationListItem")), Terminal("}"))); } },
+  { name: "StylesheetAtRule", dsl: function(){ return Diagram(Sequence(NonTerminal("AtRuleKeyword"), Choice(0, NonTerminal("RoutedAtRuleStatement"), NonTerminal("LayerBlock"), NonTerminal("RoutedAtRuleStatement"), NonTerminal("StartingStyleBlock"), NonTerminal("RoutedAtRuleStatement"), NonTerminal("ScopeBlock"), NonTerminal("RoutedAtRuleStatement"), NonTerminal("DescriptorBlock"), NonTerminal("RoutedAtRuleStatement"), NonTerminal("PageBlock"), NonTerminal("RoutedAtRuleStatement"), NonTerminal("Keyframes"), NonTerminal("RoutedAtRuleStatement"), NonTerminal("FontFeatureValuesBlock"), NonTerminal("RoutedAtRuleStatement"), NonTerminal("DocumentBlock"), NonTerminal("RoutedAtRuleStatement"), NonTerminal("OpaqueAtRuleBlock")))); } },
+  { name: "declarationListItem", dsl: function(){ return Diagram(Choice(0, NonTerminal("declarationListDeclaration"), NonTerminal("NestedConditionalBlock"), NonTerminal("DeclarationListAtRule"), NonTerminal("Ruleset"), Terminal(";"))); } },
+  { name: "stylesheetBodyItem", dsl: function(){ return Diagram(Choice(0, NonTerminal("ConditionalBlock"), NonTerminal("StylesheetAtRule"), NonTerminal("TopLevelRuleset"))); } },
+  { name: "MarginAtRule", dsl: function(){ return Diagram(Sequence(NonTerminal("MarginAtKeyword"), NonTerminal("descriptorBodyBlock"))); } },
+  { name: "KeyframeBlock", dsl: function(){ return Diagram(Sequence(OneOrMore(NonTerminal("keyframeSelector"), Terminal(",")), NonTerminal("descriptorBodyBlock"))); } },
+  { name: "FeatureValueBlock", dsl: function(){ return Diagram(Sequence(NonTerminal("FontFeatureValueAtKeyword"), NonTerminal("descriptorBodyBlock"))); } },
+  { name: "AtRulePrelude", dsl: function(){ return Diagram(NonTerminal("AtRulePreludeSegments")); } },
+  { name: "declarationListBlock", dsl: function(){ return Diagram(Sequence(Terminal("{"), ZeroOrMore(NonTerminal("declarationListItem")), Terminal("}"))); } },
+  { name: "stylesheetBodyBlock", dsl: function(){ return Diagram(Sequence(Terminal("{"), ZeroOrMore(NonTerminal("stylesheetBodyItem")), Terminal("}"))); } },
+  { name: "routedStylesheetBody", dsl: function(){ return Diagram(Sequence(NonTerminal("AtRulePrelude"), NonTerminal("stylesheetBodyBlock"))); } },
+  { name: "routedDeclarationListBody", dsl: function(){ return Diagram(Sequence(NonTerminal("AtRulePrelude"), NonTerminal("declarationListBlock"))); } },
+  { name: "descriptorBodyBlock", dsl: function(){ return Diagram(Sequence(Terminal("{"), ZeroOrMore(Choice(0, NonTerminal("declarationListDeclaration"), Terminal(";"))), Terminal("}"))); } },
+  { name: "RoutedAtRuleStatement", dsl: function(){ return Diagram(Sequence(NonTerminal("StatementPrelude"), Terminal(";"))); } },
+  { name: "ScopeBlock", dsl: function(){ return Diagram(NonTerminal("routedDeclarationListBody")); } },
+  { name: "DescriptorBlock", dsl: function(){ return Diagram(Sequence(NonTerminal("AtRulePrelude"), NonTerminal("descriptorBodyBlock"))); } },
+  { name: "PageBlock", dsl: function(){ return Diagram(Sequence(NonTerminal("AtRulePrelude"), Terminal("{"), ZeroOrMore(Choice(0, NonTerminal("declarationListDeclaration"), NonTerminal("MarginAtRule"), Terminal(";"))), Terminal("}"))); } },
+  { name: "Keyframes", dsl: function(){ return Diagram(Sequence(NonTerminal("AtRulePrelude"), Terminal("{"), ZeroOrMore(NonTerminal("KeyframeBlock")), Terminal("}"))); } },
+  { name: "FontFeatureValuesBlock", dsl: function(){ return Diagram(Sequence(NonTerminal("AtRulePrelude"), Terminal("{"), ZeroOrMore(NonTerminal("FeatureValueBlock")), Terminal("}"))); } },
+  { name: "DocumentBlock", dsl: function(){ return Diagram(NonTerminal("routedStylesheetBody")); } },
+  { name: "OpaqueAtRuleBlock", dsl: function(){ return Diagram(Sequence(NonTerminal("OpaqueAtPrelude"), Terminal("{"), NonTerminal("OpaqueBody"), Terminal("}"))); } },
+  { name: "LayerBlock", dsl: function(){ return Diagram(NonTerminal("routedStylesheetBody")); } },
+  { name: "StartingStyleBlock", dsl: function(){ return Diagram(NonTerminal("routedStylesheetBody")); } },
+  { name: "NestedLayerBlock", dsl: function(){ return Diagram(NonTerminal("routedDeclarationListBody")); } },
+  { name: "NestedStartingStyleBlock", dsl: function(){ return Diagram(NonTerminal("routedDeclarationListBody")); } },
+  { name: "keyframeSelector", dsl: function(){ return Diagram(Choice(0, Terminal("from"), Terminal("to"), NonTerminal("Percentage"))); } },
+  { name: "TopLevelSelectorList", dsl: function(){ return Diagram(OneOrMore(NonTerminal("TopLevelComplexSelector"), Terminal(","))); } },
+  { name: "SupportsPrelude", dsl: function(){ return Diagram(OneOrMore(NonTerminal("SupportsCondition"), Terminal(","))); } },
+  { name: "QueryPrelude", dsl: function(){ return Diagram(OneOrMore(NonTerminal("QueryClause"), Terminal(","))); } },
+  { name: "ContainerPrelude", dsl: function(){ return Diagram(Choice(0, Sequence(Sequence(Comment("not"), NonTerminal("QueryFunctionOpen")), Sequence(Comment("not"), Choice(0, Terminal("none"))), NonTerminal("Keyword"), Optional(NonTerminal("ContainerQueryPrelude"))), NonTerminal("ContainerQueryPrelude"))); } },
+  { name: "ImportStatement", dsl: function(){ return Diagram(Sequence(Choice(0, Terminal("@import")), Choice(0, NonTerminal("Quoted"), NonTerminal("ImportUrl")), Optional(NonTerminal("ImportTail")), Terminal(";"))); } },
+  { name: "LayerStatement", dsl: function(){ return Diagram(Sequence(NonTerminal("LayerAtKeyword"), NonTerminal("StatementPrelude"), Terminal(";"))); } },
+  { name: "Stylesheet", dsl: function(){ return Diagram(Sequence(ZeroOrMore(Choice(0, NonTerminal("ImportStatement"), NonTerminal("LayerStatement"))), ZeroOrMore(NonTerminal("stylesheetBodyItem")))); } },
+  { name: "Url", dsl: function(){ return Diagram(Sequence(Choice(0, Terminal("url")), Terminal("("), Optional(Terminal("WHITESPACE")), Optional(Choice(0, NonTerminal("Quoted"), NonTerminal("UrlInner"))), Optional(Terminal("WHITESPACE")), Terminal(")"))); } },
+  { name: "Call", dsl: function(){ return Diagram(Sequence(Terminal("IDENT (not a calc/url/var call)"), Terminal("("), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("valueFunctionArguments"), Optional(Terminal("WHITESPACE or COMMENT")), Terminal(")"))); } },
+  { name: "CalcCall", dsl: function(){ return Diagram(Sequence(Choice(0, Terminal("calc")), Terminal("("), Optional(Terminal("WHITESPACE or COMMENT")), NonTerminal("CalcSum"), Optional(Terminal("WHITESPACE or COMMENT")), Terminal(")"))); } },
+  { name: "TypedValueList", dsl: function(){ return Diagram(OneOrMore(NonTerminal("TypedValueSequence"), Sequence(Terminal(","), Optional(Terminal("WHITESPACE or COMMENT"))))); } },
+  { name: "AtRuleStatement", dsl: function(){ return Diagram(Sequence(NonTerminal("StatementAtRuleName"), NonTerminal("StatementPrelude"), Terminal(";"))); } },
+  { name: "whitespace", dsl: function(){ return Diagram(OneOrMore(Choice(0, Terminal("WHITESPACE"), Terminal("COMMENT")))); } },
+  { name: "rw", dsl: function(){ return Diagram(OneOrMore(Choice(0, Terminal("WHITESPACE"), Terminal("COMMENT")))); } }
+  ];
+  rules.forEach(function (r) {
+    var host = document.querySelector('.diagram[data-rule=' + CSS.escape(r.name) + ']');
+    if (!host) return;
+    try { r.dsl().addTo(host); }
+    catch (e) { host.textContent = 'diagram error: ' + e.message; }
+  });
+})();
+</script>
+</body>
+</html>

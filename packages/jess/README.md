@@ -1,5 +1,5 @@
 <div align="center">
-  <img width="144" height="144" src="https://raw.githubusercontent.com/jesscss/jess/dev/packages/docs/static/img/android-chrome-192x192.png" alt="Jess logo">
+  <img width="144" height="144" src="https://raw.githubusercontent.com/jesscss/jess/dev/packages/docs/docs-jess/static/img/android-chrome-192x192.png" alt="Jess logo">
 </div>
 
 # jess
@@ -54,7 +54,8 @@ flattened selector output, opt in with `--collapse-nesting`.
 
 `jess lint` prints compact per-file diagnostic rows by default. It supports
 `--format json`, `--max-warnings 0`, `--syntax-only`, `--quiet`, `--config`, and
-`--no-color`.
+`--no-color`. Text output uses lint rule names, while JSON diagnostics include
+both the lint `ruleName` and the shared Jess diagnostic `code`.
 
 ## What works today
 

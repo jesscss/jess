@@ -1,7 +1,6 @@
 import { dimension, num } from './src/tree/index.js';
 import { Context } from './src/context.js';
-const context = new Context();
-context.opts.unitMode = 'preserve';
+const context = new Context({ unitMode: 'preserve' });
 console.log('=== Preserve Mode Output Examples ===\n');
 // Adding incompatible units
 const addResult = dimension([10, 'px']).operate(dimension([2, 'rem']), '+', context);

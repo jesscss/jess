@@ -1,5 +1,5 @@
 import { attachSelectorBitLibrary, Selector } from '../selector.js';
-import type { BitSetLibrary } from './bitset.js';
+import type { BitSetLibrary } from '../../util/bitset.js';
 
 export function copySelectorForPlacement(
   selector: Selector,

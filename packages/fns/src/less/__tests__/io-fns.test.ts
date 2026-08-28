@@ -7,8 +7,8 @@
  * Less 4.x algorithm (base64 for binary, percent-encode for text, `url("…")`).
  */
 import { describe, it, expect } from 'vitest';
-import { emitValue, isValueGroupArray, makeQuoted, makeList } from '@jesscss/core/value';
-import type { Fn, FnCtx, FnIo, List, ValueGroup } from '@jesscss/core/value';
+import { emitValue, isValueGroupArray, makeQuoted, makeList } from '@jesscss/core';
+import type { Fn, FnCtx, FnIo, List, ValueGroup } from '@jesscss/core';
 import dataUri from '../../less/data-uri.js';
 import { imageSize } from '../../less/image-size.js';
 import { imageWidth } from '../../less/image-width.js';
@@ -103,7 +103,7 @@ describe('image-size / image-width / image-height', () => {
     for (const fn of [imageSize, imageWidth, imageHeight]) {
       expect(typeof fn).toBe('function');
       expect(fn.variadic).toBe(true);
-      expect(fn.params).toEqual([{ kinds: 'any' }]);
+      expect(fn.params).toEqual([{ type: 'any' }]);
     }
   });
 

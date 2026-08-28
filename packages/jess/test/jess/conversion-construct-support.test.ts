@@ -67,10 +67,10 @@ const CONSTRUCTS: Construct[] = [
   { group: 'documented-mapping', name: '@-compose module', src: '@-compose "./theme";', supported: true, origin: 'sass' },
   { group: 'documented-mapping', name: '@-compose ... as', src: '@-compose "./theme" as t;', supported: true, origin: 'sass' },
   { group: 'documented-mapping', name: '$var declaration', src: '$color: #06c;', supported: true, origin: 'less' },
-  { group: 'documented-mapping', name: '$$var declaration', src: '$$color: #06c;', supported: true, origin: 'less' },
-  { group: 'documented-mapping', name: '$$var reference (from Less @var)', src: '$color: #06c;\n.a { value: $$color; }', supported: true, origin: 'less' },
+  { group: 'documented-mapping', name: '$^var declaration', src: '$^color: #06c;', supported: true, origin: 'less' },
+  { group: 'documented-mapping', name: '$^var reference (from Less @var)', src: '$color: #06c;\n.a { value: $^color; }', supported: true, origin: 'less' },
   { group: 'documented-mapping', name: '$var reference (from Sass $var)', src: '$color: #06c;\n.a { value: $color; }', supported: true, origin: 'sass' },
-  { group: 'documented-mapping', name: 'expression $($$w + 1)', src: '$width: 1px;\n.a { value: $($$width + 1); }', supported: true, origin: 'less' },
+  { group: 'documented-mapping', name: 'expression $(^w + 1)', src: '$width: 1px;\n.a { value: $(^width + 1); }', supported: true, origin: 'less' },
   { group: 'documented-mapping', name: 'expression $($w / 2)', src: '$width: 1px;\n.a { value: $($width / 2); }', supported: true, origin: 'sass' },
   { group: 'documented-mapping', name: 'mixin def .box()', src: '.box() {}', supported: true, origin: 'less' },
   { group: 'documented-mapping', name: 'mixin def, multiline params', src: '.with-params(\n  $param1: 1,\n  $param2: 2\n) {}', supported: true, origin: 'less' },
@@ -102,28 +102,8 @@ const CONSTRUCTS: Construct[] = [
   { group: 'css', name: '@container', src: '@container (min-width: 1px) { .a { color: red; } }', supported: true, origin: 'css' },
   { group: 'css', name: '@property', src: '@property --x { syntax: "<length>"; inherits: false; initial-value: 0px; }', supported: true, origin: 'css' },
   { group: 'css', name: '@media range syntax', src: '@media (400px <= width <= 700px) { .a { color: red; } }', supported: true, origin: 'css' },
-  {
-    group: 'css',
-    name: 'calc() with an operator',
-    src: '.a { width: calc(100% - 10px); }',
-    supported: false,
-    origin: 'css',
-    scope: 'gap',
-    note:
-      'css/less/scss parsers all accept this; `.jess` alone rejects it. `calc(1px)` parses, so the '
-      + 'failure is specifically an operator inside calc — which is essentially all real-world use.'
-  },
-  {
-    group: 'css',
-    name: 'unicode-range',
-    src: '@font-face { unicode-range: U+0-7F; }',
-    supported: false,
-    origin: 'css',
-    scope: 'gap',
-    note:
-      'css/less/scss parsers all accept this; `.jess` alone rejects it, in every form tried '
-      + '(`U+26`, `U+0-7F`, `U+4??`). Blocks any @font-face-bearing stylesheet.'
-  },
+  { group: 'css', name: 'calc() with an operator', src: '.a { width: calc(100% - 10px); }', supported: true, origin: 'css' },
+  { group: 'css', name: 'unicode-range', src: '@font-face { unicode-range: U+0-7F; }', supported: true, origin: 'css' },
 
   // ── control flow ───────────────────────────────────────────────────────────
   { group: 'control-flow', name: '$if', src: '$a: 1;\n$if ($a = 1) { .x {} }', supported: true, origin: 'less' },
@@ -131,18 +111,7 @@ const CONSTRUCTS: Construct[] = [
   { group: 'control-flow', name: '$else if', src: '$a: 1;\n$if ($a = 1) { .x {} } $else if ($a = 2) { .y {} }', supported: true, origin: 'sass' },
   { group: 'control-flow', name: '$for over a list (from @each)', src: '$l: 1, 2;\n$for ($v of $l) { .a { width: $v; } }', supported: true, origin: 'sass' },
   { group: 'control-flow', name: '$for with value and key', src: '$l: 1, 2;\n$for ($v, $k of $l) { .a { width: $v; } }', supported: true, origin: 'sass' },
-  {
-    group: 'control-flow',
-    name: '$while',
-    src: '$i: 0;\n$while ($i < 3) { .a { color: red; } }',
-    supported: false,
-    origin: 'sass',
-    scope: 'gap',
-    note:
-      '`$while` is named in the repo as an intended Sass+ lowering target for `@while` (it is one '
-      + 'of the two constructs cited as proving the eval model), but no parser accepts it — not '
-      + '`.jess`, and not scss. The Sass `@while` side is likewise unsupported.'
-  },
+  { group: 'control-flow', name: '$while', src: '$i: 0;\n$while ($i < 3) { .a { color: red; } }', supported: true, origin: 'sass' },
 
   // ── mixins ─────────────────────────────────────────────────────────────────
   { group: 'mixins', name: 'guard: when (cond)', src: '.m($x) when ($x = 1) { w: $x; }', supported: true, origin: 'less' },
@@ -332,12 +301,14 @@ const SUPPORTED_BASELINE: Record<'css' | 'less' | 'sass', readonly string[]> = {
     '@layer',
     '@media range syntax',
     '@property',
+    'calc() with an operator',
     'calc() without an operator',
-    'clamp() / min() / max()'
+    'clamp() / min() / max()',
+    'unicode-range'
   ],
   less: [
-    '$$var declaration',
-    '$$var reference (from Less @var)',
+    '$^var declaration',
+    '$^var reference (from Less @var)',
     '$if',
     '$if / $else',
     '$var declaration',
@@ -352,7 +323,7 @@ const SUPPORTED_BASELINE: Record<'css' | 'less' | 'sass', readonly string[]> = {
     'default parameter value',
     'e() escape function',
     'escaped value ~"…"',
-    'expression $($$w + 1)',
+    'expression $(^w + 1)',
     'guard: default()',
     'guard: grouped and',
     'guard: grouped not',
@@ -371,6 +342,7 @@ const SUPPORTED_BASELINE: Record<'css' | 'less' | 'sass', readonly string[]> = {
     '$for over a list (from @each)',
     '$for with value and key',
     '$var reference (from Sass $var)',
+    '$while',
     '@-compose ... as',
     '@-compose module',
     'collection lookup $m[k]',
@@ -384,17 +356,14 @@ const SUPPORTED_BASELINE: Record<'css' | 'less' | 'sass', readonly string[]> = {
 const GAP_SCOPE_BASELINE: Record<'gap' | 'by-design' | 'undecided', readonly string[]> = {
   gap: [
     '!important on a mixin call',
-    '$while',
     '&:extend() in a rule body',
     '@-compose ... with { } configuration',
     '@import (css)',
     '@import (optional)',
     'anonymous-mixin call',
-    'calc() with an operator',
     'guard calling a function',
     'literal-value pattern matching',
-    'rest/variadic parameters',
-    'unicode-range'
+    'rest/variadic parameters'
   ],
   'by-design': [],
   undecided: [

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parse } from '@jesscss/scss-parser';
+import { serialize } from '../../../../core/src/ast/serialize.js';
+import { triviaMapOf } from '../../../../core/src/ast/provenance.js';
 
 /**
  * A custom property is permissive at the CSS base, and valid CSS must parse in
@@ -42,7 +44,7 @@ describe('SCSS custom properties', () => {
   for (const [label, source, expected, important = false] of ACCEPTED) {
     it(`accepts ${label}`, () => {
       expect(parse(source)).toMatchObject({
-        children: [{ type: 'Rule', body: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: expected }, important }] }]
+        rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: expected }, important }] }]
       });
     });
   }
@@ -50,7 +52,7 @@ describe('SCSS custom properties', () => {
   for (const name of NAMES) {
     it(`accepts the custom-property name \`${name}\``, () => {
       expect(parse(`a { ${name}: red; }`)).toMatchObject({
-        children: [{ type: 'Rule', body: [{ type: 'Declaration', name, value: { type: 'Any', src: 'red' } }] }]
+        rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name, value: { type: 'Any', src: 'red' } }] }]
       });
     });
   }
@@ -67,9 +69,9 @@ describe('SCSS custom properties', () => {
 
   it('accepts an interpolated custom-property name', () => {
     expect(parse('$p: q; a { --#{$p}x: red; }')).toMatchObject({
-      children: [
+      rules: [
         { type: 'VariableDeclaration' },
-        { type: 'Rule', body: [{ type: 'Declaration', name: { type: 'Interpolation' } }] }
+        { type: 'Ruleset', rules: [{ type: 'Declaration', name: { type: 'Interpolation' } }] }
       ]
     });
   });
@@ -80,7 +82,7 @@ describe('SCSS custom properties', () => {
 
   it('keeps a custom-property value verbatim rather than evaluating it', () => {
     expect(parse('a { --x: 1px+2px; --y: $notavariable; }')).toMatchObject({
-      children: [{ type: 'Rule', body: [
+      rules: [{ type: 'Ruleset', rules: [
         { type: 'Declaration', name: '--x', value: { type: 'Any', src: '1px+2px' } },
         { type: 'Declaration', name: '--y', value: { type: 'Any', src: '$notavariable' } }
       ] }]
@@ -89,16 +91,42 @@ describe('SCSS custom properties', () => {
 
   it('keeps a `#{…}` segment inside a custom-property value structural', () => {
     expect(parse('$v: red; a { --x: 1px #{$v}; }')).toMatchObject({
-      children: [
+      rules: [
         { type: 'VariableDeclaration' },
-        { type: 'Rule', body: [{ type: 'Declaration', name: '--x', value: { type: 'Interpolation' } }] }
+        { type: 'Ruleset', rules: [{ type: 'Declaration', name: '--x', value: { type: 'Interpolation' } }] }
       ]
     });
   });
 
   it('accepts a custom-property reference in a var() consumer', () => {
     expect(parse('a { color: var(--x, blue); }')).toMatchObject({
-      children: [{ type: 'Rule', body: [{ type: 'Declaration', name: 'color' }] }]
+      rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: 'color' }] }]
     });
+  });
+
+  it('keeps custom-property block comments as trivia and renders them inline', () => {
+    const source = '.x { --a: red/* c */blue; --b: f(a/* inner */b); --c: [a/* square */b]; --d: { x: 1/* curly */ }; }';
+    const document = parse(source);
+    const comments = triviaMapOf(document)
+      ?.commentRuns()
+      .map(run => source.slice(run.start, run.end));
+
+    expect(document).toMatchObject({
+      rules: [{ type: 'Ruleset', rules: [
+        { type: 'Declaration', name: '--a', value: { type: 'Any', src: 'redblue' } },
+        { type: 'Declaration', name: '--b', value: { type: 'Any', src: 'f(ab)' } },
+        { type: 'Declaration', name: '--c', value: { type: 'Any', src: '[ab]' } },
+        { type: 'Declaration', name: '--d', value: { type: 'Any', src: '{ x: 1 }' } }
+      ] }]
+    });
+    expect(comments).toEqual(expect.arrayContaining(['/* c */', '/* inner */', '/* square */', '/* curly */']));
+    expect(serialize(document).css).toBe(
+      '.x {\n'
+      + '  --a: red/* c */blue;\n'
+      + '  --b: f(a/* inner */b);\n'
+      + '  --c: [a/* square */b];\n'
+      + '  --d: { x: 1/* curly */ };\n'
+      + '}\n'
+    );
   });
 });

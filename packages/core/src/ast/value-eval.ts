@@ -3,23 +3,23 @@
  *
  * Two things live here, both boundary-clean (imports only pure types):
  *
- *  1. The runtime VALUE DOMAIN (`ValueObj`) — the typed *results* an evaluation
- *     produces and operates on (`Dimension`/`Color`/`Quoted`/`Keyword`/
- *     `Any`/`List`/`Bool`/`Nil`), distinct from the value AST
- *     (`Operation`/`FunctionCall`/…)
- *     that describes HOW to compute. The value `Dimension` is module-qualified
- *     against the AST `Dimension` node in `nodes.ts` — the split is perf-justified
- *     (a static `3px` is a bare literal string, never a value `Dimension`).
+ *  1. The runtime value nodes (`Value`) — the typed *results* an evaluation
+ *     produces and hands to functions/visitors (`Dimension`/`Color`/`Quoted`/
+ *     `Keyword`/`Any`/`UrlValue`/`List`/`Bool`/`Null`), distinct from the value AST
+ *     (`Operation`/`FunctionCall`/…) that describes HOW to compute. A value
+ *     `Color` has semantic fields such as `rgb` and `alpha`; a value
+ *     `Dimension` has `number` and `unit`.
  *
  *  2. The `ValueEvaluator` seam — an injected interface whose currency is TYPED
  *     value objects rather than serialized bytes, so pattern-match-by-type,
  *     type-fns, and calc/escaping survive it. Implementation: `evaluator.ts`.
  *
- * REPRESENTATION: an UN-MATERIALIZED value literal is a BARE `string` — its bytes,
- * nothing else (no wrapper, no stored tag, no allocation). Adjacent value terms
- * are the raw recursive array shape, not a space-separator List. The seam is
- * `Value = ValueGroup | string`; a literal's type is DERIVED on demand only when
- * something forces object behaviour (`materialize`).
+ * REPRESENTATION: the internal emit lane may carry inert literal bytes as a BARE
+ * `string` until a typed consumer needs a value node. That is an implementation
+ * detail, not the function/visitor contract: any operation, comparison, typed
+ * function parameter, plugin value lookup, or visitor value hook receives typed
+ * value nodes with semantic payload fields. Adjacent value terms are the raw
+ * recursive array shape, not a space-separator List.
  *
  * Sync by default: `operate`/`compare`/`typeCheck`/`materialize` are synchronous;
  * only `call` returns `MaybePromise` (a genuinely async built-in — `data-uri`, or
@@ -28,7 +28,7 @@
  */
 
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import type { EqualityMode, FunctionMode, MathMode, UnitMode } from '../types/modes.js';
+import type { FunctionMode, MathMode, UnitMode } from '../types/modes.js';
 import type { Fn, FnCtx, FnIo } from './functions/types.js';
 
 /* --------------------------------------------------------- value domain */
@@ -61,11 +61,29 @@ export interface Dimension {
   /** less.js `Unit.backupUnit`: the authored unit, shown when the numerator isn't singular. */
   readonly backupUnit?: string;
 
+  /**
+   * §4.7 — the AUTHORED expression this value was computed from, WITHOUT a
+   * `calc()` wrapper (`1.4em * 14px`), in authored operand order.
+   *
+   * Present only under `unitMode: 'preserve'` and only while the composed unit
+   * multiset has no CSS spelling. It is a SPELLING, never the value: `number`
+   * and `numerator`/`denominator` remain the computed truth, so `unit()` reads a
+   * real magnitude and a later operation still cancels the multiset
+   * (`1px * 1px / 1px` → `1px`, at which point the unit is expressible again and
+   * this field is simply not carried forward).
+   *
+   * This is why `preserve` is not "decline to compute". Every rung of the ladder
+   * computes; they differ only in what an unexpressible RESULT is allowed to look
+   * like — `loose` fabricates a unit from `backupUnit`, `preserve` says the
+   * expression back, `strict` refuses at the consuming boundary.
+   */
+  readonly preserved?: string;
+
   /** Canonical emitted bytes (byte-faithful; produced by the free serializer). */
   readonly bytes: string;
 }
 
-/** A color result. `format`/`modernSyntax`/`node` preserve output spelling. */
+/** A color result. `format`/`modernSyntax`/`src` preserve output spelling. */
 export interface Color {
   readonly type: 'Color';
   readonly rgb: readonly [number, number, number];
@@ -87,7 +105,7 @@ export interface Color {
   readonly modernSyntax?: boolean;
 
   /** Original literal source (e.g. `#aaa`, `blue`) preserved for verbatim emit. */
-  readonly node?: string;
+  readonly src?: string;
 
   /**
    * SOURCE-FORMAT preservation for an un-operated color CONSTRUCTOR (the verbatim
@@ -163,7 +181,7 @@ export interface List {
  */
 export interface Block {
   readonly type: 'Block';
-  readonly inner: ValueGroup;
+  readonly value: ValueGroup;
   readonly delimiter: 'paren' | 'square';
   readonly escaped?: boolean;
   readonly bytes: string;
@@ -176,9 +194,23 @@ export interface Bool {
   readonly bytes: string;
 }
 
-/** An empty / absent value. */
-export interface Nil {
-  readonly type: 'Nil';
+/**
+ * An empty / absent value — the `null` literal (§4.3). It emits nothing AND
+ * drops the separator that would follow it, which is Sass's list elision
+ * (ledger M5, built for merge).
+ *
+ * `explicit` is PROVENANCE, not a second value: an author-written `null` and an
+ * absent/unbound value are the same VALUE but not the same FACT, and core
+ * already mints the implicit one (M5's unbound optional self-ref). A flag keeps
+ * ONE value type rather than growing a second node — and it is NON-optional and
+ * factory-defaulted so every `Null` realizes one hidden class (§9's
+ * `inMathFunction` rule, NOT `Block.boundary`'s optional shape).
+ */
+export interface Null {
+  readonly type: 'Null';
+
+  /** The author WROTE `null`, rather than core minting an absent value. */
+  readonly explicit: boolean;
   readonly bytes: string;
 }
 
@@ -188,8 +220,7 @@ export interface Nil {
  * `key` is a full {@link ValueGroup}, not a string: a Sass map key is a VALUE
  * (`(1: a)` keys on the number `1`, `(red: a)` on the colour), and equality is
  * value equality, never byte equality. It is a `ValueGroup` rather than a
- * `ValueObj` so a later parser lifting the current key restriction (see
- * `mapKeyName` in scss-parser) can hand over a sequence key without a breaking
+ * scalar `Value` so parsers can hand over sequence keys without a breaking
  * narrowing here.
  *
  * `variable` / `important` are BYTE facts carried from the authoring dialect so
@@ -234,7 +265,17 @@ export interface Collection {
   readonly bytes: string;
 }
 
-export type ValueObj = Dimension | Color | Quoted | Keyword | Any | List | Block | Bool | Nil | Collection;
+/**
+ * A `url(...)` consumed through the typed value boundary. The parser-owned AST
+ * wrapper is projected here without exposing its inner syntax to functions;
+ * `bytes` already includes the wrapper and any configured URL transform.
+ */
+export interface UrlValue {
+  readonly type: 'Url';
+  readonly bytes: string;
+}
+
+export type Value = Dimension | Color | Quoted | Keyword | Any | UrlValue | List | Block | Bool | Null | Collection;
 
 /**
  * The canonical structural value carrier. A raw array is a default
@@ -242,7 +283,7 @@ export type ValueObj = Dimension | Color | Quoted | Keyword | Any | List | Block
  * Arrays may nest only as syntax already permits nested value groups (for
  * example, rows inside a comma List); no wrapper node is introduced.
  */
-export type ValueGroup = ValueObj | readonly ValueGroup[];
+export type ValueGroup = Value | readonly ValueGroup[];
 
 /** Narrow a structural value group to its raw default-spaced array form. */
 export const isValueGroupArray = (value: ValueGroup): value is readonly ValueGroup[] => Array.isArray(value);
@@ -254,14 +295,44 @@ export const isValueGroup = (value: unknown): value is ValueGroup =>
     : typeof value === 'object' && value !== null && 'type' in value;
 
 /**
- * A `Value` in the evaluation lane: either a materialized typed object, or a BARE
- * `string` — the un-materialized literal leaf carrying just its bytes (rep "B").
+ * A value in the internal evaluation lane: either a typed value node/group, or
+ * inert literal bytes that have not yet crossed a typed boundary.
  */
-export type Value = ValueGroup | string;
+export type EvalValue = ValueGroup | string;
 
 /** Emit a value's bytes. A bare-string literal is its own bytes. */
-export const emitValue = (v: Value): string =>
-  typeof v === 'string' ? v : isValueGroupArray(v) ? v.map(emitValue).join(' ') : v.bytes;
+/**
+ * Whether a value ELIDES from the group holding it. `null` emits nothing AND
+ * drops the separator that would follow it (§4.3, ledger M5) — measured on
+ * dart-sass 1.101.0: `b: 1px null 2px` is `b: 1px 2px`, not `b: 1px  2px`.
+ *
+ * A nested group elides only when it is NON-EMPTY and every member elides, so an
+ * authored empty group keeps its present (empty-bytes) behavior.
+ */
+export const isElided = (v: ValueGroup): boolean =>
+  isValueGroupArray(v) ? v.length > 0 && v.every(isElided) : v.type === 'Null';
+
+/**
+ * Join a group's members with `glue`, DROPPING each elided member along with the
+ * separator it would have carried. Written as a loop rather than
+ * `filter().map().join()` so the common (no-`null`) path allocates nothing.
+ */
+export const joinGroup = (v: readonly ValueGroup[], glue: string, emit: (item: ValueGroup) => string): string => {
+  let out = '';
+  let empty = true;
+  for (let i = 0; i < v.length; i++) {
+    const item = v[i]!;
+    if (isElided(item)) {
+      continue;
+    }
+    out = empty ? emit(item) : out + glue + emit(item);
+    empty = false;
+  }
+  return out;
+};
+
+export const emitValue = (v: EvalValue): string =>
+  typeof v === 'string' ? v : isValueGroupArray(v) ? joinGroup(v, ' ', emitValue) : v.bytes;
 
 /** The whitespace glue joining a list's items for its separator (`,`→`, `, `/`→` / `). */
 export const sepGlue = (sep: ListSeparator): string => {
@@ -271,13 +342,12 @@ export const sepGlue = (sep: ListSeparator): string => {
   }
 };
 
-/** Whether a value is an un-materialized (bare-string) literal leaf. */
-export const isLiteral = (v: Value): v is string => typeof v === 'string';
+/** Whether a value is an internal bare-byte literal leaf. */
+export const isLiteral = (v: EvalValue): v is string => typeof v === 'string';
 
 /**
- * Construct an un-materialized literal leaf. In rep "B" this is the identity on
- * the bytes — kept as a named helper so fold call-sites read intentionally and a
- * future representation change has one seam.
+ * Construct an internal bare-byte literal leaf. Typed boundaries materialize it
+ * before function/plugin/visitor code observes the value.
  */
 export const literal = (bytes: string): string => bytes;
 
@@ -300,8 +370,6 @@ export interface EvalModes {
   /** Registered-function failure policy supplied by the active compile Context. */
   readonly functionMode?: FunctionMode;
 
-  /** Guard-comparison compatibility rule supplied by the active compile Context. */
-  readonly equalityMode?: EqualityMode;
   readonly inCalc?: boolean;
 }
 
@@ -310,11 +378,50 @@ export const DEFAULT_MODES: EvalModes = {
   mathMode: 'parens-division'
 };
 
+/**
+ * An operand pair whose units cannot reconcile, raised under `unitMode: 'strict'`.
+ *
+ * Lives in the value domain rather than in `value-operate.ts` because BOTH
+ * arithmetic and comparison raise it: `1px + 3em` and `2px > 1em` are the same
+ * defect, and `serialize.ts` re-raises either with its source location by
+ * matching this one class. `value-guards.ts` declares a hard module boundary
+ * that admits the value domain, so a shared home here is what lets comparison
+ * throw without importing the arithmetic module.
+ */
+export class UnitArithmeticError extends TypeError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnitArithmeticError';
+  }
+}
+
+/**
+ * A RELATIONAL comparison whose operands share no common ground
+ * (`RESOLVED-SEMANTICS-AND-NAMING.md` §4.1's last row — `1px > red`).
+ *
+ * Relational is trichotomous over every pair that HAS a ground (§4.2): `a > b`
+ * and `b > a` must not both be false, and the only honest answer for a pair with
+ * no ground is to refuse rather than to invent one. Equality is deliberately
+ * different — it returns `false` on the same pair and never raises — so this is
+ * a distinct outcome from "there is a ground and the pair is not ordered on it"
+ * (`2px > 1em` outside `unitMode: 'strict'`), which stays a silent `false`.
+ *
+ * Lives beside {@link UnitArithmeticError} for the same reason: `value-guards.ts`
+ * declares a hard module boundary that admits the value domain, and `serialize.ts`
+ * re-raises either with its source location by matching the class.
+ */
+export class IncomparableOperandsError extends TypeError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'IncomparableOperandsError';
+  }
+}
+
 /* --------------------------------------------------------------- seam */
 
 /**
  * The synchronous, typed value evaluator (replaces `ValueService`). Operands and
- * results are TYPED `ValueObj`s, not bytes — pattern-match-by-typed-value,
+ * results are typed value nodes, not bytes — pattern-match-by-typed-value,
  * type-fns, and calc/escaping become possible because types survive the seam.
  */
 /**
@@ -361,7 +468,7 @@ export interface PluginDetachedDeclaration {
 }
 
 /** A raw recursive value-sequence is the legacy `tree.Expression` source. */
-export type PluginRawArgument = ValueObj | PluginDetachedRuleset | readonly ValueGroup[];
+export type PluginRawArgument = Value | PluginDetachedRuleset | readonly ValueGroup[];
 
 /**
  * One `!important`-flagged binding fact, alongside the value itself. Less's
@@ -437,10 +544,10 @@ export interface ValueEvaluator {
    * fields (`evalTyped`). Only OPERATED literals are materialized at all; the inert
    * majority emit their verbatim bytes and never touch this seam.
    */
-  materialize(bytes: string): ValueObj;
+  materialize(bytes: string): Value;
 
   /** Binary operation on two materialized operands (direct / delegated math). */
-  operate(op: string, left: ValueObj, right: ValueObj, modes: EvalModes): ValueObj;
+  operate(op: string, left: Value, right: Value, modes: EvalModes): Value;
 
   /** Named-function call on a materialized arg list. Sync unless a genuinely
    * async built-in forces a thenable (scoped to the forcing leaf). `scope`, when
@@ -448,7 +555,9 @@ export interface ValueEvaluator {
    * built-ins); omitted/`null` is the idle path — flat global registry only.
    * `io`, when supplied, is the per-render file-read capability an IO built-in
    * (`data-uri`/`image-*`) reaches through {@link FnCtx.io}; absent on renders
-   * with no IO host wired. */
+   * with no IO host wired. `scopedFn`, when supplied, is an already-resolved
+   * lexical function. It avoids repeating the caller's scope lookup; `scope`
+   * remains for direct consumers that need the legacy lazy lookup seam. */
   call(
     name: string,
     args: ValueGroup,
@@ -456,12 +565,28 @@ export interface ValueEvaluator {
     scope?: FnScope | null,
     io?: FnIo,
 
-    /** Called only when a registered function is preserved after it rejects. */
-    onUnresolved?: (error: unknown) => void,
+    /** A caller-resolved scoped function; takes precedence over `scope`. */
+    scopedFn?: Fn,
   ): MaybePromise<ValueGroup>;
 
-  /** Guard comparison leaf (`@a > 0`) on typed operands -> boolean. */
+  /**
+   * The callee's DECLARED parameter names, in positional order, or `undefined`
+   * when `name` resolves to no known function.
+   *
+   * A KEYWORD argument (`color.adjust($c, $lightness: -10%)`,
+   * `fade(@c, @amount: 50%)`) binds against these — the same names the function
+   * was DEFINED with, which is the only place the mapping exists. An entry is
+   * `undefined` for a parameter its definition left unnamed, so a keyword can
+   * never bind to a position that declared no name.
+   */
+  paramNames(name: string, scopedFn?: Fn): readonly (string | undefined)[] | undefined;
+
+  /** Comparison leaf in VALUE position (`if(@a > 0, …)`) on typed operands -> boolean. */
   compare(op: string, left: ValueGroup, right: ValueGroup, modes: EvalModes): boolean;
+
+  /** Comparison leaf in GUARD position (`when (@a > 0)`) -> boolean; groundless is a
+   *  non-match rather than a raise (§4.2a). */
+  compareMatch(op: string, left: ValueGroup, right: ValueGroup, modes: EvalModes): boolean;
 
   /** Guard type-function leaf (`iscolor(@a)`) on typed args -> boolean. */
   typeCheck(name: string, args: ValueGroup, modes: EvalModes): boolean;

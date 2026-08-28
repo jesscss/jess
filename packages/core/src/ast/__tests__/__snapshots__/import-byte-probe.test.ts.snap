@@ -1,0 +1,194 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`import byte probe > less, no loader 1`] = `
+"--- "@import \\"a.less\\";"
+@import "a.less";
+
+--- "@import \\"a.css\\";"
+@import "a.css";
+
+--- "@import url(\\"a.css\\");"
+@import url("a.css");
+
+--- "@import (css) \\"a\\";"
+@import "a";
+
+--- "@import (inline) \\"a.txt\\";"
+@import "a.txt";
+
+--- "@import (inline) \\"a.txt\\" (min-width: 100px);"
+!! A compile-time @import cannot carry a media query.
+--- "@import (reference) \\"a\\";"
+@import "a";
+
+--- "@import (optional) \\"nope\\";"
+@import "nope";
+
+--- "@import \\"@{name}.css\\";"
+!! error resolve/name-not-found [resolve] (unknown) — Name not found
+Reason: Symbol "@name" is undefined in this scope.
+Fix: Define "@name" or import a file that provides it.
+--- "@import \\"a\\" screen and (min-width: 100px);"
+!! A compile-time @import cannot carry a media query.
+--- "@import (css) \\"a.css\\";"
+@import "a.css";
+
+--- "@import (less) \\"a.css\\";"
+@import "a.css";
+
+--- "@import (multiple) \\"a\\";"
+@import "a";
+
+--- "@import \\"a.css\\" screen;"
+@import "a.css" screen;
+
+--- "@import \\"a.css\\";\\n@import \\"a.css\\";\\n.x { color: red; }"
+@import "a.css";
+.x {
+  color: red;
+}
+
+--- "@import \\"http://example.com/a\\";"
+@import "http://example.com/a";
+
+--- "@name: b;\\n@import \\"@{name}.css\\";"
+@import "b.css";
+
+--- "@w: 100px;\\n@import (css) \\"a.css\\" (min-width: @w);"
+@import "a.css" (min-width: 100px);
+
+--- "@import (reference) \\"a.css\\";"
+@import "a.css";
+"
+`;
+
+exports[`import byte probe > less, with loader 1`] = `
+"--- "@import \\"a.less\\";"
+.a {
+  color: red;
+}
+
+--- "@import \\"a.css\\";"
+@import "a.css";
+
+--- "@import url(\\"a.css\\");"
+@import url("a.css");
+
+--- "@import (css) \\"a\\";"
+@import "a";
+
+--- "@import (inline) \\"a.txt\\";"
+RAW_BYTES
+
+
+--- "@import (inline) \\"a.txt\\" (min-width: 100px);"
+!! A compile-time @import cannot carry a media query.
+--- "@import (reference) \\"a\\";"
+
+--- "@import (optional) \\"nope\\";"
+@import "nope";
+
+--- "@import \\"@{name}.css\\";"
+!! error resolve/name-not-found [resolve] (unknown) — Name not found
+Reason: Symbol "@name" is undefined in this scope.
+Fix: Define "@name" or import a file that provides it.
+--- "@import \\"a\\" screen and (min-width: 100px);"
+!! A compile-time @import cannot carry a media query.
+--- "@import (css) \\"a.css\\";"
+@import "a.css";
+
+--- "@import (less) \\"a.css\\";"
+.acss {
+  color: blue;
+}
+
+--- "@import (multiple) \\"a\\";"
+.a {
+  color: red;
+}
+
+--- "@import \\"a.css\\" screen;"
+@import "a.css" screen;
+
+--- "@import \\"a.css\\";\\n@import \\"a.css\\";\\n.x { color: red; }"
+@import "a.css";
+@import "a.css";
+.x {
+  color: red;
+}
+
+--- "@import \\"http://example.com/a\\";"
+@import "http://example.com/a";
+
+--- "@name: b;\\n@import \\"@{name}.css\\";"
+@import "b.css";
+
+--- "@w: 100px;\\n@import (css) \\"a.css\\" (min-width: @w);"
+@import "a.css" (min-width: 100px);
+
+--- "@import (reference) \\"a.css\\";"
+@import "a.css";
+"
+`;
+
+exports[`import byte probe > scss, no loader 1`] = `
+"--- "@use \\"x\\";"
+@-compose "x";
+
+--- "@use \\"x\\" as y;"
+@-compose "x" as y;
+
+--- "@forward \\"x\\";"
+@-export "x";
+
+--- "@import \\"partial\\";"
+@import "partial";
+
+--- "@import \\"a.css\\";"
+@import "a.css";
+
+--- "@use \\"x\\" with ($a: 1px);"
+@-compose "x";
+
+--- "@import url(\\"a.css\\");"
+@import url("a.css");
+
+--- "@import \\"a\\" screen;"
+!! A compile-time @import cannot carry a media query."
+`;
+
+exports[`import byte probe > scss, with loader 1`] = `
+"--- "@use \\"x\\";"
+.x-mod {
+  color: teal;
+}
+
+--- "@use \\"x\\" as y;"
+.x-mod {
+  color: teal;
+}
+
+--- "@forward \\"x\\";"
+.x-mod {
+  color: teal;
+}
+
+--- "@import \\"partial\\";"
+.partial {
+  color: green;
+}
+
+--- "@import \\"a.css\\";"
+@import "a.css";
+
+--- "@use \\"x\\" with ($a: 1px);"
+.x-mod {
+  color: teal;
+}
+
+--- "@import url(\\"a.css\\");"
+@import url("a.css");
+
+--- "@import \\"a\\" screen;"
+!! A compile-time @import cannot carry a media query."
+`;

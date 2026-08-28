@@ -13,4 +13,4 @@ export * as shared from './shared/index.js';
 export { fnsOf, registryOf } from './registry.js';
 export { lessFns, makeLessRegistry } from './less/registry.js';
 export { sassFns, makeSassRegistry } from './sass/registry.js';
-export type { Fn, FnSpec, ParamSpec, Kind } from '@jesscss/core/value';
+export type { Fn, FnSpec, ParamSpec, Kind } from '@jesscss/core';

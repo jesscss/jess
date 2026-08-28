@@ -7,14 +7,58 @@ import {
   selist,
   sel,
   sourceSpanOf,
+  stylesheet,
   triviaMapOf,
   variableReference,
   withBodySpan,
   withSourceSpan,
-  withTriviaMap
+  withTriviaMap,
+  valueBoundaryTriviaOf,
+  valueLayoutOf,
+  withValueBoundaryTrivia,
+  withValueLayout
 } from '../../ast.js';
 
 describe('canonical AST source provenance', () => {
+  it('does not retain implied single-space value layout', () => {
+    const value = [{ type: 'Keyword' as const, src: 'red' }, { type: 'Keyword' as const, src: 'blue' }];
+
+    expect(withValueLayout(value, [' '])).toBe(value);
+    expect(valueLayoutOf(value)).toBeUndefined();
+  });
+
+  it('keeps a spaced top-level slash layout as a Less semantic boundary', () => {
+    const value = [
+      { type: 'Dimension' as const, value: '10', unit: 'px' },
+      { type: 'Keyword' as const, src: '/' },
+      { type: 'Dimension' as const, value: '2', unit: '' }
+    ];
+
+    expect(withValueLayout(value, [' ', ' '])).toBe(value);
+    expect(valueLayoutOf(value)).toEqual([' ', ' ']);
+  });
+
+  it('keeps an explicit empty layout as a parser-owned function-boundary fact', () => {
+    const value: object[] = [];
+
+    expect(withValueLayout(value, [])).toBe(value);
+    expect(valueLayoutOf(value)).toEqual([]);
+  });
+
+  it('keeps rare boundary trivia in the existing value-layout store', () => {
+    const value: object[] = [];
+    const boundary = {
+      before: { start: 0, end: 13 },
+      between: { start: 13, end: 19 },
+      after: { start: 19, end: 31 }
+    } as const;
+    const separators = Object.freeze([' /* between */ ']);
+
+    expect(withValueBoundaryTrivia(value, separators, boundary)).toBe(value);
+    expect(valueLayoutOf(value)).toEqual([' /* between */ ']);
+    expect(valueBoundaryTriviaOf(value)).toBe(boundary);
+  });
+
   it('retains a Parseman reduction span without changing the AST node shape', () => {
     const ref = variableReference('tone', 'scoped');
     const keys = Object.keys(ref);
@@ -25,7 +69,9 @@ describe('canonical AST source provenance', () => {
   });
 
   it('retains document trivia without changing the AST root shape', () => {
-    const doc = { type: 'Stylesheet' as const, children: [] };
+    /* Built through the factory: the shape guarantee is about the shape every
+     * root actually has, not about an ad-hoc literal that skips the slots. */
+    const doc = stylesheet([]);
     const keys = Object.keys(doc);
     const src = '/* keep */\n.a{}';
     const trivia = createTriviaMapFromRanges(src, [{ start: 0, end: 11 }]);
@@ -211,6 +257,70 @@ describe('canonical AST source provenance', () => {
     expect(gapsWithKindCalls).toBe(1);
   });
 
+  it('enumerates labeled comment gaps without forcing Parseman\'s full root-gap walk', () => {
+    const src = '  /* keep */\n  .a{}';
+    const commentGap = {
+      start: 0,
+      end: 15,
+      hasKind: (kind: string) => kind === 'blockComment'
+    };
+    let gapsCalls = 0;
+    const trivia = createTriviaMapFromParseman(src, {
+      labels: ['whitespace', 'blockComment'],
+      entries: {
+        length: 1,
+        start: () => commentGap.start,
+        end: () => commentGap.end
+      },
+      gapBefore: () => undefined,
+      gapAfter: () => undefined,
+      gaps() {
+        gapsCalls++;
+        return [commentGap];
+      },
+      gapsWithKind(kinds) {
+        return kinds.includes('blockComment') ? [commentGap] : [];
+      }
+    });
+
+    expect(trivia.commentRuns()).toEqual([{ start: 0, end: 15, src, hasComment: true }]);
+    expect(gapsCalls).toBe(0);
+  });
+
+  it('gets every labeled comment gap from Parseman rather than assuming packed entries are complete', () => {
+    const src = '/* first */\n.a{}\n/* second */\n.b{}';
+    const first = { start: 0, end: 12, hasKind: (kind: string) => kind === 'blockComment' };
+    const second = { start: 17, end: 30, hasKind: (kind: string) => kind === 'blockComment' };
+    const trivia = createTriviaMapFromParseman(src, {
+      labels: ['whitespace', 'blockComment'],
+      entries: {
+        /* A root index may expose a compact entry view that omits later
+         * comment-bearing gaps. `gapsWithKind()` is the completeness contract. */
+        length: 1,
+        start() {
+          return first.start;
+        },
+        end() {
+          return first.end;
+        }
+      },
+      gapBefore: () => undefined,
+      gapAfter: () => undefined,
+      gaps() {
+        throw new Error('commentRuns must select labeled gaps');
+      },
+      gapsWithKind(kinds) {
+        expect(kinds).toEqual(['comment', 'blockComment', 'lineComment']);
+        return [first, second];
+      }
+    });
+
+    expect(trivia.commentRuns()).toEqual([
+      { start: 0, end: 12, src, hasComment: true },
+      { start: 17, end: 30, src, hasComment: true }
+    ]);
+  });
+
   it('falls back to source detection when a labeled gap is not comment-labeled', () => {
     const src = 'a/* keep */b';
     const gap = {
@@ -244,6 +354,29 @@ describe('canonical AST source provenance', () => {
     });
 
     expect(trivia.lookup(gap.end, 'before')?.hasComment).toBe(true);
+    expect(trivia.commentRuns().map(run => src.slice(run.start, run.end))).toEqual(['/* keep */']);
+  });
+
+  it('falls back to source when legacy trivia entries omit their advertised comment kind', () => {
+    const src = 'a/* keep */b';
+    const gap = {
+      start: 1,
+      end: 11,
+      hasKind: () => false
+    };
+    const trivia = createTriviaMapFromParseman(src, {
+      labels: ['whitespace', 'blockComment'],
+      entries: {
+        length: 1,
+        start: () => gap.start,
+        end: () => gap.end,
+        kind: () => 'whitespace'
+      },
+      gapBefore: () => undefined,
+      gapAfter: () => undefined,
+      gaps: () => [gap]
+    });
+
     expect(trivia.commentRuns().map(run => src.slice(run.start, run.end))).toEqual(['/* keep */']);
   });
 

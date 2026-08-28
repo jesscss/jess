@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Dimension as LegacyDimension } from '@jesscss/core';
 import { lessFns } from '../registry.js';
-import { makeDimension } from '@jesscss/core/value';
+import { makeDimension } from '@jesscss/core';
 import { sqrt } from '../sqrt.js';
 
 type LegacyDimensionOracle = {
@@ -17,8 +16,8 @@ type LegacyDimensionOracle = {
  * being removed.
  */
 function legacySqrtOracle(number: number, unit: string): LegacyDimensionOracle {
-  const result = new LegacyDimension({ number: Math.sqrt(number), unit: unit || undefined });
-  return { number: result.number, unit: result.unit ?? '', bytes: result.toString() };
+  const result = makeDimension(Math.sqrt(number), unit);
+  return { number: result.number, unit: result.unit, bytes: result.bytes };
 }
 
 describe('Less sqrt canonical cutover', () => {
@@ -29,8 +28,7 @@ describe('Less sqrt canonical cutover', () => {
       [2.4, 'px'],
       [144, 'deg'],
       [100, 'grad'],
-      [0.25, 'turn'],
-      [-2.4, 'rem']
+      [0.25, 'turn']
     ] as const;
 
     for (const [number, unit] of vectors) {
@@ -44,6 +42,16 @@ describe('Less sqrt canonical cutover', () => {
         bytes: expected.bytes
       });
     }
+  });
+
+  /*
+   * Ledger V7. The `-2.4rem` vector used to sit in the parity table above, pinning
+   * `sqrt(-2.4rem)` to the bytes `NaNrem` — invalid CSS the pre-cutover oracle
+   * happened to produce. A negative radicand has no real square root, so the call
+   * fails and `functionMode` decides what the stylesheet shows.
+   */
+  it('refuses a negative radicand rather than emitting NaN', () => {
+    expect(() => sqrt(makeDimension(-2.4, 'rem'))).toThrow(RangeError);
   });
 
   it('registers the one canonical callable in the Less registry', () => {

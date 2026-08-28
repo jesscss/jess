@@ -1,9 +1,9 @@
-import { defineFunction, makeBool } from '@jesscss/core/value';
+import { defineFunction, makeBool } from '@jesscss/core';
 import { compatibleUnits } from './units.js';
 
 const params = [
-  { name: 'number1', kinds: ['Dimension'] },
-  { name: 'number2', kinds: ['Dimension'] }
+  { name: 'number1', type: 'Dimension' },
+  { name: 'number2', type: 'Dimension' }
 ] as const;
 
 /**

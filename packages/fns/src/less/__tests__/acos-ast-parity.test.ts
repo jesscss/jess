@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { makeDimension, type Dimension as ValueDimension } from '@jesscss/core/value';
+import { makeDimension, type Dimension as ValueDimension } from '@jesscss/core';
 import acos, { acos as namedAcos } from '../acos.js';
 
 function invoke(fn: unknown, ...args: unknown[]): unknown {
@@ -14,7 +14,7 @@ describe('acos canonical AST-v2 parity', () => {
     expect(typeof acos).toBe('function');
     expect(namedAcos).toBe(acos);
     expect(acos.name).toBe('acos');
-    expect(acos.params).toEqual([{ name: 'value', kinds: ['Dimension'] }]);
+    expect(acos.params).toEqual([{ name: 'value', type: 'Dimension' }]);
     expectTypeOf(acos).parameter(0).toEqualTypeOf<ValueDimension>();
 
     expect(acos(makeDimension(0.5, 'px'))).toEqual({
@@ -26,6 +26,6 @@ describe('acos canonical AST-v2 parity', () => {
   });
 
   it('rejects untyped JavaScript arguments at the callable boundary', () => {
-    expect(() => invoke(acos, 0.5)).toThrow('typed ValueObj');
+    expect(() => invoke(acos, 0.5)).toThrow('typed value node');
   });
 });

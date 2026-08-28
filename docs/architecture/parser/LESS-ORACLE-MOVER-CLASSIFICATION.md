@@ -222,3 +222,164 @@ the current report until:
 5. CST-only movement is projected or minimized; and
 6. `pnpm run check:macro`, `pnpm run verify:compose-integrity`, and
    `pnpm run verify:less-alpha` still pass on the same source state.
+
+---
+
+# 2026-07-30 — the gate was returning NO verdict; upstream fix opened
+
+Measured on branch `oracle-oom-fix`, base
+`a1c65be4dc88ff73d4bdad314d104f4987fecdfd` (`origin/dev`).
+`parseman` **0.43.0**, resolved to
+`<worktree>/node_modules/.pnpm/parseman@0.43.0/node_modules/parseman`.
+
+## Not red — silent
+
+Between the 2026-07-28 report above and this one, the gate stopped producing a
+verdict at all. It did not go red: it exhausted an 8 GB heap and exited **134**
+after **443.5 s**, never printing `digest complete`. `HANDOFF.md` describing it
+as "red against the committed baseline" was accurate through 2026-07-28 and
+became wrong on 2026-07-29 — a window of roughly one day.
+
+## Cause: an exponential in the ORACLE, tripped by an alias in the CST
+
+`parseman/oracle`'s `canonicalize` is value-semantic and its cycle guard is
+**ancestor-only** (`path.delete(v)` on exit). That is deliberate and documented
+("Sharing is not a cycle"), but it means a shared subtree is written once per
+**path** that reaches it: a node referenced from two places at each of `d` levels
+is written `2^d` times.
+
+Commit `d10c7fd38` (2026-07-29, "Align AST selector branch shapes") added a
+`children` property to every `CssCstNode` in
+`packages/syntax/css/css-parser/src/cst.ts`, holding the *same array object* as
+`rules`. Every subtree became reachable under two keys.
+
+Measured on a **351-byte** fixture
+(`bootstrap-less-port/less/mixins/_nav-divider.less`, `cst` surface):
+
+| metric | value |
+| --- | ---: |
+| distinct reachable objects | 420 |
+| canonicalize visits | 466,737 |
+| max visits to a single node | 8,192 (2^13) |
+| canonical text | 18,096,813 chars |
+
+Corpus-wide the worst entry reached **344,407,954** chars
+(`bootstrap-less-port/less/mixins/_forms.less`), and ~25 bootstrap entries threw
+`RangeError` from `out.join()` past V8's maximum string length. `digestCorpus`
+compounded it by retaining every entry's full canonical text for the whole run
+(only a stride-32 sample is ever re-read), so hundred-megabyte strings
+accumulated — that is what turned a slow digest into a 4 GB OOM.
+
+### The soundness hole this exposed
+
+Those `RangeError`s were **caught by `payload()` and counted in `threw`**.
+`payload` canonicalised inside the same `try` that guarded the parse, so the
+projection failing to answer was tallied as a grammar rejection. The floor gate
+for the four-grammar rewrite could report its own breakage as a grammar change.
+That is the most dangerous finding here and it is independent of this incident.
+
+## Where the fix landed: upstream, not jess
+
+parseman PR **#100** (`release/0.45.0-oracle-digest`), opened not merged:
+
+- **streamed digest** — `digestInto(target, value, prefix?)` pushes canonical
+  tokens at a caller-supplied hash; no string is ever materialised, so there is
+  no maximum-string-length ceiling;
+- **digest failures propagate** instead of being counted in `threw`;
+- **`CanonicalBudgetError`** — a named refusal past a visit budget, instead of an
+  unattributed OOM;
+- `digestCorpus` retains 64 hex chars per entry instead of every canonical text.
+
+Byte-neutrality is the whole safety argument and is proven three ways:
+`PINNED_HARNESS_DIGEST` unchanged (`e542b69ede393b0c…`); a direct
+`digestValue(v, p) === hash(p + canonicalize(v))` assertion over every canary
+shape; and an end-to-end A/B of parseman 0.43.0 against the new build over **624
+real Less files × 2 surfaces — 1,248 fingerprints, 0 mismatches**, both
+aggregates identical, `compareReports` verdict `identical`, at 1.27 s vs 2.46 s.
+
+### Streaming fixes memory, NOT time
+
+On the unmodified tree the streamed build no longer OOMs, but it still does not
+reach a verdict — it refuses at the visit budget after 134.9 s (peak RSS 686 MB,
+down from 4.17 GB), and with the budget disabled it was still running after 25
+minutes, when it was stopped rather than left to finish. The `2^depth` work is
+unchanged. Three remedies exist; only together do they answer:
+
+1. PR #100 — necessary, not sufficient.
+2. Remove the `rules`/`children` aliasing in the CST — fixes this instance.
+3. Dedupe by node identity in `canonicalize` — fixes all DAGs, but rewrites the
+   byte stream for every shared value, moves `PINNED_HARNESS_DIGEST`, invalidates
+   every committed baseline, and is a `DIGEST_FORMAT` 1→2 owner decision.
+
+## Verdict: `moved` (exit 1)
+
+Obtained with the CST aliasing removed, which is the only configuration in which
+the gate currently answers. The AST surface does not go through
+`buildCssCstNode`, so its numbers hold on the pristine tree unconditionally.
+
+```
+corpus entries: 714
+surface ast: aggregate=67fdc10e4f5c45579eb073a89494a7d547154a217bc0cf6ae871e1d97d35aa3b threw=122
+surface cst: aggregate=aca610ec5bd27ec45422b8da978c54890a0768e49e73b4938604a4760303eea2 threw=0
+
+! ast  309d91e177887c6a… -> 67fdc10e4f5c4557…  threw 120 -> 122  (709 entries moved)
+! cst  7819745e63032253… -> aca610ec5bd27ec4…  threw 0 -> 0      (709 entries moved)
+corpus GAINED 5 entries
+```
+
+The `cst` aggregate above is the alias-removed value; with the alias present the
+`cst` surface moves too, by strictly more. Either way the move is real.
+
+### Mover set by named entry class
+
+**Universal** — every shared entry moves on **both** surfaces, **zero** unchanged.
+A sharp change from 2026-07-28 (217 AST / 634 CST), and the signature of a global
+node-shape or serialization change rather than a localized grammar diff.
+
+| entry class | ast moved | cst moved |
+| --- | ---: | ---: |
+| `@less/test-data/tests-unit` | 283 / 283 | 283 / 283 |
+| `@less/test-data/tests-config` | 131 / 131 | 131 / 131 |
+| `@less/test-data/tests-error` | 99 / 99 | 99 / 99 |
+| `bootstrap-less-port` | 90 / 90 | 90 / 90 |
+| `packages/syntax/css` | 86 / 86 | 86 / 86 |
+| `packages/jess/test` | 20 / 20 | 20 / 20 |
+| **total shared** | **709 / 709** | **709 / 709** |
+
+AST throws 120 → 122; CST throws 0 → 0.
+
+### Gained corpus entries (5, none removed)
+
+- `tests-error/eval/percentage-css-var.less`
+- `tests-unit/at-rule-variable-deprecated/at-rule-variable-deprecated.{less,css}`
+- `tests-unit/math-css-vars/math-css-vars.{less,css}` (already recorded 07-28)
+
+### Next step
+
+A universal move with zero unchanged entries means the baseline is stale against
+a global shape change, not that one grammar edit regressed. Once #100 lands and
+the CST aliasing is resolved the gate runs in ~2 s, which makes a bisect over the
+2026-07-27 → 2026-07-30 window (388 commits, ~9 steps) cheap. Do that before
+revisiting the Baseline Rule above.
+
+## Separate cleanup: the `rules`/`children` alias
+
+Not the OOM fix, and it must not be described as one — but worth doing on its own
+merits. `rules === children` on all 40,908 nodes of a single parse is a wasted
+slot, flagged independently by the node-census lane.
+
+Consumer sweep (this lane, partial): `CssCstNode.children` has **no in-repo
+reader**. `packages/diagnostics-core/src/tolerant-cst.ts` reads `node.rules` via
+`cstChildrenOf`; every `.children` hit in `packages/editor/language-service` is
+LSP `DocumentSymbol.children`, unrelated. The four `cst-public.test.ts` suites
+were not swept and must be before the key is deleted.
+
+Keep **`rules`**, delete `children`: the key NAME is part of the canonical stream,
+so keeping `rules` reproduces the pre-alias bytes, while keeping `children` would
+move the `cst` aggregate a second time for no benefit.
+
+Do **not** implement this with `Object.defineProperty`. `buildCssCstNode` builds
+40,908 nodes per parse and was measured at 32.3% of the CSS process; a per-node
+runtime call plus a non-default property descriptor risks dictionary-mode objects
+and could erase the 1.98×–2.08× full-CST-parse win measured by the sibling lane.
+Delete one key; do not hide it.

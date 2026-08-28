@@ -4,9 +4,9 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "2.0.0-alpha.14",
+  "version": "2.0.0-alpha.15",
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": "^20.19.0 || >=22.18.0"
   },
   "description": "Jess functions module",
   "main": "lib/index.cjs",
@@ -89,11 +89,13 @@
   "dependencies": {
     "@jesscss/core": "workspace:*",
     "@jesscss/awaitable-pipe": "workspace:*",
+    "big.js": "^7.0.1",
     "color-name": "~2.0.0",
     "lodash-es": "^4.17.21",
     "superstruct": "1.0.3"
   },
   "devDependencies": {
+    "@types/big.js": "^6.2.2",
     "@types/lodash-es": "^4.17.8"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",

@@ -23,7 +23,7 @@ node, no re-parse, no `render()` walk).
   per-channel `mode` (overlay reuses multiply+screen, hardlight reuses overlay).
   The HSL adjusters reduce to a `[h,s,l]` tweak → `makeColorHsl(...)`.
 - **Core list capability** — structural group access (`groupItems`,
-  `groupSeparator`, `listValueAt`) belongs to `@jesscss/core/value`; `min-max.ts`
+  `groupSeparator`, `listValueAt`) belongs to `@jesscss/core`; `min-max.ts`
   owns only Less's unit-grouping policy. A variadic callable receives one typed
   `ValueGroup`: raw arrays are the default spaced form, while explicit `List`
   values carry only comma/slash boundaries.
@@ -38,11 +38,38 @@ node, no re-parse, no `render()` walk).
 
 That registers it. There is no third place to update.
 
+## Lowered by the grammar, not by a fn module
+
+`if`/`boolean`/`not`/`and`/`or` are SYNTAX, not functions (§4.5.3a). Their
+arguments are CONDITIONS and a call argument is value position, so they could
+not be fns at all — a registry entry would imply an argument shape the language
+forbids. The **Less grammar** lowers them, in `lowerLogicalCall`:
+
+- `boolean(<cond>)` / `not(…)` / `and(…)` / `or(…)` → the `$( … )` expression
+  boundary over a `Condition`;
+- `if(<cond>, a, b)` → the value-position `$if` (`IfValue`).
+
+The condition is lowered there too, with Less's own truthiness rule (§4.4.2), so
+core evaluates a guard tree that already means what `.less` meant. That is why
+the identical `if(0, T, F)` spelling answers `F` in `.less` and `T` in `.scss`
+with ONE evaluator and no dialect flag anywhere in core. Locate it with:
+
+```bash
+grep -n "function lowerLogicalCall" packages/syntax/less/less-parser/src/grammar.ts
+```
+
 ## Handled by core, not by a fn module
 
-`if`/`boolean`/`not`/`and`/`or`, `isdefined`, `isruleset` and `each` are
-special-formed during serialization (`core/src/ast/serialize.ts:3207`, `:3215`,
-`LOGICAL_FNS` at `:3326`). Fn modules for them were dead in the compiled path and
+`isdefined`, `isruleset` and `each` are special-formed during serialization, in
+`core/src/ast/serialize.ts` — the `isdefined` / `isruleset` branches live in
+`evalIntrospection`. Locate them with:
+
+```bash
+grep -n "function evalIntrospection" packages/core/src/ast/serialize.ts
+```
+
+(Do not cite line numbers here — `serialize.ts` is ~13.6k lines and hard-coded
+line refs in this file have rotted twice.) Fn modules for them were dead in the compiled path and
 have been deleted — do not re-add one.
 
 Validate output against real Less 4.x / v5-alpha semantics; if an expected

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildEvaluator } from '@jesscss/core';
-import { makeDimension, makeKeyword, makeList, type ValueObj } from '@jesscss/core/value';
+import { makeDimension, makeKeyword, makeList, type Value } from '@jesscss/core';
 import { makeLessRegistry } from '../registry.js';
 
 const evaluator = buildEvaluator(makeLessRegistry());
@@ -81,7 +81,7 @@ describe('built-in call failures', () => {
     const emptyArgs = makeList([], ',');
     const context = {
       modes: { unitMode: 'preserve' as const },
-      stringify: (value: ValueObj) => value.bytes
+      stringify: (value: Value) => value.bytes
     };
 
     expect(() => registry.dispatch('extract', extractArgs, context)).toThrow('extract() index 2 out of range for length 1');
@@ -95,15 +95,12 @@ describe('built-in call failures', () => {
     expect(dataUriResult.bytes).toBe('data-uri()');
   });
 
-  it('keeps Less singleton extract semantics for a non-finite index through the registry', () => {
-    const registry = makeLessRegistry();
-    const result = registry.dispatch('extract', makeList([
-      makeKeyword('only'), makeDimension(Number.POSITIVE_INFINITY)
-    ], ','), {
-      modes: { unitMode: 'preserve' },
-      stringify: value => value.bytes
-    });
-
-    expect(result.bytes).toBe('only');
+  /*
+   * Ledger V7. The registry-level twin of the `extract.test.ts` case: a non-finite
+   * index never reaches dispatch, because the value cannot be built. This asserts
+   * the boundary is the VALUE constructor and not something `extract` re-checks.
+   */
+  it('never sees a non-finite index, because the value cannot be built', () => {
+    expect(() => makeDimension(Number.POSITIVE_INFINITY)).toThrow(RangeError);
   });
 });

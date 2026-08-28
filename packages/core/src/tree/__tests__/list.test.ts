@@ -33,17 +33,15 @@ class CountingWriter extends OutputWriter {
 }
 
 describe('List compare', () => {
-  it('treats separator differences as equal in exact mode', () => {
-    const exactContext = new TreeContext({ equalityMode: 'exact' });
-    const commaList = list([num(1), num(2), num(3)], { sep: ',' }, undefined, exactContext);
-    const semicolonList = list([num(1), num(2), num(3)], { sep: ';' }, undefined, exactContext);
-    expect(commaList.compare(semicolonList)).toBe(0);
-  });
-
-  it('treats separator differences as equal in less mode', () => {
-    const lessContext = new TreeContext({ equalityMode: 'less' });
-    const commaList = list([num(1), num(2), num(3)], { sep: ',' }, undefined, lessContext);
-    const semicolonList = list([num(1), num(2), num(3)], { sep: ';' }, undefined, lessContext);
+  /*
+   * One assertion, not two: this was the same expectation written once per
+   * `equalityMode`, and the mode is gone (§5.1). The legacy `List.compare`
+   * never read it — separator differences compared equal under every mode.
+   */
+  it('treats separator differences as equal', () => {
+    const context = new TreeContext({});
+    const commaList = list([num(1), num(2), num(3)], { sep: ',' }, undefined, context);
+    const semicolonList = list([num(1), num(2), num(3)], { sep: ';' }, undefined, context);
     expect(commaList.compare(semicolonList)).toBe(0);
   });
 });

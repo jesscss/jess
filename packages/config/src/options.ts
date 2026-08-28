@@ -9,7 +9,6 @@ import path from 'path';
 export interface StrictPresetOptions {
   strict?: boolean;
   unitMode?: 'loose' | 'preserve' | 'strict';
-  equalityMode?: 'less' | 'sass' | 'exact';
   leakyScope?: boolean;
   allowOverloadedImport?: boolean;
 }
@@ -19,7 +18,7 @@ export interface StrictPresetOptions {
  * strict bundle for any governed option left `undefined` — an explicitly set
  * option always wins. Modeled after `tsconfig`'s `strict`: it only *sets*
  * semantic options, it is not itself a mode. Sets the strictest value of each
- * governed axis (`equalityMode: 'exact'` is the no-coercion dialect).
+ * governed axis.
  *
  * Returns a new object (never mutates the input); a no-op when `strict` is falsy.
  */
@@ -29,7 +28,6 @@ export function applyStrictPreset<T extends StrictPresetOptions>(opts: T): T {
   }
   const filled = { ...opts };
   filled.unitMode ??= 'strict';
-  filled.equalityMode ??= 'exact';
   filled.leakyScope ??= false;
   filled.allowOverloadedImport ??= false;
   return filled;
@@ -196,8 +194,8 @@ export function getOptions(
     // Start with compile-level settings
     mathMode: compile.mathMode,
     unitMode: compile.unitMode,
-    equalityMode: compile.equalityMode,
     allowExtendSelectors: compile.allowExtendSelectors,
+    allowApplySelectors: compile.allowApplySelectors,
     processImports: compile.processImports,
     disableScriptModules: compile.disableScriptModules ?? compile.disablePluginRule,
     paths: compile.searchPaths,

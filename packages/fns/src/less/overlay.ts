@@ -1,5 +1,5 @@
-import { defineFunction } from '@jesscss/core/value';
-import type { Fn } from '@jesscss/core/value';
+import { defineFunction } from '@jesscss/core';
+import type { Fn } from '@jesscss/core';
 import { colorBlend, requireColor } from './color-helper.js';
 import { multiplyBase } from './multiply.js';
 import { screenBase } from './screen.js';
@@ -12,6 +12,6 @@ export const overlayBase = (cb: number, cs: number): number => {
 
 /** `overlay(color1, color2)` — Photoshop overlay blend. Byte-faithful to `less/overlay`. */
 export const overlay: Fn = defineFunction('overlay', {
-  params: [{ kinds: ['Color'] }, { kinds: ['Color'] }],
+  params: [{ type: 'Color' }, { type: 'Color' }],
   body: (c1, c2) => colorBlend(overlayBase, requireColor(c1), requireColor(c2))
 });

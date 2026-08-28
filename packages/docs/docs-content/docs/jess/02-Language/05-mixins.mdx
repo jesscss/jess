@@ -504,7 +504,9 @@ $my-mixin: @{
 
 ## Passing sets of rules to mixins
 
-Like Sass, Jess supports passing sets of rules to mixins by "assigning" an anonymous mixin callback to the mixin call. The mixin can then render rules using the built-in `$content()` mixin.
+Like Sass, Jess supports passing sets of rules to mixins by "assigning" an anonymous mixin callback to the mixin call. The mixin can then render those rules by calling `$content()`.
+
+`content` is not a special name. Assigning a block **binds an ordinary variable named `content` in the call frame**, the way `arguments` is bound in a JavaScript function, and `$content()` is an ordinary call on it. So an enclosing frame's `content` is visible to an inner call like any other variable — and calling `$content()` where no block was assigned is a plain unbound-name error, not a silent no-op. See [Sass+ semantic differences](/docs/guides/coming-from-sass/semantic-differences#content-blocks-content-is-an-ordinary-variable) for how that differs from Sass.
 
 ```less
 my-mixin() {

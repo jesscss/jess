@@ -77,14 +77,66 @@
   white-space: nowrap;
 }
 
+.heroActions {
+  margin-top: 1.75rem;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.heroActions :global(.button) {
+  min-width: 190px;
+  justify-content: center;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.heroActions :global(.button--secondary) {
+  color: #ece7ff;
+  background: rgb(46 36 80 / 82%);
+  border: 1px solid rgb(146 132 234 / 66%);
+}
+
+.heroActions :global(.button--secondary:hover) {
+  color: #fff;
+  background: rgb(57 45 99 / 90%);
+  border-color: rgb(165 151 248 / 72%);
+}
+
 .main {
   padding: 2.3rem 0 3rem;
+}
+
+.sectionHeading {
+  max-width: 46rem;
+  margin: 0 0 1.4rem;
+}
+
+.sectionHeading h2 {
+  font-size: clamp(1.5rem, 2.6vw, 1.9rem);
+  letter-spacing: -0.01em;
+  margin: 0 0 0.5rem;
+}
+
+.sectionHeading p:last-child {
+  margin: 0;
+  color: var(--ifm-color-emphasis-700);
+}
+
+.eyebrow {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ifm-color-primary);
 }
 
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto auto 1fr auto;
   gap: 1.1rem;
 }
 
@@ -123,7 +175,16 @@
   box-shadow: 0 16px 30px rgb(42 31 86 / 16%);
 }
 
-.card h2 {
+.cardKicker {
+  margin: 0;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ifm-color-primary-darker);
+}
+
+.card h3 {
   margin: 0 0 0.5rem;
   font-size: 1.15rem;
 }

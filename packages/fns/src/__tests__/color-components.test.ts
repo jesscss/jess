@@ -5,7 +5,7 @@ import {
   alpha
 } from '../less/index.js';
 
-import { makeColorRgb, makeDimension, makeKeyword, RGB, type Color } from '@jesscss/core/value';
+import { makeColorRgb, makeDimension, makeKeyword, RGB, type Color } from '@jesscss/core';
 import { describe, it, expect } from 'vitest';
 
 let testColor: Color;

@@ -7,9 +7,9 @@ the remaining quality cleanup after the Less grammar collapsed to one host-mode
 source.
 
 Current parity note: Less now ships from the direct host-mode grammar. The old
-CST bridge body has been deleted from `src/grammar.ts`, `lessCstGrammar` points
-at the host-mode CST artifact, and `lessAstGrammar` remains an alias of the same
-grammar. The public CST oracle movement is intentional fold movement; a later
+CST bridge body has been deleted from `src/grammar.ts`, `lessGrammar` is the
+default artifact, and `lessCstGrammar` is the explicit host-mode CST artifact.
+The public CST oracle movement is intentional fold movement; a later
 strict CSS calc follow-up also moved the two invalid CSS calc error fixtures so
 `calc()` / `calc(+)` reject at recognition rather than falling back to a generic
 function. The committed oracle baseline now pins both named movements:
@@ -21,7 +21,7 @@ with 0 throws over 709 entries.
 The physical fold is done. In this report, "fold" now means deleting remaining
 duplicate private recognition families inside the single host-mode
 `src/grammar.ts`, not restoring a CST bridge or recreating a second grammar
-file. Use the active Parseman 0.41 surface (`dispatch(...)`, `makeWhen(...)`,
+file. Use the active Parseman 0.43 surface (`dispatch(...)`, `makeWhen(...)`,
 matcher cases, `routed()`, and `node(..., { project })`) where it removes
 repeated recognition.
 
@@ -92,22 +92,25 @@ comments should not become semantic value text.
 
 Priority Less cleanup queue:
 
-1. **Custom-property comment parts are true semantic debt.**
-   `CustomInnerPart` / `CustomPart` admit `blockComment` as
-   `CustomValuePart` and reduce it into custom-value text. Custom properties may
-   need permissive token structure, but comments still belong to trivia.
-2. **Opaque at-rule prelude comment capture is likely semantic debt.**
-   `atPreludeComment` still participates in `lessOpaqueAtPreludeCapture`.
-   Unknown at-rules can opportunistically parse structure, but comments should
-   not be assembled into semantic prelude text.
-3. **General-enclosed raw comments are likely semantic debt.**
-   `GeneralEnclosedRaw` includes `g.CssSyntaxBlockComment` as raw text; preserve
+1. **General-enclosed raw comments are semantic debt.**
+   `GeneralEnclosedRaw` includes `g.BlockCommentToken` as raw text; preserve
    balanced recognition, but do not make comments part of interpolation or
-   general-enclosed payloads.
+   general-enclosed payloads. This is a CSS-base design slice, not a Less-only
+   deletion: the CSS grammar and its public AST fixtures currently preserve
+   comments inside `GeneralEnclosed` payload text. Any correction must give all
+   four dialects a trivia-backed rendering path for opaque general-enclosed
+   content before removing those semantic bytes.
 
 Completed in the current grammar: declaration-head gaps now flow through
 `DeclarationHead` parser trivia instead of semantic declaration-name bytes. Do
 not reintroduce a declaration-head comment fact.
+
+Completed comment slices: custom-property value groups in Less, SCSS, and Jess,
+plus opaque at-rule preludes, use Parseman block-comment trivia. Their semantic
+values omit comment bytes, and the source/document trivia map restores the
+authored comments during rendering. Tests pin outer, parenthesized, square,
+curly, and interpolation-adjacent custom values as well as opaque `a/* note */b`
+preludes.
 
 Mostly legitimate exceptions:
 
@@ -127,17 +130,13 @@ function-boundary comments flow through Parseman's trivia log and core's
 names are also CST-recoverable again because the unsupported-name diagnostic is
 owned by AST host-mode reduction, not CST recognition.
 
-Smallest next implementation slice: **custom-property comment carriers**. Remove
-custom-property `blockComment` semantic parts only with matching source-trivia
-replay, because custom values still need permissive token structure and
-byte-faithful serialization.
-
-Proof for that slice:
-
-- focused Less parser facts:
-  `pnpm --filter @jesscss/less-parser test -- ast-grammar.test.ts --run --testNamePattern "value comments|comment.*value|function.*comment|custom-property"`
-- public custom-property contract:
-  `pnpm --filter @jesscss/less-parser test -- custom-property.test.ts --run`
+Completed custom-property comment slice: `CustomValue`, `CustomPart`, and the
+nested custom-value groups consume block comments as Parseman trivia in Less,
+SCSS, and Jess, never as semantic value parts. Their AST text consequently omits
+comments, while the source/document trivia map restores the exact authored
+ranges during rendering. The public contract covers outer, parenthesized,
+square, curly, and interpolation-adjacent comments. Keep this architecture;
+do not reintroduce `BlockCommentToken` into the custom-value part families.
 - alpha render lane:
   `pnpm run verify:less-alpha`
 - oracle movement, named before any baseline update:
@@ -145,10 +144,10 @@ Proof for that slice:
 
 ## Recommended cleanup order
 
-1. **Comment trivia debt.** Remove semantic comment carriers from custom
-   property values, opaque at-rule preludes, and general-enclosed raw payloads.
-   Keep scanner-local comment skip sets only where balanced recognition needs
-   them.
+1. **Comment trivia debt.** Remove semantic comment carriers from opaque
+   at-rule preludes and general-enclosed raw payloads. Custom-property values
+   are already trivia-owned. Keep scanner-local comment skip sets only where
+   balanced recognition needs them.
 2. **Selector plus inline `:extend()` simplification.** Preserve the current
    one-pass selector route: each branch parses once, `ExtendPseudo` owns the
    authored pseudo, and reducers collect branch-local extend facts. Do not add
@@ -175,7 +174,7 @@ not reintroduce that namespace. Local const names should be the shortest stable
 spec-shaped concept unless the accepted language genuinely differs. Preserve or
 map public CST labels separately: `Declaration`, `CustomDeclaration`,
 `AtRuleBlock`, `AtRuleStatement`, `ImportAtRule`, `QueryAtRuleBlock`,
-`MixinCall`, `MixinOrQualifiedRule`, `VarCall`, selector node keys, and
+`MixinCall`, `MixinDefinition`, `VarCall`, selector node keys, and
 interpolation node keys are contract questions; local rule names are not.
 
 Preferred local vocabulary by region:
@@ -196,14 +195,16 @@ Preferred local vocabulary by region:
 - At-rules/queries: `SupportsValue`, `SupportsFeature`, `SupportsCondition`,
   `QueryValue`, `QueryFeature*`, `MediaQuery*`, `Container*`, `AtRuleBlock`,
   `AtRuleStatement`.
-- Selectors/extents: `StaticPseudo*`, `InterpolatedPseudo`,
-  `StaticAttribute*`, `InterpolatedAttribute*`, `CompoundSelector`,
-  `ComplexSelector`, `SelectorList`, `ExtendTarget`, `InlineExtendTail`,
-  `SelectorBranch`, `Ruleset`. If the inline-extend subject and extend target
-  really differ, name the context (`InlineExtendSubject`, `ExtendTarget`), not
-  the migration path.
+- Selectors/extents: `PseudoSelector`, `AttributeSelector`, `AttributeName`,
+  `AttributeMatch`, `NamespaceTypeSelector`, `InterpolatedAttributeSelector`,
+  `CompoundSelector`, `ComplexSelector`, `SelectorList`, `ExtendTarget`,
+  `InlineExtendTail`, `SelectorBranch`, `Ruleset`. A static spelling belongs in
+  the ordinary semantic owner; keep an interpolation-specific rule only when
+  it must construct a different interpolation-backed selector atom. If the
+  inline-extend subject and extend target really differ, name the context
+  (`InlineExtendSubject`, `ExtendTarget`), not the migration path.
 
-## Parseman 0.41 routing targets
+## Parseman 0.43 routing targets
 
 Apply these while folding each family, not as polish on duplicate bodies:
 
@@ -218,10 +219,13 @@ Apply these while folding each family, not as polish on duplicate bodies:
 - Selector list with inline extends: the ruleset fallback is paid. Preserve the
   context-aware selector-list route that parses each branch once, returns
   selector facts, and collects branch-local extend instructions.
-- Mixin statement router: the current broad `mixinStatementAhead`
-  skips repeated work but still leaves the same name/path family spread across
-  definition/call/bare-call arms. The fold target is one consumed mixin opener
-  with suffix routing.
+- Mixin statement router: the broad `mixinStatementAhead` scan has been
+  replaced by one typed class/id selector prefix and literal-led tails. The
+  prefix remains selector structure for rulesets and lowers to a namespace path
+  only for `(`/`;` mixin continuations. A narrow definition-versus-call attempt
+  remains after `(` because the current parameter and argument grammars differ;
+  it is a measurable reduction target, not permission to collapse one grammar
+  into the other. Do not reintroduce a prefix scan or a second selector parse.
 - Query feature parentheses: CSS/Less media features are a real left-factor or
   context-helper target, not an automatic dispatch target. The same inner
   identifier can begin colon, comparison, range, grouped, and negated features,
@@ -497,7 +501,7 @@ small. The important shape is the contract:
 - `extendTargetFlags: true` adds the terminal `all` / `!all` flag only in the
   `:extend(...)` target list. Do not let ordinary selector lists know about that
   flag.
-- `PseudoSelector` should use Parseman 0.41 `dispatch(...)` only where it routes
+- `PseudoSelector` should use Parseman 0.43 `dispatch(...)` only where it routes
   one already-consumed pseudo/function opener. Branch nodes that need the opener
   use `routed()`. The selector-list branch itself should not be an outer
   `attempt(...)` fallback.
@@ -521,7 +525,7 @@ should own the inline pseudo in both host modes; the direct selector branch
 facts are temporary reducer facts, not public owners.
 
 2026-07-27 update: the pseudo family now has the shared-opener dispatch shape.
-`Pseudo` / `StaticPseudo` parse one `:name` / glued `:name(` opener, then route
+`PseudoSelector` parses one `:name` / glued `:name(` opener, then routes
 selector-function, generic-function, interpolation-argument, and bare-pseudo
 branches with `routed()`. The focused Less parser set passed, `check:macro` and
 `verify:compose-integrity` passed, and the Less oracle stayed AST-neutral
@@ -533,15 +537,15 @@ one branch parser with one AST reducer.
 
 ## Recommended next patch
 
-Remove the remaining comment-as-value carriers from Less grammar source:
+Remove the remaining comment-as-value carrier from Less grammar source:
 
-- custom-property `blockComment` parts in `CustomInnerPart` / `CustomPart`
-- opaque at-rule prelude comment text in `lessOpaqueAtPreludeCapture`
 - `GeneralEnclosedRaw` comment payloads
 
 Keep `blockComment` in scanner-local `scanSkip` / `balanced(...)` protection
 where needed so raw capture does not terminate inside comments. The semantic
-target is source/document trivia replay, not comment text children.
+target is source/document trivia replay, not comment text children. This patch
+must start in CSS and prove rendering/AST/CST behavior across all dialects; it
+is not an independent Less grammar cleanup.
 
 Focused proof:
 

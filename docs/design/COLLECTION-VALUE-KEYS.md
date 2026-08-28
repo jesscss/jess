@@ -2,8 +2,8 @@
 
 Design of record for ledger rows **P14** (value-keyed, data-only collections) and
 **P15** (subscript type decides). The sigil half of the same conversation, **P13**
-(`${…}`), is landed; this half is not, and this document says exactly why and what
-it costs.
+(`${…}`), is landed, and the AST/value-domain `CollectionEntry` model described
+here has now landed in `codex/ast-v2-dx-fns`.
 
 ## The ruling
 
@@ -76,15 +76,15 @@ is nothing to recover.
 The same argument settles the subscript question: "is `$x[1]` a position or a
 key?" is answered by the node type of the subscript, not by inspecting bytes.
 
-## Why it did not land with `${…}`
+## Landing notes
 
-`Collection.entries` is currently typed `(Declaration | VariableDeclaration)[]`,
-i.e. **`Statement[]`**, and that is load-bearing: a Collection's entries are fed
-straight into the ordinary statement machinery. Retyping them to a non-`Statement`
-`CollectionEntry[]` breaks every one of those paths, each of which needs its own
+This originally did not land with `${…}` because `Collection.entries` was typed
+as `(Declaration | VariableDeclaration)[]`, i.e. **`Statement[]`**, and those
+entries were fed straight into ordinary statement machinery. Retyping them to
+non-`Statement` `CollectionEntry[]` required each of these sites to get a real
 Collection-specific branch:
 
-| Site | What it does with entries today |
+| Site | Former dependency |
 |---|---|
 | `packages/core/src/ast/nodes.ts` `valueBlockBody` | returns `Collection.entries` **as `Statement[]`** — the single seam every consumer below goes through |
 | `packages/core/src/ast/nodes.ts` `classifyValueBlock` | promotes a block to a Collection iff **every** statement is a `VariableDeclaration` — precisely the promotion P14 inverts |
@@ -97,12 +97,12 @@ Collection-specific branch:
 | `packages/less-parser/src/ast/grammar.ts` | the sole `classifyValueBlock` caller |
 | `packages/jess-parser/src/ast/grammar.ts` | `DirectJessCollectionEntry` / `DirectJessCollection` |
 
-Two further facts make this its own landing rather than a rider:
+Two further facts made this its own landing rather than a rider:
 
 1. **The lookup machinery is byte-keyed strings end to end.** `DeclMap` is
    `Map<string, DeclEntry>`. Value-equality keys are not a parser change at all at
    that layer — they are a value-domain change, which is exactly what the
-   `core-value-domain-map` branch is building (`ValueObj` gains an ordered-entry
+   `core-value-domain-map` branch is building (`Value`/`ValueGroup` gain an ordered-entry
    `Collection` whose `key` is deliberately wider than the parser can produce).
    Landing a second, parser-side redefinition of the same node concurrently would
    collide.
@@ -127,18 +127,19 @@ currently *depends* on entries being `Declaration`s, for `merge` and `important`
 Under `CollectionEntry` its key becomes a `Keyword` holding the leaf property name
 and the carrier flags move onto the entry.
 
-## Landing order
+## Landed order
 
-1. **Value domain first** — let `core-value-domain-map` land its `CollectionEntry`
-   projection and value-equality keying. The parser change is what lets it receive
-   real typed keys instead of sniffing, so it wants a receiver that already exists.
-2. **`CollectionEntry` in the AST** — retype `Collection.entries`, give each
-   consumer above its Collection branch, keep `valueBlockBody` honest by splitting
-   the data path from the statement path.
-3. **`[expr]` keys in `.jess`** — extend `DirectJessCollectionEntry` with a
-   bracketed value key. Collection-only; it must not reach `CssAstSyntaxProperty`.
-4. **Invert the less-parser promotion** — `classifyValueBlock` stops promoting;
-   a var-declaring block stays an AnonymousMixin, and the `variable` round-trip
-   flag dies. Gate on Less byte-identity.
+1. **Value domain first** — the `@jesscss/core` semantic value API owns ordered
+   `CollectionEntry` projection and value-equality keying.
+2. **`CollectionEntry` in the AST** — `Collection.entries` is retyped, consumers
+   have Collection branches, and `valueBlockBody` is honest: it only accepts
+   executable `AnonymousMixin` value blocks.
+3. **`[expr]` keys in `.jess`** — Jess collection entries admit bracketed value
+   keys. Collection-only; they do not reach CSS property names.
+4. **Less value-block classification** — Less keeps its deliberate legacy
+   heuristic for value-position `{ ... }` detached/data ambiguity; Jess parses
+   collections through its explicit entry grammar instead of sniffing statement
+   blocks.
 
-Steps 3 and 4 both move output and are the ones to report before landing.
+Less compatibility remains the only intentional heuristic lane here. The
+canonical Jess/SCSS AST collection shape is data-only `CollectionEntry` records.

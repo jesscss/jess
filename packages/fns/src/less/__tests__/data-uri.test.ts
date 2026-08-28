@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { makeList, makeQuoted, type FnCtx, type ValueObj } from '@jesscss/core/value';
+import { makeList, makeQuoted, type FnCtx, type Value } from '@jesscss/core';
 import dataUri from '../data-uri.js';
 
 const DATA_DIR = path.resolve(__dirname, 'assets');
@@ -14,7 +14,7 @@ const contextForDataDir = (): FnCtx => ({
   }
 });
 
-const callDataUri = async (...args: string[]): Promise<ValueObj> => {
+const callDataUri = async (...args: string[]): Promise<Value> => {
   const result = dataUri(
     makeList(args.map(value => makeQuoted(value, '\'', false)), ','),
     contextForDataDir()

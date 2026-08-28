@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emitValue, makeBlock, makeDimension, makeKeyword, makeList, makeQuoted, type Fn, type ValueGroup } from '@jesscss/core/value';
+import { emitValue, makeBlock, makeDimension, makeKeyword, makeList, makeQuoted, type Fn, type ValueGroup } from '@jesscss/core';
 import append from '../list/append.js';
 import isBracketed from '../list/is-bracketed.js';
 import listIndex from '../list/list-index.js';
@@ -32,7 +32,7 @@ describe('Sass list functions on the AST-v2 value domain', () => {
   it('preserves a square Block wrapper when Sass list operations create a result', () => {
     const square = makeBlock([makeDimension(1)], 'square');
     const result = call(append, square, makeDimension(2));
-    expect(result).toMatchObject({ type: 'Block', delimiter: 'square', inner: [{ number: 1 }, { number: 2 }] });
+    expect(result).toMatchObject({ type: 'Block', delimiter: 'square', value: [{ number: 1 }, { number: 2 }] });
     expect(call(isBracketed, result)).toMatchObject({ type: 'Bool', value: true });
   });
 
@@ -56,7 +56,7 @@ describe('Sass list functions on the AST-v2 value domain', () => {
     const list = makeList([makeKeyword('a'), makeKeyword('b')], ',');
     expect(call(length, list)).toMatchObject({ type: 'Dimension', number: 2, unit: '' });
     expect(call(listIndex, list, makeKeyword('b'))).toMatchObject({ type: 'Dimension', number: 2 });
-    expect(call(listIndex, list, makeKeyword('x'))).toMatchObject({ type: 'Nil' });
+    expect(call(listIndex, list, makeKeyword('x'))).toMatchObject({ type: 'Null' });
     expect(call(separator, list)).toMatchObject({ type: 'Keyword', text: 'comma' });
   });
 

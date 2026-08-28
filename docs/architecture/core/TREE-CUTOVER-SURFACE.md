@@ -9,6 +9,11 @@ below uses the old name. The config package is `styles-config`.
 This is an inventory and a sequencing argument for deleting `tree/`. It records
 no status and proposes no schedule.
 
+**Current status update:** the root `export * from './tree/index.js'` described
+below has since been removed. Keep the measured inventory as provenance for the
+remaining internal deletion work, but do not treat the historical root-export
+counts as the current public `@jesscss/core` surface.
+
 ## Method
 
 Three passes, each stated because two of them correct an earlier, wrong version
@@ -56,8 +61,8 @@ the wildcard. The 35 explicit re-exports are the only names anyone ever wrote
 down on purpose, and 33 of them have no external consumer either.
 
 **All 235 are going away.** `tree/` is deleted in full. The question this section
-answers is not which names survive — none do — but *what `ast/` or `./value` must
-provide before each one can go*.
+answers is not which names survive — none do — but *what the canonical AST/value
+API must provide before each one can go*.
 
 ### The axis: what v2 must provide
 
@@ -138,13 +143,13 @@ the last one.
 | --- | --- | --- | --- |
 | `Any` | `any.ts:31` (class+interface) | `new Any(str)` — `map/get.ts:16,21`, `map/set.ts:48`, `map/values.ts:15,20` | a factory for "a stringified map value". `./value` already has `makeKeyword` (`value-factory.ts:136`) and `makeQuoted` (:130) — **which one is the ruling**, not a missing primitive |
 | `Bool` | `bool.ts:6` (class+interface) | `new Bool(b)` — `map/has-key.ts:50,56,67` | **already provided**: `makeBool` (`value-factory.ts:139`) |
-| `Collection` | `collection.ts:19` (class) | `new Collection(...)` — `map/merge.ts:47`, `map/remove.ts:33`, `map/set.ts:64`; as a `defineFunction` param token — `map/get.ts:88`, `has-key.ts:73`, `keys.ts:34`, `values.ts:39`, `merge.ts:53,57`, `remove.ts:39`, `set.ts:70` | **already provided**: `makeCollection` (`value-factory.ts:156`), and `'Collection'` is a member of `ValueObj` (`value-eval.ts:226`) so `kinds: ['Collection']` is expressible in a `ParamSpec` |
+| `Collection` | `collection.ts:19` (class) | `new Collection(...)` — `map/merge.ts:47`, `map/remove.ts:33`, `map/set.ts:64`; as a `defineFunction` param token — `map/get.ts:88`, `has-key.ts:73`, `keys.ts:34`, `values.ts:39`, `merge.ts:53,57`, `remove.ts:39`, `set.ts:70` | **already provided**: `makeCollection` (`value-factory.ts:156`), and `'Collection'` is a member of `Value` (`value-eval.ts`) so `type: 'Collection'` is expressible in a `ParamSpec` |
 | `Declaration` | `declaration.ts:619` (class) | `new Declaration(...)` — `map/set.ts:50` | nothing new. `makeCollection` takes `readonly CollectionEntry[]` (`value-factory.ts:156`) and `CollectionEntry` (`value-eval.ts:188`) is a plain `{key, value}` object literal needing no constructor. The blocker is the **model change**, not a missing factory — see the ruling below |
 | `Dimension` | `dimension.ts:48` (class+interface) | `new Dimension(...)` — `str-index.ts:27`; `instanceof` — `mathHelper.ts:9,11,22,31,35`, `number.ts:10`, `raw-color-args.ts:7`; param token — `str-insert.ts:63`, `str-slice.ts:102,107` | `makeDimension` (`value-factory.ts:57`) covers construction. `instanceof` has **no** translation — the value domain discriminates on `.type`, so the provision is a kind check, not a class. (All the `instanceof` sites are in `fns/src/util/*`, removed by step 1.) |
 | `List` | `list.ts:213` (class+interface) | `new List(...)` — `map/keys.ts:28`, `map/values.ts:33` | **already provided**: `makeList` (`value-factory.ts:141`) |
-| `N` | `node-type.ts:17` (enum) | `N.Declaration` / `N.Collection` enum member reads at runtime — `map/{get:43,66; has-key:32,55; keys:23; merge:21,28; remove:26; set:26,41; values:29}` | **missing.** `Kind = ValueObj['type']` (`functions/types.ts:20`) is a *type*, not a runtime table; `./ast`'s `AST_NODE_TYPES` (`ast/node.ts:108`) is the ast domain, not the value domain. Provision: an exported runtime kind table, **or** rewrite the consumers to compare `.type` string literals directly |
+| `N` | `node-type.ts:17` (enum) | `N.Declaration` / `N.Collection` enum member reads at runtime — `map/{get:43,66; has-key:32,55; keys:23; merge:21,28; remove:26; set:26,41; values:29}` | **missing as a runtime table by design.** `Kind = Value['type']` (`functions/types.ts`) is a *type*, not a runtime enum; `./ast`'s `AST_NODE_TYPES` (`ast/node.ts:108`) is the ast domain, not the value domain. Provision: rewrite consumers to compare `.type` string literals directly unless a real runtime table earns its keep |
 | `Nil` | `nil.ts:18` (class+interface) | `new Nil()` — `map/get.ts:61,67,79` | **missing.** `./value` exports `Nil` as a type only (`value-eval.ts:169`); there is no `makeNil` in `value-factory.ts` — verified, the factory block exports `makeDimension`/`makeColorRgb`/`makeColorHsl`/`makeQuoted`/`makeKeyword`/`makeBool`/`makeList`/`makeBlock`/`makeCollection` and nothing else. Provision: a nil constant or factory |
-| `Node` | `node-base.ts:485` (class) | `x instanceof Node` — `map/get.ts:18`, `map/values.ts:17`; param token — `map/get.ts:92,96`, `has-key.ts:77,81`, `remove.ts:43`, `set.ts:74,78` | the universal is `ValueGroup`/`ValueObj` (`value-eval.ts:234,226`) with `isValueGroup` (`value-eval.ts:240`) as the guard. Provision: **confirm `isValueGroup` is the sanctioned `instanceof Node` replacement**, and that `kinds: 'any'` is the param-token equivalent |
+| `Node` | `node-base.ts:485` (class) | `x instanceof Node` — `map/get.ts:18`, `map/values.ts:17`; param token — `map/get.ts:92,96`, `has-key.ts:77,81`, `remove.ts:43`, `set.ts:74,78` | the universal is `ValueGroup`/`Value` (`value-eval.ts`) with `isValueGroup` as the guard. Provision: use `isValueGroup` for runtime validation and `type: 'any'` as the param-token equivalent |
 | `Quoted` | `quoted.ts:20` (class+interface) | `new Quoted(s, {quote})` — `map/keys.ts:25`, `quote.ts:21`, `str-insert.ts:49`, `str-slice.ts:28,82,92`, `to-lower-case.ts:16`, `to-upper-case.ts:16`, `unique-id.ts:25`, `unquote.ts:19`; param token — 6 more sites | **already provided**: `makeQuoted` (`value-factory.ts:130`) |
 | `isNode` | `util/is-node.ts:18` (function) | `isNode(x, N.Declaration)` — 11 call sites across `map/*` | `./ast`'s same-named `isNode` (`ast/node.ts:118`) narrows **ast** nodes by string `NodeType` — wrong domain. Provision: a value-domain narrow-by-kind helper, **or** drop to `.type ===`. `isCollection` (`value-collection.ts:18`) is the one such helper that exists |
 
@@ -366,13 +371,13 @@ worktree, so no result here comes from the main checkout's sources.
 **Context members accessed at runtime from `jess` / plugins / `fns` — 15, none tree-typed:**
 `errors`, `warnings`, `finalizeWarnings`, `getPluginModule`, `getTree`,
 `parseString`, `resolveImportPath`, `sourceTrees`, `pluginHost`, `plugins`,
-`setOption`, `opts`, `readBinary`, `evaluator`, `registerValueEvaluator`, `withDocument`.
+`opts`, `readBinary`, `evaluator`, `registerValueEvaluator`, `withDocument`.
 
-Union (four overlap): **25 distinct externally-reachable members, zero
+Union (four overlap): **24 distinct externally-reachable members, zero
 tree-typed.** The constructor is `(opts?: ContextOptions, plugins?: PluginInterface[])`
 — both parameters tree-free.
 
-Bodies checked too, not just signatures: **25 of 25** externally-reachable
+Bodies checked too, not just signatures: **24 of 24** externally-reachable
 members have bodies containing no reference to any tree-typed `Context` member
 and no reference to any of the 14 tree symbols `context.ts` imports.
 
@@ -392,7 +397,7 @@ The 33, with the tree symbols in their declared types:
 | `spineMixinSurfaceSink` :668 · `spineRootCallEmitFrame` :691 · `rulesEvalStack` :919 · `evaldTrees` :958 | `Rules` |
 | `extendRoots` :709 | `ExtendRootRegistry` |
 | `spineMergePlan` :738 | `SpineMergePlan`, `Node` |
-| `registerSpineVisitor` :747 | `Node` |
+| `registerEmitVisitor` :747 | `Node` |
 | `documentOrderByRuleset` :755 · `rulesetFrames` :809 | `Ruleset` |
 | `extends` :761 | `Selector`, `Rules`, `Node` |
 | `_searchScope` :770 · `searchScope` :771 | `Node` |
@@ -453,7 +458,7 @@ are the type tokens.
 `./value` already exposes a complete replacement:
 
 - `defineFunction` (`src/ast/value-dispatch.ts:181`), `createFnRegistry` (line 263)
-- `ParamSpec` with `kinds: readonly Kind[] | 'any'` where `Kind = ValueObj['type']`
+- `ParamSpec` with `type: Kind | readonly Kind[] | 'any'` where `Kind = Value['type']`
   (`src/ast/functions/types.ts:20,22`) — a **string** discriminant, so a param
   spec carries no constructor reference at all
 - `FnSpec`/`PositionalSpec`/`VariadicSpec` (`functions/types.ts:89,102,107`),
@@ -573,9 +578,9 @@ question) or **S** (needs a ruling).
 
 | # | step | blocks / blocked by | mark |
 | --- | --- | --- | --- |
-| 1 | Delete `packages/fns/src/util/{color-output, colorHelper, get-color-func-values, get-luma, mathHelper, number, preserve-hex, raw-color-args, relative-color, to-hsl, to-hsv}.ts` and the one test edge at `fns/src/less/__tests__/luma-luminance-hsv-channels.test.ts:13`. Unreachable from every `fns` entry point (§1d). Removes 9 tree names, including every `instanceof Dimension` / `instanceof Color` site in the repo. | — | **M** |
-| 2 | Delete `IParseResult` (`src/types/index.ts:51`) and its `import type { Node }` (line 2). Declared and referenced **nowhere** — verified across `core`, `jess`, `fns` and all four parsers. Removes one of the six runtime files' tree edges entirely. | — | **M** |
-| 3 | Relocate `tree/util/provenance.ts` (zero imports), `tree/util/calculate.ts` (zero imports) and `tree/util/bitset.ts` (one npm import) out of `tree/`. Pure moves; 15 public names change file, not meaning. Clears `error/code-frame.ts:1` and gives `Operator` a home outside the deleted set. | blocks 5 | **M** |
+| 1 | ✅ Deleted `packages/fns/src/util/{color-output,colorHelper,get-color-func-values,get-luma,mathHelper,number,preserve-hex,raw-color-args,relative-color,to-hsl,to-hsv}.ts` and moved the luma/luminance/hsv tests to root `@jesscss/core` value imports. The remaining `fns/src/util/` files are IO helpers (`image-dimensions`, `mime`), not legacy tree utilities. | — | **M** |
+| 2 | ✅ Deleted `IParseResult` from `src/types/index.ts`. It was declared and referenced nowhere outside this tracker; the live file no longer imports Chevrotain solely to describe a dead parser result shape. | — | **M** |
+| 3 | Partially complete: relocated generic `calculate`/`Operator` and `BitSetLibrary`/bitset helpers to `src/util/`, and repointed `Context` plus legacy tree consumers. `tree/util/provenance.ts` remains in place: the earlier "zero imports" note is stale; current source has many legacy tree node/span consumers, so moving it is not a blind mechanical cut. | blocks 5 | **M** |
 | 4 | **Rewrite `Context` tree-free** (§2, owner-settled). By the runtime-usage audit this is *delete 33 members and the 10 tree imports, keep 73* — every deleted member is legacy-eval state, none of the 33 is reachable from `ast/`, `jess`, the plugins or `fns`, all 25 externally-reachable members are already tree-free in both signature and body, and the constructor already qualifies. **On the critical path**, because a live `Context` instance flows into `ast/serialize.ts` and currently drags `tree/` into every v2 render (§2a). Blocked by nothing: it does not wait on the value boundary, and the legacy engine can keep its state on its own object until it is deleted. | blocks 8; blocks nothing else | **M** |
 | 5 | Replace `src/index.ts:10`'s wildcard with an explicit export list. This is what turns every later deletion into a compile error instead of a silent surface change (§5.1). | needs 3 | **M** |
 | 6 | Re-point `packages/fns/src/sass/index.ts:90–97` at `./string/globals.js` (Gap A, §3). Eight lines, and it retires 8 of the 14 unconverted fn modules. **Behaviour changes** — eight Sass string globals begin registering (`registry.ts:24–27`), which is the bug in the closing section. | — | **M**, output-affecting |

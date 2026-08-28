@@ -26,6 +26,7 @@ describe('OpaqueAtRuleBlock', () => {
       materialize: rejectCall,
       operate: rejectCall,
       call: rejectCall,
+      paramNames: rejectCall,
       compare: rejectCall,
       typeCheck: rejectCall
     };

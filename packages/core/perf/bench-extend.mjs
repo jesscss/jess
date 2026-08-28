@@ -1,7 +1,7 @@
 // Render benchmark.less with collapseNesting:true; report bytes+sha+median.
 import { Compiler } from '../../jess/lib/index.js';
-import lessPlugin from '../../jess-plugin-less/lib/index.js';
-import { lessCompatPlugin } from '../../jess-plugin-less-compat/lib/index.js';
+import lessPlugin from '../../syntax/less/jess-plugin-less/lib/index.js';
+import { lessCompatPlugin } from '../../syntax/less/jess-plugin-less-compat/lib/index.js';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';

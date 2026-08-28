@@ -1,8 +1,7 @@
 /**
  * Child worker for the full-corpus completeness report (see
- * scripts/less-corpus-report.mjs). Runs under `vitest` so it gets the working
- * TS/src transform (the built lib can't parse — parseman version skew). Two
- * modes, selected by env:
+ * scripts/less-corpus-report.mjs). Runs under `vitest` so it gets the TS transform
+ * for the src path (`../../src/index.js`). Two modes, selected by env:
  *
  *   CORPUS_MODE=discover  → enumerate every case in the corpus and write the
  *                           job list to CORPUS_JOBS_OUT (no rendering — cheap,
@@ -20,7 +19,7 @@ import * as glob from 'glob';
 import * as path from 'path';
 import { readFileSync, appendFileSync, writeFileSync } from 'fs';
 import { Compiler } from '../../src/index.js';
-import { getTestCases, resolveLessTestDataRoot, lessHarnessFunctionsPlugin } from '../test-utils.js';
+import { getTestCases, resolveLessTestDataRoot, lessFixturePackagesPlugin, lessHarnessFunctionsPlugin } from '../test-utils.js';
 import type { TestCase } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
@@ -30,8 +29,10 @@ const MODE = process.env.CORPUS_MODE;
 const testData = resolveLessTestDataRoot();
 const rel = (p: string) => path.relative(testData, p).split(path.sep).join('/');
 
-// Sync infinite-loopers block the event loop; the parent's SIGKILL still reaps
-// them, but skipping the known ones avoids a slow per-fixture kill cycle.
+/*
+ * Sync infinite-loopers block the event loop; the parent's SIGKILL still reaps
+ * them, but skipping the known ones avoids a slow per-fixture kill cycle.
+ */
 const KNOWN_HANG = new Set<string>([
   'tests-unit/variables/variable-advanced.less',
   'tests-unit/merge/merge.less',
@@ -43,9 +44,28 @@ const PER_FIXTURE_TIMEOUT_MS = 8000;
 
 interface Job { kind: 'render' | 'error'; file: string; lessPath: string; expectedFile?: string; config?: Partial<StylesConfig> }
 
+const errorCorpusConfig: Partial<StylesConfig> = {
+  compile: {
+    jsReadRoot: testData,
+    functionMode: 'error',
+    unitMode: 'strict'
+  }
+};
+
 const baseCompiler = new Compiler({
   output: { collapseNesting: true },
-  compile: { plugins: [lessPlugin(), lessCompatPlugin({ plugins: [lessHarnessFunctionsPlugin] })] }
+  compile: {
+    plugins: [
+      lessPlugin(),
+      lessCompatPlugin({ plugins: [lessHarnessFunctionsPlugin] }),
+
+      /*
+       * Pins bare-specifier third-party `@import`s (tests-config/3rd-party/bootstrap4.less)
+       * — see lessFixturePackagesPlugin.
+       */
+      lessFixturePackagesPlugin()
+    ]
+  }
 });
 
 function makeTestCompiler(config: Partial<StylesConfig> = {}) {
@@ -125,15 +145,19 @@ function discover(): Job[] {
       });
     });
   }
+
+  /* Imported helpers are inputs to error cases, not standalone error cases. */
   glob.sync(path.join(testData, 'tests-error/**/*.less'))
     .filter(f => !KNOWN_HANG.has(rel(f)))
+    .filter(f => !rel(f).includes('/imports/'))
     .forEach(lessPath => jobs.push({ kind: 'error', file: rel(lessPath), lessPath }));
   return jobs;
 }
 
 async function runJob(job: Job): Promise<{ file: string; kind: string; outcome: string; detail?: string }> {
   if (job.kind === 'error') {
-    const res = await withTimeout(() => makeTestCompiler({}).renderToResult(job.lessPath, { breakOnError: true }));
+    const res = await withTimeout(() => makeTestCompiler(errorCorpusConfig)
+      .renderToResult(job.lessPath, { breakOnError: true }));
     if ('timedOut' in res) {
       return { file: job.file, kind: 'error', outcome: 'timeout' };
     }

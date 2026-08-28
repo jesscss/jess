@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { el } from '../../index.js';
 import { Context } from '../../../context.js';
-import { BitSetLibrary, isDisjoint } from '../bitset.js';
+import { BitSetLibrary, isDisjoint } from '../../../util/bitset.js';
 import { extendSelector } from '../extend.js';
 import { findExtendableLocations } from '../find-extendable-locations.js';
 

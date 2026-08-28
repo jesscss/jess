@@ -54,7 +54,7 @@ owned under public shared names:
 `VarFallback*` family, `Value`, `ValueSequence`, `ValueList`, `TypedValue*`,
 `Important`,
 `Declaration`, `ImportStatement`, `AtRuleStatement`,
-`AtPrelude`, `StatementPrelude`, `OpaqueAtPrelude`, `OpaqueBody`,
+`AtRulePrelude`, `StatementPrelude`, `OpaqueAtPrelude`, `OpaqueBody`,
 `OpaqueAtRuleBlock`,
 `QueryBareFeature`/`RangeFeature`/`Comparison`/`Prelude`/`Clause`/`Term`,
 `GeneralEnclosed*`, `SupportsCondition`/`InParens`/`Prelude`,
@@ -418,7 +418,7 @@ spell the glued opener structurally. The public CST grammar replaced
 `queryFunctionToken = regex(...(?=\())` plus a following `literal('(')` with
 `queryFunctionOpen = noTrivia(sequence(ident, literal('(')))`. The direct CSS
 AST grammar uses the same shape through a new shared recognition export,
-`CssSyntaxQueryFunctionOpen`. The older `CssSyntaxQueryFunctionName`
+`QueryFunctionOpen`. The older `QueryFunctionName`
 export remains available for Less/SCSS/Jess until their direct AST grammars are
 swept deliberately; do not delete or repoint it incidentally. A regression test
 now verifies that `selector(.grid)` parses while `selector (.grid)` reports a
@@ -1136,7 +1136,7 @@ AST threw 120, CST threw 0).
 
 Follow-up CSS direct-AST at-rule prelude / opaque helper-key cleanup: direct
 AST at-rule prelude and opaque block helpers now use concept names:
-`AtPrelude`, `StatementPrelude`, `OpaqueAtPrelude`, `OpaqueBody`, and
+`AtRulePrelude`, `StatementPrelude`, `OpaqueAtPrelude`, `OpaqueBody`, and
 `OpaqueAtRuleBlock`. This changes rule keys and diagnostics only; the
 grammar-owned scans still reduce to the same nullable `Any` preludes or
 canonical `OpaqueAtRuleBlock` AST node.
@@ -1295,9 +1295,10 @@ AST threw 120, CST threw 0).
 Follow-up shared CSS recognition naming cleanup: `parser-shared` now exports
 the CSS lexical artifact as `cssSyntax` and the pseudo-argument artifact as
 `cssPseudoSyntax`, and their shared rule keys now use `CssSyntax*` instead of
-`CssAstSyntax*`. Opaque CSS capture leaves likewise use `CssOpaqueCapture*`.
-This removes the false compile-mode word from shared recognition used by CSS,
-Less, SCSS, Jess, and the SCSS CST grammar.
+`CssAstSyntax*`. Opaque CSS capture leaves likewise use concept names
+(`OpaqueAtRulePreludeCapture` / `OpaqueAtRuleBodyCapture`). This removes the
+false compile-mode word from shared recognition used by CSS, Less, SCSS, Jess,
+and the SCSS CST grammar.
 
 Rejected in this pass: renaming the exported direct AST grammar
 `cssAstGrammar`, because that name is still consumed by current public parse

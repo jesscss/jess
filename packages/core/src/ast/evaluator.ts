@@ -11,12 +11,12 @@
  * HARD MODULE BOUNDARY: imports only the engine value modules.
  */
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { emitValue, isValueGroupArray, type EvalModes, type FnScope, type ValueEvaluator, type ValueGroup, type ValueObj } from './value-eval.js';
-import type { FnIo } from './functions/types.js';
+import { emitValue, isValueGroupArray, type EvalModes, type FnScope, type ValueEvaluator, type ValueGroup, type Value } from './value-eval.js';
+import type { Fn, FnIo } from './functions/types.js';
 import { sepGlue } from './value-eval.js';
 import { groupItems, groupSeparator } from './value-list.js';
 import { operate } from './value-operate.js';
-import { compare as compareValues, typeCheck as typeCheckValues } from './value-guards.js';
+import { compare as compareValues, compareMatch as compareMatchValues, typeCheck as typeCheckValues } from './value-guards.js';
 import { sniffLiteral } from './literal-tag.js';
 import type { FnRegistry } from './value-dispatch.js';
 import { dispatchFn } from './value-dispatch.js';
@@ -29,7 +29,7 @@ function verbatimArgs(args: ValueGroup): string {
 }
 
 /** Preserve an optional CSS call after name resolution or invocation failed. */
-function fallbackCall(name: string, args: ValueGroup): ValueObj {
+function fallbackCall(name: string, args: ValueGroup): Value {
   return makeKeyword(`${name}(${verbatimArgs(args)})`);
 }
 
@@ -42,13 +42,11 @@ function recoverCallFailure(
   error: unknown,
   name: string,
   args: ValueGroup,
-  modes: EvalModes,
-  onUnresolved: ((error: unknown) => void) | undefined
-): ValueObj {
+  modes: EvalModes
+): Value {
   if (modes.functionMode === 'error') {
     throw error;
   }
-  onUnresolved?.(error);
   return fallbackCall(name, args);
 }
 
@@ -57,13 +55,12 @@ function recoverAsyncCall(
   result: MaybePromise<ValueGroup>,
   name: string,
   args: ValueGroup,
-  modes: EvalModes,
-  onUnresolved: ((error: unknown) => void) | undefined
+  modes: EvalModes
 ): MaybePromise<ValueGroup> {
   if (!isThenable(result)) {
     return result;
   }
-  return result.catch(error => recoverCallFailure(error, name, args, modes, onUnresolved));
+  return result.catch(error => recoverCallFailure(error, name, args, modes));
 }
 
 /**
@@ -83,7 +80,7 @@ const stringify = (v: ValueGroup): string =>
  * Core imports no fn bodies here.
  */
 export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
-  const materialize = (bytes: string): ValueObj => sniffLiteral(bytes);
+  const materialize = (bytes: string): Value => sniffLiteral(bytes);
 
   const call = (
     name: string,
@@ -91,28 +88,25 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     modes: EvalModes,
     scope?: FnScope | null,
     io?: FnIo,
-    onUnresolved?: (error: unknown) => void
+    scopedFn?: Fn
   ): MaybePromise<ValueGroup> => {
     /*
      * [plugin/P1] Scoped `@plugin`/`@use` fns shadow built-ins and are consulted
-     * FIRST — but ONLY when `scope` is non-null, which the caller passes solely
-     * when the document registered a scoped fn somewhere (`e.anyScopedFns`). On the
-     * idle path `scope` is omitted/null and this whole branch is skipped, so the
-     * built-in dispatch below is reached on the identical path it took before.
+     * FIRST. The serializer normally passes an already-resolved `scopedFn`, so
+     * the hot call path never repeats a lexical lookup. `scope` remains only for
+     * direct consumers of the legacy lazy lookup seam.
      */
-    if (scope) {
-      const scoped = scope.lookup(name);
-      if (scoped) {
-        try {
-          return recoverAsyncCall(dispatchFn(scoped, args, { modes, stringify, io }), name, args, modes, onUnresolved);
-        } catch (err) {
-          return recoverCallFailure(err, name, args, modes, onUnresolved);
-        }
+    const scoped = scopedFn ?? scope?.lookup(name);
+    if (scoped) {
+      try {
+        return recoverAsyncCall(dispatchFn(scoped, args, { modes, stringify, io }), name, args, modes);
+      } catch (err) {
+        return recoverCallFailure(err, name, args, modes);
       }
     }
     if (registry.has(name)) {
       try {
-        return recoverAsyncCall(registry.dispatch(name, args, { modes, stringify, io }), name, args, modes, onUnresolved);
+        return recoverAsyncCall(registry.dispatch(name, args, { modes, stringify, io }), name, args, modes);
       } catch (err) {
         /*
          * FunctionMode `preserve` (Less v5 default): a bare/global fn reference that
@@ -124,7 +118,7 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
          * caught here; variable-resolution / mixin-recursion errors are thrown
          * outside `dispatch` and still propagate.)
          */
-        return recoverCallFailure(err, name, args, modes, onUnresolved);
+        return recoverCallFailure(err, name, args, modes);
       }
     }
 
@@ -132,11 +126,26 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     return fallbackCall(name, args);
   };
 
+  /* The callee's declared parameter names — the binding surface a keyword
+   * argument resolves against. Scoped fns shadow built-ins here exactly as they
+   * do in `call`, so a call binds against the definition it will actually reach. */
+  const paramNames = (name: string, scopedFn?: Fn): readonly (string | undefined)[] | undefined => {
+    const fn = scopedFn ?? registry.get(name);
+    return fn === undefined ? undefined : fn.params.map(p => p.name);
+  };
+
+  /*
+   * `unitMode` reaches comparison, not just arithmetic: `strictUnits` used to make
+   * `1px + 3em` a hard error while `2px > 1em` stayed a silent `false`.
+   */
   const compare = (op: string, left: ValueGroup, right: ValueGroup, modes: EvalModes): boolean =>
-    compareValues(op, left, right, modes.equalityMode ?? 'less');
+    compareValues(op, left, right, modes.unitMode);
+
+  const compareMatch = (op: string, left: ValueGroup, right: ValueGroup, modes: EvalModes): boolean =>
+    compareMatchValues(op, left, right, modes.unitMode);
 
   const typeCheck = (name: string, args: ValueGroup, _modes: EvalModes): boolean => {
-    const values: ValueObj[] = [];
+    const values: Value[] = [];
     for (const value of groupItems(args)) {
       if (isValueGroupArray(value)) {
         return false;
@@ -146,5 +155,5 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     return typeCheckValues(name, values);
   };
 
-  return { materialize, operate, call, compare, typeCheck };
+  return { materialize, operate, call, paramNames, compare, compareMatch, typeCheck };
 }

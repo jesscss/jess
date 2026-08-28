@@ -4,8 +4,11 @@ import { glob } from 'glob';
 import { Region, type LineContent, type TextStyle } from 'linecraft';
 import {
   collectTolerantDiagnostics,
+  type CssDiagnosticMetadata,
+  defaultCssDiagnosticMetadata,
   type DiagnosticSeverityName,
   type JessLanguage,
+  LINT_CODES,
   type SourceDiagnostic
 } from '@jesscss/diagnostics-core';
 import {
@@ -14,6 +17,7 @@ import {
 } from '@jesscss/core';
 import type {
   LintConfig,
+  LintRuleOptions,
   LintRuleSetting,
   LintSeverity,
   StylesConfig
@@ -24,7 +28,8 @@ import {
   ruleNameForDiagnostic
 } from './rules.js';
 
-export type { LintConfig, LintRuleSetting, LintSeverity };
+export type { LintConfig, LintRuleOptions, LintRuleSetting, LintSeverity };
+export type { CssDiagnosticMetadata } from '@jesscss/diagnostics-core';
 export {
   LINT_RULE_NAMES,
   PARSE_SYNTAX_ERROR_CODE,
@@ -55,6 +60,7 @@ export interface LintOptions {
   readonly maxWarnings?: number;
   readonly syntaxOnly?: boolean;
   readonly includeLegacyDiagnostics?: boolean;
+  readonly metadata?: Partial<CssDiagnosticMetadata>;
 }
 
 export interface LintTextInput {
@@ -64,6 +70,7 @@ export interface LintTextInput {
 }
 
 export interface LintDiagnostic extends SourceDiagnostic {
+  readonly ruleName?: string;
   readonly severity: DiagnosticSeverityName;
 }
 
@@ -86,69 +93,14 @@ export interface LintFormatOptions {
   readonly cwd?: string;
 }
 
-interface LinePosition {
-  readonly line: number;
-  readonly column: number;
-}
-
 interface DisplayDiagnostic {
   readonly code: string;
+  readonly ruleName?: string;
   readonly severity: DiagnosticSeverityName;
   readonly message: string;
   readonly filePath?: string;
   readonly line: number;
   readonly column: number;
-}
-
-class SourceLineIndex {
-  readonly #source: string;
-  readonly #lineStarts: number[];
-  readonly #lines: string[];
-
-  constructor(source: string) {
-    this.#source = source;
-    this.#lineStarts = [0];
-    for (let i = 0; i < source.length; i++) {
-      if (source.charCodeAt(i) === 10 /* \n */) {
-        this.#lineStarts.push(i + 1);
-      }
-    }
-    this.#lines = source.split(/\r?\n/);
-  }
-
-  lineColAt(offset: number): LinePosition {
-    const end = Math.min(Math.max(0, offset), this.#source.length);
-    let low = 0;
-    let high = this.#lineStarts.length - 1;
-    while (low <= high) {
-      const mid = Math.floor((low + high) / 2);
-      const start = this.#lineStarts[mid] ?? 0;
-      if (start <= end) {
-        low = mid + 1;
-      } else {
-        high = mid - 1;
-      }
-    }
-    const lineIndex = Math.max(0, high);
-    return {
-      line: lineIndex + 1,
-      column: end - (this.#lineStarts[lineIndex] ?? 0) + 1
-    };
-  }
-
-  extractRelevantLines(line: number, contextLines = 1): Record<number, string> | undefined {
-    if (this.#source.length === 0) {
-      return undefined;
-    }
-    const target = Math.max(1, Math.min(line, this.#lines.length));
-    const start = Math.max(1, target - contextLines);
-    const end = Math.min(this.#lines.length, target + contextLines);
-    const result: Record<number, string> = {};
-    for (let i = start; i <= end; i++) {
-      result[i] = this.#lines[i - 1] ?? '';
-    }
-    return result;
-  }
 }
 
 function lintConfigFromStylesConfig(config: StylesConfig | null | undefined): LintConfig | undefined {
@@ -178,9 +130,234 @@ function rulesFromDiagnostics(diagnostics: Record<string, LintSeverity> | undefi
   }
   const rules: Record<string, LintRuleSetting> = {};
   for (const [code, severity] of Object.entries(diagnostics)) {
-    rules[ruleNameForDiagnostic(code)] = severity;
+    const ruleName = lintRuleNameForDiagnostic(code);
+    if (ruleName !== undefined) {
+      rules[ruleName] = severity;
+    }
   }
   return rules;
+}
+
+function lintRuleNameForDiagnostic(code: string): string | undefined {
+  const ruleName = ruleNameForDiagnostic(code);
+  return ruleName === code ? undefined : ruleName;
+}
+
+/**
+ * `Array.isArray` is declared as `arg is any[]`, which does not remove a
+ * `readonly` tuple from the union on the false branch. This predicate narrows
+ * both branches; the runtime check is unchanged.
+ */
+function isSettingTuple(
+  setting: LintRuleSetting | LintSeverity | undefined
+): setting is readonly [LintSeverity | null, LintRuleOptions?] {
+  return Array.isArray(setting);
+}
+
+function settingSeverity(setting: LintRuleSetting | LintSeverity | undefined): LintSeverity | null | undefined {
+  return isSettingTuple(setting) ? setting[0] : setting;
+}
+
+function settingOptions(setting: LintRuleSetting | undefined): LintRuleOptions | undefined {
+  return Array.isArray(setting) ? setting[1] : undefined;
+}
+
+function normalizedValidProperties(config: LintConfig): Set<string> | null {
+  const validProperties = config.validProperties;
+  if (validProperties === undefined || validProperties.length === 0) {
+    return null;
+  }
+  const names = new Set<string>();
+  for (const property of validProperties) {
+    const name = property.trim().toLowerCase();
+    if (name.length > 0) {
+      names.add(name);
+    }
+  }
+  return names.size === 0 ? null : names;
+}
+
+function metadataForLintConfig(
+  metadata: Partial<CssDiagnosticMetadata> | undefined,
+  config: LintConfig
+): Partial<CssDiagnosticMetadata> | undefined {
+  const validProperties = normalizedValidProperties(config);
+  if (validProperties === null) {
+    return metadata;
+  }
+  return {
+    ...metadata,
+    isKnownProperty(name) {
+      if (validProperties.has(name.toLowerCase())) {
+        return true;
+      }
+      return metadata?.isKnownProperty?.(name) ?? defaultCssDiagnosticMetadata.isKnownProperty(name);
+    }
+  };
+}
+
+function ignoresRuleOption(options: LintRuleOptions | undefined, value: string): boolean {
+  return options?.ignore?.includes(value) === true;
+}
+
+function includesRuleOption(options: LintRuleOptions | undefined, value: string): boolean {
+  return options?.include?.includes(value) === true;
+}
+
+function patternRuleTarget(diagnostic: SourceDiagnostic, source: string): string | null {
+  const raw = source.slice(diagnostic.start, diagnostic.end);
+  if (diagnostic.code === LINT_CODES.selectorClassPattern) {
+    return raw.startsWith('.') ? raw.slice(1) : raw;
+  }
+  if (
+    diagnostic.code === LINT_CODES.customPropertyPattern
+    || diagnostic.code === LINT_CODES.keyframesNamePattern
+  ) {
+    return raw;
+  }
+  return null;
+}
+
+function patternRuleOption(options: LintRuleOptions | undefined): RegExp | null {
+  const pattern = options?.pattern;
+  if (pattern instanceof RegExp) {
+    return pattern;
+  }
+  if (typeof pattern === 'string') {
+    try {
+      return new RegExp(pattern);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function notationRuleTarget(diagnostic: SourceDiagnostic, source: string): string | null {
+  if (
+    diagnostic.code === LINT_CODES.colorFunctionNotation
+    || diagnostic.code === LINT_CODES.alphaValueNotation
+    || diagnostic.code === LINT_CODES.hueDegreeNotation
+  ) {
+    return source.slice(diagnostic.start, diagnostic.end);
+  }
+  return null;
+}
+
+function notationRuleOption(options: LintRuleOptions | undefined): string | null {
+  return typeof options?.notation === 'string' ? options.notation : null;
+}
+
+type SpecificityTuple = readonly [number, number, number];
+
+function parseSpecificity(value: unknown): SpecificityTuple | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const parts = value.split(',');
+  if (parts.length !== 3) {
+    return null;
+  }
+  const numbers = parts.map(part => Number(part.trim()));
+  return numbers.every(number => Number.isInteger(number) && number >= 0)
+    ? [numbers[0]!, numbers[1]!, numbers[2]!]
+    : null;
+}
+
+function specificityFromDiagnostic(diagnostic: SourceDiagnostic): SpecificityTuple | null {
+  for (const qualifier of diagnostic.qualifiers ?? []) {
+    if (qualifier.startsWith('specificity:')) {
+      return parseSpecificity(qualifier.slice('specificity:'.length));
+    }
+  }
+  return null;
+}
+
+function maxSpecificityRuleOption(options: LintRuleOptions | undefined): SpecificityTuple | null {
+  return parseSpecificity(options?.max) ?? parseSpecificity(options?.maxSpecificity);
+}
+
+function specificityAllowed(actual: SpecificityTuple, max: SpecificityTuple): boolean {
+  return actual[0] < max[0]
+    || (actual[0] === max[0] && (
+      actual[1] < max[1]
+      || (actual[1] === max[1] && actual[2] <= max[2])
+    ));
+}
+
+function isAngleNotation(value: string): boolean {
+  const lower = value.toLowerCase();
+  return lower.endsWith('deg')
+    || lower.endsWith('grad')
+    || lower.endsWith('rad')
+    || lower.endsWith('turn');
+}
+
+function shouldSuppressByNotation(diagnostic: SourceDiagnostic, source: string, options: LintRuleOptions | undefined): boolean {
+  const target = notationRuleTarget(diagnostic, source);
+  if (target === null) {
+    return false;
+  }
+  const notation = notationRuleOption(options);
+  if (diagnostic.code === LINT_CODES.colorFunctionNotation) {
+    return notation !== 'modern';
+  }
+  if (diagnostic.code === LINT_CODES.alphaValueNotation) {
+    if (notation === 'percentage') {
+      return target.endsWith('%');
+    }
+    if (notation === 'number') {
+      return !target.endsWith('%');
+    }
+    return true;
+  }
+  if (diagnostic.code === LINT_CODES.hueDegreeNotation) {
+    if (notation === 'angle') {
+      return isAngleNotation(target);
+    }
+    if (notation === 'number') {
+      return !isAngleNotation(target);
+    }
+    return true;
+  }
+  return false;
+}
+
+function hasQualifier(diagnostic: SourceDiagnostic, value: string): boolean {
+  return diagnostic.qualifiers?.includes(value) === true;
+}
+
+function shouldSuppressByRuleOptions(
+  diagnostic: SourceDiagnostic,
+  setting: LintRuleSetting | undefined,
+  source: string
+): boolean {
+  const options = settingOptions(setting);
+  if (diagnostic.code === LINT_CODES.duplicateProperties) {
+    return ignoresRuleOption(options, 'consecutive-duplicates')
+      && hasQualifier(diagnostic, 'consecutive-duplicate');
+  }
+  if (diagnostic.code === LINT_CODES.emptyRules && hasQualifier(diagnostic, 'mixin-body')) {
+    return !includesRuleOption(options, 'mixins');
+  }
+  if (diagnostic.code === LINT_CODES.selectorMaxSpecificity) {
+    const actual = specificityFromDiagnostic(diagnostic);
+    const max = maxSpecificityRuleOption(options);
+    return actual === null || max === null || specificityAllowed(actual, max);
+  }
+  const patternTarget = patternRuleTarget(diagnostic, source);
+  if (patternTarget !== null) {
+    const pattern = patternRuleOption(options);
+    if (pattern === null) {
+      return true;
+    }
+    pattern.lastIndex = 0;
+    return pattern.test(patternTarget);
+  }
+  if (shouldSuppressByNotation(diagnostic, source, options)) {
+    return true;
+  }
+  return false;
 }
 
 async function resolveLintConfig(options: LintOptions): Promise<LintConfig> {
@@ -212,7 +389,12 @@ function languageFromPath(filePath: string | undefined, fallback: JessLanguage |
   return 'css';
 }
 
-function applyPolicy(diagnostics: readonly SourceDiagnostic[], config: LintConfig, options: LintOptions): LintDiagnostic[] {
+function applyPolicy(
+  diagnostics: readonly SourceDiagnostic[],
+  source: string,
+  config: LintConfig,
+  options: LintOptions
+): LintDiagnostic[] {
   const out: LintDiagnostic[] = [];
   for (const diagnostic of diagnostics) {
     if (options.syntaxOnly === true && diagnostic.phase !== 'parse') {
@@ -221,20 +403,26 @@ function applyPolicy(diagnostics: readonly SourceDiagnostic[], config: LintConfi
     if (config.reportSyntax === false && diagnostic.phase === 'parse') {
       continue;
     }
-    const policy = config.rules?.[ruleNameForDiagnostic(diagnostic.code)]
-      ?? config.rules?.[diagnostic.code]
+    const ruleName = lintRuleNameForDiagnostic(diagnostic.code);
+    const policy = (ruleName !== undefined ? config.rules?.[ruleName] : undefined)
       ?? config.diagnostics?.[diagnostic.code];
-    if (policy === null || policy === 'off') {
+    const severityPolicy = settingSeverity(policy);
+    if (severityPolicy === null || severityPolicy === 'off') {
       continue;
     }
-    if (policy === undefined && diagnostic.phase !== 'parse') {
+    if (severityPolicy === undefined && diagnostic.phase !== 'parse') {
+      continue;
+    }
+    const rulePolicy = ruleName !== undefined ? config.rules?.[ruleName] : undefined;
+    if (shouldSuppressByRuleOptions(diagnostic, rulePolicy, source)) {
       continue;
     }
     out.push({
       ...diagnostic,
-      severity: policy === 'error'
+      ruleName,
+      severity: severityPolicy === 'error'
         ? 'error'
-        : policy === 'warn'
+        : severityPolicy === 'warn'
           ? 'warning'
           : diagnostic.defaultSeverity
     });
@@ -242,9 +430,7 @@ function applyPolicy(diagnostics: readonly SourceDiagnostic[], config: LintConfi
   return out;
 }
 
-function toErrorDiagnostic(diagnostic: LintDiagnostic, lines: SourceLineIndex): ErrorDiagnostic {
-  const start = lines.lineColAt(diagnostic.start);
-  const end = lines.lineColAt(diagnostic.end);
+function toErrorDiagnostic(diagnostic: LintDiagnostic): ErrorDiagnostic {
   return {
     code: diagnostic.code,
     phase: diagnostic.phase,
@@ -252,17 +438,14 @@ function toErrorDiagnostic(diagnostic: LintDiagnostic, lines: SourceLineIndex): 
     reason: diagnostic.reason,
     fix: diagnostic.fix,
     filePath: diagnostic.filePath,
-    line: start.line,
-    column: start.column,
-    endLine: end.line,
-    endColumn: end.column,
-    lines: lines.extractRelevantLines(start.line)
+    line: diagnostic.line ?? 1,
+    column: diagnostic.column ?? 1,
+    endLine: diagnostic.endLine,
+    endColumn: diagnostic.endColumn
   };
 }
 
-function toWarningDiagnostic(diagnostic: LintDiagnostic, lines: SourceLineIndex): WarningDiagnostic {
-  const start = lines.lineColAt(diagnostic.start);
-  const end = lines.lineColAt(diagnostic.end);
+function toWarningDiagnostic(diagnostic: LintDiagnostic): WarningDiagnostic {
   return {
     code: diagnostic.code,
     phase: diagnostic.phase,
@@ -270,16 +453,14 @@ function toWarningDiagnostic(diagnostic: LintDiagnostic, lines: SourceLineIndex)
     reason: diagnostic.reason,
     fix: diagnostic.fix,
     filePath: diagnostic.filePath,
-    line: start.line,
-    column: start.column,
-    endLine: end.line,
-    endColumn: end.column,
-    lines: lines.extractRelevantLines(start.line)
+    line: diagnostic.line ?? 1,
+    column: diagnostic.column ?? 1,
+    endLine: diagnostic.endLine,
+    endColumn: diagnostic.endColumn
   };
 }
 
 function toLintResult(
-  source: string,
   filePath: string | undefined,
   diagnostics: readonly LintDiagnostic[],
   includeLegacyDiagnostics: boolean
@@ -293,14 +474,13 @@ function toLintResult(
     };
   }
 
-  const lines = new SourceLineIndex(source);
   const errors: ErrorDiagnostic[] = [];
   const warnings: WarningDiagnostic[] = [];
   for (const diagnostic of diagnostics) {
     if (diagnostic.severity === 'error') {
-      errors.push(toErrorDiagnostic(diagnostic, lines));
+      errors.push(toErrorDiagnostic(diagnostic));
     } else {
-      warnings.push(toWarningDiagnostic(diagnostic, lines));
+      warnings.push(toWarningDiagnostic(diagnostic));
     }
   }
   return {
@@ -314,15 +494,16 @@ function toLintResult(
 export async function lintText(input: LintTextInput, options: LintOptions = {}): Promise<LintResult> {
   const lintConfig = await resolveLintConfig(options);
   const language = languageFromPath(input.filePath, input.language ?? options.language);
+  const metadata = metadataForLintConfig(options.metadata, lintConfig);
   const collected = collectTolerantDiagnostics({
     source: input.source,
     filePath: input.filePath,
-    language
+    language,
+    metadata
   });
   return toLintResult(
-    input.source,
     input.filePath,
-    applyPolicy(collected.diagnostics, lintConfig, options),
+    applyPolicy(collected.diagnostics, input.source, lintConfig, options),
     options.includeLegacyDiagnostics === true
   );
 }
@@ -353,14 +534,14 @@ export async function lintFiles(patterns: string | readonly string[], options: L
   files.sort();
 
   const results: LintResult[] = [];
+  const metadata = metadataForLintConfig(options.metadata, lintConfig);
   for (const filePath of files) {
     const source = await readFile(filePath, 'utf8');
     const language = languageFromPath(filePath, options.language);
-    const collected = collectTolerantDiagnostics({ source, filePath, language });
+    const collected = collectTolerantDiagnostics({ source, filePath, language, metadata });
     results.push(toLintResult(
-      source,
       filePath,
-      applyPolicy(collected.diagnostics, lintConfig, options),
+      applyPolicy(collected.diagnostics, source, lintConfig, options),
       options.includeLegacyDiagnostics === true
     ));
   }
@@ -426,11 +607,11 @@ function formatLintRows(result: LintRunResult, options: Required<LintFormatOptio
 
     const locWidth = Math.max(...diagnostics.map(diagnostic => locOf(diagnostic).length));
     const severityWidth = Math.max(...diagnostics.map(diagnostic => diagnostic.severity.length));
-    const codeWidth = Math.max(...diagnostics.map(diagnostic => diagnostic.code.length));
+    const codeWidth = Math.max(...diagnostics.map(diagnostic => displayCode(diagnostic).length));
     for (const diagnostic of diagnostics) {
       const loc = locOf(diagnostic).padStart(locWidth);
       const severity = diagnostic.severity.padEnd(severityWidth);
-      const code = diagnostic.code.padEnd(codeWidth);
+      const code = displayCode(diagnostic).padEnd(codeWidth);
       rows.push({
         text: `  ${linkIfEnabled(options.colors, diagnostic.filePath, loc, diagnostic.line, diagnostic.column)}  ${severity}  ${code}  ${diagnostic.message}`,
         style: severityStyle(diagnostic.severity)
@@ -449,6 +630,18 @@ function formatLintRows(result: LintRunResult, options: Required<LintFormatOptio
 }
 
 function displayDiagnostics(file: LintResult): DisplayDiagnostic[] {
+  if (file.diagnostics.length > 0) {
+    return file.diagnostics.map(diagnostic => ({
+      code: diagnostic.code,
+      ruleName: diagnostic.ruleName,
+      severity: diagnostic.severity,
+      message: diagnostic.message,
+      filePath: diagnostic.filePath,
+      line: diagnostic.line ?? 0,
+      column: diagnostic.column ?? diagnostic.start
+    }));
+  }
+
   const diagnostics: DisplayDiagnostic[] = [
     ...file.errors.map(diagnostic => ({
       code: diagnostic.code,
@@ -470,14 +663,11 @@ function displayDiagnostics(file: LintResult): DisplayDiagnostic[] {
   if (diagnostics.length > 0) {
     return diagnostics;
   }
-  return file.diagnostics.map(diagnostic => ({
-    code: diagnostic.code,
-    severity: diagnostic.severity,
-    message: diagnostic.message,
-    filePath: diagnostic.filePath,
-    line: 0,
-    column: diagnostic.start
-  }));
+  return [];
+}
+
+function displayCode(diagnostic: DisplayDiagnostic): string {
+  return diagnostic.ruleName ?? diagnostic.code;
 }
 
 function locOf(diagnostic: DisplayDiagnostic): string {

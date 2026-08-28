@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { extendSelector } from '../extend.js';
-import { el, pseudo, sellist, compound } from '../../../index.js';
+import { el, pseudo, sellist, compound } from '../../index.js';
 
 describe('Extend :where() Selector Tests', () => {
   describe('Extensions involving :where() selectors', () => {

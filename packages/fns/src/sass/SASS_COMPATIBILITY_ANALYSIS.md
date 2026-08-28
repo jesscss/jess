@@ -43,7 +43,7 @@
 
 **Question: Is there inherent benefit to storing colors in their original color space?**
 
-**Answer:** Jess already preserves the original authored statement via `Color.node` (string or Node). For most color adjustments, no - operations typically convert to a working space (like HSL), perform the operation, then convert back. However, storing channel values in multiple formats can be useful for:
+**Answer:** Jess already preserves the original authored spelling via `Color.src`. For most color adjustments, operations typically convert to a working space (like HSL), perform the operation, then convert back. However, storing channel values in multiple formats can be useful for:
 - Avoiding unnecessary conversions when the format matches the operation
 - Supporting color space-specific operations (e.g., `color.channel()` in Sass)
 - Faster access to commonly-used formats (RGB and HSL are both frequently needed)
@@ -86,7 +86,7 @@ export enum ColorFormat {
 #### Option B: Store multiple channel formats in Color
 ```typescript
 export interface ColorData {
-  node?: string | Node;  // Original authored statement (already exists)
+  src?: string;          // Original authored spelling (already exists)
   format?: ColorFormat;  // Preferred output format (already exists)
   
   // Store channels for RGB and HSL (both commonly used)
@@ -445,7 +445,7 @@ The most impactful remaining changes are:
   `Block.delimiter` (`'square'`) carries Sass bracketedness. No `hasBrackets`
   flag is needed.
 - **String quotes**: Already supported via `Quoted` node - just need to use it in conversion
-- **Color original statement**: Already preserved via `Color.node` - no changes needed
+- **Color original spelling**: Already preserved via `Color.src` - no changes needed
 - **Color channels**: Should be normalized float values (not units). Storing RGB+HSL is trivial and useful
 - **Compound units**: Result from calc() operations, not standard CSS. Current string-based approach works for Less and most Jess cases. Only needed for Sass `math.div()` → `calc()` output
 - **Missing channels**: CSS Color 4 feature, rare in practice. Only needed if supporting relative color syntax

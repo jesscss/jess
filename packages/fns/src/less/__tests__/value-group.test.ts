@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { emitValue, isValueGroupArray, makeDimension } from '@jesscss/core/value';
-import type { ValueGroup } from '@jesscss/core/value';
+import { emitValue, isValueGroupArray, makeDimension } from '@jesscss/core';
+import type { ValueGroup } from '@jesscss/core';
 import { range } from '../range.js';
 
 function group(result: ValueGroup | Promise<ValueGroup>): readonly ValueGroup[] {

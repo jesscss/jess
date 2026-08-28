@@ -8,7 +8,7 @@
  * own engine is byte-identical where it can build, and records UNSUPPORTED otherwise.
  */
 import { describe, it, expect, afterAll } from 'vitest';
-import { el, sel, sellist, compound, is, co, pseudo, type Selector } from '../../../index.js';
+import { el, sel, sellist, compound, is, co, pseudo, type Selector } from '../../index.js';
 import { extendViaOwn, reportFrontier, resetFrontier } from './corpus-harness.js';
 
 function not(arg: Selector): Selector {

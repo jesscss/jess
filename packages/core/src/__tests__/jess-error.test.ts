@@ -135,11 +135,11 @@ describe('JessError diagnostics', () => {
       offset: source.indexOf('.bad'),
       expected: [
         '"\\""',
-        'CssSyntaxNumber',
-        'CssSyntaxDimensionUnit',
+        'NumberToken',
+        'DimensionUnit',
         'LessSyntaxKeyword',
         '/-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*/',
-        'not(peek)'
+        'not(regex)'
       ]
     };
 
@@ -159,8 +159,8 @@ describe('JessError diagnostics', () => {
       line: 2,
       column: 10
     });
-    expect(diagnostic.reason).not.toContain('CssSyntaxNumber');
-    expect(diagnostic.reason).not.toContain('not(peek)');
+    expect(diagnostic.reason).not.toContain('NumberToken');
+    expect(diagnostic.reason).not.toContain('not(regex)');
   });
 
   it('deduplicates expected tokens before summarizing parser diagnostics', () => {

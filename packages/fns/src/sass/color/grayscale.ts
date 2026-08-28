@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core/value';
-import { colorHsl, defineFunction, makeColorHsl } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core';
+import { colorHsl, defineFunction, makeColorHsl } from '@jesscss/core';
 import { noExcess, requireColor } from './kernels.js';
 
 /**
@@ -16,7 +16,7 @@ import { noExcess, requireColor } from './kernels.js';
  * colour call: it fails the kind check and re-emits verbatim.
  */
 export const grayscale: Fn = defineFunction('grayscale', {
-  params: [{ name: 'color', kinds: ['Color'] }, { name: 'excess', kinds: 'any', optional: true }],
+  params: [{ name: 'color', type: 'Color' }, { name: 'excess', type: 'any', optional: true }],
   body: (c, excess) => {
     noExcess(excess, 1);
     const color = requireColor(c);

@@ -1,6 +1,12 @@
 /**
  * Canonical CSS grammar.
  *
+ * CSS owns the shared stylesheet structure: rulesets, declarations, selectors,
+ * values, standard at-rules, conditional query/supports/container preludes,
+ * custom properties, pseudos, and opaque unknown CSS at-rules. Dialects should
+ * reuse these rules unless they expand a specific value/selector/header shape
+ * or add language-specific statements.
+ *
  * Parseman reductions call core AST constructors directly in the default
  * artifact. The CST artifact is compiled from the same factory with
  * `hostMode: 'cst'` for language-service and dialect composition use.
@@ -10,8 +16,8 @@
  * - SCSS: ../../../scss/scss-parser/src/grammar.ts
  * - Jess: ../../../jess/jess-parser/src/grammar.ts
  */
-import { balanced, choice, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, token, trivia, when } from 'parseman' with { type: 'macro' };
-import type { Combinator, FieldMap } from 'parseman';
+import { balanced, classifiedTrivia, choice, compose, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, token, when } from 'parseman' with { type: 'macro' };
+import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -19,69 +25,96 @@ import {
   any,
   atRuleBlock,
   atRuleStatement,
+  attributeSelector,
+  authoredText,
+  block,
+  blockStatements,
+  branchSegments,
+  chainedQueryComparison,
   color,
-  complexSelector,
-  complexCanonical,
-  compoundSelectorOf,
+  complexSegments,
+  cssBaseMathOutsideParens,
+  cssRelativeCombinator,
   decl,
   dimension,
+  documentStatements,
+  firstValue,
+  flattenSequences,
+  foldOperation,
   funcCall,
-  generalEnclosed,
+  functionOpenName,
+  importPrelude,
   interpolation,
+  isAtRuleBlock,
+  isDeclaration,
+  isImportTarget,
+  isInterpolation,
+  isKeyword,
+  isNodeType,
+  isSelectorBranch,
+  isSelectorList,
+  isSimpleToken,
+  isTerminalText,
+  isValue,
+  isValueSlotValue,
+  keyframeSelectorList,
   keyword,
   list,
-  operation,
   opaqueAtRuleBlock,
-  block,
-  stylesheet,
-  rule,
-  selist,
+  opaqueBodyText,
+  operation,
+  optionalValue,
   pseudoSelector,
-  simpleSelector,
-  spaced,
-  url,
+  queryComparisonOperators,
   quoted,
-  withBodySpan,
-  withSourceSpan,
-  withValueLayout
+  relativeSelector,
+  rule,
+  rulesetStatements,
+  selectorArgumentText,
+  selectorBranches,
+  selectorBranchOf,
+  selectorTermFromTokens,
+  selist,
+  semanticTextWithTriviaGaps,
+  simpleSelector,
+  sourceText,
+  spaced,
+  STRUCTURED_PSEUDOS,
+  stylesheet,
+  tokenText,
+  url,
+  valueChildren,
+  valueSlot,
+  valueSlotChildren,
+  withAuthoredSeparators,
+  withBlockBody,
+  withSourceSpan
 } from '@jesscss/core/ast';
 import type {
   AtRuleBlock,
-  OpaqueAtRuleBlock,
-  ComplexSelector as AstComplexSelector,
-  CompoundSelector as AstCompoundSelector,
-  Color as AstColor,
-  Declaration as AstDeclaration,
-  Dimension as AstDimension,
+  Declaration,
   Interpolation,
-  Keyword,
-  Quoted as AstQuoted,
-  Rule,
-  SelectorList as AstSelectorList,
-  SimpleSelector,
-  SimpleToken,
-  Statement,
-  ValueNode,
-  ValueSlot,
-  Url as AstUrl
+  ValueNode
 } from '@jesscss/core/ast';
 
-type SourceSpan = { readonly start: number; readonly end: number };
-type SpannedToken = { readonly value: unknown; readonly span: SourceSpan };
-
-type CssGrammarRuleName =
-  | 'AtPrelude'
+type GrammarRuleName =
+  | 'AtRulePrelude'
   | 'AtRulePreludeSegments'
   | 'AtRuleStatement'
+  | 'AttributeModifier'
+  | 'AttributeOperator'
   | 'AttributeSelector'
   | 'BasicSelector'
   | 'CalcCall'
   | 'CalcIdentOrFunction'
   | 'CalcParen'
   | 'CalcProduct'
+  | 'CalcSequence'
   | 'CalcSum'
   | 'CalcValue'
+  | 'MathFunction'
   | 'Call'
+  | 'CharsetStatement'
   | 'Color'
   | 'ComplexSelector'
   | 'CompoundSelector'
@@ -90,66 +123,61 @@ type CssGrammarRuleName =
   | 'ContainerPrelude'
   | 'ContainerQueryClause'
   | 'ContainerQueryPrelude'
-  | 'CssOpaqueCaptureBody'
-  | 'CssOpaqueCapturePrelude'
-  | 'CssSyntax'
-  | 'CssSyntaxAttributeModifier'
-  | 'CssSyntaxAttributeOperator'
-  | 'CssSyntaxConditionalAtKeyword'
-  | 'CssSyntaxContainerAtKeyword'
-  | 'CssSyntaxCustomProperty'
-  | 'CssSyntaxDescriptorAtKeyword'
-  | 'CssSyntaxDocumentAtKeyword'
-  | 'CssSyntaxDoubleQuotedText'
-  | 'CssSyntaxFontFeatureValueAtKeyword'
-  | 'CssSyntaxFontFeatureValuesAtKeyword'
-  | 'CssSyntaxGenericAtRuleName'
-  | 'CssSyntaxImportant'
-  | 'CssSyntaxKeyframesAtKeyword'
-  | 'CssSyntaxKeyword'
-  | 'CssSyntaxLayerAtKeyword'
-  | 'CssSyntaxMalformedPseudoNumericArgument'
-  | 'CssSyntaxMarginAtKeyword'
-  | 'CssSyntaxMediaAtKeyword'
-  | 'CssSyntaxNth'
-  | 'CssSyntaxNthChildName'
-  | 'CssSyntaxNthName'
-  | 'CssSyntaxNthTypeName'
-  | 'CssSyntaxOfKeyword'
-  | 'CssSyntaxPageAtKeyword'
-  | 'CssSyntaxProperty'
-  | 'CssSyntaxPseudoCloseAhead'
-  | 'CssSyntaxQueryAndOr'
-  | 'CssSyntaxQueryComparisonOperator'
-  | 'CssSyntaxQueryFunctionOpen'
-  | 'CssSyntaxQueryNot'
-  | 'CssSyntaxQueryOnly'
-  | 'CssSyntaxRoutedAtRuleKeyword'
-  | 'CssSyntaxScopeAtKeyword'
-  | 'CssSyntaxSelectorArgPseudoName'
-  | 'CssSyntaxSingleQuotedText'
-  | 'CssSyntaxStartingStyleAtKeyword'
-  | 'CssSyntaxStatementAtRuleName'
-  | 'CssSyntaxSupportsAtKeyword'
-  | 'CssSyntaxUnicodeRange'
-  | 'CssSyntaxUrlInner'
-  | 'CssSyntaxUrlOpen'
+  | 'ConditionalAtKeyword'
+  | 'ContainerAtKeyword'
+  | 'CustomPropertyName'
+  | 'DescriptorAtKeyword'
+  | 'DocumentAtKeyword'
+  | 'DoubleQuotedText'
+  | 'FontFeatureValueAtKeyword'
+  | 'FontFeatureValuesAtKeyword'
+  | 'GenericAtRuleName'
+  | 'ImportantToken'
+  | 'KeyframesAtKeyword'
+  | 'LayerAtKeyword'
+  | 'MalformedPseudoSelectorNumericArgument'
+  | 'MarginAtKeyword'
+  | 'MediaAtKeyword'
+  | 'NthExpression'
+  | 'NthChildPseudoSelectorName'
+  | 'NthPseudoSelectorName'
+  | 'NthTypePseudoSelectorName'
+  | 'NthOfKeyword'
+  | 'PageAtKeyword'
+  | 'PseudoSelectorCloseAhead'
+  | 'QueryAndOr'
+  | 'QueryComparisonOperator'
+  | 'QueryFunctionOpen'
+  | 'QueryNot'
+  | 'QueryOnly'
+  | 'AtRuleKeyword'
+  | 'ScopeAtKeyword'
+  | 'SelectorArgumentPseudoSelectorName'
+  | 'SingleQuotedText'
+  | 'StartingStyleAtKeyword'
+  | 'StatementAtRuleName'
+  | 'SupportsAtKeyword'
+  | 'UnicodeRangeToken'
+  | 'UrlInner'
+  | 'UrlOpen'
   | 'CustomProperty'
   | 'CustomValue'
   | 'Declaration'
   | 'DeclarationListAtRule'
   | 'PunctuationValue'
   | 'ParenValue'
+  | 'SquareValue'
+  | 'Identifier'
   | 'RawParenValue'
   | 'DescriptorBlock'
   | 'Dimension'
   | 'DocumentBlock'
   | 'FeatureValueBlock'
   | 'FontFeatureValuesBlock'
-  | 'GeneralEnclosed'
-  | 'GeneralEnclosedContent'
-  | 'GeneralEnclosedGroup'
-  | 'GeneralEnclosedQuoted'
+  | 'Enclosed'
+  | 'EnclosedContent'
+  | 'EnclosedGroup'
+  | 'EnclosedQuoted'
   | 'ImportStatement'
   | 'ImportTail'
   | 'ImportTailBody'
@@ -157,6 +185,7 @@ type CssGrammarRuleName =
   | 'ImportUrl'
   | 'ImportUrlUnquoted'
   | 'Important'
+  | 'RoutedKeyword'
   | 'KeyframeBlock'
   | 'Keyframes'
   | 'Keyword'
@@ -169,11 +198,22 @@ type CssGrammarRuleName =
   | 'NestedConditionalBlock'
   | 'NestedLayerBlock'
   | 'NestedStartingStyleBlock'
+  | 'NamespaceTypeSelector'
   | 'NestingSelector'
   | 'OfTypePseudoArgument'
+  | 'OpaqueAtRuleBodyCapture'
   | 'OpaqueAtPrelude'
+  | 'OpaqueAtRulePreludeCapture'
   | 'OpaqueAtRuleBlock'
   | 'OpaqueBody'
+  | 'OpaqueBodyPart'
+  | 'OpaqueBodyText'
+  | 'OpaqueBodyComment'
+  | 'OpaqueBodyQuoted'
+  | 'OpaqueBodyStray'
+  | 'OpaqueGroup'
+  | 'OpaqueComment'
+  | 'OpaqueString'
   | 'PageBlock'
   | 'Percentage'
   | 'Property'
@@ -217,472 +257,59 @@ type CssGrammarRuleName =
   | 'VarFallbackParen'
   | 'VarFallbackPunctuation'
   | 'VarFallbackTerm'
-  | 'keyframeSelector';
 
-type CssGrammarSelf = { readonly [K in CssGrammarRuleName]: Combinator<unknown> };
-
-function tokenText(child: unknown): string {
-  if (typeof child === 'string') {
-    return child;
-  }
-  if (typeof child === 'object' && child !== null && 'value' in child && typeof child.value === 'string') {
-    return child.value;
-  }
-  throw new Error('CSS AST grammar lost a required token');
-}
-
-function functionOpenName(child: unknown): string {
-  const value = tokenText(child);
-  return value.endsWith('(') ? value.slice(0, -1) : value;
-}
-
-function authoredText(child: unknown): string {
-  if (child === undefined || child === null) {
-    return '';
-  }
-  return Array.isArray(child) ? child.map(authoredText).join('') : tokenText(child);
-}
-
-function authoredSeparators(fields: FieldMap | undefined): string[] {
-  const capture = fields?.separator;
-  if (capture === undefined) {
-    return [];
-  }
-  const captures = Array.isArray(capture) ? capture : [capture];
-  return captures.map(item => authoredText(item.value));
-}
-
-function withAuthoredSeparators<T extends object>(value: T, fields: FieldMap | undefined, expected: number): T {
-  const separators = authoredSeparators(fields);
-  return separators.length === expected
-    ? withValueLayout(
-        value,
-        separators
-      )
-    : value;
-}
-
-function sourceText(child: unknown): string {
-  if (typeof child === 'object' && child !== null && 'src' in child && typeof child.src === 'string') {
-    return child.src;
-  }
-  return tokenText(child);
-}
-
-function semanticGapText(text: string): string {
-  let out = '';
-  let inGap = false;
-  for (const char of text) {
-    if (char === ' ' || char === '\t' || char === '\n' || char === '\r' || char === '\f') {
-      if (!inGap) {
-        out += ' ';
-        inGap = true;
-      }
-    } else {
-      out += char;
-      inGap = false;
-    }
-  }
-  return out;
-}
-
-function semanticTextWithTriviaGaps(children: readonly unknown[], triviaLog: readonly number[]): string {
-  const gapBefore = new Set<number>();
-  for (let index = 2; index < triviaLog.length; index += 3) {
-    gapBefore.add(triviaLog[index] ?? 0);
-  }
-
-  let text = '';
-  for (let index = 0; index < children.length; index++) {
-    if (gapBefore.has(index)) {
-      text += ' ';
-    }
-    text += sourceText(children[index]);
-  }
-  if (gapBefore.has(children.length)) {
-    text += ' ';
-  }
-
-  return semanticGapText(text);
-}
-
-function isSpannedToken(value: unknown): value is SpannedToken {
-  return typeof value === 'object'
-    && value !== null
-    && 'value' in value
-    && 'span' in value
-    && typeof value.span === 'object'
-    && value.span !== null
-    && 'start' in value.span
-    && 'end' in value.span
-    && typeof value.span.start === 'number'
-    && typeof value.span.end === 'number';
-}
-
-function bodySpanFromRaw(rawChildren: readonly unknown[]): SourceSpan | undefined {
-  let start: number | undefined;
-  let end: number | undefined;
-  for (const child of rawChildren) {
-    if (!isSpannedToken(child)) {
-      continue;
-    }
-    if (child.value === '{' && start === undefined) {
-      start = child.span.end;
-    } else if (child.value === '}') {
-      end = child.span.start;
-    }
-  }
-  return start === undefined || end === undefined || end < start ? undefined : { start, end };
-}
-
-function withBlockBody<T extends object>(node: T, rawChildren: readonly unknown[]): T {
-  const span = bodySpanFromRaw(rawChildren);
-  return span === undefined ? node : withBodySpan(node, span);
-}
-
-function isNodeType<T extends string>(value: unknown, type: T): value is { readonly type: T } {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === type;
-}
-
-function isSimple(value: unknown): value is SimpleSelector {
-  return isNodeType(
-    value,
-    'SimpleSelector'
-  );
-}
-
-function isSimpleToken(value: unknown): value is SimpleToken {
-  return isNodeType(
-    value,
-    'SimpleSelector'
-  ) || isNodeType(
-    value,
-    'PseudoSelector'
-  );
-}
+  /*
+   * These seven were already rules-map keys but had never been declared here,
+   * because nothing referenced them through `g.` — the map and this union are
+   * different sets, and only a `g.` reference forces them to agree.
+   */
+  | 'AtRulePreludeWhitespace'
+  | 'AtRulePreludeComma'
+  | 'AtRulePreludeGroup'
+  | 'AtRulePreludeQuoted'
+  | 'AtRulePreludeText'
+  | 'QueryBareFeature'
+  | 'QueryRangeFeature'
+  | 'keyframeSelector'
+  | 'stylesheetBodyBlock'
+  | 'declarationListBlock'
+  | 'descriptorBodyBlock'
+  | 'declarationListItem'
+  | 'declarationListDeclaration'
+  | 'RoutedAtRuleStatement'
+  | 'pseudoArgumentContent'
+  | 'CustomPropertyValue'
+  | 'QueryValue'
+  | 'QueryTerm'
+  | 'stylesheetBodyItem'
+  | 'routedStylesheetBody'
+  | 'routedDeclarationListBody'
+  | 'valueFunctionArguments'
+  | 'calcFunctionArguments';
 
 /*
- * Selector-function pseudos whose argument is retained as a structured
- * `SelectorList` (P0). Gated on the pseudo NAME (lowercased, colon-stripped),
- * never on colon count — `::slotted()` takes selector args but is absent here,
- * so it stays opaque text. `crossable` (a narrower set) is decided in core.
+ * Rules that the shared recognition library defines keep its concrete
+ * combinator type; the rest stay opaque. Flattening every rule to
+ * `Combinator<unknown>` lost the value type of `token(...)`-backed rules such
+ * as `AtRuleKeyword`, which `dispatch(...)` requires to be `Combinator<string>`.
  */
-const STRUCTURED_PSEUDOS = new Set(['is', 'where', 'not', 'has', 'matches']);
-
-function isCompound(value: unknown): value is AstCompoundSelector {
-  return isNodeType(
-    value,
-    'CompoundSelector'
-  );
-}
-
-function isComplex(value: unknown): value is AstComplexSelector {
-  return isNodeType(
-    value,
-    'ComplexSelector'
-  );
-}
-
-function isSelectorList(value: unknown): value is AstSelectorList {
-  return isNodeType(
-    value,
-    'SelectorList'
-  );
-}
-
-function isKeyword(value: unknown): value is Keyword {
-  return isNodeType(
-    value,
-    'Keyword'
-  );
-}
-
-function isInterpolation(value: unknown): value is Interpolation {
-  return isNodeType(
-    value,
-    'Interpolation'
-  );
-}
-
-function isDeclaration(value: unknown): value is AstDeclaration {
-  return isNodeType(
-    value,
-    'Declaration'
-  );
-}
-
-function isRule(value: unknown): value is Rule {
-  return isNodeType(
-    value,
-    'Rule'
-  );
-}
-
-function isAtRuleBlock(value: unknown): value is AtRuleBlock {
-  return isNodeType(
-    value,
-    'AtRuleBlock'
-  );
-}
-
-function isOpaqueAtRuleBlock(value: unknown): value is OpaqueAtRuleBlock {
-  return isNodeType(
-    value,
-    'OpaqueAtRuleBlock'
-  );
-}
-
-function isValue(value: unknown): value is ValueNode {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && (value.type === 'Keyword' || value.type === 'Color' || value.type === 'Dimension'
-      || value.type === 'Quoted' || value.type === 'Url' || value.type === 'FunctionCall'
-      || value.type === 'Block' || value.type === 'Operation' || value.type === 'SpacedValue'
-      || value.type === 'List' || value.type === 'Any' || value.type === 'GeneralEnclosed');
-}
-
-function isValueSlotArray(value: unknown): value is readonly ValueSlot[] {
-  return Array.isArray(value);
-}
-
-function valueSlot(value: ValueSlot): ValueSlot {
-  if (isValueSlotArray(value)) {
-    return value;
-  }
-  if (!isValue(value)) {
-    return value;
-  }
-  if (value.type === 'SpacedValue') {
-    return value.parts;
-  }
-  if (value.type === 'Block' && isValue(value.inner) && value.inner.type === 'SpacedValue') {
-    return { ...value, inner: value.inner.parts };
-  }
-  return value;
-}
-
-function isValueSlotValue(value: unknown): value is ValueSlot {
-  return isValueSlotArray(value) ? value.every(isValueSlotValue) : isValue(value);
-}
-
-function isTerminalText(value: unknown): value is string | { readonly value: string } {
-  return typeof value === 'string'
-    || (typeof value === 'object' && value !== null && 'value' in value && typeof value.value === 'string');
-}
-
-function queryComparisonOperators(children: readonly unknown[]): string[] {
-  return children
-    .filter(isTerminalText)
-    .map(tokenText)
-    .filter(value => value === '<' || value === '<=' || value === '=' || value === '>=' || value === '>');
-}
-
-function chainedQueryComparison(left: ValueNode, children: readonly unknown[]): ValueNode {
-  const operators = queryComparisonOperators(children);
-  const values = valueChildren(children);
-  if (operators.length === 0 || values.length === 0) {
-    throw new Error('CSS AST query comparison requires an operator and value');
-  }
-  let result = operation(
-    operators[0]!,
-    left,
-    values[0]!
-  );
-  for (let index = 1; index < operators.length; index++) {
-    const right = values[index];
-    if (right === undefined) {
-      throw new Error('CSS AST query comparison lost its chained value');
-    }
-    result = operation(
-      operators[index]!,
-      result,
-      right
-    );
-  }
-  return result;
-}
-
-function isImportTarget(value: unknown): value is AstQuoted | { readonly type: 'Url'; readonly value: ValueNode } {
-  return isNodeType(
-    value,
-    'Quoted'
-  ) || isNodeType(
-    value,
-    'Url'
-  );
-}
-
-/** CSS `@import` is an ordinary statement at-rule. Its dedicated grammar only
- * validates the required target and retains its authored prelude; it does not
- * make import loading or resolution part of the AST. */
-function importPrelude(target: AstQuoted | { readonly type: 'Url'; readonly value: ValueNode }, tail: ValueNode | null): ValueNode {
-  const targetText = target.type === 'Url'
-    ? `url(${sourceText(target.value)})`
-    : target.src;
-  const tailText = tail === null ? '' : sourceText(tail);
-  return any(tailText === '' ? targetText : `${targetText} ${tailText}`);
-}
-
-function isRulesetStatement(value: unknown): value is Statement {
-  return isDeclaration(value) || isDocumentStatement(value);
-}
-
-function isDocumentStatement(value: unknown): value is Statement {
-  return isRule(value)
-    || isNodeType(
-      value,
-      'AtRuleStatement'
-    )
-    || isNodeType(
-      value,
-      'AtRuleBlock'
-    )
-    || isOpaqueAtRuleBlock(value);
-}
-
-function selectorComplexes(children: readonly unknown[]): AstComplexSelector[] {
-  const selectors = children.filter(isComplex);
-  if (selectors.length === 0) {
-    throw new Error('SelectorList requires a complex selector');
-  }
-  return selectors;
-}
-
-function selectorArgumentText(value: unknown): string {
-  if (isSelectorList(value)) {
-    return value.selectors.map(complexCanonical).join(',');
-  }
-  return tokenText(value);
-}
-
-function complexSegments(children: readonly unknown[]): Array<{ comb?: ' ' | '>' | '+' | '~' | '|' | '||'; compound: AstCompoundSelector }> {
-  const segments: Array<{ comb?: ' ' | '>' | '+' | '~' | '|' | '||'; compound: AstCompoundSelector }> = [];
-  let comb: ' ' | '>' | '+' | '~' | '|' | '||' = ' ';
-  for (const child of children) {
-    if (isCompound(child)) {
-      segments.push(segments.length === 0 ? { compound: child } : { comb, compound: child });
-      comb = ' ';
-      continue;
-    }
-    const token = tokenText(child);
-    if (token !== '>' && token !== '+' && token !== '~' && token !== '|' && token !== '||') {
-      throw new Error('ComplexSelector has an invalid combinator');
-    }
-    comb = token;
-  }
-  if (segments.length === 0) {
-    throw new Error('ComplexSelector requires a compound selector');
-  }
-  return segments;
-}
-
-function valueChildren(children: readonly unknown[]): ValueNode[] {
-  const values = children.filter(isValue);
-  if (values.length === 0) {
-    throw new Error('CSS AST value grammar lost its value child');
-  }
-  return values;
-}
-
-function flattenSpacedValues(values: readonly ValueNode[]): ValueNode[] {
-  const flattened: ValueNode[] = [];
-  for (const value of values) {
-    if (value.type === 'SpacedValue') {
-      flattened.push(...value.parts);
-      continue;
-    }
-    flattened.push(value);
-  }
-  return flattened;
-}
-
-/** First structured value child without allocating a filtered array. The
- * component-value reducers only need the leading value; the whole-array
- * `valueChildren` above stays for the math/query reducers that fold every
- * operand. */
-function firstValue(children: readonly unknown[]): ValueNode {
-  for (let index = 0; index < children.length; index++) {
-    const child = children[index];
-    if (isValue(child)) {
-      return child;
-    }
-  }
-  throw new Error('CSS AST value grammar lost its value child');
-}
-
-function optionalValue(value: unknown): ValueNode | null {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  if (isValue(value)) {
-    return value;
-  }
-  throw new Error('CSS AST grammar produced an invalid optional value.');
-}
-
-/** Reduce authored declaration/value children without flattening recursive
- * ValueSlot arrays. Scalar grammar (calc/query operations) intentionally uses
- * valueChildren above; only component-value and call-argument productions use
- * this slot-aware reducer. */
-function valueSlotChildren(children: readonly unknown[]): ValueSlot[] {
-  const values = children.filter(isValueSlotValue);
-  if (values.length === 0) {
-    throw new Error('CSS AST value grammar lost its value child');
-  }
-  return values;
-}
-
-function foldOperation(children: readonly unknown[]): ValueNode {
-  const first = children.find(isValue);
-  if (first === undefined) {
-    throw new Error('CSS AST math grammar requires an operand');
-  }
-  let result = first;
-  for (let index = children.indexOf(first) + 1; index < children.length; index += 2) {
-    const operatorToken = children[index];
-    const right = children[index + 1];
-    if (operatorToken === undefined || !isValue(right)) {
-      throw new Error('CSS AST math grammar lost an operator operand');
-    }
-    result = operation(
-      tokenText(operatorToken).trim(),
-      result,
-      right
-    );
-  }
-  return result;
-}
-
-function rulesetStatements(children: readonly unknown[]): Statement[] {
-  return children.filter(isRulesetStatement);
-}
-
-function documentStatements(children: readonly unknown[]): Statement[] {
-  const statements = children.filter(isDocumentStatement);
-  if (statements.length !== children.length) {
-    throw new Error('Stylesheet has an unexpected child');
-  }
-  return statements;
-}
-
-function blockStatements(children: readonly unknown[]): Statement[] {
-  return children.filter(isDocumentStatement);
-}
-
-function keyframeSelectorList(children: readonly unknown[]): AstSelectorList {
-  const selectors = children.filter(isSimple).map(selector => complexSelector([{ compound: compoundSelectorOf([selector]) }]));
-  if (selectors.length === 0) {
-    throw new Error('KeyframeBlock requires a keyframe selector');
-  }
-  return selist(...selectors);
-}
+type GrammarSelf = {
+  readonly [K in GrammarRuleName]: K extends keyof typeof cssSyntax
+    ? (typeof cssSyntax)[K]
+    : Combinator<unknown>
+};
 
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
-const whitespace = trivia(oneOrMore(choice(
-  regex(/[ \t\n\r\f]+/),
+
+/*
+ * Document trivia arms carry their category so root capture can retain just the
+ * comment gaps the renderer replays, the way the other three dialects do.
+ */
+const whitespaceRun = regex(/[ \t\n\r\f]+/);
+const whitespace = classifiedTrivia({
+  whitespace: whitespaceRun,
   blockComment
-)));
+});
 
 /*
  * Value-slot boundaries are authored trivia, not semantic leaves. Capture the
@@ -695,16 +322,81 @@ const cssValueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
  * Block comments are grammar trivia. noTrivia lexical leaves still cannot glue
  * `10/*x*\/px` into one Dimension.
  */
-const interstitialTrivia = trivia(oneOrMore(choice(
-  regex(/[ \t\n\r\f]+/),
+const interstitialTrivia = classifiedTrivia({
+  whitespace: whitespaceRun,
   blockComment
-)));
-const compoundTrivia = trivia(oneOrMore(blockComment));
-const commentTrivia = trivia(oneOrMore(blockComment));
-const calcWhitespace = regex(/[ \t\n\r\f]+/);
-const calcProductOperator = regex(/[ \t\n\r\f]*[*/%][ \t\n\r\f]*/);
-const calcSumOperator = regex(/[ \t\n\r\f]+[-+][ \t\n\r\f]+/);
+});
+const compoundTrivia = classifiedTrivia({ blockComment });
+const commentTrivia = classifiedTrivia({ blockComment });
+
+/*
+ * The value ladder runs under `ValueSequence`'s `noTrivia`, and parseman scopes
+ * trivia dynamically — clearing it covers every rule reached through a `g.`
+ * reference, not just the terms written inside the wrapper. So every interior
+ * that admits authored padding has to spell it, and it must spell `cssValueTrivia`
+ * rather than a bare whitespace run: css-syntax-3 §4 makes a comment trivia
+ * wherever whitespace is trivia. The `[ \t\n\r\f]+` spellings these replaced are
+ * why `calc(1px /* c *\/ + 2px)` was rejected outright while `var(--x, /* c *\/ e)`
+ * silently mis-parsed the comment bytes into the value as punctuation.
+ *
+ * `*`, `/` and `%` take optional padding; `+` and `-` require real whitespace on
+ * both sides (css-values-4 §10.1), which a comment does not supply — hence the
+ * mandatory `[ \t\n\r\f]+` in the sum pad and its absence in the product one.
+ * Both pads are spelled `ws* (comment ws*)*` so the comment and whitespace arms
+ * have disjoint first characters and the match stays linear.
+ *
+ * The pad is its own term rather than part of the operator regex so the operator
+ * token stays exactly the operator character. Folding it in would leave the
+ * reducer re-deriving the operator from padded bytes that can contain `/` and `*`
+ * of their own, which is the parser handing core a value it has to re-parse.
+ */
+const calcProductPad = regex(/[ \t\n\r\f]*(?:\/\*(?:[^*]|\*(?!\/))*\*\/[ \t\n\r\f]*)*/);
+const calcSumPad = regex(/(?:\/\*(?:[^*]|\*(?!\/))*\*\/)*[ \t\n\r\f]+(?:\/\*(?:[^*]|\*(?!\/))*\*\/[ \t\n\r\f]*)*/);
+const calcProductOperator = sequence(
+  calcProductPad,
+  regex(/[*/%]/),
+  calcProductPad
+);
+const calcSumOperator = sequence(
+  calcSumPad,
+  regex(/[-+]/),
+  calcSumPad
+);
 const genericIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
+
+/*
+ * The css-values-4 §10 math functions, as glued function OPENERS — the token a
+ * value dispatch routes on.
+ *
+ * CANONICAL TABLE: `CSS_MATH_FUNCTIONS` in `@jesscss/core/ast`
+ * (`packages/core/src/ast/math-functions.ts`). Add or remove a name THERE
+ * first; `test/math-function-table.test.ts` fails if this literal drifts from
+ * it.
+ *
+ * It is spelled as a LITERAL here, and in each of the other three grammars,
+ * because it must be macro-visible: parseman's plugin const-folds dispatch keys
+ * at build time and cannot follow an imported binding. Importing the table —
+ * from core, from `@jesscss/parser-shared`, or through a relative source path —
+ * was measured and fails the build with `composeLeaf() must macro-fuse`. So the
+ * repo gets one AUTHORITY plus a gate rather than one occurrence.
+ */
+const CSS_MATH_FUNCTION_OPENERS = [
+  'calc(',
+  'min(', 'max(', 'clamp(',
+  'round(', 'mod(', 'rem(',
+  'sin(', 'cos(', 'tan(', 'asin(', 'acos(', 'atan(', 'atan2(',
+  'pow(', 'sqrt(', 'hypot(', 'log(', 'exp(',
+  'abs(', 'sign('
+];
+
+/*
+ * A `+`/`-` GLUED to the number that follows it. After a run separator inside a
+ * math function this shape is never a run item: `calc(1px +2px)` is an
+ * ASYMMETRIC additive operator, which css-values-4 §10.1 rejects because `+`
+ * and `-` need real whitespace on BOTH sides. A bare `-` that starts an
+ * identifier (`-webkit-foo`) is not this shape and stays a run item.
+ */
+const signedNumericStart = regex(/[-+](?=[.0-9])/);
 const genericFunctionIdentifier = regex(/(?!(?:calc|url|var)(?=\())-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
 const genericFunctionOpen = noTrivia(sequence(
   genericFunctionIdentifier,
@@ -718,8 +410,8 @@ const customEscape = regex(/\\[^\n\r\f]/);
  * The two families diverge on the `of S` tail: `:nth-child`/`:nth-last-child`
  * accept it (Selectors-4 §6.6.2), `:nth-of-type`/`:nth-last-of-type` do not.
  * The `g`-free name recognitions live in the shared `cssPseudoSyntax`
- * artifact and are referenced as `g.CssSyntaxNthChildName` /
- * `g.CssSyntaxNthTypeName`.
+ * artifact and are referenced as `g.NthChildPseudoSelectorName` /
+ * `g.NthTypePseudoSelectorName`.
  * Public `anyValue` is intentionally permissive. The direct declaration
  * extension needs only its punctuation-run branch: identifier-shaped values
  * already lower through Keyword, and `#` stays reserved for the strict
@@ -792,7 +484,15 @@ const keyframeEndpoint = keywords(
   ['from', 'to'],
   { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
 );
-const combinator = keywords(['||', '>', '+', '~', '|']);
+
+/*
+ * `|` is NOT a combinator: `svg|circle` is one namespaced type selector
+ * (`NamespaceTypeSelector` below), not two compounds separated by `|`. Only the
+ * child/sibling/column combinators separate compounds; the column combinator
+ * `||` (selectors-4 §16.1) stays, and its leading `|` is disambiguated from a
+ * namespace prefix by the `keywords` longest-match preferring `||`.
+ */
+const combinator = keywords(['||', '>', '+', '~']);
 
 /*
  * A relative selector (a `:has()` argument) may open with a combinator. Only the
@@ -803,7 +503,7 @@ const relativeSelectorCombinator = keywords(['>', '+', '~']);
 
 /*
  * A pseudo selector always opens with `:`/`::`. Spelling this leading colon as a
- * grammar-local recognizer (identical to the shared CssSyntaxPseudoColon) lets
+ * grammar-local recognizer (identical to the shared PseudoSelectorColon) lets
  * the compiler resolve the pseudo arm's first-set to `:` and first-char-gate it in
  * the compound-selector choice, instead of treating a cross-composition reference
  * as an `any` first-set and speculatively entering the pseudo node at every simple
@@ -822,7 +522,7 @@ const relativeSelectorCombinator = keywords(['>', '+', '~']);
 const pseudoColon = regex(/::?(?![ \t\n\r\f])/);
 
 /*
- * Grammar-local copy of CssSyntaxSimple. As the fallback arm of the compound
+ * Grammar-local copy of SimpleSelectorToken. As the fallback arm of the compound
  * selector choice it must resolve a concrete first-set (`.`/`#`/`-`/letter/digit/
  * `*`) so the compiler first-char-gates the whole compound choice; a cross-
  * composition reference reads as `any`, entering the simple-selector node frame
@@ -831,9 +531,19 @@ const pseudoColon = regex(/::?(?![ \t\n\r\f])/);
 const simpleSelectorToken = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\d+(?:\.\d+)?%|\*)/);
 
 /*
+ * A CSS-namespaces prefix: `<ident>|`, `*|`, or bare `|`, glued (no whitespace
+ * around `|` \u2014 CSS Namespaces \u00A72, selectors-4 \u00A75.1). It prefixes a type/universal
+ * selector (`svg|circle`, `*|a`, `|a`) and an attribute name (`[svg|attr]`), so
+ * one recognizer serves both. `(?!=)` keeps the attribute operator `|=`
+ * (selectors-4 \u00A76.3) on its own route \u2014 `[a|=b]` is `a` matched by `|=`, not the
+ * `a|` namespace of a `b` attribute.
+ */
+const attributeNamespace = regex(/(?:-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)?\|(?!=)/);
+
+/*
  * Grammar-local copies of the leading hex-color and number recognizers (identical
- * to CssSyntaxHexColor / CssSyntaxNumber). Leading a component-value choice
- * arm with a cross-composition `g.CssSyntax*` reference leaves that arm's
+ * to HexColor / NumberToken). Leading a component-value choice
+ * arm with a cross-composition shared `g.*` reference leaves that arm's
  * first-set unresolved (`any`), so the compiler enters the Color / Dimension node
  * frame speculatively at every value atom. A local leading recognizer resolves the
  * arm's first-set (`#` / `[+-.0-9]`) so it is first-char-gated instead.
@@ -875,17 +585,17 @@ const customSlash = regex(/\/(?!\*)/);
 const balancedParens = balanced(
   '(',
   ')',
-  { skip: [blockComment, customSlash, customEscape, customDoubleQuoted, customSingleQuoted] }
+  { skip: [blockComment, customDoubleQuoted, customSingleQuoted, customSlash] }
 );
 const balancedBrackets = balanced(
   '[',
   ']',
-  { skip: [blockComment, customSlash, customEscape, customDoubleQuoted, customSingleQuoted] }
+  { skip: [blockComment, customDoubleQuoted, customSingleQuoted, customSlash] }
 );
 const balancedBraces = balanced(
   '{',
   '}',
-  { skip: [blockComment, customSlash, customEscape, customDoubleQuoted, customSingleQuoted] }
+  { skip: [blockComment, customDoubleQuoted, customSingleQuoted, customSlash] }
 );
 
 /*
@@ -894,7 +604,7 @@ const balancedBraces = balanced(
  * comments, and balanced groups below own those bytes instead. It is a Parseman
  * terminal, not a source scan or a post-parse text recovery step.
  */
-const generalEnclosedText = regex(/(?:\\[\s\S]|\/(?!\*)|[^\\/'"()[\]{}]+)+/);
+const enclosedText = regex(/(?:\\[\s\S]|\/(?!\*)|[^\\/'"()[\]{}]+)+/);
 
 /*
  * A custom property is a CSS `<declaration-value>`: its opaque bytes must be
@@ -920,10 +630,6 @@ const customValue = scanTo(
   ),
   {
     skip: [
-      blockComment,
-      customEscape,
-      customDoubleQuoted,
-      customSingleQuoted,
       balancedParens,
       balancedBrackets,
       balancedBraces
@@ -935,7 +641,7 @@ const importTailGroup = sequence(
   scanTo(
     literal(')'),
     {
-      skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedParens]
+      skip: [balancedParens]
     }
   ),
   expect(
@@ -948,7 +654,7 @@ const importTailSquareGroup = sequence(
   scanTo(
     literal(']'),
     {
-      skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBrackets]
+      skip: [balancedBrackets]
     }
   ),
   expect(
@@ -956,7 +662,20 @@ const importTailSquareGroup = sequence(
     ']'
   )
 );
-export const cssFactory = (g: CssGrammarSelf) => {
+
+/*
+ * NOT exported, and must never be. The body is written entirely in parseman's
+ * macro vocabulary (`makeWord`, `sequence`, `node`, ...), which exists only at
+ * build time -- the macro plugin lowers each call site into inline JS and the
+ * package emits no runtime `parseman` combinator import. Exporting the factory
+ * makes the plugin emit a live runtime binding for it whose body still names
+ * the macro-only identifiers, so the export throws
+ * `ReferenceError: makeWord is not defined` the first time anyone calls it.
+ * That artifact shipped until 205eba3c4 split each compiled grammar into its
+ * own entry and tree-shook the factory out. `scripts/check-macro-buildable.mjs`
+ * now fails the build if any built module references an undefined identifier.
+ */
+const cssFactory = (g: GrammarSelf) => {
   const identWord = makeWord(
     '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\',
     { caseInsensitive: true }
@@ -969,6 +688,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
    * remain an identifier plus a parenthesized value, not a function token.
    */
   const importAtKeyword = identWord('@import');
+  const charsetAtKeyword = identWord('@charset');
   const urlOpen = noTrivia(sequence(
     identWord('url'),
     literal('(')
@@ -982,37 +702,16 @@ export const cssFactory = (g: CssGrammarSelf) => {
     literal('(')
   ));
 
-  const pseudoRawDoubleQuoted = sequence(
-    literal('"'),
-    g.CssSyntaxDoubleQuotedText,
-    literal('"')
-  );
-  const pseudoRawSingleQuoted = sequence(
-    literal('\''),
-    g.CssSyntaxSingleQuotedText,
-    literal('\'')
-  );
   const pseudoIdentOrFunction = token(noTrivia(sequence(
-    g.CssSyntaxKeyword,
+    g.Identifier,
     optional(literal('('))
   )));
-  const pseudoRawArgument = scanTo(
+  const pseudoArgumentContent = scanTo(
     literal(')'),
     {
       skip: [
-        balanced(
-          '(',
-          ')',
-          { skip: [pseudoRawDoubleQuoted, pseudoRawSingleQuoted] }
-        ),
-        balanced(
-          '[',
-          ']',
-          { skip: [pseudoRawDoubleQuoted, pseudoRawSingleQuoted] }
-        ),
-        pseudoRawDoubleQuoted,
-        pseudoRawSingleQuoted,
-        blockComment
+        balanced('(', ')'),
+        balanced('[', ']')
       ]
     }
   );
@@ -1023,35 +722,71 @@ export const cssFactory = (g: CssGrammarSelf) => {
       optional(cssValueTrivia)
     ))
   );
+
+  /*
+   * An argument comma also admits padding BEFORE it, which the value-list comma
+   * must not: at the top level `a , b` is a space-separated run whose middle
+   * component is the punctuation `,`, and widening `authoredValueComma` would
+   * re-cut every such value that parses today. Inside an argument list there is
+   * no competing punctuation reading, so `f(c , d)` and `f(c /* z *\/, d)` are
+   * plain padded separators.
+   */
+  const authoredArgumentComma = field(
+    'separator',
+    noTrivia(sequence(
+      optional(cssValueTrivia),
+      literal(','),
+      optional(cssValueTrivia)
+    ))
+  );
   const valueFunctionArguments = sepBy(
     g.TypedValueSequence,
-    authoredValueComma
+    authoredArgumentComma
   );
   const genericFunctionArguments = sepBy(
     g.ValueSequence,
-    authoredValueComma
+    authoredArgumentComma
   );
   const BasicSelector = node(
     'BasicSelector',
     simpleSelectorToken,
     children => simpleSelector(tokenText(children[0]))
   );
+
+  /*
+   * `ns|E` / `*|E` / `|E` is ONE type selector with a namespace prefix
+   * (selectors-4 §5.1), not two compounds joined by a `|` combinator. It leads
+   * the compound choice because its prefix shares a first char with a plain type
+   * selector; `noTrivia` keeps the prefix glued so `svg | circle` is not a
+   * namespaced selector. The reduced value is a plain `SimpleSelector` carrying
+   * the whole `svg|circle` text, matching the other dialects (one representation
+   * per construct).
+   */
+  const NamespaceTypeSelector = node(
+    'NamespaceTypeSelector',
+    noTrivia(sequence(
+      attributeNamespace,
+      choice(g.Identifier, literal('*'))
+    )),
+    children => simpleSelector(children.map(tokenText).join(''))
+  );
   const AttributeSelector = node(
     'AttributeSelector',
     sequence(
       literal('['),
-      g.CssSyntaxKeyword,
+      optional(attributeNamespace),
+      g.Identifier,
       optional(sequence(
-        g.CssSyntaxAttributeOperator,
+        g.AttributeOperator,
         choice(
           g.Quoted,
-          g.Keyword
+          g.Identifier
         ),
-        optional(g.CssSyntaxAttributeModifier)
+        optional(g.AttributeModifier)
       )),
       literal(']')
     ),
-    children => simpleSelector(children.map(sourceText).join(''))
+    children => attributeSelector(children.map(sourceText))
   );
 
   /*
@@ -1068,13 +803,13 @@ export const cssFactory = (g: CssGrammarSelf) => {
       sequence(
         noTrivia(sequence(
           literal('-'),
-          g.CssSyntaxNth
+          g.NthExpression
         )),
         optional(sequence(
-          g.CssSyntaxOfKeyword,
+          g.NthOfKeyword,
           g.SelectorList
         )),
-        g.CssSyntaxPseudoCloseAhead
+        g.PseudoSelectorCloseAhead
       )
     ),
     (children) => {
@@ -1095,17 +830,22 @@ export const cssFactory = (g: CssGrammarSelf) => {
     choice(
       sequence(
         literal('-'),
-        g.CssSyntaxPseudoCloseAhead
+        g.PseudoSelectorCloseAhead
       ),
       noTrivia(sequence(
+
+        /* `- 2n` is malformed An+B, not a generic dash-led raw argument.
+         * The shared gate owns the full prefix before this branch can consume
+         * the dash and bypass the ordinary raw-argument guard below. */
+        not(g.MalformedPseudoSelectorNumericArgument),
         literal('-'),
         regex(/[ \t\n\r\f]+/),
-        pseudoRawArgument
+        g.pseudoArgumentContent
       )),
       noTrivia(sequence(
         literal('-'),
         literal('-'),
-        pseudoRawArgument
+        g.pseudoArgumentContent
       ))
     ),
     children => children.map(sourceText).join('')
@@ -1129,12 +869,12 @@ export const cssFactory = (g: CssGrammarSelf) => {
     parser(
       { trivia: whitespace },
       sequence(
-        g.CssSyntaxNth,
+        g.NthExpression,
         optional(sequence(
-          g.CssSyntaxOfKeyword,
+          g.NthOfKeyword,
           g.SelectorList
         )),
-        g.CssSyntaxPseudoCloseAhead
+        g.PseudoSelectorCloseAhead
       )
     ),
     (children) => {
@@ -1158,9 +898,9 @@ export const cssFactory = (g: CssGrammarSelf) => {
       sequence(
         noTrivia(sequence(
           literal('-'),
-          g.CssSyntaxNth
+          g.NthExpression
         )),
-        g.CssSyntaxPseudoCloseAhead
+        g.PseudoSelectorCloseAhead
       )
     ),
     children => `-${tokenText(children[1])}`
@@ -1170,8 +910,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
     parser(
       { trivia: whitespace },
       sequence(
-        g.CssSyntaxNth,
-        g.CssSyntaxPseudoCloseAhead
+        g.NthExpression,
+        g.PseudoSelectorCloseAhead
       )
     ),
     children => tokenText(children[0])
@@ -1187,8 +927,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
         g.SelectorList
       ),
       sequence(
-        not(g.CssSyntaxMalformedPseudoNumericArgument),
-        pseudoRawArgument
+        not(g.MalformedPseudoSelectorNumericArgument),
+        g.pseudoArgumentContent
       )
     ),
     children => selectorArgumentText(children[0])
@@ -1215,8 +955,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
         not(parser(
           { trivia: whitespace },
           sequence(
-            g.CssSyntaxNth,
-            g.CssSyntaxOfKeyword
+            g.NthExpression,
+            g.NthOfKeyword
           )
         )),
         choice(
@@ -1225,8 +965,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
             g.SelectorList
           ),
           sequence(
-            not(g.CssSyntaxMalformedPseudoNumericArgument),
-            pseudoRawArgument
+            not(g.MalformedPseudoSelectorNumericArgument),
+            g.pseudoArgumentContent
           )
         )
       )
@@ -1235,29 +975,26 @@ export const cssFactory = (g: CssGrammarSelf) => {
   );
 
   /*
-   * Retain the parsed `SelectorList` rather than collapsing it to text: a
-   * whitelisted selector-function pseudo (`:is`/`:not`/…) keeps it as structured
-   * `args`. The raw arm still yields its scanned text. `PseudoSelector` derives the
-   * authored `text` from whichever it gets via `selectorArgumentText`, so the
-   * SimpleSelector text is byte-identical to the pre-P0.2 collapse.
+   * An unknown functional pseudo has one structural `<any-value>` argument.
+   * Selector-only pseudos route above to `SelectorOnlyPseudoArgument`; generic
+   * pseudos do not speculate on a selector prefix because that is not their
+   * grammar. The bounded capture owns its final delimiter so nested groups are
+   * part of this complete production rather than a partial outer continuation.
    */
   const GenericPseudoArgument = node(
     'GenericPseudoArgument',
-    choice(
-      parser(
-        { trivia: interstitialTrivia },
-        g.SelectorList
-      ),
-      pseudoRawArgument
+    sequence(
+      g.pseudoArgumentContent,
+      literal(')')
     ),
-    children => isSelectorList(children[0]) ? children[0] : selectorArgumentText(children[0])
+    children => selectorArgumentText(children[0])
   );
 
   /*
-   * A `:has()` argument is a relative selector, so an individual complex may open
+   * A `:has()` argument is a relative selector, so an individual branch may open
    * with a combinator (`:has(> .b)`). The outer selector grammar forbids a leading
-   * combinator, so this pseudo-private complex admits an optional relative one and
-   * rides it on the ComplexSelector's `leadingComb`. A leading `|` is namespace
+   * combinator, so this pseudo-private branch admits an optional relative one and
+   * emits a `RelativeSelector`. A leading `|` is namespace
    * syntax, not a relative combinator, so it is excluded (mirrors Less's
    * `relativeSelectorCombinator`).
    */
@@ -1268,18 +1005,12 @@ export const cssFactory = (g: CssGrammarSelf) => {
       g.ComplexSelector
     ),
     (children) => {
-      const complex = children.find(isComplex);
-      if (complex === undefined) {
-        throw new Error('RelativeComplexSelector requires a complex selector');
-      }
+      const branch = children.find(isSelectorBranch)!;
       if (children.length === 1) {
-        return complex;
+        return branch;
       }
-      const lead = tokenText(children[0]);
-      if (lead !== '>' && lead !== '+' && lead !== '~') {
-        throw new Error('RelativeComplexSelector produced an invalid leading combinator');
-      }
-      return { ...complex, leadingComb: lead };
+      const lead = cssRelativeCombinator(children[0]);
+      return relativeSelector(lead, branchSegments(branch));
     }
   );
 
@@ -1288,7 +1019,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
    * selector-ONLY argument: a (relative) selector list with no general-any text
    * fallback, so `:not(2n+1)` fails the selector and rejects the whole pseudo. The
    * non-relative shape reduces byte-identically to `SelectorList` (both assemble
-   * `selist(...selectorComplexes(children))`); the retained `SelectorList` becomes
+   * `selist(...selectorBranches(children))`); the retained `SelectorList` becomes
    * structured `PseudoSelector.args` in `PseudoSelector`, never joined at parse.
    */
   const SelectorOnlyPseudoArgument = node(
@@ -1300,7 +1031,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         literal(',')
       )
     ),
-    children => selist(...selectorComplexes(children))
+    children => selist(...selectorBranches(children))
   );
 
   /*
@@ -1347,12 +1078,11 @@ export const cssFactory = (g: CssGrammarSelf) => {
           endsWith('('),
           sequence(
             routed(),
-            GenericPseudoArgument,
-            literal(')')
+            GenericPseudoArgument
           )
         ),
         otherwise(sequence(
-          not(g.CssSyntaxNthName),
+          not(g.NthPseudoSelectorName),
           routed()
         ))
       )
@@ -1387,7 +1117,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
    * nested-rule serialization.
    */
   const NestingSelector = node(
-    'NestingSelector',
+    'SimpleSelector',
     literal('&'),
     () => simpleSelector('&')
   );
@@ -1405,19 +1135,11 @@ export const cssFactory = (g: CssGrammarSelf) => {
           { trivia: interstitialTrivia },
           g.PseudoSelector
         ),
+        g.NamespaceTypeSelector,
         g.BasicSelector
       ))
     )),
-    (children) => {
-      const simples: SimpleToken[] = [];
-      for (const child of children) {
-        if (!isSimpleToken(child)) {
-          throw new TypeError('CompoundSelector produced a non-simple selector child.');
-        }
-        simples.push(child);
-      }
-      return compoundSelectorOf(simples);
-    }
+    children => selectorTermFromTokens(children.filter(isSimpleToken))
   );
   const TopLevelCompoundSelector = node(
     'TopLevelCompoundSelector',
@@ -1432,19 +1154,11 @@ export const cssFactory = (g: CssGrammarSelf) => {
           { trivia: interstitialTrivia },
           g.PseudoSelector
         ),
+        g.NamespaceTypeSelector,
         g.BasicSelector
       ))
     )),
-    (children) => {
-      const simples: SimpleToken[] = [];
-      for (const child of children) {
-        if (!isSimpleToken(child)) {
-          throw new TypeError('TopLevelCompoundSelector produced a non-simple selector child.');
-        }
-        simples.push(child);
-      }
-      return compoundSelectorOf(simples);
-    }
+    children => selectorTermFromTokens(children.filter(isSimpleToken))
   );
   const ComplexSelector = node(
     'ComplexSelector',
@@ -1453,16 +1167,18 @@ export const cssFactory = (g: CssGrammarSelf) => {
 
       /*
        * The separator between compound selectors may be an explicit combinator
-       * (`>`, `+`, `~`, `|`, `||`) or just ambient trivia, which CSS treats as
-       * the descendant combinator. Do not collapse this to oneOrMoreSep(): a
-       * nullable separator would be the wrong Parseman shape.
+       * (`>`, `+`, `~`, `||`) or just ambient trivia, which CSS treats as the
+       * descendant combinator. `|` is not here: it is a namespace prefix bound
+       * into a single type selector, not a compound separator. Do not collapse
+       * this to oneOrMoreSep(): a nullable separator would be the wrong Parseman
+       * shape.
        */
       many(sequence(
         optional(combinator),
         g.CompoundSelector
       ))
     ),
-    children => complexSelector(complexSegments(children))
+    children => selectorBranchOf(complexSegments(children))
   );
   const TopLevelComplexSelector = node(
     'TopLevelComplexSelector',
@@ -1473,15 +1189,27 @@ export const cssFactory = (g: CssGrammarSelf) => {
         g.TopLevelCompoundSelector
       ))
     ),
-    children => complexSelector(complexSegments(children))
+    children => selectorBranchOf(complexSegments(children))
   );
+
+  /*
+   * A ruleset's selector list carries the STATEMENT's start offset: the
+   * renderer reads `sourceStartOf(node.selector)` for a `Ruleset`, because a
+   * `Ruleset` itself has no span of its own. Without it the root trivia cursor
+   * never advances past a rule, so a comment BETWEEN two top-level rules is
+   * dropped even though it was captured. Less spans exactly these two
+   * productions and leaves its pseudo-argument selector list unspanned;
+   * `SelectorOnlyPseudoArgument` below is left alone for the same reason — it
+   * is never a `Ruleset`'s selector, so a span there would move the tree for
+   * nothing.
+   */
   const SelectorList = node(
     'SelectorList',
     oneOrMoreSep(
       g.ComplexSelector,
       literal(',')
     ),
-    children => selist(...selectorComplexes(children))
+    (children, _fields, span) => withSourceSpan(selist(...selectorBranches(children)), span)
   );
   const TopLevelSelectorList = node(
     'TopLevelSelectorList',
@@ -1489,26 +1217,53 @@ export const cssFactory = (g: CssGrammarSelf) => {
       g.TopLevelComplexSelector,
       literal(',')
     ),
-    children => selist(...selectorComplexes(children))
+    (children, _fields, span) => withSourceSpan(selist(...selectorBranches(children)), span)
+  );
+
+  /*
+   * A NESTED ruleset's selector list is relative-capable: CSS Nesting lets a
+   * nested selector open with a combinator (`.parent { > .child { … } }`),
+   * where `>` relates to the implicit parent (`.parent > .child`). This reuses
+   * `RelativeComplexSelector` — the same producer the `:has()`-style pseudos
+   * use. Each item keeps its ORDINARY shape (`SimpleSelector`/`CompoundSelector`/
+   * `ComplexSelector`, whatever it reduces to); the nesting context ADDS
+   * `RelativeSelector` as one more admissible item, produced only when the item
+   * opens with a leading combinator. Items MIX freely (`> .a, .b`). The node NAME
+   * is the canonical `SelectorList`; only the rules-map KEY differs. The
+   * TOP-LEVEL list (`TopLevelSelectorList`) admits no leading combinator, so a
+   * stylesheet-root `> .a` — which has no parent to relate to — is still
+   * rejected. Carries the ruleset statement's start offset like `SelectorList`.
+   */
+  const NestedSelectorList = node(
+    'SelectorList',
+    oneOrMoreSep(
+      RelativeComplexSelector,
+      literal(',')
+    ),
+    (children, _fields, span) => withSourceSpan(selist(...selectorBranches(children)), span)
   );
   const Property = node(
     'Property',
-    g.CssSyntaxProperty,
+    g.Identifier,
     children => tokenText(children[0])
   );
   const CustomProperty = node(
     'CustomProperty',
-    g.CssSyntaxCustomProperty,
+    g.CustomPropertyName,
     children => tokenText(children[0])
   );
+
+  /* A custom-property value is one opaque token. Comments the balanced-group
+   * scanner steps over inside it are value bytes the token already carries, so
+   * this scope keeps them out of the root capture the renderer replays. */
   const CustomValue = node(
     'CustomValue',
-    customValue,
+    parser({ trivia: whitespace, rootCapture: 'opaque' }, customValue),
     children => any(children.length === 0 ? '' : tokenText(children[0]))
   );
   const Keyword = node(
     'Keyword',
-    g.CssSyntaxKeyword,
+    g.Identifier,
     children => keyword(tokenText(children[0]))
   );
 
@@ -1520,10 +1275,10 @@ export const cssFactory = (g: CssGrammarSelf) => {
    */
   const CustomPropertyValue = node(
     'CustomPropertyValue',
-    g.CssSyntaxCustomProperty,
+    g.CustomPropertyName,
     children => keyword(tokenText(children[0]))
   );
-  const Color = node<AstColor>(
+  const Color = node(
     'Color',
     hexColor,
     children => color(tokenText(children[0]))
@@ -1536,11 +1291,11 @@ export const cssFactory = (g: CssGrammarSelf) => {
    */
   const UnicodeRange = node(
     'UnicodeRange',
-    g.CssSyntaxUnicodeRange,
+    g.UnicodeRangeToken,
     children => any(tokenText(children[0]))
   );
-  const Percentage = node<AstDimension>(
-    'Percentage',
+  const Percentage = node(
+    'Dimension',
     noTrivia(sequence(
       numberValue,
       literal('%')
@@ -1554,7 +1309,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       );
     }
   );
-  const Dimension = node<AstDimension>(
+  const Dimension = node(
     'Dimension',
     noTrivia(sequence(
       numberNoPercentage,
@@ -1570,17 +1325,17 @@ export const cssFactory = (g: CssGrammarSelf) => {
       );
     }
   );
-  const Quoted = node<AstQuoted>(
+  const Quoted = node(
     'Quoted',
     choice(
       noTrivia(sequence(
         literal('"'),
-        g.CssSyntaxDoubleQuotedText,
+        g.DoubleQuotedText,
         literal('"')
       )),
       noTrivia(sequence(
         literal('\''),
-        g.CssSyntaxSingleQuotedText,
+        g.SingleQuotedText,
         literal('\'')
       )),
 
@@ -1590,12 +1345,12 @@ export const cssFactory = (g: CssGrammarSelf) => {
        */
       noTrivia(sequence(
         literal('~"'),
-        g.CssSyntaxDoubleQuotedText,
+        g.DoubleQuotedText,
         literal('"')
       )),
       noTrivia(sequence(
         literal('~\''),
-        g.CssSyntaxSingleQuotedText,
+        g.SingleQuotedText,
         literal('\'')
       ))
     ),
@@ -1614,10 +1369,10 @@ export const cssFactory = (g: CssGrammarSelf) => {
   );
   const UrlUnquoted = node(
     'UrlUnquoted',
-    g.CssSyntaxUrlInner,
+    g.UrlInner,
     children => any(tokenText(children[0]!))
   );
-  const Url = node<AstUrl>(
+  const Url = node(
     'Url',
     sequence(
       urlOpen,
@@ -1642,7 +1397,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     sequence(
       genericFunctionOpen,
       optional(cssValueTrivia),
-      valueFunctionArguments,
+      g.valueFunctionArguments,
       optional(cssValueTrivia),
       literal(')')
     ),
@@ -1668,12 +1423,12 @@ export const cssFactory = (g: CssGrammarSelf) => {
    * preserve math precedence in the AST.
    */
   const CalcParen = node(
-    'CalcParen',
+    'Block',
     noTrivia(sequence(
       literal('('),
-      many(calcWhitespace),
+      optional(cssValueTrivia),
       g.CalcSum,
-      many(calcWhitespace),
+      optional(cssValueTrivia),
       literal(')')
     )),
     children => block(firstValue(children))
@@ -1704,7 +1459,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     literal('['),
     scanTo(
       literal('('),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBrackets] }
+      { skip: [balancedBrackets] }
     ),
     literal('('),
     scanTo(
@@ -1712,7 +1467,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         literal(')'),
         literal(']')
       ),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBrackets] }
+      { skip: [balancedBrackets] }
     ),
     literal(']')
   );
@@ -1720,7 +1475,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     literal('['),
     scanTo(
       literal('{'),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBrackets] }
+      { skip: [balancedBrackets] }
     ),
     literal('{'),
     scanTo(
@@ -1728,7 +1483,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         literal('}'),
         literal(']')
       ),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBrackets] }
+      { skip: [balancedBrackets] }
     ),
     literal(']')
   );
@@ -1736,7 +1491,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     literal('{'),
     scanTo(
       literal('('),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBraces] }
+      { skip: [balancedBraces] }
     ),
     literal('('),
     scanTo(
@@ -1744,7 +1499,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         literal(')'),
         literal('}')
       ),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBraces] }
+      { skip: [balancedBraces] }
     ),
     literal('}')
   );
@@ -1752,7 +1507,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     literal('{'),
     scanTo(
       literal('['),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBraces] }
+      { skip: [balancedBraces] }
     ),
     literal('['),
     scanTo(
@@ -1760,7 +1515,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         literal(']'),
         literal('}')
       ),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBraces] }
+      { skip: [balancedBraces] }
     ),
     literal('}')
   );
@@ -1775,32 +1530,28 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const varFallbackParenCrossBracket = sequence(
     literal('('),
     scanTo(
-      literal('['),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] }
+      literal('[')
     ),
     literal('['),
     scanTo(
       choice(
         literal(']'),
         literal(')')
-      ),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] }
+      )
     ),
     literal(')')
   );
   const varFallbackParenCrossBrace = sequence(
     literal('('),
     scanTo(
-      literal('{'),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] }
+      literal('{')
     ),
     literal('{'),
     scanTo(
       choice(
         literal('}'),
         literal(')')
-      ),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] }
+      )
     ),
     literal(')')
   );
@@ -1812,7 +1563,9 @@ export const cssFactory = (g: CssGrammarSelf) => {
         varFallbackParenCrossBrace
       )),
       literal('('),
+      optional(cssValueTrivia),
       optional(g.VarFallback),
+      optional(cssValueTrivia),
       literal(')')
     ),
     children => block(valueSlotChildren(children)[0] ?? any(''))
@@ -1835,13 +1588,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       scanTo(
         literal(']'),
         {
-          skip: [
-            blockComment,
-            customEscape,
-            customDoubleQuoted,
-            customSingleQuoted,
-            balancedBrackets
-          ]
+          skip: [balancedBrackets]
         }
       ),
       literal(']')
@@ -1859,13 +1606,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       scanTo(
         literal('}'),
         {
-          skip: [
-            blockComment,
-            customEscape,
-            customDoubleQuoted,
-            customSingleQuoted,
-            balancedBraces
-          ]
+          skip: [balancedBraces]
         }
       ),
       literal('}')
@@ -1898,7 +1639,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     sequence(
       varFallbackComponent,
       many(sequence(
-        many(calcWhitespace),
+        optional(cssValueTrivia),
         varFallbackComponent
       ))
     ),
@@ -1917,7 +1658,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   );
   const varFallbackComma = sequence(
     literal(','),
-    many(calcWhitespace)
+    optional(cssValueTrivia)
   );
   const VarFallbackItem = node(
     'VarFallbackItem',
@@ -1948,7 +1689,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     sequence(
       genericFunctionOpen,
       optional(sequence(
-        not(peek(literal(')'))),
+        not(literal(')')),
         oneOrMoreSep(
           g.VarFallbackItem,
           varFallbackComma
@@ -1965,14 +1706,17 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'VarCall',
     sequence(
       varOpen,
-      CustomPropertyValue,
+      optional(cssValueTrivia),
+      g.CustomPropertyValue,
+      optional(cssValueTrivia),
       optional(sequence(
         literal(','),
-        many(calcWhitespace),
+        optional(cssValueTrivia),
         choice(
           g.VarFallback,
           g.VarFallbackEmpty
-        )
+        ),
+        optional(cssValueTrivia)
       )),
       literal(')')
     ),
@@ -1981,16 +1725,41 @@ export const cssFactory = (g: CssGrammarSelf) => {
       children.filter(isValueSlotValue)
     )
   );
+
+  /*
+   * Blast radius: `../../../jess/jess-parser/src/grammar.ts` PORTS this family
+   * (`CalcValue`/`CalcParen`/`CalcProduct`/`CalcSum`/`CalcSequence`) rather
+   * than referencing it — a mutually recursive, AST-reducing family cannot be
+   * shared through `@jesscss/parser-shared`, whose artifacts are `g.`-free by
+   * contract. A change to the shape or accept set here must be mirrored there.
+   * Less and SCSS express the same ladder as `MathProduct`/`MathSum`.
+   */
+  /*
+   * `UnicodeRange` is here so this rung is a SUPERSET of the ordinary typed
+   * value atom rather than a narrower cousin of it. Before §6 the ladder was reachable only from `calc()`, so the gap did
+   * not show; now that every css-values-4 §10 function routes here, anything
+   * this choice lacks is a construct the base would start REJECTING. `min(U+0-7F)`
+   * is the measured case — `UnicodeRange` is in `Value`/`TypedValue` and was
+   * absent here.
+   *
+   * `PunctuationValue` is deliberately NOT admitted: it would let a bare `+`
+   * match as an operand and collapse the operator ladder above. `ParenValue`
+   * and `SquareValue` are not admitted either — measured: adding `ParenValue`
+   * here makes the TOP-LEVEL `a { b: (c ,d) }` stop parsing, so the cycle it
+   * creates through the value dispatch is not inert. `CalcParen` already covers
+   * the arithmetic-grouping shape, which is the one css-values-4 §10 defines.
+   */
   const CalcValue = node(
     'CalcValue',
     choice(
       g.Percentage,
       g.Dimension,
       g.Color,
+      g.UnicodeRange,
       g.CalcIdentOrFunction,
       g.CalcParen,
       g.Quoted,
-      CustomPropertyValue
+      g.CustomPropertyValue
     ),
     { project: 0 }
   );
@@ -2003,7 +1772,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         g.CalcValue
       ))
     )),
-    foldOperation
+    children => foldOperation(children)
   );
   const CalcSum = node(
     'CalcSum',
@@ -2014,15 +1783,79 @@ export const cssFactory = (g: CssGrammarSelf) => {
         g.CalcProduct
       ))
     )),
-    foldOperation
+    children => foldOperation(children)
+  );
+
+  /*
+   * The SEQUENCE layer, and the reason routing a math function's arguments to
+   * the ladder below is a widening rather than a narrowing.
+   *
+   * `CalcSum` has no space-separated-run derivation, because `calc()` never
+   * needed one. Every other css-values-4 §10 function does: `min(1px 2px)`,
+   * `clamp(1px 2px, 3px)` and `min(red blue)` are shapes the base accepts
+   * today through the ordinary value sequence, and the parser accepts SHAPES,
+   * not semantics — that `min(1px 2px)` is not valid CSS does not license
+   * rejecting it. Without this rung, routing the §10 names to the ladder was
+   * measured at 17 regressions in a 25-case battery.
+   *
+   * This is `ValueSequence`'s own shape with `CalcSum` in place of `Value`, so
+   * a run whose items carry no operator reduces to exactly what the ordinary
+   * sequence would have produced — with ONE deliberate difference: the
+   * separator is REQUIRED between run items.
+   *
+   * That difference is the adjacency question (ledger G24), and it is the whole
+   * reason this rung cannot be `ValueSequence` itself. `ValueSequence` admits
+   * ADJACENT items with no trivia at all, because at top level `1rem+1vw` is
+   * two component values. Inside a math function it is not: css-values-4 §10.1
+   * requires real whitespace on both sides of `+`/`-`, so `calc(1rem+1vw)` must
+   * be REJECTED, and it is rejected here by the absence of the bare arm rather
+   * than by any production re-spelling what a separator looks like.
+   */
+  const CalcSequence = node(
+    'CalcSequence',
+    noTrivia(sequence(
+      g.CalcSum,
+      many(sequence(
+        field(
+          'separator',
+          cssValueTrivia
+        ),
+        not(signedNumericStart),
+        g.CalcSum
+      ))
+    )),
+    (children, fields) => {
+      const values = valueSlotChildren(children);
+      if (values.length === 1) {
+        return values[0]!;
+      }
+      return withAuthoredSeparators(
+        values,
+        fields,
+        values.length - 1
+      );
+    }
+  );
+
+  /*
+   * `<calc-sum>#` — the comma-separated argument list every §10 function takes.
+   * `round()` additionally takes an optional leading `<rounding-strategy>`
+   * keyword (`round(up, 1.2px, 1px)`), which needs no arm of its own: a bare
+   * keyword is already a `CalcValue`, so the strategy arrives as the first
+   * argument. The grammar is therefore NOT uniformly `<calc-sum>#`, and the
+   * place that fact is enforced is the language service, not here.
+   */
+  const calcFunctionArguments = oneOrMoreSep(
+    g.CalcSequence,
+    authoredArgumentComma
   );
   const CalcCall = node(
     'CalcCall',
     noTrivia(sequence(
       calcOpen,
-      many(calcWhitespace),
+      optional(cssValueTrivia),
       g.CalcSum,
-      many(calcWhitespace),
+      optional(cssValueTrivia),
       literal(')')
     )),
     children => funcCall(
@@ -2037,14 +1870,65 @@ export const cssFactory = (g: CssGrammarSelf) => {
    * productions. url()/var()/calc() stay owned by their strict branches;
    * genericFunctionOpen excludes those glued openers.
    */
+  /*
+   * The padding is spelled for the same reason `GenericFunction` spells it: this
+   * interior runs with trivia cleared, so without these terms `( c )` — and every
+   * comment form of it — was rejected as hard as `(/* c *\/ e)` was.
+   */
   const ParenValue = node(
     'ParenValue',
     sequence(
       literal('('),
+      optional(cssValueTrivia),
       optional(g.ValueList),
+      optional(cssValueTrivia),
       literal(')')
     ),
     children => block(valueSlotChildren(children)[0] ?? any(''))
+  );
+
+  /*
+   * The square sibling of `ParenValue`, carrying its delimiter as a first-class
+   * `Block` fact rather than opaque bytes. `[` had no value first-set at all, so
+   * `grid: [a] 10px` and `grid-template-columns: [full-start] 1fr` died at the
+   * bracket while Less and SCSS both accepted them — the base rejecting what its
+   * own supersets accept.
+   *
+   * Named for the delimiter, not for `<line-names>`: the same bytes are Sass
+   * bracketed lists, and naming a shared shape after one consumer is how a
+   * grammar ends up claiming a construct it does not own.
+   *
+   * The interior is `ValueList`, exactly as the paren sibling spells it, so a
+   * multi-name `[a b]` is one slot holding an ARRAY. A reducer that narrows that
+   * with a single-node guard throws past the `SyntaxError` contract instead of
+   * declining — the defect SCSS's own square arm shipped and fixed in e4c948a7d.
+   *
+   * `find`, not `valueSlotChildren`: `<line-names>` is `<custom-ident>*`, so `[]`
+   * is legal and its interior is empty. `valueSlotChildren` THROWS on an empty
+   * match rather than returning `[]`, so the `?? []` a caller writes after it
+   * is unreachable — which is exactly why the paren sibling still crashes on
+   * `a{color:()}` instead of rejecting it. Do not copy that call here.
+   *
+   * The empty interior is the EMPTY SLOT `[]`, not `any('')`. A contentless `Any`
+   * is a content node minted where the source has no content: it erases the one
+   * fact `[]` carries — that it is EMPTY — and every downstream emptiness test
+   * (`.jess` truthiness, §4.4's fourth falsy row) then reads a non-empty group and
+   * answers TRUTHY. Storing the emptiness losslessly here is what lets those
+   * consumers derive it, instead of each sniffing an empty `src` for itself.
+   */
+  const SquareValue = node(
+    'Block',
+    sequence(
+      literal('['),
+      optional(cssValueTrivia),
+      optional(g.ValueList),
+      optional(cssValueTrivia),
+      literal(']')
+    ),
+    children => block(
+      children.find(isValueSlotValue) ?? [],
+      'square'
+    )
   );
   const RawParenValue = node(
     'RawParenValue',
@@ -2052,16 +1936,27 @@ export const cssFactory = (g: CssGrammarSelf) => {
       literal('('),
       scanTo(
         literal(')'),
-        { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedParens, balancedBrackets, balancedBraces] }
+        { skip: [balancedParens, balancedBrackets, balancedBraces] }
       ),
       literal(')')
     ),
     children => block(any(tokenText(children[1])))
   );
+
+  /*
+   * The spaced paren bridge (`foo (bar)`), reached through `IdentOrFunction`'s
+   * routing so the identifier is scanned once. As a sibling of the identifier
+   * atoms in `Value` it led with its own `genericIdentifier` and failed on every
+   * ordinary keyword, re-scanning the identifier the next arm then scanned
+   * again. Routing keeps the order rather than swapping it: a glued `(` is
+   * claimed by the function cases, and `cssValueTrivia` cannot match empty, so
+   * this bridge always requires trivia before its `(` and no input can reach
+   * both.
+   */
   const IdentBlock = node(
     'IdentBlock',
     sequence(
-      genericIdentifier,
+      routed(),
       field(
         'separator',
         cssValueTrivia
@@ -2082,7 +1977,6 @@ export const cssFactory = (g: CssGrammarSelf) => {
     regex(/[0-9]/),
     regex(/[ \t\n\r\f]/)
   ));
-  const atRuleKeyword = token(noTrivia(g.CssSyntaxRoutedAtRuleKeyword));
   const identOrFunction = token(noTrivia(
     sequence(
       genericIdentifier,
@@ -2148,7 +2042,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       );
     }
   );
-  const UrlFunction = node<AstUrl>(
+  const UrlFunction = node(
     'Url',
     sequence(
       routed(),
@@ -2168,32 +2062,59 @@ export const cssFactory = (g: CssGrammarSelf) => {
       return url(body ?? any(''));
     }
   );
-  const CalcFunction = node(
-    'CalcCall',
+
+  /*
+   * The css-values-4 §10 math functions — `calc` and the other twenty — share
+   * ONE tail. `calc()` computes nothing; it is a spelling the parser detects so
+   * the operations inside it are not folded away, and every other §10 name has
+   * exactly that same relationship to the grammar. The names come from
+   * `CSS_MATH_FUNCTIONS` (`@jesscss/core/ast`), which is the single table all
+   * four grammars and core share.
+   *
+   * The tail is the same `Call` reduction `GenericFunction` uses, so the AST a
+   * math function produces differs from a generic call only in what its
+   * ARGUMENTS parsed as. `calc()` keeps arriving as one argument.
+   */
+  const MathFunction = node(
+    'Call',
     noTrivia(sequence(
       routed(),
-      many(calcWhitespace),
-      g.CalcSum,
-      many(calcWhitespace),
+      optional(cssValueTrivia),
+      g.calcFunctionArguments,
+      optional(cssValueTrivia),
       literal(')')
     )),
-    children => funcCall(
-      functionOpenName(children[0]),
-      [firstValue(children)]
-    )
+    (children, fields) => {
+      const name = functionOpenName(children[0]);
+      const args = children.slice(1).filter(isValueSlotValue);
+      return funcCall(
+        name,
+        withAuthoredSeparators(
+          args,
+          fields,
+          Math.max(
+            0,
+            args.length - 1
+          )
+        )
+      );
+    }
   );
   const VarFunction = node(
     'VarCall',
     sequence(
       routed(),
-      CustomPropertyValue,
+      optional(cssValueTrivia),
+      g.CustomPropertyValue,
+      optional(cssValueTrivia),
       optional(sequence(
         literal(','),
-        many(calcWhitespace),
+        optional(cssValueTrivia),
         choice(
           g.VarFallback,
           g.VarFallbackEmpty
-        )
+        ),
+        optional(cssValueTrivia)
       )),
       literal(')')
     ),
@@ -2202,10 +2123,14 @@ export const cssFactory = (g: CssGrammarSelf) => {
       children.filter(isValueSlotValue)
     )
   );
-  const Identifier = node(
+  const RoutedKeyword = node(
     'Keyword',
     routed(),
     children => keyword(tokenText(children[0]))
+  );
+  const IdentBlockOrKeyword = choice(
+    IdentBlock,
+    g.RoutedKeyword
   );
 
   /*
@@ -2220,9 +2145,22 @@ export const cssFactory = (g: CssGrammarSelf) => {
       'url(',
       UrlFunction
     ),
+
+    /*
+     * ONE multi-key arm, not twenty. parseman compiles `dispatch` to a linear
+     * if/else chain with each tail fully INLINED, and this tail is emitted
+     * once per artifact per arm: twenty separate `cssCase` arms were measured
+     * at roughly 1.4 MB of generated code across css+jess against roughly
+     * 70 KB for the multi-key form. The tail is a `g.`-rule reference for the
+     * same reason.
+     *
+     * Both css dispatch tables carry this arm. Changing only one would leave
+     * the typed and non-typed ladders reaching different argument grammars for
+     * the same function name — which is the divergence §6 exists to close.
+     */
     cssCase(
-      'calc(',
-      CalcFunction
+      CSS_MATH_FUNCTION_OPENERS,
+      g.MathFunction
     ),
     cssCase(
       'var(',
@@ -2232,14 +2170,14 @@ export const cssFactory = (g: CssGrammarSelf) => {
       endsWith('('),
       GenericFunction
     ),
-    otherwise(Identifier)
+    otherwise(IdentBlockOrKeyword)
   );
   const TypedGenericFunction = node(
     'Call',
     sequence(
       routed(),
       optional(cssValueTrivia),
-      valueFunctionArguments,
+      g.valueFunctionArguments,
       optional(cssValueTrivia),
       literal(')')
     ),
@@ -2265,9 +2203,22 @@ export const cssFactory = (g: CssGrammarSelf) => {
       'url(',
       UrlFunction
     ),
+
+    /*
+     * ONE multi-key arm, not twenty. parseman compiles `dispatch` to a linear
+     * if/else chain with each tail fully INLINED, and this tail is emitted
+     * once per artifact per arm: twenty separate `cssCase` arms were measured
+     * at roughly 1.4 MB of generated code across css+jess against roughly
+     * 70 KB for the multi-key form. The tail is a `g.`-rule reference for the
+     * same reason.
+     *
+     * Both css dispatch tables carry this arm. Changing only one would leave
+     * the typed and non-typed ladders reaching different argument grammars for
+     * the same function name — which is the divergence §6 exists to close.
+     */
     cssCase(
-      'calc(',
-      CalcFunction
+      CSS_MATH_FUNCTION_OPENERS,
+      g.MathFunction
     ),
     cssCase(
       'var(',
@@ -2277,39 +2228,34 @@ export const cssFactory = (g: CssGrammarSelf) => {
       endsWith('('),
       TypedGenericFunction
     ),
-    otherwise(Identifier)
+    otherwise(g.RoutedKeyword)
   );
   const CalcIdentOrFunction = typedIdentOrFunction;
   const TypedIdentOrFunction = typedIdentOrFunction;
-  const NonIdentifierPunctuationValue = node(
-    'NonIdentifierPunctuationValue',
-    sequence(
-      not(peek(identOrFunction)),
-      g.PunctuationValue
-    ),
-    children => firstValue(children)
-  );
   const Value = node(
     'Value',
 
     /*
      * Identifier-shaped atoms are routed by `IdentOrFunction`: known glued
      * functions keep their dedicated tails, other glued functions use the
-     * generic call tail, and bare identifiers become keywords. Keep the spaced
-     * paren bridge first so `foo (bar)` can preserve its authored separator as
-     * a value boundary instead of becoming a glued function token.
+     * generic call tail, and an identifier with no glued `(` is either the
+     * spaced paren bridge (`foo (bar)`, which preserves its authored separator
+     * as a value boundary) or a keyword. One route means the identifier is
+     * scanned once. The final punctuation fallback needs no negative identifier
+     * preflight: every identifier-shaped start has already been consumed by
+     * this route.
      */
     choice(
       g.Percentage,
       g.Dimension,
       g.Color,
       g.UnicodeRange,
-      IdentBlock,
       IdentOrFunction,
       g.ParenValue,
+      g.SquareValue,
       g.Quoted,
-      CustomPropertyValue,
-      NonIdentifierPunctuationValue
+      g.CustomPropertyValue,
+      g.PunctuationValue
     ),
     { project: 0 }
   );
@@ -2368,7 +2314,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       g.Dimension,
       g.Color,
       g.Quoted,
-      CustomPropertyValue,
+      g.CustomPropertyValue,
       g.UnicodeRange,
       TypedIdentOrFunction
     ),
@@ -2377,16 +2323,16 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const TypedValueSequence = node(
     'TypedValueSequence',
     noTrivia(sequence(
-      TypedValue,
+      g.TypedValue,
       many(choice(
         sequence(
           field(
             'separator',
             cssValueTrivia
           ),
-          TypedValue
+          g.TypedValue
         ),
-        TypedValue
+        g.TypedValue
       ))
     )),
     (children, fields) => {
@@ -2435,7 +2381,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
      * concrete first-set and optional(Important) is first-char-gated instead of
      * entering the node frame at every declaration's value boundary.
      */
-    sequence(literal('!'), g.CssSyntaxImportant),
+    sequence(literal('!'), g.ImportantToken),
     () => true
   );
   const Declaration = node(
@@ -2455,7 +2401,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
          * A declaration value is a component-value sequence. In particular, a
          * structured function is one component, not the entire value: `url(x)
          * / cover`, `var(--x) solid`, and `foo(bar) baz` all retain the
-         * existing structured leaves inside a SpacedValue. Identifier-shaped
+         * existing structured leaves inside a Sequence. Identifier-shaped
          * components route from one opener, so a malformed known function such
          * as `calc()` cannot degrade into a keyword plus punctuation.
          */
@@ -2464,7 +2410,28 @@ export const cssFactory = (g: CssGrammarSelf) => {
         optional(g.Important)
       )
     ),
-    (children) => {
+
+    /*
+     * The span is what BOUNDS a declaration inside its owner's body. The
+     * renderer replays body trivia by advancing a cursor to each statement's
+     * END, so a declaration with no span leaves the cursor parked at the body
+     * start: every comment authored in the body then falls out of the closing
+     * flush in one clump at the `}` instead of at the position it was written.
+     * Less has carried this span from the start (`StandardDeclaration`), which
+     * is why Less alone renders these in place; css, scss and jess did not.
+     *
+     * The production deliberately does NOT include the statement `;` — Less's
+     * does not either, and an end past the semicolon turns a following comment
+     * into an INLINE trailing comment, which splices it before the `;`.
+     *
+     * The CUSTOM-PROPERTY arm is deliberately left unspanned, exactly as Less
+     * leaves its own `CustomDeclaration` unspanned. A custom-property value is
+     * retained as authored bytes, so a comment inside it is already part of the
+     * value; spanning the declaration additionally claims the run that FOLLOWS
+     * the value, and `a{--var:/* 1 *\/}` renders `--var: /* 1 *\/;` instead of
+     * keeping the comment as a body comment the way all four dialects do today.
+     */
+    (children, _fields, span) => {
       const name = tokenText(children[0]);
       if (name.startsWith('--')) {
         const value = children.find((child): child is ValueNode => isNodeType(
@@ -2485,12 +2452,12 @@ export const cssFactory = (g: CssGrammarSelf) => {
       if (value === undefined) {
         throw new Error('Declaration requires a structured value');
       }
-      return decl(
+      return withSourceSpan(decl(
         name,
         Array.isArray(value) ? value : valueSlot(value),
         null,
         children.includes(true)
-      );
+      ), span);
     }
   );
 
@@ -2502,7 +2469,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
    */
   const ImportUrlUnquoted = node(
     'ImportUrlUnquoted',
-    g.CssSyntaxUrlInner,
+    g.UrlInner,
     children => any(tokenText(children[0]!))
   );
   const ImportUrl = node(
@@ -2586,7 +2553,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const AtRuleStatement = node(
     'AtRuleStatement',
     sequence(
-      g.CssSyntaxStatementAtRuleName,
+      g.StatementAtRuleName,
       g.StatementPrelude,
       literal(';')
     ),
@@ -2613,34 +2580,26 @@ export const cssFactory = (g: CssGrammarSelf) => {
       ), span);
     }
   );
-  const AtPreludeWhitespace = node(
-    'AtPreludeWhitespace',
+  const AtRulePreludeWhitespace = node(
+    'AtRulePreludeWhitespace',
     noTrivia(regex(/[ \t\n\r\f]+/)),
     children => authoredText(children)
   );
-  const AtPreludeComma = node(
-    'AtPreludeComma',
+  const AtRulePreludeComma = node(
+    'AtRulePreludeComma',
     noTrivia(literal(',')),
     children => authoredText(children)
   );
-  const AtPreludeGroup = node(
-    'AtPreludeGroup',
+  const AtRulePreludeGroup = node(
+    'AtRulePreludeGroup',
     noTrivia(choice(
-      balanced(
-        '(',
-        ')',
-        { skip: [customSingleQuoted, customDoubleQuoted, blockComment] }
-      ),
-      balanced(
-        '[',
-        ']',
-        { skip: [customSingleQuoted, customDoubleQuoted, blockComment] }
-      )
+      token(balancedParens),
+      token(balancedBrackets)
     )),
     children => authoredText(children)
   );
-  const AtPreludeQuoted = node(
-    'AtPreludeQuoted',
+  const AtRulePreludeQuoted = node(
+    'AtRulePreludeQuoted',
     noTrivia(choice(
       customSingleQuoted,
       customDoubleQuoted
@@ -2648,8 +2607,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
     children => authoredText(children)
   );
   const atPreludeTextSegment = regex(/(?:\\[\s\S]|\/(?!\*)|[^\\/ \t\n\r\f,;{}()[\]"'])+/);
-  const AtPreludeText = node(
-    'AtPreludeText',
+  const AtRulePreludeText = node(
+    'AtRulePreludeText',
     noTrivia(atPreludeTextSegment),
     children => authoredText(children)
   );
@@ -2658,19 +2617,42 @@ export const cssFactory = (g: CssGrammarSelf) => {
     parser(
       { trivia: commentTrivia },
       many(choice(
-        AtPreludeWhitespace,
-        AtPreludeComma,
-        AtPreludeGroup,
-        AtPreludeQuoted,
-        AtPreludeText
+        g.AtRulePreludeWhitespace,
+        g.AtRulePreludeComma,
+        g.AtRulePreludeGroup,
+        g.AtRulePreludeQuoted,
+        g.AtRulePreludeText
       ))
     ),
     (children, _fields, _span, _rawChildren, triviaLog) => semanticTextWithTriviaGaps(children, triviaLog)
   );
+
+  /*
+   * `@charset` is the first thing a stylesheet may contain (css-syntax-3 §3.2),
+   * and css-cascade-5 §3 then admits `@import` before any other rule. Without a
+   * prologue arm of its own `@charset` is only reachable as an ordinary body
+   * at-rule, and matching one there ends the prologue `many` — which is what
+   * made the canonical `@charset` + `@import` pair unparseable while `@charset`
+   * followed by a rule, a comment, `@media` or `@layer` all parsed. The
+   * statement stays a plain `AtRuleStatement` fact so nothing downstream has a
+   * new node shape to learn.
+   */
+  const CharsetStatement = node(
+    'CharsetStatement',
+    sequence(
+      charsetAtKeyword,
+      g.StatementPrelude,
+      literal(';')
+    ),
+    children => atRuleStatement(
+      tokenText(children[0]),
+      optionalValue(children[1])
+    )
+  );
   const LayerStatement = node(
     'LayerStatement',
     sequence(
-      g.CssSyntaxLayerAtKeyword,
+      g.LayerAtKeyword,
       g.StatementPrelude,
       literal(';')
     ),
@@ -2680,8 +2662,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
     )
   );
 
-  const AtPrelude = node(
-    'AtPrelude',
+  const AtRulePrelude = node(
+    'AtRulePrelude',
     g.AtRulePreludeSegments,
     (children) => {
       const text = children.length === 0 ? '' : tokenText(children[0]).trim();
@@ -2698,42 +2680,59 @@ export const cssFactory = (g: CssGrammarSelf) => {
   );
   const OpaqueAtPrelude = node(
     'OpaqueAtPrelude',
-    g.CssOpaqueCapturePrelude,
+    g.OpaqueAtRulePreludeCapture,
     (children) => {
       const text = children.length === 0 ? '' : tokenText(children[0]).trim();
       return text === '' ? null : text;
     }
   );
+
+  /*
+   * An unknown at-rule's block is a simple block of component values
+   * (css-syntax-3 §5.4.2 "consume an at-rule" → §5.4.8 "consume a simple
+   * block"). That is the block's SYNTACTIC structure and the spec states it;
+   * what the spec leaves to the defining at-rule is the SEMANTIC reading —
+   * *"This specification places no limits on what an at-rule's block may
+   * contain. Individual at-rules must define whether they accept a block, and
+   * if so, how to parse it."* No spec defines one for an unknown at-rule, so
+   * this recognises the braces and no meaning: a nested `{ … }` is a group,
+   * never a rule, and `a: b` inside it is text, never a declaration.
+   *
+   * The AST reduction is byte-for-byte what the flat capture produced, so this
+   * adds a CST interior and moves nothing downstream.
+   */
+  const OpaqueGroup = node(
+    'OpaqueGroup',
+    noTrivia(sequence(
+      literal('{'),
+      many(g.OpaqueBodyPart),
+      literal('}')
+    )),
+    children => opaqueBodyText(children)
+  );
+  const OpaqueComment = node(
+    'OpaqueComment',
+    g.OpaqueBodyComment,
+    children => tokenText(children[0])
+  );
+  const OpaqueString = node(
+    'OpaqueString',
+    g.OpaqueBodyQuoted,
+    children => opaqueBodyText(children)
+  );
+  const OpaqueBodyPart: Combinator<unknown> = choice(
+    g.OpaqueBodyText,
+    g.OpaqueComment,
+    g.OpaqueString,
+    g.OpaqueGroup,
+    g.OpaqueBodyStray
+  );
   const OpaqueBody = node(
     'OpaqueBody',
-    g.CssOpaqueCaptureBody,
-    children => children.length === 0 ? '' : tokenText(children[0])
+    noTrivia(many(g.OpaqueBodyPart)),
+    children => opaqueBodyText(children)
   );
   const OpaqueAtRuleBlock = node(
-    'OpaqueAtRuleBlock',
-    sequence(
-      g.CssSyntaxGenericAtRuleName,
-      noTrivia(sequence(
-        g.OpaqueAtPrelude,
-        literal('{'),
-        g.OpaqueBody,
-        literal('}')
-      ))
-    ),
-    (children) => {
-      const prelude = children[1];
-      const rawBody = children[3];
-      if ((prelude !== null && typeof prelude !== 'string') || typeof rawBody !== 'string') {
-        throw new TypeError('OpaqueAtRuleBlock lost its grammar-owned raw facts.');
-      }
-      return opaqueAtRuleBlock(
-        tokenText(children[0]!),
-        prelude,
-        rawBody
-      );
-    }
-  );
-  const RoutedOpaqueAtRuleBlock = node(
     'OpaqueAtRuleBlock',
     sequence(
       routed(),
@@ -2797,7 +2796,9 @@ export const cssFactory = (g: CssGrammarSelf) => {
       return operation(
         '/',
         numerator,
-        denominator
+        denominator,
+        false,
+        cssBaseMathOutsideParens('/')
       );
     }
   );
@@ -2816,13 +2817,15 @@ export const cssFactory = (g: CssGrammarSelf) => {
       literal('('),
       g.Property,
       literal(':'),
-      QueryValue,
+      g.QueryValue,
       literal(')')
     ),
     children => block(operation(
       ':',
       keyword(tokenText(children[1]!)),
-      firstValue(children)
+      firstValue(children),
+      false,
+      cssBaseMathOutsideParens(':')
     ))
   );
   const QueryComparisonFeature = node(
@@ -2830,11 +2833,11 @@ export const cssFactory = (g: CssGrammarSelf) => {
     sequence(
       literal('('),
       g.Property,
-      g.CssSyntaxQueryComparisonOperator,
-      QueryValue,
+      g.QueryComparisonOperator,
+      g.QueryValue,
       optional(sequence(
-        g.CssSyntaxQueryComparisonOperator,
-        QueryValue
+        g.QueryComparisonOperator,
+        g.QueryValue
       )),
       literal(')')
     ),
@@ -2854,12 +2857,12 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'QueryRangeFeature',
     sequence(
       literal('('),
-      QueryValue,
-      g.CssSyntaxQueryComparisonOperator,
+      g.QueryValue,
+      g.QueryComparisonOperator,
       g.Property,
       optional(sequence(
-        g.CssSyntaxQueryComparisonOperator,
-        QueryValue
+        g.QueryComparisonOperator,
+        g.QueryValue
       )),
       literal(')')
     ),
@@ -2876,7 +2879,9 @@ export const cssFactory = (g: CssGrammarSelf) => {
       let result = operation(
         operators[0]!,
         values[0]!,
-        property
+        property,
+        false,
+        cssBaseMathOutsideParens(operators[0]!)
       );
       if (operators.length > 1) {
         const right = values[1];
@@ -2886,7 +2891,9 @@ export const cssFactory = (g: CssGrammarSelf) => {
         result = operation(
           operators[1]!,
           result,
-          right
+          right,
+          false,
+          cssBaseMathOutsideParens(operators[1]!)
         );
       }
       return block(result);
@@ -2895,20 +2902,20 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const QueryFeature = node(
     'QueryFeature',
     choice(
-      QueryBareFeature,
+      g.QueryBareFeature,
       QueryColonFeature,
       QueryComparisonFeature,
-      QueryRangeFeature
+      g.QueryRangeFeature
     ),
     { project: 0 }
   );
   const mediaTypeKeywordReserved = keywords(
     ['only', 'layer'],
-    { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+    { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
   );
   const containerNameReserved = keywords(
     ['none'],
-    { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+    { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
   );
   const QueryNonOnlyKeyword = node(
     'QueryNonOnlyKeyword',
@@ -2936,26 +2943,28 @@ export const cssFactory = (g: CssGrammarSelf) => {
     genericIdentifier,
     optional(literal('('))
   )));
+
+  /*
+   * A generic query function keeps its component payload opaque, but both the
+   * direct `QueryFunction` entry and the identifier/function dispatch consume
+   * the same CSS-owned tail. Only the opener differs: `routed()` preserves the
+   * token already consumed by the dispatch route.
+   */
+  const queryFunctionTail = sequence(
+    scanTo(
+      literal(')'),
+      { skip: [balancedParens] }
+    ),
+    expect(
+      literal(')'),
+      ')'
+    )
+  );
   const RoutedQueryFunction = node(
     'QueryFunction',
     sequence(
       routed(),
-      scanTo(
-        literal(')'),
-        {
-          skip: [
-            blockComment,
-            customEscape,
-            customDoubleQuoted,
-            customSingleQuoted,
-            balancedParens
-          ]
-        }
-      ),
-      expect(
-        literal(')'),
-        ')'
-      )
+      queryFunctionTail
     ),
     children => funcCall(
       functionOpenName(children[0]!),
@@ -2986,11 +2995,11 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const QueryOnlyClause = node(
     'QueryOnlyClause',
     sequence(
-      g.CssSyntaxQueryOnly,
+      g.QueryOnly,
       QueryNonOnlyKeyword,
       many(sequence(
-        g.CssSyntaxQueryAndOr,
-        QueryTerm
+        g.QueryAndOr,
+        g.QueryTerm
       ))
     ),
     children => spaced(children.map(child => isValue(child) ? child : keyword(tokenText(child))))
@@ -3000,7 +3009,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
    * A clause is one `<media-query>`: whitespace-joined terms only. The comma
    * belongs to the enclosing `<media-query-list>` (mediaqueries-4 §2.1), so it
    * must not be an optional separator here — swallowing it collapsed
-   * `screen, print` into a SpacedValue instead of the List the other three
+   * `screen, print` into a Sequence instead of the List the other three
    * dialects produce.
    */
   const QueryClause = node(
@@ -3008,8 +3017,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
     choice(
       QueryOnlyClause,
       sequence(
-        QueryTerm,
-        many(QueryTerm)
+        g.QueryTerm,
+        many(g.QueryTerm)
       )
     ),
     (children) => {
@@ -3034,7 +3043,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     }
   );
   const containerName = sequence(
-    not(g.CssSyntaxQueryFunctionOpen),
+    not(g.QueryFunctionOpen),
     not(containerNameReserved),
     g.Keyword
   );
@@ -3045,7 +3054,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         g.QueryFeature,
         g.QueryFunction
       ),
-      many(QueryTerm)
+      many(g.QueryTerm)
     ),
     (children) => {
       const values = valueChildren(children);
@@ -3078,7 +3087,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       g.ContainerQueryPrelude
     ),
     (children) => {
-      const values = flattenSpacedValues(valueChildren(children));
+      const values = flattenSequences(valueChildren(children));
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
@@ -3087,20 +3096,20 @@ export const cssFactory = (g: CssGrammarSelf) => {
    * A supports condition is deliberately distinct from the media/container
    * query prelude above. In particular it has no bare-keyword form: `@supports
    * color {}` must fail rather than being lowered to an opaque Any prelude.
-   * General-enclosed carries its own raw-template content model, so it can be
-   * admitted in supports without pretending that arbitrary CSS bytes are
-   * FunctionCall arguments or parenthesized value expressions.
+   * General-enclosed carries its own raw-template content model: the payload is
+   * one `Interpolation`, so the `FunctionCall` / `Block` it builds is never read
+   * as structured call arguments or a parenthesized value expression.
    */
-  const GeneralEnclosedRaw = node(
-    'GeneralEnclosedRaw',
+  const EnclosedRaw = node(
+    'EnclosedRaw',
     noTrivia(choice(
       blockComment,
-      generalEnclosedText
+      enclosedText
     )),
     children => tokenText(children[0]!)
   );
-  const GeneralEnclosedQuoted = node(
-    'GeneralEnclosedQuoted',
+  const EnclosedQuoted = node(
+    'EnclosedQuoted',
     choice(
       noTrivia(sequence(
         literal('"'),
@@ -3115,22 +3124,22 @@ export const cssFactory = (g: CssGrammarSelf) => {
     ),
     children => children.map(tokenText).join('')
   );
-  const GeneralEnclosedGroup = node(
-    'GeneralEnclosedGroup',
+  const EnclosedGroup = node(
+    'EnclosedGroup',
     choice(
       noTrivia(sequence(
         literal('('),
-        g.GeneralEnclosedContent,
+        g.EnclosedContent,
         literal(')')
       )),
       noTrivia(sequence(
         literal('['),
-        g.GeneralEnclosedContent,
+        g.EnclosedContent,
         literal(']')
       )),
       noTrivia(sequence(
         literal('{'),
-        g.GeneralEnclosedContent,
+        g.EnclosedContent,
         literal('}')
       ))
     ),
@@ -3138,26 +3147,26 @@ export const cssFactory = (g: CssGrammarSelf) => {
       ? child.parts.map(part => 'lit' in part ? part.lit : '').join('')
       : tokenText(child)).join('')
   );
-  const GeneralEnclosedContent = node(
-    'GeneralEnclosedContent',
+  const EnclosedContent = node(
+    'EnclosedContent',
     noTrivia(many(choice(
-      GeneralEnclosedRaw,
-      g.GeneralEnclosedQuoted,
-      g.GeneralEnclosedGroup
+      EnclosedRaw,
+      g.EnclosedQuoted,
+      g.EnclosedGroup
     ))),
     children => interpolation([{ lit: children.map(tokenText).join('') }])
   );
-  const GeneralEnclosed = node(
-    'GeneralEnclosed',
+  const Enclosed = node(
+    'Enclosed',
     choice(
       noTrivia(sequence(
-        g.CssSyntaxQueryFunctionOpen,
-        g.GeneralEnclosedContent,
+        g.QueryFunctionOpen,
+        g.EnclosedContent,
         literal(')')
       )),
       noTrivia(sequence(
         literal('('),
-        g.GeneralEnclosedContent,
+        g.EnclosedContent,
         literal(')')
       ))
     ),
@@ -3171,38 +3180,18 @@ export const cssFactory = (g: CssGrammarSelf) => {
       }
       const head = children[0];
       return isTerminalText(head) && tokenText(head) !== '('
-        ? generalEnclosed(
-            'function',
+        ? funcCall(
             tokenText(head),
-            content
+            [content]
           )
-        : generalEnclosed(
-            'paren',
-            null,
-            content
-          );
+        : block(content);
     }
   );
   const QueryFunction = node(
     'QueryFunction',
     sequence(
       queryFunctionOpen,
-      scanTo(
-        literal(')'),
-        {
-          skip: [
-            blockComment,
-            customEscape,
-            customDoubleQuoted,
-            customSingleQuoted,
-            balancedParens
-          ]
-        }
-      ),
-      expect(
-        literal(')'),
-        ')'
-      )
+      queryFunctionTail
     ),
     children => funcCall(
       functionOpenName(children[0]!),
@@ -3218,7 +3207,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         literal(')')
       ),
       g.QueryFeature,
-      g.GeneralEnclosed
+      g.Enclosed
     ),
     (children) => {
       const value = firstValue(children);
@@ -3229,13 +3218,13 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'SupportsCondition',
     choice(
       sequence(
-        g.CssSyntaxQueryNot,
+        g.QueryNot,
         g.SupportsInParens
       ),
       sequence(
         g.SupportsInParens,
         many(sequence(
-          g.CssSyntaxQueryAndOr,
+          g.QueryAndOr,
           g.SupportsInParens
         ))
       )
@@ -3285,147 +3274,139 @@ export const cssFactory = (g: CssGrammarSelf) => {
       peek(literal('}'))
     )
   );
-  const declarationListItem = choice(declarationListDeclaration, g.NestedConditionalBlock, g.DeclarationListAtRule, g.Ruleset, literal(';'));
-  const descriptorBodyItem = choice(declarationListDeclaration, literal(';'));
+  const declarationListItem = choice(g.declarationListDeclaration, g.NestedConditionalBlock, g.DeclarationListAtRule, g.Ruleset, literal(';'));
+  const descriptorBodyItem = choice(g.declarationListDeclaration, literal(';'));
   const conditionalGroupBodyItem = choice(g.ConditionalBlock, g.ConditionalGroupAtRule, g.TopLevelRuleset);
   const stylesheetBodyItem = choice(g.ConditionalBlock, g.StylesheetAtRule, g.TopLevelRuleset);
   const descriptorBodyBlock = sequence(literal('{'), many(descriptorBodyItem), literal('}'));
-  const declarationListBlock = sequence(literal('{'), many(declarationListItem), literal('}'));
+  const declarationListBlock = sequence(literal('{'), many(g.declarationListItem), literal('}'));
   const conditionalGroupBodyBlock = sequence(literal('{'), many(conditionalGroupBodyItem), literal('}'));
-  const stylesheetBodyBlock = sequence(literal('{'), many(stylesheetBodyItem), literal('}'));
-  const pageBodyItem = choice(declarationListDeclaration, g.MarginAtRule, literal(';'));
+  const stylesheetBodyBlock = sequence(literal('{'), many(g.stylesheetBodyItem), literal('}'));
+  const pageBodyItem = choice(g.declarationListDeclaration, g.MarginAtRule, literal(';'));
   const pageBodyBlock = sequence(literal('{'), many(pageBodyItem), literal('}'));
   const keyframesBodyBlock = sequence(literal('{'), many(g.KeyframeBlock), literal('}'));
   const fontFeatureValuesBodyBlock = sequence(literal('{'), many(g.FeatureValueBlock), literal('}'));
-  const RoutedLayerBlock = node(
+
+  /*
+   * Routed at-rule bodies: the routed keyword, its prelude, and a body block.
+   * The nested (declaration-list) and top-level (stylesheet) body shapes are each
+   * spelled once here and referenced by every routed block node that carries them,
+   * so the shape cannot drift between the at-rules that share it. Each `node()`
+   * keeps its own name and reducer; only the recognition shape is shared.
+   */
+  const routedDeclarationListBody = sequence(routed(), g.AtRulePrelude, g.declarationListBlock);
+  const routedStylesheetBody = sequence(routed(), g.AtRulePrelude, g.stylesheetBodyBlock);
+  const LayerBlock = node(
     'LayerBlock',
-    sequence(
-      routed(),
-      g.AtPrelude,
-      stylesheetBodyBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    g.routedStylesheetBody,
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       optionalValue(children[1]),
       blockStatements(children)
-    ), rawChildren)
+    ), rawChildren), span)
   );
-  const RoutedNestedLayerBlock = node(
+  const NestedLayerBlock = node(
     'NestedLayerBlock',
-    sequence(
-      routed(),
-      g.AtPrelude,
-      declarationListBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    g.routedDeclarationListBody,
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       optionalValue(children[1]),
       rulesetStatements(children)
-    ), rawChildren)
+    ), rawChildren), span)
   );
-  const RoutedDescriptorBlock = node(
+  const DescriptorBlock = node(
     'DescriptorBlock',
     sequence(
       routed(),
-      g.AtPrelude,
-      descriptorBodyBlock
+      g.AtRulePrelude,
+      g.descriptorBodyBlock
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]),
       children.find(isValue) ?? null,
       children.filter(isDeclaration)
-    ), rawChildren)
+    ), rawChildren), span)
   );
-  const RoutedPageBlock = node(
+  const PageBlock = node(
     'PageBlock',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       pageBodyBlock
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       children.find(isValue) ?? null,
-      children.filter((value): value is AstDeclaration | AtRuleBlock => isDeclaration(value) || isAtRuleBlock(value))
-    ), rawChildren)
+      children.filter((value): value is Declaration | AtRuleBlock => isDeclaration(value) || isAtRuleBlock(value))
+    ), rawChildren), span)
   );
-  const RoutedKeyframes = node(
+  const Keyframes = node(
     'Keyframes',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       keyframesBodyBlock
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]),
       optionalValue(children[1]),
       blockStatements(children)
-    ), rawChildren)
+    ), rawChildren), span)
   );
-  const RoutedFontFeatureValuesBlock = node(
+  const FontFeatureValuesBlock = node(
     'FontFeatureValuesBlock',
     sequence(
       routed(),
-      g.AtPrelude,
+      g.AtRulePrelude,
       fontFeatureValuesBodyBlock
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       children.find(isValue) ?? null,
       children.filter(isAtRuleBlock)
-    ), rawChildren)
+    ), rawChildren), span)
   );
-  const RoutedScopeBlock = node(
+
+  /*
+   * `@scope` has the public declaration-list body model, so a nested scope
+   * retains the canonical AtRuleBlock reduction rather than being rejected or
+   * routed through an opaque body.
+   */
+  const ScopeBlock = node(
     'ScopeBlock',
-    sequence(
-      routed(),
-      g.AtPrelude,
-      declarationListBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    g.routedDeclarationListBody,
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       optionalValue(children[1]),
       rulesetStatements(children)
-    ), rawChildren)
+    ), rawChildren), span)
   );
-  const RoutedStartingStyleBlock = node(
+  const StartingStyleBlock = node(
     'StartingStyleBlock',
-    sequence(
-      routed(),
-      g.AtPrelude,
-      stylesheetBodyBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    g.routedStylesheetBody,
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]),
       optionalValue(children[1]),
       blockStatements(children)
-    ), rawChildren)
+    ), rawChildren), span)
   );
-  const RoutedNestedStartingStyleBlock = node(
+  const NestedStartingStyleBlock = node(
     'NestedStartingStyleBlock',
-    sequence(
-      routed(),
-      g.AtPrelude,
-      declarationListBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    g.routedDeclarationListBody,
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]),
       optionalValue(children[1]),
       rulesetStatements(children)
-    ), rawChildren)
+    ), rawChildren), span)
   );
-  const RoutedDocumentBlock = node(
+  const DocumentBlock = node(
     'DocumentBlock',
-    sequence(
-      routed(),
-      g.AtPrelude,
-      stylesheetBodyBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    g.routedStylesheetBody,
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       children.find(isValue) ?? null,
       blockStatements(children)
-    ), rawChildren)
+    ), rawChildren), span)
   );
   const keyframesAtRuleNames = [
     '@keyframes',
@@ -3434,161 +3415,130 @@ export const cssFactory = (g: CssGrammarSelf) => {
     '@-o-keyframes',
     '@-ms-keyframes'
   ];
+
+  /*
+   * At-rules whose recognition is identical whether they appear at the top level
+   * of a stylesheet or inside a declaration list. Only `@layer` and
+   * `@starting-style` differ between the two positions (nested variants carry a
+   * declaration-list body); every other at-rule below is position-independent, so
+   * its case arm is spelled once here and referenced by both dispatches. Each
+   * dispatch keeps its own name and its own position-specific arms.
+   */
+  const scopeAtRuleCase = cssCase(
+    '@scope',
+    choice(
+      g.RoutedAtRuleStatement,
+      g.ScopeBlock
+    )
+  );
+  const descriptorAtRuleCase = cssCase(
+    [
+      '@font-face',
+      '@counter-style',
+      '@property',
+      '@color-profile',
+      '@font-palette-values',
+      '@position-try',
+      '@view-transition'
+    ],
+    choice(
+      g.RoutedAtRuleStatement,
+      g.DescriptorBlock
+    )
+  );
+  const pageAtRuleCase = cssCase(
+    '@page',
+    choice(
+      g.RoutedAtRuleStatement,
+      g.PageBlock
+    )
+  );
+  const keyframesAtRuleCase = cssCase(
+    keyframesAtRuleNames,
+    choice(
+      g.RoutedAtRuleStatement,
+      g.Keyframes
+    )
+  );
+  const fontFeatureValuesAtRuleCase = cssCase(
+    '@font-feature-values',
+    choice(
+      g.RoutedAtRuleStatement,
+      g.FontFeatureValuesBlock
+    )
+  );
+  const documentAtRuleCase = cssCase(
+    ['@document', '@-moz-document'],
+    choice(
+      g.RoutedAtRuleStatement,
+      g.DocumentBlock
+    )
+  );
+  const opaqueAtRuleOtherwise = otherwise(choice(
+    g.RoutedAtRuleStatement,
+    g.OpaqueAtRuleBlock
+  ));
   const StylesheetAtRule = dispatch(
-    atRuleKeyword,
+    g.AtRuleKeyword,
     cssCase(
       '@layer',
       choice(
-        RoutedAtRuleStatement,
-        RoutedLayerBlock
+        g.RoutedAtRuleStatement,
+        g.LayerBlock
       )
     ),
     cssCase(
       '@starting-style',
       choice(
-        RoutedAtRuleStatement,
-        RoutedStartingStyleBlock
+        g.RoutedAtRuleStatement,
+        g.StartingStyleBlock
       )
     ),
-    cssCase(
-      '@scope',
-      choice(
-        RoutedAtRuleStatement,
-        RoutedScopeBlock
-      )
-    ),
-    cssCase(
-      [
-        '@font-face',
-        '@counter-style',
-        '@property',
-        '@color-profile',
-        '@font-palette-values',
-        '@position-try',
-        '@view-transition'
-      ],
-      choice(
-        RoutedAtRuleStatement,
-        RoutedDescriptorBlock
-      )
-    ),
-    cssCase(
-      '@page',
-      choice(
-        RoutedAtRuleStatement,
-        RoutedPageBlock
-      )
-    ),
-    cssCase(
-      keyframesAtRuleNames,
-      choice(
-        RoutedAtRuleStatement,
-        RoutedKeyframes
-      )
-    ),
-    cssCase(
-      '@font-feature-values',
-      choice(
-        RoutedAtRuleStatement,
-        RoutedFontFeatureValuesBlock
-      )
-    ),
-    cssCase(
-      ['@document', '@-moz-document'],
-      choice(
-        RoutedAtRuleStatement,
-        RoutedDocumentBlock
-      )
-    ),
-    otherwise(choice(
-      RoutedAtRuleStatement,
-      RoutedOpaqueAtRuleBlock
-    ))
+    scopeAtRuleCase,
+    descriptorAtRuleCase,
+    pageAtRuleCase,
+    keyframesAtRuleCase,
+    fontFeatureValuesAtRuleCase,
+    documentAtRuleCase,
+    opaqueAtRuleOtherwise
   );
   const DeclarationListAtRule = dispatch(
-    atRuleKeyword,
+    g.AtRuleKeyword,
     cssCase(
       '@layer',
       choice(
-        RoutedAtRuleStatement,
-        RoutedNestedLayerBlock
+        g.RoutedAtRuleStatement,
+        g.NestedLayerBlock
       )
     ),
     cssCase(
       '@starting-style',
       choice(
-        RoutedAtRuleStatement,
-        RoutedNestedStartingStyleBlock
+        g.RoutedAtRuleStatement,
+        g.NestedStartingStyleBlock
       )
     ),
-    cssCase(
-      '@scope',
-      choice(
-        RoutedAtRuleStatement,
-        RoutedScopeBlock
-      )
-    ),
-    cssCase(
-      [
-        '@font-face',
-        '@counter-style',
-        '@property',
-        '@color-profile',
-        '@font-palette-values',
-        '@position-try',
-        '@view-transition'
-      ],
-      choice(
-        RoutedAtRuleStatement,
-        RoutedDescriptorBlock
-      )
-    ),
-    cssCase(
-      '@page',
-      choice(
-        RoutedAtRuleStatement,
-        RoutedPageBlock
-      )
-    ),
-    cssCase(
-      keyframesAtRuleNames,
-      choice(
-        RoutedAtRuleStatement,
-        RoutedKeyframes
-      )
-    ),
-    cssCase(
-      '@font-feature-values',
-      choice(
-        RoutedAtRuleStatement,
-        RoutedFontFeatureValuesBlock
-      )
-    ),
-    cssCase(
-      ['@document', '@-moz-document'],
-      choice(
-        RoutedAtRuleStatement,
-        RoutedDocumentBlock
-      )
-    ),
-    otherwise(choice(
-      RoutedAtRuleStatement,
-      RoutedOpaqueAtRuleBlock
-    ))
+    scopeAtRuleCase,
+    descriptorAtRuleCase,
+    pageAtRuleCase,
+    keyframesAtRuleCase,
+    fontFeatureValuesAtRuleCase,
+    documentAtRuleCase,
+    opaqueAtRuleOtherwise
   );
   const ConditionalGroupAtRule = dispatch(
-    atRuleKeyword,
+    g.AtRuleKeyword,
     cssCase(
       '@layer',
-      RoutedLayerBlock
+      g.LayerBlock
     ),
     cssCase(
       '@starting-style',
-      RoutedStartingStyleBlock
+      g.StartingStyleBlock
     ),
     cssCase(
       '@scope',
-      RoutedScopeBlock
+      g.ScopeBlock
     ),
     cssCase(
       [
@@ -3600,51 +3550,25 @@ export const cssFactory = (g: CssGrammarSelf) => {
         '@position-try',
         '@view-transition'
       ],
-      RoutedDescriptorBlock
+      g.DescriptorBlock
     ),
     cssCase(
       '@page',
-      RoutedPageBlock
+      g.PageBlock
     ),
     cssCase(
       keyframesAtRuleNames,
-      RoutedKeyframes
+      g.Keyframes
     ),
     cssCase(
       '@font-feature-values',
-      RoutedFontFeatureValuesBlock
+      g.FontFeatureValuesBlock
     ),
     cssCase(
       ['@document', '@-moz-document'],
-      RoutedDocumentBlock
+      g.DocumentBlock
     ),
-    otherwise(RoutedOpaqueAtRuleBlock)
-  );
-  const LayerBlock = node(
-    'LayerBlock',
-    sequence(
-      g.CssSyntaxLayerAtKeyword,
-      g.AtPrelude,
-      stylesheetBodyBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
-      tokenText(children[0]!),
-      optionalValue(children[1]),
-      blockStatements(children)
-    ), rawChildren)
-  );
-  const NestedLayerBlock = node(
-    'NestedLayerBlock',
-    sequence(
-      g.CssSyntaxLayerAtKeyword,
-      g.AtPrelude,
-      declarationListBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
-      tokenText(children[0]!),
-      optionalValue(children[1]),
-      rulesetStatements(children)
-    ), rawChildren)
+    otherwise(g.OpaqueAtRuleBlock)
   );
 
   /*
@@ -3656,30 +3580,17 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const MarginAtRule = node(
     'MarginAtRule',
     sequence(
-      g.CssSyntaxMarginAtKeyword,
-      descriptorBodyBlock
+      g.MarginAtKeyword,
+      g.descriptorBodyBlock
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       null,
       children.filter(isDeclaration)
-    ), rawChildren)
-  );
-  const PageBlock = node(
-    'PageBlock',
-    sequence(
-      g.CssSyntaxPageAtKeyword,
-      g.AtPrelude,
-      pageBodyBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
-      tokenText(children[0]!),
-      children.find(isValue) ?? null,
-      children.filter((value): value is AstDeclaration | AtRuleBlock => isDeclaration(value) || isAtRuleBlock(value))
-    ), rawChildren)
+    ), rawChildren), span)
   );
   const keyframeSelector = node(
-    'keyframeSelector',
+    'SimpleSelector',
     choice(
       keyframeEndpoint,
       g.Percentage
@@ -3698,48 +3609,30 @@ export const cssFactory = (g: CssGrammarSelf) => {
        * This is the public descriptorBody shape: empty declaration statements
        * are syntactically valid and deliberately have no AST statement node.
        */
-      descriptorBodyBlock
+      g.descriptorBodyBlock
     ),
     (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(rule(
       keyframeSelectorList(children),
       children.filter(isDeclaration)
     ), rawChildren), span)
   );
-  const Keyframes = node(
-    'Keyframes',
-    sequence(
-      g.CssSyntaxKeyframesAtKeyword,
-      g.AtPrelude,
-      keyframesBodyBlock
-    ),
-    (children, _fields, _span, rawChildren) => {
-      return withBlockBody(atRuleBlock(
-        tokenText(children[0]),
-        optionalValue(children[1]),
-        blockStatements(children)
-      ), rawChildren);
-    }
-  );
   const Ruleset = node(
     'Ruleset',
     sequence(
       parser(
         { trivia: interstitialTrivia },
-        g.SelectorList
+        NestedSelectorList
       ),
 
       parser(
         { trivia: interstitialTrivia },
         literal('{')
       ),
-      many(declarationListItem),
+      many(g.declarationListItem),
       expect(literal('}'), '}')
     ),
     (children, _fields, _span, rawChildren) => {
-      const selector = children.find(isSelectorList);
-      if (selector === undefined) {
-        throw new Error('Ruleset requires a selector');
-      }
+      const selector = children.find(isSelectorList)!;
       return withBlockBody(rule(
         selector,
         rulesetStatements(children)
@@ -3757,14 +3650,11 @@ export const cssFactory = (g: CssGrammarSelf) => {
         { trivia: interstitialTrivia },
         literal('{')
       ),
-      many(declarationListItem),
+      many(g.declarationListItem),
       expect(literal('}'), '}')
     ),
     (children, _fields, _span, rawChildren) => {
-      const selector = children.find(isSelectorList);
-      if (selector === undefined) {
-        throw new Error('TopLevelRuleset requires a selector');
-      }
+      const selector = children.find(isSelectorList)!;
       return withBlockBody(rule(
         selector,
         rulesetStatements(children)
@@ -3775,7 +3665,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     'ConditionalBlock',
     choice(
       sequence(
-        g.CssSyntaxSupportsAtKeyword,
+        g.SupportsAtKeyword,
         parser(
           { trivia: interstitialTrivia },
           g.SupportsPrelude
@@ -3783,66 +3673,53 @@ export const cssFactory = (g: CssGrammarSelf) => {
         conditionalGroupBodyBlock
       ),
       sequence(
-        g.CssSyntaxMediaAtKeyword,
+        g.MediaAtKeyword,
         g.QueryPrelude,
         conditionalGroupBodyBlock
       ),
       sequence(
-        g.CssSyntaxContainerAtKeyword,
+        g.ContainerAtKeyword,
         g.ContainerPrelude,
         conditionalGroupBodyBlock
       )
     ),
-    (children, _fields, _span, rawChildren) => {
-      return withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => {
+      return withSourceSpan(withBlockBody(atRuleBlock(
         tokenText(children[0]!),
         children.find(isValue)!,
         blockStatements(children)
-      ), rawChildren);
+      ), rawChildren), span);
     }
   );
   const NestedConditionalBlock = node(
     'NestedConditionalBlock',
     choice(
       sequence(
-        g.CssSyntaxSupportsAtKeyword,
+        g.SupportsAtKeyword,
         parser(
           { trivia: interstitialTrivia },
           g.SupportsPrelude
         ),
-        declarationListBlock
+        g.declarationListBlock
       ),
       sequence(
-        g.CssSyntaxMediaAtKeyword,
+        g.MediaAtKeyword,
         g.QueryPrelude,
-        declarationListBlock
+        g.declarationListBlock
       ),
       sequence(
-        g.CssSyntaxContainerAtKeyword,
+        g.ContainerAtKeyword,
         g.ContainerPrelude,
-        declarationListBlock
+        g.declarationListBlock
       )
     ),
-    (children, _fields, _span, rawChildren) => {
-      return withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => {
+      return withSourceSpan(withBlockBody(atRuleBlock(
         tokenText(children[0]!),
         children.find(isValue)!,
         rulesetStatements(children)
-      ), rawChildren);
+      ), rawChildren), span);
     }
-  );
-  const DescriptorBlock = node(
-    'DescriptorBlock',
-    sequence(
-      g.CssSyntaxDescriptorAtKeyword,
-      g.AtPrelude,
-      descriptorBodyBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
-      tokenText(children[0]),
-      children.find(isValue) ?? null,
-      children.filter(isDeclaration)
-    ), rawChildren)
   );
 
   /*
@@ -3853,91 +3730,21 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const FeatureValueBlock = node(
     'FeatureValueBlock',
     sequence(
-      g.CssSyntaxFontFeatureValueAtKeyword,
-      descriptorBodyBlock
+      g.FontFeatureValueAtKeyword,
+      g.descriptorBodyBlock
     ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
+    (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       tokenText(children[0]!),
       null,
       children.filter(isDeclaration)
-    ), rawChildren)
-  );
-  const FontFeatureValuesBlock = node(
-    'FontFeatureValuesBlock',
-    sequence(
-      g.CssSyntaxFontFeatureValuesAtKeyword,
-      g.AtPrelude,
-      fontFeatureValuesBodyBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
-      tokenText(children[0]!),
-      children.find(isValue) ?? null,
-      children.filter(isAtRuleBlock)
-    ), rawChildren)
-  );
-  const ScopeBlock = node(
-    'ScopeBlock',
-    sequence(
-      g.CssSyntaxScopeAtKeyword,
-      g.AtPrelude,
-
-      /*
-       * `@scope` has the public declaration-list body model, so a nested
-       * scope retains the existing canonical AtRuleBlock reduction rather than
-       * being rejected or routed through an opaque body.
-       */
-      declarationListBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
-      tokenText(children[0]!),
-      optionalValue(children[1]),
-      rulesetStatements(children)
-    ), rawChildren)
-  );
-  const StartingStyleBlock = node(
-    'StartingStyleBlock',
-    sequence(
-      g.CssSyntaxStartingStyleAtKeyword,
-      g.AtPrelude,
-      stylesheetBodyBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
-      tokenText(children[0]),
-      optionalValue(children[1]),
-      blockStatements(children)
-    ), rawChildren)
-  );
-  const NestedStartingStyleBlock = node(
-    'NestedStartingStyleBlock',
-    sequence(
-      g.CssSyntaxStartingStyleAtKeyword,
-      g.AtPrelude,
-      declarationListBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
-      tokenText(children[0]),
-      optionalValue(children[1]),
-      rulesetStatements(children)
-    ), rawChildren)
-  );
-  const DocumentBlock = node(
-    'DocumentBlock',
-    sequence(
-      g.CssSyntaxDocumentAtKeyword,
-      g.AtPrelude,
-      stylesheetBodyBlock
-    ),
-    (children, _fields, _span, rawChildren) => withBlockBody(atRuleBlock(
-      tokenText(children[0]!),
-      children.find(isValue) ?? null,
-      blockStatements(children)
-    ), rawChildren)
+    ), rawChildren), span)
   );
   const Stylesheet = node(
     'Stylesheet',
     sequence(
+      optional(g.CharsetStatement),
       many(choice(g.ImportStatement, g.LayerStatement)),
-      many(stylesheetBodyItem)
+      many(g.stylesheetBodyItem)
     ),
     children => stylesheet(documentStatements(children)),
     { trailingTrivia: true }
@@ -3951,6 +3758,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     CompoundSelector,
     TopLevelCompoundSelector,
     BasicSelector,
+    NamespaceTypeSelector,
     AttributeSelector,
     PseudoSelector,
     PseudoArgument,
@@ -3965,6 +3773,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     CustomProperty,
     CustomValue,
     Keyword,
+    RoutedKeyword,
     Color,
     UnicodeRange,
     Percentage,
@@ -3986,6 +3795,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     CalcIdentOrFunction,
     CalcParen,
     ParenValue,
+    SquareValue,
     RawParenValue,
     PunctuationValue,
     ValueSequence,
@@ -3993,6 +3803,9 @@ export const cssFactory = (g: CssGrammarSelf) => {
     CalcValue,
     CalcProduct,
     CalcSum,
+    CalcSequence,
+    calcFunctionArguments,
+    MathFunction,
     Value,
     TypedValue,
     TypedValueSequence,
@@ -4006,18 +3819,33 @@ export const cssFactory = (g: CssGrammarSelf) => {
     ImportTailBody,
     ImportTail,
     AtRuleStatement,
-    AtPreludeWhitespace,
-    AtPreludeComma,
-    AtPreludeGroup,
-    AtPreludeQuoted,
-    AtPreludeText,
+    AtRulePreludeWhitespace,
+    AtRulePreludeComma,
+    AtRulePreludeGroup,
+    AtRulePreludeQuoted,
+    AtRulePreludeText,
     AtRulePreludeSegments,
+    CharsetStatement,
     LayerStatement,
-    AtPrelude,
+    AtRulePrelude,
     StatementPrelude,
     OpaqueAtPrelude,
+    OpaqueGroup,
+    OpaqueComment,
+    OpaqueString,
+    OpaqueBodyPart,
     OpaqueBody,
     OpaqueAtRuleBlock,
+    LayerBlock,
+    NestedLayerBlock,
+    DescriptorBlock,
+    PageBlock,
+    Keyframes,
+    FontFeatureValuesBlock,
+    ScopeBlock,
+    StartingStyleBlock,
+    NestedStartingStyleBlock,
+    DocumentBlock,
     StylesheetAtRule,
     DeclarationListAtRule,
     ConditionalGroupAtRule,
@@ -4030,31 +3858,35 @@ export const cssFactory = (g: CssGrammarSelf) => {
     ContainerQueryPrelude,
     ContainerPrelude,
     QueryFunction,
-    GeneralEnclosed,
-    GeneralEnclosedContent,
-    GeneralEnclosedGroup,
-    GeneralEnclosedQuoted,
+    Enclosed,
+    EnclosedContent,
+    EnclosedGroup,
+    EnclosedQuoted,
     SupportsInParens,
     SupportsCondition,
     SupportsPrelude,
-    LayerBlock,
-    NestedLayerBlock,
     ConditionalBlock,
     NestedConditionalBlock,
-    DescriptorBlock,
     FeatureValueBlock,
-    FontFeatureValuesBlock,
-    ScopeBlock,
-    StartingStyleBlock,
-    NestedStartingStyleBlock,
-    DocumentBlock,
     MarginAtRule,
-    PageBlock,
     keyframeSelector,
     KeyframeBlock,
-    Keyframes,
     Ruleset,
     TopLevelRuleset,
+    stylesheetBodyBlock,
+    declarationListBlock,
+    descriptorBodyBlock,
+    declarationListItem,
+    declarationListDeclaration,
+    RoutedAtRuleStatement,
+    pseudoArgumentContent,
+    CustomPropertyValue,
+    QueryValue,
+    QueryTerm,
+    stylesheetBodyItem,
+    routedStylesheetBody,
+    routedDeclarationListBody,
+    valueFunctionArguments,
     whitespace,
     rw: whitespace
   };
@@ -4065,28 +3897,33 @@ export const cssGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPs
   cssFactory
 )]);
 
-export const cssAstGrammar = cssGrammar;
+/** AST artifact with Parseman line/column tracking enabled. */
+export const cssPositionsGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules(
+  { trivia: whitespace, scanSkip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted], trackLines: true },
+  cssFactory
+)]);
 
 export const cssCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules(
   { trivia: whitespace, scanSkip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted], hostMode: 'cst' },
   cssFactory
 )]);
 
-export const {
-  Stylesheet,
-  Ruleset,
-  SelectorList,
-  ComplexSelector,
-  CompoundSelector,
-  BasicSelector,
-  AttributeSelector,
-  PseudoSelector,
-  Declaration,
-  CustomDeclaration,
-  Dimension,
-  Color,
-  Url,
-  Call,
-  Quoted,
-  AtRuleStatement
-} = cssCstGrammar;
+/** CST artifact with Parseman line/column tracking enabled. */
+export const cssCstPositionsGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules(
+  { trivia: whitespace, scanSkip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted], hostMode: 'cst', trackLines: true },
+  cssFactory
+)]);
+
+/**
+ * CSS's WHOLE grammar as one hole-free composable base, for a dialect to
+ * `compose([cssBaseRules, rules(dialectDelta)])` onto and override by name.
+ * The recognition pieces (`cssSyntax`, opaque-at-rule, pseudo) travel with it so
+ * a dialect delta need only add its own scan-skips. Every reducer this base
+ * carries references only importable bindings (canonical AST constructors and
+ * the hoisted `@jesscss/core/ast` grammar helpers), so the lifted compose
+ * analyzer can carry its `buildImports` provenance and the base macro-fuses.
+ */
+export const cssBaseRules = compose([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules(
+  { trivia: whitespace, scanSkip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] },
+  cssFactory
+)], { hostMode: 'ast' });

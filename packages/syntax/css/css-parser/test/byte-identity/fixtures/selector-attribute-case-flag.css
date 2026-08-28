@@ -1,0 +1,6 @@
+[data-x^="y" i] {
+  color: red;
+}
+[data-x="y" s] {
+  color: blue;
+}

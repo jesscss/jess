@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { branchText, descendantBranch, mkBranch, multisetEqual } from '../extend/ir.js';
-import type { Branch, Seg, Simple } from '../extend/ir.js';
+import type { Branch, SelectorPart, Simple } from '../extend/ir.js';
 import type { Combinator } from '../node.js';
 import { appendDeduped, branchWholeMatch } from '../extend/match.js';
 
@@ -42,14 +42,14 @@ const inst = (
 
 describe('branch-key cache (mkBranch / branchText)', () => {
   it('mkBranch pre-declares `key` and `bnd` as own properties initialized undefined', () => {
-    const b = mkBranch([{ comb: ' ', compound: { simples: [{ t: 'text', text: '.a' }] } }]);
+    const b = mkBranch([{ combinator: ' ', compound: { value: [{ t: 'text', text: '.a' }] } }]);
 
     /*
-     * One stable hidden class: every branch is born `{ segs, key, bnd }`, so the memo
+     * One stable hidden class: every branch is born `{ segments, key, bnd }`, so the memo
      * write below (and any later `bnd` origin store) is an in-place store, never a
-     * `{segs}`->`{segs,key}`->`{segs,key,bnd}` transition.
+     * `{segments}`->`{segments,key}`->`{segments,key,bnd}` transition.
      */
-    expect(Object.keys(b)).toEqual(['segs', 'key', 'bnd']);
+    expect(Object.keys(b)).toEqual(['segments', 'key', 'bnd']);
     expect(Object.hasOwn(b, 'key')).toBe(true);
     expect(b.key).toBeUndefined();
     expect(Object.hasOwn(b, 'bnd')).toBe(true);
@@ -137,23 +137,38 @@ describe('groupInstructions — fold by (partial, hidden, target)', () => {
 describe('appendDeduped — whole-branch append dedup', () => {
   it('appends only branches whose text is not already present, mutating out + present', () => {
     const out = [textBranch('.a')];
-    const present = new Set(out.map(branchText));
+    const present = new Map(out.map((branch, index) => [branchText(branch), index]));
     const added = appendDeduped(out, [textBranch('.b'), textBranch('.a'), textBranch('.c'), textBranch('.b')], present);
     expect(added).toBe(true);
     expect(out.map(branchText)).toEqual(['.a', '.b', '.c']);
-    expect([...present].sort()).toEqual(['.a', '.b', '.c']);
+    expect([...present.keys()].sort()).toEqual(['.a', '.b', '.c']);
   });
 
   it('returns false and leaves out unchanged when every append is already present', () => {
     const out = [textBranch('.a'), textBranch('.b')];
-    const present = new Set(out.map(branchText));
+    const present = new Map(out.map((branch, index) => [branchText(branch), index]));
     expect(appendDeduped(out, [textBranch('.a'), textBranch('.b')], present)).toBe(false);
     expect(out.map(branchText)).toEqual(['.a', '.b']);
   });
 
   it('returns false for an empty append list', () => {
     const out = [textBranch('.a')];
-    expect(appendDeduped(out, [], new Set(['.a']))).toBe(false);
+    expect(appendDeduped(out, [], new Map([['.a', 0]]))).toBe(false);
+  });
+
+  it('promotes an identical hidden survivor when the append is visible', () => {
+    const hidden = textBranch('.a');
+    hidden.hidden = true;
+    const visible = textBranch('.a');
+    const out = [hidden];
+    const present = new Map([['.a', 0]]);
+
+    expect(appendDeduped(out, [visible], present)).toBe(true);
+    expect(out).toHaveLength(1);
+    expect(hidden.hidden).toBe(true);
+    expect(out[0]).not.toBe(hidden);
+    expect(out[0]!.hidden).toBe(false);
+    expect(present.get('.a')).toBe(0);
   });
 });
 
@@ -166,15 +181,15 @@ describe('appendDeduped — whole-branch append dedup', () => {
  * NOT, and a combinator mismatch does NOT.
  */
 
-/** A one-segment branch of N text simples (a single compound `.b.c` = ['.b','.c']). */
+/** A one-segment branch of N text tokens (a single compound `.b.c` = ['.b','.c']). */
 const compoundBranch = (...texts: string[]): Branch =>
-  mkBranch([{ comb: ' ', compound: { simples: texts.map((text): Simple => ({ t: 'text', text })) } }]);
+  mkBranch([{ combinator: ' ', compound: { value: texts.map((text): Simple => ({ t: 'text', text })) } }]);
 
-/** A complex branch: each `[comb, ...simples]` tuple is one segment. */
-const complexBranch = (...segs: [Combinator, ...string[]][]): Branch =>
-  mkBranch(segs.map(([comb, ...texts]): Seg => ({
-    comb,
-    compound: { simples: texts.map((text): Simple => ({ t: 'text', text })) }
+/** A complex branch: each `[combinator, ...tokens]` tuple is one segment. */
+const complexBranch = (...segments: [Combinator, ...string[]][]): Branch =>
+  mkBranch(segments.map(([combinator, ...texts]): SelectorPart => ({
+    combinator,
+    compound: { value: texts.map((text): Simple => ({ t: 'text', text })) }
   })));
 
 describe('multiset equality (multisetEqual)', () => {
@@ -199,7 +214,7 @@ describe('multiset equality (multisetEqual)', () => {
 
 describe('exact-mode whole-branch equivalence (branchExactEquivalent)', () => {
   it('matches a reordered compound (the fixed correctness bug)', () => {
-    // `.b.c` ≡ `.c.b` — order of simples is irrelevant (EXTEND_RULES §0).
+    // `.b.c` ≡ `.c.b` — order of value is irrelevant (EXTEND_RULES §0).
     expect(branchExactEquivalent(compoundBranch('.b', '.c'), compoundBranch('.c', '.b'))).toBe(true);
   });
 
@@ -234,7 +249,7 @@ describe('exact-mode whole-branch equivalence (branchExactEquivalent)', () => {
 
   it('fast-accepts equal serializations even when a simple renders empty (interp-empty parity)', () => {
     /*
-     * `.a@{x}` renders simples ['.a', ''] but serializes to '.a' (the interpolated
+     * `.a@{x}` renders value ['.a', ''] but serializes to '.a' (the interpolated
      * simple contributes no text). The old `bKey === targetKey` matched it against
      * `.a`; the branchText fast-accept preserves that (true strict superset), where a
      * bare structural multiset check would wrongly drop it on the length guard.
@@ -248,8 +263,8 @@ describe('exact-mode whole-branch equivalence (branchExactEquivalent)', () => {
   it('keeps an `:is()` graft opaque (a graft-bearing compound is not equal to its bare simple)', () => {
     const bare = compoundBranch('.a');
     const grafted = mkBranch([{
-      comb: ' ',
-      compound: { simples: [{ t: 'text', text: '.a' }, { t: 'is', branches: [compoundBranch('.b')] }] }
+      combinator: ' ',
+      compound: { value: [{ t: 'text', text: '.a' }, { t: 'is', branches: [compoundBranch('.b')] }] }
     }]);
     expect(branchExactEquivalent(bare, grafted)).toBe(false);
   });

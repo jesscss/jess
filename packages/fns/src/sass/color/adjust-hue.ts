@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core/value';
-import { defineFunction } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core';
+import { defineFunction } from '@jesscss/core';
 import { degreesOf, noExcess, requireColor, requireDimension, rotateHue } from './kernels.js';
 
 /**
@@ -14,9 +14,9 @@ import { degreesOf, noExcess, requireColor, requireDimension, rotateHue } from '
  */
 export const adjustHue: Fn = defineFunction('adjust-hue', {
   params: [
-    { name: 'color', kinds: ['Color'] },
-    { name: 'degrees', kinds: ['Dimension'] },
-    { name: 'excess', kinds: 'any', optional: true }
+    { name: 'color', type: 'Color' },
+    { name: 'degrees', type: 'Dimension' },
+    { name: 'excess', type: 'any', optional: true }
   ],
   body: (c, amt, excess) => {
     noExcess(excess, 2);

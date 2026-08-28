@@ -1253,7 +1253,7 @@ const preflightContract = {
   },
   sourceCheck: {
     file: preflightFile,
-    caller: 'planImportedExtends',
+    caller: 'planImportedFacts',
     guard: 'bodyMayPlanExtend',
     call: 'collectPlacedExtendFacts'
   },
@@ -1293,7 +1293,7 @@ describe('semantic-preflight cost-contract kind', () => {
   it('does not send a semantic preflight through the ordinary relations loop when its owner changes', () => {
     const diff = `diff --git a/${preflightFile} b/${preflightFile}
 @@ -1 +1 @@
-+function planImportedExtends() { if (bodyMayPlanExtend(body)) collectPlacedExtendFacts(body); }`;
++function planImportedFacts() { if (bodyMayPlanExtend(body)) collectPlacedExtendFacts(body); }`;
     expect(validateCostAuditRecords(
       [makeSemanticPreflightRecord()],
       [preflightContract],

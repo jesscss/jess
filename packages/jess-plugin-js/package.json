@@ -1,8 +1,8 @@
 {
   "name": "@jesscss/plugin-js",
-  "version": "2.0.0-alpha.14",
+  "version": "2.0.0-alpha.15",
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": "^20.19.0 || >=22.18.0"
   },
   "description": "Jess plugin for JavaScript/TypeScript module imports with Deno runtime checks",
   "main": "lib/index.cjs",
@@ -21,7 +21,7 @@
   ],
   "scripts": {
     "build": "pnpm compile",
-    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "dev": "tsdown --tsconfig tsconfig.build.json --watch",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'",

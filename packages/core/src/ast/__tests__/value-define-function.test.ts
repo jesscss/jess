@@ -9,33 +9,33 @@ function invoke(fn: unknown, ...args: unknown[]): unknown {
 }
 
 const twice = defineFunction('twice', {
-  params: [{ name: 'value', kinds: ['Dimension'] }] as const,
+  params: [{ name: 'value', type: 'Dimension' }] as const,
   body: (value) => {
     return makeDimension(value.number * 2, value.unit);
   }
 });
 
 const lazyTwice = defineFunction('lazy-twice', {
-  params: [{ name: 'value', kinds: ['Dimension'], lazy: true }] as const,
+  params: [{ name: 'value', type: 'Dimension', lazy: true }] as const,
   body: value => Promise.resolve(value()).then(result => makeDimension(result.number * 2, result.unit))
 });
 
 const skipLazy = defineFunction('skip-lazy', {
-  params: [{ name: 'value', kinds: ['Dimension'], lazy: true }] as const,
+  params: [{ name: 'value', type: 'Dimension', lazy: true }] as const,
   body: () => makeDimension(1)
 });
 
 const collect = defineFunction('collect', {
   params: [
-    { name: 'value', kinds: ['Dimension'] },
-    { name: 'precision', kinds: ['Dimension'], default: makeDimension(1) },
-    { name: 'rest', kinds: ['Dimension'], rest: true }
+    { name: 'value', type: 'Dimension' },
+    { name: 'precision', type: 'Dimension', default: makeDimension(1) },
+    { name: 'rest', type: 'Dimension', rest: true }
   ] as const,
   body: (value, precision, rest) => makeDimension(value.number + precision.number + rest.length, value.unit)
 });
 
 const unnamedPositional = defineFunction('unnamed-positional', {
-  params: [{ kinds: ['Dimension'] }] as const,
+  params: [{ type: 'Dimension' }] as const,
   body: (...args) => {
     const value = args[0];
     if (value?.type !== 'Dimension') {
@@ -52,17 +52,17 @@ describe('value-domain defineFunction', () => {
     expect(Object.prototype.hasOwnProperty.call(twice, 'body')).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(twice, 'options')).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(twice, '_internal')).toBe(false);
-    expect(twice.params).toEqual([{ name: 'value', kinds: ['Dimension'] }]);
+    expect(twice.params).toEqual([{ name: 'value', type: 'Dimension' }]);
     expect(twice(makeDimension(2, 'px'))).toEqual({ type: 'Dimension', number: 4, unit: 'px', bytes: '4px' });
     const registry = createFnRegistry();
     registry.register(twice);
     expect(registry.dispatch('twice', makeList([makeDimension(2, 'px')]), {
-      modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve', equalityMode: 'less' },
+      modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve' },
       stringify: emitValue
     })).toEqual(makeDimension(4, 'px'));
     const invalidArgs = invoke(makeList, [{ value: makeDimension(2, 'px') }], ',');
     expect(() => invoke(registry.dispatch.bind(registry), 'twice', invalidArgs, {
-      modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve', equalityMode: 'less' },
+      modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve' },
       stringify: value => value.bytes
     })).toThrow('structural value');
   });
@@ -72,7 +72,7 @@ describe('value-domain defineFunction', () => {
     expect(() => twice({})).toThrow('missing required argument value');
     expect(() => twice(makeDimension(2, 'px'), makeDimension(3))).toThrow('too many');
     expect(() => twice({ value: { type: 'Keyword', text: 'x', bytes: 'x' } })).toThrow('expected Dimension');
-    expect(() => invoke(twice, 2)).toThrow('typed ValueObj');
+    expect(() => invoke(twice, 2)).toThrow('typed value node');
   });
 
   it('defers a lazy parameter and validates the typed value when the thunk is invoked', async () => {
@@ -97,13 +97,37 @@ describe('value-domain defineFunction', () => {
   it('dispatches unnamed positional specs without requiring record metadata', () => {
     const args = makeList([makeDimension(2, 'px')]);
     const ctx = {
-      modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve', equalityMode: 'less' },
+      modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve' },
       stringify: emitValue
     } as const;
     expect(invoke(unnamedPositional, makeDimension(2, 'px'))).toEqual(makeDimension(4, 'px'));
     const registry = createFnRegistry();
     registry.register(unnamedPositional);
     expect(registry.dispatch('unnamed-positional', args, ctx)).toEqual(makeDimension(4, 'px'));
+  });
+
+  it('applies the arity check on the registry route and feeds a rest parameter every trailing item', () => {
+    const ctx = {
+      modes: { mathMode: 'parens-division', unitMode: 'preserve', functionMode: 'preserve' },
+      stringify: emitValue
+    } as const;
+    const registry = createFnRegistry();
+    registry.registerAll([twice, collect]);
+
+    /*
+     * The positional array used to be built by mapping over `params`, which
+     * truncated every dispatch to the declared arity: the excess never reached
+     * `bindDirect`, so its `too many arguments` throw was unreachable from this
+     * route and a `rest` parameter only ever saw its own slot.
+     */
+    expect(() => registry.dispatch('twice', makeList([makeDimension(2, 'px'), makeDimension(3)], ','), ctx))
+      .toThrow('too many arguments');
+    expect(registry.dispatch('collect', makeList([
+      makeDimension(2, 'px'),
+      makeDimension(3),
+      makeDimension(4),
+      makeDimension(5)
+    ], ','), ctx)).toEqual(makeDimension(7, 'px'));
   });
 
   it('infers typed value and lazy-thunk body arguments from the parameter tuple', () => {

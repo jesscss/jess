@@ -1,5 +1,5 @@
-import type { Fn } from '@jesscss/core/value';
-import { makeDimension, textOf, defineFunction, groupOf, unitFactor } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core';
+import { makeDimension, textOf, defineFunction, groupOf, unitFactor } from '@jesscss/core';
 import { requireDimension } from './math-helper.js';
 
 /**
@@ -8,7 +8,7 @@ import { requireDimension } from './math-helper.js';
  * result, so it emits canonical bytes, matching the adapter's `render()`).
  */
 export const convert: Fn = defineFunction('convert', {
-  params: [{ kinds: ['Dimension'] }, { kinds: ['Keyword', 'Quoted'] }],
+  params: [{ type: 'Dimension' }, { type: ['Keyword', 'Quoted'] }],
   body: (value, unitArg) => {
     const v = requireDimension(value);
     const from = v.unit;

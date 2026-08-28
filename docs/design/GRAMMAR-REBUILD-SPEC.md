@@ -7,7 +7,7 @@ first, the method, and the criteria that decide whether they succeeded.
 > **Status: `design/`, not `architecture/`.** The problem statement (§2), the
 > verification machinery in §8.2–§8.6, the traps (§7), and the structural causes
 > (§13) are present-tense and measured. The old hostMode release blocker is paid
-> as of `parseman@0.41.0`; the physical eight-to-four collapse is complete, and
+> as of `parseman@0.43.0` (the floor has since moved twice: `^0.44.0` in `f292fdd8f`, then `^0.45.0` in `75002c4a3`); the physical eight-to-four collapse is complete, and
 > the active work is rebuilding/polishing the surviving grammar families until
 > they meet the naming, documentation, lint, and Parseman-shape bar. Sections that preserve
 > older 0.32/0.37/0.38 planning evidence are historical unless §0.2 or
@@ -60,8 +60,12 @@ The owner's requirements, verbatim, are the acceptance definition:
 Four consequences, none of them optional:
 
 1. **Order is `css` → `less` → `scss` → `jess`.** CSS is the base.
-2. **The dialects link back to CSS** rather than restating it — see §12 for what
-   "agent-readable link" means concretely.
+2. **The dialects link back to CSS** rather than restating it. §12.0 used to
+   define "agent-readable link" as a documentation comment; that definition is
+   **OVERRULED** (an agent narrowed an owner requirement to fit a tool
+   constraint) and the link the owner asked for is a code import — hard rule 2.
+   The conflict with parseman's `direct-builder-static` allow-set is real,
+   documented in §0.5, and **UNRESOLVED pending an owner ruling**.
 3. **No copy-paste.** The old grammars are a reference for the _accept set_
    only (§3, §4).
 4. **No bespoke per-dialect naming scheme.** See §2.1 and
@@ -71,9 +75,18 @@ Four consequences, none of them optional:
 
 ### 0.2 Current status
 
-**The parseman floor is paid.** parseman is now resolved to **0.41.0** from the
-registry; the root, `@jesscss/parser-shared`, and all four parser packages
-depend on `^0.41.0`. `hostMode` reaches the macro, 0.38 adds
+**The parseman floor is paid.** parseman resolves to **0.47.1** from the registry
+(`pnpm-lock.yaml`, sole entry); the root, `@jesscss/parser-shared`, and all four
+parser packages depend on `^0.47.1` (after `ff685793a` took the floor to `^0.46.0`,
+`75002c4a3` took the floor to `^0.45.0`, and `f292fdd8f` with `b2f888070`
+migrated root trivia capture while `d22cdb54b` dropped the last
+`RunResult.triviaLog` reads). The 0.46.0 bump was output-neutral and bought
+−0.07% to −0.24% of artifact, **not** the ~5% the size-facts
+§2.4 rows record — those were already banked at 0.45.0; see
+`docs/state/GRAMMAR-SIZE-FACTS.md` §2.4l. *(Corrected
+2026-07-30: this section and the §0 verification table below both asserted `0.43.0` /
+`^0.43.0`, which made the doc AGENTS.md points agents at FIRST self-falsifying against
+`package.json`.)* `hostMode` reaches the macro, 0.38 adds
 the keyword ergonomics this cleanup now uses:
 `word(str, { caseInsensitive: true })`,
 `word(str, boundary, { caseInsensitive: true })`, and
@@ -82,18 +95,53 @@ macro-compiled `dispatch(combinator, when(...), otherwise(...))` routing shape,
 case-insensitive `when(...)`, `makeWhen(...)`, matcher cases, and `routed()`,
 and 0.40.0 adds `node(..., { project: index })` for simple semantic projection
 without hiding CST ownership. Current package-local resolution checks report
-`0.41.0` from `/Users/matthew/git/oss/jess/node_modules/.pnpm/parseman@0.41.0/node_modules/parseman`.
-Macro
-probing has one important authoring boundary:
-`makeWord(...)` aliases declared inside a `rules(...)` factory lower cleanly, but
-module-scope word-factory aliases do not; keep shared recognition modules on
-direct `word(...)` / `keywords(...)` until that Parseman surface improves.
+`0.47.1` from `node_modules/.pnpm/parseman@0.47.1/node_modules/parseman`
+(the repo pins `^0.47.1` as of 2026-08-12).
+
+Macro probing has one important authoring boundary, and it is **not** about where
+the alias is declared. Two earlier statements of it here were wrong: the first
+claimed module-scope word-factory aliases do not lower, the second claimed being
+*inside* a `rules(...)` factory was what made an alias lower. Neither is the
+constraint, and the wrong wording cost at least two authors a working
+`dispatch(...)` they did not need to cut. Measured against parseman `0.46.0`
+(`lane/macro-lowering-defects`), module scope and inside a `rules(...)` factory
+behave identically in every case below.
+
+What the macro can lower is decided by **what the callee is**, not by its scope:
+
+| Alias shape | Lowers? |
+| --- | --- |
+| `const kw = makeWord(boundary?, opts?)`, then `kw('url')` | yes, either scope |
+| `const ci = makeWhen(opts?)`, then `ci(key, parser)` | yes, either scope |
+| `const ident = regex(/[a-z]+/)` — a plain combinator const | yes, either scope |
+| `const ci = (k, p) => when(k, p, opts)` — a user-defined function | **no**, either scope |
+| `const w2 = word` — a bare re-binding of an imported constructor | **no**, either scope |
+
+The rule: a call lowers when its callee is a parseman constructor **named
+directly**, or a binding produced by `makeWord(...)` / `makeWhen(...)`. The macro
+does not call user-defined functions and does not follow a constructor through a
+plain `const` re-binding, so both of those fall back to the interpreter with
+`rules(...) factory isn't statically evaluable`. Reach for `makeWord(...)` /
+`makeWhen(...)` — they exist precisely to be the lowerable form of an alias — and
+keep anything else on direct `word(...)` / `keywords(...)` / `when(...)`.
+
+The worked cases behind that table: `when(ciCase('url('), routed(...))` fails
+static evaluation with *"factory isn't statically evaluable"* — `ciCase` is a
+user-defined function — while `when('url(', g.Url, { caseInsensitive: true })`
+builds. **It is the callee, not the opener shape and not the declaration site,
+that decides.** `makeWhen({ caseInsensitive: true })` and
+`makeWord(chars, { caseInsensitive: true })` lower in all four grammars, whether
+declared at module scope or inside the factory.
+
+See `docs/architecture/parser/PARSEMAN-COMBINATOR-CHEAT-SHEET.md` for the
+measured combinator contract; the correction was first recorded as provisional
+at `docs/state/GRAMMAR-SIZE-FACTS.md:778-786`.
 
 **The physical four-grammar collapse is complete.** CSS, Less, SCSS, and Jess
 now ship AST and CST from one host-mode grammar source per dialect:
 `src/grammar.ts`. The old `src/ast/grammar.ts` files have been deleted. The
 remaining rebuild work is quality work on those surviving sources: simplify rule
-and node names, replace duplicated broad choices with Parseman 0.41 routing
+and node names, replace duplicated broad choices with Parseman 0.43 routing
 where it applies, tighten spec conformance, and keep the grammar documentation
 current.
 Verify:
@@ -127,7 +175,7 @@ The checked-in baseline aggregates are
 with 120 throws and
 `cst=7819745e6303225316b5af7d68ea9de301e5dd95603e06bca1260d65abb506c4`
 with 0 throws over 709 entries. The current integration checkout is not
-byte-identical against that committed baseline; the active registry-0.41.0
+byte-identical against that committed baseline; the active registry-0.43.0
 aggregate is recorded below and classified in
 [`LESS-ORACLE-MOVER-CLASSIFICATION.md`](../architecture/parser/LESS-ORACLE-MOVER-CLASSIFICATION.md).
 SCSS now ships from one host-mode grammar source too;
@@ -143,7 +191,7 @@ parser-shared, CSS, Less, SCSS, and Jess fully compiled with 0 interpreter
 fallbacks, and `pnpm run verify:compose-integrity` passes. Less, SCSS, and Jess
 still carry naming/gating cleanup debt, but not second grammar bodies.
 
-Current 2026-07-28 registry-0.41.0 gate evidence: dependency-order parser/plugin/
+Current 2026-07-29 registry-0.43.0 gate evidence: dependency-order parser/plugin/
 jess builds pass; `pnpm run check:macro` passes with all parser packages fully
 compiled and 0 interpreter fallbacks; `pnpm run verify:compose-integrity` passes
 with exit code 0; and `pnpm run verify:less-alpha` passes its Less parser,
@@ -161,9 +209,9 @@ named-set split is
 
 | fact                                            | value at time of writing                                                                                          | how to re-check                                                                                                                                                                                                                                     |
 | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| parseman version jess resolves                  | **0.41.0** from the registry; root + parser-shared + all four parser package dependency/peer ranges are `^0.41.0` | `node -p "require('./node_modules/parseman/package.json').version + ' ' + require('fs').realpathSync('./node_modules/parseman')"` and `rg -n '"parseman"' package.json packages/parser-shared/package.json packages/syntax/*/*-parser/package.json` |
-| parseman published `latest`                     | **0.41.0**                                                                                                        | `npm view parseman version`                                                                                                                                                                                                                         |
-| parseman `main`                                 | **0.41.0** at publication time                                                                                    | `git -C <parseman checkout> show origin/main:package.json \| grep version`                                                                                                                                                                          |
+| parseman version jess resolves                  | **0.47.1** from the registry; root + parser-shared + all four parser package dependency/peer ranges are `^0.47.1` — **10 declarations across 6 manifests** (verified 2026-08-12 on `dev`) | `node -p "require('./node_modules/parseman/package.json').version + ' ' + require('fs').realpathSync('./node_modules/parseman')"` and `grep -rn '"parseman"' --include=package.json . \| grep -v node_modules` |
+| parseman published `latest`                     | **0.47.1** (re-check before relying on it)                                                                                                        | `npm view parseman version`                                                                                                                                                                                                                         |
+| parseman `main`                                 | **0.47.1** at publication time (`e1f6bfdc37adfb3d0c7953438de54a6f78a4221c`)                                                                                    | `git -C <parseman checkout> show origin/main:package.json \| grep version`                                                                                                                                                                          |
 | `hostMode` first ships in                       | **0.37.0**                                                                                                        | parseman `CHANGELOG.md`, the 0.37.0 section                                                                                                                                                                                                         |
 | PRs #75, #76, #77, #80, #81, #82, #83, #84, #85 | **merged**                                                                                                        | `gh pr list --repo matthew-dean/parseman --state all`                                                                                                                                                                                               |
 | **PR #85 — `hostMode` reaching the macro**      | **merged**, on `dev` in jess via `6908e7b4f`                                                                      | `gh pr view 85 --repo matthew-dean/parseman`                                                                                                                                                                                                        |
@@ -176,7 +224,7 @@ named-set split is
 > further physical collapse.
 
 > **Publishing parseman is owner-only.** Agents never merge or release parseman
-> PRs (`docs/architecture/core/HANDOFF.md`, COLD START item 7). 0.41.0 is now
+> PRs (`docs/architecture/core/HANDOFF.md`, COLD START item 7). 0.47.1 is now
 > published and jess consumes it; any future parseman bump goes through the same
 > owner gate.
 
@@ -198,15 +246,16 @@ when(...), otherwise(...))`: consume one broad token, route by the returned
 | `packages/parser-shared` (renamed from `internal-css-recognition`) | `packages/parser-shared/`, rename commit `a74131e8f`                                                                   |
 | `packages/syntax/` packages-by-syntax regroup                      | `packages/syntax/<lang>/<pkg>/`, move commit `e96d1035d`                                                               |
 | `packages/editor/` and `packages/docs/` sibling groups             | `packages/editor/<pkg>/`, `packages/docs/<pkg>/` — same commit `e96d1035d`                                             |
-| parseman 0.41.0 floor                                              | root, parser-shared, and all four parser package manifests use `^0.41.0`; parser package peer ranges require `^0.41.0` |
+| parseman floor                                                     | `^0.47.1` on `dev` in root, parser-shared, and all four parser manifests incl. peer ranges — **10 declarations across 6 manifests** — regenerate with `grep -rn '"parseman"' --include=package.json . \| grep -v node_modules` |
 | parseman/oracle byte-identity gate (Stage 2 of the rewrite)        | `packages/syntax/less/less-parser/test/oracle-byte-identity.mjs` + committed baseline at commit `a2911a491`            |
 | The un-awaited-assertion helper                                    | `test/expect-sync.ts` — repo root, **not** under `packages/` (§0.6.1)                                                  |
 | The `as any` detector                                              | `pnpm lint:absolute` (§0.6)                                                                                            |
 | The `tree/` cutover inventory                                      | [`../architecture/core/TREE-CUTOVER-SURFACE.md`](../architecture/core/TREE-CUTOVER-SURFACE.md) (§0.7)                  |
 | Removal of the dead `@jesscss/plugin-css`                          | `ls packages` — no such directory                                                                                      |
 
-The **language-service suite is green** (§8.4) and composition is settled as
-**terminal leaves** (§0.5).
+The **language-service suite is green** (§8.4). Composition is **currently**
+terminal leaves; that is the state of the code and an UNRESOLVED conflict with
+owner requirement OR-1 rule 2, not a settled design — see §0.5.
 
 ### 0.3 The plan, in order, with what gates what
 
@@ -215,11 +264,19 @@ document order; it is stated here.
 
 | step  | what                                                                                                                                                                     | gated on                                                                                             | who                                |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| **1** | **Parseman grammar floor**                                                                                                                                               | paid by `parseman@0.41.0`; future parseman releases remain owner-only                                | **owner only for future releases** |
+| **1** | **Parseman grammar floor**                                                                                                                                               | paid by `parseman@0.43.0`; future parseman releases remain owner-only                                | **owner only for future releases** |
 | **2** | **Physical eight-to-four fold** — one host-mode `src/grammar.ts` per dialect                                                                                             | **complete**; deleted `src/ast/grammar.ts` files are historical evidence only                        | agent                              |
-| **3** | **CSS polish** — spec names, small rules, documented deviations, `word(...)`, separated-list helpers, and `dispatch(...)`/`routed()` for known-or-generic token families | step 2 complete; CSS remains the base for dialect cleanup                                            | agent                              |
-| **4** | **Less polish** — compose on CSS, keep Less deviations explicit, delete SCSS-only inheritance, parse selectors/extends/values once                                       | step 3 shape decisions; CSS/Less are the alpha bar                                                   | agent                              |
-| **5** | **SCSS, then Jess polish** — repair the folded grammars without recreating second grammar bodies or Less inheritance                                                     | step 4; SCSS/Jess may be temporarily red while being rebuilt, but duplicate grammar bodies stay dead | agent                              |
+| **3** | **CSS polish** — spec names, small reusable slots, documented deviations, `word(...)`, separated-list helpers, and `dispatch(...)`/`routed()` for known-or-generic token families | step 2 complete; CSS remains the base for dialect cleanup                                            | agent                              |
+| **4** | **Less polish** — compose on CSS, keep Less deviations explicit, delete SCSS-only inheritance, parse selectors/extends/values once, and make the Less grammar the thinnest possible overlay | step 3 shape decisions; CSS/Less are the alpha bar                                                   | agent                              |
+| **5** | **SCSS, then Jess polish** — repair the folded grammars as additions plus pinpoint CSS-slot overrides, without recreating second grammar bodies or Less inheritance                                                     | step 4; SCSS/Jess may be temporarily red while being rebuilt, but duplicate grammar bodies stay dead | agent                              |
+
+CSS can be cleaned vertically until it is spotless because it is the base
+grammar. Derived cleanup should be horizontal by production family: imports,
+at-rules, quoted values, identifiers/functions, pseudo selectors, selector
+starts, query/supports/container forms, guards, custom-property values, and
+similar repeated families should be audited across CSS, Less, SCSS, and Jess
+before landing the shape. The intended outcome is one CSS-owned frame plus the
+smallest necessary dialect overrides, not one local fix per dialect.
 
 **Acceptance, identical for every dialect** (§8.2 states these with evidence
 requirements):
@@ -283,7 +340,7 @@ their method rather than as bare numbers:
   the less/scss/jess grammars. So the headline **735** total holds under
   per-package scoping and is **744** repo-wide. Both are true; say which you
   mean.
-- **`parseman` manifest ranges are all `^0.41.0`** across the root,
+- **`parseman` manifest ranges are all `^0.47.1`** across the root,
   `@jesscss/parser-shared`, and the four parser packages. There are no exact
   parseman pins in package manifests; compiled parser artifacts still must never
   cross parseman versions.
@@ -315,12 +372,12 @@ release is adopted.
 
 | file                                            | line                                | form                 |
 | ----------------------------------------------- | ----------------------------------- | -------------------- |
-| `package.json`                                  | root dev dependency range           | `^0.41.0`            |
-| `packages/parser-shared/package.json`           | shared dependency range             | `^0.41.0`            |
-| `packages/syntax/css/css-parser/package.json`   | peer floor and dev dependency range | `^0.41.0`, `^0.41.0` |
-| `packages/syntax/less/less-parser/package.json` | peer floor and dev dependency range | `^0.41.0`, `^0.41.0` |
-| `packages/syntax/scss/scss-parser/package.json` | peer floor and dev dependency range | `^0.41.0`, `^0.41.0` |
-| `packages/syntax/jess/jess-parser/package.json` | peer floor and dev dependency range | `^0.41.0`, `^0.41.0` |
+| `package.json`                                  | root dev dependency range           | `^0.47.1`            |
+| `packages/parser-shared/package.json`           | shared dependency range             | `^0.47.1`            |
+| `packages/syntax/css/css-parser/package.json`   | peer floor and dev dependency range | `^0.47.1`, `^0.47.1` |
+| `packages/syntax/less/less-parser/package.json` | peer floor and dev dependency range | `^0.47.1`, `^0.47.1` |
+| `packages/syntax/scss/scss-parser/package.json` | peer floor and dev dependency range | `^0.47.1`, `^0.47.1` |
+| `packages/syntax/jess/jess-parser/package.json` | peer floor and dev dependency range | `^0.47.1`, `^0.47.1` |
 
 Plus `pnpm-lock.yaml`. **The invariant is that compiled parser artifacts never
 cross parseman versions** — a bump regenerates every artifact and rebaselines
@@ -333,23 +390,68 @@ consumed by **two or more** parsers **and** parser-specific. Anything failing
 either half of that test does not belong there.
 
 It has no package-root export; consumers import by subpath —
-`./recognition`, `./opaque-at-rule`, `./pseudo-consts`. Its four value exports
-are `cssSyntax`, `lessSyntax`, `cssPseudoSyntax`, and
-`opaqueAtRuleRecognition`. The shared recognition exports were cleaned on
-2026-07-26 from `cssAstSyntax` / `cssAstPseudoSyntax` and `lessAstSyntax` to
-remove false compile-mode names; their rule keys likewise moved from
-`CssAstSyntax*` / `LessAstSyntax*` to `CssSyntax*` / `LessSyntax*`. The CSS and
-Less prefixes are now language scope markers rather than compile-mode markers;
-if the four-grammar rebuild later makes a base module itself unambiguous, that
-prefix can disappear too.
+`./recognition`, `./opaque-at-rule`, `./pseudo-consts`. Its current value
+exports include `cssSyntax`, `lessSyntax`, `cssPseudoSyntax`, and
+`opaqueAtRuleRecognition`. Those names are transition-era recognition maps, not
+the naming target. The target grammar model is CSS-owned structure consuming
+semantic slots (`Keyword`, `Quoted`, `AttributeOperator`, `Nth`, `AtKeyword`,
+`PseudoSelector`, and similar), while Less, SCSS, and Jess override only the
+slot whose accepted language actually differs. Do not replace an enclosing CSS
+production because one child changes. Split a shared CSS slot only when
+implementation pressure proves two contexts with the same visible concept need
+different override behavior, and record that proof near the split.
 
-**Cross-artifact `compose()` is not available, so the rebuild proceeds as
-terminal leaves.** The constraint a builder must satisfy to be statically
+`Identifier` and `Keyword` stay separate even when their raw CSS recognizer is
+the same today. `Identifier` owns identifier-shaped structure outside value
+position; `Keyword` owns value-position identifier facts. In value position,
+route the identifier/function family once so a bare identifier becomes a
+`Keyword` value while glued `name(` openers dispatch to known or generic
+function bodies.
+
+Likewise, expression lowering is dialect policy, not a license to widen every
+value slot. Less math and comparison may lower to expression nodes based on
+`mathMode`; Jess math, comparison, and leading-dot declaration lookup belong
+inside explicit `$()` expressions only, with normal value positions rejecting
+the same spellings. Less-to-Jess conversion must preserve Less expression facts
+with explicit Jess `$(...)` output, for example a Less math expression
+`@foo + 1` projects as `$(^foo + 1)` when `mathMode` lowered it as math; it must
+not widen normal Jess values to accept `$foo + 1`.
+
+> **SUPERSEDED 2026-08-15 by `COMPOSE-MIGRATION-SPEC.md`.** The parseman
+> constraint described below is real but has since been **lifted** (parseman
+> `release/0.49.0-compose-lifts`: imported/free bindings, block bodies, non-arrow
+> reducers now compose and macro-fuse; the whole hole-free CSS base fuses
+> AST-identical). One tractable residual blocker remains — a composed base's
+> imports are not re-emitted into a module that composes onto it — tracked with
+> its fix and the staged plan in `COMPOSE-MIGRATION-SPEC.md`. Read that first; the
+> "OPEN / blocked" language in the rest of this section is history.
+
+**UNRESOLVED — escalated to the owner. Do not treat what follows as a design
+decision.** Cross-artifact `compose()` is blocked by a real parseman constraint,
+documented in full below. That constraint **conflicts with owner requirement
+OR-1 rule 2** (`docs/OWNER-REQUIREMENTS.md`): *"Each downstream grammar MUST
+extend CSS grammar (import and compose)"*. The repo currently proceeds as
+terminal leaves. **That is the state of the code, not a ruling** — an agent
+resolved this conflict in favour of the constraint and recorded the resolution
+as settled; that closure was not the agent's to make and is **OVERRULED**. Only
+the owner may decide whether the requirement bends, the constraint is removed
+upstream, or the rebuild takes a third shape.
+
+**The "new evidence" the old closure demanded exists.** parseman is checked out
+locally at `~/git/oss/parseman`; the allow-set below is its source, editable
+upstream, and this repo's owner owns that lane. "The tool cannot do it" is
+therefore a statement about a version, not about the world.
+`../architecture/parser/PRODUCTION-COMPOSE-FEASIBILITY.md` states the corrected
+form: **BLOCKED on the installed parseman, not wrong, not deferred by choice**,
+with the upstream fix located. Read that before restating this constraint.
+
+The constraint a builder must satisfy to be statically
 resolvable is `direct-builder-static.ts` — **which is in parseman, not in this
 repo**: source at `src/plugin/direct-builder-static.ts` in the parseman
-checkout, shipped to jess only as bundled output at
-`node_modules/.pnpm/parseman@0.32.0/node_modules/parseman/dist/plugin/index.js`
-(the implementation is `directBuilderUnsupportedBindings`). Read there, verified:
+checkout, shipped to jess only as bundled output at the resolved Parseman
+package's `dist/plugin/index.js` (locate its package root from `node -p
+"require.resolve('parseman')"`; the implementation is
+`directBuilderUnsupportedBindings`). Read there, verified:
 
 - the builder must be an **expression-bodied arrow** — a `BlockStatement` body
   is rejected, and so is a nested block-bodied arrow;
@@ -360,10 +462,43 @@ checkout, shipped to jess only as bundled output at
 
 jess's grammar builders overwhelmingly violate this by calling **imported AST
 constructors and grammar-local helpers**, neither of which is in the allow-set —
-which is why cross-artifact `compose()` is unavailable and the rebuild proceeds
-as terminal leaves. **This conclusion is settled** and is independently
-supported by §5.4 and §13.3; do not re-propose `compose()` across artifacts
-without new evidence.
+which is why cross-artifact `compose()` is unavailable at the current parseman
+version and the rebuild currently proceeds as terminal leaves.
+
+That is the evidence. `CLOSURE-QUOTED:` — the sentence below is quoted in order
+to repudiate it. The sentence that used to follow it — *"**This conclusion
+is settled** and is independently supported by §5.4 and §13.3; do not re-propose
+`compose()` across artifacts without new evidence"* — is **removed as an
+illegitimate self-authored closure of an owner requirement** (OR-1 rule 2). §5.4
+and §13.3 corroborate the parseman constraint; neither is an owner ruling, and
+no number of agent-authored sections adds up to one. The question is **OPEN**.
+Anyone with a way to satisfy OR-1 rule 2 — upstream parseman change, a builder
+shape inside the allow-set, a different composition mechanism — should propose
+it.
+
+> **OWNER OVERRULE — 2026-08-09, jess `4d4954156`. The closure above no longer
+> stands as a reason not to pursue `compose()`.** The reasoning in this section is
+> correct and is deliberately kept: `direct-builder-static.ts` does reject jess's
+> builders, and that is still why the repo composes leaves today. What changed is
+> the disposition. The owner has ruled that each downstream grammar **MUST** extend
+> the CSS grammar by importing and composing it, may define **only** specific
+> overrides, and may **not** introduce a new rule name for a shape CSS already has
+> (a `Quoted` stays a `Quoted` even when the superset adds interpolation to it).
+> Under that ruling, a documentation-only "agent-readable link" (§12.0) does not
+> satisfy the requirement.
+>
+> **The new evidence this section asks for is now reachable.** Parseman is checked
+> out locally at `~/git/oss/parseman` with
+> `src/plugin/direct-builder-static.ts` present, so the constraint can be
+> **patched and measured** rather than treated as fixed — a lane is testing whether
+> `direct-builder-static` can accept imported AST constructors. Until that lane
+> reports, treat the constraint as real but **provisional**, not settled.
+>
+> The four rules and their enforcement are canonical in
+> `docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md` and in ledger row **P22** of
+> `docs/architecture/core/DESIGN-DECISIONS.md`. Session context, the measured
+> rule-4 violations, and the instrument findings are in
+> `docs/architecture/core/HANDOFF.md` under **SESSION HANDOFF — 2026-08-09**.
 
 > **The specific figure "576 of 592 builders violate it" does not reproduce from
 > this repository.** No checked-in script produces it, and the population does
@@ -600,8 +735,8 @@ check the same semantic node names. The divergence is in **grammar rule names**,
 not in a need to redesign the AST — which is exactly why a byte-identity oracle
 cannot gate pure private-rule renames (§8.1).
 
-Core's vocabulary is `Rule`, `AtRuleBlock`/`AtRuleStatement`, `SelectorList` —
-there is no `Ruleset` and no `AtRule` node type. Use core's names.
+Core's vocabulary is `Ruleset`, `AtRuleBlock`/`AtRuleStatement`, `SelectorList`
+— there is no generic `Rule` and no `AtRule` node type. Use core's names.
 
 ### 2.2 Four costs already paid
 
@@ -700,7 +835,7 @@ The order is deliberately inverted from the obvious one. Reaching for the docs
 when stuck is how you end up with a regex.
 
 1. **Survey the pinned parseman export surface from source and package
-   resolution** — not from recollection. The active floor is `parseman@0.41.0`.
+   resolution** — not from recollection. The active floor is `parseman@0.47.1`.
    Use `word()` / `makeWord()`, `keywords()`, `oneOrMoreSep(...)`, `peek(...)`,
    `dispatch(...)` / `when(...)` / `otherwise(...)`, matcher cases,
    `routed()`, and `node(..., { project })` where they are the best grammar
@@ -733,7 +868,7 @@ changed the sequencing.** What remains blocking is narrower than it was:
 
 | §                                     | status                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 5.0 the version question              | **RESOLVED.** parseman 0.41.0 is published and consumed by the active checkout (2026-07-27). `hostMode` reached the macro in 0.37.0 (PR #85 merged), 0.38.0 added keyword ergonomics, 0.39.0/0.39.1 added `dispatch(...)` and its routing refinements, and 0.40.0 adds declarative node projection (`node(..., { project: index })`). The architecture floor is paid; the active grammar-polish sequence can proceed |
+| 5.0 the version question              | **RESOLVED.** parseman 0.43.0 is published and consumed by the active checkout. `hostMode` reached the macro in 0.37.0 (PR #85 merged), 0.38.0 added keyword ergonomics, 0.39.0/0.39.1 added `dispatch(...)` and its routing refinements, and 0.40.0 adds declarative node projection (`node(..., { project: index })`). The architecture floor is paid; the active grammar-polish sequence can proceed |
 | 5.1 the 0.36.0 adoption               | **RESOLVED** — measured and declined. Authoring is not blocked on a bump                                                                                                                                                                                                                                                                                                                                             |
 | 5.2 the 0.32.0 hazards                | **standing constraints**, not blockers — check per unit. Three now, including the cross-mode fusion hazard                                                                                                                                                                                                                                                                                                           |
 | 5.3 `hostMode`                        | **RESOLVED** — shipped at 0.37.0 as a compile-time flag. Delivery taken; it is now a version-floor question, not a missing mechanism                                                                                                                                                                                                                                                                                 |
@@ -743,13 +878,13 @@ changed the sequencing.** What remains blocking is narrower than it was:
 ### 5.0 The version question, stated plainly
 
 **The collapse's hard floor is paid.** The active checkout consumes
-`parseman@0.41.0`, and §0.2 records the current floor plus the gates that any
+`parseman@0.43.0`, and §0.2 records the current floor plus the gates that any
 later grammar change must preserve. Future parseman publishing remains owner-only.
 
 | what                                              | version    | why                                                                                                                                                             |
 | ------------------------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Writing and polishing the surviving grammar rules | **0.41.0** | Use case-insensitive `word(...)` / `makeWord(...)`, `dispatch(...)`, `makeWhen(...)`, matcher cases, `routed()`, and `node(..., { project })` wherever they fit |
-| One grammar per dialect                           | **0.41.0** | `hostMode` lets one grammar serve both the eval-AST and positioned-CST modes (§5.3)                                                                             |
+| Writing and polishing the surviving grammar rules | **0.43.0** | Use case-insensitive `word(...)` / `makeWord(...)`, `dispatch(...)`, `makeWhen(...)`, matcher cases, `routed()`, and `node(..., { project })` wherever they fit |
+| One grammar per dialect                           | **0.43.0** | `hostMode` lets one grammar serve both the eval-AST and positioned-CST modes (§5.3)                                                                             |
 
 > **This is not a deferrable perf matter any more.** The version floor is paid
 > and the physical fold is complete. The remaining work is grammar quality:
@@ -776,7 +911,9 @@ later grammar change must preserve. Future parseman publishing remains owner-onl
 > | `test-data-unit/cst` | 24.74              | 18.51           | **−25.2%** | 3.6%         |
 
 The active conclusion is simple: the version floor is paid; do not reopen the
-eight-file alternative.
+eight-file alternative. `AGENT-EVIDENCE:` — an agent closing its own proposal on
+the measured table above (−1.4% / −25.2% against 2.4% / 3.6% noise). It closes a
+parseman-version question only; no owner requirement is closed by it.
 
 Two facts that make the floor more payable than it looks, both now inside
 0.37.0: it carries a Less **improvement** — a derived `expected` set naming each
@@ -827,7 +964,7 @@ fact from jess measuring it on four dialect grammars, and parseman's own
 per-dialect divergence.
 
 The active checkout supersedes this historical measurement by consuming
-`parseman@0.41.0`; use §5.0 for current authoring guidance.
+`parseman@0.43.0`; use §5.0 for current authoring guidance.
 
 **Why this ordering is better, not merely tolerable.** The residual regression is
 concentrated in **Less parsing plain CSS**, not Less parsing Less. That points at
@@ -869,7 +1006,7 @@ Less-grammar refactors done against 0.32.0). The 0.34 bump at `a49ca59da` is
 
 ### 5.2 Writing against the current parseman floor
 
-Grammar cleanup targets `parseman@0.41.0`. Verify the installed version before a
+Grammar cleanup targets `parseman@0.43.0`. Verify the installed version before a
 grammar slice, then use the current combinator surface directly. Do not carry
 workaround shapes for older pins into new grammar code.
 
@@ -877,7 +1014,7 @@ workaround shapes for older pins into new grammar code.
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | keyword regexes              | `word(...)`, `makeWord(...)`, and `keywords(...)`; share one grammar-local helper when case-sensitivity and boundary policy are the same                               |
 | separated lists              | `oneOrMoreSep(...)`, `sepBy(...)`, and an explicit optional terminator outside the list when the language permits a trailing separator                                 |
-| small lookahead              | `peek(...)`, used sparingly when it expresses ownership such as "declaration may end at `}`"; do not use broad leading lookahead as a substitute for grammar structure |
+| small lookahead              | A temporary exception, not a cleanup target. Prefer a leading discriminator, separator/list helper, contextual rule, or `dispatch(...)`; keep `peek(...)` only for a narrow terminator/ownership case with a const-level note explaining why no clearer route owns the decision |
 | known/generic shared openers | `dispatch(combinator, when(...), otherwise(...))` with `routed()` inside the selected branch when that branch should own the already-consumed value/span               |
 | AST projection               | `node(..., { project })` and local AST factories; no builder host or generic construction registry                                                                     |
 | gates                        | `check:macro`, `verify:compose-integrity`, parser suites, and the relevant oracle/corpus differential                                                                  |
@@ -899,10 +1036,12 @@ declarations, reference calls, imports/plugins, conditional at-rules, generic
 at-rules, and mixin-like continuations need more syntax before the grammar knows
 which language branch it is in.
 
-Lookahead remains a cost and ownership signal, not a forbidden word. Prefer a
-leading discriminator, a separator/list helper, or a routed opener. Use `peek(...)`
-only when the surrounding list owns the terminator and consuming it would be
-wrong.
+Lookahead remains a cost and ownership signal. If a grammar position needs
+`peek(...)`, first assume the rule is missing a better owner: a shared opener
+parsed once, a later routed delimiter, a context parameter, or a list boundary.
+Use `peek(...)` only when the surrounding grammar truly owns a terminator that
+must not be consumed, and record why `dispatch(...)` or left-factoring cannot
+own the same decision.
 
 **(c) A compiled piece keeps the mode it was built with — the cross-mode fusion
 hazard.** Relevant only once the collapse reaches 0.37.0 (§5.0), but it is the
@@ -1113,7 +1252,7 @@ the grammars will use. The sheet must explain when to use `choice(...)`,
 shapes. Version-stamp the result.
 
 Current sheet: `docs/architecture/parser/PARSEMAN-COMBINATOR-CHEAT-SHEET.md`,
-stamped for `parseman@0.41.0`. Keep it authoritative and current whenever the
+stamped for `parseman@0.43.0`. Keep it authoritative and current whenever the
 Parseman floor moves.
 
 **Pass criteria.**
@@ -1142,7 +1281,7 @@ across 3,053 file-parses in all four dialects; four parser suites green;
 three harness designs, win-rate 2–4 of 25. Two other Less workloads were
 ambiguous and **no direction was claimed on them** — the right call, recorded as
 such. This was a measured non-adoption of 0.36.0, not a standing pin decision.
-The active floor is 0.41.0 (§0.2).
+The active floor is 0.43.0 (§0.2).
 
 **This unit is no longer a blocker on anything.** Units 3, 4 and 5 target the
 current pinned parseman floor.
@@ -1787,11 +1926,11 @@ produced this document.
 - No copy/paste from the old grammars.
 - No hand-rolled keyword regexes — `keywords()` / `word()`.
 - No `not(regex(…))` as a terminator.
-- No leading `not()`. **`peek()` does not exist at 0.32.0** — restructure so the
-  discriminating terminal leads. Do not reach for `not(not(x))`: it reports
-  first-set `any` and poisons the entire choice. Where a rule genuinely needs
-  lookahead that 0.32.0 cannot express, that is `blocked`, with `peek()` as the
-  named reason.
+- No leading `not()` and no nested positive-lookahead spelling such as
+  `not(not(...))`. The active grammar floor has `peek()`, but `peek()` is still
+  a smell unless a const-level review proves the grammar owns a non-consuming
+  terminator. Prefer restructuring so the discriminating terminal leads, or
+  consume the shared opener once and route with `dispatch(...)`.
 - No manual `optional(ws)` or hand-written whitespace beside `noTrivia`.
   (`noTrivia` itself is the ambient mechanism and is not the target — §5.2.)
 - No production consuming its own `;`. **`;` separates; the list owns it.**
@@ -1812,15 +1951,17 @@ produced this document.
   corpus differential — it silently zeroes `autoNot` for every arm and changes
   what the grammar accepts (§5.2b).
 
-### 10.2 Execution shape — checklist question 14
+### 10.2 Execution shape — checklist question 17
 
-`GRAMMAR-REVIEW-STANDARD.md`'s thirteen questions — is this from CSS, is it
-readable, does it have JSDoc, is it the simplest combinator representation, does it
-duplicate another rule — are all about **the shape of the source**. A rule can pass
-every one of them and still allocate a closure per token. Add, as its own numbered
-question and not a footnote to any other:
+`GRAMMAR-REVIEW-STANDARD.md` §2 carries **sixteen** numbered items — is this from
+CSS, is it readable, does it have JSDoc, is it the simplest combinator
+representation, does it duplicate another rule, and so on — and they are all about
+**the shape of the source**. A rule can pass every one of them and still allocate a
+closure per token. Add, as its own numbered question and not a footnote to any
+other (the standard does not carry this item yet; count the items in that file
+before citing a number here):
 
-> **14. What does this rule do at runtime, and what part of that is knowable at
+> **17. What does this rule do at runtime, and what part of that is knowable at
 > build time?** The AST building does visibly unnecessary work at runtime. Reason
 > about what happens at parse time, and move as much of it as possible into
 > parseman macros.
@@ -1929,11 +2070,26 @@ now labelled "RETIRED" at `eslint.config.mjs:514-527`.
 
 ## 12. Discoverability — a deliverable, not a nicety
 
-The owner's requirement is that the dialects "have an **agent-readable link**" to
-the CSS base. That phrase is otherwise vague, so it is pinned down here, and this
-definition is the acceptance criterion.
+The owner's requirement is OR-3 (`docs/OWNER-REQUIREMENTS.md`), verbatim: *"it
+should start with CSS, and then the others should have an agent-readable link to
+those"*.
 
-### 12.0 What "agent-readable link" means, concretely
+> **§12.0 is OVERRULED as a definition of that requirement.** It reads the
+> owner's "agent-readable link" as satisfied by a documentation comment, and the
+> `* CSS base: …` line at line 4 of each superset grammar is the deliverable
+> that replaced composition. Read against OR-1 rule 2 — *"Each downstream
+> grammar MUST extend CSS grammar (import and compose)"* — the link the owner
+> asked for is a **code import**, and a comment is not one.
+>
+> The four requirements below are kept because they are good documentation
+> hygiene and requirement 2 is the composition expression itself. They are
+> **necessary, not sufficient**, and they are **not the acceptance criterion**.
+> An agent may not narrow an owner requirement to what the current tooling
+> permits; see `../architecture/parser/GRAMMAR-REVIEW-STANDARD.md`, "An agent
+> may not redefine, narrow, or close an owner requirement". The acceptance
+> criterion for OR-3 is the owner's to state.
+
+### 12.0 What "agent-readable link" means, concretely — OVERRULED, see above
 
 **A link is agent-readable when an agent that opens _only_ the dialect grammar
 file can reach the CSS base without searching, and can tell what it inherits from

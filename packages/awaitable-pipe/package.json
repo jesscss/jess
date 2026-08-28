@@ -1,8 +1,8 @@
 {
   "name": "@jesscss/awaitable-pipe",
-  "version": "2.0.0-alpha.14",
+  "version": "2.0.0-alpha.15",
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": "^20.19.0 || >=22.18.0"
   },
   "description": "A tiny, strongly-typed pipe that stays sync when possible and becomes a Promise when needed. With an optional single-point error handler.",
   "type": "module",
@@ -28,7 +28,7 @@
     "test": "vitest run",
     "test:types": "tsc -p tsconfig.json --noEmit",
     "test:watch": "vitest",
-    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck"
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly"
   },
   "repository": {
     "type": "git",

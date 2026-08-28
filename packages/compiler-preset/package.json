@@ -5,9 +5,9 @@
     "access": "public"
   },
   "description": "Jess compiler preset shared by product entrypoints",
-  "version": "2.0.0-alpha.14",
+  "version": "2.0.0-alpha.15",
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": "^20.19.0 || >=22.18.0"
   },
   "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
@@ -24,7 +24,7 @@
   ],
   "scripts": {
     "build": "pnpm compile",
-    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "test": "vitest --watch=false --passWithNoTests",
     "lint": "eslint '**/*.{js,ts}'"
   },

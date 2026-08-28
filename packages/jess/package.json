@@ -1,7 +1,7 @@
 {
   "name": "jess",
   "type": "module",
-  "version": "2.0.0-alpha.14",
+  "version": "2.0.0-alpha.15",
   "description": "JavaScript Enhanced Style Sheets",
   "main": "lib/index.cjs",
   "types": "lib/index-public.d.ts",
@@ -21,7 +21,7 @@
     "bin"
   ],
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": "^20.19.0 || >=22.18.0"
   },
   "dependencies": {
     "@jesscss/compiler": "workspace:*",
@@ -48,6 +48,8 @@
     "ci": "pnpm build && pnpm run test:ratchet",
     "prepublishOnly": "pnpm build && pnpm run test:ratchet",
     "benchmark": "node bin/cli.mjs benchmark/benchmark.jess",
+    "benchmark:css-processors": "node benchmark/css-processors.mjs",
+    "benchmark:postcss-preprocessors": "node benchmark/postcss-preprocessors.mjs",
     "build": "pnpm compile && pnpm api-extractor",
     "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "api-extractor": "api-extractor run --local --config ./api-extractor.json",
@@ -78,7 +80,9 @@
     "bootstrap": "~5.3.8",
     "bootstrap-less-port": "~2.5.1",
     "clinic": "~13.0.0",
-    "sass": "~1.101.0"
+    "foundation-sites": "~6.9.0",
+    "sass": "~1.101.0",
+    "stylis": "~4.4.0"
   },
   "keywords": [
     "css",

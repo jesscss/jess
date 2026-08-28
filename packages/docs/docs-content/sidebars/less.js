@@ -11,41 +11,68 @@ export default {
       items: [
         'home/getting-started',
         'home/download-options',
-        'about/history',
-        'about/learn-more'
+        'home/cdn-options'
       ]
     },
     {
-      type: 'doc',
-      id: 'usage/migrating-to-v5',
-      label: 'Migrating to v5'
-    },
-    {
-      type: 'doc',
-      id: 'usage/less-v5-breaking-changes',
-      label: 'Migrating Less 4.x → 5.x'
+      type: 'category',
+      label: 'Upgrade to Less 5',
+      items: [
+        {
+          type: 'doc',
+          id: 'usage/migrating-to-v5',
+          label: 'Migration walkthrough'
+        },
+        {
+          type: 'doc',
+          id: 'usage/less-v5-breaking-changes',
+          label: 'Breaking changes'
+        }
+      ]
     },
     {
       type: 'category',
-      label: 'Language and Features',
+      label: 'Language',
       items: [
-        'features-overview',
-        'features/variables',
-        'features/mixins',
-        'features/nested',
-        'features/parent-selectors',
-        'features/selector-capture',
-        'features/imports',
-        'features/modules-and-imports',
-        'features/extend',
-        'features/maps',
-        'features/merge',
-        'features/scope',
-        'features/comments',
-        'features/css-guards',
-        'features/detached-rulesets',
-        'features/plugins',
-        'features/strictmath'
+        {
+          type: 'doc',
+          id: 'features-overview',
+          label: 'Language tour'
+        },
+        {
+          type: 'category',
+          label: 'Core language',
+          items: [
+            'features/variables',
+            'features/nested',
+            'features/parent-selectors',
+            'features/comments',
+            'features/strictmath'
+          ]
+        },
+        {
+          type: 'category',
+          label: 'Reuse and composition',
+          items: [
+            'features/mixins',
+            'features/selector-capture',
+            'features/imports',
+            'features/modules-and-imports',
+            'features/maps',
+            'features/extend',
+            'features/merge'
+          ]
+        },
+        {
+          type: 'category',
+          label: 'Advanced language',
+          items: [
+            'features/scope',
+            'features/css-guards',
+            'features/detached-rulesets',
+            'features/plugins'
+          ]
+        }
       ]
     },
     {
@@ -67,7 +94,7 @@ export default {
     },
     {
       type: 'category',
-      label: 'Advanced',
+      label: 'Less 5 Advanced',
       items: [
         'advanced/overview',
         'advanced/output-model',
@@ -86,13 +113,37 @@ export default {
     },
     {
       type: 'category',
-      label: 'Usage and Tooling',
+      label: 'Build and Tooling',
       items: [
         'usage/using-less',
+        'usage/command-line-usage',
+        'usage/programmatic-usage',
+        'usage/api',
         'usage/using-less-in-the-browser',
+        'usage/browser-support',
         'usage/less-options',
+        'usage/sourcemaps',
+        'usage/plugins',
         'usage/tooling',
         'usage/advanced-reference'
+      ]
+    },
+    {
+      type: 'category',
+      label: 'Ecosystem and Project',
+      items: [
+        'tools/editors-and-plugins',
+        'tools/guis-for-less',
+        'tools/online-less-compilers',
+        'tools/plugins',
+        'tools/third-party-compilers',
+        'tools/frameworks-using-less',
+        'tools/ports',
+        'examples/example',
+        'examples/data-URI',
+        'usage/developing-less',
+        'about/history',
+        'about/learn-more'
       ]
     }
   ]

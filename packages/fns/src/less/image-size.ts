@@ -1,5 +1,5 @@
-import { defineFunction, makeDimension } from '@jesscss/core/value';
-import type { Fn, ValueGroup } from '@jesscss/core/value';
+import { defineFunction, makeDimension } from '@jesscss/core';
+import type { Fn, ValueGroup } from '@jesscss/core';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { readImageDimensions } from './image-helper.js';
 
@@ -9,7 +9,7 @@ import { readImageDimensions } from './image-helper.js';
  * the canonical evaluator; it never evaluates or resolves a tree node itself.
  */
 const imageSize: Fn = defineFunction('image-size', {
-  params: [{ kinds: 'any' }],
+  params: [{ type: 'any' }],
   variadic: true,
   body: (value, ctx): MaybePromise<ValueGroup> => {
     const dimensions = readImageDimensions(value, ctx);

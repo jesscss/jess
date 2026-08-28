@@ -149,7 +149,15 @@ describe('Less path resolution', () => {
 
     const css = await new Compiler({ output: { collapseNesting: true } }).render(path.join(tempDir, 'entry.less'));
 
-    expect(css).toContain('.from-reference-url { color: green; }');
+    /*
+     * The reference-url chain resolves through both nested bases: `.extension`
+     * extends `.target` (from second/b.less), so it inherits `color: blue`. A
+     * (reference) import suppresses its whole subtree from output, the nested
+     * (inline) payload included — matches lessc 4.x (verified 4.6.3).
+     */
+    expect(css).toContain('.extension');
+    expect(css).toContain('color: blue');
+    expect(css).not.toContain('.from-reference-url');
   });
 
   it('preserves that base when legacy compatibility hooks are also configured', async () => {
@@ -166,7 +174,14 @@ describe('Less path resolution', () => {
       compile: { plugins: [lessPlugin(), lessCompatPlugin()] }
     }).render(path.join(tempDir, 'entry.less'));
 
-    expect(css).toContain('.from-compat-context { color: green; }');
+    /*
+     * Same reference-url chain resolution as above, with the legacy compat
+     * plugin also loaded — the extend still resolves and the (inline) payload
+     * stays suppressed under the ancestor (reference).
+     */
+    expect(css).toContain('.extension');
+    expect(css).toContain('color: blue');
+    expect(css).not.toContain('.from-compat-context');
   });
 
   it('restores an imported mixin document scope for its deferred inline import without leaking it', async () => {

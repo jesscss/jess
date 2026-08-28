@@ -19,9 +19,15 @@ import { collectShapes, formatShapeReport, SHAPE_DEBT_ALLOWLIST, type CorpusSour
  *
  * This is pure test-side instrumentation — it walks freshly PARSED trees (no
  * serialize pass, so lazy serializer memos on selectors stay unset) and reads
- * `Object.keys` order. Zero production code path, zero production overhead. Source
- * spans and value layouts are held in out-of-band WeakMaps (see provenance.ts),
- * so they never perturb node shape.
+ * `Object.keys` order. Zero production code path, zero production overhead.
+ *
+ * Source spans are INLINE integer slots on the node (`_s`/`_e`, plus `_bs`/`_be`
+ * and `_trivia` — see provenance.ts), so they DO appear in every signature the
+ * probe records. Every factory for a span-bearing type writes them
+ * unconditionally, so they add no shape; a type that gains a slot on only some
+ * construction path is exactly the divergence this test exists to catch. Value
+ * layouts remain in an out-of-band WeakMap (their subject is a raw ValueSlot
+ * array) and still never perturb node shape.
  *
  * Known-current polymorphism is captured in SHAPE_DEBT_ALLOWLIST (see
  * shape-probe.ts): the test passes on today's debt but FAILS on any NEW
@@ -32,7 +38,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 // test/ast-shape -> repo root is two levels up.
 const repoRoot = resolve(here, '../..');
 const readSource = (label: string, rel: string): CorpusSource => ({ label, text: readFileSync(resolve(repoRoot, rel), 'utf8') });
-const s = (label: string, text: string): CorpusSource => ({ label, text });
+const s = (label: string, text: string, options?: Readonly<Record<string, unknown>>): CorpusSource => ({ label, text, options });
+
+/**
+ * `$apply` defaults to `allowApplySelectors: ['class']`. The id/attribute/pseudo
+ * targets below are deliberate coverage, so the policy is widened for that one
+ * source rather than shrinking the corpus to class targets.
+ */
+const ALL_APPLY_KINDS = { allowApplySelectors: ['class', 'simple', 'basic', 'pseudo', 'complex', 'compound'] } as const;
 
 /**
  * Broad Less corpus. benchmark.less is the widest single-file node surface (it
@@ -84,10 +97,14 @@ const scssSources: CorpusSource[] = [
 const jessSources: CorpusSource[] = [
   s('if-else-chain', '$theme: "dark"; $if ($theme = "light") { .card { color: black; } } $else if ($theme = "dark") { .card { color: white; } } $else { .card { color: gray; } }'),
   s('guarded-numeric', '$size: 6; $if ($size>5) { .card { color: green; } } $else { .card { color: red; } }'),
-  s('nearest-outer-assign', '$tone: gray; $if (true) { $tone := blue; $$tone := navy; } .after { live: $tone; }'),
+  s('nearest-outer-assign', '$tone: gray; $if (true) { $tone := blue; $^tone := navy; } .after { live: $tone; }'),
   s('mixin-activate', '$if (true) { paint() { color: blue; } .after { $ > paint(); } }'),
-  s('apply-and-for', 'paint() { color: red; } $held: { background: blue; }; $items: one, two; .host { $ > paint(); $held(); $apply paint; $for ($item of $items) { .item-$[item] { order: $item; } } }'),
-  s('apply-selectors', '$apply .rounded, #theme, button[data-x]:hover;'),
+  // `$apply .paint` (not `$apply paint`): a bare type selector is not an allowed
+  // apply target under the default `['class']` policy. `.item-${item}`
+  // (not `.item-$[item]`): `${...}` is the interpolation form; `$[...]` is the
+  // LOOKUP form and is a value-position construct, not selector interpolation.
+  s('apply-and-for', 'paint() { color: red; } $held: { background: blue; }; $items: one, two; .host { $ > paint(); $held(); $apply .paint; $for ($item of $items) { .item-${item} { order: $item; } } }'),
+  s('apply-selectors', '$apply .rounded, #theme, button[data-x]:hover;', ALL_APPLY_KINDS),
   s('mixin-params', 'outer($tone) { .inside { color: $tone; } } .one { $ > outer(red); }')
 ];
 
@@ -110,6 +127,14 @@ const DISCOVER = process.env.SHAPE_DISCOVER === 'true';
  * This replaces a bare `shapes.size >= 25` coverage floor: a count could not
  * distinguish "the corpus still covers everything" from "it lost one type and
  * picked up another". Run with `SHAPE_DISCOVER=true` to print the inventory.
+ *
+ * Re-synced after the gate was revived (it could not resolve its imports from
+ * `e96d1035d` until the vitest alias scan was taught to recurse, so these names
+ * had drifted unchecked): `Rule` -> `Ruleset`, `MixinDef` -> `MixinDefinition`,
+ * and `CollectionEntry` / `RelativeSelector` added. `Comment` was REMOVED — it
+ * is not an AST node type at all; comments ride out-of-band as trivia, so the
+ * `leading-comment` source contributes no `Comment` node. That entry had been
+ * asserting a type the AST never produced.
  */
 const CORPUS_NODE_TYPES: readonly string[] = [
   'AnonymousMixin',
@@ -121,8 +146,8 @@ const CORPUS_NODE_TYPES: readonly string[] = [
   'BracketLookup',
   'Call',
   'Collection',
+  'CollectionEntry',
   'Color',
-  'Comment',
   'ComplexSelector',
   'CompoundSelector',
   'Declaration',
@@ -135,13 +160,14 @@ const CORPUS_NODE_TYPES: readonly string[] = [
   'Keyword',
   'List',
   'MixinCall',
-  'MixinDef',
+  'MixinDefinition',
   'Operation',
   'PseudoSelector',
   'Quoted',
   'Range',
   'Reference',
-  'Rule',
+  'RelativeSelector',
+  'Ruleset',
   'SelectorList',
   'SimpleSelector',
   'SpacedValue',

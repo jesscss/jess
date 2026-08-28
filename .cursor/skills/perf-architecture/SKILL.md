@@ -7,9 +7,29 @@ description: Load BEFORE writing or changing code on Jess hot paths (core tree/e
 
 Load this skill **before** writing code on a perf-sensitive path, especially:
 
-- `packages/core/src/tree/**` (eval, render, lookup, extend, selectors)
-- `packages/*-parser/src/**` (grammar, productions, parseman macros)
-- extend/selector algorithms (`packages/core/src/tree/util/extend.ts`)
+- **`packages/core/src/ast/**` — the live AST-v2 engine.** In particular
+  `serialize.ts` (eval/render/emit), `provenance.ts` (source-fact side tables),
+  and `extend/**`. This is the hot path that ships.
+- `packages/syntax/*/*-parser/src/**` and `packages/parser-shared/**` (grammar,
+  productions, parseman macros)
+- `packages/core/src/tree/**` — the legacy engine, still live until the cutover
+  completes
+
+**The reference class is a compiler, not an application.** Idiomatic
+general-purpose JavaScript is not the bar here: a side table that "every blog
+post recommends", a loop that restarts at index 0 because it is the shortest
+correct spelling, or an array built only to test `.length` are all defects on
+these paths regardless of how ordinary they look elsewhere. Judge against
+invariants 1–11, not against what typical JS does.
+
+> **Scope globs rot, and when they rot this skill silently stops applying.**
+> These paths were wrong for five days after the `e96d1035d` packages regroup:
+> they named `packages/*-parser/**` (moved to `packages/syntax/`) and
+> `packages/core/src/tree/**` while omitting `packages/core/src/ast/**`, so the
+> live 13k-line `serialize.ts` was covered by no perf rule at all. Several
+> invariant-2/8/10 violations landed there in that window. If you notice a path
+> here that does not exist, fix it in the same change — a guardrail pointed at a
+> deleted directory reads exactly like a guardrail that passed.
 
 Canonical checklist (invariant text, gates, and the regression catalogue):
 [`docs/perf/V8-ARCHITECTURE.md`](../../../docs/perf/V8-ARCHITECTURE.md).

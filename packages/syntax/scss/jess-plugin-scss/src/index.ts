@@ -3,7 +3,6 @@ import {
   AbstractPlugin,
   type ISafeParseResult,
   parserDiagnostic,
-  type EqualityMode,
   type UnitMode,
   type Context,
   buildEvaluator
@@ -23,33 +22,28 @@ export type ScssPluginOptions = {
   unitMode?: UnitMode;
 
   /**
-   * Compatibility input retained on this frontend's option object. It does not
-   * select a separate SCSS evaluator; configure the shared evaluator through
-   * Context compile/input options.
-   */
-  equalityMode?: EqualityMode;
-
-  /**
    * Whether to collapse nested selectors (flatten nesting during print).
    * This is a Jess output option, not a Sass option.
    */
   collapseNesting?: boolean;
 };
 
-type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
+type ExtendSelectorKind = 'class' | 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 
 const sassValueEvaluator = buildEvaluator(makeSassRegistry());
+type ScssDialectDefaults = Required<Pick<
+  NonNullable<ISafeParseResult['dialectDefaults']>,
+  'unitMode'
+>>;
 
 export class ScssPlugin extends AbstractPlugin {
   name = 'scss';
   supportedExtensions = ['.scss'];
-  unitMode: UnitMode;
-  equalityMode: EqualityMode;
+  readonly #dialectDefaults: ScssDialectDefaults;
 
   constructor(public opts: ScssPluginOptions = {}) {
     super();
-    this.unitMode = opts.unitMode ?? 'preserve';
-    this.equalityMode = opts.equalityMode ?? 'sass';
+    this.#dialectDefaults = Object.freeze({ unitMode: opts.unitMode ?? 'preserve' });
   }
 
   expandImport(importPath: string) {
@@ -61,18 +55,23 @@ export class ScssPlugin extends AbstractPlugin {
     if (context.documentContext?.plugin !== this) {
       return;
     }
-    if (context.opts.unitMode === undefined) {
-      context.setOption('unitMode', this.unitMode);
-    }
-    if (context.opts.equalityMode === undefined) {
-      context.setOption('equalityMode', this.equalityMode);
-    }
     context.registerValueEvaluator(sassValueEvaluator);
   }
 
+  /**
+   * No `mathMode` here, deliberately. dart-sass 1.101.0 has no user-settable
+   * math policy — the full option surface carries none, and `slash-div` is a
+   * DEPRECATION in its registry, not a mode — so SCSS has one fixed behaviour
+   * and the grammar states it directly (`cssBaseMathOutsideParens`).
+   */
   safeParse(filePath: string, source: string): ISafeParseResult {
     try {
-      return { document: parse(source), errors: [], warnings: [] };
+      return {
+        document: parse(source),
+        dialectDefaults: this.#dialectDefaults,
+        errors: [],
+        warnings: []
+      };
     } catch (error) {
       return {
         errors: [parserDiagnostic({ dialect: 'SCSS', error, filePath, source })],

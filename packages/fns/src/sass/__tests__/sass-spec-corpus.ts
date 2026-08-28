@@ -28,8 +28,9 @@
 import { createRequire } from 'node:module';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { colorRawRgb, emitValue, isValueGroupArray, namedColor, sniffLiteral, makeList } from '@jesscss/core/value';
-import type { Color, FnCtx, ValueGroup, ValueObj } from '@jesscss/core/value';
+import { fileURLToPath } from 'node:url';
+import { colorRawRgb, emitValue, isValueGroupArray, namedColor, sniffLiteral, makeList } from '@jesscss/core';
+import type { Color, FnCtx, ValueGroup, Value } from '@jesscss/core';
 import { hsl } from '../color/hsl.js';
 import { hsla } from '../color/hsla.js';
 import { rgb } from '../color/rgb.js';
@@ -39,7 +40,7 @@ const resolver = createRequire(import.meta.url);
 
 /** The `spec/core_functions/color` root, or `null` when sass-spec is not installed. */
 export function specRoot(): string | null {
-  const scssParser = new URL('../../../../scss-parser', import.meta.url).pathname;
+  const scssParser = fileURLToPath(new URL('../../../../scss-parser', import.meta.url));
   try {
     const pkg = resolver.resolve('sass-spec/package.json', { paths: [scssParser] });
     const root = join(dirname(pkg), 'spec', 'core_functions', 'color');
@@ -288,7 +289,7 @@ export function readValue(expr: string): ValueGroup {
   return readSingle(text);
 }
 
-function readSingle(text: string): ValueObj {
+function readSingle(text: string): Value {
   const call = /^(?:color\.)?([a-z-]+)\s*\(([\s\S]*)\)$/i.exec(text);
   if (call) {
     const name = call[1]!.toLowerCase();

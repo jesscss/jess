@@ -5,6 +5,13 @@ alwaysApply: true
 
 # Global rules (Jess monorepo)
 
+## Owner requirements are not yours to close
+- **An agent may not redefine, narrow, or close an owner requirement.** When a requirement conflicts with a tool constraint, technical limit, or implementation difficulty, **STOP AND ESCALATE**. Record the constraint, the evidence, the options and a recommendation. Do NOT record the decision.
+- Specifically forbidden (`CLOSURE-QUOTED:` — quoted as prohibitions, not used): rewriting a requirement into something achievable; narrowing its scope so the constraint no longer binds; writing "this is settled" / "do not re-propose" / "do not revisit" / "do not reopen" about anything the owner asked for.
+- **Writing "settled" about an owner requirement is itself the violation** — it removes every later agent's permission to reopen it. Only the owner closes an owner requirement.
+- Corollary: a commit that removes a shared mechanism must say so in its body.
+- The requirements are recorded verbatim with stable IDs in `docs/OWNER-REQUIREMENTS.md`. That file is owner-owned; editing it fails `pnpm check:guardrails`, which also fails any unattributed closure directive in `docs/`, `.cursor/rules/`, `CLAUDE.md`, `AGENTS.md`. Full statement: `docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md`.
+
 ## Canonical contract
 - Read `AGENTS.md` as the repo-wide agent contract before relying on tool-specific summaries.
 - Treat `AGENTS.md` as the stable source for cross-tool goals and decision rules.

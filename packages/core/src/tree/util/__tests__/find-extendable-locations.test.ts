@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { findExtendableLocations } from '../find-extendable-locations.js';
 import { applyExtensionAtLocation } from '../extend.js';
-import { el, pseudo, sellist, compound, Node } from '../../../index.js';
+import { el, pseudo, sellist, compound, Node } from '../../index.js';
 
 describe('ExtendLocation API Tests', () => {
   describe('findExtendableLocations', () => {

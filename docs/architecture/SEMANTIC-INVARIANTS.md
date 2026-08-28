@@ -53,7 +53,7 @@ emitValueInterp packages --include=*.test.ts` returns nothing. The behavior
 4. **The cited evidence was deleted too.** The commit's proof was "alpha-oracle
    differential MATCH 64 unchanged". `alpha-oracle-differential.test.ts` and
    `alpha-oracle-baseline.json` went in that same commit;
-   [`GOAL1-SCORECARD.md`](./core/GOAL1-SCORECARD.md) now
+   [`GOAL1-SCORECARD.md`](./core/archive/GOAL1-SCORECARD.md) now
    carries a banner saying its counts are not evidence of anything.
 5. **It was promoted to a language feature.** It is documented for users at
    `packages/docs-content/docs/less/advanced/number-precision.md` — where the
@@ -141,28 +141,29 @@ not diverge on the day they are written — they diverge on the day someone
 changes one of them for a good local reason. This invariant is what makes the
 next S1 impossible rather than merely detectable.
 
-**INCIDENT:** S1. Also **S6**: `packages/fns/src/less/fadein.ts:30` quantizes
-alpha with `Math.round(newAlpha * 1e12) / 1e12` while
-`packages/fns/src/builtins/color-helper.ts:46` quantizes the same quantity with
-`round(newAlpha, 8)` — two precisions for one physical quantity, in two
-implementations of one function family that ledger **C6** requires be merged.
+**INCIDENT:** S1. Also **S6**, now CLOSED: `fadein` and `fadeout` had already been
+merged onto the single `withAlpha` kernel, which left one quantization
+(`round(newAlpha, 8)` in `packages/fns/src/less/color-helper.ts`); `137cfa8fa`
+deleted it, so alpha has no construction-time precision at all and answers only to
+the output policy. Ledger **C6**'s merge no longer has a precision to pick.
 
-**DETECTOR: GATE-READY.** There is no precision-policy object anywhere in the
-tree; the literal is inline at every site. Baseline, verified:
+**DETECTOR: GATEABLE AT ZERO DEBT.** The policy now lives in exactly one module
+(`packages/core/src/ast/format-number.ts`) and no site inlines a precision literal.
+Baseline, re-verified 2026-07-30 at `137cfa8fa`:
 
 ```sh
 grep -rn "round(" packages/core/src/ast/*.ts | grep -v "/round.ts"
 ```
 
-→ **7 sites passing a literal `8`** (`serialize-value.ts:18`,
-`literal-tag.ts:105`, `color.ts:118,137,149,150,151`) and **4 bare integer
-roundings** (`color.ts:95` ×3, `:103`), across 3 files. None reads `e.modes` or
-any policy field. The gate is a lint with a zero-debt ledger, modelled exactly
+→ **0 sites passing a literal `8`** (was 7: `serialize-value.ts`, `literal-tag.ts`,
+and `color.ts` ×5) and **4 bare integer roundings** (`color.ts:97` ×3, `:105`),
+which are rgb-byte quantization at the output boundary — a different axis, and
+correct under ledger **V5**. The lint can therefore be landed at zero debt rather
+than with a carry-forward ledger. The gate is a lint with a zero-debt ledger, modelled exactly
 on `verify:parser-runtime-boundary` (see invariant 6): precision literals are
 legal in the policy module and nowhere else. Color format is the harder half —
 it is a per-value field chosen by three different rules in three kernels of
-`packages/fns/src/builtins/color-helper.ts` (`withAlpha` `:45`, `mixColors`
-`:91`, `colorBlend` `:119`) — and needs a stated policy before it can be gated.
+`packages/fns/src/less/color-helper.ts` (`withAlpha`, `mixColors`, `colorBlend`) — and needs a stated policy before it can be gated.
 **STATUS: GATE-READY** for numeric precision; **MIGRATION** for color format.
 
 ## 4. Valid CSS is dialect-invariant
@@ -350,8 +351,9 @@ reintroduces each applicable shape.
 | S3  | **Parser-side selector-argument joins**                                    | 2, 4, 6    | The grammar joining a `SelectorList` into text. `css-parser` `grammar.ts:365` joins with `','` (6 uses); `jess-parser` `grammar.ts:376` joins with `', '` (2 uses); core's `pseudoCanonical` (`nodes.ts:598`) joins with `', '` and its own JSDoc says "grammar NEVER computes this". Same valid CSS, two byte outputs. |
 | S4  | **SCSS text-valued pseudo arguments**                                      | 4, 6       | SCSS keeps pseudo arguments as raw text, so `:not( .b )` and `:is( .b, .c )` retain authored inner whitespace where the other three normalize. A valid-CSS divergence that is a direct consequence of not holding structure.                                                                                            |
 | S5  | **`compoundHasAmpersand` byte-scan**                                       | 6          | Deciding a _structural_ fact (is there a parent reference?) by substring-scanning canonical text, where the scan cannot distinguish a token from the same character inside a string.                                                                                                                                    |
-| S6  | **Two precisions for one quantity**                                        | 3          | `fadein.ts:30` (`1e12`) vs `color-helper.ts:46` (`round(…, 8)`) for alpha, in two implementations of one function family that C6 requires be merged. The merge will have to pick one, and nothing records which.                                                                                                        |
+| S6  | ~~**Two precisions for one quantity**~~ — **CLOSED `137cfa8fa`**           | 3          | `fadein`/`fadeout` had already been merged onto the single `withAlpha` kernel, leaving one quantization (`round(newAlpha, 8)`, `packages/fns/src/less/color-helper.ts`). That construction-time round is now deleted, so alpha carries full precision and is quantized only by the output policy — ledger **C6**'s merge has no precision left to pick. |
 | S7  | **The pin that vanished** (`2bd16eb89`)                                    | governance | A semantic rule surviving only as a JSDoc comment because its tests — and the differential harness its commit cited as evidence — were deleted by an unrelated refactor. A rule whose only pin is a comment is undefended.                                                                                              |
+| S8  | ~~**Attribute-selector ident fusion**~~ — **CLOSED**                       | 2, 4, 7    | An opaque text join that concatenates already-separate tokens. `css`/`scss`/`jess` built `[…]` with `.join('')`, so `[data-x=y i]` emitted `[data-x=yi]` — still valid CSS, still accepted by `CSS.supports()`, matching a **disjoint** set of elements, with no error anywhere. Less, which built the same text structurally with an explicit space, was right but rejected `[data-x = y i]` outright. Both halves are one missing fact: a join over token text has to know where a token boundary is. Detector: `css-parser/test/byte-identity/fixtures/selector-attribute-unquoted-flag.css`. |
 
 When a semantic incident is fixed, add a row and, where possible, a detector.
 The catalogue stays grounded in lived incidents, not style preference.
@@ -389,10 +391,9 @@ count drops from **7 literal-`8` sites to 5**: `serialize-value.ts:25` and
 Separately, the _decimal_ branch of
 `color.ts`'s `alphaText` — which emitted a raw unrounded double, a second
 unintentional bypass, safe only because `fns` happened to pre-round it — reads the
-policy module too; its `%` branch is one of the survivors, so that site is fixed
-without changing the count. The five survivors are all in `color.ts`
-(`:122,141,153,154,155`: `%` alpha, `%` channels, hue, s, l) and are the remaining
-debt for the GATE-READY lint. The 4 bare integer roundings (`color.ts:97` ×3, `:105`)
+policy module too. The five survivors in `color.ts` (`%` alpha, `%` channels, hue,
+s, l) were closed in turn by `f42decf7f`, taking the literal-`8` count to **0**;
+`137cfa8fa` then removed the last construction-time quantization in `fns`. The 4 bare integer roundings (`color.ts:97` ×3, `:105`)
 are channel quantization, a different axis per §3's own reading.
 
 **The legacy `tree/` serializer was a second policy, and is now the same one.**

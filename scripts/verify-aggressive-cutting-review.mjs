@@ -6,7 +6,7 @@ import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ESLint } from 'eslint';
 
-const root = resolve(new URL('..', import.meta.url).pathname);
+const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const handoffPath = resolve(root, 'docs/architecture/core/HANDOFF.md');
 const cuttingReviewPath = resolve(root, 'docs/architecture/core/AGGRESSIVE-CUTTING-REVIEW.md');
 const skipExecutableEvidence = process.argv.includes('--skip-executable-evidence');

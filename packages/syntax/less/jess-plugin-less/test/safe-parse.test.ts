@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
 import lessPlugin, { LessPluginResolver, prepareLessRootSource } from '../src/index.js';
+/*
+ * Line-aware parsing is an entry choice, not a plugin option: the plugin's
+ * `safeParse` loads the offsets-only Less table. This is the same `safeParse`
+ * bound to the line-aware table.
+ */
+import { safeParse as safeParseWithLines } from '@jesscss/less-parser/positions';
 
 describe("@jesscss/plugin-less", () => {
   it("returns a source-backed parser diagnostic for invalid Less", () => {
@@ -42,6 +48,22 @@ describe("@jesscss/plugin-less", () => {
       },
     ]);
     expect(result.errors[0]?.message).not.toContain("complete stylesheet");
+  });
+
+  it('reports parser line facts when safeParse comes from the line-aware entry', () => {
+    const source = '.entry {}\n@media';
+    const result = safeParseWithLines('entry.less', source);
+
+    expect(result.document).toBeUndefined();
+    expect(result.errors).toMatchObject([
+      {
+        phase: 'parse',
+        filePath: 'entry.less',
+        line: 2,
+        column: 7,
+        file: { source }
+      }
+    ]);
   });
 
   it("reports the dynamic-charset policy at the authored statement", () => {
@@ -159,7 +181,7 @@ describe("@jesscss/plugin-less", () => {
     expect(result.errors).toEqual([]);
     expect(result.document).toMatchObject({
       type: "Stylesheet",
-      children: [{ type: "AtRuleStatement", name: "@charset" }],
+      rules: [{ type: 'AtRuleStatement', name: '@charset' }]
     });
   });
 
@@ -184,8 +206,42 @@ describe("@jesscss/plugin-less", () => {
     });
 
     expect(normalized).not.toBe(configured);
-    expect(normalized).toMatchObject({ name: 'less', mathMode: 'parens' });
+    expect(normalized.name).toBe('less');
+    expect(normalized.safeParse?.('entry.less', '.entry {}').dialectDefaults).toMatchObject({
+      mathMode: 'parens'
+    });
     resolver.dispose();
+  });
+
+  it('shares immutable dialect defaults across parse results', () => {
+    const plugin = lessPlugin({ mathMode: 'parens' });
+    const first = plugin.safeParse!('first.less', '.first {}');
+
+    expect(Object.keys(plugin)).not.toContain('dialectDefaults');
+    expect(Object.isFrozen(first.dialectDefaults)).toBe(true);
+    expect(Reflect.set(first.dialectDefaults!, 'mathMode', 'always')).toBe(false);
+    expect(plugin.safeParse!('second.less', '.second {}').dialectDefaults).toMatchObject({
+      mathMode: 'parens'
+    });
+  });
+
+  it('keeps direct import rewriting distinct from URL query arguments', () => {
+    const plugin = lessPlugin({ rootpath: 'folder (1)/', urlArgs: 'v=1' });
+
+    expect(plugin.transformUrl?.({
+      value: 'css/background.css',
+      quoted: true,
+      kind: 'import'
+    })).toBe('folder (1)/css/background.css');
+    expect(plugin.transformUrl?.({
+      value: 'css/background.css',
+      quoted: true,
+      kind: 'url'
+    })).toBe('folder (1)/css/background.css?v=1');
+    expect(plugin.transformUrl?.({
+      value: 'css/background.css',
+      quoted: true
+    })).toBe('folder (1)/css/background.css?v=1');
   });
 
   it('prepares only Less root source with Less variable override options', () => {

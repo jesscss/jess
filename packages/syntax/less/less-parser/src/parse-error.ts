@@ -7,30 +7,29 @@ function expectedMessage(expected: readonly string[]): string {
     return 'Unexpected Less syntax.';
   }
   const expectedSet = new Set(expected);
-  const hasValueCore =
-    expectedIncludes(expectedSet, 'CssSyntaxNumber')
-    && expectedIncludes(expectedSet, 'CssSyntaxDimensionUnit')
-    && expectedIncludes(expectedSet, 'not(peek)');
-  const looksLikeValueProduction =
-    hasValueCore
-    && (
-      expectedIncludes(expectedSet, 'LessSyntaxKeyword')
-      || expectedIncludes(expectedSet, 'LessSyntaxNamedColor')
-      || expectedIncludes(expectedSet, 'CssSyntaxHexColor')
-    );
-  if (looksLikeValueProduction) {
-    return 'Unexpected Less syntax. Expected a Less value.';
+  if (expectedIncludes(expectedSet, '")"')) {
+    return 'Missing closing parenthesis.';
   }
   if (expectedSet.size === 1) {
-    if (expectedIncludes(expectedSet, '")"')) {
-      return 'Missing closing parenthesis.';
-    }
     if (expectedIncludes(expectedSet, '"]"')) {
       return 'Missing closing bracket.';
     }
     if (expectedIncludes(expectedSet, '"}"')) {
       return 'Missing closing brace.';
     }
+  }
+  const hasValueCore =
+    expectedIncludes(expectedSet, 'NumberToken')
+    && expectedIncludes(expectedSet, 'DimensionUnit')
+    && expectedIncludes(expectedSet, 'not(regex)');
+  const looksLikeValueProduction =
+    hasValueCore
+    && (
+      expectedIncludes(expectedSet, 'ValueIdentifier')
+      || expectedIncludes(expectedSet, 'HexColor')
+    );
+  if (looksLikeValueProduction) {
+    return 'Unexpected Less syntax. Expected a Less value.';
   }
   if (expectedIncludes(expectedSet, '";"')) {
     return 'Missing semicolon.';
@@ -43,18 +42,34 @@ export class LessParseError extends SyntaxError {
   readonly code = 'parse/syntax-error' as const;
   readonly offset: number;
   readonly expected: readonly string[];
+  readonly line?: number;
+  readonly column?: number;
+  readonly endLine?: number;
+  readonly endColumn?: number;
   readonly reason?: string;
   readonly fix?: string;
 
   constructor(
     offset: number,
     expected: readonly string[],
-    options: { message?: string; reason?: string; fix?: string } = {}
+    options: {
+      message?: string;
+      reason?: string;
+      fix?: string;
+      line?: number;
+      column?: number;
+      endLine?: number;
+      endColumn?: number;
+    } = {}
   ) {
     super(options.message ?? expectedMessage(expected));
     this.name = 'LessParseError';
     this.offset = offset;
     this.expected = expected;
+    this.line = options.line;
+    this.column = options.column;
+    this.endLine = options.endLine;
+    this.endColumn = options.endColumn;
     this.reason = options.reason;
     this.fix = options.fix;
   }
@@ -156,6 +171,34 @@ export class LessUnparenthesizedMixinGuardError extends SyntaxError {
   constructor(offset: number, endOffset: number) {
     super('Less mixin guard conditions must be parenthesized.');
     this.name = 'LessUnparenthesizedMixinGuardError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+  }
+}
+
+/**
+ * A media/layer/supports postlude belongs to the plain CSS `@import` form only.
+ *
+ * Once the parser has decided an `@import` is compile-time — it carries options,
+ * or its target is a loadable (non-`.css`) path — a trailing query has nothing
+ * left to describe: the loaded rules are spliced into this document, not linked
+ * as a separate CSS resource. This DIVERGES deliberately from Less 4.x, which
+ * accepts `@import "foo.less" screen;` and wraps the loaded rules in
+ * `@media screen`.
+ */
+export class LessImportPostludeError extends SyntaxError {
+  readonly code = 'parse/import-postlude-on-compile-time-import' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason =
+    'A media, layer, or supports query is only valid on a plain CSS @import.';
+
+  readonly fix =
+    'Drop the query, or wrap the import in an explicit @media/@supports/@layer block.';
+
+  constructor(offset: number, endOffset: number) {
+    super('A compile-time @import cannot carry a media query.');
+    this.name = 'LessImportPostludeError';
     this.offset = offset;
     this.endOffset = endOffset;
   }

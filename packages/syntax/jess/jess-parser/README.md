@@ -62,10 +62,48 @@ Pass a different `startRule` (any capitalized grammar rule) to parse a fragment.
 | Entry | Export | Purpose |
 | --- | --- | --- |
 | `@jesscss/jess-parser` (`.`) | `parse`, `JessParseError` | Parse Jess directly to canonical AST v2 `Stylesheet`; malformed input throws `JessParseError` with an offset and expected facts. |
-| `@jesscss/jess-parser` (`.`) | `parseJessCst`, `jessGrammar` | Convenience exports for the public CST parser and canonical grammar artifact. |
 | `@jesscss/jess-parser` (`.`) | `JessCstNode`, `JessCstLeaf`, `JessCstError`, `JessCstChild`, `JessCstParseResult`, `JessCstType` (types) | CST type definitions (aliases of the shared `@jesscss/css-parser/cst` types). |
-| `@jesscss/jess-parser/cst` | `parseJessCst`, CST types | Same core-free CST parser (explicit subpath). |
-| `@jesscss/jess-parser/grammar` | `jessFactory`, `jessGrammar`, `jessAstGrammar`, `jessCstGrammar` | The single host-mode grammar source and its AST/CST compiled artifacts. |
+| `@jesscss/jess-parser/cst` | `parseJessCst`, `parseJessDoc`, CST types | Core-free parse of a Jess string to a CST. Compiled grammars are not re-exported from `.` — reach for a `/grammar` subpath so the main entry never loads a grammar build you did not ask for. |
+| `@jesscss/jess-parser/grammar` | `jessGrammar` | The compiled Jess AST grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. See the variant table below. |
+
+### Line-aware entries
+
+`parse` and the CST parsers come in two bindings, one per compiled table, so an
+entry never loads a table it does not parse with:
+
+| Entry | Export | Tree | Positions |
+| --- | --- | --- | --- |
+| `@jesscss/jess-parser` (`.`) | `parse` | AST | no |
+| `@jesscss/jess-parser/positions` | `parse` | AST | yes |
+| `@jesscss/jess-parser/cst` | `parseJessCst`, `parseJessDoc` | CST | no |
+| `@jesscss/jess-parser/cst/positions` | `parseJessCst`, `parseJessDoc` | CST | yes |
+
+The `/positions` entries export the same names bound to the line-aware table:
+switching is a change of import specifier, not of call site.
+
+### Choosing a grammar build
+
+Each compiled grammar is a standalone multi-megabyte artifact, so the four
+variants ship as four separate files. Importing one never loads the others.
+Pick by the two questions the subpath name answers — which tree, and whether
+source positions are tracked:
+
+| Subpath | Export | Tree | Positions |
+| --- | --- | --- | --- |
+| `@jesscss/jess-parser/grammar/ast` | `jessGrammar` | AST | no |
+| `@jesscss/jess-parser/grammar/ast/positions` | `jessPositionsGrammar` | AST | yes |
+| `@jesscss/jess-parser/grammar/cst` | `jessCstGrammar` | CST | no |
+| `@jesscss/jess-parser/grammar/cst/positions` | `jessCstPositionsGrammar` | CST | yes |
+
+`@jesscss/jess-parser/grammar` is an alias for `/grammar/ast`, the build the
+shipping `parse()` route uses. It is not a barrel: it exposes the AST variant
+only, so importing it cannot pull the other three in.
+
+The positions variants set `startLine`/`startColumn` on every span. There is no
+`trackLines` option: an option would force one module to name both tables, and
+Node executes every module it statically imports, so the choice is which entry
+you import. Error tolerance is not a property of a build — the CST runner
+collects `result.errors` on either CST variant.
 
 ## Default CST shape
 
@@ -83,19 +121,32 @@ Parsing `$brand: #3366ff;` yields:
 {
   "_tag": "node", "type": "StyleSheet", "grammarType": "Stylesheet", "span": { "start": 0, "end": 16 },
   "children": [
-    { "_tag": "node", "type": "DirectJessVarDeclaration", "grammarType": "DirectJessVarDeclaration", "span": { "start": 0, "end": 16 },
+    { "_tag": "node", "type": "VariableDeclaration", "grammarType": "VariableDeclaration", "span": { "start": 0, "end": 16 },
       "children": [
-        { "_tag": "leaf", "value": "$brand", "span": { "start": 0, "end": 6 } },
+        { "_tag": "leaf", "value": "$", "span": { "start": 0, "end": 1 } },
+        { "_tag": "leaf", "value": "brand", "span": { "start": 1, "end": 6 } },
         { "_tag": "leaf", "value": ":", "span": { "start": 6, "end": 7 } },
-        { "_tag": "node", "type": "DirectJessColor", "grammarType": "DirectJessColor", "span": { "start": 8, "end": 15 },
-          "children": [ { "_tag": "leaf", "value": "#3366ff", "span": { "start": 8, "end": 15 } } ] },
+        { "_tag": "node", "type": "Value", "grammarType": "Value", "span": { "start": 8, "end": 15 },
+          "children": [
+            { "_tag": "node", "type": "ValueTerm", "grammarType": "ValueTerm", "span": { "start": 8, "end": 15 },
+              "children": [
+                { "_tag": "node", "type": "ValueSpaceGroup", "grammarType": "ValueSpaceGroup", "span": { "start": 8, "end": 15 },
+                  "children": [
+                    { "_tag": "node", "type": "ValueAtom", "grammarType": "ValueAtom", "span": { "start": 8, "end": 15 },
+                      "children": [
+                        { "_tag": "node", "type": "Color", "grammarType": "Color", "span": { "start": 8, "end": 15 },
+                          "children": [ { "_tag": "leaf", "value": "#3366ff", "span": { "start": 8, "end": 15 } } ] }
+                      ] }
+                  ] }
+              ] }
+          ] },
         { "_tag": "leaf", "value": ";", "span": { "start": 15, "end": 16 } }
       ] }
   ]
 }
 ```
 
-Jess-specific grammar rules include `DirectJessVarDeclaration` (`$x: …`), `DirectJessVarReference` / `DirectJessReferenceCall` (`$x`, `$x.prop`, `$x[0]`, callable chains), `DirectJessExpression*` (inside `$(…)`), `DirectJessMixinDef`, `DirectJessMixinCall`, `DirectJessInterpolatedSimple` (`.widget-${side}`), and the `@-compose`/`@-export`/`@-from`/`@-use` import at-rules.
+Jess-specific grammar rules include `VariableDeclaration` (`$x: …`), `VariableReference` / `ReferenceCall` (`$x`, `$x.prop`, `$x[0]`, callable chains), `Expression*` (inside `$(…)`), `MixinDefinition`, `MixinCall`, `InterpolatedSimple` (`.widget-${side}`), and the `@-compose`/`@-export`/`@-from`/`@-use` import at-rules.
 
 Pass `{ collapse: true }` to request parseman's transparent-wrapper collapse while preserving source leaves and grammar ownership.
 

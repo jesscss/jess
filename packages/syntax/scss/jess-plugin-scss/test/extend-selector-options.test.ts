@@ -3,13 +3,21 @@ import scssPlugin from '../src/index.js';
 
 describe('scss-plugin direct AST parse route', () => {
   it('returns the canonical Stylesheet document for valid SCSS', () => {
-    const plugin = scssPlugin();
+    const plugin = scssPlugin({ unitMode: 'strict' });
     const result = plugin.safeParse!('test.scss', '.a { @extend .b.c; }');
 
     expect(result.errors).toHaveLength(0);
+    expect(result.dialectDefaults).toEqual({ unitMode: 'strict' });
     expect(result.document).toMatchObject({
       type: 'Stylesheet',
-      children: [{ type: 'Rule' }]
+      rules: [{ type: 'Ruleset' }]
+    });
+
+    expect(Object.keys(plugin)).not.toContain('dialectDefaults');
+    expect(Object.isFrozen(result.dialectDefaults)).toBe(true);
+    expect(Reflect.set(result.dialectDefaults!, 'unitMode', 'preserve')).toBe(false);
+    expect(plugin.safeParse!('second.scss', '.b {}').dialectDefaults).toEqual({
+      unitMode: 'strict'
     });
   });
 
@@ -25,7 +33,7 @@ describe('scss-plugin direct AST parse route', () => {
       filePath: 'test.scss',
       line: 2,
       column: 1,
-      message: expect.stringMatching(/^SCSS parser error\./),
+      message: 'Unexpected SCSS input after a complete stylesheet.',
       file: { source }
     }]);
     expect(result.errors[0]?.lines?.[2]).toBe('!broken');

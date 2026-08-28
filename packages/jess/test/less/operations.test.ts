@@ -2,6 +2,39 @@ import { describe, it, expect } from 'vitest';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 
+/*
+ * ENABLED (not `.todo`): the standing guard for named-color division under
+ * `math: always`. This catches the NamedColor→Keyword regression where a
+ * named-color operand was rejected by the bare-slash operand gate
+ * (`appendBareSlashTokens`) and stopped folding, while a hex color still folded.
+ * lessc 4.x `--math=always`: `red / 2` → `#800000` AND `#ff0000 / 2` → `#800000`
+ * (symmetric). The font-shorthand slash-SPACING row from the surrounding
+ * `describe.todo('Operations')` block is deliberately NOT un-todoed here: it
+ * asserts the spaced separator form (`small / 20px`), which is the OPEN V12
+ * question (authored-slash spacing), unimplemented and unrelated to this change.
+ */
+describe('Operations — named-color division in math: always', () => {
+  it('folds named-color keyword division like a hex color in math: always mode', async () => {
+    const alwaysCompiler = new Compiler({
+      compile: {
+        mathMode: 'always',
+        plugins: [lessPlugin()]
+      }
+    });
+
+    /* A named color folds under `/` exactly like a hex color (lessc 4.x parity):
+     * `red / 2` → `#800000`, `#ff0000 / 2` → `#800000`. */
+    const named = await alwaysCompiler.renderString('.test { color: red / 2; }', { language: 'less' });
+    expect(named).toContain('color: #800000');
+    const hex = await alwaysCompiler.renderString('.test { color: #ff0000 / 2; }', { language: 'less' });
+    expect(hex).toContain('color: #800000');
+
+    // A non-color keyword stays an authored slash list (no fold).
+    const plain = await alwaysCompiler.renderString('.test { color: foo / 2; }', { language: 'less' });
+    expect(plain).toContain('color: foo / 2');
+  });
+});
+
 describe.todo('Operations', () => {
   const compiler = new Compiler({
     compile: {
@@ -60,40 +93,6 @@ describe.todo('Operations', () => {
       const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width: 20px / 2');
       expect(css).toContain('height: 30px / 3');
-    });
-
-    it('treats obvious font shorthand slash values as separators even in math: always mode', async () => {
-      const alwaysCompiler = new Compiler({
-        compile: {
-          mathMode: 'always',
-          plugins: [lessPlugin()]
-        }
-      });
-
-      const css = await alwaysCompiler.renderString(`
-        .test {
-          font: normal small/20px 'Trebuchet MS', Verdana, sans-serif;
-        }
-      `, { language: 'less' });
-
-      expect(css).toContain(`font: normal small / 20px 'Trebuchet MS', Verdana, sans-serif`);
-    });
-
-    it('still evaluates color-keyword division in math: always mode', async () => {
-      const alwaysCompiler = new Compiler({
-        compile: {
-          mathMode: 'always',
-          plugins: [lessPlugin()]
-        }
-      });
-
-      const css = await alwaysCompiler.renderString(`
-        .test {
-          color: red / 2;
-        }
-      `, { language: 'less' });
-
-      expect(css).toContain('color: #800000');
     });
   });
 

@@ -126,7 +126,7 @@ which **is** available at 0.32.0.
 
 | missing | consequence |
 | --- | --- |
-| `peek` | `not(not(X))` cannot be converted. 5 sites in the Less AST grammar stay as-is |
+| `peek` | Historical 0.32 limitation only. The active parser floor is 0.41+, so current grammars use `peek(...)` for positive lookahead instead of nested negation. |
 | `oneOrMoreSep` | the non-empty separated-list conversions are blocked |
 | `analyzeGatingRules` | no rule-map-level diagnostic (§2 covers the entry-level one) |
 | `word(str, { caseInsensitive })` | `word()` takes `(str, boundary?)` only. A case-insensitive single keyword must be `keywords([str], { caseInsensitive: true, boundary })` |

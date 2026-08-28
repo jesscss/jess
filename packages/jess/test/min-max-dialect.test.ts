@@ -10,17 +10,23 @@ import { Compiler } from '../src/index.js';
  *   `#sass/math` dart-sass semantics, fold artifacts included — a unitless
  *                operand compares on display numbers, no conversion.
  *                                            max(1px, 1in, 2) → 2
- *   `#jess`      CSS-faithful (same <type>, no unitless-vs-length coercion).
- *                NOT YET IMPLEMENTED — needs the namespace machinery, so
- *                `.jess` currently takes the Less set.
+ *   `#jess`      NOT a dialect function at all. `.jess` has no ambient global
+ *                builtin namespace by design — functions arrive through
+ *                `@-use`/`@-compose` or as a stylesheet lambda. `min()`/`max()`
+ *                are therefore ordinary CSS calls and pass through verbatim,
+ *                which is the CSS-faithful answer: `max(1px, 2em)` IS valid
+ *                CSS, and only a language that claims the name as a builtin can
+ *                fail to fold it.
  *
  * A failing call is never suppressed by the function. The engine preserves it
  * verbatim in bare position under the default `functionMode: 'preserve'` and
  * reports it under `'error'` — sass-spec § `min.hrx global/README.md` states
- * that split for Sass, and the owner's call-form rule generalises it.
+ * that split for Sass, and the owner's call-form rule generalises it. That
+ * split applies only where the name IS a builtin, so it does not reach `.jess`.
  */
 
-const DIALECTS = ['.less', '.scss', '.jess'] as const;
+/** Dialects that claim `min()`/`max()` as builtins and fold them. */
+const FOLDING_DIALECTS = ['.less', '.scss'] as const;
 
 const render = async (compiler: Compiler, expr: string, extension: string): Promise<string> => {
   const output = await compiler.renderString(`a { b: ${expr}; }`, { extension, suppressWarnings: true });
@@ -69,19 +75,47 @@ const DIVERGENT: Array<[string, string, string]> = [
 describe('min()/max() per dialect', () => {
   const compiler = new Compiler();
 
-  it.each(AGREED)('%s → %s in every dialect', async (expr, expected) => {
-    for (const extension of DIALECTS) {
+  it.each(AGREED)('%s → %s in every folding dialect', async (expr, expected) => {
+    for (const extension of FOLDING_DIALECTS) {
       expect(await render(compiler, expr, extension), `${expr} in ${extension}`).toBe(expected);
     }
   });
 
   it.each(DIVERGENT)('%s → %s in Less, %s in Sass', async (expr, lessExpected, sassExpected) => {
     expect(await render(compiler, expr, '.scss'), `${expr} in .scss`).toBe(sassExpected);
+    expect(await render(compiler, expr, '.less'), `${expr} in .less`).toBe(lessExpected);
+  });
+});
 
-    // `.jess` has no dialect fns of its own yet and takes the Less set.
-    for (const extension of ['.less', '.jess']) {
-      expect(await render(compiler, expr, extension), `${expr} in ${extension}`).toBe(lessExpected);
-    }
+describe('min()/max() are ordinary CSS calls in .jess', () => {
+  const compiler = new Compiler();
+
+  /*
+   * `min()` — no arguments at all — is excluded and asserted separately below.
+   * `min`/`max` are css-values-4 §10 math functions, so `.jess` recognises the
+   * NAME and parses the arguments as `<calc-sum>#`, which requires at least
+   * one. That recognition is what makes `min(1em - 2px)` preserve its authored
+   * operation instead of failing to parse; the empty form is the same rule seen
+   * from the other side, and CSS has no `min()` either. `calc()` has always
+   * been rejected here for exactly this reason.
+   *
+   * Recognising the name changes nothing else in this file: `.jess` still has
+   * no builtin `min`, so every well-formed call below still passes through
+   * verbatim.
+   */
+  const ALL_EXPRESSIONS = [
+    ...AGREED.map(([expr]) => expr),
+    ...DIVERGENT.map(([expr]) => expr)
+  ].filter(expr => expr !== 'min()');
+
+  it.each(ALL_EXPRESSIONS)('%s passes through verbatim', async (expr) => {
+    expect(await render(compiler, expr, '.jess'), `${expr} in .jess`).toBe(expr);
+  });
+
+  it('rejects a math function with no arguments, as CSS does', async () => {
+    await expect(
+      compiler.renderString('a { b: min(); }', { extension: '.jess', suppressWarnings: true })
+    ).rejects.toThrow();
   });
 });
 
@@ -89,7 +123,7 @@ describe('functionMode reaches min()/max()', () => {
   const strict = new Compiler({ compile: { functionMode: 'error' } });
 
   it('reports a failing call instead of preserving it', async () => {
-    for (const extension of DIALECTS) {
+    for (const extension of FOLDING_DIALECTS) {
       await expect(
         strict.renderString('a { b: max(1px, 2em); }', { extension, suppressWarnings: true })
       ).rejects.toThrow();
@@ -97,8 +131,13 @@ describe('functionMode reaches min()/max()', () => {
   });
 
   it('still reduces a succeeding call', async () => {
-    for (const extension of DIALECTS) {
+    for (const extension of FOLDING_DIALECTS) {
       expect(await render(strict, 'max(1px, 2px)', extension)).toBe('2px');
     }
+  });
+
+  it('has nothing to reject in .jess, which has no builtins at all', async () => {
+    expect(await render(strict, 'max(1px, 2em)', '.jess')).toBe('max(1px, 2em)');
+    expect(await render(strict, 'max(1px, 2px)', '.jess')).toBe('max(1px, 2px)');
   });
 });

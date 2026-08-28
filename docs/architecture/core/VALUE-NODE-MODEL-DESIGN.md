@@ -44,7 +44,7 @@ only) shipped per these, which supersede any conflicting statement in §1–§6:
    `Keyword` or a value-domain `Bool`). Value-domain `Bool` (an eval RESULT) stays.
 5. **CORR-5 — inert lane invariant.** The inert `evalValue` / materialize arms MUST
    return `literal(node.src)` — a BARE STRING — never the node object. An AST literal
-   node must not leak into the `Value = ValueObj | string` lane, else a downstream
+   node must not leak into the `ValueGroup = Value | string` lane, else a downstream
    `v.type === 'Color'` would misread it as a value-domain object missing its rgb
    fields. Enforced explicitly in the inert arms.
 
@@ -109,9 +109,9 @@ The `ValueNode` union drops `Word` and gains `Keyword | Color | Quoted | Bool | 
 
 The value-domain objects (`value-eval.ts`) and these AST literal nodes now **share
 `type` strings** (`Dimension`/`Color`/`Quoted`/`Keyword`/`Bool`). `node.ts` already
-tolerates this for `Dimension` via the **lane invariant** (a `ValueObj` never enters
-the AST-build lane; never form a `Node | ValueObj` union) and documents a structural
-escape hatch: value objects carry `bytes`, AST nodes did not.
+tolerates this for `Dimension` via the **lane invariant** (a value-domain `Value`
+never enters the AST-build lane; never form a `Node | Value` union) and documents
+a structural escape hatch: value objects carry `bytes`, AST nodes did not.
 
 Adding `Color`/`Quoted`/`Bool`/`Keyword` to `AST_NODE_TYPES` widens that collision.
 To KEEP the escape hatch working, AST literal nodes name their verbatim field
@@ -306,9 +306,11 @@ export const isTypedLiteral = (n: ValueNode): boolean => isLiteralNode(n) && n.t
 
 ### 4.2 External contract — untouched
 
-The only external contract is the less-compat bridge / fns via `@jesscss/core/value`.
-Fns consume **value-domain `ValueObj`** (`materialize` OUTPUT), never AST literal
-nodes, so their signatures are unaffected. The differential-reference bridge test
+The external authoring contract is the less-compat bridge plus fns/plugin bodies
+through the `@jesscss/core` root value exports. Fns consume **value-domain `Value`**
+objects (`materialize` OUTPUT), never AST literal nodes, so their signatures are
+unaffected. The `@jesscss/core/value` subpath remains a narrow compatibility
+barrel, not the preferred authoring path. The differential-reference bridge test
 (`parse-host/__tests__/bridge.ts`) references `LiteralTag`/`'Dimension'`/`'Num'`;
 it is a TEST (internal), freely updated to the node set
 (`memory:no-sacred-test-expectations`). The `bridge.ts` `'Num'` alias dies with the

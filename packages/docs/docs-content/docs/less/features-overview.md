@@ -224,27 +224,24 @@ width: calc(50% + (@var - 20px));  // result is calc(50% + (25vh - 20px))
 ```
 
 
-# Escaping
+# Interpolation
 
-Escaping allows you to use any arbitrary string as property or variable value. Anything inside `~"anything"` or `~'anything'` is used as is with no changes except [interpolation](./features/variables#variable-interpolation).
+Variables normally resolve directly in declaration values. When a variable
+supplies syntax in an at-rule prelude or name, use explicit `@{...}`
+[interpolation](./features/variables#variable-interpolation).
 
 ```less
-@min768: ~"(min-width: 768px)";
+@breakpoint: (min-width: 768px);
+
 .element {
-  @media @min768 {
+  @media @{breakpoint} {
     font-size: 1.2rem;
   }
 }
 ```
 
-results in:
-```less
-@media (min-width: 768px) {
-  .element {
-    font-size: 1.2rem;
-  }
-}
-```
+This replaces the removed bare form, `@media @breakpoint`. Less 4.x deprecated
+that form; Less 5.x requires explicit interpolation.
 
 
 # Functions

@@ -1,17 +1,18 @@
-import type { Fn } from '@jesscss/core/value';
-import { textOf, defineFunction } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core';
+import { textOf, defineFunction } from '@jesscss/core';
 import { requireColor, withAlpha } from './color-helper.js';
 import { requireDimension } from './math-helper.js';
+import { addExact, mulExact, percentToFraction } from '../util/decimal.js';
 
 /** `fadein(color, amount, method?)` — increase alpha. Byte-faithful to `less/fadein`. */
 export const fadein: Fn = defineFunction('fadein', {
-  params: [{ kinds: ['Color'] }, { kinds: ['Dimension'] }, { kinds: ['Keyword', 'Quoted'], optional: true }],
+  params: [{ type: 'Color' }, { type: 'Dimension' }, { type: ['Keyword', 'Quoted'], optional: true }],
   body: (c, amt, m) => {
     const color = requireColor(c);
-    let adjust = requireDimension(amt).number / 100;
+    let adjust = percentToFraction(requireDimension(amt).number);
     if (m !== undefined && (m.type === 'Keyword' || m.type === 'Quoted') && textOf(m) === 'relative') {
-      adjust = color.alpha * adjust;
+      adjust = mulExact(color.alpha, adjust);
     }
-    return withAlpha(color, color.alpha + adjust);
+    return withAlpha(color, addExact(color.alpha, adjust));
   }
 });

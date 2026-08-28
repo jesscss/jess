@@ -61,7 +61,7 @@ value object at rest). Two fold entry points read it:
 | Lane | Fn (serialize.ts) | What a LITERAL leaf does | Allocation |
 |---|---|---|---|
 | **Inert** | `evalValue` (:845) | `return literal(node.src)` — a **bare string**, rep "B" | zero |
-| **Operated** | `evalTyped` → `materializeNode` (:793) | build a value-domain `ValueObj` from the node's own fields | one small object |
+| **Operated** | `evalTyped` → `materializeNode` (:793) | build a value-domain `Value` object from the node's own fields | one small object |
 
 `materializeNode(node, e)` (:793) — **takes no `frame`**:
 
@@ -100,7 +100,7 @@ context-dependent (must project per context).
 `frame`, and none of `colorFromSrc` / `dimensionFromFields` / `quotedFromFields` /
 `materializeAny` touch scope. Therefore:
 
-> A given literal leaf materializes to the **byte-identical `ValueObj`** at every
+> A given literal leaf materializes to the **byte-identical `Value` object** at every
 > call site, in every scope, forever.
 
 This is the ~98 %-inert / ~58 %-of-touches common case and it includes `Any`: `Any`
@@ -242,8 +242,8 @@ measured hot re-sniff*, never the blanket literal cache:
 
 ```ts
 // CONTINGENT — build only if a profile shows repeated Any re-sniffs dominating.
-const anyCache = new WeakMap<Any, ValueObj>();   // zero node weight; Any-only
-function materializeAnyMemo(node: Any): ValueObj {
+const anyCache = new WeakMap<Any, Value>();   // zero node weight; Any-only
+function materializeAnyMemo(node: Any): Value {
   let v = anyCache.get(node);
   if (v === undefined) anyCache.set(node, (v = materializeAny(node.src)));
   return v;
@@ -260,7 +260,7 @@ schedule.
 ## 6. Answers to the task's explicit questions
 
 - **Mechanism:** lazy-when-inert (shipped). Inert leaf → bare `src` string, never
-  materialized. Operated leaf → `ValueObj` built from immutable node fields, no
+  materialized. Operated leaf → `Value` built from immutable node fields, no
   `frame`. No cache.
 - **Context-free vs dependent split:** CONFIRMED CLEAN. Context-free ≡ value-literal
   leaf (incl. `Any`) — pure function of own fields. Context-dependent ≡ anything

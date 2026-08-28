@@ -1,67 +1,16 @@
-import { run } from 'parseman';
-import {
-  createTriviaMapFromParseman,
-  withSourceSpan,
-  withTriviaMap,
-  type Stylesheet
-} from '@jesscss/core/ast';
-import { scssAstGrammar } from './grammar.js';
-import { lowerUserFunctionCalls } from './ast/lower-user-function-calls.js';
+import type { Stylesheet } from '@jesscss/core/ast';
+import { scssGrammar } from './grammar/ast.js';
+import { parseWith } from './parse-with.js';
 
-/** Structured failure from the public direct SCSS parser. */
-export class ScssParseError extends SyntaxError {
-  readonly code = 'parse/syntax-error' as const;
-  readonly offset: number;
-  readonly expected: readonly string[];
+export { ScssImportPostludeError, ScssParseError } from './parse-error.js';
 
-  constructor(offset: number, expected: readonly string[]) {
-    const detail = expected.length > 0 ? ` Expected: ${expected.join(', ')}.` : '';
-    super(`SCSS parser error.${detail}`);
-    this.name = 'ScssParseError';
-    this.offset = offset;
-    this.expected = expected;
-  }
-}
-
-function isStylesheet(value: unknown): value is Stylesheet {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'Stylesheet'
-    && 'children' in value
-    && Array.isArray(value.children);
-}
-
-/** Parse SCSS directly into the canonical AST v2 document. */
+/**
+ * Parse SCSS directly into the canonical AST v2 document.
+ *
+ * Spans carry offsets only. For `startLine`/`startColumn` facts import `parse`
+ * from `@jesscss/scss-parser/positions` — the same function bound to the
+ * line-aware compiled table. This entry never loads that table.
+ */
 export function parse(input: string): Stylesheet {
-  const entry = scssAstGrammar.Stylesheet;
-  const trivia = scssAstGrammar.whitespace;
-  if (entry === undefined || trivia === undefined) {
-    throw new TypeError('SCSS AST grammar is missing its public document entry.');
-  }
-  const result = run(
-    entry,
-    input,
-    { trivia }
-  );
-  if (!result.ok || result.unconsumedFrom !== null || !isStylesheet(result.value)) {
-    const offset = result.ok
-      ? result.unconsumedFrom ?? result.span.end
-      : result.span.start;
-    throw new ScssParseError(
-      offset,
-      result.expected
-    );
-  }
-
-  /*
-   * Rewrite user-`@function` call sites to `$f(args)` lambda invokes. The pass
-   * no-ops when the parsed document defines no user function; recognition stays
-   * in the grammar rather than checking source text here.
-   */
-  const document = lowerUserFunctionCalls(result.value);
-  return withTriviaMap(
-    withSourceSpan(document, result.span),
-    createTriviaMapFromParseman(input, result.triviaMap)
-  );
+  return parseWith(scssGrammar, input);
 }

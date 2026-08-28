@@ -1,16 +1,24 @@
 import type { Stylesheet } from './ast/nodes.js';
 import type { ImportOptions } from './import-options.js';
 export type { ImportOptions } from './import-options.js';
-import type { Context, ContextOptions } from './context.js';
+import type { Context, ContextOptions, ResolvedOptions } from './context.js';
 import { join, isAbsolute, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { type ErrorDiagnostic, type WarningDiagnostic } from './jess-error.js';
-import type { ExtendSelectorKind } from './types/config.js';
+import type { ApplySelectorKind, ExtendSelectorKind } from './types/config.js';
 
 export type ISafeParseResult = {
   /** Canonical parser document on successful parsing. */
   document?: Stylesheet;
+
+  /**
+   * Dialect-owned defaults proposed by a successful parser. Context accepts the
+   * entry parser's set once, folds constructor-supplied compile options over it,
+   * and retains that immutable policy for the session. Imported parsers cannot
+   * reconfigure the live Context.
+   */
+  dialectDefaults?: Readonly<Partial<ResolvedOptions>>;
 
   /**
    * Normalized errors from parsing.
@@ -33,6 +41,13 @@ export type ISafeParseResult = {
 export type ParsedDocument = Stylesheet;
 
 export type SafeParseOptions = {
+  /*
+   * There is no `trackLines` here. Line-aware parsing is a property of the
+   * compiled grammar table a parser package loads, chosen by importing that
+   * package's `./positions` entry; an option would force one module to name
+   * both tables, and Node executes every module it statically imports.
+   */
+
   /**
    * The compile-level option bag threaded to a plugin's `safeParse` (the caller
    * passes the render {@link Context}'s `opts`). Includes `allowExtendSelectors`,
@@ -41,6 +56,9 @@ export type SafeParseOptions = {
   compilerOptions?: ContextOptions & {
     /** Extend-selector kinds a plugin permits; consumed when building the TreeContext. */
     allowExtendSelectors?: ExtendSelectorKind[];
+
+    /** Jess `$apply` selector kinds a plugin permits. Defaults to class-only. */
+    allowApplySelectors?: ApplySelectorKind[];
   };
   importOptions?: ImportOptions;
 };
@@ -56,6 +74,15 @@ export interface UrlTransformRequest {
 
   /** Whether the target was authored as a quoted URL token. */
   quoted: boolean;
+
+  /**
+   * The typed syntax that owns the path. Direct quoted imports use import-path
+   * rewriting, while `url(...)` keeps URL-only policy such as query arguments.
+   * Context always supplies this fact so plugin implementations do not need to
+   * reconstruct it from target bytes. Omission by an older direct caller keeps
+   * ordinary URL behavior.
+   */
+  kind?: 'url' | 'import';
 
   /** The document that authored this URL. */
   fromFilePath?: string;
@@ -124,9 +151,10 @@ export interface PluginInterface {
   safeParse?(filePath: string, source: string, options?: SafeParseOptions): ISafeParseResult;
 
   /**
-   * Optionally transform a rendered URL target owned by this plugin's active
-   * document. This is intentionally not import resolution: Context already
-   * owns source identity and imports have been parsed before rendering.
+   * Optionally transform a rendered URL or direct quoted import target owned by
+   * this plugin's active document. This is intentionally not import resolution:
+   * Context already owns source identity and imports have been parsed before
+   * rendering.
    */
   transformUrl?(request: UrlTransformRequest): string | undefined;
 

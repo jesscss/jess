@@ -1,9 +1,13 @@
 # `@jesscss/parser-shared`
 
-Private, unpublished workspace package (`private: true`). It supplies Parseman
-macro inputs that the CSS, Less, SCSS and Jess parsers compose over at build
-time; macro expansion leaves no runtime import of it, so it must never appear
-in a published package's `dependencies`.
+Published runtime support for the Parseman grammar facts that the CSS, Less,
+SCSS, and Jess parsers compose. The CSS grammar keeps these modules external so
+downstream dialect packages can follow their composed pieces across the package
+boundary; parser consumers receive this package through the parser dependency
+closure.
+
+The package intentionally has no root entrypoint. Its public surface is limited
+to the three grammar-fact modules in `exports`.
 
 ## Admission test
 

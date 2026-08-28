@@ -1,5 +1,5 @@
-import type { Color, Dimension, ValueGroup, Fn } from '@jesscss/core/value';
-import { colorRawRgb, defineFunction, groupItems, makeColorRgb, RGB } from '@jesscss/core/value';
+import type { Color, Dimension, ValueGroup, Fn } from '@jesscss/core';
+import { colorRawRgb, defineFunction, groupItems, makeColorRgb, RGB } from '@jesscss/core';
 import { clamp01, isColor, isModern, percentOf } from './color-ctor-helper.js';
 import { requireDimension } from './math-helper.js';
 
@@ -42,7 +42,7 @@ export function makeRgb(value: ValueGroup): Color {
 }
 
 export const rgb: Fn = defineFunction('rgb', {
-  params: [{ kinds: 'any' }, { kinds: 'any', optional: true }, { kinds: 'any', optional: true }, { kinds: 'any', optional: true }],
+  params: [{ type: 'any' }, { type: 'any', optional: true }, { type: 'any', optional: true }, { type: 'any', optional: true }],
   variadic: true,
   body: list => makeRgb(list)
 });

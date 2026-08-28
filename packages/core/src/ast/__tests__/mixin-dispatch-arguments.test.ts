@@ -12,11 +12,16 @@
  * Each expectation below was captured from `npx less@4.6.3`.
  */
 import { describe, it, expect } from 'vitest';
-import { bindArgs } from '../mixin-dispatch.js';
 import {
-  mixinDef, mixinCall, any, isLiteralNode, keyword,
-  type MixinCall, type MixinDef, type Param, type ValueSlot
+  bindArgs, selectDefinitions,
+  type BoundSourceResolver, type BoundSourceTracker
+} from '../mixin-dispatch.js';
+import {
+  mixinDef, mixinCall, any, funcCall, isLiteralNode, keyword,
+  type CallValue, type MixinCall, type MixinDefinition, type Param, type ValueSlot
 } from '../nodes.js';
+import { DEFAULT_MODES } from '../value-eval.js';
+import { makeBool } from '../value-factory.js';
 
 /*
  * Caller-frame resolver for byte-literal args: our test args/defaults are plain
@@ -25,7 +30,7 @@ import {
 const resolve = (v: ValueSlot): string =>
   'type' in v ? (isLiteralNode(v) ? v.src : '') : v.map(resolve).join(' ');
 
-const argumentsOf = (def: MixinDef, call: MixinCall): ValueSlot => {
+const argumentsOf = (def: MixinDefinition, call: MixinCall): ValueSlot => {
   const bound = bindArgs(def, call, resolve);
   expect(bound).not.toBeNull();
   const a = bound!.get('arguments');
@@ -45,7 +50,7 @@ const slotText = (value: ValueSlot): string => {
   return isLiteralNode(value) ? value.src : '';
 };
 
-const argumentsText = (def: MixinDef, call: MixinCall): string => slotText(argumentsOf(def, call));
+const argumentsText = (def: MixinDefinition, call: MixinCall): string => slotText(argumentsOf(def, call));
 
 describe('mixin @arguments (vs less@4.6.3)', () => {
   const params: Param[] = [
@@ -94,13 +99,49 @@ describe('mixin @arguments (vs less@4.6.3)', () => {
     expect(argumentsText(def, call)).toBe('1px 2px 3px');
   });
 
+  it('routes only explicit sources through the source hook and defaults through their resolver', () => {
+    const defaultSource = funcCall('default-source', []);
+    const defaultB = any('20px');
+    const sourceA = any('1px');
+    const sourceC = any('9px');
+    const routed = mixinDef('.routed', [
+      { name: 'a' },
+      { name: 'b', default: defaultSource },
+      { name: 'c' }
+    ], []);
+    const seen: ValueSlot[] = [];
+    const defaultBound: string[][] = [];
+    const route: BoundSourceResolver = (value) => {
+      if ('type' in value && value.type !== 'MixinCall') {
+        seen.push(value);
+      }
+      return undefined;
+    };
+    const bound = bindArgs(
+      routed,
+      mixinCall('.routed', [sourceA, { name: 'c', value: sourceC }]),
+      resolve,
+      (value, bound) => {
+        expect(value).toBe(defaultSource);
+        defaultBound.push([...bound.keys()]);
+        return defaultB;
+      },
+      { resolve: route }
+    );
+
+    expect(bound?.get('arguments')).toEqual([sourceA, defaultB, sourceC]);
+    expect(seen).toEqual([sourceA, sourceC]);
+    expect(defaultBound).toEqual([['a']]);
+  });
+
   it('resolves a recursive value-slot argument without treating its array as a node', () => {
     const call: MixinCall = {
       type: 'MixinCall',
       name: '.mixin',
       args: [{ value: [[any('1px'), any('2px')]] }],
       path: [],
-      important: false
+      important: false,
+      content: null
     };
     expect(argumentsText(def, call)).toBe('1px 2px 20px 30px');
   });
@@ -141,5 +182,86 @@ describe('mixin @arguments (vs less@4.6.3)', () => {
 
     expect(bound?.get('values')).toEqual([authored]);
     expect(argumentsOf(restDef, mixinCall('.mixin', [{ value: authored }]))).toEqual([authored]);
+  });
+});
+
+describe('mixin bound-source cleanup', () => {
+  const trackedSelection = (
+    tracker: BoundSourceTracker,
+    typed: () => ReturnType<typeof makeBool> | Promise<ReturnType<typeof makeBool>>,
+    guard = { g: 'truth' as const, value: any('guard') }
+  ) => selectDefinitions(
+    [mixinDef('.tracked', [{ name: 'value' }], [], guard)],
+    mixinCall('.tracked', [any('source')]),
+    resolve,
+    () => typed,
+    null,
+    DEFAULT_MODES,
+    undefined,
+    undefined,
+    tracker
+  );
+
+  const tracking = (failure: 'none' | 'throw' | 'reject' = 'none') => {
+    let active: CallValue[] = [];
+    const discarded: CallValue[] = [];
+    const tracker: BoundSourceTracker = {
+      begin: () => {
+        active = [];
+      },
+      resolve: () => {
+        const key = any(`tracked-${discarded.length}-${active.length}`);
+        active.push(key);
+        if (failure === 'throw') {
+          throw new Error('binding failed');
+        }
+        if (failure === 'reject') {
+          return Promise.reject(new Error('binding rejected'));
+        }
+        return key;
+      },
+      finish: () => {
+        const keys = active;
+        active = [];
+        return keys;
+      },
+      discard: (keys) => {
+        discarded.push(...keys);
+      }
+    };
+    return { tracker, discarded };
+  };
+
+  it('discards a guard-rejected candidate key exactly once', () => {
+    const { tracker, discarded } = tracking();
+
+    expect(trackedSelection(tracker, () => makeBool(false))).toEqual([]);
+    expect(discarded).toHaveLength(1);
+    expect(new Set(discarded).size).toBe(1);
+  });
+
+  it('discards the active key when binding throws or rejects', async () => {
+    const thrown = tracking('throw');
+    expect(() => trackedSelection(thrown.tracker, () => makeBool(true))).toThrow('binding failed');
+    expect(thrown.discarded).toHaveLength(1);
+
+    const rejected = tracking('reject');
+    await expect(Promise.resolve(trackedSelection(rejected.tracker, () => makeBool(true))))
+      .rejects.toThrow('binding rejected');
+    expect(rejected.discarded).toHaveLength(1);
+  });
+
+  it('discards the viable key when guard selection throws or rejects', async () => {
+    const thrown = tracking();
+    expect(() => trackedSelection(thrown.tracker, () => {
+      throw new Error('guard failed');
+    })).toThrow('guard failed');
+    expect(thrown.discarded).toHaveLength(1);
+
+    const rejected = tracking();
+    await expect(Promise.resolve(trackedSelection(rejected.tracker, () =>
+      Promise.reject(new Error('guard rejected')))))
+      .rejects.toThrow('guard rejected');
+    expect(rejected.discarded).toHaveLength(1);
   });
 });

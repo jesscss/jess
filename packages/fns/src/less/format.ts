@@ -1,4 +1,4 @@
-import type { Fn, FnCtx, ValueGroup, ValueObj } from '@jesscss/core/value';
+import type { Fn, FnCtx, ValueGroup, Value } from '@jesscss/core';
 import {
   defineFunction,
   emitValue,
@@ -6,7 +6,7 @@ import {
   isValueGroupArray,
   makeKeyword,
   makeQuoted
-} from '@jesscss/core/value';
+} from '@jesscss/core';
 
 /** The selected token's Less string or CSS form, with uppercase URL encoding. */
 function tokenValue(token: string, value: ValueGroup, ctx: FnCtx): string {
@@ -15,14 +15,14 @@ function tokenValue(token: string, value: ValueGroup, ctx: FnCtx): string {
 }
 
 const FORMAT_PARAMS: Fn['params'] = [
-  { kinds: 'any' },
-  { kinds: 'any', optional: true },
-  { kinds: 'any', optional: true },
-  { kinds: 'any', optional: true },
-  { kinds: 'any', optional: true }
+  { type: 'any' },
+  { type: 'any', optional: true },
+  { type: 'any', optional: true },
+  { type: 'any', optional: true },
+  { type: 'any', optional: true }
 ];
 
-function formatKernel(list: ValueGroup, ctx: FnCtx): ValueObj {
+function formatKernel(list: ValueGroup, ctx: FnCtx): Value {
   const items = groupItems(list);
   const template = items[0]!;
   let result = ctx.stringify(template);

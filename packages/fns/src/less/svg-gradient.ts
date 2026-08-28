@@ -1,5 +1,5 @@
-import { colorRgbRounded, defineFunction, groupItems, isValueGroupArray, makeKeyword } from '@jesscss/core/value';
-import type { Color, Fn, ValueGroup, ValueObj } from '@jesscss/core/value';
+import { coerceNamedColorKeyword, colorRgbRounded, defineFunction, groupItems, isValueGroupArray, makeKeyword } from '@jesscss/core';
+import type { Color, Fn, ValueGroup, Value } from '@jesscss/core';
 
 /**
  * Less `svg-gradient()` — build an inline SVG gradient data URI. Stops are
@@ -7,9 +7,9 @@ import type { Color, Fn, ValueGroup, ValueObj } from '@jesscss/core/value';
  * bytes. A malformed call throws so the shared call boundary owns preservation.
  */
 const svgGradient: Fn = defineFunction('svg-gradient', {
-  params: [{ kinds: 'any' }],
+  params: [{ type: 'any' }],
   variadic: true,
-  body: (value, ctx): ValueObj => {
+  body: (value, ctx): Value => {
     const items = groupItems(value);
     if (items.length < 2) {
       throw new TypeError(STOPS_ERROR);
@@ -38,7 +38,17 @@ const svgGradient: Fn = defineFunction('svg-gradient', {
         throw new TypeError(STOPS_ERROR);
       }
       const parts = groupItems(stop);
-      const color = parts[0];
+      const rawColor = parts[0];
+
+      /*
+       * A stop written as a named color (`black`, `orange`) arrives as a Keyword —
+       * named colors stay keywords until their colour-ness is consulted, and this
+       * IS that site. Coerce it to a Color so the check below accepts it; a keyword
+       * that is not a named color passes through and still fails as an invalid stop.
+       */
+      const color = rawColor !== undefined && !isValueGroupArray(rawColor)
+        ? coerceNamedColorKeyword(rawColor)
+        : rawColor;
       const position = parts[1];
       const isEnd = i === 0 || i + 1 === stops.length;
       if (color === undefined || isValueGroupArray(color) || color.type !== 'Color') {

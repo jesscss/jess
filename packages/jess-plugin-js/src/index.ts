@@ -7,6 +7,7 @@ import * as net from 'node:net';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { decodeBridgeValue, encodeBridgeArgs, encodeBridgeValue } from './bridge.js';
 
 /**
@@ -79,6 +80,28 @@ const RUNTIME_MISSING_MESSAGE = [
   'If using npm with ignored scripts, reinstall with lifecycle scripts enabled.',
   'Or install native Deno and ensure "deno" is on PATH.'
 ].join('\n');
+
+/**
+ * Absolute path to the Deno binary the `deno` npm dependency downloads at
+ * install time, or undefined when that package (or its binary) is absent.
+ *
+ * `@jesscss/plugin-js` declares `deno` as a dependency precisely so `@plugin`
+ * execution works without a native Deno install; resolving that binary here is
+ * what makes the dependency load-bearing rather than decorative. Relying on a
+ * bare `deno` on PATH masked this on machines with a system Deno while failing
+ * anywhere it is only installed via the dependency (CI, fresh clones). The
+ * binary sits next to the package's own `bin.cjs` shim, which execs the exact
+ * same path.
+ */
+const resolveBundledDenoPath = (): string | undefined => {
+  try {
+    const packageDir = path.dirname(createRequire(import.meta.url).resolve('deno/package.json'));
+    const binary = path.join(packageDir, process.platform === 'win32' ? 'deno.exe' : 'deno');
+    return fs.existsSync(binary) ? binary : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 const BOOT_TIMEOUT_MS = 8000;
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -311,6 +334,7 @@ export class JsPlugin extends AbstractPlugin {
   }>();
 
   private idleTimer: NodeJS.Timeout | undefined;
+  private denoCommand: string | undefined;
 
   /**
    * Variable names each legacy plugin function has been observed to read,
@@ -366,15 +390,38 @@ export class JsPlugin extends AbstractPlugin {
     this.idleTimer.unref?.();
   }
 
-  private ensureRuntimeAvailable(): void {
-    const denoCommand = this.opts.denoCommand ?? 'deno';
-    const result = spawnSync(denoCommand, ['--version'], {
-      stdio: 'ignore',
-      env: sanitizeSpawnEnv(process.env)
-    });
-    if (result.status !== 0) {
-      throw new Error(RUNTIME_MISSING_MESSAGE);
+  /**
+   * The Deno executable this instance spawns, resolved once. An explicit
+   * `denoCommand` option wins; otherwise a Deno on PATH is preferred (the usual
+   * developer setup) and the binary shipped by the bundled `deno` dependency is
+   * the fallback (CI and any install without a native Deno). Throws the
+   * actionable RUNTIME_MISSING guidance when nothing runs.
+   */
+  private resolveDenoCommand(): string {
+    if (this.denoCommand !== undefined) {
+      return this.denoCommand;
     }
+    const runs = (command: string): boolean =>
+      spawnSync(command, ['--version'], {
+        stdio: 'ignore',
+        env: sanitizeSpawnEnv(process.env)
+      }).status === 0;
+
+    const explicit = this.opts.denoCommand;
+    if (explicit !== undefined) {
+      if (!runs(explicit)) {
+        throw new Error(RUNTIME_MISSING_MESSAGE);
+      }
+      return (this.denoCommand = explicit);
+    }
+    if (runs('deno')) {
+      return (this.denoCommand = 'deno');
+    }
+    const bundled = resolveBundledDenoPath();
+    if (bundled && runs(bundled)) {
+      return (this.denoCommand = bundled);
+    }
+    throw new Error(RUNTIME_MISSING_MESSAGE);
   }
 
   private ensureRuntime(): Promise<void> {
@@ -517,7 +564,7 @@ export class JsPlugin extends AbstractPlugin {
   }
 
   private startWorker(socketPath: string): Promise<void> {
-    const denoCommand = this.opts.denoCommand ?? 'deno';
+    const denoCommand = this.resolveDenoCommand();
     const moduleDir = path.dirname(fileURLToPath(import.meta.url));
     const compiledWorkerPath = path.join(moduleDir, 'runtime-worker.js');
     const sourceWorkerPath = path.join(moduleDir, 'runtime-worker.ts');
@@ -603,7 +650,7 @@ export class JsPlugin extends AbstractPlugin {
   }
 
   private async startRuntime(): Promise<void> {
-    this.ensureRuntimeAvailable();
+    this.resolveDenoCommand();
     const socketPath = await this.startBroker();
     try {
       await this.startWorker(socketPath);

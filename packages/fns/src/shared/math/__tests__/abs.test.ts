@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeDimension } from '@jesscss/core/value';
+import { makeDimension } from '@jesscss/core';
 import sharedAbs from '../abs.js';
 
 describe('shared abs()', () => {

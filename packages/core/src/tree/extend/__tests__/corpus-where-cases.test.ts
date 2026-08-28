@@ -5,7 +5,7 @@
  * otherwise. Exercises `:where()`/`:is()` graft targets — the graft-into-target rung.
  */
 import { describe, it, expect, afterAll } from 'vitest';
-import { el, sellist, compound, pseudo } from '../../../index.js';
+import { el, sellist, compound, pseudo } from '../../index.js';
 import { extendViaOwn, reportFrontier, resetFrontier } from './corpus-harness.js';
 
 const where = (arg: any) => pseudo({ name: ':where', arg });

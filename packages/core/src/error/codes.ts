@@ -37,7 +37,11 @@ export type JessErrorCode =
   | 'eval/ruleset-on-property'
   | 'eval/async-in-sync-position'
   | 'eval/recursive-reference'
+  | 'eval/loop-iteration-limit'
   | 'eval/invalid-unit-arithmetic'
+  | 'eval/unexpressible-unit'
+  | 'eval/invalid-line-names'
+  | 'eval/incomparable-operands'
   | 'eval/unit-conversion'
   | 'extend/protected-boundary'
   | 'extend/not-found'
@@ -50,8 +54,7 @@ export type JessErrorCode =
   | 'resolve/unused-variable'
   | 'selector/duplicate'
   | 'selector/parentless-ampersand'
-  | 'selector/comma-list-interpolation'
-  | 'function/unresolved';
+  | 'selector/comma-list-interpolation';
 
 /**
  * Template record for codes. Keep these short and actionable.
@@ -273,11 +276,46 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     }
   ],
   [
+    'eval/loop-iteration-limit',
+    {
+      summary: 'Loop did not terminate',
+      reason:
+        'A $while condition was still true after ${limit} iterations, so the loop was stopped rather than run forever.',
+      fix: 'Make the body change a value the condition reads, or rewrite the loop as a $for over a bounded range.'
+    }
+  ],
+  [
     'eval/invalid-unit-arithmetic',
     {
       summary: 'Invalid unit arithmetic',
       reason: '${reason}',
       fix: 'Use compatible units, cancel compound units before emission, or use unit() to normalize the value.'
+    }
+  ],
+  [
+    'eval/unexpressible-unit',
+    {
+      summary: 'Unit has no CSS spelling',
+      reason:
+        '${expr} composes a unit CSS cannot express, so no result can carry it honestly.',
+      fix: 'Cancel the units, drop one side\'s unit, or wrap the expression in calc() to keep it as authored.'
+    }
+  ],
+  [
+    'eval/invalid-line-names',
+    {
+      summary: 'Bracketed value is not printable CSS',
+      reason:
+        'CSS reads [ ... ] in a value as grid line names, whose grammar is \'[\' <custom-ident>* \']\', so [${bytes}] has no CSS meaning.',
+      fix: 'Keep the bracketed list as data — bind it, pass it, index it — or print only custom identifiers, e.g. [full-start].'
+    }
+  ],
+  [
+    'eval/incomparable-operands',
+    {
+      summary: 'Incomparable operands',
+      reason: '${reason}',
+      fix: 'Compare values that share a ground — two numbers, two strings, or two colours — or test with = instead, which is false rather than an error when there is no ground.'
     }
   ],
   [
@@ -368,15 +406,6 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       reason:
         'The value interpolated into selector "${selector}" is a comma-separated list; a list can\'t be spliced into a selector position.',
       fix: 'Use each() to distribute a rule over a list instead of interpolating the list into the selector.'
-    }
-  ],
-  [
-    'function/unresolved',
-    {
-      summary: 'Function "${name}" left as-is',
-      reason:
-        '"${name}" matched a registered function but could not be evaluated: ${reason}',
-      fix: 'Fix the arguments, or set functionMode: \'error\' to make this fail.'
     }
   ],
   [

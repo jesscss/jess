@@ -1,40 +1,51 @@
-import { makeBool, defineFunction, isValueGroupArray } from '@jesscss/core/value';
-import type { Fn, ValueGroup, ValueObj } from '@jesscss/core/value';
+import { makeBool, defineFunction, isValueGroupArray, namedColor } from '@jesscss/core';
+import type { Fn, ValueGroup } from '@jesscss/core';
 
-/*
- * `isurl()` deliberately has no AST-v2 value-domain export. `Url` is syntax,
- * not a materialized ValueObj tag; once evaluated its rendered `url(...)` form is
- * intentionally opaque. Recreating the legacy predicate would require sniffing
- * output bytes, which this function layer must not do.
+/**
+ * A materialized value counts as a color for a type predicate when it is a
+ * `Color` OR a `Keyword` that names a CSS color. NamedColor→Keyword convergence
+ * keeps `red` a keyword at parse; its colour-ness is consulted here, at the
+ * point of use, so `iscolor(red)` stays true and `iskeyword(red)` stays false.
  */
+function isColorLike(value: ValueGroup): boolean {
+  return !isValueGroupArray(value)
+    && (value.type === 'Color' || (value.type === 'Keyword' && namedColor(value.text) !== undefined));
+}
 
-/** Less `iscolor()` — true for an already-materialized colour value. */
+/** Less `iscolor()` — true for a colour value or a named-color keyword. */
 const iscolor: Fn = defineFunction('iscolor', {
-  params: [{ kinds: 'any' }],
-  body: value => makeBool(!isValueGroupArray(value) && value.type === 'Color')
+  params: [{ type: 'any' }],
+  body: value => makeBool(isColorLike(value))
 });
 
 /** Less `isnumber()` — true for an already-materialized dimension. */
 const isnumber: Fn = defineFunction('isnumber', {
-  params: [{ kinds: 'any' }],
+  params: [{ type: 'any' }],
   body: value => makeBool(!isValueGroupArray(value) && value.type === 'Dimension')
 });
 
 /** Less `isstring()` — true for a quoted value. */
 const isstring: Fn = defineFunction('isstring', {
-  params: [{ kinds: 'any' }],
+  params: [{ type: 'any' }],
   body: value => makeBool(!isValueGroupArray(value) && value.type === 'Quoted')
 });
 
-/** Less `iskeyword()` — true for a materialized bare keyword. */
+/** Less `iskeyword()` — true for a bare keyword that is NOT a named color
+ * (a named-color keyword answers `iscolor`, matching pre-convergence Less). */
 const iskeyword: Fn = defineFunction('iskeyword', {
-  params: [{ kinds: 'any' }],
-  body: value => makeBool(!isValueGroupArray(value) && value.type === 'Keyword')
+  params: [{ type: 'any' }],
+  body: value => makeBool(!isValueGroupArray(value) && value.type === 'Keyword' && namedColor(value.text) === undefined)
+});
+
+/** Less `isurl()` — true only for a parser-owned `url(...)` value. */
+const isurl: Fn = defineFunction('isurl', {
+  params: [{ type: 'any' }],
+  body: value => makeBool(!isValueGroupArray(value) && value.type === 'Url')
 });
 
 /** Less `isunit()` — true for a dimension with a case-insensitive matching unit. */
 const isunit: Fn = defineFunction('isunit', {
-  params: [{ kinds: 'any' }, { kinds: 'any' }],
+  params: [{ type: 'any' }, { type: 'any' }],
   body: (value, unit) => makeBool(!isValueGroupArray(value)
     && value.type === 'Dimension'
     && value.unit.toLowerCase() === unitText(unit).toLowerCase())
@@ -42,19 +53,19 @@ const isunit: Fn = defineFunction('isunit', {
 
 /** Less `ispixel()` — `isunit(value, px)`. */
 const ispixel: Fn = defineFunction('ispixel', {
-  params: [{ kinds: 'any' }],
+  params: [{ type: 'any' }],
   body: value => makeBool(isDimUnit(value, 'px'))
 });
 
 /** Less `ispercentage()` — `isunit(value, %)`. */
 const ispercentage: Fn = defineFunction('ispercentage', {
-  params: [{ kinds: 'any' }],
+  params: [{ type: 'any' }],
   body: value => makeBool(isDimUnit(value, '%'))
 });
 
 /** Less `isem()` — `isunit(value, em)`. */
 const isem: Fn = defineFunction('isem', {
-  params: [{ kinds: 'any' }],
+  params: [{ type: 'any' }],
   body: value => makeBool(isDimUnit(value, 'em'))
 });
 
@@ -71,8 +82,8 @@ function unitText(value: ValueGroup): string {
   return value.bytes;
 }
 
-function isDimUnit(value: ValueObj, unit: string): boolean {
-  return value.type === 'Dimension' && value.unit.toLowerCase() === unit;
+function isDimUnit(value: ValueGroup, unit: string): boolean {
+  return !isValueGroupArray(value) && value.type === 'Dimension' && value.unit.toLowerCase() === unit;
 }
 
-export { iscolor, isnumber, isstring, iskeyword, ispixel, ispercentage, isem, isunit };
+export { iscolor, isnumber, isstring, iskeyword, isurl, ispixel, ispercentage, isem, isunit };

@@ -1,4 +1,4 @@
-import { el, compound, sel, sellist, is } from '../../../index.js';
+import { el, compound, sel, sellist, is } from '../../index.js';
 import { extendSelector, tryExtendSelector, ExtendErrorType } from '../extend.js';
 
 describe('Extend Duplicate Element/ID Validation', () => {

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Dimension as LegacyDimension } from '@jesscss/core';
-import { makeDimension } from '@jesscss/core/value';
+import { makeDimension } from '@jesscss/core';
 import { lessFns } from '../registry.js';
 import { pow } from '../pow.js';
 
@@ -19,14 +18,11 @@ function legacyPowOracle(
   base: { number: number; unit: string },
   exponent: { number: number; unit: string }
 ): LegacyDimensionOracle {
-  const result = new LegacyDimension({
-    number: Math.pow(base.number, exponent.number),
-    unit: base.unit || undefined
-  });
+  const result = makeDimension(Math.pow(base.number, exponent.number), base.unit);
   return {
     number: result.number,
-    unit: result.unit ?? '',
-    bytes: result.toString()
+    unit: result.unit,
+    bytes: result.bytes
   };
 }
 

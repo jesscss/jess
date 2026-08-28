@@ -8,6 +8,14 @@ parser host, action registry, bridge, compatibility alias, source reparse, or
 fallback path. New traversal, allocation, copying, metadata, helper/API
 surface, and hot-path state need explicit ownership and measured evidence.
 
+For parser assertions, authored combinator shape is not allocation evidence.
+Inspect the exact generated AST and CST functions: a positive `peek(...)` over
+materializing terminals can publish captured leaves and source-span objects only
+to roll them back. A parser hot-path review must name the generated call ladder
+and publication/rollback count. Prefer an already parent-owned delimiter or a
+proven capture-free recognizer; a semantic AST/CST matrix alone cannot detect
+discarded parser objects.
+
 Before a queue pass, update the self-prosecution block in `HANDOFF.md` and run:
 
 ```sh
@@ -110,7 +118,7 @@ a blanket optimization exemption or a new active architecture queue.
     },
     "sourceCheck": {
       "file": "packages/core/src/ast/serialize.ts",
-      "caller": "function planImportedExtends(",
+      "caller": "function planImportedFacts(",
       "guard": "bodyMayPlanExtend",
       "call": "collectPlacedExtendFacts",
       "profile": "recordAstExtendProfile"
@@ -137,23 +145,23 @@ a blanket optimization exemption or a new active architecture queue.
     "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/evaluator-call-boundary.test.ts"]}
   },
   {
-    "id": "ast-value-guard-equality-modes",
+    "id": "ast-value-guard-comparison-op",
     "kind": "semantic-boundary",
-    "surface": "typed guard equality compatibility modes",
+    "surface": "typed guard comparison kind, carried by the lowered node's op",
     "files": ["packages/core/src/ast/value-guards.ts"],
     "semanticBoundary": {
-      "trigger": "a typed guard comparison receives Less, Sass, or exact equalityMode",
-      "scope": "Only typed guard comparison owns mode-specific equality: Less permits unitless numeric coercion and emitted escaped-word equality, Sass keeps unit distinctions while comparing quoted and keyword text, and exact retains the structural distinction. Function dispatch, variable resolution, and declaration rendering do not enter this branch.",
-      "cases": ["less-unitless-dimension", "sass-quoted-keyword", "exact-structural-distinction"],
+      "trigger": "a typed guard comparison receives op '=', '==' or 'sass-equal'",
+      "scope": "Only typed guard comparison owns the comparison KIND, and it reads it from the node's own op rather than from ambient config: '=' is loose over the operand pair's common ground, '==' is that plus sameType, and 'sass-equal' dispatches on operand type (type-equal for a numeric pair, loose otherwise). There is no equalityMode. Function dispatch, variable resolution, and declaration rendering do not enter this branch.",
+      "cases": ["loose-common-ground", "type-equal-declines-coercion", "sass-equal-numeric-dispatch"],
       "baseline": {"fixture": "benchmark.less", "phase": "render"}
     },
     "sourceCheck": {
       "file": "packages/core/src/ast/value-guards.ts",
-      "caller": "function compareNodes(",
-      "guard": "if (equalityMode === 'sass')",
-      "call": "selfCompare(a, b, equalityMode)"
+      "caller": "export function compare(",
+      "guard": "case SASS_EQUAL:",
+      "call": "compareGroups(left, right, unitMode)"
     },
-    "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/value-operate-compare.test.ts", "packages/jess/test/less/equality-mode.test.ts"]}
+    "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/value-operate-compare.test.ts", "packages/jess/test/less/less-equality.test.ts", "packages/jess/test/scss/sass-equality-primitive.test.ts"]}
   },
   {
     "id": "ast-value-guard-negate-result",
@@ -169,7 +177,7 @@ a blanket optimization exemption or a new active architecture queue.
     "sourceCheck": {
       "file": "packages/core/src/ast/value-guards.ts",
       "caller": "const negate = (",
-      "guard": "if (c === undefined)",
+      "guard": "if (c === undefined || c === NO_GROUND)",
       "call": "return c === -1 ? 1 : c === 1 ? -1 : 0;"
     },
     "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/value-operate-compare.test.ts", "packages/jess/test/less/equality-mode.test.ts"]}
@@ -213,6 +221,9 @@ a blanket optimization exemption or a new active architecture queue.
       "packages/core/src/ast/value-guards.ts",
       "packages/core/src/ast/value-list.ts",
       "packages/core/src/ast/extend/compose.ts",
+      "packages/core/src/ast/extend/emit.ts",
+      "packages/core/src/ast/extend/ir.ts",
+      "packages/core/src/ast/extend/match.ts",
       "packages/core/src/ast/extend/plan.ts",
       "packages/core/src/ast/extend/solve.ts"
     ],
@@ -301,6 +312,7 @@ a blanket optimization exemption or a new active architecture queue.
     "surface": "retained legacy tree strict runtime contracts",
     "files": [
       "packages/core/src/tree/ampersand.ts",
+      "packages/core/src/tree/call.ts",
       "packages/core/src/tree/declaration.ts",
       "packages/core/src/tree/default-guard.ts",
       "packages/core/src/tree/extend.ts",
@@ -310,7 +322,7 @@ a blanket optimization exemption or a new active architecture queue.
       "packages/core/src/tree/reference.ts",
       "packages/core/src/tree/ruleset.ts",
       "packages/core/src/tree/selector-list.ts",
-      "packages/core/src/tree/util/bitset.ts",
+      "packages/core/src/util/bitset.ts",
       "packages/core/src/tree/util/combinator.ts",
       "packages/core/src/tree/util/extend.ts",
       "packages/core/src/tree/util/extend-roots.ts",
@@ -318,9 +330,21 @@ a blanket optimization exemption or a new active architecture queue.
       "packages/core/src/tree/util/render-buffer.ts",
       "packages/core/src/tree/util/selector-analysis.ts"
     ],
+    "supportFiles": [
+      "packages/core/src/util/calculate.ts",
+      "packages/core/src/tree/color.ts",
+      "packages/core/src/tree/dimension.ts",
+      "packages/core/src/tree/node.ts",
+      "packages/core/src/tree/number.ts",
+      "packages/core/src/tree/operation.ts",
+      "packages/core/src/tree/selector.ts",
+      "packages/core/src/tree/util/selector-utils.ts",
+      "packages/core/src/tree/util/should-operate.ts"
+    ],
+    "coverage": "owner-plus-named-carry-forward-support",
     "semanticRuntime": {
-      "owner": "the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
-      "scope": "This bounded strict-contract drain makes existing runtime facts truthful while retained tree consumers are removed: declaration rendering propagates existing MaybePromise results and reads provenance only through its accessor, DefaultGuard owns the value its constructor already writes, bitsets use their existing inversion reader instead of an undeclared dependency field, the shared combinator recognizer exposes the exact string-literal-or-node type it already recognizes, selector-list/extend helpers state their existing singleton-collapse and array-or-node inheritance behavior, and rules/ruleset/ampersand consumers accept the parser-delivered string-or-array selector surface they already receive. Ampersand only materializes an array where append or resolved-selector node behavior requires a node; key-set analysis consumes the raw array directly. A mixin's invisible render is synchronously empty when it has no effect to await, and interpolated-name registration truthfully returns Mixin rather than promising the receiver subtype because preparation may return a distinct withParts result. Extend registration, root composition, and composed-match walking now admit the same selector surface and materialize it only at APIs that require Selector node behavior. It adds no compatibility shim, alternate evaluator, traversal, output policy, or performance claim.",
+      "owner": "the sixteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, call, and extend owners listed by legacy-tree-strict-contract-drain",
+      "scope": "This bounded strict-contract drain makes existing runtime facts truthful while retained tree consumers are removed: declaration rendering propagates existing MaybePromise results and reads provenance only through its accessor, DefaultGuard owns the value its constructor already writes, bitsets use their existing inversion reader instead of an undeclared dependency field, the shared combinator recognizer exposes the exact string-literal-or-node type it already recognizes, selector-list/extend helpers state their existing singleton-collapse and array-or-node inheritance behavior, and rules/ruleset/ampersand consumers accept the parser-delivered string-or-array selector surface they already receive. Ampersand only materializes an array where append or resolved-selector node behavior requires a node; key-set analysis consumes the raw array directly. A Call whose registered function declines CSS-compatible arguments preserves its authored call silently; an explicit error mode still propagates the failure. A mixin's invisible render is synchronously empty when it has no effect to await, and interpolated-name registration truthfully returns Mixin rather than promising the receiver subtype because preparation may return a distinct withParts result. Extend registration, root composition, and composed-match walking now admit the same selector surface and materialize it only at APIs that require Selector node behavior. It adds no compatibility shim, alternate evaluator, traversal, output policy, or performance claim.",
       "cases": [
         "declaration-sync-and-async-render-result",
         "declaration-merge-source-span-exclusion",
@@ -332,6 +356,7 @@ a blanket optimization exemption or a new active architecture queue.
         "parser-delivered-selector-array-ampersand",
         "selector-array-ruleset-callable-registration",
         "selector-array-key-set-analysis",
+        "function-call-silent-preserve",
         "selector-compose-cache-node-boundary",
         "ordered-registration-context-restoration",
         "property-merge-container-scope",
@@ -355,7 +380,7 @@ a blanket optimization exemption or a new active architecture queue.
     "files": ["packages/core/src/tree/node-base.ts"],
     "neutralRefactor": {
       "costDelta": "neutral",
-      "why": "The Less-style Visitor and Node.accept ABI had no production or test consumers after the compat bridge cutover. Removing the dead per-node dispatch surface deletes only unreachable methods, probes, symbols, and the visitor module; Context's separate SpineVisitor lifecycle hook remains, and no parser, import resolver, plugin dispatcher, or canonical AST serializer path enters this deleted boundary.",
+      "why": "The Less-style Visitor and Node.accept ABI had no production or test consumers after the compat bridge cutover. Removing the dead per-node dispatch surface deletes only unreachable methods, probes, symbols, and the visitor module; Context's separate emit lifecycle hook remains internal, and no parser, import resolver, plugin dispatcher, or canonical AST serializer path enters this deleted boundary.",
       "byteIdentity": {"fixture": "benchmark.less", "collapseNesting": true, "outputSha256": "ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6", "outputBytes": 122390}
     },
     "benchmark": {"fixture": "benchmark.less", "phase": "render", "medianMs": 80.056, "outputSha256": "ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6", "outputBytes": 122390},
@@ -382,18 +407,6 @@ a blanket optimization exemption or a new active architecture queue.
       "costDelta": "decrease",
       "allowsProsecutedDangerTokens": true,
       "why": "The deleted legacy StyleImport class and its Rules/spine consumers duplicated the canonical AST-v2 serializer's typed import execution. This cut removes the tree resolver, retry queue, placement construction, import-body scans, registration wiring, caches, dedupe ledger, imported-extend re-gate, public tree export, and abort sentinel. Context/plugin loading and AST StyleImport execution remain unchanged, and no replacement bridge, traversal, allocation, or output policy is introduced.",
-      "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
-    }
-  },
-  {
-    "id": "ast-extend-emit-lint-only-normalization",
-    "kind": "neutral-or-negative",
-    "surface": "mechanical ESLint normalization in the existing AST extend emitter",
-    "files": ["packages/core/src/ast/extend/emit.ts"],
-    "neutralRefactor": {
-      "costDelta": "neutral",
-      "allowsProsecutedDangerTokens": true,
-      "why": "This slice changes only ESLint-required braces, operator layout, arrow-parameter style, and trailing commas in the existing AST extend emitter. It adds no planner, selector traversal, allocation, or output policy; the emitted extend facts and dispatch path are unchanged.",
       "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
     }
   },
@@ -439,6 +452,11 @@ active owners of the current `origin/dev..HEAD` integration delta:
 `ast-extend-prefilter-toggle-deletion`,
 `ast-evaluator-stale-adapter-comment-deletion`, and
 `ast-extend-public-toggle-export-deletion`.
+
+`ast-extend-emit-lint-only-normalization` is also retired as of the AST extend
+IR naming cleanup: `emit.ts` now belongs to the broader
+`ast-semantic-runtime-cutover` owner, and the old lint-only record would
+incorrectly claim a non-lint patch.
 
 They are deliberately absent from the machine-readable registry. Several owned
 files now contain independent AST-v2/runtime work (in particular

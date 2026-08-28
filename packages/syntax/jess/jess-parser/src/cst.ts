@@ -1,6 +1,14 @@
-import { parseCst, parseDocCst, type CssCstNode, type CssCstParseOptions, type CssCstParseResult, type ParseDoc } from '@jesscss/css-parser/cst';
-import { jessCstGrammar } from './grammar.js';
+import { commentTriviaLabels } from './trivia-labels.js';
+import { parseCst, parseDocCst, type CssCstNode, type CssCstParseOptions, type CssCstParseResult, type ParseDoc } from '@jesscss/css-parser/cst-host';
+import { jessCstGrammar } from './grammar/cst.js';
 
+export { commentTriviaLabels } from './trivia-labels.js';
+
+/**
+ * Parse Jess to a CST. Spans carry offsets only; for line/column facts import
+ * the same functions from `@jesscss/jess-parser/cst/positions`, which binds the
+ * line-aware compiled table. This entry never loads that table.
+ */
 export function parseJessCst(
   input: string,
   startRule = 'Stylesheet',
@@ -10,12 +18,16 @@ export function parseJessCst(
     jessCstGrammar as Record<string, unknown>,
     input,
     startRule,
-    options
+    options,
+    commentTriviaLabels
   );
 }
 
-/** Incremental (`.edit()`-able) Jess document — mirrors `parseLessDoc`/`parseScssDoc`. */
-export function parseJessDoc(input: string, startRule = 'Stylesheet'): ParseDoc<CssCstNode> {
+/** Incremental (`.edit()`-able) Jess document — see `parseDocCst`. */
+export function parseJessDoc(
+  input: string,
+  startRule = 'Stylesheet'
+): ParseDoc<CssCstNode> {
   return parseDocCst(
     jessCstGrammar as Record<string, unknown>,
     input,
@@ -31,4 +43,4 @@ export type {
   CssCstParseOptions as JessCstParseOptions,
   CssCstParseResult as JessCstParseResult,
   CssCstType as JessCstType
-} from '@jesscss/css-parser/cst';
+} from '@jesscss/css-parser/cst-host';

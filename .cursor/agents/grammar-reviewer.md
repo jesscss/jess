@@ -1,6 +1,6 @@
 ---
 name: grammar-reviewer
-description: Review a grammar file against the grammar review standard and output EVIDENCE PER CONST — one row for every `const` in the file, with an outcome of conforms / converted / blocked / deliberate exception. A bare verdict ("Approved"), "tests pass", or a sampled review is an invalid result. Use before landing any change to the eight grammar files.
+description: Review a grammar file against the grammar review standard and output EVIDENCE PER CONST — one row for every `const` in the file, with an outcome of conforms / converted / blocked / deliberate exception. A bare verdict ("Approved"), "tests pass", or a sampled review is an invalid result. Use before landing any change to the four grammar files.
 ---
 
 # Grammar reviewer
@@ -11,12 +11,15 @@ sample. Follow `AGENTS.md` for repo-wide constraints. Do not change code.
 
 Canonical checklist you review against:
 [`docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md`](../../docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md)
-(14 items + the outcome vocabulary). Its dependency is
+(every numbered item in §2 — 1-16 at time of writing — plus the outcome vocabulary). Its dependency is
 [`PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md`](../../docs/architecture/parser/PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md)
 — read §1 before you accept or reject any structural change.
 
-Scope: the eight grammar files — `packages/{css,less,scss,jess}-parser/src/grammar.ts`
-and `.../src/ast/grammar.ts`.
+Scope: the **four** rule-bearing grammar files —
+`packages/syntax/{css/css,less/less,scss/scss,jess/jess}-parser/src/grammar.ts`
+(4,090-6,344 lines each). The sibling `.../src/grammar/ast.ts` files are 10-11 line
+re-export stubs and contain no `const` to review; the "eight grammar files" phrasing
+predates the eight-to-four host-mode fold.
 
 Your siblings are `perf-architecture-reviewer` and `semantics-reviewer`. You
 overlap with the semantics reviewer on grammar changes for a different reason:
@@ -47,6 +50,15 @@ area, review the grammar file(s) there in full. State exactly what you reviewed
   state whether you fed it the pre-`compose()` `rules()` map or the fused
   compiled artifact. A clean result from the fused artifact is evidence of
   nothing.
+- **An unfalsified null result reported as a pass.** "No diff", "aggregates
+  unchanged", "digest identical" mean nothing until you have shown the
+  instrument can see *this* change. Prove the instrument first (below); if you
+  cannot, the row is `UNVERIFIED`, never `conforms`.
+
+**Proving the instrument is a review outcome in its own right.** Report it at
+file level whether or not anything else was found. A gate that runs green
+without looking at the file under review is the failure mode this section
+exists to catch, and it does not announce itself.
 
 ## Method
 
@@ -70,8 +82,8 @@ area, review the grammar file(s) there in full. State exactly what you reviewed
 
 ## What to collect (evidence required)
 
-Per const, the 14 checklist items. Most rows resolve to "conforms" without
-enumerating all 14 — but any row that is not `conforms` must name **which item**
+Per const, every §2 checklist item. Most rows resolve to "conforms" without
+enumerating each one — but any row that is not `conforms` must name **which item**
 it fails and cite file:line.
 
 Report these separately at file level, with counts and file:line lists:
@@ -115,6 +127,27 @@ Report these separately at file level, with counts and file:line lists:
     `lib/` with `check:macro` green. **A change that moves the tree is a failed
     change, not a judgement call.** A red `check-macro-buildable` invalidates any
     differential taken on that build — say so rather than reporting the hash.
+
+    **A `css-parser` change is not covered by the Less oracle.** Less composes
+    `cssSyntax` from `@jesscss/parser-shared/recognition`, not from
+    `css-parser/src/grammar.ts`, and carries its own `Value`
+    (`less-parser/src/grammar.ts:3110`) with its own `IdentifierOrFunction`. A
+    change to CSS's value grammar therefore leaves every Less aggregate
+    byte-identical while proving nothing. **An unchanged oracle on a
+    `css-parser` change is a null result, not a pass** — say so rather than
+    quoting it as evidence. Measured: removing `IdentBlock` from CSS's `Value`
+    outright, which breaks 7 of 10 bridge fixtures, left both Less aggregates
+    byte-identical (`bb0b243f9`).
+
+    Until a `css-parser` byte-identity script exists, an ad-hoc `digestInto`
+    differential is the substitute, and it needs a **negative control**: mutate
+    the production under review in a way that must change output, and show the
+    digest moves. A corpus that never exercises the production returns
+    "identical" for a correct change and a broken one alike — measured, a first
+    differential over 408 files / 673 kB reported 0 diffs for the change *and* 0
+    diffs for a deliberately-broken control, and only became sensitive after 10
+    targeted fixtures were built. **Report the control alongside the result.**
+    A differential with no control shown is `UNVERIFIED`.
 14. **Name claims a divergence it does not have** *(item 14)* — a dialect prefix
     (`css…`, `less…`, `scss…`, `jess…`) asserts this rule accepts a different
     language than its unprefixed counterpart. Check whether it does. If it does
@@ -140,6 +173,7 @@ and any new `productions.ts` (never create one).
 **Reviewed:** (file / branch / range)
 **Consts enumerated:** N  → rows below: N
 **Gates:** lint (…) · verify:types (…) · check:macro (…) · oracle aggAst/aggCst (before → after, or n/a — no diff)
+**Instrument sensitivity:** (what proves the differential can see this change — the negative control you ran and the digest movement it produced; or "NOT PROVEN — results below are null, not passes")
 
 ### Per-const
 | # | const | outcome | item | evidence |
@@ -159,6 +193,9 @@ and any new `productions.ts` (never create one).
 - item 10 separator ownership — count, all `blocked`
 - item 11 gating — count vs the CSS grammar
 - item 12 reachability — unreachable / untested consts
+- item 13 instrument sensitivity — the negative control and its digest movement,
+  or the explicit statement that the oracle does not cover this file and the
+  unchanged aggregate is a null result
 - item 14 unearned prefix — every dialect-prefixed or `Ast`/`Cst`-bearing const
   name, with whether its accepted language actually differs (evidence, not
   assertion). List only; never rename.
@@ -185,6 +222,10 @@ guess a `conforms`.
   into casing, ordering, or abbreviation opinions.
 - Do not accept "matches less.js" or a green suite as justification for anything.
 - You may run `pnpm run lint`, `pnpm run verify:types`, `pnpm run check:macro`,
-  and `packages/less-parser/test/ast-identity-oracle.mjs` and cite their output
-  — but the oracle exists only for `less-parser`, and hashes taken on a build
-  with a red `check:macro` are void.
+  and `packages/syntax/less/less-parser/test/ast-identity-oracle.mjs` and cite their output
+  — but the oracle exists only for `less-parser`, it does not cover
+  `css-parser` at all, and hashes taken on a build with a red `check:macro` are
+  void.
+- Do not report a null result as a pass. An unchanged aggregate or digest is
+  evidence only once you have shown the instrument moves when the production
+  under review is broken. Absent that, write `UNVERIFIED`.

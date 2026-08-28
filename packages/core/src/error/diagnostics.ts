@@ -67,6 +67,10 @@ export interface ParserFailure {
     | 'parse/unparenthesized-mixin-guard';
   readonly offset: number;
   readonly endOffset?: number;
+  readonly line?: number;
+  readonly column?: number;
+  readonly endLine?: number;
+  readonly endColumn?: number;
   readonly expected?: readonly string[];
   readonly reason?: string;
   readonly fix?: string;
@@ -93,6 +97,22 @@ function parserFailureFrom(error: unknown): ParserFailure | undefined {
     && Number.isFinite(error.endOffset)
       ? error.endOffset
       : undefined;
+  const line =
+    'line' in error && typeof error.line === 'number' && Number.isFinite(error.line)
+      ? error.line
+      : undefined;
+  const column =
+    'column' in error && typeof error.column === 'number' && Number.isFinite(error.column)
+      ? error.column
+      : undefined;
+  const endLine =
+    'endLine' in error && typeof error.endLine === 'number' && Number.isFinite(error.endLine)
+      ? error.endLine
+      : undefined;
+  const endColumn =
+    'endColumn' in error && typeof error.endColumn === 'number' && Number.isFinite(error.endColumn)
+      ? error.endColumn
+      : undefined;
   const expected =
     'expected' in error && Array.isArray(error.expected)
       ? Array.from(new Set(error.expected.filter(
@@ -117,7 +137,7 @@ function parserFailureFrom(error: unknown): ParserFailure | undefined {
       : undefined;
   const fix =
     'fix' in error && typeof error.fix === 'string' ? error.fix : undefined;
-  return { code, offset, endOffset, expected, reason, fix };
+  return { code, offset, endOffset, line, column, endLine, endColumn, expected, reason, fix };
 }
 
 type ParserExpectedSummary = {
@@ -149,13 +169,12 @@ function expectedValueSummary(
   }
   const expectedSet = new Set(expected);
   const looksLikeValueProduction =
-    hasExpected(expectedSet, 'CssSyntaxNumber')
-    && hasExpected(expectedSet, 'CssSyntaxDimensionUnit')
-    && hasExpected(expectedSet, 'not(peek)')
+    hasExpected(expectedSet, 'NumberToken')
+    && hasExpected(expectedSet, 'DimensionUnit')
+    && hasExpected(expectedSet, 'not(regex)')
     && (
       hasExpected(expectedSet, 'LessSyntaxKeyword')
-      || hasExpected(expectedSet, 'LessSyntaxNamedColor')
-      || hasExpected(expectedSet, 'CssSyntaxHexColor')
+      || hasExpected(expectedSet, 'HexColor')
     );
   if (!looksLikeValueProduction) {
     return undefined;
@@ -217,6 +236,46 @@ function expectedSemicolonSummary(
   };
 }
 
+/**
+ * Parseman surfaces the class/id selector matcher as a regex literal whose
+ * source begins with the `[.#]` character class. Recognizing it by that prefix
+ * lets the classifier name a selector frame without ever printing the regex.
+ */
+function isClassOrIdSelectorToken(token: string): boolean {
+  return token.startsWith('/[.#]');
+}
+
+/**
+ * The deepest frame at a rule/selector position: the parser could continue with
+ * a block (`{`), a combinator (`>`), another class/id selector, or a mixin call
+ * (`(`), and the token here starts none of them. Under the 0.46.0 OP_CHOICE
+ * union bug this set was widened into the value-atom signature and mislabeled
+ * "Invalid value."; 0.48.1's honest narrowing exposes the true frame, so it gets
+ * its own clean summary rather than falling through to a regex-leaking fallback.
+ */
+function expectedSelectorContextSummary(
+  dialect: string,
+  expected: readonly string[] | undefined
+): ParserExpectedSummary | undefined {
+  if (expected === undefined || expected.length === 0) {
+    return undefined;
+  }
+  const expectedSet = new Set(expected);
+  const canOpenBlock = hasExpected(expectedSet, '"{"');
+  const canCallMixin = hasExpected(expectedSet, '"("');
+  const canContinueSelector =
+    hasExpected(expectedSet, '/>/') || expected.some(isClassOrIdSelectorToken);
+  if (!(canOpenBlock && canCallMixin && canContinueSelector)) {
+    return undefined;
+  }
+  return {
+    code: 'parse/syntax-error',
+    message: 'Expected a selector, mixin call, or block.',
+    reason: `${dialect} expected a selector, mixin call, or block to continue here, but this token starts none of them.`,
+    fix: 'Continue the selector, call a mixin, or open a block with \'{\'.'
+  };
+}
+
 function expectedSyntaxSummary(
   dialect: string,
   expected: readonly string[] | undefined
@@ -225,7 +284,20 @@ function expectedSyntaxSummary(
     expectedValueSummary(dialect, expected)
     ?? expectedClosingDelimiterSummary(dialect, expected)
     ?? expectedSemicolonSummary(dialect, expected)
+    ?? expectedSelectorContextSummary(dialect, expected)
   );
+}
+
+/**
+ * Which expected tokens are safe to print verbatim in the generic fallback
+ * reason. Only quoted character/string literals (e.g. `";"`, `"{"`) name a
+ * concrete character the author can act on; regex literals and lexer
+ * token-class names are parser internals and must never reach the user. This is
+ * defense in depth: every specific frame gets a summary above, but a frame no
+ * summary recognizes still cannot dump a regex source string.
+ */
+function surfaceableExpectedTokens(expected: readonly string[]): string[] {
+  return expected.filter(token => /^".*"$/.test(token));
 }
 
 function matchingCloser(opener: string): string | undefined {
@@ -363,9 +435,10 @@ function sourceSyntaxSummary(
   if (
     failure === undefined
     || (failure.code !== undefined && failure.code !== 'parse/syntax-error')
-    || failure.offset !== 0
-    || (failure.expected !== undefined && failure.expected.length > 0)
   ) {
+    return undefined;
+  }
+  if (expectedSyntaxSummary(dialect, failure.expected) !== undefined) {
     return undefined;
   }
   return delimiterConflictSummary(dialect, source);
@@ -393,9 +466,21 @@ export function parserDiagnostic({
     failure?.endOffset === undefined
       ? undefined
       : Math.max(offset, Math.min(source.length, failure.endOffset));
-  const { line, column } = lineColAt(source, offset);
+
+  /*
+   * The failure's own line/column describe `failure.offset`. A source summary
+   * re-localises to a better offset, and taking the position from one and the
+   * offset from the other would point the caret and the reported line at two
+   * different places, so the summary's offset wins the position too.
+   */
+  const startLoc =
+    sourceSummary === undefined && failure?.line !== undefined && failure.column !== undefined
+      ? { line: failure.line, column: failure.column }
+      : lineColAt(source, offset);
   const endLoc =
-    endOffset === undefined ? undefined : lineColAt(source, endOffset);
+    failure?.endLine !== undefined && failure.endColumn !== undefined
+      ? { line: failure.endLine, column: failure.endColumn }
+      : endOffset === undefined ? undefined : lineColAt(source, endOffset);
   const message = error instanceof JessError
     ? error.message
     : error instanceof Error
@@ -415,9 +500,12 @@ export function parserDiagnostic({
       sourceSummary?.reason
       ?? failure?.reason
       ?? expectedSummary?.reason
-      ?? (expected && expected.length > 0
-        ? `The parser expected ${expected.join(', ')}.`
-        : 'The parser could not continue at this source location.'),
+      ?? ((): string => {
+        const surfaceable = expected ? surfaceableExpectedTokens(expected) : [];
+        return surfaceable.length > 0
+          ? `The parser expected ${surfaceable.join(', ')}.`
+          : 'The parser could not continue at this source location.';
+      })(),
     fix:
       sourceSummary?.fix
       ?? failure?.fix
@@ -425,11 +513,11 @@ export function parserDiagnostic({
       ?? `Check the ${dialect} source against the supported grammar.`,
     file: { name: filePath, path: filePath, fullPath: filePath, source },
     filePath,
-    line,
-    column,
+    line: startLoc.line,
+    column: startLoc.column,
     endLine: endLoc?.line,
     endColumn: endLoc?.column,
-    lines: extractRelevantLines(source, line)
+    lines: extractRelevantLines(source, startLoc.line)
   };
 }
 
@@ -643,9 +731,53 @@ export const ERR = {
       ...args
     });
   },
+
+  /**
+   * A `$while` whose condition never settled false. The limit is a TERMINATION
+   * guarantee, not a tuning knob: without it a loop whose body never moves the
+   * condition hangs the compiler with no output and no message.
+   */
+  loopIterationLimit(args: Common & { meta: { limit: number } }) {
+    return makeJessError({
+      code: 'eval/loop-iteration-limit',
+      phase: 'eval',
+      ...args
+    });
+  },
   invalidUnitArithmetic(args: Common & { meta: { reason: string } }) {
     return makeJessError({
       code: 'eval/invalid-unit-arithmetic',
+      phase: 'eval',
+      ...args
+    });
+  },
+
+  /**
+   * A bracketed value reached OUTPUT with bytes CSS cannot read. `[ … ]` in a
+   * CSS value means grid `<line-names>` and nothing else, so anything but
+   * `<custom-ident>*` inside it would print bytes no browser parses.
+   *
+   * Raised at the PRINT site, never at construction: a bracketed list is a
+   * first-class `.jess` value that may be bound, passed, iterated and indexed.
+   * Only emitting one is constrained.
+   */
+  invalidLineNames(args: Common & { meta: { bytes: string } }) {
+    return makeJessError({
+      code: 'eval/invalid-line-names',
+      phase: 'eval',
+      ...args
+    });
+  },
+
+  /**
+   * A RELATIONAL comparison whose operands share no common ground (`1px > red`).
+   * Relational is trichotomous over every grounded pair, so the alternative is
+   * answering `false` to both `a > b` and `b > a` — which is what the author
+   * cannot distinguish from a genuine "not greater".
+   */
+  incomparableOperands(args: Common & { meta: { reason: string } }) {
+    return makeJessError({
+      code: 'eval/incomparable-operands',
       phase: 'eval',
       ...args
     });
@@ -773,12 +905,20 @@ export const WARN = {
       ...args
     });
   },
-  unresolvedFunction(
-    args: Common & { meta: { name: string; reason: string } }
-  ) {
+
+  /**
+   * §4.7 — a value whose composed unit CSS cannot express. Raised on the
+   * `loose` and `preserve` rungs of the `unitMode` ladder, which both PRODUCE a
+   * value: `loose` folds to Less 4.x's dimensionally false answer and
+   * `preserve` says the authored expression back as `calc(…)`. Neither is
+   * silent, because a plausible-looking wrong answer is worse than a
+   * diagnostic. Only `strict`, which refuses the value outright, reports
+   * through `ERR` instead.
+   */
+  unexpressibleUnit(args: Common & { meta: { expr: string } }) {
     return makeJessError({
       severity: 'warn',
-      code: 'function/unresolved',
+      code: 'eval/unexpressible-unit',
       phase: 'eval',
       ...args
     });
@@ -932,10 +1072,13 @@ export function getErrorFromParser(
  * extracting the source lines around the site for code-frame display.
  */
 export function toDiagnostic(
-  error: JessError
+  error: JessError,
+  options?: { includeLines?: boolean }
 ): ErrorDiagnostic | WarningDiagnostic {
   const source = error.source ?? error.fileObj?.source;
-  const lines = extractRelevantLines(source, error.line);
+  const lines = options?.includeLines === false
+    ? undefined
+    : extractRelevantLines(source, error.line, 1, error.fileObj);
 
   // Prefer explicit parser-provided end ranges, then derive from a node span.
   const endOffset = inlineSpanEnd(error.node);
@@ -944,7 +1087,7 @@ export function toDiagnostic(
     && error.endColumn === undefined
     && endOffset !== undefined
     && source !== undefined
-      ? lineColAt(source, endOffset)
+      ? lineColAt(source, endOffset, error.fileObj)
       : undefined;
 
   // File object without source (we only use 'lines' for code frames).

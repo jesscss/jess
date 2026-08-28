@@ -33,7 +33,7 @@ Covered-by-branch: namespacing (a534), plugin-preeval (a0bb), nested-@media/deta
 
 <!-- ============================================================ -->
 
-> ⚠️ **The active cleanup queue is now [`CORE-CLEANUP.md`](./CORE-CLEANUP.md).** The
+> ⚠️ **The active cleanup queue is now [`CORE-CLEANUP.md`](../CORE-CLEANUP.md).** The
 > per-focus trackers this doc references (SINGLE_FRAME_PLAN, NODE-REWRITE-TRACKER,
 > PERFORMANCE-HANDOFF, BINDING-LOOKUP-REMAINING) were consolidated there; their history
 > lives in git history. This doc is kept for its routing/guardrail context.
@@ -75,7 +75,7 @@ and required docs.
 ## Settled Design Decisions
 
 Before re-litigating any semantic or design question, check
-**[`DESIGN-DECISIONS.md`](./DESIGN-DECISIONS.md)** — a flat, greppable log of
+**[`DESIGN-DECISIONS.md`](../DESIGN-DECISIONS.md)** — a flat, greppable log of
 SETTLED rulings (merge anchoring, extend folding, verbatim values, variable
 resolution, module/at-rule semantics, output defaults, the no-external-reference
 epistemics) with a pointer to the detail doc/memory for each. If a decision is
@@ -400,7 +400,7 @@ The isolated `blockItem` reorder proof is complete and rejected. Moving
 stopped the canonical parse at byte `93,456` with `3` errors. The probe was
 removed; no parser source change was retained. Full evidence, the adversarial
 syntax matrix, and the no-op controls are recorded in
-[`PARSER-RECOGNIZER-GAP.md`](./PARSER-RECOGNIZER-GAP.md), with the isolated
+[`PARSER-RECOGNIZER-GAP.md`](../PARSER-RECOGNIZER-GAP.md), with the isolated
 handoff at commit `0d6879277`.
 
 ## Q-40 — scope-frame empty pending-name vector (rejected, 2026-07-15)
@@ -424,7 +424,7 @@ mutates the array, contaminating later empty frames. Production code was
 removed; only the regression test and rejection evidence in commit `6dc929a36`
 remain. The trial regressed parse+render `244.214500→245.270125 ms` and
 render-only `196.456375→198.914833 ms`, with no retained-heap improvement and
-higher RSS. Detailed evidence is in [`CORE-CLEANUP.md`](./CORE-CLEANUP.md).
+higher RSS. Detailed evidence is in [`CORE-CLEANUP.md`](../CORE-CLEANUP.md).
 
 ## Q-40 — compiler-root writer readback (completed isolated proof, 2026-07-15)
 
@@ -450,7 +450,7 @@ core (`3,333` passed), builds, compiler reuse, public API, spine ratchet
 (`137` passed), and all-less (`106` passed) passed. The candidate remains
 unmerged at worker commit `763eb1535` because its aggressive-review registry
 needs out-of-scope handoff/registry edits; no push was performed. Detailed
-ownership and gates are recorded in [`CORE-CLEANUP.md`](./CORE-CLEANUP.md).
+ownership and gates are recorded in [`CORE-CLEANUP.md`](../CORE-CLEANUP.md).
 
 ## Q-40 — parser-host duplicate Spanned[] (rejected, 2026-07-15)
 
@@ -561,7 +561,7 @@ claim. The current exact Jess output remains `135,794` bytes with hash
 ## Q-40 — import-placement audit handoff
 
 The fresh read-only retained-placement audit is recorded in detail in
-[`CORE-CLEANUP.md`](./CORE-CLEANUP.md). Its four scale points report exact CSS
+[`CORE-CLEANUP.md`](../CORE-CLEANUP.md). Its four scale points report exact CSS
 parity (`exact: true`) at 1×, 2×, 4×, and 8×. The corresponding `Ruleset`
 placement-clone counts are 1000 / 2000 / 4000 / 8000; `varsByName` setter writes
 are 2002 / 3004 / 5008 / 9016, with every write producing an empty map; and

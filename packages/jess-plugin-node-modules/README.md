@@ -6,7 +6,7 @@ JavaScript-execution / CSS-in-JS story.**
 This plugin gives Jess's language plugins a way to resolve and load npm packages
 by name, using Node's module resolution (`require.resolve` /
 `createRequire`). Other plugins use it to pull in packages referenced from a
-stylesheet — for example [`@jesscss/plugin-less-compat`](../jess-plugin-less-compat)
+stylesheet — for example [`@jesscss/plugin-less-compat`](../syntax/less/jess-plugin-less-compat)
 resolving a Less `@plugin "package-name"` off `node_modules`.
 
 ## Why it exists — the convergence angle

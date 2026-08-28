@@ -5,7 +5,7 @@
  * The harness itself byte-compares own-engine output to the oracle.
  */
 import { describe, it, afterAll } from 'vitest';
-import { el, sel, compound, co } from '../../../index.js';
+import { el, sel, compound, co } from '../../index.js';
 import { extendViaOwn, reportFrontier, resetFrontier } from './corpus-harness.js';
 
 type Comb = '>' | '+' | '~' | ' ';

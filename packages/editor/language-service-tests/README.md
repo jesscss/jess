@@ -1,6 +1,8 @@
-# `@jesscss/language-service-tests`
+# `language-service-tests`
 
-Expected-output/parity-style tests for the Jess language service engine.
+Not a workspace package — this directory has no `package.json`. It is a harness
+directory holding expected-output/parity-style tests for the Jess language
+service engine.
 
 ## Goal
 

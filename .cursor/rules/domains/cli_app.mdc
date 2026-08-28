@@ -8,7 +8,7 @@ globs:
 
 ## What lives here
 
-- CLI entrypoint: `packages/jess/bin/cli.js`
+- CLI entrypoint: `packages/jess/bin/cli.mjs`
 - Core app logic: `packages/jess/src/**`
 - Large Less-oriented test suite under `packages/jess/test/less/**`
 

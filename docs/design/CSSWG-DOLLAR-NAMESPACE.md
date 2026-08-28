@@ -203,7 +203,7 @@ Reserve `$` followed by anything **other than `=`**. The shapes in use today:
 
 | Shape | Used by |
 |---|---|
-| `$<ident>` | Sass variables; Jess variables (`$$name` = scoped lookup) |
+| `$<ident>` | Sass variables; Jess variables (`$^name` = scoped lookup) |
 | `$(…)` | Jess value-position expression boundary (also allowed inside a string) |
 | `$[…]` | Jess value-position lookup (`*[…]` = selector capture) |
 | `${…}` | Less interpolation (alongside `@{…}`); Jess interpolation in identifier and string positions |

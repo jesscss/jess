@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { absolutizeCST } from 'parseman';
-import { parseCssCst, parseCssDoc } from '../src/cst-css.js';
-import type { CssCstChild } from '../src/cst-css.js';
+import { parseCssCst, parseCssDoc } from '../src/cst.js';
+import { parse } from '../src/index.js';
+import { parseCssCst as parseCssCstWithLines } from '../src/cst/positions.js';
+import type { CssCstChild } from '../src/cst.js';
 
 /**
  * Structural CST equality (type + absolute span + children, leaves by value+span).
@@ -13,9 +15,9 @@ function cstStructKey(node: CssCstChild): unknown {
     return { l: node.value, s: node.span.start, e: node.span.end };
   }
   if (node._tag === 'error') {
-    return { err: node.type, s: node.span.start, e: node.span.end, children: node.children.map(cstStructKey) };
+    return { err: node.type, s: node.span.start, e: node.span.end, rules: node.rules.map(cstStructKey) };
   }
-  return { t: node.type, s: node.span.start, e: node.span.end, children: node.children.map(cstStructKey) };
+  return { t: node.type, s: node.span.start, e: node.span.end, rules: node.rules.map(cstStructKey) };
 }
 
 type CstNode = ReturnType<typeof parseCssCst>['tree'];
@@ -29,7 +31,7 @@ function nodesByGrammarType(tree: CstNode, grammarType: string): CstNode[] {
     if (node.grammarType === grammarType) {
       matches.push(node);
     }
-    node.children.forEach(visit);
+    node.rules.forEach(visit);
   };
   visit(tree);
   return matches;
@@ -37,7 +39,8 @@ function nodesByGrammarType(tree: CstNode, grammarType: string): CstNode[] {
 
 function collect(tree: CstNode) {
   let leaves = 0;
-  let basicSelectors = 0;
+  let selectorAtoms = 0;
+  const grammarTypes = new Map<string, number>();
   const types = new Set<string>();
   const visit = (node: CstNode | CstNode['children'][number]) => {
     if (node._tag === 'leaf') {
@@ -46,14 +49,30 @@ function collect(tree: CstNode) {
     }
     if (node._tag === 'node') {
       types.add(node.type);
-      if (node.type === 'BasicSelector') {
-        basicSelectors++;
+      grammarTypes.set(node.grammarType, (grammarTypes.get(node.grammarType) ?? 0) + 1);
+      if (
+        node.type === 'ClassSelector'
+        || node.type === 'IdSelector'
+        || node.type === 'TypeSelector'
+        || node.type === 'UniversalSelector'
+      ) {
+        selectorAtoms++;
       }
-      node.children.forEach(visit);
+      node.rules.forEach(visit);
     }
   };
   visit(tree);
-  return { leaves, basicSelectors, types };
+  return { leaves, selectorAtoms, grammarTypes, types };
+}
+
+function isModeLabel(type: string): boolean {
+  return type.startsWith('Direct') || type.startsWith('Static') || type.includes('Ast') || type.includes('Cst');
+}
+
+function expectNoModeLabels(tree: CstNode) {
+  const { grammarTypes, types } = collect(tree);
+  expect([...grammarTypes.keys()].filter(isModeLabel)).toEqual([]);
+  expect([...types].filter(isModeLabel)).toEqual([]);
 }
 
 describe('@jesscss/css-parser/cst', () => {
@@ -63,7 +82,27 @@ describe('@jesscss/css-parser/cst', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.tree.type).toBe('StyleSheet');
-    expect(result.tree.children.some(c => c._tag === 'node' && c.type === 'QualifiedRule')).toBe(true);
+    expect(result.tree.rules.some(c => c._tag === 'node' && c.type === 'QualifiedRule')).toBe(true);
+    expectNoModeLabels(result.tree);
+  });
+
+  it('keeps line tracking isolated to the line-aware CST entry', () => {
+    const source = '.entry {\n  width: 0px;\n}\n';
+    const normal = parseCssCst(source);
+    const diagnostic = parseCssCstWithLines(source);
+    const normalDimension = nodesByGrammarType(normal.tree, 'Dimension')[0];
+    const diagnosticDimension = nodesByGrammarType(diagnostic.tree, 'Dimension')[0];
+
+    expect(normalDimension?.span).toMatchObject({ start: 18, end: 21 });
+    expect(normalDimension?.span.startLine).toBeUndefined();
+    expect(diagnosticDimension?.span).toMatchObject({
+      start: 18,
+      end: 21,
+      startLine: 2,
+      startColumn: 10,
+      endLine: 2,
+      endColumn: 13
+    });
   });
 
   it('ignores trailing CSS trivia but reports a non-trivia tail', () => {
@@ -79,7 +118,8 @@ describe('@jesscss/css-parser/cst', () => {
     const result = parseCssCst('a.foo { color: red; }', 'Stylesheet', { collapse: true });
 
     expect(result.errors).toHaveLength(0);
-    expect(result.tree.children.some(c => c._tag === 'node' && c.type === 'QualifiedRule')).toBe(true);
+    expect(result.tree.rules.some(c => c._tag === 'node' && c.type === 'QualifiedRule')).toBe(true);
+    expectNoModeLabels(result.tree);
   });
 
   it('keeps named CSS CST nodes stable with and without collapse mode', () => {
@@ -89,7 +129,9 @@ describe('@jesscss/css-parser/cst', () => {
     expect(expanded.errors).toHaveLength(0);
     expect(collapsed.errors).toHaveLength(0);
     expect([...collect(collapsed.tree).types]).not.toContain('Unknown');
-    expect(collect(collapsed.tree)).toMatchObject({ leaves: collect(expanded.tree).leaves, basicSelectors: 2 });
+    expect(collect(collapsed.tree)).toMatchObject({ leaves: collect(expanded.tree).leaves, selectorAtoms: 2 });
+    expectNoModeLabels(expanded.tree);
+    expectNoModeLabels(collapsed.tree);
   });
 
   it('keeps CSS static escaped strings as a sigil plus a normal Quoted CST node', () => {
@@ -101,6 +143,16 @@ describe('@jesscss/css-parser/cst', () => {
       node.span.start,
       node.span.end
     ])).toEqual([[17, 23]]);
+  });
+
+  it('gives unknown functional pseudos one structural generic argument', () => {
+    const result = parseCssCst('.a:future-thing(foo(bar[qux])) { color: red; }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = collect(result.tree);
+    expect(grammarTypes.get('GenericPseudoArgument')).toBe(1);
+    expect(grammarTypes.get('PseudoSelectorArgument')).toBeUndefined();
   });
 
   it('does not recognize comment-delimited url identifiers as url or function tokens', () => {
@@ -151,7 +203,7 @@ describe('@jesscss/css-parser/cst', () => {
     expect(nodesByGrammarType(result.tree, 'QueryNonOnlyKeyword')).toHaveLength(2);
     expect(nodesByGrammarType(result.tree, 'QueryFunction')).toHaveLength(1);
     expect(nodesByGrammarType(result.tree, 'QueryIdentOrFunction')).toHaveLength(0);
-    expect(queryFunction?.children[0]).toMatchObject({
+    expect(queryFunction?.rules[0]).toMatchObject({
       _tag: 'leaf',
       value: 'style('
     });
@@ -177,21 +229,43 @@ describe('@jesscss/css-parser/cst', () => {
 
     expect(result.errors).toHaveLength(0);
     const url = nodesByGrammarType(result.tree, 'Url')[0];
-    expect(url?.children[0]).toMatchObject({
+    expect(url?.rules[0]).toMatchObject({
       _tag: 'leaf',
       value: 'URL('
     });
   });
 
+  /*
+   * `calc()` is not privileged in the CST any more. It is one of the twenty-one
+   * css-values-4 §10 math functions, all of which share ONE dispatch arm and
+   * ONE tail, so a math call is a `Call` exactly like a generic call — the two
+   * differ in what their ARGUMENTS parsed as, not in what the call is. The
+   * `CalcCall` label this used to assert named the routing, not a node.
+   */
   it('routes calc identifier and function atoms without leaking the dispatcher node', () => {
     const result = parseCssCst('.asset { width: calc(var(--x) + foo(1px)); }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
-    expect(nodesByGrammarType(result.tree, 'CalcCall')).toHaveLength(1);
+    expect(nodesByGrammarType(result.tree, 'CalcCall')).toHaveLength(0);
     expect(nodesByGrammarType(result.tree, 'VarCall')).toHaveLength(1);
-    expect(nodesByGrammarType(result.tree, 'Call')).toHaveLength(1);
+    expect(nodesByGrammarType(result.tree, 'Call')).toHaveLength(2);
     expect(nodesByGrammarType(result.tree, 'CalcIdentOrFunction')).toHaveLength(0);
+  });
+
+  it('routes every css-values-4 §10 math function through the same tail', () => {
+    for (const source of [
+      '.a { width: min(1em - 2px); }',
+      '.a { width: clamp(1rem, 2vw, 3rem); }',
+      '.a { width: calc(sign(1em - 10px) * 1%); }',
+      '.a { width: round(up, 1.2px, 1px); }',
+      '.a { width: hypot(3px, 4px); }'
+    ]) {
+      const result = parseCssCst(source);
+      expect(result.errors, source).toHaveLength(0);
+      expect(result.unconsumedFrom, source).toBeNull();
+      expect(nodesByGrammarType(result.tree, 'Call').length, source).toBeGreaterThan(0);
+    }
   });
 
   it('does not recognize whitespace-separated identifiers as function calls', () => {
@@ -247,6 +321,9 @@ describe('@jesscss/css-parser/cst', () => {
     expect(namedOnly.errors).toHaveLength(0);
     expect(namedQuery.errors).toHaveLength(0);
     expect(functionQuery.errors).toHaveLength(0);
+    expect(nodesByGrammarType(namedQuery.tree, 'ContainerPrelude')).toHaveLength(1);
+    expect(nodesByGrammarType(namedQuery.tree, 'ContainerQueryPrelude')).toHaveLength(1);
+    expect(nodesByGrammarType(namedQuery.tree, 'ContainerQueryClause')).toHaveLength(1);
     expect(nodesByGrammarType(functionQuery.tree, 'QueryFunction')).toHaveLength(1);
     expect(reservedName.errors.length + (reservedName.unconsumedFrom === null ? 0 : 1)).toBeGreaterThan(0);
     expect(supportsWithContainerName.errors.length + (supportsWithContainerName.unconsumedFrom === null ? 0 : 1)).toBeGreaterThan(0);
@@ -309,6 +386,58 @@ describe('@jesscss/css-parser/cst — parseCssDoc structural parity', () => {
       }
       const abs = absolutizeCST(tree);
       expect(cstStructKey(abs), `mismatch for: ${JSON.stringify(input)}`).toEqual(cstStructKey(oneShot.tree));
+      expectNoModeLabels(oneShot.tree);
+      expectNoModeLabels(abs);
+    }
+  });
+});
+
+/*
+ * `Stylesheet` is a `many()`, and `many()` succeeds on zero matches. So on
+ * input it cannot recognize, the CST entry stops, keeps the prefix it did
+ * parse, and returns a well-formed tree. Before this was gated that came back
+ * as `ok: true` with an empty `errors` — a caller could hold 54 bytes of a
+ * 1,945-byte stylesheet with nothing indicating the rest had been dropped.
+ *
+ * `ok` is what most callers branch on, so these assert BOTH `ok` and the
+ * consumption fact: `many()` succeeding means `ok` alone never proved anything.
+ */
+describe('@jesscss/css-parser/cst — leftover input is never reported as success', () => {
+  it('reports ok:false and an offset when the entry rule truncates', () => {
+    /* `{X}` puts a brace where a declaration value belongs; the rule stops. */
+    const input = 'a{color:red}b{font-family:file{X}test}c{color:blue}';
+    const result = parseCssCst(input);
+
+    expect(result.ok).toBe(false);
+    expect(result.unconsumedFrom).not.toBeNull();
+    expect(result.unconsumedFrom).toBeLessThan(input.length);
+  });
+
+  it('reports ok:true and consumes everything on well-formed input', () => {
+    const input = 'a{color:red}b{color:blue}';
+    const result = parseCssCst(input);
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.tree.span.end).toBe(input.length);
+  });
+
+  it('agrees with the AST surface about whether an input parses', () => {
+    /* The two surfaces disagreeing on identical bytes is the contract break. */
+    const inputs = [
+      'a{color:red}',
+      '@media screen{a{color:red}}',
+      '@media -sass-debug-info{filename{font-family:x}}',
+      'a{font-family:file{X}test}'
+    ];
+    for (const input of inputs) {
+      let astOk = true;
+      try {
+        parse(input);
+      } catch {
+        astOk = false;
+      }
+      expect(parseCssCst(input).ok, `surfaces disagree for: ${JSON.stringify(input)}`).toBe(astOk);
     }
   });
 });

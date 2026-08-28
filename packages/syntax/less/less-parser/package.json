@@ -4,9 +4,9 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "2.0.0-alpha.14",
+  "version": "2.0.0-alpha.15",
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": "^20.19.0 || >=22.18.0"
   },
   "description": "Jess LESS parser",
   "main": "lib/index.cjs",
@@ -17,15 +17,45 @@
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
+    "./positions": {
+      "types": "./lib/positions.d.ts",
+      "import": "./lib/positions.js",
+      "require": "./lib/positions.cjs"
+    },
     "./cst": {
       "types": "./lib/cst.d.ts",
       "import": "./lib/cst.js",
       "require": "./lib/cst.cjs"
     },
+    "./cst/positions": {
+      "types": "./lib/cst/positions.d.ts",
+      "import": "./lib/cst/positions.js",
+      "require": "./lib/cst/positions.cjs"
+    },
     "./grammar": {
-      "types": "./lib/grammar.d.ts",
-      "import": "./lib/grammar.js",
-      "require": "./lib/grammar.cjs"
+      "types": "./lib/grammar/ast.d.ts",
+      "import": "./lib/grammar/ast.js",
+      "require": "./lib/grammar/ast.cjs"
+    },
+    "./grammar/ast": {
+      "types": "./lib/grammar/ast.d.ts",
+      "import": "./lib/grammar/ast.js",
+      "require": "./lib/grammar/ast.cjs"
+    },
+    "./grammar/ast/positions": {
+      "types": "./lib/grammar/ast/positions.d.ts",
+      "import": "./lib/grammar/ast/positions.js",
+      "require": "./lib/grammar/ast/positions.cjs"
+    },
+    "./grammar/cst": {
+      "types": "./lib/grammar/cst.d.ts",
+      "import": "./lib/grammar/cst.js",
+      "require": "./lib/grammar/cst.cjs"
+    },
+    "./grammar/cst/positions": {
+      "types": "./lib/grammar/cst/positions.d.ts",
+      "import": "./lib/grammar/cst/positions.js",
+      "require": "./lib/grammar/cst/positions.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -36,7 +66,7 @@
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
     "build": "pnpm --filter @jesscss/parser-shared build && pnpm compile",
-    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
+    "compile": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\" && tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "dev": "tsdown --tsconfig tsconfig.build.json --watch",
     "test": "cross-env TEST=true vitest --watch=false",
     "test:coverage": "cross-env TEST=true vitest --coverage",
@@ -51,7 +81,7 @@
   },
   "peerDependencies": {
     "@jesscss/core": "workspace:*",
-    "parseman": "^0.41.0"
+    "parseman": "^0.50.1"
   },
   "peerDependenciesMeta": {
     "@jesscss/core": {
@@ -64,7 +94,7 @@
     "@jesscss/shared": "workspace:*",
     "@types/node": "^18.19.31",
     "less": "^4.6.3",
-    "parseman": "^0.41.0",
+    "parseman": "^0.50.1",
     "postcss-less": "~6.0.0",
     "tsx": "~4.21.0"
   },

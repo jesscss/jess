@@ -114,20 +114,20 @@ function captureNodeTrivia(
  * `$w`, not the resolved value).
  */
 /**
- * Fire the registered generic EMIT-visitor `enter` hooks (design §6) on a
+ * Fire the registered generic emit-visitor `enter` hooks (design §6) on a
  * resolved output node, threading the shape: `shape = enter(shape) ?? shape`. A
  * `void` return leaves the node unchanged; a `Node` return re-seats it for the
- * next visitor and becomes what is serialized (§6.5). ZERO-cost fast path: with
- * no registered visitors (`spineVisitors` undefined/empty) the node is returned
+ * next visitor and becomes what is serialized (§6.5). Zero-cost fast path: with
+ * no registered visitors (`emitVisitors` undefined/empty) the node is returned
  * as-is with no iteration — the §4.0-style "pay only for real work" gate.
  *
  * @see docs/architecture/core/UNIFIED-EVAL-EMIT-DESIGN.md §6.
  */
-function applySpineVisitorsEnter(
+function applyEmitVisitorsEnter(
   node: Node,
   context: FinalPrintOptions['context']
 ): Node {
-  const visitors = context?.spineVisitors;
+  const visitors = context?.emitVisitors;
   if (!visitors || visitors.length === 0) {
     return node;
   }
@@ -242,13 +242,13 @@ export function resolveSpineLeafText(node: Node, options: FinalPrintOptions): Ma
     }
 
     /*
-     * Generic EMIT visitor hook (design §6): fire the registered `(node)=>Node|
-     * void` enter hooks on the RESOLVED output node at its emit moment. ZERO-cost
-     * when nothing is registered — `applySpineVisitorsEnter` returns the node
-     * untouched if `context.spineVisitors` is empty. A visitor may REPLACE the
+     * Generic emit visitor hook (design §6): fire the registered `(node)=>Node|
+     * void` enter hooks on the resolved output node at its emit moment. Zero-cost
+     * when nothing is registered: `applyEmitVisitorsEnter` returns the node
+     * untouched if `context.emitVisitors` is empty. A visitor may replace the
      * node (fresh transient), which is what gets serialized here.
      */
-    const hooked = applySpineVisitorsEnter(resolved, options.context);
+    const hooked = applyEmitVisitorsEnter(resolved, options.context);
     if (!hooked || hooked instanceof Nil) {
       return '';
     }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { emitValue, makeKeyword, makeList, type ValueGroup } from '@jesscss/core/value';
+import { emitValue, makeKeyword, makeList, type ValueGroup } from '@jesscss/core';
 import length from '../length.js';
 
 describe('length()', () => {

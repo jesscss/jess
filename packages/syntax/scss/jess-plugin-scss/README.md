@@ -4,7 +4,7 @@
 "Sass+".**
 
 This plugin layers an SCSS grammar (`@jesscss/scss-parser`) onto the Jess
-compiler, the same way [`@jesscss/plugin-less`](../jess-plugin-less) provides the
+compiler, the same way [`@jesscss/plugin-less`](../../less/jess-plugin-less) provides the
 Less engine. It parses `.scss` into the Jess AST for the engine to evaluate and
 emit.
 

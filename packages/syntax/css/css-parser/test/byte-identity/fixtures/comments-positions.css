@@ -1,0 +1,13 @@
+/* leading */
+a {
+  /* before a declaration */
+  color: red;
+  /* between declarations */
+  background: blue;
+  /* trailing inside the block */
+}
+/* between rules */
+b {
+  color: green;
+}
+/* trailing */

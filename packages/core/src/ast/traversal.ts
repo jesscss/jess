@@ -2,17 +2,20 @@ import type {
   Apply,
   ComplexSelector,
   CompoundSelector,
+  CollectionEntry,
   Declaration,
   FunctionCall,
   If,
+  While,
   Interpolation,
   MixinCall,
-  MixinDef,
+  MixinDefinition,
   ModuleImport,
   Param,
   PseudoSelector,
   Reference,
-  Rule,
+  RelativeSelector,
+  Ruleset,
   SelectorList,
   SimpleSelector,
   SimpleToken,
@@ -23,7 +26,7 @@ import type {
   ValueSlot,
   VariableDeclaration
 } from './nodes.js';
-import type { AtRuleBlock, AtRuleStatement, ImportAtRule, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
+import type { AtRuleBlock, AtRuleStatement, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
 import type { GuardNode } from './guard.js';
 import type { CallArg, CallValue } from './mixin-dispatch.js';
 
@@ -31,8 +34,10 @@ export type AstVisitNode =
   | Stylesheet
   | Statement
   | ValueNode
+  | CollectionEntry
   | SelectorList
   | ComplexSelector
+  | RelativeSelector
   | CompoundSelector
   | SimpleToken;
 
@@ -44,39 +49,39 @@ export type AstVisitParent =
 
 export type AstEdge =
   | 'root'
-  | 'stylesheet.children'
-  | 'rule.selector'
-  | 'rule.guard'
-  | 'rule.extend.target'
-  | 'rule.extend.subject'
-  | 'rule.body'
+  | 'stylesheet.rules'
+  | 'ruleset.selector'
+  | 'ruleset.guard'
+  | 'ruleset.extend.target'
+  | 'ruleset.extend.subject'
+  | 'ruleset.rules'
   | 'declaration.name'
   | 'declaration.value'
   | 'variable.value'
   | 'mixin.param-default'
   | 'mixin.param-pattern'
   | 'mixin.guard'
-  | 'mixin.body'
+  | 'mixin.rules'
   | 'mixin-call.arg'
+  | 'mixin-call.content'
   | 'apply.selector'
   | 'for.iterable'
-  | 'for.body'
+  | 'for.rules'
   | 'if.branch.guard'
-  | 'if.branch.body'
-  | 'style-import.path'
+  | 'if.branch.rules'
+  | 'while.guard'
+  | 'while.rules'
   | 'module-import.path'
   | 'atrule.prelude'
-  | 'atrule.body'
+  | 'atrule.rules'
   | 'atrule-statement.prelude'
   | 'import.options'
   | 'import.target'
   | 'import.alias'
-  | 'import.tail'
   | 'plugin.target'
   | 'plugin.options'
   | 'selector.branch'
-  | 'selector.head'
-  | 'selector.tail.compound'
+  | 'selector.value'
   | 'selector.simple'
   | 'selector.simple.interp'
   | 'selector.pseudo.interp'
@@ -85,25 +90,29 @@ export type AstEdge =
   | 'value.url.value'
   | 'value.parts'
   | 'value.list.item'
-  | 'value.inner'
+  | 'value.value'
   | 'value.operation.left'
   | 'value.operation.right'
   | 'value.function.arg'
   | 'value.interpolation.ref'
   | 'value.general.content'
-  | 'value.var-indirect.name'
+  | 'value.lookup.name'
   | 'value.condition.guard'
+  | 'value.if.branch.guard'
+  | 'value.if.branch.value'
   | 'value.reference.base'
-  | 'value.reference.bracket-key'
+  | 'value.reference.step-key'
   | 'value.reference.call-arg'
   | 'value.range.start'
   | 'value.range.end'
   | 'value.range.step'
   | 'value.collection.base'
   | 'value.collection.entry'
+  | 'value.collection.key'
+  | 'value.collection.value'
   | 'value.anonymous-mixin.param-default'
   | 'value.anonymous-mixin.param-pattern'
-  | 'value.anonymous-mixin.body'
+  | 'value.anonymous-mixin.rules'
   | 'call-arg.value'
   | 'guard.cmp.left'
   | 'guard.cmp.right'
@@ -238,6 +247,7 @@ function walkGuard(
   }
   switch (guard.g) {
     case 'cmp':
+    case 'match':
       walkValueSlot(guard.left, hooks, 'guard.cmp.left', guard, 0, depth + 1);
       walkValueSlot(guard.right, hooks, 'guard.cmp.right', guard, 1, depth + 1);
       break;
@@ -284,15 +294,30 @@ function walkSelectorList(node: SelectorList, hooks: AstVisitHooks, depth: numbe
 }
 
 function walkComplexSelector(node: ComplexSelector, hooks: AstVisitHooks, depth: number): void {
-  walkNode(node.head, hooks, 'selector.head', node, 0, depth + 1);
-  for (let i = 0; i < node.tail.length; i++) {
-    walkNode(node.tail[i]!.compound, hooks, 'selector.tail.compound', node, i, depth + 1);
+  let visitIndex = 0;
+  for (let i = 0; i < node.value.length; i++) {
+    const part = node.value[i]!;
+    if (typeof part !== 'string') {
+      walkNode(part, hooks, 'selector.value', node, visitIndex, depth + 1);
+      visitIndex++;
+    }
+  }
+}
+
+function walkRelativeSelector(node: RelativeSelector, hooks: AstVisitHooks, depth: number): void {
+  let visitIndex = 0;
+  for (let i = 1; i < node.value.length; i++) {
+    const part = node.value[i]!;
+    if (typeof part !== 'string') {
+      walkNode(part, hooks, 'selector.value', node, visitIndex, depth + 1);
+      visitIndex++;
+    }
   }
 }
 
 function walkCompoundSelector(node: CompoundSelector, hooks: AstVisitHooks, depth: number): void {
-  for (let i = 0; i < node.simples.length; i++) {
-    walkNode(node.simples[i]!, hooks, 'selector.simple', node, i, depth + 1);
+  for (let i = 0; i < node.value.length; i++) {
+    walkNode(node.value[i]!, hooks, 'selector.simple', node, i, depth + 1);
   }
 }
 
@@ -326,40 +351,43 @@ function walkMixinCall(node: MixinCall, hooks: AstVisitHooks, depth: number): vo
   for (let i = 0; i < node.args.length; i++) {
     walkCallArg(node.args[i]!, hooks, 'mixin-call.arg', node, i, depth + 1);
   }
+  if (node.content !== null) {
+    walkNode(node.content, hooks, 'mixin-call.content', node, 0, depth + 1);
+  }
 }
 
 function walkFunctionCall(node: FunctionCall, hooks: AstVisitHooks, depth: number): void {
   for (let i = 0; i < node.args.length; i++) {
-    walkValueSlot(node.args[i]!, hooks, 'value.function.arg', node, i, depth + 1);
+    walkValueSlot(node.args[i]!.value, hooks, 'value.function.arg', node, i, depth + 1);
   }
 }
 
-function walkRule(node: Rule, hooks: AstVisitHooks, depth: number): void {
-  walkNode(node.selector, hooks, 'rule.selector', node, 0, depth + 1);
+function walkRuleset(node: Ruleset, hooks: AstVisitHooks, depth: number): void {
+  walkNode(node.selector, hooks, 'ruleset.selector', node, 0, depth + 1);
   if (node.guard !== undefined) {
-    walkGuard(node.guard, hooks, 'rule.guard', node, 0, depth + 1);
+    walkGuard(node.guard, hooks, 'ruleset.guard', node, 0, depth + 1);
   }
   if (node.extendInstructions !== undefined) {
     for (let i = 0; i < node.extendInstructions.length; i++) {
       const instruction = node.extendInstructions[i]!;
-      walkNode(instruction.target, hooks, 'rule.extend.target', node, i, depth + 1);
+      walkNode(instruction.target, hooks, 'ruleset.extend.target', node, i, depth + 1);
       if (instruction.subject !== undefined) {
-        walkNode(instruction.subject, hooks, 'rule.extend.subject', node, i, depth + 1);
+        walkNode(instruction.subject, hooks, 'ruleset.extend.subject', node, i, depth + 1);
       }
     }
   }
-  for (let i = 0; i < node.body.length; i++) {
-    walkNode(node.body[i]!, hooks, 'rule.body', node, i, depth + 1);
+  for (let i = 0; i < node.rules.length; i++) {
+    walkNode(node.rules[i]!, hooks, 'ruleset.rules', node, i, depth + 1);
   }
 }
 
-function walkMixinDef(node: MixinDef, hooks: AstVisitHooks, depth: number): void {
+function walkMixinDef(node: MixinDefinition, hooks: AstVisitHooks, depth: number): void {
   walkParams(node.params, node, hooks, depth, 'mixin');
   if (node.guard !== undefined) {
     walkGuard(node.guard, hooks, 'mixin.guard', node, 0, depth + 1);
   }
-  for (let i = 0; i < node.body.length; i++) {
-    walkNode(node.body[i]!, hooks, 'mixin.body', node, i, depth + 1);
+  for (let i = 0; i < node.rules.length; i++) {
+    walkNode(node.rules[i]!, hooks, 'mixin.rules', node, i, depth + 1);
   }
 }
 
@@ -372,7 +400,7 @@ function walkApply(node: Apply, hooks: AstVisitHooks, depth: number): void {
 function walkFor(node: Extract<Statement, { type: 'For' }>, hooks: AstVisitHooks, depth: number): void {
   walkCallValue(node.iterable, hooks, 'for.iterable', node, 0, depth + 1);
   for (let i = 0; i < node.rules.length; i++) {
-    walkNode(node.rules[i]!, hooks, 'for.body', node, i, depth + 1);
+    walkNode(node.rules[i]!, hooks, 'for.rules', node, i, depth + 1);
   }
 }
 
@@ -382,9 +410,16 @@ function walkIf(node: If, hooks: AstVisitHooks, depth: number): void {
     if (branch.guard !== null) {
       walkGuard(branch.guard, hooks, 'if.branch.guard', node, i, depth + 1);
     }
-    for (let j = 0; j < branch.body.length; j++) {
-      walkNode(branch.body[j]!, hooks, 'if.branch.body', node, j, depth + 1);
+    for (let j = 0; j < branch.rules.length; j++) {
+      walkNode(branch.rules[j]!, hooks, 'if.branch.rules', node, j, depth + 1);
     }
+  }
+}
+
+function walkWhile(node: While, hooks: AstVisitHooks, depth: number): void {
+  walkGuard(node.guard, hooks, 'while.guard', node, 0, depth + 1);
+  for (let i = 0; i < node.rules.length; i++) {
+    walkNode(node.rules[i]!, hooks, 'while.rules', node, i, depth + 1);
   }
 }
 
@@ -392,27 +427,14 @@ function walkAtRuleBlock(node: AtRuleBlock, hooks: AstVisitHooks, depth: number)
   if (node.prelude !== null) {
     walkNode(node.prelude, hooks, 'atrule.prelude', node, 0, depth + 1);
   }
-  for (let i = 0; i < node.body.length; i++) {
-    walkNode(node.body[i]!, hooks, 'atrule.body', node, i, depth + 1);
+  for (let i = 0; i < node.rules.length; i++) {
+    walkNode(node.rules[i]!, hooks, 'atrule.rules', node, i, depth + 1);
   }
 }
 
 function walkAtRuleStatement(node: AtRuleStatement, hooks: AstVisitHooks, depth: number): void {
   if (node.prelude !== null) {
     walkNode(node.prelude, hooks, 'atrule-statement.prelude', node, 0, depth + 1);
-  }
-}
-
-function walkImportAtRule(node: ImportAtRule, hooks: AstVisitHooks, depth: number): void {
-  if (node.options !== null) {
-    walkNode(node.options, hooks, 'import.options', node, 0, depth + 1);
-  }
-  walkNode(node.target, hooks, 'import.target', node, 0, depth + 1);
-  if (node.alias !== null) {
-    walkNode(node.alias, hooks, 'import.alias', node, 0, depth + 1);
-  }
-  if (node.tail !== null) {
-    walkNode(node.tail, hooks, 'import.tail', node, 0, depth + 1);
   }
 }
 
@@ -427,8 +449,8 @@ function walkReference(node: Reference, hooks: AstVisitHooks, depth: number): vo
   walkNode(node.base, hooks, 'value.reference.base', node, 0, depth + 1);
   for (let i = 0; i < node.steps.length; i++) {
     const step = node.steps[i]!;
-    if (step.type === 'BracketLookup' && typeof step.key !== 'number') {
-      walkNode(step.key, hooks, 'value.reference.bracket-key', node, i, depth + 1);
+    if (step.type === 'LookupStep' && typeof step.name === 'object') {
+      walkNode(step.name, hooks, 'value.reference.step-key', node, i, depth + 1);
     } else if (step.type === 'Call') {
       for (let j = 0; j < step.args.length; j++) {
         walkCallArg(step.args[j]!, hooks, 'value.reference.call-arg', node, j, depth + 1);
@@ -438,7 +460,13 @@ function walkReference(node: Reference, hooks: AstVisitHooks, depth: number): vo
 }
 
 function walkStyleImport(node: StyleImport, hooks: AstVisitHooks, depth: number): void {
-  walkNode(node.path, hooks, 'style-import.path', node, 0, depth + 1);
+  if (node.options !== null) {
+    walkNode(node.options, hooks, 'import.options', node, 0, depth + 1);
+  }
+  walkNode(node.target, hooks, 'import.target', node, 0, depth + 1);
+  if (node.alias !== null) {
+    walkNode(node.alias, hooks, 'import.alias', node, 0, depth + 1);
+  }
 }
 
 function walkModuleImport(node: ModuleImport, hooks: AstVisitHooks, depth: number): void {
@@ -464,12 +492,12 @@ function walkNode(
   }
   switch (node.type) {
     case 'Stylesheet':
-      for (let i = 0; i < node.children.length; i++) {
-        walkNode(node.children[i]!, hooks, 'stylesheet.children', node, i, depth + 1);
+      for (let i = 0; i < node.rules.length; i++) {
+        walkNode(node.rules[i]!, hooks, 'stylesheet.rules', node, i, depth + 1);
       }
       break;
-    case 'Rule':
-      walkRule(node, hooks, depth);
+    case 'Ruleset':
+      walkRuleset(node, hooks, depth);
       break;
     case 'Declaration':
       walkDeclaration(node, hooks, depth);
@@ -477,7 +505,7 @@ function walkNode(
     case 'VariableDeclaration':
       walkVariableDeclaration(node, hooks, depth);
       break;
-    case 'MixinDef':
+    case 'MixinDefinition':
       walkMixinDef(node, hooks, depth);
       break;
     case 'MixinCall':
@@ -492,6 +520,9 @@ function walkNode(
     case 'If':
       walkIf(node, hooks, depth);
       break;
+    case 'While':
+      walkWhile(node, hooks, depth);
+      break;
     case 'StyleImport':
       walkStyleImport(node, hooks, depth);
       break;
@@ -503,9 +534,6 @@ function walkNode(
       break;
     case 'AtRuleStatement':
       walkAtRuleStatement(node, hooks, depth);
-      break;
-    case 'ImportAtRule':
-      walkImportAtRule(node, hooks, depth);
       break;
     case 'Plugin':
       walkPlugin(node, hooks, depth);
@@ -519,6 +547,9 @@ function walkNode(
     case 'ComplexSelector':
       walkComplexSelector(node, hooks, depth);
       break;
+    case 'RelativeSelector':
+      walkRelativeSelector(node, hooks, depth);
+      break;
     case 'CompoundSelector':
       walkCompoundSelector(node, hooks, depth);
       break;
@@ -531,7 +562,6 @@ function walkNode(
     case 'Url':
       walkNode(node.value, hooks, 'value.url.value', node, 0, depth + 1);
       break;
-    case 'SpacedValue':
     case 'Sequence':
       for (let i = 0; i < node.parts.length; i++) {
         walkNode(node.parts[i]!, hooks, 'value.parts', node, i, depth + 1);
@@ -544,7 +574,8 @@ function walkNode(
       break;
     case 'Important':
     case 'Block':
-      walkValueSlot(node.inner, hooks, 'value.inner', node, 0, depth + 1);
+    case 'Expression':
+      walkValueSlot(node.value, hooks, 'value.value', node, 0, depth + 1);
       break;
     case 'Operation':
       walkNode(node.left, hooks, 'value.operation.left', node, 0, depth + 1);
@@ -556,14 +587,23 @@ function walkNode(
     case 'Interpolation':
       walkInterpolation(node, hooks, depth);
       break;
-    case 'GeneralEnclosed':
-      walkNode(node.content, hooks, 'value.general.content', node, 0, depth + 1);
-      break;
-    case 'VarIndirect':
-      walkNode(node.nameRef, hooks, 'value.var-indirect.name', node, 0, depth + 1);
+    case 'Lookup':
+      /* A `@@indirect` is a Lookup whose NAME is a node; a plain `@x` is a leaf. */
+      if (typeof node.name === 'object') {
+        walkNode(node.name, hooks, 'value.lookup.name', node, 0, depth + 1);
+      }
       break;
     case 'Condition':
       walkGuard(node.guard, hooks, 'value.condition.guard', node, 0, depth + 1);
+      break;
+    case 'IfValue':
+      for (let i = 0; i < node.branches.length; i++) {
+        const branch = node.branches[i]!;
+        if (branch.guard !== null) {
+          walkGuard(branch.guard, hooks, 'value.if.branch.guard', node, i, depth + 1);
+        }
+        walkValueSlot(branch.value, hooks, 'value.if.branch.value', node, i, depth + 1);
+      }
       break;
     case 'Reference':
       walkReference(node, hooks, depth);
@@ -583,24 +623,26 @@ function walkNode(
         walkNode(node.entries[i]!, hooks, 'value.collection.entry', node, i, depth + 1);
       }
       break;
+    case 'CollectionEntry':
+      walkValueSlot(node.key, hooks, 'value.collection.key', node, 0, depth + 1);
+      walkValueSlot(node.value, hooks, 'value.collection.value', node, 1, depth + 1);
+      break;
     case 'AnonymousMixin':
       if (node.params !== undefined) {
         walkParams(node.params, node, hooks, depth, 'value.anonymous-mixin');
       }
-      for (let i = 0; i < node.body.length; i++) {
-        walkNode(node.body[i]!, hooks, 'value.anonymous-mixin.body', node, i, depth + 1);
+      for (let i = 0; i < node.rules.length; i++) {
+        walkNode(node.rules[i]!, hooks, 'value.anonymous-mixin.rules', node, i, depth + 1);
       }
       break;
     case 'Keyword':
+    case 'Null':
     case 'Color':
     case 'Quoted':
     case 'Any':
     case 'Comment':
     case 'SelectorCapture':
     case 'Dimension':
-    case 'VariableReference':
-    case 'PropertyReference':
-    case 'RawInline':
       break;
   }
   hooks.leaveNode?.(node, c);

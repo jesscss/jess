@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { evalGuard, guardUsesDefault } from '../guard.js';
 import { funcCall, keyword, list } from '../nodes.js';
+import { typeCheck } from '../value-guards.js';
 
 describe('guardUsesDefault', () => {
   it('finds default() inside a nested value-slot array', () => {
@@ -34,5 +35,12 @@ describe('evalGuard', () => {
       modes: {},
       isDefault: () => false
     })).toBe(true);
+  });
+});
+
+describe('typeCheck', () => {
+  it('recognizes only the structural URL value in guard position', () => {
+    expect(typeCheck('isurl', [{ type: 'Url', bytes: 'url("x")' }])).toBe(true);
+    expect(typeCheck('isurl', [{ type: 'Keyword', text: 'url("x")', bytes: 'url("x")' }])).toBe(false);
   });
 });

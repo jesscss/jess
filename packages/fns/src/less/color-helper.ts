@@ -6,11 +6,11 @@
  *
  * HARD MODULE BOUNDARY: value domain only (no `../tree`, no legacy node).
  */
-import { HEX, RGB, colorHsl, colorRawRgb, colorRgbRounded, makeColorHsl, makeColorRgb, round, serializeColor, textOf, type Color, type ValueObj } from '@jesscss/core/value';
+import { HEX, RGB, colorHsl, colorRawRgb, colorRgbRounded, makeColorHsl, makeColorRgb, serializeColor, textOf, type Color, type Value } from '@jesscss/core';
 import { clamp01 } from './color-ctor-helper.js';
 import { requireDimension } from './math-helper.js';
 
-export function requireColor(value: ValueObj): Color {
+export function requireColor(value: Value): Color {
   if (value.type !== 'Color') {
     throw new TypeError('Expected a color value.');
   }
@@ -32,27 +32,39 @@ export const snapAlpha = (a: number): number => (Math.abs(a - 1) < 1e-12 ? 1 : a
 
 /**
  * The one alpha-adjust kernel for `fade`/`fadein`/`fadeout`: rebuild `color` at
- * `newAlpha`, rounded to Less's 8-decimal numeric precision (Less `fround`) so
- * float drift emits `0.7`, not `0.7000000000000001`. A `#`-hex input keeps HEX
+ * `newAlpha`, carried at FULL precision. It used to round to Less's 8-decimal
+ * `fround` here so that float drift emitted `0.7` and not `0.7000000000000001` —
+ * but that is the OUTPUT policy's job (`formatNumber` trims exactly that noise),
+ * and ruling V5 forbids quantizing a colour channel at construction precisely
+ * because chained colour math compounds the error. A `#`-hex input keeps HEX
  * format ONLY when the literal already encoded an alpha channel (`#rgba` /
  * `#rrggbbaa`); an opaque hex (`#rgb` / `#rrggbb`) turns to `rgba(…)` the moment
  * it becomes translucent (Less 4.x/v5 parity — e.g. `fadeout(#ff0, 50%)` →
  * `rgba(255, 255, 0, 0.5)`, but `fade(#5F59, 10%)` → `#55ff551a`).
+ *
+ * The retag fires ONLY when the result is actually translucent (ledger **V10**, the
+ * same `alpha < 1 ? RGB : <input format>` rule {@link mixColors} already applies).
+ * It used to fire unconditionally, so a round trip back to opaque left the value
+ * tagged `RGB` and `fade(#f00, 100%)` emitted `rgb(255, 0, 0)` where every other
+ * computed opaque colour — `lighten` → `#b3f075`, `mix` → `#800080` — emits hex.
+ * An opaque result has no alpha to carry, so there is nothing for the retag to say.
  */
 export function withAlpha(color: Color, newAlpha: number): Color {
-  const node = color.node;
+  const node = color.src;
   const hexDigits = typeof node === 'string' && node.startsWith('#') ? node.length - 1 : 0;
   const preserveHex = color.format === HEX && (hexDigits === 4 || hexDigits === 8);
-  return makeColorRgb(colorRawRgb(color), round(newAlpha, 8), preserveHex ? HEX : RGB, { modernSyntax: color.modernSyntax === true });
+  const format = newAlpha < 1 ? (preserveHex ? HEX : RGB) : color.format;
+  return makeColorRgb(colorRawRgb(color), newAlpha, format, { modernSyntax: color.modernSyntax === true });
 }
 
 /**
  * Factory for the four HSL single-channel adjusters (`lighten`/`darken` on `l`,
  * `saturate`/`desaturate` on `s`). `channel` indexes `[h, s, l]`; `sign` adds or
  * subtracts the amount. A `relative` method scales the delta by the current
- * channel value. Preserves the input's alpha + output format.
+ * channel value. The written channel remains in HSL's 0-1 domain. Preserves the
+ * input's alpha + output format.
  */
-export function hslAdjust(channel: 1 | 2, sign: 1 | -1): (...args: ValueObj[]) => ValueObj {
+export function hslAdjust(channel: 1 | 2, sign: 1 | -1): (...args: Value[]) => Value {
   return (c, amt, m) => {
     const color = requireColor(c);
     const hsl = colorHsl(color);
@@ -61,7 +73,7 @@ export function hslAdjust(channel: 1 | 2, sign: 1 | -1): (...args: ValueObj[]) =
       adjust = hsl[channel] * adjust;
     }
     const out: [number, number, number] = [hsl[0], hsl[1], hsl[2]];
-    out[channel] += sign * adjust;
+    out[channel] = clamp01(out[channel] + sign * adjust);
     return makeColorHsl(out, color.alpha, color.format);
   };
 }

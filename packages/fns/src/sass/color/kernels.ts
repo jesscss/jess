@@ -12,17 +12,17 @@
  *
  * HARD MODULE BOUNDARY: value domain only (no `../../tree`, no legacy node).
  */
-import type { Color, Dimension, ValueGroup, ValueObj } from '@jesscss/core/value';
-import { HEX, HSL, RGB, colorHsl, colorRawRgb, colorRgbRounded, groupSeparator, isValueGroupArray, makeColorHsl, makeColorRgb } from '@jesscss/core/value';
+import type { Color, Dimension, ValueGroup, Value } from '@jesscss/core';
+import { HEX, HSL, RGB, colorHsl, colorRawRgb, colorRgbRounded, groupSeparator, isValueGroupArray, makeColorHsl, makeColorRgb } from '@jesscss/core';
 
-export function requireColor(value: ValueObj): Color {
+export function requireColor(value: Value): Color {
   if (value.type !== 'Color') {
     throw new TypeError('Expected a color value.');
   }
   return value;
 }
 
-export function requireDimension(value: ValueObj): Dimension {
+export function requireDimension(value: Value): Dimension {
   if (value.type !== 'Dimension') {
     throw new TypeError('Expected a number value.');
   }
@@ -52,7 +52,7 @@ export const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
  * to be within 0% and 100%`), and `lighten(hsl(0,0%,90%), 0.2)` → `hsl(0, 0%,
  * 90.2%)` proves the unitless form is the same percentage scale, not a fraction.
  */
-export function percentAmount(value: ValueObj, max = 100): number {
+export function percentAmount(value: Value, max = 100): number {
   const d = requireDimension(value);
 
   /*
@@ -72,7 +72,7 @@ export function percentAmount(value: ValueObj, max = 100): number {
  * `mix/units.hrx` accepts `color.mix(#91e16f, #0144bf, 50px)` with the same
  * result as `50%`, emitting a `function-units` deprecation instead of an error.
  */
-export function weightAmount(value: ValueObj): number {
+export function weightAmount(value: Value): number {
   const d = requireDimension(value);
   if (d.number < 0 || d.number > 100) {
     throw new RangeError(`$weight: Expected ${d.bytes} to be within 0% and 100%.`);
@@ -86,7 +86,7 @@ export function weightAmount(value: ValueObj): number {
  * percentage outright (`fade-in(rgba(255,0,0,.5), 10%)` → `$amount: Expected 10%
  * to be within 0 and 1`) where Less's `fadein` takes `10%` to mean +0.1 alpha.
  */
-export function fractionAmount(value: ValueObj): number {
+export function fractionAmount(value: Value): number {
   const d = requireDimension(value);
   if (d.unit !== '' || d.number < 0 || d.number > 1) {
     throw new RangeError(`$amount: Expected ${d.bytes} to be within 0 and 1.`);
@@ -123,7 +123,7 @@ export function withAlpha(color: Color, newAlpha: number): Color {
  * arguments allowed, but 3 were passed`), so a supplied third slot throws and the
  * call is left verbatim rather than silently answering the two-argument result.
  */
-export function hslAdjust(channel: 1 | 2, sign: 1 | -1): (...args: ValueObj[]) => ValueObj {
+export function hslAdjust(channel: 1 | 2, sign: 1 | -1): (...args: Value[]) => Value {
   return (c, amt, extra) => {
     if (extra !== undefined) {
       throw new TypeError('Only 2 arguments allowed, but 3 were passed.');
@@ -208,7 +208,7 @@ export const isModern = (value: ValueGroup): boolean => {
 };
 
 /** A structural arg-list item narrowed to a single value (a nested group is a type error). */
-export function requireValue(v: ValueGroup | undefined): ValueObj {
+export function requireValue(v: ValueGroup | undefined): Value {
   if (v === undefined || isValueGroupArray(v)) {
     throw new TypeError('Expected a single value argument.');
   }

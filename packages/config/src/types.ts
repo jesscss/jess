@@ -16,16 +16,9 @@ export type UnitMode = 'loose' | 'preserve' | 'strict';
  */
 export type FunctionMode = 'preserve' | 'error';
 
-/**
- * Equality compatibility modes for the shared guard evaluator. The names retain
- * their source-compatibility meaning (Less 4.x and Sass diverge in opposite
- * directions), not separate runtime semantics:
- * - `less`: Less 4.x equality (numeric coercion; quoted vs unquoted distinct)
- * - `sass`: Dart Sass equality (unit-strict; quote-insensitive strings)
- * - `exact`: no coercion — operands must be the same node type
- */
-export type EqualityMode = 'less' | 'sass' | 'exact';
-export type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
+export type SelectorPolicyKind = 'class' | 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
+export type ExtendSelectorKind = SelectorPolicyKind;
+export type ApplySelectorKind = SelectorPolicyKind;
 
 /**
  * Less compiler options
@@ -35,8 +28,12 @@ export interface LessOptions {
   /**
    * Restrict which selector shapes are allowed in extend targets.
    * When set, any other selector kind is a parse error.
+   *
+   * `class` is narrower than `basic`: it accepts `.utility`, while `basic`
+   * also accepts non-pseudo simple selectors such as `#id`, `button`, and `[attr]`.
    */
   allowExtendSelectors?: ExtendSelectorKind[];
+  allowApplySelectors?: ApplySelectorKind[];
 
   /**
    * Inline Javascript - @plugin still allowed
@@ -169,14 +166,6 @@ export interface LessOptions {
   functionMode?: FunctionMode;
 
   /**
-   * How to handle equality/coercion in guards and comparisons.
-   * - 'loose': Less-compatible loose (coercive) equality (JS '==')
-   * - 'strict': type-strict behavior
-   * @default 'loose'
-   */
-  equalityMode?: EqualityMode;
-
-  /**
    * @deprecated Use `mathMode` instead. This option maps to `mathMode` as follows:
    * - 0 or 'always' → 'always'
    * - 1 or 'parens-division' → 'parens-division'
@@ -188,7 +177,7 @@ export interface LessOptions {
 
   /**
    * @deprecated Use `unitMode` instead. If `true`, sets `unitMode` to 'strict'.
-   * If `false`, sets the unitMode to 'loose.
+   * If `false`, sets the unitMode to 'loose'.
    * If undefined, uses the `unitMode` value (defaults to 'preserve').
    * @default false
    */
@@ -260,7 +249,6 @@ export interface LessOptions {
    * Convenience preset. When `true`, sets the strict bundle for any of the
    * following left `undefined` (individual options always win):
    * - `unitMode: 'strict'`
-   * - `equalityMode: 'exact'` (the no-coercion dialect)
    * - `leakyScope: false`
    * - `allowOverloadedImport: false`
    *
@@ -310,8 +298,8 @@ export interface LessOptions {
 
 export interface ScssOptions {
   allowExtendSelectors?: ExtendSelectorKind[];
+  allowApplySelectors?: ApplySelectorKind[];
   unitMode?: UnitMode;
-  equalityMode?: EqualityMode;
   collapseNesting?: boolean;
 
   [key: string]: any;
@@ -336,7 +324,6 @@ export interface InputOptions extends FileMatchOptions {
   mathMode?: MathMode;
   unitMode?: UnitMode;
   functionMode?: FunctionMode;
-  equalityMode?: EqualityMode;
   strict?: boolean;
   allowOverloadedImport?: boolean;
   processImports?: boolean;
@@ -388,7 +375,36 @@ export interface OutputOptions extends FileMatchOptions {
 }
 
 export type LintSeverity = 'off' | 'warn' | 'error';
-export type LintRuleSetting = LintSeverity | null;
+export interface LintRuleOptions {
+  /**
+   * Stylelint-compatible ignore switches for rules that support secondary
+   * options.
+   */
+  ignore?: readonly string[];
+
+  /**
+   * Opt-in subfamilies for rules whose default policy intentionally stays
+   * narrower than their shared detector.
+   */
+  include?: readonly string[];
+
+  /**
+   * Regular expression for opt-in naming rules such as selector-class-pattern,
+   * custom-property-pattern, and keyframes-name-pattern.
+   */
+  pattern?: string | RegExp;
+
+  /**
+   * Preferred notation for opt-in convention rules such as
+   * color-function-notation, alpha-value-notation, and hue-degree-notation.
+   */
+  notation?: string;
+
+  /** Allow rule-specific options without forcing every rule into a shared shape. */
+  [key: string]: unknown;
+}
+
+export type LintRuleSetting = LintSeverity | null | readonly [LintSeverity | null, LintRuleOptions?];
 
 export interface LintConfig {
   /**
@@ -410,15 +426,24 @@ export interface LintConfig {
   reportSyntax?: boolean;
 
   /**
+   * Additional CSS property names accepted by unknown-property diagnostics.
+   * Mirrors VSCode's `validProperties` stylesheet setting.
+   */
+  validProperties?: readonly string[];
+
+  /**
    * Per-rule policy. Jess uses Stylelint-familiar rule names where the rule
    * intent matches, and names Jess-only diagnostics under Jess-owned namespaces.
    * `null` and `off` suppress a rule; `warn` and `error` set its severity.
+   * Tuple settings accept secondary rule options in a Stylelint-like shape,
+   * for example `['warn', { ignore: ['consecutive-duplicates'] }]`.
    */
   rules?: Record<string, LintRuleSetting>;
 
   /**
-   * @deprecated Use `rules`. This compatibility alias accepts Jess diagnostic
-   * codes and maps them to the corresponding lint rule when one exists.
+   * Diagnostic-code policy for parser/compiler-style diagnostics and a
+   * compatibility alias for lint rules. When a code maps to a lint rule,
+   * `rules` is preferred; codes without lint rule names stay here.
    */
   diagnostics?: Record<string, LintSeverity>;
 }
@@ -438,7 +463,6 @@ export interface StylesConfig {
     mathMode?: MathMode;
     unitMode?: UnitMode;
     functionMode?: FunctionMode;
-    equalityMode?: EqualityMode;
 
     /** See {@link LessOptions.strict}. Expanded onto the other compile modes. */
     strict?: boolean;
@@ -452,6 +476,7 @@ export interface StylesConfig {
     /** See {@link LessOptions.processImports}. */
     processImports?: boolean;
     allowExtendSelectors?: ExtendSelectorKind[];
+    allowApplySelectors?: ApplySelectorKind[];
     disableScriptModules?: boolean;
 
     /**

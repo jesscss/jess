@@ -96,9 +96,19 @@ function isRulesetSelectorMetadata(value: unknown): value is Selector {
 }
 
 /**
- * A placeholder selector uses the escaped-backslash sigil `\\name` — a literal `\`
- * in the selector text (what the SCSS parser lowers `%name` to, and what `.jess`
- * writes directly, since `%` is modulo/percent in Jess). Detected from the text.
+ * A placeholder selector uses the escaped-backslash sigil `\\name` — TWO literal
+ * backslash characters in the selector text (what the SCSS parser lowers `%name`
+ * to, and what `.jess` writes directly, since `%` is modulo/percent in Jess).
+ * Detected from the text.
+ *
+ * Two, not one: `\\` is the CSS escape for a literal backslash (css-syntax-3
+ * §4.3.7 "consume an escaped code point"), so `\\name` is a well-formed
+ * identifier whose value is `\name` — and since no element type is named
+ * `\name`, it can never match as a type selector (selectors-4 §5.1). The
+ * spelling is therefore inert BY CONSTRUCTION. A single `\` would escape the
+ * first letter instead, making `\name` the ordinary type selector `name`.
+ * (This comment previously said "a literal `\`", contradicting the code below;
+ * the CODE was right.)
  */
 function selectorTextIsPlaceholder(sel: unknown): boolean {
   if (typeof sel === 'string') {

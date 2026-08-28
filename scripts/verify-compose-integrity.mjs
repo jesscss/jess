@@ -21,17 +21,17 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
-const ROOT = process.cwd();
-
 /*
- * Signatures that mean a grammar silently degraded to the runtime interpreter
- * or failed to compose. Kept in sync with parseman's macro plugin warnings.
+ * The degrade signatures used to be spelled out in this file, and they only
+ * covered `compose()`: a per-DECLARATION fallback — `"x" couldn't be inlined
+ * (likely closes over a runtime value)`, by far the most common kind — carries
+ * neither "falling back to runtime" nor "references missing rule", and passed
+ * this gate silently. They now come from the single detector definition, which
+ * leads with the suffix parseman puts on EVERY fallback warning.
  */
-const DEGRADE_PATTERNS = [
-  /compose\(\):[^\n]*falling back to runtime/i,
-  /compose:\s*rule\s+"[^"]*"\s+references missing rule/i,
-  /falling back to runtime/i
-];
+import { scanBuildLog } from './parseman-fallback-detector.mjs';
+
+const ROOT = process.cwd();
 
 // parseman-macro parser packages, in topological (compose) order.
 const PARSER_PACKAGES = [
@@ -43,12 +43,7 @@ const PARSER_PACKAGES = [
 ];
 
 function scan(text, sourceLabel) {
-  const hits = [];
-  for (const line of text.split('\n')) {
-    if (DEGRADE_PATTERNS.some(pattern => pattern.test(line))) {
-      hits.push(line.trim());
-    }
-  }
+  const hits = scanBuildLog(text);
   if (hits.length > 0) {
     console.error(`\nCompose-integrity FAILED (${sourceLabel}). A grammar silently degraded:`);
     for (const hit of hits) {

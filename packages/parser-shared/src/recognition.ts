@@ -5,10 +5,9 @@
  * Consumers macro-fuse this compiled artifact with their local reductions. It
  * contains recognition only: no AST construction or runtime composition seam.
  */
-import { keywords, literal, noTrivia, optional, regex, rules, sequence, token, word } from 'parseman' with { type: 'macro' };
+import { choice, keywords, literal, noTrivia, not, optional, regex, rules, sequence, token, word } from 'parseman' with { type: 'macro' };
 
 const cssIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
-const propertyName = cssIdentifier;
 const keywordValue = cssIdentifier;
 const doubleQuotedText = regex(/(?:[^"\\]|\\[\s\S])*/);
 const singleQuotedText = regex(/(?:[^'\\]|\\[\s\S])*/);
@@ -18,12 +17,6 @@ const urlOpen = literal(
 );
 const urlInner = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 
-/*
- * Jess's direct static import target deliberately reserves `$` forms for its
- * own grammar. Keep this as a macro-recognition leaf, not a parser-local text
- * scan, so `url($path)` / `url($[path])` cannot reach a URL reducer.
- */
-const staticUrlInner = regex(/(?:[^"'()\\$ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 const simpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\d+(?:\.\d+)?%|\*)/);
 
 /* Pseudo names are adjacent to `:`/`::`; ambient trivia must not swallow whitespace here. */
@@ -38,9 +31,20 @@ const nth = regex(/even|odd|[-+]?\d*n(?:[ \t\n\r\f]*[+-][ \t\n\r\f]*\d+)?|[-+]?\
  * Keep this recognition fact shared and macro-fused: dialect reductions can
  * reject the malformed prefix before their otherwise lossless raw arm.
  */
-const malformedPseudoNumericArgument = regex(/(?:[-+]?\d*\.\d|[-+]?\d*n(?:[ \t\n\r\f]*[+-][ \t\n\r\f]*(?:\)|[^0-9 \t\n\r\f]|\d+[_a-zA-Z\u0080-\uffff\\])))/i);
+/*
+ * The raw pseudo fallback must not recover malformed `<An+B>` spelling for an
+ * `:nth-*` family. In particular, CSS Syntax rejects whitespace that splits a
+ * sign, coefficient, or `n` token (`+ n`, `2 n + 2`, `1 - n`). Keep those
+ * rejection prefixes beside the existing decimal/dangling-tail guards; the
+ * consuming grammars apply this gate only to the `:nth-*` pseudo family, so
+ * unknown functional pseudos retain their ordinary `<any-value>` arguments.
+ *
+ * Derived from WPT css/css-syntax/anb-parsing.html at
+ * a95401e4e06351eb1e15f0e15cf50abf08fa545f.
+ */
+const malformedPseudoNumericArgument = regex(/(?:[-+]?\d*\.\d|[-+]?\d*n(?:[ \t\n\r\f]*[+-][ \t\n\r\f]*(?:\)|[^0-9 \t\n\r\f]|\d+[_a-zA-Z\u0080-\uffff\\]))|[+-][ \t\n\r\f]+(?:\d*n|n)|[-+]?\d+[ \t\n\r\f]+n|[-+]?\d+[ \t\n\r\f]*[+-][ \t\n\r\f]*n)/i);
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
-const scssLineComment = regex(/\/\/[^\n\r]*/);
+const lineComment = regex(/\/\/[^\n\r]*/);
 
 /*
  * A closed SCSS media/container fallback for legacy static modifiers such as
@@ -48,7 +52,7 @@ const scssLineComment = regex(/\/\/[^\n\r]*/);
  * groups, strings, and interpolation have their own grammar productions, while
  * a top-level `$` or `;` must stop the run rather than become opaque AST text.
  */
-const scssStaticMediaModifier = regex(/(?:[^${}()\[\];"'#]|#(?!\{))+/);
+const mediaModifier = regex(/(?:[^${}()\[\];"'#]|#(?!\{))+/);
 
 /*
  * CSS and SCSS priority matching is ASCII-case-insensitive. Direct dialect
@@ -73,12 +77,23 @@ const hexColor = regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-f
 const unicodeRange = regex(/[Uu]\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/);
 
 /*
+ * The one at-keyword boundary. An at-keyword is `@` followed by an
+ * ident-sequence, and CSS Syntax L3 §4.3.11 makes every code point >= U+0080 an
+ * ident code point, so a keyword only ends where a NON-ident code point starts.
+ * Spelling this ASCII-only (`-_0-9A-Za-z`, or the `\w` that means the same
+ * thing) drops U+0080-U+FFFF -- 65,408 code points -- and cuts at-keywords in
+ * half mid-ident. Every recognizer below shares this const: the set of at-rule
+ * names is declared once per name, and both polarities come from `not()`.
+ */
+const AT_KEYWORD_BOUNDARY = '-_a-zA-Z0-9\\u0080-\\uFFFF';
+
+/*
  * CSS at-keywords are ASCII-case-insensitive. Dialect reductions own the
  * header/body shape; these leaves only establish the keyword boundary.
  */
 const conditionalAtKeyword = keywords(
   ['@media', '@container', '@supports'],
-  { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+  { caseInsensitive: true, boundary: AT_KEYWORD_BOUNDARY }
 );
 
 /*
@@ -89,37 +104,38 @@ const conditionalAtKeyword = keywords(
  */
 const mediaContainerAtKeyword = keywords(
   ['@media', '@container'],
-  { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+  { caseInsensitive: true, boundary: AT_KEYWORD_BOUNDARY }
 );
 const mediaAtKeyword = word(
   '@media',
-  '-_0-9A-Za-z',
+  AT_KEYWORD_BOUNDARY,
   { caseInsensitive: true }
 );
 const containerAtKeyword = word(
   '@container',
-  '-_0-9A-Za-z',
+  AT_KEYWORD_BOUNDARY,
   { caseInsensitive: true }
 );
 const supportsAtKeyword = word(
   '@supports',
-  '-_0-9A-Za-z',
+  AT_KEYWORD_BOUNDARY,
   { caseInsensitive: true }
 );
 const startingStyleAtKeyword = word(
   '@starting-style',
-  '-_0-9A-Za-z',
+  AT_KEYWORD_BOUNDARY,
   { caseInsensitive: true }
 );
 
 /*
- * Retain the current public CSS grammar's ASCII `\\w` boundaries exactly.
- * This accepts a Unicode character after the keyword (for example `@pageé`),
- * which is legacy parser behavior to preserve during the direct-route cutover.
+ * `@pageé` is ONE at-keyword, not `@page` plus a prelude starting with `é`.
+ * The older ASCII boundary here split it, and that split is superseded --
+ * see DESIGN-DECISIONS.md P20. Do not restore `-_0-9A-Za-z` on the authority
+ * of a comment that predates the ruling.
  */
 const pageAtKeyword = word(
   '@page',
-  '-_0-9A-Za-z',
+  AT_KEYWORD_BOUNDARY,
   { caseInsensitive: true }
 );
 const marginAtKeyword = keywords(
@@ -141,7 +157,7 @@ const marginAtKeyword = keywords(
     '@right-middle',
     '@right-bottom'
   ],
-  { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+  { caseInsensitive: true, boundary: AT_KEYWORD_BOUNDARY }
 );
 const queryNot = word(
   'not',
@@ -171,57 +187,139 @@ const queryFunctionOpen = noTrivia(sequence(
 ));
 const scopeAtKeyword = word(
   '@scope',
-  '-_0-9A-Za-z',
+  AT_KEYWORD_BOUNDARY,
   { caseInsensitive: true }
 );
-const descriptorAtKeyword = keywords(
-  [
-    '@font-face',
-    '@counter-style',
-    '@property',
-    '@color-profile',
-    '@font-palette-values',
-    '@position-try',
-    '@view-transition'
-  ],
-  { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+
+/*
+ * The descriptor at-rules every dialect gives a typed header/body.
+ */
+const descriptorAtKeywordTyped = keywords(
+  ['@font-face', '@counter-style', '@property'],
+  { caseInsensitive: true, boundary: AT_KEYWORD_BOUNDARY }
 );
+
+/*
+ * Descriptor at-rules only the CSS grammar routes. Split out because a dialect
+ * must exclude from its generic/opaque branch ONLY the names it actually has a
+ * typed route for: excluding a name it cannot otherwise parse makes that at-rule
+ * unparseable rather than better-diagnosed. SCSS routes the three above and none
+ * of these four, so it inverts `descriptorAtKeywordTyped` and lets these reach
+ * its opaque branch. Still one declaration per name — `descriptorAtKeyword`
+ * below is the union, so CSS's typed set is unchanged.
+ */
+const descriptorAtKeywordCssOnly = keywords(
+  ['@color-profile', '@font-palette-values', '@position-try', '@view-transition'],
+  { caseInsensitive: true, boundary: AT_KEYWORD_BOUNDARY }
+);
+const descriptorAtKeyword = choice(descriptorAtKeywordTyped, descriptorAtKeywordCssOnly);
 const documentAtKeyword = keywords(
   ['@-moz-document', '@document'],
-  { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+  { caseInsensitive: true, boundary: AT_KEYWORD_BOUNDARY }
 );
 const layerAtKeyword = word(
   '@layer',
-  '-_0-9A-Za-z',
+  AT_KEYWORD_BOUNDARY,
   { caseInsensitive: true }
 );
-const keyframesAtKeyword = regex(/@(?:-[a-z]+-)?keyframes(?![-\w])/i);
-const statementAtRuleName = regex(/@(?!(?:import)(?=[^-_a-zA-Z0-9\u0080-\uffff]|$))-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
+const keyframesAtKeyword = regex(/@(?:-[a-z]+-)?keyframes(?![-_a-zA-Z0-9\u0080-\uFFFF])/i);
+
+/*
+ * `@font-feature-valuesé` is ONE at-keyword. The older ASCII boundary read it
+ * as `@font-feature-values` plus a prelude beginning with `é`; that reading is
+ * superseded -- see DESIGN-DECISIONS.md P20.
+ */
+const fontFeatureValuesAtKeyword = word(
+  '@font-feature-values',
+  AT_KEYWORD_BOUNDARY,
+  { caseInsensitive: true }
+);
+const importAtKeyword = word(
+  '@import',
+  AT_KEYWORD_BOUNDARY,
+  { caseInsensitive: true }
+);
+
+/*
+ * `@` followed by an ident-sequence (css-syntax-3 §4.3.11), with no name
+ * excluded. The recognizers below carve subsets out of this by composing
+ * `not()` over the SAME leaves that define those names positively, so a name is
+ * spelled exactly once in this file and cannot drift between polarities.
+ */
+const atIdentifier = regex(/@-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
+
+/*
+ * The Less at-rule-name body, which does NOT admit CSS escapes: Less keeps
+ * `@\\63 olor` out of the at-rule-name position on purpose. Same §4.3.11
+ * boundary, narrower body -- a different lexical class, not a second copy of
+ * the at-rule NAME SET.
+ */
+const atIdentifierUnescaped = regex(/@-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
+
+/*
+ * Every at-rule name with a typed header/body. `keywords()` compiles each list
+ * to a single sticky regex, so this is an 8-arm choice over 15 names, and it is
+ * the ONE place the typed set is enumerated: `atRuleKeyword` matches it and
+ * `genericAtRuleName` excludes it, both reading this same const.
+ */
+const typedAtKeyword = choice(
+  descriptorAtKeyword,
+  documentAtKeyword,
+  fontFeatureValuesAtKeyword,
+  keyframesAtKeyword,
+  startingStyleAtKeyword,
+  pageAtKeyword,
+  scopeAtKeyword,
+  layerAtKeyword
+);
+
+/*
+ * `typedAtKeyword` minus the descriptor at-rules only CSS routes. A dialect
+ * inverts THIS when it implements every typed at-rule except those four, so it
+ * still spells no at-rule name of its own — see `descriptorAtKeywordCssOnly`.
+ */
+const typedAtKeywordSharedRoutes = choice(
+  descriptorAtKeywordTyped,
+  documentAtKeyword,
+  fontFeatureValuesAtKeyword,
+  keyframesAtKeyword,
+  startingStyleAtKeyword,
+  pageAtKeyword,
+  scopeAtKeyword,
+  layerAtKeyword
+);
+
+const statementAtRuleName = token(noTrivia(sequence(
+  not(importAtKeyword),
+  atIdentifier
+)));
 
 /*
  * Opaque blocks are the public grammar's unknown-at-rule branch. Known block
  * names must not fall through here when their typed header/body is malformed:
  * the public CST reports that error instead of silently making it opaque.
  */
-const genericAtRuleName = regex(/@(?!(?:import|media|container|supports|starting-style|page|scope|font-face|counter-style|property|color-profile|font-palette-values|position-try|view-transition|-moz-document|document|font-feature-values|layer|(?:-[a-z]+-)?keyframes)(?=[^-\w]|$))-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
+const genericAtRuleName = token(noTrivia(sequence(
+  not(typedAtKeyword),
+  not(conditionalAtKeyword),
+  not(importAtKeyword),
+  atIdentifier
+)));
 
 /*
  * One opener for dispatching typed/generic at-rules after `@import` and
- * conditional groups have already been handled. Keep this as one shared leaf:
- * splitting it into same-`@` keyword choices only adds pre-dispatch fan-out.
+ * conditional groups have already been handled. The typed arm comes first and
+ * the unrestricted arm last, so ORDERED CHOICE carries the "specific before
+ * general" constraint that used to be hand-encoded as a lookahead name list.
  */
-const routedAtRuleKeyword = regex(/@(?:(?:starting-style|font-feature-values|font-face|counter-style|color-profile|font-palette-values|position-try|view-transition|property|page|scope|layer|-moz-document|document)(?=[^-_0-9A-Za-z]|$)|(?:-[a-z]+-)?keyframes(?![-\w])|(?!(?:import|media|container|supports)(?=[^-_a-zA-Z0-9\u0080-\uffff]|$))-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)/i);
-
-/*
- * Preserve the public CSS grammar's legacy ASCII boundary. In particular,
- * `@font-feature-valuesé` is the recognized at-keyword followed by a prelude
- * beginning with `é`, not a distinct at-keyword.
- */
-const fontFeatureValuesAtKeyword = word(
-  '@font-feature-values',
-  '-_0-9A-Za-z',
-  { caseInsensitive: true }
-);
+const atRuleKeyword = token(noTrivia(choice(
+  typedAtKeyword,
+  sequence(
+    not(conditionalAtKeyword),
+    not(importAtKeyword),
+    atIdentifier
+  )
+)));
 const fontFeatureValueAtKeyword = keywords(
   [
     '@stylistic',
@@ -259,38 +357,6 @@ const lessBareIdentifier = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uf
  */
 const lessVariableName = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
 
-/*
- * Less's typed CSS color values. This deliberately remains separate from the
- * general identifier leaf: the boundary rejects `redder`, `red-2`, and
- * `red(...)`. `currentColor` is a CSS-wide keyword, not an RGB color value.
- */
-const lessNamedColor = keywords(
-  [
-    'aliceblue', 'antiquewhite', 'aqua', 'aquamarine', 'azure', 'beige', 'bisque', 'black',
-    'blanchedalmond', 'blue', 'blueviolet', 'brown', 'burlywood', 'cadetblue', 'chartreuse',
-    'chocolate', 'coral', 'cornflowerblue', 'cornsilk', 'crimson', 'cyan', 'darkblue', 'darkcyan',
-    'darkgoldenrod', 'darkgray', 'darkgreen', 'darkgrey', 'darkkhaki', 'darkmagenta',
-    'darkolivegreen', 'darkorange', 'darkorchid', 'darkred', 'darksalmon', 'darkseagreen',
-    'darkslateblue', 'darkslategray', 'darkslategrey', 'darkturquoise', 'darkviolet', 'deeppink',
-    'deepskyblue', 'dimgray', 'dimgrey', 'dodgerblue', 'firebrick', 'floralwhite', 'forestgreen',
-    'fuchsia', 'gainsboro', 'ghostwhite', 'gold', 'goldenrod', 'gray', 'green', 'greenyellow',
-    'grey', 'honeydew', 'hotpink', 'indianred', 'indigo', 'ivory', 'khaki', 'lavender',
-    'lavenderblush', 'lawngreen', 'lemonchiffon', 'lightblue', 'lightcoral', 'lightcyan',
-    'lightgoldenrodyellow', 'lightgray', 'lightgreen', 'lightgrey', 'lightpink', 'lightsalmon',
-    'lightseagreen', 'lightskyblue', 'lightslategray', 'lightslategrey', 'lightsteelblue',
-    'lightyellow', 'lime', 'limegreen', 'linen', 'magenta', 'maroon', 'mediumaquamarine',
-    'mediumblue', 'mediumorchid', 'mediumpurple', 'mediumseagreen', 'mediumslateblue',
-    'mediumspringgreen', 'mediumturquoise', 'mediumvioletred', 'midnightblue', 'mintcream',
-    'mistyrose', 'moccasin', 'navajowhite', 'navy', 'oldlace', 'olive', 'olivedrab', 'orange',
-    'orangered', 'orchid', 'palegoldenrod', 'palegreen', 'paleturquoise', 'palevioletred',
-    'papayawhip', 'peachpuff', 'peru', 'pink', 'plum', 'powderblue', 'purple', 'rebeccapurple',
-    'red', 'rosybrown', 'royalblue', 'saddlebrown', 'salmon', 'sandybrown', 'seagreen', 'seashell',
-    'sienna', 'silver', 'skyblue', 'slateblue', 'slategray', 'slategrey', 'snow', 'springgreen',
-    'steelblue', 'tan', 'teal', 'thistle', 'tomato', 'transparent', 'turquoise', 'violet', 'wheat',
-    'white', 'whitesmoke', 'yellow', 'yellowgreen'
-  ],
-  { caseInsensitive: true, boundary: '-_a-zA-Z0-9(' }
-);
 const lessDeclarationProperty = token(noTrivia(sequence(
   optional(literal('*')),
   cssIdentifier
@@ -313,8 +379,6 @@ const lessPunctuationMapKey = regex(/[<>()#]/);
  * percent-format calls or dimensions.
  */
 const lessPercentEscape = regex(/%[0-9a-fA-F]{2}/);
-const lessDoubleQuotedText = regex(/[^"\\]*/);
-const lessSingleQuotedText = regex(/[^'\\]*/);
 
 /*
  * Less direct-AST interpolation terminals. Dialect AST grammars assemble these
@@ -417,86 +481,98 @@ const lessCustomInnerContent = regex(/(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\ufff
 const lessCustomSingleQuoted = regex(/'(?:[^'\n\\]|\\.)*'/);
 const lessCustomDoubleQuoted = regex(/"(?:[^"\n\\]|\\.)*"/);
 export const cssSyntax = rules(_g => ({
-  CssSyntaxProperty: propertyName,
-  CssSyntaxKeyword: keywordValue,
-  CssSyntaxDoubleQuotedText: doubleQuotedText,
-  CssSyntaxSingleQuotedText: singleQuotedText,
-  CssSyntaxUrlOpen: urlOpen,
-  CssSyntaxUrlInner: urlInner,
-  CssSyntaxStaticUrlInner: staticUrlInner,
-  CssSyntaxSimple: simpleSelector,
-  CssSyntaxPseudoColon: pseudoColon,
-  CssSyntaxAttributeOperator: attributeOperator,
-  CssSyntaxAttributeModifier: attributeModifier,
-  CssSyntaxNth: nth,
-  CssSyntaxMalformedPseudoNumericArgument: malformedPseudoNumericArgument,
-  CssSyntaxBlockComment: blockComment,
-  ScssSyntaxLineComment: scssLineComment,
-  ScssSyntaxStaticMediaModifier: scssStaticMediaModifier,
-  CssSyntaxImportant: important,
-  CssSyntaxHexColor: hexColor,
-  CssSyntaxUnicodeRange: unicodeRange,
-  CssSyntaxConditionalAtKeyword: conditionalAtKeyword,
-  CssSyntaxMediaContainerAtKeyword: mediaContainerAtKeyword,
-  CssSyntaxMediaAtKeyword: mediaAtKeyword,
-  CssSyntaxContainerAtKeyword: containerAtKeyword,
-  CssSyntaxSupportsAtKeyword: supportsAtKeyword,
-  CssSyntaxStartingStyleAtKeyword: startingStyleAtKeyword,
-  CssSyntaxPageAtKeyword: pageAtKeyword,
-  CssSyntaxMarginAtKeyword: marginAtKeyword,
-  CssSyntaxQueryNot: queryNot,
-  CssSyntaxQueryOnly: queryOnly,
-  CssSyntaxQueryAndOr: queryAndOr,
-  CssSyntaxQueryComparisonOperator: queryComparisonOperator,
-  CssSyntaxQueryFunctionName: queryFunctionName,
-  CssSyntaxQueryFunctionOpen: queryFunctionOpen,
-  CssSyntaxScopeAtKeyword: scopeAtKeyword,
-  CssSyntaxDescriptorAtKeyword: descriptorAtKeyword,
-  CssSyntaxDocumentAtKeyword: documentAtKeyword,
-  CssSyntaxLayerAtKeyword: layerAtKeyword,
-  CssSyntaxKeyframesAtKeyword: keyframesAtKeyword,
-  CssSyntaxStatementAtRuleName: statementAtRuleName,
-  CssSyntaxGenericAtRuleName: genericAtRuleName,
-  CssSyntaxRoutedAtRuleKeyword: routedAtRuleKeyword,
-  CssSyntaxFontFeatureValuesAtKeyword: fontFeatureValuesAtKeyword,
-  CssSyntaxFontFeatureValueAtKeyword: fontFeatureValueAtKeyword,
-  CssSyntaxNumber: number,
-  CssSyntaxDimensionUnit: dimensionUnit,
-  CssSyntaxInterpolatedPropertyStart: interpolatedPropertyStart,
-  CssSyntaxInterpolatedPropertyTail: interpolatedPropertyTail,
-  CssSyntaxCustomProperty: customPropertyName,
-  CssSyntaxCustomOuterContent: customOuterContent,
-  CssSyntaxCustomInnerContent: customInnerContent,
-  CssSyntaxCustomSingleQuoted: customSingleQuoted,
-  CssSyntaxCustomDoubleQuoted: customDoubleQuoted
+  Identifier: keywordValue,
+  AttributeOperator: attributeOperator,
+  AttributeModifier: attributeModifier,
+  DoubleQuotedText: doubleQuotedText,
+  SingleQuotedText: singleQuotedText,
+  UrlOpen: urlOpen,
+  UrlInner: urlInner,
+  SimpleSelectorToken: simpleSelector,
+  PseudoSelectorColon: pseudoColon,
+  NthExpression: nth,
+  MalformedPseudoSelectorNumericArgument: malformedPseudoNumericArgument,
+  BlockCommentToken: blockComment,
+  LineComment: lineComment,
+  MediaModifier: mediaModifier,
+  ImportantToken: important,
+  HexColor: hexColor,
+  UnicodeRangeToken: unicodeRange,
+  ConditionalAtKeyword: conditionalAtKeyword,
+  MediaContainerAtKeyword: mediaContainerAtKeyword,
+  MediaAtKeyword: mediaAtKeyword,
+  ContainerAtKeyword: containerAtKeyword,
+  SupportsAtKeyword: supportsAtKeyword,
+  StartingStyleAtKeyword: startingStyleAtKeyword,
+  PageAtKeyword: pageAtKeyword,
+  MarginAtKeyword: marginAtKeyword,
+  QueryNot: queryNot,
+  QueryOnly: queryOnly,
+  QueryAndOr: queryAndOr,
+  QueryComparisonOperator: queryComparisonOperator,
+  QueryFunctionName: queryFunctionName,
+  QueryFunctionOpen: queryFunctionOpen,
+  ScopeAtKeyword: scopeAtKeyword,
+  DescriptorAtKeyword: descriptorAtKeyword,
+  DocumentAtKeyword: documentAtKeyword,
+  LayerAtKeyword: layerAtKeyword,
+  KeyframesAtKeyword: keyframesAtKeyword,
+  StatementAtRuleName: statementAtRuleName,
+  GenericAtRuleName: genericAtRuleName,
+  AtRuleKeyword: atRuleKeyword,
+
+  /*
+   * Exposed so dialects that add their OWN at-rule names can exclude the CSS
+   * set by composing `not()` over these, instead of re-spelling the names.
+   */
+  TypedAtKeyword: typedAtKeyword,
+  TypedAtKeywordSharedRoutes: typedAtKeywordSharedRoutes,
+  ImportAtKeyword: importAtKeyword,
+  AtIdentifier: atIdentifier,
+  FontFeatureValuesAtKeyword: fontFeatureValuesAtKeyword,
+  FontFeatureValueAtKeyword: fontFeatureValueAtKeyword,
+  NumberToken: number,
+  DimensionUnit: dimensionUnit,
+  InterpolatedPropertyStart: interpolatedPropertyStart,
+  InterpolatedPropertyTail: interpolatedPropertyTail,
+  CustomPropertyName: customPropertyName,
+  CustomPropertyToken: customPropertyName,
+  CustomOuterContent: customOuterContent,
+  CustomInnerContent: customInnerContent,
+  CustomSingleQuoted: customSingleQuoted,
+  CustomDoubleQuoted: customDoubleQuoted
 }));
 
 export const lessSyntax = rules(_g => ({
-  LessSyntaxIdentifier: lessBareIdentifier,
-  LessSyntaxVariableName: lessVariableName,
-  LessSyntaxProperty: lessBareIdentifier,
-  LessSyntaxDeclarationProperty: lessDeclarationProperty,
-  LessSyntaxNumericMapKey: lessNumericMapKey,
-  LessSyntaxPunctuationMapKey: lessPunctuationMapKey,
-  LessSyntaxPercentEscape: lessPercentEscape,
-  LessSyntaxKeyword: lessBareIdentifier,
-  LessSyntaxNamedColor: lessNamedColor,
-  LessSyntaxDoubleQuotedText: lessDoubleQuotedText,
-  LessSyntaxSingleQuotedText: lessSingleQuotedText,
-  LessSyntaxInterpHead: lessInterpHead,
-  LessSyntaxInterpBareKey: lessInterpBareKey,
-  LessSyntaxInterpIndexKey: lessInterpIndexKey,
-  LessSyntaxQuotedDoubleChunk: lessQuotedDoubleChunk,
-  LessSyntaxQuotedSingleChunk: lessQuotedSingleChunk,
-  LessSyntaxInterpolatedCustomPropertyStart: lessInterpolatedCustomPropertyStart,
-  LessSyntaxInterpolatedCustomPropertyDash: lessInterpolatedCustomPropertyDash,
-  LessSyntaxInterpolatedCustomPropertyTail: lessInterpolatedCustomPropertyTail,
-  LessSyntaxInterpolatedValueStart: lessInterpolatedValueStart,
-  LessSyntaxInterpolatedValueDash: lessInterpolatedValueDash,
-  LessSyntaxInterpolatedValueTail: lessInterpolatedValueTail,
-  LessSyntaxCustomProperty: lessCustomProperty,
-  LessSyntaxCustomOuterContent: lessCustomOuterContent,
-  LessSyntaxCustomInnerContent: lessCustomInnerContent,
-  LessSyntaxCustomSingleQuoted: lessCustomSingleQuoted,
-  LessSyntaxCustomDoubleQuoted: lessCustomDoubleQuoted
+  /* Same shared at-keyword leaves as cssSyntax: Less inverts these rather than
+   * re-spelling the CSS at-rule names. */
+  ConditionalAtKeyword: conditionalAtKeyword,
+  LayerAtKeyword: layerAtKeyword,
+  KeyframesAtKeyword: keyframesAtKeyword,
+  ImportAtKeyword: importAtKeyword,
+  AtIdentifier: atIdentifier,
+  AtIdentifierUnescaped: atIdentifierUnescaped,
+  LessIdentifier: lessBareIdentifier,
+  VariableNameToken: lessVariableName,
+  DeclarationPropertyToken: lessDeclarationProperty,
+  NumericMapKeyToken: lessNumericMapKey,
+  PunctuationMapKeyToken: lessPunctuationMapKey,
+  PercentEscapeToken: lessPercentEscape,
+  ValueIdentifier: lessBareIdentifier,
+  InterpolationHead: lessInterpHead,
+  InterpolationKey: lessInterpBareKey,
+  InterpolationIndex: lessInterpIndexKey,
+  QuotedDoubleText: lessQuotedDoubleChunk,
+  QuotedSingleText: lessQuotedSingleChunk,
+  InterpolatedCustomPropertyStart: lessInterpolatedCustomPropertyStart,
+  InterpolatedCustomPropertyDash: lessInterpolatedCustomPropertyDash,
+  InterpolatedCustomPropertyTail: lessInterpolatedCustomPropertyTail,
+  InterpolatedValueStart: lessInterpolatedValueStart,
+  InterpolatedValueDash: lessInterpolatedValueDash,
+  InterpolatedValueTail: lessInterpolatedValueTail,
+  CustomPropertyToken: lessCustomProperty,
+  CustomValueOuterContent: lessCustomOuterContent,
+  CustomValueInnerContent: lessCustomInnerContent,
+  CustomValueSingleQuoted: lessCustomSingleQuoted,
+  CustomValueDoubleQuoted: lessCustomDoubleQuoted
 }));

@@ -3,7 +3,8 @@
  *
  * Cases from sass-spec `spec/core_functions/meta/type_of.hrx`.
  */
-import { isValueGroupArray, makeBlock, makeBool, makeCollection, makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, HEX } from '@jesscss/core/value';
+import { isValueGroupArray, makeBlock, makeBool, makeCollection, makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, HEX } from '@jesscss/core';
+import type { UrlValue } from '@jesscss/core';
 import { describe, it, expect } from 'vitest';
 import { typeOf } from '../meta/type-of.js';
 
@@ -24,6 +25,8 @@ describe('sass:meta — type-of', () => {
   it('§ string/quoted and § string/unquoted', () => {
     expect(text(typeOf(makeQuoted('c', '"', false)))).toBe('string');
     expect(text(typeOf(makeKeyword('c')))).toBe('string');
+    const url: UrlValue = { type: 'Url', bytes: 'url(c)' };
+    expect(text(typeOf(url))).toBe('string');
   });
 
   it('§ color', () => {
@@ -36,7 +39,7 @@ describe('sass:meta — type-of', () => {
   });
 
   it('§ null', () => {
-    expect(text(typeOf({ type: 'Nil', bytes: '' }))).toBe('null');
+    expect(text(typeOf({ type: 'Null', bytes: '' }))).toBe('null');
   });
 
   it('§ list/empty and § list/non_empty', () => {

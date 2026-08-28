@@ -12,6 +12,10 @@ function isCstNode(c: CssCstChild): c is CssCstNode {
   return c._tag === 'node';
 }
 
+function cstChildrenOf(node: CssCstNode): readonly CssCstChild[] {
+  return node.rules;
+}
+
 const INDEX_CACHE = new WeakMap<CssCstNode, CstIndex>();
 
 export function buildCstIndex(root: CssCstNode): CstIndex {
@@ -21,20 +25,20 @@ export function buildCstIndex(root: CssCstNode): CstIndex {
   }
   const out: CstIndexEntry[] = [];
   const abs = new Map<CssCstNode, [number, number]>();
-  const walk = (node: CssCstNode, base: number) => {
-    const s = base + Number(node.span.start);
-    const e = base + Number(node.span.end);
+  const walk = (node: CssCstNode) => {
+    const s = Number(node.span.start);
+    const e = Number(node.span.end);
     abs.set(node, [s, e]);
     if (Number.isFinite(s) && Number.isFinite(e) && e >= s) {
       out.push({ node, start: s, end: e });
     }
-    for (const child of node.children) {
+    for (const child of cstChildrenOf(node)) {
       if (isCstNode(child)) {
-        walk(child, s);
+        walk(child);
       }
     }
   };
-  walk(root, 0);
+  walk(root);
   out.sort((a, b) => (a.start - b.start) || (a.end - b.end));
   const index: CstIndex = {
     nodes: out,

@@ -1,0 +1,9 @@
+@import (reference) "library.less";
+@import (reference) "nested/merge-library.less";
+
+.consumer {
+  .library();
+  .comment-only();
+  .merged();
+  box-shadow+: url("caller.png") /* carried from the caller merge */;
+}

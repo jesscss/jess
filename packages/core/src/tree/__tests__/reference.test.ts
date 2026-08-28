@@ -124,7 +124,7 @@ describe('reference', () => {
       expect(node.toTrimmedString()).toBe('$foo');
     });
 
-    it('serializes a snapshot variable reference', () => {
+    it('serializes a legacy snapshot variable reference with the retired tree spelling', () => {
       let node = ref({ key: 'foo' }, { type: 'variable', readMode: 'snapshot' });
       expect(node.toTrimmedString()).toBe('$!foo');
     });

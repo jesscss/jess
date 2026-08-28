@@ -492,6 +492,15 @@ shared consts; only this identifier-boundary exclusion stays local by necessity.
 
   Net: the rejection stands on the second reason, which no parseman change is expected to move. The
   first reason (invasiveness) is real but secondary, and the premise it rested on is retired.
+
+  > **OVERRULED as a closure, 2026-08-09.** The `direct-builder-static` evidence above is intact and
+  > correct. The CONCLUSION drawn from it — that generic `compose()` is "closed to jess" — closes
+  > owner requirement **OR-1 rule 2** (`docs/OWNER-REQUIREMENTS.md`: *"Each downstream grammar MUST
+  > extend CSS grammar (import and compose)"*), and an agent may not close an owner requirement.
+  > "No parseman change is expected to move it" is also contradicted in-tree:
+  > `../parser/PRODUCTION-COMPOSE-FEASIBILITY.md` reads the same constraint and concludes the
+  > blocker is upstream, precisely located, and small, with parseman checked out locally at
+  > `~/git/oss/parseman`. The question is **OPEN** pending an owner ruling.
 - **Shared parameterless combinator consts only** (no external-ref artifact). Would share the leaves
   but NOT the arm ORDERING / structure where the bugs actually live (each dialect still assembles the
   arms). Weaker; keep external-ref parameterization so the STRUCTURE is shared once.

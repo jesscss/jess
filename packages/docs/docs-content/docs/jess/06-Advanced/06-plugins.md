@@ -79,6 +79,10 @@ export class MyPlugin extends AbstractPlugin {
 canonical AST v2 `Stylesheet` (omit it when parsing failed):
 
 - `document` — the parsed `Stylesheet` root.
+- `dialectDefaults` — an optional readonly set of evaluation defaults proposed
+  by the dialect. The entry parser's defaults establish the session fallback;
+  explicit compiler options win, and imported parsers cannot reconfigure the
+  active session.
 - `errors` — an array of error diagnostics; a non-empty array aborts compilation of
   the file.
 - `warnings` — non-fatal diagnostics (for example deprecation notices).
@@ -131,6 +135,11 @@ plugin exports `lessPluginDefaults` for exactly this reason):
 const myPlugin = (opts = {}) => new MyPlugin(opts);
 export default myPlugin;
 ```
+
+If those defaults affect evaluation, return a frozen readonly projection as
+`dialectDefaults` on each successful parse result. Do not mutate `Context` from
+`setContext`; Context resolves the entry dialect's defaults once and keeps the
+result immutable for the compilation session.
 
 ## Bundler integration
 

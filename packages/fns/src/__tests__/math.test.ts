@@ -1,6 +1,6 @@
 import { abs, acos, asin, atan, ceil, cos, floor, sin, sqrt, tan } from '../less/index.js';
 
-import { makeDimension } from '@jesscss/core/value';
+import { makeDimension } from '@jesscss/core';
 import { describe, it, test, expect } from 'vitest';
 
 function invoke(fn: unknown, ...args: unknown[]): unknown {

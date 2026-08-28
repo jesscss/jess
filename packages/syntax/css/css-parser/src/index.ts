@@ -1,65 +1,26 @@
-export { cssCstGrammar, cssGrammar } from './grammar.js';
-export {
-  cssCstBuildHost, parseCst, parseDocCst, parseCssCst, parseCssDoc,
-  type CssCstChild, type CssCstError, type CssCstLeaf, type CssCstNode, type CssCstParseOptions, type CssCstParseResult, type CssCstType, type ParseDoc
-} from './cst-css.js';
-import { run } from 'parseman';
-import {
-  createTriviaMapFromParseman,
-  withSourceSpan,
-  withTriviaMap,
-  type Stylesheet
-} from '@jesscss/core/ast';
-import { cssAstGrammar } from './grammar.js';
+/*
+ * CST parsing lives behind the `./cst` subpath, and the shared CST runtime
+ * behind `./cst-host`. Re-exporting the parse functions here would put the two
+ * compiled CST grammar tables on the static import graph of the package entry,
+ * where Node executes them for every consumer that only wants `parse`. The
+ * types are erased at build time, so they stay.
+ */
+export type {
+  CssCstChild, CssCstError, CssCstLeaf, CssCstNode, CssCstParseOptions, CssCstParseResult, CssCstType, ParseDoc
+} from './cst-host.js';
+import type { Stylesheet } from '@jesscss/core/ast';
+import { cssGrammar } from './grammar/ast.js';
+import { parseWith } from './parse-with.js';
 
-/** Structured failure from the public direct CSS parser. */
-export class CssParseError extends SyntaxError {
-  readonly code = 'parse/syntax-error' as const;
-  readonly offset: number;
-  readonly expected: readonly string[];
+export { CssParseError } from './parse-error.js';
 
-  constructor(offset: number, expected: readonly string[]) {
-    const detail = expected.length > 0 ? ` Expected: ${expected.join(', ')}.` : '';
-    super(`CSS parser error.${detail}`);
-    this.name = 'CssParseError';
-    this.offset = offset;
-    this.expected = expected;
-  }
-}
-
-function isStylesheet(value: unknown): value is Stylesheet {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'Stylesheet'
-    && 'children' in value
-    && Array.isArray(value.children);
-}
-
-/** Parse CSS directly into the canonical AST v2 document. */
+/**
+ * Parse CSS directly into the canonical AST v2 document.
+ *
+ * Spans carry offsets only. For `startLine`/`startColumn` facts import `parse`
+ * from `@jesscss/css-parser/positions` — the same function bound to the
+ * line-aware compiled table. This entry never loads that table.
+ */
 export function parse(input: string): Stylesheet {
-  const entry = cssAstGrammar.Stylesheet;
-  const trivia = cssAstGrammar.whitespace;
-  if (entry === undefined || trivia === undefined) {
-    throw new TypeError('CSS AST grammar is missing its public Stylesheet entry.');
-  }
-  const result = run(
-    entry,
-    input,
-    { trivia }
-  );
-  const recoveryError = result.errors[0];
-  if (!result.ok || result.unconsumedFrom !== null || recoveryError !== undefined || !isStylesheet(result.value)) {
-    const offset = recoveryError?.span.start ?? (result.ok
-      ? result.unconsumedFrom ?? result.span.end
-      : result.span.start);
-    throw new CssParseError(
-      offset,
-      recoveryError?.expected ?? result.expected
-    );
-  }
-  return withTriviaMap(
-    withSourceSpan(result.value, result.span),
-    createTriviaMapFromParseman(input, result.triviaMap)
-  );
+  return parseWith(cssGrammar, input);
 }

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { parseCssCst, type CssCstNode } from '../src/index.js';
+import { parseCssCst } from '../src/cst.js';
+import type { CssCstNode } from '../src/index.js';
 
-function childTypes(node: { children: ReadonlyArray<unknown> }) {
-  return node.children
+function childTypes(node: { rules: ReadonlyArray<unknown> }) {
+  return node.rules
     .filter(isNode)
     .map(c => c.type);
 }
@@ -23,27 +24,48 @@ describe('parseCssCst', () => {
     expect(result.tree.type).toBe('StyleSheet');
     expect(childTypes(result.tree)).toContain('QualifiedRule');
 
-    const rule = result.tree.children.find(c => isNode(c) && c.type === 'QualifiedRule');
+    const rule = result.tree.rules.find(c => isNode(c) && c.type === 'QualifiedRule');
     expect(rule).toBeDefined();
     expect(childTypes(rule!)).toContain('SelectorList');
     expect(childTypes(rule!)).toContain('Declaration');
   });
 
-  it('keeps basic selectors as honest CST nodes', () => {
-    const result = parseCssCst('.foo #bar { color: red; }');
+  it('classifies basic selector atoms as honest CST nodes', () => {
+    const result = parseCssCst('.foo #bar main * { color: red; }');
     const seen: string[] = [];
     const visit = (node: unknown) => {
       if (!isNode(node)) {
         return;
       }
       seen.push(node.type);
-      for (const child of node.children) {
+      for (const child of node.rules) {
         visit(child);
       }
     };
 
     visit(result.tree);
 
-    expect(seen.filter(t => t === 'BasicSelector')).toHaveLength(2);
+    expect(seen.filter(t => t === 'ClassSelector')).toHaveLength(1);
+    expect(seen.filter(t => t === 'IdSelector')).toHaveLength(1);
+    expect(seen.filter(t => t === 'TypeSelector')).toHaveLength(1);
+    expect(seen.filter(t => t === 'UniversalSelector')).toHaveLength(1);
+    expect(seen).not.toContain('BasicSelector');
+
+    const selectorTags: string[] = [];
+    const collectTags = (node: unknown) => {
+      if (!isNode(node)) {
+        return;
+      }
+      if (node.tags?.includes('Selector') === true) {
+        selectorTags.push(node.type);
+      }
+      for (const child of node.rules) {
+        collectTags(child);
+      }
+    };
+
+    collectTags(result.tree);
+
+    expect(selectorTags).toEqual(['ClassSelector', 'IdSelector', 'TypeSelector', 'UniversalSelector']);
   });
 });

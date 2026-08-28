@@ -1,5 +1,17 @@
-import { Collection, Context, Declaration, Dimension, Num, Quoted, List, Bool, Nil, Any, RuntimeFunction } from '@jesscss/core';
-import { beforeAll, describe, it, expect } from 'vitest';
+import {
+  isValueGroupArray,
+  makeCollection,
+  makeDimension,
+  makeKeyword,
+  makeQuoted,
+  type Bool,
+  type Collection,
+  type Dimension,
+  type List,
+  type Null,
+  type ValueGroup
+} from '@jesscss/core';
+import { describe, it, expect } from 'vitest';
 import get from '../sass/map/get.js';
 import set from '../sass/map/set.js';
 import merge from '../sass/map/merge.js';
@@ -8,228 +20,211 @@ import keys from '../sass/map/keys.js';
 import values from '../sass/map/values.js';
 import hasKey from '../sass/map/has-key.js';
 
-let context: Context;
+function sync<T>(value: T | Promise<T>): T {
+  if (value instanceof Promise) {
+    throw new TypeError('Expected a synchronous value-domain function result.');
+  }
+  return value;
+}
+
+function key(value: string): ValueGroup {
+  return makeKeyword(value);
+}
+
+function quoted(value: string): ValueGroup {
+  return makeQuoted(value, '"', false);
+}
+
+function createMap(entries: ReadonlyArray<readonly [string, ValueGroup]>): Collection {
+  return makeCollection(entries.map(([name, value]) => ({ key: key(name), value })));
+}
+
+function dimensionOf(value: ValueGroup): Dimension {
+  if (isValueGroupArray(value) || value.type !== 'Dimension') {
+    throw new TypeError(`Expected Dimension, got ${isValueGroupArray(value) ? 'sequence' : value.type}`);
+  }
+  return value;
+}
+
+function collectionOf(value: ValueGroup): Collection {
+  if (isValueGroupArray(value) || value.type !== 'Collection') {
+    throw new TypeError(`Expected Collection, got ${isValueGroupArray(value) ? 'sequence' : value.type}`);
+  }
+  return value;
+}
+
+function listOf(value: ValueGroup): List {
+  if (isValueGroupArray(value) || value.type !== 'List') {
+    throw new TypeError(`Expected List, got ${isValueGroupArray(value) ? 'sequence' : value.type}`);
+  }
+  return value;
+}
+
+function boolOf(value: ValueGroup): Bool {
+  if (isValueGroupArray(value) || value.type !== 'Bool') {
+    throw new TypeError(`Expected Bool, got ${isValueGroupArray(value) ? 'sequence' : value.type}`);
+  }
+  return value;
+}
+
+function nullOf(value: ValueGroup): Null {
+  if (isValueGroupArray(value) || value.type !== 'Null') {
+    throw new TypeError(`Expected Null, got ${isValueGroupArray(value) ? 'sequence' : value.type}`);
+  }
+  return value;
+}
 
 describe('Sass map functions', () => {
-  beforeAll(() => {
-    context = new Context();
-  });
-
-  // Helper to create a simple map
-  function createMap(entries: Array<[string, any]>): Collection {
-    const declarations = entries.map(([key, value]) => {
-      const keyNode = new Any(key, { role: 'property' });
-      return new Declaration({
-        name: keyNode,
-        value: value
-      });
-    });
-    return new Collection(declarations);
-  }
-
   describe('get()', () => {
     it('gets value by key', () => {
-      const map = createMap([['a', new Num(1)], ['b', new Num(2)]]);
-      const key = new Any('a', { role: 'property' });
-      const result = (get as RuntimeFunction).call(context, map, key);
-      expect(result).toBeInstanceOf(Num);
-      expect((result as Num).number).toBe(1);
+      const map = createMap([['a', makeDimension(1)], ['b', makeDimension(2)]]);
+      const result = sync(get(map, key('a')));
+      expect(dimensionOf(result).number).toBe(1);
     });
 
-    it('returns Nil when key not found', () => {
-      const map = createMap([['a', new Num(1)]]);
-      const key = new Any('b', { role: 'property' });
-      const result = (get as RuntimeFunction).call(context, map, key);
-      expect(result).toBeInstanceOf(Nil);
+    it('uses Sass value equality for keys', () => {
+      const map = createMap([['a', makeDimension(1)]]);
+      const result = sync(get(map, quoted('a')));
+      expect(dimensionOf(result).number).toBe(1);
+    });
+
+    it('returns Null when key not found', () => {
+      const map = createMap([['a', makeDimension(1)]]);
+      expect(nullOf(sync(get(map, key('b'))))).toMatchObject({ type: 'Null' });
     });
 
     it('gets nested value', () => {
-      const nestedMap = createMap([['b', new Num(2)]]);
-      const map = createMap([['a', nestedMap]]);
-      const key1 = new Any('a', { role: 'property' });
-      const key2 = new Any('b', { role: 'property' });
-      const result = (get as RuntimeFunction).call(context, map, key1, key2);
-      expect(result).toBeInstanceOf(Num);
-      expect((result as Num).number).toBe(2);
+      const nestedMap = createMap([['b', makeDimension(2)]]);
+      const map = makeCollection([{ key: key('a'), value: nestedMap }]);
+      const result = sync(get(map, key('a'), key('b')));
+      expect(dimensionOf(result).number).toBe(2);
     });
 
-    it('returns Nil for non-map intermediate value', () => {
-      const map = createMap([['a', new Num(1)]]);
-      const key1 = new Any('a', { role: 'property' });
-      const key2 = new Any('b', { role: 'property' });
-      const result = (get as RuntimeFunction).call(context, map, key1, key2);
-      expect(result).toBeInstanceOf(Nil);
+    it('returns Null for non-map intermediate value', () => {
+      const map = createMap([['a', makeDimension(1)]]);
+      expect(nullOf(sync(get(map, key('a'), key('b'))))).toMatchObject({ type: 'Null' });
     });
 
     it('works with object parameters', () => {
-      const map = createMap([['a', new Num(1)]]);
-      const key = new Any('a', { role: 'property' });
-      const result = (get as RuntimeFunction).call(context, { map, key });
-      expect((result as Num).number).toBe(1);
+      const map = createMap([['a', makeDimension(1)]]);
+      const result = sync(get({ map, key: key('a') }));
+      expect(dimensionOf(result).number).toBe(1);
     });
   });
 
   describe('set()', () => {
     it('sets a new key-value pair', () => {
-      const map = createMap([['a', new Num(1)]]);
-      const key = new Any('b', { role: 'property' });
-      const value = new Num(2);
-      const result = (set as RuntimeFunction).call(context, map, key, value);
-      expect(result).toBeInstanceOf(Collection);
+      const map = createMap([['a', makeDimension(1)]]);
+      const result = collectionOf(sync(set(map, key('b'), makeDimension(2))));
 
-      // Check that both keys exist
-      const getA = (get as RuntimeFunction).call(context, result, new Any('a', { role: 'property' }));
-      const getB = (get as RuntimeFunction).call(context, result, new Any('b', { role: 'property' }));
-      expect((getA as Num).number).toBe(1);
-      expect((getB as Num).number).toBe(2);
+      expect(dimensionOf(sync(get(result, key('a')))).number).toBe(1);
+      expect(dimensionOf(sync(get(result, key('b')))).number).toBe(2);
     });
 
     it('overwrites existing key', () => {
-      const map = createMap([['a', new Num(1)]]);
-      const key = new Any('a', { role: 'property' });
-      const value = new Num(99);
-      const result = (set as RuntimeFunction).call(context, map, key, value);
-      const getA = (get as RuntimeFunction).call(context, result, new Any('a', { role: 'property' }));
-      expect((getA as Num).number).toBe(99);
+      const map = createMap([['a', makeDimension(1)]]);
+      const result = collectionOf(sync(set(map, quoted('a'), makeDimension(99))));
+      expect(dimensionOf(sync(get(result, key('a')))).number).toBe(99);
+      expect(result.entries).toHaveLength(1);
     });
 
     it('preserves original map', () => {
-      const map = createMap([['a', new Num(1)]]);
-      const key = new Any('b', { role: 'property' });
-      const value = new Num(2);
-      const result = (set as RuntimeFunction).call(context, map, key, value);
+      const map = createMap([['a', makeDimension(1)]]);
+      const result = collectionOf(sync(set(map, key('b'), makeDimension(2))));
 
-      // Original should still have only 'a'
-      const originalA = (get as RuntimeFunction).call(context, map, new Any('a', { role: 'property' }));
-      expect((originalA as Num).number).toBe(1);
-      const originalB = (get as RuntimeFunction).call(context, map, new Any('b', { role: 'property' }));
-      expect(originalB).toBeInstanceOf(Nil);
+      expect(dimensionOf(sync(get(map, key('a')))).number).toBe(1);
+      expect(nullOf(sync(get(map, key('b'))))).toMatchObject({ type: 'Null' });
+      expect(dimensionOf(sync(get(result, key('b')))).number).toBe(2);
     });
   });
 
   describe('merge()', () => {
     it('merges two maps', () => {
-      const map1 = createMap([['a', new Num(1)]]);
-      const map2 = createMap([['b', new Num(2)]]);
-      const result = (merge as RuntimeFunction).call(context, map1, map2);
-      expect(result).toBeInstanceOf(Collection);
-      const getA = (get as RuntimeFunction).call(context, result, new Any('a', { role: 'property' }));
-      const getB = (get as RuntimeFunction).call(context, result, new Any('b', { role: 'property' }));
-      expect((getA as Num).number).toBe(1);
-      expect((getB as Num).number).toBe(2);
+      const map1 = createMap([['a', makeDimension(1)]]);
+      const map2 = createMap([['b', makeDimension(2)]]);
+      const result = collectionOf(sync(merge(map1, map2)));
+      expect(dimensionOf(sync(get(result, key('a')))).number).toBe(1);
+      expect(dimensionOf(sync(get(result, key('b')))).number).toBe(2);
     });
 
     it('overwrites keys from map2', () => {
-      const map1 = createMap([['a', new Num(1)], ['b', new Num(10)]]);
-      const map2 = createMap([['b', new Num(2)]]);
-      const result = (merge as RuntimeFunction).call(context, map1, map2);
-      const getB = (get as RuntimeFunction).call(context, result, new Any('b', { role: 'property' }));
-      expect((getB as Num).number).toBe(2); // map2's value wins
+      const map1 = createMap([['a', makeDimension(1)], ['b', makeDimension(10)]]);
+      const map2 = createMap([['b', makeDimension(2)]]);
+      const result = collectionOf(sync(merge(map1, map2)));
+      expect(dimensionOf(sync(get(result, key('b')))).number).toBe(2);
     });
   });
 
   describe('remove()', () => {
     it('removes a key', () => {
-      const map = createMap([['a', new Num(1)], ['b', new Num(2)]]);
-      const key = new Any('a', { role: 'property' });
-      const result = (remove as RuntimeFunction).call(context, map, key);
-      expect(result).toBeInstanceOf(Collection);
-      const getA = (get as RuntimeFunction).call(context, result, new Any('a', { role: 'property' }));
-      const getB = (get as RuntimeFunction).call(context, result, new Any('b', { role: 'property' }));
-      expect(getA).toBeInstanceOf(Nil);
-      expect((getB as Num).number).toBe(2);
+      const map = createMap([['a', makeDimension(1)], ['b', makeDimension(2)]]);
+      const result = collectionOf(sync(remove(map, key('a'))));
+      expect(nullOf(sync(get(result, key('a'))))).toMatchObject({ type: 'Null' });
+      expect(dimensionOf(sync(get(result, key('b')))).number).toBe(2);
     });
 
     it('removes multiple keys', () => {
-      const map = createMap([['a', new Num(1)], ['b', new Num(2)], ['c', new Num(3)]]);
-      const key1 = new Any('a', { role: 'property' });
-      const key2 = new Any('b', { role: 'property' });
-      const result = (remove as RuntimeFunction).call(context, map, key1, key2);
-      const getA = (get as RuntimeFunction).call(context, result, new Any('a', { role: 'property' }));
-      const getB = (get as RuntimeFunction).call(context, result, new Any('b', { role: 'property' }));
-      const getC = (get as RuntimeFunction).call(context, result, new Any('c', { role: 'property' }));
-      expect(getA).toBeInstanceOf(Nil);
-      expect(getB).toBeInstanceOf(Nil);
-      expect((getC as Num).number).toBe(3);
+      const map = createMap([['a', makeDimension(1)], ['b', makeDimension(2)], ['c', makeDimension(3)]]);
+      const result = collectionOf(sync(remove(map, key('a'), quoted('b'))));
+      expect(nullOf(sync(get(result, key('a'))))).toMatchObject({ type: 'Null' });
+      expect(nullOf(sync(get(result, key('b'))))).toMatchObject({ type: 'Null' });
+      expect(dimensionOf(sync(get(result, key('c')))).number).toBe(3);
     });
 
     it('returns map as-is when no keys provided', () => {
-      const map = createMap([['a', new Num(1)]]);
-      const result = (remove as RuntimeFunction).call(context, map);
-      expect(result).toBeInstanceOf(Collection);
-      const getA = (get as RuntimeFunction).call(context, result, new Any('a', { role: 'property' }));
-      expect((getA as Num).number).toBe(1);
+      const map = createMap([['a', makeDimension(1)]]);
+      expect(sync(remove(map))).toBe(map);
     });
   });
 
   describe('keys()', () => {
     it('returns list of all keys', () => {
-      const map = createMap([['a', new Num(1)], ['b', new Num(2)]]);
-      const result = (keys as RuntimeFunction).call(context, map);
-      expect(result).toBeInstanceOf(List);
-      expect(result.length).toBe(2);
+      const map = createMap([['a', makeDimension(1)], ['b', makeDimension(2)]]);
+      const result = listOf(sync(keys(map)));
+      expect(result.value).toEqual([key('a'), key('b')]);
     });
 
     it('returns empty list for empty map', () => {
       const map = createMap([]);
-      const result = (keys as RuntimeFunction).call(context, map);
-      expect(result).toBeInstanceOf(List);
-      expect(result.length).toBe(0);
+      expect(listOf(sync(keys(map))).value).toHaveLength(0);
     });
   });
 
   describe('values()', () => {
     it('returns list of all values', () => {
-      const map = createMap([['a', new Num(1)], ['b', new Num(2)]]);
-      const result = (values as RuntimeFunction).call(context, map);
-      expect(result).toBeInstanceOf(List);
-      expect(result.length).toBe(2);
-      expect((result.value[0] as Num).number).toBe(1);
-      expect((result.value[1] as Num).number).toBe(2);
+      const map = createMap([['a', makeDimension(1)], ['b', makeDimension(2)]]);
+      const result = listOf(sync(values(map)));
+      expect(result.value).toHaveLength(2);
+      expect(dimensionOf(result.value[0]!).number).toBe(1);
+      expect(dimensionOf(result.value[1]!).number).toBe(2);
     });
 
     it('returns empty list for empty map', () => {
       const map = createMap([]);
-      const result = (values as RuntimeFunction).call(context, map);
-      expect(result).toBeInstanceOf(List);
-      expect(result.length).toBe(0);
+      expect(listOf(sync(values(map))).value).toHaveLength(0);
     });
   });
 
   describe('has-key()', () => {
     it('returns true when key exists', () => {
-      const map = createMap([['a', new Num(1)]]);
-      const key = new Any('a', { role: 'property' });
-      const result = (hasKey as RuntimeFunction).call(context, map, key);
-      expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).value).toBe(true);
+      const map = createMap([['a', makeDimension(1)]]);
+      expect(boolOf(sync(hasKey(map, quoted('a')))).value).toBe(true);
     });
 
     it('returns false when key does not exist', () => {
-      const map = createMap([['a', new Num(1)]]);
-      const key = new Any('b', { role: 'property' });
-      const result = (hasKey as RuntimeFunction).call(context, map, key);
-      expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).value).toBe(false);
+      const map = createMap([['a', makeDimension(1)]]);
+      expect(boolOf(sync(hasKey(map, key('b')))).value).toBe(false);
     });
 
     it('checks nested keys', () => {
-      const nestedMap = createMap([['b', new Num(2)]]);
-      const map = createMap([['a', nestedMap]]);
-      const key1 = new Any('a', { role: 'property' });
-      const key2 = new Any('b', { role: 'property' });
-      const result = (hasKey as RuntimeFunction).call(context, map, key1, key2);
-      expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).value).toBe(true);
+      const nestedMap = createMap([['b', makeDimension(2)]]);
+      const map = makeCollection([{ key: key('a'), value: nestedMap }]);
+      expect(boolOf(sync(hasKey(map, key('a'), quoted('b')))).value).toBe(true);
     });
 
     it('returns false for non-map intermediate value', () => {
-      const map = createMap([['a', new Num(1)]]);
-      const key1 = new Any('a', { role: 'property' });
-      const key2 = new Any('b', { role: 'property' });
-      const result = (hasKey as RuntimeFunction).call(context, map, key1, key2);
-      expect(result).toBeInstanceOf(Bool);
-      expect((result as Bool).value).toBe(false);
+      const map = createMap([['a', makeDimension(1)]]);
+      expect(boolOf(sync(hasKey(map, key('a'), key('b')))).value).toBe(false);
     });
   });
 });

@@ -3,7 +3,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { CodeActionKind, Position, SymbolKind } from 'vscode-languageserver-types';
+import { CompletionItemKind, Position, SymbolKind } from 'vscode-languageserver-types';
+import { LINT_RULE_NAMES } from '@jesscss/diagnostics-core';
 import { createEngine } from '../engine.js';
 
 function createDocument(languageId: string, content: string): TextDocument {
@@ -20,6 +21,56 @@ describe('JessLanguageServiceEngine', () => {
       const completions = engine.getCompletions(doc.uri, Position.create(0, 5));
       const labels = completions.items.map(i => i.label);
       expect(labels).toContain('color');
+      expect(labels).not.toContain('col');
+    });
+
+    it('suggests CSS type selectors at stylesheet root', () => {
+      const engine = createEngine();
+      const doc = createDocument('css', 'ma');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const completions = engine.getCompletions(doc.uri, Position.create(0, 2));
+      const main = completions.items.find(item => item.label === 'main');
+
+      expect(main).toMatchObject({
+        kind: CompletionItemKind.Class,
+        detail: 'CSS type selector'
+      });
+    });
+
+    it('suggests document-local class selectors in selector context', () => {
+      const engine = createEngine();
+      const doc = createDocument('css', '.card { color: red; }\n.ca');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const completions = engine.getCompletions(doc.uri, Position.create(1, 3));
+      const card = completions.items.find(item => item.label === '.card');
+
+      expect(card).toMatchObject({
+        kind: CompletionItemKind.Class,
+        detail: 'CSS class selector'
+      });
+    });
+
+    it('keeps selector completions out of declaration property context', () => {
+      const engine = createEngine();
+      const doc = createDocument('css', 'a { ma }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const completions = engine.getCompletions(doc.uri, Position.create(0, 6));
+      const labels = completions.items.map(i => i.label);
+      expect(labels).toContain('margin');
+      expect(labels).not.toContain('main');
+    });
+
+    it('suggests document-local class selectors for nested SCSS selectors', () => {
+      const engine = createEngine();
+      const doc = createDocument('scss', '.card { color: red; .ca { } }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const completions = engine.getCompletions(doc.uri, Position.create(0, 23));
+      const labels = completions.items.map(i => i.label);
+      expect(labels).toContain('.card');
     });
 
     it('suggests at-rules when typing @', () => {
@@ -418,72 +469,23 @@ describe('JessLanguageServiceEngine', () => {
       }
     });
 
-    it('reports undefined Less variable references (semantic)', () => {
+    it('does not report evaluator-dependent missing symbols from CST facts', () => {
       const engine = createEngine();
-      const doc = createDocument('less', 'a { color: @missing; }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diagnostics = engine.getDiagnostics(doc.uri);
-      const codes = diagnostics.map(d => d.code);
-      expect(codes).toContain('var/undefined');
-    });
+      const docs = [
+        createDocument('less', 'a { color: @missing; }'),
+        createDocument('scss', '@use "sass:math";\na { color: $missing; }'),
+        createDocument('less', '.a { .missing(); }'),
+        createDocument('scss', '.a { @include missing(); }'),
+        createDocument('jess', '.a { $ > missing(); }')
+      ];
 
-    it('reports undefined SCSS variable as warning when @use is not present', () => {
-      const engine = createEngine();
-      const doc = createDocument('scss', 'a { color: $missing; }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diagnostics = engine.getDiagnostics(doc.uri);
-      const varDiag = diagnostics.find(d => d.code === 'var/undefined');
-      expect(varDiag).toBeDefined();
-      expect(varDiag?.severity).toBe(2); // DiagnosticSeverity.Warning
-    });
-
-    it('reports undefined SCSS variable as error when @use is present', () => {
-      const engine = createEngine();
-      const doc = createDocument('scss', '@use "sass:math";\na { color: $missing; }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diagnostics = engine.getDiagnostics(doc.uri);
-      const varDiag = diagnostics.find(d => d.code === 'var/undefined');
-      expect(varDiag).toBeDefined();
-      expect(varDiag?.severity).toBe(1); // DiagnosticSeverity.Error
-    });
-
-    it('reports undefined Less variable as warning when @from/@compose are not present', () => {
-      const engine = createEngine();
-      const doc = createDocument('less', 'a { color: @missing; }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diagnostics = engine.getDiagnostics(doc.uri);
-      const varDiag = diagnostics.find(d => d.code === 'var/undefined');
-      expect(varDiag).toBeDefined();
-      expect(varDiag?.severity).toBe(2); // DiagnosticSeverity.Warning
-    });
-
-    it('reports undefined Less variable as error when @from is present', () => {
-      const engine = createEngine();
-      const doc = createDocument('less', '@from "vars";\na { color: @missing; }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diagnostics = engine.getDiagnostics(doc.uri);
-      const varDiag = diagnostics.find(d => d.code === 'var/undefined');
-      expect(varDiag).toBeDefined();
-      expect(varDiag?.severity).toBe(1); // DiagnosticSeverity.Error
-    });
-
-    it('reports undefined Less variable as error when @compose is present', () => {
-      const engine = createEngine();
-      const doc = createDocument('less', '@compose "button";\na { color: @missing; }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diagnostics = engine.getDiagnostics(doc.uri);
-      const varDiag = diagnostics.find(d => d.code === 'var/undefined');
-      expect(varDiag).toBeDefined();
-      expect(varDiag?.severity).toBe(1); // DiagnosticSeverity.Error
-    });
-
-    it('reports undefined Less mixin calls (semantic)', () => {
-      const engine = createEngine();
-      const doc = createDocument('less', '.a { .missing(); }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diagnostics = engine.getDiagnostics(doc.uri);
-      const codes = diagnostics.map(d => d.code);
-      expect(codes).toContain('mixin/undefined');
+      for (const doc of docs) {
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diagnostics = engine.getDiagnostics(doc.uri);
+        expect(diagnostics.some(diagnostic =>
+          diagnostic.code === 'var/undefined' || diagnostic.code === 'mixin/undefined'
+        )).toBe(false);
+      }
     });
   });
 
@@ -516,6 +518,16 @@ describe('JessLanguageServiceEngine', () => {
         // `.a` is NOT empty (contains `.b`); only `.b` is flagged.
         const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/empty-rules');
         expect(diags).toHaveLength(1);
+      });
+
+      it('keeps empty mixin bodies quiet by default', () => {
+        const engine = createEngine();
+        const doc = createDocument('scss', '@mixin box() { }\n.a { }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/empty-rules');
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.message).toBe('Do not use empty rulesets');
       });
 
       it('does not fire on a non-empty ruleset', () => {
@@ -568,6 +580,114 @@ describe('JessLanguageServiceEngine', () => {
         engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
         expect(codesOf(engine, doc.uri)).not.toContain('lint/unknown-property');
       });
+
+      it('accepts VSCode-style validProperties in diagnostics config', () => {
+        const engine = createEngine();
+        engine.configure({
+          diagnostics: {
+            validProperties: ['project-tone']
+          }
+        });
+        const doc = createDocument('css', '.a { project-tone: brand; colr: red; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/unknown-property');
+
+        expect(diags.map(d => d.message)).toEqual(['Unknown property: \'colr\'']);
+      });
+
+      it('accepts lint rule names as severity aliases', () => {
+        const disabled = createEngine();
+        disabled.configure(sevCfg(LINT_RULE_NAMES.unknownProperties, 'ignore'));
+        const disabledDoc = createDocument('css', '.a { colr: red; }');
+        disabled.open(disabledDoc.uri, disabledDoc.languageId, disabledDoc.version, disabledDoc.getText());
+        expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/unknown-property');
+
+        const escalated = createEngine();
+        escalated.configure(sevCfg(LINT_RULE_NAMES.unknownProperties, 'error'));
+        const escalatedDoc = createDocument('css', '.a { colr: red; }');
+        escalated.open(escalatedDoc.uri, escalatedDoc.languageId, escalatedDoc.version, escalatedDoc.getText());
+        const diagnostic = escalated.getDiagnostics(escalatedDoc.uri).find(d => d.code === 'lint/unknown-property');
+        expect(diagnostic?.severity).toBe(1);
+      });
+    });
+
+    describe('deprecatedProperties (lint/property-no-deprecated)', () => {
+      it('fires on a deprecated CSS property from web custom data', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { clip: auto; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diag = engine.getDiagnostics(doc.uri).find(d => d.code === 'lint/property-no-deprecated');
+
+        expect(diag).toBeDefined();
+        expect(diag?.severity).toBe(2); // Warning
+        const slice = doc.getText().slice(doc.offsetAt(diag!.range.start), doc.offsetAt(diag!.range.end));
+        expect(slice).toBe('clip');
+      });
+
+      it('does not fire in dialect files before CSS property facts exist', () => {
+        const engine = createEngine();
+        const doc = createDocument('less', '.a { clip: auto; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/property-no-deprecated');
+      });
+
+      it('respects configure() disable', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/property-no-deprecated', 'ignore'));
+        const doc = createDocument('css', '.a { clip: auto; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/property-no-deprecated');
+      });
+    });
+
+    describe('unknownPropertyValues (lint/unknown-property-value)', () => {
+      it('fires on a definite unknown CSS property value', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { display: block, flxe; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diag = engine.getDiagnostics(doc.uri).find(d => d.code === 'lint/unknown-property-value');
+
+        expect(diag).toBeDefined();
+        expect(diag?.severity).toBe(2); // Warning
+        const slice = doc.getText().slice(doc.offsetAt(diag!.range.start), doc.offsetAt(diag!.range.end));
+        expect(slice).toBe('flxe');
+      });
+
+      it('uses web custom data restrictions for simple static CSS values', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { color: grue; width: wide; opacity: 2; width: 12px; color: red; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/unknown-property-value');
+
+        expect(diags).toHaveLength(3);
+        expect(diags.map(diag => doc.getText().slice(doc.offsetAt(diag.range.start), doc.offsetAt(diag.range.end)))).toEqual([
+          'grue',
+          'wide',
+          '2'
+        ]);
+      });
+
+      it('does not fire on dynamic values or dialect files before value facts exist', () => {
+        const css = createEngine();
+        const cssDoc = createDocument('css', '.a { display: var(--kind); color: rgb(var(--rgb)); }');
+        css.open(cssDoc.uri, cssDoc.languageId, cssDoc.version, cssDoc.getText());
+        expect(codesOf(css, cssDoc.uri)).not.toContain('lint/unknown-property-value');
+
+        const less = createEngine();
+        const lessDoc = createDocument('less', '.a { display: flxe; }');
+        less.open(lessDoc.uri, lessDoc.languageId, lessDoc.version, lessDoc.getText());
+        expect(codesOf(less, lessDoc.uri)).not.toContain('lint/unknown-property-value');
+      });
+
+      it('respects configure() disable', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/unknown-property-value', 'ignore'));
+        const doc = createDocument('css', '.a { display: flxe; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/unknown-property-value');
+      });
     });
 
     describe('unknownAtRules (lint/unknown-at-rule)', () => {
@@ -600,6 +720,798 @@ describe('JessLanguageServiceEngine', () => {
         const doc = createDocument('css', '@foobar x { }');
         engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
         expect(codesOf(engine, doc.uri)).not.toContain('lint/unknown-at-rule');
+      });
+    });
+
+    describe('fontFaceMissingRequiredProperties (lint/font-face-missing-required-properties)', () => {
+      it('fires on a CSS @font-face block missing required descriptors', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '@font-face { font-family: Inter; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diag = engine.getDiagnostics(doc.uri).find(d => d.code === 'lint/font-face-missing-required-properties');
+
+        expect(diag).toBeDefined();
+        expect(diag?.severity).toBe(2); // Warning
+        const slice = doc.getText().slice(doc.offsetAt(diag!.range.start), doc.offsetAt(diag!.range.end));
+        expect(slice).toBe('@font-face');
+      });
+
+      it('does not fire on complete CSS @font-face blocks or dialect files before semantic facts exist', () => {
+        const css = createEngine();
+        const cssDoc = createDocument('css', '@font-face { font-family: Inter; src: url(inter.woff2); }');
+        css.open(cssDoc.uri, cssDoc.languageId, cssDoc.version, cssDoc.getText());
+        expect(codesOf(css, cssDoc.uri)).not.toContain('lint/font-face-missing-required-properties');
+
+        const scss = createEngine();
+        const scssDoc = createDocument('scss', '@font-face { font-family: Inter; }');
+        scss.open(scssDoc.uri, scssDoc.languageId, scssDoc.version, scssDoc.getText());
+        expect(codesOf(scss, scssDoc.uri)).not.toContain('lint/font-face-missing-required-properties');
+      });
+
+      it('respects configure() disable', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/font-face-missing-required-properties', 'ignore'));
+        const doc = createDocument('css', '@font-face { font-family: Inter; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/font-face-missing-required-properties');
+      });
+    });
+
+    describe('propertyIgnoredDueToDisplay (lint/property-ignored-due-to-display)', () => {
+      it('fires on CSS properties that display mode ignores', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { display: block; vertical-align: middle; }\n.b { display: inline-block; float: left; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/property-ignored-due-to-display');
+
+        expect(diags).toHaveLength(2);
+        expect(diags.map(d => d.severity)).toEqual([2, 2]); // Warning
+        const slices = diags.map(d => doc.getText().slice(doc.offsetAt(d.range.start), doc.offsetAt(d.range.end)));
+        expect(slices).toEqual(['vertical-align: middle', 'float: left']);
+      });
+
+      it('does not fire in dialect files before value facts exist', () => {
+        const engine = createEngine();
+        const doc = createDocument('less', '.a { display: block; vertical-align: middle; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/property-ignored-due-to-display');
+      });
+
+      it('respects configure() disable', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/property-ignored-due-to-display', 'ignore'));
+        const doc = createDocument('css', '.a { display: block; vertical-align: middle; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/property-ignored-due-to-display');
+      });
+    });
+
+    describe('vendorPrefix (lint/vendor-prefix)', () => {
+      it('fires on CSS vendor-prefixed declarations missing the standard property', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { -webkit-transform: rotate(0); }\n.b { -webkit-transform: rotate(0); transform: rotate(0); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/vendor-prefix');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe('-webkit-transform');
+      });
+
+      it('fires on CSS vendor-prefixed keyframes missing the standard at-rule', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '@-webkit-keyframes spin { from { opacity: 0; } }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/vendor-prefix');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe(
+          '@-webkit-keyframes'
+        );
+      });
+
+      it('does not fire in dialect files before property facts exist', () => {
+        const engine = createEngine();
+        const doc = createDocument('scss', '.a { -webkit-transform: rotate(0); }\n@-webkit-keyframes spin { from { opacity: 0; } }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/vendor-prefix');
+      });
+
+      it('respects configure() disable', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/vendor-prefix', 'ignore'));
+        const doc = createDocument('css', '.a { -webkit-transform: rotate(0); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/vendor-prefix');
+      });
+    });
+
+    describe('vendor-prefix Stylelint policy', () => {
+      it('stays quiet by default and fires when configured', () => {
+        const source = [
+          '.a { -webkit-transform: rotate(0); transform: rotate(0); }',
+          '@keyframes spin { from { opacity: 0; } }',
+          '@-webkit-keyframes spin { from { opacity: 0; } }'
+        ].join('\n');
+        const defaults = createEngine();
+        const defaultDoc = createDocument('css', source);
+        defaults.open(defaultDoc.uri, defaultDoc.languageId, defaultDoc.version, defaultDoc.getText());
+
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/property-no-vendor-prefix');
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/at-rule-no-vendor-prefix');
+
+        const configured = createEngine();
+        configured.configure({
+          diagnostics: {
+            severity: {
+              ['lint/property-no-vendor-prefix']: 'warning',
+              ['lint/at-rule-no-vendor-prefix']: 'warning'
+            }
+          }
+        });
+        const configuredDoc = createDocument('css', source);
+        configured.open(configuredDoc.uri, configuredDoc.languageId, configuredDoc.version, configuredDoc.getText());
+        const codes = codesOf(configured, configuredDoc.uri);
+
+        expect(codes).toContain('lint/property-no-vendor-prefix');
+        expect(codes).toContain('lint/at-rule-no-vendor-prefix');
+      });
+    });
+
+    describe('unknownVendorSpecificProperties (lint/unknown-vendor-specific-property)', () => {
+      it('stays quiet by default because VSCode marks unknownVendorSpecificProperties opt-in', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { -webkit-made-up: x; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/unknown-vendor-specific-property');
+      });
+
+      it('fires when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/unknown-vendor-specific-property', 'warning'));
+        const doc = createDocument('css', '.a { -webkit-made-up: x; -webkit-transform: rotate(0); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/unknown-vendor-specific-property');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe('-webkit-made-up');
+      });
+
+      it('does not fire in dialect files before property facts exist', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/unknown-vendor-specific-property', 'warning'));
+        const doc = createDocument('less', '.a { -webkit-made-up: x; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/unknown-vendor-specific-property');
+      });
+    });
+
+    describe('compatibleVendorPrefixes (lint/compatible-vendor-prefixes)', () => {
+      it('stays quiet by default because VSCode marks compatibleVendorPrefixes opt-in', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { -webkit-user-select: none; user-select: none; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/compatible-vendor-prefixes');
+      });
+
+      it('fires when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/compatible-vendor-prefixes', 'warning'));
+        const doc = createDocument('css', '.a { -webkit-user-select: none; user-select: none; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/compatible-vendor-prefixes');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe('-webkit-user-select');
+      });
+
+      it('fires on keyframes when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/compatible-vendor-prefixes', 'warning'));
+        const doc = createDocument('css', '@keyframes spin { from { opacity: 0; } }\n@-webkit-keyframes spin { from { opacity: 0; } }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/compatible-vendor-prefixes');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe(
+          '@-webkit-keyframes'
+        );
+      });
+
+      it('does not fire in dialect files before property facts exist', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/compatible-vendor-prefixes', 'warning'));
+        const doc = createDocument('scss', '.a { -webkit-user-select: none; user-select: none; }\n@keyframes spin { from { opacity: 0; } }\n@-webkit-keyframes spin { from { opacity: 0; } }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/compatible-vendor-prefixes');
+      });
+    });
+
+    describe('importStatement (lint/import-statement)', () => {
+      it('stays quiet by default because VSCode marks importStatement opt-in', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '@import url("a.css");');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/import-statement');
+      });
+
+      it('fires when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/import-statement', 'warning'));
+        const doc = createDocument('css', '@import url("a.css");');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/import-statement');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe(
+          '@import url("a.css");'
+        );
+      });
+
+      it('does not fire in dialect files before import graph facts exist', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/import-statement', 'warning'));
+        const doc = createDocument('less', '@import "theme.less";');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/import-statement');
+      });
+    });
+
+    describe('boxModel (lint/box-model)', () => {
+      it('stays quiet by default because VSCode marks boxModel opt-in', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { width: 100px; padding-left: 1px; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/box-model');
+      });
+
+      it('fires when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/box-model', 'warning'));
+        const doc = createDocument('css', '.a { width: 100px; padding-left: 1px; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/box-model');
+
+        expect(diags).toHaveLength(2);
+        expect(diags.map(d => d.severity)).toEqual([2, 2]); // Warning
+        const slices = diags.map(d => doc.getText().slice(doc.offsetAt(d.range.start), doc.offsetAt(d.range.end)));
+        expect(slices).toEqual(['width: 100px', 'padding-left: 1px']);
+      });
+
+      it('does not fire in dialect files before value facts exist', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/box-model', 'warning'));
+        const doc = createDocument('scss', '.a { width: 100px; padding-left: 1px; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/box-model');
+      });
+    });
+
+    describe('float (lint/float)', () => {
+      it('stays quiet by default because VSCode marks float opt-in', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { float: left; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/float');
+      });
+
+      it('fires when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/float', 'warning'));
+        const doc = createDocument('css', '.a { float: left; }\n.b { float: none; }\n.c { float: var(--side); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/float');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe('float: left');
+      });
+
+      it('does not fire in dialect files before value facts exist', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/float', 'warning'));
+        const doc = createDocument('less', '.a { float: left; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/float');
+      });
+    });
+
+    describe('selector style policy', () => {
+      it('keeps ID selector diagnostics opt-in', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '#app { color: red; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/selector-max-id');
+      });
+
+      it('fires on ID selectors when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/selector-max-id', 'warning'));
+        const doc = createDocument('css', '#app, :not(#nested) { color: red; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/selector-max-id');
+
+        expect(diags).toHaveLength(2);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(diags.map(diag => doc.getText().slice(doc.offsetAt(diag.range.start), doc.offsetAt(diag.range.end)))).toEqual([
+          '#app',
+          '#nested'
+        ]);
+      });
+
+      it('keeps universal selector diagnostics opt-in', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '* { color: red; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/selector-max-universal');
+      });
+
+      it('fires on universal selectors when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/selector-max-universal', 'warning'));
+        const doc = createDocument('css', '* > .item { color: red; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/selector-max-universal');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe('*');
+      });
+
+      it('keeps selector specificity diagnostics opt-in and filters by configured max', () => {
+        const source = [
+          '#app .card[data-x]:hover > button { color: red; }',
+          ':is(.card, #hero) .item { color: green; }',
+          '.card { color: blue; }'
+        ].join('\n');
+        const defaults = createEngine();
+        const defaultDoc = createDocument('css', source);
+        defaults.open(defaultDoc.uri, defaultDoc.languageId, defaultDoc.version, defaultDoc.getText());
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/selector-max-specificity');
+
+        const severityOnly = createEngine();
+        severityOnly.configure(sevCfg('lint/selector-max-specificity', 'warning'));
+        const severityOnlyDoc = createDocument('css', source);
+        severityOnly.open(severityOnlyDoc.uri, severityOnlyDoc.languageId, severityOnlyDoc.version, severityOnlyDoc.getText());
+        expect(codesOf(severityOnly, severityOnlyDoc.uri)).not.toContain('lint/selector-max-specificity');
+
+        const configured = createEngine();
+        configured.configure({
+          diagnostics: {
+            severity: {
+              ['lint/selector-max-specificity']: 'warning'
+            },
+            options: {
+              ['lint/selector-max-specificity']: { max: '0,2,0' }
+            }
+          }
+        });
+        const configuredDoc = createDocument('css', source);
+        configured.open(configuredDoc.uri, configuredDoc.languageId, configuredDoc.version, configuredDoc.getText());
+        const diags = configured.getDiagnostics(configuredDoc.uri).filter(diagnostic =>
+          diagnostic.code === 'lint/selector-max-specificity'
+        );
+
+        expect(diags.map(diagnostic => [
+          diagnostic.severity,
+          configuredDoc.getText().slice(configuredDoc.offsetAt(diagnostic.range.start), configuredDoc.offsetAt(diagnostic.range.end))
+        ])).toEqual([
+          [2, '#app .card[data-x]:hover > button'],
+          [2, ':is(.card, #hero) .item']
+        ]);
+      });
+
+      it('keeps descending specificity diagnostics opt-in and accepts the lint rule name alias', () => {
+        const source = '.a .b { color: red; }\n.b { color: blue; }';
+        const defaults = createEngine();
+        const defaultDoc = createDocument('css', source);
+        defaults.open(defaultDoc.uri, defaultDoc.languageId, defaultDoc.version, defaultDoc.getText());
+
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/no-descending-specificity');
+
+        const configured = createEngine();
+        configured.configure(sevCfg(LINT_RULE_NAMES.noDescendingSpecificity, 'warning'));
+        const configuredDoc = createDocument('css', source);
+        configured.open(configuredDoc.uri, configuredDoc.languageId, configuredDoc.version, configuredDoc.getText());
+        const diagnostic = configured.getDiagnostics(configuredDoc.uri).find(d =>
+          d.code === 'lint/no-descending-specificity'
+        );
+
+        expect(diagnostic?.severity).toBe(2);
+        expect(diagnostic?.message).toBe('Expected selector ".b" to come before selector ".a .b", at line 1');
+      });
+
+      it('keeps vendor-prefixed selector, media feature, and value diagnostics opt-in', () => {
+        const source = [
+          '.a::-webkit-scrollbar { color: red; }',
+          '@media (-webkit-device-pixel-ratio: 2) { .a { color: red; } }',
+          '.b { display: -webkit-flex; }'
+        ].join('\n');
+        const defaults = createEngine();
+        const defaultDoc = createDocument('css', source);
+        defaults.open(defaultDoc.uri, defaultDoc.languageId, defaultDoc.version, defaultDoc.getText());
+
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/selector-no-vendor-prefix');
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/media-feature-name-no-vendor-prefix');
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/value-no-vendor-prefix');
+
+        const configured = createEngine();
+        configured.configure({
+          diagnostics: {
+            severity: {
+              ['lint/selector-no-vendor-prefix']: 'warning',
+              ['lint/media-feature-name-no-vendor-prefix']: 'warning',
+              ['lint/value-no-vendor-prefix']: 'warning'
+            }
+          }
+        });
+        const configuredDoc = createDocument('css', source);
+        configured.open(configuredDoc.uri, configuredDoc.languageId, configuredDoc.version, configuredDoc.getText());
+        const codes = codesOf(configured, configuredDoc.uri);
+
+        expect(codes).toContain('lint/selector-no-vendor-prefix');
+        expect(codes).toContain('lint/media-feature-name-no-vendor-prefix');
+        expect(codes).toContain('lint/value-no-vendor-prefix');
+      });
+
+      it('keeps IE hack diagnostics opt-in and accepts the lint rule name alias', () => {
+        const defaults = createEngine();
+        const defaultDoc = createDocument('css', '.a { _color: red; }');
+        defaults.open(defaultDoc.uri, defaultDoc.languageId, defaultDoc.version, defaultDoc.getText());
+
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/ie-hack');
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/unknown-property');
+
+        const configured = createEngine();
+        configured.configure(sevCfg(LINT_RULE_NAMES.ieHack, 'warning'));
+        const configuredDoc = createDocument('css', '.a { _color: red; }');
+        configured.open(configuredDoc.uri, configuredDoc.languageId, configuredDoc.version, configuredDoc.getText());
+        const diagnostic = configured.getDiagnostics(configuredDoc.uri).find(d => d.code === 'lint/ie-hack');
+
+        expect(diagnostic?.severity).toBe(2);
+        expect(diagnostic?.message).toBe('IE hack property: \'_color\'');
+      });
+
+      it('keeps naming pattern diagnostics opt-in and filters by configured pattern', () => {
+        const source = [
+          '@property --BadToken { syntax: "<color>"; inherits: false; initial-value: red; }',
+          '@property --good-token { syntax: "<color>"; inherits: false; initial-value: red; }',
+          '.BadClass, .good-class { --BadLocal: red; --good-local: blue; }',
+          '@keyframes BadSpin { from { opacity: 0; } }',
+          '@keyframes good-spin { to { opacity: 1; } }'
+        ].join('\n');
+        const defaults = createEngine();
+        const defaultDoc = createDocument('css', source);
+        defaults.open(defaultDoc.uri, defaultDoc.languageId, defaultDoc.version, defaultDoc.getText());
+
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/selector-class-pattern');
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/custom-property-pattern');
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/keyframes-name-pattern');
+
+        const severityOnly = createEngine();
+        severityOnly.configure(sevCfg('lint/selector-class-pattern', 'warning'));
+        const severityOnlyDoc = createDocument('css', source);
+        severityOnly.open(severityOnlyDoc.uri, severityOnlyDoc.languageId, severityOnlyDoc.version, severityOnlyDoc.getText());
+        expect(codesOf(severityOnly, severityOnlyDoc.uri)).not.toContain('lint/selector-class-pattern');
+
+        const configured = createEngine();
+        configured.configure({
+          diagnostics: {
+            severity: {
+              ['lint/selector-class-pattern']: 'warning',
+              ['lint/custom-property-pattern']: 'warning',
+              ['lint/keyframes-name-pattern']: 'warning'
+            },
+            options: {
+              ['lint/selector-class-pattern']: { pattern: '^[a-z][a-z0-9-]*$' },
+              ['lint/custom-property-pattern']: { pattern: '^--[a-z][a-z0-9-]*$' },
+              ['lint/keyframes-name-pattern']: { pattern: '^[a-z][a-z0-9-]*$' }
+            }
+          }
+        });
+        const configuredDoc = createDocument('css', source);
+        configured.open(configuredDoc.uri, configuredDoc.languageId, configuredDoc.version, configuredDoc.getText());
+        const diags = configured.getDiagnostics(configuredDoc.uri).filter(diagnostic =>
+          diagnostic.code === 'lint/selector-class-pattern'
+          || diagnostic.code === 'lint/custom-property-pattern'
+          || diagnostic.code === 'lint/keyframes-name-pattern'
+        );
+
+        expect(diags.map(diagnostic => [
+          diagnostic.code,
+          configuredDoc.getText().slice(configuredDoc.offsetAt(diagnostic.range.start), configuredDoc.offsetAt(diagnostic.range.end))
+        ])).toEqual([
+          ['lint/custom-property-pattern', '--BadToken'],
+          ['lint/selector-class-pattern', '.BadClass'],
+          ['lint/custom-property-pattern', '--BadLocal'],
+          ['lint/keyframes-name-pattern', 'BadSpin']
+        ]);
+      });
+
+      it('keeps notation diagnostics opt-in and filters by configured notation', () => {
+        const source = [
+          '.a { color: rgb(1, 2, 3); background: rgb(1 2 3 / .5); }',
+          '.b { opacity: 50%; }',
+          '.c { color: hsl(120 50% 50% / 25%); }',
+          '.d { color: hsl(120deg 50% 50% / .25); }'
+        ].join('\n');
+        const defaults = createEngine();
+        const defaultDoc = createDocument('css', source);
+        defaults.open(defaultDoc.uri, defaultDoc.languageId, defaultDoc.version, defaultDoc.getText());
+
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/color-function-notation');
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/alpha-value-notation');
+        expect(codesOf(defaults, defaultDoc.uri)).not.toContain('lint/hue-degree-notation');
+
+        const severityOnly = createEngine();
+        severityOnly.configure(sevCfg('lint/alpha-value-notation', 'warning'));
+        const severityOnlyDoc = createDocument('css', source);
+        severityOnly.open(severityOnlyDoc.uri, severityOnlyDoc.languageId, severityOnlyDoc.version, severityOnlyDoc.getText());
+        expect(codesOf(severityOnly, severityOnlyDoc.uri)).not.toContain('lint/alpha-value-notation');
+
+        const configured = createEngine();
+        configured.configure({
+          diagnostics: {
+            severity: {
+              ['lint/color-function-notation']: 'warning',
+              ['lint/alpha-value-notation']: 'warning',
+              ['lint/hue-degree-notation']: 'warning'
+            },
+            options: {
+              ['lint/color-function-notation']: { notation: 'modern' },
+              ['lint/alpha-value-notation']: { notation: 'percentage' },
+              ['lint/hue-degree-notation']: { notation: 'angle' }
+            }
+          }
+        });
+        const configuredDoc = createDocument('css', source);
+        configured.open(configuredDoc.uri, configuredDoc.languageId, configuredDoc.version, configuredDoc.getText());
+        const diags = configured.getDiagnostics(configuredDoc.uri).filter(diagnostic =>
+          diagnostic.code === 'lint/color-function-notation'
+          || diagnostic.code === 'lint/alpha-value-notation'
+          || diagnostic.code === 'lint/hue-degree-notation'
+        );
+
+        expect(diags.map(diagnostic => [
+          diagnostic.code,
+          configuredDoc.getText().slice(configuredDoc.offsetAt(diagnostic.range.start), configuredDoc.offsetAt(diagnostic.range.end))
+        ])).toEqual([
+          ['lint/color-function-notation', 'rgb('],
+          ['lint/alpha-value-notation', '.5'],
+          ['lint/hue-degree-notation', '120'],
+          ['lint/alpha-value-notation', '.25']
+        ]);
+      });
+
+      it('does not fire in dialect files before selector facts exist', () => {
+        const engine = createEngine();
+        engine.configure({
+          diagnostics: {
+            severity: {
+              ['lint/selector-max-id']: 'warning',
+              ['lint/selector-max-universal']: 'warning',
+              ['lint/selector-max-specificity']: 'warning'
+            },
+            options: {
+              ['lint/selector-max-specificity']: { max: '0,0,0' }
+            }
+          }
+        });
+        const doc = createDocument('scss', '#app, * { color: red; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const codes = codesOf(engine, doc.uri);
+
+        expect(codes).not.toContain('lint/selector-max-id');
+        expect(codes).not.toContain('lint/selector-max-universal');
+        expect(codes).not.toContain('lint/selector-max-specificity');
+      });
+    });
+
+    describe('unusedVariables (lint/no-unused-variable)', () => {
+      it('stays quiet by default until project symbol facts exist', () => {
+        const engine = createEngine();
+        const doc = createDocument('scss', '$used: red; $unused: blue; .a { color: $used; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/no-unused-variable');
+      });
+
+      it('fires when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/no-unused-variable', 'warning'));
+        const doc = createDocument('scss', '$used: red; $unused: blue; .a { color: $used; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/no-unused-variable');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe('$unused');
+      });
+    });
+
+    describe('unusedMixins (lint/no-unused-mixin)', () => {
+      it('stays quiet by default until project callable facts exist', () => {
+        const engine = createEngine();
+        const doc = createDocument('scss', '@mixin used() { color: red; }\n@mixin unused() { color: blue; }\n.a { @include used(); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/no-unused-mixin');
+      });
+
+      it('fires when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/no-unused-mixin', 'warning'));
+        const doc = createDocument('scss', '@mixin used() { color: red; }\n@mixin unused() { color: blue; }\n.a { @include used(); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/no-unused-mixin');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe('unused');
+      });
+    });
+
+    describe('unusedFunctions (lint/no-unused-function)', () => {
+      it('stays quiet by default until project callable facts exist', () => {
+        const engine = createEngine();
+        const doc = createDocument('scss', '@function used() { @return 1; }\n@function unused() { @return 2; }\n.a { width: used(); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/no-unused-function');
+      });
+
+      it('fires when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/no-unused-function', 'warning'));
+        const doc = createDocument('scss', '@function used() { @return 1; }\n@function unused() { @return 2; }\n.a { width: used(); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/no-unused-function');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe('unused');
+      });
+    });
+
+    describe('shadowedTokens (lint/no-shadowed-token)', () => {
+      it('stays quiet by default until project symbol facts exist', () => {
+        const engine = createEngine();
+        const doc = createDocument('scss', '$tone: red; .theme { $tone: blue; color: $tone; } .root { color: $tone; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/no-shadowed-token');
+      });
+
+      it('fires when configured as a warning', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/no-shadowed-token', 'warning'));
+        const doc = createDocument('scss', '$tone: red; .theme { $tone: blue; color: $tone; } .root { color: $tone; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/no-shadowed-token');
+
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+        expect(doc.getText().slice(doc.offsetAt(diags[0]!.range.start), doc.offsetAt(diags[0]!.range.end))).toBe('$tone');
+      });
+    });
+
+    describe('recommended shared diagnostics', () => {
+      it('surfaces stable diagnostics in the editor by default', () => {
+        const engine = createEngine();
+        const source = [
+          '@property --gap { syntax: "<length>"; inherits: yes; initial-value: red; }',
+          '@property --tone { syntax: "<color>"; }',
+          '@font-face { font-family: Inter; src: url(inter.woff2); font-style: sideways; }',
+          '@supports (future-prop: grid) and (color: maybe) { .supports { color: red; } }',
+          '.a:nonsense { color: --brand; animation: missing 1s; grid-template-areas: "a" "a b"; }',
+          '.a:nonsense { color: red; }'
+        ].join('\n');
+        const doc = createDocument('css', source);
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const codes = codesOf(engine, doc.uri);
+
+        expect(codes).toContain('lint/at-rule-descriptor-value-no-unknown');
+        expect(codes).toContain('lint/unknown-property');
+        expect(codes).toContain('lint/unknown-property-value');
+        expect(codes).toContain('lint/invalid-typed-custom-property-registration');
+        expect(codes).toContain('lint/invalid-typed-custom-property-value');
+        expect(codes).toContain('lint/custom-property-no-missing-var-function');
+        expect(codes).toContain('lint/no-unknown-animations');
+        expect(codes).toContain('lint/named-grid-areas-no-invalid');
+        expect(codes).toContain('lint/selector-pseudo-class-no-unknown');
+        expect(codes).toContain('lint/no-duplicate-selectors');
+      });
+
+      it('respects configure() disable for recommended shared diagnostics', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/no-unknown-animations', 'ignore'));
+        const doc = createDocument('css', '.a { animation: missing 1s; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/no-unknown-animations');
+      });
+
+      it('surfaces duplicate module-load diagnostics by default and allows disable', () => {
+        const source = '@use "theme";\n@use "theme";';
+        const enabled = createEngine();
+        const enabledDoc = createDocument('scss', source);
+        enabled.open(enabledDoc.uri, enabledDoc.languageId, enabledDoc.version, enabledDoc.getText());
+        expect(codesOf(enabled, enabledDoc.uri)).toContain('lint/no-duplicate-module-load');
+
+        const disabled = createEngine();
+        disabled.configure(sevCfg('lint/no-duplicate-module-load', 'ignore'));
+        const disabledDoc = createDocument('scss', source);
+        disabled.open(disabledDoc.uri, disabledDoc.languageId, disabledDoc.version, disabledDoc.getText());
+        expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/no-duplicate-module-load');
+      });
+
+      it('surfaces unbounded extend diagnostics by default and allows disable', () => {
+        const source = '.a { @extend div; }';
+        const enabled = createEngine();
+        const enabledDoc = createDocument('scss', source);
+        enabled.open(enabledDoc.uri, enabledDoc.languageId, enabledDoc.version, enabledDoc.getText());
+        expect(codesOf(enabled, enabledDoc.uri)).toContain('lint/no-unbounded-extend');
+
+        const disabled = createEngine();
+        disabled.configure(sevCfg('lint/no-unbounded-extend', 'ignore'));
+        const disabledDoc = createDocument('scss', source);
+        disabled.open(disabledDoc.uri, disabledDoc.languageId, disabledDoc.version, disabledDoc.getText());
+        expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/no-unbounded-extend');
+      });
+
+      it('surfaces dead extend diagnostics by default and allows disable', () => {
+        const source = '.hit {}\n.a { @extend .missing; }';
+        const enabled = createEngine();
+        const enabledDoc = createDocument('scss', source);
+        enabled.open(enabledDoc.uri, enabledDoc.languageId, enabledDoc.version, enabledDoc.getText());
+        expect(codesOf(enabled, enabledDoc.uri)).toContain('lint/no-dead-extend');
+
+        const disabled = createEngine();
+        disabled.configure(sevCfg('lint/no-dead-extend', 'ignore'));
+        const disabledDoc = createDocument('scss', source);
+        disabled.open(disabledDoc.uri, disabledDoc.languageId, disabledDoc.version, disabledDoc.getText());
+        expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/no-dead-extend');
+      });
+
+      it('surfaces suspicious map key access diagnostics by default and allows disable', () => {
+        const source = '$tokens: (tone: blue);\n.a { color: map-get($tokens, 0); }';
+        const enabled = createEngine();
+        const enabledDoc = createDocument('scss', source);
+        enabled.open(enabledDoc.uri, enabledDoc.languageId, enabledDoc.version, enabledDoc.getText());
+        expect(codesOf(enabled, enabledDoc.uri)).toContain('lint/no-suspicious-map-key-access');
+
+        const disabled = createEngine();
+        disabled.configure(sevCfg('lint/no-suspicious-map-key-access', 'ignore'));
+        const disabledDoc = createDocument('scss', source);
+        disabled.open(disabledDoc.uri, disabledDoc.languageId, disabledDoc.version, disabledDoc.getText());
+        expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/no-suspicious-map-key-access');
+      });
+
+      it('surfaces impossible guard diagnostics by default and allows disable', () => {
+        const source = '@if false { .a { color: red; } }';
+        const enabled = createEngine();
+        const enabledDoc = createDocument('scss', source);
+        enabled.open(enabledDoc.uri, enabledDoc.languageId, enabledDoc.version, enabledDoc.getText());
+        expect(codesOf(enabled, enabledDoc.uri)).toContain('lint/no-impossible-guard');
+
+        const disabled = createEngine();
+        disabled.configure(sevCfg('lint/no-impossible-guard', 'ignore'));
+        const disabledDoc = createDocument('scss', source);
+        disabled.open(disabledDoc.uri, disabledDoc.languageId, disabledDoc.version, disabledDoc.getText());
+        expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/no-impossible-guard');
+      });
+      it('surfaces unused Less default-branch diagnostics by default and allows disable', () => {
+        const source = '.m(@x) when (default()) and not(default()) { color: red; }';
+        const enabled = createEngine();
+        const enabledDoc = createDocument('less', source);
+        enabled.open(enabledDoc.uri, enabledDoc.languageId, enabledDoc.version, enabledDoc.getText());
+        expect(codesOf(enabled, enabledDoc.uri)).toContain('lint/no-unused-default-branch');
+
+        const disabled = createEngine();
+        disabled.configure(sevCfg('lint/no-unused-default-branch', 'ignore'));
+        const disabledDoc = createDocument('less', source);
+        disabled.open(disabledDoc.uri, disabledDoc.languageId, disabledDoc.version, disabledDoc.getText());
+        expect(codesOf(disabled, disabledDoc.uri)).not.toContain('lint/no-unused-default-branch');
       });
     });
 
@@ -697,6 +1609,33 @@ describe('JessLanguageServiceEngine', () => {
       });
     });
 
+    describe('invalidColorFunctionChannels (lint/invalid-color-function-channels)', () => {
+      it('fires on invalid CSS color function arguments as an error', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { color: hsl(120 50 50%); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diag = engine.getDiagnostics(doc.uri).find(d => d.code === 'lint/invalid-color-function-channels');
+
+        expect(diag).toBeDefined();
+        expect(diag?.severity).toBe(1); // Error
+      });
+
+      it('does not fire in dialect files before value facts exist', () => {
+        const engine = createEngine();
+        const doc = createDocument('less', '.a { color: hsl(120 50 50%); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/invalid-color-function-channels');
+      });
+
+      it('respects configure() disable', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/invalid-color-function-channels', 'ignore'));
+        const doc = createDocument('css', '.a { color: hsl(120 50 50%); }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/invalid-color-function-channels');
+      });
+    });
+
     it('lint rules stay tolerant: they fire despite a syntax error elsewhere', () => {
       const engine = createEngine();
 
@@ -773,9 +1712,6 @@ describe('JessLanguageServiceEngine', () => {
       // Find tokens on line 0 (the import line)
       const line0Tokens = tokens.filter(t => t.line === 0);
 
-      // Debug: log all tokens to see what we're getting
-      console.log('Line 0 tokens:', JSON.stringify(line0Tokens, null, 2));
-
       /*
        * Should have separate tokens for:
        * - @import (namespace)
@@ -801,34 +1737,14 @@ describe('JessLanguageServiceEngine', () => {
       expect(namespaceTokens.length).toBeGreaterThanOrEqual(1);
     });
 
-    it('creates separate diagnostics for each interpolation in a string', () => {
+    it('does not create missing-symbol diagnostics for interpolation in a string', () => {
       const engine = createEngine();
       const doc = createDocument('less', '@import "import/import-@{in}@{terpolation}.less";');
       engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
 
       const diagnostics = engine.getDiagnostics(doc.uri);
       const varDiags = diagnostics.filter(d => d.code === 'var/undefined');
-
-      // Debug: log diagnostics to see what we're getting
-      console.log('Variable diagnostics:', JSON.stringify(varDiags.map(d => ({
-        message: d.message,
-        range: d.range,
-        code: d.code
-      })), null, 2));
-      console.log('Document text:', JSON.stringify(doc.getText()));
-      console.log('Expected: @{in} should be around char 25, @{terpolation} should be around char 31');
-
-      // Should have 2 separate diagnostics, one for @{in} and one for @{terpolation}
-      expect(varDiags.length).toBeGreaterThanOrEqual(2);
-
-      // Each diagnostic should have a different range
-      const ranges = varDiags.map(d => d.range);
-      expect(ranges.length).toBeGreaterThanOrEqual(2);
-
-      // Verify the ranges are different (they should point to different interpolations)
-      if (ranges.length >= 2) {
-        expect(ranges[0]!.start.character).not.toBe(ranges[1]!.start.character);
-      }
+      expect(varDiags).toEqual([]);
     });
   });
 
@@ -945,79 +1861,12 @@ describe('JessLanguageServiceEngine', () => {
   });
 
   describe('code actions', () => {
-    it('offers a quick fix to create an undefined Less variable', () => {
+    it('does not offer missing-symbol quick fixes without evaluator-backed diagnostics', () => {
       const engine = createEngine();
       const doc = createDocument('less', 'a { color: @missing; }');
       engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diags = engine.getDiagnostics(doc.uri);
-      const target = diags.find(d => d.code === 'var/undefined');
-      expect(target).toBeDefined();
-
-      const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] });
-      expect(actions.some(a => a.kind === CodeActionKind.QuickFix)).toBe(true);
-      expect(actions.some(a => a.title.includes('Create variable'))).toBe(true);
-    });
-
-    it('offers a quick fix to create an undefined Less mixin', () => {
-      const engine = createEngine();
-      const doc = createDocument('less', '.a { .missing(); }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diags = engine.getDiagnostics(doc.uri);
-      const target = diags.find(d => d.code === 'mixin/undefined');
-      expect(target).toBeDefined();
-
-      const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] });
-      expect(actions.some(a => a.kind === CodeActionKind.QuickFix)).toBe(true);
-      expect(actions.some(a => a.title.includes('Create mixin'))).toBe(true);
-    });
-
-    it('offers a "did you mean" fix for a mistyped Less variable', () => {
-      const engine = createEngine();
-      const doc = createDocument('less', '@primary: red;\na { color: @primay; }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diags = engine.getDiagnostics(doc.uri);
-      const target = diags.find(d => d.code === 'var/undefined');
-      expect(target).toBeDefined();
-
-      const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] });
-      const didYouMean = actions.find(a => a.title === 'Change to @primary');
-      expect(didYouMean).toBeDefined();
-
-      // The fix rewrites only the identifier, keeping the `@` sigil.
-      const textEdits = didYouMean?.edit?.changes?.[doc.uri] ?? [];
-      expect(textEdits.length).toBe(1);
-      expect(textEdits[0]!.newText).toBe('@primary');
-    });
-
-    it('offers a "did you mean" fix for a mistyped Less mixin', () => {
-      const engine = createEngine();
-      const doc = createDocument('less', '.button() { color: red; }\n.a { .buton(); }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diags = engine.getDiagnostics(doc.uri);
-      const target = diags.find(d => d.code === 'mixin/undefined');
-      expect(target).toBeDefined();
-
-      const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] });
-      const didYouMean = actions.find(a => a.title.startsWith('Change to .button'));
-      expect(didYouMean).toBeDefined();
-
-      // The fix keeps the `.` combinator and only swaps the identifier.
-      const textEdits = didYouMean?.edit?.changes?.[doc.uri] ?? [];
-      expect(textEdits.length).toBe(1);
-      expect(textEdits[0]!.newText.startsWith('.button')).toBe(true);
-    });
-
-    it('does not offer a "did you mean" fix when nothing is close', () => {
-      const engine = createEngine();
-      const doc = createDocument('less', '@primary: red;\na { color: @zzzzzz; }');
-      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
-      const diags = engine.getDiagnostics(doc.uri);
-      const target = diags.find(d => d.code === 'var/undefined');
-      const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] });
-      expect(actions.some(a => a.title.startsWith('Change to'))).toBe(false);
-
-      // The create-variable fix is still offered.
-      expect(actions.some(a => a.title.includes('Create variable'))).toBe(true);
+      const actions = engine.getCodeActions(doc.uri, Position.create(0, 10), { diagnostics: [] });
+      expect(actions).toEqual([]);
     });
   });
 
