@@ -6,7 +6,7 @@
   "description": "Less function compatibility bridge for Jess",
   "version": "2.0.0-alpha.5",
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": "^20.19.0 || >=22.18.0"
   },
   "type": "module",
   "main": "lib/index.cjs",

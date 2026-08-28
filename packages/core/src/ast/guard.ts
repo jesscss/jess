@@ -130,6 +130,7 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): MaybePromise<bo
       }
       const left = deps.resolveTyped(node.left);
       const right = deps.resolveTyped(node.right);
+
       /*
        * The node's own `g` picks the primitive — the assertion or the match test
        * (§4.2a). Both read the SAME ground; they differ only in what they make

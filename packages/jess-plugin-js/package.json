@@ -2,7 +2,7 @@
   "name": "@jesscss/plugin-js",
   "version": "2.0.0-alpha.5",
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": "^20.19.0 || >=22.18.0"
   },
   "description": "Jess plugin for JavaScript/TypeScript module imports with Deno runtime checks",
   "main": "lib/index.cjs",
