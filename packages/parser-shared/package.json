@@ -34,10 +34,10 @@
     "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly"
   },
   "peerDependencies": {
-    "parseman": "^0.49.0"
+    "parseman": "^0.50.0"
   },
   "devDependencies": {
-    "parseman": "^0.49.0",
+    "parseman": "^0.50.0",
     "tsdown": "~0.21.7"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
