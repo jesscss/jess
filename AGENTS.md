@@ -417,6 +417,10 @@ Before writing or reviewing code on a hot path (core tree/eval/render,
 grammar/parser, extend/selector algorithms), work from the canonical perf
 checklist:
 
+- **`docs/perf/BENCHMARKS.md` — the command-first index of the standard perf
+  tests and old perf data.** To measure anything (jess vs Less 4.x, render
+  hot-path, jess vs an older commit) or find historical/baseline numbers, start
+  there instead of searching the tree. Never invent a benchmark harness.
 - `docs/perf/V8-ARCHITECTURE.md` — the **numbered invariants** (1-11 at `facb641dd`;
   count them in the file rather than trusting a number here) ("before you write X,
   check Y") plus the regression-fixture catalogue of real incidents
