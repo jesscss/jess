@@ -12,7 +12,7 @@
     "entry to delete, the moment a listed test starts passing. Growing is deliberate:",
     "a new failure fails the gate and must be fixed, not appended here.",
     "",
-    "The 8 entries below are LONG-STANDING deterministic failures on dev (none are",
+    "The entries below are LONG-STANDING deterministic failures on dev (none are",
     "timeouts), diagnosed and given a per-entry fix plan in",
     "docs/state/jess-known-failures-fix-plan.md. They are recorded so the gate",
     "reflects reality; the plan is how each one leaves this list.",
@@ -41,16 +41,6 @@
       "test": "test/jess-render.test.ts > Jess parser plugin render-through reports unresolved Jess interpolation through the public structured diagnostic route",
       "reason": "Jess ${…} interpolation is not parsed inside @import url(...); yields parse/syntax-error @1:14 instead of parsing + resolve/name-not-found @1:13.",
       "tracking": "docs/state/jess-known-failures-fix-plan.md#4"
-    },
-    {
-      "test": "test/path-resolution.test.ts > Less path resolution keeps a second document base through reference-url imports and inline multiple",
-      "reason": "@import (reference) suppresses a nested @import (inline) payload (reference-visibility over-suppression); inline CSS must emit regardless of an ancestor reference flag. Shares one fix with the compat-hooks case.",
-      "tracking": "docs/state/jess-known-failures-fix-plan.md#5-6"
-    },
-    {
-      "test": "test/path-resolution.test.ts > Less path resolution preserves that base when legacy compatibility hooks are also configured",
-      "reason": "Same reference-visibility over-suppression as the reference-url case, plus lessCompatPlugin() (no behavioral change) — one fix covers both.",
-      "tracking": "docs/state/jess-known-failures-fix-plan.md#5-6"
     },
     {
       "test": "test/less/bootstrap-clean-repro.test.ts > bootstrap clean render renders and collects rejections",

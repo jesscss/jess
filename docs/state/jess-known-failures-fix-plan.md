@@ -51,15 +51,15 @@ Diagnosis date: 2026-08-28. Traced against `dev` at the CI-setup fix.
 - **Effort:** M
 - **Owner-gated:** no
 
-## #5 + #6 — path-resolution: `@import (reference)` suppresses nested `@import (inline)` payload
+## #5 + #6 — path-resolution: reference-url chain (RESOLVED — stale tests, code was correct)
 - **Tests:**
   - `test/path-resolution.test.ts > Less path resolution > keeps a second document base through reference-url imports and inline multiple`
   - `test/path-resolution.test.ts > Less path resolution > preserves that base when legacy compatibility hooks are also configured`
-- **Category:** semantics-bug (reference-visibility over-suppression). Titles say "base"/"path" but path resolution is fine — the inline payload is silently dropped.
-- **Root cause:** When an import chain is marked `(reference)`, a nested `@import (inline)` payload is suppressed from output. Variant matrix confirmed the trigger is the `(reference)` flag, NOT `url()` and NOT `multiple`. Area: inline-import branch in `packages/core/src/ast/serialize.ts` (~`serialize.ts:9099`, `importHasOption(options,'reference')` ~`9104`). `.target`→`.extension` extend still works, proving chain/base resolution is intact.
-- **Fix approach:** Ensure `@import (inline)` content emits raw CSS verbatim regardless of an ancestor `(reference)` flag — inline imports must not inherit reference-hidden visibility. One fix covers both tests. Run semantics-reviewer (emitted-CSS change); cite/append a DESIGN-DECISIONS row.
-- **Effort:** M
-- **Owner-gated:** no (but emitted-CSS semantics — semantics-reviewer required)
+- **Category:** stale-test-expectation (NOT a code bug — original diagnosis was inverted).
+- **Root cause:** The subagent diagnosis called the suppression a "reference-visibility over-suppression bug." That is WRONG. A `@import (reference)` correctly hides its whole subtree — the nested `@import (inline)` payload included. The **lessc 4.x oracle** (4.6.3) on the exact construct outputs only `.extension { color: blue; }` (the extend of the reference `.target`) and suppresses `.from-reference-url`; jess produces byte-identical output. The tests copied the non-reference sibling pattern (#103/#115/#127, where the payload correctly outputs) but added `(reference)` and kept the "payload appears" assertion.
+- **Fix applied (2026-08-28):** Updated both tests to assert the correct, oracle-matching behavior — the reference-url chain resolves (`.extension` inherits `color: blue`), and the nested `(inline)` payload is suppressed. No code change; jess already matched Less 4.x. Removed from the ratchet baseline.
+- **Effort:** S (done)
+- **Owner-gated:** no
 
 ## #7 + #8 — bootstrap: root-level leading combinator + mislocated diagnostic
 - **Tests:**
