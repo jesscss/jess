@@ -39,7 +39,7 @@
     "lint-staged": "13.2.1",
     "lite-server": "^2.6.1",
     "normalize.css": "^8.0.1",
-    "parseman": "^0.50.0",
+    "parseman": "^0.50.1",
     "puppeteer": "^19.10.1",
     "rollup": "^3.20.7",
     "shx": "^0.3.4",
