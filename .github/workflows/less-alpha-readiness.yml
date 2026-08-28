@@ -72,6 +72,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # The verify:less-alpha corpus lanes (test:less:test-data:*) render the
+      # owner-maintained @less/test-data corpus, which package.json links as
+      # `link:../less.js/packages/test-data` — a sibling checkout that does not
+      # exist in CI. Check the public corpus repo out here and point the tests at
+      # it via LESS_TEST_DATA_ROOT (honored by both vitest.config.ts and
+      # test-utils resolveLessTestDataRoot). Without this the corpus tests throw
+      # at load and the job fails on a corpus it was never given.
+      - name: Checkout Less.js corpus (matthew-dean/less.js@alpha)
+        uses: actions/checkout@v4
+        with:
+          repository: matthew-dean/less.js
+          ref: alpha
+          path: less-corpus
+
       - name: Install pnpm
         uses: pnpm/action-setup@v4
 
@@ -85,4 +99,6 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Verify Less alpha readiness
+        env:
+          LESS_TEST_DATA_ROOT: ${{ github.workspace }}/less-corpus/packages/test-data
         run: pnpm run verify:less-alpha
