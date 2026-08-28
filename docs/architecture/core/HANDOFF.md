@@ -2097,7 +2097,7 @@ Recorded so the next reader does not re-derive it from the log:
 - **Per-function Less/Sass dialect classification audit** (`1d253ce9c`, `1164ddd15`,
   `docs/state/fns-dialect-classification-audit.md`).
 - **One Node engine floor across every published package** (`e7a7cc037`): all 19 publishable
-  packages declare `"node": "^20.19.0 || >=22.12.0"`. `bf7286753` dropped the CI `lts/-3` leg;
+  packages declare `"node": "^20.19.0 || >=22.18.0"`. `bf7286753` dropped the CI `lts/-3` leg;
   `93e1aa49d` backed out two files that sweep had picked up.
 
 ## Current target
@@ -2337,7 +2337,7 @@ section is the authoritative full-scope companion to the compact task goal.
 - Node support is a rolling policy, not a permanently pinned release number.
   **Corrected `e7a7cc037` (2026-07-24); re-measured 2026-07-30 on `facb641dd`:** all 22
   publishable packages (31 workspace packages, 9 `private`) declare the same
-  `"node": "^20.19.0 || >=22.12.0"` — three LTS lines (20, 22, 24), matching parseman. The
+  `"node": "^20.19.0 || >=22.18.0"` — three LTS lines (20, 22, 24), matching parseman. The
   range is where the toolchain already stops (oxc-parser, oxlint and vite each require exactly
   it), and the gaps are load-bearing: 20.0–20.18 and 22.0–22.11 cannot install the oxc family.
   Node 18 was never real — it cannot run oxc, vite or vitest, so the old `>=18` floor could not
