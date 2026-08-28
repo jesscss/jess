@@ -4,27 +4,37 @@
 standard perf tests and where the historical data lives. Do not invent a new
 harness; extend one of these. (Memory: "NEVER invent a harness.")
 
-North-star goal: **Less alpha (jess) parses at Less 4.x speed** — the perf-gate
-ratio `jess ÷ lessc-4.x` on `benchmark.less` is the headline number.
+**The metric that matters right now is TOTAL EVAL/RENDER time** (parse + eval +
+serialize — the full `Compiler.render` path), not parse time alone. Parse speed
+is a someday-concern; do not lead with the parse ratio. North-star: jess's total
+render on `benchmark.less` at or near Less 4.x's total render.
+
+Reference point (2026-08-28, parseman 0.50.0, contended machine so indicative):
+jess total render of `benchmark.less` ≈ **42ms** vs lessc 4.6.3 ≈ **38ms** —
+~10%, essentially parity within noise. (lessc renders `benchmark.less` FINE — it
+is ordinary Less; there is no "v5-only" blocker. The perf-gate can't pair-time it
+against lessc only because that fixture's `@import`s make lessc's parse async,
+which is a harness limitation, not a syntax one.)
 
 ---
 
-## TL;DR — the four standard commands
+## TL;DR — the standard commands (total-eval first)
 
 | Want | Command | Measures |
 |---|---|---|
-| **jess vs Less 4.x / PostCSS / dart-sass** (parse) | `pnpm run perf:gate:report` | jess parse time as a RATIO vs each reference parser, on `benchmark.less`. THE headline "vs 4.x" number. |
-| **jess render hot-path** | `pnpm run measure:less:hotpath` (add `:record` to save) | jess render (eval+emit) median per fixture, tests-unit fixtures. |
-| **jess vs an OLD jess commit** (parse) | `pnpm run perf:ab:prepare <commit>` then `pnpm run perf:ab:compare --case benchmark.less` | current worktree vs `~/git/worktrees/jess/bench-b` parked on `<commit>`; bias-controlled ratios. |
-| **jess parser parse-bench** | `pnpm run bench:jess:parse` (`:record` to save) | raw jess-parser parse throughput. |
+| **jess total render** (parse+eval+serialize) | `pnpm run measure:less:hotpath --fixture packages/jess/benchmark/benchmark.less` (or default tests-unit fixtures; `:record` to save) | jess full `Compiler.render` median per fixture. **THE priority metric.** |
+| **jess total render vs Less 4.x** | measure jess as above; time lessc separately (`less.render` on the same file) and compare medians — there is no committed interleaved render-vs-lessc harness yet (gap; the perf-gate is parse-only). | end-to-end jess vs lessc 4.x. |
+| jess vs Less 4.x / PostCSS / dart-sass (**PARSE only**) | `pnpm run perf:gate:report` | jess PARSE time as a ratio vs each reference parser. Parse only — not the priority metric right now; postcss/sass comparators must be installed to resolve. |
+| jess vs an OLD jess commit (parse) | `pnpm run perf:ab:prepare <commit>` then `pnpm run perf:ab:compare --case benchmark.less` | current worktree vs `~/git/worktrees/jess/bench-b` parked on `<commit>`; bias-controlled ratios. |
+| jess parser parse-bench | `pnpm run bench:jess:parse` (`:record` to save) | raw jess-parser parse throughput. |
 
-All four are jess-side; `perf:gate:report` is the only one that compares against
-**other engines** (lessc 4.x etc.). None needs a network fetch except the
-optional postcss-preprocessors extra (below).
+`measure:less:hotpath` is the canonical jess total-render harness. `perf:gate`
+is PARSE-only. There is no committed total-render-vs-lessc harness — that is a
+known gap to fill when total-eval-vs-4.x becomes a focus.
 
 ---
 
-## 1. perf-gate — jess vs reference parsers (THE "vs 4.x" harness)
+## 1. perf-gate — jess vs reference parsers (PARSE-only; not the priority metric)
 
 - Run (report, never fails): `pnpm run perf:gate:report`
   (= `PERF_GATE=report node scripts/perf-gate/index.mjs --force-tier=full`)
