@@ -347,6 +347,7 @@ When information is volatile, point to the canonical source instead of restating
 - Agents branch their worktrees from `origin/dev`, not from feature/backup branches.
 - Sync work back to `dev` only when it is stable and tested. The sync gate is: core tests green, jess `ast-v2-production-ratchet` green, and jess `all-less` byte-identical (render corpus fully green).
 - Agents do not push `dev` directly. The orchestrator (or a designated integration agent) performs the merge + push after the gate is confirmed green — never push red.
+- **Release cadence runs as its own track, in parallel with roadmap work.** Foundation work (grammar cleanup → normalize AST → bug fixes → feature gaps) and alpha releases do not block each other; both land on `dev` continuously. A release ships whenever `dev` accumulates a meaningful batch of **user-facing** change. The release track pulls only user-facing work **independent of the grammar surface currently being cleaned** (rework-risk rule). Operating model: `docs/process/less-v5-release-plan.md` (§Operating model); mechanics: `docs/process/releasing-alpha.md`.
 
 ## AST And Runtime Safety
 
