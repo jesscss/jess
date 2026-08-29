@@ -78,15 +78,35 @@ function isClassSelector(simple: SimpleSelector): boolean {
     && simple.text.length > 1;
 }
 
-function isTermAllowed(term: SelectorTerm, allowed: ReadonlySet<ApplySelectorKind | ExtendSelectorKind>): boolean {
-  if (term.type === 'CompoundSelector') {
-    return allowed.has('compound')
-      || (term.value.length === 1 && isSimpleAllowed(term.value[0]!, allowed));
-  }
-  return isSimpleAllowed(term, allowed);
+/**
+ * A lone parent-ref target (`&`). Admitted only on the extend path: `$extend &`
+ * parses and no-op-matches at eval, mirroring Less `:extend(&)`. `$apply` stays
+ * class-only — a parent-ref carries no utility class to compose.
+ */
+function isBareParentRef(simple: SimpleToken): boolean {
+  return simple.type === 'SimpleSelector' && simple.interp === null && simple.text === '&';
 }
 
-function isSimpleAllowed(simple: SimpleToken, allowed: ReadonlySet<ApplySelectorKind | ExtendSelectorKind>): boolean {
+function isTermAllowed(
+  term: SelectorTerm,
+  allowed: ReadonlySet<ApplySelectorKind | ExtendSelectorKind>,
+  isExtend: boolean
+): boolean {
+  if (term.type === 'CompoundSelector') {
+    return allowed.has('compound')
+      || (term.value.length === 1 && isSimpleAllowed(term.value[0]!, allowed, isExtend));
+  }
+  return isSimpleAllowed(term, allowed, isExtend);
+}
+
+function isSimpleAllowed(
+  simple: SimpleToken,
+  allowed: ReadonlySet<ApplySelectorKind | ExtendSelectorKind>,
+  isExtend: boolean
+): boolean {
+  if (isExtend && isBareParentRef(simple)) {
+    return true;
+  }
   if (simple.type === 'PseudoSelector') {
     return allowed.has('simple') || allowed.has('pseudo');
   }
@@ -96,22 +116,26 @@ function isSimpleAllowed(simple: SimpleToken, allowed: ReadonlySet<ApplySelector
     || allowed.has('basic');
 }
 
-function isBranchAllowed(branch: SelectorBranch, allowed: ReadonlySet<ApplySelectorKind | ExtendSelectorKind>): boolean {
+function isBranchAllowed(
+  branch: SelectorBranch,
+  allowed: ReadonlySet<ApplySelectorKind | ExtendSelectorKind>,
+  isExtend: boolean
+): boolean {
   return branch.type === 'ComplexSelector' || branch.type === 'RelativeSelector'
     ? allowed.has('complex')
-    : isTermAllowed(branch, allowed);
+    : isTermAllowed(branch, allowed, isExtend);
 }
 
 function validateSelectorList(label: string, selector: SelectorList, allowedKinds: readonly ExtendSelectorKind[]): void {
   const allowed = new Set(allowedKinds);
-  if (!selector.selectors.every(item => isBranchAllowed(item, allowed))) {
+  if (!selector.selectors.every(item => isBranchAllowed(item, allowed, true))) {
     throw selectorPolicyError(`${label} selector is not allowed by allowExtendSelectors.`);
   }
 }
 
 function validateApply(node: Apply, allowedKinds: readonly ApplySelectorKind[]): void {
   const allowed = new Set(allowedKinds);
-  if (!node.selectors.every(selector => isTermAllowed(selector, allowed))) {
+  if (!node.selectors.every(selector => isTermAllowed(selector, allowed, false))) {
     throw selectorPolicyError('$apply target is not allowed by allowApplySelectors.');
   }
 }
