@@ -71,6 +71,9 @@ function run(command, args, { capture = false } = {}) {
 heading('Guardrails: owner requirements + closure attribution');
 run('node', ['scripts/check-guardrails.mjs']);
 
+heading('Record Map: routing index links resolve');
+run('node', ['scripts/check-record-map.mjs']);
+
 // 1. Clean all package libs.
 heading('Clean: removing package lib outputs');
 const removedLibDirs = removePackageLibDirs(ROOT);
