@@ -1,0 +1,178 @@
+name: CI
+
+# The blocking PR gate. ONE job that proves the repo is healthy along every axis
+# — build, lint, types, tests, structural/perf invariants — and is dialect-AGNOSTIC
+# by construction: per-dialect correctness is not a separate "Less readiness"
+# headline, it lives in each parser's own suite, all of which run here:
+#
+#   css   — css-parser suite incl. render-differential.test.ts
+#   scss  — scss-parser suite incl. the sass-spec cache (2404 cases)
+#   less  — less-parser suite + the full @less/test-data corpus (via the jess
+#           ratchet below, which checks out and renders the real-world corpus)
+#   jess  — jess-parser suite + the jess known-failures ratchet
+#
+# The job hard-fails and is green on a clean `dev` — a gate that is red on an
+# untouched checkout teaches people to reach for `--no-verify`, and then it is
+# not a gate. Known debt is NAMED, not hidden: packages/jess/test/known-failures.json
+# lists each expected failure and scripts/vitest-ratchet.mjs fails on a new failure
+# AND on a listed test that starts passing, so the set only moves deliberately.
+#
+# NOTE: the standalone byte-identity oracles (oracle:less:byte-identity,
+# oracle:scss:byte-identity) are deliberately NOT gated here. They are snapshot
+# drift-detectors whose committed baselines require manual rebaseline as the
+# parsers evolve; run them by hand during focused parser work.
+#
+# Add this job to branch protection as a required check — a workflow can make
+# itself fail but cannot make itself required.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - alpha
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Build · lint · types · tests · gates
+    runs-on: ubuntu-latest
+    # Corpus-backed jess tests (test/less/*.test.ts via resolveLessTestDataRoot)
+    # run inside the package test suites. They resolve the @less/test-data corpus,
+    # a sibling `link:../less.js/packages/test-data` checkout absent in CI; without
+    # it those files fail to load and their cases fail. Point every step at the
+    # corpus we check out below.
+    env:
+      LESS_TEST_DATA_ROOT: ${{ github.workspace }}/less-corpus/packages/test-data
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout Less.js corpus (matthew-dean/less.js@alpha)
+        uses: actions/checkout@v4
+        with:
+          repository: matthew-dean/less.js
+          ref: alpha
+          path: less-corpus
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Clean build: delete every workspace lib then build the FULL chain SERIALLY
+      # in topological order. Incremental builds mask errors — a stale lib recently
+      # masked a grammar compose failure. Output is captured so the compose-integrity
+      # step can grep it without rebuilding.
+      - name: Clean lib output
+        run: node scripts/clean-package-libs.mjs
+
+      - name: Clean serial topological build
+        run: |
+          set -o pipefail
+          pnpm -r --workspace-concurrency=1 \
+            --filter='!jess-docs' \
+            --filter='!@jesscss/docs-less' \
+            --filter='!@jesscss/docs-content' \
+            build 2>&1 | tee build.log
+
+      # --- build integrity: the artifact is only trustworthy if nothing silently
+      # degraded a grammar to the runtime interpreter (visible only in build output). ---
+      - name: Fallback-detector canaries
+        run: node --test scripts/__tests__/parseman-fallback-detector.test.mjs
+
+      - name: Compose-integrity check
+        run: node scripts/verify-compose-integrity.mjs --log build.log
+
+      - name: Macro-buildability check
+        run: node scripts/check-macro-buildable.mjs --no-build
+
+      # --- static analysis --- (run explicitly, NOT via `pnpm ci`, which would
+      # re-run lint + core-public-types a second time)
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Strict production types
+        run: pnpm run verify:types
+
+      - name: Core public type consumer
+        run: pnpm run verify:core-public-types
+
+      - name: Config syntax
+        run: pnpm run verify:config-syntax
+
+      - name: Cross-tool surface parity
+        run: pnpm run verify:surface-parity
+
+      # --- tests: OPT-OUT coverage. `-r test` runs EVERY workspace package by
+      # default, so a newly added package is gated the moment it exists — no one
+      # has to remember to add it to a whitelist. This closes the long-standing
+      # gap where language-service, style-resolver and diagnostics-core never ran
+      # in CI (they define `test` but no `ci` script, so the old `pnpm -r ci`
+      # silently skipped them).
+      #
+      # A package is omitted only by an EXPLICIT, reasoned `--filter='!x'` below.
+      # The sole carve-out is `jess`: it owns env-gated known failures reconciled
+      # by a ratchet (fails on a NEW failure AND on a listed test that starts
+      # passing), so it runs through that ratchet instead of a plain vitest pass.
+      # Its full suite — public-API contract, path resolution, AST-v2 ratchet,
+      # CLI — runs inside test:ratchet, so no separate jess test steps are needed.
+      - name: All package tests (opt-out; jess runs via its ratchet)
+        run: pnpm -r --filter='!jess' test
+
+      - name: Jess suite (known-failures ratchet)
+        run: pnpm --filter jess run test:ratchet
+
+      # --- public surface + release-shape checks (were bundled under the
+      # misnamed verify:less-alpha; none of these are Less-specific) ---
+      - name: Package exports
+        run: pnpm run verify:package-exports
+
+      - name: Jess public API surface
+        run: pnpm run verify:jess-api
+
+      # verify:baseline itself is a LOCAL pre-push meta-gate that rebuilds the
+      # runtime chain and re-runs core/parser tests + the frontier checks — all
+      # already covered above by the one clean build, `-r test`, and the explicit
+      # frontier gates below. Its only non-redundant check that is green on a
+      # clean tree is this one (verify:parser-runtime-boundary is NOT — it reports
+      # pre-existing handwritten-recognizer debt in the parser grammars, so it
+      # stays a report/local check, not a blocking gate, until that debt is paid):
+      - name: Node constructor metadata
+        run: pnpm run verify:node-constructor-metadata
+
+      # --- perf / structural invariants (were wired only into release:alpha:check) ---
+      - name: Gate — aggressive cutting review
+        run: pnpm run verify:aggressive-cutting-review
+
+      - name: Gate — node-copy frontier
+        run: pnpm run verify:node-copy-frontier
+
+      - name: Gate — materialization frontier
+        run: pnpm run verify:materialization-frontier
+
+      - name: Gate — render-buffer frontier
+        run: pnpm run verify:render-buffer-frontier
+
+      - name: Gate — binding lookup hot paths
+        run: pnpm run verify:binding-lookup-hot-paths
+
+      - name: Gate — diagnostic cold path
+        run: pnpm run verify:diagnostic-cold-path
+
+      - name: Audit — node creation hotspots
+        run: pnpm run audit:node-creation
