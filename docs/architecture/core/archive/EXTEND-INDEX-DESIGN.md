@@ -1,6 +1,11 @@
 # Extend as a closed term-rewriting system over a selector IR (design + build spec)
 
-**Status:** design / prototype. Built PARALLEL to the existing walk (`extendSelector` in
+**Status:** ARCHIVED / superseded. The `extendByIndex` prototype described here was retired once its
+own-construction successor `extendByIndexOwn` (in `packages/core/src/tree/extend/extend-index.ts`) shipped;
+the prototype and its differential test (`extend-index-differential.test.ts`, once referenced below) are
+deleted. The IR/discovery design is preserved here for its rationale only.
+
+Original design intent: built PARALLEL to the existing walk (`extendSelector` in
 `packages/core/src/tree/util/extend.ts`), validated by a differential reference test — NOT a replacement
 until it's byte-identical across the whole extend suite. Discovery is replaced; the *idea* is that match
 AND rewrite both happen on one IR and iterate to fixpoint without round-tripping to selector nodes.
