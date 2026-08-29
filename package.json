@@ -182,7 +182,8 @@
   "homepage": "https://github.com/matthew-dean/jess#readme",
   "pnpm": {
     "patchedDependencies": {
-      "superstruct@1.0.3": "patches/superstruct@1.0.3.patch"
+      "superstruct@1.0.3": "patches/superstruct@1.0.3.patch",
+      "bootstrap-less-port@2.5.1": "patches/bootstrap-less-port@2.5.1.patch"
     },
     "overrides": {
       "chevrotain": "^12.0.0"

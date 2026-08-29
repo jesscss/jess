@@ -1,13 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import * as path from 'path';
+import { createRequire } from 'node:module';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 import jsPlugin from '@jesscss/plugin-js';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
-const bsRoot = path.resolve(
-  __dirname,
-  '../../../../node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less'
+/*
+ * Resolve the installed package rather than a hardcoded `.pnpm` store path: a
+ * patched dependency (see patches/bootstrap-less-port@2.5.1.patch) lives under a
+ * `_patch_hash=…` store directory, so the fixed store name no longer exists.
+ */
+const requireFrom = createRequire(import.meta.url);
+const bsRoot = path.join(
+  path.dirname(requireFrom.resolve('bootstrap-less-port/package.json')),
+  'less'
 );
 const bootstrapFile = path.join(bsRoot, 'bootstrap.less');
 
@@ -50,8 +57,13 @@ describe('bootstrap clean render', () => {
     // Bootstrap must render to substantial CSS with ZERO swallowed rejections.
     expect(css.length).toBeGreaterThan(100000);
     expect(rejections).toHaveLength(0);
-    // Sanity: responsive grid + breakpoint custom properties are present.
-    expect(css).toContain('--breakpoint-sm:576px');
+
+    /*
+     * Sanity: responsive grid + breakpoint custom properties are present. The
+     * default render is nested/expanded (not compressed), so the custom property
+     * carries a space after the colon — byte-for-byte what lessc 4.x emits.
+     */
+    expect(css).toContain('--breakpoint-sm: 576px');
     expect(css).toMatch(/\.col-sm-/);
     expect(css).toContain('.container-lg');
   }, 120000);
