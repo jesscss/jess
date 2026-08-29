@@ -139,12 +139,32 @@ function workspaceSrcAliases() {
     ['@jesscss/jess-parser/cst/positions', 'packages/syntax/jess/jess-parser/src/cst/positions.ts'],
 
     /*
+     * `./positions` — the bare line-aware AST grammar entry (sibling of `./cst`
+     * and `./cst/positions` above), the same half-source hazard. Left on node
+     * resolution it lands on built `lib`, so a source-only test run (the CI
+     * `test-source` job, which primes only core/fns/parser-shared and never
+     * builds the parsers) fails with ERR_MODULE_NOT_FOUND the moment a test or
+     * a source-aliased parser imports it.
+     */
+    ['@jesscss/css-parser/positions', 'packages/syntax/css/css-parser/src/positions.ts'],
+    ['@jesscss/less-parser/positions', 'packages/syntax/less/less-parser/src/positions.ts'],
+    ['@jesscss/scss-parser/positions', 'packages/syntax/scss/scss-parser/src/positions.ts'],
+    ['@jesscss/jess-parser/positions', 'packages/syntax/jess/jess-parser/src/positions.ts'],
+
+    /*
      * `@jesscss/core` itself is aliased to source by the walk above. Leaving
      * this subpath on node resolution would give a test two copies of the error
      * classes — a source-side `JessError` from the root and a lib-side one from
      * the diagnostic surface — and `instanceof` across that boundary is false.
      */
-    ['@jesscss/core/diagnostics', 'packages/core/src/diagnostics.ts']
+    ['@jesscss/core/diagnostics', 'packages/core/src/diagnostics.ts'],
+
+    /*
+     * `@jesscss/compiler/diagnostics` — same source-graph reason; `@jesscss/compiler`
+     * is not in the `test-source` prime, so this subpath would miss on a no-parser-build
+     * run.
+     */
+    ['@jesscss/compiler/diagnostics', 'packages/compiler/src/diagnostics.ts']
   ];
   for (const [specifier, file] of subpaths) {
     const source = resolve(root, file);
