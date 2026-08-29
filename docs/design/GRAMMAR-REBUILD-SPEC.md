@@ -75,6 +75,15 @@ Four consequences, none of them optional:
 
 ### 0.2 Current status
 
+> **CORRECTION BANNER (2026-08-29).** The version and blocker facts in this
+> section are **stale**. parseman is now **0.50.1** (not 0.47.1), and the
+> compose / hard-rule-2 blocker that §5.x/§6 describe as open was **lifted in
+> 0.49.0**. The live method of record for the lean-grammar / compose phase is
+> **`docs/design/COMPOSE-MIGRATION-SPEC.md`** (Stages A–D), **not** §5.x/§6 of
+> this document. Read that spec first for anything touching grammar compose or
+> the css leaf-factoring; treat the rest of §0 below as historical planning
+> evidence.
+
 **The parseman floor is paid.** parseman resolves to **0.47.1** from the registry
 (`pnpm-lock.yaml`, sole entry); the root, `@jesscss/parser-shared`, and all four
 parser packages depend on `^0.47.1` (after `ff685793a` took the floor to `^0.46.0`,

@@ -28,16 +28,6 @@
       "tracking": "docs/state/jess-known-failures-fix-plan.md#1"
     },
     {
-      "test": "test/dialect-builtins.test.ts > per-dialect built-ins registers only what a dialect index exports",
-      "reason": "quote/unquote were converted to real defineFunction built-ins (fns/src/sass/string/{quote,unquote}.ts); the test's 'still-unconverted' exemplars are stale — pick genuinely-unconverted globals.",
-      "tracking": "docs/state/jess-known-failures-fix-plan.md#2"
-    },
-    {
-      "test": "test/jess-render.test.ts > Jess parser plugin render-through parent selector accepts `&` as a $extend target while keeping $apply class-only by default",
-      "reason": "Jess extend-policy validator (parse-with.ts isSimpleAllowed) has no branch for the parent-ref &; $extend & is rejected at parse instead of parsing + no-op-matching at eval.",
-      "tracking": "docs/state/jess-known-failures-fix-plan.md#3"
-    },
-    {
       "test": "test/jess-render.test.ts > Jess parser plugin render-through reports unresolved Jess interpolation through the public structured diagnostic route",
       "reason": "Jess ${…} interpolation is not parsed inside @import url(...); yields parse/syntax-error @1:14 instead of parsing + resolve/name-not-found @1:13.",
       "tracking": "docs/state/jess-known-failures-fix-plan.md#4"
