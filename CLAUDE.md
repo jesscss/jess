@@ -46,6 +46,16 @@
 
 Start with `AGENTS.md`.
 
+**Before proposing any architecture / grammar / semantics / perf / release plan —
+or a "here are the corrections" list — consult the Record Map:
+`docs/RECORD-MAP.md`.** It routes each topic to the one document that is the
+**method of record** and says what it owns; open that doc and cite it. Do NOT
+plan from memory or a recon-agent summary when a record exists — the record is
+the re-discovery mechanism (e.g. grammar compose / Stage C is settled in
+`docs/design/COMPOSE-MIGRATION-SPEC.md` §8/§9; the grammar sub-map is
+`docs/architecture/parser/GRAMMAR-RECORD-MAP.md`). Treat a subagent's
+*interpretation* as a lead to verify against the source, never a fact to repeat.
+
 Do not keep branch-stage snapshots, pass counts, or transient failure notes here.
 
 **An agent may not redefine, narrow, or close an owner requirement** — escalate

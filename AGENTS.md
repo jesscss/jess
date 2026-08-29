@@ -195,12 +195,21 @@ source of truth — but the less-compat bridge is a real external contract.
 
 ## Canonical Sources
 
+**Start at the Record Map: [`docs/RECORD-MAP.md`](docs/RECORD-MAP.md).** It is the
+topic → authoritative-document index: for any area (grammar, semantics, perf,
+core, release) it names the one doc that is the **method of record** and what it
+owns, with per-area sub-maps. Before proposing a plan on a topic, open its
+method-of-record doc from the map and cite it — do not plan from memory or a
+recon summary when a record exists. Keep the map current: `pnpm check:record-map`
+fails on a broken link and warns on an unindexed method-of-record doc.
+
 Use guidance in this order:
 
-1. `AGENTS.md` for repo-wide operating rules
-2. Area architecture docs for design intent and constraints
-3. Tool-specific rules for execution details
-4. Transient state files for current baselines, recent failures, and next steps
+1. `docs/RECORD-MAP.md` to find the method-of-record doc for the topic, then that doc
+2. `AGENTS.md` for repo-wide operating rules
+3. Area architecture docs for design intent and constraints
+4. Tool-specific rules for execution details
+5. Transient state files for current baselines, recent failures, and next steps
 
 If a permanent rule and a transient note disagree, prefer the permanent rule unless the transient note clearly says it supersedes it for the active task.
 
