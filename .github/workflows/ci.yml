@@ -11,6 +11,12 @@ name: CI
 #           ratchet below, which checks out and renders the real-world corpus)
 #   jess  — jess-parser suite + the jess known-failures ratchet
 #
+# Tests run AFTER the build in one job on purpose: vitest's parseman.vite() fuses
+# the grammar macros at transform, but that fusion is PRIMED by the build — a
+# no-build job fails with "composeLeaf() must macro-fuse" the moment a test
+# imports a parser grammar (core and every parser do). So a "source-only" test
+# job is not viable here; the lever is a fast build, not skipping it.
+#
 # The job hard-fails and is green on a clean `dev` — a gate that is red on an
 # untouched checkout teaches people to reach for `--no-verify`, and then it is
 # not a gate. Known debt is NAMED, not hidden: packages/jess/test/known-failures.json
@@ -74,17 +80,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Clean build: delete every workspace lib then build the FULL chain SERIALLY
-      # in topological order. Incremental builds mask errors — a stale lib recently
-      # masked a grammar compose failure. Output is captured so the compose-integrity
-      # step can grep it without rebuilding.
+      # Clean build every run: delete every workspace lib then rebuild. Incremental
+      # builds mask errors (a stale lib once masked a grammar compose failure).
+      # GRAPH-PARALLEL: pnpm -r honours the workspace dependency graph, so the
+      # parser spine (css → less/scss → jess) and core still build in order while
+      # independent leaves build concurrently — measured ~58s vs ~4m40s for the old
+      # --workspace-concurrency=1, across 5/5 clean runs, and the compose-integrity
+      # / fallback / macro gates all parse the interleaved build.log correctly.
       - name: Clean lib output
         run: node scripts/clean-package-libs.mjs
 
-      - name: Clean serial topological build
+      - name: Clean graph-parallel build
         run: |
           set -o pipefail
-          pnpm -r --workspace-concurrency=1 \
+          pnpm -r \
             --filter='!jess-docs' \
             --filter='!@jesscss/docs-less' \
             --filter='!@jesscss/docs-content' \
