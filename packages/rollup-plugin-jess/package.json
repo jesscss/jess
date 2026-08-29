@@ -1,7 +1,7 @@
 {
   "name": "rollup-plugin-jess",
   "type": "module",
-  "version": "2.0.0-alpha.15",
+  "version": "2.0.0-alpha.16",
   "engines": {
     "node": "^20.19.0 || >=22.18.0"
   },

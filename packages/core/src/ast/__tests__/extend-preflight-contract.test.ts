@@ -1,26 +1,34 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const PROFILE_KEY = '__JESS_EXTEND_PROFILE_COUNTERS__';
 
 type CoreAst = typeof import('../nodes.js');
-type AtRuleFactories = typeof import('../at-rule.js');
 type Serialize = typeof import('../serialize.js')['serialize'];
 
 let ast: CoreAst;
-let atRule: AtRuleFactories;
 let serialize: Serialize;
 let counters: Record<string, number>;
 
-beforeEach(async () => {
+/*
+ * Install the profile bag and import core ONCE (see extend-op-budget.test.ts for
+ * why): the recorder captures the bag by reference at import time, so per-test
+ * we only clear the same object in place — no per-test graph re-import.
+ */
+beforeAll(async () => {
   vi.resetModules();
   counters = {};
   (globalThis as typeof globalThis & { [PROFILE_KEY]?: Record<string, number> })[PROFILE_KEY] = counters;
   ast = await import('../nodes.js');
-  atRule = await import('../at-rule.js');
   ({ serialize } = await import('../serialize.js'));
 });
 
-afterEach(() => {
+beforeEach(() => {
+  for (const key of Object.keys(counters)) {
+    delete counters[key];
+  }
+});
+
+afterAll(() => {
   delete (globalThis as typeof globalThis & { [PROFILE_KEY]?: Record<string, number> })[PROFILE_KEY];
 });
 

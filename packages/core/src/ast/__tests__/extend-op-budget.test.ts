@@ -1,4 +1,4 @@
-import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * Extend operation-counter budgets (V8 mechanical gate #3 + #4).
@@ -40,7 +40,14 @@ const resetCounters = (): void => {
   }
 };
 
-beforeEach(async () => {
+/*
+ * Install the profile bag and import core ONCE. The recorder captures the bag by
+ * reference at import time, so a fresh object per test is unnecessary — clearing
+ * the same object in place (resetCounters) between tests is enough, and avoids a
+ * full source-aliased graph re-import on every test (the former per-test
+ * `vi.resetModules()` + reimport was what blew the 10s hook timeout under load).
+ */
+beforeAll(async () => {
   vi.resetModules();
   counters = {};
   (globalThis as typeof globalThis & { [PROFILE_KEY]?: Record<string, number> })[PROFILE_KEY] = counters;
@@ -48,7 +55,11 @@ beforeEach(async () => {
   ({ serialize } = await import('../serialize.js'));
 });
 
-afterEach(() => {
+beforeEach(() => {
+  resetCounters();
+});
+
+afterAll(() => {
   delete (globalThis as typeof globalThis & { [PROFILE_KEY]?: Record<string, number> })[PROFILE_KEY];
 });
 

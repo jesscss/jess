@@ -7,6 +7,13 @@ import { Compiler } from "../src/index.js";
 import lessPlugin from "@jesscss/plugin-less";
 import { lessCompatPlugin } from "@jesscss/plugin-less-compat";
 
+/*
+ * One test below spawns a script that imports the BUILT package libs.
+ * Skip it when they are absent — e.g. a fresh worktree before `pnpm run build` —
+ * so it reports as a skip instead of a spawn failure. CI builds and runs it.
+ */
+const builtLibsPresent = fs.existsSync(new URL('../lib/index.js', import.meta.url));
+
 const tempDirs: string[] = [];
 
 const makeTmpDir = () => {
@@ -133,7 +140,7 @@ describe("Jess restricted script runtime integration", () => {
     expect(css).not.toContain("value: evil();");
   });
 
-  it("loads file-based Less @plugin scripts through Deno when plugin-js is lazy-loaded", async () => {
+  it.skipIf(!builtLibsPresent)('loads file-based Less @plugin scripts through Deno when plugin-js is lazy-loaded', async () => {
     const root = makeTmpDir();
     const pluginPath = path.join(root, "evil-plugin.js");
     const lessPath = path.join(root, "main.less");

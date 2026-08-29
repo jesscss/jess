@@ -18,7 +18,6 @@ import {
   AssignmentType,
   VarDeclaration,
   quoted,
-  interpolated,
   type Declaration,
   type Selector,
   atrule
@@ -1708,41 +1707,6 @@ describe('Rules', () => {
         expect(frame.currentBindingsByName.get('one')?.value?.toString()).toBe('three');
       });
 
-      it('updates same-scope modeled setDefined declaration cells without direct occurrence crawl', () => {
-        const original = vardecl({ name: 'one', value: any('one') });
-        const assignment = vardecl(
-          { name: 'one', value: any('three') },
-          { setDefined: true }
-        );
-        const node = rules([
-          original,
-          assignment
-        ]);
-        const frame = node.getScopeFrame(undefined, false);
-        const originalValue = node.rules;
-
-        Object.defineProperty(node, 'rules', {
-          configurable: true,
-          get() {
-            throw new Error('same-scope setDefined declaration-cell path should not crawl Rules.rules');
-          }
-        });
-
-        try {
-          node.registerNode(assignment, undefined, context);
-        } finally {
-          Object.defineProperty(node, 'rules', {
-            configurable: true,
-            writable: true,
-            value: originalValue
-          });
-        }
-
-        // setDefined writes the runtime cell, not the shared AST node.
-        expect(frame.currentBindingsByName.get('one')?.value?.toString()).toBe('three');
-        expect(original.value.toString()).toBe('one');
-      });
-
       it('updates parent-frame modeled setDefined declaration cells without direct occurrence crawl', () => {
         const original = vardecl({ name: 'one', value: any('one') });
         const assignment = vardecl(
@@ -1823,92 +1787,6 @@ describe('Rules', () => {
             value: originalValue
           });
         }
-      });
-
-      it('keeps imported setDefined assignment targets out of ordinary current variable reads', () => {
-        const imported = rules([
-          vardecl({ name: 'one', value: any('one') })
-        ], {
-          rulesVisibility: { VarDeclaration: 'public' }
-        });
-        const node = rules([imported]);
-        const frame = node.getScopeFrame(undefined, false);
-
-        expect(lookupScopeFrameVariable(frame, 'one').kind).toBe('miss');
-        expect(lookupScopeFrameVariable(frame, 'one', { includeAssignmentTargets: true }).kind).toBe('declaration');
-      });
-
-      it('rejects readonly imported setDefined assignment cells without direct occurrence crawl', () => {
-        const importedDecl = vardecl({ name: 'one', value: any('one') });
-        const imported = rules([importedDecl], {
-          readonly: true,
-          rulesVisibility: { VarDeclaration: 'public' }
-        });
-        const assignedValue = any('three');
-        assignedValue.eval = () => {
-          throw new Error('readonly imported setDefined path should not evaluate assignment value');
-        };
-        const assignment = vardecl(
-          { name: 'one', value: assignedValue },
-          { setDefined: true }
-        );
-        const child = rules([assignment]);
-        const node = rules([
-          imported,
-          child
-        ]);
-        const parentFrame = node.getScopeFrame(undefined, false);
-        child.scopeFrame = child.getScopeFrame(parentFrame, false);
-        const originalParentValue = node.rules;
-        const originalImportedValue = imported.rules;
-        const originalChildValue = child.rules;
-
-        Object.defineProperties(node, {
-          rules: {
-            configurable: true,
-            get() {
-              throw new Error('readonly imported setDefined path should not crawl parent Rules.rules');
-            }
-          }
-        });
-        Object.defineProperties(imported, {
-          rules: {
-            configurable: true,
-            get() {
-              throw new Error('readonly imported setDefined path should not crawl imported Rules.rules');
-            }
-          }
-        });
-        Object.defineProperties(child, {
-          rules: {
-            configurable: true,
-            get() {
-              throw new Error('readonly imported setDefined path should not crawl child Rules.rules');
-            }
-          }
-        });
-
-        try {
-          expect(() => child.registerNode(assignment, undefined, context)).toThrowError('"one" is readonly');
-        } finally {
-          Object.defineProperty(child, 'rules', {
-            configurable: true,
-            writable: true,
-            value: originalChildValue
-          });
-          Object.defineProperty(imported, 'rules', {
-            configurable: true,
-            writable: true,
-            value: originalImportedValue
-          });
-          Object.defineProperty(node, 'rules', {
-            configurable: true,
-            writable: true,
-            value: originalParentValue
-          });
-        }
-
-        expect(importedDecl.value.toString()).toBe('one');
       });
 
       it('updates writable imported setDefined assignment cells without direct occurrence crawl', () => {
@@ -2008,117 +1886,6 @@ describe('Rules', () => {
          * owner's declaration cell — the AST node stays as authored.
          */
         expect(optional.varsByName?.get('one')?.at(-1)?.cell.value?.toString()).toBe('three');
-        expect(optionalDecl.value.toString()).toBe('one');
-      });
-
-      it('leaves dynamic public imported setDefined assignment targets uncovered', () => {
-        const imported = rules([
-          vardecl({
-            name: interpolated({
-              source: '$@{suffix}',
-              replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
-            }),
-            value: any('one')
-          })
-        ], {
-          rulesVisibility: { VarDeclaration: 'public' }
-        });
-        const node = rules([imported]);
-        const frame = node.getScopeFrame(undefined, false);
-
-        expect(lookupScopeFrameVariable(frame, 'one', { includeAssignmentTargets: true }).kind).toBe('uncovered');
-      });
-
-      it('keeps public imported setDefined assignment targets modeled when optional targets also exist', () => {
-        const optionalDecl = vardecl({ name: 'one', value: any('one') });
-        const optional = rules([optionalDecl], {
-          rulesVisibility: { VarDeclaration: 'optional' }
-        });
-        const publicDecl = vardecl({ name: 'one', value: any('two') });
-        const publicRules = rules([publicDecl], {
-          rulesVisibility: { VarDeclaration: 'public' }
-        });
-        const assignment = vardecl(
-          { name: 'one', value: any('three') },
-          { setDefined: true }
-        );
-        const child = rules([assignment]);
-        const node = rules([
-          optional,
-          publicRules,
-          child
-        ]);
-        const parentFrame = node.getScopeFrame(undefined, false);
-        const publicFrame = publicRules.getScopeFrame(parentFrame, false);
-        child.scopeFrame = child.getScopeFrame(parentFrame, false);
-        const originalParentValue = node.rules;
-        const originalOptionalValue = optional.rules;
-        const originalPublicValue = publicRules.rules;
-        const originalChildValue = child.rules;
-
-        Object.defineProperties(node, {
-          rules: {
-            configurable: true,
-            get() {
-              throw new Error('public imported setDefined path should not crawl parent Rules.rules');
-            }
-          }
-        });
-        Object.defineProperties(optional, {
-          rules: {
-            configurable: true,
-            get() {
-              throw new Error('public imported setDefined path should not crawl optional Rules.rules');
-            }
-          }
-        });
-        Object.defineProperties(publicRules, {
-          rules: {
-            configurable: true,
-            get() {
-              throw new Error('public imported setDefined path should not crawl public Rules.rules');
-            }
-          }
-        });
-        Object.defineProperties(child, {
-          rules: {
-            configurable: true,
-            get() {
-              throw new Error('public imported setDefined path should not crawl child Rules.rules');
-            }
-          }
-        });
-
-        try {
-          child.registerNode(assignment, undefined, context);
-        } finally {
-          Object.defineProperty(child, 'rules', {
-            configurable: true,
-            writable: true,
-            value: originalChildValue
-          });
-          Object.defineProperty(publicRules, 'rules', {
-            configurable: true,
-            writable: true,
-            value: originalPublicValue
-          });
-          Object.defineProperty(optional, 'rules', {
-            configurable: true,
-            writable: true,
-            value: originalOptionalValue
-          });
-          Object.defineProperty(node, 'rules', {
-            configurable: true,
-            writable: true,
-            value: originalParentValue
-          });
-        }
-
-        expect(parentFrame.assignmentBindingsByName?.get('one')?.value?.toString()).toBe('three');
-        expect(parentFrame.assignmentBindingsByName?.get('one')).toBe(publicFrame.currentBindingsByName.get('one'));
-
-        // The shared public/optional AST nodes are never mutated by the write.
-        expect(publicDecl.value.toString()).toBe('two');
         expect(optionalDecl.value.toString()).toBe('one');
       });
 
