@@ -337,7 +337,7 @@ const BASIC_SELECTOR_TYPES = new Set([
   'UniversalSelector'
 ]);
 const CLASS_SELECTOR_TYPES = new Set(['BasicSelector', 'ClassSelector']);
-const TYPE_SELECTOR_TYPES = new Set(['BasicSelector', 'TypeSelector']);
+const TYPE_SELECTOR_TYPES = new Set(['BasicSelector', 'TypeSelector', 'NamespaceTypeSelector']);
 const ATTRIBUTE_SELECTOR_TYPES = new Set(['AttributeSelector']);
 const SELECTOR_LIST_TYPES = new Set(['SelectorList', 'TopLevelSelectorList']);
 const SELECTOR_BRANCH_TYPES = new Set(['ComplexSelector', 'TopLevelComplexSelector', 'RelativeComplexSelector']);
@@ -974,9 +974,22 @@ function typeSelectorNameSpan(source: string, node: CssCstNode): { name: string;
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
     return null;
   }
-  const name = source.slice(start, end);
+  let name = source.slice(start, end);
+  let nameStart = start;
+
+  /*
+   * A namespace-qualified selector (`svg|circle`, `*|unknown`) parses as one
+   * NamespaceTypeSelector node; the type is the part after the `|`. The prefix
+   * (`svg`, `*`) is not itself a type selector, so lint only the type.
+   */
+  const barIndex = name.lastIndexOf('|');
+  if (barIndex !== -1) {
+    nameStart = start + barIndex + 1;
+    name = name.slice(barIndex + 1);
+  }
   if (
-    name === '*'
+    name === ''
+    || name === '*'
     || name.startsWith('.')
     || name.startsWith('#')
     || name.startsWith('&')
@@ -986,10 +999,10 @@ function typeSelectorNameSpan(source: string, node: CssCstNode): { name: string;
   ) {
     return null;
   }
-  if (end < source.length && source.charCodeAt(end) === 124 /* | */) {
+  if (barIndex === -1 && end < source.length && source.charCodeAt(end) === 124 /* | */) {
     return null;
   }
-  return { name, start, end };
+  return { name, start: nameStart, end };
 }
 
 function classSelectorNameSpan(source: string, node: CssCstNode): { name: string; start: number; end: number } | null {
@@ -2003,7 +2016,12 @@ function areMathKindsDefinitelyIncompatible(a: NumericKind, b: NumericKind): boo
 function incompatibleMathFunctionUnits(source: string, node: CssCstNode, functionName: string): MathUnitMismatch | null {
   const args: MathArgumentFact[] = [];
   for (const child of cstChildrenOf(node)) {
-    if (!isCstNode(child) || child.grammarType !== 'ValueSequence') {
+    /*
+     * min()/max()/clamp() arguments parse through the calc grammar as
+     * CalcSequence; older grammars emitted ValueSequence. Accept both so a
+     * grammar rename does not silently mute the lint.
+     */
+    if (!isCstNode(child) || (child.grammarType !== 'CalcSequence' && child.grammarType !== 'ValueSequence')) {
       continue;
     }
     const fact = mathArgumentFact(source, child);
@@ -3689,14 +3707,26 @@ function scssCallArguments(node: CssCstNode): CssCstNode[] {
     if (!isCstNode(child)) {
       continue;
     }
-    if (child.grammarType === 'ValueTerm') {
-      args.push(child);
-    } else if (child.grammarType === 'ValuePair') {
-      const value = firstChildNodeOf(child, 'ValueTerm');
-      if (value !== undefined) {
-        args.push(value);
-      }
+
+    /*
+     * The first argument parses as CallArgument; each subsequent `, arg` as an
+     * ArgumentPair wrapping a CallArgument. Older grammars used ValueTerm /
+     * ValuePair. Accept both, and unwrap to the inner ValueTerm so the callers'
+     * span arithmetic (base variable name, numeric key) is unchanged.
+     */
+    let argument: CssCstNode | undefined;
+    if (child.grammarType === 'CallArgument' || child.grammarType === 'ValueTerm') {
+      argument = child;
+    } else if (child.grammarType === 'ArgumentPair' || child.grammarType === 'ValuePair') {
+      argument = firstChildNodeOf(child, 'CallArgument') ?? firstChildNodeOf(child, 'ValueTerm');
     }
+    if (argument === undefined) {
+      continue;
+    }
+    const valueTerm = argument.grammarType === 'ValueTerm'
+      ? argument
+      : firstChildNodeOf(argument, 'ValueTerm');
+    args.push(valueTerm ?? argument);
   }
   return args;
 }
@@ -3713,7 +3743,7 @@ function scssMapGetNumericKeyAccess(source: string, node: CssCstNode, mapLikeVar
   const baseEnd = absoluteEnd(args[0]!);
   const baseTrimmed = trimOffsets(source.slice(baseStart, baseEnd), baseStart);
   const authoredBase = authoredVariableNameOf(source, baseTrimmed.start, baseTrimmed.end);
-  if (authoredBase === null || authoredBase.start !== baseTrimmed.start || authoredBase.end !== baseTrimmed.end) {
+  if (authoredBase?.start !== baseTrimmed.start || authoredBase.end !== baseTrimmed.end) {
     return null;
   }
   const variable = normalizedVariableName(authoredBase.name, 'scss');
