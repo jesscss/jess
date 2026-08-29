@@ -214,12 +214,6 @@ function publicGrammarType(grammarType: string, rawChildren: readonly unknown[])
   if (grammarType === 'RawParenValue') {
     return 'DeclarationRawParen';
   }
-  if (grammarType === 'TopLevelComplexSelector') {
-    return 'ComplexSelector';
-  }
-  if (grammarType === 'TopLevelCompoundSelector') {
-    return 'CompoundSelector';
-  }
   return grammarType;
 }
 

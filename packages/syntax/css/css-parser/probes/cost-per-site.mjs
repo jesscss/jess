@@ -120,7 +120,7 @@ function applyInline(raw, k) {
     '  const CompoundSelector = node(\n    \'CompoundSelector\',\n    noTrivia(parser(',
     `  const CompoundSelector = node(\n    'CompoundSelector',\n    sequence(\n        ${added},\n      noTrivia(parser(`
   ).replace(
-    /(\n  const TopLevelCompoundSelector)/,
+    /(\n  const ComplexSelector)/,
     ')$1'
   );
 }

@@ -233,8 +233,6 @@ type GrammarRuleName =
   | 'SupportsCondition'
   | 'SupportsInParens'
   | 'SupportsPrelude'
-  | 'TopLevelComplexSelector'
-  | 'TopLevelCompoundSelector'
   | 'TopLevelRuleset'
   | 'TopLevelSelectorList'
   | 'TypedNthPseudoArgument'
@@ -1126,11 +1124,9 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * The simple-selector atom shared by the compound towers. `&`
-   * (NestingSelector) is NOT an arm here: a nested `&` is valid inside
-   * `CompoundSelector` but a top-level compound never begins with one, so
-   * `TopLevelCompoundSelector` inherits this atom as-is while `CompoundSelector`
-   * adds the `&` arm on top. A superset widens this one leaf (interpolation,
+   * The simple-selector atom shared by the compound tower. `&`
+   * (NestingSelector) is added as one more arm in `CompoundSelector`; this atom
+   * is the non-`&` core. A superset widens this one leaf (interpolation,
    * placeholder, etc.) and inherits the whole selector tower via open-recursion
    * (COMPOSE-MIGRATION-SPEC.md §4.1).
    */
@@ -1157,14 +1153,6 @@ const cssFactory = (g: GrammarSelf) => {
     )),
     children => selectorTermFromTokens(children.filter(isSimpleToken))
   );
-  const TopLevelCompoundSelector = node(
-    'TopLevelCompoundSelector',
-    noTrivia(parser(
-      { trivia: compoundTrivia },
-      oneOrMore(g.simpleSelectorAtom)
-    )),
-    children => selectorTermFromTokens(children.filter(isSimpleToken))
-  );
   const ComplexSelector = node(
     'ComplexSelector',
     sequence(
@@ -1181,17 +1169,6 @@ const cssFactory = (g: GrammarSelf) => {
       many(sequence(
         optional(combinator),
         g.CompoundSelector
-      ))
-    ),
-    children => selectorBranchOf(complexSegments(children))
-  );
-  const TopLevelComplexSelector = node(
-    'TopLevelComplexSelector',
-    sequence(
-      g.TopLevelCompoundSelector,
-      many(sequence(
-        optional(combinator),
-        g.TopLevelCompoundSelector
       ))
     ),
     children => selectorBranchOf(complexSegments(children))
@@ -1219,7 +1196,7 @@ const cssFactory = (g: GrammarSelf) => {
   const TopLevelSelectorList = node(
     'TopLevelSelectorList',
     oneOrMoreSep(
-      g.TopLevelComplexSelector,
+      g.ComplexSelector,
       literal(',')
     ),
     (children, _fields, span) => withSourceSpan(selist(...selectorBranches(children)), span)
@@ -3761,9 +3738,7 @@ const cssFactory = (g: GrammarSelf) => {
     SelectorList,
     TopLevelSelectorList,
     ComplexSelector,
-    TopLevelComplexSelector,
     CompoundSelector,
-    TopLevelCompoundSelector,
     simpleSelectorAtom,
     BasicSelector,
     NamespaceTypeSelector,
