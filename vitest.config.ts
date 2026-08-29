@@ -250,6 +250,18 @@ export default defineConfig({
       return false;
     },
     testTimeout: 30_000,
+
+    /*
+     * Test BODIES already get 30s; hooks kept the 10s default, which is too tight
+     * for the profile-counter suites (extend-op-budget, extend-preflight-contract,
+     * *.profile.test.ts). Those must `vi.resetModules()` + reimport the core graph
+     * to install a counter bag BEFORE core loads — a principled requirement, since
+     * capturing the bag in a `const` at import is what lets production elide the
+     * recorder entirely (a swappable binding would leave a hot-path check). Under a
+     * saturated `pnpm -r test`, that one source-alias reimport can exceed 10s though
+     * it runs in <1s solo. Give hooks the same headroom as test bodies.
+     */
+    hookTimeout: 60_000,
     reporters: [['tree', { summary: true }]],
 
     // Enable globals for describe, test, etc.

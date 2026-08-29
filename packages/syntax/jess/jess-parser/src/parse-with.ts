@@ -82,6 +82,11 @@ function isClassSelector(simple: SimpleSelector): boolean {
  * A lone parent-ref target (`&`). Admitted only on the extend path: `$extend &`
  * parses and no-op-matches at eval, mirroring Less `:extend(&)`. `$apply` stays
  * class-only — a parent-ref carries no utility class to compose.
+ *
+ * The parser admits `&` because it is a legitimate simple-selector SHAPE; that
+ * `$extend &` can only ever no-op (a selector cannot extend itself) is a SEMANTIC
+ * fact, not a parse concern. TODO(eval-warn): emit an eval/lint warning for a
+ * bare parent-ref extend target — deferred, tracked separately.
  */
 function isBareParentRef(simple: SimpleToken): boolean {
   return simple.type === 'SimpleSelector' && simple.interp === null && simple.text === '&';
