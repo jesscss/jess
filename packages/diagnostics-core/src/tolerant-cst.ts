@@ -93,6 +93,7 @@ export const LINT_CODES = {
   unusedDefaultBranches: 'lint/no-unused-default-branch',
   unboundedExtends: 'lint/no-unbounded-extend',
   deadExtends: 'lint/no-dead-extend',
+  selfExtend: 'lint/no-self-extend',
   suspiciousMapKeyAccess: 'lint/no-suspicious-map-key-access',
   unsupportedSassForm: 'unsupported/sass-form'
 } as const;
@@ -4464,6 +4465,15 @@ function forEachExtendTarget(
   }
 }
 
+/**
+ * A lone parent-ref extend target (`$extend &`). Owner ruling X11 (DESIGN-DECISIONS):
+ * admitted at parse (a bare `&` is a legitimate simple-selector shape) and no-op-matches
+ * at eval — a selector cannot extend itself — so it is almost always an author mistake.
+ */
+function isBareParentRefExtendTarget(source: string, target: CssCstNode): boolean {
+  return stripBlockComments(source.slice(absoluteStart(target), absoluteEnd(target))).trim() === '&';
+}
+
 function isLessPartialExtendTarget(text: string): boolean {
   return /\s!?all\s*$/i.test(normalizedCssWords(text));
 }
@@ -5691,7 +5701,14 @@ export function cstLintDiagnostics(
     }
 
     forEachExtendTarget(source, node, language, (target, exact) => {
-      if (isUnboundedExtendTarget(source, target)) {
+      if (language === 'jess' && isBareParentRefExtendTarget(source, target)) {
+        push(
+          LINT_CODES.selfExtend,
+          'warning',
+          '`$extend &` is a no-op — a selector cannot extend itself',
+          target.span
+        );
+      } else if (isUnboundedExtendTarget(source, target)) {
         const targetStart = absoluteStart(target);
         const targetEnd = absoluteEnd(target);
         push(

@@ -85,8 +85,8 @@ function isClassSelector(simple: SimpleSelector): boolean {
  *
  * The parser admits `&` because it is a legitimate simple-selector SHAPE; that
  * `$extend &` can only ever no-op (a selector cannot extend itself) is a SEMANTIC
- * fact, not a parse concern. TODO(eval-warn): emit an eval/lint warning for a
- * bare parent-ref extend target — deferred, tracked separately.
+ * fact, not a parse concern. The no-op is surfaced (not rejected) as
+ * diagnostics-core lint `lint/no-self-extend`; see DESIGN-DECISIONS ledger X11.
  */
 function isBareParentRef(simple: SimpleToken): boolean {
   return simple.type === 'SimpleSelector' && simple.interp === null && simple.text === '&';
