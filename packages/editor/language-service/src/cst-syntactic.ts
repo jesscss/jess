@@ -65,6 +65,7 @@ const STATIC_SIMPLE_SELECTOR_TYPES = new Set(['BasicSelector', 'ClassSelector', 
 const NAMESPACE_KEYWORD_TYPES = new Set([
   'AtRuleBlock',
   'AtRuleStatement',
+  'ImportStatement',
   'UnknownAtRuleBlock',
   'QueryAtRuleBlock',
   'ScssUse',
