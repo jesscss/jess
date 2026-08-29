@@ -1,15 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 import jsPlugin from '@jesscss/plugin-js';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
-const root = resolve(
-  __dirname,
-  '../../../../node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less'
+/*
+ * Resolve the installed package rather than a hardcoded `.pnpm` store path: a
+ * patched dependency (see patches/bootstrap-less-port@2.5.1.patch) lives under a
+ * `_patch_hash=…` store directory, so the fixed store name no longer exists.
+ */
+const requireFrom = createRequire(import.meta.url);
+const root = join(
+  dirname(requireFrom.resolve('bootstrap-less-port/package.json')),
+  'less'
 );
 const imports = [
   '_functions', '_variables', '_mixins', '_root', '_reboot', '_type', '_images',
@@ -43,7 +50,13 @@ describe('bootstrap execution-memory bisect', () => {
       heapDelta: after.heapUsed - before.heapUsed,
       rssDelta: after.rss - before.rss
     }));
+
+    /*
+     * The full ordered import set renders to real CSS: a green run, not an empty
+     * string left behind by a mid-stream parse rejection.
+     */
     expect(css).toBeTypeOf('string');
+    expect(css.length).toBeGreaterThan(0);
   }, 120000);
 
   it('renders one bounded reboot construct after the three prerequisite imports', async () => {

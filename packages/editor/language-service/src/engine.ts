@@ -485,7 +485,6 @@ const STYLE_RULE_INVALID_AT_RULES = new Set([
 ]);
 const SPECIFICITY_SELECTOR_TYPES = new Set([
   'ComplexSelector',
-  'TopLevelComplexSelector',
   'SelectorBranch'
 ]);
 const AT_RULES_MAP = new Map<string, AtDirectiveEntry>();

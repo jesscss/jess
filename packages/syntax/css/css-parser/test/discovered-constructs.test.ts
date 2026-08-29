@@ -230,3 +230,38 @@ describe('CSS constructs discovered outside the parser suites', () => {
     expect(clean.unconsumedFrom).toBeNull();
   });
 });
+
+/*
+ * Top-level `&` is valid CSS: CSS Nesting L1 §4 says `&` used outside a nesting
+ * context "represents the same elements as :scope in that context", so a
+ * stylesheet-root `& { … }` is the scoping root, not a parse error (ledger P30,
+ * DESIGN-DECISIONS.md; owner 2026-08-29). css now shares ONE ComplexSelector
+ * with less/scss/jess instead of a forked TopLevel* tower, so it accepts the
+ * `&` arm at the root like the three siblings already did. The root
+ * leading-combinator rejection (P29) is preserved by construction: a root
+ * `> .a` is an ordinary ComplexSelector, which cannot open with a combinator.
+ */
+describe('top-level nesting selector (P30)', () => {
+  it.each([
+    ['bare', '& { color: red }'],
+    ['descendant', '& .child { color: red }'],
+    ['compounded', '&.foo { color: red }']
+  ])('accepts a top-level `&` (%s)', (_label, source) => {
+    expect(() => parse(source), source).not.toThrow();
+  });
+
+  it('reduces a bare top-level `&` to a single SimpleSelector `&`', () => {
+    expect(parse('& { color: red }').rules[0]).toMatchObject({
+      type: 'Ruleset',
+      selector: {
+        type: 'SelectorList',
+        selectors: [{ type: 'SimpleSelector', text: '&' }]
+      }
+    });
+  });
+
+  it('still rejects a root leading combinator (P29 boundary preserved)', () => {
+    const failure = failureOf('> .a { color: red }');
+    expect(failure.message).toBe('Unexpected CSS syntax.');
+  });
+});

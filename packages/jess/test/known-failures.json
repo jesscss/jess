@@ -31,16 +31,6 @@
       "test": "test/jess-render.test.ts > Jess parser plugin render-through reports unresolved Jess interpolation through the public structured diagnostic route",
       "reason": "Jess ${…} interpolation is not parsed inside @import url(...); yields parse/syntax-error @1:14 instead of parsing + resolve/name-not-found @1:13.",
       "tracking": "docs/state/jess-known-failures-fix-plan.md#4"
-    },
-    {
-      "test": "test/less/bootstrap-clean-repro.test.ts > bootstrap clean render renders and collects rejections",
-      "reason": "bootstrap-less-port _navbar.less:250 uses a root-level leading-combinator '> .container' which jess v5 rejects by design (DESIGN-DECISIONS P29 / root-leading-combinator settled); the parser also mislocates the error to the following each() @256:50. Owner-gated dialect decision + a separable diagnostic-mislocation bug.",
-      "tracking": "docs/state/jess-known-failures-fix-plan.md#7-8"
-    },
-    {
-      "test": "test/less/bootstrap-memory-bisect.test.ts > bootstrap execution-memory bisect renders the requested ordered import prefix",
-      "reason": "Same root-level leading-combinator rejection as bootstrap-clean-repro (_navbar.less:250); bootstrap never emits CSS so the ordered-prefix render aborts. Owner-gated + shared diagnostic bug.",
-      "tracking": "docs/state/jess-known-failures-fix-plan.md#7-8"
     }
   ],
   "knownFlakyElsewhere": [

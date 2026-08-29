@@ -8,6 +8,9 @@ overrides:
   chevrotain: ^12.0.0
 
 patchedDependencies:
+  bootstrap-less-port@2.5.1:
+    hash: 5mbffotd5kiiyymt225nldna5m
+    path: patches/bootstrap-less-port@2.5.1.patch
   superstruct@1.0.3:
     hash: yw7l4yujuzgyn2yu6vvqqe6xmq
     path: patches/superstruct@1.0.3.patch
@@ -603,7 +606,7 @@ importers:
         version: 5.3.8(@popperjs/core@2.11.8)
       bootstrap-less-port:
         specifier: ~2.5.1
-        version: 2.5.1(less@3.13.1)
+        version: 2.5.1(patch_hash=5mbffotd5kiiyymt225nldna5m)(less@3.13.1)
       clinic:
         specifier: ~13.0.0
         version: 13.0.0
@@ -9549,7 +9552,7 @@ packages:
     engines: {node: '>=6'}
     dev: false
 
-  /bootstrap-less-port@2.5.1(less@3.13.1):
+  /bootstrap-less-port@2.5.1(patch_hash=5mbffotd5kiiyymt225nldna5m)(less@3.13.1):
     resolution: {integrity: sha512-eLi89VSmdLiOWBKzOHlxN2SLLc1cVYiQ77Lvf/4ca1VwbCe0V4+w+7jB+3GwZTs7QgkGPLyllZNScUP8nA960g==}
     engines: {node: '>=6'}
     peerDependencies:
@@ -9557,6 +9560,7 @@ packages:
     dependencies:
       less: 3.13.1
     dev: true
+    patched: true
 
   /bootstrap@5.3.8(@popperjs/core@2.11.8):
     resolution: {integrity: sha512-HP1SZDqaLDPwsNiqRqi5NcP0SSXciX2s9E+RyqJIIqGo+vJeN5AJVM98CXmW/Wux0nQ5L7jeWUdplCEf0Ee+tg==}

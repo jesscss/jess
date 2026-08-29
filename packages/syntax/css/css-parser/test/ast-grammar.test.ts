@@ -649,12 +649,29 @@ describe('CSS canonical-AST grammar', () => {
     });
   });
 
-  it('rejects a top-level CSS nesting selector', () => {
+  it('accepts a top-level CSS nesting selector (ledger P30)', () => {
+    /*
+     * A top-level `&` is valid CSS — CSS Nesting L1 §4 says `&` outside a
+     * nesting context represents `:scope`, so `&.featured {}` at the stylesheet
+     * root is the scoping root, not a parse error. css shares ONE
+     * `CompoundSelector` with less/scss/jess, so the root `&` reduces to the
+     * SAME canonical shape as the nested case above.
+     */
     const source = '&.featured { color: red; }';
     const cst = parseCssCst(source);
 
-    expect(Number(!cst.ok) + cst.errors.length + Number(cst.unconsumedFrom !== null)).toBeGreaterThan(0);
-    expect(() => parseAst(source)).toThrow('CSS AST grammar did not consume the document');
+    expect(cst.errors, source).toHaveLength(0);
+    expect(cst.unconsumedFrom, source).toBeNull();
+    expect(parseAst(source).rules[0]).toMatchObject({
+      type: 'Ruleset',
+      selector: {
+        type: 'SelectorList',
+        selectors: [{
+          type: 'CompoundSelector',
+          value: [{ type: 'SimpleSelector', text: '&' }, { type: 'SimpleSelector', text: '.featured' }]
+        }]
+      }
+    });
   });
 
   it('shares the strict CSS hex-color terminal with the other direct dialect grammars', () => {

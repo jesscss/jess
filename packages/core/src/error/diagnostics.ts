@@ -321,6 +321,27 @@ function isClosingDelimiter(value: string): boolean {
   return value === ')' || value === ']' || value === '}';
 }
 
+/**
+ * Does the `{` at `index` open a block that follows a parenthesized head — the
+ * `)` `{` signature of a Less mixin body, guard, or detached-ruleset argument
+ * such as `each(list, #(k) { … })`? Its `{` sits inside the still-open `(` of
+ * `each(`, which the naive scan would otherwise read as an unclosed paren. The
+ * `(` is legitimately closed later, so a `{` whose previous non-space character
+ * is a closing delimiter is a real block, not a missing `)`. A genuinely
+ * unclosed prelude like `@media (foo {` has an identifier there, not a closer,
+ * and still reports.
+ */
+function followsClosingDelimiter(source: string, index: number): boolean {
+  for (let i = index - 1; i >= 0; i--) {
+    const ch = source[i]!;
+    if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r' || ch === '\f') {
+      continue;
+    }
+    return isClosingDelimiter(ch);
+  }
+  return false;
+}
+
 function delimiterConflictSummary(
   dialect: string,
   source: string
@@ -389,6 +410,7 @@ function delimiterConflictSummary(
         && top !== '}'
         && current === '{'
         && !insideBlock
+        && !followsClosingDelimiter(source, i)
       ) {
         const summary = expectedClosingDelimiterSummary(dialect, [`"${top}"`]);
         return summary === undefined ? undefined : { ...summary, offset: i };
