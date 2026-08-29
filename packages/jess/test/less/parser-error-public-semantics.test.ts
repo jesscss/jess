@@ -415,4 +415,55 @@ describe('Less parser errors through the public AST route', () => {
     expect(result.errors[0]?.message).not.toContain('Expected:');
     expect(result.errors[0]?.reason).not.toContain('";"');
   });
+
+  it('reports a root-level leading combinator at its own site, not a later construct', async () => {
+    /*
+     * jess rejects a stylesheet-root leading combinator by design (P29). The
+     * failure must land on the offending `> .a`, never be re-localized by the
+     * whole-source delimiter scan onto an unrelated well-formed construct.
+     */
+    const lone = '> .a { color: red }';
+    const loneResult = await new Compiler().renderToResult(
+      { source: lone, filePath: 'combinator.less', extension: '.less' },
+      { breakOnError: false }
+    );
+    expect(loneResult.errors).toHaveLength(1);
+    expect(loneResult.errors[0]).toMatchObject({
+      code: 'parse/syntax-error',
+      phase: 'parse',
+      message: 'Unexpected Less syntax.',
+      line: 1,
+      column: 1,
+      file: { source: lone }
+    });
+    expect(loneResult.errors[0]?.message).not.toContain('parenthesis');
+
+    /*
+     * A following `each(map-keys(@x), #(@k) { … })` puts a `{` inside a `(`,
+     * which a naive delimiter scan mistakes for a missing `)` on the each line.
+     * The error must still point at the root `> .a`, not inside the each.
+     */
+    const withEach = [
+      '> .a {',
+      '  color: red;',
+      '}',
+      'each(map-keys(@grid-breakpoints), #(@breakpoint) {',
+      '  .b { color: red; }',
+      '});'
+    ].join('\n');
+    const eachResult = await new Compiler().renderToResult(
+      { source: withEach, filePath: 'combinator-each.less', extension: '.less' },
+      { breakOnError: false }
+    );
+    expect(eachResult.errors).toHaveLength(1);
+    expect(eachResult.errors[0]).toMatchObject({
+      code: 'parse/syntax-error',
+      phase: 'parse',
+      message: 'Unexpected Less syntax.',
+      line: 1,
+      column: 1,
+      file: { source: withEach }
+    });
+    expect(eachResult.errors[0]?.message).not.toContain('parenthesis');
+  });
 });
