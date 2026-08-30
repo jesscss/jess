@@ -643,6 +643,21 @@ Not yet scheduled; recorded so nothing is lost. Promote into a lane when picked.
 - #52 node-shape survey hole · #54 collectTolerantDiagnostics ignores rule config
 - #55 oracle byte-identity blind to wrong-but-round-trippable trees
 - #56 Opaque* family removal (`docs/design/OPAQUE-FAMILY-REMOVAL.md`) — depends on lane 5
+- #58 **parser-runtime-boundary debt = ALPHA RELEASE BLOCKER** (verified 2026-08-29,
+  dev `ff36e59d9`). `verify:parser-runtime-boundary`'s ledger is empty (target 0),
+  but 3 handwritten recognizers fail it, and it is in the alpha release preflight
+  (PR CI deliberately skips it — see `.github/workflows/ci.yml` ~line 161). Alpha
+  is DEFERRED until these are moved into Parseman grammar (grammar-reviewer +
+  byte-identity oracle per site):
+  - `css/css-parser/src/cst-host.ts:157` — `value[0]` (`runtime-string-index`) in
+    `startsWithDigit`, re-deriving a selector's grammarType from its leaf string.
+    The parser-owns-structure fix: emit the selector grammarType in the grammar so
+    the host does not re-derive from bytes.
+  - `less/less-parser/src/grammar.ts:3444` — `matches(/^(?!(?:url|calc)\($).+\($/i)`
+    guarding `FunctionStatement` dispatch. Re-express via combinators
+    (`endsWith('(')` + `caseOf`/`caseInsensitive` for `url(`/`calc(`).
+  - `scss/scss-parser/src/grammar.ts:1876` — `when(matches(/\.\$/), NamespacedVariable)`
+    detecting `.$`. Re-express as a grammar discrimination.
 
 ---
 

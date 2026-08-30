@@ -1041,3 +1041,17 @@ earlier, before a manual publish attempt.
   `pnpm --filter @jesscss/core build`, `pnpm --filter jess build`, and
   `JESS_LESS_FIXTURE='^tests-unit/media/media\.less$' pnpm run test:less:test-data`
   after removing the expected-failure marker.
+- 2026-08-29: **Alpha blocked by a release-preflight gate — fix IN PROGRESS.**
+  The next alpha resolves to `2.0.0-alpha.12` (npm alpha tag is `.11`), but
+  `release:alpha:dry-run` fails at `verify:parser-runtime-boundary`: 3 handwritten
+  parser recognizers (empty debt ledger = target 0) that the PR CI gate
+  deliberately does not block on (`.github/workflows/ci.yml` ~line 161), so the
+  preflight has been red on them since early August — the likely reason
+  `alpha.12`–`.16` were cut on the branch but never published. Sites and the
+  move-into-Parseman plan are tracked as `#58` in
+  [`GRAMMAR-DEDUP-LOG.md`](GRAMMAR-DEDUP-LOG.md); they are being paid down now so
+  the alpha can ship. Separately fixed on dev (`ff36e59d9`): the alpha version resolver no
+  longer lets a drifted manifest override the registry — it honors a manifest
+  only when it advances the release base, so the stream is always published+1
+  (proven: resolves `.12` from a drifted `.17` manifest against published `.11`),
+  and `release:alpha:update-from-dev` no longer bumps the version on each cut.
