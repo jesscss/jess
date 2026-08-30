@@ -3440,6 +3440,19 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     dispatch(
       identOrFunction,
       caseOf('each(', g.EachFunctionStatement),
+      /*
+       * The url/calc exclusion here is LOAD-BEARING, not redundant with
+       * `genericFunctionOpen`'s `not(keywords(['url(','calc(']))` guard (:3380).
+       * This arm routes through `CallArgumentFunction`'s
+       * `routed(genericFunctionOpen)`, and `routed()` reuses the dispatch opener
+       * token WITHOUT running that guard — so the negative lookahead is the only
+       * thing keeping `url(`/`calc(` from ENTERING this arm. A dispatch miss
+       * falls through to `declarationItem`; entering and failing is a *committed*
+       * dispatch failure that `choice` propagates, suppressing the fall-through
+       * (verified: `endsWith('(')` reparses bare `calc(1px + 2px);` as a function
+       * statement). To make it principled, divert `url(`/`calc(` with `caseOf`
+       * arms first (as `IdentifierOrFunction` does) — a behavior change, not a rename.
+       */
       when(
         matches(/^(?!(?:url|calc)\($).+\($/i),
         choice(GenericFunctionStatement, TerminalGenericFunction)

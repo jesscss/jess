@@ -53,11 +53,15 @@ and **undercount what has landed**. Verified against the code on 2026-08-30:
    accept) — no byte-identical rename exists. Folds into §9(b). NOT a standalone unit.
 5. §7 css prelude residual — **CLOSED 2026-08-30** (no-op; css grammar byte-identical
    between dev and the stale `at-prelude-superset-convergence` branch).
-6. `FunctionStatement` url/calc denylist (less `grammar.ts:3444`) — the negative-lookahead
-   `matches(/^(?!(?:url|calc)\($).+\($/i)` restates the url/calc exclusion already
-   single-sourced at `genericFunctionOpen` (`:3380` `not(keywords(['url(','calc(']))`).
-   Simplify to `when(endsWith('('), …)`; oracle-gated (confirm the regex wasn't load-bearing
-   for parseman backtracking). Owner-flagged 2026-08-30. Clean separable residual.
+6. `FunctionStatement` url/calc denylist (less `grammar.ts:3444`) — **VERIFIED LOAD-BEARING,
+   NOT redundant (2026-08-30, oracle-gated).** The arm routes through
+   `CallArgumentFunction`'s `routed(genericFunctionOpen)`, and `routed()` reuses the
+   dispatch opener token WITHOUT running `genericFunctionOpen`'s `not(keywords(['url(','calc(']))`
+   guard — so the regex is the only thing keeping url(/calc( from ENTERING the arm and
+   causing a committed dispatch failure (proven: `endsWith('(')` reparses bare
+   `calc(1px + 2px);` as a function statement). KEPT + documented in-code. A principled
+   rewrite needs `caseOf` diversion arms (like `IdentifierOrFunction`) = a behavior change,
+   deferred. Owner-flagged 2026-08-30.
 7. Backlog remnants: #25 math.div, #26 trailing comma, #40/#43, #45/#46, #56 Opaque*, #62.
 
 ---
