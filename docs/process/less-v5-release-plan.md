@@ -12,6 +12,37 @@ stabilization pass graduates one explicitly. Deferred items are NOT abandoned �
 each is sequenced here, generally behind core work (the D-EVAL flip completion
 and the drive to Less-4.x perf parity).
 
+## Operating model — two tracks, rolling alpha cadence
+
+**Owner decision (2026-08-29):** release cadence and roadmap work run as **two
+independent tracks**. Neither blocks the other; both land on `dev` continuously.
+
+1. **Foundation track** — the ordered roadmap: *grammar cleanup → normalize AST →
+   bug fixes → Less feature gaps* (see `docs/state/GRAMMAR-DEDUP-LOG.md` and
+   `docs/design/GRAMMAR-REBUILD-SPEC.md`). Grammar edits are serialized and gated
+   by the `grammar-reviewer` (evidence per const). This track is foundational and
+   mostly **not** user-facing on its own.
+
+2. **Release-cadence track** — whenever `dev` accumulates a meaningful batch of
+   **user-facing** change, cut an alpha: `release:alpha:update-from-dev --push`
+   → `release:alpha:check` → publish (mechanics in
+   [`releasing-alpha.md`](./releasing-alpha.md)). Ship real Less v5 progress each
+   release rather than waiting for the whole roadmap.
+
+**Rework-risk rule (why the tracks don't just merge):** the roadmap puts cleanup
+first so features aren't built on a grammar that is about to be rewritten. So the
+release track pulls only user-facing work **independent of the grammar surface
+currently being cleaned** — eval/semantics fixes, diagnostic fixes, and feature
+gaps whose grammar is already stable. A feature gap that needs a grammar change
+**waits** until that grammar's cleanup lands, then is implemented once.
+
+**What gates a release:** user-facing content on `dev`, not the release machinery
+(which is always ready). Non-user-facing cleanup (test infra, ESM, dead-package
+removal) does **not** gate a release and is **not**, by itself, a reason to
+publish — except a deliberate cadence bump to keep `alpha` near `dev` or to prove
+the loop, which is the owner's call. The version number is spent on **publish**,
+not on the refresh.
+
 ## Sequencing principle
 
 ```

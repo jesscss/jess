@@ -1,0 +1,32 @@
+diff --git a/less/_navbar.less b/less/_navbar.less
+index 0be784d9024c437586e53b7a42c969f8b8ee494d..464c737ff38122a0250261406f1fa3eefd6e47dd 100644
+--- a/less/_navbar.less
++++ b/less/_navbar.less
+@@ -18,6 +18,11 @@
+ // emulate Sass’ placeholder selectors) we need to include the selectors that extend the
+ // placeholders at the root. Then `&:extend(<placeholder> all)` will attach the selectors to every
+ // instance of the placeholder.
++// JESS PATCH: dropped the leading `> ` on these two root selectors. jess v5 rejects a
++// stylesheet-root leading combinator by design (DESIGN-DECISIONS P29); less.js accepts it
++// permissively. The `> ` is vestigial here anyway -- `:extend(<ph> all)` substitutes only the
++// selector element, taking its combinator from each placeholder site (all `> \%container-*`),
++// so lessc 4.x emits byte-identical CSS with or without it. Verified over full bootstrap.
+ .container,
+ .container-fluid {
+ 	&:extend(\%container-flex-properties all);
+@@ -248,8 +253,13 @@
+ // emulate Sass’ placeholder selectors) we need to include the selectors that extend the
+ // placeholders at the root. Then `&:extend(<placeholder> all)` will attach the selectors to every
+ // instance of the placeholder.
+-> .container,
+-> .container-fluid {
++// JESS PATCH: dropped the leading `> ` from these two root selectors. jess v5 rejects a
++// stylesheet-root leading combinator by design (DESIGN-DECISIONS P29); less.js accepts it
++// permissively. The `> ` is vestigial here: `:extend(<ph> all)` substitutes only the selector
++// element and takes its combinator from each placeholder site (all `> \%container-*`), so
++// lessc 4.x emits byte-identical CSS with or without it (verified over full bootstrap).
++.container,
++.container-fluid {
+ 	&:extend(\%container-navbar-expand all);
+ 	&:extend(\%container-nesting all);
+ }

@@ -1499,6 +1499,19 @@ describe('collectTolerantDiagnostics', () => {
     expect(imported.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.deadExtends)).toBe(false);
   });
 
+  it('warns on a bare `$extend &` self-extend but not on a real extend target (owner ledger X11)', () => {
+    const jess = collectTolerantDiagnostics({
+      source: '.hit {}\n.a { $extend &; }\n.b { $extend .hit; }',
+      language: 'jess'
+    });
+
+    expect(jess.diagnostics
+      .filter(diagnostic => diagnostic.code === LINT_CODES.selfExtend)
+      .map(diagnostic => [diagnostic.message, diagnostic.line, diagnostic.column])).toEqual([
+      ['`$extend &` is a no-op — a selector cannot extend itself', 2, 14]
+    ]);
+  });
+
   it('reports unknown units while accepting modern CSS units', () => {
     const result = collectTolerantDiagnostics({
       source: '.a { width: 1pixels; height: 1e3px; min-width: 1e3foo; gap: 1cqi; flex: 1fr; rotate: 1turn; transition-duration: 1ms; }',

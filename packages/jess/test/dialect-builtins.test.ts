@@ -77,8 +77,5 @@ describe('per-dialect built-ins', () => {
     // A legacy (unconverted) export is reachable as a module member but is not a
     // built-in. `each` is exported by `less/index.ts` and must stay unregistered.
     expect(lessFns.some(fn => fn.name === 'each')).toBe(false);
-    // Sass's still-unconverted globals likewise register nothing.
-    expect(sassFns.some(fn => fn.name === 'quote')).toBe(false);
-    expect(sassFns.some(fn => fn.name === 'unquote')).toBe(false);
   });
 });

@@ -195,12 +195,21 @@ source of truth — but the less-compat bridge is a real external contract.
 
 ## Canonical Sources
 
+**Start at the Record Map: [`docs/RECORD-MAP.md`](docs/RECORD-MAP.md).** It is the
+topic → authoritative-document index: for any area (grammar, semantics, perf,
+core, release) it names the one doc that is the **method of record** and what it
+owns, with per-area sub-maps. Before proposing a plan on a topic, open its
+method-of-record doc from the map and cite it — do not plan from memory or a
+recon summary when a record exists. Keep the map current: `pnpm check:record-map`
+fails on a broken link and warns on an unindexed method-of-record doc.
+
 Use guidance in this order:
 
-1. `AGENTS.md` for repo-wide operating rules
-2. Area architecture docs for design intent and constraints
-3. Tool-specific rules for execution details
-4. Transient state files for current baselines, recent failures, and next steps
+1. `docs/RECORD-MAP.md` to find the method-of-record doc for the topic, then that doc
+2. `AGENTS.md` for repo-wide operating rules
+3. Area architecture docs for design intent and constraints
+4. Tool-specific rules for execution details
+5. Transient state files for current baselines, recent failures, and next steps
 
 If a permanent rule and a transient note disagree, prefer the permanent rule unless the transient note clearly says it supersedes it for the active task.
 
@@ -347,6 +356,7 @@ When information is volatile, point to the canonical source instead of restating
 - Agents branch their worktrees from `origin/dev`, not from feature/backup branches.
 - Sync work back to `dev` only when it is stable and tested. The sync gate is: core tests green, jess `ast-v2-production-ratchet` green, and jess `all-less` byte-identical (render corpus fully green).
 - Agents do not push `dev` directly. The orchestrator (or a designated integration agent) performs the merge + push after the gate is confirmed green — never push red.
+- **Release cadence runs as its own track, in parallel with roadmap work.** Foundation work (grammar cleanup → normalize AST → bug fixes → feature gaps) and alpha releases do not block each other; both land on `dev` continuously. A release ships whenever `dev` accumulates a meaningful batch of **user-facing** change. The release track pulls only user-facing work **independent of the grammar surface currently being cleaned** (rework-risk rule). Operating model: `docs/process/less-v5-release-plan.md` (§Operating model); mechanics: `docs/process/releasing-alpha.md`.
 
 ## AST And Runtime Safety
 

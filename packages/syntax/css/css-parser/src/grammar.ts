@@ -233,8 +233,6 @@ type GrammarRuleName =
   | 'SupportsCondition'
   | 'SupportsInParens'
   | 'SupportsPrelude'
-  | 'TopLevelComplexSelector'
-  | 'TopLevelCompoundSelector'
   | 'TopLevelRuleset'
   | 'TopLevelSelectorList'
   | 'TypedNthPseudoArgument'
@@ -276,6 +274,9 @@ type GrammarRuleName =
   | 'descriptorBodyBlock'
   | 'declarationListItem'
   | 'declarationListDeclaration'
+  | 'simpleSelectorAtom'
+  | 'calcValueAtom'
+  | 'valueAtom'
   | 'RoutedAtRuleStatement'
   | 'pseudoArgumentContent'
   | 'CustomPropertyValue'
@@ -1121,41 +1122,33 @@ const cssFactory = (g: GrammarSelf) => {
     literal('&'),
     () => simpleSelector('&')
   );
+
+  /*
+   * The simple-selector atom shared by the compound tower. `&`
+   * (NestingSelector) is added as one more arm in `CompoundSelector`; this atom
+   * is the non-`&` core. A superset widens this one leaf (interpolation,
+   * placeholder, etc.) and inherits the whole selector tower via open-recursion
+   * (COMPOSE-MIGRATION-SPEC.md §4.1).
+   */
+  const simpleSelectorAtom = choice(
+    parser(
+      { trivia: interstitialTrivia },
+      g.AttributeSelector
+    ),
+    parser(
+      { trivia: interstitialTrivia },
+      g.PseudoSelector
+    ),
+    g.NamespaceTypeSelector,
+    g.BasicSelector
+  );
   const CompoundSelector = node(
     'CompoundSelector',
     noTrivia(parser(
       { trivia: compoundTrivia },
       oneOrMore(choice(
         g.NestingSelector,
-        parser(
-          { trivia: interstitialTrivia },
-          g.AttributeSelector
-        ),
-        parser(
-          { trivia: interstitialTrivia },
-          g.PseudoSelector
-        ),
-        g.NamespaceTypeSelector,
-        g.BasicSelector
-      ))
-    )),
-    children => selectorTermFromTokens(children.filter(isSimpleToken))
-  );
-  const TopLevelCompoundSelector = node(
-    'TopLevelCompoundSelector',
-    noTrivia(parser(
-      { trivia: compoundTrivia },
-      oneOrMore(choice(
-        parser(
-          { trivia: interstitialTrivia },
-          g.AttributeSelector
-        ),
-        parser(
-          { trivia: interstitialTrivia },
-          g.PseudoSelector
-        ),
-        g.NamespaceTypeSelector,
-        g.BasicSelector
+        g.simpleSelectorAtom
       ))
     )),
     children => selectorTermFromTokens(children.filter(isSimpleToken))
@@ -1176,17 +1169,6 @@ const cssFactory = (g: GrammarSelf) => {
       many(sequence(
         optional(combinator),
         g.CompoundSelector
-      ))
-    ),
-    children => selectorBranchOf(complexSegments(children))
-  );
-  const TopLevelComplexSelector = node(
-    'TopLevelComplexSelector',
-    sequence(
-      g.TopLevelCompoundSelector,
-      many(sequence(
-        optional(combinator),
-        g.TopLevelCompoundSelector
       ))
     ),
     children => selectorBranchOf(complexSegments(children))
@@ -1214,7 +1196,7 @@ const cssFactory = (g: GrammarSelf) => {
   const TopLevelSelectorList = node(
     'TopLevelSelectorList',
     oneOrMoreSep(
-      g.TopLevelComplexSelector,
+      g.ComplexSelector,
       literal(',')
     ),
     (children, _fields, span) => withSourceSpan(selist(...selectorBranches(children)), span)
@@ -1749,18 +1731,19 @@ const cssFactory = (g: GrammarSelf) => {
    * creates through the value dispatch is not inert. `CalcParen` already covers
    * the arithmetic-grouping shape, which is the one css-values-4 §10 defines.
    */
+  const calcValueAtom = choice(
+    g.Percentage,
+    g.Dimension,
+    g.Color,
+    g.UnicodeRange,
+    g.CalcIdentOrFunction,
+    g.CalcParen,
+    g.Quoted,
+    g.CustomPropertyValue
+  );
   const CalcValue = node(
     'CalcValue',
-    choice(
-      g.Percentage,
-      g.Dimension,
-      g.Color,
-      g.UnicodeRange,
-      g.CalcIdentOrFunction,
-      g.CalcParen,
-      g.Quoted,
-      g.CustomPropertyValue
-    ),
+    g.calcValueAtom,
     { project: 0 }
   );
   const CalcProduct = node(
@@ -2232,31 +2215,32 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const CalcIdentOrFunction = typedIdentOrFunction;
   const TypedIdentOrFunction = typedIdentOrFunction;
+
+  /*
+   * Identifier-shaped atoms are routed by `IdentOrFunction`: known glued
+   * functions keep their dedicated tails, other glued functions use the
+   * generic call tail, and an identifier with no glued `(` is either the
+   * spaced paren bridge (`foo (bar)`, which preserves its authored separator
+   * as a value boundary) or a keyword. One route means the identifier is
+   * scanned once. The final punctuation fallback needs no negative identifier
+   * preflight: every identifier-shaped start has already been consumed by
+   * this route.
+   */
+  const valueAtom = choice(
+    g.Percentage,
+    g.Dimension,
+    g.Color,
+    g.UnicodeRange,
+    IdentOrFunction,
+    g.ParenValue,
+    g.SquareValue,
+    g.Quoted,
+    g.CustomPropertyValue,
+    g.PunctuationValue
+  );
   const Value = node(
     'Value',
-
-    /*
-     * Identifier-shaped atoms are routed by `IdentOrFunction`: known glued
-     * functions keep their dedicated tails, other glued functions use the
-     * generic call tail, and an identifier with no glued `(` is either the
-     * spaced paren bridge (`foo (bar)`, which preserves its authored separator
-     * as a value boundary) or a keyword. One route means the identifier is
-     * scanned once. The final punctuation fallback needs no negative identifier
-     * preflight: every identifier-shaped start has already been consumed by
-     * this route.
-     */
-    choice(
-      g.Percentage,
-      g.Dimension,
-      g.Color,
-      g.UnicodeRange,
-      IdentOrFunction,
-      g.ParenValue,
-      g.SquareValue,
-      g.Quoted,
-      g.CustomPropertyValue,
-      g.PunctuationValue
-    ),
+    g.valueAtom,
     { project: 0 }
   );
   const ValueSequence = node(
@@ -3754,9 +3738,8 @@ const cssFactory = (g: GrammarSelf) => {
     SelectorList,
     TopLevelSelectorList,
     ComplexSelector,
-    TopLevelComplexSelector,
     CompoundSelector,
-    TopLevelCompoundSelector,
+    simpleSelectorAtom,
     BasicSelector,
     NamespaceTypeSelector,
     AttributeSelector,
@@ -3800,12 +3783,14 @@ const cssFactory = (g: GrammarSelf) => {
     PunctuationValue,
     ValueSequence,
     ValueList,
+    calcValueAtom,
     CalcValue,
     CalcProduct,
     CalcSum,
     CalcSequence,
     calcFunctionArguments,
     MathFunction,
+    valueAtom,
     Value,
     TypedValue,
     TypedValueSequence,

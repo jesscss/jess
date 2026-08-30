@@ -643,6 +643,24 @@ Not yet scheduled; recorded so nothing is lost. Promote into a lane when picked.
 - #52 node-shape survey hole · #54 collectTolerantDiagnostics ignores rule config
 - #55 oracle byte-identity blind to wrong-but-round-trippable trees
 - #56 Opaque* family removal (`docs/design/OPAQUE-FAMILY-REMOVAL.md`) — depends on lane 5
+- #58 **parser-runtime-boundary = ALPHA RELEASE BLOCKER** (verified 2026-08-29,
+  dev `ff36e59d9`). `verify:parser-runtime-boundary`'s ledger is empty (target 0)
+  and it is in the alpha release preflight (PR CI deliberately skips it — see
+  `.github/workflows/ci.yml` ~line 161). It flagged 3 sites; the boundary is
+  "grammar combinators OK, handwritten runtime recognition banned", and the gate
+  had mis-modeled that boundary for 2 of them:
+  - `less/less-parser/src/grammar.ts:3444` `matches(/^(?!(?:url|calc)\($).+\($/i)`
+    and `scss/scss-parser/src/grammar.ts:1876` `when(matches(/\.\$/), …)` — these
+    are the Parseman `matches()` **dispatch combinator** (declarative grammar,
+    macro-compiled), NOT post-processing. The gate exempted `regex(/…/)` but not
+    `matches(/…/)`. **GATE FIXED** (owner ruling 2026-08-29): `GRAMMAR_REGEX_COMBINATORS`
+    now covers both; regression test added. No grammar change; these were false
+    positives.
+  - `css/css-parser/src/cst-host.ts:157` — `value[0]` (`runtime-string-index`) in
+    `startsWithDigit`, the host CST adapter re-deriving a selector's grammarType
+    from its leaf string. GENUINE hit (handwritten recognition in host
+    post-processing). Fix in progress: emit the selector grammarType in the css
+    grammar so the host does not re-derive from bytes.
 
 ---
 

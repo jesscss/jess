@@ -2449,7 +2449,7 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
-  it('parses `&` in $extend while public parse keeps $extend and $apply class-only by default', () => {
+  it('admits `&` as an $extend target by default (no-op at eval) while $apply rejects parent-refs', () => {
     const source = '.a { color: blue; } .b { .c { $extend &; $apply .a-1; } }';
     const legacy = parseJessCst(source);
     const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
@@ -2467,8 +2467,16 @@ describe('Jess AST grammar facts', () => {
         rules: [{ type: 'Apply', selectors: [{ text: '.a-1' }] }]
       }]
     });
-    expect(() => parse(source)).toThrow(SyntaxError);
+
+    /*
+     * `$extend &` is a legitimate shape (a bare parent-ref simple selector), so
+     * the parser admits it by default; that it can only ever no-op-match is a
+     * semantic fact for eval to warn on, not a parse rejection (ledger X11).
+     */
+    expect(() => parse(source)).not.toThrow();
     expect(() => parse(source, { allowExtendSelectors: ['basic'] })).not.toThrow();
+
+    // `$apply &` stays rejected: a parent-ref carries no utility class to apply.
     expect(() => parse('.a { .b { $apply &(-1); } }')).toThrow(SyntaxError);
   });
 
@@ -2884,8 +2892,11 @@ describe('Jess AST grammar facts', () => {
         type: 'MixinDefinition', name: 'match',
         guard: {
           g: 'and',
-          // GUARD position, so the comparison is a MATCH test, not the
-          // value-position assertion `$if` builds (§4.2a).
+
+          /*
+           * GUARD position, so the comparison is a MATCH test, not the
+           * value-position assertion `$if` builds (§4.2a).
+           */
           left: { g: 'match', op: '=' },
           right: { g: 'not', inner: { g: 'truth' } }
         }

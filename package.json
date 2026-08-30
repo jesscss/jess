@@ -62,6 +62,7 @@
     "verify:compose-integrity": "node scripts/verify-compose-integrity.mjs",
     "check:macro": "node scripts/check-macro-buildable.mjs",
     "check:guardrails": "node scripts/check-guardrails.mjs",
+    "check:record-map": "node scripts/check-record-map.mjs",
     "test:fallback-detector": "node --test scripts/__tests__/parseman-fallback-detector.test.mjs",
     "oracle:prebuild": "pnpm --filter @jesscss/awaitable-pipe build && pnpm --filter @jesscss/core build",
     "oracle:css:render-differential": "pnpm run oracle:prebuild && pnpm --filter @jesscss/css-parser build && node packages/syntax/css/css-parser/test/render-differential.mjs",
@@ -182,7 +183,8 @@
   "homepage": "https://github.com/matthew-dean/jess#readme",
   "pnpm": {
     "patchedDependencies": {
-      "superstruct@1.0.3": "patches/superstruct@1.0.3.patch"
+      "superstruct@1.0.3": "patches/superstruct@1.0.3.patch",
+      "bootstrap-less-port@2.5.1": "patches/bootstrap-less-port@2.5.1.patch"
     },
     "overrides": {
       "chevrotain": "^12.0.0"

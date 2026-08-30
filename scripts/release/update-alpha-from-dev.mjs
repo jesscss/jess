@@ -211,7 +211,11 @@ function main() {
   patchFromRecoveryToSource(rootDir, recoveryRef);
   runNodeHelper(rootDir, 'restore-alpha-package-versions.mjs', ['--from', recoveryRef, '--stage']);
   runNodeHelper(rootDir, 'record-alpha-source-provenance.mjs', ['--stage']);
-  runNodeHelper(rootDir, 'increment-alpha.mjs', []);
+
+  /* The registry-aware resolver in release-alpha owns the version (always
+   * published+1). Bumping here too made every cut climb the manifest, so cuts
+   * that never published drifted it ahead of npm. The snapshot keeps the
+   * recovery ref's version; the release step resolves and applies the real one. */
   if (!options.skipInstall) {
     run('pnpm', ['install'], rootDir);
   }

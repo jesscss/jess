@@ -93,6 +93,7 @@ export const LINT_CODES = {
   unusedDefaultBranches: 'lint/no-unused-default-branch',
   unboundedExtends: 'lint/no-unbounded-extend',
   deadExtends: 'lint/no-dead-extend',
+  selfExtend: 'lint/no-self-extend',
   suspiciousMapKeyAccess: 'lint/no-suspicious-map-key-access',
   unsupportedSassForm: 'unsupported/sass-form'
 } as const;
@@ -337,10 +338,10 @@ const BASIC_SELECTOR_TYPES = new Set([
   'UniversalSelector'
 ]);
 const CLASS_SELECTOR_TYPES = new Set(['BasicSelector', 'ClassSelector']);
-const TYPE_SELECTOR_TYPES = new Set(['BasicSelector', 'TypeSelector']);
+const TYPE_SELECTOR_TYPES = new Set(['BasicSelector', 'TypeSelector', 'NamespaceTypeSelector']);
 const ATTRIBUTE_SELECTOR_TYPES = new Set(['AttributeSelector']);
 const SELECTOR_LIST_TYPES = new Set(['SelectorList', 'TopLevelSelectorList']);
-const SELECTOR_BRANCH_TYPES = new Set(['ComplexSelector', 'TopLevelComplexSelector', 'RelativeComplexSelector']);
+const SELECTOR_BRANCH_TYPES = new Set(['ComplexSelector', 'RelativeComplexSelector']);
 const RULE_SELECTOR_TYPES = new Set(['SelectorList', 'TopLevelSelectorList', 'SelectorListWithExtends']);
 const RULE_SELECTOR_BRANCH_TYPES = new Set([...SELECTOR_BRANCH_TYPES, 'SelectorBranch']);
 const LEGACY_SINGLE_COLON_PSEUDO_ELEMENTS = new Set(['before', 'after', 'first-line', 'first-letter']);
@@ -974,9 +975,22 @@ function typeSelectorNameSpan(source: string, node: CssCstNode): { name: string;
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
     return null;
   }
-  const name = source.slice(start, end);
+  let name = source.slice(start, end);
+  let nameStart = start;
+
+  /*
+   * A namespace-qualified selector (`svg|circle`, `*|unknown`) parses as one
+   * NamespaceTypeSelector node; the type is the part after the `|`. The prefix
+   * (`svg`, `*`) is not itself a type selector, so lint only the type.
+   */
+  const barIndex = name.lastIndexOf('|');
+  if (barIndex !== -1) {
+    nameStart = start + barIndex + 1;
+    name = name.slice(barIndex + 1);
+  }
   if (
-    name === '*'
+    name === ''
+    || name === '*'
     || name.startsWith('.')
     || name.startsWith('#')
     || name.startsWith('&')
@@ -986,10 +1000,10 @@ function typeSelectorNameSpan(source: string, node: CssCstNode): { name: string;
   ) {
     return null;
   }
-  if (end < source.length && source.charCodeAt(end) === 124 /* | */) {
+  if (barIndex === -1 && end < source.length && source.charCodeAt(end) === 124 /* | */) {
     return null;
   }
-  return { name, start, end };
+  return { name, start: nameStart, end };
 }
 
 function classSelectorNameSpan(source: string, node: CssCstNode): { name: string; start: number; end: number } | null {
@@ -2003,7 +2017,12 @@ function areMathKindsDefinitelyIncompatible(a: NumericKind, b: NumericKind): boo
 function incompatibleMathFunctionUnits(source: string, node: CssCstNode, functionName: string): MathUnitMismatch | null {
   const args: MathArgumentFact[] = [];
   for (const child of cstChildrenOf(node)) {
-    if (!isCstNode(child) || child.grammarType !== 'ValueSequence') {
+    /*
+     * min()/max()/clamp() arguments parse through the calc grammar as
+     * CalcSequence; older grammars emitted ValueSequence. Accept both so a
+     * grammar rename does not silently mute the lint.
+     */
+    if (!isCstNode(child) || (child.grammarType !== 'CalcSequence' && child.grammarType !== 'ValueSequence')) {
       continue;
     }
     const fact = mathArgumentFact(source, child);
@@ -3689,14 +3708,26 @@ function scssCallArguments(node: CssCstNode): CssCstNode[] {
     if (!isCstNode(child)) {
       continue;
     }
-    if (child.grammarType === 'ValueTerm') {
-      args.push(child);
-    } else if (child.grammarType === 'ValuePair') {
-      const value = firstChildNodeOf(child, 'ValueTerm');
-      if (value !== undefined) {
-        args.push(value);
-      }
+
+    /*
+     * The first argument parses as CallArgument; each subsequent `, arg` as an
+     * ArgumentPair wrapping a CallArgument. Older grammars used ValueTerm /
+     * ValuePair. Accept both, and unwrap to the inner ValueTerm so the callers'
+     * span arithmetic (base variable name, numeric key) is unchanged.
+     */
+    let argument: CssCstNode | undefined;
+    if (child.grammarType === 'CallArgument' || child.grammarType === 'ValueTerm') {
+      argument = child;
+    } else if (child.grammarType === 'ArgumentPair' || child.grammarType === 'ValuePair') {
+      argument = firstChildNodeOf(child, 'CallArgument') ?? firstChildNodeOf(child, 'ValueTerm');
     }
+    if (argument === undefined) {
+      continue;
+    }
+    const valueTerm = argument.grammarType === 'ValueTerm'
+      ? argument
+      : firstChildNodeOf(argument, 'ValueTerm');
+    args.push(valueTerm ?? argument);
   }
   return args;
 }
@@ -3713,7 +3744,7 @@ function scssMapGetNumericKeyAccess(source: string, node: CssCstNode, mapLikeVar
   const baseEnd = absoluteEnd(args[0]!);
   const baseTrimmed = trimOffsets(source.slice(baseStart, baseEnd), baseStart);
   const authoredBase = authoredVariableNameOf(source, baseTrimmed.start, baseTrimmed.end);
-  if (authoredBase === null || authoredBase.start !== baseTrimmed.start || authoredBase.end !== baseTrimmed.end) {
+  if (authoredBase?.start !== baseTrimmed.start || authoredBase.end !== baseTrimmed.end) {
     return null;
   }
   const variable = normalizedVariableName(authoredBase.name, 'scss');
@@ -4432,6 +4463,15 @@ function forEachExtendTarget(
       }
     }
   }
+}
+
+/**
+ * A lone parent-ref extend target (`$extend &`). Owner ruling X11 (DESIGN-DECISIONS):
+ * admitted at parse (a bare `&` is a legitimate simple-selector shape) and no-op-matches
+ * at eval — a selector cannot extend itself — so it is almost always an author mistake.
+ */
+function isBareParentRefExtendTarget(source: string, target: CssCstNode): boolean {
+  return stripBlockComments(source.slice(absoluteStart(target), absoluteEnd(target))).trim() === '&';
 }
 
 function isLessPartialExtendTarget(text: string): boolean {
@@ -5661,7 +5701,14 @@ export function cstLintDiagnostics(
     }
 
     forEachExtendTarget(source, node, language, (target, exact) => {
-      if (isUnboundedExtendTarget(source, target)) {
+      if (language === 'jess' && isBareParentRefExtendTarget(source, target)) {
+        push(
+          LINT_CODES.selfExtend,
+          'warning',
+          '`$extend &` is a no-op — a selector cannot extend itself',
+          target.span
+        );
+      } else if (isUnboundedExtendTarget(source, target)) {
         const targetStart = absoluteStart(target);
         const targetEnd = absoluteEnd(target);
         push(

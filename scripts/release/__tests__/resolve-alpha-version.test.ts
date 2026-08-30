@@ -141,6 +141,21 @@ describe('resolveAlphaPublishVersion', () => {
     expect(res.reason).toBe('intended-ahead');
   });
 
+  it('(b2) drift: a higher alpha NUMBER on the same base → registry-guarded, not honored', () => {
+    /* Unpublished cuts bumped the manifest to alpha.16 while npm sits at
+     * alpha.11. Same 2.0.0 base, so the drift must NOT override published+1. */
+    const plan = makePlan(allowlist, '2.0.0-alpha.16');
+    const viewVersions = viewFrom({
+      ['@scope/a']: ['2.0.0-alpha.10', '2.0.0-alpha.11'],
+      ['@scope/b']: ['2.0.0-alpha.11']
+    });
+    const res = resolveAlphaPublishVersion({ plan, viewVersions });
+    expect(res.intended).toBe('2.0.0-alpha.16');
+    expect(res.publishedMax).toBe('2.0.0-alpha.11');
+    expect(res.resolved).toBe('2.0.0-alpha.12');
+    expect(res.reason).toBe('registry-guarded-increment');
+  });
+
   it('(c) resolved candidate already taken → skips to the next free version', () => {
     const plan = makePlan(allowlist, '2.0.0-alpha.2');
 

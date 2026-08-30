@@ -5,7 +5,7 @@
     "access": "public"
   },
   "description": "Jess compiler preset shared by product entrypoints",
-  "version": "2.0.0-alpha.16",
+  "version": "2.0.0-alpha.17",
   "engines": {
     "node": "^20.19.0 || >=22.18.0"
   },

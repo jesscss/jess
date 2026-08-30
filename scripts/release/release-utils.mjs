@@ -307,6 +307,12 @@ export function compareSemver(a, b) {
  * Given `X.Y.Z-alpha.N`, return `X.Y.Z-alpha.(N+1)`. Throws on a non-alpha input
  * so a bad publishedMax can never silently produce a garbage version.
  */
+/** The release base of an alpha version (`2.0.0-alpha.7` -> `2.0.0`), or the
+ * version verbatim if it is not an alpha (e.g. an already-stable release). */
+export function releaseBase(version) {
+  return parseAlphaVersion(version)?.base ?? version;
+}
+
 export function nextAlphaAfter(version) {
   const parsed = parseAlphaVersion(version);
   if (!parsed) {
@@ -406,9 +412,17 @@ export function resolveAlphaPublishVersion({
 
   let resolved;
   let reason;
-  if (publishedMax === null || compareSemver(intended, publishedMax) > 0) {
+  if (publishedMax === null) {
     resolved = intended;
-    reason = publishedMax === null ? 'nothing-published' : 'intended-ahead';
+    reason = 'nothing-published';
+  } else if (compareSemver(releaseBase(intended), releaseBase(publishedMax)) > 0) {
+    /* The manifest overrides the registry ONLY when it advances the release
+     * base (a deliberate 2.0.0 -> 2.1.0 forward). A higher alpha NUMBER on the
+     * same base is drift: cutting bumps the manifest, so cuts that never publish
+     * leave it ahead of npm. Ignore that drift and take the next free version
+     * after what is actually published — the alpha stream is always published+1. */
+    resolved = intended;
+    reason = 'intended-ahead';
   } else {
     resolved = nextAlphaAfter(publishedMax);
     while (publishedAll.has(resolved)) {
