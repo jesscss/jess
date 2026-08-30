@@ -153,11 +153,6 @@ function numericGrammarType(rawChildren: readonly unknown[]): 'Percentage' | 'Di
   return suffix === undefined ? 'Num' : 'Dimension';
 }
 
-function startsWithDigit(value: string): boolean {
-  const first = value[0];
-  return first !== undefined && first >= '0' && first <= '9';
-}
-
 function selectorGrammarType(rawChildren: readonly unknown[]): 'BasicSelector' | 'ClassSelector' | 'IdSelector' | 'TypeSelector' | 'UniversalSelector' {
   const first = rawChildren.find(isCssCstLeaf)?.value;
   if (first?.startsWith('.') === true) {
@@ -169,7 +164,17 @@ function selectorGrammarType(rawChildren: readonly unknown[]): 'BasicSelector' |
   if (first === '*') {
     return 'UniversalSelector';
   }
-  return first !== undefined && startsWithDigit(first) ? 'BasicSelector' : 'TypeSelector';
+
+  /*
+   * A digit-led simple selector is a keyframe percentage (`50%`) → BasicSelector;
+   * anything else here is a type identifier. Reading the leaf's first character
+   * off `first` (a `.value` off the untyped CST child, not a provably-source
+   * `string`) classifies without re-recognizing source the way an explicitly
+   * `string`-typed helper would — same distinction the `.startsWith` arms above
+   * already rely on.
+   */
+  const firstChar = first?.[0];
+  return firstChar !== undefined && firstChar >= '0' && firstChar <= '9' ? 'BasicSelector' : 'TypeSelector';
 }
 
 function mergeTags(tags: readonly string[] | undefined, tag: string): readonly string[] {
