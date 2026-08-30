@@ -1,0 +1,292 @@
+---
+title: Lists, maps, and collections
+audiences:
+  - jess
+origin: jess
+---
+Collections are Jess's map shape for design tokens and structured values. They
+look like small CSS blocks, read like objects, and work with the same value model
+Jess uses everywhere else.
+
+## A Jess collection
+
+```less
+// theme.jess
+$colors: {
+  primary: #06c;
+  secondary: #e00;
+  tertiary: #000;
+}
+```
+
+```less
+// app.jess
+@-compose "./theme.jess";
+
+.box {
+  color: $theme.colors.primary;
+}
+```
+
+The composed module namespace `theme` is a collection, and `colors` is another
+collection inside it. Use dot access for ordinary identifier keys.
+
+Note that there is no `;` after the collection's closing brace. A block-valued
+assignment ends at its closing brace, so the semicolon is optional. See
+[block-valued assignments](./variables#block-valued-assignments) for the rule.
+
+Collections can also come from JS/TS modules once module resolution is enabled:
+```js
+// tokens.js
+export const sizes = {
+  small: '10px',
+  medium: '20px',
+  large: '30px'
+}
+```
+
+```less
+@-use "./tokens.js";
+
+.box {
+  padding: $tokens.sizes.small;
+}
+```
+
+### Sub-collections
+
+Collections can contain collections:
+
+```less
+// theme.jess
+$colors: {
+  primary: #06c;
+  secondary: #e00;
+  tertiary: {
+    light: #06c;
+    dark: #e00;
+  }
+}
+```
+
+```less
+// app.jess
+@-compose "./theme.jess";
+
+.box {
+  color: $theme.colors.tertiary.light;
+}
+```
+
+:::warning[Collections are not anonymous mixins]
+
+Collections and anonymous mixins both use blocks:
+
+```less
+$mixin: @{
+  color: red;
+}
+```
+
+**a collection is data; an anonymous mixin is code.**
+
+That split is the rule:
+
+1. a collection cannot contain rulesets, mixin definitions, or at-rules,
+2. a collection cannot contain **variable declarations** either — a binding inside
+   a block is scope machinery, so a block that declares variables is an anonymous
+   mixin, not a collection, and
+3. a collection is for arbitrary key/value pairs, not CSS properties & values.
+
+That keeps map functions honest: `$a: 1` inside a collection would have to mean
+both "key named `$a`" and "binding named `a`." Jess keeps those roles separate.
+
+:::
+
+## Collection keys are values
+
+A collection key is a **value**, not a property name, and lookups match by value
+equality:
+
+```less
+// the key here is the STRING "small"
+$m: {
+  small: 4px;
+}
+```
+
+A bare name is unambiguous because `$` is what marks a variable: `small` is the
+string key, `$small` is the variable. So `$m.small`, `$m[small]`, `$m["small"]`,
+and `$m[$k]` (where `$k` holds `small`) all reach the same entry.
+
+The value model is the same one Sass maps use: keys are compared by their value,
+not by a serialized property-name string. That means a map can distinguish the
+number `1`, the string `"1"`, and the color `red` when those keys arrive from
+SCSS input or from the value-domain map APIs.
+
+Jess collection literals author the common CSS-object shape directly:
+
+```less
+$font-weights: {
+  regular: 400;
+  medium: 500;
+  bold: 700;
+}
+```
+
+Non-identifier keys can exist in Jess collections when they arrive from SCSS maps
+or map APIs. Native literal syntax for authoring those keys directly is still
+being held back until it is parser-tested.
+
+{/*
+Future runnable example:
+
+```less
+$m: {
+  [1px]: a;
+  [red]: b;
+  [$key]: c;
+}
+```
+*/}
+
+## Subscripts: the key's type decides
+
+Jess also uses `[…]` for positional access into a list, so one rule settles which
+you get — **the subscript's own type, never the receiver's**:
+
+| Subscript | Meaning |
+| --- | --- |
+| a **number** — `$x[1]`, `$x[-1]` | **positional index**; negative counts from the end |
+| a **member key** — `$x[small]`, `$x[$k]`, `$x["a"]` | **key lookup** by value equality |
+
+`$x[1]` is positional whether `$x` turns out to be a list or a collection. A
+subscript whose meaning shifted with the receiver's runtime type would be a
+footgun; this way you can read the source and know.
+
+:::caution[Numeric keys are not reachable by bracket]
+
+If you use numbers as collection keys, numeric `[…]` will not reach them because
+a numeric subscript is always positional. Use map functions such as
+`map.get($m, 1px)` for numeric keys.
+
+:::
+
+
+## Lists and arrays
+
+Lists use bracket access:
+
+```less
+// theme.jess
+$sizes: 10px, 20px, 30px;
+
+.box {
+  padding: $sizes[0]; // 10px
+}
+```
+Negative indexes read from the end:
+
+```less
+.box {
+  padding: $sizes[-1]; // 30px
+}
+```
+
+:::info
+
+Rulesets and mixins also support numeric indexed access to their emitted values:
+
+```less
+.mixin() {
+  color: #06c;
+  color: #e00;
+}
+
+// Might be useful to access two values with the same key,
+// since `$ > .mixin().color` would return the final value.
+.box {
+  color-1: $ > .mixin[0]; // #06c
+  color-2: $ > .mixin[1]; // #e00
+}
+```
+
+:::
+
+## Why this reads better
+
+### Less maps
+
+Less lets rulesets and mixins act like maps:
+
+```less
+#colors() {
+  primary: #06c;
+  secondary: #e00;
+}
+
+.box {
+  color: #colors[primary];
+  background: #colors[secondary];
+}
+```
+→
+```css
+.box {
+  color: #06c;
+  background: #e00;
+}
+```
+
+That gives Less a clever reuse story, but it blurs two jobs:
+
+1. A ruleset might be CSS output, map data, or both.
+2. Variable-looking keys can be hard to read, especially in forms like
+   `@map[@my-var]`.
+
+
+### Sass maps
+
+Sass maps are real data, but the syntax is separate from normal CSS-shaped
+blocks:
+
+```scss
+$font-weights: ("regular": 400, "medium": 500, "bold": 700);
+```
+
+Reads usually go through `map-get` or `map.get`:
+
+```scss
+value: map.get($font-weights, "medium"); // 500
+value: map.get($font-weights, "bold"); // 700
+```
+
+Jess keeps the good part — maps are data — and gives the common case a shape
+that CSS and JavaScript developers already know:
+```scss
+$font-weights: {
+  regular: 400;
+  medium: 500;
+  bold: 700;
+}
+
+value: $font-weights.regular; // 400
+value: $font-weights.bold; // 700
+```
+
+That is the practical DX win: CSS-shaped data, JavaScript-shaped property access,
+and bracket lookup when the key is a value. You do not have to pretend a ruleset
+is data, and you do not have to wrap ordinary reads in `map.get(...)`.
+
+```scss
+$state: active;
+$colors: {
+  active: #06c;
+  disabled: #999;
+}
+
+.button {
+  color: $colors[$state];
+  font-weight: $font-weights.bold;
+}
+```

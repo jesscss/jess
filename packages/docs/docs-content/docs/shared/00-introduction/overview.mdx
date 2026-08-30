@@ -1,0 +1,112 @@
+---
+title: Overview
+sidebar_label: Overview
+description: A stylesheet language and compiler with modern CSS ergonomics and compile-time power.
+audiences:
+  - jess
+  - less
+  - sass
+origin: shared
+slug: /
+facing_paths:
+  less: overview
+---
+import AudienceGate from '@theme/AudienceGate';
+
+<AudienceGate include={['less']}>
+
+# Less
+
+**Less** means **L**eaner **S**tyle **S**heets. It is CSS with superpowers:
+familiar syntax, better reuse, and smarter organization for real-world
+codebases. You keep writing styles the way you already do — plus variables,
+mixins, nesting, functions, and tooling that scale.
+
+:::info Why teams still pick Less
+- **Incremental adoption** — start with plain CSS and add features where they help.
+- **Backwards-compatible output** — predictable CSS for production pipelines.
+- **Built for large stylesheets** — structure design tokens, utilities, and
+  components without fighting your tooling.
+- **A clear upgrade runway** — Less is one of the ways into Jess, so teams can
+  evolve toward broader Jess workflows over time without rewriting everything at once.
+:::
+
+</AudienceGate>
+
+<AudienceGate include={['sass']}>
+
+# Sass, fixed
+
+If you write **Sass/SCSS**, the Jess direction should feel familiar —
+`$variables`, nesting, mixins, maps, `@extend` — but Sass compatibility is not
+the front-door surface today. The aim is a cleaner migration path: keep the
+useful ergonomics, drop the awkward parts, and stay closer to valid CSS.
+
+</AudienceGate>
+
+<AudienceGate include={['jess']}>
+
+# Jess
+
+**Jess** is in **very early alpha**. The public entry point is still narrow and
+moving, with rough edges and missing pieces while the language surface settles.
+
+Jess is a stylesheet language *and* a compiler, designed for teams that want
+modern CSS ergonomics without giving up compile-time power. The public alpha
+ships today through Less-compatible tooling, but the project itself is broader:
+Jess is the language direction, with richer composition, expressions, and module
+boundaries that still compile down to CSS.
+
+The project starts by earning trust on familiar Less workflows, then opens out
+toward broader Jess syntax and composition over time.
+
+</AudienceGate>
+
+## Why a preprocessor at all?
+
+CSS keeps gaining power — custom properties, nesting, `color-mix()`, container
+queries — but a build-time layer still earns its keep:
+
+- **Reuse without runtime cost.** Variables, mixins, and functions resolve at
+  compile time and ship as plain, static CSS.
+- **Organization that scales.** Split styles across files and compose them back
+  together with real module boundaries.
+- **One source of truth for tokens.** Define colors, spacing, and typography
+  once and derive the rest.
+
+<AudienceGate include={['jess']}>
+
+Jess is being designed around expressions, live bindings, collections, and a
+JS/TS/JSON module system while still producing CSS output by default.
+
+</AudienceGate>
+
+## Where to next
+
+<AudienceGate include={['jess']}>
+
+- Set up: [Installation](/docs/getting-started/install) and
+  [Configuration](/docs/getting-started/config).
+- Learn the module system: [Modules & imports](/docs/language/modules-and-imports).
+- Migrating an existing codebase: [Migrating to Jess](/docs/guides/migrating-to-jess),
+  or [Coming from Sass](/docs/guides/coming-from-sass).
+- Editor experience: [VSCode & Cursor support](/docs/getting-started/vscode).
+
+</AudienceGate>
+
+<AudienceGate include={['less']}>
+
+- Get going: [Getting Started](/docs/next/home/getting-started) and
+  [Installing & Forking](/docs/next/home/download-options).
+- Learn the language: [Modules & imports](/docs/next/language/modules-and-imports)
+  and the [Features overview](/docs/next/features-overview).
+- Upgrading: [Migrating Less 4.x → 5.x](/docs/next/guides/migrating-less-4-to-5).
+
+</AudienceGate>
+
+<AudienceGate include={['sass']}>
+
+- Start with the [Coming from Sass](/docs/guides/coming-from-sass) hub.
+- When you're ready to convert, see [Migrating to Jess](/docs/guides/migrating-to-jess).
+
+</AudienceGate>

@@ -1,0 +1,27 @@
+@page :left {
+    background: black
+}
+
+@media(min-width: 0) {
+    .a {
+        background: white
+    }
+}
+
+@media (width > 0) {
+    .a {
+        background: black;
+    }
+}
+
+@font-face {
+    family-name: "A;' /**/";
+}
+
+@viewport {
+    width: 110px;
+}
+
+@-ms-viewport {
+    width: 100px;
+}

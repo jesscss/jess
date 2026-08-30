@@ -1,42 +1,65 @@
 {
   "name": "jess",
-  "version": "1.0.8-alpha.8",
+  "type": "module",
+  "version": "2.0.0-alpha.5",
   "description": "JavaScript Enhanced Style Sheets",
-  "main": "lib/index",
-  "types": "lib/index",
-  "bin": "./bin/cli.js",
+  "main": "lib/index.cjs",
+  "types": "lib/index-public.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index-public.d.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "jess": "./bin/cli.mjs"
+  },
   "files": [
-    "lib"
+    "lib",
+    "bin"
   ],
   "engines": {
-    "node": ">=10"
+    "node": "^20.19.0 || >=22.18.0"
   },
   "dependencies": {
-    "@jesscss/parser": "^1.0.8-alpha.6",
-    "@jesscss/patch-css": "^1.0.8-alpha.8",
-    "@rollup/plugin-commonjs": "^17.0.0",
-    "@rollup/plugin-node-resolve": "^11.1.0",
-    "@rollup/plugin-sucrase": "^3.1.0",
-    "@rollup/plugin-virtual": "^2.0.3",
-    "chalk": "^4.1.0",
-    "combinate": "^1.1.2",
-    "cosmiconfig": "^7.0.0",
-    "lodash": "^4.17.20",
-    "micro-memoize": "^4.0.9",
-    "rollup": "^2.36.2",
-    "rollup-plugin-terser": "^7.0.2",
-    "yargs": "^16.2.0"
+    "@jesscss/compiler": "workspace:*",
+    "@jesscss/compiler-preset": "workspace:*",
+    "@jesscss/core": "workspace:*",
+    "@jesscss/lint": "workspace:*",
+    "@jesscss/patch-css": "workspace:*",
+    "@jesscss/plugin-jess": "workspace:*",
+    "@jesscss/plugin-less": "workspace:*",
+    "@jesscss/plugin-node-modules": "workspace:*",
+    "@jesscss/plugin-scss": "workspace:*",
+    "lodash-es": "^4.17.21",
+    "styles-config": "workspace:*"
+  },
+  "peerDependencies": {
+    "@jesscss/plugin-js": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@jesscss/plugin-js": {
+      "optional": true
+    }
   },
   "scripts": {
-    "ci": "yarn build && yarn test:all",
-    "prepublishOnly": "yarn build && yarn test:all",
-    "benchmark": "node bin/cli.js benchmark/benchmark.jess",
-    "build": "yarn clean && yarn compile",
-    "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
-    "compile": "tsc -b tsconfig.json",
-    "dev": "tsc -b tsconfig.json -w",
-    "test": "ts-mocha --recursive test/index.ts \"src/**/__tests__/*.ts\"",
-    "test:all": "yarn benchmark && yarn test"
+    "ci": "pnpm build && pnpm run test:ratchet",
+    "prepublishOnly": "pnpm build && pnpm run test:ratchet",
+    "benchmark": "node bin/cli.mjs benchmark/benchmark.jess",
+    "benchmark:css-processors": "node benchmark/css-processors.mjs",
+    "benchmark:postcss-preprocessors": "node benchmark/postcss-preprocessors.mjs",
+    "build": "pnpm compile && pnpm api-extractor",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "api-extractor": "api-extractor run --local --config ./api-extractor.json",
+    "verify:api": "api-extractor run --config ./api-extractor.json",
+    "dev": "tsdown --tsconfig tsconfig.build.json --watch",
+    "test": "cross-env TEST=true vitest --watch=false",
+    "test:all": "pnpm benchmark && pnpm test",
+    "lint:fix": "eslint --fix '**/*.{js,ts}'",
+    "lint": "eslint '**/*.{js,ts}'",
+    "test:ratchet": "node ../../scripts/vitest-ratchet.mjs --package . --baseline test/known-failures.json"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",
@@ -45,8 +68,21 @@
   },
   "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
-    "@types/cosmiconfig": "^6.0.0",
-    "@types/lodash": "^4.14.168"
+    "@jesscss/css-parser": "workspace:*",
+    "@jesscss/fns": "workspace:*",
+    "@jesscss/plugin-js": "workspace:*",
+    "@jesscss/plugin-less-compat": "workspace:*",
+    "@jesscss/shared": "workspace:*",
+    "@jesscss/jess-parser": "workspace:*",
+    "@jesscss/less-parser": "workspace:*",
+    "@jesscss/scss-parser": "workspace:*",
+    "@types/lodash-es": "^4.17.8",
+    "bootstrap": "~5.3.8",
+    "bootstrap-less-port": "~2.5.1",
+    "clinic": "~13.0.0",
+    "foundation-sites": "~6.9.0",
+    "sass": "~1.101.0",
+    "stylis": "~4.4.0"
   },
   "keywords": [
     "css",
@@ -55,5 +91,6 @@
     "pre-processor",
     "css-in-js",
     "front-end"
-  ]
+  ],
+  "module": "lib/index.js"
 }

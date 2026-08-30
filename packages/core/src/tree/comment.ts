@@ -1,0 +1,71 @@
+import { type Context } from '../context.js';
+import { Node, F_ALLOW_ROOT, F_VISIBLE, F_STATIC, defineType, type LocationInfo } from './node.js';
+import { type FinalPrintOptions, getPrintOptions, type PrintOptions } from './util/print.js';
+import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
+
+export type CommentOptions = {
+  lineComment?: boolean;
+};
+
+export interface Comment extends Node<string, CommentOptions> {
+  eval(context: Context): Comment;
+}
+
+// AUDIT: Probably don't need this unless a parent is visited.
+/**
+ * A comment node
+ */
+export class Comment extends Node<string, CommentOptions> {
+  static override childKeys = null;
+
+  readonly value: string;
+
+  readonly lineComment: boolean;
+
+  constructor(value: string, options?: CommentOptions, location?: LocationInfo) {
+    super(value, options, location);
+
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
+    this.lineComment = options?.lineComment === true || value.startsWith('//');
+    this.addFlag(F_STATIC);
+    this.addFlag(F_ALLOW_ROOT);
+    if (this.lineComment) {
+      this.removeFlag(F_VISIBLE);
+    }
+  }
+
+  protected override ownStaticFlag(): number {
+    return F_STATIC;
+  }
+
+  override resolve(_context: Context): this {
+    return this;
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    const out = this.value;
+    getPrintOptions(options).writer.add(out, this);
+    return out;
+  }
+
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    options.writer.add(this.value, this);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {
+    if (!this.hasFlag(F_VISIBLE)) {
+      return '';
+    }
+    const out = this.value;
+    if (isRenderBuffer(bufferOrOptions)) {
+      return writeRenderText(bufferOrOptions, out);
+    }
+    getPrintOptions(bufferOrOptions).writer.add(out, this);
+    return out;
+  }
+}
+export const comment = defineType(Comment, 'Comment');

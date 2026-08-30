@@ -1,0 +1,11 @@
+---
+description: "Package: @jesscss/shared (shared constants; private)"
+globs:
+  - "packages/_shared/**"
+---
+
+# `@jesscss/shared` (private)
+
+- **Role**: Shared constants between packages.
+- **Note**: Private and minimal; may not follow `lib/` exports convention.
+

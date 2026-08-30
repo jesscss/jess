@@ -1,0 +1,4 @@
+$tone: red;
+.entry {
+  color: $tone;
+}

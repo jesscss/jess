@@ -1,0 +1,111 @@
+/*
+ * Value substrate + fn-authoring compatibility barrel. Append-only.
+ *
+ * New function/plugin authoring examples should import this surface from the
+ * `@jesscss/core` root. This subpath remains the narrow value-domain barrel for
+ * compatibility and for consumers that intentionally want only value helpers.
+ * Nothing reachable from this barrel may import `@jesscss/fns` (grep-gated),
+ * keeping the dependency edge acyclic. Types are re-exported with `export type`
+ * so they are provably erased and never forge a runtime edge.
+ */
+
+// --- value-domain types (erased) ---
+export type {
+  ValueGroup,
+  Value,
+  Dimension,
+  Color,
+  Quoted,
+  Keyword,
+  Any,
+  UrlValue,
+  Bool,
+  Null,
+  List,
+  ListSeparator,
+  Block,
+  Collection,
+  CollectionEntry,
+  EvalModes,
+  PluginHost,
+  PluginCallCtx,
+  PluginVariableHit,
+  PluginRawArgument,
+  PluginDetachedRuleset,
+  PluginDetachedDeclaration
+} from './ast/value-eval.js';
+
+export { emitValue, isValueGroup, isValueGroupArray } from './ast/value-eval.js';
+
+// --- value constructors + accessors ---
+export {
+  makeDimension,
+  makeColorRgb,
+  makeColorHsl,
+  makeQuoted,
+  makeKeyword,
+  makeAny,
+  makeBool,
+  makeNull,
+  NULL,
+  NULL_LITERAL,
+  makeList,
+  makeBlock,
+  makeCollection,
+  numOf,
+  textOf,
+  colorHsl,
+  colorHslClamped,
+  colorRawRgb,
+  colorRgbRounded
+} from './ast/value-factory.js';
+
+// --- shared typed-list capabilities ---
+export {
+  groupItems,
+  groupSeparator,
+  listValueAt,
+  isBracketedList
+} from './ast/value-list.js';
+
+// --- value-domain map (Collection) accessors ---
+export { isCollection, collectionEntries, collectionEntryIndex, collectionKeyIndex } from './ast/value-collection.js';
+
+// --- value serializer ---
+export { HEX, RGB, HSL, serializeColor, hslToRgb } from './ast/color.js';
+export { serializeValue } from './ast/serialize-value.js';
+export { round } from './ast/round.js';
+
+// --- shared value COMPARISON primitive (§5.1) ---
+export { compareOrder } from './ast/value-guards.js';
+
+// --- unit table / conversion ---
+export { groupOf, unify, unitFactor } from './ast/value-units.js';
+
+// --- literal materialize / sniff ---
+export { parseHex, sniffLiteral, coerceNamedColorKeyword } from './ast/literal-tag.js';
+
+// --- color name table ---
+export { namedColor } from './ast/color-names.js';
+
+// --- fn-authoring types ---
+export type {
+  DefinedFunction,
+  Fn,
+  FnSpec,
+  ParamSpec,
+  FnCtx,
+  FnIo,
+  FnRecord,
+  PartialFnRecord,
+  FunctionArgs,
+  FunctionBodyArgs,
+  Kind,
+  LazyValue,
+  ParamInput,
+  ParamValue
+} from './ast/functions/types.js';
+
+// --- registry seam ---
+export { createFnRegistry, defineFunction } from './ast/value-dispatch.js';
+export type { FnRegistry } from './ast/value-dispatch.js';

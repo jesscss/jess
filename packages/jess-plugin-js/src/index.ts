@@ -1,0 +1,990 @@
+import {
+  type Plugin,
+  AbstractPlugin
+} from '@jesscss/core';
+import * as fs from 'node:fs';
+import * as net from 'node:net';
+import * as path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { decodeBridgeValue, encodeBridgeArgs, encodeBridgeValue } from './bridge.js';
+
+/**
+ * A failure raised BY a `@plugin` script (its own `throw`, or a shim member it
+ * cannot use), as distinct from a value the engine simply could not compute.
+ * The distinction is what lets the compiler report a plugin fault loudly and
+ * attributably instead of preserving the call verbatim.
+ */
+export class PluginFunctionError extends Error {
+  readonly functionName: string;
+  readonly pluginStack: string | undefined;
+  readonly originalName: string;
+
+  constructor(functionName: string, reason: string, pluginStack?: string, originalName = 'Error') {
+    super(`Less @plugin function "${functionName}" threw: ${reason}`);
+    this.name = 'PluginFunctionError';
+    this.functionName = functionName;
+    this.pluginStack = pluginStack;
+    this.originalName = originalName;
+  }
+}
+
+/**
+ * Child-process stdio streams are typed as bare `Writable`/`Readable`, which do
+ * not declare `unref`, but the underlying pipe sockets expose it at runtime.
+ * The optional structural member lets any stream be passed without an unsafe
+ * cast; the runtime `?.` guard covers streams that genuinely lack the method.
+ */
+const unrefStream = (stream: unknown): void => {
+  if (
+    typeof stream === 'object'
+    && stream !== null
+    && 'unref' in stream
+    && typeof stream.unref === 'function'
+  ) {
+    stream.unref();
+  }
+};
+
+export type JavaScriptSandboxConfig = {
+  allowHttp?: boolean;
+  allowNetHosts?: string[];
+  jsReadRoot?: string;
+};
+
+export interface JsPluginOptions extends JavaScriptSandboxConfig {
+  denoCommand?: string;
+
+  /**
+   * Runtime API exposed inside the Deno worker.
+   *
+   * Jess `@-use`/script imports run as plain ESM modules. Legacy Less
+   * `@plugin` loading can opt into the Less-compatible global shape.
+   */
+  runtimeApi?: 'module' | 'less';
+}
+
+const SCRIPT_EXTENSIONS = new Set([
+  '.js',
+  '.mjs',
+  '.cjs',
+  '.ts',
+  '.mts',
+  '.cts'
+]);
+
+const RUNTIME_MISSING_MESSAGE = [
+  'Deno runtime is required for @jesscss/plugin-js, but no usable Deno binary was found.',
+  'If using pnpm, approve build scripts for "deno" (pnpm approve-builds).',
+  'If using npm with ignored scripts, reinstall with lifecycle scripts enabled.',
+  'Or install native Deno and ensure "deno" is on PATH.'
+].join('\n');
+
+/**
+ * Absolute path to the Deno binary the `deno` npm dependency downloads at
+ * install time, or undefined when that package (or its binary) is absent.
+ *
+ * `@jesscss/plugin-js` declares `deno` as a dependency precisely so `@plugin`
+ * execution works without a native Deno install; resolving that binary here is
+ * what makes the dependency load-bearing rather than decorative. Relying on a
+ * bare `deno` on PATH masked this on machines with a system Deno while failing
+ * anywhere it is only installed via the dependency (CI, fresh clones). The
+ * binary sits next to the package's own `bin.cjs` shim, which execs the exact
+ * same path.
+ */
+const resolveBundledDenoPath = (): string | undefined => {
+  try {
+    const packageDir = path.dirname(createRequire(import.meta.url).resolve('deno/package.json'));
+    const binary = path.join(packageDir, process.platform === 'win32' ? 'deno.exe' : 'deno');
+    return fs.existsSync(binary) ? binary : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const BOOT_TIMEOUT_MS = 8000;
+const REQUEST_TIMEOUT_MS = 10_000;
+const IDLE_SHUTDOWN_MS = 5_000;
+
+/**
+ * Environment variables that inject a Node.js debugger/inspector bootloader
+ * into child processes (VS Code / Cursor "Auto Attach", `node --inspect`, etc.).
+ *
+ * These must never leak into the sandboxed Deno worker: the injected bootloader
+ * tries to read the environment, the Jess Deno sandbox denies `env` permission,
+ * and the worker never signals ready — producing a spurious
+ * "Timed out waiting for Deno worker startup" failure. Deno does not use any of
+ * these vars, so stripping them is safe.
+ */
+const DEBUG_ENV_KEY_RE = /^(NODE_OPTIONS|NODE_INSPECT|VSCODE_INSPECTOR_OPTIONS)/i;
+const DEBUG_ENV_VALUE_RE = /js-debug|bootloader/i;
+
+/**
+ * Returns a copy of `env` with Node debugger/inspector-attach variables removed,
+ * so a spawned Deno subprocess starts regardless of the parent's debug env.
+ * The Deno permission sandbox is untouched; this only stops leaking the debugger
+ * into it.
+ */
+export const sanitizeSpawnEnv = (env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv => {
+  const clean: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (DEBUG_ENV_KEY_RE.test(key)) {
+      continue;
+    }
+    if (typeof value === 'string' && DEBUG_ENV_VALUE_RE.test(value)) {
+      continue;
+    }
+    clean[key] = value;
+  }
+  return clean;
+};
+
+const isPathInside = (candidatePath: string, rootPath: string): boolean => {
+  const rel = path.relative(rootPath, candidatePath);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+};
+
+const canonicalPath = (p: string): string => {
+  try {
+    return fs.realpathSync.native(p);
+  } catch {
+    return p;
+  }
+};
+
+const normalizePermissionPath = (value: string | null): string | null => {
+  if (!value) {
+    return null;
+  }
+  if (value.startsWith('file://')) {
+    try {
+      return fileURLToPath(value);
+    } catch {
+      return value;
+    }
+  }
+  return value;
+};
+
+const isFnsPath = (importPath: string): boolean => {
+  const normalized = importPath.replace(/\\/g, '/');
+  const isFnsPackagePath = /(^|\/)(@jesscss\/fns|packages\/fns)(\/|$)/.test(normalized);
+  return (
+    normalized === '@jesscss/fns'
+    || normalized.startsWith('@jesscss/fns/')
+    || normalized === '#less'
+    || normalized.startsWith('#less/')
+    || normalized === '#sass'
+    || normalized.startsWith('#sass/')
+    || isFnsPackagePath
+  );
+};
+
+/** `EAGAIN` on a non-blocking FIFO means "no reply yet", not a failure. */
+const isRetryableRead = (error: unknown): boolean =>
+  typeof error === 'object'
+  && error !== null
+  && 'code' in error
+  && error.code === 'EAGAIN';
+
+const isJsonValue = (value: unknown) => {
+  try {
+    JSON.stringify(value);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+type BrokerRequest = {
+  v: number;
+  pid: number;
+  id: number;
+  datetime: string;
+  permission: 'read' | 'write' | 'net' | 'env' | 'run' | 'ffi' | 'sys' | string;
+  value: string | null;
+};
+
+type BrokerResponse = {
+  id: number;
+  result: 'allow' | 'deny';
+  reason?: string;
+};
+
+/**
+ * One scope/built-in fact resolved on the HOST and handed to the sandbox so a
+ * synchronous Less-4 plugin body can read it. See {@link PluginCallCapabilities}.
+ */
+export type PluginCallFacts = {
+  vars: Record<string, { value: unknown; important?: boolean } | null>;
+  calls: Record<string, unknown>;
+  fileInfo: { filename: string; entryPath: string } | null;
+};
+
+type PluginFactNeed =
+  | { kind: 'variable'; name: string }
+  | { kind: 'call'; name: string; args: unknown[]; key: string };
+
+export type PluginLogRecord = { level: 'warn' | 'error' | 'info' | 'debug'; message: string };
+
+/**
+ * The compiler-side capabilities a legacy `@plugin` function body needs. The
+ * dialect adapter supplies these bound to the LIVE evaluation frame of the call
+ * site; the sandbox reaches them only through the resolve-and-replay protocol,
+ * never as a live object.
+ */
+export interface PluginCallCapabilities {
+  /** Resolve `@name` at the call site. `null` means "no such variable". */
+  lookupVariable?(name: string): { value: unknown; important?: boolean } | null;
+
+  /** Evaluate a built-in function (`less.functions.functionRegistry.get(...)`). */
+  callFunction?(name: string, args: unknown[]): unknown;
+
+  /** The file/entry pair a plugin reads through `this.currentFileInfo`. */
+  currentFileInfo?: { filename: string; entryPath: string };
+
+  /** Records a diagnostic emitted by the plugin through `less.logger`. */
+  log?(record: PluginLogRecord): void;
+
+  /** Propagates `!important` picked up while resolving a variable. */
+  markImportant?(): void;
+}
+
+/** A `@plugin` function bound to the live call-site capabilities. */
+export type ContextualPluginFunction = (
+  args?: readonly unknown[] | unknown,
+  capabilities?: PluginCallCapabilities
+) => unknown | Promise<unknown>;
+
+/**
+ * Ceiling on resolve-and-replay rounds for a single call. Each round satisfies
+ * exactly one fact, so this also bounds a pathological plugin that asks for an
+ * unbounded number of distinct variables.
+ */
+const MAX_FACT_ROUNDS = 64;
+const EMPTY_PLUGIN_CALL_CAPABILITIES: PluginCallCapabilities = {};
+
+function normalizePluginCallArgs(args: readonly unknown[] | unknown): readonly unknown[] {
+  if (args === undefined) {
+    return [];
+  }
+  return Array.isArray(args) ? args : [args];
+}
+
+type RpcRequest =
+  | { id: number; type: 'load'; modulePath: string }
+  | { id: number; type: 'invoke'; modulePath: string; exportName: string; args: unknown[] }
+  | { id: number; type: 'loadLessPlugin'; modulePath: string; options: string | null }
+  | {
+    id: number;
+    type: 'invokeLessPluginFunction';
+    modulePath: string;
+    options: string | null;
+    functionName: string;
+    args: unknown[];
+    facts: PluginCallFacts;
+  };
+
+type RpcResult =
+  | {
+    id: number;
+    ok: true;
+    exports?: Array<{ name: string; kind: 'function' | 'value'; value?: unknown }>;
+    functions?: string[];
+    value?: unknown;
+    logs?: PluginLogRecord[];
+    important?: boolean;
+  }
+  | {
+    id: number;
+    ok: false;
+
+    /** Present when the sandbox paused for one unresolved scope/built-in fact. */
+    need?: PluginFactNeed;
+    error?: string;
+    errorName?: string;
+    stack?: string;
+    logs?: PluginLogRecord[];
+  };
+
+type RuntimeState =
+  | { status: 'idle' }
+  | { status: 'initializing'; promise: Promise<void> }
+  | { status: 'ready' }
+  | { status: 'failed'; error: Error }
+  | { status: 'disposed' };
+
+export class JsPlugin extends AbstractPlugin {
+  private static cleanupRegistered = false;
+  private static liveInstances = new Set<JsPlugin>();
+  name = 'js';
+  supportedExtensions = Array.from(SCRIPT_EXTENSIONS);
+  private runtimeState: RuntimeState = { status: 'idle' };
+  private shuttingDown = false;
+  private brokerServer: net.Server | undefined;
+  private brokerSocketPath: string | undefined;
+  private worker: ChildProcessWithoutNullStreams | undefined;
+  private workerBuffer = '';
+  private nextRequestId = 1;
+  private pending = new Map<number, {
+    resolve: (value: RpcResult) => void;
+    reject: (error: Error) => void;
+    timeout: NodeJS.Timeout;
+  }>();
+
+  private idleTimer: NodeJS.Timeout | undefined;
+  private denoCommand: string | undefined;
+
+  /**
+   * Variable names each legacy plugin function has been observed to read,
+   * keyed by module+options+function. Prefetching them turns the steady-state
+   * call into a single round trip instead of one round trip per read.
+   */
+  private readonly factMemo = new Map<string, Set<string>>();
+
+  constructor(public opts: JsPluginOptions = {}) {
+    super();
+    JsPlugin.liveInstances.add(this);
+    JsPlugin.registerProcessCleanup();
+  }
+
+  prewarm() {
+    return this.ensureRuntime().catch(() => undefined);
+  }
+
+  private static registerProcessCleanup() {
+    if (JsPlugin.cleanupRegistered) {
+      return;
+    }
+    JsPlugin.cleanupRegistered = true;
+    const cleanup = () => {
+      for (const instance of JsPlugin.liveInstances) {
+        try {
+          instance.dispose();
+        } catch {
+          // ignore
+        }
+      }
+    };
+    process.once('beforeExit', cleanup);
+    process.once('exit', cleanup);
+  }
+
+  private clearIdleTimer() {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = undefined;
+    }
+  }
+
+  private scheduleIdleShutdown() {
+    this.clearIdleTimer();
+    if (this.pending.size > 0 || this.runtimeState.status !== 'ready') {
+      return;
+    }
+    this.idleTimer = setTimeout(() => {
+      this.shutdown();
+      this.runtimeState = { status: 'idle' };
+    }, IDLE_SHUTDOWN_MS);
+    this.idleTimer.unref?.();
+  }
+
+  /**
+   * The Deno executable this instance spawns, resolved once. An explicit
+   * `denoCommand` option wins; otherwise a Deno on PATH is preferred (the usual
+   * developer setup) and the binary shipped by the bundled `deno` dependency is
+   * the fallback (CI and any install without a native Deno). Throws the
+   * actionable RUNTIME_MISSING guidance when nothing runs.
+   */
+  private resolveDenoCommand(): string {
+    if (this.denoCommand !== undefined) {
+      return this.denoCommand;
+    }
+    const runs = (command: string): boolean =>
+      spawnSync(command, ['--version'], {
+        stdio: 'ignore',
+        env: sanitizeSpawnEnv(process.env)
+      }).status === 0;
+
+    const explicit = this.opts.denoCommand;
+    if (explicit !== undefined) {
+      if (!runs(explicit)) {
+        throw new Error(RUNTIME_MISSING_MESSAGE);
+      }
+      return (this.denoCommand = explicit);
+    }
+    if (runs('deno')) {
+      return (this.denoCommand = 'deno');
+    }
+    const bundled = resolveBundledDenoPath();
+    if (bundled && runs(bundled)) {
+      return (this.denoCommand = bundled);
+    }
+    throw new Error(RUNTIME_MISSING_MESSAGE);
+  }
+
+  private ensureRuntime(): Promise<void> {
+    if (this.runtimeState.status === 'ready') {
+      this.clearIdleTimer();
+      return Promise.resolve();
+    }
+    if (this.runtimeState.status === 'initializing') {
+      return this.runtimeState.promise;
+    }
+    if (this.runtimeState.status === 'failed') {
+      return Promise.reject(this.runtimeState.error);
+    }
+    if (this.runtimeState.status === 'disposed') {
+      return Promise.reject(new Error('Deno worker has been disposed.'));
+    }
+    const promise = this.startRuntime().then(
+      () => {
+        this.runtimeState = { status: 'ready' };
+        this.scheduleIdleShutdown();
+      },
+      (err: Error) => {
+        this.runtimeState = { status: 'failed', error: err };
+        throw err;
+      }
+    );
+    this.runtimeState = { status: 'initializing', promise };
+    return promise;
+  }
+
+  private createBrokerPath() {
+    if (process.platform === 'win32') {
+      const rand = `${process.pid}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+      return `\\\\.\\pipe\\jess-deno-broker-${rand}`;
+    }
+
+    // macOS temp dir paths can exceed unix socket limits. Keep this short.
+    const rand = Math.floor(Math.random() * 10000);
+    return `/tmp/jd-${process.pid}-${Date.now()}-${rand}.sock`;
+  }
+
+  private isReadAllowed(value: string | null): boolean {
+    const normalized = normalizePermissionPath(value);
+    if (!normalized) {
+      return false;
+    }
+    const requestedPath = canonicalPath(path.resolve(normalized));
+    const jsReadRoot = this.opts.jsReadRoot ? canonicalPath(path.resolve(this.opts.jsReadRoot)) : undefined;
+    if (jsReadRoot && isPathInside(requestedPath, jsReadRoot)) {
+      return true;
+    }
+    return requestedPath.includes(`${path.sep}node_modules${path.sep}`);
+  }
+
+  private isNetAllowed(value: string | null): boolean {
+    if (!this.opts.allowHttp) {
+      return false;
+    }
+    const allowHosts = this.opts.allowNetHosts ?? [];
+    if (allowHosts.length === 0) {
+      return true;
+    }
+    if (!value) {
+      return false;
+    }
+    const host = value.split(':')[0] ?? value;
+    return allowHosts.includes(host);
+  }
+
+  private handleBrokerRequest(request: BrokerRequest): BrokerResponse {
+    const deny = (reason: string): BrokerResponse => ({
+      id: request.id,
+      result: 'deny',
+      reason
+    });
+    switch (request.permission) {
+      case 'read':
+        return this.isReadAllowed(request.value)
+          ? { id: request.id, result: 'allow' }
+          : deny('Read access denied by Jess policy.');
+      case 'net':
+        return this.isNetAllowed(request.value)
+          ? { id: request.id, result: 'allow' }
+          : deny('Network access denied by Jess policy.');
+      case 'env':
+      case 'run':
+      case 'ffi':
+      case 'sys':
+      case 'write':
+        return deny(`${request.permission} permission denied by Jess policy.`);
+      default:
+        return deny(`Permission "${request.permission}" denied by Jess policy.`);
+    }
+  }
+
+  private async startBroker(): Promise<string> {
+    const socketPath = this.createBrokerPath();
+    if (process.platform !== 'win32' && fs.existsSync(socketPath)) {
+      fs.unlinkSync(socketPath);
+    }
+    const server = net.createServer((socket) => {
+      socket.unref();
+      let buf = '';
+      socket.setEncoding('utf8');
+      socket.on('data', (chunk) => {
+        buf += chunk;
+        let idx = buf.indexOf('\n');
+        while (idx >= 0) {
+          const line = buf.slice(0, idx).trim();
+          buf = buf.slice(idx + 1);
+          idx = buf.indexOf('\n');
+          if (!line) {
+            continue;
+          }
+          let req: BrokerRequest | undefined;
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- JSON.parse returns any; validated by field access below
+            req = JSON.parse(line) as BrokerRequest;
+          } catch {
+            socket.write(JSON.stringify({
+              id: -1,
+              result: 'deny',
+              reason: 'Malformed permission request.'
+            }) + '\n');
+            continue;
+          }
+          const response = this.handleBrokerRequest(req);
+          socket.write(`${JSON.stringify(response)}\n`);
+        }
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(socketPath, () => resolve());
+    });
+    server.unref();
+    this.brokerServer = server;
+    this.brokerSocketPath = socketPath;
+    return socketPath;
+  }
+
+  private startWorker(socketPath: string): Promise<void> {
+    const denoCommand = this.resolveDenoCommand();
+    const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+    const compiledWorkerPath = path.join(moduleDir, 'runtime-worker.js');
+    const sourceWorkerPath = path.join(moduleDir, 'runtime-worker.ts');
+    const workerScriptPath = fs.existsSync(compiledWorkerPath)
+      ? compiledWorkerPath
+      : sourceWorkerPath;
+    const runtimeApi = this.opts.runtimeApi ?? 'module';
+    const child = spawn(
+      denoCommand,
+      ['run', '--no-prompt', workerScriptPath, `--runtime-api=${runtimeApi}`],
+      {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: {
+          ...sanitizeSpawnEnv(process.env),
+          DENO_PERMISSION_BROKER_PATH: socketPath
+        }
+      }
+    );
+    this.worker = child;
+    child.unref();
+    unrefStream(child.stdin);
+    unrefStream(child.stdout);
+    unrefStream(child.stderr);
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', chunk => this.onWorkerStdout(chunk));
+    child.on('exit', () => {
+      this.worker = undefined;
+      if (this.shuttingDown) {
+        this.shuttingDown = false;
+        return;
+      }
+      const err = new Error('Deno worker exited unexpectedly.');
+      this.rejectAllPending(err);
+      if (this.runtimeState.status !== 'failed') {
+        this.runtimeState = { status: 'failed', error: err };
+      }
+    });
+    return new Promise<void>((resolve, reject) => {
+      let stderrText = '';
+      const timer = setTimeout(() => {
+        reject(new Error(stderrText.trim()
+          ? `Timed out waiting for Deno worker startup.\n${stderrText.trim()}`
+          : 'Timed out waiting for Deno worker startup.'));
+      }, BOOT_TIMEOUT_MS);
+      const onStderr = (chunk: string) => {
+        stderrText += chunk;
+      };
+      const onData = (chunk: string) => {
+        this.workerBuffer += chunk;
+        let idx = this.workerBuffer.indexOf('\n');
+        while (idx >= 0) {
+          const line = this.workerBuffer.slice(0, idx).trim();
+          this.workerBuffer = this.workerBuffer.slice(idx + 1);
+          idx = this.workerBuffer.indexOf('\n');
+          if (!line) {
+            continue;
+          }
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- JSON.parse returns any; validated by field check below
+            const parsed = JSON.parse(line) as { type?: string };
+            if (parsed.type === 'ready') {
+              clearTimeout(timer);
+              child.stdout.off('data', onData);
+              child.stderr.off('data', onStderr);
+              resolve();
+              return;
+            }
+          } catch {
+            // ignore until ready payload appears
+          }
+        }
+      };
+      child.stdout.on('data', onData);
+      child.stderr.on('data', onStderr);
+      child.once('error', (err) => {
+        clearTimeout(timer);
+        child.stdout.off('data', onData);
+        child.stderr.off('data', onStderr);
+        reject(err);
+      });
+    });
+  }
+
+  private async startRuntime(): Promise<void> {
+    this.resolveDenoCommand();
+    const socketPath = await this.startBroker();
+    try {
+      await this.startWorker(socketPath);
+    } catch (err: any) {
+      this.shutdown();
+      throw err instanceof Error ? err : new Error(String(err));
+    }
+  }
+
+  private onWorkerStdout(chunk: string) {
+    this.workerBuffer += chunk;
+    let idx = this.workerBuffer.indexOf('\n');
+    while (idx >= 0) {
+      const line = this.workerBuffer.slice(0, idx).trim();
+      this.workerBuffer = this.workerBuffer.slice(idx + 1);
+      idx = this.workerBuffer.indexOf('\n');
+      if (!line) {
+        continue;
+      }
+      let parsed: RpcResult | undefined;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- JSON.parse returns any; validated by field checks below
+        parsed = JSON.parse(line) as RpcResult;
+      } catch {
+        continue;
+      }
+      if (!parsed || typeof parsed.id !== 'number') {
+        continue;
+      }
+      const pending = this.pending.get(parsed.id);
+      if (!pending) {
+        continue;
+      }
+      this.pending.delete(parsed.id);
+      clearTimeout(pending.timeout);
+      pending.resolve(parsed);
+      if (this.pending.size === 0) {
+        this.scheduleIdleShutdown();
+      }
+    }
+  }
+
+  private rejectAllPending(err: Error) {
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.timeout);
+      pending.reject(err);
+    }
+    this.pending.clear();
+  }
+
+  private async callWorker(request:
+    | { type: 'load'; modulePath: string }
+    | { type: 'invoke'; modulePath: string; exportName: string; args: unknown[] }
+    | { type: 'loadLessPlugin'; modulePath: string; options: string | null }
+    | {
+      type: 'invokeLessPluginFunction';
+      modulePath: string;
+      options: string | null;
+      functionName: string;
+      args: unknown[];
+      facts: PluginCallFacts;
+    }): Promise<RpcResult> {
+    await this.ensureRuntime();
+    this.clearIdleTimer();
+    if (!this.worker?.stdin.writable) {
+      throw new Error('Deno worker is not available.');
+    }
+    const id = this.nextRequestId++;
+    const payload: RpcRequest = { ...request, id };
+    return await new Promise<RpcResult>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error('Timed out waiting for Deno worker response.'));
+      }, REQUEST_TIMEOUT_MS);
+      this.pending.set(id, { resolve, reject, timeout });
+      this.worker!.stdin.write(`${JSON.stringify(payload)}\n`);
+    });
+  }
+
+  private shutdown() {
+    this.clearIdleTimer();
+    if (this.worker && !this.worker.killed) {
+      this.shuttingDown = true;
+      this.worker.stdin.destroy();
+      this.worker.stdout.destroy();
+      this.worker.stderr.destroy();
+      this.worker.kill();
+    }
+    this.worker = undefined;
+    if (this.brokerServer) {
+      this.brokerServer.close();
+      this.brokerServer = undefined;
+    }
+    if (this.brokerSocketPath && process.platform !== 'win32') {
+      try {
+        if (fs.existsSync(this.brokerSocketPath)) {
+          fs.unlinkSync(this.brokerSocketPath);
+        }
+      } catch {
+        // ignore
+      }
+    }
+    this.brokerSocketPath = undefined;
+  }
+
+  dispose() {
+    this.shutdown();
+    JsPlugin.liveInstances.delete(this);
+    this.runtimeState = { status: 'disposed' };
+  }
+
+  private assertAllowedPath(absoluteFilePath: string) {
+    const resolvedPath = path.resolve(absoluteFilePath);
+    const jsReadRoot = this.opts.jsReadRoot ? path.resolve(this.opts.jsReadRoot) : undefined;
+    if (!jsReadRoot) {
+      return;
+    }
+    if (isPathInside(resolvedPath, jsReadRoot)) {
+      return;
+    }
+
+    // pnpm layouts may resolve package files outside project root.
+    if (resolvedPath.includes(`${path.sep}node_modules${path.sep}`)) {
+      return;
+    }
+    throw new Error(`Script path "${resolvedPath}" is outside jsReadRoot "${jsReadRoot}"`);
+  }
+
+  async import(absoluteFilePath: string): Promise<Record<string, any>> {
+    const ext = path.extname(absoluteFilePath);
+    if (!SCRIPT_EXTENSIONS.has(ext)) {
+      throw new Error(`Plugin "${this.name}" cannot import "${absoluteFilePath}"`);
+    }
+    if (!isFnsPath(absoluteFilePath)) {
+      this.assertAllowedPath(absoluteFilePath);
+      await this.ensureRuntime();
+      const modulePath = path.resolve(absoluteFilePath);
+      const loadResult = await this.callWorker({ type: 'load', modulePath });
+      if (!loadResult.ok) {
+        throw new Error(loadResult.error);
+      }
+      const moduleObject: Record<string, any> = {};
+      const exported = loadResult.exports ?? [];
+      for (const item of exported) {
+        if (item.kind === 'function') {
+          moduleObject[item.name] = async (...args: unknown[]) => {
+            const invokeResult = await this.callWorker({
+              type: 'invoke',
+              modulePath,
+              exportName: item.name,
+              args: encodeBridgeArgs(args)
+            });
+            if (!invokeResult.ok) {
+              throw new Error(invokeResult.error);
+            }
+            return decodeBridgeValue(invokeResult.value);
+          };
+        } else {
+          moduleObject[item.name] = item.value;
+        }
+      }
+      return moduleObject;
+    }
+    const modulePath = pathToFileURL(path.resolve(absoluteFilePath)).href;
+    const module = await import(modulePath);
+    const safeModule: Record<string, any> = {};
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- dynamic import returns any; entries are validated below
+    for (const [key, value] of Object.entries(module as Record<string, unknown>)) {
+      if (typeof value === 'function' || isJsonValue(value)) {
+        safeModule[key] = value;
+      }
+    }
+    return safeModule;
+  }
+
+  /**
+   * Loads a legacy Less `@plugin` wrapper file in Deno Less-compat mode.
+   *
+   * @deprecated Less `@plugin` is deprecated. Prefer `@-from` for
+   * ESM-style script imports or `@-use` for Sass-module-style namespace imports.
+   */
+  async importLessPlugin(absoluteFilePath: string, options: string | null = null): Promise<{ functions: Record<string, ContextualPluginFunction> }> {
+    const ext = path.extname(absoluteFilePath);
+    if (!SCRIPT_EXTENSIONS.has(ext)) {
+      throw new Error(`Plugin "${this.name}" cannot import Less plugin "${absoluteFilePath}"`);
+    }
+    this.assertAllowedPath(absoluteFilePath);
+    await this.ensureRuntime();
+    const modulePath = path.resolve(absoluteFilePath);
+    const loadResult = await this.callWorker({ type: 'loadLessPlugin', modulePath, options });
+    if (!loadResult.ok) {
+      throw new PluginFunctionError(path.basename(modulePath), loadResult.error ?? 'an unknown sandbox failure', loadResult.stack);
+    }
+    const functions: Record<string, ContextualPluginFunction> = {};
+    for (const functionName of loadResult.functions ?? []) {
+      functions[functionName] = (args, capabilities) =>
+        this.invokePluginFunction(
+          modulePath,
+          options,
+          functionName,
+          normalizePluginCallArgs(args),
+          capabilities ?? EMPTY_PLUGIN_CALL_CAPABILITIES
+        );
+    }
+    return { functions };
+  }
+
+  /**
+   * Runs one legacy `@plugin` function, resolving the scope/built-in facts its
+   * body reads. The sandbox reports one unmet fact at a time; the host answers
+   * it from the LIVE call-site capabilities and replays. The names a function
+   * asked for are remembered per function, so steady-state calls ship the facts
+   * up front and complete in a single round trip.
+   */
+  private invokePluginFunction(
+    modulePath: string,
+    options: string | null,
+    functionName: string,
+    args: readonly unknown[],
+    capabilities: PluginCallCapabilities
+  ): Promise<unknown> {
+    const memoKey = `${modulePath} ${options ?? ''} ${functionName}`;
+    const known = this.factMemo.get(memoKey) ?? new Set<string>();
+    const facts: PluginCallFacts = {
+      vars: {},
+      calls: {},
+      fileInfo: capabilities.currentFileInfo ?? null
+    };
+    for (const name of known) {
+      facts.vars[name] = this.resolveVariableFact(name, capabilities);
+    }
+    const request = {
+      type: 'invokeLessPluginFunction' as const,
+      modulePath,
+      options,
+      functionName,
+      args: encodeBridgeArgs([...args]),
+      facts
+    };
+
+    /**
+     * Folds one reply. Returns the decoded value, or `undefined` to signal that
+     * `facts` has been extended and the call must be replayed.
+     */
+    const settle = (result: RpcResult): { value: unknown } | undefined => {
+      for (const record of result.logs ?? []) {
+        capabilities.log?.(record);
+      }
+      if (result.ok) {
+        if (result.important) {
+          capabilities.markImportant?.();
+        }
+        return { value: decodeBridgeValue(result.value) };
+      }
+      if (!result.need) {
+        throw new PluginFunctionError(
+          functionName,
+          result.error ?? 'an unknown sandbox failure',
+          result.stack,
+          result.errorName
+        );
+      }
+      if (result.need.kind === 'variable') {
+        const name = result.need.name;
+        facts.vars[name] = this.resolveVariableFact(name, capabilities);
+        known.add(name);
+        this.factMemo.set(memoKey, known);
+        return undefined;
+      }
+      facts.calls[result.need.key] = this.resolveCallFact(result.need, capabilities);
+      return undefined;
+    };
+
+    const exhausted = () => new PluginFunctionError(
+      functionName,
+      `resolving its scope reads did not settle after ${MAX_FACT_ROUNDS} rounds.`
+    );
+
+    /*
+     * A `@plugin` result is an ORDINARY awaitable value. It used to travel over a
+     * blocking channel so it never reached the engine as a promise; that channel
+     * is gone, so plugin calls exercise the same lane every other async value does.
+     */
+    const replay = async (): Promise<unknown> => {
+      for (let round = 0; round <= MAX_FACT_ROUNDS; round++) {
+        const settled = settle(await this.callWorker(request));
+        if (settled) {
+          return settled.value;
+        }
+      }
+      throw exhausted();
+    };
+    return replay();
+  }
+
+  private resolveVariableFact(
+    name: string,
+    capabilities: PluginCallCapabilities
+  ): { value: unknown; important?: boolean } | null {
+    const hit = capabilities.lookupVariable?.(name);
+    if (!hit) {
+      return null;
+    }
+    return { value: encodeBridgeValue(hit.value), important: hit.important === true };
+  }
+
+  private resolveCallFact(
+    need: { name: string; args: unknown[] },
+    capabilities: PluginCallCapabilities
+  ): unknown {
+    const decoded = need.args.map(decodeBridgeValue);
+    const answer = capabilities.callFunction?.(need.name, decoded);
+    return answer === undefined ? null : encodeBridgeValue(answer);
+  }
+
+  /** Context-facing executable-plugin capability used by the direct AST path. */
+  async importPlugin(absoluteFilePath: string, options: string | null = null): Promise<{ functions: Record<string, ContextualPluginFunction> }> {
+    return this.importLessPlugin(absoluteFilePath, options);
+  }
+}
+
+/**
+ * Global flag set when @jesscss/plugin-js is loaded.
+ * less-compat checks this before running @plugin scripts (scripts must be run when plugin-js/Deno is present).
+ */
+export const JESS_PLUGIN_JS_GLOBAL = '__JESS_PLUGIN_JS_AVAILABLE__';
+
+declare let globalThis: { [k: string]: unknown };
+if (typeof globalThis !== 'undefined') {
+  globalThis[JESS_PLUGIN_JS_GLOBAL] = true;
+}
+
+const jsPlugin = ((opts?: JsPluginOptions) => {
+  return new JsPlugin(opts);
+}) satisfies Plugin;
+
+export default jsPlugin;

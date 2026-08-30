@@ -1,0 +1,1384 @@
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+import {
+  boundaryChangedPaths,
+  classifyChangedHunkSurface,
+  classifyProductionSurface,
+  extractCostAuditRecords,
+  grammarSourceReferences,
+  isProductionHotPathFile,
+  isDocumentSourcePlumbingHunk,
+  isStrictRuntimeSurface,
+  isExactParserRuntimeDebtDeletion,
+  publicArtifactReferences,
+  productionChangedPaths,
+  proveStagedQualityOnlyFix,
+  qualityOnlyStagedPaths,
+  reproduceApprovedQualityFixes,
+  runtimeChangedPaths,
+  scopedChangedPaths,
+  selfProsecutionPlaceholders,
+  validateCostAuditRecords,
+  validateBoundaryEvidence,
+  validateCostContractRegistry,
+  validateChangedContractSurface
+} from '../verify-aggressive-cutting-review.mjs';
+
+describe('proven staged quality-only review', () => {
+  const sourceFile = 'packages/core/src/ast/extend/ir.ts';
+  const lintBefore = `export function sample(value) {\n  if (value) return [value,];\n  const pick = (item) => item;  \n  return pick(value);\n}\n`;
+  const lintAfter = `export function sample(value) {\n  if (value) {\n    return [value];\n  }\n  const pick = item => item;\n  return pick(value);\n}\n`;
+
+  it('accepts only modified lintable files under reviewed source roots', () => {
+    expect(qualityOnlyStagedPaths(
+      [
+        { status: 'M', paths: [sourceFile] },
+        { status: 'M', paths: ['packages/syntax/less/less-parser/src/ast/grammar.ts'] }
+      ],
+      [],
+      []
+    )).toEqual([sourceFile, 'packages/syntax/less/less-parser/src/ast/grammar.ts']);
+
+    for (const entry of [
+      { status: 'A', paths: [sourceFile] },
+      { status: 'D', paths: [sourceFile] },
+      { status: 'R100', paths: [sourceFile, 'packages/core/src/ast/extend/plan.ts'] }
+    ]) {
+      expect(qualityOnlyStagedPaths([entry], [], [])).toBeUndefined();
+    }
+    expect(qualityOnlyStagedPaths(
+      [{ status: 'M', paths: [sourceFile] }],
+      [sourceFile],
+      []
+    )).toBeUndefined();
+    expect(qualityOnlyStagedPaths(
+      [{ status: 'M', paths: [sourceFile] }],
+      [],
+      ['eslint.config.mjs']
+    )).toBeUndefined();
+    expect(qualityOnlyStagedPaths(
+      [{ status: 'M', paths: [sourceFile] }, { status: 'M', paths: ['docs/note.md'] }],
+      [],
+      []
+    )).toBeUndefined();
+  });
+
+  it('proves the approved seven-rule formatting cascade through real ESLint output', async () => {
+    await expect(proveStagedQualityOnlyFix('staged', { unstaged: [] }, {
+      entries: [{ status: 'M', paths: [sourceFile] }],
+      dirtyPaths: [],
+      readBefore: () => lintBefore,
+      readTarget: () => lintAfter
+    })).resolves.toBe(true);
+  });
+
+  it('rejects semantic, manual, and disallowed-fixer changes', async () => {
+    const common = {
+      entries: [{ status: 'M', paths: [sourceFile] }],
+      dirtyPaths: [],
+      readBefore: () => lintBefore
+    };
+    await expect(proveStagedQualityOnlyFix('staged', { unstaged: [] }, {
+      ...common,
+      readTarget: () => lintAfter.replace('return pick(value);', 'return pick(value) !== value;')
+    })).resolves.toBe(false);
+    await expect(proveStagedQualityOnlyFix('staged', { unstaged: [] }, {
+      ...common,
+      readTarget: () => lintAfter.replace('const pick = item => item;', 'const pick = (item) => item;')
+    })).resolves.toBe(false);
+
+    const optionalBefore = 'export const read = value => value && value.name;\n';
+    await expect(proveStagedQualityOnlyFix('staged', { unstaged: [] }, {
+      ...common,
+      readBefore: () => optionalBefore,
+      readTarget: () => 'export const read = value => value?.name;\n'
+    })).resolves.toBe(false);
+  });
+
+  it('rejects fatal or remaining lint errors even when bytes match', async () => {
+    await expect(reproduceApprovedQualityFixes(
+      [sourceFile],
+      () => lintBefore,
+      () => lintAfter,
+      async () => ({
+        output: lintAfter,
+        fatalErrorCount: 1,
+        errorCount: 1,
+        warningCount: 0
+      })
+    )).resolves.toBe(false);
+  });
+
+  it('permits non-blocking warnings when approved fixes reproduce the exact bytes', async () => {
+    await expect(reproduceApprovedQualityFixes(
+      [sourceFile],
+      () => lintBefore,
+      () => lintAfter,
+      async () => ({
+        output: lintAfter,
+        fatalErrorCount: 0,
+        errorCount: 0,
+        warningCount: 2
+      })
+    )).resolves.toBe(true);
+  });
+});
+
+describe('aggressive-cutting review scope', () => {
+  const snapshots = {
+    branch: ['packages/syntax/less/less-parser/src/grammar.ts'],
+    unstaged: ['packages/core/src/tree/rules.ts'],
+    staged: ['scripts/__tests__/verify-aggressive-cutting-review.test.ts'],
+    untracked: ['packages/core/src/ast/__tests__/scratch.test.ts']
+  };
+
+  it('reviews only the staged file set for a pre-commit invocation', () => {
+    expect(scopedChangedPaths('staged', snapshots)).toEqual([
+      'scripts/__tests__/verify-aggressive-cutting-review.test.ts'
+    ]);
+  });
+
+  it('keeps working review patch-local and excludes committed branch inventory', () => {
+    expect(scopedChangedPaths('working', snapshots)).toEqual([
+      'packages/core/src/tree/rules.ts',
+      'scripts/__tests__/verify-aggressive-cutting-review.test.ts',
+      'packages/core/src/ast/__tests__/scratch.test.ts'
+    ]);
+  });
+
+  it('does not prosecute an aggregate branch diff during an alpha release snapshot', () => {
+    expect(scopedChangedPaths('release', snapshots)).toEqual([]);
+  });
+
+  it('reviews the committed branch delta at pre-push rather than only dirty files', () => {
+    expect(scopedChangedPaths('committed', snapshots)).toEqual([
+      'packages/syntax/less/less-parser/src/grammar.ts'
+    ]);
+  });
+
+  it('does not classify test fixtures as production hot-path files', () => {
+    expect(isProductionHotPathFile('packages/core/src/ast/__tests__/factory.test.ts')).toBe(false);
+    expect(isProductionHotPathFile('packages/core/src/ast/fixtures/large.less')).toBe(false);
+    expect(isProductionHotPathFile('packages/core/src/ast/serialize.ts')).toBe(true);
+    expect(isProductionHotPathFile('packages/syntax/less/less-parser/src/grammar.ts')).toBe(true);
+  });
+
+  it('keeps test-only object-literal diffs out of the danger-token scan input', () => {
+    expect(productionChangedPaths([
+      'packages/core/src/ast/__tests__/factory-shapes.test.ts',
+      'packages/core/src/ast/serialize.ts',
+      'packages/syntax/css/css-parser/src/fixtures/recovery.test.ts'
+    ])).toEqual(['packages/core/src/ast/serialize.ts']);
+  });
+
+  it('keeps the aggregate production inventory while restricting strict contracts to engine surfaces', () => {
+    const paths = [
+      'packages/core/src/ast/serialize.ts',
+      'packages/core/src/ast/nodes.ts',
+      'packages/syntax/less/less-parser/src/ast/grammar.ts',
+      'packages/jess/src/index.ts'
+    ];
+    expect(productionChangedPaths(paths)).toEqual(paths);
+    expect(runtimeChangedPaths(paths)).toEqual(['packages/core/src/ast/serialize.ts']);
+    expect(boundaryChangedPaths(paths)).toEqual([
+      'packages/core/src/ast/nodes.ts',
+      'packages/syntax/less/less-parser/src/ast/grammar.ts',
+      'packages/jess/src/index.ts'
+    ]);
+    expect(classifyProductionSurface('packages/core/src/ast/serialize.ts')).toBe('runtime-engine');
+    expect(classifyProductionSurface('packages/core/src/ast/nodes.ts')).toBe('public-plumbing');
+    expect(classifyProductionSurface('packages/syntax/less/less-parser/src/ast/grammar.ts')).toBe('frontend');
+    expect(isStrictRuntimeSurface('packages/core/src/ast/serialize.ts')).toBe(true);
+    expect(isStrictRuntimeSurface('packages/syntax/less/less-parser/src/ast/grammar.ts')).toBe(false);
+  });
+
+  it('requires behavior, build, and boundary evidence for non-runtime source changes', () => {
+    const paths = ['packages/syntax/css/css-parser/src/ast/grammar.ts'];
+    expect(validateBoundaryEvidence('- Behavior evidence: focused grammar fixture parse proves typed AST construction.\n- Build evidence: parser package build completed successfully.\n- Boundary evidence: public parse() route and parser-runtime-boundary verifier both passed.', paths)).toEqual([]);
+    expect(validateBoundaryEvidence('- Behavior evidence: yes', paths)).toHaveLength(3);
+  });
+
+  it('treats only the named DocumentContext source-carrier hunks as public plumbing', () => {
+    const hunk = {
+      file: 'packages/core/src/context.ts',
+      text: [
+        '@@ -1,2 +1,3 @@',
+        '-  private _treeContext!: TreeContext;',
+        '+  private _treeContext: TreeContext | undefined;',
+        '+  private _documentContext: DocumentContext | undefined;'
+      ].join('\n')
+    };
+    expect(isDocumentSourcePlumbingHunk(hunk)).toBe(true);
+    expect(classifyChangedHunkSurface(hunk)).toBe('public-plumbing');
+  });
+
+  it('does not let legacy eval, root, selector, or spine edits borrow the DocumentContext exception', () => {
+    for (const line of [
+      '+  this.treeRoot = root;',
+      '+  this.rulesContext = next;',
+      '+  this.selectorBits = bits;',
+      '+  this.spineVisitor = visitor;'
+    ]) {
+      const hunk = {
+        file: 'packages/core/src/context.ts',
+        text: `@@ -1 +1 @@\n+  const sourceContext = this._documentContext;\n${line}`
+      };
+      expect(isDocumentSourcePlumbingHunk(hunk)).toBe(false);
+      expect(classifyChangedHunkSurface(hunk)).toBe('runtime-engine');
+    }
+  });
+
+  it('accepts only the exact serializer source-provenance replacement', () => {
+    const allowed = {
+      file: 'packages/core/src/ast/serialize.ts',
+      text: '@@ -1 +1 @@\n-  const file = e.context?.treeContext?.file;\n+  const file = e.context?.sourceContext?.file;'
+    };
+    const forbidden = {
+      file: 'packages/core/src/ast/serialize.ts',
+      text: '@@ -1 +1 @@\n+  const file = e.context?.sourceContext?.file;\n+  return render(node);'
+    };
+    expect(isDocumentSourcePlumbingHunk(allowed)).toBe(true);
+    expect(classifyChangedHunkSurface(allowed)).toBe('public-plumbing');
+    expect(isDocumentSourcePlumbingHunk(forbidden)).toBe(false);
+    expect(classifyChangedHunkSurface(forbidden)).toBe('runtime-engine');
+  });
+
+  it('does not let owner-plus-carry-forward coverage accept an unrelated hot-path hunk', () => {
+    const registry = [{
+      id: 'named-owner',
+      files: ['packages/core/src/ast/serialize.ts'],
+      coverage: 'owner-plus-named-carry-forward-support',
+      sourceCheck: { caller: 'function owned(', call: 'ownedCall(', guard: 'enabled' }
+    }];
+    const diff = 'diff --git a/packages/core/src/ast/serialize.ts b/packages/core/src/ast/serialize.ts\n'
+      + '+++ b/packages/core/src/ast/serialize.ts\n@@ -1 +1 @@\n+function unrelated() { return added(); }\n';
+    expect(validateChangedContractSurface(registry, ['packages/core/src/ast/serialize.ts'], diff)).toContain('Changed production hot-path surface packages/core/src/ast/serialize.ts has 1/1 unmatched hunks; add/update exact runtime contracts rather than hiding the aggregate branch inventory.');
+  });
+});
+
+describe('self-prosecution field completeness', () => {
+  const labels = [
+    '- Architecture surface:',
+    '- Evidence:'
+  ];
+
+  it('rejects an unresolved required field without scanning ordinary prose', () => {
+    expect(selfProsecutionPlaceholders([
+      '- Architecture surface: TODO',
+      '- Evidence: focused parser and renderer tests pass.'
+    ].join('\n'), labels)).toEqual(['- Architecture surface:']);
+  });
+
+  it('accepts an identifier or a factual follow-up containing pending', () => {
+    expect(selfProsecutionPlaceholders([
+      '- Architecture surface: `Partition.pending` remains the existing deferred-leaf buffer.',
+      '- Evidence: a pending external golden update is recorded separately; focused tests pass.'
+    ].join('\n'), labels)).toEqual([]);
+  });
+});
+
+describe('alpha release snapshot CLI boundary', () => {
+  function invokeVerifier(cwd: string, mode: 'staged' | 'release') {
+    try {
+      const output = execFileSync(process.execPath, [
+        'scripts/verify-aggressive-cutting-review.mjs',
+        `--mode=${mode}`,
+        '--skip-executable-evidence'
+      ], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      return { status: 0, output };
+    } catch (error: unknown) {
+      const failure = typeof error === 'object' && error !== null ? error : {};
+      const status = 'status' in failure && typeof failure.status === 'number'
+        ? failure.status
+        : 1;
+      const stdout = 'stdout' in failure
+        && (typeof failure.stdout === 'string' || Buffer.isBuffer(failure.stdout))
+        ? failure.stdout.toString()
+        : '';
+      const stderr = 'stderr' in failure
+        && (typeof failure.stderr === 'string' || Buffer.isBuffer(failure.stderr))
+        ? failure.stderr.toString()
+        : '';
+      return { status, output: `${stdout}${stderr}` };
+    }
+  }
+
+  it('skips only aggregate patch accounting and still validates release evidence', () => {
+    const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+    const sandbox = mkdtempSync(resolve(tmpdir(), 'jess-release-review-'));
+    const handoffPath = 'docs/architecture/core/HANDOFF.md';
+    const reviewPath = 'docs/architecture/core/AGGRESSIVE-CUTTING-REVIEW.md';
+    const verifierPath = 'scripts/verify-aggressive-cutting-review.mjs';
+    try {
+      execFileSync('git', ['clone', '--quiet', '--no-hardlinks', repo, sandbox]);
+      symlinkSync(resolve(repo, 'node_modules'), resolve(sandbox, 'node_modules'));
+      for (const path of [handoffPath, reviewPath, verifierPath]) {
+        writeFileSync(resolve(sandbox, path), readFileSync(resolve(repo, path)));
+      }
+
+      const runtimePath = 'packages/core/src/ast/extend/ir.ts';
+      const runtimeSource = readFileSync(resolve(sandbox, runtimePath), 'utf8');
+      writeFileSync(
+        resolve(sandbox, runtimePath),
+        `${runtimeSource}\nconst releaseSnapshotProbe = [];\nfor (const value of releaseSnapshotProbe) void value;\n`
+      );
+      execFileSync('git', ['add', runtimePath], { cwd: sandbox });
+
+      const staged = invokeVerifier(sandbox, 'staged');
+      expect(staged.status).not.toBe(0);
+      expect(staged.output).toContain('Hot-path cost contract review failed:');
+
+      const release = invokeVerifier(sandbox, 'release');
+      expect(release.status).toBe(0);
+      expect(release.output).toContain('Release snapshot mode: aggregate changed-path, danger-token, and cost/A-B accounting skipped.');
+      expect(release.output).toContain('Release snapshot evidence validated: cost-contract registry and self-prosecution block are structurally valid.');
+      expect(release.output).not.toContain('No danger tokens found in scoped diff.');
+
+      const handoff = readFileSync(resolve(sandbox, handoffPath), 'utf8');
+      const sectionIndex = handoff.lastIndexOf('## Aggressive Cutting Self-Prosecution');
+      const prefix = handoff.slice(0, sectionIndex);
+      const brokenSection = handoff.slice(sectionIndex).replace(
+        /^- (?:\*\*)?Architecture surface(?::)?(?:\*\*)?/gm,
+        '- Architecture boundary:'
+      );
+      writeFileSync(resolve(sandbox, handoffPath), `${prefix}${brokenSection}`);
+      const missingHandoffEvidence = invokeVerifier(sandbox, 'release');
+      expect(missingHandoffEvidence.status).not.toBe(0);
+      expect(missingHandoffEvidence.output).toContain('Missing required Aggressive Cutting Self-Prosecution block');
+
+      writeFileSync(resolve(sandbox, handoffPath), handoff);
+      const review = readFileSync(resolve(sandbox, reviewPath), 'utf8');
+      writeFileSync(
+        resolve(sandbox, reviewPath),
+        review.replace(
+          '<!-- BEGIN AGGRESSIVE-CUTTING-COST-CONTRACTS -->',
+          '<!-- BROKEN AGGRESSIVE-CUTTING-COST-CONTRACTS -->'
+        )
+      );
+      const missingRegistry = invokeVerifier(sandbox, 'release');
+      expect(missingRegistry.status).not.toBe(0);
+      expect(missingRegistry.output).toContain('AGGRESSIVE-CUTTING-REVIEW.md is missing the machine-readable cost-contract registry.');
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('private grammar artifact reachability', () => {
+  const entry = 'packages/syntax/css/css-parser/src/ast/grammar.ts';
+
+  it('finds a package source export targeting an otherwise unimported private grammar', () => {
+    const exports: Record<string, unknown> = {};
+    exports['./ast'] = { source: './src/ast/grammar.ts' };
+    expect(publicArtifactReferences(entry, JSON.stringify({
+      exports
+    }), 'export default defineConfig({ entry: {} });')).toEqual({ publicExports: 1, buildEntries: 0 });
+  });
+
+  it('finds a tsdown entry targeting an otherwise unexported private grammar', () => {
+    expect(publicArtifactReferences(entry, JSON.stringify({ exports: {} }), `
+      export default defineConfig({ entry: { ast: './src/ast/grammar.ts' } });
+    `)).toEqual({ publicExports: 0, buildEntries: 1 });
+  });
+
+  it('uses the owning package path when checking a non-CSS private grammar', () => {
+    const lessEntry = 'packages/syntax/less/less-parser/src/ast/grammar.ts';
+    const exports: Record<string, unknown> = {};
+    exports['./ast'] = { source: './src/ast/grammar.ts' };
+    expect(publicArtifactReferences(lessEntry, JSON.stringify({
+      exports
+    }), 'export default defineConfig({ entry: {} });')).toEqual({ publicExports: 1, buildEntries: 0 });
+  });
+
+  it('detects named, default, and namespace imports by their resolved grammar module', () => {
+    const lessEntry = 'packages/syntax/less/less-parser/src/ast/grammar.ts';
+    const sourcePath = 'packages/syntax/less/less-parser/src/index.ts';
+    expect(grammarSourceReferences(sourcePath, 'import { anything } from \'./ast/grammar.js\';', lessEntry)).toBe(true);
+    expect(grammarSourceReferences(sourcePath, 'import grammar from \'./ast/grammar.js\';', lessEntry)).toBe(true);
+    expect(grammarSourceReferences(sourcePath, 'import * as grammar from \'./ast/grammar.js\';', lessEntry)).toBe(true);
+  });
+
+  it('detects side-effect imports and re-exports even without a grammar symbol', () => {
+    const lessEntry = 'packages/syntax/less/less-parser/src/ast/grammar.ts';
+    const sourcePath = 'packages/syntax/less/less-parser/src/index.ts';
+    expect(grammarSourceReferences(sourcePath, 'import \'./ast/grammar.js\';', lessEntry)).toBe(true);
+    expect(grammarSourceReferences(sourcePath, 'export * from \'./ast/grammar.js\';', lessEntry)).toBe(true);
+    expect(grammarSourceReferences(sourcePath, 'export { default as direct } from \'./ast/grammar.js\';', lessEntry)).toBe(true);
+    expect(grammarSourceReferences(sourcePath, 'import \'./ast/other.js\';', lessEntry)).toBe(false);
+  });
+
+  it('detects dynamic ESM imports by their resolved grammar module', () => {
+    const lessEntry = 'packages/syntax/less/less-parser/src/ast/grammar.ts';
+    const sourcePath = 'packages/syntax/less/less-parser/src/index.ts';
+    expect(grammarSourceReferences(sourcePath, 'await import(\'./ast/grammar.js\');', lessEntry)).toBe(true);
+    expect(grammarSourceReferences(sourcePath, 'import(\'./ast/other.js\');', lessEntry)).toBe(false);
+  });
+});
+
+describe('exact parser-runtime debt deletion', () => {
+  const ledgerPath = 'scripts/parser-runtime-boundary-debt.json';
+  const sourcePath = 'packages/syntax/css/css-parser/src/cst.ts';
+  const snippet = '/(^|[^a-zA-Z0-9]+)([a-zA-Z0-9])/g';
+  const oldLine = `    .replace(${snippet}, (_, _sep, char) => char.toUpperCase())`;
+  const previousSource = `${oldLine}\n`;
+  const removed = {
+    file: sourcePath,
+    line: 81,
+    column: 14,
+    start: oldLine.indexOf(snippet),
+    end: oldLine.indexOf(snippet) + snippet.length,
+    kind: 'regex-literal',
+    fingerprint: createHash('sha256').update(`regex-literal:${snippet}`).digest('hex').slice(0, 16),
+    snippet,
+    retirement: 'Delete with the parser-runtime boundary cleanup.'
+  };
+  const diff = [
+    `diff --git a/${sourcePath} b/${sourcePath}`,
+    `+++ b/${sourcePath}`,
+    '@@ -81 +81 @@',
+    `-${oldLine}`
+  ].join('\n');
+  const candidate = (overrides: Record<string, unknown> = {}) => ({
+    mode: 'staged',
+    changedPaths: [sourcePath, ledgerPath],
+    diff,
+    findings: [],
+    previousDebt: [removed],
+    currentDebt: [],
+    previousSources: { [sourcePath]: previousSource },
+    nextSources: { [sourcePath]: '' },
+    boundaryClean: true,
+    ...overrides
+  });
+
+  it('exempts only an exact tracked recognizer deletion with no danger additions', () => {
+    expect(isExactParserRuntimeDebtDeletion(candidate())).toBe(true);
+  });
+
+  it('rejects a ledger edit that adds or keeps untracked debt', () => {
+    expect(isExactParserRuntimeDebtDeletion(candidate({
+      currentDebt: [{ ...removed, fingerprint: 'new-debt' }]
+    }))).toBe(false);
+  });
+
+  it('rejects a production change outside the removed ledger file or any danger token', () => {
+    expect(isExactParserRuntimeDebtDeletion(candidate({
+      changedPaths: [sourcePath, 'packages/core/src/ast/serialize.ts', ledgerPath]
+    }))).toBe(false);
+    expect(isExactParserRuntimeDebtDeletion(candidate({
+      findings: [{ label: 'allocation' }]
+    }))).toBe(false);
+    expect(isExactParserRuntimeDebtDeletion(candidate({
+      boundaryClean: false
+    }))).toBe(false);
+  });
+
+  it('rejects a staged-vs-unstaged conflict instead of borrowing worktree proof', () => {
+    expect(isExactParserRuntimeDebtDeletion(candidate({ mode: 'working' }))).toBe(false);
+  });
+
+  it('rejects a spoofed comment deletion when the recorded old parser line remains', () => {
+    const spoofedDiff = diff.replace(`-${oldLine}`, `-// ${snippet}`);
+    expect(isExactParserRuntimeDebtDeletion(candidate({
+      diff: spoofedDiff,
+      nextSources: { [sourcePath]: previousSource }
+    }))).toBe(false);
+  });
+
+  it('rejects a staged deletion when an unstaged boundary verifier is replaced with exit 0', () => {
+    const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+    const sandbox = mkdtempSync(resolve(tmpdir(), 'jess-staged-debt-spoof-'));
+    try {
+      execFileSync('git', ['clone', '--quiet', '--no-hardlinks', repo, sandbox]);
+      symlinkSync(resolve(repo, 'node_modules'), resolve(sandbox, 'node_modules'));
+      for (const path of ['scripts/verify-aggressive-cutting-review.mjs', 'scripts/verify-parser-runtime-boundary.mjs']) {
+        const staged = execFileSync('git', ['show', `:${path}`], { cwd: repo, encoding: 'utf8' });
+        const target = resolve(sandbox, path);
+        writeFileSync(target, staged);
+      }
+      const parserPath = 'packages/syntax/css/css-parser/src/cst.ts';
+      const ledgerPath = 'scripts/parser-runtime-boundary-debt.json';
+      const source = execFileSync('git', ['show', `:${parserPath}`], { cwd: repo, encoding: 'utf8' });
+      const snippet = '/stagedOnlyDebt/';
+      const sourceWithDebt = `${source}\nconst stagedOnlyDebt = ${snippet};\n`;
+      const start = sourceWithDebt.indexOf(snippet);
+      const debt = {
+        file: parserPath,
+        line: sourceWithDebt.slice(0, start).split('\n').length,
+        column: 25,
+        start,
+        end: start + snippet.length,
+        kind: 'regex-literal',
+        fingerprint: createHash('sha256').update(`regex-literal:${snippet}`).digest('hex').slice(0, 16),
+        snippet,
+        retirement: 'Delete this staged-only test recognizer during the test.'
+      };
+      writeFileSync(resolve(sandbox, parserPath), sourceWithDebt);
+      writeFileSync(resolve(sandbox, ledgerPath), `${JSON.stringify({
+        version: 2,
+        policy: 'Every handwritten runtime recognizer is temporary debt. The final gate has debt: [].',
+        debt: [debt]
+      }, null, 2)}\n`);
+      execFileSync('git', ['add', parserPath, ledgerPath, 'scripts/verify-aggressive-cutting-review.mjs', 'scripts/verify-parser-runtime-boundary.mjs'], { cwd: sandbox });
+      execFileSync('git', ['-c', 'user.name=Jess Test', '-c', 'user.email=jess-test@example.invalid', 'commit', '--quiet', '-m', 'test baseline debt'], { cwd: sandbox });
+      writeFileSync(resolve(sandbox, parserPath), source);
+      writeFileSync(resolve(sandbox, ledgerPath), `${JSON.stringify({
+        version: 2,
+        policy: 'Every handwritten runtime recognizer is temporary debt. The final gate has debt: [].',
+        debt: []
+      }, null, 2)}\n`);
+      execFileSync('git', ['add', parserPath, ledgerPath], { cwd: sandbox });
+      writeFileSync(resolve(sandbox, 'scripts/verify-parser-runtime-boundary.mjs'), 'process.exit(0);\n');
+      let output = '';
+      let status = 0;
+      try {
+        execFileSync(process.execPath, [
+          'scripts/verify-aggressive-cutting-review.mjs',
+          '--mode=staged',
+          '--skip-executable-evidence'
+        ], { cwd: sandbox, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      } catch (error: unknown) {
+        const failure = typeof error === 'object' && error !== null ? error : {};
+        const failureStatus = 'status' in failure && typeof failure.status === 'number' ? failure.status : undefined;
+        const failureStdout = 'stdout' in failure && (typeof failure.stdout === 'string' || Buffer.isBuffer(failure.stdout)) ? failure.stdout.toString() : '';
+        const failureStderr = 'stderr' in failure && (typeof failure.stderr === 'string' || Buffer.isBuffer(failure.stderr)) ? failure.stderr.toString() : '';
+        status = failureStatus ?? 1;
+        output = `${failureStdout}${failureStderr}`;
+      }
+      expect(status).not.toBe(0);
+      expect(output).not.toContain('Exact parser-runtime debt deletion: cost-contract review not required.');
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('concise handoff cost-contract ledger pointers', () => {
+  const ledger = [{
+    id: 'cold-terminal-surface',
+    kind: 'neutral-or-negative',
+    surface: 'cold terminal surface',
+    files: ['packages/core/src/ast/serialize.ts'],
+    neutralRefactor: {
+      costDelta: 'neutral',
+      why: 'The terminal branch is cold and writes its scalar bytes directly, with no normal-path traversal or allocation.',
+      byteIdentity: {
+        fixture: 'benchmark.less',
+        collapseNesting: true,
+        outputSha256: 'b'.repeat(64),
+        outputBytes: 1
+      }
+    }
+  }];
+
+  it('resolves a concise ledger pointer into its authoritative neutral audit record', () => {
+    expect(extractCostAuditRecords(
+      '- Hot-path cost contracts: ledger IDs: `cold-terminal-surface`; see the review ledger.',
+      ledger
+    )).toEqual([{
+      id: 'cold-terminal-surface',
+      verdict: 'accepted',
+      costDelta: 'neutral',
+      why: ledger[0].neutralRefactor.why,
+      byteIdentity: ledger[0].neutralRefactor.byteIdentity
+    }]);
+  });
+
+  it('keeps an unknown ledger id visible so the contract validator rejects it', () => {
+    const records = extractCostAuditRecords(
+      '- Hot-path cost contracts: ledger IDs: `missing-terminal-surface`.',
+      ledger
+    );
+
+    expect(validateCostAuditRecords(records, ledger, [], '')).toContain('Hot-path cost audit record missing-terminal-surface is not declared in the machine-readable cost-contract registry.');
+  });
+});
+
+const sourceFile = 'packages/core/src/tree/rules.ts';
+const registry = [{
+  id: 'test-admission-contract',
+  surface: 'test admission surface',
+  files: [sourceFile],
+  necessity: {
+    status: 'proven',
+    factSource: 'declaration assignment metadata is authoritative',
+    rediscovery: 'the admission scans child rules to rediscover merge presence',
+    carryForward: 'construction can carry a presence bit on each Rules surface',
+    whyNotCarried: 'this test contract assumes the fact is already explicit'
+  },
+  admission: {
+    predicate: 'cheap admission',
+    cost: 'cheap',
+    counter: 'admissionCalls',
+    workCounter: 'admissionItemsVisited',
+    maxItemsPerContainer: 8,
+    before: 'before collection and allocation'
+  },
+  counters: [
+    'calls',
+    'admittedCalls',
+    'admissionCalls',
+    'admissionItemsVisited',
+    'featureBearingContainers',
+    'itemsVisited',
+    'noFeatureAllocations',
+    'noFeatureMisses'
+  ],
+  commonCaseProof: 'focused counter test',
+  benchmark: {
+    fixture: 'benchmark.less',
+    phases: ['parse-render', 'render'],
+    warmup: 20,
+    pairs: 45
+  },
+  relations: [
+    'calls <= admittedCalls',
+    'admittedCalls <= admissionCalls',
+    'admittedCalls <= featureBearingContainers'
+  ],
+  evidence: {
+    command: ['node', '--check', 'scripts/verify-aggressive-cutting-review.mjs']
+  },
+  sourceCheck: {
+    file: sourceFile,
+    caller: '_finishSourceOrderEvaluation',
+    call: '_coalesceMergedDeclarations',
+    guard: 'hasMergeOutputSurface'
+  }
+}];
+const diff = [
+  `diff --git a/${sourceFile} b/${sourceFile}`,
+  `+++ b/${sourceFile}`,
+  '@@ -1 +1 @@',
+  '+ _finishSourceOrderEvaluation _coalesceMergedDeclarations hasMergeOutputSurface'
+].join('\n');
+
+function makeRecord(overrides: Record<string, unknown> = {}) {
+  const phase = {
+    beforeMedianMs: 1,
+    afterMedianMs: 1,
+    medianDeltaMs: 0,
+    wins: 0,
+    byteIdentical: true,
+    outputBytes: 1,
+    outputSha256: 'a'.repeat(64)
+  };
+  return {
+    id: 'test-admission-contract',
+    necessity: registry[0].necessity,
+    admission: {
+      predicate: 'cheap admission',
+      cost: 'cheap',
+      before: 'before collection and allocation'
+    },
+    calls: 15,
+    admittedCalls: 15,
+    admissionCalls: 15,
+    admissionItemsVisited: 15,
+    featureBearingContainers: 15,
+    itemsVisited: 1,
+    noFeatureAllocations: 0,
+    noFeatureMisses: 0,
+    commonCaseProof: 'focused counter test',
+    benchmark: {
+      fixture: 'benchmark.less',
+      warmup: 20,
+      pairs: 45,
+      ['parse-render']: phase,
+      render: phase
+    },
+    verdict: 'accepted',
+    ...overrides
+  };
+}
+
+describe('hot-path admission counter relations', () => {
+  it('requires a proof-of-necessity record for every contract', () => {
+    const withoutNecessity = { ...registry[0], necessity: undefined };
+    expect(validateCostContractRegistry([withoutNecessity])).toContain('Cost contract test-admission-contract must include proof-of-necessity metadata.');
+  });
+
+  it('requires the expensive-call admission chain in every contract', () => {
+    expect(validateCostContractRegistry(registry)).toEqual([]);
+    const withoutAdmissionBound = {
+      ...registry[0],
+      relations: ['admittedCalls <= featureBearingContainers']
+    };
+    expect(validateCostContractRegistry([withoutAdmissionBound])).toContain('Cost contract test-admission-contract must bind expensive calls to admitted calls with calls <= admittedCalls.');
+  });
+
+  it('requires named carry-forward coverage for producer support files', () => {
+    const withSupport = {
+      ...registry[0],
+      coverage: 'owner-plus-named-carry-forward-support',
+      supportFiles: ['packages/core/src/tree/apply.ts']
+    };
+    expect(validateCostContractRegistry([withSupport])).toEqual([]);
+
+    const withoutCoverage = { ...withSupport, coverage: undefined };
+    expect(validateCostContractRegistry([withoutCoverage])).toContain('Cost contract test-admission-contract supportFiles require coverage owner-plus-named-carry-forward-support.');
+  });
+
+  it('rejects 10,000 expensive calls when the cheap admission found no feature', () => {
+    const errors = validateCostAuditRecords(
+      [makeRecord({ calls: 10_000, admittedCalls: 0, featureBearingContainers: 0 })],
+      registry,
+      [sourceFile],
+      diff
+    );
+
+    expect(errors).toContain('Cost contract test-admission-contract relation failed: calls <= admittedCalls.');
+  });
+
+  it('rejects 10,000 admitted calls when only 15 containers bear the feature', () => {
+    const errors = validateCostAuditRecords(
+      [makeRecord({ calls: 10_000, admittedCalls: 10_000, featureBearingContainers: 15 })],
+      registry,
+      [sourceFile],
+      diff
+    );
+
+    expect(errors).toContain('Cost contract test-admission-contract relation failed: admittedCalls <= featureBearingContainers.');
+  });
+
+  it('accepts a consistent admitted-call chain', () => {
+    expect(validateCostAuditRecords([makeRecord()], registry, [sourceFile], diff)).toEqual([]);
+  });
+
+  it('rejects an admission that hides excessive scan work', () => {
+    const errors = validateCostAuditRecords(
+      [makeRecord({ admissionItemsVisited: 10_000 })],
+      registry,
+      [sourceFile],
+      diff
+    );
+
+    expect(errors).toContain('Hot-path cost audit record test-admission-contract exceeds its admission-work budget: 10000 > 15 * 8.');
+  });
+});
+
+const filterContract = {
+  ...registry[0],
+  id: 'test-filter-contract',
+  kind: 'conservative-filter',
+  counters: [
+    'calls',
+    'admittedCalls',
+    'admissionCalls',
+    'admissionItemsVisited',
+    'featureBearingCalls',
+    'itemsVisited',
+    'noFeatureAllocations',
+    'noFeatureMisses'
+  ],
+  conservativeFilter: {
+    supersetOf: 'featureBearingCalls',
+    governedFunction: 'processExtends',
+    speedup: { phase: 'render', minPercentFaster: 20 },
+    allocation: { onNoFeaturePath: true, justifiedBy: 'net-speedup' }
+  },
+  relations: ['calls <= admittedCalls', 'featureBearingCalls <= admittedCalls']
+};
+const filterRegistry = [filterContract];
+
+function makeFilterRecord(overrides: Record<string, unknown> = {}) {
+  const phase = {
+    beforeMedianMs: 50,
+    afterMedianMs: 27,
+    medianDeltaMs: 23,
+    wins: 45,
+    byteIdentical: true,
+    outputBytes: 131578,
+    outputSha256: 'b'.repeat(64)
+  };
+  return {
+    id: 'test-filter-contract',
+    kind: 'conservative-filter',
+    necessity: registry[0].necessity,
+    admission: { predicate: 'cheap admission', cost: 'cheap', before: 'before collection and allocation' },
+    calls: 86,
+    admittedCalls: 86,
+    admissionCalls: 37_973,
+    admissionItemsVisited: 37_973,
+    featureBearingCalls: 44,
+    itemsVisited: 86,
+    noFeatureAllocations: 39_557,
+    noFeatureMisses: 37_887,
+    governedFunction: { name: 'processExtends', beforeMs: 50, afterMs: 27 },
+    commonCaseProof: 'focused counter test',
+    benchmark: { fixture: 'benchmark.less', warmup: 20, pairs: 45, ['parse-render']: phase, render: phase },
+    verdict: 'accepted',
+    ...overrides
+  };
+}
+
+describe('conservative-filter contract kind', () => {
+  it('accepts a byte-identical, faster, superset-admitting filter that allocates', () => {
+    expect(validateCostContractRegistry(filterRegistry)).toEqual([]);
+    expect(validateCostAuditRecords([makeFilterRecord()], filterRegistry, [sourceFile], diff)).toEqual([]);
+  });
+
+  it('requires the flipped superset relation featureBearing* <= admittedCalls', () => {
+    const badRegistry = [{ ...filterContract, relations: ['calls <= admittedCalls', 'admittedCalls <= featureBearingCalls'] }];
+    expect(validateCostContractRegistry(badRegistry)).toContain('Conservative-filter cost contract test-filter-contract must admit a superset: bind featureBearing* <= admittedCalls.');
+  });
+
+  it('refuses the no-feature allocation escape when the filter is not faster', () => {
+    const errors = validateCostAuditRecords(
+      [makeFilterRecord({ governedFunction: { name: 'processExtends', beforeMs: 50, afterMs: 49 } })],
+      filterRegistry,
+      [sourceFile],
+      diff
+    );
+    expect(errors.some(e => /speedup insufficient/.test(e))).toBe(true);
+    expect(errors.some(e => /allocates on the no-feature path without a proven/.test(e))).toBe(true);
+  });
+
+  it('refuses the escape when the benchmark phases are not byte-identical to each other', () => {
+    const phaseA = { beforeMedianMs: 50, afterMedianMs: 27, medianDeltaMs: 23, wins: 45, byteIdentical: true, outputBytes: 131578, outputSha256: 'b'.repeat(64) };
+    const phaseB = { ...phaseA, outputSha256: 'c'.repeat(64) };
+    const errors = validateCostAuditRecords(
+      [makeFilterRecord({ benchmark: { fixture: 'benchmark.less', warmup: 20, pairs: 45, ['parse-render']: phaseA, render: phaseB } })],
+      filterRegistry,
+      [sourceFile],
+      diff
+    );
+    expect(errors.some(e => /byte-identical output across both benchmark phases/.test(e))).toBe(true);
+  });
+
+  it('still rejects a precise contract that omits the feature-admission bound', () => {
+    const preciseNoBound = { ...registry[0], relations: ['calls <= admittedCalls'] };
+    expect(validateCostContractRegistry([preciseNoBound])).toContain('Cost contract test-admission-contract must bind admitted calls to a feature-bearing counter.');
+  });
+});
+
+const removalContract = {
+  id: 'test-removal-contract',
+  kind: 'redundant-call-elimination',
+  surface: 'test removal surface',
+  files: [sourceFile],
+  necessity: registry[0].necessity,
+  redundantCallElimination: {
+    governedFunction: 'isSpineExtendTopology',
+    eliminatedSite: 'isSpineEligibleRoot',
+    speedup: { phase: 'render', minPercentFaster: 3 },
+    redundancyProof: {
+      basis: 'covered-by-later-check',
+      authority: 'post-wire re-gate is the sole authority and aborts to eval byte-identically'
+    }
+  },
+  counters: ['callsBefore', 'callsAfter', 'noFeatureAllocations'],
+  commonCaseProof: 'benchmark counter test',
+  benchmark: { fixture: 'benchmark.less', phases: ['parse-render', 'render'], warmup: 20, pairs: 45 },
+  relations: ['callsAfter <= callsBefore'],
+  evidence: { command: ['node', '--check', 'scripts/verify-aggressive-cutting-review.mjs'] },
+  sourceCheck: {
+    file: sourceFile,
+    caller: 'export function isSpineEligibleRoot',
+    call: 'isSpineExtendTopology',
+    guard: 'allowImport'
+  }
+};
+const removalRegistry = [removalContract];
+const removalDiff = [
+  `diff --git a/${sourceFile} b/${sourceFile}`,
+  `+++ b/${sourceFile}`,
+  '@@ -1 +1 @@',
+  '+ export function isSpineEligibleRoot allowImport || isSpineExtendTopology'
+].join('\n');
+
+function makeRemovalRecord(overrides: Record<string, unknown> = {}) {
+  const phase = {
+    beforeMedianMs: 160,
+    afterMedianMs: 150,
+    medianDeltaMs: -10,
+    wins: 35,
+    byteIdentical: true,
+    outputBytes: 131578,
+    outputSha256: 'd'.repeat(64)
+  };
+  return {
+    id: 'test-removal-contract',
+    kind: 'redundant-call-elimination',
+    necessity: registry[0].necessity,
+    callsBefore: 1,
+    callsAfter: 0,
+    noFeatureAllocations: 0,
+    governedFunction: { name: 'isSpineExtendTopology', beforeMs: 160, afterMs: 150 },
+    redundancyProof: {
+      basis: 'covered-by-later-check',
+      authority: 'post-wire re-gate is the sole authority and aborts to eval byte-identically'
+    },
+    commonCaseProof: 'benchmark counter test',
+    benchmark: { fixture: 'benchmark.less', warmup: 20, pairs: 45, ['parse-render']: phase, render: phase },
+    verdict: 'accepted',
+    ...overrides
+  };
+}
+
+describe('redundant-call-elimination contract kind', () => {
+  it('accepts a byte-identical, faster, net-removal contract with a redundancy proof', () => {
+    expect(validateCostContractRegistry(removalRegistry)).toEqual([]);
+    expect(validateCostAuditRecords([makeRemovalRecord()], removalRegistry, [sourceFile], removalDiff)).toEqual([]);
+  });
+
+  it('rejects a cost-ADD wearing the kind (callsAfter > callsBefore)', () => {
+    const errors = validateCostAuditRecords(
+      [makeRemovalRecord({ callsBefore: 1, callsAfter: 5 })],
+      removalRegistry,
+      [sourceFile],
+      removalDiff
+    );
+    expect(errors.some(e => /is not a removal: callsAfter 5 > callsBefore 1/.test(e))).toBe(true);
+  });
+
+  it('rejects a removal whose benchmark phases are not byte-identical to each other', () => {
+    const phaseA = { beforeMedianMs: 160, afterMedianMs: 150, medianDeltaMs: -10, wins: 35, byteIdentical: true, outputBytes: 131578, outputSha256: 'd'.repeat(64) };
+    const phaseB = { ...phaseA, outputSha256: 'e'.repeat(64) };
+    const errors = validateCostAuditRecords(
+      [makeRemovalRecord({ benchmark: { fixture: 'benchmark.less', warmup: 20, pairs: 45, ['parse-render']: phaseA, render: phaseB } })],
+      removalRegistry,
+      [sourceFile],
+      removalDiff
+    );
+    expect(errors.some(e => /byte-identical output across both benchmark phases/.test(e))).toBe(true);
+  });
+
+  it('rejects a removal that is not measurably faster by the declared margin', () => {
+    const errors = validateCostAuditRecords(
+      [makeRemovalRecord({ governedFunction: { name: 'isSpineExtendTopology', beforeMs: 160, afterMs: 159 } })],
+      removalRegistry,
+      [sourceFile],
+      removalDiff
+    );
+    expect(errors.some(e => /speedup insufficient/.test(e))).toBe(true);
+  });
+
+  it('rejects a removal that borrows the admission-filter relation calls <= admittedCalls', () => {
+    const badRegistry = [{ ...removalContract, relations: ['callsAfter <= callsBefore', 'calls <= admittedCalls'] }];
+    expect(validateCostContractRegistry(badRegistry)).toContain('Redundant-call-elimination cost contract test-removal-contract must not claim the admission-filter relation calls <= admittedCalls; it removes work, it does not admit it.');
+  });
+
+  it('requires the redundantCallElimination block and net-removal relation in the registry', () => {
+    const noBlock = { ...removalContract, redundantCallElimination: undefined };
+    expect(validateCostContractRegistry([noBlock])).toContain('Redundant-call-elimination cost contract test-removal-contract must include a redundantCallElimination block.');
+    const noRelation = { ...removalContract, relations: ['callsAfter <= 0'] };
+    expect(validateCostContractRegistry([noRelation])).toContain('Redundant-call-elimination cost contract test-removal-contract must bind the eliminated work with callsAfter <= callsBefore.');
+  });
+
+  it('still validates the precise and conservative-filter kinds unchanged', () => {
+    expect(validateCostContractRegistry(registry)).toEqual([]);
+    expect(validateCostContractRegistry(filterRegistry)).toEqual([]);
+  });
+});
+
+const neutralFile = 'packages/core/src/tree/reference.ts';
+const neutralOracleSha = '98a0536086c7e555b1a98e2372ad4000d51e25f1418c6345b6b8a9a97d80972f';
+const neutralContract = {
+  id: 'test-neutral-contract',
+  kind: 'neutral-or-negative',
+  surface: 'neutral route split surface',
+  files: [neutralFile],
+  neutralRefactor: {
+    costDelta: 'neutral',
+    why: 'Pure route split: exactly one call runs per invocation with identical options depending only on readMode, so no new allocation or traversal is introduced.',
+    byteIdentity: {
+      fixture: 'benchmark.less',
+      collapseNesting: true,
+      outputSha256: neutralOracleSha,
+      outputBytes: 131578
+    }
+  }
+};
+const neutralRegistry = [neutralContract];
+const neutralDiff = [
+  `diff --git a/${neutralFile} b/${neutralFile}`,
+  `+++ b/${neutralFile}`,
+  '@@ -1 +1 @@',
+  '+  const isOrdinaryVariableRead = typeof valueKey === \'string\''
+].join('\n');
+
+function makeNeutralRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'test-neutral-contract',
+    kind: 'neutral-or-negative',
+    costDelta: 'neutral',
+    why: neutralContract.neutralRefactor.why,
+    byteIdentity: { ...neutralContract.neutralRefactor.byteIdentity },
+    verdict: 'accepted',
+    ...overrides
+  };
+}
+
+describe('neutral-or-negative auto-pass contract kind', () => {
+  it('accepts a byte-identical, token-free, cost-neutral change without an admission contract', () => {
+    expect(validateCostContractRegistry(neutralRegistry)).toEqual([]);
+    expect(validateCostAuditRecords([makeNeutralRecord()], neutralRegistry, [neutralFile], neutralDiff, false)).toEqual([]);
+  });
+
+  it('rejects a neutral auto-pass when the diff introduces danger tokens', () => {
+    const errors = validateCostAuditRecords(
+      [makeNeutralRecord()],
+      neutralRegistry,
+      [neutralFile],
+      neutralDiff,
+      true
+    );
+    expect(errors.some(e => /cannot auto-pass while the diff introduces danger tokens/.test(e))).toBe(true);
+  });
+
+  it('rejects a neutral auto-pass that declares costDelta increase', () => {
+    const errors = validateCostAuditRecords(
+      [makeNeutralRecord({ costDelta: 'increase' })],
+      neutralRegistry,
+      [neutralFile],
+      neutralDiff,
+      false
+    );
+    expect(errors.some(e => /must declare costDelta "neutral" or "decrease"; a cost increase cannot use the auto-pass/.test(e))).toBe(true);
+  });
+
+  it('rejects a neutral auto-pass whose byteIdentity does not match the registered oracle', () => {
+    const errors = validateCostAuditRecords(
+      [makeNeutralRecord({ byteIdentity: { fixture: 'benchmark.less', collapseNesting: true, outputSha256: 'f'.repeat(64), outputBytes: 999 } })],
+      neutralRegistry,
+      [neutralFile],
+      neutralDiff,
+      false
+    );
+    expect(errors.some(e => /byteIdentity must match the registered contract oracle/.test(e))).toBe(true);
+  });
+
+  it('rejects a neutral contract missing its neutralRefactor block or byte-identity', () => {
+    expect(validateCostContractRegistry([{ ...neutralContract, neutralRefactor: undefined }])).toContain('Neutral-or-negative cost contract test-neutral-contract must include a neutralRefactor block.');
+    const noByteIdentity = {
+      ...neutralContract,
+      neutralRefactor: { ...neutralContract.neutralRefactor, byteIdentity: undefined }
+    };
+    expect(validateCostContractRegistry([noByteIdentity]).some(e => /must declare neutralRefactor\.byteIdentity/.test(e))).toBe(true);
+  });
+
+  it('requires an accepted neutral record when the owning file changed', () => {
+    const errors = validateCostAuditRecords([], neutralRegistry, [neutralFile], neutralDiff, false);
+    expect(errors).toContain('Changed files require the test-neutral-contract hot-path cost audit record.');
+  });
+
+  it('leaves the precise, conservative-filter, and redundant-call-elimination kinds validating unchanged', () => {
+    expect(validateCostContractRegistry(registry)).toEqual([]);
+    expect(validateCostContractRegistry(filterRegistry)).toEqual([]);
+    expect(validateCostAuditRecords([makeRecord()], registry, [sourceFile], diff)).toEqual([]);
+  });
+});
+
+const scopeFile = 'packages/core/src/tree/scope-frame.ts';
+const offBenchContract = {
+  id: 'test-off-bench-contract',
+  kind: 'off-benchmark-call-reduction',
+  surface: 'lookupScopeFrameCallable import fallback-chain traversal',
+  files: [scopeFile],
+  necessity: {
+    status: 'proven',
+    factSource: 'imported guarded mixins resolve on the frame fallbackFrame chain once coverage is prepared',
+    rediscovery: 'the lookup re-descended child rulesets via findMixinsFastForUncoveredCallable',
+    carryForward: 'the existing fallbackFrame links are walked under the same visibility rules',
+    whyNotCarried: 'the import origin frames already exist; walking them is leaner than rescanning children'
+  },
+  offBenchmarkCallReduction: {
+    governedFunction: 'findMixinsFastForUncoveredCallable',
+    measuredOn: 'packages/jess/benchmark/callable-fallback/main.less',
+    boundedTraversal: 'a single acyclic walk over the import fallbackFrame chain, bounded by import depth, not a whole-tree scan',
+    benchmarkNonRegression: { phase: 'render', maxPercentSlower: 3 }
+  },
+  counters: ['callsBefore', 'callsAfter'],
+  commonCaseProof: 'callable-fallback fixture counter test',
+  benchmark: {
+    fixture: 'benchmark.less',
+    phases: ['parse-render', 'render'],
+    warmup: 20,
+    pairs: 45
+  },
+  relations: ['callsAfter < callsBefore'],
+  evidence: {
+    command: ['node', '--check', 'scripts/verify-aggressive-cutting-review.mjs']
+  },
+  sourceCheck: {
+    file: scopeFile,
+    caller: 'export function lookupScopeFrameCallable',
+    call: 'walkFallbackCallable',
+    guard: 'result.reason === \'child-surface\''
+  }
+};
+const offBenchRegistry = [offBenchContract];
+
+function makeOffBenchRecord(overrides: Record<string, unknown> = {}) {
+  const okPhase = (sha = 'a'.repeat(64)) => ({
+    beforeMedianMs: 100,
+    afterMedianMs: 100,
+    medianDeltaMs: 0,
+    wins: 20,
+    byteIdentical: true,
+    outputBytes: 100,
+    outputSha256: sha
+  });
+  return {
+    id: 'test-off-bench-contract',
+    necessity: offBenchContract.necessity,
+    measuredOn: 'packages/jess/benchmark/callable-fallback/main.less',
+    callsBefore: 6,
+    callsAfter: 0,
+    boundedTraversal: 'a single acyclic walk over the import fallbackFrame chain, bounded by import depth, not a whole-tree scan',
+    commonCaseProof: 'callable-fallback fixture counter test',
+    benchmark: {
+      fixture: 'benchmark.less',
+      warmup: 20,
+      pairs: 45,
+      ['parse-render']: okPhase(),
+      render: okPhase()
+    },
+    verdict: 'accepted',
+    ...overrides
+  };
+}
+
+describe('off-benchmark call-reduction cost-contract kind', () => {
+  it('accepts a valid off-benchmark call-count reduction contract and record', () => {
+    expect(validateCostContractRegistry(offBenchRegistry)).toEqual([]);
+    expect(validateCostAuditRecords([makeOffBenchRecord()], offBenchRegistry, [], '')).toEqual([]);
+  });
+
+  it('rejects a record that REGRESSES benchmark on the non-regression rail', () => {
+    const regressing = makeOffBenchRecord({
+      benchmark: {
+        fixture: 'benchmark.less',
+        warmup: 20,
+        pairs: 45,
+        ['parse-render']: {
+          beforeMedianMs: 100, afterMedianMs: 100, medianDeltaMs: 0,
+          wins: 20, byteIdentical: true, outputBytes: 100, outputSha256: 'a'.repeat(64)
+        },
+
+        // render after-median 200ms is far beyond the 3% noise cap over 100ms before.
+        render: {
+          beforeMedianMs: 100, afterMedianMs: 200, medianDeltaMs: 100,
+          wins: 0, byteIdentical: true, outputBytes: 100, outputSha256: 'a'.repeat(64)
+        }
+      }
+    });
+    const errors = validateCostAuditRecords([regressing], offBenchRegistry, [], '');
+    expect(errors.some(error => error.includes('REGRESSES benchmark render'))).toBe(true);
+  });
+
+  it('rejects a record whose callsAfter is not below callsBefore (inert removal)', () => {
+    const inert = makeOffBenchRecord({ callsBefore: 6, callsAfter: 6 });
+    const errors = validateCostAuditRecords([inert], offBenchRegistry, [], '');
+    expect(errors.some(error => error.includes('is not a reduction: callsAfter 6 must be < callsBefore 6'))).toBe(true);
+  });
+
+  it('rejects an output-changing record (benchmark phases render different bytes)', () => {
+    const outputChanging = makeOffBenchRecord({
+      benchmark: {
+        fixture: 'benchmark.less',
+        warmup: 20,
+        pairs: 45,
+        ['parse-render']: {
+          beforeMedianMs: 100, afterMedianMs: 100, medianDeltaMs: 0,
+          wins: 20, byteIdentical: true, outputBytes: 100, outputSha256: 'a'.repeat(64)
+        },
+        render: {
+          beforeMedianMs: 100, afterMedianMs: 100, medianDeltaMs: 0,
+          wins: 20, byteIdentical: true, outputBytes: 100, outputSha256: 'b'.repeat(64)
+        }
+      }
+    });
+    const errors = validateCostAuditRecords([outputChanging], offBenchRegistry, [], '');
+    expect(errors.some(error => error.includes('byte-identical benchmark output across both phases'))).toBe(true);
+  });
+
+  it('rejects a contract whose measuredOn is benchmark.less (benefit must be off the oracle)', () => {
+    const onBenchmark = {
+      ...offBenchContract,
+      offBenchmarkCallReduction: {
+        ...offBenchContract.offBenchmarkCallReduction,
+        measuredOn: 'packages/jess/benchmark/benchmark.less'
+      }
+    };
+    expect(validateCostContractRegistry([onBenchmark])).toContain('Off-benchmark call-reduction cost contract test-off-bench-contract must name a representative measuredOn fixture that is NOT benchmark.less (the benefit is off the wall-clock oracle).');
+  });
+
+  it('rejects a contract that borrows the admission-filter relation', () => {
+    const borrowed = {
+      ...offBenchContract,
+      relations: ['callsAfter < callsBefore', 'calls <= admittedCalls']
+    };
+    expect(validateCostContractRegistry([borrowed])).toContain('Off-benchmark call-reduction cost contract test-off-bench-contract must not claim the admission-filter relation calls <= admittedCalls; it removes work, it does not admit it.');
+  });
+
+  it('leaves the existing precise / conservative-filter kinds validating unchanged', () => {
+    expect(validateCostContractRegistry(registry)).toEqual([]);
+    expect(validateCostContractRegistry(filterRegistry)).toEqual([]);
+    expect(validateCostAuditRecords([makeRecord()], registry, [sourceFile], diff)).toEqual([]);
+  });
+});
+
+const preflightFile = 'packages/core/src/ast/serialize.ts';
+const preflightContract = {
+  id: 'test-semantic-preflight',
+  kind: 'semantic-preflight',
+  surface: 'imported extend planner preflight',
+  files: [preflightFile],
+  necessity: {
+    status: 'proven',
+    factSource: 'loaded import document bodies carry the exact typed ImportAtRule and extend facts',
+    rediscovery: 'the planner must inspect a loaded document body before it knows whether imported extends need planning',
+    carryForward: 'a static import cannot carry this fact because the loaded document is resolved during evaluation',
+    whyNotCarried: 'the imported body is the first authoritative source and its scan is skipped when no imports can load'
+  },
+  semanticPreflight: {
+    trigger: 'a loadable imported document body is encountered',
+    scope: 'The preflight examines only the loaded import body before planner allocation; false-path counters prove it does not create planner, collector, overlay, or loop-placement state.',
+    falsePath: {
+      fixture: 'extend-preflight-contract:no-extend',
+      requiredZeroCounters: ['collectorCalls', 'overlaySubjects', 'overlayInstructions', 'loopPlacements']
+    },
+    featurePath: {
+      fixture: 'extend-preflight-contract:imported-loop',
+      minimumCounters: { importsVisited: 1, loopPlacements: 2, overlaySubjects: 2 }
+    },
+    baseline: { fixture: 'benchmark.less', phase: 'parse-render' }
+  },
+  sourceCheck: {
+    file: preflightFile,
+    caller: 'planImportedFacts',
+    guard: 'bodyMayPlanExtend',
+    call: 'collectPlacedExtendFacts'
+  },
+  evidence: { command: ['node', '--check', 'scripts/verify-aggressive-cutting-review.mjs'] }
+};
+
+function makeSemanticPreflightRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'test-semantic-preflight',
+    verdict: 'accepted',
+    necessity: preflightContract.necessity,
+    performanceClaim: 'none',
+    why: 'The loaded import is resolved during evaluation, so the body is the first authoritative source for whether extend planning is required. The false-path profile proves the check returns before planner or overlay allocation.',
+    dangerTokensJustification: 'The body traversal is a semantic source-order preflight, not a neutral refactor. Its false path is measured with no planner, collector, overlay, or loop-placement allocation; its feature path records the precise imported-loop facts that require planning.',
+    falsePath: {
+      fixture: 'extend-preflight-contract:no-extend',
+      counters: { calls: 1, collectorCalls: 0, overlaySubjects: 0, overlayInstructions: 0, loopPlacements: 0 }
+    },
+    featurePath: {
+      fixture: 'extend-preflight-contract:imported-loop',
+      counters: { importsVisited: 1, loopPlacements: 2, overlaySubjects: 2 }
+    },
+    baseline: {
+      fixture: 'benchmark.less', phase: 'parse-render', currentMedianMs: 80,
+      outputSha256: 'c'.repeat(64), outputBytes: 100
+    },
+    ...overrides
+  };
+}
+
+describe('semantic-preflight cost-contract kind', () => {
+  it('accepts a semantic planner preflight without inventing a speed claim', () => {
+    expect(validateCostContractRegistry([preflightContract])).toEqual([]);
+    expect(validateCostAuditRecords([makeSemanticPreflightRecord()], [preflightContract], [], '')).toEqual([]);
+  });
+
+  it('does not send a semantic preflight through the ordinary relations loop when its owner changes', () => {
+    const diff = `diff --git a/${preflightFile} b/${preflightFile}
+@@ -1 +1 @@
++function planImportedFacts() { if (bodyMayPlanExtend(body)) collectPlacedExtendFacts(body); }`;
+    expect(validateCostAuditRecords(
+      [makeSemanticPreflightRecord()],
+      [preflightContract],
+      [preflightFile],
+      diff
+    )).toEqual([]);
+  });
+
+  it('rejects a false path that allocates planner work', () => {
+    const errors = validateCostAuditRecords([makeSemanticPreflightRecord({
+      falsePath: {
+        fixture: 'extend-preflight-contract:no-extend',
+        counters: { calls: 1, collectorCalls: 1, overlaySubjects: 0, overlayInstructions: 0, loopPlacements: 0 }
+      }
+    })], [preflightContract], [], '');
+    expect(errors).toContain('Semantic-preflight record test-semantic-preflight false path must keep collectorCalls === 0.');
+  });
+
+  it('rejects an unexercised feature path and a fabricated performance claim', () => {
+    const errors = validateCostAuditRecords([makeSemanticPreflightRecord({
+      performanceClaim: 'faster',
+      featurePath: {
+        fixture: 'extend-preflight-contract:imported-loop',
+        counters: { importsVisited: 0, loopPlacements: 0, overlaySubjects: 0 }
+      }
+    })], [preflightContract], [], '');
+    expect(errors).toContain('Semantic-preflight record test-semantic-preflight must declare performanceClaim: "none"; it records a baseline, not a speed or neutrality claim.');
+    expect(errors).toContain('Semantic-preflight record test-semantic-preflight feature path must record importsVisited >= 1.');
+  });
+
+  it('rejects a malformed semantic-preflight registry rather than borrowing precise admission metadata', () => {
+    const malformed = {
+      ...preflightContract,
+      semanticPreflight: { ...preflightContract.semanticPreflight, falsePath: undefined }
+    };
+    expect(validateCostContractRegistry([malformed])).toContain('Semantic-preflight cost contract test-semantic-preflight must name a false-path fixture and requiredZeroCounters.');
+  });
+});
+
+const semanticBoundaryFile = 'packages/core/src/ast/evaluator.ts';
+const semanticBoundaryContract = {
+  id: 'test-semantic-boundary',
+  kind: 'semantic-boundary',
+  surface: 'optional function-call versus selected-callable failure policy',
+  files: [semanticBoundaryFile],
+  semanticBoundary: {
+    trigger: 'a typed function call has an optional miss or selected callable result',
+    scope: 'Only the evaluator decides whether an optional CSS function name preserves or a selected callable rejection follows functionMode; mixin and variable resolution are explicitly outside this result-policy seam.',
+    cases: ['unresolved-optional-function-call', 'registered-sync-call-failure', 'registered-async-call-failure'],
+    baseline: { fixture: 'benchmark.less', phase: 'render' }
+  },
+  sourceCheck: {
+    file: semanticBoundaryFile,
+    caller: 'const call = (',
+    guard: 'if (registry.has(name))',
+    call: 'recoverAsyncCall('
+  },
+  evidence: { command: ['node', '--check', 'scripts/verify-aggressive-cutting-review.mjs'] }
+};
+
+function makeSemanticBoundaryRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'test-semantic-boundary',
+    verdict: 'accepted',
+    performanceClaim: 'none',
+    why: 'An unregistered CSS function is optional and preserves verbatim bytes, but a callable selected from the scope or registry has already resolved. Its failure is therefore governed by functionMode instead of being misreported as a name-resolution miss.',
+    dangerTokensJustification: 'This is a result-policy boundary, not a traversal or admission filter. The ordinary synchronous branch does not construct fallback or recovery closures; async recovery is attached only to an actual thenable result. The benchmark is an output anchor, not an A/B claim.',
+    cases: semanticBoundaryContract.semanticBoundary.cases,
+    baseline: { fixture: 'benchmark.less', phase: 'render', currentMedianMs: 80, outputSha256: 'd'.repeat(64), outputBytes: 100 },
+    ...overrides
+  };
+}
+
+describe('semantic-boundary cost-contract kind', () => {
+  it('accepts a result-policy boundary without inventing admission counters or a speed claim', () => {
+    expect(validateCostContractRegistry([semanticBoundaryContract])).toEqual([]);
+    expect(validateCostAuditRecords([makeSemanticBoundaryRecord()], [semanticBoundaryContract], [], '')).toEqual([]);
+  });
+
+  it('rejects a fabricated performance claim or incomplete branch coverage', () => {
+    const errors = validateCostAuditRecords([makeSemanticBoundaryRecord({
+      performanceClaim: 'faster',
+      cases: ['unresolved-optional-function-call']
+    })], [semanticBoundaryContract], [], '');
+    expect(errors).toContain('Semantic-boundary record test-semantic-boundary must declare performanceClaim: "none"; its benchmark is an output baseline, not a speed claim.');
+    expect(errors).toContain('Semantic-boundary record test-semantic-boundary must restate the exact tested call-result cases.');
+  });
+});

@@ -1,0 +1,73 @@
+---
+title: Expressions
+audiences:
+  - jess
+origin: jess
+---
+Expressions let Jess evaluate values explicitly.
+
+Write an expression as `$(`...`)`.
+
+- `$var` is a variable `Reference` (not an `Expression`).
+- `$(...)` is an `Expression`.
+
+Inside an expression, keep variable references explicit: `$($var)`.
+
+## Examples
+
+### Basic arithmetic
+
+```less
+value: $(1 + 2); // 3
+value: $(1 - 2); // -1
+value: $(1 * 2); // 2
+value: $(1 / 2); // 0.5
+value: $(1 % 2); // 1 (modulus)
+```
+
+### CSS values
+
+```less
+value: $(#222 / 2); // #111
+```
+
+### Jess variables
+
+```less
+$width: 10px;
+$height: $($width + 10px);
+
+#header {
+  width: $width;
+  height: $height;
+}
+```
+
+## References vs expressions
+
+Inside an expression, a plain identifier is a value or keyword. A variable still
+uses its `$` sigil.
+
+```less
+$color: red;
+value: $(red); // red (color keyword literal)
+value: $($color); // red (variable reference inside Expression)
+value: $less.iscolor($color); // true
+```
+
+```less
+$num: 10;
+value: $($num + 1); // 11
+```
+
+## Arithmetic is explicit
+
+Keep arithmetic inside the expression wrapper:
+
+```less
+$w: 10px;
+width: $($w + 1px);
+```
+
+Use a variable reference inside the expression. Do not write unwrapped arithmetic
+such as `$w + 1px`.

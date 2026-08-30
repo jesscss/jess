@@ -1,0 +1,45 @@
+{
+  "tool": "less-parser",
+  "recordedAt": "2026-03-13T22:56:20.086Z",
+  "git": {
+    "commit": "b01394f9",
+    "dirty": true
+  },
+  "env": {
+    "node": "v24.11.1",
+    "platform": "darwin",
+    "arch": "arm64"
+  },
+  "corpus": {
+    "files": 1,
+    "chars": 106724,
+    "benchmarkOnly": true
+  },
+  "warmup": 5,
+  "iterations": 1,
+  "args": [
+    "--save",
+    "--",
+    "--benchmark"
+  ],
+  "results": [
+    {
+      "name": "Jess",
+      "avg": 266.73537499999975,
+      "median": 266.73537499999975,
+      "min": 266.73537499999975,
+      "max": 266.73537499999975,
+      "p95": 266.73537499999975,
+      "errors": 5
+    },
+    {
+      "name": "Less.js 4.x",
+      "avg": 23.841542000000118,
+      "median": 23.841542000000118,
+      "min": 23.841542000000118,
+      "max": 23.841542000000118,
+      "p95": 23.841542000000118,
+      "errors": 5
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+a {
+  font: bold 12px/1.5 sans-serif;
+  grid-area: 1/2;
+  aspect-ratio: 16/9;
+}

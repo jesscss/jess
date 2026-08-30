@@ -1,0 +1,12 @@
+---
+description: "Package: @jesscss/plugin-scss (SCSS engine for Jess)"
+globs:
+  - "packages/syntax/scss/jess-plugin-scss/**"
+---
+
+# `@jesscss/plugin-scss`
+
+- **Role**: SCSS stylesheet engine for Jess (depends on core, scss-parser, style-resolver).
+- **Build**: `cd packages/syntax/scss/jess-plugin-scss && pnpm build`
+- **Tests**: `cd packages/syntax/scss/jess-plugin-scss && pnpm test`
+

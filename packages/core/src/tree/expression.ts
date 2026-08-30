@@ -1,0 +1,108 @@
+import type { Context } from '../context.js';
+import { Node, F_NON_STATIC, defineType, type NodeLocation, type NodeOptions } from './node.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { List } from './list.js';
+import { Sequence } from './sequence.js';
+import {
+  isRenderBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
+
+/**
+ * An expression is a node that returns a value.
+ * It can contain values, references, and operations.
+ *
+ * When parsing Less/Sass, everything containing an operation is
+ * considered an expression.
+ */
+export interface Expression extends Node<Node> {
+  eval(context: Context): MaybePromise<Node>;
+}
+
+export class Expression extends Node<Node> {
+  static override childKeys = ['value'] as const;
+
+  readonly value: Node;
+
+  constructor(
+    value: Node,
+    options?: NodeOptions,
+    location?: NodeLocation
+  ) {
+    super(value, options, location);
+
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
+    this.addFlag(F_NON_STATIC);
+  }
+
+  protected override ownStaticFlag(): number {
+    return F_NON_STATIC;
+  }
+
+  override evalNode(context: Context): MaybePromise<Node> {
+    const out = this.value.eval(context);
+
+    /** @todo - Cast as selector if the context is within a selector */
+    if (isThenable(out)) {
+      return out as Promise<Node>;
+    }
+    return out as Node;
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    const out = this.evalNode(context);
+    if (isThenable(out)) {
+      return out as Promise<Node>;
+    }
+    return out as Node;
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (this.value instanceof List || this.value instanceof Sequence) {
+      return isRenderBuffer(bufferOrOptions)
+        ? this.value.render(context, bufferOrOptions, options)
+        : this.value.render(context, bufferOrOptions);
+    }
+    const evaluated = this.value.eval(context);
+    const renderNode = (node: unknown) => {
+      if (!(node instanceof Node)) {
+        throw new TypeError('Expected expression value to evaluate to a node');
+      }
+      return isRenderBuffer(bufferOrOptions)
+        ? node.render(context, bufferOrOptions, options)
+        : node.render(context, bufferOrOptions);
+    };
+    return isThenable(evaluated)
+      ? evaluated.then(renderNode)
+      : renderNode(evaluated);
+  }
+
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
+    w.add('$', this);
+    w.add('(');
+    this.value.writeSyntax(options);
+    w.add(')');
+  }
+
+  // AUDIT: toTrimmedString is not supposed to use print buffers and is only supposed to straight serialize. Still todo in the serialization cleanup?
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    return options.writer.getSince(mark);
+  }
+}
+
+type Params = ConstructorParameters<typeof Expression>;
+
+export const expr = defineType(Expression, 'Expression', 'expr') as (
+  value: Params[0],
+  options?: Params[1],
+  location?: Params[2]
+) => Expression;

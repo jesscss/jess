@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": true,
+    "outDir": "./lib",
+    "rootDir": "."
+  },
+  "include": ["**/*"],
+  "exclude": ["node_modules", "lib", "eslint.config.mjs"]
+}

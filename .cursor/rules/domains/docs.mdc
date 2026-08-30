@@ -1,0 +1,20 @@
+---
+description: "Docs (Docusaurus + repo docs): keep guidance accurate; cite source paths"
+globs:
+  - "docs/**"
+  - "packages/docs/**"
+  - "README.md"
+---
+
+# Docs
+
+## Where docs live
+
+- Root docs folder: `docs/**`
+- Docusaurus site: `packages/docs/**`
+- Root readme: `README.md`
+
+## Rule of thumb
+
+- If docs are stale, mark it explicitly and link to the source-of-truth code/tests.
+

@@ -1,0 +1,22 @@
+/*
+ * One line per CalcValue arm, so dropping any arm from the choice moves this
+ * file's digest instead of silently narrowing the base language.
+ *   Percentage / Dimension / Color / UnicodeRange /
+ *   CalcIdentOrFunction / CalcParen / Quoted / CustomPropertyValue
+ */
+.operand-kinds {
+  percentage: calc(50% + 10%);
+  dimension: calc(1px + 2px);
+  number: calc(1 + 2);
+  color: min(red, blue);
+  unicode-range: min(U+0-7F);
+  ident: calc(infinity * 1px);
+  ident-nan: calc(NaN * 1px);
+  ident-e: calc(e * 1px);
+  ident-pi: calc(pi * 1rad);
+  function: calc(var(--gap) + 1px);
+  function-attr: calc(attr(data-w) + 1px);
+  paren: calc((1px));
+  quoted: min("a", "b");
+  custom-property: calc(var(--x) * 2);
+}

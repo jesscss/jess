@@ -1,0 +1,420 @@
+# Releasing Jess alpha packages to npm
+
+This runbook defines the alpha release process for the Less v5 support track.
+
+Before using the publish commands, check
+[`less-v5-alpha-readiness.md`](../state/less-v5-alpha-readiness.md). That tracker owns
+the current readiness gates for API stability, expanded Less API coverage, and
+CI guard work.
+
+The candidate must also keep the F5 deferred CSS color-call gate recorded there
+green: CSS-shaped three-or-more-slot and un-operated relative `rgb()`/`hsl()`
+calls are verbatim until value demand, while Less one-/two-slot overloads
+dispatch normally and malformed arities use the existing evaluator
+`functionMode` policy. The focused evidence is 17/17 in
+`function-error-public-semantics.test.ts`.
+
+## Initial publish scope
+
+The alpha stream publishes only allowlisted packages in `scripts/release/alpha-allowlist.json`.
+**That file is the contract; this list is a copy and has drifted from it before.** Regenerate
+with `node -e "console.log(require('./scripts/release/alpha-allowlist.json').join('\n'))"`
+rather than trusting the transcription below.
+
+The current allowlist holds:
+
+- `@jesscss/awaitable-pipe`
+- `@jesscss/compiler`
+- `@jesscss/compiler-preset`
+- `@jesscss/core`
+- `@jesscss/parser-shared`
+- `@jesscss/css-parser`
+- `@jesscss/diagnostics-core`
+- `@jesscss/jess-parser`
+- `@jesscss/less-parser`
+- `@jesscss/scss-parser`
+- `@jesscss/fns`
+- `@jesscss/lint`
+- `styles-config`
+- `@jesscss/style-resolver`
+- `@jesscss/plugin-jess`
+- `@jesscss/plugin-less`
+- `@jesscss/plugin-scss`
+- `@jesscss/plugin-node-modules`
+- `@jesscss/plugin-js`
+- `@jesscss/plugin-less-compat`
+- `@jesscss/patch-css`
+- `jess`
+
+*(Corrected 2026-07-30: this list omitted `@jesscss/compiler-preset`,
+`@jesscss/diagnostics-core`, and `@jesscss/lint` — three packages that ship to npm and were
+undocumented here. The step below that requires updating this list when the allowlist changes
+was skipped when those three were added.)*
+
+> **Dialect closure.** `jess` statically registers the direct AST parser plugins
+> for `.jess`, `.less`, and `.scss`, so their parser/plugin dependency closures
+> are in the alpha set. There is no `.css` plugin: CSS is not a separate
+> compilation mode. `@jesscss/css-parser` remains in the set because the shipped
+> dialect grammars depend on its shared CSS grammar.
+> `@jesscss/parser-shared` is also in the runtime closure: the published CSS
+> grammar keeps its composed recognition facts external so downstream dialect
+> grammars can follow them across the package boundary.
+>
+> **`@jesscss/scss-parser` + `@jesscss/plugin-scss` were promoted into the alpha
+> set** (owner decision, commit `d939fb3`): `jess` statically imports
+> `plugin-scss` and registers it on every render, and `plugin-scss` depends on
+> `scss-parser`, so both must publish for `jess` to resolve. They are live on npm
+> at the current alpha. SCSS remains a non-goal for the alpha's *feature* scope —
+> these are shipped only to satisfy `jess`'s dependency graph. If the owner
+> prefers to keep SCSS entirely out of the published set, the alternative is to
+> make `jess`'s `plugin-scss` dependency non-blocking (optional/peer, or a
+> lazy/guarded registration) and drop both from the allowlist; that is a separate
+> product decision and is NOT assumed here.
+
+Blocked from the initial alpha set (do not publish yet):
+
+- `rollup-plugin-jess` (depends on `jess`; it is a separate bundler integration,
+  not part of the runtime package closure)
+
+## Branch and version policy
+
+- Publish alpha packages from branch `alpha`.
+- Cut each Jess alpha by importing the validated current pushed `origin/dev` endpoint into an
+  isolated `alpha` worktree with the controlled two-tree patch procedure below,
+  then making one release-snapshot commit. `alpha` is a release-snapshot
+  branch, not a normal integration branch: do not ordinary-merge or rebase
+  `dev` into it.
+- The updater bypasses the ordinary per-commit staged-file hook for that bulk
+  snapshot. It still runs the alpha push-check and, when requested, the full
+  release dry-run against the complete projected tree.
+- Use lockstep versions for publishable packages (Changesets fixed group already configured).
+- Alpha publishes use npm dist-tag `alpha`.
+- For alpha publishes, package versions must include `-alpha.N`.
+- Hard guardrails:
+  - `--tag alpha` publishes are allowed only from `alpha`.
+  - non-alpha tags (future stable releases) are allowed only from `main`.
+
+## Push checks
+
+The Husky pre-push hook is deliberately branch-aware. A push from `alpha` runs
+`release:alpha:push-check`, the cheap source-projection and publish-set guard.
+A push from `dev` or any ordinary development branch takes the fast path and
+runs no build/test work. Run `pnpm verify:pr` before pushing when you want the
+full local PR gate; run the full release preflight when preparing an alpha, not
+for ordinary `dev` pushes.
+
+## Publish order for the external Less alpha
+
+The Jess alpha and the external `less@5.0.0-alpha.1` package are separate
+releases. Publish and verify the Jess alpha's direct runtime closure first. The
+sibling Less repository commits exact published Jess alpha dependencies for the
+direct Jess runtime closure (`@jesscss/compiler`, `@jesscss/core`,
+`@jesscss/plugin-less`, `@jesscss/plugin-less-compat`, and
+`@jesscss/plugin-node-modules`) and validates that manifest during publish.
+`@jesscss/plugin-js` must remain an optional peer for script-module support,
+not a shipped runtime dependency. Publish Less only after the selected Jess
+alpha artifacts are queryable. As of 2026-07-28, the external Less PR consumes
+published Jess `2.0.0-alpha.11` direct runtime packages. After merging that PR,
+publish Less from the external Less `alpha` branch:
+
+```bash
+npm publish --tag alpha --access public
+```
+
+The Less package's built `lessc` smoke test and typecheck are the publish
+preflight. Its full upstream node suite still reports the classified v5
+known-limitations inventory; those failures are documented in
+[`less-v5-alpha-readiness.md`](../state/less-v5-alpha-readiness.md) and must not be
+silently relabeled as passing.
+
+## Cut the alpha snapshot from `dev`
+
+Do this only after the exact pushed `origin/dev` candidate has passed its intended readiness
+and release checks. The `alpha` and `dev` histories have independently added
+the same source paths, so a plain `git merge --squash origin/dev` is unsafe and
+must not be used.
+
+Run the guarded updater from a clean `alpha` worktree:
+
+```bash
+pnpm run release:alpha:update-from-dev
+```
+
+To prepare and push the branch in one command after the full dry-run gate:
+
+```bash
+pnpm run release:alpha:update-from-dev -- --release-dry-run --push
+```
+
+The updater fetches the current pushed `origin/dev`, creates a recovery branch,
+imports the source tree with a binary two-tree patch, preserves only package
+manifest versions from the previous alpha snapshot, records source provenance,
+bumps the lockstep alpha version, runs `pnpm install`, commits the snapshot, and
+runs `release:alpha:push-check`. It prints the recovery branch name so the exact
+pre-refresh state remains reachable.
+
+The updater implements this controlled snapshot procedure:
+
+1. Fetch the current refs, create a recovery ref such as
+   `alpha-pre-refresh` from `alpha`, and work in an isolated `alpha`
+   worktree.
+2. Import the pushed source tree with a binary two-tree patch, using
+   `git diff --binary alpha-pre-refresh..origin/dev` followed by `git apply --index`.
+3. Preserve **only each package manifest's `version` field** from the recovery
+   ref, after the patch has imported the current `dev` manifests:
+
+   ```bash
+   node scripts/release/restore-alpha-package-versions.mjs --from alpha-pre-refresh --stage
+   node scripts/release/record-alpha-source-provenance.mjs --stage
+   ```
+
+   Do not restore whole `packages/*/package.json` files. The second command
+   records the exact fetched `origin/dev` SHA for the commit. The release check
+   rejects any alpha source divergence other than that record and package
+   manifest versions, so alpha-only release notes or source changes must land
+   on dev first. The snapshot must keep
+   every current `dev` manifest field—especially dependencies, peer ranges,
+   exports, and publish configuration—and retain only the recovery alpha
+   versions until the registry-aware release step selects the next version.
+   This also preserves `dev`'s root scripts, release/readiness evidence, and
+   handoff documentation; `pnpm-lock.yaml` remains unchanged.
+4. Reconcile the owner-reviewed release notes from the final gate evidence,
+   commit one controlled refresh on `alpha`, and confirm a clean source tree.
+
+The controlled snapshot commit must include proper, owner-reviewed release notes/changelog
+for the user-visible changes in that alpha. Do not rely on commit history being
+preserved by the source-tree patch, and do not silently omit this step because the version
+bump is performed later.
+
+For the first Less-focused alpha, the release notes must also include a
+discoverable **Known limitations** section linking
+[`less-v5-alpha-readiness.md`](../state/less-v5-alpha-readiness.md) and
+[`less-v5-corpus-inventory.md`](../state/less-v5-corpus-inventory.md). Do not
+duplicate stale fixture totals here; the current inventory owns the
+release-facing counts and distinguishes ordinary byte-identical checks from
+active expected-failure checks.
+
+The previous alpha.9 draft note at
+[`docs/releases/jess-2.0.0-alpha.9.md`](../releases/jess-2.0.0-alpha.9.md) is
+historical evidence, not the current release note. Reconcile fresh release notes
+from the final gate evidence on `dev` before the controlled alpha snapshot. Do
+not invoke the publish-only command as a substitute for the full
+`pnpm run release:alpha` flow from the clean `alpha` worktree.
+
+The current `release:alpha` scripts do **not** run `changeset version` or
+generate package `CHANGELOG.md` files. They resolve a fresh lockstep alpha
+version from npm before the preflight, but defer writing package versions until
+the preflight succeeds. During that preflight the fresh candidate is passed to
+the nested publish dry-run through an internal environment hand-off; this keeps
+the clobber guard active without treating the post-snapshot commit's previous
+manifest version as the candidate. The real package-version write happens just
+before the release commit.
+The repository's Changesets configuration remains useful for future changelog
+automation, but is not evidence that a changelog was generated by this release
+flow.
+
+After the controlled snapshot is committed, run the preflight and release commands
+from `alpha` as described below. Do not copy `dev`'s placeholder version onto
+`alpha` manually: the release script's registry-aware resolver selects a fresh
+version. Its alpha-clobber guard deliberately rejects a snapshot whose
+manifest version is at or behind an already-published alpha.
+
+### Moving the `latest` dist-tag during the alpha phase (gated, off by default)
+
+By default the alpha flow only touches the `alpha` dist-tag, so a package's
+`latest` tag can drift far behind (e.g. `jess@latest` stuck on an old `1.0.8`
+build while `jess@alpha` is `2.0.0-alpha.N`). During this pre-stable phase that
+means `npm install jess` pulls an ancient build, and newly-created packages —
+which npm auto-tags `latest` on first publish — end up inconsistent with the
+rest of the set.
+
+To also move `latest` to the just-published alpha version, opt in explicitly:
+
+```bash
+pnpm run release:alpha -- --set-latest
+# or, publish step only:
+node scripts/release/publish-alpha.mjs --tag alpha --set-latest
+# or via env (CI): ALPHA_SET_LATEST=1
+```
+
+This is **off by default and gated behind the flag on purpose**: it deliberately
+relaxes the "non-alpha tags only from `main`" guardrail for the pre-stable phase.
+Enable it only when you intend `latest` to track the current alpha. Once stable
+releases begin from `main`, stop using `--set-latest` so `latest` follows stable.
+
+### Smoke check tolerates registry propagation lag
+
+After publishing, the orchestrator smoke-checks each package's `alpha` tag on
+npm. Newly-created scoped packages (and fresh versions) can take tens of seconds
+to become queryable via `npm view`, so the check **polls with backoff** before
+reporting anything missing. A package that has not appeared yet is reported as a
+propagation warning — not a failed publish. Do not treat a transient smoke-check
+miss as an E404/publish failure; re-check with `npm view <pkg>@alpha version` or
+re-run `pnpm run release:alpha:publish` (already-published versions are skipped).
+
+## One-command release
+
+Run this from repo root on branch `alpha`:
+
+```bash
+pnpm run release:alpha
+```
+
+What it does for you:
+
+1) Safety checks (`alpha` branch + clean working tree except `.cursor/*`)
+2) Registry-aware lockstep alpha-version resolution (without mutating manifests)
+3) Full preflight (`release:alpha:preflight`: release build, strict production
+   types, bounded production-source lint, Less-alpha, the direct public
+   `jess-parser`, `plugin-jess`, and `rollup-plugin-jess` tests, AST-v2
+   production-route ratchet, baseline, aggressive-cutting, allowlist, packed
+   clean-consumer) against that resolved candidate
+4) Apply the lockstep version and update the lockfile
+5) Commit + annotated tag (`vX.Y.Z-alpha.N`)
+6) Push branch + tag to origin
+7) Publish allowlisted packages to npm tag `alpha`
+8) Smoke-check npm `@alpha` dist-tags
+
+Practice first without touching git/npm:
+
+```bash
+pnpm run release:alpha:dry-run
+```
+
+The dry-run command runs the same preflight and then invokes the dry-run publish
+check with the internally forwarded registry-resolved candidate.
+
+### Packed clean-consumer proof
+
+`pnpm run verify:alpha:packed-consumer` packs every allowlisted package and
+installs only those tarballs into an empty temporary npm consumer. It then
+checks ESM and CJS package roots plus the packed `jess` command (files, sibling
+imports, and a malformed-input diagnostic), and the optional
+`@jesscss/plugin-js` sandbox-runtime gate. `lessc` is deliberately not a Jess
+command: the external Less package solely owns and tests that compatibility CLI
+in its own packed-consumer gate. The `jess` CLI may retain or improve familiar
+file and stream ergonomics without claiming the `lessc` contract. The install uses no workspace links; this is
+the release gate that proves the package closure a user will actually receive.
+Pass `-- --keep` only while debugging to retain its temporary consumer directory.
+
+### Strict source-quality proof
+
+The release build may use declaration/bundle tooling that passes `--noCheck`.
+That build success is not a type-quality result. Immediately after the release
+build, `pnpm run verify:types` runs `tsc -p tsconfig.build.json --noEmit` for
+every workspace build config in dependency order, without `--noCheck`. Every
+invocation selects the root workspace's pinned TypeScript compiler; a nested or
+package-local binary cannot change the accepted syntax or manufacture toolchain
+diagnostics. It runs all configs before failing so the release report identifies
+every package that still owns source diagnostics.
+
+`pnpm run lint:production` checks only the bounded production surfaces under
+`packages/*/src/**` and `scripts/**`; repository-root scratch files and build
+artifacts cannot enter through a worktree-wide shell glob. Test files and test
+directories are intentionally outside that release gate and remain available
+through the separate `pnpm run lint:test` command. A candidate is not green
+unless both strict production checks pass.
+
+## First publish (2.0.0-alpha.1)
+
+When no allowlisted package has been published on the `alpha` tag, the normal
+resolver preserves the intended `2.0.0-alpha.1` manifest version. Run the normal
+release command after cutting the snapshot; no separate Changesets version step
+is part of this script:
+
+```bash
+pnpm run release:alpha
+```
+
+For subsequent releases, repeat the validated `dev` → `alpha` controlled snapshot cut and
+changelog step. The resolver selects the next unpublished lockstep alpha version
+when the snapshot's manifest version is stale. `--skip-version` is a recovery
+option for an already-prepared manifest, not the normal release procedure.
+
+## Modular commands (advanced/manual flow)
+
+- Preflight only (when run directly, alpha manifests must already carry a fresh
+  candidate; the one-command orchestrator resolves and forwards that candidate
+  automatically):
+
+```bash
+pnpm run release:alpha:check
+```
+
+- Version only:
+
+```bash
+pnpm run release:alpha:version
+```
+
+- Publish only:
+
+```bash
+pnpm run release:alpha:publish
+```
+
+## CI publishing
+
+- Workflow: `.github/workflows/publish-alpha.yml`
+- Trigger: manual `workflow_dispatch` only
+- CI runs:
+  - install
+  - `release:alpha:check`
+  - `release:alpha:publish`
+- Purpose: manual backup path when you want GitHub Actions to perform publish, not the default daily flow.
+- The workflow itself also enforces branch `alpha` before publish.
+
+## CI readiness
+
+- Workflow: `.github/workflows/less-alpha-readiness.yml`
+- Triggers: pull requests, pushes to `main` and `alpha`, and manual `workflow_dispatch`
+- CI runs `pnpm run verify:less-alpha`, which covers:
+  - publishable `jess` build
+  - package export validation
+  - API Extractor public declaration/API report validation
+  - public `jess` API contract tests
+  - Node path-resolution tests
+  - expanded Less unit and config fixture readiness lanes
+
+This workflow does not publish. It is the normal guard that should fail before
+the manual publish path is attempted.
+
+The publish script is idempotent for existing versions: if `<pkg>@<version>` already exists on npm, it is skipped.
+
+## Rollback and incident handling
+
+- Avoid unpublish except for truly accidental immediate publishes and only within npm policy windows.
+- Preferred recovery:
+  - ship a new `-alpha.N+1` version
+  - keep the existing bad alpha as historical
+- If one package fails during publish:
+  - fix root cause
+  - rerun `pnpm run release:alpha:publish` (already-published packages are skipped)
+
+Useful orchestrator flags:
+
+- `--no-push` (keep commit/tag local for inspection)
+- `--skip-version` (skip registry-aware manifest version resolution when the
+  manifests already contain the intended fresh alpha version)
+- `--skip-publish` (prepare commit/tag/push without npm publish)
+- `--skip-check` (skip the heavy step-2 preflight `release:alpha:check` — use only for a republish when the current tree was already verified; the default remains full-check)
+
+`--skip-check` is the canonical way to skip the preflight while still running the
+normal release orchestrator: it resolves/applies the registry-aware version,
+commits and tags the snapshot, explicitly builds each publishable package, and
+publishes with `pnpm publish --ignore-scripts`. The publish script intentionally
+does not invoke package `prepublishOnly` hooks; the explicit build step is the
+release build. Use this only for a republish whose candidate has already passed
+the full checks. The separate `release:alpha:ship-no-checks`
+(`scripts/release/ship-alpha-no-checks.mjs`) is an emergency fast path with its
+own manifest bump logic and no preflight; it also publishes with
+`--ignore-scripts` and should not be the normal alpha path.
+
+## Promoting blocked packages into alpha
+
+Before adding any blocked package to `scripts/release/alpha-allowlist.json`:
+
+1) Remove runtime dependency blockers (`private: true` or non-allowlisted workspace dependencies).
+2) Confirm the package is not `private` and has valid publish metadata.
+3) Run `pnpm run release:alpha:check` to validate the set.
+4) Update this runbook's publish scope list in the same PR.

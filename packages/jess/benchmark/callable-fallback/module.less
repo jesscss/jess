@@ -1,0 +1,19 @@
+// Imported module defining guarded mixins whose resolution, pre-slice, forced a
+// findMixinsFastForUncoveredCallable descent from the caller frame. The
+// callable-fallback slice resolves them on the frame via the import fallback
+// chain instead, retiring that descent (calls -> 0) byte-identically.
+.configured-guarded(@mode) when (@mode = on) {
+  color: green;
+}
+.configured-guarded(@mode) when (@mode = off) {
+  color: red;
+}
+.sized-guarded(@n) when (@n > 0) {
+  width: (@n * 1px);
+}
+.sized-guarded(@n) when (@n <= 0) {
+  width: 0;
+}
+.plain-surface() {
+  display: block;
+}

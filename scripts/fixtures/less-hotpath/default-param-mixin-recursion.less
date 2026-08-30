@@ -1,0 +1,10 @@
+.default-loop(@n, @seed: 1) when (@n <= 0) {}
+.default-loop(@n, @seed: 1) when (@n > 0) {
+  @next: (@n + @seed);
+  step: @next;
+  .default-loop((@n - 1), @next);
+}
+
+.default-param-mixin-recursion {
+  .default-loop(4);
+}

@@ -1,0 +1,366 @@
+# Jess Parser — build notes
+
+Living doc for the `.jess` parser build (functional Parseman grammar,
+`src/grammar.ts` owns one host-mode factory compiled for AST and CST). Tracks settled syntax
+decisions, **deferred work**, and known quirks so nothing lives only in an
+agent's head. Syntax comes from two sources: how core AST nodes stringify, and
+the canonical docs (`packages/docs-content/docs/jess/**` — `02-Language/**` is
+authoritative; `packages/docs/docs/**` is a stale mirror).
+
+Corpus: `test/corpus/NN-*.test.ts` — each case parses `.jess` and asserts the
+serialized AST (`serializeTypes`). Run: `npx vitest --run test/corpus --root packages/jess-parser`.
+
+---
+
+## Deferred — must be done before the parser is "complete"
+
+### parseman env-blocker — RESOLVED 2026-07-05 ~22:59
+- A ~3-minute window (22:54–22:59) where parseman's `dist/index.js`, mid-rebuilt by
+  the parent session, threw `ReferenceError: _hostReads is not defined` from every
+  compiled grammar (all four parsers, css-parser included — NOT jess-specific). The
+  parent rebuilt parseman to a healthy dist; corpus back to **72/72 green** and
+  `check:macro` clean (jess-parser 0 fallbacks). Recorded only as a reminder: if this
+  error reappears, it's a parseman/codegen issue, not a Jess grammar bug.
+
+### Eval / semantics (not parseable-in-isolation; needs the evaluator)
+- **`.foo` member ambiguity warning.** `$theme.foo` (type `declaration`) can
+  resolve to a `Declaration` *or* a `VarDeclaration`. When a collection declares
+  BOTH `$foo` and `foo`, eval must emit an **ambiguity warning**. The parser
+  builds the `declaration` reference; the conflict detection + warning is an
+  evaluator responsibility. Reachable disambiguated forms already parse:
+  `$theme[foo]` (variable) vs `$theme['foo']` (property).
+- **Dynamic-lookup namespace resolution.** `$theme[$foo]` (dynamic → variable)
+  vs `$theme["$[foo]"]` (dynamic → property) both parse as `index`-type
+  references; eval decides which namespace by the key node (a `Reference` key →
+  variable space; an interpolated `Quoted` key → property space).
+
+### Syntax contradictions — ADJUDICATED by the user 2026-07-05
+1. **Selector capture is `*[…]` — NO `$` sigil** (canonical = core's
+   `SelectorCapture.writeSyntax`). Do NOT add a `$` to core; the parser accepts
+   bare `*[.notice]`. The docs (which show `$*[…]`) are WRONG and get the `$`
+   dropped in the docs-update task. The `$extend`/dynamic-property forms that reuse
+   capture reconcile to bare `*[…]` too.
+2. **`$apply` — `$|…` is INVALID; drop the `$|`-glued shorthand entirely.** The
+   class-merge surface is `$apply <selector-list>` (space after `$apply`), incl.
+   comma-lists: `$apply .a, .b`. Lower it to whatever the earlier
+   "`$apply` ≈ `$ > *[.foo]`" description implies, but the SURFACE is never `$|…`.
+3. **`@-use` and `@-from` are DISTINCT constructs, not interchangeable aliases.**
+   "Sugar" only meant both can import namespaces. Keep two separate grammar rules;
+   they map to different core imports (namespace vs ESM-style). Both support
+   namespace import.
+
+### Parser features — status
+DONE (corpus green at commit time; see ENVIRONMENT BLOCKER above re running):
+- Interpolation `$[key]` (ident interp) — corpus 04.
+- Collections / lists / maps (`$x: { … }`, comma lists) — corpus 05.
+- Control flow `$if` / `$else` / `$for` / `$while` — corpus 06.
+- Mixins: defs, params (`$p[: default]`), guards (`when`), `$ >` calls + chains —
+  corpus 07 (`eb6ec5c2b`).
+- Anonymous mixins `@() {}` / `@{}` + functions `@() > { … }` / `@() > <expr>`
+  (single-expr normalised to a `result:` decl — the CSS `@function` return
+  descriptor) — corpus 08 (`0ecdbba1f`).
+- `$extend` statement (`.sel`, `!exact`, `ns|sel`, comma list, `$type` variable
+  target, `*[.sel]` capture target) — corpus 09 (`bddeb55ac` + capture commit).
+  Literal targets wrapped in a `BasicSelector` (a bare string crashes
+  `Extend.writeSyntax`); node targets (Reference/SelectorCapture) used directly.
+- Selector capture `*[.notice]` / `*[.a, .b]` / `*[.foo .bar]` — corpus 10. Core
+  `SelectorCapture` wrapping a coerced Selector node; renders `*[…]`, NO `$`
+  (adjudication #1). Inner: lone → BasicSelector, list → SelectorList, complex →
+  ComplexSelector. Read from `children` (the comma-list array collapses to `""` in
+  `spannedComponents`, so rawChildren is unusable for it).
+
+- `$apply <selector-list>` — corpus 11. `$apply .a, .b` (never `$|…`,
+  adjudication #2). Builds a dedicated first-class `Apply` core node
+  (`packages/core/src/tree/apply.ts`, modelled on `selector-capture.ts`) holding
+  the applied-selector list; each target coerced to a real Selector (lone →
+  BasicSelector). One selector and a comma list are both just an `Apply` with 1 or
+  N selectors; round-trips `$apply .a, .b;` structurally. (Superseded the earlier
+  `$ > *[.sel]()` mixin-Call lowering from `4ea1ad41e`.)
+
+- Jess `@-` at-rules — corpus 12. `@-compose`/`@-export`/`@-import` → StyleImport;
+  `@-use`/`@-from` → JsImport (distinct `source`, adjudication #3). Round-trips:
+  `@-compose 'p' [as ns|*];`, `@-export 'p';`, `@-use 'p' [as ns];`,
+  `@-from 'p' import (a, b as c) | * as ns;`. NOTE: `@-import` round-trips as
+  `@import` (core's `StyleImport{type:'import'}.writeSyntax` emits `@import` — it
+  deliberately overlaps the CSS at-rule; the leading `@-` is authored-only sugar).
+  Base forms only; `@-compose` modifiers `(reference)`/`(export)` +
+  `set`/`with` blocks are NOT yet built (follow-up).
+
+- Canonical Docusaurus docs updated to the settled syntax (`60b7b35f6`): `$*[…]`→
+  `*[…]` in 08-interpolation, `$|…` removed / `$apply .rounded` in 05-mixins +
+  `$ >` in 10-namespaces, mixin arg/param examples `;`→`,` in 05-mixins.
+
+## `$apply` / `Apply` eval semantics (DONE)
+`Apply.evalNode` expands `$apply` into the applied rulesets' bodies (user-specified
+semantics: apply ONLY plain `Ruleset`s, whole-selector match, merge-ALL; parametric
+`Mixin`s excluded — no callable/args/guards machinery):
+- **Shared ruleset-only lookup** `resolveRulesetBySelector(selector, scope)`
+  (`rules.ts`, exported): `getOrderedSelectorKeys` → `findMixinsFast(key,
+  { rulesetsOnly: true })`. New `rulesetsOnly` option on `findMixinsFast` mirrors the
+  existing `includeRulesets` filter in `collectBucketResults`: keep only
+  `isNode(candidate, N.Ruleset)` at whole-selector (`entry.match.length === 0`).
+- **Splice = thin `Rules` + live binding** (mixin-call inline mechanic): each matched
+  `Ruleset` → `createCallableRulesSurface(ruleset)` (shares the ruleset's body
+  children push-without-adopt + `sourceNode` live binding), collected into one
+  container `Rules` that flattens into the parent output. Reused
+  `createCallableRulesSurface` wholesale; did NOT reuse `evaluateCallableCollection`
+  (it bakes in args/candidate-matching/guards — out of scope for ruleset-only apply).
+- Tests: `core/src/tree/__tests__/apply.test.ts` (8 eval tests). Core 2745/0.
+
+## `*[.foo]()` bracket-capture CALL is ruleset-only (DONE)
+Correction to an earlier N/A: the bracket-capture CALL `*[.foo]()` IS made
+ruleset-only, and it's a DIFFERENT construct from the dot mixin-ruleset call
+`*.foo()` — so the change is surgical and leaves `*.foo()` untouched:
+- `*[.foo]()` — a `Call` whose name is a `Reference` whose KEY is a `SelectorCapture`
+  (`cap.parent === reference`; `isInsideSelectorCapture(reference)` is FALSE — the
+  capture is a child, not an ancestor). Now resolves RULESET-only (same as `$apply`):
+  a same-named `.foo` Mixin is excluded.
+- `*.foo()` — a `Reference` with a STRING key + `options.type === 'mixin-ruleset'`,
+  no capture. UNCHANGED (matches both mixin + ruleset).
+Implementation:
+- `rulesetsOnly` threaded through `findMixin`'s string-key path +
+  `collectCallableBucketResults` / `collectCallableBucketRemainderResults` /
+  `findMixinsFastForUncoveredCallable` (mirrors the `includeRulesets` guard;
+  `CallableFindOptions.rulesetsOnly`).
+- Gate: new `isSelectorCaptureKeyReference(referenceNode)` (key is a SelectorCapture)
+  in `performMixinRulesLookup` / `performMixinRulesetRulesLookup`; when true, drop the
+  `'Mixin'` filter (so rulesets are allowed) and pass `rulesetsOnly: true`.
+- The BARE `*[…]` value (not called) is still a pure selector resolver — it does no
+  lookup, so it's unaffected (SelectorCapture tests ×6 stay green).
+- Tests: `selector-capture-call.test.ts` (4) incl. a bracket-vs-dot divergence test.
+  Core 2749/0; `$apply` unchanged.
+
+## Variable assignment operators (`?:` / `:=`) — DONE (parse + serialize)
+- **`$foo?:` conditional / default-assignment** — Jess's equivalent of SCSS
+  `!default` (NOT Jess). Serialization normalized to the canonical GLUED form:
+  `$foo?: v` renders with NO space before the `:` (the spaced `$foo ?: v` authored
+  form normalizes to it). Fix: `isJessGluedAssign` in `declaration.ts` glues
+  `CondAssign`/`Add` only; `:=` (setDefined/nearestOuter) and Less `&,:`/`&_:` stay
+  spaced (kept `$one := three` test green).
+- **NO variable `+:` operator** — the Jess VARIABLE compound-add operator was
+  REMOVED. `$foo +: 1` no longer parses; write it explicitly as `$foo: $foo + 1`.
+  `assignOp` grammar is `/\?:|:=|:/` (no `+:`); the builder's `AssignmentType.Add`
+  branch for VarDeclaration is gone. (`AssignmentType.Add` still exists in core for
+  the Less PROPERTY `+:` merge — a separate feature, see the deferred design below.)
+- **Variable lookup and assignment source contract.** `$foo` is the live/current
+  read and `$^foo` is the scoped/final read. Both `$foo: value` and `$^foo: value`
+  create or update both bindings; the declaration sigil does not select a binding
+  kind. `$foo?:` tests the live map and `$^foo?:` tests the scoped/final map, with
+  either form creating/updating both bindings only on a miss. `$foo :=` updates the
+  live/current binding; `$^foo :=` updates the scoped/final binding. `$!` and `$$`
+  are
+  retired and must not be documented as an accepted or compatibility spelling.
+  AST representation and parser/evaluator migration are deliberately not specified
+  by this note; see the active resolver shape specification for the target rules.
+
+## setDefined / `!global` ↔ `:=` split — blast radius (investigated)
+- `setDefined: true` is SET by: scss-parser (3 sites, `sawGlobal` = Sass `!global`)
+  and — until this change — the jess `:=` builder. Now ONLY scss sets it.
+- `setDefined` is READ by ~12 core sites (rules.ts registration/eval incl. the
+  assign-through-binding at ~4723, + direct-rules-lookup.ts) implementing the
+  `!global` "assign the existing (global) binding" eval. ALL of that is UNTOUCHED —
+  `:=` moving to `nearestOuter` leaves `setDefined`/`!global` semantics intact
+  (core 2749/0). `nearestOuter` is read by no eval code yet (deferred).
+
+## Property `+:` merge — DEFERRED design (eval + option plumbing NOT built)
+Only the design; the merge-resolution eval + option plumbing are deferred (merge
+eval is already deferred-eval territory). This is the PROPERTY `+:` (plain
+`Declaration`, e.g. `background +: …`), NOT the removed variable op.
+- **Semantics = "add to the current value"**: `prop +: v` is sugar for
+  `prop: $($['prop'] + v)`. CONTRIBUTOR-ONLY — only the *adding* declaration needs
+  the flag; a plain `:` on the same property **replaces/resets** (wipes any prior
+  accumulation). This is a SUPERSET of Less's merge.
+- **Gated by a compilation-level `legacyMerge` option** (defaulted by the entry
+  file's extension):
+  - `legacyMerge: true` → LEGACY Less behavior: BOTH declarations must be flagged
+    to merge.
+  - `legacyMerge: false` → the NEW Jess model above (contributor-only add; `:`
+    resets).
+  - **Defaults: `.less` → `legacyMerge: true`; `.jess` → `legacyMerge: false`.**
+  - Granularity: compilation-level, defaulted by the entry file's extension.
+
+## Mixin / function CALL argument model — SETTLED (partially implemented)
+Supersedes the old deferred "advanced mixin args (`;`-separated)" item.
+- **Comma-separated ONLY** in `.jess`. `;` is NOT a Jess argument separator.
+- Direct AST parsing now accepts named *mixin* arguments as
+  `$ > mixin($parameter: value)`, reducing them to the shared canonical
+  `CallArg { name, value }` fact. Positional arguments and defaults use the
+  existing core binder; this is not a new Jess-only call model.
+- A **space-separated** list is a single bare arg: `mixin(1px 2px, red)` = 2 args
+  (first a space-list) — exactly like `margin: 1px 2px`.
+- A **comma-list as a single arg** uses the paren-escape wrapper **`~(1, 2, 3)`**:
+  `mixin(~(1, 2, 3), red)` = 2 args (first a comma-list). The `~` marks the parens
+  as a *wrapper* that is STRIPPED — NOT a `Paren` value node. Same convention as
+  Less string escaping `~"…"`.
+- **Both `~"…"` (string escape) and `~(…)` (paren/list escape) are PRESERVED in
+  `.jess`.** Parser note (for when built): `~(` glued must resolve to the
+  list-wrapper, NOT `~`-operator applied to a `(…)` group.
+
+### DEFERRED TASK 1 — lower Less `;`-args → comma + `~(…)`
+When parsing LESS mixin/function args (the `;`-separated form), lower AT PARSE TIME
+to the unified representation: args comma-separated, any comma-list argument wrapped
+in `~(…)`. Less's `;` syntax and Jess's `~(…)` syntax then produce the SAME AST.
+Pure surface-syntax lowering (identical semantics) — **NO runtime option needed**
+(contrast `legacyMerge`, which gates genuinely different merge semantics).
+
+### DEFERRED TASK 2 (consideration, not a firm decision) — drop `;` from `List`
+Investigate making `List` comma-only (drop the `sep: ';'` option;
+`ListOptions.sep` is `',' | ';' | '/'` in `core/src/tree/list.ts:249`), while
+KEEPING the `{ … }` collection/map `;`-separators (map entries) intact. Aligns
+`List` with the commas-only direction.
+Dependents of `;`-separated `List` found (would need review before dropping):
+  - `core/src/tree/paren.ts:245,348` — checks `List.options.sep === ';'`.
+  - `less-parser/src/productions/values.ts:542,722,1110` + `guards.ts:816` —
+    construct `{ sep: ';' }` lists (Less `;`-list values / mixin-arg branches).
+  - `scss-parser/src/productions/values.ts:669` — SCSS `;`-list values.
+  - `css-parser/src/builders.ts:1042`, `css-parser/src/productions/values.ts:745`,
+    `css-parser/src/productions/misc.ts:467` — CSS `;`-list construction.
+  Note: this is `List`-level; the `{ … }` Collection `;`-entry separator is separate
+  and stays.
+
+## Deferred eval TODOs
+
+Variable parser/evaluator migration must implement the settled source contract:
+`$foo` reads live/current, `$^foo` reads scoped/final, and `$!`/`$$` are retired.
+`$foo :=` updates the live/current binding while `$^foo :=` updates the
+scoped/final binding. Do not preserve old `nearestOuter`, `liveBinding`, or
+`setDefined` machinery as compatibility semantics.
+
+FOLLOW-UPS (out of the adjudicated scope; not yet built):
+- `@-compose` option modifiers `(reference)` / `(export)` +
+  `set`/`with` config blocks (StyleImport importOptions.reference/mutable/... + the
+  StyleImportValue.with node).
+- Function-call named arguments and the `~(…)` list-wrapper remain deferred;
+  named mixin arguments are implemented as above. Rest params `...$x` and
+  `$content()` callbacks still defer their own AST/evaluator models.
+- `$theme["${foo}"]` dynamic-property key (rides on the capture machinery).
+  Re-spelled by the position matrix — the inner splice sits in a STRING, so it
+  is `${foo}`, not `$[foo]`. Still deferred; only its spelling is settled.
+
+---
+
+## Known gaps found while landing `${…}` (2026-07-24) — NOT fixed
+
+Found by rendering every code sample on the edited docs pages through the real
+compiler and diffing against the pre-edit file. All three are **pre-existing** —
+they reproduce on `origin/dev` before the `${…}` landing — and all three are
+worked around in the docs rather than fixed, so they will otherwise be
+rediscovered.
+
+- **A trailing `//` comment inside a collection entry is a parse error.**
+  `$m: { small: 4px; }` parses; `$m: { small: 4px; // note\n }` does not. A line
+  comment is lexical trivia everywhere else in `.jess`, so the collection-entry
+  production is the outlier. Worked around by moving the comment above the block
+  in `docs/jess/02-Language/10-namespaces-and-maps.mdx`.
+- **`$extend $type;` does not parse.** The documented selector-capture flow
+  (`$type: *[.notice]; .danger { $extend $type; }`) errors at the `$extend`
+  statement. `$extend .notice;` with a literal selector is fine, so the gap is
+  the variable-valued target. Example 4 in
+  `docs/jess/02-Language/08-interpolation.mdx` teaches the failing form.
+- **`$['border-color']` self-lookup renders verbatim.** Reading another
+  declaration's value out of the current scope (`box-shadow: 0 0 0 2px
+  $['border-color']`) emits the source bytes instead of resolving. Example 3 in
+  `docs/jess/02-Language/08-interpolation.mdx`.
+
+## Docs-vs-parser audit findings (parser CORRECT; docs corrected)
+- **`$(…)` expression form is REJECTED in condition position.** A `when` guard /
+  `$if` / `$while` condition's `(…)` IS the expression, so a `$(…)` wrapper there is
+  an expression-inside-an-expression — the parser correctly errors ("Unexpected
+  input"). Conditions use plain `(…)` with `$`-prefixed variables (`($a > $b)`),
+  never `$(a > b)`. Verified: `when ($a > $b)` / `$if ($a > $b)` parse; `when $(a >
+  b)` / `$if $(a > b)` are rejected. Docs fixed: `05-mixins.mdx` `:::info` box (both
+  dirs) — removed the "equivalent" framing + all `$(…)`-in-condition + the `~true`
+  note.
+- **Inside a `$(…)` expression, a bare identifier is a KEYWORD, not a variable —
+  variables keep their `$`.** `$(width + 1)` does NOT reference `$width`; the correct
+  form is `$($width + 1)` (per the migrating doc's own "$($var) for a reference
+  inside an expression" rule). Docs fixed: `06-migrating.mdx` Expressions section
+  (both dirs) — `$(width + 1)`→`$($width + 1)`; + `03-expressions.mdx` "Use with Jess variables" example
+  (`$(width + 10px)`→`$($width + 10px)`, both dirs).
+- **⚠️ MORE occurrences of the same bare-ident bug remain (NOT fixed here — flagged
+  for a follow-up sweep, out of this task's 2-file scope):**
+  - `05-mixins.mdx:367` — `mixin($value) when not default { padding: $(value / 5) }`
+    → `$($value / 5)`.
+  - `07-conditionals-iteration.mdx:~91` — `$for ($section, $i …) { … $(i * 20px) }`
+    → `$($i * 20px)` (and review the `$(section)` interpolation — likely `$[section]`).
+  - `04-Functions/07-logical.md:14,33,37` — `$(value > 10)` etc. → `$($value …)`.
+  - `03-expressions.mdx:~62,67` (mirror) — `$(color)`/`$(num + 1)` with `$color`/`$num`
+    declared → `$($color)` / `$($num + 1)`.
+  These are the identical "bare-ident-drops-the-`$`" error across ~4 more files;
+  each needs the same fix (both docs dirs) once greenlit.
+
+---
+
+## Settled syntax decisions
+
+- **Base:** compose over the CSS base grammar, not Less/SCSS. Author only the
+  Jess delta + `//` comments. Selectors stay clean unless interpolated. The
+  current grammar owns AST and CST through one host-mode factory; do not
+  reintroduce a CST-only Jess delta.
+- **Variables:** `$name: value;` and `$^name: value;` both create or update both
+  bindings. `$name` reads live/current and `$^name` reads scoped/final. `?:` and
+  `:=` use their target lookup mode. `$!`/`$$` are retired.
+- **Accessor model** (`$theme.$key` is INVALID — removed from `reference.ts`):
+  | Syntax | `type` | Semantics |
+  | --- | --- | --- |
+  | `$foo` | `variable` | variable read |
+  | `$theme.foo` | `declaration` | ambiguous member (Declaration OR VarDeclaration; warns) |
+  | `$theme[foo]` | `variable` | the variable `$foo` on theme |
+  | `$theme['foo']` | `property` | literal property (Declaration) |
+  | `$theme[0]` | `index` | numerical index |
+  | `$theme[$foo]` | `index` | dynamic (value of `$foo` is the key) |
+
+  `index` is reserved for dynamic/numerical lookups. Variable/property/index all
+  render `[key]` on a target; `declaration` renders `.key`. The key node's form
+  (bare / quoted / num / `$var`) makes them visually distinct.
+- **Expressions `$( … )`:** one Expression node wrapping an arithmetic/comparison
+  tree. Binary operators REQUIRE surrounding whitespace (`1 + 2`, `5 % 2`); glued
+  `$(1+2)` / `$(5%2)` are NOT operations (that's Less — convert-Less spaces them
+  out). `50%` glued = percent Dimension; `5 % 2` spaced = modulo. Bare ident
+  inside `$()` = keyword literal; `$x` = reference.
+- **No unwrapped value-position arithmetic:** ordinary Jess values do not accept
+  `$w + 1`, `.w + 1`, or comparison forms. Math, comparison, and leading-dot
+  declaration lookup live behind the explicit `$(...)` expression boundary:
+  `$(.w + 1)` and `$(.w > 0)` parse as expressions; `$w + 1` remains illegal in
+  a normal declaration value. Less conversion must project Less `mathMode`
+  expression facts into explicit `$(...)` Jess output, e.g. `@foo + 1` becomes
+  `$(^foo + 1)` when Less actually lowered the source as math. Plain `^foo` is
+  expression-only; ordinary value-position scoped lookup is `$^foo`.
+
+## Core change made by this build
+- `reference.ts` `writeSyntax` `case 'variable'`: a variable lookup WITH a target
+  now renders `[key]` (was `.$key`, which is not a valid Jess form). Verified
+  safe: no test relied on `.$key`; core reference 210/210 pass; the 5 less-parser
+  failures are pre-existing on `dev` (confirmed by reverting this change).
+
+## Macro-buildability (parseman)
+- Parseman is resolved from the workspace's pinned npm package. Current grammar
+  rewrite floor: `parseman@0.40.0`.
+- **Build guard**: `pnpm run check:macro`
+  (`scripts/check-macro-buildable.mjs`) builds parser-shared plus the four parser
+  packages in dependency order and fails if any package emits an interpreter
+  fallback or parseman macro warning. Re-run it after grammar batches before
+  quoting whole-repo fallback counts. The package-local fold evidence is:
+  `pnpm --filter @jesscss/jess-parser build` and
+  `pnpm --filter @jesscss/jess-parser test` pass after the single-source
+  host-mode fold.
+- Wired into `verify:pr` and `.github/workflows/pr-quality-gate.yml`, both with
+  `--no-build`, so it reads the artifacts the clean serial build already produced
+  rather than paying for a second rebuild. `verify-compose-integrity.mjs --log`
+  owns the compose-degrade half in those paths; standalone `pnpm check:macro`
+  builds and checks both halves itself.
+- **"lower" vs `RegExp.exec`**: a regex *lowers* when it compiles to a tight
+  `charCodeAt` scan; otherwise it falls back to `RegExp.exec` (still compiled — an
+  accepted path, NOT a failure). parseman now warns (default on) on every
+  un-lowered regex, showing the pattern; suppress with the plugin option
+  `warnUnloweredRegex: false`. (~700 across the parsers — mostly lookahead /
+  lookbehind / `i`-flag / escape-heavy patterns that can't scan.) The real
+  regression signal is the interpreter fallback, which the guard covers.
+- NEVER put a literal U+FFFF char in a grammar regex — write the `-￿`
+  escape (Edit can't match the literal char; use perl/python to fix).
+
+## Known quirks (serialized AST is correct; toString cosmetic)
+- Space-separated value lists (`1px solid red`) round-trip via toString as
+  `1pxsolidred` — inherited css-parser behavior; the serialized AST is clean.
+- `$(1 > 2)` round-trips as `$((1 > 2))` — `Condition.toString` adds its own
+  parens; serialized AST is correct.

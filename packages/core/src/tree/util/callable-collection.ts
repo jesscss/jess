@@ -1,0 +1,35 @@
+import type { Context } from '../../context.js';
+import { defineType, Node } from '../node.js';
+import type { List } from '../list.js';
+import type { Rules } from '../rules.js';
+import type { MixinEntry } from './callable-entry.js';
+import { evaluateCallableCollection } from './callable-eval.js';
+
+export class MixinCollection extends Node<MixinEntry[]> {
+  static override childKeys = null;
+
+  readonly entries: MixinEntry[];
+
+  constructor(value: MixinEntry[]) {
+    super(value);
+    this.entries = value;
+  }
+
+  override adopt(_node?: Node) {
+    return this;
+  }
+
+  override resolve(_context: Context): this {
+    return this;
+  }
+
+  async evalCall(context: Context, args?: List<Node>): Promise<Rules> {
+    return evaluateCallableCollection({
+      context,
+      mixinEntries: this.entries,
+      args: args?.value ?? []
+    });
+  }
+}
+
+defineType(MixinCollection, 'MixinCollection', 'mixincoll');

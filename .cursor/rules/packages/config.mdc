@@ -1,0 +1,12 @@
+---
+description: "Package: styles-config (config loading and merging)"
+globs:
+  - "packages/config/**"
+---
+
+# `styles-config`
+
+- **Role**: Shared configuration loader (cosmiconfig/picomatch); depends on core.
+- **Build**: `cd packages/config && pnpm build`
+- **Tests**: `cd packages/config && pnpm test`
+

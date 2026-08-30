@@ -1,0 +1,283 @@
+---
+title: Migrating to Jess
+sidebar_label: Migrating to Jess
+description: Move a Less or Sass codebase onto Jess by hand, with side-by-side syntax mapping tables for every construct.
+audiences:
+  - jess
+  - sass
+origin: jess
+slug: /guides/migrating-to-jess
+---
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import AudienceGate from '@theme/AudienceGate';
+
+<AudienceGate include={['jess']}>
+
+Moving an existing **Less** or **Sass** codebase onto **Jess**? This guide is a
+side-by-side mapping so you can see exactly what each construct becomes in Jess
+syntax.
+
+</AudienceGate>
+
+<AudienceGate include={['sass']}>
+
+Coming from **Sass/SCSS**? Jess parses your SCSS today (it calls the supported
+subset **Sass+**), so nothing forces you to rewrite it. When you do want native
+`.jess`, the tables below read left-to-right: **your Sass** on the left,
+**Jess** on the right.
+
+</AudienceGate>
+
+:::caution Migration is manual today
+There is **no `jess convert` command**. An automated `.less`/`.scss` → `.jess`
+converter is planned but not implemented. The `jess` CLI compiles a single file
+to CSS by default (`jess input.less -o dist`) and exposes `jess lint` as a
+separate diagnostics workflow.
+
+You do not have to migrate to use Jess: the compiler reads `.less` and `.scss`
+sources directly. Port files to `.jess` by hand, using the mappings below, only
+where you want the native syntax.
+:::
+
+## Construct mapping
+
+Each section pairs a source construct with the Jess spelling it becomes. These
+are the same mappings an automated converter would apply, so they are equally
+useful as a hand-migration checklist and as the specification for that future
+tool.
+
+### At-rules
+
+At-rules become their prefixed counterparts. Import rules also have to
+distinguish file-relative from module-relative paths, because Jess requires
+file-relative imports to be explicit.
+
+E.g. `@import` becomes `@-import`
+
+<Tabs>
+  <TabItem value="Less">
+  ```less
+  @import "variables"; // variables.less
+  ```
+  </TabItem>
+  <TabItem value="Sass">
+  ```less
+  @import "variables"; // variables.scss
+  ```
+  </TabItem>
+  <TabItem value="Jess">
+  ```less
+  @-import "./variables"; // variables.jess
+  ```
+  </TabItem>
+</Tabs>
+
+:::tip Prefer `@-compose` once ported
+`@-import` is a **legacy bridge** — it works and eases a mechanical port, but it
+emits a deprecation warning because it re-exports everything and changes the
+evaluation context per call. The Jess module system is
+[`@-compose`](/docs/Language/atrules) (namespaced, isolated scope). A Sass
+`@use "./theme";` maps most cleanly to `@-compose "./theme";`, not `@-import`.
+Use `@-import` for the first pass, then promote real modules to `@-compose`.
+
+`@-compose` currently accepts a quoted path and an optional `as` alias
+(`@-compose "./theme" as t;`). Sass's `@use ... with (...)` configuration has no
+`@-compose` equivalent yet.
+:::
+
+### Variable declarations
+
+Both Jess `$name: value` and `$^name: value` create or update both live and
+scoped bindings. The reference sigil, rather than the declaration, selects
+lookup behavior.
+
+<Tabs>
+  <TabItem value="Less">
+  ```less
+  @color: #06c;
+  ```
+  </TabItem>
+  <TabItem value="Sass">
+  ```less
+  $color: #06c;
+  ```
+  </TabItem>
+  <TabItem value="Jess">
+  ```less
+  $color: #06c;
+  ```
+  </TabItem>
+</Tabs>
+
+### Variable references
+
+#### Less-to-Jess
+
+<div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
+  <div style={{ flex: 1 }}>
+  ```less
+  value: @color;
+  ```
+  </div>
+  <div style={{ flex: 1 }}>
+  ```less
+  value: $^color;
+  ```
+  </div>
+</div>
+
+#### Sass-to-Jess
+
+:::info
+
+Jess `$color` is the live/current reference form. `$^color` is the scoped/final
+lookup.
+
+:::
+
+<div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
+  <div style={{ flex: 1 }}>
+  ```less
+  value: $color;
+  ```
+  </div>
+  <div style={{ flex: 1 }}>
+  ```less
+  value: $color;
+  ```
+  </div>
+</div>
+
+### Expressions
+
+Jess expressions are always `$(`...`)`. Plain `$var` is a variable reference. Inside an expression, variables keep their `$` sigil — a bare identifier is a keyword, not a variable.
+
+Use:
+
+- `$var` for a direct variable reference
+- `$($var)` when you need that reference inside an expression
+- `${ident}` for interpolation in selector, property-name, and string positions —
+  this is Jess's counterpart to Less's `@{name}`, and it is spelled the same way
+- `$['name']` for a property lookup key (a *lookup*, in value position)
+
+#### Less-to-Jess
+
+<div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
+  <div style={{ flex: 1 }}>
+  ```less
+  value: @width + 1;
+  value: (@width / 2);
+  ```
+  </div>
+  <div style={{ flex: 1 }}>
+  ```less
+  value: $(^width + 1);
+  value: $(^width / 2);
+  ```
+  </div>
+</div>
+
+SCSS variable math keeps the `$` variable spelling inside the Jess expression,
+for example `$width + 1` lowers to `$($width + 1)`.
+
+#### Sass-to-Jess
+
+<div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
+  <div style={{ flex: 1 }}>
+  ```less
+  value: $width + 1;
+  value: ($width / 2);
+  ```
+  </div>
+  <div style={{ flex: 1 }}>
+  ```less
+  value: $($width + 1);
+  value: $($width / 2);
+  ```
+  </div>
+</div>
+
+### Mixin definitions
+
+#### Less-to-Jess
+
+<div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
+  <div style={{ flex: 1 }}>
+  ```less
+  .box() {}
+  .with-params(
+    @param1: 1;
+    @param2: 2;
+  ) {}
+  ```
+  </div>
+  <div style={{ flex: 1 }}>
+  ```less
+  .box() {}
+  .with-params(
+    $param1: 1,
+    $param2: 2
+  ) {}
+  ```
+  </div>
+</div>
+
+#### Sass-to-Jess
+
+<div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
+  <div style={{ flex: 1 }}>
+  ```less
+  @mixin box() {}
+  @mixin with-params(
+    $param1: 1,
+    $param2: 2
+  ) {}
+  ```
+  </div>
+  <div style={{ flex: 1 }}>
+  ```less
+  box() {}
+  with-params(
+    $param1: 1,
+    $param2: 2
+  ) {}
+  ```
+  </div>
+</div>
+
+### Mixin calls
+
+#### Less-to-Jess
+
+<div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
+  <div style={{ flex: 1 }}>
+  ```less
+  .box();
+  .with-params(1; 2);
+  ```
+  </div>
+  <div style={{ flex: 1 }}>
+  ```less
+  $ > .box();
+  $ > .with-params(1, 2);
+  ```
+  </div>
+</div>
+
+#### Sass-to-Jess
+
+<div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
+  <div style={{ flex: 1 }}>
+  ```less
+  @include box();
+  @include with-params(1, 2);
+  ```
+  </div>
+  <div style={{ flex: 1 }}>
+  ```less
+  $ > box();
+  $ > with-params(1, 2);
+  ```
+  </div>
+</div>

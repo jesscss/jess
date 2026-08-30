@@ -1,3 +1,6 @@
+/**
+ * Like Less guards with default()
+ */
 .box-0 {
   width: 4px;
 }

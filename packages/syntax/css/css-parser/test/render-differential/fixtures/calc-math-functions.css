@@ -1,0 +1,21 @@
+/* The §10 names that route their arguments through the same ladder. */
+.math-functions {
+  a: min(1rem, 2rem);
+  b: max(1px, 2px, 3px);
+  c: clamp(1rem, 2vw + 1px, 4rem);
+  d: round(up, 1.2px, 1px);
+  e: round(nearest, 5.5, 2);
+  f: mod(18px, 5px);
+  g: rem(18px, 5px);
+  h: abs(-1px);
+  i: sign(-1px);
+  j: hypot(3px, 4px);
+  k: pow(2, 10);
+  l: sqrt(16);
+  m: log(8, 2);
+  n: exp(1);
+  o: atan2(1, 2);
+  p: sin(45deg);
+  q: cos(30deg + 15deg);
+  r: tan(1rad / 2);
+}

@@ -1,0 +1,1282 @@
+{
+  "provenance": {
+    "generatedAt": "2026-08-26T14:23:47.345Z",
+    "jessCommit": "4eed988b05224d8c489ac954362b2b16cc112a70",
+    "route": "src-path Vitest renderer in packages/jess/test/less/_corpus-slice.test.ts",
+    "configuration": {
+      "baseOutput": {
+        "collapseNesting": true
+      },
+      "fixtureConfig": "getTestCases() fixture-local config merged for each expected output",
+      "errorCorpus": "functionMode:error + unitMode:strict; imported helper files excluded"
+    },
+    "testData": {
+      "root": "/Users/matthew/git/oss/less.js/packages/test-data",
+      "commit": "e7626e8c9936a67c80b5740c4f203731d82580e8",
+      "scopedChanges": []
+    },
+    "runner": {
+      "node": "v25.9.0",
+      "platform": "darwin",
+      "arch": "arm64"
+    }
+  },
+  "render": [
+    {
+      "file": "tests-unit/whitespace/whitespace.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/variables-in-at-rules/variables-in-at-rules.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/variables/variables.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    },
+    {
+      "file": "tests-unit/urls/urls.less",
+      "kind": "render",
+      "outcome": "error",
+      "detail": "Import not found"
+    },
+    {
+      "file": "tests-unit/tailwind/tailwind.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/strings/strings.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/starting-style/starting-style.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/scope/scope.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/rulesets/rulesets.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/property-targeted/property-targeted.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/property-name-interp/property-name-interp.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    },
+    {
+      "file": "tests-unit/property-accessors/property-accessors.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/plugin-preeval/plugin-preeval.less",
+      "kind": "render",
+      "outcome": "error",
+      "detail": "Plugin \"../../plugin/plugin-preeval\" could not be loaded: Script path \"/Users/matthew/git/oss/less.js/packages/test-data/plugin/plugin-preeval.js\" is outside jsReadRoot \"/Users/matthew/git/oss/less.js/packages/test-data/tests-unit/plugin-preeval\""
+    },
+    {
+      "file": "tests-unit/plugin-module/plugin-module.less",
+      "kind": "render",
+      "outcome": "error",
+      "detail": "Plugin \"clean-css\" could not be loaded: Less @plugin function \"index.js\" threw: Less @plugin require(\"./lib/clean\") is not supported in the Deno sandbox yet."
+    },
+    {
+      "file": "tests-unit/plugin/plugin.less",
+      "kind": "render",
+      "outcome": "error",
+      "detail": "Plugin \"../../plugin/plugin-global\" could not be loaded: Script path \"/Users/matthew/git/oss/less.js/packages/test-data/plugin/plugin-global.js\" is outside jsReadRoot \"/Users/matthew/git/oss/less.js/packages/test-data/tests-unit/plugin\""
+    },
+    {
+      "file": "tests-unit/plugi/plugi.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/permissive-parse/permissive-parse.less",
+      "kind": "render",
+      "outcome": "error",
+      "detail": "Bare @variable interpolation is not valid here."
+    },
+    {
+      "file": "tests-unit/parser-slashed-combinator/parser-slashed-combinator.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    },
+    {
+      "file": "tests-unit/parser-property-interp/parser-property-interp.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/parse-interpolation/parse-interpolation.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    },
+    {
+      "file": "tests-unit/operations/operations.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/operations/operations-advanced.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/no-output/no-output.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/nesting/nesting.less [1/2]",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/nesting/nesting.less [2/2]",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/namespace-targeted/namespace-targeted.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/mixins-pattern/mixins-pattern.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/mixins-nested/mixins-nested.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/mixins-named-args/mixins-named-args.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/mixins-interpolated/mixins-interpolated.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/mixins-important/mixins-important.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/mixins-guards-default-func/mixins-guards-default-func.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/mixins-guards/mixins-guards.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/mixins-closure/mixins-closure.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/mixins/mixins.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    },
+    {
+      "file": "tests-unit/mixins/mixins-advanced.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/mixins/maps.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/mixin-noparens/mixin-noparens.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/media/media.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    },
+    {
+      "file": "tests-unit/math-css-vars/math-css-vars.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/lazy-eval/lazy-eval.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/layer/layer.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/javascript-REMOVED/legacy/javascript.less",
+      "kind": "render",
+      "outcome": "error",
+      "detail": "Inline backtick JavaScript is not supported."
+    },
+    {
+      "file": "tests-unit/import/import.less",
+      "kind": "render",
+      "outcome": "error",
+      "detail": "A compile-time @import cannot carry a media query."
+    },
+    {
+      "file": "tests-unit/import/import-remote.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/import/import-reference.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    },
+    {
+      "file": "tests-unit/import/import-reference-issues.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/import/import-once.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/import/import-module.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/import/import-interpolation.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/import/import-inline.less",
+      "kind": "render",
+      "outcome": "error",
+      "detail": "A compile-time @import cannot carry a media query."
+    },
+    {
+      "file": "tests-unit/impor/impor.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/ie-filters-REMOVED/legacy/ie-filters.less",
+      "kind": "render",
+      "outcome": "error",
+      "detail": "Unexpected Less input after a complete stylesheet."
+    },
+    {
+      "file": "tests-unit/functions-each/functions-each.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/functions/functions.less",
+      "kind": "render",
+      "outcome": "error",
+      "detail": "This Less variable name is not supported."
+    },
+    {
+      "file": "tests-unit/functions/legacy/functions.less",
+      "kind": "render",
+      "outcome": "error",
+      "detail": "This Less variable name is not supported."
+    },
+    {
+      "file": "tests-unit/extract-and-length/extract-and-length.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    },
+    {
+      "file": "tests-unit/extend-selector/extend-selector.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/extend-nest/extend-nest.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/extend-media/extend-media.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/extend-clearfix/extend-clearfix.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/extend-chaining/extend-chaining.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/extend/extend.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/empty/empty.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/detached-rulesets/detached-rulesets.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/css-guards/css-guards.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/css-grid/css-grid.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/css-escapes/css-escapes.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/css-3/css-3.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/container/container.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/comments/comments2.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/comments/comments.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/color-functions/rgba.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/color-functions/operations.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    },
+    {
+      "file": "tests-unit/color-functions/modern.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/color-functions/modern-syntax.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/color-functions/formats.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/color-functions/comprehensive.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/color-functions/basic.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/color-functions/alpha.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/charsets/charsets.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/calc/calc.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/at-rules-targeted/at-rules-targeted.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/at-rules-keyword-comments/at-rules-keyword-comments.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/at-rules-empty-block/at-rules-empty-block.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/at-rules-empty/at-rules-empty.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/at-rules-declarations/at-rules-declarations.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/at-rules-bubbling/at-rules-bubbling.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/at-rules/at-rules.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/at-rule-variable-interpolation/at-rule-variable-interpolation.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-unit/at-rule-variable-deprecated/at-rule-variable-deprecated.less",
+      "kind": "render",
+      "outcome": "error",
+      "detail": "Bare @variable interpolation is not valid here."
+    },
+    {
+      "file": "tests-config/visitorPlugin/visitor.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    },
+    {
+      "file": "tests-config/url-args/urls.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/units/strict/strict-units.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/units/no-strict/no-strict.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/strict-imports/strict-imports.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/static-urls/urls.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    },
+    {
+      "file": "tests-config/sourcemaps-url/sourcemaps-url.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    },
+    {
+      "file": "tests-config/sourcemaps-rootpath/sourcemaps-rootpath.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    },
+    {
+      "file": "tests-config/sourcemaps-include-source/sourcemaps-include-source.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    },
+    {
+      "file": "tests-config/sourcemaps-basepath/sourcemaps-basepath.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    },
+    {
+      "file": "tests-config/sourcemaps/comprehensive/comprehensive.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    },
+    {
+      "file": "tests-config/rootpath-rewrite-urls-local/rootpath-rewrite-urls-local.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/rootpath-rewrite-urls-all/rootpath-rewrite-urls-all.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/rewrite-urls-local/rewrite-urls-local.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/rewrite-urls-all/rewrite-urls-all.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/process-imports/google.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/preProcessorPlugin/preProcessor.less",
+      "kind": "render",
+      "outcome": "error",
+      "detail": "Name not found"
+    },
+    {
+      "file": "tests-config/postProcessorPlugin/postProcessor.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    },
+    {
+      "file": "tests-config/namespacing/namespacing-operations.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/namespacing/namespacing-media.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/namespacing/namespacing-functions.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/namespacing/namespacing-8.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/namespacing/namespacing-7.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/namespacing/namespacing-6.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/namespacing/namespacing-5.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/namespacing/namespacing-4.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/namespacing/namespacing-3.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/namespacing/namespacing-2.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/namespacing/namespacing-1.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/modifyVars/extended.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/include-path-string/include-path-string.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/include-path/include-path.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/globalVars/simple.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/globalVars/extended.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/functions-harness/functions-harness.less",
+      "kind": "render",
+      "outcome": "pass"
+    },
+    {
+      "file": "tests-config/filemanagerPlugin/filemanager.less",
+      "kind": "render",
+      "outcome": "error",
+      "detail": "Import not found"
+    },
+    {
+      "file": "tests-config/debug/mediaquery/linenumbers-mediaquery.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    },
+    {
+      "file": "tests-config/debug/comments/linenumbers-comments.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    },
+    {
+      "file": "tests-config/debug/all/linenumbers-all.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    },
+    {
+      "file": "tests-config/compression/compression.less",
+      "kind": "render",
+      "outcome": "error",
+      "detail": "Unexpected Less input after a complete stylesheet."
+    },
+    {
+      "file": "tests-config/at-rules-compressed-evaluation/at-rules-compressed-evaluation.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    },
+    {
+      "file": "tests-config/at-rules-compressed/at-rules-compressed.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    },
+    {
+      "file": "tests-config/3rd-party/bootstrap4.less",
+      "kind": "render",
+      "outcome": "mismatch"
+    }
+  ],
+  "error": [
+    {
+      "file": "tests-error/parse/single-character.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Unexpected Less syntax."
+    },
+    {
+      "file": "tests-error/parse/property-asterisk-only-name.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Unexpected Less syntax."
+    },
+    {
+      "file": "tests-error/parse/percentage-missing-space.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Missing closing parenthesis."
+    },
+    {
+      "file": "tests-error/parse/parse-error-with-import.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Unexpected Less input after a complete stylesheet."
+    },
+    {
+      "file": "tests-error/parse/parse-error-missing-parens.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Missing closing parenthesis."
+    },
+    {
+      "file": "tests-error/parse/parse-error-missing-bracket.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Missing closing brace."
+    },
+    {
+      "file": "tests-error/parse/parse-error-media-no-block-3.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Missing closing brace."
+    },
+    {
+      "file": "tests-error/parse/parse-error-media-no-block-2.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Unexpected Less syntax. Expected valid Less syntax here."
+    },
+    {
+      "file": "tests-error/parse/parse-error-media-no-block-1.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Unexpected Less syntax. Expected valid Less syntax here."
+    },
+    {
+      "file": "tests-error/parse/parse-error-curly-bracket.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Unexpected Less input after a complete stylesheet."
+    },
+    {
+      "file": "tests-error/parse/parens-error-3.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Unexpected Less syntax."
+    },
+    {
+      "file": "tests-error/parse/parens-error-2.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Unexpected Less syntax."
+    },
+    {
+      "file": "tests-error/parse/parens-error-1.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Unexpected Less syntax."
+    },
+    {
+      "file": "tests-error/parse/mixins-guards-cond-expected.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Unexpected Less syntax."
+    },
+    {
+      "file": "tests-error/parse/mixed-mixin-definition-args-2.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Less comma-list mixin argument groups cannot use named or spread arguments."
+    },
+    {
+      "file": "tests-error/parse/mixed-mixin-definition-args-1.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Less comma-list mixin argument groups cannot use named or spread arguments."
+    },
+    {
+      "file": "tests-error/parse/invalid-color-with-comment.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Unexpected Less syntax."
+    },
+    {
+      "file": "tests-error/parse/import-subfolder2.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Unexpected Less input after a complete stylesheet."
+    },
+    {
+      "file": "tests-error/parse/import-no-semi.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Unexpected Less syntax."
+    },
+    {
+      "file": "tests-error/parse/import-malformed.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Unexpected Less syntax."
+    },
+    {
+      "file": "tests-error/parse/extend-not-at-end.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Unexpected Less syntax."
+    },
+    {
+      "file": "tests-error/parse/detached-ruleset-6.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Unexpected Less syntax."
+    },
+    {
+      "file": "tests-error/parse/custom-property-unmatched-block-3.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Unterminated string."
+    },
+    {
+      "file": "tests-error/parse/custom-property-unmatched-block-2.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Missing closing bracket."
+    },
+    {
+      "file": "tests-error/parse/custom-property-unmatched-block-1.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Missing closing bracket."
+    },
+    {
+      "file": "tests-error/parse/bad-variable-declaration1.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Unexpected Less syntax."
+    },
+    {
+      "file": "tests-error/parse/at-rules-unmatching-block.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Missing closing parenthesis."
+    },
+    {
+      "file": "tests-error/eval/unit-function.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Invalid function call"
+    },
+    {
+      "file": "tests-error/eval/svg-gradient6.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Invalid function call"
+    },
+    {
+      "file": "tests-error/eval/svg-gradient5.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Invalid function call"
+    },
+    {
+      "file": "tests-error/eval/svg-gradient4.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Invalid function call"
+    },
+    {
+      "file": "tests-error/eval/svg-gradient3.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Invalid function call"
+    },
+    {
+      "file": "tests-error/eval/svg-gradient2.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Invalid function call"
+    },
+    {
+      "file": "tests-error/eval/svg-gradient1.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Invalid function call"
+    },
+    {
+      "file": "tests-error/eval/root-func-undefined-2.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Function did not return a root node"
+    },
+    {
+      "file": "tests-error/eval/root-func-undefined-1.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Function did not return a root node"
+    },
+    {
+      "file": "tests-error/eval/recursive-variable.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Recursive reference"
+    },
+    {
+      "file": "tests-error/eval/recursive-property.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Recursive reference"
+    },
+    {
+      "file": "tests-error/eval/property-undefined.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Name not found"
+    },
+    {
+      "file": "tests-error/eval/property-interp-not-defined.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Name not found"
+    },
+    {
+      "file": "tests-error/eval/property-in-root3.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Properties must be inside selector blocks. They cannot be in the root"
+    },
+    {
+      "file": "tests-error/eval/property-in-root2.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Properties must be inside selector blocks. They cannot be in the root"
+    },
+    {
+      "file": "tests-error/eval/property-in-root.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Properties must be inside selector blocks. They cannot be in the root"
+    },
+    {
+      "file": "tests-error/eval/plugin-3.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Plugin \"plugin/plugin-error-3\" could not be loaded: Less @plugin function \"plugin-error-3.js\" threw: An error was here."
+    },
+    {
+      "file": "tests-error/eval/plugin-2.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Plugin \"plugin/plugin-error-2\" could not be loaded: Less @plugin function \"plugin-error-2.js\" threw: An error was here."
+    },
+    {
+      "file": "tests-error/eval/plugin-1.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Plugin \"plugin/plugin-error\" could not be loaded: Less @plugin function \"plugin-error.js\" threw: Error"
+    },
+    {
+      "file": "tests-error/eval/percentage-non-number-argument.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Invalid function call"
+    },
+    {
+      "file": "tests-error/eval/percentage-css-var.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Invalid function call"
+    },
+    {
+      "file": "tests-error/eval/namespacing-4.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Name not found"
+    },
+    {
+      "file": "tests-error/eval/namespacing-3.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Expected a selector, mixin call, or block."
+    },
+    {
+      "file": "tests-error/eval/namespacing-2.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Name not found"
+    },
+    {
+      "file": "tests-error/eval/namespace-variable-not-found.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Name not found"
+    },
+    {
+      "file": "tests-error/eval/namespace-property-not-found.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Name not found"
+    },
+    {
+      "file": "tests-error/eval/multiply-mixed-units.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Invalid unit arithmetic"
+    },
+    {
+      "file": "tests-error/eval/multiple-guards-on-css-selectors2.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Guarded selector lists are not supported"
+    },
+    {
+      "file": "tests-error/eval/multiple-guards-on-css-selectors.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Unexpected Less input after a complete stylesheet."
+    },
+    {
+      "file": "tests-error/eval/mixins-guards-default-func-3.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Ambiguous default() mixin guard"
+    },
+    {
+      "file": "tests-error/eval/mixins-guards-default-func-2.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Ambiguous default() mixin guard"
+    },
+    {
+      "file": "tests-error/eval/mixins-guards-default-func-1.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Ambiguous default() mixin guard"
+    },
+    {
+      "file": "tests-error/eval/mixin-not-visible-in-scope-1.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Name not found"
+    },
+    {
+      "file": "tests-error/eval/mixin-not-matched2.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Name not found"
+    },
+    {
+      "file": "tests-error/eval/mixin-not-matched.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Name not found"
+    },
+    {
+      "file": "tests-error/eval/mixin-not-defined.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Name not found"
+    },
+    {
+      "file": "tests-error/eval/mixin-not-defined-2.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Name not found"
+    },
+    {
+      "file": "tests-error/eval/javascript-undefined-var.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Inline backtick JavaScript is not supported."
+    },
+    {
+      "file": "tests-error/eval/import-subfolder1.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Name not found"
+    },
+    {
+      "file": "tests-error/eval/import-missing.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Import not found"
+    },
+    {
+      "file": "tests-error/eval/functions-9-expression.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Plugin function \"test-expression\" threw"
+    },
+    {
+      "file": "tests-error/eval/functions-8-element.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Plugin function \"test-element\" threw"
+    },
+    {
+      "file": "tests-error/eval/functions-7-dimension.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Function did not return a root node"
+    },
+    {
+      "file": "tests-error/eval/functions-6-condition.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Plugin function \"test-condition\" threw"
+    },
+    {
+      "file": "tests-error/eval/functions-5-color.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Function did not return a root node"
+    },
+    {
+      "file": "tests-error/eval/functions-5-color-2.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Value node is not valid as a statement"
+    },
+    {
+      "file": "tests-error/eval/functions-4-call.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Plugin function \"test-call\" threw"
+    },
+    {
+      "file": "tests-error/eval/functions-3-assignment.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Plugin function \"test-assignment\" threw"
+    },
+    {
+      "file": "tests-error/eval/functions-15-value.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Function did not return a root node"
+    },
+    {
+      "file": "tests-error/eval/functions-14-url.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Plugin function \"test-url\" threw"
+    },
+    {
+      "file": "tests-error/eval/functions-13-selector.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Plugin function \"test-selector\" threw"
+    },
+    {
+      "file": "tests-error/eval/functions-12-quoted.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Function did not return a root node"
+    },
+    {
+      "file": "tests-error/eval/functions-11-operation.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Plugin function \"test-operation\" threw"
+    },
+    {
+      "file": "tests-error/eval/functions-10-keyword.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Plugin function \"test-keyword\" threw"
+    },
+    {
+      "file": "tests-error/eval/functions-1.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Function did not return a root node"
+    },
+    {
+      "file": "tests-error/eval/extend-no-selector.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Unexpected Less syntax."
+    },
+    {
+      "file": "tests-error/eval/divide-mixed-units.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Invalid unit arithmetic"
+    },
+    {
+      "file": "tests-error/eval/detached-ruleset-5.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Name not found"
+    },
+    {
+      "file": "tests-error/eval/detached-ruleset-3.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Properties must be inside selector blocks. They cannot be in the root"
+    },
+    {
+      "file": "tests-error/eval/detached-ruleset-2.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Rulesets cannot be evaluated on a property"
+    },
+    {
+      "file": "tests-error/eval/detached-ruleset-1.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Rulesets cannot be evaluated on a property"
+    },
+    {
+      "file": "tests-error/eval/css-guard-default-func.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Invalid function call"
+    },
+    {
+      "file": "tests-error/eval/color-func-invalid-color.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Invalid function call"
+    },
+    {
+      "file": "tests-error/eval/color-func-invalid-color-2.less",
+      "kind": "error",
+      "outcome": "accepted"
+    },
+    {
+      "file": "tests-error/eval/at-rules-undefined-var.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Name not found"
+    },
+    {
+      "file": "tests-error/eval/ampersand-merge-template-invalid.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Comma-list value in a selector"
+    },
+    {
+      "file": "tests-error/eval/add-mixed-units2.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Invalid unit arithmetic"
+    },
+    {
+      "file": "tests-error/eval/add-mixed-units.less",
+      "kind": "error",
+      "outcome": "errored",
+      "detail": "Invalid unit arithmetic"
+    }
+  ]
+}

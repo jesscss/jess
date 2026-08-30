@@ -1,0 +1,89 @@
+---
+description: "Parsing stack (css/less/scss/jess): source → grammar combinators → CST/AST; Parseman-based"
+globs:
+  - "packages/syntax/css/css-parser/**"
+  - "packages/syntax/less/less-parser/**"
+  - "packages/syntax/scss/scss-parser/**"
+  - "packages/syntax/jess/jess-parser/**"
+  - "packages/parser-shared/**"
+---
+
+# Parsers
+
+## ⛔ BEFORE EDITING ANY GRAMMAR FILE
+
+`docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md` is the standing brief: its
+§2 checklist (items 1-16 at time of writing) applied to **every `const` in the
+file** (not sampled), the hard constraints, the oracle verification loop, and
+the definition of done (diagnostic clean, lint clean, oracle byte-identical,
+macro-buildable clean — not "tests pass"). Use the `grammar-reviewer` agent
+before landing; it returns evidence per const, not a verdict.
+
+The naming law is the checklist's *does its name claim a divergence it does not
+have?* item: **a dialect prefix (`css…`/`less…`/`scss…`/`jess…`) or an
+`Ast`/`Cst` in a rule name is a claim of genuine divergence and must be
+earned.** Default to the plain name (`declaration`, `selector`, `atRule`); never
+prefix a shared rule; when divergence is real, name the divergence, not the
+owner (`declarationWithInterpolatedName`, not `lessDeclaration`). This is a
+*duplication* rule with a stated cause — the prefix makes two identical rules
+look different, so nobody ever diffs them — and **not** a style guide. The
+mechanism and its standing evidence live in the standard's *naming is a
+duplication mechanism* section; do not restate them here.
+
+## ⛔ SOURCE OF TRUTH FOR NODE SHAPES
+
+There is no separate builder layer and no legacy production layer: each parser
+is a single Parseman grammar module, `src/grammar.ts`, and the `node(...)` /
+`field(...)` entries inside it **are** the node-shape specification. The
+`src/grammar/{ast,cst}.ts` files are thin per-variant build entries that
+re-export one compiled instance each (compiled artifacts are large, so a shared
+module would make every consumer ingest all four); they contain no rules.
+
+Dialect layering is expressed by composition, not by copies: Less/SCSS/Jess
+compose the CSS base (`packages/syntax/css/css-parser/src/grammar.ts`) via
+`composeLeaf` plus the shared recognition material, and override only the
+smallest child, value slot, or reference that the dialect actually changes. The
+CST and AST variants of one dialect are the *same* rule set built at a different
+`hostMode`.
+
+**When you need to know what shape a construct produces:**
+1. Read the `node(...)` entry in the owning `src/grammar.ts` — that is the spec.
+2. Confirm a change does not move the tree with the byte-identity oracle,
+   `packages/syntax/less/less-parser/test/ast-identity-oracle.mjs`. A change that
+   moves the tree is a failed change, not a judgement call.
+
+**Do NOT:**
+- Guess the shape from observed compiled output or from a test expectation.
+- Reverse-engineer a shape by trial-and-error against test expectations.
+- Invent "grammar bug" / "leaked CST" rationalizations for a mismatch.
+
+## Packages
+
+- `packages/syntax/css/css-parser`: base CSS parsing
+- `packages/syntax/less/less-parser`: LESS parsing
+- `packages/syntax/scss/scss-parser`: SCSS parsing (includes sass-spec cache scripts)
+- `packages/syntax/jess/jess-parser`: `.jess` parsing
+- `packages/parser-shared`: material shared by all four (recognition maps,
+  pseudo consts, opaque at-rules) — renamed from `internal-css-recognition` at
+  `a74131e8f`. A rule that lives here is by definition shared: the naming law
+  applies with full force.
+
+## Typical hotspots
+
+- `src/grammar.ts` (the whole grammar, including node construction)
+- `src/cst.ts` / `src/grammar/{ast,cst}.ts` (types and per-variant build entries)
+- Tests under `test/**/*.test.ts` (package-dependent)
+
+## Debugging guardrails
+
+- Treat parser and AST objects as potentially circular; avoid `JSON.stringify`
+  on them.
+
+## Gating rules
+
+- Prefer `choice`/`dispatch` designs that disambiguate on the first token, so no
+  hand-written gate is needed; first-set gating is the mechanism, `not(...)` as
+  an end-of-value assertion is the same work done by hand.
+- When a gate is unavoidable, keep the gate and the matching alternative shaped
+  so they use the smallest practical lookahead.
+- Never use unbounded or effectively infinite lookahead for a token choice.

@@ -1,0 +1,12 @@
+---
+description: "Package: @jesscss/awaitable-pipe (small typed utility)"
+globs:
+  - "packages/awaitable-pipe/**"
+---
+
+# `@jesscss/awaitable-pipe`
+
+- **Role**: Typed pipe utility; used by core/fns.
+- **Build**: `cd packages/awaitable-pipe && pnpm build`
+- **Tests**: `cd packages/awaitable-pipe && pnpm test` and `pnpm test:types`
+

@@ -1,0 +1,210 @@
+---
+title: Interpolation
+audiences:
+  - jess
+origin: jess
+---
+Jess has three `$` sigil forms. Which one you reach for is decided by the
+*position* you are writing in, not by what the value turns out to be:
+
+**One form per position.** Each form is allowed in exactly one kind of place,
+and rejected in the others — so a spelling always means the same thing:
+
+| Position | Use | Rejected there |
+| --- | --- | --- |
+| **interpolated identifiers** — selectors, property names, custom-property names, `&`-suffixes, mixin names, at-rule preludes | `${…}` | `$[…]`, `$(…)` |
+| **quoted strings**, `~"…"`, and quoted `url("…")` bodies | `${…}`, `$(…)` | `$[…]` |
+| **unquoted declaration-value `url(...)` bodies** | `${…}`; every other `$` is literal URL text | `$(…)` as an expression; `$[…]` never a lookup |
+| **value positions** | `$[…]` (lookup), `$(…)` (expression) | `${…}` |
+
+`${name}` means *the value of `$name`*, spliced in as text.
+
+"At-rule prelude" means the **whole** prelude, not just its outermost level —
+including the parenthesised and function bodies of an `@supports` condition. So
+`@supports selector(${sel})` is right and `@supports selector($(sel))` is an
+error, as are `@supports ($(x))` and any deeper nesting of it: an extra pair of
+parentheses never unlocks a spelling. The one thing that does change position is
+a **quoted string** inside that prelude — it is a string like any other, so
+`@supports selector("a $(x) b")` is fine.
+
+Inside `${…}`, **bare-versus-bracketed** picks what you are reading — the same
+rule `[…]` follows everywhere else in the language:
+
+| Spelling | Reads |
+| --- | --- |
+| `${tone}` | the **variable** `$tone` |
+| `${[tone]}` | a **lookup** — in a name position, the **property** `tone` in scope |
+| `${["a b"]}` | the same lookup; quotes only because `a b` is not a valid identifier |
+| `${[$k]}` | a lookup whose key comes from `$k` |
+
+Quoting never carries meaning: `[foo]` and `["foo"]` are the same key.
+
+Bare interpolation is not an option: `-` is an identifier character, so in
+`--$name-color` there is no unambiguous place for the name to end. The braces
+are the boundary.
+
+Jess also has explicit selector capture:
+
+- `*[...]` stores a selector or selector list as a selector-valued variable.
+
+In selector contexts, an interpolated value may still resolve to a non-identifier selector fragment at runtime.
+
+## Quick guide: which form to use?
+
+- **Selector / property / mixin names, at-rule preludes**: use `${ident}`
+- **Selector-valued variables**: use `*[...]`
+- **Strings and custom property values**: use `${ident}`
+- **Reading a property out of scope, in a name**: use `${[ident]}`
+- **Normal values**: use direct references like `$var`; use `$(...)` when you need expression behavior
+- **Reading a key out of a collection**: use `$m[key]` — see [Namespaces and maps](./10-namespaces-and-maps.mdx)
+
+## Selector capture
+
+Use `*[...]` when the value itself should stay a selector, not just text output.
+
+```scss
+$target: *[.notice, .warning];
+```
+
+This differs from normal interpolation:
+
+- `$(...)` interpolates an expression into output.
+- `*[...]` captures parsed selector syntax so selector-aware features can use it later.
+
+## Interpolation examples
+
+### 1. Selectors in style rules
+
+```scss
+$side: left;
+.widget-${side} {
+  float: $side;
+}
+```
+→
+```css
+.widget-left {
+  float: left;
+}
+```
+
+### 2. Property names in declarations
+```scss
+$radius: top-right;
+.card {
+  border-${radius}-radius: 12px;
+}
+```
+→
+```css
+.card {
+  border-top-right-radius: 12px;
+}
+```
+
+### 3. Custom property values
+```less
+$theme: dark;
+body {
+  --theme-mode: ${theme};
+  --theme-mode-fallback: ${theme};
+}
+
+.card {
+  border-color: rebeccapurple;
+  box-shadow: 0 0 0 2px $['border-color'];
+}
+```
+→
+```css
+body {
+  --theme-mode: dark;
+  --theme-mode-fallback: dark;
+}
+
+.card {
+  border-color: rebeccapurple;
+  box-shadow: 0 0 0 2px rebeccapurple;
+}
+```
+
+:::info
+
+Note: in normal property values, you can usually just use `$theme`. A custom property value is uninterpreted text, so a variable there has to be spliced explicitly with `${theme}`. `$['border-color']` is different again: it is a value-position *lookup*, reading another declaration value out of scope — not a DOM-level custom property. In a name position the same read is spelled `${[border-color]}`.
+
+:::
+
+### 4. $extend
+```scss
+$type: *[.notice];
+.notice {
+  color: orange;
+}
+.danger {
+  $extend $type;
+}
+```
+→
+```css
+.danger, .notice {
+  color: orange;
+}
+```
+
+### 5. URL paths
+```scss
+$family: "modern";
+.fonts {
+  src: url("fonts/${family}.css");
+}
+```
+→
+```css
+.fonts {
+  src: url("fonts/modern.css");
+}
+```
+
+### 7. Less and SCSS source conversion
+
+```less
+// Less input
+.@{name} { color: red; }
+```
+```scss
+// Jess output shape
+.${name} { color: red; }
+```
+
+```scss
+// SCSS input (single variable interpolation in selector/property name)
+.btn-#{$name} { color: red; }
+```
+```scss
+// Jess output shape
+.btn-${name} { color: red; }
+```
+
+### 8. Any plain output
+
+```scss
+$color-name: "red";
+.container {
+  color: ~"${color-name}";
+}
+```
+→
+```css
+.container {
+  color: red;
+}
+```
+
+## TL;DR
+1. Use `${name}` for a dynamic selector, property, mixin-name, or at-rule-prelude segment; use `$(…)` for a full expression in value position; use `$m[key]` (or `$[key]`) to read a key out of a collection.
+2. Use `*[]` when the variable itself should hold a selector or selector list.
+3. Don't wrap variables for no reason; use direct variables unless you need interpolation.
+4. Never interpolate numbers if you want to do math with them.
+5. Escape strings with `~""` for clarity when you want to drop quotes from a string.
+
+Jess is designed to be simple and clear.

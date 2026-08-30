@@ -1,0 +1,225 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { Compiler } from '../src/index.js';
+import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
+import { serialize } from '@jesscss/core';
+
+describe('Compiler reuse', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-compiler-reuse-'));
+  });
+
+  afterEach(() => {
+    if (tempDir && fs.existsSync(tempDir)) {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('reuses the Less plugin when the effective Less options are identical', () => {
+    const testFile = path.join(tempDir, 'same.less');
+    fs.writeFileSync(testFile, '.a { width: (1 + 1) }');
+
+    const compiler = new Compiler();
+    const first = compiler.createContext(testFile);
+    const second = compiler.createContext(testFile);
+
+    const firstPlugin = first.plugins.find(plugin => plugin.name === 'less');
+    const secondPlugin = second.plugins.find(plugin => plugin.name === 'less');
+
+    expect(firstPlugin).toBeTruthy();
+    expect(firstPlugin).toBe(secondPlugin);
+  });
+
+  it('creates a new Less plugin when the effective Less options change', () => {
+    const testFile = path.join(tempDir, 'math.less');
+    fs.writeFileSync(testFile, '.a { width: (1 + 1) }');
+
+    const compiler = new Compiler();
+    const first = compiler.createContext(testFile, {
+      language: {
+        less: {
+          mathMode: 'always'
+        }
+      }
+    });
+    const second = compiler.createContext(testFile, {
+      language: {
+        less: {
+          mathMode: 'parens'
+        }
+      }
+    });
+
+    const firstPlugin = first.plugins.find(plugin => plugin.name === 'less');
+    const secondPlugin = second.plugins.find(plugin => plugin.name === 'less');
+
+    expect(firstPlugin).toBeTruthy();
+    expect(secondPlugin).toBeTruthy();
+    expect(firstPlugin).not.toBe(secondPlugin);
+  });
+
+  it('resolves styles.config per render before deciding Less-plugin reuse', () => {
+    const dirA = path.join(tempDir, 'a');
+    const dirB = path.join(tempDir, 'b');
+    fs.mkdirSync(dirA, { recursive: true });
+    fs.mkdirSync(dirB, { recursive: true });
+
+    fs.writeFileSync(path.join(dirA, 'styles.config.js'), 'module.exports = { output: { collapseNesting: true } };');
+    fs.writeFileSync(path.join(dirB, 'styles.config.js'), 'module.exports = { output: { collapseNesting: false } };');
+
+    const fileA = path.join(dirA, 'a.less');
+    const fileB = path.join(dirB, 'b.less');
+    fs.writeFileSync(fileA, '.a { color: red; }');
+    fs.writeFileSync(fileB, '.b { color: blue; }');
+
+    const compiler = new Compiler();
+    const contextA = compiler.createContext(fileA);
+    const contextB = compiler.createContext(fileB);
+
+    const lessA = contextA.plugins.find(plugin => plugin.name === 'less');
+    const lessB = contextB.plugins.find(plugin => plugin.name === 'less');
+
+    expect(contextA.opts.collapseNesting).toBe(true);
+    expect(contextB.opts.collapseNesting).toBe(false);
+    expect(lessA).toBeTruthy();
+    expect(lessB).toBeTruthy();
+    expect(lessA).not.toBe(lessB);
+  });
+
+  it('creates a fresh less-compat plugin for each render context', () => {
+    const testFile = path.join(tempDir, 'compat.less');
+    fs.writeFileSync(testFile, '.a { color: red; }');
+
+    const compiler = new Compiler({
+      compile: {
+        plugins: ['@jesscss/plugin-less-compat']
+      }
+    });
+
+    const first = compiler.createContext(testFile);
+    const second = compiler.createContext(testFile);
+
+    const firstPlugin = first.plugins.find(plugin => plugin.name === 'less-compat' || plugin.name === '@jesscss/plugin-less-compat');
+    const secondPlugin = second.plugins.find(plugin => plugin.name === 'less-compat' || plugin.name === '@jesscss/plugin-less-compat');
+
+    expect(firstPlugin).toBeTruthy();
+    expect(secondPlugin).toBeTruthy();
+    expect(firstPlugin).not.toBe(secondPlugin);
+  });
+
+  it('uses the same post-processing path for render and renderToResult', async () => {
+    const testFile = path.join(tempDir, 'post.less');
+    const source = '.a { color: red; }';
+    fs.writeFileSync(testFile, source);
+
+    const compiler = new Compiler({
+      compile: {
+        plugins: [
+          {
+            name: 'postprocess-test',
+            runPostProcessors(css: string) {
+              return `${css}\n/* postprocessed */`;
+            }
+          }
+        ]
+      }
+    });
+
+    const rendered = await compiler.render(testFile);
+    const result = await compiler.renderToResult({ source, filePath: testFile, language: 'less', extension: '.less' });
+
+    expect(rendered).toContain('postprocessed');
+    expect(result.css).toBe(rendered);
+  });
+
+  it('sets plugin Context before AST serialization', async () => {
+    let receivedDocumentType: string | undefined;
+    const compiler = new Compiler({
+      compile: {
+        plugins: [{
+          name: 'context-aware-ast-plugin',
+          setContext(context) {
+            receivedDocumentType = context.document?.type;
+          }
+        }]
+      }
+    });
+
+    await expect(compiler.renderString('.a { color: red; }', { language: 'less' })).resolves.toContain('color: red');
+    expect(receivedDocumentType).toBe('Stylesheet');
+  });
+
+  it('returns prepared static imports from compile', async () => {
+    const entryFile = path.join(tempDir, 'entry.less');
+    const tokensFile = path.join(tempDir, 'tokens.less');
+    fs.writeFileSync(entryFile, '@import "tokens.less";\n.entry { color: red; }');
+    fs.writeFileSync(tokensFile, '.tokens { color: blue; }');
+
+    const compiler = new Compiler();
+    const { document, context, preparedImports } = await compiler.compile(entryFile);
+
+    expect(preparedImports).toBeTruthy();
+    await expect(Promise.resolve(context.withDocument(document, () => serialize(document, {
+      collapseNesting: context.opts.output?.collapseNesting ?? false,
+      context,
+      pluginHost: context.pluginHost,
+      preparedImports
+    })))).resolves.toEqual({
+      css: '.tokens {\n  color: blue;\n}\n.entry {\n  color: red;\n}\n'
+    });
+  });
+
+  it('renders root kept output through safeRender', async () => {
+    const testFile = path.join(tempDir, 'root-output.less');
+    fs.writeFileSync(testFile, '@charset "UTF-8";\n@import url("test.css");\n.a { color: red; }');
+
+    const compiler = new Compiler({
+      output: { collapseNesting: true },
+      compile: {
+        plugins: [lessCompatPlugin()]
+      }
+    });
+
+    const result = await compiler.safeRender(testFile);
+
+    expect(result.css).toContain('@charset "UTF-8";');
+    expect(result.css).toContain('@import url("test.css");');
+    expect(result.css).toContain('.a');
+  });
+
+  it('keeps root output on public render APIs', async () => {
+    const source = '@charset "UTF-8";\n@import url("test.css");\n.a { color: red; }';
+    const testFile = path.join(tempDir, 'public-root-output.less');
+    fs.writeFileSync(testFile, source);
+
+    const compiler = new Compiler({
+      output: { collapseNesting: true },
+      compile: {
+        plugins: [lessCompatPlugin()]
+      }
+    });
+
+    const rendered = await compiler.render(testFile);
+    const renderedString = await compiler.renderString(source, {
+      filePath: testFile,
+      language: 'less',
+      extension: '.less'
+    });
+    const result = await compiler.renderToResult({
+      source,
+      filePath: testFile,
+      language: 'less',
+      extension: '.less'
+    });
+
+    for (const css of [rendered, renderedString, result.css]) {
+      expect(css).toContain('@charset "UTF-8";');
+      expect(css).toContain('@import url("test.css");');
+      expect(css).toContain('.a');
+    }
+  });
+});

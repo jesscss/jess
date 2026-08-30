@@ -1,0 +1,86 @@
+{
+  "name": "@jesscss/core",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "version": "2.0.0-alpha.5",
+  "description": "The Jess Core Library",
+  "main": "lib/index.cjs",
+  "module": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.cjs"
+    },
+    "./diagnostics": {
+      "types": "./lib/diagnostics.d.ts",
+      "source": "./src/diagnostics.ts",
+      "import": "./lib/diagnostics.js",
+      "require": "./lib/diagnostics.cjs"
+    },
+    "./value": {
+      "types": "./lib/value.d.ts",
+      "source": "./src/value.ts",
+      "import": "./lib/value.js",
+      "require": "./lib/value.cjs"
+    },
+    "./ast": {
+      "types": "./lib/ast.d.ts",
+      "source": "./src/ast.ts",
+      "import": "./lib/ast.js",
+      "require": "./lib/ast.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "engines": {
+    "node": "^20.19.0 || >=22.18.0"
+  },
+  "dependencies": {
+    "@jesscss/awaitable-pipe": "workspace:*",
+    "@jridgewell/gen-mapping": "~0.3.12",
+    "@ungap/set-methods": "~0.1.1",
+    "big.js": "^7.0.1",
+    "bitset": "~5.2.3",
+    "chalk": "^5.2.0",
+    "color-name": "~2.0.0",
+    "combinate": "^1.1.11",
+    "data-structure-typed": "~2.0.0",
+    "lodash-es": "^4.17.21"
+  },
+  "scripts": {
+    "ci": "pnpm build && pnpm test -- --run",
+    "prepublishOnly": "pnpm build && pnpm test -- --run",
+    "build": "pnpm clean && pnpm compile",
+    "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
+    "visualize": "vite build",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts --minify && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "dev": "tsc -p tsconfig.build.json -w",
+    "test": "cross-env TEST=true vitest",
+    "test:bench": "cross-env TEST=true vitest --run --include '**/bench*'",
+    "test:coverage": "cross-env TEST=true vitest --coverage",
+    "lint:fix": "eslint --fix '**/*.{js,ts}'",
+    "lint": "eslint '**/*.{js,ts}'"
+  },
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jesscss/jess/issues"
+  },
+  "homepage": "https://github.com/jesscss/jess#readme",
+  "devDependencies": {
+    "@types/big.js": "^6.2.2",
+    "@types/lodash-es": "^4.17.8",
+    "chevrotain": "^11.0.3",
+    "rollup-plugin-circular-dependencies": "~1.1.2",
+    "rollup-plugin-visualizer": "~6.0.3",
+    "vite-plugin-circular-dependency": "~0.5.0",
+    "vite-plugin-externalize-deps": "~0.9.0",
+    "vite-plugin-node-polyfills": "~0.23.0"
+  }
+}

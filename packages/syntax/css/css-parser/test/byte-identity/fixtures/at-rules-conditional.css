@@ -1,0 +1,30 @@
+@media screen {
+  a {
+    color: red;
+  }
+}
+@media (min-width: 600px) and (max-width: 900px) {
+  a {
+    color: blue;
+  }
+}
+@supports (display: grid) {
+  a {
+    display: grid;
+  }
+}
+@supports not (display: grid) {
+  a {
+    display: flex;
+  }
+}
+@layer base {
+  a {
+    color: green;
+  }
+}
+@container card (min-width: 400px) {
+  a {
+    color: teal;
+  }
+}

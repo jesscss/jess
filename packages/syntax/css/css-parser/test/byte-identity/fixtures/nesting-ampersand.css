@@ -1,0 +1,15 @@
+.btn {
+  color: red;
+  & .icon {
+    color: blue;
+  }
+  & > .child {
+    color: green;
+  }
+  &:hover {
+    color: teal;
+  }
+  .wrapper & {
+    color: navy;
+  }
+}

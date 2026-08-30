@@ -1,0 +1,4 @@
+{
+  "notes": "Maps legacy docs paths from packages/docs/docs to canonical docs-content paths.",
+  "mappings": []
+}

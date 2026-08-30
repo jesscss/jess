@@ -1,0 +1,115 @@
+/**
+ * @note
+ * Tree nodes are canonical source/runtime values. Evaluation may create
+ * placement-owned wrappers, but the source tree remains the default owner.
+ */
+
+/**
+ * Import from node.ts which applies all the prototype patches
+ * (nil, operate, treeContext) and re-exports from node-base.ts
+ */
+import {
+  Node,
+  type LocationInfo,
+  F_VISIBLE,
+  F_STATIC,
+  F_NON_STATIC,
+  F_HAS_NODE_CHILD
+} from './node.js';
+
+/*
+ * Load Context before the tree utility graph. The legacy tree's module cycle
+ * relies on this initialization order, but TreeContext is intentionally not
+ * re-exported from this public barrel.
+ */
+import '../context.js';
+import { compare } from './util/compare.js';
+import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
+
+export { Node, type LocationInfo, F_VISIBLE, F_STATIC, F_NON_STATIC, F_HAS_NODE_CHILD };
+export { N } from './node-type.js';
+
+import { Selector } from './selector.js';
+
+export * from './at-rule.js';
+export * from './at-rule-statement.js';
+export * from './block.js';
+export * from './bool.js';
+export * from './ampersand.js';
+export * from './any.js';
+export * from './call.js';
+export * from './color.js';
+export * from './comment.js';
+export * from './combinator.js';
+export * from './condition.js';
+export * from './control.js';
+export * from './declaration.js';
+export * from './declaration-var.js';
+export * from './dimension.js';
+export * from './number.js';
+export * from './expression.js';
+export * from './extend.js';
+export * from './list.js';
+export * from './log.js';
+export * from './mixin.js';
+export * from './negative.js';
+export * from './function.js';
+export * from './js-function.js';
+export * from './js-array.js';
+export * from './js-object.js';
+export * from './nil.js';
+export * from './operation.js';
+export * from './paren.js';
+export * from './quoted.js';
+export * from './range.js';
+export * from './ruleset.js';
+export * from './rules.js';
+export * from './collection.js';
+export * from './selector.js';
+export * from './selector-basic.js';
+export * from './selector-list.js';
+export * from './selector-pseudo.js';
+export * from './selector-compound.js';
+export * from './selector-complex.js';
+export * from './selector-simple.js';
+export * from './sequence.js';
+export * from './query-condition.js';
+export * from './comment.js';
+export * from './reference.js';
+export * from './interpolated.js';
+export * from './default-guard.js';
+
+// Patch Selector.compare after all exports to avoid circular dependency
+import { selectorCompare } from './util/compare.js';
+
+function isSelectorLike(value: unknown): value is Selector {
+  /*
+   * Realm-safe: the nodeType bitmask is a prototype value keyed by string type,
+   * so it survives the same-file-via-different-specifier divergence that makes a
+   * bare `instanceof Selector` unreliable here (see compare patch below).
+   */
+  return isNode(value, N.Selector);
+}
+
+/** Patch Selector to avoid circularity */
+Selector.prototype.compare = function(other: Node) {
+  /*
+   * Avoid `instanceof Selector` here: module identity can diverge under Vite/Vitest
+   * if the same file is loaded via different specifiers.
+   */
+  if (isSelectorLike(other)) {
+    const forward = selectorCompare(this, other);
+    if (forward.isEquivalent) {
+      return 0;
+    }
+    if (forward.hasPartialMatch) {
+      return -1;
+    }
+    const backward = selectorCompare(other, this);
+    if (backward.hasPartialMatch) {
+      return 1;
+    }
+  }
+  return compare(this.valueOf(), other?.valueOf?.());
+};

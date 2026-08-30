@@ -1,0 +1,338 @@
+import { setSourceSpan, sourceSpanOf } from '../util/provenance.js';
+import { color, dimension, num, op } from '../index.js';
+import { Context } from '../../context.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
+import { type Operator } from '../../util/calculate.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  marks = 0;
+  reads = 0;
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
+
+let context: Context;
+let looseContext: Context;
+
+describe('Dimension', () => {
+  beforeEach(() => {
+    context = new Context();
+    looseContext = new Context({ unitMode: 'loose' });
+  });
+
+  async function renderOperate(
+    left: ReturnType<typeof dimension>,
+    right: ReturnType<typeof dimension>,
+    operator: Operator,
+    opContext = context
+  ): Promise<string> {
+    const result = left.operate(right, operator, opContext);
+    return result.render(opContext);
+  }
+
+  describe('serialization', () => {
+    /** @todo? */
+    /*
+     * it.only('should make a dimension from a string', () => {
+     * let rule = dimension('10px');
+     * let clone = rule.clone();
+     * expect(rule.number).toBe(10);
+     * expect(clone.number).toBe(10);
+     * expect(rule.unit).toBe('px');
+     * expect(rule.value).not.toBe(clone.value);
+     * expect(rule.toString()).toBe('10px');
+     * });
+     */
+    it('should make a dimension from a number', () => {
+      let rule = num(10);
+      expect(rule.number).toBe(10);
+      expect(rule.toString()).toBe('10');
+    });
+
+    it('renders dimension syntax through toTrimmedString()', () => {
+      expect(dimension([10, 'px']).toTrimmedString()).toBe('10px');
+      expect(num(10).toTrimmedString()).toBe('10');
+    });
+
+    it('returns dimension syntax without writer readback', () => {
+      const writer = new CountingWriter();
+
+      expect(dimension([10, 'px']).toTrimmedString({ writer })).toBe('10px');
+      expect(dimension([20, 'em']).toTrimmedString({ writer })).toBe('20em');
+      expect(writer.toString()).toBe('10px20em');
+      expect(writer.reads).toBe(0);
+    });
+
+    it('serializes degenerate numeric constants per CSS Values 4', () => {
+      /*
+       * CSS Values & Units 4 §10.7.2/§10.13: infinity/-infinity are lowercase
+       * keywords, NaN is mixed case.
+       */
+      expect(num(Infinity).toTrimmedString()).toBe('infinity');
+      expect(num(-Infinity).toTrimmedString()).toBe('-infinity');
+      expect(num(NaN).toTrimmedString()).toBe('NaN');
+      expect(dimension([Infinity, 'px']).toTrimmedString()).toBe('infinitypx');
+    });
+
+    it('renders dimension values through render(context)', () => {
+      const sized = dimension([10, 'px']);
+      const unitless = num(10);
+
+      expect(sized.render(context)).toBe('10px');
+      expect(unitless.render(context)).toBe('10');
+      expect(sized.registrationPrepared).toBe(false);
+      expect(unitless.registrationPrepared).toBe(false);
+    });
+
+    it('writes dimension render output into flat buffers', async () => {
+      const buffer = createRenderBuffer('flat');
+      const node = dimension([10, 'px']);
+      let resolveCalls = 0;
+      node.resolve = () => {
+        resolveCalls++;
+        return node;
+      };
+
+      expect(await node.render(context, buffer)).toBe('10px');
+      expect(buffer.parts).toEqual(['10px']);
+      expect(resolveCalls).toBe(0);
+    });
+
+    it('renders dimensions without writer mark/readback', () => {
+      const writer = new CountingWriter();
+      const buffer = createRenderBuffer('flat');
+
+      expect(dimension([10, 'px']).render(context, { writer })).toBe('10px');
+      expect(writer.toString()).toBe('10px');
+      expect(writer.marks).toBe(0);
+      expect(writer.reads).toBe(0);
+      expect(dimension([20, 'em']).render(context, buffer, { writer })).toBe('20em');
+      expect(buffer.parts).toEqual(['20em']);
+      expect(writer.marks).toBe(0);
+      expect(writer.reads).toBe(0);
+    });
+
+    it('resolves dimensions without touching render state', async () => {
+      const node = dimension([10, 'px']);
+
+      const resolved = await node.resolve(context);
+
+      expect(resolved.toTrimmedString()).toBe('10px');
+      expect(node.registrationPrepared).toBe(false);
+      expect(context.printState.writer).toBeUndefined();
+    });
+  });
+
+  describe('addition/subtraction', () => {
+    it('should add the same units', async () => {
+      let left = dimension([10, 'px']);
+      let right = dimension([20, 'px']);
+      await expect(renderOperate(left, right, '+')).resolves.toBe('30px');
+    });
+
+    it('should subtract the same units', async () => {
+      let left = dimension([10, 'px']);
+      let right = dimension([20, 'px']);
+      await expect(renderOperate(left, right, '-')).resolves.toBe('-10px');
+    });
+
+    it('defaults arithmetic to preserve mode', async () => {
+      /*
+       * Incompatible units under preserve mode keep the operation intact: the
+       * Operation node catches operate()'s TypeError and renders `calc(l - r)`
+       * with the original operands (no fabricated fused unit).
+       */
+      const operation = op([dimension([10, 'px']), '-', dimension([20, 'rem'])]);
+      expect(await operation.render(context)).toBe('calc(10px - 20rem)');
+    });
+
+    it('should use left-hand units in non-strict mode', async () => {
+      let left = dimension([10, 'px']);
+      let right = dimension([20, 'rem']);
+      await expect(renderOperate(left, right, '-', looseContext)).resolves.toBe('-10px');
+    });
+
+    it('should use left-hand units when right has no unit', async () => {
+      let left = dimension([10, 'px']);
+      let right = num(20);
+      await expect(renderOperate(left, right, '-')).resolves.toBe('-10px');
+    });
+
+    it('should use right-hand units when left has no unit', async () => {
+      let left = num(10);
+      let right = dimension([20, 'px']);
+      await expect(renderOperate(left, right, '-')).resolves.toBe('-10px');
+    });
+
+    it('keeps inherited source metadata on public arithmetic results', () => {
+      const left = dimension([10, 'px']);
+      const right = dimension([20, 'px']);
+      setSourceSpan(left, { start: 10, end: 14 });
+
+      const result = left.operate(right, '+', context);
+
+      expect(result).not.toBe(left);
+      expect(sourceSpanOf(result)).toEqual(sourceSpanOf(left));
+      expect(result.sourceNode).toBe(result);
+    });
+
+    it('keeps inherited source metadata on dimension-to-color operation results', () => {
+      const left = dimension(10);
+      const right = color('#010203');
+      setSourceSpan(left, { start: 20, end: 24 });
+
+      const result = left.operate(right, '+', context);
+
+      expect(result).not.toBe(left);
+      expect(result).not.toBe(right);
+      expect(sourceSpanOf(result)).toEqual(sourceSpanOf(left));
+      expect(result.sourceNode).toBe(result);
+    });
+  });
+
+  describe('multiplication', () => {
+    it('should multiply', async () => {
+      let left = dimension([10, 'px']);
+      let right = num(2);
+      await expect(renderOperate(left, right, '*')).resolves.toBe('20px');
+    });
+    it('should ignore double units in non-strict mode', async () => {
+      let left = dimension([10, 'px']);
+      let right = dimension([2, 'px']);
+      await expect(renderOperate(left, right, '*', looseContext)).resolves.toBe('20px');
+    });
+  });
+
+  describe('division', () => {
+    it('should divide', async () => {
+      let left = dimension([10, 'px']);
+      let right = num(2);
+      await expect(renderOperate(left, right, '/')).resolves.toBe('5px');
+    });
+    it('should divide number by unit (non-strict)', async () => {
+      let left = num(10);
+      let right = dimension([2, 'px']);
+      await expect(renderOperate(left, right, '/', looseContext)).resolves.toBe('5px');
+    });
+    it('should not cancel units in non-strict mode', async () => {
+      let left = dimension([10, 'px']);
+      let right = dimension([2, 'px']);
+      await expect(renderOperate(left, right, '/', looseContext)).resolves.toBe('5px');
+    });
+    it('should cancel units in strict mode', async () => {
+      let left = dimension([10, 'px']);
+      let right = dimension([2, 'px']);
+      const strictContext = new Context({ unitMode: 'strict' });
+      await expect(renderOperate(left, right, '/', strictContext)).resolves.toBe('5');
+    });
+  });
+
+  describe('conversions', () => {
+    it('should convert lengths', async () => {
+      let left = dimension([1, 'cm']);
+      let right = dimension([2, 'mm']);
+      await expect(renderOperate(left, right, '+')).resolves.toBe('1.2cm');
+      await expect(renderOperate(left, right, '-')).resolves.toBe('0.8cm');
+    });
+    it('should convert duration', async () => {
+      let left = dimension([1, 's']);
+      let right = dimension([1, 'ms']);
+      await expect(renderOperate(left, right, '+')).resolves.toBe('1.001s');
+      await expect(renderOperate(left, right, '-')).resolves.toBe('0.999s');
+    });
+    it('should convert angle', async () => {
+      let left = dimension([1, 'rad']);
+      let right = dimension([1, 'deg']);
+
+      // 1rad + 1deg = 1 + pi/180, under the shared number policy (DD F6).
+      await expect(renderOperate(left, right, '+')).resolves.toBe('1.0174532925rad');
+    });
+  });
+
+  describe('strict mode', () => {
+    beforeEach(() => {
+      context = new Context({ unitMode: 'strict' });
+    });
+    it('should throw when adding incompatible units', () => {
+      let left = dimension([10, 'px']);
+      let right = dimension([2, 'rem']);
+      expect(() => left.operate(right, '+', context)).toThrow();
+    });
+    it('should throw when dividing a number by a unit', () => {
+      let left = num(10);
+      let right = dimension([2, 'px']);
+      expect(() => left.operate(right, '/', context)).toThrow();
+    });
+    it('should throw when multiplying double units', () => {
+      let left = dimension([10, 'px']);
+      let right = dimension([2, 'px']);
+      expect(() => left.operate(right, '*', context)).toThrow();
+    });
+    it('should throw on divide by zero', () => {
+      let left = dimension([10, 'px']);
+      let right = num(0);
+      expect(() => left.operate(right, '/', context)).toThrow();
+    });
+    it('should cancel units during division', async () => {
+      let left = dimension([10, 'px']);
+      let right = dimension([2, 'px']);
+      await expect(renderOperate(left, right, '/', context)).resolves.toBe('5');
+    });
+  });
+
+  describe('preserve mode', () => {
+    beforeEach(() => {
+      context = new Context({ unitMode: 'preserve' });
+    });
+
+    /*
+     * In preserve mode, `operate()` does NOT fuse operands into a fabricated
+     * compound-unit Dimension. It throws TypeError so the caller (Operation)
+     * preserves the arithmetic un-collapsed as `calc(l op r)` with the original
+     * operands. These assert the throw contract; calc preservation itself is
+     * covered by the Operation tests and the all-less calc fixture.
+     */
+    it('throws when dividing incompatible units', () => {
+      let left = dimension([10, 'px']);
+      let right = dimension([2, 's']);
+      expect(() => left.operate(right, '/', context)).toThrow(TypeError);
+    });
+    it('throws when multiplying incompatible units', () => {
+      let left = dimension([10, 'px']);
+      let right = dimension([2, 'em']);
+      expect(() => left.operate(right, '*', context)).toThrow(TypeError);
+    });
+    it('should throw when comparing incompatible units (same as strict)', () => {
+      let left = dimension([10, 'px']);
+      let right = dimension([2, 'rem']);
+      expect(() => left.compare(right, context)).toThrow('Incompatible units');
+    });
+    it('throws for compatible-units multiplication (no single-unit result)', () => {
+      let left = dimension([10, 'px']);
+      let right = dimension([2, 'cm']);
+      expect(() => left.operate(right, '*', context)).toThrow(TypeError);
+    });
+    it('throws for compatible-units division of different units', () => {
+      let left = dimension([10, 'px']);
+      let right = dimension([2, 'cm']);
+      expect(() => left.operate(right, '/', context)).toThrow(TypeError);
+    });
+  });
+
+  /*
+   * it('should serialize to a module', () => {
+   * let rule = dimension('10px')
+   * rule.toModule(context, out)
+   * expect(out.toString()).toBe('$J.num({\n  value: 10,\n  unit: "px"\n})')
+   * })
+   */
+});

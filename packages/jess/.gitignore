@@ -1,1 +1,3 @@
-benchmark/benchmark.css
+benchmark/*
+!benchmark/benchmark.css
+!benchmark/*.mjs

@@ -1,0 +1,60 @@
+{
+  "workload": "benchmark",
+  "files": 1,
+  "ok": 1,
+  "failed": 0,
+  "outBytes": 132978,
+  "counts": {
+    "makeColorRgb": {
+      "total": 654,
+      "combos": {
+        "node": 285,
+        "-": 369
+      },
+      "mapsObserved": 2
+    },
+    "makeList": {
+      "total": 383,
+      "combos": {
+        "-": 383
+      },
+      "mapsObserved": 1
+    },
+    "makeKeyword": {
+      "total": 109,
+      "combos": {
+        "-": 109
+      },
+      "mapsObserved": 1
+    },
+    "makeColorHsl": {
+      "total": 175,
+      "combos": {
+        "-": 175
+      },
+      "mapsObserved": 1
+    },
+    "makeQuoted": {
+      "total": 9,
+      "combos": {
+        "-": 9
+      },
+      "mapsObserved": 1
+    },
+    "makeDimension": {
+      "total": 602,
+      "combos": {
+        "plain": 602
+      },
+      "mapsObserved": 1
+    },
+    "makeCompoundDimension": {
+      "total": 468,
+      "combos": {
+        "-": 462,
+        "backupUnit": 6
+      },
+      "mapsObserved": 2
+    }
+  }
+}

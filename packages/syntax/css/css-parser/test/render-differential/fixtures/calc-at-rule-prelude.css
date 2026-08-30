@@ -1,0 +1,16 @@
+/* calc() reached through an at-rule prelude rather than a declaration value. */
+@media (min-width: calc(100px + 1em)) {
+  .prelude-media { color: red; }
+}
+@media (width >= calc(20rem * 2)) {
+  .prelude-range { color: red; }
+}
+@supports (width: calc(1px + 2px * 3)) {
+  .prelude-supports { color: red; }
+}
+@container (min-width: calc(10rem + 2vw)) {
+  .prelude-container { color: red; }
+}
+@media screen and (min-width: calc(1px + 2px)) and (max-width: calc(100% - 1px)) {
+  .prelude-and { color: red; }
+}

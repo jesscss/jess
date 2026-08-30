@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011">
+  <Metadata>
+    <Identity Language="en-US" Id="jess-language-service" Version="0.0.0" Publisher="jesscss" />
+    <DisplayName>Jess Language Service</DisplayName>
+    <Description xml:space="preserve">Stylesheet language service for CSS/Jess/Less/SCSS.</Description>
+    <Tags>css,less,scss,jess,language-service</Tags>
+  </Metadata>
+  <Installation>
+    <InstallationTarget Id="Microsoft.VisualStudio.Code"/>
+  </Installation>
+  <Dependencies/>
+  <Assets>
+    <Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="package.json" Addressable="true" />
+  </Assets>
+</PackageManifest>
+

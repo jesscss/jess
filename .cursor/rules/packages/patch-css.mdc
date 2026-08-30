@@ -1,0 +1,11 @@
+---
+description: "Package: @jesscss/patch-css (browser stylesheet patch utility; legacy notes)"
+globs:
+  - "packages/patch-css/**"
+---
+
+# `@jesscss/patch-css`
+
+- **Role**: Browser utility to attach cached stylesheets (see `packages/patch-css/README.md`).
+- **Note**: Contains legacy/TOFIX scripts (e.g. Jest reference in `package.json`).
+

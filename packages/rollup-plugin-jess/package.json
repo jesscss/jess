@@ -1,28 +1,44 @@
 {
   "name": "rollup-plugin-jess",
-  "version": "1.0.8-alpha.8",
+  "type": "module",
+  "version": "2.0.0-alpha.5",
+  "engines": {
+    "node": "^20.19.0 || >=22.18.0"
+  },
   "description": "Rollup plugin for Jess",
-  "main": "lib/index",
-  "types": "lib/index",
+  "main": "lib/index.cjs",
+  "module": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "lib"
   ],
   "scripts": {
-    "ci": "yarn build && yarn test",
+    "ci": "pnpm build && pnpm test",
     "prepublishOnly": "npm run build",
-    "build": "yarn clean && yarn compile",
+    "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
-    "compile": "tsc -b tsconfig.json",
-    "test": "ts-mocha test/**/*.ts"
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "test": "vitest --run --passWithNoTests",
+    "lint:fix": "eslint --fix '**/*.{js,ts}'",
+    "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
-    "jess": "^1.0.8-alpha.8"
+    "jess": "workspace:*"
   },
   "peerDependencies": {
     "rollup": "^2.0.0"
   },
   "devDependencies": {
-    "rollup": "^2.36.2"
+    "tsdown": "~0.21.7",
+    "rollup": "^3.20.7"
   },
   "author": "Matthew Dean",
   "license": "MIT"

@@ -1,0 +1,114 @@
+{
+  "name": "@jesscss/css-parser",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "version": "2.0.0-alpha.5",
+  "engines": {
+    "node": "^20.19.0 || >=22.18.0"
+  },
+  "description": "Jess CSS base parser",
+  "main": "lib/index.cjs",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.cjs"
+    },
+    "./positions": {
+      "types": "./lib/positions.d.ts",
+      "import": "./lib/positions.js",
+      "require": "./lib/positions.cjs"
+    },
+    "./cst": {
+      "types": "./lib/cst.d.ts",
+      "import": "./lib/cst.js",
+      "require": "./lib/cst.cjs"
+    },
+    "./cst/positions": {
+      "types": "./lib/cst/positions.d.ts",
+      "import": "./lib/cst/positions.js",
+      "require": "./lib/cst/positions.cjs"
+    },
+    "./cst-host": {
+      "types": "./lib/cst-host.d.ts",
+      "import": "./lib/cst-host.js",
+      "require": "./lib/cst-host.cjs"
+    },
+    "./grammar": {
+      "types": "./lib/grammar/ast.d.ts",
+      "import": "./lib/grammar/ast.js",
+      "require": "./lib/grammar/ast.cjs"
+    },
+    "./grammar/ast": {
+      "types": "./lib/grammar/ast.d.ts",
+      "import": "./lib/grammar/ast.js",
+      "require": "./lib/grammar/ast.cjs"
+    },
+    "./grammar/ast/positions": {
+      "types": "./lib/grammar/ast/positions.d.ts",
+      "import": "./lib/grammar/ast/positions.js",
+      "require": "./lib/grammar/ast/positions.cjs"
+    },
+    "./grammar/cst": {
+      "types": "./lib/grammar/cst.d.ts",
+      "import": "./lib/grammar/cst.js",
+      "require": "./lib/grammar/cst.cjs"
+    },
+    "./grammar/cst/positions": {
+      "types": "./lib/grammar/cst/positions.d.ts",
+      "import": "./lib/grammar/cst/positions.js",
+      "require": "./lib/grammar/cst/positions.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "verify:types": "tsc -p tsconfig.build.json --noEmit --skipLibCheck",
+    "ci": "pnpm build && pnpm test",
+    "prepublishOnly": "pnpm build",
+    "build": "pnpm --filter @jesscss/parser-shared build && pnpm compile",
+    "compile": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\" && tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "dev": "tsdown --tsconfig tsconfig.build.json --no-dts --watch",
+    "test": "cross-env TEST=true vitest --watch=false",
+    "oracle:byte-identity": "cross-env TEST=true vitest --watch=false test/byte-identity.test.ts",
+    "oracle:postcss": "node test/postcss-oracle.mjs",
+    "oracle:postcss:single": "node test/postcss-oracle.mjs --file packages/jess/benchmark/benchmark.css",
+    "bench:postcss": "node test/postcss-oracle.mjs --file packages/jess/benchmark/benchmark.css --bench",
+    "bar:postcss": "node test/postcss-parse-bar.mjs",
+    "bar:postcss:gate": "node test/postcss-parse-bar.mjs --gate",
+    "test:coverage": "cross-env TEST=true vitest --coverage",
+    "lint:fix": "eslint --fix '**/*.{js,ts}'",
+    "lint": "eslint '**/*.{js,ts}'"
+  },
+  "dependencies": {
+    "@jesscss/parser-shared": "workspace:*"
+  },
+  "peerDependencies": {
+    "@jesscss/core": "workspace:*",
+    "parseman": "^0.50.1"
+  },
+  "peerDependenciesMeta": {
+    "@jesscss/core": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@jesscss/core": "workspace:*",
+    "@jesscss/shared": "workspace:*",
+    "parseman": "^0.50.1",
+    "postcss": "8.5.23",
+    "tsx": "~4.21.0"
+  },
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jesscss/jess/issues"
+  },
+  "homepage": "https://github.com/jesscss/jess#readme",
+  "module": "lib/index.js"
+}

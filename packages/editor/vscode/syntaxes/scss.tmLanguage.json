@@ -1,0 +1,102 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Jess SCSS (fallback)",
+  "scopeName": "source.scss",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#selectors" },
+    { "include": "#variables" },
+    { "include": "#atRules" },
+    { "include": "#properties" },
+    { "include": "#numbers" },
+    { "include": "#functions" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "name": "comment.block.scss", "begin": "/\\*", "end": "\\*/" },
+        {
+          "name": "comment.line.double-slash.scss",
+          "match": "(?<!https:)(?<!http:)(?<!:)//.*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        { "name": "string.quoted.double.scss", "begin": "\"", "end": "\"", "patterns": [{ "match": "\\\\.", "name": "constant.character.escape.scss" }] },
+        { "name": "string.quoted.single.scss", "begin": "'", "end": "'", "patterns": [{ "match": "\\\\.", "name": "constant.character.escape.scss" }] }
+      ]
+    }
+    ,
+    "atRules": {
+      "patterns": [
+        { "name": "keyword.control.at-rule.scss", "match": "(?m)^[ \\t]*@(?:[\\w-]+)" }
+      ]
+    },
+    "selectors": {
+      "patterns": [
+        { "name": "meta.attribute-selector.scss", "match": "\\[[^\\]]+\\]" },
+        {
+          "name": "meta.selector.scss",
+          "match": "(?m)(^|[\\s{;,(]|\\.|#|&|\\]|\\))(\\&+)",
+          "captures": { "2": { "name": "entity.name.tag.scss" } }
+        },
+        {
+          "name": "meta.selector.scss",
+          "match": "(?m)(^|[\\s{;,(]|\\.|#|&|\\]|\\))(\\.[_a-zA-Z][\\w-]*)",
+          "captures": { "2": { "name": "entity.name.tag.scss" } }
+        },
+        {
+          "name": "meta.selector.scss",
+          "match": "(?m)(^|[\\s{;,(]|\\.|#|&|\\]|\\))(#[_a-zA-Z][\\w-]*)",
+          "captures": { "2": { "name": "entity.name.tag.scss" } }
+        },
+        {
+          "name": "meta.selector.scss",
+          "match": "(?m)^[ \\t]*([_a-zA-Z][\\w-]*)(?=\\s*[,{])",
+          "captures": { "1": { "name": "entity.name.tag.scss" } }
+        },
+        { "name": "entity.name.tag.scss", "match": ":[_a-zA-Z-][\\w-]*" }
+      ]
+    },
+    "variables": {
+      "patterns": [
+        {
+          "name": "variable.other.constant.scss",
+          "match": "(?m)^[ \\t]*(\\$[_a-zA-Z][\\w-]*)\\s*:",
+          "captures": { "1": { "name": "variable.other.constant.scss" } }
+        },
+        { "name": "variable.other.constant.scss", "match": "\\$[_a-zA-Z][\\w-]*" }
+      ]
+    },
+    "properties": {
+      "patterns": [
+        {
+          "name": "meta.property-name.scss",
+          "match": "(?m)(^|[\\s{;])([_a-zA-Z][\\w-]*)\\s*:",
+          "captures": { "2": { "name": "support.type.property-name.scss" } }
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "meta.dimension.scss",
+          "match": "(?<![\\w-])([+-]?(?:\\d*\\.\\d+|\\d+))(?:([a-zA-Z]+|%))",
+          "captures": {
+            "1": { "name": "constant.numeric.scss" },
+            "2": { "name": "constant.other.unit.scss" }
+          }
+        },
+        { "name": "constant.numeric.scss", "match": "(?<![\\w-])[+-]?(?:\\d*\\.\\d+|\\d+)" }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        { "name": "support.function.scss", "match": "\\b[_a-zA-Z][\\w-]*(?=\\()" }
+      ]
+    }
+  }
+}
+

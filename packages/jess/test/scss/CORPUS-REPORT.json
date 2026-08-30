@@ -1,0 +1,846 @@
+{
+  "generated": "2026-08-08T23:21:17.073Z",
+  "bootstrap": "5.3.8",
+  "node": "v24.11.1",
+  "platform": "darwin/arm64",
+  "parse": {
+    "total": 92,
+    "pass": 43,
+    "blockerCounts": [
+      {
+        "name": "interpolation inside a var() name",
+        "files": 41
+      },
+      {
+        "name": "interpolation as a standalone selector compound",
+        "files": 38
+      },
+      {
+        "name": "bare-truthy @if condition",
+        "files": 22
+      },
+      {
+        "name": "leading combinator (implicit &)",
+        "files": 19
+      },
+      {
+        "name": "@include with a trailing content block",
+        "files": 17
+      },
+      {
+        "name": "multiline nested paren list",
+        "files": 4
+      },
+      {
+        "name": "interpolated pseudo-element",
+        "files": 3
+      },
+      {
+        "name": "@content",
+        "files": 2
+      },
+      {
+        "name": "@warn / @error / @debug",
+        "files": 2
+      },
+      {
+        "name": "@while",
+        "files": 2
+      },
+      {
+        "name": "line comment inside a paren list",
+        "files": 1
+      }
+    ],
+    "results": [
+      {
+        "file": "_accordion.scss",
+        "outcome": "fail",
+        "at": "36:15",
+        "source": "padding: var(--#{$prefix}accordion-btn-padding-y) var(--#{$prefix}accordion-btn-padding-x);",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "_alert.scss",
+        "outcome": "fail",
+        "at": "13:61",
+        "source": "--#{$prefix}alert-border: #{$alert-border-width} solid var(--#{$prefix}alert-border-color);",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "_badge.scss",
+        "outcome": "fail",
+        "at": "6:0",
+        "source": ".badge {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name"
+        ],
+        "detail": "Unexpected SCSS syntax."
+      },
+      {
+        "file": "_breadcrumb.scss",
+        "outcome": "fail",
+        "at": "1:0",
+        "source": ".breadcrumb {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "Unexpected SCSS syntax."
+      },
+      {
+        "file": "_button-group.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "_buttons.scss",
+        "outcome": "fail",
+        "at": "5:0",
+        "source": ".btn {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name"
+        ],
+        "detail": "Unexpected SCSS syntax."
+      },
+      {
+        "file": "_card.scss",
+        "outcome": "fail",
+        "at": "32:14",
+        "source": "height: var(--#{$prefix}card-height);",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "_carousel.scss",
+        "outcome": "fail",
+        "at": "102:14",
+        "source": "filter: var(--#{$prefix}carousel-control-icon-filter);",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "_close.scss",
+        "outcome": "fail",
+        "at": "6:0",
+        "source": ".btn-close {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block"
+        ],
+        "detail": "Unexpected SCSS syntax."
+      },
+      {
+        "file": "_containers.scss",
+        "outcome": "fail",
+        "at": "29:10",
+        "source": ".container#{breakpoint-infix($name, $grid-breakpoints)} {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "@include with a trailing content block"
+        ],
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "_dropdown.scss",
+        "outcome": "fail",
+        "at": "19:0",
+        "source": ".dropdown-menu {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "Unexpected SCSS input after a complete stylesheet."
+      },
+      {
+        "file": "_forms.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "_functions.scss",
+        "outcome": "fail",
+        "at": "43:21",
+        "source": "@return rgba(var(--#{$prefix}#{$identifier}-bg-rgb), var(--#{$prefix}#{$target}-opacity));",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@warn / @error / @debug",
+          "@while"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "_grid.scss",
+        "outcome": "fail",
+        "at": "12:2",
+        "source": ".row {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "_helpers.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "_images.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "_list-group.scss",
+        "outcome": "fail",
+        "at": "32:29",
+        "source": "@include border-radius(var(--#{$prefix}list-group-border-radius));",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "_maps.scss",
+        "outcome": "fail",
+        "at": "114:26",
+        "source": "\"primary-emphasis\": var(--#{$prefix}primary-text-emphasis),",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation inside a var() name",
+          "multiline nested paren list"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "_mixins.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "_modal.scss",
+        "outcome": "fail",
+        "at": "38:15",
+        "source": "z-index: var(--#{$prefix}modal-zindex);",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "_nav.scss",
+        "outcome": "fail",
+        "at": "6:0",
+        "source": ".nav {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "Unexpected SCSS syntax."
+      },
+      {
+        "file": "_navbar.scss",
+        "outcome": "fail",
+        "at": "35:15",
+        "source": "padding: var(--#{$prefix}navbar-padding-y) var(--#{$prefix}navbar-padding-x);",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "_offcanvas.scss",
+        "outcome": "fail",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block"
+        ],
+        "detail": "SCSS grammar produced a non-value child."
+      },
+      {
+        "file": "_pagination.scss",
+        "outcome": "fail",
+        "at": "1:0",
+        "source": ".pagination {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name"
+        ],
+        "detail": "Unexpected SCSS syntax."
+      },
+      {
+        "file": "_placeholders.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "_popover.scss",
+        "outcome": "fail",
+        "at": "1:0",
+        "source": ".popover {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "Unexpected SCSS syntax."
+      },
+      {
+        "file": "_progress.scss",
+        "outcome": "fail",
+        "at": "5:2",
+        "source": "@keyframes progress-bar-stripes {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name"
+        ],
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "_reboot.scss",
+        "outcome": "fail",
+        "at": "30:27",
+        "source": "@include font-size(var(--#{$prefix}root-font-size));",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation inside a var() name",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "_root.scss",
+        "outcome": "fail",
+        "at": "1:0",
+        "source": ":root,",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block"
+        ],
+        "detail": "Unexpected SCSS syntax."
+      },
+      {
+        "file": "_spinners.scss",
+        "outcome": "fail",
+        "at": "9:13",
+        "source": "width: var(--#{$prefix}spinner-width);",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "_tables.scss",
+        "outcome": "fail",
+        "at": "26:20",
+        "source": "border-color: var(--#{$prefix}table-border-color);",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "_toasts.scss",
+        "outcome": "fail",
+        "at": "1:0",
+        "source": ".toast {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "Unexpected SCSS syntax."
+      },
+      {
+        "file": "_tooltip.scss",
+        "outcome": "fail",
+        "at": "2:0",
+        "source": ".tooltip {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name"
+        ],
+        "detail": "Unexpected SCSS syntax."
+      },
+      {
+        "file": "_transitions.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "_type.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "_utilities.scss",
+        "outcome": "fail",
+        "at": "6:2",
+        "source": "(",
+        "blockers": [
+          "interpolation inside a var() name",
+          "multiline nested paren list",
+          "line comment inside a paren list"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "_variables-dark.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "_variables.scss",
+        "outcome": "fail",
+        "at": "358:0",
+        "source": "$escaped-characters: (",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "multiline nested paren list"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "bootstrap-grid.scss",
+        "outcome": "fail",
+        "at": "25:12",
+        "source": "$utilities,",
+        "blockers": [
+          "multiline nested paren list"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "bootstrap-reboot.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "bootstrap-utilities.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "bootstrap.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "forms/_floating-labels.scss",
+        "outcome": "fail",
+        "at": "21:20",
+        "source": "color: rgba(var(--#{$prefix}body-color-rgb), #{$form-floating-label-opacity});",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "forms/_form-check.scss",
+        "outcome": "fail",
+        "at": "38:24",
+        "source": "background-color: var(--#{$prefix}form-check-bg);",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "forms/_form-control.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "forms/_form-range.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "forms/_form-select.scss",
+        "outcome": "fail",
+        "at": "19:24",
+        "source": "background-image: var(--#{$prefix}form-select-bg-img), var(--#{$prefix}form-select-bg-icon, none);",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "forms/_form-text.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "forms/_input-group.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "forms/_labels.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "forms/_validation.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "helpers/_clearfix.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "helpers/_color-bg.scss",
+        "outcome": "fail",
+        "at": "4:64",
+        "source": "color: color-contrast($value) if($enable-important-utilities, !important, null);",
+        "blockers": [
+          "interpolation inside a var() name"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "helpers/_colored-links.scss",
+        "outcome": "fail",
+        "at": "4:20",
+        "source": "color: RGBA(var(--#{$prefix}#{$color}-rgb), var(--#{$prefix}link-opacity, 1)) if($enable-important-utilities, !important",
+        "blockers": [
+          "interpolation inside a var() name"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "helpers/_focus-ring.scss",
+        "outcome": "fail",
+        "at": "4:18",
+        "source": "box-shadow: var(--#{$prefix}focus-ring-x, 0) var(--#{$prefix}focus-ring-y, 0) var(--#{$prefix}focus-ring-blur, 0) var(--",
+        "blockers": [
+          "interpolation inside a var() name"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "helpers/_icon-link.scss",
+        "outcome": "fail",
+        "at": "5:34",
+        "source": "text-decoration-color: rgba(var(--#{$prefix}link-color-rgb), var(--#{$prefix}link-opacity, .5));",
+        "blockers": [
+          "interpolation inside a var() name",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "helpers/_position.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "helpers/_ratio.scss",
+        "outcome": "fail",
+        "at": "9:21",
+        "source": "padding-top: var(--#{$prefix}aspect-ratio);",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "helpers/_stacks.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "helpers/_stretched-link.scss",
+        "outcome": "fail",
+        "at": "5:0",
+        "source": ".stretched-link {",
+        "blockers": [
+          "interpolated pseudo-element"
+        ],
+        "detail": "Unexpected SCSS syntax."
+      },
+      {
+        "file": "helpers/_text-truncation.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "helpers/_visually-hidden.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "helpers/_vr.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_alert.scss",
+        "outcome": "fail",
+        "at": "11:26",
+        "source": "background-image: var(--#{$prefix}gradient);",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "mixins/_backdrop.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_banner.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_border-radius.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_box-shadow.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_breakpoints.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_buttons.scss",
+        "outcome": "fail",
+        "at": "67:14",
+        "source": "@include rfs($font-size, --#{$prefix}btn-font-size);",
+        "blockers": [
+          "interpolation as a standalone selector compound"
+        ],
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "mixins/_caret.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_clearfix.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_color-mode.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_color-scheme.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_container.scss",
+        "outcome": "fail",
+        "at": "7:26",
+        "source": "padding-right: calc(var(--#{$prefix}gutter-x) * .5); // stylelint-disable-line function-disallowed-list",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "mixins/_deprecate.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_forms.scss",
+        "outcome": "fail",
+        "at": "7:24",
+        "source": ".was-validated #{if(&, \"&\", \"\")}:#{$state},",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "@include with a trailing content block",
+          "@content",
+          "leading combinator (implicit &)",
+          "interpolated pseudo-element"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "mixins/_gradients.scss",
+        "outcome": "fail",
+        "at": "8:26",
+        "source": "background-image: var(--#{$prefix}gradient);",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation inside a var() name"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "mixins/_grid.scss",
+        "outcome": "fail",
+        "at": "11:28",
+        "source": "margin-top: calc(-1 * var(--#{$prefix}gutter-y)); // stylelint-disable-line function-disallowed-list",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "mixins/_image.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_list-group.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_lists.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_pagination.scss",
+        "outcome": "fail",
+        "at": "7:14",
+        "source": "@include rfs($font-size, --#{$prefix}pagination-font-size);",
+        "blockers": [
+          "interpolation as a standalone selector compound"
+        ],
+        "detail": "Missing closing brace."
+      },
+      {
+        "file": "mixins/_reset-text.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_resize.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_table-variants.scss",
+        "outcome": "fail",
+        "at": "20:15",
+        "source": "color: var(--#{$prefix}table-color);",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "mixins/_text-truncate.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_transition.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_utilities.scss",
+        "outcome": "fail",
+        "at": "29:65",
+        "source": "$infix: if($property-class == \"\" and str-slice($infix, 1, 1) == \"-\", str-slice($infix, 2), $infix);",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolated pseudo-element"
+        ],
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "mixins/_visually-hidden.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "utilities/_api.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "vendor/_rfs.scss",
+        "outcome": "fail",
+        "at": "56:39",
+        "source": "$sign: if($dividend > 0 and $divisor > 0 or $dividend < 0 and $divisor < 0, 1, -1);",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "@include with a trailing content block",
+          "@content",
+          "@warn / @error / @debug",
+          "@while"
+        ],
+        "detail": "Missing closing parenthesis."
+      }
+    ]
+  },
+  "eval": {
+    "total": 4,
+    "pass": 0,
+    "results": [
+      {
+        "file": "bootstrap.scss",
+        "outcome": "fail",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "bootstrap-grid.scss",
+        "outcome": "fail",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "bootstrap-reboot.scss",
+        "outcome": "fail",
+        "detail": "Missing closing parenthesis."
+      },
+      {
+        "file": "bootstrap-utilities.scss",
+        "outcome": "fail",
+        "detail": "Missing closing parenthesis."
+      }
+    ]
+  }
+}

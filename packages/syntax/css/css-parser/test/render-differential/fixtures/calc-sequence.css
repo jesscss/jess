@@ -1,0 +1,13 @@
+/* CalcSequence: space-separated runs inside a §10 function, and comma lists. */
+.sequence {
+  a: min(1px 2px);
+  b: clamp(1px 2px, 3px);
+  c: max(1px 2px, 3px 4px, 5px);
+  d: min(1px + 2px 3px * 4);
+  e: clamp(0px, 1px + 2px, 3px * 4);
+  f: min(red blue);
+  g: min(1px   2px);
+  h: max(1px  2px,  3px);
+  i: clamp(1px
+      2px, 3px);
+}

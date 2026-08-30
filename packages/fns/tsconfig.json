@@ -1,9 +1,21 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "noEmit": true,
     "outDir": "./lib",
-    "rootDir": "./src"
+    "rootDir": ".",
+    "types": [
+      "node",
+      "vitest/importMeta" 
+    ]
   },
-  "include": ["src/**/*"],
+  "include": [
+    "src/**/*",
+    "test/**/*",
+    "tsdown.config.ts",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "../../vitest.d.ts"
+  ],
   "exclude": ["node_modules", "lib"]
 }

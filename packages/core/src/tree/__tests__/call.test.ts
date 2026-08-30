@@ -1,0 +1,3139 @@
+import { sourceSpanOf } from '../util/provenance.js';
+import { beforeEach, describe, expect, it } from 'vitest';
+import * as treeIndex from '../index.js';
+import { Any, Call, Color, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, comment, condition, decl, dimension, el, fn, list, mixin, negative, num, op, query, quoted, ref, rules, ruleset, seq, vardecl } from '../index.js';
+import { Context } from '../../context.js';
+import { isNode } from '../util/is-node.js';
+import { N } from '../node-type.js';
+import { paren } from '../paren.js';
+import type { TriviaMap } from '../../types/index.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
+import { getPrintOptions, OutputWriter } from '../util/print.js';
+import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
+import { defineFunction } from '../../define-function.js';
+import { MixinCollection } from '../util/callable-collection.js';
+
+class CountingWriter extends OutputWriter {
+  captures = 0;
+  marks = 0;
+  readbacks = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
+
+  override getSince(mark: number): string {
+    this.readbacks++;
+    return super.getSince(mark);
+  }
+}
+
+class WholeBufferCountingWriter extends OutputWriter {
+  wholeBufferReads = 0;
+  readbacks = 0;
+
+  override getSince(mark: number): string {
+    this.readbacks++;
+    if (mark === 0) {
+      this.wholeBufferReads++;
+    }
+    return super.getSince(mark);
+  }
+}
+
+// A trivia run is now a source range; build one whose text is exactly `text`.
+const run = (text: string) => makeTrivia(text, 0, text.length);
+
+class AsyncAny extends Any<string> {
+  constructor(value: string) {
+    super(value);
+  }
+
+  override eval() {
+    return Promise.resolve(any(this.value));
+  }
+}
+
+class AsyncRenderedAny extends Any<string> {
+  constructor(value: string, private readonly renderedValue: string) {
+    super(value);
+  }
+
+  override eval() {
+    return Promise.resolve(any(this.renderedValue));
+  }
+}
+
+class RejectingAny extends Any<string> {
+  constructor(value: string) {
+    super(value);
+  }
+
+  override eval() {
+    return Promise.reject(new Error(this.value));
+  }
+}
+
+class ThrowingAny extends Any<string> {
+  override eval() {
+    throw new Error(this.value);
+  }
+}
+
+class SyncOverrideAny extends Any<string> {
+  evalCalls = 0;
+
+  override eval() {
+    this.evalCalls++;
+    return any(this.value);
+  }
+}
+
+class CustomSyntaxNode extends Node<string> {
+  readonly value: string;
+  constructor(value: string) {
+    super(value);
+    this.value = value;
+  }
+
+  override writeSyntax(options?: Parameters<Node['writeSyntax']>[0]): void {
+    getPrintOptions(options).writer.add(`custom-${this.value}`);
+  }
+}
+
+class WriterTrackingCustomSyntaxNode extends CustomSyntaxNode {
+  seenWriters: OutputWriter[] = [];
+
+  override writeSyntax(options?: Parameters<Node['writeSyntax']>[0]): void {
+    const writer = getPrintOptions(options).writer;
+    this.seenWriters.push(writer);
+    super.writeSyntax(options);
+  }
+}
+
+class AsyncWriterTrackingCustomSyntaxAny extends Any<string> {
+  readonly renderedNode: WriterTrackingCustomSyntaxNode;
+
+  constructor(value: string) {
+    super(value);
+    this.renderedNode = new WriterTrackingCustomSyntaxNode(value);
+  }
+
+  override eval() {
+    return Promise.resolve(this.renderedNode);
+  }
+}
+
+class AsyncCustomSyntaxAny extends Any<string> {
+  constructor(value: string) {
+    super(value);
+  }
+
+  override eval() {
+    return Promise.resolve(new CustomSyntaxNode(this.value));
+  }
+}
+
+function countDeriveCallUse(): { readonly count: number; restore(): void } {
+  const descriptor = Object.getOwnPropertyDescriptor(Call.prototype, 'deriveCall');
+  const original = descriptor?.value;
+  if (!descriptor || typeof original !== 'function') {
+    return {
+      count: 0,
+      restore() {}
+    };
+  }
+  let count = 0;
+  Object.defineProperty(Call.prototype, 'deriveCall', {
+    ...descriptor,
+    value: function deriveCallForCounting(this: Call, ...args: unknown[]) {
+      count++;
+      return Reflect.apply(original, this, args);
+    }
+  });
+  return {
+    get count() {
+      return count;
+    },
+    restore() {
+      Object.defineProperty(Call.prototype, 'deriveCall', descriptor);
+    }
+  };
+}
+
+function countEvalStateUse(): { readonly count: number; restore(): void } {
+  const descriptor = Object.getOwnPropertyDescriptor(Call.prototype, 'evalState');
+  const original = descriptor?.value;
+  if (!descriptor || typeof original !== 'function') {
+    return {
+      count: 0,
+      restore() {}
+    };
+  }
+  let count = 0;
+  Object.defineProperty(Call.prototype, 'evalState', {
+    ...descriptor,
+    value: function evalStateForCounting(this: Call, ...args: unknown[]) {
+      count++;
+      return original.apply(this, args);
+    }
+  });
+  return {
+    get count() {
+      return count;
+    },
+    restore() {
+      Object.defineProperty(Call.prototype, 'evalState', descriptor);
+    }
+  };
+}
+
+let context: Context;
+describe('Call', () => {
+  beforeEach(() => {
+    context = new Context();
+  });
+
+  it('should serialize a CSS function', () => {
+    let rule = call({
+      name: 'rgb',
+      args: list([num(100), num(100), num(100)])
+    });
+    expect(rule.toTrimmedString()).toBe('rgb(100, 100, 100)');
+    expect(Object.getOwnPropertyDescriptor(rule, '_options')?.value).toBeUndefined();
+  });
+
+  it('streams canonical function arguments without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'rgb',
+      args: list([num(100), num(100), num(100)])
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('rgb(100, 100, 100)');
+    expect(writer.captures).toBe(0);
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('serializes token CSS call arguments without source arg-list trim marks', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'var',
+      args: list([any('--brand'), any('red')])
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('var(--brand, red)');
+    expect(writer.toString()).toBe('var(--brand, red)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('serializes scalar list call source args without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'fn',
+      args: list([list([num(10), num(20)]), num(30)])
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('fn(10, 20, 30)');
+    expect(writer.toString()).toBe('fn(10, 20, 30)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('does not double the separator when a space-group arg term already carries leading whitespace', () => {
+    /*
+     * Repro of the `less` `modern` fixture: the parser bakes leading spaces into
+     * value keywords that follow a `)`-terminated term (e.g. `... calc(l - 0.1) c h`
+     * yields keyword terms `" c"` / `" h"`). The known-text fast path in
+     * `getKnownRenderedCallText` joined space-group terms with an unconditional
+     * space, so a term that already carried a leading space rendered doubled.
+     */
+    const rule = call({
+      name: 'fn',
+      args: list([
+        seq([
+          any('from'),
+          any(' c'),
+          any(' h')
+        ])
+      ])
+    });
+    expect(rule.render(context)).toBe('fn(from c h)');
+  });
+
+  it('serializes escaped scalar list call source args without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'func',
+      args: list([
+        paren(list([any('a'), any('b')]), { escaped: true }),
+        any('c')
+      ], { sep: ';' })
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('func(~(a, b); c)');
+    expect(writer.toString()).toBe('func(~(a, b); c)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('serializes exact quoted call source args without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'say',
+      args: list([quoted('hello'), quoted(any('world'))])
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('say("hello", "world")');
+    expect(writer.toString()).toBe('say("hello", "world")');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('serializes call source syntax through direct child writers', () => {
+    const name = ref('rgb', { fallbackValue: true });
+    const args = list([num(100), num(100), num(100)]);
+    const contentNode = any('raw body');
+    name.toString = () => {
+      throw new Error('Call.toTrimmedString should not stringify the name publicly');
+    };
+    args.toTrimmedString = () => {
+      throw new Error('Call.toTrimmedString should not stringify args publicly');
+    };
+    contentNode.toString = () => {
+      throw new Error('Call.toTrimmedString should not stringify content publicly');
+    };
+    const rule = call({
+      name,
+      args,
+      contentNode
+    }, { markImportant: true });
+
+    expect(rule.toTrimmedString()).toBe('$rgb?(100, 100, 100) !important: raw body');
+  });
+
+  it('serializes custom call source syntax without outer whole-call readback', () => {
+    const writer = new WholeBufferCountingWriter();
+    const rule = call({
+      name: ref('rgb', { fallbackValue: true }),
+      args: list([num(100), num(100), num(100)]),
+      contentNode: any('raw body')
+    }, { markImportant: true });
+
+    expect(rule.toTrimmedString({ writer })).toBe('$rgb?(100, 100, 100) !important: raw body');
+    expect(writer.wholeBufferReads).toBe(1);
+  });
+
+  it('serializes exact call source syntax without falling through writeSyntax', () => {
+    const originalWriteSyntax = Call.prototype.writeSyntax;
+    let writeSyntaxCalls = 0;
+    Call.prototype.writeSyntax = function countWriteSyntax(
+      this: Call,
+      ...args: Parameters<typeof originalWriteSyntax>
+    ): ReturnType<typeof originalWriteSyntax> {
+      writeSyntaxCalls++;
+      return originalWriteSyntax.apply(this, args);
+    };
+    const rule = call({
+      name: 'rgb',
+      args: list([num(100), num(100), num(100)])
+    });
+
+    try {
+      expect(rule.toTrimmedString()).toBe('rgb(100, 100, 100)');
+      expect(writeSyntaxCalls).toBe(0);
+    } finally {
+      Call.prototype.writeSyntax = originalWriteSyntax;
+    }
+  });
+
+  it('serializes empty CSS calls without writer readback scaffolding', () => {
+    const writer = new CountingWriter();
+    const rule = call({ name: 'button' });
+
+    expect(rule.toTrimmedString({ writer })).toBe('button()');
+    expect(writer.toString()).toBe('button()');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('writes exact source call content without source trim marks', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'wrap',
+      contentNode: seq([any('raw'), any('content')])
+    });
+
+    rule.writeSyntax(getPrintOptions({ writer }));
+
+    expect(writer.toString()).toBe('wrap(): raw content');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('serializes comment trivia owned by function argument separators', () => {
+    const first = new Any('#333', undefined, { start: 20, end: 23 });
+    const second = new Any('#111', undefined, { start: 40, end: 43 });
+    const rule = new Call({
+      name: 'linear-gradient',
+      args: new List([first, second])
+    });
+    const tokens = run(' /*{comment}*/');
+    const trivia = createTriviaMap({
+      before: new Map([[38, tokens]]),
+      after: new Map([[sourceSpanOf(first)?.end, tokens]])
+    }) satisfies TriviaMap;
+
+    expect(rule.toString({ trivia })).toBe('linear-gradient(#333 /*{comment}*/, #111)');
+  });
+
+  it('writes trivia-bearing call args without arg-list trim marks', () => {
+    const writer = new CountingWriter();
+    const first = new Any('#333', undefined, { start: 20, end: 23 });
+    const second = new Any('#111', undefined, { start: 40, end: 43 });
+    const rule = new Call({
+      name: 'linear-gradient',
+      args: new List([first, second])
+    });
+    const tokens = run(' /*{comment}*/');
+    const trivia = createTriviaMap({
+      before: new Map([[38, tokens]]),
+      after: new Map([[sourceSpanOf(first)?.end, tokens]])
+    }) satisfies TriviaMap;
+
+    rule.writeSyntax(getPrintOptions({ writer, trivia }));
+
+    expect(writer.toString()).toBe('linear-gradient(#333 /*{comment}*/, #111)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('should serialize an optional function lookup', () => {
+    let rule = call({
+      name: ref('rgb', { fallbackValue: true }),
+      args: list([num(100), num(100), num(100)])
+    });
+    expect(rule.toTrimmedString()).toBe('$rgb?(100, 100, 100)');
+  });
+
+  it('does not re-export optional fallback call syntax helper', () => {
+    expect('createOptionalFallbackCallSyntaxState' in treeIndex).toBe(false);
+  });
+
+  it('renders CSS calls through render(context)', () => {
+    const rule = call({
+      name: 'rgb',
+      args: list([num(100), num(100), num(100)])
+    });
+
+    expect(rule.render(context)).toBe('rgb(100, 100, 100)');
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('renders empty CSS calls without writer readback scaffolding', () => {
+    const writer = new CountingWriter();
+    const rule = call({ name: 'button' }, { silentFail: true, markImportant: true });
+
+    expect(rule.render(context, { writer })).toBe('button?() !important');
+    expect(writer.toString()).toBe('button?() !important');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('writes call render output into flat buffers', async () => {
+    const buffer = createRenderBuffer('flat');
+    const rule = call({
+      name: 'rgb',
+      args: list([num(100), num(100), num(100)])
+    });
+
+    expect(await rule.render(context, buffer)).toBe('rgb(100, 100, 100)');
+    expect(buffer.parts).toEqual(['rgb(100, 100, 100)']);
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('writes CSS call render output into shared flat buffers without nested call marks', async () => {
+    const buffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    const writer = new CountingWriter(false, buffer.parts);
+    context.printState.writer = writer;
+    const rule = call({
+      name: 'rgb',
+      args: list([num(100), num(100), num(100)])
+    });
+
+    expect(await rule.render(context, buffer)).toBe('rgb(100, 100, 100)');
+    expect(buffer.parts).toEqual(['rgb', '(', '100', ', ', '100', ', ', '100', ')']);
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('serializes exact operation call source args without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'calc',
+      args: list([op([dimension([10, 'px']), '+', dimension([5, 'px'])])])
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('calc(10px + 5px)');
+    expect(writer.toString()).toBe('calc(10px + 5px)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('serializes exact query-condition call content without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'wrap',
+      contentNode: query([any('screen'), any('and'), any('(color)')])
+    });
+
+    expect(rule.toTrimmedString({ writer })).toBe('wrap(): screen and (color)');
+    expect(writer.toString()).toBe('wrap(): screen and (color)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('writes dynamic finalized call render output into shared flat buffers without whole-string writeback', async () => {
+    const root = rules([
+      vardecl({
+        name: 'fnName',
+        value: any('rgb')
+      })
+    ]);
+    const evald = await root.eval(context);
+    expect(evald).toBeInstanceOf(Rules);
+    if (!(evald instanceof Rules)) {
+      throw new TypeError('Expected Rules root');
+    }
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const buffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    const writer = new CountingWriter(false, buffer.parts);
+    context.printState.writer = writer;
+    const rule = call({
+      name: ref({ key: 'fnName' }, { type: 'variable' }),
+      args: list([num(100), num(100), num(100)])
+    });
+
+    expect(await rule.render(context, buffer)).toBe('rgb(100, 100, 100)');
+    expect(buffer.parts).toEqual(['rgb', '(', '100', ', ', '100', ', ', '100', ')']);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('writes call render output into buffers without mutating a provided writer', async () => {
+    const buffer = createRenderBuffer('flat');
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'rgb',
+      args: list([num(100), num(100), num(100)])
+    });
+
+    expect(await rule.render(context, buffer, { writer })).toBe('rgb(100, 100, 100)');
+    expect(buffer.parts).toEqual(['rgb(100, 100, 100)']);
+    expect(writer.toString()).toBe('');
+    expect(writer.captures).toBe(0);
+  });
+
+  it('writes CSS call arguments without resolving child wrappers', async () => {
+    const root = rules([
+      vardecl({
+        name: 'red-channel',
+        value: num(100)
+      })
+    ]);
+    const evald = await root.eval(context);
+    if (!(evald instanceof Rules)) {
+      throw new TypeError('Expected Rules root');
+    }
+    context.root = evald;
+    context.rulesContext = evald;
+    const buffer = createRenderBuffer('flat');
+    const arg = ref({ key: 'red-channel' }, { type: 'variable' });
+    const rule = call({
+      name: 'rgb',
+      args: list([arg, num(100), num(100)])
+    });
+    const originalResolve = arg.resolve;
+    let argResolveCalls = 0;
+    arg.resolve = function countResolveCalls(
+      this: typeof arg,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      argResolveCalls++;
+      return originalResolve.apply(this, args);
+    };
+
+    expect(await rule.render(context, buffer)).toBe('rgb(100, 100, 100)');
+    expect(buffer.parts).toEqual(['rgb(100, 100, 100)']);
+    expect(argResolveCalls).toBe(0);
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('renders dynamic CSS call names without evaluating the name twice', async () => {
+    const name = any('source-name');
+    const renderedName = any('rgb');
+    let renderedNamePublicStringCalls = 0;
+    renderedName.toTrimmedString = () => {
+      renderedNamePublicStringCalls++;
+      return 'wrong-name';
+    };
+    let nameEvaluations = 0;
+    name.eval = function evalForCounting() {
+      nameEvaluations++;
+      return renderedName;
+    };
+    const rule = call({
+      name,
+      args: list([num(100), num(100), num(100)])
+    });
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('rgb(100, 100, 100)');
+    expect(nameEvaluations).toBe(1);
+    expect(renderedNamePublicStringCalls).toBe(0);
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('renders evaluated CSS call arguments without public string transport', async () => {
+    const arg = any('source');
+    const renderedArg = any('20');
+    let renderedArgPublicStringCalls = 0;
+    renderedArg.toTrimmedString = () => {
+      renderedArgPublicStringCalls++;
+      return 'wrong-arg';
+    };
+    arg.eval = function evalForArgTransport() {
+      return renderedArg;
+    };
+    const rule = call({
+      name: 'rgb',
+      args: list([num(10), arg, num(30)])
+    });
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('rgb(10, 20, 30)');
+    expect(renderedArgPublicStringCalls).toBe(0);
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('renders evaluated escaped call arguments without public string transport', async () => {
+    const inner = any('source');
+    const renderedInner = any('a, b');
+    let renderedInnerPublicStringCalls = 0;
+    renderedInner.toTrimmedString = () => {
+      renderedInnerPublicStringCalls++;
+      return 'wrong-inner';
+    };
+    inner.eval = function evalForEscapedArgTransport() {
+      return renderedInner;
+    };
+    const rule = call({
+      name: 'func',
+      args: list([paren(inner, { escaped: true })])
+    });
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('func((a, b))');
+    expect(renderedInnerPublicStringCalls).toBe(0);
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('renders exact paren CSS call arguments without fallback readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'fn',
+      args: list([paren(seq([any('red'), num(10)])), num(30)])
+    });
+
+    expect(rule.render(context, { writer })).toBe('fn((red 10), 30)');
+    expect(writer.toString()).toBe('fn((red 10), 30)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders exact quoted CSS call arguments without fallback readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'say',
+      args: list([quoted('hello'), quoted(any('world'))])
+    });
+
+    expect(rule.render(context, { writer })).toBe('say("hello", "world")');
+    expect(writer.toString()).toBe('say("hello", "world")');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders exact operation CSS call arguments without fallback readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'calc',
+      args: list([op([dimension([10, 'px']), '+', dimension([5, 'px'])])])
+    });
+
+    expect(rule.render(context, { writer })).toBe('calc(10px + 5px)');
+    expect(writer.toString()).toBe('calc(10px + 5px)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders evaluated CSS call content without public string transport', async () => {
+    const content = any('source-content');
+    const renderedContent = any('body-output');
+    let renderedContentPublicStringCalls = 0;
+    renderedContent.toTrimmedString = () => {
+      renderedContentPublicStringCalls++;
+      return 'wrong-content';
+    };
+    content.eval = function evalForContentTransport() {
+      return renderedContent;
+    };
+    const rule = call({
+      name: 'wrap',
+      contentNode: content
+    });
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('wrap(): body-output');
+    expect(renderedContentPublicStringCalls).toBe(0);
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('renders exact paren call content without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'wrap',
+      contentNode: paren(seq([any('raw'), any('content')]))
+    });
+
+    expect(rule.render(context, { writer })).toBe('wrap(): (raw content)');
+    expect(writer.toString()).toBe('wrap(): (raw content)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders exact negative CSS call arguments without fallback readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'fn',
+      args: list([negative(num(20)), negative(any('token'))])
+    });
+
+    expect(rule.render(context, { writer })).toBe('fn(-20, -token)');
+    expect(writer.toString()).toBe('fn(-20, -token)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders dynamic calc names through one name eval with calc frames', async () => {
+    const name = any('source-name');
+    let nameEvaluations = 0;
+    name.eval = function evalForCounting() {
+      nameEvaluations++;
+      return any('calc');
+    };
+    const rule = call({
+      name,
+      args: list([
+        op([dimension([10, 'px']), '*', num(2)])
+      ])
+    });
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('calc(20px)');
+    expect(nameEvaluations).toBe(1);
+    expect(context.calcFrames).toBe(0);
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('renders dynamic stylesheet function names without evaluating the name twice', async () => {
+    const fnNode = fn({
+      name: 'make-color',
+      body: rules([
+        decl({ name: 'return', value: any('blue') })
+      ])
+    });
+    const root = rules([fnNode]);
+    context.root = root;
+    context.rulesContext = root;
+    const name = any('source-name');
+    let nameEvaluations = 0;
+    name.eval = function evalForCounting() {
+      nameEvaluations++;
+      return fnNode;
+    };
+    const rule = call({
+      name,
+      args: list([])
+    });
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('blue');
+    expect(nameEvaluations).toBe(1);
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('passes stylesheet function args through the callable binding surface once', async () => {
+    class CountingSequence extends Sequence {
+      static countConstructions = false;
+      static constructedCopies = 0;
+
+      constructor(...args: ConstructorParameters<typeof Sequence>) {
+        super(...args);
+        if (CountingSequence.countConstructions) {
+          CountingSequence.constructedCopies++;
+        }
+      }
+    }
+
+    const fnNode = fn({
+      name: 'inspect',
+      params: list([
+        vardecl({ name: 'value', value: any('') })
+      ]),
+      body: rules([
+        decl({ name: 'return', value: ref('value', { type: 'variable' }) })
+      ])
+    });
+    const root = rules([fnNode]);
+    context.root = root;
+    context.rulesContext = root;
+    const name = any('source-name');
+    name.eval = function evalForFunctionName() {
+      return fnNode;
+    };
+    const originalArg = new CountingSequence([any('red'), dimension([10, 'px'])]);
+    const originalArgs = list([originalArg]);
+    const rule = call({
+      name,
+      args: originalArgs
+    });
+    const originalCollectionEvalCall = MixinCollection.prototype.evalCall;
+    let collectionEvalCalls = 0;
+    MixinCollection.prototype.evalCall = async function evalCallForCounting(
+      this: MixinCollection,
+      ...args: Parameters<typeof originalCollectionEvalCall>
+    ): ReturnType<typeof originalCollectionEvalCall> {
+      collectionEvalCalls++;
+      return originalCollectionEvalCall.apply(this, args);
+    };
+
+    CountingSequence.countConstructions = true;
+    try {
+      const result = await rule.eval(context);
+
+      expect(result.toTrimmedString()).toBe('red 10px');
+
+      /*
+       * Thin placement (LIVE_BINDING invariants 2/3): the callable binding
+       * surface SHARES the source arg node instead of deep-cloning it, so the
+       * Sequence is never reconstructed.
+       */
+      expect(CountingSequence.constructedCopies).toBe(0);
+      expect(collectionEvalCalls).toBe(0);
+      expect(originalArg.parent).toBe(originalArgs);
+      expect(originalArgs.parent).toBe(rule);
+    } finally {
+      MixinCollection.prototype.evalCall = originalCollectionEvalCall;
+      CountingSequence.countConstructions = false;
+      CountingSequence.constructedCopies = 0;
+    }
+  });
+
+  it('renders dynamic mixin names without calling public eval state', async () => {
+    const mixinDef = mixin({
+      name: '.theme',
+      rules: [
+        decl({ name: 'color', value: any('red') })
+      ]
+    });
+    const root = rules([mixinDef]);
+    context.root = root;
+    context.rulesContext = root;
+    const name = any('source-name');
+    name.eval = function evalForMixinName() {
+      return mixinDef;
+    };
+    const rule = call({ name });
+    const evalStateCalls = countEvalStateUse();
+
+    try {
+      const rendered = await Promise.resolve(rule.render(context));
+
+      expect(rendered).toContain('color: red');
+      expect(evalStateCalls.count).toBe(0);
+      expect(rule.registrationPrepared).toBe(false);
+    } finally {
+      evalStateCalls.restore();
+    }
+  });
+
+  it('renders dynamic ruleset names without calling public eval state', async () => {
+    const mixinRuleset = ruleset({
+      selector: el('.theme'),
+      rules: [
+        decl({ name: 'color', value: any('blue') })
+      ]
+    });
+    const root = rules([mixinRuleset]);
+    context.root = root;
+    context.rulesContext = root;
+    const name = any('source-name');
+    name.eval = function evalForRulesetName() {
+      return mixinRuleset;
+    };
+    const rule = call({ name });
+    const evalStateCalls = countEvalStateUse();
+
+    try {
+      const rendered = await Promise.resolve(rule.render(context));
+
+      expect(rendered).toContain('color: blue');
+      expect(evalStateCalls.count).toBe(0);
+      expect(rule.registrationPrepared).toBe(false);
+    } finally {
+      evalStateCalls.restore();
+    }
+  });
+
+  it('renders dynamic mixin collection names without calling public eval state', async () => {
+    const mixinDef = mixin({
+      name: '.theme',
+      rules: [
+        decl({ name: 'color', value: any('green') })
+      ]
+    });
+    const root = rules([mixinDef]);
+    context.root = root;
+    context.rulesContext = root;
+    const collection = new MixinCollection([mixinDef]);
+    const name = any('source-name');
+    name.eval = function evalForMixinCollectionName() {
+      return collection;
+    };
+    const rule = call({ name });
+    const evalStateCalls = countEvalStateUse();
+
+    try {
+      const rendered = await Promise.resolve(rule.render(context));
+
+      expect(rendered).toContain('color: green');
+      expect(evalStateCalls.count).toBe(0);
+      expect(rule.registrationPrepared).toBe(false);
+    } finally {
+      evalStateCalls.restore();
+    }
+  });
+
+  it('renders dynamic callable array names without calling public eval state', async () => {
+    const mixinDef = mixin({
+      name: '.theme',
+      rules: [
+        decl({ name: 'color', value: any('purple') })
+      ]
+    });
+    const root = rules([mixinDef]);
+    context.root = root;
+    context.rulesContext = root;
+    const name = any('source-name');
+    name.eval = function evalForCallableArrayName() {
+      return [mixinDef];
+    };
+    const rule = call({ name });
+    const evalStateCalls = countEvalStateUse();
+
+    try {
+      const rendered = await Promise.resolve(rule.render(context));
+
+      expect(rendered).toContain('color: purple');
+      expect(evalStateCalls.count).toBe(0);
+      expect(rule.registrationPrepared).toBe(false);
+    } finally {
+      evalStateCalls.restore();
+    }
+  });
+
+  it('renders dynamic call alias names without calling public eval state', async () => {
+    const mixinDef = mixin({
+      name: '.theme',
+      rules: [
+        decl({ name: 'color', value: any('orange') })
+      ]
+    });
+    const root = rules([mixinDef]);
+    context.root = root;
+    context.rulesContext = root;
+    const alias = call({
+      name: ref({ key: '.theme' }, { type: 'mixin' })
+    });
+    const name = any('source-name');
+    name.eval = function evalForCallAliasName() {
+      return alias;
+    };
+    const rule = call({ name });
+    const evalStateCalls = countEvalStateUse();
+
+    try {
+      const rendered = await Promise.resolve(rule.render(context));
+
+      expect(rendered).toContain('color: orange');
+      expect(evalStateCalls.count).toBe(0);
+      expect(rule.registrationPrepared).toBe(false);
+    } finally {
+      evalStateCalls.restore();
+    }
+  });
+
+  it('renders silent-fail dynamic callable failures without owning a fallback call', async () => {
+    const mixinDef = mixin({
+      name: '.theme',
+      rules: [
+        decl({ name: 'color', value: ref('missing-color', { type: 'variable' }) })
+      ]
+    });
+    const root = rules([mixinDef]);
+    context.root = root;
+    context.rulesContext = root;
+    const collection = new MixinCollection([mixinDef]);
+    const name = any('missing-theme');
+    name.eval = function evalForMissingCallableName() {
+      return collection;
+    };
+    const rule = call({ name }, { silentFail: true });
+    const originalClone = Call.prototype.clone;
+    const derivedCalls = countDeriveCallUse();
+    const evalStateCalls = countEvalStateUse();
+    let clonedCalls = 0;
+    Call.prototype.clone = function cloneForCounting(
+      this: Call,
+      ...cloneArgs: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      clonedCalls++;
+      return originalClone.apply(this, cloneArgs);
+    };
+
+    try {
+      await expect(Promise.resolve(rule.render(context))).resolves.toBe('missing-theme()');
+
+      expect(derivedCalls.count).toBe(0);
+      expect(clonedCalls).toBe(0);
+      expect(evalStateCalls.count).toBe(0);
+      expect(rule.registrationPrepared).toBe(false);
+    } finally {
+      Call.prototype.clone = originalClone;
+      derivedCalls.restore();
+      evalStateCalls.restore();
+    }
+  });
+
+  it('streams dynamic CSS call arguments without materializing a replacement arg list', async () => {
+    const root = rules([
+      vardecl({
+        name: 'red-channel',
+        value: num(100)
+      })
+    ]);
+    const evald = await root.eval(context);
+    if (!(evald instanceof Rules)) {
+      throw new TypeError('Expected Rules root');
+    }
+    context.root = evald;
+    context.rulesContext = evald;
+    const descriptor = Object.getOwnPropertyDescriptor(List.prototype, 'withResolvedValue');
+    if (!descriptor) {
+      throw new Error('Expected List.withResolvedValue for call arg materialization proof');
+    }
+    const rule = call({
+      name: 'rgb',
+      args: list([
+        ref({ key: 'red-channel' }, { type: 'variable' }),
+        num(100),
+        num(100)
+      ])
+    });
+
+    Object.defineProperty(List.prototype, 'withResolvedValue', {
+      ...descriptor,
+      value: () => {
+        throw new Error('CSS call render should stream arguments without a replacement list');
+      }
+    });
+    try {
+      expect(await Promise.resolve(rule.render(context))).toBe('rgb(100, 100, 100)');
+    } finally {
+      Object.defineProperty(List.prototype, 'withResolvedValue', descriptor);
+    }
+  });
+
+  it('writes async CSS call arguments into flat buffers', async () => {
+    const buffer = createRenderBuffer('flat');
+    const arg = new AsyncAny('20');
+    const rule = call({
+      name: 'rgb',
+      args: list([num(10), arg, num(30)])
+    });
+
+    expect(await rule.render(context, buffer)).toBe('rgb(10, 20, 30)');
+    expect(buffer.parts).toEqual(['rgb(10, 20, 30)']);
+    expect(arg.parent).toBe(rule.args);
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('renders async CSS call arguments directly without public resolve', async () => {
+    const arg = new AsyncAny('20');
+    const rule = call({
+      name: 'rgb',
+      args: list([num(10), arg, num(30)])
+    });
+    rule.resolve = () => {
+      throw new Error('Call direct async arg render should stream plain CSS call');
+    };
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('rgb(10, 20, 30)');
+    expect(arg.parent).toBe(rule.args);
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('writes async CSS call content into flat buffers', async () => {
+    const buffer = createRenderBuffer('flat');
+    const content = new AsyncAny('body-output');
+    const rule = call({
+      name: 'wrap',
+      args: list([]),
+      contentNode: content
+    });
+
+    expect(await rule.render(context, buffer)).toBe('wrap(): body-output');
+    expect(buffer.parts).toEqual(['wrap(): body-output']);
+    expect(content.parent).toBe(rule);
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('renders async CSS call content directly without public resolve', async () => {
+    const content = new AsyncAny('body-output');
+    const rule = call({
+      name: 'wrap',
+      args: list([]),
+      contentNode: content
+    });
+    rule.resolve = () => {
+      throw new Error('Call direct async content render should stream plain CSS call');
+    };
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('wrap(): body-output');
+    expect(content.parent).toBe(rule);
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('restores calc render frames when async CSS call argument rendering rejects', async () => {
+    const buffer = createRenderBuffer('flat');
+    const rule = call({
+      name: 'calc',
+      args: list([new RejectingAny('bad arg')])
+    });
+
+    await expect(rule.render(context, buffer)).rejects.toThrow('bad arg');
+    expect(context.calcFrames).toBe(0);
+  });
+
+  it('awaits async calc arguments during direct render', async () => {
+    const rule = call({
+      name: 'calc',
+      args: list([new AsyncRenderedAny('source', '20px')])
+    });
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('calc(20px)');
+    expect(context.calcFrames).toBe(0);
+  });
+
+  it('writes resolved non-string call render output into flat buffers', async () => {
+    const root = rules([]);
+    root.setFunctionBinding('empty', new JsFunction({
+      name: 'empty',
+      fn: () => any('ok')
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const buffer = createRenderBuffer('flat');
+    const rule = call({
+      name: ref({ key: 'empty' }, { type: 'function' }),
+      args: list([])
+    });
+    const originalResolve = rule.resolve;
+    let resolveCalls = 0;
+    rule.resolve = function countResolveCalls(
+      this: typeof rule,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
+
+    expect(await rule.render(context, buffer)).toBe('ok');
+    expect(buffer.parts).toEqual(['ok']);
+    expect(resolveCalls).toBe(0);
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('renders resolved non-string call output directly without public resolve', async () => {
+    const root = rules([]);
+    root.setFunctionBinding('empty', new JsFunction({
+      name: 'empty',
+      fn: () => any('ok')
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const rule = call({
+      name: ref({ key: 'empty' }, { type: 'function' }),
+      args: list([])
+    });
+    rule.resolve = () => {
+      throw new Error('Call direct dynamic render should evaluate derived surface');
+    };
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('ok');
+    expect(rule.registrationPrepared).toBe(false);
+  });
+
+  it('resolves simple function hits from direct function bindings', () => {
+    const root = rules([]);
+    const fnNode = new JsFunction({
+      name: 'direct-hit',
+      fn: () => any('ok')
+    });
+    root.setFunctionBinding('direct-hit', fnNode);
+
+    expect(root.findFunction('direct-hit')?.type).toBe('JsFunction');
+  });
+
+  it('resolves simple function misses from direct function bindings', () => {
+    const root = rules([]);
+    root.setFunctionBinding('other', new JsFunction({
+      name: 'other',
+      fn: () => any('ok')
+    }));
+
+    expect(root.findFunction('missing')).toBeUndefined();
+  });
+
+  it('resolves function lookup without indexing rules', () => {
+    const root = rules([]);
+    const fnNode = new JsFunction({
+      name: 'direct-no-index',
+      fn: () => any('ok')
+    });
+    root.setFunctionBinding('direct-no-index', fnNode);
+
+    expect('_indexRules' in Rules.prototype).toBe(false);
+    expect(root.findFunction('direct-no-index')).toBe(fnNode);
+    expect(root.findFunction('missing')).toBeUndefined();
+  });
+
+  it('resolves option-shaped function lookup from direct function bindings', () => {
+    const root = rules([]);
+    const fnNode = new JsFunction({
+      name: 'direct-options-hit',
+      fn: () => any('ok')
+    });
+    root.setFunctionBinding('direct-options-hit', fnNode);
+
+    expect(root.findFunction('direct-options-hit', 'ignored', {
+      candidates: new Set(),
+      optionalCandidates: new Set(),
+      findAll: true
+    })).toBe(fnNode);
+  });
+
+  it('preserves direct function bindings when cloning function maps', () => {
+    const root = rules([]);
+    const fn = new JsFunction({
+      name: 'clone-only',
+      fn: () => any('ok')
+    });
+    root.setFunctionBinding('clone-only', fn);
+    const cloned = root.clone(false);
+
+    expect(cloned.findFunction('clone-only')).toBe(fn);
+  });
+
+  it('uses source args directly for plain dynamic JS function render and resolve', async () => {
+    class CountingSequence extends Sequence {
+      static countConstructions = false;
+      static constructedCopies = 0;
+
+      constructor(...args: ConstructorParameters<typeof Sequence>) {
+        super(...args);
+        if (CountingSequence.countConstructions) {
+          CountingSequence.constructedCopies++;
+        }
+      }
+    }
+
+    const root = rules([]);
+    const originalLeaf = any('red');
+    const originalValue = new CountingSequence([originalLeaf, dimension(10, 'px')]);
+    const originalArgs = list([originalValue]);
+    root.setFunctionBinding('echo', new JsFunction({
+      name: 'echo',
+      fn: (value: Sequence) => any(value === originalValue ? 'ok' : 'bad')
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const rule = call({
+      name: ref({ key: 'echo' }, { type: 'function' }),
+      args: originalArgs
+    });
+    const buffer = createRenderBuffer('flat');
+
+    CountingSequence.countConstructions = true;
+    try {
+      await expect(Promise.resolve(rule.render(context))).resolves.toBe('ok');
+      expect(await rule.render(context, buffer)).toBe('ok');
+      expect((await rule.resolve(context)).toTrimmedString()).toBe('ok');
+      expect(buffer.parts).toEqual(['ok']);
+      expect(CountingSequence.constructedCopies).toBe(0);
+      expect(originalValue.parent).toBe(originalArgs);
+      expect(originalArgs.parent).toBe(rule);
+    } finally {
+      CountingSequence.countConstructions = false;
+      CountingSequence.constructedCopies = 0;
+    }
+  });
+
+  it('renders optional non-string fallback calls through native output', async () => {
+    const derivedCalls = countDeriveCallUse();
+    const args = list([seq([any('red'), dimension([10, 'px'])])]);
+    const name = ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true });
+    const rule = call({
+      name,
+      args
+    }, { silentFail: true });
+    rule.resolve = () => {
+      throw new Error('Call dynamic fallback render should evaluate locally');
+    };
+    const buffer = createRenderBuffer('flat');
+
+    try {
+      await expect(Promise.resolve(rule.render(context))).resolves.toBe('missing-fn(red 10px)');
+      expect(await rule.render(context, buffer)).toBe('missing-fn(red 10px)');
+      expect(buffer.parts).toEqual(['missing-fn(red 10px)']);
+      expect(derivedCalls.count).toBe(0);
+      expect(args.parent).toBe(rule);
+      expect(name.parent).toBe(rule);
+      expect(rule.registrationPrepared).toBe(false);
+    } finally {
+      derivedCalls.restore();
+    }
+  });
+
+  it('renders optional fallback call dimensions through normal dimension serialization', async () => {
+    const args = list([dimension([-0.0000000001, 'deg'])]);
+    const name = ref({ key: 'rotate' }, { type: 'function', fallbackValue: true });
+    const rule = call({ name, args }, { silentFail: true });
+    const buffer = createRenderBuffer('flat');
+
+    /*
+     * The number policy is tolerance-based, not an 8-decimal floor, so this value
+     * survives instead of being denoised to `0` (DD F6).
+     */
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('rotate(-0.0000000001deg)');
+    expect(await rule.render(context, buffer)).toBe('rotate(-0.0000000001deg)');
+    expect(buffer.parts).toEqual(['rotate(-0.0000000001deg)']);
+    await expect(Promise.resolve(rule.resolve(context))).resolves.toMatchObject({
+      value: 'rotate(-0.0000000001deg)'
+    });
+  });
+
+  it('preserves source trivia in optional fallback call arguments', async () => {
+    const first = new Color({ node: '#333' }, undefined, { start: 20, end: 23 });
+    const second = new Color({ node: '#111' }, undefined, { start: 40, end: 43 });
+    const tokens = run(' /*{comment}*/');
+    const trivia = createTriviaMap({
+      before: new Map([[38, tokens]]),
+      after: new Map([[sourceSpanOf(first)?.end, tokens]])
+    }) satisfies TriviaMap;
+    context = new Context({ trivia });
+    const args = list([first, second]);
+    const name = ref({ key: 'linear-gradient' }, { type: 'function', fallbackValue: true });
+    const rule = call({ name, args }, { silentFail: true });
+
+    await expect(Promise.resolve(rule.resolve(context))).resolves.toMatchObject({
+      value: 'linear-gradient(#333 /*{comment}*/, #111)'
+    });
+  });
+
+  it('resolves optional missing dynamic function fallback without evaluating the source call surface', async () => {
+    const args = list([seq([any('red'), dimension([10, 'px'])])]);
+    const name = ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true });
+    const rule = call({ name, args }, { silentFail: true });
+
+    const resolved = await rule.resolve(context);
+
+    expect(isNode(resolved, N.Call)).toBe(false);
+    expect(resolved.toTrimmedString()).toBe('missing-fn(red 10px)');
+    expect(args.parent).toBe(rule);
+    expect(name.parent).toBe(rule);
+  });
+
+  it('renders important optional CSS fallback syntax without deriving output', async () => {
+    const derivedCalls = countDeriveCallUse();
+    const name = ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true });
+    const originalEval = name.eval.bind(name);
+    let nameEvaluations = 0;
+    name.eval = function evalForCounting(evalContext: Context) {
+      nameEvaluations++;
+      return originalEval(evalContext);
+    };
+    const rule = call({
+      name,
+      args: list([any('red')])
+    }, { silentFail: true, markImportant: true });
+
+    try {
+      await expect(Promise.resolve(rule.render(context))).resolves.toBe('missing-fn(red) !important');
+      expect(nameEvaluations).toBe(1);
+      expect(derivedCalls.count).toBe(0);
+      expect(rule.registrationPrepared).toBe(false);
+    } finally {
+      derivedCalls.restore();
+    }
+  });
+
+  it('marks declarations important, replacing top-level slots in place and nested rules on a copy', () => {
+    const topDeclaration = decl({ name: 'color', value: any('red') });
+    const nestedComment = comment('/* keep me */');
+    const nestedDeclaration = decl({ name: 'background', value: any('blue') });
+    const nestedRuleset = ruleset({
+      selector: el('.nested'),
+      rules: [nestedComment, nestedDeclaration]
+    });
+    const root = rules([topDeclaration, nestedRuleset]);
+    const rule = call({ name: 'noop' });
+
+    expect(rule.makeImportant(root)).toBe(root);
+
+    /*
+     * Top-level declarations are replaced in place on `root` (which is the call's
+     * own fresh output surface).
+     */
+    const topReplacement = root.rules[0];
+    expect(topReplacement).not.toBe(topDeclaration);
+    expect(isNode(topReplacement, N.Declaration)).toBe(true);
+    expect(topDeclaration.important).toBeUndefined();
+    expect(topReplacement?.parent).toBe(root);
+
+    /*
+     * A NESTED rule is made important on a COPY, never the shared canonical node —
+     * so the original `nestedRuleset` (which a mixin-call output can reuse across
+     * later calls) is left untouched, preventing an `!important` leak.
+     */
+    const nestedCopy = root.rules[1];
+    expect(nestedCopy).not.toBe(nestedRuleset);
+    expect(isNode(nestedCopy, N.Ruleset)).toBe(true);
+    expect(nestedCopy?.parent).toBe(root);
+    expect(nestedRuleset.rules[0]).toBe(nestedComment);
+    expect(nestedRuleset.rules[1]).toBe(nestedDeclaration);
+    expect(nestedDeclaration.important).toBeUndefined();
+
+    const nestedCopiedComment = isNode(nestedCopy, N.Ruleset) ? nestedCopy.rules[0] : undefined;
+    expect(nestedCopiedComment).toBe(nestedComment);
+    expect(nestedCopiedComment?.parent).toBe(nestedRuleset);
+
+    const nestedReplacement = isNode(nestedCopy, N.Ruleset) ? nestedCopy.rules[1] : undefined;
+    expect(nestedReplacement).not.toBe(nestedDeclaration);
+    expect(isNode(nestedReplacement, N.Declaration)).toBe(true);
+    expect(nestedReplacement?.parent).toBe(nestedCopy);
+
+    expect(root.toTrimmedString().trimEnd()).toBe([
+      'color: red !important;',
+      '.nested {',
+      '  /* keep me */',
+      '  background: blue !important;',
+      '}'
+    ].join('\n'));
+  });
+
+  it('writes finalized CSS call output into segmented buffers', () => {
+    const buffer = createRenderBuffer('segmented');
+    const rule = call({
+      name: 'rgb',
+      args: list([num(100), num(100), num(100)])
+    });
+
+    expect(rule.render(context, buffer)).toBe('rgb(100, 100, 100)');
+    expect(buffer.segments).toEqual(['rgb(100, 100, 100)']);
+  });
+
+  it('streams rendered CSS call arguments without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'rgb',
+      args: list([num(100), num(100), num(100)])
+    });
+
+    expect(rule.render(context, { writer })).toBe('rgb(100, 100, 100)');
+    expect(writer.toString()).toBe('rgb(100, 100, 100)');
+    expect(writer.captures).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders color CSS call arguments without per-arg trim marks', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'mix',
+      args: list([new Color('#ff0000'), new Color('#0000ff')])
+    });
+
+    expect(rule.render(context, { writer })).toBe('mix(#ff0000, #0000ff)');
+    expect(writer.toString()).toBe('mix(#ff0000, #0000ff)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders scalar sequence CSS call arguments without nested readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'fn',
+      args: list([seq([any('red'), num(10)]), num(30)])
+    });
+
+    expect(rule.render(context, { writer })).toBe('fn(red 10, 30)');
+    expect(writer.toString()).toBe('fn(red 10, 30)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders evaluated scalar node names without whole-call readback', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'rgb',
+      args: list([num(10), num(20)])
+    });
+    rule._evaluatedCallOutput = true;
+
+    expect(rule.render(context, { writer })).toBe('rgb(10, 20)');
+    expect(writer.toString()).toBe('rgb(10, 20)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders async scalar CSS call arguments without per-arg trim readback', async () => {
+    const writer = new CountingWriter();
+    const arg = new AsyncRenderedAny('source', '20');
+    const rule = call({
+      name: 'rgb',
+      args: list([num(10), arg, num(30)])
+    });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('rgb(10, 20, 30)');
+    expect(writer.toString()).toBe('rgb(10, 20, 30)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('renders custom fallback CSS call arguments without returning prefixed writer contents', () => {
+    const writer = new CountingWriter();
+    writer.add('prefix|');
+    const rule = call({
+      name: 'fn',
+      args: list([new CustomSyntaxNode('arg'), num(30)])
+    });
+
+    expect(rule.render(context, { writer })).toBe('fn(custom-arg, 30)');
+    expect(writer.toString()).toBe('prefix|fn(custom-arg, 30)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(1);
+  });
+
+  it('renders custom fallback CSS call arguments through the caller writer', async () => {
+    const writer = new CountingWriter();
+    const arg = new AsyncWriterTrackingCustomSyntaxAny('arg');
+    const rule = call({
+      name: 'fn',
+      args: list([arg, num(30)])
+    });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('fn(custom-arg, 30)');
+    expect(arg.renderedNode.seenWriters).toEqual([writer]);
+  });
+
+  it('renders async custom fallback CSS call content without returning prefixed writer contents', async () => {
+    const writer = new CountingWriter();
+    writer.add('prefix|');
+    const rule = call({
+      name: 'wrap',
+      contentNode: new AsyncCustomSyntaxAny('body')
+    });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('wrap(): custom-body');
+    expect(writer.toString()).toBe('prefix|wrap(): custom-body');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(1);
+  });
+
+  it('renders custom fallback CSS call content through the caller writer', async () => {
+    const writer = new CountingWriter();
+    const content = new AsyncWriterTrackingCustomSyntaxAny('body');
+    const rule = call({
+      name: 'wrap',
+      contentNode: content
+    });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('wrap(): custom-body');
+    expect(content.renderedNode.seenWriters).toEqual([writer]);
+  });
+
+  it('renders custom fallback CSS call names without whole-call readback', async () => {
+    const writer = new CountingWriter();
+    writer.add('prefix|');
+    const rule = call({
+      name: new CustomSyntaxNode('name'),
+      args: list([num(30)])
+    });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('custom-name(30)');
+    expect(writer.toString()).toBe('prefix|custom-name(30)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(1);
+  });
+
+  it('renders custom fallback CSS call names through the caller writer', async () => {
+    const writer = new CountingWriter();
+    const name = new WriterTrackingCustomSyntaxNode('name');
+    const rule = call({
+      name,
+      args: list([num(30)])
+    });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('custom-name(30)');
+    expect(name.seenWriters).toEqual([writer]);
+  });
+
+  it('renders escaped custom fallback CSS call arguments without inner trim readback', async () => {
+    const writer = new CountingWriter();
+    writer.add('prefix|');
+    const arg = new AsyncCustomSyntaxAny('body');
+    const rule = call({
+      name: 'fn',
+      args: list([paren(arg, { escaped: true }), num(30)])
+    });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('fn((custom-body), 30)');
+    expect(writer.toString()).toBe('prefix|fn((custom-body), 30)');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(1);
+  });
+
+  it('resolves CSS calls without touching render state', async () => {
+    const rule = call({
+      name: 'rgb',
+      args: list([num(100), num(100), num(100)])
+    });
+
+    const resolved = await rule.resolve(context);
+
+    expect(isNode(resolved, N.Call)).toBe(true);
+    expect(resolved.toTrimmedString()).toBe('rgb(100, 100, 100)');
+    expect(rule.registrationPrepared).toBe(false);
+    expect(context.printState.writer).toBeUndefined();
+  });
+
+  /*
+   * (Removed "resolves already evaluated calls without re-entering eval": it
+   * tested the deleted `evaluated`-skip mechanism — §2.7 makes resolve re-enter
+   * eval idempotently. `evaluated` is no longer a node flag.)
+   */
+
+  it('keeps source CSS call child containers canonical after resolve(context)', async () => {
+    const root = rules([
+      vardecl({
+        name: 'channel',
+        value: num(20)
+      })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const arg = list([
+      num(10),
+      ref({ key: 'channel' }, { type: 'variable' })
+    ]);
+    const rule = call({
+      name: 'rgb',
+      args: list([arg, num(30)])
+    });
+    const resolved = await rule.resolve(context);
+
+    expect(resolved.toTrimmedString()).toBe('rgb(10, 20, 30)');
+    expect(arg.toTrimmedString()).toBe('10, $channel');
+    expect(rule.toTrimmedString()).toBe('rgb(10, $channel, 30)');
+  });
+
+  it('does not deep-clone empty plain CSS call args before resolve(context)', async () => {
+    const originalClone = List.prototype.clone;
+    let clonedLists = 0;
+    List.prototype.clone = function cloneForCounting(this: List, ...args: Parameters<typeof originalClone>): ReturnType<typeof originalClone> {
+      clonedLists++;
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const args = list([]);
+      const rule = call({
+        name: 'var',
+        args
+      });
+      const resolved = await rule.resolve(context);
+
+      expect(resolved.toTrimmedString()).toBe('var()');
+      expect(clonedLists).toBe(0);
+      expect(args.parent).toBe(rule);
+    } finally {
+      List.prototype.clone = originalClone;
+    }
+  });
+
+  it('does not deep-clone non-empty plain CSS call args before resolve(context)', async () => {
+    const originalClone = List.prototype.clone;
+    let clonedLists = 0;
+    List.prototype.clone = function cloneForCounting(this: List, ...args: Parameters<typeof originalClone>): ReturnType<typeof originalClone> {
+      clonedLists++;
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const args = list([num(10), num(20), num(30)]);
+      const rule = call({
+        name: 'rgb',
+        args
+      });
+      const resolved = await rule.resolve(context);
+
+      expect(resolved.toTrimmedString()).toBe('rgb(10, 20, 30)');
+      expect(clonedLists).toBe(0);
+      expect(args.parent).toBe(rule);
+      expect(rule.registrationPrepared).toBe(false);
+    } finally {
+      List.prototype.clone = originalClone;
+    }
+  });
+
+  it('reduces safe direct arithmetic and nested calc calls like buffer render', async () => {
+    const direct = call({
+      name: 'calc',
+      args: list([
+        op([dimension([10, 'px']), '*', num(2)])
+      ])
+    });
+    const nested = call({
+      name: 'calc',
+      args: list([
+        op([
+          dimension([10, 'vh']),
+          '+',
+          call({
+            name: 'calc',
+            args: list([dimension([5, 'vh'])])
+          })
+        ])
+      ])
+    });
+
+    expect(direct.render(context)).toBe('calc(20px)');
+    await expect(Promise.resolve(nested.render(context))).resolves.toBe('calc(15vh)');
+    const buffer = createRenderBuffer('flat');
+    await expect(nested.render(context, buffer)).resolves.toBe('calc(15vh)');
+    expect(buffer.parts).toEqual(['calc(15vh)']);
+  });
+
+  it('restores calc eval frames when synchronous CSS call argument evaluation throws', async () => {
+    const rule = call({
+      name: 'calc',
+      args: list([new ThrowingAny('bad arg')])
+    });
+
+    await expect(rule.eval(context)).rejects.toThrow('bad arg');
+    expect(context.calcFrames).toBe(0);
+  });
+
+  it('evaluates non-async CSS call args through the immediate sync boundary', async () => {
+    const originalEval = Node.prototype.eval;
+    let publicEvalCalls = 0;
+    Node.prototype.eval = function countPublicEval(
+      this: Node,
+      ...args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      publicEvalCalls++;
+      return originalEval.apply(this, args);
+    };
+
+    try {
+      const rule = call({
+        name: 'calc',
+        args: list([any('20px')])
+      });
+
+      const result = await rule.evalNode(context);
+
+      expect(result.toTrimmedString()).toBe('calc(20px)');
+      expect(publicEvalCalls).toBe(0);
+      expect(context.calcFrames).toBe(0);
+    } finally {
+      Node.prototype.eval = originalEval;
+    }
+  });
+
+  it('keeps custom sync CSS call argument eval overrides on the immediate boundary', async () => {
+    const arg = new SyncOverrideAny('20px');
+    const rule = call({
+      name: 'calc',
+      args: list([arg])
+    });
+
+    const result = await rule.evalNode(context);
+
+    expect(result.toTrimmedString()).toBe('calc(20px)');
+    expect(arg.evalCalls).toBe(1);
+    expect(context.calcFrames).toBe(0);
+  });
+
+  it('keeps canonical function syntax separate from evaluated CSS-call normalization', () => {
+    const rule = call({
+      name: 'func',
+      args: list([
+        paren(list([any('a'), any('b')]), { escaped: true }),
+        any('c')
+      ], { sep: ';' })
+    });
+
+    expect(rule.toTrimmedString()).toBe('func(~(a, b); c)');
+    expect(rule.render(context)).toBe('func((a, b), c)');
+  });
+
+  it('streams rendered escaped call arguments without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const rule = call({
+      name: 'func',
+      args: list([
+        paren(list([any('a'), any('b')]), { escaped: true }),
+        any('c')
+      ], { sep: ';' })
+    });
+
+    expect(rule.render(context, { writer })).toBe('func((a, b), c)');
+    expect(writer.toString()).toBe('func((a, b), c)');
+    expect(writer.captures).toBe(0);
+  });
+
+  /** @todo */
+  it('should serialize a mixin call', () => {
+    let rule = call({
+      name: ref('my-mixin', { type: 'mixin' }),
+      args: list([num(100), num(100), num(100)])
+    });
+    expect(rule.toTrimmedString()).toBe('$ > my-mixin(100, 100, 100)');
+  });
+
+  it('keeps detached collection calls on the collection surface', async () => {
+    const originalClone = Rules.prototype.clone;
+    const originalCollectionEvalCall = MixinCollection.prototype.evalCall;
+    let collectionClones = 0;
+    let collectionEvalCalls = 0;
+
+    Rules.prototype.clone = function cloneForCounting(
+      this: Rules,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      const [deep] = args;
+      if (deep === false && isNode(this, N.Collection)) {
+        collectionClones++;
+      }
+      return originalClone.apply(this, args);
+    };
+    MixinCollection.prototype.evalCall = async function evalCallForCounting(
+      this: MixinCollection,
+      ...args: Parameters<typeof originalCollectionEvalCall>
+    ): ReturnType<typeof originalCollectionEvalCall> {
+      collectionEvalCalls++;
+      return originalCollectionEvalCall.apply(this, args);
+    };
+
+    try {
+      const root = rules([
+        vardecl({ name: 'hoverColor', value: any('blue') }),
+        vardecl({
+          name: 'themeMap',
+          value: coll([
+            decl({ name: 'background-color', value: ref('hoverColor', { type: 'variable' }) })
+          ])
+        })
+      ]);
+
+      context.root = root;
+      const evaldRoot = await root.eval(context);
+      context.rulesContext = evaldRoot;
+
+      const result = await call({ name: ref('themeMap', { type: 'variable' }) }).eval(context);
+      expect(isNode(result, N.Collection)).toBe(true);
+      expect(result.toTrimmedString()).toContain('background-color');
+      expect(collectionClones).toBe(0);
+      expect(collectionEvalCalls).toBe(0);
+    } finally {
+      Rules.prototype.clone = originalClone;
+      MixinCollection.prototype.evalCall = originalCollectionEvalCall;
+    }
+  });
+
+  it('derives preserve-rules-like variable call names without cloning the source reference', async () => {
+    const root = rules([
+      vardecl({
+        name: 'themeBlock',
+        value: rules([
+          decl({ name: 'color', value: any('blue') })
+        ])
+      })
+    ]);
+
+    context.root = root;
+    const evaldRoot = await root.eval(context);
+    context.rulesContext = evaldRoot;
+
+    const originalClone = Reference.prototype.clone;
+    let clonedReferences = 0;
+    Reference.prototype.clone = function cloneForCounting(
+      this: Reference,
+      ...cloneArgs: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      clonedReferences++;
+      return originalClone.apply(this, cloneArgs);
+    };
+
+    try {
+      const name = ref('themeBlock', { type: 'variable' });
+      const rule = call({ name });
+      const result = await rule.eval(context);
+
+      expect(isNode(result, N.Rules)).toBe(true);
+      expect(result.toTrimmedString()).toContain('color: blue');
+      expect(clonedReferences).toBe(0);
+      expect(name.parent).toBe(rule);
+    } finally {
+      Reference.prototype.clone = originalClone;
+    }
+  });
+
+  it('keeps rules-like variable call names canonical across render and resolve', async () => {
+    const root = rules([
+      vardecl({
+        name: 'themeBlock',
+        value: rules([
+          decl({ name: 'color', value: any('blue') })
+        ])
+      })
+    ]);
+    context.root = root;
+    const evaldRoot = await root.eval(context);
+    context.rulesContext = evaldRoot;
+    const name = ref('themeBlock', { type: 'variable' });
+    const rule = call({ name });
+    const evalStateCalls = countEvalStateUse();
+
+    try {
+      const rendered = await Promise.resolve(rule.render(context));
+      expect(evalStateCalls.count).toBe(0);
+      const resolved = await rule.resolve(context);
+
+      expect(rendered).toContain('color: blue');
+      expect(isNode(resolved, N.Rules)).toBe(true);
+      expect(resolved.toTrimmedString()).toContain('color: blue');
+      expect(name.parent).toBe(rule);
+    } finally {
+      evalStateCalls.restore();
+    }
+  });
+
+  it('marks declaration-only JS call output without call-site back-pointers', async () => {
+    const root = rules([]);
+    root.setFunctionBinding('decls', new JsFunction({
+      name: 'decls',
+      fn: () => rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    }));
+
+    context.root = root;
+    context.rulesContext = root;
+
+    const result = await call({
+      name: ref({ key: 'decls' }, { type: 'function' }),
+      args: list([])
+    }).eval(context);
+
+    expect(isNode(result, N.Rules)).toBe(true);
+    if (!isNode(result, N.Rules)) {
+      throw new Error('Expected Rules result');
+    }
+    expect(Reflect.has(result, 'sourceParent')).toBe(false);
+    expect(result.options.callDeclarationOutput).toBe(true);
+  });
+
+  it('does not copy empty positional JS function args', async () => {
+    const root = rules([]);
+    root.setFunctionBinding('empty', new JsFunction({
+      name: 'empty',
+      fn: () => any('ok')
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const originalCopy = List.prototype.cloneForPlacement;
+    let copiedLists = 0;
+    List.prototype.cloneForPlacement = function copyForCounting(this: List, ...args: Parameters<typeof originalCopy>): ReturnType<typeof originalCopy> {
+      copiedLists++;
+      return originalCopy.apply(this, args);
+    };
+
+    try {
+      const result = await call({
+        name: ref({ key: 'empty' }, { type: 'function' }),
+        args: list([])
+      }).eval(context);
+
+      expect(result.toTrimmedString()).toBe('ok');
+      expect(copiedLists).toBe(0);
+    } finally {
+      List.prototype.cloneForPlacement = originalCopy;
+    }
+  });
+
+  it('does not clone childless source-free scalar leaves when copying positional JS function args', async () => {
+    const root = rules([]);
+    root.setFunctionBinding('echo', new JsFunction({
+      name: 'echo',
+      fn: (value: Any) => any(value.valueOf() === 'red' ? 'ok' : 'bad')
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const originalClone = Any.prototype.clone;
+    let scalarClones = 0;
+    Any.prototype.clone = function cloneForCounting(
+      this: Any,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      if (this.valueOf() === 'red') {
+        scalarClones++;
+      }
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const result = await call({
+        name: ref({ key: 'echo' }, { type: 'function' }),
+        args: list([any('red')])
+      }).eval(context);
+
+      expect(result.toTrimmedString()).toBe('ok');
+      expect(scalarClones).toBe(0);
+    } finally {
+      Any.prototype.clone = originalClone;
+    }
+  });
+
+  it('passes plain positional JS function containers without copying them', async () => {
+    let received: Sequence | undefined;
+    const root = rules([]);
+    root.setFunctionBinding('echo', new JsFunction({
+      name: 'echo',
+      fn: (value: Sequence) => {
+        received = value;
+        return any(value.value[0]?.valueOf() === 'red' ? 'ok' : 'bad');
+      }
+    }));
+    context.root = root;
+    context.rulesContext = root;
+
+    const originalValue = seq([any('red'), dimension(10, 'px')]);
+    const originalArgs = list([originalValue]);
+    const rule = call({
+      name: ref({ key: 'echo' }, { type: 'function' }),
+      args: originalArgs
+    });
+    const result = await rule.eval(context);
+
+    expect(result.toTrimmedString()).toBe('ok');
+    expect(received).toBe(originalValue);
+    expect(originalValue.parent).toBe(originalArgs);
+    expect(originalArgs.parent).toBe(rule);
+  });
+
+  it('does not clone childless source-free scalar leaves for callback arg lists', async () => {
+    const root = rules([]);
+    root.setFunctionBinding('first', new JsFunction({
+      name: 'first',
+      fn: defineFunction(
+        'first',
+        async function(this: { rawArgs: List }) {
+          return any(this.rawArgs.value[0]?.valueOf() === 'red' ? 'ok' : 'bad');
+        },
+        { params: [{ name: 'value', type: Any }] }
+      )
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const originalClone = Any.prototype.clone;
+    let scalarClones = 0;
+    Any.prototype.clone = function cloneForCounting(
+      this: Any,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      if (this.valueOf() === 'red') {
+        scalarClones++;
+      }
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const result = await call({
+        name: ref({ key: 'first' }, { type: 'function' }),
+        args: list([any('red')])
+      }).eval(context);
+
+      expect(result.toTrimmedString()).toBe('ok');
+      expect(scalarClones).toBe(0);
+    } finally {
+      Any.prototype.clone = originalClone;
+    }
+  });
+
+  it('uses one owned argument surface for metadata JS function calls', async () => {
+    class CountingSequence extends Sequence {
+      static countConstructions = false;
+      static constructedCopies = 0;
+
+      constructor(...args: ConstructorParameters<typeof Sequence>) {
+        super(...args);
+        if (CountingSequence.countConstructions) {
+          CountingSequence.constructedCopies++;
+        }
+      }
+    }
+
+    let rawArg: Node | undefined;
+    const root = rules([]);
+    root.setFunctionBinding('first', new JsFunction({
+      name: 'first',
+      fn: defineFunction(
+        'first',
+        async function(this: { rawArgs: List }) {
+          rawArg = this.rawArgs.value[0];
+          return any(rawArg instanceof Sequence ? 'ok' : 'bad');
+        },
+        { params: [{ name: 'value', type: Sequence }] }
+      )
+    }));
+    context.root = root;
+    context.rulesContext = root;
+
+    const originalLeaf = any('red');
+    const originalValue = new CountingSequence([originalLeaf, dimension(10, 'px')]);
+    const originalArgs = list([originalValue]);
+    const rule = call({
+      name: ref({ key: 'first' }, { type: 'function' }),
+      args: originalArgs
+    });
+
+    CountingSequence.countConstructions = true;
+    try {
+      const result = await rule.eval(context);
+
+      expect(result.toTrimmedString()).toBe('ok');
+
+      /*
+       * Thin placement (LIVE_BINDING invariants 2/3): rawArgs owns a fresh List
+       * surface for mutation isolation, but SHARES the source arg node — the
+       * Sequence is never reconstructed and stays canonically parented.
+       */
+      expect(CountingSequence.constructedCopies).toBe(0);
+      expect(rawArg).toBe(originalValue);
+      expect(rawArg instanceof Sequence ? rawArg.value[0] : undefined).toBe(originalLeaf);
+      expect(rawArg?.parent?.parent).toBe(rule);
+      expect(originalValue.parent).toBe(originalArgs);
+      expect(originalArgs.parent).toBe(rule);
+    } finally {
+      CountingSequence.countConstructions = false;
+      CountingSequence.constructedCopies = 0;
+    }
+  });
+
+  it('keeps metadata rawArgs mutations isolated from source call arguments', async () => {
+    let rawArgsDuringCall: List | undefined;
+    const root = rules([]);
+    root.setFunctionBinding('mutate-raw', new JsFunction({
+      name: 'mutate-raw',
+      fn: defineFunction(
+        'mutate-raw',
+        async function(this: { rawArgs: List }) {
+          rawArgsDuringCall = this.rawArgs;
+          this.rawArgs.value.push(any('mutated'));
+          return any(String(this.rawArgs.value.length));
+        },
+        { params: [{ name: 'value', type: Sequence }] }
+      )
+    }));
+    context.root = root;
+    context.rulesContext = root;
+
+    const originalValue = seq([any('red'), dimension(10, 'px')]);
+    const originalArgs = list([originalValue]);
+    const rule = call({
+      name: ref({ key: 'mutate-raw' }, { type: 'function' }),
+      args: originalArgs
+    });
+
+    const result = await rule.eval(context);
+
+    expect(result.toTrimmedString()).toBe('2');
+    expect(rawArgsDuringCall).toBeDefined();
+    expect(rawArgsDuringCall).not.toBe(originalArgs);
+    expect(originalArgs.value).toEqual([originalValue]);
+    expect(originalValue.parent).toBe(originalArgs);
+    expect(originalArgs.parent).toBe(rule);
+  });
+
+  it('keeps metadata rawArgs owned across dynamic render and resolve', async () => {
+    const seenRawArgs: List[] = [];
+    const root = rules([]);
+    root.setFunctionBinding('mutate-raw', new JsFunction({
+      name: 'mutate-raw',
+      fn: defineFunction(
+        'mutate-raw',
+        async function(this: { rawArgs: List }) {
+          seenRawArgs.push(this.rawArgs);
+          this.rawArgs.value.push(any('mutated'));
+          return any(String(this.rawArgs.value.length));
+        },
+        { params: [{ name: 'value', type: Sequence }] }
+      )
+    }));
+    context.root = root;
+    context.rulesContext = root;
+
+    const makeRule = () => {
+      const originalValue = seq([any('red'), dimension(10, 'px')]);
+      const originalArgs = list([originalValue]);
+      return {
+        originalValue,
+        originalArgs,
+        rule: call({
+          name: ref({ key: 'mutate-raw' }, { type: 'function' }),
+          args: originalArgs
+        })
+      };
+    };
+    const direct = makeRule();
+    const buffered = makeRule();
+    const resolved = makeRule();
+    const buffer = createRenderBuffer('flat');
+
+    await expect(Promise.resolve(direct.rule.render(context))).resolves.toBe('2');
+    expect(await buffered.rule.render(context, buffer)).toBe('2');
+    expect((await resolved.rule.resolve(context)).toTrimmedString()).toBe('2');
+    expect(buffer.parts).toEqual(['2']);
+    expect(seenRawArgs).toHaveLength(3);
+    for (const rawArgs of seenRawArgs) {
+      expect(rawArgs).not.toBe(direct.originalArgs);
+      expect(rawArgs).not.toBe(buffered.originalArgs);
+      expect(rawArgs).not.toBe(resolved.originalArgs);
+    }
+    for (const { originalValue, originalArgs, rule } of [direct, buffered, resolved]) {
+      expect(originalArgs.value).toEqual([originalValue]);
+      expect(originalValue.parent).toBe(originalArgs);
+      expect(originalArgs.parent).toBe(rule);
+    }
+  });
+
+  it('renders metadata dynamic functions without evaluating the dynamic name twice', async () => {
+    const root = rules([]);
+    root.setFunctionBinding('raw-length', new JsFunction({
+      name: 'raw-length',
+      fn: defineFunction(
+        'raw-length',
+        async function(this: { rawArgs: List }) {
+          return any(String(this.rawArgs.value.length));
+        },
+        { params: [{ name: 'value', type: Sequence }] }
+      )
+    }));
+    context.root = root;
+    context.rulesContext = root;
+
+    const name = ref({ key: 'raw-length' }, { type: 'function' });
+    const originalEval = name.eval.bind(name);
+    let nameEvaluations = 0;
+    name.eval = function evalForCounting(evalContext: Context) {
+      nameEvaluations++;
+      return originalEval(evalContext);
+    };
+
+    const rendered = await Promise.resolve(call({
+      name,
+      args: list([seq([any('red'), dimension(10, 'px')])])
+    }).render(context));
+
+    expect(rendered).toBe('1');
+    expect(nameEvaluations).toBe(1);
+  });
+
+  it('renders and resolves metadata JS functions without reconstructing the source call', async () => {
+    class CountingCall extends Call {
+      static countConstructions = false;
+      static constructedCopies = 0;
+
+      constructor(...args: ConstructorParameters<typeof Call>) {
+        super(...args);
+        if (CountingCall.countConstructions) {
+          CountingCall.constructedCopies++;
+        }
+      }
+    }
+
+    const seenRawArgs: List[] = [];
+    const root = rules([]);
+    root.setFunctionBinding('mutate-raw', new JsFunction({
+      name: 'mutate-raw',
+      fn: defineFunction(
+        'mutate-raw',
+        async function(this: { rawArgs: List }) {
+          seenRawArgs.push(this.rawArgs);
+          this.rawArgs.value.push(any('mutated'));
+          return any(String(this.rawArgs.value.length));
+        },
+        { params: [{ name: 'value', type: Sequence }] }
+      )
+    }));
+    context.root = root;
+    context.rulesContext = root;
+
+    const makeRule = () => {
+      const originalValue = seq([any('red'), dimension(10, 'px')]);
+      const originalArgs = list([originalValue]);
+      return {
+        originalValue,
+        originalArgs,
+        rule: new CountingCall({
+          name: ref({ key: 'mutate-raw' }, { type: 'function' }),
+          args: originalArgs
+        })
+      };
+    };
+    const direct = makeRule();
+    const buffered = makeRule();
+    const resolved = makeRule();
+    const buffer = createRenderBuffer('flat');
+
+    CountingCall.countConstructions = true;
+    try {
+      await expect(Promise.resolve(direct.rule.render(context))).resolves.toBe('2');
+      expect(await buffered.rule.render(context, buffer)).toBe('2');
+      expect((await resolved.rule.resolve(context)).toTrimmedString()).toBe('2');
+      expect(buffer.parts).toEqual(['2']);
+      expect(CountingCall.constructedCopies).toBe(0);
+      expect(seenRawArgs).toHaveLength(3);
+      for (const rawArgs of seenRawArgs) {
+        expect(rawArgs).not.toBe(direct.originalArgs);
+        expect(rawArgs).not.toBe(buffered.originalArgs);
+        expect(rawArgs).not.toBe(resolved.originalArgs);
+      }
+      for (const { originalValue, originalArgs } of [direct, buffered, resolved]) {
+        expect(originalArgs.value).toEqual([originalValue]);
+        expect(originalValue.parent).toBe(originalArgs);
+
+        /*
+         * The Call is built with the raw `new CountingCall` constructor, which
+         * parents nothing (LIVE_BINDING invariant 6). Only the `list()` factory
+         * parented originalValue → originalArgs; originalArgs itself stays
+         * unparented, and thin-placement render/resolve never reparents it.
+         */
+        expect(originalArgs.parent).toBeUndefined();
+      }
+    } finally {
+      CountingCall.countConstructions = false;
+      CountingCall.constructedCopies = 0;
+    }
+  });
+
+  it('keeps optional metadata failures on the owned rawArgs surface before rethrowing', async () => {
+    let rawArgsDuringCall: List | undefined;
+    const root = rules([]);
+    root.setFunctionBinding('badMeta', new JsFunction({
+      name: 'badMeta',
+      fn: defineFunction(
+        'badMeta',
+        async function(this: { rawArgs: List }) {
+          rawArgsDuringCall = this.rawArgs;
+          this.rawArgs.value.push(any('mutated'));
+          throw new Error('bad metadata function');
+        },
+        { params: [{ name: 'value', type: Any }] }
+      )
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const originalArgs = list([any('red')]);
+    const rule = call({
+      name: ref({ key: 'badMeta' }, { type: 'function', fallbackValue: true }),
+      args: originalArgs
+    }, { silentFail: true });
+
+    await expect(Promise.resolve(rule.render(context))).rejects.toThrow('bad metadata function');
+
+    expect(rawArgsDuringCall).toBeDefined();
+    expect(rawArgsDuringCall).not.toBe(originalArgs);
+    expect(rawArgsDuringCall?.value).toHaveLength(2);
+    expect(originalArgs.value).toHaveLength(1);
+    expect(originalArgs.parent).toBe(rule);
+  });
+
+  it('evaluates metadata JS function params from the owned arg surface', async () => {
+    let receivedArg: Sequence | undefined;
+    const originalValue = seq([any('red'), dimension(10, 'px')]);
+    const originalArgs = list([originalValue]);
+    const root = rules([]);
+    root.setFunctionBinding('inspect-owned', new JsFunction({
+      name: 'inspect-owned',
+      fn: defineFunction(
+        'inspect-owned',
+        async function(value: Sequence) {
+          receivedArg = value;
+
+          /*
+           * Thin placement (LIVE_BINDING invariants 2/3): a static arg evaluates
+           * to itself and is SHARED through the callable surface, not deep-cloned.
+           */
+          return any(value === originalValue ? 'ok' : 'bad');
+        },
+        { params: [{ name: 'value', type: Sequence }] }
+      )
+    }));
+    context.root = root;
+    context.rulesContext = root;
+
+    const rule = call({
+      name: ref({ key: 'inspect-owned' }, { type: 'function' }),
+      args: originalArgs
+    });
+
+    const result = await rule.eval(context);
+
+    expect(result.toTrimmedString()).toBe('ok');
+    expect(receivedArg).toBeDefined();
+    expect(receivedArg).toBe(originalValue);
+    expect(originalValue.parent).toBe(originalArgs);
+    expect(originalArgs.parent).toBe(rule);
+  });
+
+  it('does not clone childless source-free scalar leaves before resolving referenced JS function calls', async () => {
+    const root = rules([]);
+    root.setFunctionBinding('echo', new JsFunction({
+      name: 'echo',
+      fn: (value: Any) => any(value.valueOf() === 'red' ? 'ok' : 'bad')
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const originalClone = Any.prototype.clone;
+    let scalarClones = 0;
+    Any.prototype.clone = function cloneForCounting(
+      this: Any,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      if (this.valueOf() === 'red') {
+        scalarClones++;
+      }
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const originalArgs = list([any('red')]);
+      const rule = call({
+        name: ref({ key: 'echo' }, { type: 'function' }),
+        args: originalArgs
+      });
+      const result = await rule.resolve(context);
+
+      expect(result.toTrimmedString()).toBe('ok');
+      expect(scalarClones).toBe(0);
+      expect(originalArgs.parent).toBe(rule);
+    } finally {
+      Any.prototype.clone = originalClone;
+    }
+  });
+
+  it('does not clone source-free scalar leaves in nested args before resolving referenced JS function calls', async () => {
+    const root = rules([]);
+    root.setFunctionBinding('echo', new JsFunction({
+      name: 'echo',
+      fn: defineFunction(
+        'echo',
+        async function(this: { rawArgs: List }) {
+          const value = this.rawArgs.value[0];
+          return any(isNode(value, N.Sequence) && value.value[0]?.valueOf() === 'red' ? 'ok' : 'bad');
+        },
+        { params: [{ name: 'value', type: Sequence }] }
+      )
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const originalClone = Any.prototype.clone;
+    let scalarClones = 0;
+    Any.prototype.clone = function cloneForCounting(
+      this: Any,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      if (this.valueOf() === 'red') {
+        scalarClones++;
+      }
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const originalValue = seq([any('red'), dimension(10, 'px')]);
+      const originalArgs = list([originalValue]);
+      const rule = call({
+        name: ref({ key: 'echo' }, { type: 'function' }),
+        args: originalArgs
+      });
+      const result = await rule.resolve(context);
+
+      expect(result.toTrimmedString()).toBe('ok');
+      expect(scalarClones).toBe(0);
+      expect(originalValue.parent).toBe(originalArgs);
+      expect(originalArgs.parent).toBe(rule);
+    } finally {
+      Any.prototype.clone = originalClone;
+    }
+  });
+
+  it('derives referenced JS function calls without reconstructing the source call', async () => {
+    const root = rules([]);
+    root.setFunctionBinding('echo', new JsFunction({
+      name: 'echo',
+      fn: (value: Any) => any(value.valueOf() === 'red' ? 'ok' : 'bad')
+    }));
+    context.root = root;
+    context.rulesContext = root;
+
+    class CountingCall extends Call {
+      static countConstructions = false;
+      static constructedCopies = 0;
+
+      constructor(...args: ConstructorParameters<typeof Call>) {
+        super(...args);
+        if (CountingCall.countConstructions) {
+          CountingCall.constructedCopies++;
+        }
+      }
+    }
+
+    const originalArgs = list([any('red')]);
+
+    /*
+     * Invariant 7: raw `new` shares; parent canonically via the explicit primitive
+     * (as the `call` factory does) so resolve() has real source parentage.
+     */
+    const rule = new CountingCall({
+      name: ref({ key: 'echo' }, { type: 'function' }),
+      args: originalArgs
+    }).parentChildren();
+
+    CountingCall.countConstructions = true;
+    try {
+      const result = await rule.resolve(context);
+
+      expect(result.toTrimmedString()).toBe('ok');
+      expect(CountingCall.constructedCopies).toBe(0);
+      expect(originalArgs.parent).toBe(rule);
+    } finally {
+      CountingCall.countConstructions = false;
+    }
+  });
+
+  it('keeps source fallback call args canonical when optional function evaluation falls back', async () => {
+    const originalClone = Call.prototype.clone;
+    let clonedCalls = 0;
+    Call.prototype.clone = function cloneForCounting(
+      this: Call,
+      ...cloneArgs: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      clonedCalls++;
+      return originalClone.apply(this, cloneArgs);
+    };
+
+    const args = list([seq([any('red'), dimension([10, 'px'])])]);
+    const originalArg = args.value[0]!;
+    const rule = call({
+      name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
+      args
+    }, { silentFail: true });
+
+    try {
+      const resolved = await rule.eval(context);
+
+      expect(isNode(resolved, N.Call)).toBe(false);
+      expect(resolved.toTrimmedString()).toBe('missing-fn(red 10px)');
+      expect(clonedCalls).toBe(0);
+      expect(args.parent).toBe(rule);
+      expect(originalArg.parent).toBe(args);
+    } finally {
+      Call.prototype.clone = originalClone;
+    }
+  });
+
+  it('does not copy source-free static fallback call arg containers', async () => {
+    const originalCopy = Sequence.prototype.cloneForPlacement;
+    let sequenceCopies = 0;
+    Sequence.prototype.cloneForPlacement = function copyForCounting(
+      this: Sequence,
+      ...args: Parameters<typeof originalCopy>
+    ): ReturnType<typeof originalCopy> {
+      sequenceCopies++;
+      return originalCopy.apply(this, args);
+    };
+
+    const arg = seq([any('red'), dimension([10, 'px'])]);
+    const args = list([arg]);
+    const rule = call({
+      name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
+      args
+    }, { silentFail: true });
+
+    try {
+      const resolved = await rule.eval(context);
+
+      expect(isNode(resolved, N.Call)).toBe(false);
+      expect(resolved.toTrimmedString()).toBe('missing-fn(red 10px)');
+      expect(sequenceCopies).toBe(0);
+      expect(args.parent).toBe(rule);
+      expect(arg.parent).toBe(args);
+    } finally {
+      Sequence.prototype.cloneForPlacement = originalCopy;
+    }
+  });
+
+  it('does not reconstruct source-free static arg containers for finalized fallback syntax', async () => {
+    class CountingSequence extends Sequence {
+      static countConstructions = false;
+      static constructedCopies = 0;
+
+      constructor(...args: ConstructorParameters<typeof Sequence>) {
+        super(...args);
+        if (CountingSequence.countConstructions) {
+          CountingSequence.constructedCopies++;
+        }
+      }
+    }
+
+    const dynamicName = any('source-name');
+    dynamicName.eval = function evalForFinalizedFallbackName() {
+      return any('noop');
+    };
+    const originalArg = new CountingSequence([any('red'), dimension([10, 'px'])]);
+    const originalArgs = list([originalArg]);
+    const rule = call({
+      name: dynamicName,
+      args: originalArgs
+    }, { silentFail: true });
+
+    CountingSequence.countConstructions = true;
+    try {
+      const resolved = await rule.eval(context);
+
+      expect(isNode(resolved, N.Call)).toBe(false);
+      expect(resolved.toTrimmedString()).toBe('noop(red 10px)');
+      expect(CountingSequence.constructedCopies).toBe(0);
+      expect(originalArg.parent).toBe(originalArgs);
+      expect(originalArgs.parent).toBe(rule);
+    } finally {
+      CountingSequence.countConstructions = false;
+      CountingSequence.constructedCopies = 0;
+    }
+  });
+
+  it('keeps source fallback call content canonical when optional function evaluation falls back', async () => {
+    const originalCopy = Sequence.prototype.cloneForPlacement;
+    let sequenceCopies = 0;
+    Sequence.prototype.cloneForPlacement = function copyForCounting(
+      this: Sequence,
+      ...args: Parameters<typeof originalCopy>
+    ): ReturnType<typeof originalCopy> {
+      sequenceCopies++;
+      return originalCopy.apply(this, args);
+    };
+    const content = seq([any('raw'), any('content')]);
+    const rule = call({
+      name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
+      args: list([any('red')]),
+      contentNode: content
+    }, { silentFail: true });
+
+    try {
+      const rendered = await Promise.resolve(rule.render(context));
+      const resolved = await rule.resolve(context);
+
+      expect(rendered).toBe('missing-fn(red): raw content');
+      expect(isNode(resolved, N.Call)).toBe(false);
+      expect(resolved.toTrimmedString()).toBe('missing-fn(red): raw content');
+      expect(sequenceCopies).toBe(0);
+      expect(content.parent).toBe(rule);
+    } finally {
+      Sequence.prototype.cloneForPlacement = originalCopy;
+    }
+  });
+
+  it('resolves source-backed fallback call content without owning a fallback Call', async () => {
+    const content = new Sequence(
+      [any('raw'), any('content')],
+      undefined,
+      { start: 10, end: 20 }
+    );
+    const rule = call({
+      name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
+      args: list([any('red')]),
+      contentNode: content
+    }, { silentFail: true });
+
+    const resolved = await rule.resolve(context);
+
+    expect(isNode(resolved, N.Call)).toBe(false);
+    expect(resolved.toTrimmedString()).toBe('missing-fn(red): raw content');
+    expect(content.parent).toBe(rule);
+  });
+
+  it('renders source-backed fallback call content without owning output content', async () => {
+    const originalCopy = Sequence.prototype.cloneForPlacement;
+    const derivedCalls = countDeriveCallUse();
+    let sequenceCopies = 0;
+    Sequence.prototype.cloneForPlacement = function copyForCounting(
+      this: Sequence,
+      ...args: Parameters<typeof originalCopy>
+    ): ReturnType<typeof originalCopy> {
+      sequenceCopies++;
+      return originalCopy.apply(this, args);
+    };
+    const content = new Sequence(
+      [any('raw'), any('content')],
+      undefined,
+      { start: 10, end: 20 }
+    );
+    const rule = call({
+      name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
+      args: list([any('red')]),
+      contentNode: content
+    }, { silentFail: true });
+    const buffer = createRenderBuffer('flat');
+
+    try {
+      await expect(Promise.resolve(rule.render(context))).resolves.toBe('missing-fn(red): raw content');
+      expect(await rule.render(context, buffer)).toBe('missing-fn(red): raw content');
+
+      expect(sequenceCopies).toBe(0);
+      expect(derivedCalls.count).toBe(0);
+      expect(buffer.parts).toEqual(['missing-fn(red): raw content']);
+      expect(content.parent).toBe(rule);
+      expect(rule.registrationPrepared).toBe(false);
+    } finally {
+      Sequence.prototype.cloneForPlacement = originalCopy;
+      derivedCalls.restore();
+    }
+  });
+
+  it('renders and resolves source-backed fallback content without deriving a fallback Call', async () => {
+    const originalCopy = Sequence.prototype.cloneForPlacement;
+    const derivedCalls = countDeriveCallUse();
+    let sequenceCopies = 0;
+    Sequence.prototype.cloneForPlacement = function copyForCounting(
+      this: Sequence,
+      ...args: Parameters<typeof originalCopy>
+    ): ReturnType<typeof originalCopy> {
+      sequenceCopies++;
+      return originalCopy.apply(this, args);
+    };
+    const content = new Sequence(
+      [any('raw'), any('content')],
+      undefined,
+      { start: 10, end: 20 }
+    );
+    const rule = call({
+      name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
+      args: list([any('red')]),
+      contentNode: content
+    }, { silentFail: true });
+
+    try {
+      await expect(Promise.resolve(rule.render(context))).resolves.toBe('missing-fn(red): raw content');
+      expect(derivedCalls.count).toBe(0);
+      expect(sequenceCopies).toBe(0);
+
+      const resolved = await rule.resolve(context);
+
+      expect(isNode(resolved, N.Call)).toBe(false);
+      expect(resolved.toTrimmedString()).toBe('missing-fn(red): raw content');
+      expect(derivedCalls.count).toBe(0);
+      expect(sequenceCopies).toBe(0);
+      expect(content.parent).toBe(rule);
+    } finally {
+      Sequence.prototype.cloneForPlacement = originalCopy;
+      derivedCalls.restore();
+    }
+  });
+
+  it('renders optional JS failure fallback content without owning a fallback Call surface', async () => {
+    const originalCopy = Sequence.prototype.cloneForPlacement;
+    const derivedCalls = countDeriveCallUse();
+    let sequenceCopies = 0;
+    Sequence.prototype.cloneForPlacement = function copyForCounting(
+      this: Sequence,
+      ...args: Parameters<typeof originalCopy>
+    ): ReturnType<typeof originalCopy> {
+      sequenceCopies++;
+      return originalCopy.apply(this, args);
+    };
+    let calls = 0;
+    const root = rules([]);
+    root.setFunctionBinding('bad', new JsFunction({
+      name: 'bad',
+      fn: () => {
+        calls++;
+        throw new Error('bad function');
+      },
+      allowOptional: true
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const content = new Sequence(
+      [any('raw'), any('content')],
+      undefined,
+      { start: 10, end: 20 }
+    );
+    const rule = call({
+      name: ref({ key: 'bad' }, { type: 'function', fallbackValue: true }),
+      args: list([any('red')]),
+      contentNode: content
+    }, { silentFail: true });
+    const buffer = createRenderBuffer('flat');
+
+    try {
+      await expect(Promise.resolve(rule.render(context))).resolves.toBe('bad(red): raw content');
+      expect(await rule.render(context, buffer)).toBe('bad(red): raw content');
+
+      expect(sequenceCopies).toBe(0);
+      expect(derivedCalls.count).toBe(0);
+      expect(calls).toBe(2);
+      expect(buffer.parts).toEqual(['bad(red): raw content']);
+      expect(content.parent).toBe(rule);
+      expect(rule.registrationPrepared).toBe(false);
+    } finally {
+      Sequence.prototype.cloneForPlacement = originalCopy;
+      derivedCalls.restore();
+    }
+  });
+
+  it('does not probe optional JS calls with content before rendering them', async () => {
+    let calls = 0;
+    const root = rules([]);
+    root.setFunctionBinding('wrap', new JsFunction({
+      name: 'wrap',
+      fn: () => {
+        calls++;
+        return any('wrapped');
+      },
+      allowOptional: true
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const name = ref({ key: 'wrap' }, { type: 'function', fallbackValue: true });
+    const originalEval = name.eval.bind(name);
+    let nameEvaluations = 0;
+    name.eval = function evalForCounting(evalContext: Context) {
+      nameEvaluations++;
+      return originalEval(evalContext);
+    };
+    const rule = call({
+      name,
+      args: list([]),
+      contentNode: new Sequence(
+        [any('raw'), any('content')],
+        undefined,
+        { start: 10, end: 20 }
+      )
+    }, { silentFail: true });
+
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('wrapped');
+
+    expect(calls).toBe(1);
+    expect(nameEvaluations).toBe(1);
+  });
+
+  it('renders optional JS success output once without deriving fallback syntax', async () => {
+    const derivedCalls = countDeriveCallUse();
+    let calls = 0;
+    const root = rules([]);
+    root.setFunctionBinding('ok', new JsFunction({
+      name: 'ok',
+      fn: () => {
+        calls++;
+        return any('ok');
+      },
+      allowOptional: true
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const name = ref({ key: 'ok' }, { type: 'function', fallbackValue: true });
+    const originalEval = name.eval.bind(name);
+    let nameEvaluations = 0;
+    name.eval = function evalForCounting(evalContext: Context) {
+      nameEvaluations++;
+      return originalEval(evalContext);
+    };
+    const buffer = createRenderBuffer('flat');
+    const rule = call({
+      name,
+      args: list([])
+    }, { silentFail: true });
+
+    try {
+      await expect(Promise.resolve(rule.render(context, buffer))).resolves.toBe('ok');
+
+      expect(buffer.parts).toEqual(['ok']);
+      expect(calls).toBe(1);
+      expect(nameEvaluations).toBe(1);
+      expect(derivedCalls.count).toBe(0);
+    } finally {
+      derivedCalls.restore();
+    }
+  });
+
+  it('resolves dynamic source-free fallback call content without owning a fallback Call', async () => {
+    const content = seq([any('raw'), any('content')]);
+    content.addFlag(F_NON_STATIC);
+    const rule = call({
+      name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
+      args: list([any('red')]),
+      contentNode: content
+    }, { silentFail: true });
+
+    const resolved = await rule.resolve(context);
+
+    expect(isNode(resolved, N.Call)).toBe(false);
+    expect(resolved.toTrimmedString()).toBe('missing-fn(red): raw content');
+    expect(content.parent).toBe(rule);
+  });
+
+  it('resolves optional JS failure fallback without shallow-cloning the source call', async () => {
+    const root = rules([]);
+    root.setFunctionBinding('bad', new JsFunction({
+      name: 'bad',
+      fn: () => {
+        throw new Error('bad function');
+      },
+      allowOptional: true
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const originalClone = Call.prototype.clone;
+    let clonedCalls = 0;
+    Call.prototype.clone = function cloneForCounting(
+      this: Call,
+      ...cloneArgs: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      clonedCalls++;
+      return originalClone.apply(this, cloneArgs);
+    };
+
+    try {
+      const args = list([seq([any('red'), dimension([10, 'px'])])]);
+      const originalArg = args.value[0]!;
+      const rule = call({
+        name: ref({ key: 'bad' }, { type: 'function', fallbackValue: true }),
+        args
+      }, { silentFail: true });
+      const resolved = await rule.eval(context);
+
+      expect(isNode(resolved, N.Call)).toBe(false);
+      expect(resolved.toTrimmedString()).toBe('bad(red 10px)');
+      expect(clonedCalls).toBe(0);
+      expect(args.parent).toBe(rule);
+      expect(originalArg.parent).toBe(args);
+    } finally {
+      Call.prototype.clone = originalClone;
+    }
+  });
+
+  it('renders and resolves optional JS failure fallback without evaluating the source call surface', async () => {
+    const derivedCalls = countDeriveCallUse();
+    let calls = 0;
+    const root = rules([]);
+    root.setFunctionBinding('bad', new JsFunction({
+      name: 'bad',
+      fn: () => {
+        calls++;
+        throw new Error('bad function');
+      },
+      allowOptional: true
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const args = list([seq([any('red'), dimension([10, 'px'])])]);
+    const name = ref({ key: 'bad' }, { type: 'function', fallbackValue: true });
+    const rule = call({ name, args }, { silentFail: true });
+    const buffer = createRenderBuffer('flat');
+
+    try {
+      await expect(Promise.resolve(rule.render(context))).resolves.toBe('bad(red 10px)');
+      expect(derivedCalls.count).toBe(0);
+      expect(await rule.render(context, buffer)).toBe('bad(red 10px)');
+      expect(derivedCalls.count).toBe(0);
+      const resolved = await rule.resolve(context);
+
+      expect(buffer.parts).toEqual(['bad(red 10px)']);
+      expect(isNode(resolved, N.Call)).toBe(false);
+      expect(resolved.toTrimmedString()).toBe('bad(red 10px)');
+      expect(derivedCalls.count).toBe(0);
+      expect(calls).toBe(3);
+      expect(args.parent).toBe(rule);
+      expect(name.parent).toBe(rule);
+    } finally {
+      derivedCalls.restore();
+    }
+  });
+
+  it('renders empty optional JS failure fallback syntax without call-level readback', async () => {
+    const writer = new CountingWriter();
+    const root = rules([]);
+    root.setFunctionBinding('bad', new JsFunction({
+      name: 'bad',
+      fn: () => {
+        throw new Error('bad function');
+      },
+      allowOptional: true
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const rule = call({
+      name: ref({ key: 'bad' }, { type: 'function', fallbackValue: true }),
+      args: list([])
+    }, { silentFail: true });
+
+    await expect(Promise.resolve(rule.render(context, { writer }))).resolves.toBe('bad()');
+
+    expect(writer.toString()).toBe('bad()');
+    expect(writer.marks).toBe(0);
+    expect(writer.readbacks).toBe(0);
+  });
+
+  it('does not clone childless source-free scalar leaves before resolving callback arg lists', async () => {
+    const root = rules([]);
+    root.setFunctionBinding('first', new JsFunction({
+      name: 'first',
+      fn: defineFunction(
+        'first',
+        async function(this: { rawArgs: List }) {
+          return any(this.rawArgs.value[0]?.valueOf() === 'red' ? 'ok' : 'bad');
+        },
+        { params: [{ name: 'value', type: Any }] }
+      )
+    }));
+    context.root = root;
+    context.rulesContext = root;
+    const originalClone = Any.prototype.clone;
+    let scalarClones = 0;
+    Any.prototype.clone = function cloneForCounting(
+      this: Any,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      if (this.valueOf() === 'red') {
+        scalarClones++;
+      }
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const originalArgs = list([any('red')]);
+      const rule = call({
+        name: ref({ key: 'first' }, { type: 'function' }),
+        args: originalArgs
+      });
+      const result = await rule.resolve(context);
+
+      expect(result.toTrimmedString()).toBe('ok');
+      expect(scalarClones).toBe(0);
+      expect(originalArgs.parent).toBe(rule);
+    } finally {
+      Any.prototype.clone = originalClone;
+    }
+  });
+
+  it('does not let detached ruleset calls read caller scope in non-leaky mode', async () => {
+    context = new Context({ leakyScope: false });
+    const root = rules([
+      vardecl({
+        name: 'themeBlock',
+        value: rules([
+          decl({ name: 'color', value: ref('mode', { type: 'variable' }) })
+        ])
+      }),
+      ruleset({
+        selector: el('.use-theme'),
+        rules: [
+          vardecl({ name: 'mode', value: any('dark') }),
+          call({ name: ref('themeBlock', { type: 'variable' }) })
+        ]
+      })
+    ]);
+
+    context.root = root;
+
+    await expect(root.eval(context)).rejects.toThrow(/mode/);
+  });
+
+  it('lets detached ruleset calls read caller scope in leaky mode', async () => {
+    context = new Context({ leakyScope: true });
+    const root = rules([
+      vardecl({
+        name: 'themeBlock',
+        value: rules([
+          decl({ name: 'color', value: ref('mode', { type: 'variable' }) })
+        ])
+      }),
+      ruleset({
+        selector: el('.use-theme'),
+        rules: [
+          vardecl({ name: 'mode', value: any('dark') }),
+          call({ name: ref('themeBlock', { type: 'variable' }) })
+        ]
+      })
+    ]);
+
+    context.root = root;
+
+    const css = await renderNodeToString(root, context, { context });
+    expect(css).toContain('color: dark;');
+  });
+
+  /*
+   * it('should serialize to a module', () => {
+   * let rule = call({
+   * name: 'rgb',
+   * value: list([num(100), num(100), num(100)])
+   * })
+   * rule.toModule(context, out)
+   * expect(out.toString()).toBe(
+   * '$J.call({\n  name: "rgb",\n  value: $J.list([\n    $J.num({\n      value: 100,\n      unit: ""\n    }),\n    $J.num({\n      value: 100,\n      unit: ""\n    }),\n    $J.num({\n      value: 100,\n      unit: ""\n    })\n  ]),\n  ref: () => rgb,\n})'
+   * )
+   * })
+   */
+});

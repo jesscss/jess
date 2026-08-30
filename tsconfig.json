@@ -1,19 +1,50 @@
 {
   "compilerOptions": {
-    "composite": true,
     "allowJs": true,
-    "outDir": "./lib",
-    "rootDir": ".",
     "declaration": true,
     "esModuleInterop": true,
-    "module": "commonjs",
-    "target": "es6",
-    "lib": ["es6"],
-    "baseUrl": "./packages",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "target": "ES2022",
+    "lib": ["esnext"],
+    "strict": true,
+    "useDefineForClassFields": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
     "paths": {
-      "jess": ["jess/lib"],
-      "@jess/*": ["*/src"]
-    }
+      "jess": ["./packages/jess/lib"],
+      "@jesscss/css-parser": ["./packages/syntax/css/css-parser/src/index.ts"],
+      "@jesscss/css-parser/*": ["./packages/syntax/css/css-parser/src/*.ts"],
+      "@jesscss/less-parser": ["./packages/syntax/less/less-parser/src/index.ts"],
+      "@jesscss/less-parser/*": ["./packages/syntax/less/less-parser/src/*.ts"],
+      "@jesscss/scss-parser": ["./packages/syntax/scss/scss-parser/src/index.ts"],
+      "@jesscss/scss-parser/*": ["./packages/syntax/scss/scss-parser/src/*.ts"],
+      "@jesscss/jess-parser/*": ["./packages/syntax/jess/jess-parser/src/*.ts"],
+      "@jesscss/parser": ["./packages/parser/src/index.ts"],
+      "@jesscss/fns": ["./packages/fns/src/index.ts"],
+      "@jesscss/fns/*": ["./packages/fns/src/*.ts"],
+      "@jesscss/compiler": ["./packages/compiler/src/index.ts"],
+      "@jesscss/compiler/*": ["./packages/compiler/src/*.ts"],
+      "@jesscss/compiler-preset": ["./packages/compiler-preset/src/index.ts"],
+      "@jesscss/diagnostics-core": ["./packages/diagnostics-core/src/index.ts"],
+      "@jesscss/lint": ["./packages/lint/src/index.ts"],
+      "@jesscss/plugin-node-modules": ["./packages/jess-plugin-node-modules/src/index.ts"],
+      "@jesscss/plugin-jess": ["./packages/syntax/jess/jess-plugin-jess/src/index.ts"],
+      "@jesscss/plugin-less": ["./packages/syntax/less/jess-plugin-less/src/index.ts"],
+      "@jesscss/plugin-scss": ["./packages/syntax/scss/jess-plugin-scss/src/index.ts"],
+      "styles-config": ["./packages/config/src/index.ts"]
+    },
+    "plugins": [
+  
+    ],
+    "types": [
+      "node",
+      "vitest/globals"
+    ]
   },
-  "exclude": ["node_modules", "lib"]
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "lib", "**/*.js"]
 }

@@ -1,0 +1,20 @@
+// Byte-identity corpus entry for interpolation inside a selector-valued pseudo
+// argument. The materialised sass-spec cache contains ZERO instances of this
+// construct (grep for `:(not|is|where|has|matches)\([^)]*#\{` over
+// `.cache/sass-spec/inputs` returns nothing), so a fix here scored as a no-op
+// against the oracle while being correct. This file is the entry that gives the
+// oracle teeth over it. Ledger row P21.
+$x: foo;
+
+.card:not(#{$x}) { c: d }
+.card:not(a.#{$x}) { c: d }
+.card:not(.a, #{$x}) { c: d }
+.x:has(> #{$x}) { c: d }
+.card:is(.a, .#{$x}) { c: d }
+.card:not(a.#{$x}) .b { c: d }
+.card:not(a.#{$x}):hover { c: d }
+.card:not(:is(.#{$x}, .z)) { c: d }
+.card:has(.a > .#{$x} + .b) { c: d }
+.card:not([title="#{$x}"]) { c: d }
+.a { &:not(.#{$x}) { c: d } }
+.a { .c:not(&.#{$x}) { c: d } }

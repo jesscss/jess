@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "noImplicitOverride": true
+  },
+  "include": [
+    "src/**/*",
+    "test/**/*",
+    "vitest.config.ts",
+    "vite.config.ts",
+    "../../vitest.d.ts"
+  ],
+  "exclude": ["node_modules", "lib", "**/*.js"]
+}

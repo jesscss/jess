@@ -1,0 +1,83 @@
+---
+title: Stricter than Sass (Rejected Invalid CSS)
+sidebar_label: Sass+ Strictness
+audiences:
+  - jess
+  - sass
+origin: jess
+---
+**Sass+** is Sass without the bad parts — and part of that is **refusing invalid CSS that Sass tolerates**. Where Sass parses a broken selector or keyword and then emits it with a deprecation warning (or silently drops it), Sass+ treats it as a **parse error** up front.
+
+Sass-parity is **not** the goal here. **Valid CSS is the reference.** "But Sass accepts it" is not an argument for Sass+ accepting it — if the input is invalid CSS, Sass shouldn't have accepted it either, and Sass+ won't.
+
+This page lists where **Sass+ 1.0 is intentionally stricter** than Sass at parse time.
+
+- For features Sass+ **parses but does not evaluate** (like `@at-root` or `@forward ... show/hide`), see [Unsupported Sass+ Features](./unsupported-sass-features).
+- For how Sass at-rules map to Jess (`@use` → `@-compose`, etc.), see [Sass (SCSS) compatibility](./scss-compatibility).
+
+## Bogus combinators
+
+A combinator (`>`, `+`, `~`, `||`) is only valid **between two compound selectors**. A leading, trailing, or doubled combinator is not a real selector.
+
+Sass historically parses these "bogus" combinators, emits a `[bogus-combinators]` deprecation warning, and omits the rule from output. Dart Sass 2.0 will make them a hard error. **Sass+ rejects them now** — at parse time.
+
+| Selector | Valid CSS? | Sass | Sass+ |
+| --- | --- | --- | --- |
+| `a > b`, `a + b`, `a ~ b`, `a b` | ✅ single combinator between compounds | ✅ | ✅ accepts |
+| `> > a` (leading / doubled) | ❌ | ⚠️ warns + omits | ❌ **parse error** |
+| `a > {}` (trailing) | ❌ | ⚠️ warns + omits | ❌ **parse error** |
+| `a > + b` (two in a row) | ❌ | ⚠️ warns + omits | ❌ **parse error** |
+| `a~>b` (glued double) | ❌ | ⚠️ warns + omits | ❌ **parse error** |
+| `> > >` (combinator-only) | ❌ | ⚠️ warns + omits | ❌ **parse error** |
+
+```scss
+// ✅ valid — a single combinator joins two compound selectors
+a > b { color: red; }
+.card + .card { margin-top: 1rem; }
+
+// ❌ parse error in Sass+ — you can't have two combinators in a row,
+//    nor a combinator with nothing on one side.
+a > + b { color: red; }
+a > { color: red; }
+> > a { color: red; }
+```
+
+**Verdict:** Two combinators in a row (or a dangling one) is invalid CSS. There is no reason to write it, and Sass emitting nothing while warning is worse than a clear parse error. Sass+ fails fast.
+
+## Escaped at-rule keywords
+
+Sass decodes CSS hex escapes *before* dispatching directives, so `@\69 f` is treated as `@if` and `@\65lse` as `@else`. This is fully "supported" by Sass (clean output, not even a warning).
+
+**Sass+ rejects it as a parse error.** No one should write a control directive with escaped characters, and allowing it only makes tooling and readers work harder.
+
+```scss
+// ✅ write the keyword
+@if $cond { a { b: c; } }
+@if false {} @else { a { b: c; } }
+
+// ❌ parse error in Sass+ (Sass would decode these to @if / @else)
+@\69 f $cond { a { b: c; } }
+@\65lse { a { b: c; } }
+```
+
+**Verdict:** Directive keywords are keywords, not arbitrary identifiers. Escaping them is pointless obfuscation; Sass+ does not accept it.
+
+## Garbage inside unknown / plain-CSS functions
+
+Sass passes an unknown function call through verbatim (a "plain CSS function"), including arbitrary punctuation. Sass+ keeps the useful part of this — a reasonable unknown/plain-CSS function still parses and is emitted as-is:
+
+```scss
+// ✅ still works — unknown/plain-CSS functions pass through
+a { b: css(env(safe-area-inset-top)); }
+a { b: unknownfn(1px, 2%); }
+```
+
+But a call whose contents are not valid CSS — unbalanced brackets and stray punctuation — is a **parse error** in Sass+, where Sass would emit the garbage verbatim.
+
+**Verdict:** A pass-through for *valid* plain CSS is useful; a pass-through for arbitrary invalid punctuation is not. Sass+ draws the line at valid CSS.
+
+## Philosophy
+
+Sass+ supports Sass/SCSS syntax for **conversion and compatibility**, but it is a **dialect that fixes Sass**, not a bug-for-bug reimplementation. Wherever Sass chose to tolerate invalid CSS — parsing it, warning, and emitting or omitting it — Sass+ prefers a clear, early parse error.
+
+If you hit a rejection you believe is wrong, [open an issue](https://github.com/jesscss/jess/issues) with the SCSS, the CSS you expected, and why it should be valid.

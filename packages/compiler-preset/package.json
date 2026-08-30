@@ -1,0 +1,51 @@
+{
+  "name": "@jesscss/compiler-preset",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "description": "Jess compiler preset shared by product entrypoints",
+  "version": "2.0.0-alpha.5",
+  "engines": {
+    "node": "^20.19.0 || >=22.18.0"
+  },
+  "main": "lib/index.cjs",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "build": "pnpm compile",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "test": "vitest --watch=false --passWithNoTests",
+    "lint": "eslint '**/*.{js,ts}'"
+  },
+  "dependencies": {
+    "@jesscss/compiler": "workspace:*",
+    "@jesscss/core": "workspace:*",
+    "@jesscss/plugin-jess": "workspace:*",
+    "@jesscss/plugin-less": "workspace:*",
+    "@jesscss/plugin-node-modules": "workspace:*",
+    "@jesscss/plugin-scss": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "~5.8.2",
+    "vitest": "^4.1.0"
+  },
+  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jesscss/jess/issues"
+  },
+  "homepage": "https://github.com/jesscss/jess#readme",
+  "module": "lib/index.js"
+}

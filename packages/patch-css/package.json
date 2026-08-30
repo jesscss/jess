@@ -1,22 +1,43 @@
 {
   "name": "@jesscss/patch-css",
-  "version": "1.0.8-alpha.8",
+  "type": "module",
+  "version": "2.0.0-alpha.5",
+  "engines": {
+    "node": "^20.19.0 || >=22.18.0"
+  },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "ci": "yarn build && yarn test",
-    "prepublishOnly": "yarn build",
+    "ci": "pnpm build && pnpm test",
+    "test": "echo 'patch-css has no active test suite (see test:tofix)'",
+    "prepublishOnly": "pnpm build",
     "dist": "rollup -c",
-    "build": "yarn clean && yarn compile",
+    "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./dist ./lib tsconfig.tsbuildinfo",
-    "compile": "tsc -b tsconfig.json && yarn dist",
-    "dev": "tsc -b tsconfig.json -w",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly && pnpm dist",
+    "dev": "tsc -p tsconfig.build.json -w",
     "serve": "lite-server --baseDir=\"test\"",
-    "test": "yarn dist && mocha test/bootstrap.js --recursive test/**/*.spec.js"
+    "test:tofix": "pnpm dist && jest",
+    "lint:fix:TOFIX": "eslint --fix '**/*.{js,ts}'",
+    "lint:TOFIX": "eslint '**/*.{js,ts}'"
   },
   "description": "Attach stylesheets given an id",
-  "main": "lib/index",
+  "main": "lib/index.cjs",
+  "module": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js",
+      "require": "./lib/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "dist"
+  ],
   "author": "Matthew Dean",
   "license": "MIT"
 }

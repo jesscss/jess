@@ -1,0 +1,7 @@
+@import "a.css";
+@import url("b.css") screen;
+@import url("c.css") layer(base) supports(display: grid);
+@namespace svg url("http://www.w3.org/2000/svg");
+a {
+  color: red;
+}

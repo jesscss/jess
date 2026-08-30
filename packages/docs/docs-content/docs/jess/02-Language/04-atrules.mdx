@@ -1,0 +1,357 @@
+---
+title: Jess's at-rules
+sidebar_label: At-rules
+audiences:
+  - jess
+origin: jess
+---
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+
+Jess compiler at-rules use a dash prefix: `@-compose`, `@-use`, `@-from`,
+`@-export`, and `@-import`. Bare CSS at-rules stay bare, so Jess can add
+compile-time behavior without taking names away from CSS.
+
+## @-compose
+
+This is probably the most important at-rule. It's what you will use to compose together different stylesheets. It is most similar to, and largely a drop-in replacement of Sass's `@use` at-rule.
+
+That is, it will render
+
+Here's an example:
+
+<Tabs>
+  <TabItem value="jess" label="Jess">
+    ```less
+    @-compose './theme' as theme;
+
+    .box {
+      color: $theme.primary-color;
+    }
+    ```
+  </TabItem>
+  <TabItem value="less" label="Less 5+">
+    ```less
+    @compose './theme' as @theme;
+
+    .box {
+      color: @theme[primary-color];
+    }
+    ```
+  </TabItem>
+  <TabItem value="sass" label="Sass">
+    ```less
+    @use './theme' as theme;
+
+    .box {
+      color: theme.$primary-color;
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+:::warning[Hold up]
+
+Why `@-compose` and not `@-use`, similar to Sass? A couple reasons.
+
+1. "Use" typically implies an import of values, but values and variables can actually flow _into_ the stylesheet you're composing with (which can change how it evaluates and compiles), which we'll get to!
+2. We're not just importing values; composing also renders rules. In addition, those rules can be altered by extending them, which also is contrary to how "use" works in most languages.
+3. We have a use case for `@-use` which fits into the "use" semantics a bit better.
+
+:::
+
+### Composing with a namespace
+
+Like Sass, namespaces for `@-compose` and `@-use` are set automatically based on the file name or path. But you can also set a namespace explicitly with the `as` keyword.
+
+```less
+@-compose './theme.jess'; // is the same as...
+@-compose './theme.jess' as theme;
+```
+
+You can compose without a namespace using the `*` symbol.
+
+```less
+@-compose './theme.jess' as *;
+
+.box {
+  color: $primary-color; // from theme.jess
+}
+```
+
+:::warning
+
+Composing without a namespace is discouraged, as it can be harder to reason about where variables and values come from when you have multiple files.
+
+:::
+
+
+### `with` and `set`
+
+Jess currently supports both `set` and `with` when composing stylesheets. Both
+forms provide values to the composed module; the difference is how long that
+configuration applies:
+
+- `set` establishes a one-time, compilation-wide configuration for the
+  resolved module. Later imports of that module reuse the same values.
+- `with` provides overrides for the current compose only. A later compose
+  starts from the module's defaults unless it supplies its own configuration.
+
+In Sass, the equivalent module-wide configuration uses the `with` keyword. Jess
+uses `with` for the more local form and reserves `set` for configuration that
+should be reused by later imports in the same compilation.
+
+`set` is a one-time choice per resolved module path. If it is used, it must be
+used on the first import of that module: a later `set`, or a second `set`, is an
+error.
+
+Example:
+
+```less
+// theme.jess
+$primary-color: blue;
+```
+
+```less
+// file1.jess
+@-compose './theme' set {
+  $primary-color: rebeccapurple;
+}
+.box {
+  color: $theme.primary-color; // rebeccapurple
+}
+```
+```less
+// file2.jess
+@-compose './theme';
+
+.box {
+  color: $theme.primary-color; // rebeccapurple
+}
+```
+
+#### Using the `with` keyword
+
+`with` provides values only while the module is being composed into the current
+file. It does not establish the configuration for later imports.
+
+```less
+// file1.jess
+@-compose './theme' with {
+  $primary-color: rebeccapurple;
+}
+.box {
+  color: $theme.primary-color; // rebeccapurple
+}
+```
+```less
+// file2.jess
+@-compose './theme';
+
+.box {
+  color: $theme.primary-color; // blue
+}
+```
+
+### @-compose (reference)
+
+This is the same as basic `@-compose` except rules will not be rendered unless extended. In other words, you can use `reference` to import values, variables, and functions.
+
+This is much like Less's `@import (reference)`, although with Less's `@import (reference)`, the referenced file can see the parent's variables, but with `@-compose (reference)`, the scope is isolated.
+
+```less
+// rules.jess
+$border-color: green;
+.box {
+  border: 1px solid $border-color;
+}
+```
+```less
+@-compose (reference) './rules';
+
+.container {
+  border: 2px dashed $rules.border-color;
+}
+```
+This would output:
+```css
+.container {
+  border: 2px dashed green;
+}
+```
+
+### @-compose (mutable)
+
+Composed modules are protected by default. Use `mutable` when a composition is
+intended to allow downstream stylesheets to extend its selectors.
+
+```less
+// library.jess
+.box {
+  border: 1px solid green;
+}
+```
+```less
+// main.jess
+@-compose (mutable) './library.jess';
+
+.second-box {
+  $extend .box;
+}
+```
+
+This outputs:
+
+```css
+.box,
+.second-box {
+  border: 1px solid green;
+}
+```
+
+Mutability belongs to the composed module, not to the selector name: another
+stylesheet can define its own `.box` and remain protected when composed without
+`mutable`.
+
+:::note Planned: explicit protected boundaries
+
+`@-compose (protected)` is the planned explicit opt-out from inherited
+mutability. A mutable library can use it when one of its child modules must
+remain closed to downstream extends:
+
+```less
+// library.jess
+@-compose (protected) './base.jess';
+```
+
+This is a follow-up to the default-protected and recursive-mutable compose
+behavior; it is not implemented yet.
+
+:::
+
+### `$extend`
+
+An `$extend` target does not need a namespace. A bare target such as
+`$extend .box` searches all mutable stylesheets accessible from the current
+extend.
+
+Use a namespace only when you want to filter that search to one immediate
+composed module. The namespace is not a path that must repeat every namespace
+used by nested modules. When a query crosses the named boundary, that namespace
+segment is consumed and the remaining selector is matched against the module's
+accessible mutable child stylesheets.
+
+```less
+// library.jess
+@-compose './base.jess' as foundation;
+```
+
+```less
+// main.jess
+@-compose (mutable) './library.jess';
+
+.second-box {
+  $extend library|.box;
+}
+```
+
+Here, `library|.box` enters `library.jess`, then applies `.box` to its
+accessible mutable child stylesheets. The `foundation` namespace still exists
+inside `library.jess`; an extend written there can use
+`$extend foundation|.box`. The outer query does not need to spell
+`foundation`.
+
+
+### @-compose (export)
+
+In Jess, variables defined or imported with `@-compose (export)` (or the namespace) will be re-exported and made available to a stylesheet downstream.
+
+:::warning
+
+Use this sparingly! It may be harder to reason about where variables and values come from. Instead, consider importing stylesheet dependencies directly per file.
+
+:::
+
+### `@-export` (forwarding)
+
+Sass has an at-rule called `@forward` which forwards a stylesheet API (variables, functions, and mixins) to downstream consumers.
+
+In Jess, use:
+
+ - `@-export './stylesheet.jess';`
+
+This keeps forward intent explicit, avoids long option bundles, and reflects the current project direction.
+
+## @-use and @-from
+
+We told you we had a good purpose for `@-use`, and here it is. Jess can import and use values from JavaScript, TypeScript, and JSON. Easily.
+
+:::info
+
+JSON imports are data imports and work without a script runtime. Built-in `#less/*` and `#sass/*` modules also stay inside Jess. To evaluate local or package JS/TS while compiling, install `@jesscss/plugin-js`; that path uses Deno because unknown JavaScript needs isolation.
+
+The reason this is necessary is that, when maintaining Less, we found that it sometimes surprised developers to learn that their stylesheets could execute JavaScript, which meant potential security vulnerabilities if they weren't careful.
+
+:::
+
+Jess supports two script-module forms. Use `@-use` when you want the Sass-module-style namespace form. Like Sass, you can omit `as` and Jess will infer the namespace from the module name:
+
+```scss
+@-use './my-module.js';
+@-use './my-module.js' as js;
+
+.box {
+  width: $my-module.width;
+  value: $js.myFunc();
+}
+```
+
+Use `@-from` when you want the ESM-style import form. That includes named imports:
+
+```scss
+@-from './my-module.js' import (myFunc as fromJs);
+
+.box {
+  value: $fromJs();
+}
+```
+
+And namespace imports:
+
+```scss
+@-from './my-module.js' import * as js;
+
+.box {
+  value: $js.myFunc();
+}
+```
+
+You can also import and use Less and Sass functions.
+
+```scss
+@-use '#less/type';
+@-use '#sass/math';
+
+.box {
+  value: $($type.isnumber($math.e)); // true
+}
+```
+
+## @-import (discouraged)
+
+:::warning
+
+Use of the `@-import`, by default, will trigger a deprecation warning when compiling.
+
+:::
+
+For legacy compilation and migration support, Jess supports the `@-import` at rule (named `@import` in Less/Sass). However, the use of `@-import` is discouraged, for a few reasons.
+
+1. The `@-import` rule has access to parent variables, so the "context" of evaluation changes for every import call, even of the same file. It also makes the imported file hard to reason about.
+2. Variables from the root of the import are accessible anywhere in other stylesheets (they are re-exported), so it can be difficult to find the source file of a given variable or mixin.
+3. It intentionally overlaps the CSS `@import` rule, making it unclear from code whether the `@import` should appear in rendered output.
+
+```less
+@-import './my-file.jess';
+```

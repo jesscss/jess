@@ -1,0 +1,77 @@
+name: Runtime support
+
+# Portability axis: does the published Jess CLI build and run on every Node
+# version we claim to support? This is NOT about Less — it lived under the
+# "Less alpha readiness" workflow only by accident of file layout, which made
+# GitHub render four "Less alpha readiness / Jess CLI on Node X" checks and read
+# as if Less were being tested four times. It is one runtime-support matrix.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - alpha
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-support-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node-support:
+    name: Jess CLI on Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # The supported set is `^20.19.0 || >=22.18.0` — see `engines` in all 19
+      # publishable package.json files. That is two disjoint ranges, so this
+      # matrix pins the LOWEST version of each one explicitly: a floor that is
+      # never installed is an assertion, not a tested claim, and the `lts/-N`
+      # aliases only ever install the NEWEST release on a line (`lts/-2` gives
+      # 20.19+, never 20.19.0 itself).
+      #
+      # Exact pins for the two floors, moving aliases for the ceiling:
+      #   20.19.0  floor of the `^20.19.0` range — Node 20 with require(ESM) backported
+      #   22.18.0  floor of the `>=22.18.0` range — first 22 where require(ESM) is
+      #            stable (22.12.0 emitted an ExperimentalWarning to stderr on
+      #            diagnostics-core's require of the ESM-only html-tags)
+      #   lts/*    newest LTS line, follows Node without edits
+      #   current  latest release, early warning for the next line
+      #
+      # `lts/-N` legs were dropped deliberately. They drift DOWNWARD relative to
+      # a fixed floor — that is how `lts/-3` came to test Node 18, two EOL lines
+      # below anything the toolchain (oxc/vite/vitest) can install. Bump the pins
+      # here when the floor in `engines` moves; nothing else should shift on its own.
+      matrix:
+        node:
+          - '20.19.0'
+          - '22.18.0'
+          - lts/*
+          - current
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # `jess...` (trailing ellipsis) builds jess AND its workspace dependencies
+      # in topological order; a bare `--filter jess` builds only jess and fails on
+      # a clean checkout because styles-config / @jesscss/compiler-preset have no
+      # emitted lib/ + .d.ts yet. --workspace-concurrency=1 keeps the parser
+      # builds serial (they gate on each other).
+      - name: Verify public Jess CLI
+        run: pnpm --filter "jess..." --workspace-concurrency=1 build && pnpm --filter jess test -- cli.test.ts --run --globals
