@@ -38,17 +38,14 @@ import { Ampersand } from '../ampersand.js';
 import { isNode } from '../util/is-node.js';
 import { isCombinator, combinatorValue } from '../util/combinator.js';
 import { N } from '../node-type.js';
-import { isDisjoint, isSubsetOf } from '../../util/bitset.js';
-import { keySetOf, requiredKeySetOf } from '../util/selector-analysis.js';
 import { extendSelector } from '../util/extend.js';
 
 /** Same surface the oracle accepts/returns (kept in lockstep with extendSelector). */
 type ExtendInput = Parameters<typeof extendSelector>[0];
-type ExtendOutput = ReturnType<typeof extendSelector>;
 
 /**
  * ── The IR ────────────────────────────────────────────────────────────────
- * Interning is process-local to a single extendByIndex call (each call builds a
+ * Interning is process-local to a single extendByIndexOwn call (each call builds a
  * fresh SymbolTable keyed on `valueOf()`), mirroring how selectorBits interns per
  * keySetLibrary. Atoms are ints; a Compound is a Set of ints (its "bitset").
  */
@@ -294,54 +291,6 @@ function allSymsInSeq(seq: IrSeq, out: Set<number>): void {
 }
 
 /**
- * ── DISCOVERY RESULT ──────────────────────────────────────────────────────
- * The index reports what it discovered; the reused rewrite decides the exact
- * output shape.
- */
-interface Discovery {
-  matched: boolean;
-}
-
-/**
- * Index-driven discovery: does `find` occur in `target`, and (coarsely) where?
- * This is the piece the prototype OWNS. It mirrors the oracle's match decision;
- * the differential test proves agreement. Returns matched=false to route to
- * NOT_FOUND without invoking rewrite.
- */
-function discover(
-  target: Selector,
-  find: Selector,
-  partial: boolean
-): Discovery {
-  const syms = new SymbolTable();
-
-  // REJECT: union-bitset guaranteed-false test (reuses the interned keySet bitsets).
-  const canFastReject = !!find.keySetLibrary && find.keySetLibrary === target.keySetLibrary;
-  if (!partial && canFastReject) {
-    if (!isSubsetOf(requiredKeySetOf(find), keySetOf(target))) {
-      return { matched: false };
-    }
-  } else if (partial && canFastReject) {
-    if (isDisjoint(keySetOf(find), keySetOf(target))) {
-      return { matched: false };
-    }
-  }
-
-  const irTarget = liftSel(target, syms);
-  const irFind = liftSel(find, syms);
-
-  // Single-branch find is the common case (a find pattern is rarely an OR).
-  for (const findBranch of irFind.branches) {
-    for (const targetBranch of irTarget.branches) {
-      if (matchSeqInSeq(targetBranch, findBranch)) {
-        return { matched: true };
-      }
-    }
-  }
-  return { matched: false };
-}
-
-/**
  * ── NFA: match a find Seq as a path in a target Seq ──────────────────────
  * Bit-parallel Shift-And over positions: the find pattern is P compounds, the
  * target Seq is T compounds. A find-compound "matches" a target-compound when the
@@ -471,51 +420,6 @@ function compoundSubset(find: IrCompound, target: IrCompound): boolean {
 
 function compoundHasConstructorAtom(c: IrCompound): boolean {
   return c.atoms.some(a => a.kind !== 'id');
-}
-
-/**
- * ── THE `&` (AMPERSAND) SEAM — discovery OWNS the classification ────────────
- *
- * INVESTIGATION FINDING (verified against extend.ts + ampersand.ts, PROBE-traced):
- *
- * Post-eval, `&` is NOT flattened into the concrete selector. It stays an `Ampersand`
- * node holding a REFERENCE to the parent (`_selectorContainer.selector`, via
- * `getResolvedSelector()`); the composed/substituted form is produced ON DEMAND. So the
- * graft model of the design doc is correct: `&` is a first-class graft atom carrying its
- * parent. (An amp compound `valueOf()`s as its resolved form, e.g. `&.bar` → `.foo.bar`,
- * but that is on-demand composition, not a flattened tree.)
- *
- * The oracle (`checkAmpersandCrossingDuringExtension`) classifies a match by a TWO-PROBE
- * differential over the WHOLE subject selector, per amp node with a resolved parent:
- *   • RESOLVED form  — graft the parent at the `&` position    (`replaceAmpersandWithItsValue`)
- *   • EMPTY form     — drop `&` (+ trailing implicit-space combinator) (`replaceAmpersandWithEmpty`)
- * Then: `crossed` ⇔ (find matches RESOLVED) ∧ ¬(find matches EMPTY).
- *   • crossed        → HOIST to root  (`handleAmpersandBoundaryCrossing`)
- *   • empty matches  → CHILD-only     → in-place extend on the child material (`&:is(...)`)
- *   • neither        → no match at this amp
- *
- * DECISION GATES beyond the doc's child/cross/parent + hoist model (surfaced by PROBE —
- * see the report). A detected crossing does NOT always hoist:
- *   • SIMPLE-FIND FULL boundary skip: `!partial && reason==='resolved-only' && find is a
- *     SimpleSelector` → NOT a hoist; parent-only match → NOT_FOUND.
- *   • RELATIVE PARTIAL boundary skip: `partial && reason==='resolved-only' && subject is a
- *     ComplexSelector whose first component is a combinator (e.g. `> &.child`)` → NOT a
- *     hoist; extend in-place on the amp-resolved subject (`> :is(.parent.child, .ext)`).
- *   • PARTIAL WHOLE-LOCATION gate: a partial crossing with NO whole-selector location →
- *     NOT_FOUND (parent-level processing carries it).
- *
- * `classifyAmpersand` reproduces the two-probe differential in the IR (this is OURS), so a
- * misclassification diverges from the oracle. Construction of the crossed/child output is
- * REUSED from extend.ts (its fold + hoist machinery), per the design's discovery/rewrite split.
- */
-
-type AmpClass = 'crossing' | 'child-only' | 'none';
-
-interface AmpVerdict {
-  cls: AmpClass;
-
-  /** true when a detected crossing collapses to NOT_FOUND (parent-only / whole-location gate). */
-  gatedNotFound: boolean;
 }
 
 /** Locate the amp node's step index within a lifted seq (first amp step or amp-carrying compound). */
@@ -650,129 +554,6 @@ function seqMatchesFind(subjectSeq: IrSeq, irFind: IrSel): boolean {
     }
   }
   return false;
-}
-
-/**
- * OWNED `&` classification: reproduce the oracle's two-probe differential in the IR, then
- * apply the decision gates. Returns 'none' when this module cannot authoritatively decide
- * (list-parent graft, amp inside `:is()`, etc.) so the caller defers construction to the oracle.
- */
-function classifyAmpersand(
-  subject: Selector,
-  find: Selector,
-  partial: boolean
-): AmpVerdict {
-  const syms = new SymbolTable();
-  const irSubject = liftSel(subject, syms);
-  const irFind = liftSel(find, syms);
-
-  /*
-   * Only the single-branch subject/find common case is modeled here; OR-subjects with amp
-   * are deferred (cls 'none').
-   */
-  if (irSubject.branches.length !== 1) {
-    return { cls: 'none', gatedNotFound: false };
-  }
-  const subjectSeq = irSubject.branches[0]!;
-  const at = findAmpStep(subjectSeq);
-  if (!at) {
-    return { cls: 'none', gatedNotFound: false };
-  }
-  const ampAtom = subjectSeq[at.step]!.compound.atoms[at.atom]!;
-  if (ampAtom.kind !== 'amp' || !ampAtom.resolved) {
-    return { cls: 'none', gatedNotFound: false };
-  }
-
-  const resolved = resolvedFormSeq(subjectSeq, at);
-  if (!resolved) {
-    return { cls: 'none', gatedNotFound: false };
-  }
-  const empty = emptyFormSeq(subjectSeq, at);
-
-  const resolvedMatch = seqMatchesFind(resolved, irFind);
-  const emptyMatch = seqMatchesFind(empty, irFind);
-
-  if (resolvedMatch && !emptyMatch) {
-    /*
-     * Crossing detected. One decision gate stands (Gate 2, doc-verified): a SIMPLE find that
-     * matches only the parent-grafted (RESOLVED) form collapses to NOT_FOUND — "parent-only".
-     * (The former Gate 1 "relative-partial downgrade" was WITHDRAWN as an invalid-input artifact
-     * — a root-level leading-`>` subject is not a reachable shape; see EXTEND-INDEX-DESIGN.md.)
-     */
-    const findIsSimple = isNode(find, N.SimpleSelector);
-    if (!partial && findIsSimple) {
-      return { cls: 'crossing', gatedNotFound: true };
-    }
-    return { cls: 'crossing', gatedNotFound: false };
-  }
-  if (emptyMatch) {
-    return { cls: 'child-only', gatedNotFound: false };
-  }
-  return { cls: 'none', gatedNotFound: false };
-}
-
-/**
- * ── PUBLIC ENTRY ──────────────────────────────────────────────────────────
- * Same contract as `extendSelector`. The prototype's OWNED contribution is the
- * index-driven discovery gate; the closed rewrite/materialize is REUSED from
- * extend.ts (per the design). The differential test proves the combination is
- * byte-identical to the pure oracle across the case ladder.
- */
-export function extendByIndex(
-  target: ExtendInput,
-  find: Selector,
-  extendWith: Selector,
-  partial: boolean
-): ExtendOutput {
-  const targetSel: Selector = Array.isArray(target)
-    ? new SelectorList(target as SelectorList['value'])
-    : target;
-
-  if (partial && find.valueOf() === extendWith.valueOf()) {
-    return targetSel;
-  }
-
-  /*
-   * `&` SEAM: discovery OWNS the classification. When the subject carries a resolved amp we
-   * reproduce the oracle's two-probe differential + decision gates HERE; a misclassification
-   * diverges from the oracle. Construction (hoist / in-place fold) is reused from extend.ts.
-   */
-  if (hasAmpersand(targetSel)) {
-    const verdict = classifyAmpersand(targetSel, find, partial);
-    if (verdict.cls === 'crossing' || verdict.cls === 'child-only') {
-      if (verdict.gatedNotFound) {
-        return 'NOT_FOUND';
-      }
-
-      /*
-       * crossing (→ hoist), gated-in-place, and child-only all resolve to a real extend; the
-       * reused fold + `handleAmpersandBoundaryCrossing` build the exact (hoisted/in-place) output.
-       */
-      return extendSelector(target, find, extendWith, partial);
-    }
-    if (verdict.cls === 'none') {
-      /*
-       * We could not authoritatively classify (list-parent graft, amp-in-`:is()`, unmodeled
-       * shape). Fall back to the oracle for BOTH the decision and construction.
-       */
-      return extendSelector(target, find, extendWith, partial);
-    }
-  }
-
-  const discovery = discover(targetSel, find, partial);
-  if (!discovery.matched) {
-    /*
-     * Discovery says no match. With no `&` in play the index is AUTHORITATIVE: `:is()`
-     * grafting is modeled soundly in reachableSyms. A find carrying its own constructor
-     * atom is delegated (extendWith `:is()` extraction lives in the oracle fold).
-     */
-    if (!hasConstructorAtoms(find)) {
-      return 'NOT_FOUND';
-    }
-  }
-
-  // REUSED REWRITE: hand off the closed constructor surgery to extend.ts.
-  return extendSelector(target, find, extendWith, partial);
 }
 
 function anyAtom(sel: Selector, pred: (a: Atom) => boolean): boolean {
@@ -987,9 +768,9 @@ function extendFindSideGraftWholeMatch(
 /* ============================================================================
  * OWN-CONSTRUCTION ENGINE (`extendByIndexOwn`)
  * ============================================================================
- * The engine above (`extendByIndex`) delegates OUTPUT to `extendSelector`, which
- * makes its accept-side classification untestable (comparing a delegated result to
- * the oracle is tautological). This engine CONSTRUCTS output ITSELF from the IR,
+ * A delegating engine (handing OUTPUT to `extendSelector`) has an untestable accept-side
+ * classification — comparing a delegated result to the oracle is tautological. This engine
+ * instead CONSTRUCTS output ITSELF from the IR,
  * with NO `extendSelector` / `applyExtendsToSelector` fallback. Any shape it cannot
  * yet build returns the `UNSUPPORTED` sentinel — never a silent delegation — so the
  * real-corpus differential goes RED and the coverage frontier is honest.
