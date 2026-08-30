@@ -17,6 +17,40 @@ Base at dispatch: `origin/dev` @ `93c67d0ae`.
 
 ---
 
+## ⟢ RECONCILIATION 2026-08-30 (origin/dev @ `dd0ce15d9`, parseman `^0.50.1`) — READ FIRST
+
+The top-matter below and much of the lane history are frozen at parseman 0.48.1
+and **undercount what has landed**. Verified against the code on 2026-08-30:
+
+- **Stage A (parseman compose lifts) — LANDED** (dev on `^0.50.1`; the §3.2
+  blocker is paid).
+- **Stage B css leaf-factoring — LANDED**: `simpleSelectorAtom`, `calcValueAtom`,
+  `valueAtom` are named + `g.`-referenced; `TopLevel*` selectors were **collapsed
+  away** (`7cb55892d`), not re-pointed — COMPOSE-SPEC §7's "still needed
+  `TopLevelCompoundSelector` twin" is obsolete.
+- **§9 CST convergence — LANDED**: main tower + batch-2 (`4c2b9dc93`).
+- **§9(a) nested `RelativeSelector` (P29) — LANDED in all four dialects**
+  (`9612d624b`); css + jess now ACCEPT `.parent { > .child }`. COMPOSE-SPEC §9's
+  "css + jess REJECT it" is contradicted by the code.
+- **At-rule prelude convergence — substantially LANDED** on dev (the
+  `at-prelude-superset-convergence` branch is 177 behind / 1 ahead = superseded).
+- **Backlog: #41, #50, #58 — LANDED.**
+
+**GENUINELY REMAINING grammar cleanup:**
+1. **Stage C compose — NOT STARTED in any dialect** (`grep cssBaseRules` over the
+   three supersets = 0 hits; `cssBaseRules` is defined at `css grammar.ts:3911`
+   but no superset imports it). scss→less→jess each still restate the full
+   skeleton (`composeLeaf([cssSyntax, …, rules(delta)])`). THE big unit,
+   structural-deletion + oracle-gated, one dialect at a time.
+2. §9(b) pseudo-arg tower merge (less `PseudoArgument*` ×37, jess `PseudoSelector*`
+   tower) — structural merge, oracle-gated.
+3. §9(c) less simple-selector leaf / `LESS_SELECTOR_TYPES` LS special-case.
+4. §9(d) `Nth*` name convergence — byte-identical rename IFF reducers match (verify first).
+5. §7 css prelude residual (~1 commit, stale branch `b4273c50d`).
+6. Backlog remnants: #25 math.div, #26 trailing comma, #40/#43, #45/#46, #56 Opaque*, #62.
+
+---
+
 ## CLEANUP EXECUTION PROGRAM (the actual work — grammar edits SERIALIZED)
 
 The analysis lanes are the reconnaissance; THIS is the deliverable. Compose is a

@@ -355,9 +355,11 @@ inlined) — `094eb17a6`/`12d0754a6`/`2af6d7386`; LS fix `b3eda4dce`.
 | 7 | pseudo-arg `*ComplexTail` | less/jess | inline the wrapper | pass-through |
 
 **Entangled residuals (need per-case care, still bump-independent):**
-- **Nested relative selectors → `RelativeSelector` (SETTLED, `DESIGN-DECISIONS.md`
-  P29).** Not a pure rename and NOT bump-gated: `.parent { > .child }` is valid CSS
-  Nesting. Measured: scss ACCEPTS it, css + jess REJECT it — a css/jess gap, not a
+- **Nested relative selectors → `RelativeSelector` (SETTLED P29) — DONE `9612d624b`
+  (all four dialects; verified 2026-08-30).** css + jess now ACCEPT `.parent { > .child }`
+  (`css grammar.ts:1219`, `jess:6274-6303`). The paragraph below is retained as the
+  design rationale. Not a pure rename and NOT bump-gated: `.parent { > .child }` is valid CSS
+  Nesting. Was: scss ACCEPTS it, css + jess REJECT it — a css/jess gap, not a
   naming choice. Fix is ADDITIVE: the nested ruleset in all four accepts a leading
   combinator producing a **`RelativeSelector`** (context-dependent — a `RelativeSelector`
   only in a nesting context; the same production at the top is a `ComplexSelector`, so
