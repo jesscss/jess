@@ -344,7 +344,7 @@ in the same change; see [[grammar-renames-ripple-into-ungated-language-service]]
 `CompoundSelector`/`ComplexSelector`/`SelectorList`, leaf→`BasicSelector`, `ComplexTail`
 inlined) — `094eb17a6`/`12d0754a6`/`2af6d7386`; LS fix `b3eda4dce`.
 
-**Clean batch (AST-identical, ≤1 consumer edit) — IN FLIGHT `converge-selector-cst-batch2`:**
+**Clean batch (AST-identical, ≤1 consumer edit) — DONE `4c2b9dc93` (all six items 1,2,3,4,5,7; LS/DC consumers converged):**
 | # | target | dialects | current→canonical | AST (shared ctor) |
 |---|---|---|---|---|
 | 1 | keyframe leaf | less/scss/jess | `KeyframeSelector`→`SimpleSelector` | `simpleSelector` |
