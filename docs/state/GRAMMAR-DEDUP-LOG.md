@@ -37,11 +37,30 @@ and **undercount what has landed**. Verified against the code on 2026-08-30:
 - **Backlog: #41, #50, #58 — LANDED.**
 
 **GENUINELY REMAINING grammar cleanup:**
-1. **Stage C compose — NOT STARTED in any dialect** (`grep cssBaseRules` over the
-   three supersets = 0 hits; `cssBaseRules` is defined at `css grammar.ts:3911`
-   but no superset imports it). scss→less→jess each still restate the full
-   skeleton (`composeLeaf([cssSyntax, …, rules(delta)])`). THE big unit,
-   structural-deletion + oracle-gated, one dialect at a time.
+1. **Stage C compose — BLOCKED / re-scoped (finding 2026-08-30, owner order less→scss→jess).**
+   A less-selector-compose attempt STOPPED with verified evidence that "delete the
+   skeleton, inherit from css" does NOT hold as framed:
+   - less's selector tower is a **genuine §4.2 override**, not a pure restatement:
+     `staticCombinator` (`less grammar.ts:2413`) includes `|` (css `combinator :496`
+     excludes it — namespace prefix); the compound loop carries `not(whenGuardAhead)`
+     (`:2593`, the Less mixin-guard lookahead) css lacks; the ruleset selector is the
+     extend-threaded `selectorListWithExtends` (`:6440`), not plain `SelectorList`.
+     Inheriting css's parents would change less's accepted language ⇒ KEEP as overrides.
+   - **No CST-mode base to compose on:** `cssBaseRules` is `{ hostMode: 'ast' }` only
+     (`css :3911`); less builds FOUR variants (ast/cst/positions ×2). A `cssBaseCstRules`
+     (or host-mode-parametric base) must be packaged before any superset cst variant
+     can inherit.
+   - Switching to `compose([cssBaseRules, delta])` makes ALL ~200 css rules the floor
+     for EVERY subsystem — a whole-grammar re-architecture, not selector-local.
+   Consistent with §8 STEP-2 (the scss pilot found the selector tower a genuine
+   CST-level override, correcting §4.1). **Realized byte payoff is modest** (lane-3:
+   ~5–9% vanishes outright); most superset structure is genuine override. The
+   convergence (names/shapes→css) + factoring + shared recognition (parser-shared) +
+   canonical AST are the cleanup that HAS landed. Whether/how to pursue the full
+   compose re-architecture is an OWNER decision (escalated 2026-08-30) — see the
+   enabling prerequisites the agent triaged: package a CST-mode base; externalize
+   css-parser/parser-shared in less-parser `tsdown.config.ts`; keep less's selector
+   parents as overrides.
 2. §9(b) pseudo-arg tower merge (less `PseudoArgument*` ×37, jess `PseudoSelector*`
    tower) — structural merge, oracle-gated. **Absorbs §9(d)** (the `Nth*` node-layer
    is part of this tower). Entangles with Stage C (less/jess) — likely folded there.
