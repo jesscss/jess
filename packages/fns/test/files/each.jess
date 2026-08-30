@@ -1,12 +1,11 @@
-$list: 1, 2, 3;
+@import { each } from '@jesscss/fns';
 
-iterate($value, $key) {
-  .icon-${value} {
+@let list: 1, 2, 3;
+
+@mixin iterate (value, key) {
+  .icon-$(value) {
     width: $value;
     height: $key;
   }
 }
-
-$for ($value, $key of $list) {
-  $ > iterate($value, $key);
-}
+@include $each(list, iterate);

@@ -1,7 +1,7 @@
-@-compose "./config.jess" as cfg;
+@import { config as baseConfig } from './config.jess';
+@let config: $baseConfig;
+@let colors: $config.colors;
 
-$config: $cfg.config;
-$colors: $config.colors;
 
 .rule {
   color: $colors.primary;

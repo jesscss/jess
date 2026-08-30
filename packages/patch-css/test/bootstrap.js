@@ -1,18 +1,18 @@
-const puppeteer = require('puppeteer');
-
+const puppeteer = require('puppeteer')
+const { expect } = require('chai')
 const globalVariables = {
   browser: global.browser,
   expect: global.expect
-};
+}
 
 // puppeteer options
 const opts = {
   headless: true,
   timeout: 10000
-};
+}
 
 const startServer = () => new Promise((resolve) => {
-  let browserSync = require('browser-sync').create();
+  const browserSync = require('browser-sync').create()
   browserSync.init({
     watch: true,
     open: false,
@@ -21,26 +21,25 @@ const startServer = () => new Promise((resolve) => {
       directory: true
     },
     callbacks: {
-      ready() {
-        resolve(browserSync);
+      ready(err, bs) {
+        resolve(browserSync)
       }
     }
-  });
-});
-let browserSync;
-let browser;
+  })
+})
+let browserSync
 // expose variables
-beforeAll(async () => {
-  browserSync = await startServer();
-  global.expect = expect;
-  browser = global.browser = await puppeteer.launch(opts);
-});
+before (async () => {
+  browserSync = await startServer()
+  global.expect = expect
+  global.browser = await puppeteer.launch(opts)
+})
 
 // close browser and reset global variables
-afterAll(() => {
-  browser.close();
-  browserSync.exit();
+after (() => {
+  browser.close()
+  browserSync.exit()
 
-  global.browser = globalVariables.browser;
-  global.expect = globalVariables.expect;
-});
+  global.browser = globalVariables.browser
+  global.expect = globalVariables.expect
+})

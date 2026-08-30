@@ -1,11 +1,15 @@
 {
   "extends": "../../tsconfig.json",
+  "references": [
+    { "path" : "../css-parser" },
+    { "path" : "../parser" },
+    { "path" : "../patch-css" }
+  ],
   "compilerOptions": {
-    "noEmit": true,
     "composite": true,
     "outDir": "./lib",
-    "rootDir": "."
+    "rootDir": "./src"
   },
-  "include": ["src/**/*", "vitest.config.ts", "../../vitest.d.ts"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "lib"]
 }

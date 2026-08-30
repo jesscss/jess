@@ -1,7 +1,6 @@
-@-compose "./other.jess";
+@import styles from './other.jess';
 
-$value: red;
-
+@let value: red;
 .box {
   color: $value;
 }

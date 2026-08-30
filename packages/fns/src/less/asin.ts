@@ -1,6 +1,0 @@
-import { unaryMath } from './math-helper.js';
-import { defineFunction } from '@jesscss/core';
-import type { Fn } from '@jesscss/core';
-
-/** `asin(value)` — inverse sine; result in `rad`. */
-export const asin: Fn = defineFunction('asin', unaryMath(Math.asin, 'rad'));

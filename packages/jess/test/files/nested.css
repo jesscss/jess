@@ -1,80 +1,60 @@
-.rule {
-  color: red;
-}
 *,
 *::before,
 *::after {
   box-sizing: inherit;
 }
-@media all {
-  a {
-    b {
-      color: rebeccapurple;
-    }
-  }
+.nested .rule {
+  color: red;
 }
-a {
-  color: blue;
-  @media all {
+a:hover,
+b:hover {
+  background: blue;
+}
+a + c,
+b + c {
+  background: blue;
+}
+[foo]a,
+[foo]b,
+[foo]c {
+  background: blue;
+}
+a + a,
+b + a,
+a + b,
+b + b {
+  background: blue;
+}
+@media all {
+  a b {
     color: rebeccapurple;
   }
 }
 a {
-  b {
-    one: 1;
-  }
-  c {
-    three: 3;
-    d {
-      five: 5;
-    }
-    four: 4;
+  color: blue;
+}
+@media all {
+  a {
+    color: rebeccapurple;
   }
 }
-a,
-b {
-  &:hover {
-    background: blue;
-  }
+a b {
+  one: 1;
 }
-a,
-b,
-c {
-  [foo]& {
-    background: blue;
-  }
+a b:hover {
+  two: 2;
 }
-a,
-b {
-  & + & {
-    background: blue;
-  }
+a c {
+  three: 3;
+  four: 4;
 }
-.parent {
-  & .child {
-    color: blue;
-  }
-  & > .direct {
-    color: red;
-  }
-  .outer & {
-    color: green;
-  }
-  :not(&) {
-    color: teal;
-  }
+a c d {
+  five: 5;
 }
-.block {
-  &__el {
-    color: blue;
-  }
-  &--mod {
-    color: red;
-  }
-  &-suffix {
-    color: green;
-  }
-  &-1 {
-    color: teal;
-  }
+.box {
+  a: b;
+}
+.box,
+.box {
+  a: b;
 }

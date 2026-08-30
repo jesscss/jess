@@ -1,0 +1,32 @@
+@let value: something;
+
+@let collection {
+  foo {
+    bar {
+      deeper: collection;
+    }
+  }
+  sibling: declaration;
+}
+
+$value.class {}
+.class$something {}
+
+@let foo: $(value.foo && value.bar);
+@let bar: $(value.foo || value.bar);
+@let compare: $(foo > bar);
+
+.box {
+  one: $collection.foo.bar.deeper;
+  two: $some(call, with, args).foo[ ident ].stuff;
+  three: $(
+    var // )
+  ) four;
+  four: $url("???");
+  width: $(20)px;
+  width: $(1 + 1)px;
+}
+
+.box {
+  area: $area(5);
+}

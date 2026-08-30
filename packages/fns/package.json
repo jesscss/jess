@@ -1,109 +1,27 @@
 {
   "name": "@jesscss/fns",
-  "type": "module",
   "publishConfig": {
     "access": "public"
   },
-  "version": "2.0.0-alpha.5",
-  "engines": {
-    "node": "^20.19.0 || >=22.18.0"
-  },
+  "version": "1.0.8-alpha.8",
   "description": "Jess functions module",
-  "main": "lib/index.cjs",
-  "types": "lib/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./lib/index.d.ts",
-      "import": "./lib/index.js",
-      "require": "./lib/index.cjs"
-    },
-    "./less": {
-      "types": "./lib/less/index.d.ts",
-      "import": "./lib/less/index.js",
-      "require": "./lib/less/index.cjs"
-    },
-    "./less/registry": {
-      "types": "./lib/less/registry.d.ts",
-      "import": "./lib/less/registry.js",
-      "require": "./lib/less/registry.cjs"
-    },
-    "./sass": {
-      "types": "./lib/sass/index.d.ts",
-      "import": "./lib/sass/index.js",
-      "require": "./lib/sass/index.cjs"
-    },
-    "./sass/registry": {
-      "types": "./lib/sass/registry.d.ts",
-      "import": "./lib/sass/registry.js",
-      "require": "./lib/sass/registry.cjs"
-    },
-    "./sass/color": {
-      "types": "./lib/sass/color/index.d.ts",
-      "import": "./lib/sass/color/index.js",
-      "require": "./lib/sass/color/index.cjs"
-    },
-    "./sass/list": {
-      "types": "./lib/sass/list/index.d.ts",
-      "import": "./lib/sass/list/index.js",
-      "require": "./lib/sass/list/index.cjs"
-    },
-    "./sass/map": {
-      "types": "./lib/sass/map/index.d.ts",
-      "import": "./lib/sass/map/index.js",
-      "require": "./lib/sass/map/index.cjs"
-    },
-    "./sass/math": {
-      "types": "./lib/sass/math/index.d.ts",
-      "import": "./lib/sass/math/index.js",
-      "require": "./lib/sass/math/index.cjs"
-    },
-    "./sass/string": {
-      "types": "./lib/sass/string/index.d.ts",
-      "import": "./lib/sass/string/index.js",
-      "require": "./lib/sass/string/index.cjs"
-    },
-    "./shared": {
-      "types": "./lib/shared/index.d.ts",
-      "import": "./lib/shared/index.js",
-      "require": "./lib/shared/index.cjs"
-    },
-    "./registry": {
-      "types": "./lib/registry.d.ts",
-      "import": "./lib/registry.js",
-      "require": "./lib/registry.cjs"
-    },
-    "./package.json": "./package.json"
-  },
+  "main": "lib/index",
+  "types": "lib/index",
   "files": [
     "lib"
   ],
   "scripts": {
-    "ci": "pnpm build && pnpm test",
+    "ci": "yarn build && yarn test",
     "prepublishOnly": "npm run build",
-    "build": "pnpm compile",
-    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
-    "test": "cross-env TEST=true vitest",
-    "lint:fix": "eslint --fix '**/*.{js,ts}'",
-    "lint": "eslint '**/*.{js,ts}'"
+    "build": "yarn clean && yarn compile",
+    "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
+    "compile": "tsc -b tsconfig.json",
+    "test": "ts-mocha test/**/*.ts"
   },
-  "dependencies": {
-    "@jesscss/core": "workspace:*",
-    "@jesscss/awaitable-pipe": "workspace:*",
-    "big.js": "^7.0.1",
-    "color-name": "~2.0.0",
-    "lodash-es": "^4.17.21",
-    "superstruct": "1.0.3"
-  },
-  "devDependencies": {
-    "@types/big.js": "^6.2.2",
-    "@types/lodash-es": "^4.17.8"
-  },
-  "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
+  "author": "Matthew Dean",
   "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/jesscss/jess/issues"
-  },
-  "homepage": "https://github.com/jesscss/jess#readme",
-  "module": "lib/index.js",
-  "sideEffects": false
+  "dependencies": {
+    "jess": "^1.0.8-alpha.8",
+    "lodash": "^4.17.20"
+  }
 }

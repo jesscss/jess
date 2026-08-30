@@ -1,5 +1,4 @@
-@-from "#jess/fns" import (rgb as jessRgb);
 .color {
-  color: jessRgb(1, 2, 3);
+  color: rgb(1, 2, 3);
   background-color: rgb(255 255 255 / 0.8);
 }

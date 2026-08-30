@@ -1,9 +1,0 @@
-{
-  "name": "@jesscss/less-corpus-fixture-deps",
-  "version": "0.0.0",
-  "private": true,
-  "description": "Install root for third-party packages that Less corpus fixtures @import by bare specifier. Fixtures live in the read-only less.js checkout and cannot declare their own dependencies, so the jess harness anchors module resolution here (see packages/jess/test/test-utils.ts resolveLessFixtureDepsRoot). Versions are pinned to whatever the maintained .css golden was generated against — do NOT float them.",
-  "dependencies": {
-    "bootstrap-less-port": "0.3.0"
-  }
-}

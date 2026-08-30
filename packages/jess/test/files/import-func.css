@@ -1,4 +1,3 @@
-@-from "./imports/compute.js" import (area);
 .box {
-  area: area(5);
+  area: 78.53981634;
 }

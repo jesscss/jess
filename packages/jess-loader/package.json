@@ -1,0 +1,24 @@
+{
+  "name": "jess-loader",
+  "version": "1.0.8-alpha.8",
+  "description": "Official Webpack loader for Jess",
+  "main": "lib/index",
+  "author": "Matthew Dean",
+  "license": "MIT",
+  "scripts": {
+    "ci": "yarn build && yarn test",
+    "prepublishOnly": "npm run build",
+    "build": "yarn clean && yarn compile",
+    "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
+    "compile": "tsc -b tsconfig.json",
+    "test": "ts-mocha test/**/*.ts"
+  },
+  "peerDependencies": {
+    "jess": "^1.0.8-alpha.2",
+    "webpack": "^5.0.0"
+  },
+  "devDependencies": {
+    "jess": "^1.0.8-alpha.8",
+    "webpack": "^5.19.0"
+  }
+}

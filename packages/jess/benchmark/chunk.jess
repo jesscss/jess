@@ -1,4 +1,3 @@
-@charset "utf-8";
 #yelow {
   #short {
     color: #fea;
@@ -24,10 +23,10 @@
 }
 
 #overflow {
-  .a { color: $(#111111 - #444444); } // #000000
-  .b { color: $(#eee + #fff); } // #ffffff
-  .c { color: $(#aaa * 3); } // #ffffff
-  .d { color: $(#00ee00 + #009900); } // #00ff00
+  .a { color: #111111 - #444444; } // #000000
+  .b { color: #eee + #fff; } // #ffffff
+  .c { color: #aaa * 3; } // #ffffff
+  .d { color: #00ee00 + #009900; } // #00ff00
 }
 
 #grey {
@@ -61,7 +60,7 @@
  */
 
 ////////////////
-$var2: "content";
+@let var2: "content";
 ////////////////
 
 /* Colors
@@ -77,8 +76,7 @@ $var2: "content";
 
 /* @group Variables
 ------------------- */
-/* boo */
-#comments {
+#comments /* boo */ {
   /**/ // An empty comment
   color: red; /* A C-style comment */
   background-color: orange; // A little comment
@@ -99,7 +97,7 @@ $var2: "content";
   }
 */
 
-#last { color: blue; }
+#last { color: blue }
 //
 .comma-delimited {
   background: url(bg.jpg) no-repeat, url(bg.png) repeat-x top left, url(bg);
@@ -119,11 +117,11 @@ p:not([class*="lead"]) {
   color: black;
 }
 
-input[type="text"].class#id[attr="32"]:not(.x) {
+input[type="text"].class#id[attr="32"]:not(1) {
                                       color: white;
                                     }
 
-div#id.class[a="1"][b="2"].class:not(.x) {
+div#id.class[a="1"][b="2"].class:not(1) {
                         color: white;
                       }
 
@@ -156,6 +154,7 @@ form[data-disabled] {
 p::before {
   color: black;
 }
+@charset "utf-8";
 div { color: black; }
 div { width: 99%; }
 
@@ -214,7 +213,7 @@ p + h1 {
 
 #shorthands {
   border: 1px solid #000;
-  font: $(12px / 16px) Arial;
+  font: 12px/16px Arial;
   margin: 1px 0;
   padding: 0 auto;
   background: url("http://www.lesscss.org/spec.html") no-repeat 0 4px;
@@ -223,7 +222,7 @@ p + h1 {
 #more-shorthands {
   margin: 0;
   padding: 1px 0 2px 0;
-  font: normal ~"small/20px" 'Trebuchet MS', Verdana, sans-serif;
+  font: normal small/20px 'Trebuchet MS', Verdana, sans-serif;
 }
 
 .misc {
@@ -233,6 +232,7 @@ p + h1 {
   background-color: #009998;
   background-image: url(images/image.jpg);
   background: -webkit-gradient(linear, left top, left bottom, from(red), to(blue));
+  margin: ;
 }
 
 #important {
@@ -242,7 +242,7 @@ p + h1 {
 }
 
 #functions {
-  $var1: 10;
+  @let var1: 10;
   color: color("red");
   width: increment(15);
   height: undefined("self");
@@ -251,237 +251,237 @@ p + h1 {
 }
 
 #built-in {
-  $r: 32;
+  @let r: 32;
   escaped: e("-Some::weird(#thing, y)");
   lighten: lighten(#ff0000, 50%);
   darken: darken(#ff0000, 50%);
   saturate: saturate(#29332f, 20%);
   desaturate: desaturate(#203c31, 20%);
   greyscale: greyscale(#203c31);
-  // format: %("rgb(%d, %d, %d)", $r, 128, 64);
+  // format: %("rgb(%d, %d, %d)", @r, 128, 64);
   // format-string: %("hello %s", "world");
-  // eformat: e(%("rgb(%d, %d, %d)", $r, 128, 64));
+  // eformat: e(%("rgb(%d, %d, %d)", @r, 128, 64));
 }
 
-$a: 100%;
-$var1: $a;
+@let a: 100%;
+@let var1: $a;
 
 .lazy-eval {
   width: $var1;
 }
-mixinx($a: 1px, $b: 50%) {
+@mixin mixinx (a: 1px, b: 50%) {
   width: $a * 5;
   height: $b - 1%;
 }
 
-mixina($style, $width, $color: black) {
+@mixin mixina (style, width, color: black) {
   border: $width $style $color;
 }
 
-mixiny
-($a: 0, $b: 0) {
+@mixin mixiny
+(a: 0, b: 0) {
   margin: $a;
   padding: $b;
 }
 
-hidden() {
+@mixin hidden {
   color: transparent;
 }
 
-twoArgs() {
+@mixin twoArgs {
   color: blue;
-  $ > mixinx(2px, 100%);
-  $ > mixina(dotted, 2px);
+  @include mixinx(2px, 100%);
+  @include mixina(dotted, 2px);
 }
 
-oneArg() {
-  $ > mixinx(3px);
+@mixin oneArg {
+  @include mixinx(3px);
 }
 
-noParens() {
-  $ > mixinx();
+@mixin noParens {
+  @include mixinx();
 }
 
-noArgs() {
-  $ > mixinx();
+@mixin noArgs {
+  @include mixinx();
 }
 
 .var-args {
-  $var1: 9;
-  $ > mixinx($var1, $var1 * 2);
+  @let var1: 9;
+  @include mixinx($var1, $var1 * 2);
 }
 
 .multi-mix {
-  $ > mixinx(2px, 30%);
-  $ > mixiny(4, 5);
+  @include mixinx(2px, 30%);
+  @include mixiny(4, 5);
 }
 
-maxa($arg1: 10, $arg2: #f00) {
+@mixin maxa(arg1: 10, arg2: #f00) {
   padding: $arg1 * 2px;
   color: $arg2;
 }
 
 body {
-  $ > maxa(15);
+  @include maxa(15);
 }
 
-$glob: 5;
-globalMixin($a: 2) {
-  width: $glob + $a;
+@let glob: 5;
+@mixin globalMixin(a:2) {
+  width: $(glob + a);
 }
 
 .scope-mix {
-  $ > globalMixin(3);
+  @include globalMixin(3);
 }
 
-nestedRuleset($width: 200px) {
+@mixin nestedRuleset (width: 200px) {
   width: $width;
   .column { margin: $width; }
 }
 .content {
-  $ > nestedRuleset(600px);
+  @include nestedRuleset(600px);
 }
 
 //
 
-sameVarName2($radius) {
+@mixin sameVarName2(radius) {
   radius: $radius;
 }
-sameVarName($radius) {
-  $ > sameVarName2($radius);
+@mixin sameVarName(radius) {
+  @include sameVarName2($radius);
 }
 #same-var-name {
-  $ > sameVarName(5px);
+  @include sameVarName(5px);
 }
 
 //
 
-varInside() {
-  $var1: 10px;
+@mixin varInside () {
+  @let var1: 10px;
   width: $var1;
 }
-#var-inside { $ > varInside(); }
-mixInner($var1) {
+#var-inside { @include varInside(); }
+@mixin mixInner (var1) {
   border-width: $var1;
 }
 
-mix($a: 10) {
+@mixin mix (a: 10) {
   .inner {
     height: $a * 10;
 
     .innest {
       width: $a;
-      $ > mixInner($a * 2);
+      @include mixInner($a * 2);
     }
   }
 }
 
 .class {
-  $ > mix(30);
+  @include mix(30);
 }
 
-mixin() {
+@mixin mixin () {
   zero: 0;
 }
 /** Over-loading mixins supported */
-// mixin($a: 1px) {
+// @mixin mixin (a: 1px) {
 //   one: 1;
 // }
-// mixin($a) {
+// @mixin mixin (a) {
 //   one-req: 1;
 // }
-// mixin($a: 1px, $b: 2px) {
+// @mixin mixin (a: 1px, b: 2px) {
 //   two: 2;
 // }
 
-// mixin($a, $b, $c) {
+// @mixin mixin (a, b, c) {
 //   three-req: 3;
 // }
 
-// mixin($a: 1px, $b: 2px, $c: 3px) {
+// @mixin mixin (a: 1px, b: 2px, c: 3px) {
 //   three: 3;
 // }
 
 .zero {
-  $ > mixin();
+  @include mixin();
 }
 
 // .one {
-//   $ > mixin(1);
+//   .mixin(1);
 // }
 
 // .two {
-//   $ > mixin(1, 2);
+//   .mixin(1, 2);
 // }
 
 // .three {
-//   $ > mixin(1, 2, 3);
+//   .mixin(1, 2, 3);
 // }
 
 //
 
-mixout($left: 'left') {
+@mixin mixout (left: 'left') {
   left: 1;
 }
 
-// mixout('right') {
+// .mixout ('right') {
 //   right: 1;
 // }
 
 // .left {
-//   $ > mixout('left');
+//   .mixout('left');
 // }
 // .right {
-//   $ > mixout('right');
+//   .mixout('right');
 // }
 
 //
 
-border($side, $width) {
+@mixin border (side, width) {
   color: black;
-  $ > borderSide($side, $width);
+  @include borderSide($side, $width);
 }
 
-borderSide($left, $w) {
+@mixin borderSide (left, w) {
   border-left: $w;
 }
-// borderSide(right, $w) {
-//   border-right: $w;
+// .border-side (right, @w) {
+//   border-right: @w;
 // }
 
 .border-right {
-  $ > border(right, 4px);
+  @include border(right, 4px);
 }
 .border-left {
-  $ > border(left, 4px);
+  @include border(left, 4px);
 }
 
 //
 
 
-borderRadius($r) {
+@mixin borderRadius (r) {
   both: $r * 10;
 }
-// borderRadius($r, left) {
-//   left: $r;
+// .border-radius (@r, left) {
+//   left: @r;
 // }
-// borderRadius($r, right) {
-//   right: $r;
+// .border-radius (@r, right) {
+//   right: @r;
 // }
 
 .only-right {
-  $ > borderRadius(33, right);
+  @include borderRadius(33, right);
 }
 .only-left {
-  $ > borderRadius(33, left);
+  @include borderRadius(33, left);
 }
 .left-right {
-  $ > borderRadius(33);
+  @include borderRadius(33);
 }
 .mixin { border: 1px solid black; }
 .mixout { border-color: orange; }
-borders() { border-style: dashed; }
-.borders { $ > borders(); }
+@mixin borders { border-style: dashed; }
+.borders { @include borders(); }
 
 #namespace {
   .borders {
@@ -494,33 +494,35 @@ borders() { border-style: dashed; }
     }
   }
 }
-#theme > .mixin {
-  background-color: grey;
+#theme {
+  > .mixin {
+    background-color: grey;
+  }
 }
-container() {
+@mixin container {
   color: black;
-  $ > mixin();
-  $ > mixout();
+  @include mixin();
+  @include mixout();
   // #theme > .mixin;
 }
 #container {
-  $ > container();
+  @include container();
 }
 
 #header {
   .milk {
     color: white;
-    $ > mixin();
+    @include mixin();
     // #theme > .mixin;
   }
   #cookie {
     .chips {
       // #namespace .borders;
       .calories {
-        $ > container();
+        @include container();
       }
     }
-    $ > borders();
+    @include borders();
   }
 }
 // .secure-zone { #namespace .biohazard .man; }
@@ -528,31 +530,31 @@ container() {
 //   #namespace > .borders;
 // }
 #operations {
-  color: $(#110000 + #000011 + #001100); // #111111
-  height: $(10px / 2px + 6px - 1px * 2); // 9px
-  width: $(2 * 4 - 5em); // 3em
+  color: #110000 + #000011 + #001100; // #111111
+  height: 10px / 2px + 6px - 1px * 2; // 9px
+  width: 2 * 4 - 5em; // 3em
   .spacing {
-    height: $(10px / 2px + 6px - 1px * 2);
-    width: $(2 * 4 - 5em);
+    height: 10px / 2px+6px-1px*2;
+    width: 2  * 4-5em;
   }
-  subtraction: $(20 - 10 - 5 - 5); // 0
-  division: $(20 / 5 / 4); // 1
+  subtraction: 20 - 10 - 5 - 5; // 0
+  division: 20 / 5 / 4; // 1
 }
 
-$x: 4;
-$y: 12em;
+@let x: 4;
+@let y: 12em;
 
 .with-variables {
   height: $x + $y; // 16em
-  width: $(12 + $y); // 24em
-  size: $(5cm - $x); // 1cm
+  width: 12 + $y; // 24em
+  size: 5cm - $x; // 1cm
 }
 
-$z: -2;
+@let z: -2;
 
 .negative {
-  height: $(2px + $z); // 0px
-  width: $(2px - $z); // 4px
+  height: 2px + $z; // 0px
+  width: 2px - $z; // 4px
 }
 
 .shorthands {
@@ -561,97 +563,105 @@ $z: -2;
 
 .colors {
   color: #123; // #112233
-  border-color: $(#234 + #111111); // #334455
-  background-color: $(#222222 - #fff); // #000000
+  border-color: #234 + #111111; // #334455
+  background-color: #222222 - #fff; // #000000
   .other {
-    color: $(2 * #111); // #222222
-    border-color: $(#333333 / 3 + #111); // #222222
+    color: 2 * #111; // #222222
+    border-color: #333333 / 3 + #111; // #222222
   }
 }
 .parens {
-  $var1: 1px;
-  border: $($var1 * 2) solid black;
-  margin: $($var1 * 1) $($var1 + 2) $(4 * 4) 3;
-  width: $(6 * 6);
-  padding: 2px $(6px * 6px);
+  @let var1: 1px;
+  border: ($var1 * 2) solid black;
+  margin: ($var1 * 1) ($var1 + 2) (4 * 4) 3;
+  width: (6 * 6);
+  padding: 2px (6px * 6px);
 }
 
 .more-parens {
-  $var1: $(2 * 2);
-  padding: $(2 * $var1) 4 4 $($var1 * 1px);
-  width: $($var1 * $var1 * 6);
-  height: $(7 * 7 + 8 * 8);
-  margin: $(4 * 10 / 2 - $var1 * 2);
-  //margin: $(6 * 6)px;
+  @let var1: (2 * 2);
+  padding: (2 * $var1) 4 4 ($var1 * 1px);
+  width: ($var1 * $var1) * 6;
+  height: (7 * 7) + (8 * 8);
+  margin: 4 * (5 + 5) / 2 - ($var1 * 2);
+  //margin: (6 * 6)px;
 }
 
 .nested-parens {
-  width: $(2 * 4 * 9 - 1);
-  height: $(5 * 5 / 5 + 1);
+  width: 2 * (4 * (2 + (1 + 6))) - 1;
+  height: ((2+3)*(2+3) / (9-4)) + 1;
 }
 
 .mixed-units {
   margin: 2px 4em 1 5pc;
-  padding: $(2px + 4px) 1em 2px 2;
+  padding: (2px + 4px) 1em 2px 2;
 }
 #first > .one {
+  > #second .two > #deux {
+    width: 50%;
+    #third {
+      &:focus {
+        color: black;
+        #fifth {
+          > #sixth {
+            .seventh #eighth {
+              + #ninth {
+                color: purple;
+              }
+            }
+          }
+        }
+      }
+      height: 100%;
+    }
+    #fourth, #five, #six {
+      color: #110000;
+      .seven, .eight > #nine {
+        border: 1px solid black;
+      }
+      #ten {
+        color: red;
+      }
+    }
+  }
   font-size: 2em;
 }
-#first > .one > #second .two > #deux {
-  width: 50%;
-  #third {
-    height: 100%;
-  }
-  #third:focus {
-    color: black;
-    #fifth > #sixth .seventh #eighth + #ninth {
-      color: purple;
-    }
-  }
-  #fourth, #five, #six {
-    color: #110000;
-    .seven, .eight > #nine {
-      border: 1px solid black;
-    }
-    #ten {
-      color: red;
-    }
-  }
-}
-$x1: blue;
-$z1: transparent;
-$mixval: none;
+@let x1: blue;
+@let z1: transparent;
+@let mixval: none;
 
 .mixin {
-  $mixval: #989;
+  @let mixval: #989;
 }
 
 .tiny-scope {
   color: $mixval; // #989
-  $ > mixin();
+  @include mixin();
 }
 
 .scope1 {
-  $y: orange;
-  $z1: black;
+  @let y: orange;
+  @let z1: black;
   color: $x1; // blue
   border-color: $z1; // black
   .hidden {
-    $x: #131313;
+    @let x: #131313;
   }
   .scope2 {
-    $y: red;
+    @let y: red;
     color: $x1; // blue
     .scope3 {
-      $local: white;
+      @let local: white;
       color: $y; // red
       border-color: $z1; // black
       background-color: $local; // white
     }
   }
 }h1, h2, h3 {
-   a:hover, p:hover {
-     color: red;
+   a, p {
+     &:hover {
+       color: red;
+     }
    }
  }
 
@@ -686,23 +696,23 @@ td, input {
   content: '""#!&""';
   empty: '';
 }
-$a2: 2;
-$x2: $a2 * $a2;
-$y2: $x2 + 1;
-$z2: $x2 * 2 + $y2;
+@let a2: 2;
+@let x2: $a2 * $a2;
+@let y2: $x2 + 1;
+@let z2: $x2 * 2 + $y2;
 
 .variables {
   width: $z2 + 1cm; // 14cm
 }
 
-$b: $a2 * 10;
-$c: #888;
+@let b: $a2 * 10;
+@let c: #888;
 
-$fonts: "Trebuchet MS", Verdana, sans-serif;
-$f: $fonts;
+@let fonts: "Trebuchet MS", Verdana, sans-serif;
+@let f: $fonts;
 
-$quotes: "~" "~";
-$q: $quotes;
+@let quotes: "~" "~";
+@let q: $quotes;
 
 .variables {
   height: $b + $x2 + 0px; // 24px
@@ -713,14 +723,14 @@ $q: $quotes;
 
 /** Not supported */
 // .redefinition {
-//   $var1: 4;
-//   $var1: 2;
-//   $var1: 3;
+//   @let var1: 4;
+//   @let var1: 2;
+//   @let var1: 3;
 //   three: $var1;
 // }
 
 .values {
-  $a2: 'Trebuchet';
+  @let a2: 'Trebuchet';
   font-family: $a2, $a2, $a2;
 }
 
@@ -743,12 +753,12 @@ $q: $quotes;
 .mania
 { color: white; }
 
-.no-semi-column { color: white; }
+.no-semi-column { color: white }
 .no-semi-column {
   color: white;
-  white-space: pre;
+  white-space: pre
 }
-.no-semi-column {border: 2px solid white;}
+.no-semi-column {border: 2px solid white}
 .newlines {
   background: the,
   great,

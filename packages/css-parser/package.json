@@ -1,0 +1,32 @@
+{
+  "name": "@jesscss/css-parser",
+  "publishConfig": {
+    "access": "public"
+  },
+  "version": "1.0.8-alpha.6",
+  "description": "Jess CSS base parser",
+  "main": "lib/index",
+  "types": "lib/index",
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "ci": "yarn build && yarn test",
+    "prepublishOnly": "yarn build",
+    "build": "yarn clean && yarn compile",
+    "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
+    "compile": "tsc -b tsconfig.json",
+    "dev": "tsc -b tsconfig.json -w",
+    "test": "ts-mocha test/**/*.ts"
+  },
+  "author": "Matthew Dean",
+  "license": "MIT",
+  "dependencies": {
+    "chevrotain": "^7.1.0",
+    "xregexp": "^4.2.4"
+  },
+  "devDependencies": {
+    "@less/test-data": "^4.1.0",
+    "@types/xregexp": "^4.3.0"
+  }
+}

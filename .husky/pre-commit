@@ -1,6 +1,0 @@
-#!/usr/bin/env sh
-# Auto-stage transient project state so it is always included in commits
-git add docs/state/PROJECT_STATE.md 2>/dev/null || true
-# Fast gate only: lint the staged added/modified lines. The full build/test/
-# structural gate lives in PR CI and in `pnpm verify:pr`. Keep commits snappy.
-pnpm run precommit:lint
