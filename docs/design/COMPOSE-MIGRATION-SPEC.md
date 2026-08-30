@@ -183,7 +183,7 @@ tower collapses to a leaf override.
 |---|---|---|---|
 | **A** (parseman) | Fix §3.2: re-emit a composed base's `buildImports` into the downstream fused module | — | parseman full suite; cross-package probe fuses + parses AST-identical |
 | **B** (css) | §4.1 factoring: extract CSS's inlined choice-points into named leaf rules | — (parallel with A) | css parser suite + oracle AST/CST-identical; `check:macro` 0 |
-| **C** (supersets) | Per dialect (scss → less → jess): override genuine-divergent rules (§4.2) + additions (§4.3), widen the factored leaves (§4.1), **delete the inherited structural skeleton**, compose on `cssBaseRules` | A + B | §1 gates, one dialect at a time |
+| **C** (supersets) | Per dialect in **owner order `less → scss → jess`** (GRAMMAR-REBUILD-SPEC §0.1: `css → less → scss → jess`; the earlier "scss → less" here reordered an owner requirement and is corrected — §8's scss work was a mechanism PILOT, not the execution order; less is also the Less-v5 product priority): override genuine-divergent rules (§4.2) + additions (§4.3), widen the factored leaves (§4.1), **delete the inherited structural skeleton**, compose on `cssBaseRules` | A + B | §1 gates, one dialect at a time |
 | **D** | Re-measure the realized delta; ship 0.49.0 (publish is owner-only) | C | — |
 
 Stage A and Stage B are independent and run in parallel worktrees. Stage C is the
