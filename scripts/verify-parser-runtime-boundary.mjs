@@ -46,6 +46,13 @@ const recognizerMethods = new Set(['charCodeAt', 'charAt', 'codePointAt', 'exec'
 const sourceStringMethods = new Set(['indexOf', 'lastIndexOf', 'includes', 'startsWith', 'endsWith']);
 const reparseLikeName = /^parse(?:Css|Less|Scss|Jess)Fn(?:[A-Z][A-Za-z0-9_]*)?$/;
 
+/*
+ * Parseman combinators whose argument is a regex literal that is declarative
+ * grammar (macro-compiled into the parser), not handwritten runtime recognition:
+ * `regex(/…/)` and the `matches(/…/)` dispatch matcher.
+ */
+const GRAMMAR_REGEX_COMBINATORS = new Set(['regex', 'matches']);
+
 function sourceFiles(directory) {
   const paths = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -84,7 +91,13 @@ function parsemanRegexBindings(source) {
       continue;
     }
     for (const specifier of named.elements) {
-      if ((specifier.propertyName?.text ?? specifier.name.text) === 'regex') {
+      /*
+       * `regex(/…/)` and the `matches(/…/)` dispatch matcher are BOTH declarative
+       * Parseman grammar combinators: the regex is grammar input that macro-
+       * compiles into the parser artifact, not handwritten runtime recognition.
+       * A regex literal handed to either is on the grammar side of the boundary.
+       */
+      if (GRAMMAR_REGEX_COMBINATORS.has(specifier.propertyName?.text ?? specifier.name.text)) {
         bindings.add(specifier.name.text);
       }
     }
@@ -125,10 +138,11 @@ function isGrammarRegex(node, file, regexBindings) {
   const parent = node.parent;
 
   /*
-   * Parseman `regex(...)` is declarative grammar input and macro-compiles into
-   * the parser artifact. Recognition-only source modules may intentionally be
-   * named something other than a bare `grammar.ts`; the imported macro binding,
-   * rather than the filename, is the actual runtime-boundary proof.
+   * A Parseman `regex(...)` / `matches(...)` combinator argument is declarative
+   * grammar input and macro-compiles into the parser artifact. Recognition-only
+   * source modules may intentionally be named something other than a bare
+   * `grammar.ts`; the imported macro binding, rather than the filename, is the
+   * actual runtime-boundary proof.
    */
   return ts.isCallExpression(parent)
     && parent.arguments.includes(node)

@@ -41,6 +41,17 @@ describe('parser runtime boundary', () => {
     assert.deepEqual(findings.map(finding => finding.kind), ['regex-literal']);
   });
 
+  it('allows the macro-attributed Parseman matches() dispatch matcher (grammar, same as regex())', () => {
+    assert.deepEqual(scanParserSource('/tmp/grammar.ts', 'import { when, matches } from \'parseman\' with { type: \'macro\' }; const arm = when(matches(/\\.\\$/), Ref);'), []);
+    assert.deepEqual(scanParserSource('/tmp/grammar.ts', 'import { matches as pmMatches } from \'parseman\' with { type: \'macro\' }; const arm = pmMatches(/x\\(/);'), []);
+
+    // A `matches` that is not the Parseman import is still handwritten recognition.
+    assert.deepEqual(
+      scanParserSource('/tmp/builders.ts', 'import { matches } from \'parseman\'; const arm = matches(/x/);').map(finding => finding.kind),
+      ['regex-literal']
+    );
+  });
+
   it('detects direct, global, and aliased runtime regex construction', () => {
     const findings = scanParserSource('/tmp/builders.ts', [
       'const dynamic = new RegExp(pattern);',
