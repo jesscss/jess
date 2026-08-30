@@ -43,11 +43,22 @@ and **undercount what has landed**. Verified against the code on 2026-08-30:
    skeleton (`composeLeaf([cssSyntax, …, rules(delta)])`). THE big unit,
    structural-deletion + oracle-gated, one dialect at a time.
 2. §9(b) pseudo-arg tower merge (less `PseudoArgument*` ×37, jess `PseudoSelector*`
-   tower) — structural merge, oracle-gated.
-3. §9(c) less simple-selector leaf / `LESS_SELECTOR_TYPES` LS special-case.
-4. §9(d) `Nth*` name convergence — byte-identical rename IFF reducers match (verify first).
-5. §7 css prelude residual (~1 commit, stale branch `b4273c50d`).
-6. Backlog remnants: #25 math.div, #26 trailing comma, #40/#43, #45/#46, #56 Opaque*, #62.
+   tower) — structural merge, oracle-gated. **Absorbs §9(d)** (the `Nth*` node-layer
+   is part of this tower). Entangles with Stage C (less/jess) — likely folded there.
+3. §9(c) less simple-selector leaf / `LESS_SELECTOR_TYPES` LS special-case —
+   entangled with less mixin/extend heads; likely folded into Stage C (less).
+4. §9(d) `Nth*` name convergence — **VERIFIED-DEFER 2026-08-30** (agent
+   `chore/nth-cst-convergence`): name tokens already shared/converged; node-layer
+   `Nth*` are genuine per-dialect overrides (less rejects `:nth-child(.a)`, css/scss/jess
+   accept) — no byte-identical rename exists. Folds into §9(b). NOT a standalone unit.
+5. §7 css prelude residual — **CLOSED 2026-08-30** (no-op; css grammar byte-identical
+   between dev and the stale `at-prelude-superset-convergence` branch).
+6. `FunctionStatement` url/calc denylist (less `grammar.ts:3444`) — the negative-lookahead
+   `matches(/^(?!(?:url|calc)\($).+\($/i)` restates the url/calc exclusion already
+   single-sourced at `genericFunctionOpen` (`:3380` `not(keywords(['url(','calc(']))`).
+   Simplify to `when(endsWith('('), …)`; oracle-gated (confirm the regex wasn't load-bearing
+   for parseman backtracking). Owner-flagged 2026-08-30. Clean separable residual.
+7. Backlog remnants: #25 math.div, #26 trailing comma, #40/#43, #45/#46, #56 Opaque*, #62.
 
 ---
 
