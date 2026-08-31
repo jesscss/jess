@@ -125,6 +125,13 @@ jobs:
       - name: Macro-buildability check
         run: node scripts/check-macro-buildable.mjs --no-build
 
+      # Every dialect grammar's reducers must fuse under compose() — i.e. reference
+      # only imported helpers, never a module-scope helper defined in grammar.ts.
+      # css/less/scss/jess all sit at 0 rejects after the B0 hoist; this keeps them
+      # there (fix an offender by moving the helper into that dialect's grammar-helpers.ts).
+      - name: Reducer-purity gate (grammars must fuse under compose)
+        run: node scripts/probe/parseman-compose-reducer-census.mjs --check
+
       # --- static analysis --- (run explicitly, NOT via `pnpm ci`, which would
       # re-run lint + core-public-types a second time)
       - name: Lint
