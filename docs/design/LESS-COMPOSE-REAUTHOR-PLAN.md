@@ -9,65 +9,66 @@ delta (Stage C, owner order `css → less → scss → jess`).
 
 ---
 
-## ⚠ BLOCKED on parseman — read this before touching any grammar
+## ✅ Parseman is NOT the blocker — the work is a grammar-side helper hoist
 
-**This entire workstream is BLOCKED at the parseman level and MUST NOT start
-until that unblocks.** The governing record is
-`docs/architecture/parser/PRODUCTION-COMPOSE-FEASIBILITY.md` (ledger row **P22**
-in `docs/architecture/core/DESIGN-DECISIONS.md`), which this plan originally
-failed to consult. Its verdict: **`compose()` cannot fuse a reducer-bearing
-("production") grammar.** compose re-lowers every piece through IR and each
-node builder must be macro-static / self-contained; less has **208 productions
-rejected needing 69 free bindings**, PLUS block-bodied reducers that are **not
-IR-serializable at all** regardless of bindings. css fuses only because it has
-**0** local reducer helpers (all hoisted to `@jesscss/core/ast`); less has
-**224** (153 fns + 71 consts: `requireToken`, `foldOperation`, … ).
+**Correction (2026-08-31, superseding an earlier "blocked on parseman" banner).**
+Re-measured at parseman **0.50.4** (`PRODUCTION-COMPOSE-FEASIBILITY.md` §6, probe
+`scripts/probe/parseman-compose-reducer-census.mjs`) and corroborated by owner
+ledger **P28** (SETTLED 2026-08-15: *"compose proven end-to-end, parseman 0.49.0
+cross-module fix"*). Both parseman IR fixes the old 0.46.0 doc called for **already
+landed**: block-bodied reducers serialize (**0 structural rejects across all four
+grammars** — the exact 0.46.0 `unsupported BlockStatement` offender now classifies
+clean), and imported free bindings are carried via `buildImports` provenance. css
+already ships `cssBaseRules = compose([...])` and macro-fuses end-to-end (0 artifact
+fallbacks). **No parseman change is required.**
 
-**Confirmed still blocked at parseman 0.50.4** (2026-08-31): a real W0 flip
-attempt threw the exact documented error
-(`IR direct node builder … must be macro-static and self-contained; unsupported
-binding(s): requireToken`). The 0.50.4 recognizer-reroute fix was a DIFFERENT
-issue and does not touch this.
+**The ONE remaining blocker is grammar-side and mechanical: hoist each dialect's
+module-scope reducer helpers into importable modules (as css already did).** css
+has **0** local reducer helpers (all imported from `@jesscss/core/ast`); the census
+@0.50.4 shows the supersets are rejected ONLY by their local helpers:
 
-**The unblock is an upstream parseman IR change, not grammar work**
-(feasibility §3): let a `compose()` piece opt into the `compileLinkable` path
-that `composeLeaf`'s final piece already uses (closes both the free-binding and
-block-bodied halves — the smaller change), or carry the reducer's free bindings
-as an import manifest + add block-bodied-reducer IR support. Gate: the probe
-`scripts/probe/parseman-compose-feasibility.mjs` must report **CONTROL-1 and
-TREAT-3 both FUSED** before any convergence starts.
+| grammar | inline reducers | compose rejects | distinct local reducer-helper bindings to hoist |
+|---|---:|---:|---:|
+| css  | 130 | **0** | 0 (done) |
+| less | 247 | 236 | **106** |
+| scss | 146 | 140 | **55** |
+| jess | 160 | 156 | **70** |
 
-**So the everything below is the "plan for when it unblocks"** (feasibility §4).
-The classification is not wasted; the SEQUENCE is: parseman compose-feasibility
-fix → probe FUSES → css-parser byte-identity harness (prerequisite; css has NO
-oracle today) → per-`const` convergence review. Do not run W0 as a "3-edit
-flip"; it is not one.
+Hoisting these to importable modules (shared ones → `core/ast/grammar-helpers.ts`;
+dialect-specific → a new `*-grammar-helpers.ts`) clears the census to 0 and lets
+`compose([cssBaseRules, rules(delta)])` fuse. This is enforced by a gate
+(`no reducer helper defined in grammar.ts`) with css as the 0 proof-point.
+
+**Corrected SEQUENCE:** (Phase B0) hoist gate + helper hoist per dialect
+less→scss→jess, census→0 → (W0) compose-wiring flip, now a genuine behaviour-neutral
+change → convergence increments 1…10 (below). The cst-rehost probe (GO) still holds.
 
 ---
 
 ## ⏱ Progress tracker (single source of truth for this workstream)
 
 **Goal:** Less composes on `cssBaseRules` (OR-1 compliance) so that "valid CSS
-is valid in all dialects" holds by construction (feasibility §4 — the SCSS
-ident-start fork class becomes inexpressible), inheriting genuinely shared css
-shape; the delta keeps only genuine overrides + additions + widened leaves.
-Deletion payoff is modest by design (~11–20 rules) — **the win is
-correctness-by-construction + OR-1 single-sourcing, not shrinkage** (see §1).
+is valid in all dialects" holds by construction (P28; the SCSS ident-start fork
+class becomes inexpressible), inheriting genuinely shared css shape; the delta
+keeps only genuine overrides + additions + widened leaves. Deletion payoff is
+modest by design (~11–20 rules) — **the win is correctness-by-construction +
+OR-1 single-sourcing, not shrinkage** (see §1).
 
-**Cadence (once unblocked):** one increment at a time, each oracle-gated (same
-accepted language + emitted-CSS oracle + `check:macro` 0 fallbacks, all 4
-variants) and landed on dev green before the next. Alpha releases run in
-parallel and are never blocked by this work.
+**Cadence:** one increment at a time, each oracle-gated (same accepted language +
+emitted-CSS oracle + `check:macro` 0 fallbacks, all 4 variants) and landed on dev
+green before the next. Alpha releases run in parallel and are never blocked.
 
-**Current position:** ⚠ BLOCKED on the parseman compose-feasibility fix (above).
-The cst-rehost probe (base re-host) passed GO, but that is a SEPARATE, weaker
-question than delta self-containment, which is the real blocker.
+**Current position:** Phase B0 (helper hoist) is the active work — the true
+prerequisite for W0. No parseman dependency.
 
 | # | Increment | Status | Landed | Notes |
 |---|---|---|---|---|
-| **parseman** | compose-feasibility fix (compileLinkable opt-in) | ⚠ BLOCKER | — | upstream parseman lane; gate = feasibility probe CONTROL-1+TREAT-3 FUSED |
-| probe | cst-rehost verification (§2) | ☑ GO | probe 2026-08-31 | base re-hosts to cst+positions; base rules intact. Necessary, NOT sufficient — delta self-containment is the real wall |
-| **W0** | Compose-wiring flip (§2) | ⚠ BLOCKED | — | not a "3-edit flip"; needs the parseman fix first (attempt threw at 0.50.4) |
+| B0-gate | reducer-helper purity gate (census-probe check) | ◐ IN PROGRESS | — | css=0 baseline; ratchet less/scss/jess to 0 |
+| B0-less | hoist less's 106 local reducer helpers | ☐ TODO | — | dedup shared → core/ast; less-specific → less-grammar-helpers.ts; byte-identity gated |
+| B0-scss | hoist scss's 55 local reducer helpers | ☐ TODO | — | after less |
+| B0-jess | hoist jess's 70 local reducer helpers | ☐ TODO | — | after scss |
+| probe | cst-rehost verification (§2) | ☑ GO | probe 2026-08-31 | base re-hosts to cst+positions; still holds |
+| **W0** | Compose-wiring flip (§2) | ☐ TODO | — | genuine behaviour-neutral flip once B0-less clears less's census to 0 |
 | 1 | Inherit `Color` | ☐ TODO | — | firm converge |
 | 2 | Inherit `UnicodeRange` | ☐ TODO | — | firm converge |
 | 3 | Inherit `Dimension` | ☐ TODO | — | first oracle proof |

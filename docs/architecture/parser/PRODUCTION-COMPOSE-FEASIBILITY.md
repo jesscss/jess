@@ -12,6 +12,17 @@ precisely located, and it is small. Re-run
 Measured at `4f10f919e`, parseman **0.46.0** (`package.json:42`, `^0.46.0`, and
 the installed tree resolves to exactly 0.46.0).
 
+> **SUPERSEDED IN PART — re-measured at parseman 0.50.4 (2026-08-31). See §6.**
+> The 0.46.0 findings below are kept verbatim as the historical record, but the
+> headline verdict no longer holds: at 0.50.4 the **block-bodied-reducer blocker
+> is GONE** (0 structural rejects across all four grammars) and imported free
+> bindings are now **carried** via a `buildImports` provenance manifest. The one
+> remaining blocker is the free-binding half, and specifically the module-scope
+> **local reducer helpers** each superset still defines inline. `css-parser` has
+> already done the hoisting and ships `cssBaseRules = compose([…])`, which
+> **macro-fuses end-to-end** (0 artifact fallbacks in a real build). Read §6
+> before acting on anything in §1–§5.
+
 ---
 
 ## 1. What the installed parseman actually supports
@@ -224,3 +235,148 @@ document: the `P` rows in that ledger are **not in numeric order** — the tail
 runs P18, P19, P21, P10, P20, P22 — so a scan for a sorted sequence stops at P21
 and concludes P22 is absent. Never infer a ledger row is missing from ordering.
 `grep -c "^| P22" docs/architecture/core/DESIGN-DECISIONS.md`.
+
+**Update 2026-08-31 (re-measured at 0.50.4):** the "BLOCKED on parseman 0.46.0"
+status filed against P22 is **no longer the whole story** — see §6. The two
+upstream parseman changes §3 called for both LANDED (block-bodied reducers are
+now IR-serializable; free bindings are carried as a `buildImports` manifest), so
+the remaining blocker is not upstream at all but **grammar-side**: hoisting each
+superset's module-scope reducer helpers into an importable module. P22 itself
+already flags its 0.46.0 blast-radius counts as "UNVERIFIED … re-measure rather
+than assume", and **P28** (SETTLED 2026-08-15) already records the compose
+mechanism "proven end-to-end (parseman 0.49.0 cross-module fix)". This addendum
+is that re-measurement; it does not soften P22's four hard rules.
+
+---
+
+## 6. Re-measured at parseman 0.50.4 (2026-08-31)
+
+Re-run on branch off `origin/dev`, parseman **0.50.4** (`package.json:42` is
+`^0.50.4`; the worktree lock had drifted to 0.50.1, so `pnpm install` was run —
+`node_modules/parseman` then symlinks `parseman@0.50.4`). Two instruments:
+`scripts/probe/parseman-compose-feasibility.mjs` (the original control-paired
+probe) and a new per-reducer census, `scripts/probe/parseman-compose-reducer-census.mjs`,
+which drives parseman's own `directBuilderBindings` classifier over every inline
+reducer. Every number below is measured, not inferred.
+
+### 6.1 The synthetic probe — TREAT-3 flipped
+
+| case | 0.46.0 | **0.50.4** | what it varies |
+|---|---|---|---|
+| CONTROL-1 | FUSED | **FUSED** | same-package imported factory, self-contained reducer |
+| TREAT-1 | INTERPRETER FALLBACK | INTERPRETER FALLBACK | factory in another package (synthetic temp tree) |
+| TREAT-2 | INTERPRETER FALLBACK | INTERPRETER FALLBACK | same-package factory, reducer calls an imported builder |
+| TREAT-3 | **THREW** | **FUSED** | two pieces inline in one module, reducer calls an imported builder |
+
+**TREAT-3 is the headline.** The case the 0.46.0 write-up called "the important
+one" — no package boundary, reducer calls an imported builder — **now fuses.**
+The `_nd` "unsupported binding(s)" throw it hit at 0.46.0 is gone: the imported
+builder is carried as provenance and re-emitted as a real import.
+
+(TREAT-1/TREAT-2 still fall back, but that is a synthetic-harness artifact —
+temp packages in a scratch tree that the build-time evaluator cannot resolve —
+**not** a real limit: P28 records cross-module compose "proven end-to-end" at
+0.49.0, and §6.4 below shows the real cross-module `cssBaseRules` fusing. The
+probe's real-grammar section is now uninformative at 0.50.4 for a related reason
+— single-file `transformMacro` cannot resolve a grammar's cross-package base
+piece, so committed `composeLeaf()` reports THREW under it; the per-reducer
+census in §6.2, and the real build in §6.4, are the authoritative measurements.)
+
+### 6.2 Reconciled blast-radius census @ 0.50.4
+
+Per grammar, over every inline `node()` reducer, using parseman's own
+`directBuilderBindings` (plugin/index.js:17093) and the exact reject/carry rule
+at plugin/index.js:17731-17743 (`staticError = [...structural, ...unresolvedFree]`;
+an imported free name is carried, a non-imported one is rejected):
+
+| grammar | inline reducers | reducers rejected | distinct free bindings | distinct unresolved (local helpers) | **STRUCTURAL (block/callback) rejects** | binding-only rejects |
+|---|---|---|---|---|---|---|
+| css  | 130 | **0**   | 67  | **0**   | **0** | 0 |
+| less | 247 | 236 | 162 | 106 | **0** | 236 |
+| scss | 146 | 140 | 107 | 55  | **0** | 140 |
+| jess | 160 | 156 | 122 | 70  | **0** | 156 |
+
+Two facts settle the contradiction this re-measurement was opened on:
+
+1. **Structural (block-bodied / callback-shape) rejects = 0 in ALL FOUR
+   grammars.** The 0.46.0 claim that a statement-bodied reducer is "not
+   IR-serializable at all" and that `unsupported BlockStatement` was the most
+   frequent finding is **false at 0.50.4.** The classifier now walks block
+   bodies fully (VariableDeclaration / Return / If / For / ForOf-In / Throw /
+   nested blocks — plugin/index.js:17218-17281); only `while` / `try` / `switch`
+   / destructured params / `arguments` / async/generator remain structural, and
+   **the census finds none of those in any of the four grammars.** Direct
+   spot-check of the exact reducer that threw `unsupported BlockStatement` at
+   0.46.0 (`less-parser/src/grammar.ts:4675`, `UnsupportedMixinName`, a block
+   body that `throw`s) now classifies `{structural: [], free:
+   ['LessUnsupportedMixinNameError']}`.
+
+2. **The remaining rejects are entirely binding-only, and specifically
+   UNRESOLVED free names = module-scope local reducer helpers** defined inline in
+   each `grammar.ts` (e.g. less `requireToken` at `:342`, `valueSlot` at `:1373`,
+   `isDeclaration` at `:1623` — all `function`/`const` in the file, not imports).
+   Free names that ARE imported (canonical `@jesscss/core/ast` constructors like
+   `any`, `withSourceSpan`, and helpers already hoisted to importable modules)
+   are **carried**, not rejected — which is why css, whose 67 free names are all
+   imported, has **zero** rejects.
+
+### 6.3 Mechanism, from the 0.50.4 plugin source
+
+Both upstream changes §3 asked for have landed in `node_modules/parseman/dist/plugin/index.js`:
+
+- **Free bindings are carried as an import manifest.** `directBuilderBindings`
+  returns `{structural, free}` (`:17281`). At the call site (`:17731-17744`) each
+  free name of an inline builder is resolved via `_builderImports(name)`
+  (`:17737`); resolvable names become `combi._def.buildImports = [{local, source,
+  imported}]` (`:17744`) and only unresolved names join `staticError`
+  (`:17742`). `_builderImports` resolves **non-macro imported specifiers**
+  (`:19603-19654`), and `collectBuilderImports` (`:19759-19772`) re-emits those
+  imports into the consuming module — exactly §3's fix (1).
+- **Block-bodied reducers are supported in IR.** The statement walker
+  (`:17218-17277`) handles `BlockStatement` and the ordinary statement forms;
+  `_nd` (`:16387`) only throws when `staticError` is non-empty (`:16388-16389`),
+  i.e. for genuine structural problems or unresolved bindings — never for a
+  block body per se. That is §3's fix (2).
+
+### 6.4 End-to-end proof: `cssBaseRules` fuses under a real build
+
+`css-parser/src/grammar.ts:3911` already ships `export const cssBaseRules =
+compose([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules({…},
+cssFactory)], { hostMode: 'ast' })` — the doc's §4 plan, already realised for the
+(fully hoisted) CSS grammar. Building `@jesscss/parser-shared` then
+`@jesscss/css-parser` and scanning the emitted `lib/` with the repo's own
+`artifactFallbacks` detector (`scripts/parseman-fallback-detector.mjs`): **0
+artifact fallbacks across 11 emitted ESM modules.** `cssBaseRules` is emitted as
+`const cssBaseRules = /* @__PURE__ */ tableRules({…})` (a fused table artifact,
+`lib/grammar/ast.js:54647`) with **no surviving `parseman` combinator import** —
+not a runtime `compose()` and not an interpreter fallback. (The package's `pnpm
+build` exits non-zero only in its separate `tsc --emitDeclarationOnly` phase, on
+`@jesscss/core/ast` type resolution because core was not built in this isolated
+run — a type-declaration failure, not a macro-fusion one.)
+
+### 6.5 Verdict
+
+**At 0.50.4 the ONLY remaining blocker to production-level `compose()` is the
+free-binding half — and it is grammar-side, not upstream.** Block-bodied
+reducers and callback shapes do **not** block (0 structural rejects, all four
+grammars; the exact 0.46.0 offender now classifies clean). No residual parseman
+IR change is required.
+
+Concretely:
+
+- **css** is done: it composes today (`cssBaseRules`), fuses end-to-end, 0
+  rejects.
+- **less / scss / jess** are blocked only by the module-scope reducer helpers
+  each still defines inline in its own `grammar.ts` — **106 / 55 / 70** distinct
+  local helpers respectively. **Hoisting those helpers into an importable module**
+  (the same move css already made — canonical constructors and grammar helpers
+  reachable by import, so the analyzer can carry their `buildImports` provenance)
+  makes every reducer's free names resolvable and clears the census to zero, at
+  which point each dialect can `compose([cssBaseRules, rules(delta)])` and
+  macro-fuse. This is grammar-review-standard work (evidence per `const`), not a
+  parseman lane task.
+
+The unblock condition in the original probe ("CONTROL-1 and TREAT-3 both FUSED")
+is now **met**. The gating question has moved from "can parseman fuse this?" to
+"which reducer helpers has each superset not yet hoisted?" — answered, with names,
+by `scripts/probe/parseman-compose-reducer-census.mjs`.

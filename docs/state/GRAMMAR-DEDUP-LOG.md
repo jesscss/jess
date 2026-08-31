@@ -49,17 +49,20 @@ and **undercount what has landed**. Verified against the code on 2026-08-30:
    all four variants via the outer `compose(…, { hostMode })`. Retained below: less's
    GENUINE selector overrides (still kept, not deleted).
 
-   **⚠ Stage C is BLOCKED on parseman (2026-08-31), not started.** The 0.50.4
-   recognizer-reroute fix resolved the RECOGNIZER first-set half, but a real W0
-   compose-flip attempt then hit the SEPARATE, documented blocker: `compose()`
-   cannot fuse a reducer-bearing grammar — every node builder must be macro-static
-   / self-contained, and less has 224 local reducer helpers (css has 0) plus
-   block-bodied reducers that are not IR-serializable. This is the governing record
-   `docs/architecture/parser/PRODUCTION-COMPOSE-FEASIBILITY.md` + ledger P22; the
-   unblock is an upstream parseman IR change (compileLinkable opt-in for compose
-   pieces), gated by `scripts/probe/parseman-compose-feasibility.mjs` reporting
-   CONTROL-1 + TREAT-3 FUSED. The re-author plan/tracker
-   (`docs/design/LESS-COMPOSE-REAUTHOR-PLAN.md`) is the "plan for when it unblocks".
+   **Stage C prerequisite (2026-08-31): a grammar-side reducer-helper hoist — NOT a
+   parseman blocker.** A first "3-edit flip" attempt hit `compose()`'s free-binding
+   requirement, which initially read as a parseman blocker. Re-measuring at parseman
+   **0.50.4** (`PRODUCTION-COMPOSE-FEASIBILITY.md` §6, census probe
+   `scripts/probe/parseman-compose-reducer-census.mjs`) + owner ledger **P28**
+   (SETTLED: compose proven end-to-end at parseman 0.49.0) settles it: parseman is
+   DONE — block-bodied reducers serialize (0 structural rejects across all four
+   grammars), imported free bindings are carried. css fuses (`cssBaseRules =
+   compose([...])`, 0 fallbacks). The ONLY blocker is grammar-side: local
+   module-scope reducer helpers (less/scss/jess = 106/55/70 distinct) not yet hoisted
+   to importable modules as css already did. Fix = hoist them (shared →
+   `core/ast/grammar-helpers.ts`, dialect-specific → `*-grammar-helpers.ts`) +
+   enforce with a "no reducer helper in grammar.ts" gate; census→0 then W0 (compose
+   flip) is a genuine behaviour-neutral change. No parseman change required.
 
    **Plan of record + live progress tracker:**
    `docs/design/LESS-COMPOSE-REAUTHOR-PLAN.md` — full 186-rule classification, the
