@@ -64,7 +64,7 @@ prerequisite for W0. No parseman dependency.
 | # | Increment | Status | Landed | Notes |
 |---|---|---|---|---|
 | B0-gate | reducer-helper purity gate (census-probe check) | ◐ IN PROGRESS | — | css=0 baseline; ratchet less/scss/jess to 0 |
-| B0-less | hoist less's 106 local reducer helpers | ☐ TODO | — | dedup shared → core/ast; less-specific → less-grammar-helpers.ts; byte-identity gated |
+| B0-less | hoist less's 106 local reducer helpers | ☑ DONE | `61642dc5c` (2026-08-31) | PURE code motion → co-located `less-parser/src/grammar-helpers.ts` (relative import); census 106→0 (162 carried); cross-dialect dedup DEFERRED (see finding below) |
 | B0-scss | hoist scss's 55 local reducer helpers | ☐ TODO | — | after less |
 | B0-jess | hoist jess's 70 local reducer helpers | ☐ TODO | — | after scss |
 | probe | cst-rehost verification (§2) | ☑ GO | probe 2026-08-31 | base re-hosts to cst+positions; still holds |
@@ -87,6 +87,27 @@ Stage-C row pointed here.
 
 After less: repeat for scss then jess (owner order). Those get their own
 classification + worklist when less reaches W-widen.
+
+**B0-less finding (2026-08-31, `61642dc5c`):**
+- **Module location — co-located wins.** less's helpers were moved to a
+  less-parser-package-local module `packages/syntax/less/less-parser/src/grammar-helpers.ts`
+  and imported with a **relative** `./grammar-helpers.js` specifier. The census
+  cleared to **0** (106→0, 162 carried). So parseman's compose analyzer carries
+  a reducer's free binding when it is imported from a **same-package relative
+  module** — it does **not** require the css pattern of importing from a
+  workspace package (`@jesscss/core/ast`). Dialect-specific helpers can live in
+  the dialect package; they do not have to sit in core/ast. Apply the same
+  co-located `grammar-helpers.ts` for B0-scss / B0-jess.
+- **Cross-dialect dedup DEFERRED (not skipped).** Promoting helpers that are
+  byte-identical across css/scss/jess into the shared `core/ast/grammar-helpers.ts`
+  is a **separate** pass, gated by the open-recursion rule: a helper is only
+  safely shareable when its **whole transitive helper-closure** is identical too.
+  Measured for less, the realistic shareable set is near-empty — its guards
+  delegate to a richer `isValueNode`/`isInterp`, its `require*` helpers carry
+  dialect-branded error strings (`'Less grammar produced…'` vs `'SCSS…'`), and
+  the two same-name css twins (`isSelectorBranch`, `isValueSlotValue`) dispatch
+  to divergent less-local callees. B0 only needs helpers to be **importable**,
+  not **shared**; the dedup pass is tracked separately.
 
 **Method of record consulted:** `docs/design/COMPOSE-MIGRATION-SPEC.md` §4 (the
 four-bucket classification), §7 (payoff axis), §8 (packaging + the scss pilot
