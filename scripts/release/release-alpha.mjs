@@ -290,6 +290,13 @@ if (options.skipCheck) {
   console.log('\nSkipping preflight suite (--skip-check); assuming the current tree is already verified.');
 } else {
   runWithPreflightVersion(resolution, () => run('pnpm', ['run', 'release:alpha:preflight'], rootDir));
+  /*
+   * Preflight ran `build:release`, so every allowlisted package is freshly built
+   * (grammar/core/jess artifacts do not embed the version). Tell the publish step
+   * to reuse those artifacts instead of rebuilding the whole grammar a second time.
+   * Only set on the preflight path — `--skip-check` makes no build guarantee.
+   */
+  process.env.ALPHA_REUSE_BUILD = '1';
 }
 
 if (!options.skipVersion) {
