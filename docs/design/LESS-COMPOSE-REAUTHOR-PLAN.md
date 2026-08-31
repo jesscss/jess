@@ -9,26 +9,65 @@ delta (Stage C, owner order `css → less → scss → jess`).
 
 ---
 
+## ⚠ BLOCKED on parseman — read this before touching any grammar
+
+**This entire workstream is BLOCKED at the parseman level and MUST NOT start
+until that unblocks.** The governing record is
+`docs/architecture/parser/PRODUCTION-COMPOSE-FEASIBILITY.md` (ledger row **P22**
+in `docs/architecture/core/DESIGN-DECISIONS.md`), which this plan originally
+failed to consult. Its verdict: **`compose()` cannot fuse a reducer-bearing
+("production") grammar.** compose re-lowers every piece through IR and each
+node builder must be macro-static / self-contained; less has **208 productions
+rejected needing 69 free bindings**, PLUS block-bodied reducers that are **not
+IR-serializable at all** regardless of bindings. css fuses only because it has
+**0** local reducer helpers (all hoisted to `@jesscss/core/ast`); less has
+**224** (153 fns + 71 consts: `requireToken`, `foldOperation`, … ).
+
+**Confirmed still blocked at parseman 0.50.4** (2026-08-31): a real W0 flip
+attempt threw the exact documented error
+(`IR direct node builder … must be macro-static and self-contained; unsupported
+binding(s): requireToken`). The 0.50.4 recognizer-reroute fix was a DIFFERENT
+issue and does not touch this.
+
+**The unblock is an upstream parseman IR change, not grammar work**
+(feasibility §3): let a `compose()` piece opt into the `compileLinkable` path
+that `composeLeaf`'s final piece already uses (closes both the free-binding and
+block-bodied halves — the smaller change), or carry the reducer's free bindings
+as an import manifest + add block-bodied-reducer IR support. Gate: the probe
+`scripts/probe/parseman-compose-feasibility.mjs` must report **CONTROL-1 and
+TREAT-3 both FUSED** before any convergence starts.
+
+**So the everything below is the "plan for when it unblocks"** (feasibility §4).
+The classification is not wasted; the SEQUENCE is: parseman compose-feasibility
+fix → probe FUSES → css-parser byte-identity harness (prerequisite; css has NO
+oracle today) → per-`const` convergence review. Do not run W0 as a "3-edit
+flip"; it is not one.
+
+---
+
 ## ⏱ Progress tracker (single source of truth for this workstream)
 
-**Goal:** Less composes on `cssBaseRules` (OR-1 compliance), inheriting every
-rule that is genuinely shared css shape; the delta keeps only genuine
-overrides + additions + widened leaves. Deletion payoff is modest by design
-(~11–20 rules); the win is single-sourcing, not shrinkage (see §1).
+**Goal:** Less composes on `cssBaseRules` (OR-1 compliance) so that "valid CSS
+is valid in all dialects" holds by construction (feasibility §4 — the SCSS
+ident-start fork class becomes inexpressible), inheriting genuinely shared css
+shape; the delta keeps only genuine overrides + additions + widened leaves.
+Deletion payoff is modest by design (~11–20 rules) — **the win is
+correctness-by-construction + OR-1 single-sourcing, not shrinkage** (see §1).
 
-**Cadence:** one increment at a time, each oracle-gated (same accepted language
-+ emitted-CSS oracle green + `check:macro` 0 fallbacks, all 4 variants) and
-landed on dev green before the next. No parseman bump needed (0.50.4 is in).
-Alpha releases run in parallel and are never blocked by this work.
+**Cadence (once unblocked):** one increment at a time, each oracle-gated (same
+accepted language + emitted-CSS oracle + `check:macro` 0 fallbacks, all 4
+variants) and landed on dev green before the next. Alpha releases run in
+parallel and are never blocked by this work.
 
-**Current position:** W0 not started. W0 is gated on the cst-rehost probe
-(§2 "OPEN wiring verification") — must prove the ast-pinned `cssBaseRules`
-re-hosts under an outer `cst`/`positions` compose before the flip.
+**Current position:** ⚠ BLOCKED on the parseman compose-feasibility fix (above).
+The cst-rehost probe (base re-host) passed GO, but that is a SEPARATE, weaker
+question than delta self-containment, which is the real blocker.
 
 | # | Increment | Status | Landed | Notes |
 |---|---|---|---|---|
-| probe | cst-rehost verification (§2) | ☑ GO | probe 2026-08-31 | ast-pinned base re-hosts to cst+positions via outer compose; base rules intact; NO css-parser re-export needed. Refresh install to parseman 0.50.4 before W0 build gate (lock drifts to 0.50.1) |
-| **W0** | Compose-wiring flip (§2) | ◐ IN PROGRESS | — | behaviour-neutral; keep whole delta |
+| **parseman** | compose-feasibility fix (compileLinkable opt-in) | ⚠ BLOCKER | — | upstream parseman lane; gate = feasibility probe CONTROL-1+TREAT-3 FUSED |
+| probe | cst-rehost verification (§2) | ☑ GO | probe 2026-08-31 | base re-hosts to cst+positions; base rules intact. Necessary, NOT sufficient — delta self-containment is the real wall |
+| **W0** | Compose-wiring flip (§2) | ⚠ BLOCKED | — | not a "3-edit flip"; needs the parseman fix first (attempt threw at 0.50.4) |
 | 1 | Inherit `Color` | ☐ TODO | — | firm converge |
 | 2 | Inherit `UnicodeRange` | ☐ TODO | — | firm converge |
 | 3 | Inherit `Dimension` | ☐ TODO | — | first oracle proof |

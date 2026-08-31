@@ -46,8 +46,20 @@ and **undercount what has landed**. Verified against the code on 2026-08-30:
    encoder; verified end-to-end (real `cssBaseRules` routes `%ph` through the inherited
    tower, AST+CST). jess bumped to `^0.50.4` (`cba470ff0`). ALSO corrected: the earlier
    "no CST-mode base" claim was wrong — a single host-mode-complete `cssBaseRules` serves
-   all four variants via the outer `compose(…, { hostMode })`. Less Stage C increment now
-   in flight. Retained below: less's GENUINE selector overrides (still kept, not deleted).
+   all four variants via the outer `compose(…, { hostMode })`. Retained below: less's
+   GENUINE selector overrides (still kept, not deleted).
+
+   **⚠ Stage C is BLOCKED on parseman (2026-08-31), not started.** The 0.50.4
+   recognizer-reroute fix resolved the RECOGNIZER first-set half, but a real W0
+   compose-flip attempt then hit the SEPARATE, documented blocker: `compose()`
+   cannot fuse a reducer-bearing grammar — every node builder must be macro-static
+   / self-contained, and less has 224 local reducer helpers (css has 0) plus
+   block-bodied reducers that are not IR-serializable. This is the governing record
+   `docs/architecture/parser/PRODUCTION-COMPOSE-FEASIBILITY.md` + ledger P22; the
+   unblock is an upstream parseman IR change (compileLinkable opt-in for compose
+   pieces), gated by `scripts/probe/parseman-compose-feasibility.mjs` reporting
+   CONTROL-1 + TREAT-3 FUSED. The re-author plan/tracker
+   (`docs/design/LESS-COMPOSE-REAUTHOR-PLAN.md`) is the "plan for when it unblocks".
 
    **Plan of record + live progress tracker:**
    `docs/design/LESS-COMPOSE-REAUTHOR-PLAN.md` — full 186-rule classification, the
