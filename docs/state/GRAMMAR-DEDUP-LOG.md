@@ -37,9 +37,20 @@ and **undercount what has landed**. Verified against the code on 2026-08-30:
 - **Backlog: #41, #50, #58 — LANDED.**
 
 **GENUINELY REMAINING grammar cleanup:**
-1. **Stage C compose — BLOCKED / re-scoped (finding 2026-08-30, owner order less→scss→jess).**
-   A less-selector-compose attempt STOPPED with verified evidence that "delete the
-   skeleton, inherit from css" does NOT hold as framed:
+1. **Stage C compose — UNBLOCKED 2026-08-31 (parseman 0.50.4).** The blocker below was
+   a real parseman compose codegen bug, now FIXED + released: `compose([base, delta])`
+   rerouted an override's reducer but NOT the inherited parents' RECOGNIZER first-set
+   when the intermediate was a bare combinator const (css `CompoundSelector →
+   simpleSelectorAtom(bare choice) → BasicSelector`), so a widened leaf was gated out.
+   parseman `0.50.4` resolves cross-rule refs winner-first in `first-set.ts` + the table
+   encoder; verified end-to-end (real `cssBaseRules` routes `%ph` through the inherited
+   tower, AST+CST). jess bumped to `^0.50.4` (`cba470ff0`). ALSO corrected: the earlier
+   "no CST-mode base" claim was wrong — a single host-mode-complete `cssBaseRules` serves
+   all four variants via the outer `compose(…, { hostMode })`. Less Stage C increment now
+   in flight. Retained below: less's GENUINE selector overrides (still kept, not deleted).
+
+   ORIGINAL STOP finding (the diagnosis, now resolved): "delete the skeleton, inherit
+   from css" needed the parseman fix + these stay genuine overrides:
    - less's selector tower is a **genuine §4.2 override**, not a pure restatement:
      `staticCombinator` (`less grammar.ts:2413`) includes `|` (css `combinator :496`
      excludes it — namespace prefix); the compound loop carries `not(whenGuardAhead)`
