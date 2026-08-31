@@ -66,7 +66,7 @@ prerequisite for W0. No parseman dependency.
 | B0-gate | reducer-helper purity gate (census-probe check) | ◐ IN PROGRESS | — | css=0 baseline; ratchet less/scss/jess to 0 |
 | B0-less | hoist less's 106 local reducer helpers | ☑ DONE | `61642dc5c` (2026-08-31) | PURE code motion → co-located `less-parser/src/grammar-helpers.ts` (relative import); census 106→0 (162 carried); cross-dialect dedup DEFERRED (see finding below) |
 | B0-scss | hoist scss's 55 local reducer helpers | ☑ DONE | `6ba05f917` (2026-08-31) | PURE code motion → co-located `scss-parser/src/grammar-helpers.ts` (relative import); census 140→0 rejected / 55→0 unresolved (107 carried); cross-dialect dedup DEFERRED (same open-recursion guard as B0-less) |
-| B0-jess | hoist jess's 70 local reducer helpers | ☐ TODO | — | after scss |
+| B0-jess | hoist jess's 70 local reducer helpers | ☑ DONE | `3a43df5b3` (2026-08-31) | PURE code motion → co-located `jess-parser/src/grammar-helpers.ts` (relative import); census 70→0 (122 carried); 108 helpers + 8 helper types moved byte-identical, dead top-imports pruned; cross-dialect dedup DEFERRED |
 | probe | cst-rehost verification (§2) | ☑ GO | probe 2026-08-31 | base re-hosts to cst+positions; still holds |
 | **W0** | Compose-wiring flip (§2) | ☐ TODO | — | genuine behaviour-neutral flip once B0-less clears less's census to 0 |
 | 1 | Inherit `Color` | ☐ TODO | — | firm converge |
