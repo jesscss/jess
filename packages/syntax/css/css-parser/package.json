@@ -4,7 +4,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "2.0.0-alpha.17",
+  "version": "2.0.0-alpha.12",
   "engines": {
     "node": "^20.19.0 || >=22.18.0"
   },
