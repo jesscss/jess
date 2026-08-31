@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import {
   applyLockstepVersion,
@@ -22,12 +23,23 @@ function parseArgs(argv) {
      * the pre-stable alpha phase, so `npm install <pkg>` resolves to the current
      * alpha instead of an ancient `latest`. Owner policy call — keep it explicit.
      */
-    setLatest: process.env.ALPHA_SET_LATEST === '1'
+    setLatest: process.env.ALPHA_SET_LATEST === '1',
+    /*
+     * Skip the per-package build below and publish the artifacts already on
+     * disk. The orchestrator (`release-alpha.mjs`) sets `ALPHA_REUSE_BUILD=1`
+     * only after `build:release` ran in preflight, so the tree is fresh. Guarded
+     * by an artifact-existence check so a missing `lib/` still triggers a build.
+     */
+    reuseBuild: process.env.ALPHA_REUSE_BUILD === '1'
   };
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--dry-run') {
       parsed.dryRun = true;
+      continue;
+    }
+    if (arg === '--reuse-build') {
+      parsed.reuseBuild = true;
       continue;
     }
     if (arg === '--set-latest') {
@@ -58,6 +70,18 @@ function run(command, args, cwd) {
   if (result.status !== 0) {
     throw new Error(`Command failed (${result.status ?? 1}): ${rendered}`);
   }
+}
+
+/*
+ * True when a package's published entry point already exists on disk, so a
+ * prior `build:release` covers it and the per-package build can be skipped.
+ * Checks the actual `main`/`module` entry; falls back to `lib/`. Any doubt
+ * (entry missing) returns false so we rebuild rather than publish a stale tree.
+ */
+function artifactsPresent(pkg) {
+  const entry = pkg.manifest.main ?? pkg.manifest.module;
+  const target = entry ? path.join(pkg.dir, entry) : path.join(pkg.dir, 'lib');
+  return fs.existsSync(target);
 }
 
 function currentBranch() {
@@ -295,10 +319,15 @@ try {
   if (!options.dryRun) {
     for (const pkgName of plan.publishOrder) {
       const pkg = plan.packagesByName.get(pkgName);
-      if (pkg.manifest.scripts?.build) {
-        console.log(`\nBuilding ${pkgName}...`);
-        run('pnpm', ['--filter', pkgName, 'run', 'build'], rootDir);
+      if (!pkg.manifest.scripts?.build) {
+        continue;
       }
+      if (options.reuseBuild && artifactsPresent(pkg)) {
+        console.log(`Reusing existing build for ${pkgName} (ALPHA_REUSE_BUILD).`);
+        continue;
+      }
+      console.log(`\nBuilding ${pkgName}...`);
+      run('pnpm', ['--filter', pkgName, 'run', 'build'], rootDir);
     }
   }
 
