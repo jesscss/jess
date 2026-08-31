@@ -49,6 +49,13 @@ and **undercount what has landed**. Verified against the code on 2026-08-30:
    all four variants via the outer `compose(…, { hostMode })`. Less Stage C increment now
    in flight. Retained below: less's GENUINE selector overrides (still kept, not deleted).
 
+   **Plan of record + live progress tracker:**
+   `docs/design/LESS-COMPOSE-REAUTHOR-PLAN.md` — full 186-rule classification, the
+   ordered W0→W-widen worklist, and the ⏱ status table (single source of truth for this
+   workstream). Payoff is MODEST by design (~11–20 rule deletions, ~6–11%); the win is
+   OR-1 single-sourcing, not shrinkage. W0 (compose-wiring flip) is gated on a cst-rehost
+   probe. Update the status table there as each increment lands; do not duplicate status here.
+
    ORIGINAL STOP finding (the diagnosis, now resolved): "delete the skeleton, inherit
    from css" needed the parseman fix + these stay genuine overrides:
    - less's selector tower is a **genuine §4.2 override**, not a pure restatement:
