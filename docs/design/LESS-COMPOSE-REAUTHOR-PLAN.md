@@ -27,8 +27,8 @@ re-hosts under an outer `cst`/`positions` compose before the flip.
 
 | # | Increment | Status | Landed | Notes |
 |---|---|---|---|---|
-| probe | cst-rehost verification (§2) | ☐ TODO | — | gates W0; one-rule probe |
-| **W0** | Compose-wiring flip (§2) | ☐ TODO | — | behaviour-neutral; keep whole delta |
+| probe | cst-rehost verification (§2) | ☑ GO | probe 2026-08-31 | ast-pinned base re-hosts to cst+positions via outer compose; base rules intact; NO css-parser re-export needed. Refresh install to parseman 0.50.4 before W0 build gate (lock drifts to 0.50.1) |
+| **W0** | Compose-wiring flip (§2) | ◐ IN PROGRESS | — | behaviour-neutral; keep whole delta |
 | 1 | Inherit `Color` | ☐ TODO | — | firm converge |
 | 2 | Inherit `UnicodeRange` | ☐ TODO | — | firm converge |
 | 3 | Inherit `Dimension` | ☐ TODO | — | first oracle proof |
