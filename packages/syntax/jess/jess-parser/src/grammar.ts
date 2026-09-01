@@ -165,22 +165,9 @@ type JessRules = {
   GuardAnd: Combinator<GuardNode>;
   GuardOr: Combinator<GuardNode>;
   MixinGuard: Combinator<GuardNode>;
-
-  /*
-   * Converged to the CSS base (inherited via compose): same body g.Identifier
-   * (a shared recognition token) and keyword() reducer; differs only
-   * requireToken().value vs tokenText() over one matched token.
-   */
-  Keyword: Combinator<Keyword>;
   Quoted: Combinator<Quoted | Interpolation>;
   LiteralQuoted: Combinator<Quoted>;
   Dimension: Combinator<Dimension>;
-
-  /*
-   * Converged to the CSS base (inherited via compose): shared HexColor token,
-   * reducer differs only requireToken().value vs tokenText() over one token.
-   */
-  Color: Combinator<Color>;
   Url: Combinator<Url>;
   PlainUrlInner: Combinator<string>;
   UnquotedUrlText: Combinator<string>;
@@ -190,12 +177,6 @@ type JessRules = {
   KeywordValue: Combinator<Keyword | Null>;
   NullLiteral: Combinator<Null>;
   VarCall: Combinator<FunctionCall>;
-
-  /*
-   * Converged to the CSS base (inherited via compose): shared UnicodeRangeToken;
-   * reducer differs only requireToken().value vs tokenText() over one token.
-   */
-  UnicodeRange: Combinator<ValueNode>;
   CalcValue: Combinator<ValueNode>;
   CalcParen: Combinator<ValueNode>;
   CalcProduct: Combinator<ValueNode>;
@@ -212,22 +193,6 @@ type JessRules = {
   ValueSpaceGroup: Combinator<ValueSlot>;
   ValueTerm: Combinator<ValueSlot>;
   Value: Combinator<ValueSlot>;
-
-  /*
-   * Converged to the CSS base (inherited via compose): same body
-   * sequence(literal('!'), g.ImportantToken) and `true` result; the jess
-   * reducer's defensive marker re-check was redundant.
-   */
-  Important: Combinator<true>;
-
-  /*
-   * Converged to the CSS base (inherited via compose): same body g.CustomPropertyName
-   * and keyword() reducer; differs only requireToken().value vs tokenText() over
-   * one matched token. (Jess references the same g.CustomPropertyName the base
-   * does — unlike Less, whose CustomPropertyValue used a distinct token, so Less
-   * kept its override.)
-   */
-  CustomPropertyValue: Combinator<Keyword>;
   InterpolatedCustomPropertyName: Combinator<string | Interpolation>;
   CustomPart: Combinator<unknown>;
   CustomInnerPart: Combinator<unknown>;
@@ -247,16 +212,6 @@ type JessRules = {
   Parent: Combinator<SimpleSelector>;
   InterpolatedSimple: Combinator<SimpleSelector>;
   InterpolatedParentSuffix: Combinator<SimpleSelector>;
-
-  /*
-   * Converged to the CSS base (inherited via compose): same body
-   * noTrivia(sequence(attributeNamespace, choice(g.Identifier, literal('*'))))
-   * over the same flat attributeNamespace regex; same SimpleSelector node;
-   * differs only requireToken().value vs tokenText() over matched tokens.
-   * (Jess never decomposed the namespace into a node the way Less did, so —
-   * unlike Less — this converges rather than staying a genuine override.)
-   */
-  NamespaceTypeSelector: Combinator<SimpleSelector>;
   AttributeSelector: Combinator<SimpleSelector>;
   PseudoSelector: Combinator<SimpleToken>;
   PseudoSelectorArgument: Combinator<SelectorList | string>;
@@ -335,14 +290,6 @@ type JessRules = {
   PropertyDescriptor: Combinator<Declaration>;
   PropertyAtRule: Combinator<AtRuleBlock>;
   Percentage: Combinator<string>;
-
-  /*
-   * Converged to the CSS base (inherited via compose): same body
-   * choice(keyframeEndpoint, g.Percentage) — g.Percentage resolves to Jess's
-   * token override — same SimpleSelector node; reducer differs only
-   * sourceText() vs requireToken().value over one matched token.
-   */
-  keyframeSelector: Combinator<SimpleSelector>;
   KeyframeBlock: Combinator<Ruleset>;
   Keyframes: Combinator<AtRuleBlock>;
   OpaqueAtPrelude: Combinator<string | null>;
@@ -394,6 +341,25 @@ type SharedSyntax = {
   StatementAtRuleName: Combinator<string>;
   PreprocessorOpaqueAtRulePreludeCapture: Combinator<string | null>;
   PreprocessorOpaqueAtRuleBodyCapture: Combinator<string>;
+
+  /*
+   * Converged rules inherited from the CSS base via compose (byte-identical in
+   * Jess: same accepted language, same emitted CSS, same/converged AST per P28).
+   * They are declared here — the factory's input (`g`) surface — rather than in
+   * the JessRules RETURN type, because the jess delta no longer defines them;
+   * `g.<Rule>` still resolves to the composed base. Each differs from the base
+   * only by reducer CONVENTION (requireToken().value vs tokenText()/sourceText()
+   * over one matched token). Jess converges more of these than Less because its
+   * interpolation is ${}-based, not identifier-widening, so these leaves keep the
+   * plain shared shape. See docs/design/LESS-COMPOSE-REAUTHOR-PLAN.md (Jess sweep).
+   */
+  Keyword: Combinator<Keyword>;
+  Color: Combinator<Color>;
+  UnicodeRange: Combinator<ValueNode>;
+  Important: Combinator<true>;
+  CustomPropertyValue: Combinator<Keyword>;
+  NamespaceTypeSelector: Combinator<SimpleSelector>;
+  keyframeSelector: Combinator<SimpleSelector>;
 };
 
 const rawWhitespace = regex(/[ \t\n\r\f]+/);
@@ -740,6 +706,7 @@ const scopeAtRuleName = word('@scope', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsen
 
 /** The `null` LITERAL's word (§4.3). Boundary-guarded, so `nullish` stays an ordinary identifier. */
 const nullWord = word('null', '-_a-zA-Z0-9\\u0080-\\uFFFF');
+
 /*
  * NOT exported, and must never be. The body is written entirely in parseman's
  * macro vocabulary (`makeWord`, `sequence`, `node`, ...), which exists only at
@@ -1705,6 +1672,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       return { value, src: value.src };
     }
   );
+
   /*
    * The `null` LITERAL (§4.3) — a rule of its own, so the identifier positions
    * that must keep reading `null` as a plain name (a lookup key, a media/container
