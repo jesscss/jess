@@ -194,7 +194,6 @@ type LessRules = {
   Keyword: Combinator<ValueNode>;
   Percentage: Combinator<string>;
   Dimension: Combinator<ValueNode>;
-  UnicodeRange: Combinator<Any>;
   EscapeValue: Combinator<Any>;
   PagePseudo: Combinator<Any>;
   DoubledQuoteArgument: Combinator<Any>;
@@ -379,6 +378,9 @@ type SharedSyntax = {
   // reducer differs only requireToken().value vs tokenText() over one token.
   Color: Combinator<ValueNode>;
   UnicodeRangeToken: Combinator<string>;
+  // Converged to the CSS base (inherited via compose): same named
+  // UnicodeRangeToken; reducer differs only requireToken().value vs tokenText().
+  UnicodeRange: Combinator<Any>;
   NthExpression: Combinator<unknown>;
   NthChildPseudoSelectorName: Combinator<string>;
   NthTypePseudoSelectorName: Combinator<string>;
@@ -1233,14 +1235,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       const unit = children.length > 1 ? requireToken(children[1]).value : '';
       return dimension(Number(numberText), unit, `${numberText}${unit}`);
     }
-  );
-  // CSS unicode-range is one opaque CSS token, not Less arithmetic. It belongs
-  // in the value-term layer, but intentionally not the math-atom layer: Less
-  // rejects `U+0-7F + 1` rather than applying numeric operations to the range.
-  const UnicodeRange = node(
-    'UnicodeRange',
-    g.UnicodeRangeToken,
-    children => any(requireToken(children[0]).value)
   );
   // CSS declaration hacks such as `#000 \\9` are a real one-token value
   // suffix. Keep the escape structural and narrow; this is not a raw-value
@@ -4771,7 +4765,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     Keyword,
     Percentage,
     Dimension,
-    UnicodeRange,
     EscapeValue,
     PagePseudo,
     DoubledQuoteArgument,
