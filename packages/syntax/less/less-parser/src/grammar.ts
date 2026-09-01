@@ -301,7 +301,6 @@ type LessRules = {
   NamespacePrelude: Combinator<ValueNode>;
   AtRuleBlock: Combinator<AtRuleBlock>;
   OpaqueAtPrelude: Combinator<string | null>;
-  OpaqueBody: Combinator<string>;
   AtRuleName: Combinator<string>;
   CustomValueAtKeyword: Combinator<string>;
   StaticAtRuleStatementName: Combinator<string>;
@@ -440,13 +439,17 @@ const importKeyword = keywords(
 // used only as a scan hole, so it builds nothing.
 const scanSkipDoubleString = noTrivia(sequence(literal('"'), regex(/(?:[^"\\]|\\.)*/), literal('"')));
 const scanSkipSingleString = noTrivia(sequence(literal('\''), regex(/(?:[^'\\]|\\.)*/), literal('\'')));
-const lessOpaqueBodyBrace = balanced(
+// An unknown at-rule body is scanned to its closing `}` reusing the grammar's
+// ambient scan skippers (strings, block comments) for balance; the balanced brace
+// keeps a nested `{ … }` inert. This is the same tolerant scan every dialect
+// uses, not a renamed copy of the string/comment/group productions.
+const opaqueAtRuleBrace = balanced(
   '{',
   '}'
 );
-const lessOpaqueBodyCapture = noTrivia(scanTo(
+const opaqueAtRuleBody = noTrivia(scanTo(
   literal('}'),
-  { skip: [lessOpaqueBodyBrace] }
+  { skip: [opaqueAtRuleBrace] }
 ));
 // Trivia that may surround an UNAMBIGUOUS product operator (`*`/`/`/`%`):
 // whitespace, `//` line comments, or `/* */` block comments. This matches CSS,
@@ -3726,11 +3729,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return text === '' ? null : text;
     }
   );
-  const OpaqueBody = node(
-    'OpaqueBody',
-    lessOpaqueBodyCapture,
-    children => children.length === 0 ? '' : staticText(children)
-  );
   /*
    * The at-rule names Less routes to a TYPED production, in one place. Every
    * name here is defined by the leaf that also matches it positively -- Less's
@@ -3761,16 +3759,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       noTrivia(sequence(
         g.OpaqueAtPrelude,
         literal('{'),
-        g.OpaqueBody,
+        opaqueAtRuleBody,
         literal('}')
       ))
     ),
     (children) => {
       const prelude = children[1];
-      const rawBody = children[3];
-      if ((prelude !== null && typeof prelude !== 'string') || typeof rawBody !== 'string') {
-        throw new TypeError('Less opaque at-rule block lost its grammar-owned raw facts.');
+      if (prelude !== null && typeof prelude !== 'string') {
+        throw new TypeError('Less opaque at-rule block lost its grammar-owned prelude.');
       }
+      // The body capture emits no child when the block is empty (`@foo {}`), so
+      // the closing `}` sits at index 3; a captured body sits there instead.
+      const rawBody = children.length === 5 ? staticText(children[3]) : '';
       return opaqueAtRuleBlock(
         requireToken(children[0]).value,
         prelude,
@@ -4856,7 +4856,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     NamespacePrelude,
     AtRuleBlock,
     OpaqueAtPrelude,
-    OpaqueBody,
     AtRuleName,
     CustomValueAtKeyword,
     StaticAtRuleStatementName,

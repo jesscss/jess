@@ -292,8 +292,6 @@ type JessRules = {
   Percentage: Combinator<string>;
   KeyframeBlock: Combinator<Ruleset>;
   Keyframes: Combinator<AtRuleBlock>;
-  OpaqueAtPrelude: Combinator<string | null>;
-  OpaqueBody: Combinator<string>;
   OpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
   ScopeBlock: Combinator<AtRuleBlock>;
   AtRuleBlock: Combinator<AtRuleBlock>;
@@ -3815,7 +3813,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         g.LiteralQuoted,
         g.Url
       ),
-      g.OpaqueAtPrelude,
+      g.PreprocessorOpaqueAtRulePreludeCapture,
       literal(';')
     ),
     (children) => {
@@ -3823,10 +3821,11 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       if (!isQuoted(target) && !isUrl(target)) {
         throw new TypeError('Jess CSS import lost its static target.');
       }
-      const tail = children[2];
-      if (tail !== null && typeof tail !== 'string') {
-        throw new TypeError('Jess CSS import lost its opaque tail.');
-      }
+
+      /* The optional prelude capture emits no child when the tail is empty, so a
+       * three-child sequence is `[name, target, ';']`. */
+      const tailText = children.length === 4 ? requireToken(children[2]).value.trim() : '';
+      const tail = tailText === '' ? null : tailText;
       const targetText = target.type === 'Quoted'
         ? target.src
         : `url(${expressionSource(target.value)})`;
@@ -4361,17 +4360,18 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     sequence(
       scopeAtRuleName,
       noTrivia(sequence(
-        g.OpaqueAtPrelude,
+        g.PreprocessorOpaqueAtRulePreludeCapture,
         literal('{')
       )),
       many(atBlockStatement),
       literal('}')
     ),
     (children, _fields, span, rawChildren) => {
-      const prelude = children[1];
-      if (prelude !== null && typeof prelude !== 'string') {
-        throw new TypeError('Jess scope at-rule lost its grammar-owned prelude.');
-      }
+      /* The optional prelude capture emits no child when empty, so anchor on the
+       * `{` literal; `collectBlockStatements` skips tokens, so its start index is
+       * unchanged whether or not a prelude child is present. */
+      const preludeText = requireToken(children[1]).value === '{' ? '' : requireToken(children[1]).value.trim();
+      const prelude = preludeText === '' ? null : preludeText;
       return withSourceSpan(withBlockBody(atRuleBlock(
         requireToken(children[0]).value,
         prelude === null ? null : any(prelude),
@@ -4415,47 +4415,33 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * An unknown CSS block is terminal authored syntax. Its shared recognition
-   * artifact owns every balanced/string/comment boundary; the Jess reduction
-   * only records raw facts and keeps `$` out of an unquoted dynamic header.
-   * Wrap the two raw captures in their own nodes so this family's child count is
-   * fixed: the shared optional prelude capture emits NO child when the prelude is
-   * empty, which shifted every positional index below by one and silently reduced
-   * `@foo { … }` to `prelude: '{'` / `rawBody: '}'`. A node always emits exactly
-   * one child, matching the explicit wrapper shape the other dialects use for
-   * optional opaque captures.
+   * An unknown CSS block is terminal authored syntax. The shared recognition
+   * artifact owns every balanced/string/comment boundary; this reduction only
+   * records raw facts (reusing the canonical prelude/body captures directly, not
+   * a renamed `OpaqueAtPrelude`/`OpaqueBody` copy) and keeps `$` out of an
+   * unquoted dynamic header.
+   *
+   * The optional prelude capture emits NO child when the prelude is empty, so the
+   * reducer anchors on the structural `{` literal: the prelude is the one child
+   * before it, the body the one child between it and the closing `}`.
    */
-  const OpaqueAtPrelude = node<string | null>(
-    'OpaqueAtPrelude',
-    g.PreprocessorOpaqueAtRulePreludeCapture,
-    (children) => {
-      const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
-      return text === '' ? null : text;
-    }
-  );
-  const OpaqueBody = node<string>(
-    'OpaqueBody',
-    g.PreprocessorOpaqueAtRuleBodyCapture,
-    children => children.length === 0 ? '' : requireToken(children[0]).value
-  );
   const OpaqueAtRuleBlock = node<OpaqueAtRuleBlock>(
     'OpaqueAtRuleBlock',
     sequence(
       not(compilerAtRuleName),
       g.GenericAtRuleName,
       noTrivia(sequence(
-        g.OpaqueAtPrelude,
+        g.PreprocessorOpaqueAtRulePreludeCapture,
         literal('{'),
-        g.OpaqueBody,
+        g.PreprocessorOpaqueAtRuleBodyCapture,
         literal('}')
       ))
     ),
     (children) => {
-      const prelude = children[1];
-      const rawBody = children[3];
-      if ((prelude !== null && typeof prelude !== 'string') || typeof rawBody !== 'string') {
-        throw new TypeError('Jess opaque at-rule lost its grammar-owned raw facts.');
-      }
+      const openIdx = requireToken(children[1]).value === '{' ? 1 : 2;
+      const preludeText = openIdx === 2 ? requireToken(children[1]).value.trim() : '';
+      const prelude = preludeText === '' ? null : preludeText;
+      const rawBody = children.length - openIdx === 3 ? requireToken(children[openIdx + 1]).value : '';
       return opaqueAtRuleBlock(
         requireToken(children[0]).value,
         prelude,
@@ -5385,8 +5371,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     Percentage,
     KeyframeBlock,
     Keyframes,
-    OpaqueAtPrelude,
-    OpaqueBody,
     OpaqueAtRuleBlock,
     ScopeBlock,
     AtRuleBlock,

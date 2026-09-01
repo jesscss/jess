@@ -168,8 +168,6 @@ type ScssRules = {
   SelectorList: Combinator<SelectorList>;
   NestedSelector: Combinator<SelectorList>;
   Extend: Combinator<ExtendInstruction>;
-  OpaqueAtPrelude: Combinator<string | null>;
-  OpaqueBody: Combinator<string>;
   ScssGenericAtRuleName: Combinator<string>;
   OpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
   OpaqueAtRuleStatement: Combinator<AtRuleStatement>;
@@ -4607,28 +4605,6 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * An unknown CSS block is terminal authored syntax. The shared recognition
-   * artifact owns every balanced/string/comment boundary; this reduction only
-   * records raw facts and keeps `$` out of an unquoted dynamic header, so a
-   * dynamic prelude still rejects rather than becoming opaque text.
-   * Wrap the two raw captures in their own nodes so this family's child count is
-   * fixed: an `optional(scanTo(...))` that matches nothing emits no child and
-   * would otherwise shift every positional index in the reducers below.
-   */
-  const OpaqueAtPrelude = node<string | null>(
-    'OpaqueAtPrelude',
-    g.PreprocessorOpaqueAtRulePreludeCapture,
-    (children) => {
-      const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
-      return text === '' ? null : text;
-    }
-  );
-  const OpaqueBody = node<string>(
-    'OpaqueBody',
-    g.PreprocessorOpaqueAtRuleBodyCapture,
-    children => children.length === 0 ? '' : requireToken(children[0]).value
-  );
-
   /*
    * Excludes the SCSS-only names AND the CSS at-rule set, the latter by
    * inverting the very leaves that define it positively -- one source, both
@@ -4653,18 +4629,17 @@ const scssFactory = (g: ScssInputRules) => {
     sequence(
       g.ScssGenericAtRuleName,
       noTrivia(sequence(
-        g.OpaqueAtPrelude,
+        g.PreprocessorOpaqueAtRulePreludeCapture,
         literal('{'),
-        g.OpaqueBody,
+        g.PreprocessorOpaqueAtRuleBodyCapture,
         literal('}')
       ))
     ),
     (children) => {
-      const prelude = children[1];
-      const rawBody = children[3];
-      if ((prelude !== null && typeof prelude !== 'string') || typeof rawBody !== 'string') {
-        throw new TypeError('SCSS opaque at-rule lost its grammar-owned raw facts.');
-      }
+      const openIdx = requireToken(children[1]).value === '{' ? 1 : 2;
+      const preludeText = openIdx === 2 ? requireToken(children[1]).value.trim() : '';
+      const prelude = preludeText === '' ? null : preludeText;
+      const rawBody = children.length - openIdx === 3 ? requireToken(children[openIdx + 1]).value : '';
       return opaqueAtRuleBlock(
         requireToken(children[0]).value,
         prelude,
@@ -4683,15 +4658,13 @@ const scssFactory = (g: ScssInputRules) => {
     sequence(
       g.ScssGenericAtRuleName,
       noTrivia(sequence(
-        g.OpaqueAtPrelude,
+        g.PreprocessorOpaqueAtRulePreludeCapture,
         literal(';')
       ))
     ),
     (children) => {
-      const prelude = children[1];
-      if (prelude !== null && typeof prelude !== 'string') {
-        throw new TypeError('SCSS opaque at-rule statement lost its grammar-owned raw facts.');
-      }
+      const preludeText = requireToken(children[1]).value === ';' ? '' : requireToken(children[1]).value.trim();
+      const prelude = preludeText === '' ? null : preludeText;
       return atRuleStatement(
         requireToken(children[0]).value,
         prelude === null ? null : any(prelude)
@@ -4911,8 +4884,6 @@ const scssFactory = (g: ScssInputRules) => {
     KeyframeSelector,
     KeyframeBlock,
     Keyframes,
-    OpaqueAtPrelude,
-    OpaqueBody,
     ScssGenericAtRuleName,
     OpaqueAtRuleBlock,
     OpaqueAtRuleStatement,

@@ -2678,6 +2678,7 @@ const cssFactory = (g: GrammarSelf) => {
       return text === '' ? null : any(text);
     }
   );
+
   /*
    * An unknown at-rule's block is a simple block of component values
    * (css-syntax-3 §5.4.2 "consume an at-rule" → §5.4.8 "consume a simple
