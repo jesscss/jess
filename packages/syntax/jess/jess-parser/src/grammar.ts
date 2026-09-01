@@ -219,6 +219,14 @@ type JessRules = {
    * reducer's defensive marker re-check was redundant.
    */
   Important: Combinator<true>;
+
+  /*
+   * Converged to the CSS base (inherited via compose): same body g.CustomPropertyName
+   * and keyword() reducer; differs only requireToken().value vs tokenText() over
+   * one matched token. (Jess references the same g.CustomPropertyName the base
+   * does — unlike Less, whose CustomPropertyValue used a distinct token, so Less
+   * kept its override.)
+   */
   CustomPropertyValue: Combinator<Keyword>;
   InterpolatedCustomPropertyName: Combinator<string | Interpolation>;
   CustomPart: Combinator<unknown>;
@@ -239,6 +247,15 @@ type JessRules = {
   Parent: Combinator<SimpleSelector>;
   InterpolatedSimple: Combinator<SimpleSelector>;
   InterpolatedParentSuffix: Combinator<SimpleSelector>;
+
+  /*
+   * Converged to the CSS base (inherited via compose): same body
+   * noTrivia(sequence(attributeNamespace, choice(g.Identifier, literal('*'))))
+   * over the same flat attributeNamespace regex; same SimpleSelector node;
+   * differs only requireToken().value vs tokenText() over matched tokens.
+   * (Jess never decomposed the namespace into a node the way Less did, so —
+   * unlike Less — this converges rather than staying a genuine override.)
+   */
   NamespaceTypeSelector: Combinator<SimpleSelector>;
   AttributeSelector: Combinator<SimpleSelector>;
   PseudoSelector: Combinator<SimpleToken>;
@@ -1897,15 +1914,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * text, matching the CSS base and the other dialects (one representation per
    * construct).
    */
-  const NamespaceTypeSelector = node<SimpleSelector>(
-    'NamespaceTypeSelector',
-    noTrivia(sequence(
-      attributeNamespace,
-      choice(g.Identifier, literal('*'))
-    )),
-    children => simpleSelector(children.map(child => requireToken(child).value).join(''))
-  );
-
   /*
    * CSS owns the attribute frame. Its quoted value is static selector syntax,
    * so the Jess-specific string override is the restricted LiteralQuoted slot.
@@ -2357,11 +2365,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * Keyword. This prevents a malformed known URL from falling through to
    * GenericCall after its URL production rejects.
    */
-  const CustomPropertyValue = node<Keyword>(
-    'CustomPropertyValue',
-    g.CustomPropertyName,
-    children => keyword(requireToken(children[0]).value)
-  );
   const KeywordValue = node<Keyword | Null>(
     'Keyword',
     routed(),
@@ -5444,7 +5447,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ValueSpaceGroup,
     ValueTerm,
     Value,
-    CustomPropertyValue,
     InterpolatedCustomPropertyName,
     CustomPart,
     CustomInnerPart,
@@ -5464,7 +5466,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     Parent,
     InterpolatedSimple,
     InterpolatedParentSuffix,
-    NamespaceTypeSelector,
     AttributeSelector,
     PseudoSelector,
     PseudoSelectorArgument,
