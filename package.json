@@ -62,6 +62,7 @@
     "verify:compose-integrity": "node scripts/verify-compose-integrity.mjs",
     "check:macro": "node scripts/check-macro-buildable.mjs",
     "check:reducer-purity": "node scripts/probe/parseman-compose-reducer-census.mjs --check",
+    "check:less-fused": "node scripts/probe/less-compose-fused-check.mjs",
     "check:guardrails": "node scripts/check-guardrails.mjs",
     "check:record-map": "node scripts/check-record-map.mjs",
     "test:fallback-detector": "node --test scripts/__tests__/parseman-fallback-detector.test.mjs",
