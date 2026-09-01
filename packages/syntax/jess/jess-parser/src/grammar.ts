@@ -165,6 +165,12 @@ type JessRules = {
   GuardAnd: Combinator<GuardNode>;
   GuardOr: Combinator<GuardNode>;
   MixinGuard: Combinator<GuardNode>;
+
+  /*
+   * Converged to the CSS base (inherited via compose): same body g.Identifier
+   * (a shared recognition token) and keyword() reducer; differs only
+   * requireToken().value vs tokenText() over one matched token.
+   */
   Keyword: Combinator<Keyword>;
   Quoted: Combinator<Quoted | Interpolation>;
   LiteralQuoted: Combinator<Quoted>;
@@ -206,6 +212,12 @@ type JessRules = {
   ValueSpaceGroup: Combinator<ValueSlot>;
   ValueTerm: Combinator<ValueSlot>;
   Value: Combinator<ValueSlot>;
+
+  /*
+   * Converged to the CSS base (inherited via compose): same body
+   * sequence(literal('!'), g.ImportantToken) and `true` result; the jess
+   * reducer's defensive marker re-check was redundant.
+   */
   Important: Combinator<true>;
   CustomPropertyValue: Combinator<Keyword>;
   InterpolatedCustomPropertyName: Combinator<string | Interpolation>;
@@ -1676,12 +1688,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       return { value, src: value.src };
     }
   );
-  const Keyword = node<Keyword>(
-    'Keyword',
-    g.Identifier,
-    children => keyword(requireToken(children[0]).value)
-  );
-
   /*
    * The `null` LITERAL (§4.3) — a rule of its own, so the identifier positions
    * that must keep reading `null` as a plain name (a lookup key, a media/container
@@ -4140,24 +4146,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * host-mode grammar construction rather than a Jess-specific compatibility path.
    * Comments around the marker/name are ambient trivia, not value children.
    */
-  const Important = node<true>(
-    'Important',
-    sequence(
-      literal('!'),
-      g.ImportantToken
-    ),
-    (children) => {
-      const marker = children.find((child): child is Token => isToken(child) && child.value === '!');
-      if (marker === undefined) {
-        throw new TypeError('Jess grammar lost its declaration-priority marker.');
-      }
-      requireExactToken(
-        marker,
-        '!'
-      );
-      return true;
-    }
-  );
 
   /*
    * A property interpolation is an existing Declaration.name Interpolation, never a
@@ -5378,7 +5366,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     GuardAnd,
     GuardOr,
     MixinGuard,
-    Keyword,
     Quoted,
     LiteralQuoted,
     StyleImport,
@@ -5457,7 +5444,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ValueSpaceGroup,
     ValueTerm,
     Value,
-    Important,
     CustomPropertyValue,
     InterpolatedCustomPropertyName,
     CustomPart,
