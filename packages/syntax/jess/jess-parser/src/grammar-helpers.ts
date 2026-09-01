@@ -79,10 +79,10 @@ function jessRelativeCombinator(child: unknown): '>' | '+' | '~' {
 /*
  * Decompose an already-built `SelectorBranch` back into `{combinator, term}`
  * segments so a leading relative combinator can be prepended. Mirrors css's
- * `branchSegments`: a bare term is one segment; a `RelativeSelector` skips its
+ * `jessBranchSegments`: a bare term is one segment; a `RelativeSelector` skips its
  * own leading combinator at index 0.
  */
-function branchSegments(branch: SelectorBranch): [JessSelectorSegment, ...JessSelectorSegment[]] {
+function jessBranchSegments(branch: SelectorBranch): [JessSelectorSegment, ...JessSelectorSegment[]] {
   if (branch.type !== 'ComplexSelector' && branch.type !== 'RelativeSelector') {
     return [{ term: branch }];
   }
@@ -135,18 +135,18 @@ function isSimpleSelector(value: unknown): value is SimpleSelector {
   return typeof value === 'object' && value !== null
     && 'type' in value && value.type === 'SimpleSelector'
     && 'text' in value && (typeof value.text === 'string' || value.text === null)
-    && 'interp' in value && (isInterpolation(value.interp) || value.interp === null);
+    && 'interp' in value && (isJessInterpolation(value.interp) || value.interp === null);
 }
 
-function isSelectorBranch(value: unknown): value is SelectorBranch {
+function isJessSelectorBranch(value: unknown): value is SelectorBranch {
   return isSelectorTerm(value) || isComplexSelector(value) || isRelativeSelector(value);
 }
 
-function isSelectorList(value: unknown): value is SelectorList {
+function isJessSelectorList(value: unknown): value is SelectorList {
   return typeof value === 'object' && value !== null
     && 'type' in value && value.type === 'SelectorList'
     && 'selectors' in value && Array.isArray(value.selectors)
-    && value.selectors.every(isSelectorBranch);
+    && value.selectors.every(isJessSelectorBranch);
 }
 
 function isJessReferenceTail(value: unknown): value is JessReferenceTail {
@@ -167,7 +167,7 @@ const selectorTermFromTokens = (tokens: readonly SimpleToken[]): SelectorTerm =>
   selectorTermOf([tokens[0]!, ...tokens.slice(1)]);
 
 function requireSelectorList(value: unknown): SelectorList {
-  if (!isSelectorList(value)) {
+  if (!isJessSelectorList(value)) {
     throw new TypeError('Jess grammar produced a non-selector-list child.');
   }
   return value;
@@ -188,7 +188,7 @@ function requireString(value: unknown): string {
 }
 
 function requireInterpolation(value: unknown): Interpolation {
-  if (!isInterpolation(value)) {
+  if (!isJessInterpolation(value)) {
     throw new TypeError('Jess grammar produced a non-interpolation child.');
   }
   return value;
@@ -212,7 +212,7 @@ function staticSelectorText(selector: SelectorList): string {
  * selector argument but is absent here, so it stays opaque text. `crossable`
  * (a narrower set) is decided in core. Mirrors the CSS grammar's set.
  */
-const STRUCTURED_PSEUDOS = new Set(['is', 'where', 'not', 'has', 'matches']);
+const JESS_STRUCTURED_PSEUDOS = new Set(['is', 'where', 'not', 'has', 'matches']);
 
 function isExtendInstruction(value: unknown): value is ExtendInstruction {
   return typeof value === 'object' && value !== null
@@ -282,7 +282,7 @@ function isValueSlotArray(value: ValueSlot): value is readonly ValueSlot[] {
   return Array.isArray(value);
 }
 
-function valueSlot(value: ValueSlot): ValueSlot {
+function jessValueSlot(value: ValueSlot): ValueSlot {
   if (isValueSlotArray(value)) {
     return value;
   }
@@ -299,18 +299,18 @@ function isSequence(value: ValueSlot): value is Sequence {
   return isValueNode(value) && value.type === 'Sequence';
 }
 
-function isValueSlotValue(value: unknown): value is ValueSlot {
-  return Array.isArray(value) ? value.every(isValueSlotValue) : isValueNode(value);
+function isJessValueSlotValue(value: unknown): value is ValueSlot {
+  return Array.isArray(value) ? value.every(isJessValueSlotValue) : isValueNode(value);
 }
 
 function requireValueSlot(value: unknown): ValueSlot {
-  return isValueNodeArray(value) ? value : valueSlot(requireValueNode(value));
+  return isValueNodeArray(value) ? value : jessValueSlot(requireValueNode(value));
 }
 
 function isJessMixinCallArgument(value: unknown): value is JessMixinCallArgument {
   /* `name` is ALWAYS present — `undefined` is what positional means — so its
    * absence is a reduced-shape defect, not a positional argument. */
-  return typeof value === 'object' && value !== null && 'value' in value && isValueSlotValue(value.value)
+  return typeof value === 'object' && value !== null && 'value' in value && isJessValueSlotValue(value.value)
     && 'name' in value && (value.name === undefined || typeof value.name === 'string');
 }
 
@@ -356,7 +356,7 @@ function requireGuardNode(value: unknown): GuardNode {
   return value;
 }
 
-function isInterpolation(value: unknown): value is Interpolation {
+function isJessInterpolation(value: unknown): value is Interpolation {
   return typeof value === 'object' && value !== null && 'type' in value
     && value.type === 'Interpolation' && 'parts' in value && Array.isArray(value.parts);
 }
@@ -377,7 +377,7 @@ function appendInterpolationLiteral(parts: Interpolation['parts'], text: string)
 function templateInterpolationFromChildren(children: readonly unknown[]): Interpolation {
   const parts: Interpolation['parts'] = [];
   for (const child of children) {
-    if (isInterpolation(child)) {
+    if (isJessInterpolation(child)) {
       for (const part of child.parts) {
         if ('lit' in part) {
           appendInterpolationLiteral(
@@ -413,7 +413,7 @@ function appendCustomValueParts(children: readonly unknown[], parts: Interpolati
         parts,
         seen
       );
-    } else if (isInterpolation(child)) {
+    } else if (isJessInterpolation(child)) {
       seen.interpolated = true;
       for (const part of child.parts) {
         if (isInterpolationLiteral(part)) {
@@ -703,11 +703,11 @@ function sourceFromState(state: unknown): string | undefined {
 }
 
 function interpolationValue(child: unknown): Interpolation {
-  if (isInterpolation(child)) {
+  if (isJessInterpolation(child)) {
     return child;
   }
   const fact = requireExpressionFact(child);
-  if (!isInterpolation(fact.value)) {
+  if (!isJessInterpolation(fact.value)) {
     throw new TypeError('Jess quoted expression produced a non-interpolation fact.');
   }
   return fact.value;
@@ -715,7 +715,7 @@ function interpolationValue(child: unknown): Interpolation {
 
 function quotedInterpolationFromChildren(children: readonly unknown[]): Quoted | Interpolation {
   const open = requireToken(children[0]);
-  if (children.length === 3 && !isInterpolation(children[1])) {
+  if (children.length === 3 && !isJessInterpolation(children[1])) {
     const content = requireToken(children[1]);
     return quoted(
       `${open.value}${content.value}${open.value}`,
@@ -729,7 +729,7 @@ function quotedInterpolationFromChildren(children: readonly unknown[]): Quoted |
     1,
     -1
   )) {
-    if (isInterpolation(child) || isExpressionFact(child)) {
+    if (isJessInterpolation(child) || isExpressionFact(child)) {
       parts.push(...interpolationValue(child).parts);
     } else {
       parts.push({ lit: requireToken(child).value });
@@ -750,7 +750,7 @@ function escapedInterpolationFromChildren(children: readonly unknown[]): Interpo
     2,
     -1
   )) {
-    if (isInterpolation(child)) {
+    if (isJessInterpolation(child)) {
       parts.push(...child.parts);
     } else {
       parts.push({ lit: requireToken(child).value });
@@ -764,7 +764,7 @@ function quotedExpressionFact(children: readonly unknown[]): ExpressionFact {
   const src = children.map(child =>
     isExpressionFact(child)
       ? requireExpressionFact(child).src
-      : isInterpolation(child)
+      : isJessInterpolation(child)
         ? (() => {
             throw new TypeError('Jess expression quote lost interpolation source.');
           })()
@@ -792,7 +792,7 @@ function reduceColonFeature(children: readonly unknown[], lostMessage: string): 
       ));
 }
 
-function functionOpenName(child: unknown): string {
+function jessFunctionOpenName(child: unknown): string {
   const value = requireToken(child).value;
   return value.endsWith('(') ? value.slice(0, -1) : value;
 }
@@ -800,7 +800,7 @@ function functionOpenName(child: unknown): string {
 function requireStatements(children: readonly unknown[]): Statement[] {
   const statements: Statement[] = [];
   for (const child of children) {
-    if (!isVarDeclaration(child) && !isMixinDefinition(child) && !isMixinCall(child) && !isApply(child) && !isReferenceCall(child) && !isRuleset(child) && !isFor(child) && !isIf(child) && !isWhile(child) && !isDeclaration(child) && !isStyleImport(child) && !isModuleImport(child) && !isAtRuleBlock(child) && !isAtRuleStatement(child) && !isOpaqueAtRuleBlock(child)) {
+    if (!isVarDeclaration(child) && !isMixinDefinition(child) && !isMixinCall(child) && !isApply(child) && !isReferenceCall(child) && !isRuleset(child) && !isFor(child) && !isIf(child) && !isWhile(child) && !isJessDeclaration(child) && !isStyleImport(child) && !isModuleImport(child) && !isAtRuleBlock(child) && !isAtRuleStatement(child) && !isOpaqueAtRuleBlock(child)) {
       throw new TypeError('Jess grammar produced a non-statement child.');
     }
     statements.push(child);
@@ -927,13 +927,13 @@ function requireLiteralQuoted(value: unknown): Quoted {
   return value;
 }
 
-function isDeclaration(value: unknown): value is Declaration {
+function isJessDeclaration(value: unknown): value is Declaration {
   return typeof value === 'object'
     && value !== null
     && 'type' in value
     && value.type === 'Declaration'
     && 'name' in value
-    && (typeof value.name === 'string' || isInterpolation(value.name))
+    && (typeof value.name === 'string' || isJessInterpolation(value.name))
     && 'value' in value
     && (isValueNode(value.value)
       || (Array.isArray(value.value) && value.value.every(isValueNode)));
@@ -945,9 +945,9 @@ function isCollectionEntry(value: unknown): value is CollectionEntry {
     && 'type' in value
     && value.type === 'CollectionEntry'
     && 'key' in value
-    && isValueSlotValue(value.key)
+    && isJessValueSlotValue(value.key)
     && 'value' in value
-    && isValueSlotValue(value.value);
+    && isJessValueSlotValue(value.value);
 }
 
 function isRuleset(value: unknown): value is Ruleset {
@@ -1006,7 +1006,7 @@ function isVarDeclaration(value: unknown): value is VariableDeclaration {
     && 'name' in value
     && typeof value.name === 'string'
     && 'value' in value
-    && isValueSlotValue(value.value);
+    && isJessValueSlotValue(value.value);
 }
 
 /*
@@ -1073,7 +1073,7 @@ function reduceVarDeclaration(children: readonly unknown[]): VariableDeclaration
       : { mode: 'declare' as const };
   return variableDeclaration(
     requireToken(children[operatorIndex - 1]).value,
-    valueSlot(requireValueSlot(children[operatorIndex + 1])),
+    jessValueSlot(requireValueSlot(children[operatorIndex + 1])),
     write
   );
 }
@@ -1108,10 +1108,10 @@ function reduceCompound(children: readonly unknown[]): SelectorTerm {
   return selectorTermFromTokens(children.filter(isSimpleToken));
 }
 function reduceSelectorTail(children: readonly unknown[]): SelectorBranch {
-  return children.find(isSelectorBranch)!;
+  return children.find(isJessSelectorBranch)!;
 }
 function reduceSelectorList(children: readonly unknown[]): SelectorList {
-  return selist(...children.filter(isSelectorBranch));
+  return selist(...children.filter(isJessSelectorBranch));
 }
 
 /*
@@ -1225,15 +1225,15 @@ export {
   requireFields,
   jessCombinator,
   jessRelativeCombinator,
-  branchSegments,
+  jessBranchSegments,
   isExpressionFact,
   isJessAtRuleHeader,
   requireJessAtRuleHeader,
   isAtRuleNameToken,
   isSelectorTerm,
   isSimpleSelector,
-  isSelectorBranch,
-  isSelectorList,
+  isJessSelectorBranch,
+  isJessSelectorList,
   isJessReferenceTail,
   isPseudoSelector,
   isSimpleToken,
@@ -1244,7 +1244,7 @@ export {
   requireInterpolation,
   requireKeyword,
   staticSelectorText,
-  STRUCTURED_PSEUDOS,
+  JESS_STRUCTURED_PSEUDOS,
   isExtendInstruction,
   isParam,
   isParamList,
@@ -1253,15 +1253,15 @@ export {
   isValueNode,
   isValueNodeArray,
   isValueSlotArray,
-  valueSlot,
+  jessValueSlot,
   isSequence,
-  isValueSlotValue,
+  isJessValueSlotValue,
   requireValueSlot,
   isJessMixinCallArgument,
   requireValueNode,
   isGuardNode,
   requireGuardNode,
-  isInterpolation,
+  isJessInterpolation,
   isInterpolationLiteral,
   appendInterpolationLiteral,
   templateInterpolationFromChildren,
@@ -1286,7 +1286,7 @@ export {
   escapedInterpolationFromChildren,
   quotedExpressionFact,
   reduceColonFeature,
-  functionOpenName,
+  jessFunctionOpenName,
   requireStatements,
   collectBlockStatements,
   collectBodyStatements,
@@ -1306,7 +1306,7 @@ export {
   isUrl,
   urlFromChildren,
   requireLiteralQuoted,
-  isDeclaration,
+  isJessDeclaration,
   isCollectionEntry,
   isRuleset,
   isMixinDefinition,

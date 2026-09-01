@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Build-then-LOAD gate for the compose flip (W0) — Less AND SCSS.
+ * Build-then-LOAD gate for the compose flip (W0) — Less, SCSS AND Jess.
  *
  * The reducer-purity census (parseman-compose-reducer-census.mjs --check) is a
  * STATIC per-reducer analysis: it proves reducers reference only imported
@@ -42,6 +42,11 @@ const DIALECTS = [
     name: 'SCSS',
     lib: join(repo, 'packages/syntax/scss/scss-parser/lib'),
     cstFn: 'parseScssCst'
+  },
+  {
+    name: 'Jess',
+    lib: join(repo, 'packages/syntax/jess/jess-parser/lib'),
+    cstFn: 'parseJessCst'
   }
 ];
 
@@ -114,4 +119,4 @@ if (failed) {
   console.error('\n✗ Compose build-then-load gate FAILED — a variant did not fuse or would not load.');
   process.exit(1);
 }
-console.log('\n✓ Compose build-then-load gate PASSED — all Less + SCSS variants fuse to tableRules( and load + parse.');
+console.log('\n✓ Compose build-then-load gate PASSED — all Less + SCSS + Jess variants fuse to tableRules( and load + parse.');
