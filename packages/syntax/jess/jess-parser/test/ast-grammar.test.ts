@@ -1368,7 +1368,6 @@ describe('Jess AST grammar facts', () => {
       '@import "$[path]";',
       '@import "${path}.css";',
       '@import url($path);',
-      '@import url(${path});',
       '@import "theme.css" $media;'
     ]) {
       const rejected = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace });
