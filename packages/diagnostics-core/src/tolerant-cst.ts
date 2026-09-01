@@ -41,6 +41,7 @@ export const LINT_CODES = {
   keyframeDeclarationNoImportant: 'lint/keyframe-declaration-no-important',
   declarationNoImportant: 'lint/declaration-no-important',
   invalidNamedGridAreas: 'lint/named-grid-areas-no-invalid',
+  invalidGridLineNames: 'lint/invalid-grid-line-names',
   fontFamilyDuplicateNames: 'lint/font-family-no-duplicate-names',
   fontFamilyMissingGeneric: 'lint/font-family-no-missing-generic-family-keyword',
   fontFaceMissingRequiredProperties: 'lint/font-face-missing-required-properties',
@@ -1768,6 +1769,23 @@ function normalizedKeyframeSelectorKeys(source: string, node: CssCstNode): strin
         ? '100%'
         : part);
 }
+
+/*
+ * Grid `<line-names>` validity, css-grid-2 §7.1: `<line-names> = '[' <custom-ident>* ']'`.
+ * A bracketed value in a grid track-list slot is line names; anywhere else `[ … ]`
+ * is a valid CSS simple block the emitter prints verbatim, so this only fires for
+ * the grid property set below. A CSS escape (css-syntax-3 §4.3.7) can carry a
+ * space/dot/leading digit inside ONE ident (`[a\ b]`, `[\31 23]`), so it is spelled
+ * out — a predicate that misses it would reject valid CSS, the one direction this
+ * must never take. Ported from the withdrawn emit-time `isLineNames` gate (ledger P24).
+ */
+const GRID_LINE_NAME_PROPERTIES = new Set(['grid', 'grid-template', 'grid-template-columns', 'grid-template-rows']);
+const CSS_ESCAPE = String.raw`\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^0-9a-fA-F\n])`;
+const LINE_NAME_IDENT = `(?:${CSS_ESCAPE}|[-_a-zA-Z\\u{80}-\\u{10FFFF}])(?:${CSS_ESCAPE}|[-\\w\\u{80}-\\u{10FFFF}])*`;
+const LINE_NAME_WS = String.raw`[ \t\n\r\f]`;
+
+/** The interior of `[ … ]`, without the brackets: zero or more space-separated custom idents. */
+const LINE_NAMES_INNER = new RegExp(`^${LINE_NAME_WS}*(?:${LINE_NAME_IDENT}(?:${LINE_NAME_WS}+${LINE_NAME_IDENT})*${LINE_NAME_WS}*)?$`, 'u');
 
 function gridAreaRows(source: string, node: CssCstNode): GridAreaRow[] {
   const rows: GridAreaRow[] = [];
@@ -6188,6 +6206,22 @@ export function cstLintDiagnostics(
                   );
                 }
               }
+            }
+          }
+        }
+
+        if (language === 'css' && GRID_LINE_NAME_PROPERTIES.has(lowerName)) {
+          const bracketRe = /\[[^[\]]*\]/g;
+          let bm: RegExpExecArray | null;
+          while ((bm = bracketRe.exec(value)) !== null) {
+            if (!LINE_NAMES_INNER.test(bm[0]!.slice(1, -1))) {
+              const bracketStart = start + valueStart + bm.index;
+              push(
+                LINT_CODES.invalidGridLineNames,
+                'warning',
+                `Grid line names "${bm[0]}" must be a bracketed list of custom identifiers, e.g. [full-start]`,
+                spanAtOrContaining(node, bracketStart, bracketStart + bm[0].length)
+              );
             }
           }
         }

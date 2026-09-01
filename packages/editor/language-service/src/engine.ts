@@ -1309,6 +1309,7 @@ export function createEngine(): JessLanguageServiceEngine {
     [LINT_CODES.keyframeDeclarationNoImportant]: DiagnosticSeverity.Warning,
     [LINT_CODES.declarationNoImportant]: DiagnosticSeverity.Warning,
     [LINT_CODES.invalidNamedGridAreas]: DiagnosticSeverity.Warning,
+    [LINT_CODES.invalidGridLineNames]: DiagnosticSeverity.Warning,
     [LINT_CODES.fontFamilyDuplicateNames]: DiagnosticSeverity.Warning,
     [LINT_CODES.fontFamilyMissingGeneric]: DiagnosticSeverity.Warning,
     [LINT_CODES.fontFaceMissingRequiredProperties]: DiagnosticSeverity.Warning,

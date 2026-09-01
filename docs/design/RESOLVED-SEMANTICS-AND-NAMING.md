@@ -2354,11 +2354,18 @@ can be mistaken for the other.
 **`~[ … ]` is untouched.** The escaped form emits its inner value with the
 delimiters DROPPED, so it prints no brackets at all.
 
-**Follow-up — grid line-names lint rule.** The one genuine authoring error a
-bracketed value can be — `grid-template-columns: [1]`, where a line name was
+**Follow-up — grid line-names lint rule (built).** The one genuine authoring error
+a bracketed value can be — `grid-template-columns: [1]`, where a line name was
 meant — is caught by a lint rule over the grid property set, NOT by the emitter,
-which cannot see the property. That rule is not yet built; until it is, an invalid
-grid line name emits and the browser drops the one declaration.
+which cannot see the property. That rule now exists:
+`lint/invalid-grid-line-names` (public name `jess/grid-line-names-no-invalid`)
+fires only for `grid`/`grid-template`/`grid-template-columns`/`grid-template-rows`
+and validates each bracketed slot against `'[' <custom-ident>* ']'` — the same
+`LINE_NAMES` predicate the emitter used to carry (spelling the css-syntax-3 §4.3.7
+escape, so `[a\ b]`, `[\31 23]`, `[--x]` and `[]` all pass), now living in
+`packages/diagnostics-core/src/tolerant-cst.ts`. A bracket in a non-grid property
+is valid CSS the browser skips and is left alone. The emit is still permissive;
+the lint layer, where the property is known, is what flags the mistake.
 
 **Consequence for `[]` and §4.4.** `[]` is FALSY. The falsy set's principle is
 EMPTINESS, and the empty bracketed list is empty. It measured truthy until
