@@ -125,6 +125,11 @@ jobs:
       - name: Macro-buildability check
         run: node scripts/check-macro-buildable.mjs --no-build
 
+      # Node engines must stay at the canonical require(esm) range; blocks silent
+      # drift like the 22.12 -> 22.18 floor bump that broke engine-strict installs.
+      - name: Node-engines guard
+        run: node scripts/check-node-engines.mjs
+
       # Every dialect grammar's reducers must reference only IMPORTED helpers, never
       # a module-scope helper defined in grammar.ts. This is a NECESSARY (not
       # sufficient) condition for cross-package compose() fusion — it is a static
