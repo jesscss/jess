@@ -24,7 +24,7 @@ import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar';
 import { ScssImportPostludeError } from './parse-error.js';
-import { anonymousMixin, any, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, color, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, importIsCompileTime, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { anonymousMixin, any, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, importIsCompileTime, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 import { COMPARISON_OPERATORS, appendLiteral, scssBranchSegments, contentArgRaw, customValue, customValueFromParts, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isAnonymousMixin, isCollection, isCollectionEntry, isScssDeclaration, isExtendInstruction, isScssImportTarget, isScssInterpolation, isParamArray, isQuoted, isScriptModulePath, isScssValuePair, isScssValueTail, isScssSelectorBranch, isScssSelectorList, isSelectorTerm, isScssSimpleToken, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, keywordizeValues, mapKeyValue, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, scssSelectorTermFromTokens, scssSourceText, statementChildren, statements, staticQuoted, scssValueSlot } from './grammar-helpers.js';
 import type { ScssArgumentPair, ScssCallArg, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
@@ -37,10 +37,7 @@ type ScssRules = {
   SassInterpolation: Combinator<Interpolation>;
   Quoted: Combinator<Quoted | Interpolation>;
   LiteralQuoted: Combinator<Quoted>;
-  Keyword: Combinator<Keyword>;
   CustomPropertyValue: Combinator<Keyword>;
-  Color: Combinator<Color>;
-  UnicodeRange: Combinator<ValueNode>;
   Dimension: Combinator<Dimension>;
   InterpolatedUrlValue: Combinator<Interpolation>;
   InterpolatedValue: Combinator<Interpolation>;
@@ -63,7 +60,6 @@ type ScssRules = {
   ValuePair: Combinator<ScssValuePair>;
   ArgumentPair: Combinator<ScssArgumentPair>;
   Value: Combinator<ValueSlot>;
-  Important: Combinator<true>;
   InterpolatedProperty: Combinator<Interpolation>;
   CustomPropertyName: Combinator<string | Interpolation>;
   CustomPart: Combinator<unknown>;
@@ -166,7 +162,6 @@ type ScssRules = {
   PseudoArgument: Combinator<string>;
   PseudoArgumentGroup: Combinator<string>;
   PseudoSelector: Combinator<SimpleToken>;
-  NestingSelector: Combinator<SimpleSelector>;
   CompoundSelector: Combinator<SelectorTerm>;
   ComplexSelector: Combinator<SelectorBranch>;
   RelativeComplex: Combinator<SelectorBranch>;
@@ -186,8 +181,26 @@ type ScssRules = {
   AtRootContinuation: Combinator<unknown>;
 };
 
+/*
+ * Rules converged to the CSS base and inherited via compose. SCSS deletes its
+ * own delta and references the css-parser rule through `g.`; each reducer
+ * differed only in `requireToken().value` vs `tokenText()` over one token (or,
+ * for `Important`, a dropped defensive throw), so the accepted language, node
+ * name, and AST/CST are byte-identical (scss byte-identity oracle: identical).
+ * These names are no longer in `ScssRules`, so declare their `g.`-facing types
+ * here, mirroring less-parser's `SharedSyntax`.
+ */
+type ScssSharedSyntax = {
+  Color: Combinator<Color>;
+  UnicodeRange: Combinator<ValueNode>;
+  Keyword: Combinator<Keyword>;
+  Important: Combinator<true>;
+  NestingSelector: Combinator<SimpleSelector>;
+};
+
 type ScssInputRules =
   ScssRules
+  & ScssSharedSyntax
   & typeof cssSyntax
   & typeof cssPseudoSyntax
   & typeof opaqueAtRuleRecognition;
@@ -317,7 +330,6 @@ const generalTemplateText = regex(/(?:[^#()\[\]{}'"\\]|\\[\s\S]|#(?!\{))+/);
  * skipping the doomed frame entirely.
  */
 const pseudoColon = regex(/::?(?![ \t\n\r\f])/);
-const hexColor = regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F])/);
 const numberValue = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)/);
 
 /*
@@ -555,31 +567,10 @@ const scssFactory = (g: ScssInputRules) => {
       span
     )
   );
-  const Keyword = node<Keyword>(
-    'Keyword',
-    g.Identifier,
-    children => keyword(requireToken(children[0]).value)
-  );
   const CustomPropertyValue = node<Keyword>(
     'CustomPropertyValue',
     g.CustomPropertyToken,
     children => keyword(requireToken(children[0]).value)
-  );
-  const Color = node<Color>(
-    'Color',
-    hexColor,
-    children => color(requireToken(children[0]).value)
-  );
-
-  /*
-   * A `<urange>` is one opaque CSS token, so it must be recognized before the
-   * keyword atom: `U+0-7F` split at the `+` leaves `+0`/`-7F` to be folded as
-   * SCSS arithmetic, which serializes valid CSS back out as `U + 0 - 7F`.
-   */
-  const UnicodeRange = node<ValueNode>(
-    'UnicodeRange',
-    g.UnicodeRangeToken,
-    children => any(requireToken(children[0]).value)
   );
 
   /*
@@ -1345,19 +1336,6 @@ const scssFactory = (g: ScssInputRules) => {
         requireValueSlot(children[3]),
         write
       );
-    }
-  );
-  const Important = node<true>(
-    'Important',
-    sequence(
-      literal('!'),
-      g.ImportantToken
-    ),
-    (children) => {
-      if (children.length !== 2 || requireToken(children[0]).value !== '!') {
-        throw new TypeError('Important produced unexpected children.');
-      }
-      return true;
     }
   );
 
@@ -4496,11 +4474,6 @@ const scssFactory = (g: ScssInputRules) => {
     PseudoSelectorDispatch,
     children => children.find(isScssSimpleToken)!
   );
-  const NestingSelector = node<SimpleSelector>(
-    'SimpleSelector',
-    literal('&'),
-    () => simpleSelector('&')
-  );
   const CompoundSelector = node<SelectorTerm>(
     'CompoundSelector',
     noTrivia(sequence(
@@ -4825,10 +4798,7 @@ const scssFactory = (g: ScssInputRules) => {
     SassInterpolation,
     Quoted,
     LiteralQuoted,
-    Keyword,
     CustomPropertyValue,
-    Color,
-    UnicodeRange,
     Dimension,
     InterpolatedUrlValue,
     InterpolatedValue,
@@ -4851,7 +4821,6 @@ const scssFactory = (g: ScssInputRules) => {
     ValuePair,
     ArgumentPair,
     Value,
-    Important,
     InterpolatedProperty,
     CustomPropertyName,
     CustomPart,
@@ -4955,7 +4924,6 @@ const scssFactory = (g: ScssInputRules) => {
     PseudoArgument,
     PseudoArgumentGroup,
     PseudoSelector,
-    NestingSelector,
     CompoundSelector,
     ComplexSelector,
     RelativeComplex,
