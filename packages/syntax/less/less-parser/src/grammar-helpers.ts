@@ -166,7 +166,7 @@ function unsupportedVariableNameFrom(value: unknown): string | undefined {
   if (isUnsupportedVariableNameFact(value)) {
     return value.unsupportedVariableName;
   }
-  if (isTerminalText(value, '-')) {
+  if (isLessTerminalText(value, '-')) {
     return '-';
   }
   if (hasGrammarType(value, 'UnsupportedVariableName') && hasChildren(value)) {
@@ -217,7 +217,7 @@ function requireCombinator(value: unknown): SelectorCombinator {
   return ' ';
 }
 
-function isTerminalText(value: unknown, text: string): boolean {
+function isLessTerminalText(value: unknown, text: string): boolean {
   return (typeof value === 'string' && value === text)
     || (typeof value === 'object' && value !== null && 'value' in value && value.value === text);
 }
@@ -343,7 +343,7 @@ function isVarDeclaration(value: unknown): value is VariableDeclaration {
     && 'name' in value
     && typeof value.name === 'string'
     && 'value' in value
-    && (isValueSlotValue(value.value) || isMixinCall(value.value));
+    && (isLessValueSlotValue(value.value) || isMixinCall(value.value));
 }
 
 function isVarRef(value: unknown): value is VarRef {
@@ -897,8 +897,8 @@ function valuePieceReducerWithTrivia(
   state: unknown
 ): ValueSlot {
   const values = children
-    .filter(child => isValueNode(child) || isTerminalText(child, '/') || isTerminalText(child, '-') || isTerminalText(child, '%'))
-    .map(child => isTerminalText(child, '/') || isTerminalText(child, '-') || isTerminalText(child, '%')
+    .filter(child => isValueNode(child) || isLessTerminalText(child, '/') || isLessTerminalText(child, '-') || isLessTerminalText(child, '%'))
+    .map(child => isLessTerminalText(child, '/') || isLessTerminalText(child, '-') || isLessTerminalText(child, '%')
       ? keyword(requireTerminalText(child))
       : requireValueNode(child));
   if (values.length === 1) {
@@ -909,7 +909,7 @@ function valuePieceReducerWithTrivia(
   let previousValue = -1;
   for (let index = 0; index < children.length; index += 1) {
     const child = children[index];
-    if (!(isValueNode(child) || isTerminalText(child, '/') || isTerminalText(child, '-') || isTerminalText(child, '%'))) {
+    if (!(isValueNode(child) || isLessTerminalText(child, '/') || isLessTerminalText(child, '-') || isLessTerminalText(child, '%'))) {
       continue;
     }
     if (previousValue >= 0) {
@@ -1023,7 +1023,7 @@ function queryClauseReducer(
   return spaced(values, separators);
 }
 
-function queryComparisonOperators(children: readonly unknown[]): string[] {
+function lessQueryComparisonOperators(children: readonly unknown[]): string[] {
   return children
     .filter((child) => {
       const text = typeof child === 'string'
@@ -1125,7 +1125,7 @@ function isValueNode(value: unknown): value is ValueNode {
   }
 }
 
-function valueSlot(value: ValueSlot): ValueSlot {
+function lessValueSlot(value: ValueSlot): ValueSlot {
   // Ordinary adjacent terms are raw recursive ValueSlot arrays.  The
   // variable-declaration reducer uses `variableValueSlot` below for the one
   // Less-specific boundary where a preserved slash must remain available to
@@ -1183,8 +1183,8 @@ function variableValueSlot(value: unknown): ValueSlot {
   return slot;
 }
 
-function isValueSlotValue(value: unknown): value is ValueSlot {
-  return Array.isArray(value) ? value.every(isValueSlotValue) : isValueNode(value);
+function isLessValueSlotValue(value: unknown): value is ValueSlot {
+  return Array.isArray(value) ? value.every(isLessValueSlotValue) : isValueNode(value);
 }
 
 /** A reduced {@link LessCallArg}: an argument that carried a `@name:` keyword,
@@ -1195,7 +1195,7 @@ function isLessCallArg(value: unknown): value is LessCallArg {
     && !Array.isArray(value)
     && 'value' in value
     && 'name' in value
-    && isValueSlotValue(value.value);
+    && isLessValueSlotValue(value.value);
 }
 
 function callWithLayout(
@@ -1322,7 +1322,7 @@ function functionCallFromChildren(
   const name = functionNameFromOpener(children[0]);
   const args: Array<ValueSlot | LessCallArg> = [];
   for (const child of children.slice(1, -1)) {
-    if (isLessCallArg(child) || isValueSlotValue(child)) {
+    if (isLessCallArg(child) || isLessValueSlotValue(child)) {
       args.push(child);
     }
   }
@@ -1344,13 +1344,13 @@ function argumentFunctionFromChildren(
 ): FunctionCall {
   const name = functionNameFromOpener(children[0]);
   const args = children.slice(1, -1).filter(
-    (child): child is ValueSlot | LessCallArg => isLessCallArg(child) || isValueSlotValue(child)
+    (child): child is ValueSlot | LessCallArg => isLessCallArg(child) || isLessValueSlotValue(child)
   );
   return callWithLayout(name, args, separatorsFromFields(fields), hasField(fields, 'trailingSeparator'), span);
 }
 
 function requireValueSlot(value: unknown): ValueSlot {
-  return Array.isArray(value) ? value as ValueSlot : valueSlot(requireValueNode(value));
+  return Array.isArray(value) ? value as ValueSlot : lessValueSlot(requireValueNode(value));
 }
 
 function requireValueNode(value: unknown): ValueNode {
@@ -1369,13 +1369,13 @@ function requireKeyword(value: unknown): Keyword {
 }
 
 function requireMixinCallArgumentValue(value: unknown): MixinCallArgument['value'] {
-  if (!isValueSlotValue(value) && !isMixinCall(value)) {
+  if (!isLessValueSlotValue(value) && !isMixinCall(value)) {
     throw new TypeError('Less grammar produced an invalid mixin-call argument.');
   }
   return value;
 }
 
-function isDeclaration(value: unknown): value is Declaration {
+function isLessDeclaration(value: unknown): value is Declaration {
   return typeof value === 'object'
     && value !== null
     && 'type' in value
@@ -1384,14 +1384,14 @@ function isDeclaration(value: unknown): value is Declaration {
     && (typeof value.name === 'string' || isInterp(value.name))
     && 'value' in value
     && 'value' in value
-    && isValueSlotValue(value.value)
+    && isLessValueSlotValue(value.value)
     && 'merge' in value
     && (value.merge === null || value.merge === ',' || value.merge === ' ')
     && 'important' in value
     && typeof value.important === 'boolean';
 }
 
-function isSelectorList(value: unknown): value is SelectorList {
+function isLessSelectorList(value: unknown): value is SelectorList {
   return typeof value === 'object'
     && value !== null
     && 'type' in value
@@ -1401,7 +1401,7 @@ function isSelectorList(value: unknown): value is SelectorList {
 }
 
 function requireSelectorList(value: unknown): SelectorList {
-  if (!isSelectorList(value)) {
+  if (!isLessSelectorList(value)) {
     throw new TypeError('Less grammar produced a non-selector child.');
   }
   return value;
@@ -1425,14 +1425,14 @@ function isRelative(value: unknown): value is Extract<SelectorBranch, { readonly
     && Array.isArray(value.value);
 }
 
-function isSelectorBranch(value: unknown): value is SelectorBranch {
+function isLessSelectorBranch(value: unknown): value is SelectorBranch {
   return isSelectorTerm(value) || isComplex(value) || isRelative(value);
 }
 
 const selectorBranchesFrom = (children: readonly unknown[]): SelectorBranch[] =>
-  children.filter(isSelectorBranch);
+  children.filter(isLessSelectorBranch);
 
-function branchSegments(branch: SelectorBranch): [{ combinator?: SelectorCombinator; term: SelectorTerm }, ...Array<{ combinator?: SelectorCombinator; term: SelectorTerm }>] {
+function lessBranchSegments(branch: SelectorBranch): [{ combinator?: SelectorCombinator; term: SelectorTerm }, ...Array<{ combinator?: SelectorCombinator; term: SelectorTerm }>] {
   if (branch.type !== 'ComplexSelector' && branch.type !== 'RelativeSelector') {
     return [{ term: branch }];
   }
@@ -1455,7 +1455,7 @@ type MixinPrefixSegment = { readonly combinator: ' ' | '>'; readonly selector: s
 
 function mixinPrefixFromSelectorBranch(branch: SelectorBranch): readonly MixinPrefixSegment[] | null {
   const prefix: MixinPrefixSegment[] = [];
-  for (const segment of branchSegments(branch)) {
+  for (const segment of lessBranchSegments(branch)) {
     if (segment.combinator !== undefined && segment.combinator !== ' ' && segment.combinator !== '>') {
       return null;
     }
@@ -1521,7 +1521,7 @@ function hasRulesetTerminator(rawChildren: readonly unknown[]): boolean {
 }
 
 function isSelectorTerm(value: unknown): value is SelectorTerm {
-  if (isSimpleToken(value)) {
+  if (isLessSimpleToken(value)) {
     return true;
   }
   return typeof value === 'object'
@@ -1548,14 +1548,14 @@ function isSimpleSelector(value: unknown): value is SimpleSelector {
 // `crossable` (a narrower set) is decided in core.
 const STRUCTURED_PSEUDOS = new Set(['is', 'where', 'not', 'has', 'matches']);
 
-function isSimpleToken(value: unknown): value is SimpleToken {
+function isLessSimpleToken(value: unknown): value is SimpleToken {
   return typeof value === 'object'
     && value !== null
     && 'type' in value
     && (value.type === 'SimpleSelector' || value.type === 'PseudoSelector');
 }
 
-const selectorTermFromTokens = (tokens: readonly SimpleToken[]): SelectorTerm =>
+const lessSelectorTermFromTokens = (tokens: readonly SimpleToken[]): SelectorTerm =>
   selectorTermOf([tokens[0]!, ...tokens.slice(1)]);
 
 function pseudoNameFromHead(head: string): string {
@@ -1567,7 +1567,7 @@ function pseudoNameFromHead(head: string): string {
 }
 
 function staticSelectorPseudoFrom(head: string, arg: unknown): SimpleToken {
-  if (isSelectorList(arg) && STRUCTURED_PSEUDOS.has(pseudoNameFromHead(head).toLowerCase())) {
+  if (isLessSelectorList(arg) && STRUCTURED_PSEUDOS.has(pseudoNameFromHead(head).toLowerCase())) {
     return pseudoSelector(head, arg);
   }
   return simpleSelector(`${head}(${requireSelectorList(arg).selectors.map(selectorBranchCanonical).join(',')})`);
@@ -1585,7 +1585,7 @@ function isRuleset(value: unknown): value is Ruleset {
     && 'type' in value
     && value.type === 'Ruleset'
     && 'selector' in value
-    && isSelectorList(value.selector)
+    && isLessSelectorList(value.selector)
     && 'rules' in value
     && Array.isArray(value.rules);
 }
@@ -1635,13 +1635,13 @@ function isAttributeNameFact(value: unknown): value is AttributeNameFact {
 
 function isExtendInstruction(value: unknown): value is ExtendInstruction {
   return typeof value === 'object' && value !== null
-    && 'target' in value && isSelectorList(value.target)
+    && 'target' in value && isLessSelectorList(value.target)
     && 'partial' in value && typeof value.partial === 'boolean';
 }
 
 function isExtendTargetFact(value: unknown): value is ExtendTargetFact {
   return typeof value === 'object' && value !== null
-    && 'target' in value && isSelectorList(value.target)
+    && 'target' in value && isLessSelectorList(value.target)
     && 'partial' in value && typeof value.partial === 'boolean';
 }
 
@@ -1653,14 +1653,14 @@ function isBodyExtendFact(value: unknown): value is BodyExtendFact {
 
 function isSelectorBranchFact(value: unknown): value is SelectorBranchFact {
   return typeof value === 'object' && value !== null
-    && 'selector' in value && isSelectorBranch(value.selector)
+    && 'selector' in value && isLessSelectorBranch(value.selector)
     && 'extensions' in value && Array.isArray(value.extensions)
     && value.extensions.every(isExtendInstruction);
 }
 
 function isSelectorListWithExtendsFact(value: unknown): value is SelectorListWithExtendsFact {
   return typeof value === 'object' && value !== null
-    && 'selector' in value && isSelectorList(value.selector)
+    && 'selector' in value && isLessSelectorList(value.selector)
     && 'extensions' in value && Array.isArray(value.extensions)
     && value.extensions.every(isExtendInstruction);
 }
@@ -1705,7 +1705,7 @@ function isMixinPathTail(value: unknown): value is MixinPathSegmentFact {
 function isMixinCallArgument(value: unknown): value is MixinCallArgument {
   /* `name` is ALWAYS present — `undefined` is what positional means — so its
    * absence is a reduced-shape defect, not a positional argument. */
-  return typeof value === 'object' && value !== null && 'value' in value && (isValueSlotValue(value.value) || isMixinCall(value.value))
+  return typeof value === 'object' && value !== null && 'value' in value && (isLessValueSlotValue(value.value) || isMixinCall(value.value))
     && 'name' in value && (value.name === undefined || typeof value.name === 'string');
 }
 
@@ -1733,12 +1733,12 @@ function mixinParamsFromInterior(interior: MixinInteriorFact): Param[] {
       if (item.default === undefined) {
         return { name: item.reference.name };
       }
-      if (!isValueSlotValue(item.default)) {
+      if (!isLessValueSlotValue(item.default)) {
         throw new SyntaxError('Less mixin parameter defaults must be values.');
       }
       return { name: item.reference.name, default: item.default };
     }
-    if (!isValueSlotValue(item.value)) {
+    if (!isLessValueSlotValue(item.value)) {
       throw new SyntaxError('Less mixin pattern parameters must be values.');
     }
     return { pattern: item.value };
@@ -1915,7 +1915,7 @@ function isStatement(value: unknown): value is Statement {
     case 'VariableDeclaration':
       return isVarDeclaration(value);
     case 'Declaration':
-      return isDeclaration(value);
+      return isLessDeclaration(value);
     case 'Ruleset':
       return isRuleset(value);
     case 'AtRuleBlock':
@@ -1978,7 +1978,7 @@ function requireRulesetBody(children: readonly unknown[]): Statement[] {
 function requireCallbackStatements(children: readonly unknown[]): Statement[] {
   const statements: Statement[] = [];
   for (const child of children) {
-    if (isTerminalText(child, ';')) {
+    if (isLessTerminalText(child, ';')) {
       continue;
     }
     if (!isStatement(child)) {
@@ -1991,13 +1991,13 @@ function requireCallbackStatements(children: readonly unknown[]): Statement[] {
 
 /** Read a grammar-owned `{ … }` body without silently dropping non-body facts. */
 function requireValueBlockBody(children: readonly unknown[]): Statement[] {
-  const bodyStart = children.findIndex(child => isTerminalText(child, '{'));
-  const bodyEnd = children.findIndex((child, index) => index > bodyStart && isTerminalText(child, '}'));
+  const bodyStart = children.findIndex(child => isLessTerminalText(child, '{'));
+  const bodyEnd = children.findIndex((child, index) => index > bodyStart && isLessTerminalText(child, '}'));
   if (bodyStart < 0 || bodyEnd < 0) {
     throw new TypeError('Less grammar produced a detached ruleset without a delimited body.');
   }
   for (const child of children.slice(bodyEnd + 1)) {
-    if (!isTerminalText(child, ';')) {
+    if (!isLessTerminalText(child, ';')) {
       throw new TypeError('Less grammar produced an invalid detached-ruleset suffix.');
     }
   }
@@ -2009,7 +2009,7 @@ function requireValueBlockBody(children: readonly unknown[]): Statement[] {
  * recovered or re-parsed here.  Each folded pair records whether Less's
  * configured `math:` policy computes it with no enclosing math context, so the
  * evaluator never reads that policy from ambient config (§12.6b). */
-function foldOperation(
+function lessFoldOperation(
   children: readonly unknown[],
   _fields: FieldMap | undefined,
   _span: Span,
@@ -2053,7 +2053,7 @@ export {
   appendEnclosedLiteral,
   appendInterpolationLiteral,
   argumentFunctionFromChildren,
-  branchSegments,
+  lessBranchSegments,
   callArgumentSource,
   callWithLayout,
   combinatorTailReducer,
@@ -2064,7 +2064,7 @@ export {
   enclosedInterpolationFromChildren,
   foldFunctionCondition,
   foldMixinGuards,
-  foldOperation,
+  lessFoldOperation,
   functionCallFromChildren,
   functionConditionSource,
   functionNameFromOpener,
@@ -2084,7 +2084,7 @@ export {
   isBodyExtendFact,
   isComplex,
   isComplexTailFact,
-  isDeclaration,
+  isLessDeclaration,
   isDefaultGuardCall,
   isExtendInstruction,
   isExtendTargetFact,
@@ -2115,22 +2115,22 @@ export {
   isRelative,
   isRuleset,
   isRulesetTailFact,
-  isSelectorBranch,
+  isLessSelectorBranch,
   isSelectorBranchFact,
-  isSelectorList,
+  isLessSelectorList,
   isSelectorListWithExtendsFact,
   isSelectorTerm,
   isSequence,
   isSimpleSelector,
-  isSimpleToken,
+  isLessSimpleToken,
   isSlashBoundaryFact,
   isStatement,
   isStyleImport,
-  isTerminalText,
+  isLessTerminalText,
   isUnsupportedVariableNameFact,
   isUrl,
   isValueNode,
-  isValueSlotValue,
+  isLessValueSlotValue,
   isVarDeclaration,
   isVarIndirect,
   isVarRef,
@@ -2160,7 +2160,7 @@ export {
   mixinPrefixFromSelectorBranch,
   pseudoNameFromHead,
   queryClauseReducer,
-  queryComparisonOperators,
+  lessQueryComparisonOperators,
   rawLeafText,
   referenceWithBracketLookups,
   referenceWithTails,
@@ -2188,7 +2188,7 @@ export {
   requireValueSlot,
   requiredTokenStart,
   selectorBranchesFrom,
-  selectorTermFromTokens,
+  lessSelectorTermFromTokens,
   separatorRawIndexes,
   separatorWithSurroundingTrivia,
   separatorsFromFields,
@@ -2201,7 +2201,7 @@ export {
   triviaTextAtInsertIndex,
   unsupportedVariableNameFrom,
   valuePieceReducerWithTrivia,
-  valueSlot,
+  lessValueSlot,
   variableNameTerminalText,
   variableNameText,
   variableValueSlot,

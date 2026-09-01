@@ -35,7 +35,7 @@ import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImport
 import {
   appendInterpolationLiteral,
   argumentFunctionFromChildren,
-  branchSegments,
+  lessBranchSegments,
   callArgumentSource,
   combinatorTailReducer,
   commaListWithTriviaFromChildren,
@@ -45,7 +45,7 @@ import {
   enclosedInterpolationFromChildren,
   foldFunctionCondition,
   foldMixinGuards,
-  foldOperation,
+  lessFoldOperation,
   functionCallFromChildren,
   functionConditionSource,
   functionNameFromOpener,
@@ -58,7 +58,7 @@ import {
   isBareMixinCallFact,
   isBodyExtendFact,
   isComplexTailFact,
-  isDeclaration,
+  isLessDeclaration,
   isDefaultGuardCall,
   isExtendTargetFact,
   isFunctionCall,
@@ -80,19 +80,19 @@ import {
   isReferenceTailFact,
   isRuleset,
   isRulesetTailFact,
-  isSelectorBranch,
+  isLessSelectorBranch,
   isSelectorBranchFact,
-  isSelectorList,
+  isLessSelectorList,
   isSelectorTerm,
   isSequence,
   isSimpleSelector,
-  isSimpleToken,
+  isLessSimpleToken,
   isSlashBoundaryFact,
   isStatement,
-  isTerminalText,
+  isLessTerminalText,
   isUrl,
   isValueNode,
-  isValueSlotValue,
+  isLessValueSlotValue,
   isVarIndirect,
   isVarRef,
   keywordOrValue,
@@ -107,7 +107,7 @@ import {
   mixinDefinitionNameFromSelectorBranch,
   mixinParamsFromInterior,
   queryClauseReducer,
-  queryComparisonOperators,
+  lessQueryComparisonOperators,
   referenceWithTails,
   requireCallbackStatements,
   requireCombinator,
@@ -132,14 +132,14 @@ import {
   requireValueSlot,
   requiredTokenStart,
   selectorBranchesFrom,
-  selectorTermFromTokens,
+  lessSelectorTermFromTokens,
   spacedFromValueChildren,
   staticNonSelectorPseudoFrom,
   staticSelectorPseudoFrom,
   staticText,
   staticTextWithTriviaGaps,
   valuePieceReducerWithTrivia,
-  valueSlot,
+  lessValueSlot,
   variableNameText,
   variableValueSlot,
   withoutBareMath
@@ -551,7 +551,7 @@ const importOption = keywords(
 const inlineJavaScriptBody = regex(/(?:[^`\\]|\\[\s\S])*/);
 // Math productions run under `noTrivia`, so their operators own precisely the
 // gap that distinguishes arithmetic from a Less space-list. `leaf()` keeps the
-// comment-aware structural gap hidden from `foldOperation`: it receives the
+// comment-aware structural gap hidden from `lessFoldOperation`: it receives the
 // same flat `*`/`/`/`%` terminal stream it did before, with no scanner or
 // post-parse text recovery. Keep the sum terminal below unchanged: its glued
 // numeric-sign lookahead is intentional Less syntax, not an operator gap.
@@ -611,7 +611,7 @@ const preservedSlashBoundary = leaf(
  *
  * The three arms remain separated-both-sides | glued-to-number | asymmetric
  * reject guard. This one is a `leaf()` for the same reason the product operators
- * are: the leaf's value is exactly the sign, so `foldOperation` still reads a
+ * are: the leaf's value is exactly the sign, so `lessFoldOperation` still reads a
  * flat operator stream and no CST arity moves. Folding the pad into the operator
  * terminal instead would leave the reducer recovering the sign with `.trim()`
  * from bytes that can now hold a comment's own `/` and `*` — the parser handing
@@ -813,7 +813,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'MixinPathTail',
     sequence(optional(mixinPathCombinator), mixinName),
     (children) => {
-      const combToken = children.find(child => isTerminalText(child, '>'));
+      const combToken = children.find(child => isLessTerminalText(child, '>'));
       return {
         combinator: combToken === undefined ? ' ' : '>',
         selector: requireToken(children.at(-1)).value
@@ -1195,7 +1195,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return withSourceSpan(
         variableDeclaration(
           name,
-          valueSlot(requireValueNode(children[2])),
+          lessValueSlot(requireValueNode(children[2])),
           { mode: 'declare' }
         ),
         span
@@ -1399,7 +1399,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'FunctionAssignmentArgument',
     noTrivia(sequence(field('key', assignmentKey), assignmentOperator, g.ArgumentValueSequence)),
     (children, fields) => {
-      const value = children.find(isValueSlotValue);
+      const value = children.find(isLessValueSlotValue);
       if (value === undefined) {
         throw new TypeError('Less function assignment argument lost its value.');
       }
@@ -1426,7 +1426,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'FunctionKeywordArgument',
     noTrivia(sequence(field('key', keywordArgumentKey), keywordArgumentOperator, g.ArgumentValueSequence)),
     (children, fields) => {
-      const value = children.find(isValueSlotValue);
+      const value = children.find(isLessValueSlotValue);
       if (value === undefined) {
         throw new TypeError('Less function keyword argument lost its value.');
       }
@@ -1448,7 +1448,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       if (named !== undefined) {
         return named;
       }
-      const value = children.find(isValueSlotValue);
+      const value = children.find(isLessValueSlotValue);
       if (value === undefined) {
         throw new TypeError('Less function argument lost its value.');
       }
@@ -1521,7 +1521,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const FormatFunction = node(
     'Call',
     sequence(noTrivia(literal('%(')), optional(sequence(not(literal('{')), g.ValueSequence)), many(noTrivia(sequence(regex(/,[ \t\n\r\f]*/), not(literal('{')), g.ValueSequence))), literal(')')),
-    children => funcCall('%', children.slice(1, -1).filter(isValueSlotValue))
+    children => funcCall('%', children.slice(1, -1).filter(isLessValueSlotValue))
   );
   // A bare call is a Less statement only with its terminator.  Keep this
   // distinct from Call, which is also a value piece and must not
@@ -1724,25 +1724,25 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const MathProduct = node(
     'MathProduct',
     noTrivia(sequence(g.MathAtom, many(sequence(productOperator, g.MathAtom)))),
-    foldOperation,
+    lessFoldOperation,
     { collapse: true }
   );
   const MathSum = node(
     'MathSum',
     noTrivia(sequence(g.MathProduct, many(sequence(sumOperator, g.MathProduct)))),
-    foldOperation,
+    lessFoldOperation,
     { collapse: true }
   );
   const TopProduct = node(
     'TopProduct',
     noTrivia(sequence(g.MathAtom, many(sequence(topProductOperator, g.MathAtom)))),
-    foldOperation,
+    lessFoldOperation,
     { collapse: true }
   );
   const TopSum = node(
     'TopSum',
     noTrivia(sequence(g.TopProduct, many(sequence(sumOperator, g.TopProduct)))),
-    foldOperation,
+    lessFoldOperation,
     { collapse: true }
   );
   // In Less's default `parens-division` mode a glued top-level `/` is not an
@@ -1921,7 +1921,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       if (referenceValue !== undefined) {
         return referenceValue;
       }
-      return commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueSlotValue, rawChildren);
+      return commaListWithTriviaFromChildren(children, fields, triviaLog, state, isLessValueSlotValue, rawChildren);
     }
   );
   // Variable declarations additionally permit Less trivia immediately after
@@ -1938,7 +1938,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(sequence(literal(','), optional(whitespace)))
     ),
     (children, fields, _span, rawChildren, triviaLog, state) =>
-      commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueSlotValue, rawChildren)
+      commaListWithTriviaFromChildren(children, fields, triviaLog, state, isLessValueSlotValue, rawChildren)
   );
   // `!important` is a grammar-owned declaration/value modifier.  Variables
   // carry the wrapper so references hoist importance once; declarations expose
@@ -1967,7 +1967,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     (children) => {
       const value = requireValueSlot(children[0]);
-      return children.some(child => isTerminalText(child, '!')) ? important(value) : value;
+      return children.some(child => isLessTerminalText(child, '!')) ? important(value) : value;
     }
   );
   // Less custom properties retain CSS declaration-value text.  The direct
@@ -2076,9 +2076,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       }
       return decl(
         isInterp(name) ? name : requireTerminalText(name),
-        valueSlot(value),
+        lessValueSlot(value),
         null,
-        children.some(child => isTerminalText(child, '!'))
+        children.some(child => isLessTerminalText(child, '!'))
       );
     }
   );
@@ -2146,11 +2146,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       // only after the property delimiter, because an interpolated property
       // name is itself an `Interpolation` value node.
       const mergeToken = children.find(child => isToken(child) && (child.value === '+' || child.value === '+_'));
-      const colonIndex = children.findIndex(child => isTerminalText(child, ':'));
+      const colonIndex = children.findIndex(child => isLessTerminalText(child, ':'));
       if (colonIndex < 0) {
         throw new TypeError('Less grammar produced no declaration delimiter.');
       }
-      const valueChild = children.slice(colonIndex + 1).find(isValueSlotValue);
+      const valueChild = children.slice(colonIndex + 1).find(isLessValueSlotValue);
       const value: ValueSlot = valueChild === undefined ? any('') : requireValueSlot(valueChild);
       const merge = mergeToken === undefined ? null : requireToken(mergeToken).value === '+_' ? ' ' : ',';
       const valueGap = fields?.valueGap === undefined ? '' : requireTerminalText(requireField(fields, 'valueGap').value);
@@ -2164,8 +2164,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         throw new TypeError('Less grammar produced an invalid declaration merge modifier.');
       }
       const node = !Array.isArray(value) && isValueNode(value) && value.type === 'Important'
-        ? decl(isInterp(rawName) ? rawName : requireToken(rawName).value, valueSlot(value.value), merge, true, valueOnNewLine)
-        : decl(isInterp(rawName) ? rawName : requireToken(rawName).value, Array.isArray(value) ? value : valueSlot(value), merge, false, valueOnNewLine);
+        ? decl(isInterp(rawName) ? rawName : requireToken(rawName).value, lessValueSlot(value.value), merge, true, valueOnNewLine)
+        : decl(isInterp(rawName) ? rawName : requireToken(rawName).value, Array.isArray(value) ? value : lessValueSlot(value), merge, false, valueOnNewLine);
       return withSourceSpan(node, span);
     }
   );
@@ -2189,7 +2189,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(g.ValueListWithPriority)
     ),
     (children, _fields, span) => {
-      const value = children.find(isValueSlotValue);
+      const value = children.find(isLessValueSlotValue);
       return withSourceSpan(
         decl(requireToken(children[0]).value, value === undefined ? any('') : value),
         span
@@ -2204,7 +2204,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     children => callArg(
       requireMixinCallArgumentValue(children[0]),
       undefined,
-      children.some(child => isTerminalText(child, '...'))
+      children.some(child => isLessTerminalText(child, '...'))
     )
   );
   const mixinCallArgument: Combinator<MixinCallArgument> = choice(
@@ -2284,12 +2284,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       if (!isVarRef(reference)) {
         throw new TypeError('Less mixin binding lost its variable reference.');
       }
-      const defaultValue = children.slice(1).find(value => isValueSlotValue(value) || isMixinCall(value));
+      const defaultValue = children.slice(1).find(value => isLessValueSlotValue(value) || isMixinCall(value));
       return {
         kind: 'binding',
         reference,
         ...(defaultValue === undefined ? {} : { default: requireMixinCallArgumentValue(defaultValue) }),
-        rest: children.some(child => isTerminalText(child, '...'))
+        rest: children.some(child => isLessTerminalText(child, '...'))
       };
     }
   );
@@ -2547,7 +2547,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         ...mixinCall(last.selector, mixinArgumentsFromChildren(children)),
         path
       };
-      return children.some(child => isTerminalText(child, '!important')) ? { ...call, important: true } : call;
+      return children.some(child => isLessTerminalText(child, '!important')) ? { ...call, important: true } : call;
     }
   );
   const MixinReferenceBase = node(
@@ -2568,7 +2568,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       const call = mixinCall(terminal?.selector ?? head, mixinArgumentsFromChildren(children));
       const path: MixinCall['path'] = [{ combinator: ' ', selector: head }, ...tails.slice(0, -1)];
       const withPath = tails.length === 0 ? call : { ...call, path };
-      const hasCall = children.some(child => isTerminalText(child, '('));
+      const hasCall = children.some(child => isLessTerminalText(child, '('));
       const raw = `${head}${tails.map(tail => `${tail.combinator}${tail.selector}`).join('')}${hasCall ? `(${withPath.args.map(callArgumentSource).join(', ')})` : ''}`;
       return { call: withPath, raw };
     }
@@ -2682,7 +2682,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           guard = { g: 'match', op: operator, left, right };
         }
       }
-      return children.some(child => isTerminalText(child, 'not')) ? { g: 'not', inner: guard } : guard;
+      return children.some(child => isLessTerminalText(child, 'not')) ? { g: 'not', inner: guard } : guard;
     }
   );
   const MixinGuardAnd = node(
@@ -2726,7 +2726,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       if (guard === undefined) {
         throw new TypeError('Less grammar produced an empty top-level grouped guard.');
       }
-      return children.some(child => isTerminalText(child, 'not')) ? { g: 'not', inner: guard } : guard;
+      return children.some(child => isLessTerminalText(child, 'not')) ? { g: 'not', inner: guard } : guard;
     }
   );
   const MixinGuardTopAnd = node(
@@ -2818,7 +2818,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       declarationEnd
     ),
     (children) => {
-      const declaration = children.find(isDeclaration);
+      const declaration = children.find(isLessDeclaration);
       if (declaration === undefined) {
         throw new TypeError('Less declaration-list item lost its declaration fact.');
       }
@@ -2837,7 +2837,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       )
     ),
     (children) => {
-      const declaration = children.find(isDeclaration);
+      const declaration = children.find(isLessDeclaration);
       if (declaration === undefined) {
         throw new TypeError('Less root declaration item lost its declaration fact.');
       }
@@ -2852,7 +2852,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       declarationEnd
     ),
     (children) => {
-      const declaration = children.find(isDeclaration);
+      const declaration = children.find(isLessDeclaration);
       if (declaration === undefined) {
         throw new TypeError('Less punctuation map item lost its declaration fact.');
       }
@@ -2910,7 +2910,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     choice(attempt(g.FlatMixinCall), g.ValueBlock, g.ValueSequence),
     (children) => {
       const value = children[0];
-      if (isMixinCall(value) || isValueSlotValue(value)) {
+      if (isMixinCall(value) || isLessValueSlotValue(value)) {
         return value;
       }
       throw new TypeError('Less call argument must reduce to a value or typed mixin call.');
@@ -2944,7 +2944,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         };
       }
       const names = children.filter((child): child is string => typeof child === 'string');
-      const bodyStart = children.findIndex(child => isTerminalText(child, '{'));
+      const bodyStart = children.findIndex(child => isLessTerminalText(child, '{'));
       if (bodyStart < 0) {
         throw new TypeError('Less grammar produced a named each() callback without a body.');
       }
@@ -2988,7 +2988,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       if (callback === undefined) {
         throw new TypeError('Less each() reduction produced an invalid callback.');
       }
-      const iterable = children.find(child => isMixinCall(child) || isValueSlotValue(child));
+      const iterable = children.find(child => isMixinCall(child) || isLessValueSlotValue(child));
       if (iterable === undefined) {
         throw new TypeError('Less each() reduction produced an invalid iterable.');
       }
@@ -3161,7 +3161,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const QueryFeatureValue = node(
     'QueryFeatureValue',
     sequence(g.queryLeaf, many(sequence(literal('/'), g.queryLeaf))),
-    foldOperation
+    lessFoldOperation
   );
   const QueryBareFeature = node(
     'QueryBareFeature',
@@ -3176,7 +3176,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => {
       const values = children.filter(isValueNode);
-      const operators = queryComparisonOperators(children);
+      const operators = lessQueryComparisonOperators(children);
       if (values.length < 1 || operators.length < 1) {
         throw new TypeError('Less query comparison lost a value or operator.');
       }
@@ -3200,7 +3200,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => {
       const values = children.filter(isValueNode);
-      const operators = queryComparisonOperators(children);
+      const operators = lessQueryComparisonOperators(children);
       if (values.length < 1 || operators.length < 1) {
         throw new TypeError('Less query range lost a value or operator.');
       }
@@ -3222,7 +3222,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const QueryLogicalGroup = node(
     'QueryLogicalGroup',
     sequence(literal('('), g.QueryFeature, oneOrMore(sequence(g.QueryAndOr, g.QueryFeature)), literal(')')),
-    children => block(spaced(children.filter(child => isValueNode(child) ? true : isTerminalText(child, 'and') || isTerminalText(child, 'or')).map(keywordOrValue)))
+    children => block(spaced(children.filter(child => isValueNode(child) ? true : isLessTerminalText(child, 'and') || isLessTerminalText(child, 'or')).map(keywordOrValue)))
   );
   // Container queries permit a nested negated condition, for example
   // `(not (height > 670px))`. It is a parenthesized structural query fact,
@@ -3527,7 +3527,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       // facts only from the grammar region before `{`, rather than filtering
       // every value-shaped child in the whole production.
       requireField(fields, 'prelude');
-      const bodyStart = children.findIndex(child => isTerminalText(child, '{'));
+      const bodyStart = children.findIndex(child => isLessTerminalText(child, '{'));
       if (bodyStart < 0) {
         throw new TypeError('Less keyframes lost its body boundary.');
       }
@@ -3853,7 +3853,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     (children) => {
       const nth = requireToken(children[0]).value;
-      const selector = children.find(isSelectorList);
+      const selector = children.find(isLessSelectorList);
       return selector === undefined ? nth : `${nth} of ${selector.selectors.map(selectorBranchCanonical).join(',')}`;
     }
   );
@@ -3971,8 +3971,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       { trivia: compoundSelectorTrivia },
       oneOrMore(choice(g.NamespaceTypeSelector, staticSimpleSelector, staticAmpersand, g.PseudoSelector, g.NthPseudoSelector, g.AttributeSelector))
     ),
-    children => selectorTermFromTokens(children.map((child) => {
-      return isSimpleToken(child) ? child : simpleSelector(requireToken(child).value);
+    children => lessSelectorTermFromTokens(children.map((child) => {
+      return isLessSimpleToken(child) ? child : simpleSelector(requireToken(child).value);
     }))
   );
   // This selector family is private to functional pseudo arguments.  Its tail
@@ -3990,15 +3990,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     (children) => {
       const first = children[0];
-      const leading = (isTerminalText(first, '>') || isTerminalText(first, '+') || isTerminalText(first, '~')) ? first : undefined;
+      const leading = (isLessTerminalText(first, '>') || isLessTerminalText(first, '+') || isLessTerminalText(first, '~')) ? first : undefined;
       const branch = selectorBranchOf(complexSegmentsFrom(children));
-      return leading === undefined ? branch : relativeSelector(requireCombinator(leading), branchSegments(branch));
+      return leading === undefined ? branch : relativeSelector(requireCombinator(leading), lessBranchSegments(branch));
     }
   );
   const PseudoArgumentSelectorTail = node(
     'PseudoArgumentSelectorTail',
     sequence(literal(','), parser({ trivia: staticSelectorTrivia }, g.PseudoArgumentComplex)),
-    children => children.find(isSelectorBranch)!
+    children => children.find(isLessSelectorBranch)!
   );
   const PseudoArgumentSelector = node(
     'PseudoArgumentSelector',
@@ -4093,7 +4093,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const PseudoSelector = node(
     'PseudoSelector',
     staticPseudoDispatch,
-    children => children.find(isSimpleToken)!
+    children => children.find(isLessSimpleToken)!
   );
   // A Less pseudo name may itself be interpolated (`:@{pseudo}` / `::@{pseudo}`)
   // and remains one interpolation-backed selector atom. Keep the delimiter and
@@ -4341,8 +4341,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const ClassIdCompound = node(
     'CompoundSelector',
     parser({ trivia: compoundSelectorTrivia }, sequence(mixinName, many(compoundSimple))),
-    children => selectorTermFromTokens(children.map((child) => {
-      return isSimpleToken(child) ? child : simpleSelector(requireToken(child).value);
+    children => lessSelectorTermFromTokens(children.map((child) => {
+      return isLessSimpleToken(child) ? child : simpleSelector(requireToken(child).value);
     }))
   );
   const ClassIdSelectorPrefix = node(
@@ -4368,8 +4368,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     // not commit `:nth-child` before seeing the opening parenthesis.
     parser({ trivia: compoundSelectorTrivia }, oneOrMore(compoundSimple)),
     (children) => {
-      const simples = children.map(child => isSimpleToken(child) ? child : simpleSelector(requireToken(child).value));
-      return selectorTermFromTokens(simples);
+      const simples = children.map(child => isLessSimpleToken(child) ? child : simpleSelector(requireToken(child).value));
+      return lessSelectorTermFromTokens(simples);
     }
   );
   const ComplexSelector = node(
@@ -4387,9 +4387,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.ComplexSelector
     ),
     (children, _fields, span) => {
-      const branch = children.find(isSelectorBranch)!;
-      const leading = children.find(child => isTerminalText(child, '>') || isTerminalText(child, '+') || isTerminalText(child, '~'));
-      return withSourceSpan(leading === undefined ? branch : relativeSelector(requireCombinator(leading), branchSegments(branch)), span);
+      const branch = children.find(isLessSelectorBranch)!;
+      const leading = children.find(child => isLessTerminalText(child, '>') || isLessTerminalText(child, '+') || isLessTerminalText(child, '~'));
+      return withSourceSpan(leading === undefined ? branch : relativeSelector(requireCombinator(leading), lessBranchSegments(branch)), span);
     }
   );
   const SelectorList = node(
@@ -4409,7 +4409,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       { trivia: compoundSelectorTrivia },
       oneOrMore(choice(g.NamespaceTypeSelector, staticSimpleSelector, staticAmpersand, pseudo, g.NthPseudoSelector, g.AttributeSelector))
     ),
-    children => selectorTermFromTokens(children.map(child => isSimpleToken(child) ? child : simpleSelector(requireToken(child).value)))
+    children => lessSelectorTermFromTokens(children.map(child => isLessSimpleToken(child) ? child : simpleSelector(requireToken(child).value)))
   );
   const InlineExtendSubjectComplexTail = node(
     'InlineExtendSubjectComplexTail',
@@ -4444,8 +4444,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'ExtendTarget',
     sequence(ExtendTargetComplex, optional(extendAllFlag)),
     children => ({
-      target: selist(children.find(isSelectorBranch)!),
-      partial: children.some(child => isTerminalText(child, 'all') || isTerminalText(child, '!all'))
+      target: selist(children.find(isLessSelectorBranch)!),
+      partial: children.some(child => isLessTerminalText(child, 'all') || isLessTerminalText(child, '!all'))
     })
   );
   const ExtendPseudo = node(
@@ -4485,7 +4485,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'SelectorBranch',
     sequence(ExtendComplex, selectorBranchContinuation),
     (children) => {
-      const subject = children.find(isSelectorBranch)!;
+      const subject = children.find(isLessSelectorBranch)!;
       const extensions = children
         .filter(Array.isArray)
         .flatMap(child => child.filter(isExtendTargetFact))
@@ -4496,7 +4496,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const DynamicSelectorBranch = node(
     'SelectorBranch',
     g.ComplexSelector,
-    children => ({ selector: children.find(isSelectorBranch)!, extensions: [] })
+    children => ({ selector: children.find(isLessSelectorBranch)!, extensions: [] })
   );
   const selectorBranch = choice(SelectorBranch, DynamicSelectorBranch);
   const SelectorBranchTail = node(
@@ -4534,7 +4534,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         choice(SelectorBranch, node(
           'SelectorBranch',
           g.RelativeComplex,
-          children => ({ selector: children.find(isSelectorBranch)!, extensions: [] })
+          children => ({ selector: children.find(isLessSelectorBranch)!, extensions: [] })
         )),
         literal(',')
       )
@@ -4619,7 +4619,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     )),
     children => ({
       args: [],
-      important: children.some(child => isTerminalText(child, '!important'))
+      important: children.some(child => isLessTerminalText(child, '!important'))
     })
   );
   const MixinStatementTail = node(
@@ -4646,7 +4646,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const BareMixinCall = node(
     'MixinCall',
     sequence(optional(literal('!important')), literal(';')),
-    children => ({ important: children.some(child => isTerminalText(child, '!important')) })
+    children => ({ important: children.some(child => isLessTerminalText(child, '!important')) })
   );
   const RulesetTail = node(
     'Ruleset',
