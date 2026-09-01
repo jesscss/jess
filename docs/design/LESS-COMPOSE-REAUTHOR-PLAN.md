@@ -58,8 +58,12 @@ OR-1 single-sourcing, not shrinkage** (see §1).
 emitted-CSS oracle + `check:macro` 0 fallbacks, all 4 variants) and landed on dev
 green before the next. Alpha releases run in parallel and are never blocked.
 
-**Current position:** Phase B0 (helper hoist) is the active work — the true
-prerequisite for W0. No parseman dependency.
+**Current position:** W0 (compose-wiring flip) is LANDED (`385c8b300`) — Less
+composes on `cssBaseRules` and all four variants fuse to `tableRules(`. Next is
+increment 1 (`Color`). Note: the flip required parseman **0.50.5** (Gap A:
+self-referencing rules fuse under `trackLines`) and the Gap C helper rename —
+correcting the earlier "no parseman dependency" note, which held only for the
+static reducer census, not for the real cross-package fuse under `trackLines`.
 
 | # | Increment | Status | Landed | Notes |
 |---|---|---|---|---|
@@ -68,7 +72,7 @@ prerequisite for W0. No parseman dependency.
 | B0-scss | hoist scss's 55 local reducer helpers | ☑ DONE | `6ba05f917` (2026-08-31) | PURE code motion → co-located `scss-parser/src/grammar-helpers.ts` (relative import); census 140→0 rejected / 55→0 unresolved (107 carried); cross-dialect dedup DEFERRED (same open-recursion guard as B0-less) |
 | B0-jess | hoist jess's 70 local reducer helpers | ☑ DONE | `3a43df5b3` (2026-08-31) | PURE code motion → co-located `jess-parser/src/grammar-helpers.ts` (relative import); census 70→0 (122 carried); 108 helpers + 8 helper types moved byte-identical, dead top-imports pruned; cross-dialect dedup DEFERRED |
 | probe | cst-rehost verification (§2) | ☑ GO | probe 2026-08-31 | base re-hosts to cst+positions; still holds |
-| **W0** | Compose-wiring flip (§2) | ☐ TODO | — | genuine behaviour-neutral flip once B0-less clears less's census to 0 |
+| **W0** | Compose-wiring flip (§2) | ☑ DONE | `385c8b300` (2026-08-31) | Less now composes on `cssBaseRules`; all 4 variants (ast/ast+positions/cst/cst+positions) fuse to `tableRules(` (0 runtime `compose(`), `check:macro` 0 fallbacks, less-parser + all-less corpus byte-identical. Needed parseman **0.50.5** (Gap A: self-referencing rules fuse under `trackLines`) + a **Gap C** rename (`2ea7bb448`) of 10 divergent less-local helpers colliding with core/ast builder-import names. Build-then-load gate added (`76dcf96dc`, `check:less-fused`). |
 | 1 | Inherit `Color` | ☐ TODO | — | firm converge |
 | 2 | Inherit `UnicodeRange` | ☐ TODO | — | firm converge |
 | 3 | Inherit `Dimension` | ☐ TODO | — | first oracle proof |
