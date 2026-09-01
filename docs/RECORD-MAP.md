@@ -32,6 +32,7 @@ points you at the source; then you read the source. Treat a subagent's
 
 - [architecture/SEMANTIC-INVARIANTS.md](architecture/SEMANTIC-INVARIANTS.md): **METHOD OF RECORD** — the invariants + incident catalogue. The `semantics-reviewer` gates on it. "Matches less.js" is never a justification.
 - [architecture/core/DESIGN-DECISIONS.md](architecture/core/DESIGN-DECISIONS.md): the owner **DECISION LEDGER** (P- / X- / E- / O- / V-series; each SETTLED or OPEN). Cite the SETTLED row a change relies on, or add an OPEN row. Only the owner moves a row to SETTLED.
+  - Which Jess `$` form (`${…}` interp / `$[…]` lookup / `$(…)` expr) is legal in which position (selectors, property names, at-rule preludes, strings, quoted vs unquoted `url()` bodies, value positions) → **row P13** (SETTLED). `docs/design/SIGIL-DOLLAR-PAREN.md` is an *exploration* doc, not the record.
 - [architecture/core/EXTEND-SEMANTICS.md](architecture/core/EXTEND-SEMANTICS.md): extend semantics record (the ledger's X-series rows point here).
 
 ## Perf — hot path (core eval/render, grammar/parser, extend/selector)
