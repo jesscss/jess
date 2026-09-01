@@ -7,7 +7,7 @@
   "description": "Shared Jess stylesheet diagnostics for editor and CLI surfaces",
   "version": "2.0.0-alpha.12",
   "engines": {
-    "node": "^20.19.0 || >=22.18.0"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "main": "lib/index.cjs",
   "types": "lib/index.d.ts",

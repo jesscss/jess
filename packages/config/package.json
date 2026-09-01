@@ -6,7 +6,7 @@
   },
   "version": "2.0.0-alpha.12",
   "engines": {
-    "node": "^20.19.0 || >=22.18.0"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "description": "General-purpose configuration for styling frameworks (Jess, Less, Sass, Tailwind, etc.)",
   "main": "lib/index.cjs",
