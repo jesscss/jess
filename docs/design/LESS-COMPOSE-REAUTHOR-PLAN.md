@@ -98,6 +98,33 @@ Stage-C row pointed here.
 After less: repeat for scss then jess (owner order). Those get their own
 classification + worklist when less reaches W-widen.
 
+### ⏱ SCSS convergence sweep (composes on `cssBaseRules`; W0-scss ☑ DONE)
+
+Same method as the less sweep, oracle-gated on the SCSS surface: AST/CST
+byte-identity oracle (`oracle:scss:byte-identity`, 2404 sass-spec cases + css +
+scss `test/` corpora), scss-parser package tests (622), `check:reducer-purity`,
+`check:compose-fused` (all fused, 0 runtime `compose(`), `check:macro` (scss 0
+fallbacks), `verify:types` (24/24), LS (264) + diagnostics-core (112), jess
+Foundation/Bootstrap SCSS ratchet (1396, pass set == baseline). Landed on a
+`ScssSharedSyntax` type mirroring less's `SharedSyntax` so the converged rules
+keep their `g.`-facing types after leaving `ScssRules`.
+
+| SCSS rule | Outcome | Notes |
+|---|---|---|
+| `Color` | ☑ CONVERGED | AST **and** CST byte-identical on all successfully-parsed corpus files. Same inline `hexColor` regex (byte-identical in both); reducer differed only `color(requireToken(children[0]).value)` → css `color(tokenText(children[0]))` (identical output on a token child). Sole digest move: parse-error `expected` label `/#(?:[0-9a-fA-F]…)/` (scss's inline hex regex) → `Color` (css node-name label) on 3 pre-existing parse-error corpus files (`@if /**/ true`, `@for … from/through /**/ …` — the comment is rejected in condition/for-bound position at HEAD too; `threw` 726→726, offsets unchanged). Diagnostic-label convergence toward css convention; no test/LS consumer asserts it. |
+| `UnicodeRange` | ☑ CONVERGED | Same named `g.UnicodeRangeToken` in both; reducer differed only `any(requireToken().value)` → `any(tokenText())`. Sole digest move: parse-error `expected` label `UnicodeRangeToken` (inner-token) → `UnicodeRange` (node-name) on the same 3 pre-existing-error files. No test/LS consumer. |
+| `Keyword` | ☑ CONVERGED | Recognizer identical (`g.Identifier`); reducer differed only `keyword(requireToken().value)` → `keyword(tokenText())`. **Zero** label or tree movement (Keyword's `Identifier` label is byte-identical in both) — fully output-neutral. |
+| `Important` | ☑ CONVERGED | Recognizer identical (`sequence(literal('!'), g.ImportantToken)`, `!`-led first-set gate in both); scss's reducer added a defensive `children.length/‘!’` throw around `return true`, css returns `true` directly. Dropped the defensive throw; output identical, no corpus movement. |
+| `NestingSelector` | ☑ CONVERGED | Textually identical to css (`node('SimpleSelector', literal('&'), () => simpleSelector('&'))`) modulo the TS generic; no sub-rule reference. No corpus movement. |
+| `Percentage` | ⚠ KEPT-OVERRIDE | GENUINE OVERRIDE (same class as less increment 3). scss's `Percentage` is a **token** (`token(noTrivia(sequence(numberValue, literal('%'))))`) used in the value/keyframe path; css's `Percentage` is a `node('Dimension', …)` producing a `dimension(…, '%', …)`. Different kind (token vs node) and different product. Not converged. |
+| Block family (`ConditionalBlock`, `LayerBlock`, `ScopeBlock`, `DocumentBlock`, `PageBlock`, `NestedConditionalBlock`, `NestedLayerBlock`, `NestedStartingStyleBlock`, `FontFeatureValuesBlock`, `KeyframeBlock`, `Keyframes`, …) | ⚠ KEPT-OVERRIDE | GENUINE OVERRIDES. scss bodies compose their own statement lists (`SassNestedDirective`, scss `VariableDeclaration`/`ImportStatement`, `#{…}` interpolation) with explicit `literal('{') … literal('}')` framing and scss reducers, vs css's `routed*Body`/`conditionalGroupBodyBlock`. Structurally different recognizer + reducer. |
+| Value/selector/interp towers (`Value`, `Dimension`, `Quoted`, `CustomPropertyValue`, `CustomValue`, `PseudoSelector`, `PseudoArgument`, `AttributeSelector`, `NamespaceTypeSelector`, `ComplexSelector`, `CompoundSelector`, `SelectorList`, `RelativeComplex`, `SupportsInParens`, `SupportsCondition`, `Enclosed`, `OpaqueBody`, `Stylesheet`, `Declaration`, `AtRuleStatement`, `ImportStatement`, `ImportUrl`, `ImportTail`, `Ruleset`, `AtRulePrelude*`, `Query*`) | ⚠ KEPT-OVERRIDE | GENUINE OVERRIDES (Sass math/list, `#{…}` interpolation, structured selector decomposition, Sass-specific directives). Recognizer and/or reducer differ structurally; not byte-identical candidates. Same override families as the less sweep. |
+
+**SCSS net: 5 rules converged (deleted), 48 twins kept as genuine overrides.**
+No escalation, no compose-macro fusion fallback (all four scss variants stay
+fused at `tableRules(`, 0 `compose(`). Dead `hexColor` grammar-local const and
+now-unused `color` import from `@jesscss/core/ast` removed with `Color`.
+
 **B0-less finding (2026-08-31, `61642dc5c`):**
 - **Module location — co-located wins.** less's helpers were moved to a
   less-parser-package-local module `packages/syntax/less/less-parser/src/grammar-helpers.ts`
