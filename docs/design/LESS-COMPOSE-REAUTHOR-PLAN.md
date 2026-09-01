@@ -95,6 +95,48 @@ Legend: ☐ TODO · ◐ IN PROGRESS · ☑ DONE(commit) · ⚠ BLOCKED(reason).
 Update the Status/Landed cells as each increment lands; keep the DEDUP-LOG
 Stage-C row pointed here.
 
+---
+
+## ⏱ Jess convergence sweep (jess composes on `cssBaseRules`; W0-jess ☑ DONE)
+
+Same method as the Less sweep (per-rule, oracle-gated: delete the jess delta so
+the `cssBaseRules` twin inherits by name; keep only if all oracles are byte-identical).
+Oracle = jess-parser package tests (510) + jess suite ratchet (differential vs
+the local env-gap baseline: 1396 tests / 22 failing / 2 gating — emitted-CSS
+byte-identity) + `check:macro` (0 fallbacks) + `check:compose-fused` +
+`check:reducer-purity` + LS 264 + diagnostics-core 112.
+
+**Net: 7 rules converged, 0 escalations, 0 compose-macro fallbacks.** Jess
+converges MORE terminal leaves than Less because its interpolation is `${}`/`$[]`/`$(…)`
+based, not identifier-widening: the leaves Less kept as overrides because it
+widened `Identifier`/`CustomPropertyName`/the namespace into interpolation-bearing
+rules are, in Jess, the plain shared shape — so `Keyword`, `Important`,
+`CustomPropertyValue`, `NamespaceTypeSelector` all fall to the base here where
+they stay Less overrides.
+
+| Rule | Status | Landed | Notes |
+|---|---|---|---|
+| `Color` | ☑ CONVERGED | this branch | Shared `g.HexColor` token (SharedSyntax, css uses inline `hexColor` — same recognition), reducer convention-only (`requireToken().value` vs `tokenText()`). |
+| `UnicodeRange` | ☑ CONVERGED | this branch | Both reference shared `g.UnicodeRangeToken`; reducer convention-only. |
+| `KeyframeSelector` | ☑ CONVERGED | this branch | Both `choice(keyframeEndpoint, g.Percentage)` → `SimpleSelector`; `keyframeEndpoint` byte-identical (css:484); `g.Percentage` resolves to jess's token override. Map-key `KeyframeSelector`→`keyframeSelector` (grammarType = node TYPE, invisible to CST/AST); refs in jess's `KeyframeBlock` override repointed; dead jess `keyframeEndpoint` copy removed. |
+| `Keyword` | ☑ CONVERGED | this branch | Body `g.Identifier` (shared recognition token — jess does NOT widen `Identifier`, so unlike Less this converges) + `keyword()` reducer; convention-only diff. |
+| `Important` | ☑ CONVERGED | this branch | Body `sequence(literal('!'), g.ImportantToken)` returning `true`; jess's reducer had a redundant defensive marker re-check. |
+| `CustomPropertyValue` | ☑ CONVERGED | this branch | Jess references the SAME `g.CustomPropertyName` the base does (Less #4 stayed override only because Less used a distinct token `g.CustomPropertyToken`); reducer convention-only. |
+| `NamespaceTypeSelector` | ☑ CONVERGED | this branch | Same body `noTrivia(sequence(attributeNamespace, choice(g.Identifier, literal('*'))))` over the same flat `attributeNamespace` regex (jess:655 ≡ css:542, cosmetic \uFFFF/\uffff hex-case only); same `SimpleSelector` node. Jess never decomposed the namespace into a node the way Less #7 did, so this converges. |
+| `Url` | ⚠ KEPT-OVERRIDE | — | GENUINE OVERRIDE. Body differs: jess `sequence(g.UrlOpen, noTrivia(sequence(optional(choice(g.LiteralQuoted, g.PlainUrlInner)), literal(')'))))` (interp-capable inner + `LiteralQuoted`); css uses whitespace regexes + `g.Quoted`/`UrlUnquoted` + `expect`. |
+| `VarCall` | ⚠ KEPT-OVERRIDE | — | GENUINE OVERRIDE. jess: `routed()` opener, comma fallback `optional(g.Value)` (jess Value tower), reducer `jessFunctionOpenName`/`isJessValueSlotValue`; css: `varOpen`, `choice(g.VarFallback, g.VarFallbackEmpty)`, `functionOpenName`. |
+| `Dimension` | ⚠ KEPT-OVERRIDE | — | GENUINE OVERRIDE (mirrors Less #3). Shared `dimensionUnit` (recognition.ts:342) ends `\|%`, so jess `Dimension` matches `50%` as a dimension; css excludes `%` and routes it through a `Percentage` node. Different accepted language in value position. |
+| `Percentage` | ⚠ KEPT-OVERRIDE | — | GENUINE OVERRIDE. jess `Percentage` is a **token** (`token(noTrivia(sequence(g.NumberToken, literal('%'))))`) used as an operand; css `Percentage` is a `node('Dimension', …)`. Different kind. |
+| `BasicSelector` | ⚠ KEPT-OVERRIDE | — | GENUINE OVERRIDE. Different token source: jess `g.SimpleSelectorToken` (shared recognition `simpleSelector`, recognition.ts:491) vs css module-local `simpleSelectorToken` regex (css:532, includes `\d+%\|\*`). Selector-decomposition tower. |
+| `AttributeSelector` | ⚠ KEPT-OVERRIDE | — | GENUINE OVERRIDE. Body references jess `g.LiteralQuoted` (the restricted static-selector string slot); jess-specific reducer. |
+| `ComplexSelector` / `CompoundSelector` / `SelectorList` / `PseudoSelector` | ⚠ KEPT-OVERRIDE | — | GENUINE OVERRIDE (selector tower). Reference jess-only sub-rules (`InterpolatedSimple`/`InterpolatedParentSuffix`/`Parent`, the `PseudoSelector*`/`GenericPseudo*` family) and jess reducers (`JessComplexTail`, `reduceSelectorList` + `withSourceSpan`). |
+| `Value` / `CustomValue` / `Quoted` / `Enclosed` / `SquareValue` | ⚠ KEPT-OVERRIDE | — | GENUINE OVERRIDE (value/interp tower). jess-specific reducers + jess-only sub-rules (`ValueTerm`, `CustomPart`, the `DollarBrace`/interpolation family, `GeneralTemplate`). |
+| `CalcParen` / `CalcProduct` / `CalcSum` / `CalcSequence` / `CalcValue` / `calcFunctionArguments` / `MathFunction` | ⚠ KEPT-OVERRIDE | — | GENUINE OVERRIDE (math tower; `tree/` is the spec for math). jess ports the family with `foldCalcOperation`/`jessFunctionOpenName` reducers + jess-only `MathDollarValue`/`InterpolatedValue`. |
+| `QueryClause` / `QueryFeature` / `QueryPrelude` / `QueryTerm` / `QueryValue` / `AtRulePrelude` / `Container*` | ⚠ KEPT-OVERRIDE | — | GENUINE OVERRIDE (media/query prelude tower). jess uses a module-local `queryClause` combinator + jess-only `QueryDashedIdentifier`/`HeaderValueAtom`/`QueryComparisonFeature` and jess reducers. |
+| `SupportsCondition` / `SupportsInParens` | ⚠ KEPT-OVERRIDE | — | GENUINE OVERRIDE (mirrors Less #10). Reference jess `g.SupportsFeature`/`SupportsNot`/`SupportsLogical`. |
+| `Stylesheet` / `Ruleset` / `Declaration` / `ScopeBlock` / `AtRuleStatement` / `ImportStatement` / `KeyframeBlock` / `Keyframes` | ⚠ KEPT-OVERRIDE | — | GENUINE OVERRIDE (structural). Reference jess statement/at-rule towers + jess reducers. |
+| `OpaqueBody` / `OpaqueAtPrelude` / `OpaqueAtRuleBlock` | ⚠ KEPT-OVERRIDE | — | GENUINE OVERRIDE. jess uses flat `g.Preprocessor*Capture` scan tokens; css structures the body (`many(OpaqueBodyPart)` → `OpaqueGroup`/`OpaqueString`/`OpaqueComment`). Same flat-vs-structured owner call Less #5 flagged; jess mirrors Less's flat choice (not re-escalated). |
+
 After less: repeat for scss then jess (owner order). Those get their own
 classification + worklist when less reaches W-widen.
 
