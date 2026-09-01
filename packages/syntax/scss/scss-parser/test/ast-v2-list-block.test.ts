@@ -57,13 +57,13 @@ describe('SCSS AST-v2 separator and delimiter facts', () => {
       }
     });
     /*
-     * The bracketedness is a PARSE fact and survives regardless; PRINTING it is
-     * what CSS constrains. `[ … ]` in a value is grid `<line-names>`
-     * (`'[' <custom-ident>* ']'`), so `[1, 2]` is data that has no CSS spelling
-     * and says so at the point of emission. dart-sass prints it; Sass+ rejects
-     * invalid CSS (ledger P4).
+     * The bracketedness is a PARSE fact and survives to emission: a balanced
+     * `[ … ]` is a valid CSS simple block in any declaration value, so it prints
+     * verbatim, matching dart-sass. Grid `<line-names>` validity — the one
+     * property-value grammar that gives `[ … ]` meaning — is a property-specific
+     * concern for the lint layer, not the emitter (§12.6c, ledger P24).
      */
-    expect(() => serialize(root)).toThrow(/not printable CSS/u);
+    expect(serialize(root)).toEqual({ css: '.card {\n  tracks: [1, 2];\n}\n' });
   });
 
   it('prints a square Block whose interior IS line names', () => {

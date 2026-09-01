@@ -2295,89 +2295,70 @@ COLLECTION, and under this ruling its spelling is per dialect: `()` in `.scss`,
 table has a row per spelling, so nothing here is outstanding — this was a DOC
 contradiction only, and both engines already behave correctly.
 
-### 12.6c `[ … ]` IS a list; printing one is constrained to `<line-names>`
+### 12.6c `[ … ]` IS a list value that EMITS VERBATIM; grid `<line-names>` validity is a LINT concern
 
-**Owner ruling, 2026-08-08:** *"you can use it for lists but we error on printing
-if not CSS valid (hopefully without too much logic machinery)."*
+**Owner ruling, 2026-08-31** (revising the 2026-08-08 *"error on printing if not
+CSS valid"* ruling):
 
 `[ … ]` is admitted as a LIST value. It parses wherever a value parses — there is
 no parse-time position split, no property-vs-variable fork, no forked value
-production. The parser accepts SHAPES; validity belongs to evaluation and the
-language service (SEMANTIC-INVARIANTS §7). A bracketed list may be bound, passed
-to a function, iterated, indexed and measured, and none of that is constrained.
+production. The parser accepts SHAPES; a bracketed list may be bound, passed to a
+function, iterated, indexed, measured — AND printed. It EMITS VERBATIM.
 
-The constraint is at **PRINT**. CSS admits `[ … ]` in a value position for
-exactly one thing — grid line names — and the grammar is
+The emitter does NOT constrain it, and here is why the earlier print gate was
+withdrawn. There are two senses of "valid CSS square syntax":
 
-```
-<line-names> = '[' <custom-ident>* ']'          css-grid-2 §7.1
-```
+- **Syntactically** (css-syntax-3): a *balanced* `[ … ]` is a valid simple block
+  in ANY declaration value, containing any tokens. `[1]`, `[1, 2, 3]`, `[a b]`
+  all parse; the stylesheet is well-formed. jess guarantees balance by
+  construction, so at this level there is nothing to reject.
+- **Grammatically** (per-property value definitions): `[ … ]` is defined in
+  exactly ONE property-value grammar — grid line names,
+  `<line-names> = '[' <custom-ident>* ']'` (css-grid-2 §7.1). Nowhere else. In a
+  non-grid property a bracket simply doesn't match the grammar, and the browser
+  drops that ONE declaration (recoverable — balanced brackets never break
+  tokenizing, so nothing downstream is eaten).
 
-zero or more custom identifiers: no commas, no numbers. So a bracketed value may
-be emitted only when its bytes are `<custom-ident>*`, and otherwise emitting it
-is an eval error (`eval/invalid-line-names`) at the point of printing.
+The emitter does not know the property, so a universal `<custom-ident>*` gate was
+really asserting grid semantics at *every* bracketed value — rejecting
+syntactically-valid CSS (`b: [1]`) the browser parses and skips. Validating line
+names is meaningful only in the grid property set
+(`grid-template-columns`/`-rows`/`grid-template`/`grid`), which the emitter
+cannot see; it is a PROPERTY-specific check and belongs in the lint/diagnostic
+layer, where the property IS known.
 
 | authored | parses | prints |
 | --- | --- | --- |
 | `[a]` | yes | `[a]` |
 | `[a b]` | yes | `[a b]` |
-| `[]` | yes | `[]` — `*` is ZERO or more |
-| `[1, 2, 3]` | yes | **error** |
-| `[1 2]` | yes | **error** |
-| `[a, b]` | yes | **error** |
+| `[]` | yes | `[]` |
+| `[1, 2, 3]` | yes | `[1, 2, 3]` |
+| `[1 2]` | yes | `[1 2]` |
+| `[a, b]` | yes | `[a, b]` |
+| `[1]` | yes | `[1]` |
 
-The rule is stated over the CONSTRUCT — a bracketed value's bytes — not over a
-code path (SEMANTIC-INVARIANTS §1). It is ONE predicate, applied where a
-bracketed VALUE becomes output. No new node kind, no mode, no ambient config, no
-second traversal, no flag threaded through eval.
+Every one matches dart-sass, which prints them all verbatim.
 
-**It must never reject what CSS accepts.** The predicate spells the CSS escape
-production (css-syntax-3 §4.3.7) rather than approximating it, because an escape
-can carry a code point that would otherwise end the identifier: `[a\ b]`,
-`[a\.b]` and `[\31 23]` are each ONE `<custom-ident>`, and a predicate that
-whitespace-splits raw bytes gets all three wrong. In the other direction it is a
-DELIBERATE under-approximation with a stated bound: `<custom-ident>` excludes the
-CSS-wide keywords and `<line-names>` also excludes `span` and `auto`, so
-`[span]`, `[auto]` and `[inherit]` are admitted here though CSS rejects them.
-Over-accepting only fails to catch an author error the browser catches;
-under-accepting would reject valid stylesheets. Both directions are pinned in
-`operations.test.ts`.
+**Stated over the CONSTRUCT.** The emit rule is "a bracketed value prints its
+bytes" — one behavior at the `Block` case of `evalValue` (SEMANTIC-INVARIANTS §1),
+no new node kind, no mode, no flag threaded through eval, and no second predicate
+for the single-atom case: `[1]` (one `Dimension` VALUE) and `[1 2 3]` (a folded
+byte string) reach the same emit and both print. `serializeValue`, the value
+domain's general byte derivation, likewise just emits, so function-argument
+materialization (`length([1, 2])`) is unconstrained and consistent with it.
 
-**Not applied in AT-RULE PRELUDES, and that is deliberate.**
-`evalSupportsPrelude` and `evalQueryPrelude` spell their own brackets, and those
-positions preserve GRAMMAR-OWNED author bytes rather than emitting a value —
-which is why they are separate formatters at all. CSS ACCEPTS what they carry:
-`@supports ([1, 2])` is a well-formed general-enclosed condition that evaluates
-false, and a malformed media feature is a query that evaluates to `not all`, not
-a parse error. Enforcing the rule there would reject valid CSS.
-
-**Two residuals, OPEN.**
-
-1. A bracketed value the value domain BUILDS — `join([1], [2])` — reaches output
-   through `serializeValue` without crossing the print site, and still prints
-   `[1 2]`. The obvious-looking fix, enforcing inside `serializeValue`, was tried
-   and REVERTED on measurement: that function is the value domain's general byte
-   derivation rather than a print site, and function-argument materialization
-   runs through it, so the rule thrown from there rejected `length([1, 2])` —
-   which this very ruling permits.
-2. A bracketed value SPLICED from a variable into a prelude —
-   `$x: [1, 2]; @media (min-width: $x)` — prints, while the same `$x` in a
-   declaration errors. Unlike the prelude case above this IS a positional
-   inconsistency (SEMANTIC-INVARIANTS §2), because it is a value rather than the
-   author's own bytes; closing it needs the prelude formatters to tell the two
-   apart, which they currently do not.
-
-Neither is a second copy of the predicate waiting to be written — both need a
-print site the typed lane also crosses.
-
-`{ … }` remains the Collection, so the two are unambiguous: `{}` is the empty
-collection (§4.4's fourth falsy row), `[]` is the empty list, and neither
-spelling can be mistaken for the other.
+**`{ … }` remains the Collection**, so the two are unambiguous: `{}` is the empty
+collection (§4.4's fourth falsy row), `[]` is the empty list, and neither spelling
+can be mistaken for the other.
 
 **`~[ … ]` is untouched.** The escaped form emits its inner value with the
-delimiters DROPPED, so it prints no brackets and there is nothing for this rule
-to constrain — which is also why the escape stays the way to let a comma belong
-to a value rather than split an argument list.
+delimiters DROPPED, so it prints no brackets at all.
+
+**Follow-up — grid line-names lint rule.** The one genuine authoring error a
+bracketed value can be — `grid-template-columns: [1]`, where a line name was
+meant — is caught by a lint rule over the grid property set, NOT by the emitter,
+which cannot see the property. That rule is not yet built; until it is, an invalid
+grid line name emits and the browser drops the one declaration.
 
 **Consequence for `[]` and §4.4.** `[]` is FALSY. The falsy set's principle is
 EMPTINESS, and the empty bracketed list is empty. It measured truthy until
@@ -2386,19 +2367,19 @@ wrapping a contentless `Any` — a content node minted where the source has no
 content, erasing the one fact `[]` carries. The grammars now store the empty
 interior as the empty slot; nothing downstream re-derives emptiness from bytes.
 
-Recorded in the ledger as **P24** (the print rule), **P25** (`[]` falsy) and
-**P26** (the `.less` gap and the two residuals, OPEN).
+Recorded in the ledger as **P24** (emit verbatim; line-names is a lint concern),
+**P25** (`[]` falsy) and **P26** (the `.less` parse-side gap, OPEN).
 
-**Dialect reach.** The print rule lives in the shared value emitter, so `.scss`
-takes it too: ledger **P4**, Sass+ rejects invalid CSS where Sass tolerates it.
-Measured on dart-sass 1.101.0, which prints `[1, 2, 3]`, `[1 2]` and `[a, b]`
-verbatim and answers `[]` TRUTHY — both divergences are recorded in
-`04-semantic-differences.mdx`. `.less` has no bracketed LIST in the first place —
-`[` in a Less value position is the lookup family, whose one value-position arm
-takes a single keyword — so `[a]` and `grid-template-columns: [full-start] 1fr
-[full-end]` parse and print, while `[a b]`, `[]` and `[1, 2, 3]` are parse
-errors. That is a narrower base than CSS admits and a pre-existing gap this
-ruling does not close; nothing here changes `.less`.
+**Dialect reach.** Emission is permissive in every dialect that admits the shape,
+matching dart-sass — so the `.scss` PRINT divergence formerly recorded in
+`04-semantic-differences.mdx` is REMOVED. The `[]`-TRUTHINESS divergence (§4.4:
+dart-sass answers `[]` truthy, Sass+ falsy) is unrelated and remains. `.less` has
+no bracketed LIST in the first place — `[` in a Less value position is the lookup
+family, whose one value-position arm takes a single keyword — so `[a]` and
+`grid-template-columns: [full-start] 1fr [full-end]` parse and print, while
+`[a b]`, `[]` and `[1, 2, 3]` are Less PARSE errors. That narrower base is a
+pre-existing `.less` grammar gap (P26), on the PARSE side and unrelated to
+emission; nothing here changes `.less`.
 
 ### 12.6b `mathMode` at EVAL is a v2 regression — the parse is CONTEXTUAL — NOT STARTED
 
