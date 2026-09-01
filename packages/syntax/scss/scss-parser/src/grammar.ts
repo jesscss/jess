@@ -355,12 +355,12 @@ const customValueCommentTrivia = classifiedTrivia({ comment: customValueBlockCom
  */
 const scssScanSkipDoubleString = noTrivia(sequence(
   literal('"'),
-  regex(/(?:[^"\\]|\\.)*/),
+  regex(/(?:[^"\\]|\\[\s\S])*/),
   literal('"')
 ));
 const scssScanSkipSingleString = noTrivia(sequence(
   literal('\''),
-  regex(/(?:[^'\\]|\\.)*/),
+  regex(/(?:[^'\\]|\\[\s\S])*/),
   literal('\'')
 ));
 
