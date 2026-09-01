@@ -134,13 +134,13 @@ jobs:
       - name: Reducer-purity gate (reducers import their helpers)
         run: node scripts/probe/parseman-compose-reducer-census.mjs --check
 
-      # Build-then-LOAD complement to the static census: the four Less variants
-      # actually compose on cssBaseRules (W0). Fails if a variant left a runtime
-      # compose( in its emitted table (did not fuse) or throws when its compiled
-      # table is first materialized by a real parse. Runs against the lib/ the
-      # build above produced.
-      - name: Less compose fused + load gate
-        run: node scripts/probe/less-compose-fused-check.mjs
+      # Build-then-LOAD complement to the static census: the four Less AND four
+      # SCSS variants actually compose on cssBaseRules (W0). Fails if a variant
+      # left a runtime compose( in its emitted table (did not fuse) or throws
+      # when its compiled table is first materialized by a real parse. Runs
+      # against the lib/ the build above produced.
+      - name: Compose fused + load gate (Less + SCSS)
+        run: node scripts/probe/compose-fused-check.mjs
 
       # --- static analysis --- (run explicitly, NOT via `pnpm ci`, which would
       # re-run lint + core-public-types a second time)

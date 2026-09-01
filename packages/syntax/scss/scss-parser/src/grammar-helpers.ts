@@ -6,7 +6,7 @@
  * standalone `composeLeaf(...)` grammar but not for a COMPOSABLE delta: the
  * parseman compose analyzer can only carry a reducer across a package boundary
  * when every name the reducer reads has import provenance. A free module-private
- * helper has none, so `compose([cssBaseRules, rules(scssDelta)])` refused them.
+ * helper has none, so composing `[cssBaseRules, rules(scssDelta)]` refused them.
  * Hoisting them into this importable module gives each one a resolvable import,
  * and the analyzer re-emits those imports into the composing module.
  *
@@ -48,9 +48,9 @@ export function requireToken(value: unknown): Token {
   return { value: value.value };
 }
 
-export function sourceText(value: unknown): string {
+export function scssSourceText(value: unknown): string {
   if (Array.isArray(value)) {
-    return value.map(sourceText).join('');
+    return value.map(scssSourceText).join('');
   }
   if (typeof value === 'string') {
     return value;
@@ -64,13 +64,13 @@ export function sourceText(value: unknown): string {
 /** Map query/media-prelude children to value nodes, coercing bare keyword tokens
  *  (`and`/`or`/media types) to `Keyword`s while passing structured values through. */
 export function keywordizeValues(children: readonly unknown[]): ValueNode[] {
-  return children.map(child => isValue(child) ? child : keyword(requireToken(child).value));
+  return children.map(child => isScssValue(child) ? child : keyword(requireToken(child).value));
 }
 
 /** Concatenate the authored spelling of every child. The canonical opaque
  *  representation for attribute selectors and non-structured pseudo arguments. */
 export function joinSourceText(children: readonly unknown[]): string {
-  return children.map(sourceText).join('');
+  return children.map(scssSourceText).join('');
 }
 
 /** Concatenate every child token value into one opaque static-prelude token. */
@@ -111,46 +111,46 @@ export function isUrl(value: unknown): value is Url {
   return typeof value === 'object'
     && value !== null
     && 'type' in value && value.type === 'Url'
-    && 'value' in value && isValue(value.value);
+    && 'value' in value && isScssValue(value.value);
 }
 
 export function isSimpleSelector(value: unknown): value is SimpleSelector {
   return typeof value === 'object' && value !== null
     && 'type' in value && value.type === 'SimpleSelector'
     && 'text' in value && (typeof value.text === 'string' || value.text === null)
-    && 'interp' in value && (isInterpolation(value.interp) || value.interp === null);
+    && 'interp' in value && (isScssInterpolation(value.interp) || value.interp === null);
 }
 
 export function isCompoundSelector(value: unknown): value is CompoundSelector {
   return typeof value === 'object' && value !== null
     && 'type' in value && value.type === 'CompoundSelector'
     && 'value' in value && Array.isArray(value.value)
-    && value.value.every(isSimpleToken);
+    && value.value.every(isScssSimpleToken);
 }
 
 export function isSelectorTerm(value: unknown): value is SelectorTerm {
-  return isSimpleToken(value) || isCompoundSelector(value);
+  return isScssSimpleToken(value) || isCompoundSelector(value);
 }
 
-export function isSelectorBranch(value: unknown): value is SelectorBranch {
+export function isScssSelectorBranch(value: unknown): value is SelectorBranch {
   return isSelectorTerm(value) || isComplexSelector(value) || isRelativeSelector(value);
 }
 
-export function isSelectorList(value: unknown): value is SelectorList {
+export function isScssSelectorList(value: unknown): value is SelectorList {
   return typeof value === 'object' && value !== null
     && 'type' in value && value.type === 'SelectorList'
     && 'selectors' in value && Array.isArray(value.selectors)
-    && value.selectors.every(isSelectorBranch);
+    && value.selectors.every(isScssSelectorBranch);
 }
 
 export function requireSelectorList(value: unknown): SelectorList {
-  if (!isSelectorList(value)) {
+  if (!isScssSelectorList(value)) {
     throw new TypeError('SCSS grammar produced a non-selector-list child.');
   }
   return value;
 }
 
-export const selectorTermFromTokens = (tokens: readonly SimpleToken[]): SelectorTerm =>
+export const scssSelectorTermFromTokens = (tokens: readonly SimpleToken[]): SelectorTerm =>
   selectorTermOf([tokens[0]!, ...tokens.slice(1)]);
 
 /*
@@ -159,7 +159,7 @@ export const selectorTermFromTokens = (tokens: readonly SimpleToken[]): Selector
  * argument as a `SelectorList` in `args` and leaves `text` null; core
  * serialization owns the inline join.
  */
-export function isSimpleToken(value: unknown): value is SimpleToken {
+export function isScssSimpleToken(value: unknown): value is SimpleToken {
   return isSimpleSelector(value)
     || (typeof value === 'object' && value !== null && 'type' in value && value.type === 'PseudoSelector');
 }
@@ -179,7 +179,7 @@ export function scssRelativeCombinator(value: unknown): '>' | '+' | '~' {
   return '~';
 }
 
-export function branchSegments(branch: SelectorBranch): [{ combinator?: ScssSegmentCombinator; term: SelectorTerm }, ...Array<{ combinator?: ScssSegmentCombinator; term: SelectorTerm }>] {
+export function scssBranchSegments(branch: SelectorBranch): [{ combinator?: ScssSegmentCombinator; term: SelectorTerm }, ...Array<{ combinator?: ScssSegmentCombinator; term: SelectorTerm }>] {
   if (branch.type !== 'ComplexSelector' && branch.type !== 'RelativeSelector') {
     return [{ term: branch }];
   }
@@ -198,8 +198,8 @@ export function branchSegments(branch: SelectorBranch): [{ combinator?: ScssSegm
   return [segments[0]!, ...segments.slice(1)];
 }
 
-export function isImportTarget(value: unknown): value is Quoted | Url | Interpolation {
-  return isQuoted(value) || isUrl(value) || isInterpolation(value);
+export function isScssImportTarget(value: unknown): value is Quoted | Url | Interpolation {
+  return isQuoted(value) || isUrl(value) || isScssInterpolation(value);
 }
 
 export function isParam(value: unknown): value is Param {
@@ -209,10 +209,10 @@ export function isParam(value: unknown): value is Param {
   if ('name' in value && typeof value.name !== 'string') {
     return false;
   }
-  if ('default' in value && !isValueSlotValue(value.default)) {
+  if ('default' in value && !isScssValueSlotValue(value.default)) {
     return false;
   }
-  if ('pattern' in value && !isValueSlotValue(value.pattern)) {
+  if ('pattern' in value && !isScssValueSlotValue(value.pattern)) {
     return false;
   }
   return !('rest' in value) || typeof value.rest === 'boolean';
@@ -284,7 +284,7 @@ export function isFunctionCall(value: unknown): value is FunctionCall {
     && Array.isArray(value.args);
 }
 
-export function isInterpolation(value: unknown): value is Interpolation {
+export function isScssInterpolation(value: unknown): value is Interpolation {
   return typeof value === 'object'
     && value !== null
     && 'type' in value
@@ -294,7 +294,7 @@ export function isInterpolation(value: unknown): value is Interpolation {
 }
 
 export function requireInterpolation(value: unknown): Interpolation {
-  if (!isInterpolation(value)) {
+  if (!isScssInterpolation(value)) {
     throw new TypeError('SCSS grammar produced a non-interpolation child.');
   }
   return value;
@@ -313,7 +313,7 @@ export function appendLiteral(parts: Interpolation['parts'], text: string): void
 export function interpolationFromTemplateChildren(children: readonly unknown[]): Interpolation {
   const parts: Interpolation['parts'] = [];
   for (const child of children) {
-    if (isInterpolation(child)) {
+    if (isScssInterpolation(child)) {
       for (const part of child.parts) {
         if ('lit' in part) {
           appendLiteral(
@@ -349,7 +349,7 @@ export function customValueFromParts(children: readonly unknown[], parts: Interp
         parts,
         seen
       );
-    } else if (isInterpolation(child)) {
+    } else if (isScssInterpolation(child)) {
       seen.interpolated = true;
       for (const part of child.parts) {
         if ('lit' in part) {
@@ -398,8 +398,8 @@ export function isArithmeticOperator(text: string): boolean {
  * sits a constant distance from its operand and the fold reads the shape rather
  * than a fixed stride — and a pad can hold a comment whose own `/` and `*` would
  * defeat any attempt to recover the operator from the padded text. */
-export function foldOperation(children: readonly unknown[]): ValueNode {
-  const first = children.find(isValue);
+export function scssFoldOperation(children: readonly unknown[]): ValueNode {
+  const first = children.find(isScssValue);
   if (first === undefined) {
     throw new TypeError('SCSS arithmetic grammar produced no operand.');
   }
@@ -407,7 +407,7 @@ export function foldOperation(children: readonly unknown[]): ValueNode {
   let operator: string | undefined;
   for (let index = children.indexOf(first) + 1; index < children.length; index += 1) {
     const child = children[index];
-    if (isValue(child)) {
+    if (isScssValue(child)) {
       if (operator === undefined) {
         throw new TypeError('SCSS arithmetic grammar lost an operator operand.');
       }
@@ -435,11 +435,11 @@ export function foldOperation(children: readonly unknown[]): ValueNode {
   return result;
 }
 
-export function isValue(value: unknown): value is ValueNode {
+export function isScssValue(value: unknown): value is ValueNode {
   /*
    * Dispatch on the node tag once instead of re-testing typeof/null/`type` in a
    * flat `||` chain: this predicate runs on essentially every value child via
-   * `.find(isValue)`/`.filter(isValue)`. Each tag maps to exactly one shape
+   * `.find(isScssValue)`/`.filter(isScssValue)`. Each tag maps to exactly one shape
    * check, so the accepted set is identical to the former ordered disjunction.
    */
   if (typeof value !== 'object' || value === null || !('type' in value)) {
@@ -457,20 +457,20 @@ export function isValue(value: unknown): value is ValueNode {
     case 'FunctionCall':
       return isFunctionCall(value);
     case 'Interpolation':
-      return isInterpolation(value);
+      return isScssInterpolation(value);
     case 'Any':
       return 'src' in value && typeof value.src === 'string';
     case 'Url':
-      return 'value' in value && isValue(value.value);
+      return 'value' in value && isScssValue(value.value);
     case 'Sequence':
       return 'parts' in value && Array.isArray(value.parts);
     case 'List':
       return 'value' in value && Array.isArray(value.value);
     case 'Block':
     case 'Expression':
-      return 'value' in value && isValueSlotValue(value.value);
+      return 'value' in value && isScssValueSlotValue(value.value);
     case 'Operation':
-      return 'left' in value && 'right' in value && isValue(value.left) && isValue(value.right);
+      return 'left' in value && 'right' in value && isScssValue(value.left) && isScssValue(value.right);
     case 'Keyword':
     case 'Null':
       return 'src' in value && typeof value.src === 'string';
@@ -489,7 +489,7 @@ export function isValue(value: unknown): value is ValueNode {
   }
 }
 
-export function valueSlot(value: ValueNode): ValueSlot {
+export function scssValueSlot(value: ValueNode): ValueSlot {
   if (value.type === 'Sequence') {
     return value.parts;
   }
@@ -500,26 +500,26 @@ export function valueSlot(value: ValueNode): ValueSlot {
 }
 
 export function isSequence(value: ValueSlot): value is Extract<ValueNode, { type: 'Sequence' }> {
-  return isValue(value) && value.type === 'Sequence';
+  return isScssValue(value) && value.type === 'Sequence';
 }
 
-export function isValueSlotValue(value: unknown): value is ValueSlot {
-  return Array.isArray(value) ? value.every(isValueSlotValue) : isValue(value);
+export function isScssValueSlotValue(value: unknown): value is ValueSlot {
+  return Array.isArray(value) ? value.every(isScssValueSlotValue) : isScssValue(value);
 }
 
 export function requireValueSlot(value: unknown): ValueSlot {
-  return Array.isArray(value) ? value as ValueSlot : valueSlot(requireValue(value));
+  return Array.isArray(value) ? value as ValueSlot : scssValueSlot(requireValue(value));
 }
 
-export function isDeclaration(value: unknown): value is Declaration {
+export function isScssDeclaration(value: unknown): value is Declaration {
   return typeof value === 'object'
     && value !== null
     && 'type' in value
     && value.type === 'Declaration'
     && 'name' in value
-    && (typeof value.name === 'string' || isInterpolation(value.name))
+    && (typeof value.name === 'string' || isScssInterpolation(value.name))
     && 'value' in value
-    && isValueSlotValue(value.value);
+    && isScssValueSlotValue(value.value);
 }
 
 export function isCollection(value: unknown): value is Collection {
@@ -531,9 +531,9 @@ export function isCollectionEntry(value: unknown): value is CollectionEntry {
     && 'type' in value
     && value.type === 'CollectionEntry'
     && 'key' in value
-    && isValueSlotValue(value.key)
+    && isScssValueSlotValue(value.key)
     && 'value' in value
-    && isValueSlotValue(value.value);
+    && isScssValueSlotValue(value.value);
 }
 
 export function isRuleset(value: unknown): value is Ruleset {
@@ -583,7 +583,7 @@ export function isExtendInstruction(value: unknown): value is ExtendInstruction 
 }
 
 export function requireValue(value: unknown): ValueNode {
-  if (!isValue(value)) {
+  if (!isScssValue(value)) {
     throw new TypeError('SCSS grammar produced a non-value child.');
   }
   return value;
@@ -694,7 +694,7 @@ export function reduceScssCall(name: string, children: readonly unknown[], minAr
     name,
     args
   );
-  if (MAP_GET_SPELLINGS.has(call.name) && args.length === 2 && isValue(args[0]!.value) && isValue(args[1]!.value)) {
+  if (MAP_GET_SPELLINGS.has(call.name) && args.length === 2 && isScssValue(args[0]!.value) && isScssValue(args[1]!.value)) {
     return lowerMapGet(
       args[0]!.value,
       args[1]!.value
@@ -718,7 +718,7 @@ export function reduceScssCall(name: string, children: readonly unknown[], minAr
 /** A Sass map key stays an authored value node; equality belongs to value-domain
  * map comparison, not to declaration-name stringification. */
 export function mapKeyValue(node: ValueNode): ValueSlot {
-  return valueSlot(node);
+  return scssValueSlot(node);
 }
 
 /**
@@ -795,7 +795,7 @@ export function scssConditionSource(value: ValueSlot): string {
  * spelled `and` or `or`.
  */
 export function foldLogicalOperation(children: readonly unknown[]): ValueNode {
-  const values = children.filter(isValue);
+  const values = children.filter(isScssValue);
   const operators = children.filter(isToken).map(token => token.value.trim().toLowerCase()).filter(text => text === 'and' || text === 'or');
   let result = requireValue(values[0]);
   for (let index = 1; index < values.length; index += 1) {
@@ -813,15 +813,15 @@ export function isGuardNode(value: unknown): value is GuardNode {
     case 'default':
       return true;
     case 'truth':
-      return 'value' in value && isValue(value.value);
+      return 'value' in value && isScssValue(value.value);
     case 'cmp':
     case 'match':
       return 'op' in value && typeof value.op === 'string'
-        && 'left' in value && isValue(value.left)
-        && 'right' in value && isValue(value.right);
+        && 'left' in value && isScssValue(value.left)
+        && 'right' in value && isScssValue(value.right);
     case 'call':
       return 'name' in value && typeof value.name === 'string'
-        && 'args' in value && Array.isArray(value.args) && value.args.every(isValue);
+        && 'args' in value && Array.isArray(value.args) && value.args.every(isScssValue);
     case 'not':
       return 'inner' in value && isGuardNode(value.inner);
     case 'and':
@@ -840,7 +840,7 @@ export function requireGuardNode(value: unknown): GuardNode {
   return value;
 }
 
-export function optionalValue(value: unknown): ValueNode | null {
+export function scssOptionalValue(value: unknown): ValueNode | null {
   return value === null || value === undefined ? null : requireValue(value);
 }
 
@@ -850,7 +850,7 @@ export function isScssCallArg(value: unknown): value is ScssCallArg {
     && value !== null
     && 'value' in value
     && 'name' in value
-    && isValueSlotValue(value.value);
+    && isScssValueSlotValue(value.value);
 }
 
 export function requireScssCallArg(value: unknown): ScssCallArg {
@@ -876,7 +876,7 @@ export function isScssValuePair(value: unknown): value is ScssValuePair {
     && 'separator' in value
     && typeof value.separator === 'string'
     && 'value' in value
-    && isValueSlotValue(value.value);
+    && isScssValueSlotValue(value.value);
 }
 
 export function isScssValueTail(value: unknown): value is ScssValueTail {
@@ -885,7 +885,7 @@ export function isScssValueTail(value: unknown): value is ScssValueTail {
     && 'kind' in value
     && (value.kind === 'space' || value.kind === 'slash')
     && 'value' in value
-    && isValue(value.value)
+    && isScssValue(value.value)
     && 'separator' in value
     && typeof value.separator === 'string';
 }
@@ -898,7 +898,7 @@ export function isVarDeclaration(value: unknown): value is VariableDeclaration {
     && 'name' in value
     && typeof value.name === 'string'
     && 'value' in value
-    && isValueSlotValue(value.value);
+    && isScssValueSlotValue(value.value);
 }
 
 /*
@@ -925,7 +925,7 @@ export function isStatementChild(child: unknown, allowDeclarations: boolean): ch
     /* `$content()` — a statement-position Reference; core's `Statement` already
      * admits one, and this is the only production that puts one here. */
     || isReferenceStatement(child)
-    || (allowDeclarations && isDeclaration(child));
+    || (allowDeclarations && isScssDeclaration(child));
 }
 
 export function isReferenceStatement(value: unknown): value is Reference {
