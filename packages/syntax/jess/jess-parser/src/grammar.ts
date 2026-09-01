@@ -169,6 +169,11 @@ type JessRules = {
   Quoted: Combinator<Quoted | Interpolation>;
   LiteralQuoted: Combinator<Quoted>;
   Dimension: Combinator<Dimension>;
+
+  /*
+   * Converged to the CSS base (inherited via compose): shared HexColor token,
+   * reducer differs only requireToken().value vs tokenText() over one token.
+   */
   Color: Combinator<Color>;
   Url: Combinator<Url>;
   PlainUrlInner: Combinator<string>;
@@ -179,6 +184,11 @@ type JessRules = {
   KeywordValue: Combinator<Keyword | Null>;
   NullLiteral: Combinator<Null>;
   VarCall: Combinator<FunctionCall>;
+
+  /*
+   * Converged to the CSS base (inherited via compose): shared UnicodeRangeToken;
+   * reducer differs only requireToken().value vs tokenText() over one token.
+   */
   UnicodeRange: Combinator<ValueNode>;
   CalcValue: Combinator<ValueNode>;
   CalcParen: Combinator<ValueNode>;
@@ -296,7 +306,14 @@ type JessRules = {
   PropertyDescriptor: Combinator<Declaration>;
   PropertyAtRule: Combinator<AtRuleBlock>;
   Percentage: Combinator<string>;
-  KeyframeSelector: Combinator<SimpleSelector>;
+
+  /*
+   * Converged to the CSS base (inherited via compose): same body
+   * choice(keyframeEndpoint, g.Percentage) — g.Percentage resolves to Jess's
+   * token override — same SimpleSelector node; reducer differs only
+   * sourceText() vs requireToken().value over one matched token.
+   */
+  keyframeSelector: Combinator<SimpleSelector>;
   KeyframeBlock: Combinator<Ruleset>;
   Keyframes: Combinator<AtRuleBlock>;
   OpaqueAtPrelude: Combinator<string | null>;
@@ -694,11 +711,6 @@ const scopeAtRuleName = word('@scope', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsen
 
 /** The `null` LITERAL's word (§4.3). Boundary-guarded, so `nullish` stays an ordinary identifier. */
 const nullWord = word('null', '-_a-zA-Z0-9\\u0080-\\uFFFF');
-const keyframeEndpoint = keywords(
-  ['from', 'to'],
-  { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF', caseInsensitive: true }
-);
-
 /*
  * NOT exported, and must never be. The body is written entirely in parseman's
  * macro vocabulary (`makeWord`, `sequence`, `node`, ...), which exists only at
@@ -1713,32 +1725,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         `${numberText}${unit}`
       );
     }
-  );
-  const Color = node<Color>(
-    'Color',
-    g.HexColor,
-    children => color(requireToken(children[0]).value)
-  );
-
-  /*
-   * A `<urange>` is one opaque CSS token, so it must be recognized before the
-   * identifier atom: `U+0-7F` split at the `+` leaves `+0`/`-7F` to be re-read
-   * as signed numbers, which serializes valid CSS back out as `U +0 -7F`.
-   * Jess had no `<urange>` rule at all, so `a { b: U+0-7F }` — plain CSS the
-   * other three dialects accept — did not parse.
-   *
-   * The CSS base is the precedent, not an argument from first principles:
-   * `../../../css/css-parser/src/grammar.ts:1739` defines it and admits it in
-   * BOTH ladders, the ordinary value atom (`:2699`, `:2765`) and the calc rung
-   * (`:2205`) — and the comment above that rung says why in as many words, that
-   * `CalcValue` must be a SUPERSET of the ordinary typed value atom rather than
-   * a narrower cousin of it, with `min(U+0-7F)` named as the measured case.
-   * Jess ports that family rather than referencing it, so it owes both arms.
-   */
-  const UnicodeRange = node<ValueNode>(
-    'UnicodeRange',
-    g.UnicodeRangeToken,
-    children => any(requireToken(children[0]).value)
   );
   const UrlInterpolatedValue = node<Interpolation>(
     'UrlInterpolatedValue',
@@ -4019,21 +4005,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * header and selector boundary static until Jess has typed interpolation for
    * those positions; never turn either into a source-text prelude.
    */
-  const KeyframeSelector = node<SimpleSelector>(
-    'SimpleSelector',
-    choice(
-      keyframeEndpoint,
-      g.Percentage
-    ),
-    children => simpleSelector(requireToken(children[0]).value)
-  );
   const KeyframeBlock = node<Ruleset>(
     'KeyframeBlock',
     sequence(
-      g.KeyframeSelector,
+      g.keyframeSelector,
       many(sequence(
         literal(','),
-        g.KeyframeSelector
+        g.keyframeSelector
       )),
       literal('{'),
       many(choice(
@@ -5447,7 +5425,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     PropertyDescriptor,
     PropertyAtRule,
     Percentage,
-    KeyframeSelector,
     KeyframeBlock,
     Keyframes,
     OpaqueAtPrelude,
@@ -5457,14 +5434,12 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     AtRuleBlock,
     AtRuleStatement,
     Dimension,
-    Color,
     Url,
     CallComponent,
     CallArgument,
     KeywordValue,
     NullLiteral,
     VarCall,
-    UnicodeRange,
     CalcValue,
     CalcParen,
     CalcProduct,
