@@ -177,7 +177,7 @@ const specifiers = ${JSON.stringify(packageNames.flatMap((name) => {
   if (name === '@jesscss/parser-shared') {
     return [
       '@jesscss/parser-shared/recognition',
-      '@jesscss/parser-shared/opaque-at-rule',
+      '@jesscss/parser-shared/unknown-at-rule',
       '@jesscss/parser-shared/pseudo-consts'
     ];
   }
