@@ -19,8 +19,9 @@ Diagnosis date: 2026-08-28. Traced against `dev` at the CI-setup fix.
 
 ---
 
-## #1 — diagnostics: `renderString` throws a value that isn't `instanceof Error`
+## #1 — diagnostics: `renderString` throws a value that isn't `instanceof Error` (DONE)
 - **Test:** `test/diagnostics.test.ts > Diagnostic display tiers > renderString reports a collected parser diagnostic without a plain duplicate error`
+- **Fixed on dev:** commit `b94b90176` ("fix(test): assert JessError, not Error, for the @charset diagnostic") retargeted the assertion to `JessError`; the test now passes. Removed from `packages/jess/test/known-failures.json` (the ratchet flagged it FIXED once the baseline was re-run against this base).
 - **Category:** stale-test-expectation + owner design question
 - **Root cause:** `class JessError` no longer extends `Error` (perf commit `b16d69578`, 2026-07-28, dropped `extends Error` to avoid stack capture on every diagnostic). The test's `expect(thrown).toBeInstanceOf(Error)` (line 432) now fails; `renderString` re-throws the raw diagnostic (`packages/compiler/src/index.ts:1252`).
 - **Fix approach:** Mechanical fix is test-side — assert the real contract (`toBeInstanceOf(JessError)` or `toMatchObject({ code: 'parse/dynamic-charset' })`). **ESCALATE FIRST:** should a public `renderString` throw a value user `catch (e) { if (e instanceof Error) … }` code cannot recognize? If public throws must stay `Error`-catchable, the alternative fix is re-adding `extends Error` to `JessError` (reverting the perf change) — an owner call.
@@ -43,11 +44,11 @@ Diagnosis date: 2026-08-28. Traced against `dev` at the CI-setup fix.
 - **Effort:** S–M
 - **Owner-gated:** no (but touches Jess extend semantics — run semantics-reviewer)
 
-## #4 — jess-render: `${…}` interpolation not parsed inside `@import url(...)`
+## #4 — jess-render: `${…}` interpolation not parsed inside `@import url(...)` (DONE)
 - **Test:** `test/jess-render.test.ts > Jess parser plugin render-through > reports unresolved Jess interpolation through the public structured diagnostic route`
 - **Category:** parser-bug (grammar gap)
 - **Root cause:** Parser chokes on `{` of `${path}` inside `@import url(${path})` → `parse/syntax-error @1:14` instead of building an interpolation node. Intended: parse `${path}`, then fail at resolve with `resolve/name-not-found @1:13` (`$path` unbound at import time). `${name}` is a documented Jess interpolation form.
-- **Fix approach:** Extend the Jess grammar to accept the `${…}` interpolation production inside an `@import` `url(...)` prelude, producing a node that reaches resolve. Grammar work — gated by `docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md`, run grammar-reviewer.
+- **Fix applied (2026-09-01):** The closed at-rule-header `Url` production (`packages/syntax/jess/jess-parser/src/grammar.ts`) now admits the existing `g.UrlInterpolatedValue` (`${…}`) body — the same interpolation the value-position `UrlFunction` already accepts; `PlainUrlInner` excludes `$` so it never competes. The `ImportStatement` reducer keeps a dynamic `url(${…})` target as a flat `Interpolation` prelude (`url(` + parts + `)`) instead of stringifying it via `expressionSource`, so `cssImportTarget` leaves it on the plain resolve-and-emit path and `evalQueryPreludeSync` walks the `$path` ref → `resolve/name-not-found @1:13`. Removed from `packages/jess/test/known-failures.json`.
 - **Effort:** M
 - **Owner-gated:** no
 

@@ -21,18 +21,7 @@
     "direction, and it MUST carry a `tracking` pointer. It is an open bug, not an",
     "excuse — do not use it to silence a deterministic failure."
   ],
-  "knownFailures": [
-    {
-      "test": "test/diagnostics.test.ts > Diagnostic display tiers renderString reports a collected parser diagnostic without a plain duplicate error",
-      "reason": "instanceof Error fails: JessError intentionally no longer extends Error (perf commit b16d69578); assertion contradicts deliberate design — retarget to JessError or escalate the public-throw contract.",
-      "tracking": "docs/state/jess-known-failures-fix-plan.md#1"
-    },
-    {
-      "test": "test/jess-render.test.ts > Jess parser plugin render-through reports unresolved Jess interpolation through the public structured diagnostic route",
-      "reason": "Jess ${…} interpolation is not parsed inside @import url(...); yields parse/syntax-error @1:14 instead of parsing + resolve/name-not-found @1:13.",
-      "tracking": "docs/state/jess-known-failures-fix-plan.md#4"
-    }
-  ],
+  "knownFailures": [],
   "knownFlakyElsewhere": [
     {
       "test": "tests-unit/extend-exact/extend-exact.less",

@@ -1742,6 +1742,11 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * Static CSS at-rule headers use this closed URL production. Value-position
    * URLs route through IdentifierOrFunction below, where dynamic Jess segments
    * are a deliberate override of this static CSS leaf.
+   *
+   * The one dynamic admission is the same `${…}` body the value-position
+   * `UrlFunction` already accepts, so an `@import url(${path})` prelude carries
+   * a real interpolation to resolve instead of choking on the `{`. `PlainUrlInner`
+   * excludes `$`, so it never competes for that opener.
    */
   const Url = node<Url>(
     'Url',
@@ -1750,6 +1755,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       noTrivia(sequence(
         optional(choice(
           g.LiteralQuoted,
+          g.UrlInterpolatedValue,
           g.PlainUrlInner
         )),
         literal(')')
@@ -3826,6 +3832,20 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
        * three-child sequence is `[name, target, ';']`. */
       const tailText = children.length === 4 ? requireToken(children[2]).value.trim() : '';
       const tail = tailText === '' ? null : tailText;
+
+      /* A `url(${…})` target carries a real interpolation. Keep it structural so
+       * resolve walks the `$name` ref (name-not-found at the `$`) instead of the
+       * `expressionSource` string flattening it away. The prelude stays a flat
+       * value node — jess `@import` is CSS-only — but an Interpolation, not `Any`,
+       * so cssImportTarget leaves it on the plain resolve-and-emit path.
+       * ponytail: tail-bearing dynamic urls fall through to the string path
+       * (untested, no typed segment model); wire a spaced prelude if one surfaces. */
+      if (isUrl(target) && isJessInterpolation(target.value) && tail === null) {
+        return atRuleStatement(
+          requireToken(children[0]).value,
+          interpolation([{ lit: 'url(' }, ...target.value.parts, { lit: ')' }])
+        );
+      }
       const targetText = target.type === 'Quoted'
         ? target.src
         : `url(${expressionSource(target.value)})`;
