@@ -247,8 +247,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # Cheap prime: build ONLY the libs a source test consumes (see block above).
-      - name: Prime — build parser-shared + core + fns
-        run: pnpm --filter '@jesscss/parser-shared' --filter '@jesscss/core...' --filter '@jesscss/fns...' build
+      # css-parser is a compiled-only base here (like parser-shared): a cross-package
+      # `compose([cssBaseRules, …])` grammar fuses from the base's built-lib
+      # `composedPieces` provenance, not source, so the base lib must exist. The
+      # less/scss/jess W-phase compose flips all rely on this same prime.
+      - name: Prime — build parser-shared + css-parser + core + fns
+        run: pnpm --filter '@jesscss/parser-shared' --filter '@jesscss/css-parser' --filter '@jesscss/core...' --filter '@jesscss/fns...' build
 
       # Opt-out coverage: `-r test` runs EVERY workspace package by default, so a
       # newly added package is gated the moment it exists. `jess` is excluded — it

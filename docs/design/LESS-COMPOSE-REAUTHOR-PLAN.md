@@ -58,19 +58,16 @@ OR-1 single-sourcing, not shrinkage** (see §1).
 emitted-CSS oracle + `check:macro` 0 fallbacks, all 4 variants) and landed on dev
 green before the next. Alpha releases run in parallel and are never blocked.
 
-**Current position:** W0 (compose-wiring flip) is ⚠ BLOCKED — the flip was
-landed (`385c8b300`) then REVERTED, because dev CI's build-free "Source tests"
-suite cannot consume a cross-package compose grammar: vitest source-aliases the
-external `cssBaseRules` to `src`, and the parseman vitest macro cannot follow the
-external base's provenance when source-aliased, so less's cross-package
-`compose([cssBaseRules, …])` falls to a runtime `compose()` that throws (`IR
-direct node builder for VarCall references module import(s) … a runtime
-compose() cannot supply`). New prerequisite: the source-test suite must serve
-composed parser grammars from built lib / macro-fuse the external base. Re-land
-W0 after that. The parseman **0.50.5** bump, the Gap C rename, and the
-build-then-load gate stay landed (they are correct and inert under the restored
-`composeLeaf` baseline). Next is that infra prerequisite, then W0, then
-increment 1 (`Color`).
+**Current position:** W0 (compose-wiring flip) is ☑ DONE — re-landed after
+fixing the source-test blocker at its root. The build-free "Source tests" job
+now also primes `@jesscss/css-parser`, so parseman resolves the bare
+`@jesscss/css-parser/grammar` specifier to a BUILT lib and macro-fuses from its
+`composedPieces` provenance (instead of source-lowering the external base to a
+runtime `compose()` that throws `IR direct node builder for VarCall references
+module import(s) … a runtime compose() cannot supply`). less's four variants now
+compose on `cssBaseRules` and fuse to `tableRules(`. The scss/jess W-phase
+compose flips need **no further infra** — they inherit this same prime (the base
+lib exists once built). Next is increment 1 (`Color`).
 
 | # | Increment | Status | Landed | Notes |
 |---|---|---|---|---|
@@ -79,7 +76,7 @@ increment 1 (`Color`).
 | B0-scss | hoist scss's 55 local reducer helpers | ☑ DONE | `6ba05f917` (2026-08-31) | PURE code motion → co-located `scss-parser/src/grammar-helpers.ts` (relative import); census 140→0 rejected / 55→0 unresolved (107 carried); cross-dialect dedup DEFERRED (same open-recursion guard as B0-less) |
 | B0-jess | hoist jess's 70 local reducer helpers | ☑ DONE | `3a43df5b3` (2026-08-31) | PURE code motion → co-located `jess-parser/src/grammar-helpers.ts` (relative import); census 70→0 (122 carried); 108 helpers + 8 helper types moved byte-identical, dead top-imports pruned; cross-dialect dedup DEFERRED |
 | probe | cst-rehost verification (§2) | ☑ GO | probe 2026-08-31 | base re-hosts to cst+positions; still holds |
-| **W0** | Compose-wiring flip (§2) | ⚠ BLOCKED | `385c8b300` landed then REVERTED | compose flip reverted — dev CI's build-free source-test suite can't consume a cross-package compose grammar (vitest source-aliases the external `cssBaseRules`; the parseman vitest macro can't follow the external base's provenance when source-aliased, so a runtime `compose()` throws). New prerequisite: source-test must serve composed parser grammars from built lib / macro-fuse the external base. Re-land W0 after that. KEPT (correct + inert under the restored `composeLeaf` baseline): parseman **0.50.5** bump (`cb2d3d466`), the **Gap C** rename (`2ea7bb448`), and the build-then-load gate (`76dcf96dc`, `check:less-fused` — composeLeaf's built lib is still `tableRules(`, so the gate passes). |
+| **W0** | Compose-wiring flip (§2) | ☑ DONE | this commit (re-land of `385c8b300`) | Re-landed: less's four variants compose on `cssBaseRules` and macro-fuse to `tableRules(` (0 runtime `compose(`). The source-test blocker is fixed at root: the build-free `test-source` CI job now also primes `@jesscss/css-parser` (added `--filter '@jesscss/css-parser'` to the prime), so parseman resolves the bare `@jesscss/css-parser/grammar` specifier to a BUILT lib and reads its `composedPieces` provenance to macro-fuse — instead of falling to source-lowering → runtime `compose()` throw. Carried inert since the earlier land: parseman **0.50.5** bump (`cb2d3d466`), **Gap C** rename (`2ea7bb448`), build-then-load gate (`76dcf96dc`, `check:less-fused`). |
 | 1 | Inherit `Color` | ☐ TODO | — | firm converge |
 | 2 | Inherit `UnicodeRange` | ☐ TODO | — | firm converge |
 | 3 | Inherit `Dimension` | ☐ TODO | — | first oracle proof |
@@ -257,6 +254,11 @@ publish). Consumer ripple noted per item.
 **First 5 increments in order:** W0 (wiring flip) → 1 `Color` → 2 `UnicodeRange`
 → 3 `Dimension` (first proof) → 4 `CustomPropertyValue` (first token-override
 proof).
+
+The scss/jess compose-wiring flips (their own W0-equivalents) need **no further
+CI infra** — the source-test job's css-parser prime (added for W0) already makes
+the built base lib available for any cross-package `compose([cssBaseRules, …])`
+fusion, so those flips are pure grammar-file edits.
 
 ---
 
