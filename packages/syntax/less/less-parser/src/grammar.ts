@@ -20,14 +20,15 @@
  * parse entry.
  */
 import {
-  attempt, rules, classifiedTrivia, composeLeaf,
+  attempt, rules, classifiedTrivia, compose,
   node, regex, literal, sequence, choice, many, oneOrMore, oneOrMoreSep, optional,
   not, scanTo, balanced, parser, noTrivia, label, word, keywords, field, leaf, peek,
   dispatch, endsWith, makeWhen, makeWord, matches, otherwise, routed, token, transform, when
 } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
-import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
+import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
+import { cssBaseRules } from '@jesscss/css-parser/grammar';
 import { NO_SPAN, any, atRuleBlock, atRuleStatement, block, bodySpanFromRaw, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { requireLessParseState } from './parse-state.js';
@@ -4946,13 +4947,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   };
 };
 
-export const lessGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment] }, lessGrammarFactory)]);
+export const lessGrammar = compose([cssBaseRules, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment] }, lessGrammarFactory)], { hostMode: 'ast' });
 
 /** AST artifact with Parseman line/column tracking enabled. */
-export const lessPositionsGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], trackLines: true }, lessGrammarFactory)]);
+export const lessPositionsGrammar = compose([cssBaseRules, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], trackLines: true }, lessGrammarFactory)], { hostMode: 'ast' });
 
 /** Public Less CST artifact: the same grammar factory compiled in CST mode. */
-export const lessCstGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], hostMode: 'cst' }, lessGrammarFactory)]);
+export const lessCstGrammar = compose([cssBaseRules, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment] }, lessGrammarFactory)], { hostMode: 'cst' });
 
 /** CST artifact with Parseman line/column tracking enabled. */
-export const lessCstPositionsGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], hostMode: 'cst', trackLines: true }, lessGrammarFactory)]);
+export const lessCstPositionsGrammar = compose([cssBaseRules, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], trackLines: true }, lessGrammarFactory)], { hostMode: 'cst' });
