@@ -291,7 +291,6 @@ type LessRules = {
   ContainerCondition: Combinator<ValueNode>;
   MediaContainerBody: Combinator<readonly Statement[]>;
   MediaContainerBlock: Combinator<AtRuleBlock>;
-  KeyframeSelector: Combinator<SimpleSelector>;
   KeyframeBlock: Combinator<Ruleset>;
   Keyframes: Combinator<AtRuleBlock>;
   DottedAtRuleKeyword: Combinator<ValueNode>;
@@ -381,6 +380,10 @@ type SharedSyntax = {
   // Converged to the CSS base (inherited via compose): same named
   // UnicodeRangeToken; reducer differs only requireToken().value vs tokenText().
   UnicodeRange: Combinator<Any>;
+  // Converged to the CSS base (inherited via compose): same node type
+  // SimpleSelector, byte-identical keyframeEndpoint, g.Percentage resolves to
+  // less's override; reducer differs only requireToken().value vs sourceText().
+  keyframeSelector: Combinator<SimpleSelector>;
   NthExpression: Combinator<unknown>;
   NthChildPseudoSelectorName: Combinator<string>;
   NthTypePseudoSelectorName: Combinator<string>;
@@ -516,10 +519,6 @@ const bareInterpolatedSelectorEnd = regex(/(?=[ \t\n\r\f]*(?:[,{]))/);
 // parenthesized and interpolation forms stay outside this static slice
 // until their typed semantic payloads are constructed by grammar reductions.
 const staticAmpersand = regex(/&[-_a-zA-Z0-9\u0080-\uffff]*/);
-const keyframeEndpoint = keywords(
-  ['from', 'to'],
-  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
-);
 // Ordered longest-first, identical to the production Less `combinator`
 // terminal. A missing authored token between compounds is the canonical
 // descendant relation; grammar trivia provides the separating whitespace.
@@ -3472,16 +3471,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // function-call statements. The shared prefix is the property/call name, but
   // the deciding delimiter is `:` versus `(` / `;`, so a cosmetic dispatch on
   // the identifier would commit too early.
-  const KeyframeSelector = node(
-    'SimpleSelector',
-    choice(keyframeEndpoint, g.Percentage),
-    children => simpleSelector(requireToken(children[0]).value)
-  );
   const KeyframeBlock = node(
     'KeyframeBlock',
     sequence(
       oneOrMoreSep(
-        g.KeyframeSelector,
+        g.keyframeSelector,
         literal(',')
       ),
       literal('{'),
@@ -4857,7 +4851,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ContainerCondition,
     MediaContainerBody,
     MediaContainerBlock,
-    KeyframeSelector,
     KeyframeBlock,
     Keyframes,
     DottedAtRuleKeyword,
