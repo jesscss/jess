@@ -13,7 +13,7 @@
  * an unknown at-rule adds lives in the SCANNER — the skip set reuses the
  * canonical `blockComment`, `customEscape` and quoted-string terminals, and an
  * unpaired quote is walked past as an ordinary byte — not in a forked
- * `OpaqueComment`/`OpaqueString`/`OpaqueGroup` copy of those productions.
+ * `UnknownComment`/`UnknownString`/`UnknownGroup` copy of those productions.
  *
  * ## Why a reference implementation, and not the byte-identity oracle
  *
@@ -101,7 +101,7 @@ function firstOpaqueRawBody(node: unknown): string | null {
     return null;
   }
   const record = node as Record<string, unknown>;
-  if (record['type'] === 'OpaqueAtRuleBlock') {
+  if (record['type'] === 'UnknownAtRuleBlock') {
     return record['rawBody'] as string;
   }
   return firstOpaqueRawBody(record['rules']);
@@ -186,7 +186,7 @@ describe('unknown at-rule body: a simple block, not a rule list', () => {
       if (node._tag !== 'node') {
         return;
       }
-      if (node.grammarType !== undefined && node.grammarType.startsWith('Opaque')) {
+      if (node.grammarType !== undefined && node.grammarType.startsWith('Unknown')) {
         found.push([node.grammarType, src.slice(node.span.start, node.span.end)]);
       }
       node.rules.forEach(child => visit(child as typeof node));
@@ -195,19 +195,19 @@ describe('unknown at-rule body: a simple block, not a rule list', () => {
 
     /*
      * The unknown at-rule is ONE opaque node over its raw bytes. There is no
-     * `OpaqueGroup`/`OpaqueComment`/`OpaqueString` interior: a comment inside
+     * `UnknownGroup`/`UnknownComment`/`UnknownString` interior: a comment inside
      * the body is still a `Comment` and a string still a `String` — the grammar
      * does not mint context-renamed copies of those productions.
      */
     expect(found).toEqual([
-      ['OpaqueAtRuleBlock', src]
+      ['UnknownAtRuleBlock', src]
     ]);
   });
 
   it('asserts no semantics: the nested block is a group, never a rule', () => {
     const tree = parse('@foo { .a { b: c } }');
     expect(tree.rules).toHaveLength(1);
-    expect(tree.rules[0]!.type).toBe('OpaqueAtRuleBlock');
+    expect(tree.rules[0]!.type).toBe('UnknownAtRuleBlock');
     expect(firstOpaqueRawBody(tree)).toBe(' .a { b: c } ');
   });
 });

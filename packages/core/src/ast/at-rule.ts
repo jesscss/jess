@@ -17,7 +17,7 @@
  *     `prelude` BYTES (never variable-resolved — Less emits statement preludes
  *     literally, e.g. `@namespace @ns "…"` stays `@ns`).
  *
- *   - `OpaqueAtRuleBlock` — a block whose header and contents must remain
+ *   - `UnknownAtRuleBlock` — a block whose header and contents must remain
  *     verbatim. Its `rawBody` is bytes, not child statements: serialization is a
  *     terminal write and never evaluates or walks it.
  *
@@ -71,8 +71,8 @@ export interface AtRuleStatement extends SpanSlots, ImportSourceSlots {
  * producing grammar keeps opaque; the core serializer must not try to evaluate,
  * inspect, or recursively render those bytes.
  */
-export interface OpaqueAtRuleBlock extends SpanSlots {
-  readonly type: 'OpaqueAtRuleBlock';
+export interface UnknownAtRuleBlock extends SpanSlots {
+  readonly type: 'UnknownAtRuleBlock';
   readonly name: string;
   readonly prelude: string | null;
   readonly rawBody: string;
@@ -159,11 +159,11 @@ export function importTailStartOf(statement: AtRuleStatement): number {
   return statement[importTailStartKey] ?? NO_SPAN;
 }
 
-export const opaqueAtRuleBlock = (
+export const unknownAtRuleBlock = (
   name: string,
   prelude: string | null,
   rawBody: string
-): OpaqueAtRuleBlock => ({ type: 'OpaqueAtRuleBlock', name, prelude, rawBody, _s: NO_SPAN, _e: NO_SPAN });
+): UnknownAtRuleBlock => ({ type: 'UnknownAtRuleBlock', name, prelude, rawBody, _s: NO_SPAN, _e: NO_SPAN });
 
 export const plugin = (
   target: Quoted | Url | Interpolation,

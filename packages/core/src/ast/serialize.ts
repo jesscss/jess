@@ -105,7 +105,7 @@ import type {
 } from './nodes.js';
 
 // [atrule] block + statement at-rule node types
-import type { AtRuleBlock, AtRuleStatement, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
+import type { AtRuleBlock, AtRuleStatement, UnknownAtRuleBlock, Plugin } from './at-rule.js';
 
 // typed synchronous value evaluator seam + boundary-clean value domain.
 import {
@@ -9709,10 +9709,10 @@ function emitDocumentStatements(
           markAfterDocumentStatement(child);
         }
         break;
-      case 'OpaqueAtRuleBlock':
+      case 'UnknownAtRuleBlock':
         if (e.referenceImportDepth === 0) {
           emitBeforeDocumentStatement(child);
-          emitOpaqueAtRuleBlock(child, e);
+          emitUnknownAtRuleBlock(child, e);
           markAfterDocumentStatement(child);
         }
         break;
@@ -10945,25 +10945,25 @@ function walkBody(
         }
         break;
       }
-      case 'OpaqueAtRuleBlock': {
+      case 'UnknownAtRuleBlock': {
         const opaqueNode = node;
         if (partition) {
           queueLeadingGroup(group, partition);
           flushPending(partition);
           partition.encounteredContainer = true;
-          partition.trailing.push(() => emitOpaqueAtRuleBlock(opaqueNode, e));
+          partition.trailing.push(() => emitUnknownAtRuleBlock(opaqueNode, e));
         } else {
           const flushed = flush();
           if (isThenable(flushed)) {
             return flushed.then(() => {
-              emitOpaqueAtRuleBlock(node, e);
+              emitUnknownAtRuleBlock(node, e);
               return walkBody(
                 statements.slice(index + 1), composed, ancestor, frame, group, flush,
                 partition, e, imp, forceLeading, propertyScope, applyExpansion
               );
             });
           }
-          emitOpaqueAtRuleBlock(node, e);
+          emitUnknownAtRuleBlock(node, e);
         }
         break;
       }
@@ -13758,9 +13758,9 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
     e.depth++;
     settledEmission(emitStyleImport(node, frame, e, e.importDocument), node, e);
     e.depth--;
-  } else if (node.type === 'OpaqueAtRuleBlock') {
+  } else if (node.type === 'UnknownAtRuleBlock') {
     e.depth++;
-    emitOpaqueAtRuleBlock(node, e);
+    emitUnknownAtRuleBlock(node, e);
     e.depth--;
   }
 }
@@ -14368,7 +14368,7 @@ function emitModuleImport(node: ModuleImport, frame: Frame, e: Emit): void {
 }
 
 /** Write a grammar-owned opaque at-rule body without evaluating or walking it. */
-function emitOpaqueAtRuleBlock(node: OpaqueAtRuleBlock, e: Emit): void {
+function emitUnknownAtRuleBlock(node: UnknownAtRuleBlock, e: Emit): void {
   const start = e.off;
   if (e.depth > 0) {
     put(e, INDENT.repeat(e.depth));
@@ -15149,10 +15149,10 @@ function emitAtRuleBody(
               emitModuleImport(node, frame, e);
             })
           : undefined;
-      case 'OpaqueAtRuleBlock':
+      case 'UnknownAtRuleBlock':
         return e.referenceImportDepth === 0
           ? nested(node, () => {
-              emitOpaqueAtRuleBlock(node, e);
+              emitUnknownAtRuleBlock(node, e);
             })
           : undefined;
       case 'MixinCall':
@@ -15552,7 +15552,7 @@ function emitBubbleBody(
           e.depth--;
           break;
         }
-        case 'OpaqueAtRuleBlock': {
+        case 'UnknownAtRuleBlock': {
           if (e.referenceImportDepth !== 0) {
             break;
           }
@@ -15560,13 +15560,13 @@ function emitBubbleBody(
           if (isThenable(flushed)) {
             return flushed.then(() => {
               e.depth++;
-              emitOpaqueAtRuleBlock(node, e);
+              emitUnknownAtRuleBlock(node, e);
               e.depth--;
               return run(index + 1);
             });
           }
           e.depth++;
-          emitOpaqueAtRuleBlock(node, e);
+          emitUnknownAtRuleBlock(node, e);
           e.depth--;
           break;
         }
@@ -16018,10 +16018,10 @@ function emitNestedBody(
           emitModuleImport(node, frame, e);
           markAfterRootStatement(node);
           break;
-        case 'OpaqueAtRuleBlock':
+        case 'UnknownAtRuleBlock':
           flushBuf();
           emitBeforeRootStatement(node);
-          emitOpaqueAtRuleBlock(node, e);
+          emitUnknownAtRuleBlock(node, e);
           markAfterRootStatement(node);
           break;
 

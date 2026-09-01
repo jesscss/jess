@@ -4611,7 +4611,7 @@ describe('Less AST grammar facts', () => {
       type: 'Stylesheet',
       rules: [
         {
-          type: 'OpaqueAtRuleBlock',
+          type: 'UnknownAtRuleBlock',
           name: '@future',
           prelude: null,
           rawBody: '!!:foo > ; > ?bar'
@@ -4624,7 +4624,7 @@ describe('Less AST grammar facts', () => {
       '@custom foo @{query};',
       '@theme: { &:extend(.target); };'
     ]) {
-      const opaque = run(lessGrammar.OpaqueAtRuleBlock, dynamic, {
+      const opaque = run(lessGrammar.UnknownAtRuleBlock, dynamic, {
         trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
       });
       expect(opaque.ok && opaque.unconsumedFrom === null, dynamic).toBe(false);
@@ -4632,14 +4632,14 @@ describe('Less AST grammar facts', () => {
   });
 
   it('keeps opaque at-rule prelude comments in trivia, not semantic bytes', () => {
-    const result = run(lessGrammar.OpaqueAtRuleBlock, '@future a/* note */b { color: red; }', {
+    const result = run(lessGrammar.UnknownAtRuleBlock, '@future a/* note */b { color: red; }', {
       trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
     });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'OpaqueAtRuleBlock',
+      type: 'UnknownAtRuleBlock',
       name: '@future',
       prelude: 'a b',
       rawBody: ' color: red; '

@@ -29,8 +29,8 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar';
-import { NO_SPAN, any, atRuleBlock, atRuleStatement, block, bodySpanFromRaw, callArg, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { NO_SPAN, any, atRuleBlock, atRuleStatement, block, bodySpanFromRaw, callArg, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, unknownAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 import {
@@ -300,11 +300,11 @@ type LessRules = {
   AtRulePrelude: Combinator<ValueNode | null>;
   NamespacePrelude: Combinator<ValueNode>;
   AtRuleBlock: Combinator<AtRuleBlock>;
-  OpaqueAtPrelude: Combinator<string | null>;
+  UnknownAtPrelude: Combinator<string | null>;
   AtRuleName: Combinator<string>;
   CustomValueAtKeyword: Combinator<string>;
   StaticAtRuleStatementName: Combinator<string>;
-  OpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
+  UnknownAtRuleBlock: Combinator<UnknownAtRuleBlock>;
   AtRuleStatement: Combinator<AtRuleStatement>;
   PseudoSelector: Combinator<SimpleToken>;
   InterpolatedPseudo: Combinator<SimpleSelector>;
@@ -433,7 +433,7 @@ const importKeyword = keywords(
   { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
 );
 /* `customValueAtKeyword` is now the composed `g.CustomValueAtKeyword` rule. */
-// Opaque quoted-string skippers for the grammar-level ambient `scanSkip`.
+// Quoted-string skippers for the grammar-level ambient `scanSkip`.
 // `scanTo`/`balanced` with no per-call skip consults these so a delimiter hidden
 // inside a string is never matched. Consumes quote-to-quote including escapes;
 // used only as a scan hole, so it builds nothing.
@@ -443,13 +443,13 @@ const scanSkipSingleString = noTrivia(sequence(literal('\''), regex(/(?:[^'\\]|\
 // ambient scan skippers (strings, block comments) for balance; the balanced brace
 // keeps a nested `{ … }` inert. This is the same tolerant scan every dialect
 // uses, not a renamed copy of the string/comment/group productions.
-const opaqueAtRuleBrace = balanced(
+const unknownAtRuleBrace = balanced(
   '{',
   '}'
 );
-const opaqueAtRuleBody = noTrivia(scanTo(
+const unknownAtRuleBody = noTrivia(scanTo(
   literal('}'),
-  { skip: [opaqueAtRuleBrace] }
+  { skip: [unknownAtRuleBrace] }
 ));
 // Trivia that may surround an UNAMBIGUOUS product operator (`*`/`/`/`%`):
 // whitespace, `//` line comments, or `/* */` block comments. This matches CSS,
@@ -2762,7 +2762,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // `dispatch(...)` yet: Less `@name` forms need more than bare `@` or bare
   // `@name` to distinguish variable declarations, reference calls, known
   // at-rules, generic blocks, and generic statements.
-  const atStatement = choice(g.ImportStatement, g.PluginDirective, g.ValueBlockDeclaration, g.VarDeclaration, g.SupportsBlock, g.MediaContainerBlock, g.ReferenceCall, g.Keyframes, g.AtRuleBlock, g.OpaqueAtRuleBlock, g.AtRuleStatement);
+  const atStatement = choice(g.ImportStatement, g.PluginDirective, g.ValueBlockDeclaration, g.VarDeclaration, g.SupportsBlock, g.MediaContainerBlock, g.ReferenceCall, g.Keyframes, g.AtRuleBlock, g.UnknownAtRuleBlock, g.AtRuleStatement);
   // Class/id statement starts are resolved by `ClassIdStatement` below. It
   // parses the selector prefix once, then the literal-led continuation decides
   // whether the retained structure is a mixin definition/call or a ruleset.
@@ -3637,14 +3637,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return text === '' ? null : any(text);
     }
   );
-  const lessOpaqueAtPreludeText = noTrivia(regex(/(?:\\[\s\S]|@(?!\{)|\/(?!\*)|[^\\/@ \t\n\r\f,;{}()[\]"'])+/));
-  const lessOpaqueAtPreludeCapture = many(choice(
+  const lessUnknownAtPreludeText = noTrivia(regex(/(?:\\[\s\S]|@(?!\{)|\/(?!\*)|[^\\/@ \t\n\r\f,;{}()[\]"'])+/));
+  const lessUnknownAtPreludeCapture = many(choice(
     atPreludeWhitespace,
     atPreludeComma,
     atPreludeGroup,
     atPreludeQuoted,
     g.BareVariableInterpolation,
-    lessOpaqueAtPreludeText
+    lessUnknownAtPreludeText
   ));
   // CSS-defined statement at-rules have grammar-owned interpolation forms that
   // the generic at-rule subset intentionally does not accept. Keep the
@@ -3718,11 +3718,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return withSourceSpan(withBlockBody(atRuleBlock(requireToken(children[0]).value, prelude, body), rawChildren), span);
     }
   );
-  const OpaqueAtPrelude = node(
-    'OpaqueAtPrelude',
+  const UnknownAtPrelude = node(
+    'UnknownAtPrelude',
     parser(
       { trivia: atPreludeCommentTrivia },
-      lessOpaqueAtPreludeCapture
+      lessUnknownAtPreludeCapture
     ),
     (children, _fields, _span, _rawChildren, triviaLog) => {
       const text = children.length === 0 ? '' : staticTextWithTriviaGaps(children, triviaLog).trim();
@@ -3751,15 +3751,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     not(g.LayerAtKeyword),
     g.AtIdentifierUnescaped
   )));
-  const OpaqueAtRuleBlock = node(
-    'OpaqueAtRuleBlock',
+  const UnknownAtRuleBlock = node(
+    'UnknownAtRuleBlock',
     sequence(
       g.AtRuleName,
       not(regex(/[ \t\n\r\f]*:/)),
       noTrivia(sequence(
-        g.OpaqueAtPrelude,
+        g.UnknownAtPrelude,
         literal('{'),
-        opaqueAtRuleBody,
+        unknownAtRuleBody,
         literal('}')
       ))
     ),
@@ -3771,7 +3771,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       // The body capture emits no child when the block is empty (`@foo {}`), so
       // the closing `}` sits at index 3; a captured body sits there instead.
       const rawBody = children.length === 5 ? staticText(children[3]) : '';
-      return opaqueAtRuleBlock(
+      return unknownAtRuleBlock(
         requireToken(children[0]).value,
         prelude,
         rawBody
@@ -4855,11 +4855,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     AtRulePrelude,
     NamespacePrelude,
     AtRuleBlock,
-    OpaqueAtPrelude,
+    UnknownAtPrelude,
     AtRuleName,
     CustomValueAtKeyword,
     StaticAtRuleStatementName,
-    OpaqueAtRuleBlock,
+    UnknownAtRuleBlock,
     AtRuleStatement,
     PseudoSelector,
     InterpolatedPseudo,

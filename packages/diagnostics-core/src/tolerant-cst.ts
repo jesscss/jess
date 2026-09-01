@@ -298,8 +298,7 @@ const ATRULE_TYPES = new Set([
   'AtRuleBlock',
   'AtRuleStatement',
   'UnknownAtRuleBlock',
-  'QueryAtRuleBlock',
-  'OpaqueAtRuleBlock'
+  'QueryAtRuleBlock'
 ]);
 const DECLARATION_TYPES = new Set(['Declaration']);
 const CUSTOM_DECLARATION_TYPES = new Set(['CustomDeclaration']);

@@ -59,7 +59,7 @@ import {
   keyframeSelectorList,
   keyword,
   list,
-  opaqueAtRuleBlock,
+  unknownAtRuleBlock,
   operation,
   optionalValue,
   pseudoSelector,
@@ -199,7 +199,7 @@ type GrammarRuleName =
   | 'NamespaceTypeSelector'
   | 'NestingSelector'
   | 'OfTypePseudoArgument'
-  | 'OpaqueAtRuleBlock'
+  | 'UnknownAtRuleBlock'
   | 'PageBlock'
   | 'Percentage'
   | 'Property'
@@ -597,22 +597,22 @@ const balancedBraces = balanced(
  * `customSlash` of `balancedBraces`) so a `\}` stays inert inside a nested
  * group, which is the one byte-language difference this tolerant scan requires.
  */
-const opaqueAtRuleBrace = balanced(
+const unknownAtRuleBrace = balanced(
   '{',
   '}',
   { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] }
 );
-const opaqueAtRuleSkip = [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, opaqueAtRuleBrace];
-const opaqueAtRulePrelude = optional(scanTo(
+const unknownAtRuleSkip = [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, unknownAtRuleBrace];
+const unknownAtRulePrelude = optional(scanTo(
   choice(
     literal('{'),
     literal(';')
   ),
-  { skip: opaqueAtRuleSkip }
+  { skip: unknownAtRuleSkip }
 ));
-const opaqueAtRuleBody = noTrivia(scanTo(
+const unknownAtRuleBody = noTrivia(scanTo(
   literal('}'),
-  { skip: opaqueAtRuleSkip }
+  { skip: unknownAtRuleSkip }
 ));
 
 /*
@@ -2688,7 +2688,7 @@ const cssFactory = (g: GrammarSelf) => {
    * contain. Individual at-rules must define whether they accept a block, and
    * if so, how to parse it."* No spec defines one for an unknown at-rule, so
    * the prelude and body are scanned to their delimiters and kept as raw bytes
-   * (`opaqueAtRulePrelude`/`opaqueAtRuleBody`), reusing the canonical comment,
+   * (`unknownAtRulePrelude`/`unknownAtRuleBody`), reusing the canonical comment,
    * escape and quoted-string terminals — a string is still the canonical
    * `String`, a comment still `Comment`; the unknown at-rule adds tolerance in
    * the scanner (an unpaired quote is walked past as an ordinary byte), not a
@@ -2699,14 +2699,14 @@ const cssFactory = (g: GrammarSelf) => {
    * `{` literal: the prelude is the one child before it, the body the one child
    * between it and the closing `}`.
    */
-  const OpaqueAtRuleBlock = node(
-    'OpaqueAtRuleBlock',
+  const UnknownAtRuleBlock = node(
+    'UnknownAtRuleBlock',
     sequence(
       routed(),
       noTrivia(sequence(
-        opaqueAtRulePrelude,
+        unknownAtRulePrelude,
         literal('{'),
-        opaqueAtRuleBody,
+        unknownAtRuleBody,
         literal('}')
       ))
     ),
@@ -2715,7 +2715,7 @@ const cssFactory = (g: GrammarSelf) => {
       const preludeText = openIdx === 2 ? tokenText(children[1]).trim() : '';
       const prelude = preludeText === '' ? null : preludeText;
       const rawBody = children.length - openIdx === 3 ? tokenText(children[openIdx + 1]) : '';
-      return opaqueAtRuleBlock(
+      return unknownAtRuleBlock(
         tokenText(children[0]!),
         prelude,
         rawBody
@@ -3440,9 +3440,9 @@ const cssFactory = (g: GrammarSelf) => {
       g.DocumentBlock
     )
   );
-  const opaqueAtRuleOtherwise = otherwise(choice(
+  const unknownAtRuleOtherwise = otherwise(choice(
     g.RoutedAtRuleStatement,
-    g.OpaqueAtRuleBlock
+    g.UnknownAtRuleBlock
   ));
   const StylesheetAtRule = dispatch(
     g.AtRuleKeyword,
@@ -3466,7 +3466,7 @@ const cssFactory = (g: GrammarSelf) => {
     keyframesAtRuleCase,
     fontFeatureValuesAtRuleCase,
     documentAtRuleCase,
-    opaqueAtRuleOtherwise
+    unknownAtRuleOtherwise
   );
   const DeclarationListAtRule = dispatch(
     g.AtRuleKeyword,
@@ -3490,7 +3490,7 @@ const cssFactory = (g: GrammarSelf) => {
     keyframesAtRuleCase,
     fontFeatureValuesAtRuleCase,
     documentAtRuleCase,
-    opaqueAtRuleOtherwise
+    unknownAtRuleOtherwise
   );
   const ConditionalGroupAtRule = dispatch(
     g.AtRuleKeyword,
@@ -3534,7 +3534,7 @@ const cssFactory = (g: GrammarSelf) => {
       ['@document', '@-moz-document'],
       g.DocumentBlock
     ),
-    otherwise(g.OpaqueAtRuleBlock)
+    otherwise(g.UnknownAtRuleBlock)
   );
 
   /*
@@ -3796,7 +3796,7 @@ const cssFactory = (g: GrammarSelf) => {
     LayerStatement,
     AtRulePrelude,
     StatementPrelude,
-    OpaqueAtRuleBlock,
+    UnknownAtRuleBlock,
     LayerBlock,
     NestedLayerBlock,
     DescriptorBlock,

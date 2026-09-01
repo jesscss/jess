@@ -34,13 +34,13 @@ const preprocessorBrace = balanced(
 );
 const preprocessorSkip = [blockComment, lineComment, escape, doubleQuoted, singleQuoted, preprocessorBrace];
 
-export const opaqueAtRuleRecognition = rules(_g => ({
+export const unknownAtRuleRecognition = rules(_g => ({
   /*
    * `$` is a sentinel only outside strings/comments/balanced regions.  The
    * enclosing preprocessor grammar must subsequently require `{`, rejecting
    * dynamic headers without treating raw body bytes as static opaque syntax.
    */
-  PreprocessorOpaqueAtRulePreludeCapture: optional(scanTo(
+  PreprocessorUnknownAtRulePreludeCapture: optional(scanTo(
     choice(
       literal('$'),
       literal('{'),
@@ -54,7 +54,7 @@ export const opaqueAtRuleRecognition = rules(_g => ({
    * comments, escapes and nested braces inert; preprocessor line comments are
    * skippable while scanning for the closing block sentinel.
    */
-  PreprocessorOpaqueAtRuleBodyCapture: noTrivia(scanTo(
+  PreprocessorUnknownAtRuleBodyCapture: noTrivia(scanTo(
     literal('}'),
     { skip: preprocessorSkip }
   ))

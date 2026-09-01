@@ -101,7 +101,7 @@ function applyNamed(raw, k, kind) {
   const p = namedProductions(k, kind);
   return raw
     .replace('  const StylesheetAtRule = dispatch(', `${p.decls}\n  const StylesheetAtRule = dispatch(`)
-    .replace('    opaqueAtRuleOtherwise\n  );', `${p.cases}\n    opaqueAtRuleOtherwise\n  );`)
+    .replace('    unknownAtRuleOtherwise\n  );', `${p.cases}\n    unknownAtRuleOtherwise\n  );`)
     .replace('\n  return {\n', `\n  return {\n${p.mapKeys}\n`)
     .replace('type GrammarRuleName =\n', `type GrammarRuleName =\n${p.unionKeys}\n`);
 }

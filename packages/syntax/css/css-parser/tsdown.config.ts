@@ -6,7 +6,7 @@ import { grammarVariantBuilds, parserEntryBuild } from '../../../../tools/tsdown
 const CST_HOST = 'cst-host';
 
 /*
- * Keep `@jesscss/parser-shared` (the recognition base: `cssSyntax`, the opaque
+ * Keep `@jesscss/parser-shared` (the recognition base: `cssSyntax`, the unknown
  * at-rule recognizer, the pseudo consts) an EXTERNAL import in every emitted
  * artifact instead of inlining it as a local. The compose base `cssBaseRules`
  * carries its recognition rules by spreading those grammars' runtime

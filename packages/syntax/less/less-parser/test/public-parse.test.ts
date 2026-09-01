@@ -2612,7 +2612,7 @@ describe('public Less parse()', () => {
       type: 'Stylesheet',
       rules: [
         {
-          type: 'OpaqueAtRuleBlock',
+          type: 'UnknownAtRuleBlock',
           name: '@future',
           prelude: null,
           rawBody: '!!:foo > ; > ?bar'

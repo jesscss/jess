@@ -20,7 +20,7 @@
  */
 
 import { any, cssBaseMathOutsideParens, funcCall, ifValue, interpolation, isComplexSelector, isForBinding, isModuleImport, isRelativeSelector, isToken, isValueSlotArray, keyword, operation, quoted, reference, selectorTermOf, selist, withValueLayout } from '@jesscss/core/ast';
-import type { AnonymousMixin, AtRuleBlock, AtRuleStatement, CallArg, Collection, CollectionEntry, Color, Comment, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
+import type { AnonymousMixin, AtRuleBlock, AtRuleStatement, CallArg, Collection, CollectionEntry, Color, Comment, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, UnknownAtRuleBlock, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 
 export type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
 export type ScssValueTail = { readonly kind: 'space' | 'slash'; readonly value: ValueNode; readonly separator: string };
@@ -920,7 +920,7 @@ export function isStatementChild(child: unknown, allowDeclarations: boolean): ch
     || isIf(child)
     || isWhile(child)
     || isRuleset(child)
-    || isOpaqueAtRuleBlock(child)
+    || isUnknownAtRuleBlock(child)
 
     /* `$content()` — a statement-position Reference; core's `Statement` already
      * admits one, and this is the only production that puts one here. */
@@ -932,8 +932,8 @@ export function isReferenceStatement(value: unknown): value is Reference {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Reference';
 }
 
-export function isOpaqueAtRuleBlock(value: unknown): value is OpaqueAtRuleBlock {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'OpaqueAtRuleBlock';
+export function isUnknownAtRuleBlock(value: unknown): value is UnknownAtRuleBlock {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'UnknownAtRuleBlock';
 }
 
 export function statements(children: readonly unknown[], allowDeclarations = false): Statement[] {

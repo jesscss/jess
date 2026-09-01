@@ -1353,7 +1353,7 @@ export interface Stylesheet extends SpanSlots, TriviaSlot {
  * [atrule] at-rule nodes are valid body/stylesheet statements; type-only import keeps
  * nodes.ts free of a runtime dependency on the sibling at-rule module.
  */
-import type { AtRuleBlock, AtRuleStatement, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
+import type { AtRuleBlock, AtRuleStatement, UnknownAtRuleBlock, Plugin } from './at-rule.js';
 
 export type Statement =
   | Ruleset
@@ -1366,7 +1366,7 @@ export type Statement =
   | AtRuleBlock
   | AtRuleStatement
   | Plugin
-  | OpaqueAtRuleBlock
+  | UnknownAtRuleBlock
   | Reference
   | For
   | If

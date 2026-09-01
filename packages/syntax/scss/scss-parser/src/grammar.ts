@@ -21,11 +21,11 @@ import { balanced, classifiedTrivia, choice, compose, dispatch, endsWith, expect
 import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
+import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar';
 import { ScssImportPostludeError } from './parse-error.js';
-import { anonymousMixin, any, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, importIsCompileTime, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
+import { anonymousMixin, any, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, importIsCompileTime, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 import { COMPARISON_OPERATORS, appendLiteral, scssBranchSegments, contentArgRaw, customValue, customValueFromParts, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isAnonymousMixin, isCollection, isCollectionEntry, isScssDeclaration, isExtendInstruction, isScssImportTarget, isScssInterpolation, isParamArray, isQuoted, isScriptModulePath, isScssValuePair, isScssValueTail, isScssSelectorBranch, isScssSelectorList, isSelectorTerm, isScssSimpleToken, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, keywordizeValues, mapKeyValue, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, scssSelectorTermFromTokens, scssSourceText, statementChildren, statements, staticQuoted, scssValueSlot } from './grammar-helpers.js';
 import type { ScssArgumentPair, ScssCallArg, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
@@ -169,8 +169,8 @@ type ScssRules = {
   NestedSelector: Combinator<SelectorList>;
   Extend: Combinator<ExtendInstruction>;
   ScssGenericAtRuleName: Combinator<string>;
-  OpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
-  OpaqueAtRuleStatement: Combinator<AtRuleStatement>;
+  UnknownAtRuleBlock: Combinator<UnknownAtRuleBlock>;
+  GenericAtRuleStatement: Combinator<AtRuleStatement>;
   Ruleset: Combinator<Ruleset>;
   NestedRuleset: Combinator<Ruleset>;
   rw: Combinator<unknown>;
@@ -201,7 +201,7 @@ type ScssInputRules =
   & ScssSharedSyntax
   & typeof cssSyntax
   & typeof cssPseudoSyntax
-  & typeof opaqueAtRuleRecognition;
+  & typeof unknownAtRuleRecognition;
 
 /*
  * Sass `//` comments are trivia, not CSS comments: they must be recognized
@@ -348,7 +348,7 @@ const customValueBlockCommentRun = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const customValueCommentTrivia = classifiedTrivia({ comment: customValueBlockCommentRun });
 
 /*
- * Opaque quoted-string skippers for the grammar-level ambient `scanSkip`: every
+ * Quoted-string skippers for the grammar-level ambient `scanSkip`: every
  * non-raw scan sees these before any local structural skip, so a sentinel hidden
  * inside a string (an arg terminator, `with(`, etc.) is never matched. Consumes
  * quote-to-quote including escapes; used only as a scan hole (builds nothing).
@@ -2280,8 +2280,8 @@ const scssFactory = (g: ScssInputRules) => {
     g.DocumentBlock,
     g.PageBlock,
     g.FontFeatureValuesBlock,
-    g.OpaqueAtRuleBlock,
-    g.OpaqueAtRuleStatement
+    g.UnknownAtRuleBlock,
+    g.GenericAtRuleStatement
   );
 
   /*
@@ -2380,8 +2380,8 @@ const scssFactory = (g: ScssInputRules) => {
     g.PageBlock,
     g.FontFeatureValuesBlock,
     g.Keyframes,
-    g.OpaqueAtRuleBlock,
-    g.OpaqueAtRuleStatement,
+    g.UnknownAtRuleBlock,
+    g.GenericAtRuleStatement,
     g.NestedRuleset
   ));
   const startingLayerBlockBody = many(choice(
@@ -2395,8 +2395,8 @@ const scssFactory = (g: ScssInputRules) => {
     g.PageBlock,
     g.FontFeatureValuesBlock,
     g.Keyframes,
-    g.OpaqueAtRuleBlock,
-    g.OpaqueAtRuleStatement,
+    g.UnknownAtRuleBlock,
+    g.GenericAtRuleStatement,
     g.NestedRuleset
   ));
   const MixinDefinitionRule = node<MixinDefinition>(
@@ -4624,14 +4624,14 @@ const scssFactory = (g: ScssInputRules) => {
     not(g.ImportAtKeyword),
     g.AtIdentifier
   )));
-  const OpaqueAtRuleBlock = node<OpaqueAtRuleBlock>(
-    'OpaqueAtRuleBlock',
+  const UnknownAtRuleBlock = node<UnknownAtRuleBlock>(
+    'UnknownAtRuleBlock',
     sequence(
       g.ScssGenericAtRuleName,
       noTrivia(sequence(
-        g.PreprocessorOpaqueAtRulePreludeCapture,
+        g.PreprocessorUnknownAtRulePreludeCapture,
         literal('{'),
-        g.PreprocessorOpaqueAtRuleBodyCapture,
+        g.PreprocessorUnknownAtRuleBodyCapture,
         literal('}')
       ))
     ),
@@ -4640,7 +4640,7 @@ const scssFactory = (g: ScssInputRules) => {
       const preludeText = openIdx === 2 ? requireToken(children[1]).value.trim() : '';
       const prelude = preludeText === '' ? null : preludeText;
       const rawBody = children.length - openIdx === 3 ? requireToken(children[openIdx + 1]).value : '';
-      return opaqueAtRuleBlock(
+      return unknownAtRuleBlock(
         requireToken(children[0]).value,
         prelude,
         rawBody
@@ -4653,12 +4653,12 @@ const scssFactory = (g: ScssInputRules) => {
    * block's name recognizer, so the two are disjoint from every typed arm and
    * from each other — this one requires `;` where the block requires `{`.
    */
-  const OpaqueAtRuleStatement = node<AtRuleStatement>(
-    'OpaqueAtRuleStatement',
+  const GenericAtRuleStatement = node<AtRuleStatement>(
+    'AtRuleStatement',
     sequence(
       g.ScssGenericAtRuleName,
       noTrivia(sequence(
-        g.PreprocessorOpaqueAtRulePreludeCapture,
+        g.PreprocessorUnknownAtRulePreludeCapture,
         literal(';')
       ))
     ),
@@ -4755,8 +4755,8 @@ const scssFactory = (g: ScssInputRules) => {
         g.CounterStyle,
         g.PropertyAtRule,
         g.Keyframes,
-        g.OpaqueAtRuleBlock,
-        g.OpaqueAtRuleStatement,
+        g.UnknownAtRuleBlock,
+        g.GenericAtRuleStatement,
         g.Ruleset
       ))
     ),
@@ -4885,8 +4885,8 @@ const scssFactory = (g: ScssInputRules) => {
     KeyframeBlock,
     Keyframes,
     ScssGenericAtRuleName,
-    OpaqueAtRuleBlock,
-    OpaqueAtRuleStatement,
+    UnknownAtRuleBlock,
+    GenericAtRuleStatement,
     BasicSelector,
     InterpolatedSimple,
     Placeholder,
@@ -4910,24 +4910,24 @@ const scssFactory = (g: ScssInputRules) => {
   };
 };
 
-export const scssGrammar = compose([cssBaseRules, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
+export const scssGrammar = compose([cssBaseRules, unknownAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
   { trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString] },
   scssFactory
 )], { hostMode: 'ast' });
 
 /** AST artifact with Parseman line/column tracking enabled. */
-export const scssPositionsGrammar = compose([cssBaseRules, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
+export const scssPositionsGrammar = compose([cssBaseRules, unknownAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
   { trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString], trackLines: true },
   scssFactory
 )], { hostMode: 'ast' });
 
-export const scssCstGrammar = compose([cssBaseRules, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
+export const scssCstGrammar = compose([cssBaseRules, unknownAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
   { trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString] },
   scssFactory
 )], { hostMode: 'cst' });
 
 /** CST artifact with Parseman line/column tracking enabled. */
-export const scssCstPositionsGrammar = compose([cssBaseRules, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
+export const scssCstPositionsGrammar = compose([cssBaseRules, unknownAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
   { trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString], trackLines: true },
   scssFactory
 )], { hostMode: 'cst' });

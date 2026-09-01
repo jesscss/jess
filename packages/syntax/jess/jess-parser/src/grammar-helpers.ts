@@ -27,7 +27,7 @@
 import {  } from 'parseman';
 import type { FieldCapture, FieldMap } from 'parseman';
 import { any, anonymousMixin, block, selectorBranchCanonical, declarationReference, interpolation, isComplexSelector, isForBinding, isModuleImport, isRelativeSelector, isToken, keyword, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, selectorTermOf, selist, url, variableDeclaration, variableReference, withSourceSpan } from '@jesscss/core/ast';
-import type { Token, AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Combinator as AstCombinator, Declaration, CollectionEntry, ExtendInstruction, For, ForBinding, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDefinition, OpaqueAtRuleBlock, Param, Quoted, PseudoSelector, Reference, SelectorBranch, SelectorTerm, Ruleset, SelectorList, SimpleSelector, SimpleToken, Sequence, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
+import type { Token, AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Combinator as AstCombinator, Declaration, CollectionEntry, ExtendInstruction, For, ForBinding, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDefinition, UnknownAtRuleBlock, Param, Quoted, PseudoSelector, Reference, SelectorBranch, SelectorTerm, Ruleset, SelectorList, SimpleSelector, SimpleToken, Sequence, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
 type JessOperatorFact = { readonly value: string; readonly src: string };
@@ -800,7 +800,7 @@ function jessFunctionOpenName(child: unknown): string {
 function requireStatements(children: readonly unknown[]): Statement[] {
   const statements: Statement[] = [];
   for (const child of children) {
-    if (!isVarDeclaration(child) && !isMixinDefinition(child) && !isMixinCall(child) && !isApply(child) && !isReferenceCall(child) && !isRuleset(child) && !isFor(child) && !isIf(child) && !isWhile(child) && !isJessDeclaration(child) && !isStyleImport(child) && !isModuleImport(child) && !isAtRuleBlock(child) && !isAtRuleStatement(child) && !isOpaqueAtRuleBlock(child)) {
+    if (!isVarDeclaration(child) && !isMixinDefinition(child) && !isMixinCall(child) && !isApply(child) && !isReferenceCall(child) && !isRuleset(child) && !isFor(child) && !isIf(child) && !isWhile(child) && !isJessDeclaration(child) && !isStyleImport(child) && !isModuleImport(child) && !isAtRuleBlock(child) && !isAtRuleStatement(child) && !isUnknownAtRuleBlock(child)) {
       throw new TypeError('Jess grammar produced a non-statement child.');
     }
     statements.push(child);
@@ -883,8 +883,8 @@ function isAtRuleStatement(value: unknown): value is AtRuleStatement {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'AtRuleStatement';
 }
 
-function isOpaqueAtRuleBlock(value: unknown): value is OpaqueAtRuleBlock {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'OpaqueAtRuleBlock';
+function isUnknownAtRuleBlock(value: unknown): value is UnknownAtRuleBlock {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'UnknownAtRuleBlock';
 }
 
 function isStyleImport(value: unknown): value is StyleImport {
@@ -1298,7 +1298,7 @@ export {
   requireForBinding,
   isAtRuleBlock,
   isAtRuleStatement,
-  isOpaqueAtRuleBlock,
+  isUnknownAtRuleBlock,
   isStyleImport,
   isApply,
   isReferenceCall,

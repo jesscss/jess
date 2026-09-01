@@ -26,11 +26,11 @@
  */
 import { attempt, choice, classifiedTrivia, compose, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, sequence, token, when, word } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
-import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
+import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar';
-import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { Token, AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
+import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { Token, AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 import {
   requireToken,
   requireFields,
@@ -292,7 +292,7 @@ type JessRules = {
   Percentage: Combinator<string>;
   KeyframeBlock: Combinator<Ruleset>;
   Keyframes: Combinator<AtRuleBlock>;
-  OpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
+  UnknownAtRuleBlock: Combinator<UnknownAtRuleBlock>;
   ScopeBlock: Combinator<AtRuleBlock>;
   AtRuleBlock: Combinator<AtRuleBlock>;
   AtRuleStatement: Combinator<AtRuleStatement>;
@@ -337,8 +337,8 @@ type SharedSyntax = {
   PseudoSelectorColon: Combinator<string>;
   MediaAtKeyword: Combinator<string>;
   StatementAtRuleName: Combinator<string>;
-  PreprocessorOpaqueAtRulePreludeCapture: Combinator<string | null>;
-  PreprocessorOpaqueAtRuleBodyCapture: Combinator<string>;
+  PreprocessorUnknownAtRulePreludeCapture: Combinator<string | null>;
+  PreprocessorUnknownAtRuleBodyCapture: Combinator<string>;
 
   /*
    * Converged rules inherited from the CSS base via compose (byte-identical in
@@ -473,7 +473,7 @@ const interpolatedDoubleQuotedText = regex(/(?:[^"\\$]|\\[\s\S]|\$(?![\[({]))+/)
 const interpolatedSingleQuotedText = regex(/(?:[^'\\$]|\\[\s\S]|\$(?![\[({]))+/);
 
 /*
- * Opaque Jess spans must not terminate inside a static quoted string. These
+ * Verbatim Jess spans must not terminate inside a static quoted string. These
  * skippers reject `$` forms that the dialect treats as structural, so raw
  * scanner consumers still leave interpolation to their typed grammar.
  */
@@ -3813,7 +3813,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         g.LiteralQuoted,
         g.Url
       ),
-      g.PreprocessorOpaqueAtRulePreludeCapture,
+      g.PreprocessorUnknownAtRulePreludeCapture,
       literal(';')
     ),
     (children) => {
@@ -3863,7 +3863,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.NestedRuleset,
     g.SupportsAtRuleBlock,
     g.Keyframes,
-    g.OpaqueAtRuleBlock,
+    g.UnknownAtRuleBlock,
     g.ScopeBlock,
     g.AtRuleBlock,
     g.AtRuleStatement,
@@ -3889,7 +3889,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.NestedRuleset,
     g.SupportsAtRuleBlock,
     g.Keyframes,
-    g.OpaqueAtRuleBlock,
+    g.UnknownAtRuleBlock,
     g.ScopeBlock,
     g.AtRuleBlock,
     g.AtRuleStatement
@@ -4360,7 +4360,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     sequence(
       scopeAtRuleName,
       noTrivia(sequence(
-        g.PreprocessorOpaqueAtRulePreludeCapture,
+        g.PreprocessorUnknownAtRulePreludeCapture,
         literal('{')
       )),
       many(atBlockStatement),
@@ -4418,22 +4418,22 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * An unknown CSS block is terminal authored syntax. The shared recognition
    * artifact owns every balanced/string/comment boundary; this reduction only
    * records raw facts (reusing the canonical prelude/body captures directly, not
-   * a renamed `OpaqueAtPrelude`/`OpaqueBody` copy) and keeps `$` out of an
+   * a renamed `UnknownAtPrelude`/`UnknownBody` copy) and keeps `$` out of an
    * unquoted dynamic header.
    *
    * The optional prelude capture emits NO child when the prelude is empty, so the
    * reducer anchors on the structural `{` literal: the prelude is the one child
    * before it, the body the one child between it and the closing `}`.
    */
-  const OpaqueAtRuleBlock = node<OpaqueAtRuleBlock>(
-    'OpaqueAtRuleBlock',
+  const UnknownAtRuleBlock = node<UnknownAtRuleBlock>(
+    'UnknownAtRuleBlock',
     sequence(
       not(compilerAtRuleName),
       g.GenericAtRuleName,
       noTrivia(sequence(
-        g.PreprocessorOpaqueAtRulePreludeCapture,
+        g.PreprocessorUnknownAtRulePreludeCapture,
         literal('{'),
-        g.PreprocessorOpaqueAtRuleBodyCapture,
+        g.PreprocessorUnknownAtRuleBodyCapture,
         literal('}')
       ))
     ),
@@ -4442,7 +4442,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       const preludeText = openIdx === 2 ? requireToken(children[1]).value.trim() : '';
       const prelude = preludeText === '' ? null : preludeText;
       const rawBody = children.length - openIdx === 3 ? requireToken(children[openIdx + 1]).value : '';
-      return opaqueAtRuleBlock(
+      return unknownAtRuleBlock(
         requireToken(children[0]).value,
         prelude,
         rawBody
@@ -5181,7 +5181,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.Extend,
     g.NestedRuleset,
     g.SupportsAtRuleBlock,
-    g.OpaqueAtRuleBlock,
+    g.UnknownAtRuleBlock,
     g.ScopeBlock,
     g.AtRuleBlock,
     g.AtRuleStatement
@@ -5275,7 +5275,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         g.SupportsAtRuleBlock,
         g.PropertyAtRule,
         g.Keyframes,
-        g.OpaqueAtRuleBlock,
+        g.UnknownAtRuleBlock,
         g.ScopeBlock,
         g.AtRuleBlock,
         g.AtRuleStatement
@@ -5371,7 +5371,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     Percentage,
     KeyframeBlock,
     Keyframes,
-    OpaqueAtRuleBlock,
+    UnknownAtRuleBlock,
     ScopeBlock,
     AtRuleBlock,
     AtRuleStatement,
@@ -5462,24 +5462,24 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   };
 };
 
-export const jessGrammar = compose([cssBaseRules, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
+export const jessGrammar = compose([cssBaseRules, unknownAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
   { trivia: whitespace, scanSkip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted] },
   jessFactory
 )], { hostMode: 'ast' });
 
 /** AST artifact with Parseman line/column tracking enabled. */
-export const jessPositionsGrammar = compose([cssBaseRules, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
+export const jessPositionsGrammar = compose([cssBaseRules, unknownAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
   { trivia: whitespace, scanSkip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted], trackLines: true },
   jessFactory
 )], { hostMode: 'ast' });
 
-export const jessCstGrammar = compose([cssBaseRules, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
+export const jessCstGrammar = compose([cssBaseRules, unknownAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
   { trivia: whitespace, scanSkip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted] },
   jessFactory
 )], { hostMode: 'cst' });
 
 /** CST artifact with Parseman line/column tracking enabled. */
-export const jessCstPositionsGrammar = compose([cssBaseRules, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
+export const jessCstPositionsGrammar = compose([cssBaseRules, unknownAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
   { trivia: whitespace, scanSkip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted], trackLines: true },
   jessFactory
 )], { hostMode: 'cst' });
