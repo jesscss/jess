@@ -224,21 +224,24 @@ for (const [name, r] of results) {
 }
 
 /*
- * `--check` turns the census into a gate: every grammar's reducers must fuse under
- * `compose()`, i.e. 0 rejected reducers. A reject means a reducer references a
- * module-scope helper defined in grammar.ts instead of an importable module — the
- * exact regression the B0 hoist removed. css/less/scss/jess all sit at 0; the fix
- * for any offender is to move the named helper into that dialect's grammar-helpers.ts.
+ * `--check` turns the census into a gate: every grammar's inline reducers must
+ * reference only IMPORTED helpers (0 module-scope local helpers). This is the exact
+ * regression the B0 hoist removed, and it is a NECESSARY condition for cross-package
+ * compose() fusion — but NOT sufficient: this is a static per-reducer analysis and
+ * does NOT run the real `compose([cssBaseRules, delta])` (which additionally needs
+ * parseman to macro-fuse the cross-package case — see docs/design/LESS-COMPOSE-REAUTHOR-PLAN.md
+ * W0). The fix for any offender is to move the named helper into that dialect's
+ * grammar-helpers.ts.
  */
 if (process.argv.includes('--check')) {
   const offenders = results.filter(([, r]) => r.rejectedReducers > 0);
   if (offenders.length) {
-    console.error('\n✗ reducer-purity gate FAILED — these grammars have reducers that cannot fuse under compose():');
+    console.error('\n✗ reducer-purity gate FAILED — these grammars have reducers referencing module-scope local helpers:');
     for (const [name, r] of offenders) {
-      console.error(`  ${name}: ${r.rejectedReducers} rejected reducer(s); move these helpers into grammar-helpers.ts: ${r.topUnresolved.join(', ') || '(structural — see histogram above)'}`);
+      console.error(`  ${name}: ${r.rejectedReducers} reducer(s); move these helpers into grammar-helpers.ts: ${r.topUnresolved.join(', ') || '(structural — see histogram above)'}`);
     }
     console.error('\nReducers must reference only imported helpers (see packages/syntax/*/src/grammar-helpers.ts). See docs/design/LESS-COMPOSE-REAUTHOR-PLAN.md.');
     process.exit(1);
   }
-  console.log('\n✓ reducer-purity gate PASSED — all four grammars fuse (0 rejected reducers).');
+  console.log('\n✓ reducer-purity gate PASSED — all four grammars reference only imported helpers (0 module-scope local helpers).');
 }
