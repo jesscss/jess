@@ -169,7 +169,6 @@ import type {
 
 /** A `Lookup` whose target is named literally — the `@name` / `$prop` shapes. */
 
-
 /** Rules this file defines; macro-fused recognition inputs are not local output. */
 type LessRules = {
   Stylesheet: Combinator<Stylesheet>;

@@ -290,6 +290,7 @@ if (options.skipCheck) {
   console.log('\nSkipping preflight suite (--skip-check); assuming the current tree is already verified.');
 } else {
   runWithPreflightVersion(resolution, () => run('pnpm', ['run', 'release:alpha:preflight'], rootDir));
+
   /*
    * Preflight ran `build:release`, so every allowlisted package is freshly built
    * (grammar/core/jess artifacts do not embed the version). Tell the publish step
