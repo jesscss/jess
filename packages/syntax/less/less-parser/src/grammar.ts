@@ -335,7 +335,7 @@ type LessRules = {
   InterpolatedParentSuffix: Combinator<SimpleSelector>;
   CompoundSelector: Combinator<SelectorTerm>;
   ComplexSelector: Combinator<SelectorBranch>;
-  RelativeComplex: Combinator<SelectorBranch>;
+  RelativeSelector: Combinator<SelectorBranch>;
   SelectorList: Combinator<SelectorList>;
   ExtendTarget: Combinator<ExtendTargetFact>;
   ExtendStatement: Combinator<BodyExtendFact>;
@@ -4365,8 +4365,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     (children, _fields, span) => withSourceSpan(selectorBranchOf(complexSegmentsFrom(children)), span)
   );
-  const RelativeComplex = node(
-    'RelativeComplexSelector',
+  const RelativeSelector = node(
+    'RelativeSelector',
     sequence(
       optional(relativeSelectorCombinator),
       g.ComplexSelector
@@ -4380,11 +4380,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const SelectorList = node(
     'SelectorList',
     parser({ trivia: outerSelectorTrivia }, oneOrMoreSep(g.ComplexSelector, literal(','))),
-    (children, _fields, span) => withSourceSpan(selist(...selectorBranchesFrom(children)), span)
-  );
-  const RelativeSelector = node(
-    'SelectorList',
-    parser({ trivia: outerSelectorTrivia }, sequence(g.RelativeComplex, many(sequence(literal(','), g.ComplexSelector)))),
     (children, _fields, span) => withSourceSpan(selist(...selectorBranchesFrom(children)), span)
   );
   const extendAllFlag = regex(/!?all(?![-_a-zA-Z0-9\u0080-\uffff])/i);
@@ -4518,7 +4513,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       oneOrMoreSep(
         choice(SelectorBranch, node(
           'SelectorBranch',
-          g.RelativeComplex,
+          g.RelativeSelector,
           children => ({ selector: children.find(isLessSelectorBranch)!, extensions: [] })
         )),
         literal(',')
@@ -4899,7 +4894,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ExtendTarget,
     ExtendStatement,
     RulesetWithExtends,
-    RelativeComplex,
+    RelativeSelector,
     NestedRulesetWithExtends,
     Quoted,
     LiteralQuoted,

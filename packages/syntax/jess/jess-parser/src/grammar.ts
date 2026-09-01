@@ -5104,15 +5104,15 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * parent (`.parent > .child`). This reuses `g.ComplexSelector` behind an
    * optional leading `>`/`+`/`~`, yielding a `RelativeSelector` when the
    * combinator is present and a bare `ComplexSelector` otherwise. Mirrors css's
-   * `RelativeComplexSelector` (css `grammar.ts`) and scss's `RelativeComplex`.
+   * `RelativeSelector` (css `grammar.ts`) and scss's `RelativeSelector`.
    */
   const relativeSelectorCombinator = choice(
     literal('>'),
     literal('+'),
     literal('~')
   );
-  const RelativeComplexSelector = node<SelectorBranch>(
-    'RelativeComplexSelector',
+  const RelativeSelector = node<SelectorBranch>(
+    'RelativeSelector',
     sequence(
       optional(relativeSelectorCombinator),
       g.ComplexSelector
@@ -5140,7 +5140,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const NestedSelectorList = node<SelectorList>(
     'SelectorList',
     oneOrMoreSep(
-      RelativeComplexSelector,
+      RelativeSelector,
       literal(',')
     ),
     (children, _fields, span) => withSourceSpan(reduceSelectorList(children), span)

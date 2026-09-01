@@ -103,7 +103,7 @@ const SELECTOR_TYPES = new Set([
   'SelectorList',
   'SelectorBranch',
   'ComplexSelector',
-  'RelativeComplexSelector',
+  'RelativeSelector',
   'CompoundSelector',
   'InterpolatedSelector',
   'BasicSelector',

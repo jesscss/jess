@@ -164,7 +164,7 @@ type ScssRules = {
   PseudoSelector: Combinator<SimpleToken>;
   CompoundSelector: Combinator<SelectorTerm>;
   ComplexSelector: Combinator<SelectorBranch>;
-  RelativeComplex: Combinator<SelectorBranch>;
+  RelativeSelector: Combinator<SelectorBranch>;
   SelectorList: Combinator<SelectorList>;
   NestedSelector: Combinator<SelectorList>;
   Extend: Combinator<ExtendInstruction>;
@@ -4285,8 +4285,8 @@ const scssFactory = (g: ScssInputRules) => {
     literal('+'),
     literal('~')
   );
-  const RelativeComplex = node<SelectorBranch>(
-    'RelativeComplexSelector',
+  const RelativeSelector = node<SelectorBranch>(
+    'RelativeSelector',
     parser(
       { trivia: whitespace },
       sequence(
@@ -4326,10 +4326,10 @@ const scssFactory = (g: ScssInputRules) => {
     parser(
       { trivia: whitespace },
       sequence(
-        g.RelativeComplex,
+        g.RelativeSelector,
         many(sequence(
           literal(','),
-          g.RelativeComplex
+          g.RelativeSelector
         ))
       )
     ),
@@ -4563,7 +4563,7 @@ const scssFactory = (g: ScssInputRules) => {
   const NestedSelector = node<SelectorList>(
     'SelectorList',
     oneOrMoreSep(
-      g.RelativeComplex,
+      g.RelativeSelector,
       literal(',')
     ),
     (children, _fields, span) => withSourceSpan(selist(...children.filter(isScssSelectorBranch)), span)
@@ -4926,7 +4926,7 @@ const scssFactory = (g: ScssInputRules) => {
     PseudoSelector,
     CompoundSelector,
     ComplexSelector,
-    RelativeComplex,
+    RelativeSelector,
     SelectorList,
     NestedSelector,
     Extend,

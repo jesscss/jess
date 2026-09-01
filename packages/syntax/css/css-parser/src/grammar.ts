@@ -999,8 +999,8 @@ const cssFactory = (g: GrammarSelf) => {
    * syntax, not a relative combinator, so it is excluded (mirrors Less's
    * `relativeSelectorCombinator`).
    */
-  const RelativeComplexSelector = node(
-    'RelativeComplexSelector',
+  const RelativeSelector = node(
+    'RelativeSelector',
     sequence(
       optional(relativeSelectorCombinator),
       g.ComplexSelector
@@ -1028,7 +1028,7 @@ const cssFactory = (g: GrammarSelf) => {
     parser(
       { trivia: interstitialTrivia },
       oneOrMoreSep(
-        RelativeComplexSelector,
+        RelativeSelector,
         literal(',')
       )
     ),
@@ -1206,7 +1206,7 @@ const cssFactory = (g: GrammarSelf) => {
    * A NESTED ruleset's selector list is relative-capable: CSS Nesting lets a
    * nested selector open with a combinator (`.parent { > .child { … } }`),
    * where `>` relates to the implicit parent (`.parent > .child`). This reuses
-   * `RelativeComplexSelector` — the same producer the `:has()`-style pseudos
+   * `RelativeSelector` — the same producer the `:has()`-style pseudos
    * use. Each item keeps its ORDINARY shape (`SimpleSelector`/`CompoundSelector`/
    * `ComplexSelector`, whatever it reduces to); the nesting context ADDS
    * `RelativeSelector` as one more admissible item, produced only when the item
@@ -1219,7 +1219,7 @@ const cssFactory = (g: GrammarSelf) => {
   const NestedSelectorList = node(
     'SelectorList',
     oneOrMoreSep(
-      RelativeComplexSelector,
+      RelativeSelector,
       literal(',')
     ),
     (children, _fields, span) => withSourceSpan(selist(...selectorBranches(children)), span)
