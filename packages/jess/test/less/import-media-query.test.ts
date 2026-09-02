@@ -26,12 +26,17 @@ describe('a media query on a compile-time @import wraps the loaded document in @
     const result = await mkCompiler().renderToResult(path.join(fixtures, 'main.less'));
 
     expect(result.errors).toHaveLength(0);
+
+    /*
+     * The loaded rules indent inside the @media wrapper exactly like an authored
+     * `@media { body {…} }` body (owner 2026-09-02).
+     */
     expect(result.css.trim()).toBe(
       [
         '@media screen and (max-width: 600px) {',
-        'body {',
-        '  width: 100%;',
-        '}',
+        '  body {',
+        '    width: 100%;',
+        '  }',
         '}'
       ].join('\n')
     );
@@ -43,13 +48,14 @@ describe('a media query on a compile-time @import wraps the loaded document in @
     expect(result.errors).toHaveLength(0);
 
     /*
-     * `(inline)` bytes are spliced verbatim (never re-parsed), so the raw file's
-     * own trailing newline lands inside the wrapper.
+     * `(inline)` bytes are spliced verbatim (never re-parsed) but indented to the
+     * wrapper's body depth, so the raw file's own trailing newline lands inside
+     * the wrapper (owner 2026-09-02).
      */
     expect(result.css.trim()).toBe(
       [
         '@media (min-width: 600px) {',
-        '.raw { color: red; }',
+        '  .raw { color: red; }',
         '',
         '}'
       ].join('\n')

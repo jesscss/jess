@@ -219,29 +219,19 @@ const expectedFailureFixtures = new Map<string, string>([
   /*
    * Owner 2026-09-02 restored the 4.x behavior: a media query on a legacy
    * compile-time `@import` now desugars to a `@media <query>` wrapper around the
-   * spliced document (see less grammar `ImportStatement` and
-   * docs/architecture/core/DESIGN-DECISIONS.md). These two fixtures no longer
-   * parse-error, and their `.css` expectation's `@media` wrap is now produced.
-   * The one remaining diff vs the external golden is render LAYOUT: jess's
-   * imported-document SPLICE path places the loaded/inlined rules at column 0
-   * inside a bubbleable at-rule — shallower than jess's own authored `@media`-
-   * body indentation — while the external 4.x golden indents them one level.
-   * That is a SEPARATE, pre-existing splice-path behavior: an authored
-   * `@media { @import "x" }` renders byte-identically on unmodified dev (and the
-   * core test import-at-rule.test.ts "awaits an async loaded document inside a
-   * bubbleable at-rule" asserts the column-0 output), so it is NOT introduced by
-   * this postlude change. Reconciling that layout (owner-maintained
-   * `@less/test-data` golden at `~/git/oss/less.js`, branch `alpha`, vs the
-   * splice-path indentation) is a separate decision; until then both fixtures
-   * stay on this list.
+   * spliced document, AND the spliced rules indent inside the wrapper exactly
+   * like an authored `@media` body (less grammar `ImportStatement` +
+   * `serialize.ts` `emitBubbleBody`; docs/architecture/core/DESIGN-DECISIONS.md
+   * A10). `import-inline.less` now matches its golden and has GRADUATED off this
+   * list. `import.less` still differs, but on grounds UNRELATED to the media
+   * wrap (its `@media` blocks now match byte-for-byte): a leading top-of-file
+   * block comment re-orders below the hoisted root CSS `@import`s, and π emits at
+   * jess's 10-digit output quantization (`3.1415926536`) vs the golden's full
+   * `3.141592653589793`.
    */
   [
     'tests-unit/import/import.less',
-    'lines 17/21/23/25 carry a media query on a compile-time @import (e.g. `@import (less, multiple) "import/import-test-d.css" screen and (max-width: 601px);`) — now correctly desugared to a `@media` wrapper (owner 2026-09-02), no longer a parse error. Remaining diff vs the external golden is the pre-existing imported-document splice path placing loaded rules at column 0 inside the @media block (shallower than jess\'s authored @media-body indentation), not a parse error'
-  ],
-  [
-    'tests-unit/import/import-inline.less',
-    'line 2 is `@import (inline) url("import/import-test-d.css") (min-width:600px);` — now correctly desugared to a `@media (min-width: 600px)` wrapper around the spliced raw bytes (owner 2026-09-02), no longer a parse error. Remaining diff vs the external golden is the pre-existing imported-document splice path placing the spliced content at column 0 inside the @media block (shallower than jess\'s authored @media-body indentation), not a parse error'
+    'the compile-time-@import media wrap now matches (owner 2026-09-02). Remaining diffs are unrelated: a leading `/** comment at the top **/` orders below the hoisted root CSS @imports, and π prints at jess 10-digit output quantization (3.1415926536) vs the golden full 3.141592653589793'
   ],
   [
     'tests-unit/urls/urls.less',

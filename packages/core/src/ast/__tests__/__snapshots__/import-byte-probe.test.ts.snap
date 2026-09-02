@@ -89,7 +89,7 @@ RAW_BYTES
 
 --- "@import (inline) \\"a.txt\\" (min-width: 100px);"
 @media (min-width: 100px) {
-RAW_BYTES
+  RAW_BYTES
 
 }
 
@@ -104,9 +104,9 @@ Reason: Symbol "@name" is undefined in this scope.
 Fix: Define "@name" or import a file that provides it.
 --- "@import \\"a\\" screen and (min-width: 100px);"
 @media screen and (min-width: 100px) {
-.a {
-  color: red;
-}
+  .a {
+    color: red;
+  }
 }
 
 --- "@import (css) \\"a.css\\";"

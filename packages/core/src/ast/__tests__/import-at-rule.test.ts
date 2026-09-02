@@ -679,7 +679,7 @@ describe('StyleImport', () => {
     await expect(Promise.resolve(serialize(stylesheet([wrapped]), {
       importDocument: ({ specifier }) => specifier === 'imported.less' ? { document: imported } : undefined
     }))).resolves.toEqual({
-      css: '@media screen and (max-width: 600px) {\nbody {\n  width: 100%;\n}\n}\n'
+      css: '@media screen and (max-width: 600px) {\n  body {\n    width: 100%;\n  }\n}\n'
     });
 
     /*
@@ -736,7 +736,7 @@ describe('StyleImport', () => {
 
     await expect(serialize(document, {
       importDocument: ({ specifier }) => Promise.resolve(specifier === 'nested.less' ? { document: imported } : undefined)
-    })).resolves.toEqual({ css: '@layer legacy {\n.inside {\n  color: red;\n}\n}\n' });
+    })).resolves.toEqual({ css: '@layer legacy {\n  .inside {\n    color: red;\n  }\n}\n' });
   });
 
   it('writes a typed target and optional typed tail as one terminal statement', () => {
@@ -1812,7 +1812,7 @@ describe('StyleImport', () => {
     await expect(Promise.resolve(serialize(stylesheet([wrapped]), {
       importDocument: ({ specifier }) => specifier === 'raw.css' ? { inline: '.raw { color: red; }' } : undefined
     }))).resolves.toEqual({
-      css: '@media (min-width: 600px) {\n.raw { color: red; }\n}\n'
+      css: '@media (min-width: 600px) {\n  .raw { color: red; }\n}\n'
     });
   });
 });

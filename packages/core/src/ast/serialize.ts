@@ -14396,6 +14396,14 @@ function emitUnknownAtRuleBlock(node: UnknownAtRuleBlock, e: Emit): void {
  * splice bare.
  */
 function emitRawInline(text: string, e: Emit): void {
+  /*
+   * Indent the spliced raw bytes to the current nesting depth, so `(inline)`
+   * content inside a bubbleable at-rule lines up with authored at-rule-body
+   * content (owner 2026-09-02). Root splices (depth 0) stay at column 0.
+   */
+  if (e.depth > 0) {
+    put(e, INDENT.repeat(e.depth));
+  }
   put(e, text);
   put(e, '\n');
 }
@@ -15454,17 +15462,17 @@ function emitBubbleBody(
                 e,
                 e.importDocument,
                 (document, importFrame) => {
-                  e.depth -= 2;
+                  e.depth -= 1;
                   const emitted = emitBubbleBody(document.rules, ctx, importFrame, e);
                   if (isThenable(emitted)) {
                     return emitted.then(() => {
-                      e.depth += 2;
+                      e.depth += 1;
                     }, (error) => {
-                      e.depth += 2;
+                      e.depth += 1;
                       throw error;
                     });
                   }
-                  e.depth += 2;
+                  e.depth += 1;
                   return emitted;
                 }
               );
@@ -15492,29 +15500,28 @@ function emitBubbleBody(
             e.importDocument,
             (document, importFrame) => {
             /*
-             * The surrounding import owns the one statement indentation level.
-             * Its loaded body belongs to this bubble body's level instead, just
-             * like an authored sibling; restore the import level before the
-             * cursor resumes after an async load.
-             * `emitBubbleBody` increments before a Ruleset while the former
-             * document dispatcher emitted loaded root Rules directly.  Drop
-             * the import level and that one prospective Ruleset level so the
-             * canonical loaded document keeps its historical body placement.
+             * Undo ONLY the import statement's own `e.depth++` above, so the
+             * loaded document is walked at the SAME depth as this bubble body's
+             * authored content — its rules then indent one level inside the
+             * at-rule exactly like an authored sibling (owner 2026-09-02; an
+             * earlier `-= 2` dropped a second level and floated the loaded body
+             * to column 0). Restored before the cursor resumes after an async
+             * load.
              */
-              e.depth -= 2;
+              e.depth -= 1;
               const emitted = emitBubbleBody(document.rules, ctx, importFrame, e);
               if (isThenable(emitted)) {
                 return emitted.then(
                   () => {
-                    e.depth += 2;
+                    e.depth += 1;
                   },
                   (error) => {
-                    e.depth += 2;
+                    e.depth += 1;
                     throw error;
                   }
                 );
               }
-              e.depth += 2;
+              e.depth += 1;
               return emitted;
             }
           );
