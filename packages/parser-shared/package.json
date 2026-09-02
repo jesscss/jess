@@ -33,11 +33,7 @@
     "build": "pnpm compile",
     "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly"
   },
-  "peerDependencies": {
-    "parseman": "^0.50.5"
-  },
   "devDependencies": {
-    "parseman": "^0.50.5",
     "tsdown": "~0.21.7"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
@@ -45,5 +41,8 @@
   "bugs": {
     "url": "https://github.com/jesscss/jess/issues"
   },
-  "homepage": "https://github.com/jesscss/jess#readme"
+  "homepage": "https://github.com/jesscss/jess#readme",
+  "dependencies": {
+    "parseman": "^0.50.5"
+  }
 }

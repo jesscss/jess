@@ -74,11 +74,11 @@
     "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
-    "@jesscss/css-parser": "workspace:*"
+    "@jesscss/css-parser": "workspace:*",
+    "parseman": "^0.50.5"
   },
   "peerDependencies": {
-    "@jesscss/core": "workspace:*",
-    "parseman": "^0.50.5"
+    "@jesscss/core": "workspace:*"
   },
   "peerDependenciesMeta": {
     "@jesscss/core": {
@@ -88,7 +88,6 @@
   "devDependencies": {
     "@jesscss/core": "workspace:*",
     "@jesscss/parser-shared": "workspace:*",
-    "parseman": "^0.50.5",
     "sass-spec": "github:sass/sass-spec"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",

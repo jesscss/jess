@@ -86,11 +86,11 @@
     "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
-    "@jesscss/parser-shared": "workspace:*"
+    "@jesscss/parser-shared": "workspace:*",
+    "parseman": "^0.50.5"
   },
   "peerDependencies": {
-    "@jesscss/core": "workspace:*",
-    "parseman": "^0.50.5"
+    "@jesscss/core": "workspace:*"
   },
   "peerDependenciesMeta": {
     "@jesscss/core": {
@@ -100,7 +100,6 @@
   "devDependencies": {
     "@jesscss/core": "workspace:*",
     "@jesscss/shared": "workspace:*",
-    "parseman": "^0.50.5",
     "postcss": "8.5.23",
     "tsx": "~4.21.0"
   },

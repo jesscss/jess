@@ -75,11 +75,11 @@
   "license": "MIT",
   "dependencies": {
     "@jesscss/css-parser": "workspace:*",
-    "color-name": "~2.0.0"
+    "color-name": "~2.0.0",
+    "parseman": "^0.50.5"
   },
   "peerDependencies": {
-    "@jesscss/core": "workspace:*",
-    "parseman": "^0.50.5"
+    "@jesscss/core": "workspace:*"
   },
   "peerDependenciesMeta": {
     "@jesscss/core": {
@@ -89,8 +89,7 @@
   "devDependencies": {
     "@jesscss/core": "workspace:*",
     "@jesscss/parser-shared": "workspace:*",
-    "@types/color-name": "^1.1.1",
-    "parseman": "^0.50.5"
+    "@types/color-name": "^1.1.1"
   },
   "type": "module",
   "module": "lib/index.js"

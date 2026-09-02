@@ -57,8 +57,8 @@ Node executes every module it statically imports, so the choice is which entry
 you import. Error tolerance is not a property of a build — the CST runner
 collects `result.errors` on either CST variant.
 
-The CST and grammar entries expose Parseman types and grammar values. They use
-the package's `parseman` peer; install Parseman when consuming either entry.
+The CST and grammar entries expose Parseman types and grammar values. Parseman
+ships as a bundled dependency, so it installs with the package automatically.
 
 The former `./jess` Chevrotain/functional-builder surface is deleted. CSS has
 no legacy tree parser or construction host. Its public parser constructs the
