@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import {
   applyLockstepVersion,
+  ensurePublishAuth,
   getAlphaReleasePlan,
   isReleaseArtifactPath,
   resolveAlphaPublishVersion
@@ -252,22 +253,14 @@ if (branch !== 'alpha' && options.dryRun) {
 }
 
 if (!options.dryRun) {
-  // Check npm auth early so we don't waste time on checks/versioning only to fail at publish
-  const whoami = spawnSync('npm', ['whoami'], {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-    shell: process.platform === 'win32'
-  });
-  if (whoami.status !== 0) {
-    console.log('\nnpm is not authenticated. Running `npm login`...\n');
-    const login = spawnSync('npm', ['login'], {
-      stdio: 'inherit',
-      shell: process.platform === 'win32'
-    });
-    if (login.status !== 0) {
-      throw new Error('npm login failed. Cannot publish without authentication.');
-    }
-  }
+  /*
+   * Front-load publish auth BEFORE the long preflight, so a 2FA/login prompt lands
+   * at minute 0, not after the whole build+check suite. `npm whoami` alone is not
+   * enough — see ensurePublishAuth. Mark it verified so the child publish-alpha
+   * (spawned below) inherits the flag and does not prompt a second time.
+   */
+  ensurePublishAuth();
+  process.env.__ALPHA_AUTH_VERIFIED = '1';
   assertReadyWorkingTree(rootDir);
 }
 

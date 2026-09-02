@@ -676,3 +676,68 @@ export function getAlphaReleasePlan({
     errors
   };
 }
+
+/**
+ * Front-load npm publish-readiness so a 2FA prompt never lands AFTER the long
+ * preflight. `npm whoami` proves only READ auth: it needs no OTP, so it succeeds
+ * with a token that — under `two-factor auth: auth-and-writes` — still cannot
+ * complete a `npm publish` non-interactively. A multi-package release would then
+ * greenlight, run the whole preflight, and only THEN stall on the first publish's
+ * OTP. So when the account gates writes behind 2FA we refresh the login (browser)
+ * UP FRONT. An automation token (NPM_TOKEN) bypasses 2FA, so we skip the refresh
+ * when one is set. Idempotent within a release: release-alpha sets
+ * `__ALPHA_AUTH_VERIFIED` before spawning publish-alpha, which the child inherits.
+ */
+export function ensurePublishAuth() {
+  if (process.env.__ALPHA_AUTH_VERIFIED === '1') {
+    return;
+  }
+  const useShell = process.platform === 'win32';
+  const whoami = spawnSync('npm', ['whoami'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: useShell
+  });
+  const loggedIn = whoami.status === 0;
+  const user = loggedIn ? whoami.stdout.trim() : null;
+  let needLogin = !loggedIn;
+
+  /*
+   * A valid `whoami` is NOT proof of publish-readiness. Under 2FA-on-writes every
+   * `npm publish` needs a fresh OTP that `whoami` never asked for; an automation
+   * token bypasses 2FA. So if we hold a token but the account gates writes behind
+   * 2FA, refresh the session now rather than discovering it post-preflight.
+   */
+  if (loggedIn && !process.env.NPM_TOKEN) {
+    const profile = spawnSync('npm', ['profile', 'get'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: useShell
+    });
+    const twoFactorWrites = profile.status === 0
+      && /two-factor auth:\s*auth-and-writes/i.test(profile.stdout);
+    if (twoFactorWrites) {
+      console.log(`\nnpm reports you as '${user}', but this account gates every publish behind 2FA`);
+      console.log('(two-factor auth: auth-and-writes), which `npm whoami` cannot see. A multi-package');
+      console.log('release cannot clear that non-interactively, so refreshing your npm login now');
+      console.log('(browser) — UP FRONT, before the preflight — so the publish does not stall 15+');
+      console.log('minutes in. To publish non-interactively instead, use an automation token that');
+      console.log('bypasses 2FA (set NPM_TOKEN).\n');
+      needLogin = true;
+    }
+  }
+
+  if (needLogin) {
+    if (!loggedIn) {
+      console.log('\nnpm is not authenticated. Opening browser login...\n');
+    }
+    const login = spawnSync('npm', ['login', '--auth-type=web'], {
+      stdio: 'inherit',
+      shell: useShell
+    });
+    if (login.status !== 0) {
+      throw new Error('npm login failed. Cannot publish without authentication.');
+    }
+  }
+  process.env.__ALPHA_AUTH_VERIFIED = '1';
+}

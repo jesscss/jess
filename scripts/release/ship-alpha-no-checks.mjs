@@ -11,7 +11,7 @@
  */
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
-import { getAlphaPublishStatus, getAlphaReleasePlan, incrementAlphaVersions } from './release-utils.mjs';
+import { ensurePublishAuth, getAlphaPublishStatus, getAlphaReleasePlan, incrementAlphaVersions } from './release-utils.mjs';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 
@@ -117,13 +117,13 @@ if (branch !== 'alpha' && !DRY_RUN) {
   process.exit(1);
 }
 
-// Auth check (skip for dry-run)
+/*
+ * Front-load publish auth up front (skip for dry-run). See ensurePublishAuth:
+ * `npm whoami` can't see a 2FA-on-writes gate, so refresh the login now, not at
+ * the first publish.
+ */
 if (!DRY_RUN) {
-  const whoami = spawnSync('npm', ['whoami'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], shell: true });
-  if (whoami.status !== 0) {
-    console.error('\nnpm is not authenticated. Run `npm login` first.');
-    process.exit(1);
-  }
+  ensurePublishAuth();
 }
 
 /*
