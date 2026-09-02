@@ -22,8 +22,8 @@ npm install @jesscss/jess-parser
 
 `@jesscss/core` is an **optional** peer dependency — needed for the default
 AST v2 `parse()` entry, not for `./cst` or `./grammar`.
-Those explicit entries expose Parseman types and grammar values, so consumers
-of them must also provide the package's `parseman` peer.
+Those explicit entries expose Parseman types and grammar values; Parseman ships
+as a bundled dependency, so it installs with the package automatically.
 
 ## Canonical AST parsing
 

@@ -696,10 +696,11 @@ importers:
         version: 4.1.2(@types/node@20.19.30)(vite@6.4.3)
 
   packages/parser-shared:
-    devDependencies:
+    dependencies:
       parseman:
         specifier: ^0.50.5
         version: 0.50.5
+    devDependencies:
       tsdown:
         specifier: ~0.21.7
         version: 0.21.7(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(typescript@7.0.1-rc)
@@ -733,6 +734,9 @@ importers:
       '@jesscss/parser-shared':
         specifier: workspace:*
         version: link:../../../parser-shared
+      parseman:
+        specifier: ^0.50.5
+        version: 0.50.5
     devDependencies:
       '@jesscss/core':
         specifier: workspace:*
@@ -740,9 +744,6 @@ importers:
       '@jesscss/shared':
         specifier: workspace:*
         version: link:../../../_shared
-      parseman:
-        specifier: ^0.50.5
-        version: 0.50.5
       postcss:
         specifier: 8.5.23
         version: 8.5.23
@@ -758,6 +759,9 @@ importers:
       color-name:
         specifier: ~2.0.0
         version: 2.0.2
+      parseman:
+        specifier: ^0.50.5
+        version: 0.50.5
     devDependencies:
       '@jesscss/core':
         specifier: workspace:*
@@ -768,9 +772,6 @@ importers:
       '@types/color-name':
         specifier: ^1.1.1
         version: 1.1.5
-      parseman:
-        specifier: ^0.50.5
-        version: 0.50.5
 
   packages/syntax/jess/jess-plugin-jess:
     dependencies:
@@ -835,6 +836,9 @@ importers:
       known-css-properties:
         specifier: ~0.37.0
         version: 0.37.0
+      parseman:
+        specifier: ^0.50.5
+        version: 0.50.5
     devDependencies:
       '@jesscss/core':
         specifier: workspace:*
@@ -851,9 +855,6 @@ importers:
       less:
         specifier: ^4.6.3
         version: 4.6.3
-      parseman:
-        specifier: ^0.50.5
-        version: 0.50.5
       postcss-less:
         specifier: ~6.0.0
         version: 6.0.0(postcss@8.5.23)
@@ -881,6 +882,9 @@ importers:
       '@jesscss/css-parser':
         specifier: workspace:*
         version: link:../../css/css-parser
+      parseman:
+        specifier: ^0.50.5
+        version: 0.50.5
     devDependencies:
       '@jesscss/core':
         specifier: workspace:*
@@ -888,9 +892,6 @@ importers:
       '@jesscss/parser-shared':
         specifier: workspace:*
         version: link:../../../parser-shared
-      parseman:
-        specifier: ^0.50.5
-        version: 0.50.5
       sass-spec:
         specifier: github:sass/sass-spec
         version: github.com/sass/sass-spec/67c3b83a26fd3f9772dd0d3e318fe32aefb38eef(@babel/core@7.29.7)(eslint@9.39.2)
@@ -4502,7 +4503,6 @@ packages:
     dependencies:
       '@emnapi/wasi-threads': 1.2.2
       tslib: 2.8.1
-    dev: true
     optional: true
 
   /@emnapi/core@1.11.3:
@@ -4518,7 +4518,6 @@ packages:
     requiresBuild: true
     dependencies:
       tslib: 2.8.1
-    dev: true
     optional: true
 
   /@emnapi/runtime@1.11.3:
@@ -4533,7 +4532,6 @@ packages:
     requiresBuild: true
     dependencies:
       tslib: 2.8.1
-    dev: true
     optional: true
 
   /@emnapi/wasi-threads@1.2.3:
@@ -5854,7 +5852,6 @@ packages:
       '@emnapi/core': 1.11.1
       '@emnapi/runtime': 1.11.1
       '@tybys/wasm-util': 0.10.3
-    dev: true
     optional: true
 
   /@napi-rs/wasm-runtime@1.1.6(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3):
@@ -5902,7 +5899,6 @@ packages:
     cpu: [arm]
     os: [android]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-parser/binding-android-arm64@0.137.0:
@@ -5911,7 +5907,6 @@ packages:
     cpu: [arm64]
     os: [android]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-parser/binding-darwin-arm64@0.137.0:
@@ -5920,7 +5915,6 @@ packages:
     cpu: [arm64]
     os: [darwin]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-parser/binding-darwin-x64@0.137.0:
@@ -5929,7 +5923,6 @@ packages:
     cpu: [x64]
     os: [darwin]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-parser/binding-freebsd-x64@0.137.0:
@@ -5938,7 +5931,6 @@ packages:
     cpu: [x64]
     os: [freebsd]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-parser/binding-linux-arm-gnueabihf@0.137.0:
@@ -5947,7 +5939,6 @@ packages:
     cpu: [arm]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-parser/binding-linux-arm-musleabihf@0.137.0:
@@ -5956,7 +5947,6 @@ packages:
     cpu: [arm]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-parser/binding-linux-arm64-gnu@0.137.0:
@@ -5965,7 +5955,6 @@ packages:
     cpu: [arm64]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-parser/binding-linux-arm64-musl@0.137.0:
@@ -5974,7 +5963,6 @@ packages:
     cpu: [arm64]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-parser/binding-linux-ppc64-gnu@0.137.0:
@@ -5983,7 +5971,6 @@ packages:
     cpu: [ppc64]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-parser/binding-linux-riscv64-gnu@0.137.0:
@@ -5992,7 +5979,6 @@ packages:
     cpu: [riscv64]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-parser/binding-linux-riscv64-musl@0.137.0:
@@ -6001,7 +5987,6 @@ packages:
     cpu: [riscv64]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-parser/binding-linux-s390x-gnu@0.137.0:
@@ -6010,7 +5995,6 @@ packages:
     cpu: [s390x]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-parser/binding-linux-x64-gnu@0.137.0:
@@ -6019,7 +6003,6 @@ packages:
     cpu: [x64]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-parser/binding-linux-x64-musl@0.137.0:
@@ -6028,7 +6011,6 @@ packages:
     cpu: [x64]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-parser/binding-openharmony-arm64@0.137.0:
@@ -6037,7 +6019,6 @@ packages:
     cpu: [arm64]
     os: [openharmony]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-parser/binding-wasm32-wasi@0.137.0:
@@ -6049,7 +6030,6 @@ packages:
       '@emnapi/core': 1.11.1
       '@emnapi/runtime': 1.11.1
       '@napi-rs/wasm-runtime': 1.1.6(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)
-    dev: true
     optional: true
 
   /@oxc-parser/binding-win32-arm64-msvc@0.137.0:
@@ -6058,7 +6038,6 @@ packages:
     cpu: [arm64]
     os: [win32]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-parser/binding-win32-ia32-msvc@0.137.0:
@@ -6067,7 +6046,6 @@ packages:
     cpu: [ia32]
     os: [win32]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-parser/binding-win32-x64-msvc@0.137.0:
@@ -6076,7 +6054,6 @@ packages:
     cpu: [x64]
     os: [win32]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-project/types@0.122.0:
@@ -6085,14 +6062,12 @@ packages:
 
   /@oxc-project/types@0.137.0:
     resolution: {integrity: sha512-WT+Gb24i8hmvo85AIv2oEYouEXkRlKAlT9WaCa3TfLgNCN+GhrJOGZuIlMouAh38Qe4QOx26eUOVsq70qXrywA==}
-    dev: true
 
   /@oxc-resolver/binding-android-arm-eabi@11.23.0:
     resolution: {integrity: sha512-8IJyWRLVAyhTfe9/TIEbQqSQnl5rUqYJrUOS6Dkr+Mq9FGHMxDGeiEmwkBqCvDP5KckpPh/GYSgbag66O6JsCw==}
     cpu: [arm]
     os: [android]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-resolver/binding-android-arm64@11.23.0:
@@ -6100,7 +6075,6 @@ packages:
     cpu: [arm64]
     os: [android]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-resolver/binding-darwin-arm64@11.23.0:
@@ -6108,7 +6082,6 @@ packages:
     cpu: [arm64]
     os: [darwin]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-resolver/binding-darwin-x64@11.23.0:
@@ -6116,7 +6089,6 @@ packages:
     cpu: [x64]
     os: [darwin]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-resolver/binding-freebsd-x64@11.23.0:
@@ -6124,7 +6096,6 @@ packages:
     cpu: [x64]
     os: [freebsd]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-resolver/binding-linux-arm-gnueabihf@11.23.0:
@@ -6132,7 +6103,6 @@ packages:
     cpu: [arm]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-resolver/binding-linux-arm-musleabihf@11.23.0:
@@ -6140,7 +6110,6 @@ packages:
     cpu: [arm]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-resolver/binding-linux-arm64-gnu@11.23.0:
@@ -6148,7 +6117,6 @@ packages:
     cpu: [arm64]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-resolver/binding-linux-arm64-musl@11.23.0:
@@ -6156,7 +6124,6 @@ packages:
     cpu: [arm64]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-resolver/binding-linux-ppc64-gnu@11.23.0:
@@ -6164,7 +6131,6 @@ packages:
     cpu: [ppc64]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-resolver/binding-linux-riscv64-gnu@11.23.0:
@@ -6172,7 +6138,6 @@ packages:
     cpu: [riscv64]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-resolver/binding-linux-riscv64-musl@11.23.0:
@@ -6180,7 +6145,6 @@ packages:
     cpu: [riscv64]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-resolver/binding-linux-s390x-gnu@11.23.0:
@@ -6188,7 +6152,6 @@ packages:
     cpu: [s390x]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-resolver/binding-linux-x64-gnu@11.23.0:
@@ -6196,7 +6159,6 @@ packages:
     cpu: [x64]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-resolver/binding-linux-x64-musl@11.23.0:
@@ -6204,7 +6166,6 @@ packages:
     cpu: [x64]
     os: [linux]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-resolver/binding-openharmony-arm64@11.23.0:
@@ -6212,7 +6173,6 @@ packages:
     cpu: [arm64]
     os: [openharmony]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-resolver/binding-wasm32-wasi@11.23.0:
@@ -6224,7 +6184,6 @@ packages:
       '@emnapi/core': 1.11.1
       '@emnapi/runtime': 1.11.1
       '@napi-rs/wasm-runtime': 1.1.6(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)
-    dev: true
     optional: true
 
   /@oxc-resolver/binding-win32-arm64-msvc@11.23.0:
@@ -6232,7 +6191,6 @@ packages:
     cpu: [arm64]
     os: [win32]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@oxc-resolver/binding-win32-x64-msvc@11.23.0:
@@ -6240,7 +6198,6 @@ packages:
     cpu: [x64]
     os: [win32]
     requiresBuild: true
-    dev: true
     optional: true
 
   /@parcel/watcher-android-arm64@2.6.0:
@@ -7444,7 +7401,6 @@ packages:
     requiresBuild: true
     dependencies:
       tslib: 2.8.1
-    dev: true
     optional: true
 
   /@types/argparse@1.0.38:
@@ -16237,7 +16193,6 @@ packages:
   /linecraft@0.2.6:
     resolution: {integrity: sha512-soXv8qKLqsAA3Ws9HDwrf6VlLUHHKBqLplHVJ/HVhWH5Oakgr5iZmsiKX7eC2VMdZxFaxhLxDsAmiCjLvKPZlQ==}
     engines: {node: '>=18.0.0'}
-    dev: true
 
   /linecraft@0.2.8:
     resolution: {integrity: sha512-GZfe6kW8K6yByouQLiIwarj69bsuaWJlI+ioTWH7spsvV/cF7mCGvmPq4K3WUXBwMLrNYsbQE16RSM+qb1MXNQ==}
@@ -16577,7 +16532,6 @@ packages:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
     dependencies:
       '@jridgewell/sourcemap-codec': 1.5.5
-    dev: true
 
   /magicast@0.5.2:
     resolution: {integrity: sha512-E3ZJh4J3S9KfwdjZhe2afj6R9lGIN5Pher1pF39UGrXRqq/VDaGVIGN13BjHd2u8B61hArAGOnso7nBOouW3TQ==}
@@ -18237,7 +18191,6 @@ packages:
       '@oxc-parser/binding-win32-arm64-msvc': 0.137.0
       '@oxc-parser/binding-win32-ia32-msvc': 0.137.0
       '@oxc-parser/binding-win32-x64-msvc': 0.137.0
-    dev: true
 
   /oxc-resolver@11.23.0:
     resolution: {integrity: sha512-f0+l598CJMOLnYPXsXxttJALH0ljtivdRMKtvHhxRuWa5FYmw5+qODARl8oYjMC/brpzKcrpdORsOBrTqhBZ9A==}
@@ -18261,7 +18214,6 @@ packages:
       '@oxc-resolver/binding-wasm32-wasi': 11.23.0
       '@oxc-resolver/binding-win32-arm64-msvc': 11.23.0
       '@oxc-resolver/binding-win32-x64-msvc': 11.23.0
-    dev: true
 
   /p-cancelable@1.1.0:
     resolution: {integrity: sha512-s73XxOZ4zpt1edZYZzvhqFa6uvQc1vwUa0K0BdtIZgQMAJj9IbebH+JkgKZc9h+B05PKHLOTl4ajG1BmNrVZlw==}
@@ -18498,7 +18450,6 @@ packages:
       oxc-parser: 0.137.0
       oxc-resolver: 11.23.0
       unplugin: 3.0.0
-    dev: true
 
   /parseurl@1.3.3:
     resolution: {integrity: sha512-CiyeOxFT/JZyN5m0z9PfXw4SCBJ6Sygz1Dpl0wqjlhDEGGBP1GnsUVEL0p63hoG1fcj3fHynXi9NYO4nWOL+qQ==}
@@ -18617,7 +18568,6 @@ packages:
   /picomatch@4.0.5:
     resolution: {integrity: sha512-RvwwcruNjI1ncT5xRakeyS9Lf8lcItv34KD+aif+VH9kduAyfYBipGh12274xtenIPZ119/R9BdTBa8gAwSh0A==}
     engines: {node: '>=12'}
-    dev: true
 
   /pidtree@0.6.0:
     resolution: {integrity: sha512-eG2dWTVw5bzqGRztnHExczNxt5VGsE6OwTeCG3fdUf9KBsZzO3R5OIIIzWR+iZA0NtZ+RDVdaoE2dK1cn6jH4g==}
@@ -22861,7 +22811,6 @@ packages:
       '@jridgewell/remapping': 2.3.5
       picomatch: 4.0.5
       webpack-virtual-modules: 0.6.2
-    dev: true
 
   /unrun@0.2.34(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3):
     resolution: {integrity: sha512-LyaghRBR++r7svhDK6tnDz2XaYHWdneBOA0jbS8wnRsHerI9MFljX4fIiTgbbNbEVzZ0C9P1OjWLLe1OqoaaEw==}
@@ -23706,7 +23655,6 @@ packages:
 
   /webpack-virtual-modules@0.6.2:
     resolution: {integrity: sha512-66/V2i5hQanC51vBQKPH4aI8NMAcBW59FVBs+rC7eGHupMyfn34q7rZIE+ETlJ+XTevqfUhVVBgSUNSW2flEUQ==}
-    dev: true
 
   /webpack@5.104.1:
     resolution: {integrity: sha512-Qphch25abbMNtekmEGJmeRUhLDbe+QfiWTiqpKYkpCOWY64v9eyl+KRRLmqOFA2AvKPpc9DC6+u2n76tQLBoaA==}
