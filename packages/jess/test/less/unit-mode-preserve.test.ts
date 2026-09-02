@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
+import { logger } from '@jesscss/core';
 
 /*
  * V18 — `unitMode: 'preserve'` (the Less default) is `strict` WITHOUT the error.
@@ -61,8 +62,25 @@ describe('unitMode preserve = strict without the error (V18)', () => {
     }
   });
 
-  it('loose keeps the Less 4.x fold (what strictUnits: false selects)', async () => {
+  it('loose keeps the Less 4.x fold, selected only by an explicit unitMode', async () => {
     const r = await render('.a { width: 1px + 3em; }', 'loose');
     expect(value(r.css)).toBe('4px');
+  });
+
+  it('deprecated strictUnits: false means preserve, and warns', async () => {
+    const warned: string[] = [];
+    const prev = logger.warn;
+    logger.warn = (...args: unknown[]) => {
+      warned.push(args.map(String).join(' '));
+    };
+    try {
+      const r = await new Compiler({
+        compile: { plugins: [lessPlugin({ strictUnits: false })] }
+      }).renderToResult({ source: '.a { width: 1px + 3em; }', language: 'less', extension: '.less' }, {});
+      expect(value(r.css)).toBe('calc(1px + 3em)');
+    } finally {
+      logger.warn = prev;
+    }
+    expect(warned.join('\n')).toMatch(/strictUnits is deprecated.*unitMode: 'preserve'/);
   });
 });

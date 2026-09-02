@@ -222,7 +222,7 @@ In this case, things are clearly not right - a length multiplied by a length giv
 |---|---|
 | `lessc -su=on`<br>`lessc --strict-units=on` | `{ strictUnits: true }` |
 
-_Deprecated alias for `unitMode`: `on` / `true` sets `unitMode: 'strict'`; `off` / `false` (the default) defers to `unitMode`. `lessc` prints a deprecation warning when it is used._
+_Deprecated alias for `unitMode`: `on` / `true` sets `unitMode: 'strict'`; `off` / `false` means "not strict", i.e. the default `preserve` (the Less 4.x fold is only selected by an explicit `unitMode: 'loose'`). A deprecation warning naming the mapping is logged during compile whenever it is used._
 
 #### IE8 Compatibility (Deprecated)
 

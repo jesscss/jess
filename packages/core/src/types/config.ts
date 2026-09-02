@@ -175,9 +175,10 @@ export interface LessOptions {
   math?: 0 | 1 | 2 | 3 | MathMode | 'strict-legacy';
 
   /**
-   * @deprecated Use `unitMode` instead. If `true`, sets `unitMode` to 'strict'.
-   * If `false` or undefined, uses the `unitMode` value (defaults to 'loose').
-   * @default false
+   * @deprecated Use `unitMode` instead. `true` sets `unitMode` to 'strict';
+   * `false` means "not strict", i.e. the default 'preserve' (the Less 4.x fold
+   * is only selected by an explicit `unitMode: 'loose'`). Any use warns.
+   * @default undefined
    */
   strictUnits?: boolean;
 
