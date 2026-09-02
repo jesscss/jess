@@ -152,7 +152,7 @@ export interface LessOptions {
    * - 'loose': Less's default 1.x-4.x behavior
    * - 'preserve': Create calc() expressions for unit errors
    * - 'strict': strict unit mode
-   * @default 'loose'
+   * @default 'preserve'
    */
   unitMode?: UnitMode;
 

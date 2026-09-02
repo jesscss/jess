@@ -200,7 +200,7 @@ _Has been replaced by `rewriteUrls: "all"`_
 |---|---|
 | `lessc --unit-mode=MODE` | `{ unitMode: MODE }` |
 
-`MODE` is one of `loose` (the default), `strict`, or `preserve`, and controls how unit conversions are handled in math operations.
+`MODE` is one of `preserve` (the default), `strict`, or `loose`, and controls how unit conversions are handled in math operations.
 
 Without strict units, Less attempts to guess at the output unit when it does maths. For instance
 
@@ -214,7 +214,7 @@ In this case, things are clearly not right - a length multiplied by a length giv
 
 - `loose` — this guessing behavior (the Less 1.x–4.x default).
 - `strict` — assume this is a bug in the calculation and throw an error.
-- `preserve` — emit a `calc()` expression for unit compositions CSS can't express (like the example above) instead of guessing or erroring.
+- `preserve` (the default) — `strict` without the error: anything `strict` would reject is emitted as the authored expression inside `calc()` (`1px + 3em` → `calc(1px + 3em)`, the example above → `calc(1px * 2px)`) instead of guessing; anything `strict` computes, `preserve` computes identically.
 
 #### Strict Units (deprecated)
 

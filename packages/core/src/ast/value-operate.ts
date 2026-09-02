@@ -15,7 +15,7 @@ import { UnitArithmeticError, isValueGroupArray, type Color, type Dimension, typ
 import { HEX } from './color.js';
 import { colorRawRgb, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword } from './value-factory.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
-import { convertValue } from './value-units.js';
+import { convertValue, convertible } from './value-units.js';
 
 /* --------------------------------------------------------- arithmetic */
 
@@ -184,14 +184,17 @@ function composeUnits(u: UnitSet, bu: UnitSet, op: string): void {
 }
 
 /**
- * Whether a composed unit set has a CSS spelling. Exactly two shapes do: one
- * surviving numerator unit (`4em / 2cm` → `em`), and the empty set, which is a
- * genuine unitless number (`2px / 1px` → `2`). Anything else — a unit PRODUCT
- * (`px·px`, `px·%`) or a bare reciprocal (`px⁻¹`) — has no CSS unit at all, and
- * naming one means fabricating it out of `backupUnit` or a denominator.
+ * Whether a composed unit set has a CSS spelling — exactly the set `strict`
+ * accepts at `validateFinalUnits` (V18): one numerator and NO denominator
+ * (`8cats * 9dogs / 4cats` → `dogs`), or the empty set, a genuine unitless
+ * number (`2px / 1px` → `2`). Anything else — a unit PRODUCT (`px·px`, `px·%`),
+ * a bare reciprocal (`px⁻¹`), or a surviving RATIO (`4em / 2cm` → `em/cm`) — has
+ * no CSS unit at all, and naming one means fabricating it out of `backupUnit`
+ * or silently dropping the denominator. Under `preserve` this is the gate for
+ * spelling the result as the authored `calc(…)` instead.
  */
 function expressible(u: UnitSet): boolean {
-  return u.num.length === 1 || (u.num.length === 0 && u.den.length === 0);
+  return u.den.length === 0 && u.num.length <= 1;
 }
 
 /**
@@ -263,11 +266,15 @@ export function validateFinalUnits(value: ValueGroup, modes: EvalModes, demandEx
 }
 
 /**
- * Unit-aware dimension arithmetic (dimension ⊕ dimension) — a faithful port of
- * less.js `Dimension.operate`: `+`/`-` unify the RHS to the LHS unit (raw magnitudes
- * when non-convertible), `*`/`/` compose the numerator/denominator multiset and
- * cancel. Only `strict` throws on a non-singular result; loose/preserve always
- * compute, keeping the LHS unit (`4em / 2cm` → `2em`, `8cats * 9dogs / 4cats` → `18dogs`).
+ * Unit-aware dimension arithmetic (dimension ⊕ dimension) — a port of less.js
+ * `Dimension.operate`: `+`/`-` unify the RHS to the LHS unit, `*`/`/` compose the
+ * numerator/denominator multiset and cancel. The modes part company only where
+ * the units are incompatible (V18): `loose` folds to the LHS unit like 4.x
+ * (`4em / 2cm` → `2em`, `1px + 3em` → `4px`); `strict` and `preserve` both
+ * REJECT a non-convertible `+`/`-` here — strict as an error, preserve as the
+ * authored `calc(…)` via `operate`'s catch — and a non-singular `*`/`/` result
+ * keeps computing so a chain can cancel (`8cats * 9dogs / 4cats` → `18dogs`),
+ * with strict validating and preserve spelling it only at the boundary.
  */
 function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalModes): Dimension {
   const isStrict = modes.unitMode === 'strict';
@@ -292,7 +299,7 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
       const target = u.num[0] ?? u.den[0] ?? '';
       const from = bu.num[0] ?? bu.den[0] ?? '';
       const bVal = convertValue(b.number, from, target);
-      if (isStrict && bVal === b.number && from !== target) {
+      if ((isStrict || modes.unitMode === 'preserve') && !convertible(from, target)) {
         throw new UnitArithmeticError(`Incompatible units. Change the units or use the unit function. Bad units: '${target}' and '${from}'.`);
       }
       value = calculate(a.number, op, bVal);
@@ -431,6 +438,15 @@ function calcSafe(op: string, a: Dimension, b: Dimension): boolean {
 }
 
 /**
+ * The `calc(…)` keywords `operate` produced for a non-convertible `+`/`-` under
+ * `preserve` (V18). A Keyword carries no unit facts, so the consuming boundary
+ * asks this set instead — it is what keeps the additive rung of the §4.7 ladder
+ * from being silent (`hasInvalidFinalUnits`, serialize.ts). Identity-keyed like
+ * `unitOwners` there; the value object travels unchanged to the boundary.
+ */
+export const preservedUnitClashes = new WeakSet<Value>();
+
+/**
  * Binary operation. Guard order (byte-faithful):
  *   1. a `calc(...)` keyword operand → splice its inner expression (flat calc),
  *   2. an un-operable keyword operand → preserve source `l op r`,
@@ -524,7 +540,11 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes)
     throw new TypeError(`Cannot operate on ${left.type}`);
   } catch (err) {
     if (err instanceof TypeError && modes.unitMode === 'preserve') {
-      return makeKeyword(`calc(${left.bytes} ${op} ${right.bytes})`);
+      const preserved = makeKeyword(`calc(${left.bytes} ${op} ${right.bytes})`);
+      if (err instanceof UnitArithmeticError) {
+        preservedUnitClashes.add(preserved);
+      }
+      return preserved;
     }
     throw err;
   }
