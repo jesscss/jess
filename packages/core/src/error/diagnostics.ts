@@ -775,23 +775,6 @@ export const ERR = {
   },
 
   /**
-   * A bracketed value reached OUTPUT with bytes CSS cannot read. `[ … ]` in a
-   * CSS value means grid `<line-names>` and nothing else, so anything but
-   * `<custom-ident>*` inside it would print bytes no browser parses.
-   *
-   * Raised at the PRINT site, never at construction: a bracketed list is a
-   * first-class `.jess` value that may be bound, passed, iterated and indexed.
-   * Only emitting one is constrained.
-   */
-  invalidLineNames(args: Common & { meta: { bytes: string } }) {
-    return makeJessError({
-      code: 'eval/invalid-line-names',
-      phase: 'eval',
-      ...args
-    });
-  },
-
-  /**
    * A RELATIONAL comparison whose operands share no common ground (`1px > red`).
    * Relational is trichotomous over every grounded pair, so the alternative is
    * answering `false` to both `a > b` and `b > a` — which is what the author

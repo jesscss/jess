@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { opaqueAtRuleBlock } from '../at-rule.js';
+import { unknownAtRuleBlock } from '../at-rule.js';
 import { comment, rule, stylesheet } from '../nodes.js';
 import { serialize } from '../serialize.js';
 import type { ValueEvaluator } from '../value-eval.js';
 
-describe('OpaqueAtRuleBlock', () => {
+describe('UnknownAtRuleBlock', () => {
   it('writes its header, prelude, and raw body verbatim', () => {
     const document = stylesheet([
-      opaqueAtRuleBlock('@unknown', 'screen and (color)', '\n  $unparsed: @{still-raw};\n'),
+      unknownAtRuleBlock('@unknown', 'screen and (color)', '\n  $unparsed: @{still-raw};\n'),
       comment('/* following statement stays after the opaque block */')
     ]);
 
@@ -31,7 +31,7 @@ describe('OpaqueAtRuleBlock', () => {
       typeCheck: rejectCall
     };
     const document = stylesheet([
-      opaqueAtRuleBlock('@vendor-rule', null, '@nested { value: fn(@not-a-variable); }')
+      unknownAtRuleBlock('@vendor-rule', null, '@nested { value: fn(@not-a-variable); }')
     ]);
 
     expect(serialize(document, { evaluator })).toEqual({
@@ -47,7 +47,7 @@ describe('OpaqueAtRuleBlock', () => {
     const document = stylesheet([
       rule('.host', [
         comment('/* before */'),
-        opaqueAtRuleBlock('@vendor', 'nested', 'raw { bytes }'),
+        unknownAtRuleBlock('@vendor', 'nested', 'raw { bytes }'),
         comment('/* after */')
       ])
     ]);

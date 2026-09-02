@@ -5,7 +5,7 @@
  * reference and no AST reduction. That `g`-freedom is what lets a consuming
  * dialect grammar inline them at its own macro-fusion site. They are exposed as
  * a composable recognition artifact (the same shape as `cssSyntax` in
- * `recognition.ts` and `opaqueAtRuleRecognition`), so a direct-AST grammar
+ * `recognition.ts` and `unknownAtRuleRecognition`), so a direct-AST grammar
  * fuses them through `composeLeaf([...])` and references each via `g.<name>`.
  * parseman cannot inline a bare cross-module combinator const used inside a
  * rules body; the `rules()` recognition-map shape is the proven cross-package

@@ -1,5 +1,6 @@
 /**
- * The unknown at-rule body is a simple block, and this is what pins it there.
+ * The unknown at-rule body is a simple block, kept as opaque raw bytes, and this
+ * is what pins it there.
  *
  * css-syntax-3 §5.4.2 "consume an at-rule" hands a `{` to §5.4.8 "consume a
  * simple block", so the block's SYNTACTIC shape — balanced braces, with
@@ -7,29 +8,31 @@
  * to define is the SEMANTIC reading: *"This specification places no limits on
  * what an at-rule's block may contain. Individual at-rules must define whether
  * they accept a block, and if so, how to parse it."* No spec defines one for an
- * unknown at-rule, so the grammar recognises the braces and asserts no meaning:
- * a nested `{ … }` is an `OpaqueGroup`, never a rule, and `a: b` inside it is
- * text, never a declaration.
+ * unknown at-rule, so the grammar scans the braces to their close and asserts no
+ * meaning: `a: b` inside the body is bytes, never a declaration. The tolerance
+ * an unknown at-rule adds lives in the SCANNER — the skip set reuses the
+ * canonical `blockComment`, `customEscape` and quoted-string terminals, and an
+ * unpaired quote is walked past as an ordinary byte — not in a forked
+ * `UnknownComment`/`UnknownString`/`UnknownGroup` copy of those productions.
  *
  * ## Why a reference implementation, and not the byte-identity oracle
  *
  * `test/byte-identity.test.ts` is the strongest instrument in this package and
- * it is BLIND to this production: deleting the `OpaqueComment` arm outright —
- * which truncates `@foo { a: b; /⁠* } *⁠/ c }` at the comment — leaves all six
- * of its assertions green, because its real-world corpus contains no unknown
- * at-rule with a comment in its body. Quoting it here would be a null result.
+ * it is BLIND to this production: its real-world corpus contains no unknown
+ * at-rule with a comment or an unpaired quote in its body, so a scan that
+ * mishandled either would leave all of its assertions green. Quoting it here
+ * would be a null result.
  *
  * So the instrument is `oldScanEnd` below: an independent re-implementation of
- * the FLAT capture this production replaced — `scanTo('}', { skip: [
- * blockComment, escape, doubleQuoted, singleQuoted, balanced('{','}') ] })`,
- * `packages/parser-shared/src/opaque-at-rule.ts`. It is written from that
+ * the flat body capture — `scanTo('}', { skip: [ blockComment, escape,
+ * doubleQuoted, singleQuoted, balanced('{','}') ] })`. It is written from that
  * algorithm rather than from the grammar, so agreement is evidence that the
- * structured capture recognises the same byte language rather than evidence
- * that two spellings of one mistake agree.
+ * grammar's scan recognises the same byte language.
  *
- * Its own controls: removing the `OpaqueComment` arm moves 2 of these cases,
- * removing `OpaqueGroup` moves 5. A green run here is a green run over a corpus
- * this file counts and asserts non-empty.
+ * Its own controls: the corpus below carries body comments (`/* x *​/`),
+ * unpaired quotes (`a: " }`), escaped braces (`a: b\}c`) and nested groups; a
+ * green run here is a green run over a corpus this file counts and asserts
+ * non-empty.
  */
 import { describe, expect, it } from 'vitest';
 import { parse } from '../src/index.js';
@@ -98,7 +101,7 @@ function firstOpaqueRawBody(node: unknown): string | null {
     return null;
   }
   const record = node as Record<string, unknown>;
-  if (record['type'] === 'OpaqueAtRuleBlock') {
+  if (record['type'] === 'UnknownAtRuleBlock') {
     return record['rawBody'] as string;
   }
   return firstOpaqueRawBody(record['rules']);
@@ -173,7 +176,7 @@ describe('unknown at-rule body: a simple block, not a rule list', () => {
     expect(compared).toBeGreaterThan(20);
   });
 
-  it('gives the CST an interior: groups, strings and comments carry spans', () => {
+  it('keeps the body opaque: no forked comment/string/group interior nodes', () => {
     const src = '@foo { .a { b: c } /* x */ d: "e}f" }';
     const result = parseCssCst(src);
     expect(result.ok).toBe(true);
@@ -183,27 +186,28 @@ describe('unknown at-rule body: a simple block, not a rule list', () => {
       if (node._tag !== 'node') {
         return;
       }
-      if (node.grammarType !== undefined && node.grammarType.startsWith('Opaque')) {
+      if (node.grammarType !== undefined && node.grammarType.startsWith('Unknown')) {
         found.push([node.grammarType, src.slice(node.span.start, node.span.end)]);
       }
       node.rules.forEach(child => visit(child as typeof node));
     };
     visit(result.tree as unknown as Parameters<typeof visit>[0]);
 
+    /*
+     * The unknown at-rule is ONE opaque node over its raw bytes. There is no
+     * `UnknownGroup`/`UnknownComment`/`UnknownString` interior: a comment inside
+     * the body is still a `Comment` and a string still a `String` — the grammar
+     * does not mint context-renamed copies of those productions.
+     */
     expect(found).toEqual([
-      ['OpaqueAtRuleBlock', src],
-      ['OpaqueAtPrelude', ''],
-      ['OpaqueBody', ' .a { b: c } /* x */ d: "e}f" '],
-      ['OpaqueGroup', '{ b: c }'],
-      ['OpaqueComment', '/* x */'],
-      ['OpaqueString', '"e}f"']
+      ['UnknownAtRuleBlock', src]
     ]);
   });
 
   it('asserts no semantics: the nested block is a group, never a rule', () => {
     const tree = parse('@foo { .a { b: c } }');
     expect(tree.rules).toHaveLength(1);
-    expect(tree.rules[0]!.type).toBe('OpaqueAtRuleBlock');
+    expect(tree.rules[0]!.type).toBe('UnknownAtRuleBlock');
     expect(firstOpaqueRawBody(tree)).toBe(' .a { b: c } ');
   });
 });

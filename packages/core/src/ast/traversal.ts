@@ -26,7 +26,7 @@ import type {
   ValueSlot,
   VariableDeclaration
 } from './nodes.js';
-import type { AtRuleBlock, AtRuleStatement, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
+import type { AtRuleBlock, AtRuleStatement, UnknownAtRuleBlock, Plugin } from './at-rule.js';
 import type { GuardNode } from './guard.js';
 import type { CallArg, CallValue } from './mixin-dispatch.js';
 
@@ -473,7 +473,7 @@ function walkModuleImport(node: ModuleImport, hooks: AstVisitHooks, depth: numbe
   walkNode(node.path, hooks, 'module-import.path', node, 0, depth + 1);
 }
 
-function walkOpaqueAtRuleBlock(node: OpaqueAtRuleBlock): void {
+function walkUnknownAtRuleBlock(node: UnknownAtRuleBlock): void {
   void node;
 }
 
@@ -538,8 +538,8 @@ function walkNode(
     case 'Plugin':
       walkPlugin(node, hooks, depth);
       break;
-    case 'OpaqueAtRuleBlock':
-      walkOpaqueAtRuleBlock(node);
+    case 'UnknownAtRuleBlock':
+      walkUnknownAtRuleBlock(node);
       break;
     case 'SelectorList':
       walkSelectorList(node, hooks, depth);

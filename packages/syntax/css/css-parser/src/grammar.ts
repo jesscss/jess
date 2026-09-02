@@ -19,7 +19,6 @@
 import { balanced, classifiedTrivia, choice, compose, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, token, when } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
-import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import {
   any,
@@ -60,8 +59,7 @@ import {
   keyframeSelectorList,
   keyword,
   list,
-  opaqueAtRuleBlock,
-  opaqueBodyText,
+  unknownAtRuleBlock,
   operation,
   optionalValue,
   pseudoSelector,
@@ -201,19 +199,7 @@ type GrammarRuleName =
   | 'NamespaceTypeSelector'
   | 'NestingSelector'
   | 'OfTypePseudoArgument'
-  | 'OpaqueAtRuleBodyCapture'
-  | 'OpaqueAtPrelude'
-  | 'OpaqueAtRulePreludeCapture'
-  | 'OpaqueAtRuleBlock'
-  | 'OpaqueBody'
-  | 'OpaqueBodyPart'
-  | 'OpaqueBodyText'
-  | 'OpaqueBodyComment'
-  | 'OpaqueBodyQuoted'
-  | 'OpaqueBodyStray'
-  | 'OpaqueGroup'
-  | 'OpaqueComment'
-  | 'OpaqueString'
+  | 'UnknownAtRuleBlock'
   | 'PageBlock'
   | 'Percentage'
   | 'Property'
@@ -598,6 +584,36 @@ const balancedBraces = balanced(
   '}',
   { skip: [blockComment, customDoubleQuoted, customSingleQuoted, customSlash] }
 );
+
+/*
+ * An unknown at-rule's block is a simple block of component values
+ * (css-syntax-3 §5.4.2 → §5.4.8): braces balanced, with strings, comments and
+ * escapes inert. No spec defines a semantic reading for an unknown at-rule, so
+ * the body is scanned to its closing `}` and kept as raw bytes — the tolerance
+ * an unknown at-rule adds lives in the SCANNER, not in a forked copy of the
+ * comment/string/group productions. The skip set reuses the canonical
+ * `blockComment`, `customEscape`, `customDoubleQuoted` and `customSingleQuoted`
+ * terminals verbatim; the balanced brace carries `customEscape` (not the
+ * `customSlash` of `balancedBraces`) so a `\}` stays inert inside a nested
+ * group, which is the one byte-language difference this tolerant scan requires.
+ */
+const unknownAtRuleBrace = balanced(
+  '{',
+  '}',
+  { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] }
+);
+const unknownAtRuleSkip = [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, unknownAtRuleBrace];
+const unknownAtRulePrelude = optional(scanTo(
+  choice(
+    literal('{'),
+    literal(';')
+  ),
+  { skip: unknownAtRuleSkip }
+));
+const unknownAtRuleBody = noTrivia(scanTo(
+  literal('}'),
+  { skip: unknownAtRuleSkip }
+));
 
 /*
  * A general-enclosed payload is grammar-owned arbitrary CSS component text. This
@@ -999,8 +1015,8 @@ const cssFactory = (g: GrammarSelf) => {
    * syntax, not a relative combinator, so it is excluded (mirrors Less's
    * `relativeSelectorCombinator`).
    */
-  const RelativeComplexSelector = node(
-    'RelativeComplexSelector',
+  const RelativeSelector = node(
+    'RelativeSelector',
     sequence(
       optional(relativeSelectorCombinator),
       g.ComplexSelector
@@ -1028,7 +1044,7 @@ const cssFactory = (g: GrammarSelf) => {
     parser(
       { trivia: interstitialTrivia },
       oneOrMoreSep(
-        RelativeComplexSelector,
+        RelativeSelector,
         literal(',')
       )
     ),
@@ -1206,7 +1222,7 @@ const cssFactory = (g: GrammarSelf) => {
    * A NESTED ruleset's selector list is relative-capable: CSS Nesting lets a
    * nested selector open with a combinator (`.parent { > .child { … } }`),
    * where `>` relates to the implicit parent (`.parent > .child`). This reuses
-   * `RelativeComplexSelector` — the same producer the `:has()`-style pseudos
+   * `RelativeSelector` — the same producer the `:has()`-style pseudos
    * use. Each item keeps its ORDINARY shape (`SimpleSelector`/`CompoundSelector`/
    * `ComplexSelector`, whatever it reduces to); the nesting context ADDS
    * `RelativeSelector` as one more admissible item, produced only when the item
@@ -1219,7 +1235,7 @@ const cssFactory = (g: GrammarSelf) => {
   const NestedSelectorList = node(
     'SelectorList',
     oneOrMoreSep(
-      RelativeComplexSelector,
+      RelativeSelector,
       literal(',')
     ),
     (children, _fields, span) => withSourceSpan(selist(...selectorBranches(children)), span)
@@ -2662,14 +2678,6 @@ const cssFactory = (g: GrammarSelf) => {
       return text === '' ? null : any(text);
     }
   );
-  const OpaqueAtPrelude = node(
-    'OpaqueAtPrelude',
-    g.OpaqueAtRulePreludeCapture,
-    (children) => {
-      const text = children.length === 0 ? '' : tokenText(children[0]).trim();
-      return text === '' ? null : text;
-    }
-  );
 
   /*
    * An unknown at-rule's block is a simple block of component values
@@ -2679,61 +2687,35 @@ const cssFactory = (g: GrammarSelf) => {
    * *"This specification places no limits on what an at-rule's block may
    * contain. Individual at-rules must define whether they accept a block, and
    * if so, how to parse it."* No spec defines one for an unknown at-rule, so
-   * this recognises the braces and no meaning: a nested `{ … }` is a group,
-   * never a rule, and `a: b` inside it is text, never a declaration.
+   * the prelude and body are scanned to their delimiters and kept as raw bytes
+   * (`unknownAtRulePrelude`/`unknownAtRuleBody`), reusing the canonical comment,
+   * escape and quoted-string terminals — a string is still the canonical
+   * `String`, a comment still `Comment`; the unknown at-rule adds tolerance in
+   * the scanner (an unpaired quote is walked past as an ordinary byte), not a
+   * forked copy of those productions.
    *
-   * The AST reduction is byte-for-byte what the flat capture produced, so this
-   * adds a CST interior and moves nothing downstream.
+   * The prelude and body scans are both optional/zero-width — an empty header or
+   * body contributes no child slot — so the reducer anchors on the structural
+   * `{` literal: the prelude is the one child before it, the body the one child
+   * between it and the closing `}`.
    */
-  const OpaqueGroup = node(
-    'OpaqueGroup',
-    noTrivia(sequence(
-      literal('{'),
-      many(g.OpaqueBodyPart),
-      literal('}')
-    )),
-    children => opaqueBodyText(children)
-  );
-  const OpaqueComment = node(
-    'OpaqueComment',
-    g.OpaqueBodyComment,
-    children => tokenText(children[0])
-  );
-  const OpaqueString = node(
-    'OpaqueString',
-    g.OpaqueBodyQuoted,
-    children => opaqueBodyText(children)
-  );
-  const OpaqueBodyPart: Combinator<unknown> = choice(
-    g.OpaqueBodyText,
-    g.OpaqueComment,
-    g.OpaqueString,
-    g.OpaqueGroup,
-    g.OpaqueBodyStray
-  );
-  const OpaqueBody = node(
-    'OpaqueBody',
-    noTrivia(many(g.OpaqueBodyPart)),
-    children => opaqueBodyText(children)
-  );
-  const OpaqueAtRuleBlock = node(
-    'OpaqueAtRuleBlock',
+  const UnknownAtRuleBlock = node(
+    'UnknownAtRuleBlock',
     sequence(
       routed(),
       noTrivia(sequence(
-        g.OpaqueAtPrelude,
+        unknownAtRulePrelude,
         literal('{'),
-        g.OpaqueBody,
+        unknownAtRuleBody,
         literal('}')
       ))
     ),
     (children) => {
-      const prelude = children[1];
-      const rawBody = children[3];
-      if ((prelude !== null && typeof prelude !== 'string') || typeof rawBody !== 'string') {
-        throw new TypeError('OpaqueAtRuleBlock lost its grammar-owned raw facts.');
-      }
-      return opaqueAtRuleBlock(
+      const openIdx = tokenText(children[1]) === '{' ? 1 : 2;
+      const preludeText = openIdx === 2 ? tokenText(children[1]).trim() : '';
+      const prelude = preludeText === '' ? null : preludeText;
+      const rawBody = children.length - openIdx === 3 ? tokenText(children[openIdx + 1]) : '';
+      return unknownAtRuleBlock(
         tokenText(children[0]!),
         prelude,
         rawBody
@@ -3458,9 +3440,9 @@ const cssFactory = (g: GrammarSelf) => {
       g.DocumentBlock
     )
   );
-  const opaqueAtRuleOtherwise = otherwise(choice(
+  const unknownAtRuleOtherwise = otherwise(choice(
     g.RoutedAtRuleStatement,
-    g.OpaqueAtRuleBlock
+    g.UnknownAtRuleBlock
   ));
   const StylesheetAtRule = dispatch(
     g.AtRuleKeyword,
@@ -3484,7 +3466,7 @@ const cssFactory = (g: GrammarSelf) => {
     keyframesAtRuleCase,
     fontFeatureValuesAtRuleCase,
     documentAtRuleCase,
-    opaqueAtRuleOtherwise
+    unknownAtRuleOtherwise
   );
   const DeclarationListAtRule = dispatch(
     g.AtRuleKeyword,
@@ -3508,7 +3490,7 @@ const cssFactory = (g: GrammarSelf) => {
     keyframesAtRuleCase,
     fontFeatureValuesAtRuleCase,
     documentAtRuleCase,
-    opaqueAtRuleOtherwise
+    unknownAtRuleOtherwise
   );
   const ConditionalGroupAtRule = dispatch(
     g.AtRuleKeyword,
@@ -3552,7 +3534,7 @@ const cssFactory = (g: GrammarSelf) => {
       ['@document', '@-moz-document'],
       g.DocumentBlock
     ),
-    otherwise(g.OpaqueAtRuleBlock)
+    otherwise(g.UnknownAtRuleBlock)
   );
 
   /*
@@ -3814,13 +3796,7 @@ const cssFactory = (g: GrammarSelf) => {
     LayerStatement,
     AtRulePrelude,
     StatementPrelude,
-    OpaqueAtPrelude,
-    OpaqueGroup,
-    OpaqueComment,
-    OpaqueString,
-    OpaqueBodyPart,
-    OpaqueBody,
-    OpaqueAtRuleBlock,
+    UnknownAtRuleBlock,
     LayerBlock,
     NestedLayerBlock,
     DescriptorBlock,
@@ -3877,24 +3853,24 @@ const cssFactory = (g: GrammarSelf) => {
   };
 };
 
-export const cssGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules(
+export const cssGrammar = composeLeaf([cssSyntax, cssPseudoSyntax, rules(
   { trivia: whitespace, scanSkip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] },
   cssFactory
 )]);
 
 /** AST artifact with Parseman line/column tracking enabled. */
-export const cssPositionsGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules(
+export const cssPositionsGrammar = composeLeaf([cssSyntax, cssPseudoSyntax, rules(
   { trivia: whitespace, scanSkip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted], trackLines: true },
   cssFactory
 )]);
 
-export const cssCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules(
+export const cssCstGrammar = composeLeaf([cssSyntax, cssPseudoSyntax, rules(
   { trivia: whitespace, scanSkip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted], hostMode: 'cst' },
   cssFactory
 )]);
 
 /** CST artifact with Parseman line/column tracking enabled. */
-export const cssCstPositionsGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules(
+export const cssCstPositionsGrammar = composeLeaf([cssSyntax, cssPseudoSyntax, rules(
   { trivia: whitespace, scanSkip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted], hostMode: 'cst', trackLines: true },
   cssFactory
 )]);
@@ -3902,13 +3878,13 @@ export const cssCstPositionsGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecogn
 /**
  * CSS's WHOLE grammar as one hole-free composable base, for a dialect to
  * `compose([cssBaseRules, rules(dialectDelta)])` onto and override by name.
- * The recognition pieces (`cssSyntax`, opaque-at-rule, pseudo) travel with it so
+ * The recognition pieces (`cssSyntax`, pseudo) travel with it so
  * a dialect delta need only add its own scan-skips. Every reducer this base
  * carries references only importable bindings (canonical AST constructors and
  * the hoisted `@jesscss/core/ast` grammar helpers), so the lifted compose
  * analyzer can carry its `buildImports` provenance and the base macro-fuses.
  */
-export const cssBaseRules = compose([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules(
+export const cssBaseRules = compose([cssSyntax, cssPseudoSyntax, rules(
   { trivia: whitespace, scanSkip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] },
   cssFactory
 )], { hostMode: 'ast' });

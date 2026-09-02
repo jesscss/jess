@@ -17,33 +17,17 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { balanced, classifiedTrivia, choice, composeLeaf, dispatch, endsWith, expect, field, keywords, label, literal, makeWhen, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, token, when } from 'parseman' with { type: 'macro' };
+import { balanced, classifiedTrivia, choice, compose, dispatch, endsWith, expect, field, keywords, label, literal, makeWhen, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, token, when } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
+import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
+import { cssBaseRules } from '@jesscss/css-parser/grammar';
 import { ScssImportPostludeError } from './parse-error.js';
-import { anonymousMixin, any, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, color, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, ifValue, importIsCompileTime, interpolation, interpolatedSimpleSelector, isComplexSelector, isForBinding, isModuleImport, isRelativeSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, CallArg, Collection, CollectionEntry, Color, Comment, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
-type ScssValueTail = { readonly kind: 'space' | 'slash'; readonly value: ValueNode; readonly separator: string };
-
-/** One authored call argument. The AST's own {@link CallArg}, not a local
- *  look-alike: a `$name:` argument is the SAME node whether the callee is a
- *  mixin (`@include m($x: 1)`) or a function (`color.adjust($c, $lightness: -10%)`),
- *  and every one is built by `callArg` so the array stays monomorphic. */
-type ScssCallArg = CallArg<ValueSlot>;
-
-/** An argument-list separator carrying the argument it precedes. */
-type ScssArgumentPair = { readonly separator: string; readonly value: ScssCallArg };
-type ScssSegmentCombinator = ' ' | '>' | '+' | '~' | '|' | '||';
-
-const scriptModuleExtensions = ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts', '.json'] as const;
-
-function isScriptModulePath(path: string): boolean {
-  const normalized = path.toLowerCase();
-  return scriptModuleExtensions.some(extension => normalized.slice(-extension.length) === extension);
-}
+import { anonymousMixin, any, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, importIsCompileTime, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
+import { COMPARISON_OPERATORS, appendLiteral, scssBranchSegments, contentArgRaw, customValue, customValueFromParts, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isAnonymousMixin, isCollection, isCollectionEntry, isScssDeclaration, isExtendInstruction, isScssImportTarget, isScssInterpolation, isParamArray, isQuoted, isScriptModulePath, isScssValuePair, isScssValueTail, isScssSelectorBranch, isScssSelectorList, isSelectorTerm, isScssSimpleToken, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, keywordizeValues, mapKeyValue, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, scssSelectorTermFromTokens, scssSourceText, statementChildren, statements, staticQuoted, scssValueSlot } from './grammar-helpers.js';
+import type { ScssArgumentPair, ScssCallArg, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
   Stylesheet: Combinator<Stylesheet>;
@@ -53,10 +37,7 @@ type ScssRules = {
   SassInterpolation: Combinator<Interpolation>;
   Quoted: Combinator<Quoted | Interpolation>;
   LiteralQuoted: Combinator<Quoted>;
-  Keyword: Combinator<Keyword>;
   CustomPropertyValue: Combinator<Keyword>;
-  Color: Combinator<Color>;
-  UnicodeRange: Combinator<ValueNode>;
   Dimension: Combinator<Dimension>;
   InterpolatedUrlValue: Combinator<Interpolation>;
   InterpolatedValue: Combinator<Interpolation>;
@@ -79,7 +60,6 @@ type ScssRules = {
   ValuePair: Combinator<ScssValuePair>;
   ArgumentPair: Combinator<ScssArgumentPair>;
   Value: Combinator<ValueSlot>;
-  Important: Combinator<true>;
   InterpolatedProperty: Combinator<Interpolation>;
   CustomPropertyName: Combinator<string | Interpolation>;
   CustomPart: Combinator<unknown>;
@@ -182,18 +162,15 @@ type ScssRules = {
   PseudoArgument: Combinator<string>;
   PseudoArgumentGroup: Combinator<string>;
   PseudoSelector: Combinator<SimpleToken>;
-  NestingSelector: Combinator<SimpleSelector>;
   CompoundSelector: Combinator<SelectorTerm>;
   ComplexSelector: Combinator<SelectorBranch>;
-  RelativeComplex: Combinator<SelectorBranch>;
+  RelativeSelector: Combinator<SelectorBranch>;
   SelectorList: Combinator<SelectorList>;
   NestedSelector: Combinator<SelectorList>;
   Extend: Combinator<ExtendInstruction>;
-  OpaqueAtPrelude: Combinator<string | null>;
-  OpaqueBody: Combinator<string>;
   ScssGenericAtRuleName: Combinator<string>;
-  OpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
-  OpaqueAtRuleStatement: Combinator<AtRuleStatement>;
+  UnknownAtRuleBlock: Combinator<UnknownAtRuleBlock>;
+  GenericAtRuleStatement: Combinator<AtRuleStatement>;
   Ruleset: Combinator<Ruleset>;
   NestedRuleset: Combinator<Ruleset>;
   rw: Combinator<unknown>;
@@ -202,965 +179,29 @@ type ScssRules = {
   AtRootContinuation: Combinator<unknown>;
 };
 
+/*
+ * Rules converged to the CSS base and inherited via compose. SCSS deletes its
+ * own delta and references the css-parser rule through `g.`; each reducer
+ * differed only in `requireToken().value` vs `tokenText()` over one token (or,
+ * for `Important`, a dropped defensive throw), so the accepted language, node
+ * name, and AST/CST are byte-identical (scss byte-identity oracle: identical).
+ * These names are no longer in `ScssRules`, so declare their `g.`-facing types
+ * here, mirroring less-parser's `SharedSyntax`.
+ */
+type ScssSharedSyntax = {
+  Color: Combinator<Color>;
+  UnicodeRange: Combinator<ValueNode>;
+  Keyword: Combinator<Keyword>;
+  Important: Combinator<true>;
+  NestingSelector: Combinator<SimpleSelector>;
+};
+
 type ScssInputRules =
   ScssRules
+  & ScssSharedSyntax
   & typeof cssSyntax
   & typeof cssPseudoSyntax
-  & typeof opaqueAtRuleRecognition;
-
-function requireToken(value: unknown): Token {
-  if (typeof value !== 'object' || value === null || !('value' in value) || typeof value.value !== 'string') {
-    throw new TypeError('SCSS grammar produced a non-token child.');
-  }
-  return { value: value.value };
-}
-
-function sourceText(value: unknown): string {
-  if (Array.isArray(value)) {
-    return value.map(sourceText).join('');
-  }
-  if (typeof value === 'string') {
-    return value;
-  }
-  if (typeof value === 'object' && value !== null && 'src' in value && typeof value.src === 'string') {
-    return value.src;
-  }
-  return requireToken(value).value;
-}
-
-/** Map query/media-prelude children to value nodes, coercing bare keyword tokens
- *  (`and`/`or`/media types) to `Keyword`s while passing structured values through. */
-function keywordizeValues(children: readonly unknown[]): ValueNode[] {
-  return children.map(child => isValue(child) ? child : keyword(requireToken(child).value));
-}
-
-/** Concatenate the authored spelling of every child. The canonical opaque
- *  representation for attribute selectors and non-structured pseudo arguments. */
-function joinSourceText(children: readonly unknown[]): string {
-  return children.map(sourceText).join('');
-}
-
-/** Concatenate every child token value into one opaque static-prelude token. */
-function joinTokenValue(children: readonly unknown[]): Token {
-  return { value: children.map(requireToken).map(token => token.value).join('') };
-}
-
-/** Shared reducer for a static `"…"` / `'…'` quoted value: the opening quote is
- * `children[0]`, the raw body is `children[1]`, and both the source spelling and
- * decoded body are preserved verbatim (never interpolation). */
-function staticQuoted(children: readonly unknown[]): Quoted {
-  const quote = requireToken(children[0]).value;
-  const value = requireToken(children[1]).value;
-  return quoted(
-    `${quote}${value}${quote}`,
-    value,
-    quote,
-    false
-  );
-}
-
-function isQuoted(value: unknown): value is Quoted {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'Quoted'
-    && 'src' in value
-    && typeof value.src === 'string'
-    && 'value' in value
-    && typeof value.value === 'string'
-    && 'quote' in value
-    && typeof value.quote === 'string'
-    && 'escaped' in value
-    && typeof value.escaped === 'boolean';
-}
-
-function isUrl(value: unknown): value is Url {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value && value.type === 'Url'
-    && 'value' in value && isValue(value.value);
-}
-
-function isSimpleSelector(value: unknown): value is SimpleSelector {
-  return typeof value === 'object' && value !== null
-    && 'type' in value && value.type === 'SimpleSelector'
-    && 'text' in value && (typeof value.text === 'string' || value.text === null)
-    && 'interp' in value && (isInterpolation(value.interp) || value.interp === null);
-}
-
-function isCompoundSelector(value: unknown): value is CompoundSelector {
-  return typeof value === 'object' && value !== null
-    && 'type' in value && value.type === 'CompoundSelector'
-    && 'value' in value && Array.isArray(value.value)
-    && value.value.every(isSimpleToken);
-}
-
-function isSelectorTerm(value: unknown): value is SelectorTerm {
-  return isSimpleToken(value) || isCompoundSelector(value);
-}
-
-function isSelectorBranch(value: unknown): value is SelectorBranch {
-  return isSelectorTerm(value) || isComplexSelector(value) || isRelativeSelector(value);
-}
-
-function isSelectorList(value: unknown): value is SelectorList {
-  return typeof value === 'object' && value !== null
-    && 'type' in value && value.type === 'SelectorList'
-    && 'selectors' in value && Array.isArray(value.selectors)
-    && value.selectors.every(isSelectorBranch);
-}
-
-function requireSelectorList(value: unknown): SelectorList {
-  if (!isSelectorList(value)) {
-    throw new TypeError('SCSS grammar produced a non-selector-list child.');
-  }
-  return value;
-}
-
-const selectorTermFromTokens = (tokens: readonly SimpleToken[]): SelectorTerm =>
-  selectorTermOf([tokens[0]!, ...tokens.slice(1)]);
-
-/*
- * A compound token is either a plain `SimpleSelector` or a structured
- * `PseudoSelector` (`:is(.a, .b)` etc.). The structured pseudo carries its
- * argument as a `SelectorList` in `args` and leaves `text` null; core
- * serialization owns the inline join.
- */
-function isSimpleToken(value: unknown): value is SimpleToken {
-  return isSimpleSelector(value)
-    || (typeof value === 'object' && value !== null && 'type' in value && value.type === 'PseudoSelector');
-}
-
-function scssCombinatorText(value: unknown): ' ' | '>' | '+' | '~' | '||' {
-  if (isToken(value) && (value.value === '>' || value.value === '+' || value.value === '~' || value.value === '||')) {
-    return value.value;
-  }
-  return ' ';
-}
-
-function scssRelativeCombinator(value: unknown): '>' | '+' | '~' {
-  const token = requireToken(value).value;
-  if (token === '>' || token === '+') {
-    return token;
-  }
-  return '~';
-}
-
-function branchSegments(branch: SelectorBranch): [{ combinator?: ScssSegmentCombinator; term: SelectorTerm }, ...Array<{ combinator?: ScssSegmentCombinator; term: SelectorTerm }>] {
-  if (branch.type !== 'ComplexSelector' && branch.type !== 'RelativeSelector') {
-    return [{ term: branch }];
-  }
-  const segments: Array<{ combinator?: ScssSegmentCombinator; term: SelectorTerm }> = [];
-  let combinator: ScssSegmentCombinator = ' ';
-  const start = branch.type === 'RelativeSelector' ? 1 : 0;
-  for (let index = start; index < branch.value.length; index++) {
-    const part = branch.value[index]!;
-    if (typeof part === 'string') {
-      combinator = part;
-    } else {
-      segments.push(segments.length === 0 ? { term: part } : { combinator, term: part });
-      combinator = ' ';
-    }
-  }
-  return [segments[0]!, ...segments.slice(1)];
-}
-
-function isImportTarget(value: unknown): value is Quoted | Url | Interpolation {
-  return isQuoted(value) || isUrl(value) || isInterpolation(value);
-}
-
-function isParam(value: unknown): value is Param {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-  if ('name' in value && typeof value.name !== 'string') {
-    return false;
-  }
-  if ('default' in value && !isValueSlotValue(value.default)) {
-    return false;
-  }
-  if ('pattern' in value && !isValueSlotValue(value.pattern)) {
-    return false;
-  }
-  return !('rest' in value) || typeof value.rest === 'boolean';
-}
-
-function isParamArray(value: unknown): value is Param[] {
-  return Array.isArray(value) && value.every(isParam);
-}
-
-function isAnonymousMixin(value: unknown): value is AnonymousMixin {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'AnonymousMixin';
-}
-
-function requireForBinding(value: unknown): ForBinding {
-  if (!isForBinding(value)) {
-    throw new TypeError('SCSS grammar produced an invalid for binding.');
-  }
-  return value;
-}
-
-function requireString(value: unknown): string {
-  if (typeof value !== 'string') {
-    throw new TypeError('SCSS grammar produced a non-string child.');
-  }
-  return value;
-}
-
-function isVarRef(value: unknown): value is Lookup {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'Lookup'
-    && 'kind' in value
-    && value.kind === 'var'
-    && 'name' in value
-    && typeof value.name === 'string';
-}
-
-function isColor(value: unknown): value is Color {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'Color'
-    && 'src' in value
-    && typeof value.src === 'string';
-}
-
-function isDimension(value: unknown): value is Dimension {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'Dimension'
-    && 'number' in value
-    && typeof value.number === 'number'
-    && 'unit' in value
-    && typeof value.unit === 'string'
-    && 'src' in value
-    && typeof value.src === 'string';
-}
-
-function isFunctionCall(value: unknown): value is FunctionCall {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'FunctionCall'
-    && 'name' in value
-    && typeof value.name === 'string'
-    && 'args' in value
-    && Array.isArray(value.args);
-}
-
-function isInterpolation(value: unknown): value is Interpolation {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'Interpolation'
-    && 'parts' in value
-    && Array.isArray(value.parts);
-}
-
-function requireInterpolation(value: unknown): Interpolation {
-  if (!isInterpolation(value)) {
-    throw new TypeError('SCSS grammar produced a non-interpolation child.');
-  }
-  return value;
-}
-
-function appendLiteral(parts: Interpolation['parts'], text: string): void {
-  const previous = parts[parts.length - 1];
-  if (previous !== undefined && 'lit' in previous) {
-    parts[parts.length - 1] = { lit: previous.lit + text };
-  } else {
-    parts.push({ lit: text });
-  }
-}
-
-/** Flatten a grammar-owned raw template without ever reparsing its bytes. */
-function interpolationFromTemplateChildren(children: readonly unknown[]): Interpolation {
-  const parts: Interpolation['parts'] = [];
-  for (const child of children) {
-    if (isInterpolation(child)) {
-      for (const part of child.parts) {
-        if ('lit' in part) {
-          appendLiteral(
-            parts,
-            part.lit
-          );
-        } else {
-          parts.push(part);
-        }
-      }
-    } else {
-      appendLiteral(
-        parts,
-        requireToken(child).value
-      );
-    }
-  }
-  return interpolation(parts);
-}
-
-/**
- * Turn the grammar-owned parts of a custom-property value into one canonical
- * value. Custom-property values are not evaluated: everything outside a typed
- * `#{…}` stays literal `<declaration-value>` text, so the reduction only joins
- * grammar children — it never rescans source. Nested balanced groups arrive as
- * nested arrays from the paren/square/curly productions.
- */
-function customValueFromParts(children: readonly unknown[], parts: Interpolation['parts'], seen: { interpolated: boolean }): void {
-  for (const child of children) {
-    if (Array.isArray(child)) {
-      customValueFromParts(
-        child,
-        parts,
-        seen
-      );
-    } else if (isInterpolation(child)) {
-      seen.interpolated = true;
-      for (const part of child.parts) {
-        if ('lit' in part) {
-          appendLiteral(
-            parts,
-            part.lit
-          );
-        } else {
-          parts.push(part);
-        }
-      }
-    } else {
-      appendLiteral(
-        parts,
-        requireToken(child).value
-      );
-    }
-  }
-}
-
-/** Reduce a whole custom-property value to `Interpolation` (when it carries a
- * `#{…}`) or to verbatim `Any` text. */
-function customValue(children: readonly unknown[]): ValueNode {
-  const parts: Interpolation['parts'] = [];
-  const seen = { interpolated: false };
-  customValueFromParts(
-    children,
-    parts,
-    seen
-  );
-  if (seen.interpolated) {
-    return interpolation(parts);
-  }
-  return any(parts.map(part => 'lit' in part ? part.lit : '').join(''));
-}
-
-function isArithmeticOperator(text: string): boolean {
-  return text === '+' || text === '-' || text === '*' || text === '/' || text === '%';
-}
-
-/** Fold a grammar-produced left-associative operator chain. Precedence belongs
- * to the caller's product/sum production, never to a source-text recovery.
- *
- * Operands and operator characters arrive in authored order with the operators'
- * padding interleaved. The pads are their own terms, so an operator no longer
- * sits a constant distance from its operand and the fold reads the shape rather
- * than a fixed stride — and a pad can hold a comment whose own `/` and `*` would
- * defeat any attempt to recover the operator from the padded text. */
-function foldOperation(children: readonly unknown[]): ValueNode {
-  const first = children.find(isValue);
-  if (first === undefined) {
-    throw new TypeError('SCSS arithmetic grammar produced no operand.');
-  }
-  let result = first;
-  let operator: string | undefined;
-  for (let index = children.indexOf(first) + 1; index < children.length; index += 1) {
-    const child = children[index];
-    if (isValue(child)) {
-      if (operator === undefined) {
-        throw new TypeError('SCSS arithmetic grammar lost an operator operand.');
-      }
-      result = operation(
-        operator,
-        result,
-        child,
-        false,
-        cssBaseMathOutsideParens(operator)
-      );
-      operator = undefined;
-      continue;
-    }
-    if (child === undefined || child === null) {
-      continue;
-    }
-    const text = requireToken(child).value;
-    if (isArithmeticOperator(text)) {
-      operator = text;
-    }
-  }
-  if (operator !== undefined) {
-    throw new TypeError('SCSS arithmetic grammar lost an operator operand.');
-  }
-  return result;
-}
-
-function isValue(value: unknown): value is ValueNode {
-  /*
-   * Dispatch on the node tag once instead of re-testing typeof/null/`type` in a
-   * flat `||` chain: this predicate runs on essentially every value child via
-   * `.find(isValue)`/`.filter(isValue)`. Each tag maps to exactly one shape
-   * check, so the accepted set is identical to the former ordered disjunction.
-   */
-  if (typeof value !== 'object' || value === null || !('type' in value)) {
-    return false;
-  }
-  switch (value.type) {
-    case 'Quoted':
-      return isQuoted(value);
-    case 'Lookup':
-      return isVarRef(value);
-    case 'Color':
-      return isColor(value);
-    case 'Dimension':
-      return isDimension(value);
-    case 'FunctionCall':
-      return isFunctionCall(value);
-    case 'Interpolation':
-      return isInterpolation(value);
-    case 'Any':
-      return 'src' in value && typeof value.src === 'string';
-    case 'Url':
-      return 'value' in value && isValue(value.value);
-    case 'Sequence':
-      return 'parts' in value && Array.isArray(value.parts);
-    case 'List':
-      return 'value' in value && Array.isArray(value.value);
-    case 'Block':
-    case 'Expression':
-      return 'value' in value && isValueSlotValue(value.value);
-    case 'Operation':
-      return 'left' in value && 'right' in value && isValue(value.left) && isValue(value.right);
-    case 'Keyword':
-    case 'Null':
-      return 'src' in value && typeof value.src === 'string';
-    case 'Collection':
-      return 'entries' in value && Array.isArray(value.entries);
-    case 'Reference':
-      return 'base' in value && 'steps' in value && Array.isArray(value.steps);
-    case 'AnonymousMixin':
-      return 'rules' in value && Array.isArray(value.rules);
-    case 'IfValue':
-      return 'branches' in value && Array.isArray(value.branches) && value.branches.length > 0;
-    case 'Condition':
-      return 'guard' in value && isGuardNode(value.guard) && 'src' in value && typeof value.src === 'string';
-    default:
-      return false;
-  }
-}
-
-function valueSlot(value: ValueNode): ValueSlot {
-  if (value.type === 'Sequence') {
-    return value.parts;
-  }
-  if (value.type === 'Block' && isSequence(value.value)) {
-    return { ...value, value: value.value.parts };
-  }
-  return value;
-}
-
-function isSequence(value: ValueSlot): value is Extract<ValueNode, { type: 'Sequence' }> {
-  return isValue(value) && value.type === 'Sequence';
-}
-
-function isValueSlotValue(value: unknown): value is ValueSlot {
-  return Array.isArray(value) ? value.every(isValueSlotValue) : isValue(value);
-}
-
-function requireValueSlot(value: unknown): ValueSlot {
-  return Array.isArray(value) ? value as ValueSlot : valueSlot(requireValue(value));
-}
-
-function isDeclaration(value: unknown): value is Declaration {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'Declaration'
-    && 'name' in value
-    && (typeof value.name === 'string' || isInterpolation(value.name))
-    && 'value' in value
-    && isValueSlotValue(value.value);
-}
-
-function isCollection(value: unknown): value is Collection {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Collection';
-}
-function isCollectionEntry(value: unknown): value is CollectionEntry {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'CollectionEntry'
-    && 'key' in value
-    && isValueSlotValue(value.key)
-    && 'value' in value
-    && isValueSlotValue(value.value);
-}
-
-function isRuleset(value: unknown): value is Ruleset {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Ruleset';
-}
-
-function isMixinDefinition(value: unknown): value is MixinDefinition {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'MixinDefinition';
-}
-
-function isMixinCall(value: unknown): value is MixinCall {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'MixinCall';
-}
-
-function isFor(value: unknown): value is For {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'For';
-}
-
-function isIf(value: unknown): value is If {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'If';
-}
-
-function isWhile(value: unknown): value is While {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'While';
-}
-
-function isAtRuleBlock(value: unknown): value is AtRuleBlock {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'AtRuleBlock';
-}
-
-function isAtRuleStatement(value: unknown): value is AtRuleStatement {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'AtRuleStatement';
-}
-
-function isComment(value: unknown): value is Comment {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Comment';
-}
-function isStyleImport(value: unknown): value is StyleImport {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'StyleImport';
-}
-
-function isExtendInstruction(value: unknown): value is ExtendInstruction {
-  return typeof value === 'object' && value !== null
-    && 'target' in value && value.target !== null && typeof value.target === 'object'
-    && 'type' in value.target && value.target.type === 'SelectorList'
-    && 'partial' in value && typeof value.partial === 'boolean';
-}
-
-function requireValue(value: unknown): ValueNode {
-  if (!isValue(value)) {
-    throw new TypeError('SCSS grammar produced a non-value child.');
-  }
-  return value;
-}
-
-function requireKeyword(value: unknown): Keyword {
-  const node = requireValue(value);
-  if (node.type !== 'Keyword') {
-    throw new TypeError('SCSS grammar produced a non-keyword child.');
-  }
-  return node;
-}
-
-/** The best-effort authored spelling of a value node for a Reference `raw`. */
-function referenceKeyRaw(node: ValueNode): string {
-  if (node.type === 'Lookup' && node.kind === 'var') {
-    return typeof node.name === 'string' ? `$${node.name}` : node.raw;
-  }
-  if (node.type === 'Quoted') {
-    return node.src;
-  }
-  return 'src' in node && typeof node.src === 'string' ? node.src : '';
-}
-
-/** The `.jess` spelling of one `@content(…)` argument, used to build the lowered
- *  `$content(…)` Reference `raw`. Same read as {@link referenceKeyRaw}, plus the
- *  `$name:` prefix a named argument carries. */
-function contentArgRaw(arg: ScssCallArg): string {
-  const value = isValueSlotArray(arg.value) ? '' : referenceKeyRaw(arg.value);
-  return arg.name === undefined ? value : `$${arg.name}: ${value}`;
-}
-
-/** `map.get` is the `sass:map` module spelling of the global `map-get`. Both are
- *  the same function, so both lower to the same accessor read — a grammar that
- *  accepted only one spelling into the accessor form would emit two different
- *  trees for one semantics. */
-const MAP_GET_SPELLINGS = new Set(['map-get', 'map.get']);
-
-/** The comparison spellings a call argument may carry (§4.5.2). Named here so
- * the operator token is found by WHAT IT IS rather than by a child index the
- * optional trivia arms would shift. */
-const COMPARISON_OPERATORS = new Set(['==', '!=', '>=', '<=', '>', '<']);
-
-/** Lower `map-get($m, k)` to the shared `$[…]` accessor read `$m[k]`: a Reference
- *  whose single LookupStep carries the key. A `$var` key selects the
- *  variable-namespace lookup; every other key is a value-equality member lookup
- *  (map keys compare by value, never by position, so `index` is never used). */
-function lowerMapGet(base: ValueNode, key: ValueNode): Reference {
-  const step: ReferenceStep = key.type === 'Lookup' && key.kind === 'var'
-    ? { type: 'LookupStep', kind: 'var', name: key }
-    : { type: 'LookupStep', kind: 'member', name: key };
-  const baseRaw = base.type === 'Reference' ? base.raw : referenceKeyRaw(base);
-  return reference(
-    base,
-    [step],
-    `${baseRaw}[${referenceKeyRaw(key)}]`
-  );
-}
-
-/**
- * Lower Sass `if(<cond>, a, b)` to the value-position `$if` (§4.5.3b).
- *
- * It wears call parentheses but it is SYNTAX, not a function (§4.5.3a) — it is
- * branch-lazy and its first argument is a condition, neither of which a
- * `sassFns` entry could express. Lowering it here, in the grammar that knows the
- * dialect, is what lets ONE evaluator answer `if(0, T, F)` with `T` for `.scss`
- * and `F` for `.less`: {@link scssTruth} fixes Sass+'s rule (§4.4.6 — falsy iff
- * `false`, `null`, `""` or `()`) at parse time, Less's grammar fixes its own,
- * and core never learns which dialect a guard came from.
- *
- * Anything but the three-argument form is left an ordinary call — plain CSS
- * `if()` is not this construct.
- */
-function lowerSassIf(args: readonly ScssCallArg[]): IfValue | undefined {
-  const cond = args[0]?.value;
-  const taken = args[1]?.value;
-  const otherwise = args[2]?.value;
-  if (args.length !== 3 || cond === undefined || taken === undefined || otherwise === undefined) {
-    return undefined;
-  }
-  return ifValue([
-    { guard: scssTruth(cond), value: taken },
-    { guard: null, value: otherwise }
-  ]);
-}
-
-function reduceScssCall(name: string, children: readonly unknown[], minArgumentIndex: number): FunctionCall | Reference | IfValue {
-  const lastIndex = children.length - 1;
-  const firstIndex = children.findIndex((child, index) => index > minArgumentIndex && index < lastIndex && isScssCallArg(child));
-  if (firstIndex === -1) {
-    return funcCall(
-      name,
-      []
-    );
-  }
-  const first = requireScssCallArg(children[firstIndex]);
-  const args: ScssCallArg[] = [first];
-  const separators: string[] = [];
-  for (let index = firstIndex + 1; index < lastIndex; index += 1) {
-    const child = children[index];
-    if (!isScssArgumentPair(child)) {
-      continue;
-    }
-    separators.push(String(child.separator));
-    args.push(child.value);
-  }
-  const call = funcCall(
-    name,
-    args
-  );
-  if (MAP_GET_SPELLINGS.has(call.name) && args.length === 2 && isValue(args[0]!.value) && isValue(args[1]!.value)) {
-    return lowerMapGet(
-      args[0]!.value,
-      args[1]!.value
-    );
-  }
-  if (call.name.toLowerCase() === 'if') {
-    const lowered = lowerSassIf(args);
-    if (lowered !== undefined) {
-      return lowered;
-    }
-  }
-  if (separators.length === args.length - 1) {
-    withValueLayout(
-      call.args,
-      separators
-    );
-  }
-  return call;
-}
-
-/** A Sass map key stays an authored value node; equality belongs to value-domain
- * map comparison, not to declaration-name stringification. */
-function mapKeyValue(node: ValueNode): ValueSlot {
-  return valueSlot(node);
-}
-
-/**
- * The SCSS condition lowering (§4.4.2, as revised by §4.4.6): `@if $x` means
- * `$if($x)` — the SAME truth node `.jess` uses.
- *
- * **Sass+ takes §4.4's emptiness rule** (owner, 2026-08-07): falsy iff `false`,
- * `null`, `""` or `()`. It previously spelled Sass's own rule out —
- * `not(($x == false) or ($x == null))` — to keep `""` and `()` truthy. What
- * forced the change was INTERNAL CONTRADICTION, not reference parity: `or`/`and`
- * lower to jess's native operators (§4.5.5), so `.scss "" or 2` already answered
- * `2` under jess truthiness while `@if ""` took the true branch under Sass's.
- * One dialect, one value, two answers, decided by which construct you wrote.
- *
- * This is why `.scss` must mint the value-domain `Null` (§4.3): with
- * `keyword('null')` in the value lane, `$if($x)` would silently take the TRUE
- * branch for `null`.
- *
- * `.less` is unaffected — `when (@x)` still lowers to `$if($x == true)`.
- */
-function scssTruth(value: ValueSlot): GuardNode {
-  return { g: 'truth', value };
-}
-
-/**
- * Sass's `not <value>` — the NEGATION of {@link scssTruth}, i.e. "is `$x`
- * falsy". Under §4.4.6 that is exactly jess's `not($x)`, so it is the truth node
- * under a `not` wrapper and cannot drift from the positive form.
- */
-function scssNegation(value: ValueSlot): GuardNode {
-  return { g: 'not', inner: scssTruth(value) };
-}
-
-/**
- * The authored spelling of a `not` operand, kept so the {@link Condition} it
- * lowers to can replay verbatim when no evaluator is injected. Same job — and
- * the same explicit type list — as the Less grammar's condition source: a shape
- * with no known spelling is a recognition defect, not something to guess at.
- */
-function scssConditionSource(value: ValueSlot): string {
-  if (Array.isArray(value)) {
-    return value.map(part => scssConditionSource(part)).join(' ');
-  }
-  const node = requireValue(value);
-  switch (node.type) {
-    case 'Keyword': case 'Null': case 'Color': case 'Quoted': case 'Any': case 'Dimension': return node.src;
-    case 'Lookup': return node.raw;
-    case 'Reference': return node.raw;
-    case 'Condition': return node.src;
-
-    /*
-     * The operand of an OUTER `not` when the inner one already lowered: `not
-     * not $x` is `not` applied to the `Expression` the inner `not` produced.
-     * The boundary is a computation marker, not authored bytes, so it
-     * contributes none of its own — the spelling is the inner condition's, and
-     * the outer prefix is prepended by the caller. No case is owed to chained
-     * unaries beyond this one: `not` recurses at the unary rung already, so the
-     * general rule reaches any depth.
-     */
-    case 'Expression': return scssConditionSource(node.value);
-    case 'FunctionCall': return `${node.name}(${node.args.map(argument => `${argument.name === undefined ? '' : `$${argument.name}: `}${scssConditionSource(argument.value)}`).join(', ')})`;
-    case 'Operation': return `${scssConditionSource(node.left)} ${node.operator} ${scssConditionSource(node.right)}`;
-    case 'Block': return `${node.delimiter === 'square' ? '[' : '('}${scssConditionSource(node.value)}${node.delimiter === 'square' ? ']' : ')'}`;
-    case 'Sequence': return node.parts.map(scssConditionSource).join(' ');
-    case 'List': return node.value.map(scssConditionSource).join(node.sep === ',' ? ', ' : ' / ');
-    default: throw new TypeError(`SCSS condition cannot preserve ${node.type}.`);
-  }
-}
-
-/**
- * Fold one logical rung left-associatively onto `Operation` nodes carrying the
- * word itself as the operator. The operator token is kept out of the fold by
- * shape (only values participate), so the rung reduces the same way whether it
- * spelled `and` or `or`.
- */
-function foldLogicalOperation(children: readonly unknown[]): ValueNode {
-  const values = children.filter(isValue);
-  const operators = children.filter(isToken).map(token => token.value.trim().toLowerCase()).filter(text => text === 'and' || text === 'or');
-  let result = requireValue(values[0]);
-  for (let index = 1; index < values.length; index += 1) {
-    result = operation(operators[index - 1]!, result, values[index]!, false,
-      cssBaseMathOutsideParens(operators[index - 1]!));
-  }
-  return result;
-}
-
-function isGuardNode(value: unknown): value is GuardNode {
-  if (typeof value !== 'object' || value === null || !('g' in value)) {
-    return false;
-  }
-  switch (value.g) {
-    case 'default':
-      return true;
-    case 'truth':
-      return 'value' in value && isValue(value.value);
-    case 'cmp':
-    case 'match':
-      return 'op' in value && typeof value.op === 'string'
-        && 'left' in value && isValue(value.left)
-        && 'right' in value && isValue(value.right);
-    case 'call':
-      return 'name' in value && typeof value.name === 'string'
-        && 'args' in value && Array.isArray(value.args) && value.args.every(isValue);
-    case 'not':
-      return 'inner' in value && isGuardNode(value.inner);
-    case 'and':
-    case 'or':
-      return 'left' in value && isGuardNode(value.left)
-        && 'right' in value && isGuardNode(value.right);
-    default:
-      return false;
-  }
-}
-
-function requireGuardNode(value: unknown): GuardNode {
-  if (!isGuardNode(value)) {
-    throw new TypeError('SCSS grammar produced a non-guard child.');
-  }
-  return value;
-}
-
-function optionalValue(value: unknown): ValueNode | null {
-  return value === null || value === undefined ? null : requireValue(value);
-}
-
-/** A reduced {@link ScssCallArg} — the payload every argument production yields. */
-function isScssCallArg(value: unknown): value is ScssCallArg {
-  return typeof value === 'object'
-    && value !== null
-    && 'value' in value
-    && 'name' in value
-    && isValueSlotValue(value.value);
-}
-
-function requireScssCallArg(value: unknown): ScssCallArg {
-  if (!isScssCallArg(value)) {
-    throw new TypeError('SCSS grammar produced an invalid call argument.');
-  }
-  return value;
-}
-
-/** An {@link ScssArgumentPair} — a separator plus the argument it precedes. */
-function isScssArgumentPair(value: unknown): value is ScssArgumentPair {
-  return typeof value === 'object'
-    && value !== null
-    && 'separator' in value
-    && typeof value.separator === 'string'
-    && 'value' in value
-    && isScssCallArg(value.value);
-}
-
-function isScssValuePair(value: unknown): value is ScssValuePair {
-  return typeof value === 'object'
-    && value !== null
-    && 'separator' in value
-    && typeof value.separator === 'string'
-    && 'value' in value
-    && isValueSlotValue(value.value);
-}
-
-function isScssValueTail(value: unknown): value is ScssValueTail {
-  return typeof value === 'object'
-    && value !== null
-    && 'kind' in value
-    && (value.kind === 'space' || value.kind === 'slash')
-    && 'value' in value
-    && isValue(value.value)
-    && 'separator' in value
-    && typeof value.separator === 'string';
-}
-
-function isVarDeclaration(value: unknown): value is VariableDeclaration {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'VariableDeclaration'
-    && 'name' in value
-    && typeof value.name === 'string'
-    && 'value' in value
-    && isValueSlotValue(value.value);
-}
-
-/*
- * The single statement-membership predicate behind both body reducers:
- * `statements` throws on the first non-statement child, `statementChildren`
- * silently keeps only the statement children. `allowDeclarations` admits a
- * `Declaration` in declaration-capable bodies.
- */
-function isStatementChild(child: unknown, allowDeclarations: boolean): child is Statement {
-  return isComment(child)
-    || isStyleImport(child)
-    || isModuleImport(child)
-    || isAtRuleBlock(child)
-    || isAtRuleStatement(child)
-    || isVarDeclaration(child)
-    || isMixinDefinition(child)
-    || isMixinCall(child)
-    || isFor(child)
-    || isIf(child)
-    || isWhile(child)
-    || isRuleset(child)
-    || isOpaqueAtRuleBlock(child)
-
-    /* `$content()` — a statement-position Reference; core's `Statement` already
-     * admits one, and this is the only production that puts one here. */
-    || isReferenceStatement(child)
-    || (allowDeclarations && isDeclaration(child));
-}
-
-function isReferenceStatement(value: unknown): value is Reference {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Reference';
-}
-
-function isOpaqueAtRuleBlock(value: unknown): value is OpaqueAtRuleBlock {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'OpaqueAtRuleBlock';
-}
-
-function statements(children: readonly unknown[], allowDeclarations = false): Statement[] {
-  const result: Statement[] = [];
-  for (const child of children) {
-    /*
-     * `null` is the ONE deliberate non-statement: `@debug`/`@warn`/`@error`
-     * reduce to it because they own no AST kind (§12.0). Everything else that is
-     * not a statement is a recognition defect and must still throw — dropping
-     * unknown shapes silently is how a lowering goes missing without a failure.
-     */
-    if (child === null) {
-      continue;
-    }
-    if (!isStatementChild(
-      child,
-      allowDeclarations
-    )) {
-      throw new TypeError('SCSS grammar produced a non-statement child.');
-    }
-    result.push(child);
-  }
-  return result;
-}
-
-function statementChildren(children: readonly unknown[], allowDeclarations = false): Statement[] {
-  const result: Statement[] = [];
-  for (const child of children) {
-    if (isStatementChild(
-      child,
-      allowDeclarations
-    )) {
-      result.push(child);
-    }
-  }
-  return result;
-}
-
-function requireStatementList(value: unknown): Statement[] {
-  if (!Array.isArray(value)) {
-    throw new TypeError('SCSS grammar produced a non-statement list.');
-  }
-  return statements(
-    value,
-    true
-  );
-}
-
-function keyframeSelectorListFromChildren(children: readonly unknown[]): SelectorList {
-  const selectors = children
-    .filter((child): child is SimpleSelector => typeof child === 'object' && child !== null && 'type' in child && child.type === 'SimpleSelector');
-  if (selectors.length === 0) {
-    throw new TypeError('SCSS keyframe block requires a selector.');
-  }
-  return selist(...selectors);
-}
-
-function scssPseudoName(opener: string): string {
-  return opener.slice(-1) === '(' ? opener.slice(0, -1) : opener;
-}
+  & typeof unknownAtRuleRecognition;
 
 /*
  * Sass `//` comments are trivia, not CSS comments: they must be recognized
@@ -1198,7 +239,7 @@ const sumPad = regex(/(?:\/\*(?:[^*]|\*(?!\/))*\*\/)*[ \t\n\r\f]+(?:\/\*(?:[^*]|
  * operator token stays exactly the operator character: folding the pad in would
  * leave the reducer recovering the operator from bytes that can now contain a
  * comment's own `/` and `*`. With the pads as terms the operator no longer sits
- * a constant distance from its operand, so `foldOperation` reads the shape.
+ * a constant distance from its operand, so `scssFoldOperation` reads the shape.
  *
  * The three sum arms reproduce the coupled whitespace shape the single regex
  * carried, and that coupling is semantic, not cosmetic: a whitespace-before,
@@ -1280,14 +321,13 @@ const generalTemplateText = regex(/(?:[^#()\[\]{}'"\\]|\\[\s\S]|#(?!\{))+/);
  * recognizers (byte-identical to the shared PseudoSelectorColon /
  * HexColor / NumberToken). Leading a choice arm with a
  * cross-composition shared `g.*` reference leaves that arm's first-set
- * unresolved (`any`) across the composeLeaf artifact boundary, so the compiler
+ * unresolved (`any`) across the compose artifact boundary, so the compiler
  * enters the PseudoSelector / Color / Dimension node frame SPECULATIVELY at every simple
  * selector and value atom. A grammar-local leading recognizer lets the compiler
  * resolve the arm's first-set (`:`, `#`, a digit/sign) and first-char-gate it,
  * skipping the doomed frame entirely.
  */
 const pseudoColon = regex(/::?(?![ \t\n\r\f])/);
-const hexColor = regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F])/);
 const numberValue = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)/);
 
 /*
@@ -1308,19 +348,19 @@ const customValueBlockCommentRun = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const customValueCommentTrivia = classifiedTrivia({ comment: customValueBlockCommentRun });
 
 /*
- * Opaque quoted-string skippers for the grammar-level ambient `scanSkip`: every
+ * Quoted-string skippers for the grammar-level ambient `scanSkip`: every
  * non-raw scan sees these before any local structural skip, so a sentinel hidden
  * inside a string (an arg terminator, `with(`, etc.) is never matched. Consumes
  * quote-to-quote including escapes; used only as a scan hole (builds nothing).
  */
 const scssScanSkipDoubleString = noTrivia(sequence(
   literal('"'),
-  regex(/(?:[^"\\]|\\.)*/),
+  regex(/(?:[^"\\]|\\[\s\S])*/),
   literal('"')
 ));
 const scssScanSkipSingleString = noTrivia(sequence(
   literal('\''),
-  regex(/(?:[^'\\]|\\.)*/),
+  regex(/(?:[^'\\]|\\[\s\S])*/),
   literal('\'')
 ));
 
@@ -1459,7 +499,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children) => {
       const quote = requireToken(children[0]).value;
-      if (children.length === 3 && !isInterpolation(children[1])) {
+      if (children.length === 3 && !isScssInterpolation(children[1])) {
         return staticQuoted(children);
       }
       const parts: Interpolation['parts'] = [{ lit: quote }];
@@ -1467,7 +507,7 @@ const scssFactory = (g: ScssInputRules) => {
         1,
         -1
       )) {
-        if (isInterpolation(child)) {
+        if (isScssInterpolation(child)) {
           parts.push(...child.parts);
         } else {
           appendLiteral(
@@ -1525,31 +565,10 @@ const scssFactory = (g: ScssInputRules) => {
       span
     )
   );
-  const Keyword = node<Keyword>(
-    'Keyword',
-    g.Identifier,
-    children => keyword(requireToken(children[0]).value)
-  );
   const CustomPropertyValue = node<Keyword>(
     'CustomPropertyValue',
     g.CustomPropertyToken,
     children => keyword(requireToken(children[0]).value)
-  );
-  const Color = node<Color>(
-    'Color',
-    hexColor,
-    children => color(requireToken(children[0]).value)
-  );
-
-  /*
-   * A `<urange>` is one opaque CSS token, so it must be recognized before the
-   * keyword atom: `U+0-7F` split at the `+` leaves `+0`/`-7F` to be folded as
-   * SCSS arithmetic, which serializes valid CSS back out as `U + 0 - 7F`.
-   */
-  const UnicodeRange = node<ValueNode>(
-    'UnicodeRange',
-    g.UnicodeRangeToken,
-    children => any(requireToken(children[0]).value)
   );
 
   /*
@@ -1602,7 +621,7 @@ const scssFactory = (g: ScssInputRules) => {
         g.SassInterpolation
       ))
     ),
-    children => interpolation(children.flatMap(child => isInterpolation(child)
+    children => interpolation(children.flatMap(child => isScssInterpolation(child)
       ? child.parts
       : [{ lit: requireToken(child).value }]))
   );
@@ -1626,7 +645,7 @@ const scssFactory = (g: ScssInputRules) => {
         g.SassInterpolation
       ))
     ),
-    children => interpolation(children.flatMap(child => isInterpolation(child)
+    children => interpolation(children.flatMap(child => isScssInterpolation(child)
       ? child.parts
       : [{ lit: requireToken(child).value }]))
   );
@@ -1662,16 +681,16 @@ const scssFactory = (g: ScssInputRules) => {
         literal(')')
       ))
     ),
-    children => block(requireValueSlot(children.find(isValueSlotValue)))
+    children => block(requireValueSlot(children.find(isScssValueSlotValue)))
   );
 
   /*
    * Sass bracketed lists carry the square delimiter as a first-class Block fact;
    * the inner value uses the same separator-aware list grammar as ordinary values.
    *
-   * `requireValueSlot`/`isValueSlotValue`, not `requireValue`/`isValue`:
+   * `requireValueSlot`/`isScssValueSlotValue`, not `requireValue`/`isScssValue`:
    * `g.Value` yields a ValueSlot, and a space-separated interior (`[c d]`) makes
-   * that slot an ARRAY, which `isValue` does not admit. Narrowing to a single
+   * that slot an ARRAY, which `isScssValue` does not admit. Narrowing to a single
    * node threw a bare `TypeError` out of the reducer — a crash, not a parse
    * failure, past the dialect error type every caller catches. Found by
    * IDENTITY: the trivia slots either side are variable-width, so no fixed
@@ -1693,7 +712,7 @@ const scssFactory = (g: ScssInputRules) => {
       literal(']')
     )),
     children => block(
-      children.find(isValueSlotValue) ?? [],
+      children.find(isScssValueSlotValue) ?? [],
       'square'
     )
   );
@@ -1800,7 +819,7 @@ const scssFactory = (g: ScssInputRules) => {
         throw new TypeError('SCSS URL produced unexpected children.');
       }
       const body = children[1];
-      return url(isValue(body) ? body : any(requireToken(body).value));
+      return url(isScssValue(body) ? body : any(requireToken(body).value));
     }
   );
   const Call = node<FunctionCall | Reference | IfValue>(
@@ -1827,8 +846,8 @@ const scssFactory = (g: ScssInputRules) => {
       ))
     ),
     (children) => {
-      if (children.some(isInterpolation)) {
-        return interpolation(children.flatMap(child => isInterpolation(child)
+      if (children.some(isScssInterpolation)) {
+        return interpolation(children.flatMap(child => isScssInterpolation(child)
           ? child.parts
           : [{ lit: requireToken(child).value }]));
       }
@@ -1990,7 +1009,7 @@ const scssFactory = (g: ScssInputRules) => {
         g.MathUnary
       ))
     )),
-    foldOperation
+    scssFoldOperation
   );
   const MathSum = node<ValueNode>(
     'MathSum',
@@ -2001,7 +1020,7 @@ const scssFactory = (g: ScssInputRules) => {
         g.MathProduct
       ))
     )),
-    foldOperation
+    scssFoldOperation
   );
   const MathTopProduct = node<ValueNode>(
     'MathTopProduct',
@@ -2012,7 +1031,7 @@ const scssFactory = (g: ScssInputRules) => {
         g.MathUnary
       ))
     )),
-    foldOperation
+    scssFoldOperation
   );
   const MathTopSum = node<ValueNode>(
     'MathTopSum',
@@ -2023,7 +1042,7 @@ const scssFactory = (g: ScssInputRules) => {
         g.MathTopProduct
       ))
     )),
-    foldOperation
+    scssFoldOperation
   );
 
   /*
@@ -2080,11 +1099,11 @@ const scssFactory = (g: ScssInputRules) => {
       )
     ),
     (children) => {
-      if (isValue(children[1])) {
+      if (isScssValue(children[1])) {
         return { kind: 'space', value: children[1], separator: isToken(children[0]) ? children[0].value : ' ' };
       }
       const value = children[children.length - 1];
-      if (!isValue(value)) {
+      if (!isScssValue(value)) {
         throw new TypeError('SCSS slash list lost its value.');
       }
       const separators = children.filter(isToken).map(child => child.value).filter(text => text !== '/');
@@ -2317,19 +1336,6 @@ const scssFactory = (g: ScssInputRules) => {
       );
     }
   );
-  const Important = node<true>(
-    'Important',
-    sequence(
-      literal('!'),
-      g.ImportantToken
-    ),
-    (children) => {
-      if (children.length !== 2 || requireToken(children[0]).value !== '!') {
-        throw new TypeError('Important produced unexpected children.');
-      }
-      return true;
-    }
-  );
 
   /*
    * Declaration names are one of the few canonical AST fields that already
@@ -2353,7 +1359,7 @@ const scssFactory = (g: ScssInputRules) => {
     (children) => {
       const parts: Interpolation['parts'] = [];
       for (const child of children) {
-        if (isInterpolation(child)) {
+        if (isScssInterpolation(child)) {
           parts.push(...child.parts);
         } else {
           appendLiteral(
@@ -2388,7 +1394,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.CustomPropertyToken
     ),
     (children) => {
-      if (!children.some(isInterpolation)) {
+      if (!children.some(isScssInterpolation)) {
         return requireToken(children[0]).value;
       }
       const parts: Interpolation['parts'] = [];
@@ -2458,7 +1464,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children) => {
       const name = children[0];
-      if (typeof name !== 'string' && !isInterpolation(name)) {
+      if (typeof name !== 'string' && !isScssInterpolation(name)) {
         throw new TypeError('SCSS grammar produced a custom declaration without a name.');
       }
 
@@ -2467,12 +1473,12 @@ const scssFactory = (g: ScssInputRules) => {
        * value from its fixed position after the colon rather than by shape.
        */
       const value = children[2];
-      if (!isValue(value)) {
+      if (!isScssValue(value)) {
         throw new TypeError('SCSS grammar produced an incomplete custom declaration.');
       }
       return decl(
         name,
-        valueSlot(value),
+        scssValueSlot(value),
         null,
         children.includes(true)
       );
@@ -2543,7 +1549,7 @@ const scssFactory = (g: ScssInputRules) => {
        * without respelling the arm at each site.
        */
       const custom = children[0];
-      if (children.length === 1 && isDeclaration(custom)) {
+      if (children.length === 1 && isScssDeclaration(custom)) {
         return custom;
       }
       if (children.length < 3 || children.length > 6) {
@@ -2561,7 +1567,7 @@ const scssFactory = (g: ScssInputRules) => {
       if (value === undefined) {
         throw new TypeError('SCSS declaration requires a value.');
       }
-      const name = isInterpolation(children[0]) ? children[0] : requireToken(children[0]).value;
+      const name = isScssInterpolation(children[0]) ? children[0] : requireToken(children[0]).value;
       const node = decl(
         name,
         requireValueSlot(value),
@@ -2600,7 +1606,7 @@ const scssFactory = (g: ScssInputRules) => {
       optional(literal(';'))
     ),
     children => collectionEntry(
-      isInterpolation(children[0]) ? children[0] : keyword(requireToken(children[0]).value),
+      isScssInterpolation(children[0]) ? children[0] : keyword(requireToken(children[0]).value),
       requireValueSlot(children[2]),
       null,
       false
@@ -2684,13 +1690,13 @@ const scssFactory = (g: ScssInputRules) => {
       optional(literal(';'))
     ),
     (children, fields) => {
-      const prefix = isInterpolation(children[0]) ? children[0] : requireToken(children[0]).value;
+      const prefix = isScssInterpolation(children[0]) ? children[0] : requireToken(children[0]).value;
       const open = children.findIndex(child => isToken(child) && child.value === '{');
       const close = children.findIndex((child, index) => index > open && isToken(child) && child.value === '}');
       if (open < 0 || close < 0) {
         throw new TypeError('SCSS nested property lost its block delimiters.');
       }
-      const ownValue = open > 2 && isValueSlotValue(children[2]) ? children[2] : null;
+      const ownValue = open > 2 && isScssValueSlotValue(children[2]) ? children[2] : null;
       const ownImportant = children.includes(true);
       if (ownImportant && ownValue === null) {
         throw new TypeError('SCSS nested property cannot apply !important without an own declaration value.');
@@ -2751,7 +1757,7 @@ const scssFactory = (g: ScssInputRules) => {
         return url(any(''));
       }
       const body = children[1];
-      return url(isQuoted(body) || isInterpolation(body) ? body : any(requireToken(body).value));
+      return url(isQuoted(body) || isScssInterpolation(body) ? body : any(requireToken(body).value));
     }
   );
 
@@ -2847,7 +1853,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.ImportSupports
     ),
     (children) => {
-      const values = children.filter(isValue);
+      const values = children.filter(isScssValue);
       if (values.length === 0) {
         throw new TypeError('Import qualifier requires typed facts.');
       }
@@ -2890,7 +1896,7 @@ const scssFactory = (g: ScssInputRules) => {
       sequence(not(importSupportsOpen), g.QueryPrelude)
     ),
     (children) => {
-      const values = children.filter(isValue).flatMap(value =>
+      const values = children.filter(isScssValue).flatMap(value =>
         typeof value === 'object' && value !== null && 'type' in value && value.type === 'Sequence'
           ? value.parts
           : [value]);
@@ -2924,12 +1930,12 @@ const scssFactory = (g: ScssInputRules) => {
       literal(';')
     ),
     (children, _fields, span) => {
-      const targetIndex = children.findIndex(isImportTarget);
+      const targetIndex = children.findIndex(isScssImportTarget);
       const target = children[targetIndex];
-      if (!isImportTarget(target)) {
+      if (!isScssImportTarget(target)) {
         throw new TypeError('SCSS @import requires a typed target.');
       }
-      const tail = children.slice(targetIndex + 1).find(isValue) ?? null;
+      const tail = children.slice(targetIndex + 1).find(isScssValue) ?? null;
       if (importIsCompileTime('@import', target)) {
         if (tail !== null) {
           throw new ScssImportPostludeError(span.start, span.end);
@@ -3091,7 +2097,7 @@ const scssFactory = (g: ScssInputRules) => {
       if (children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === '...')) {
         return { name, rest: true };
       }
-      const defaultValue = children.find(isValueSlotValue);
+      const defaultValue = children.find(isScssValueSlotValue);
       return defaultValue === undefined ? { name } : { name, default: defaultValue };
     }
   );
@@ -3126,7 +2132,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.ValueTerm
     ),
     (children) => {
-      const value = children.find(isValueSlotValue);
+      const value = children.find(isScssValueSlotValue);
       if (value === undefined) {
         throw new TypeError('MixinCallArgument requires a value.');
       }
@@ -3198,7 +2204,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     children => mixinCall(
       requireToken(children[1]).value,
-      children.filter((child): child is ScssCallArg => typeof child === 'object' && child !== null && 'value' in child && isValueSlotValue(child.value)),
+      children.filter((child): child is ScssCallArg => typeof child === 'object' && child !== null && 'value' in child && isScssValueSlotValue(child.value)),
       children.find(isAnonymousMixin) ?? null
     )
   );
@@ -3232,7 +2238,7 @@ const scssFactory = (g: ScssInputRules) => {
       optional(literal(';'))
     ),
     (children) => {
-      const args = children.filter((child): child is ScssCallArg => typeof child === 'object' && child !== null && 'value' in child && isValueSlotValue(child.value));
+      const args = children.filter((child): child is ScssCallArg => typeof child === 'object' && child !== null && 'value' in child && isScssValueSlotValue(child.value));
       return reference(
         variableReference(
           'content',
@@ -3274,8 +2280,8 @@ const scssFactory = (g: ScssInputRules) => {
     g.DocumentBlock,
     g.PageBlock,
     g.FontFeatureValuesBlock,
-    g.OpaqueAtRuleBlock,
-    g.OpaqueAtRuleStatement
+    g.UnknownAtRuleBlock,
+    g.GenericAtRuleStatement
   );
 
   /*
@@ -3374,8 +2380,8 @@ const scssFactory = (g: ScssInputRules) => {
     g.PageBlock,
     g.FontFeatureValuesBlock,
     g.Keyframes,
-    g.OpaqueAtRuleBlock,
-    g.OpaqueAtRuleStatement,
+    g.UnknownAtRuleBlock,
+    g.GenericAtRuleStatement,
     g.NestedRuleset
   ));
   const startingLayerBlockBody = many(choice(
@@ -3389,8 +2395,8 @@ const scssFactory = (g: ScssInputRules) => {
     g.PageBlock,
     g.FontFeatureValuesBlock,
     g.Keyframes,
-    g.OpaqueAtRuleBlock,
-    g.OpaqueAtRuleStatement,
+    g.UnknownAtRuleBlock,
+    g.GenericAtRuleStatement,
     g.NestedRuleset
   ));
   const MixinDefinitionRule = node<MixinDefinition>(
@@ -3522,7 +2528,7 @@ const scssFactory = (g: ScssInputRules) => {
       literal('}')
     ),
     (children) => {
-      const iterable = children.find(isValueSlotValue);
+      const iterable = children.find(isScssValueSlotValue);
       if (iterable === undefined) {
         throw new TypeError('EachRule requires an iterable.');
       }
@@ -3655,7 +2661,7 @@ const scssFactory = (g: ScssInputRules) => {
       if (nested !== undefined) {
         return nested;
       }
-      const value = children.find(isValue);
+      const value = children.find(isScssValue);
       return value === undefined
         ? { g: 'truth', value: keyword(requireToken(children[0]).value.toLowerCase()) }
         : scssTruth(value);
@@ -3810,7 +2816,7 @@ const scssFactory = (g: ScssInputRules) => {
       }
       return atRuleBlock(
         requireToken(children[0]).value,
-        optionalValue(children[1]),
+        scssOptionalValue(children[1]),
 
         /*
          * `IfBody` collects its children WITH declarations (`@if $a { @media
@@ -3946,7 +2952,7 @@ const scssFactory = (g: ScssInputRules) => {
       ))
     )),
     (children) => {
-      const values = children.filter(isValue);
+      const values = children.filter(isScssValue);
       const numerator = requireValue(values[0]);
       const denominator = values[1];
       return denominator === undefined
@@ -4011,8 +3017,8 @@ const scssFactory = (g: ScssInputRules) => {
        * The value-first arm is the only one holding a value where the other three
        * hold the feature name, so that child alone settles which arm matched.
        */
-      if (isValue(children[1])) {
-        const values = children.filter(isValue);
+      if (isScssValue(children[1])) {
+        const values = children.filter(isScssValue);
         const property = keyword(requireToken(children[3]).value);
         let comparison = operation(
           requireToken(children[2]).value,
@@ -4153,7 +3159,7 @@ const scssFactory = (g: ScssInputRules) => {
     'QueryPrelude',
     oneOrMoreSep(g.QueryClause, literal(',')),
     (children) => {
-      const values = children.filter(isValue);
+      const values = children.filter(isScssValue);
       return values.length === 1
         ? values[0]!
         : list(
@@ -4253,7 +3259,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children) => {
       const property = keyword(requireToken(children[1]).value);
-      const value = children.find(isValue);
+      const value = children.find(isScssValue);
       return value === undefined
         ? block(property)
         : block(operation(
@@ -4277,11 +3283,11 @@ const scssFactory = (g: ScssInputRules) => {
       g.Enclosed
     ),
     (children) => {
-      const value = children.find(isValue);
+      const value = children.find(isScssValue);
       if (value === undefined) {
         throw new TypeError('SCSS supports parenthesis lost its typed condition.');
       }
-      return isValue(children[0]) ? value : block(value);
+      return isScssValue(children[0]) ? value : block(value);
     }
   );
   const SupportsNotKeyword = node<Keyword>(
@@ -4310,7 +3316,7 @@ const scssFactory = (g: ScssInputRules) => {
       )
     ),
     (children) => {
-      const values = children.filter(isValue);
+      const values = children.filter(isScssValue);
       if (values.length === 0) {
         throw new TypeError('SCSS supports condition lost every typed part.');
       }
@@ -4417,7 +3423,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     children => atRuleStatement(
       requireToken(children[0]).value,
-      optionalValue(children[1])
+      scssOptionalValue(children[1])
     )
   );
 
@@ -4463,7 +3469,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
-      optionalValue(children[1]),
+      scssOptionalValue(children[1]),
       statementChildren(
         children.slice(
           3,
@@ -4563,7 +3569,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
-      optionalValue(children[1]),
+      scssOptionalValue(children[1]),
       statements(
         children.slice(
           3,
@@ -4589,7 +3595,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
-      optionalValue(children[1]),
+      scssOptionalValue(children[1]),
       statements(
         children.slice(
           3,
@@ -4656,7 +3662,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
-      optionalValue(children[1]),
+      scssOptionalValue(children[1]),
       statements(children.slice(
         3,
         -1
@@ -4674,7 +3680,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
-      optionalValue(children[1]),
+      scssOptionalValue(children[1]),
       statements(children.slice(
         3,
         -1
@@ -4714,7 +3720,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
-      optionalValue(children[1]),
+      scssOptionalValue(children[1]),
       statements(children.slice(
         3,
         -1
@@ -4772,7 +3778,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
-      optionalValue(children[1]),
+      scssOptionalValue(children[1]),
       statementChildren(
         children.slice(
           3,
@@ -4824,7 +3830,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
-      optionalValue(children[1]),
+      scssOptionalValue(children[1]),
       statementChildren(children.slice(
         3,
         -1
@@ -4891,7 +3897,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
-      optionalValue(children[1]),
+      scssOptionalValue(children[1]),
       statements(
         children.slice(
           3,
@@ -4912,7 +3918,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children, _fields, span, rawChildren) => withSourceSpan(withBlockBody(atRuleBlock(
       requireToken(children[0]).value,
-      optionalValue(children[1]),
+      scssOptionalValue(children[1]),
       statements(
         children.slice(
           3,
@@ -5127,7 +4133,7 @@ const scssFactory = (g: ScssInputRules) => {
     (children) => {
       const parts: Interpolation['parts'] = [];
       for (const child of children) {
-        if (isInterpolation(child)) {
+        if (isScssInterpolation(child)) {
           parts.push(...child.parts);
         } else {
           appendLiteral(
@@ -5192,7 +4198,7 @@ const scssFactory = (g: ScssInputRules) => {
       attributeNamespace,
       choice(g.Identifier, literal('*'))
     )),
-    children => simpleSelector(children.map(sourceText).join(''))
+    children => simpleSelector(children.map(scssSourceText).join(''))
   );
 
   /*
@@ -5218,9 +4224,9 @@ const scssFactory = (g: ScssInputRules) => {
       )),
       literal(']')
     ),
-    children => children.some(isInterpolation)
+    children => children.some(isScssInterpolation)
       ? interpolatedSimpleSelector(interpolationFromTemplateChildren(children))
-      : attributeSelector(children.map(sourceText))
+      : attributeSelector(children.map(scssSourceText))
   );
 
   /*
@@ -5277,8 +4283,8 @@ const scssFactory = (g: ScssInputRules) => {
     literal('+'),
     literal('~')
   );
-  const RelativeComplex = node<SelectorBranch>(
-    'RelativeComplexSelector',
+  const RelativeSelector = node<SelectorBranch>(
+    'RelativeSelector',
     parser(
       { trivia: whitespace },
       sequence(
@@ -5287,12 +4293,12 @@ const scssFactory = (g: ScssInputRules) => {
       )
     ),
     (children) => {
-      const branch = children.find(isSelectorBranch)!;
+      const branch = children.find(isScssSelectorBranch)!;
       if (children.length === 1) {
         return branch;
       }
       const lead = scssRelativeCombinator(children[0]);
-      return relativeSelector(lead, branchSegments(branch));
+      return relativeSelector(lead, scssBranchSegments(branch));
     }
   );
 
@@ -5318,14 +4324,14 @@ const scssFactory = (g: ScssInputRules) => {
     parser(
       { trivia: whitespace },
       sequence(
-        g.RelativeComplex,
+        g.RelativeSelector,
         many(sequence(
           literal(','),
-          g.RelativeComplex
+          g.RelativeSelector
         ))
       )
     ),
-    children => selist(...children.filter(isSelectorBranch))
+    children => selist(...children.filter(isScssSelectorBranch))
   );
   const NthPseudo = node<SimpleSelector>(
     'NthPseudo',
@@ -5404,7 +4410,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     children => pseudoSelector(
       scssPseudoName(requireToken(children[0]).value),
-      requireSelectorList(children.find(isSelectorList))
+      requireSelectorList(children.find(isScssSelectorList))
     )
   );
   const GlobalLocalPseudo = node<SimpleSelector>(
@@ -5464,12 +4470,7 @@ const scssFactory = (g: ScssInputRules) => {
   const PseudoSelector = node<SimpleToken>(
     'PseudoSelector',
     PseudoSelectorDispatch,
-    children => children.find(isSimpleToken)!
-  );
-  const NestingSelector = node<SimpleSelector>(
-    'SimpleSelector',
-    literal('&'),
-    () => simpleSelector('&')
+    children => children.find(isScssSimpleToken)!
   );
   const CompoundSelector = node<SelectorTerm>(
     'CompoundSelector',
@@ -5488,7 +4489,7 @@ const scssFactory = (g: ScssInputRules) => {
       )),
       not(pseudoColon)
     )),
-    children => selectorTermFromTokens(children.filter(isSimpleToken))
+    children => scssSelectorTermFromTokens(children.filter(isScssSimpleToken))
   );
   const scssCombinator = choice(
     literal('||'),
@@ -5544,7 +4545,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.ComplexSelector,
       literal(',')
     ),
-    (children, _fields, span) => withSourceSpan(selist(...children.filter(isSelectorBranch)), span)
+    (children, _fields, span) => withSourceSpan(selist(...children.filter(isScssSelectorBranch)), span)
   );
 
   /*
@@ -5560,10 +4561,10 @@ const scssFactory = (g: ScssInputRules) => {
   const NestedSelector = node<SelectorList>(
     'SelectorList',
     oneOrMoreSep(
-      g.RelativeComplex,
+      g.RelativeSelector,
       literal(',')
     ),
-    (children, _fields, span) => withSourceSpan(selist(...children.filter(isSelectorBranch)), span)
+    (children, _fields, span) => withSourceSpan(selist(...children.filter(isScssSelectorBranch)), span)
   );
 
   /*
@@ -5604,28 +4605,6 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * An unknown CSS block is terminal authored syntax. The shared recognition
-   * artifact owns every balanced/string/comment boundary; this reduction only
-   * records raw facts and keeps `$` out of an unquoted dynamic header, so a
-   * dynamic prelude still rejects rather than becoming opaque text.
-   * Wrap the two raw captures in their own nodes so this family's child count is
-   * fixed: an `optional(scanTo(...))` that matches nothing emits no child and
-   * would otherwise shift every positional index in the reducers below.
-   */
-  const OpaqueAtPrelude = node<string | null>(
-    'OpaqueAtPrelude',
-    g.PreprocessorOpaqueAtRulePreludeCapture,
-    (children) => {
-      const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
-      return text === '' ? null : text;
-    }
-  );
-  const OpaqueBody = node<string>(
-    'OpaqueBody',
-    g.PreprocessorOpaqueAtRuleBodyCapture,
-    children => children.length === 0 ? '' : requireToken(children[0]).value
-  );
-
   /*
    * Excludes the SCSS-only names AND the CSS at-rule set, the latter by
    * inverting the very leaves that define it positively -- one source, both
@@ -5645,24 +4624,23 @@ const scssFactory = (g: ScssInputRules) => {
     not(g.ImportAtKeyword),
     g.AtIdentifier
   )));
-  const OpaqueAtRuleBlock = node<OpaqueAtRuleBlock>(
-    'OpaqueAtRuleBlock',
+  const UnknownAtRuleBlock = node<UnknownAtRuleBlock>(
+    'UnknownAtRuleBlock',
     sequence(
       g.ScssGenericAtRuleName,
       noTrivia(sequence(
-        g.OpaqueAtPrelude,
+        g.PreprocessorUnknownAtRulePreludeCapture,
         literal('{'),
-        g.OpaqueBody,
+        g.PreprocessorUnknownAtRuleBodyCapture,
         literal('}')
       ))
     ),
     (children) => {
-      const prelude = children[1];
-      const rawBody = children[3];
-      if ((prelude !== null && typeof prelude !== 'string') || typeof rawBody !== 'string') {
-        throw new TypeError('SCSS opaque at-rule lost its grammar-owned raw facts.');
-      }
-      return opaqueAtRuleBlock(
+      const openIdx = requireToken(children[1]).value === '{' ? 1 : 2;
+      const preludeText = openIdx === 2 ? requireToken(children[1]).value.trim() : '';
+      const prelude = preludeText === '' ? null : preludeText;
+      const rawBody = children.length - openIdx === 3 ? requireToken(children[openIdx + 1]).value : '';
+      return unknownAtRuleBlock(
         requireToken(children[0]).value,
         prelude,
         rawBody
@@ -5675,20 +4653,18 @@ const scssFactory = (g: ScssInputRules) => {
    * block's name recognizer, so the two are disjoint from every typed arm and
    * from each other — this one requires `;` where the block requires `{`.
    */
-  const OpaqueAtRuleStatement = node<AtRuleStatement>(
-    'OpaqueAtRuleStatement',
+  const GenericAtRuleStatement = node<AtRuleStatement>(
+    'AtRuleStatement',
     sequence(
       g.ScssGenericAtRuleName,
       noTrivia(sequence(
-        g.OpaqueAtPrelude,
+        g.PreprocessorUnknownAtRulePreludeCapture,
         literal(';')
       ))
     ),
     (children) => {
-      const prelude = children[1];
-      if (prelude !== null && typeof prelude !== 'string') {
-        throw new TypeError('SCSS opaque at-rule statement lost its grammar-owned raw facts.');
-      }
+      const preludeText = requireToken(children[1]).value === ';' ? '' : requireToken(children[1]).value.trim();
+      const prelude = preludeText === '' ? null : preludeText;
       return atRuleStatement(
         requireToken(children[0]).value,
         prelude === null ? null : any(prelude)
@@ -5779,8 +4755,8 @@ const scssFactory = (g: ScssInputRules) => {
         g.CounterStyle,
         g.PropertyAtRule,
         g.Keyframes,
-        g.OpaqueAtRuleBlock,
-        g.OpaqueAtRuleStatement,
+        g.UnknownAtRuleBlock,
+        g.GenericAtRuleStatement,
         g.Ruleset
       ))
     ),
@@ -5795,10 +4771,7 @@ const scssFactory = (g: ScssInputRules) => {
     SassInterpolation,
     Quoted,
     LiteralQuoted,
-    Keyword,
     CustomPropertyValue,
-    Color,
-    UnicodeRange,
     Dimension,
     InterpolatedUrlValue,
     InterpolatedValue,
@@ -5821,7 +4794,6 @@ const scssFactory = (g: ScssInputRules) => {
     ValuePair,
     ArgumentPair,
     Value,
-    Important,
     InterpolatedProperty,
     CustomPropertyName,
     CustomPart,
@@ -5912,11 +4884,9 @@ const scssFactory = (g: ScssInputRules) => {
     KeyframeSelector,
     KeyframeBlock,
     Keyframes,
-    OpaqueAtPrelude,
-    OpaqueBody,
     ScssGenericAtRuleName,
-    OpaqueAtRuleBlock,
-    OpaqueAtRuleStatement,
+    UnknownAtRuleBlock,
+    GenericAtRuleStatement,
     BasicSelector,
     InterpolatedSimple,
     Placeholder,
@@ -5925,10 +4895,9 @@ const scssFactory = (g: ScssInputRules) => {
     PseudoArgument,
     PseudoArgumentGroup,
     PseudoSelector,
-    NestingSelector,
     CompoundSelector,
     ComplexSelector,
-    RelativeComplex,
+    RelativeSelector,
     SelectorList,
     NestedSelector,
     Extend,
@@ -5941,24 +4910,24 @@ const scssFactory = (g: ScssInputRules) => {
   };
 };
 
-export const scssGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
+export const scssGrammar = compose([cssBaseRules, unknownAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
   { trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString] },
   scssFactory
-)]);
+)], { hostMode: 'ast' });
 
 /** AST artifact with Parseman line/column tracking enabled. */
-export const scssPositionsGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
+export const scssPositionsGrammar = compose([cssBaseRules, unknownAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
   { trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString], trackLines: true },
   scssFactory
-)]);
+)], { hostMode: 'ast' });
 
-export const scssCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
-  { trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString], hostMode: 'cst' },
+export const scssCstGrammar = compose([cssBaseRules, unknownAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
+  { trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString] },
   scssFactory
-)]);
+)], { hostMode: 'cst' });
 
 /** CST artifact with Parseman line/column tracking enabled. */
-export const scssCstPositionsGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
-  { trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString], hostMode: 'cst', trackLines: true },
+export const scssCstPositionsGrammar = compose([cssBaseRules, unknownAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
+  { trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString], trackLines: true },
   scssFactory
-)]);
+)], { hostMode: 'cst' });

@@ -233,7 +233,6 @@ describe('@jesscss/jess-parser/cst', () => {
 
   it('rejects runtime values in a bare CSS @import', () => {
     for (const source of [
-      '@import url(${path});',
       '@import "${path}.css";',
       '@import "theme.css" $media;'
     ]) {

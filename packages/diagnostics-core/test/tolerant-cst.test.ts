@@ -1304,6 +1304,29 @@ describe('collectTolerantDiagnostics', () => {
     expect(less.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.invalidNamedGridAreas)).toBe(false);
   });
 
+  it('reports invalid grid line names on the grid property set', () => {
+    const source = '.a { grid-template-columns: [1] 1fr [1, 2, 3]; }\n'
+      + '.b { grid-template-rows: [full-start] auto [full-end]; }\n'
+      + '.c { grid-template-columns: [] [a b] [--x] [a\\ b] [\\31 23]; }\n'
+      + '.d { grid: [line1] "a" 1fr [line2]; }\n'
+      + '.e { b: [1]; }';
+    const result = collectTolerantDiagnostics({ source, language: 'css' });
+    const lineNames = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.invalidGridLineNames);
+
+    /*
+     * Only the two malformed slots in .a are flagged; every other bracket is a
+     * valid <custom-ident>* (or empty), and `.e`'s bracket is a non-grid property.
+     */
+    expect(lineNames.map(diagnostic => source.slice(diagnostic.start, diagnostic.end))).toEqual(['[1]', '[1, 2, 3]']);
+  });
+
+  it('does not report invalid grid line names in dialect files', () => {
+    for (const language of ['scss', 'less', 'jess'] as const) {
+      const result = collectTolerantDiagnostics({ source: '.a { grid-template-columns: [1, 2, 3]; }', language });
+      expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.invalidGridLineNames)).toBe(false);
+    }
+  });
+
   it('reports duplicate font families and missing generic family keywords', () => {
     const result = collectTolerantDiagnostics({
       source: '.a { font-family: Inter, "Open Sans", inter; }\n.b { font-family: Arial, sans-serif; }\n.c { font: 12px/16px Arial; }',

@@ -40,7 +40,6 @@ export type JessErrorCode =
   | 'eval/loop-iteration-limit'
   | 'eval/invalid-unit-arithmetic'
   | 'eval/unexpressible-unit'
-  | 'eval/invalid-line-names'
   | 'eval/incomparable-operands'
   | 'eval/unit-conversion'
   | 'extend/protected-boundary'
@@ -299,15 +298,6 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       reason:
         '${expr} composes a unit CSS cannot express, so no result can carry it honestly.',
       fix: 'Cancel the units, drop one side\'s unit, or wrap the expression in calc() to keep it as authored.'
-    }
-  ],
-  [
-    'eval/invalid-line-names',
-    {
-      summary: 'Bracketed value is not printable CSS',
-      reason:
-        'CSS reads [ ... ] in a value as grid line names, whose grammar is \'[\' <custom-ident>* \']\', so [${bytes}] has no CSS meaning.',
-      fix: 'Keep the bracketed list as data — bind it, pass it, index it — or print only custom identifiers, e.g. [full-start].'
     }
   ],
   [

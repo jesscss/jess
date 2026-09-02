@@ -1169,7 +1169,7 @@ describe('CSS canonical-AST grammar', () => {
       expect(cst.errors).toHaveLength(0);
       expect(cst.unconsumedFrom).toBeNull();
       expect(parseAst(source).rules[0]).toMatchObject({
-        type: 'OpaqueAtRuleBlock',
+        type: 'UnknownAtRuleBlock',
         name: '@pageé'
       });
     }
@@ -1239,7 +1239,7 @@ describe('CSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(parseAst(source).rules[0]).toMatchObject({
-      type: 'OpaqueAtRuleBlock',
+      type: 'UnknownAtRuleBlock',
       name: '@font-feature-valuesé',
       prelude: null,
       rawBody: ' @styleset /* header */ { nice: 1; } '
@@ -1429,7 +1429,7 @@ describe('CSS canonical-AST grammar', () => {
   it('keeps @charset in the public generic statement and unknown-block families', () => {
     for (const [source, expected] of [
       ['@charseté custom;', { type: 'AtRuleStatement', name: '@charseté', prelude: { type: 'Any', src: 'custom' } }],
-      ['@charset { rules: raw; }', { type: 'OpaqueAtRuleBlock', name: '@charset', prelude: null, rawBody: ' rules: raw; ' }]
+      ['@charset { rules: raw; }', { type: 'UnknownAtRuleBlock', name: '@charset', prelude: null, rawBody: ' rules: raw; ' }]
     ] as const) {
       const cst = parseCssCst(source);
       expect(cst.errors).toHaveLength(0);
@@ -1446,7 +1446,7 @@ describe('CSS canonical-AST grammar', () => {
 
     const document = parseAst(source);
     expect(document.rules).toMatchObject([{
-      type: 'OpaqueAtRuleBlock',
+      type: 'UnknownAtRuleBlock',
       name: '@layered',
       prelude: 'screen',
       rawBody: '\n  raw: fn("}", /* keep */ nested({ value: 1; }));\n  @nested { value: "{ }"; }\n'
@@ -1501,7 +1501,7 @@ describe('CSS canonical-AST grammar', () => {
       const cst = parseCssCst(source);
       expect(cst.errors).toHaveLength(0);
       expect(cst.unconsumedFrom).toBeNull();
-      expect(parseAst(source).rules[0]).toMatchObject({ type: 'OpaqueAtRuleBlock', name });
+      expect(parseAst(source).rules[0]).toMatchObject({ type: 'UnknownAtRuleBlock', name });
     }
   });
 

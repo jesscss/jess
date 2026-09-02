@@ -43,7 +43,7 @@ import type {
   ValueNode,
   ValueSlot
 } from './nodes.js';
-import type { AtRuleBlock, OpaqueAtRuleBlock } from './at-rule.js';
+import type { AtRuleBlock, UnknownAtRuleBlock } from './at-rule.js';
 
 /** The reducer field bag parseman hands a `build(children, fields, span)`. */
 type ReducerFields = Record<string, { readonly value: unknown } | ReadonlyArray<{ readonly value: unknown }>>;
@@ -65,10 +65,10 @@ export function tokenText(child: unknown): string {
  * which is what makes `rawBody` — and therefore the serialized output — the
  * same string it was before the body gained an interior.
  */
-export function opaqueBodyText(children: readonly unknown[]): string {
+export function unknownBodyText(children: readonly unknown[]): string {
   let text = '';
   for (const child of children) {
-    text += Array.isArray(child) ? opaqueBodyText(child) : tokenText(child);
+    text += Array.isArray(child) ? unknownBodyText(child) : tokenText(child);
   }
   return text;
 }
@@ -243,10 +243,10 @@ export function isAtRuleBlock(value: unknown): value is AtRuleBlock {
   );
 }
 
-export function isOpaqueAtRuleBlock(value: unknown): value is OpaqueAtRuleBlock {
+export function isUnknownAtRuleBlock(value: unknown): value is UnknownAtRuleBlock {
   return isNodeType(
     value,
-    'OpaqueAtRuleBlock'
+    'UnknownAtRuleBlock'
   );
 }
 
@@ -360,7 +360,7 @@ export function isDocumentStatement(value: unknown): value is Statement {
       value,
       'AtRuleBlock'
     )
-    || isOpaqueAtRuleBlock(value);
+    || isUnknownAtRuleBlock(value);
 }
 
 export const selectorBranches = (children: readonly unknown[]): SelectorBranch[] =>

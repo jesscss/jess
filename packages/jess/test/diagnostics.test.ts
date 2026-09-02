@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import { Compiler } from '../src/index.js';
 import { outputDiagnostics } from '@jesscss/compiler/diagnostics';
 import type { ErrorDiagnostic, WarningDiagnostic } from '@jesscss/core';
+import { JessError } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
@@ -429,7 +430,7 @@ describe('Diagnostic display tiers', () => {
       }
     });
 
-    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown).toBeInstanceOf(JessError);
     expect(stderr.match(/parse\/dynamic-charset/g)).toHaveLength(1);
     expect(stderr).toContain('Interpolation is not valid in @charset.');
     expect(stderr).not.toContain('LessDynamicCharsetError:');

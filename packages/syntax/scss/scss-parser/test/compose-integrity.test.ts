@@ -37,7 +37,14 @@ describe('SCSS grammar compose integrity', () => {
     for (const rule of ['Stylesheet', 'ValueAtom', 'MixinCallArgument']) {
       expect(Object.hasOwn(grammar, rule), `folded SCSS grammar is missing rule "${rule}"`).toBe(true);
     }
-    for (const rule of ['DetachedRuleset', 'AnonymousMixinDefinition', 'ExtendStatement', 'EachFor', 'VarCall', 'VariableCall', 'ImportOption', 'ImportOptions']) {
+
+    /*
+     * NOTE: `VarCall` is NOT Less-only — it is the CSS base rule for `var(...)`
+     * (css-parser grammar), legitimately inherited when SCSS composes on
+     * cssBaseRules (W0). `VariableCall` (Less detached-ruleset `@name()`) stays
+     * the genuinely Less-only guard below.
+     */
+    for (const rule of ['DetachedRuleset', 'AnonymousMixinDefinition', 'ExtendStatement', 'EachFor', 'VariableCall', 'ImportOption', 'ImportOptions']) {
       expect(Object.hasOwn(grammar, rule), `Less-only rule "${rule}" leaked into SCSS grammar`).toBe(false);
     }
   });

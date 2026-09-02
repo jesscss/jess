@@ -92,7 +92,8 @@ describe('stable rule set', () => {
       LINT_CODES.unboundedExtends,
       LINT_CODES.deadExtends,
       LINT_CODES.suspiciousMapKeyAccess,
-      LINT_CODES.unsupportedSassForm
+      LINT_CODES.unsupportedSassForm,
+      LINT_CODES.invalidGridLineNames
     ]);
     expect(STABLE_LINT_RULES.map(rule => rule.ruleName)).toEqual([
       LINT_RULE_NAMES.emptyRules,
@@ -166,9 +167,10 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.unboundedExtends,
       LINT_RULE_NAMES.deadExtends,
       LINT_RULE_NAMES.suspiciousMapKeyAccess,
-      LINT_RULE_NAMES.unsupportedSassForm
+      LINT_RULE_NAMES.unsupportedSassForm,
+      LINT_RULE_NAMES.invalidGridLineNames
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(60);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(61);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration]).toBe('warn');
@@ -1002,6 +1004,40 @@ describe('lintText', () => {
     expect(result.diagnostics.map(diagnostic => [diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_CODES.invalidNamedGridAreas, 'error']
     ]);
+  });
+
+  it('flags invalid grid line names and leaves valid ones and non-grid brackets alone', async () => {
+    /*
+     * Isolate this rule: other recommended rules (e.g. unknown-property on `b`)
+     * fire on some fixtures, so filter to the grid line-names code.
+     */
+    const lint = async (source: string) => {
+      const result = await lintText(
+        { source, filePath: '/tmp/input.css' },
+        { stylesConfig: { lint: { rules: { [LINT_RULE_NAMES.invalidGridLineNames]: 'error' } } } }
+      );
+      return result.diagnostics
+        .filter(diagnostic => diagnostic.code === LINT_CODES.invalidGridLineNames)
+        .map(diagnostic => diagnostic.severity);
+    };
+
+    // Invalid: a bare number and a comma-separated list are not <custom-ident>*.
+    expect(await lint('.a { grid-template-columns: [1]; }')).toEqual(['error']);
+    expect(await lint('.a { grid-template-columns: [1, 2, 3]; }')).toEqual(['error']);
+
+    // Valid: identifiers, spaced identifiers, empty brackets, and escapes.
+    expect(await lint('.a { grid-template-columns: [full-start]; }')).toEqual([]);
+    expect(await lint('.a { grid-template-columns: [a b]; }')).toEqual([]);
+    expect(await lint('.a { grid-template-columns: []; }')).toEqual([]);
+    expect(await lint('.a { grid-template-columns: [a\\ b]; }')).toEqual([]);
+    expect(await lint('.a { grid-template-columns: [\\31 23]; }')).toEqual([]);
+    expect(await lint('.a { grid-template-columns: [--x]; }')).toEqual([]);
+
+    // Track list mixing line names with tracks and grid-area strings.
+    expect(await lint('.a { grid-template: [row1-start] "a" 1fr [row1-end]; }')).toEqual([]);
+
+    // Non-grid property: a bracket here is valid CSS the browser skips.
+    expect(await lint('.a { b: [1]; }')).toEqual([]);
   });
 
   it('applies policy to shorthand property override diagnostics', async () => {

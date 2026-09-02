@@ -270,6 +270,7 @@ The current stable rule set is intentionally small and migration-friendly:
 | `jess/no-dead-extend` | `lint/no-dead-extend` | Jess exact same-file extend diagnostic |
 | `jess/no-suspicious-map-key-access` | `lint/no-suspicious-map-key-access` | Jess same-file map/key diagnostic |
 | `jess/unsupported-sass-form` | `unsupported/sass-form` | Jess dialect support diagnostic |
+| `jess/grid-line-names-no-invalid` | `lint/invalid-grid-line-names` | Grid `<line-names>` validity diagnostic |
 
 Use `STABLE_LINT_RULES`, `recommendedLintRules()`, or
 `stylelintComparisonRules()` when building migration reports. Each

@@ -1041,7 +1041,20 @@ earlier, before a manual publish attempt.
   `pnpm --filter @jesscss/core build`, `pnpm --filter jess build`, and
   `JESS_LESS_FIXTURE='^tests-unit/media/media\.less$' pnpm run test:less:test-data`
   after removing the expected-failure marker.
-- 2026-08-29: **Alpha blocked by a release-preflight gate — fix IN PROGRESS.**
+- 2026-08-30: **Alpha 2.0.0-alpha.12 dry-run GREEN — ready to publish.**
+  `release:alpha:update-from-dev --release-dry-run --push` from a clean `alpha`
+  worktree passed the full preflight end-to-end against `origin/dev` `bc815e117`
+  (boundary gate 0 sites, strict types, packed clean-consumer proof for 22
+  tarballs incl. ESM + CJS roots, and all publish dry-runs), and pushed `alpha`
+  (`286d802db`). The registry-aware resolver selects `2.0.0-alpha.12` (published
+  max `.11`). Remaining step is the owner-run credentialed `pnpm run release:alpha`.
+  Two pre-alpha.11 latent blockers were cleared to get here: (1) the
+  parser-runtime-boundary gate mis-flagged the Parseman `matches()` combinator
+  (gate fixed) plus one genuine css host re-derivation (fixed byte-identically);
+  (2) `@jesscss/lint` externalized ESM-only `linecraft` in its CJS build, breaking
+  `require('@jesscss/lint')` in the packed-consumer proof — now bundled like
+  `@jesscss/compiler` does.
+- 2026-08-29: **Alpha blocked by a release-preflight gate — (superseded by the 2026-08-30 entry above).**
   The next alpha resolves to `2.0.0-alpha.12` (npm alpha tag is `.11`), but
   `release:alpha:dry-run` fails at `verify:parser-runtime-boundary` (empty debt
   ledger = target 0), which the PR CI gate deliberately does not block on

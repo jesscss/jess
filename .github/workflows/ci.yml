@@ -1,21 +1,35 @@
 name: CI
 
-# The blocking PR gate. ONE job that proves the repo is healthy along every axis
-# — build, lint, types, tests, structural/perf invariants — and is dialect-AGNOSTIC
-# by construction: per-dialect correctness is not a separate "Less readiness"
-# headline, it lives in each parser's own suite, all of which run here:
+# The blocking PR gate. TWO jobs, run in parallel, that together prove the repo
+# is healthy along every axis — build, lint, types, tests, structural/perf
+# invariants — and are dialect-AGNOSTIC by construction: per-dialect correctness
+# is not a separate "Less readiness" headline, it lives in each parser's own
+# suite, all of which run across the two jobs here:
+#
+#   verify       — full clean build + lint + strict types + the jess ratchet
+#                  (the CLI app's corpus/plugin suite, which needs BUILT artifacts)
+#                  + every structural/perf gate. Add THIS to branch protection.
+#   test-source  — the build-free opt-out test suite (`pnpm -r --filter='!jess'
+#                  test`), primed by a ~3s core/fns/parser-shared build instead of
+#                  the full 22-package chain. Runs concurrently with `verify` so
+#                  the ~90s test payload leaves the critical path. Add it too.
+#
+# Why the split is safe: vitest source-aliases every `@jesscss/*` to `src` (see
+# vitest.config.ts), so the only BUILT artifacts a source test needs are (1) the
+# parser-shared macro-fusion pieces parseman's plugin reads at transform, and (2)
+# the handful of core/fns lib subpaths (`core/ast`, `fns/sass/*`) that are not
+# source-aliased — all produced by the cheap prime. The four parser `/positions`
+# and `compiler/diagnostics` subpaths are source-aliased in vitest.config so no
+# parser build is needed. `jess` is the sole genuinely build-bound suite and
+# stays in `verify`.
+#
+# Per-dialect suites, all still gated:
 #
 #   css   — css-parser suite incl. render-differential.test.ts
 #   scss  — scss-parser suite incl. the sass-spec cache (2404 cases)
 #   less  — less-parser suite + the full @less/test-data corpus (via the jess
 #           ratchet below, which checks out and renders the real-world corpus)
 #   jess  — jess-parser suite + the jess known-failures ratchet
-#
-# Tests run AFTER the build in one job on purpose: vitest's parseman.vite() fuses
-# the grammar macros at transform, but that fusion is PRIMED by the build — a
-# no-build job fails with "composeLeaf() must macro-fuse" the moment a test
-# imports a parser grammar (core and every parser do). So a "source-only" test
-# job is not viable here; the lever is a fast build, not skipping it.
 #
 # The job hard-fails and is green on a clean `dev` — a gate that is red on an
 # untouched checkout teaches people to reach for `--no-verify`, and then it is
@@ -84,9 +98,10 @@ jobs:
       # builds mask errors (a stale lib once masked a grammar compose failure).
       # GRAPH-PARALLEL: pnpm -r honours the workspace dependency graph, so the
       # parser spine (css → less/scss → jess) and core still build in order while
-      # independent leaves build concurrently — measured ~58s vs ~4m40s for the old
-      # --workspace-concurrency=1, across 5/5 clean runs, and the compose-integrity
-      # / fallback / macro gates all parse the interleaved build.log correctly.
+      # independent leaves build concurrently — measured ~1m vs ~4m40s for the old
+      # --workspace-concurrency=1, and the compose-integrity / fallback / macro gates
+      # all parse the interleaved build.log correctly. Output is captured so the
+      # compose-integrity step can grep it without rebuilding.
       - name: Clean lib output
         run: node scripts/clean-package-libs.mjs
 
@@ -110,6 +125,28 @@ jobs:
       - name: Macro-buildability check
         run: node scripts/check-macro-buildable.mjs --no-build
 
+      # Node engines must stay at the canonical require(esm) range; blocks silent
+      # drift like the 22.12 -> 22.18 floor bump that broke engine-strict installs.
+      - name: Node-engines guard
+        run: node scripts/check-node-engines.mjs
+
+      # Every dialect grammar's reducers must reference only IMPORTED helpers, never
+      # a module-scope helper defined in grammar.ts. This is a NECESSARY (not
+      # sufficient) condition for cross-package compose() fusion — it is a static
+      # per-reducer check and does NOT run the real compose([cssBaseRules, delta]).
+      # css/less/scss/jess all sit at 0 after the B0 hoist; this keeps them there
+      # (fix an offender by moving the helper into that dialect's grammar-helpers.ts).
+      - name: Reducer-purity gate (reducers import their helpers)
+        run: node scripts/probe/parseman-compose-reducer-census.mjs --check
+
+      # Build-then-LOAD complement to the static census: the four Less, four
+      # SCSS AND four Jess variants actually compose on cssBaseRules (W0). Fails
+      # if a variant left a runtime compose( in its emitted table (did not fuse)
+      # or throws when its compiled table is first materialized by a real parse.
+      # Runs against the lib/ the build above produced.
+      - name: Compose fused + load gate (Less + SCSS + Jess)
+        run: node scripts/probe/compose-fused-check.mjs
+
       # --- static analysis --- (run explicitly, NOT via `pnpm ci`, which would
       # re-run lint + core-public-types a second time)
       - name: Lint
@@ -127,22 +164,14 @@ jobs:
       - name: Cross-tool surface parity
         run: pnpm run verify:surface-parity
 
-      # --- tests: OPT-OUT coverage. `-r test` runs EVERY workspace package by
-      # default, so a newly added package is gated the moment it exists — no one
-      # has to remember to add it to a whitelist. This closes the long-standing
-      # gap where language-service, style-resolver and diagnostics-core never ran
-      # in CI (they define `test` but no `ci` script, so the old `pnpm -r ci`
-      # silently skipped them).
-      #
-      # A package is omitted only by an EXPLICIT, reasoned `--filter='!x'` below.
-      # The sole carve-out is `jess`: it owns env-gated known failures reconciled
-      # by a ratchet (fails on a NEW failure AND on a listed test that starts
-      # passing), so it runs through that ratchet instead of a plain vitest pass.
-      # Its full suite — public-API contract, path resolution, AST-v2 ratchet,
-      # CLI — runs inside test:ratchet, so no separate jess test steps are needed.
-      - name: All package tests (opt-out; jess runs via its ratchet)
-        run: pnpm -r --filter='!jess' test
-
+      # --- tests: the build-free opt-out suite (`pnpm -r --filter='!jess' test`)
+      # runs in the PARALLEL `test-source` job below, not here — it needs only a
+      # ~3s core/fns/parser-shared prime, so pinning it behind this job's full
+      # build wasted its whole runtime on the critical path. `jess` stays here:
+      # it is the CLI app whose known-failures ratchet loads plugins and renders
+      # the real @less/test-data corpus from BUILT artifacts, so it is genuinely
+      # build-bound. Its full suite — public-API contract, path resolution,
+      # AST-v2 ratchet, CLI — runs inside test:ratchet.
       - name: Jess suite (known-failures ratchet)
         run: pnpm --filter jess run test:ratchet
 
@@ -185,3 +214,53 @@ jobs:
 
       - name: Audit — node creation hotspots
         run: pnpm run audit:node-creation
+
+  # Build-free source tests, run IN PARALLEL with `verify`. vitest source-aliases
+  # every `@jesscss/*` to `src`, so this suite does not need the full build — only
+  # a cheap prime:
+  #
+  #   * `@jesscss/parser-shared` — its COMPILED lib carries the macro-fused grammar
+  #     recognition pieces (cssSyntax / opaque-at-rule / pseudo-consts) that
+  #     parseman's plugin reads at transform when it fuses each grammar's
+  #     `composeLeaf(...)`. Without this lib the transform cannot fuse and the four
+  #     grammars fail at runtime with `composeLeaf() must macro-fuse`. This is the
+  #     one artifact the vite src-aliases cannot substitute (the plugin resolves it
+  #     itself, compiled-only, ignoring vite aliases).
+  #   * `@jesscss/core` + `@jesscss/fns` — the `core/ast` and `fns/sass/*` lib
+  #     subpaths the parsers import at runtime are not source-aliased, so their
+  #     built libs must exist. Both are fast tsdown bundles; the whole prime is ~3s.
+  #
+  # `pnpm --filter '@jesscss/core...' --filter '@jesscss/fns...'` pulls their shared
+  # `awaitable-pipe` dep in too. NO parser, jess, editor, or docs build runs here.
+  test-source:
+    name: Source tests (build-free)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Cheap prime: build ONLY the libs a source test consumes (see block above).
+      # css-parser is a compiled-only base here (like parser-shared): a cross-package
+      # `compose([cssBaseRules, …])` grammar fuses from the base's built-lib
+      # `composedPieces` provenance, not source, so the base lib must exist. The
+      # less/scss/jess W-phase compose flips all rely on this same prime.
+      - name: Prime — build parser-shared + css-parser + core + fns
+        run: pnpm --filter '@jesscss/parser-shared' --filter '@jesscss/css-parser' --filter '@jesscss/core...' --filter '@jesscss/fns...' build
+
+      # Opt-out coverage: `-r test` runs EVERY workspace package by default, so a
+      # newly added package is gated the moment it exists. `jess` is excluded — it
+      # is build-bound and runs via its ratchet in `verify`.
+      - name: All source-runnable package tests (opt-out; jess runs in verify)
+        run: pnpm -r --filter='!jess' test

@@ -183,7 +183,7 @@ tower collapses to a leaf override.
 |---|---|---|---|
 | **A** (parseman) | Fix §3.2: re-emit a composed base's `buildImports` into the downstream fused module | — | parseman full suite; cross-package probe fuses + parses AST-identical |
 | **B** (css) | §4.1 factoring: extract CSS's inlined choice-points into named leaf rules | — (parallel with A) | css parser suite + oracle AST/CST-identical; `check:macro` 0 |
-| **C** (supersets) | Per dialect (scss → less → jess): override genuine-divergent rules (§4.2) + additions (§4.3), widen the factored leaves (§4.1), **delete the inherited structural skeleton**, compose on `cssBaseRules` | A + B | §1 gates, one dialect at a time |
+| **C** (supersets) | Per dialect in **owner order `less → scss → jess`** (GRAMMAR-REBUILD-SPEC §0.1: `css → less → scss → jess`; the earlier "scss → less" here reordered an owner requirement and is corrected — §8's scss work was a mechanism PILOT, not the execution order; less is also the Less-v5 product priority): override genuine-divergent rules (§4.2) + additions (§4.3), widen the factored leaves (§4.1), **delete the inherited structural skeleton**, compose on `cssBaseRules` | A + B | §1 gates, one dialect at a time |
 | **D** | Re-measure the realized delta; ship 0.49.0 (publish is owner-only) | C | — |
 
 Stage A and Stage B are independent and run in parallel worktrees. Stage C is the
@@ -344,7 +344,7 @@ in the same change; see [[grammar-renames-ripple-into-ungated-language-service]]
 `CompoundSelector`/`ComplexSelector`/`SelectorList`, leaf→`BasicSelector`, `ComplexTail`
 inlined) — `094eb17a6`/`12d0754a6`/`2af6d7386`; LS fix `b3eda4dce`.
 
-**Clean batch (AST-identical, ≤1 consumer edit) — IN FLIGHT `converge-selector-cst-batch2`:**
+**Clean batch (AST-identical, ≤1 consumer edit) — DONE `4c2b9dc93` (all six items 1,2,3,4,5,7; LS/DC consumers converged):**
 | # | target | dialects | current→canonical | AST (shared ctor) |
 |---|---|---|---|---|
 | 1 | keyframe leaf | less/scss/jess | `KeyframeSelector`→`SimpleSelector` | `simpleSelector` |
@@ -355,9 +355,11 @@ inlined) — `094eb17a6`/`12d0754a6`/`2af6d7386`; LS fix `b3eda4dce`.
 | 7 | pseudo-arg `*ComplexTail` | less/jess | inline the wrapper | pass-through |
 
 **Entangled residuals (need per-case care, still bump-independent):**
-- **Nested relative selectors → `RelativeSelector` (SETTLED, `DESIGN-DECISIONS.md`
-  P29).** Not a pure rename and NOT bump-gated: `.parent { > .child }` is valid CSS
-  Nesting. Measured: scss ACCEPTS it, css + jess REJECT it — a css/jess gap, not a
+- **Nested relative selectors → `RelativeSelector` (SETTLED P29) — DONE `9612d624b`
+  (all four dialects; verified 2026-08-30).** css + jess now ACCEPT `.parent { > .child }`
+  (`css grammar.ts:1219`, `jess:6274-6303`). The paragraph below is retained as the
+  design rationale. Not a pure rename and NOT bump-gated: `.parent { > .child }` is valid CSS
+  Nesting. Was: scss ACCEPTS it, css + jess REJECT it — a css/jess gap, not a
   naming choice. Fix is ADDITIVE: the nested ruleset in all four accepts a leading
   combinator producing a **`RelativeSelector`** (context-dependent — a `RelativeSelector`
   only in a nesting context; the same production at the top is a `ComplexSelector`, so

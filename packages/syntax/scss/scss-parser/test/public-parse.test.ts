@@ -803,7 +803,7 @@ describe('@jesscss/scss-parser public parse API', () => {
      * authored name -- the same rule the sibling test below states.
      */
     expect(parse('@documenté { .card { color: red; } }')).toMatchObject({
-      rules: [{ type: 'OpaqueAtRuleBlock', name: '@documenté', prelude: null }]
+      rules: [{ type: 'UnknownAtRuleBlock', name: '@documenté', prelude: null }]
     });
   });
 
@@ -816,7 +816,7 @@ describe('@jesscss/scss-parser public parse API', () => {
   it('keeps a longer at-rule name off @document and captures it opaquely', () => {
     for (const name of ['@documentary', '@-moz-documentary']) {
       expect(parse(`${name} url("screen") { .card { color: red; } }`), name).toMatchObject({
-        rules: [{ type: 'OpaqueAtRuleBlock', name, prelude: 'url("screen")' }]
+        rules: [{ type: 'UnknownAtRuleBlock', name, prelude: 'url("screen")' }]
       });
     }
 
@@ -827,7 +827,7 @@ describe('@jesscss/scss-parser public parse API', () => {
      */
     for (const name of ['@documenté', '@-moz-documenté']) {
       expect(parse(`${name} { .card { color: red; } }`), name).toMatchObject({
-        rules: [{ type: 'OpaqueAtRuleBlock', name, prelude: null }]
+        rules: [{ type: 'UnknownAtRuleBlock', name, prelude: null }]
       });
     }
   });

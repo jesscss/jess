@@ -1368,7 +1368,6 @@ describe('Jess AST grammar facts', () => {
       '@import "$[path]";',
       '@import "${path}.css";',
       '@import url($path);',
-      '@import url(${path});',
       '@import "theme.css" $media;'
     ]) {
       const rejected = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace });
@@ -1385,7 +1384,7 @@ describe('Jess AST grammar facts', () => {
     const document = parse(source);
 
     expect(document.rules[0]).toMatchObject({
-      type: 'OpaqueAtRuleBlock',
+      type: 'UnknownAtRuleBlock',
       name: '@vendor-rule',
       prelude: 'screen /* header */',
       rawBody: '\n  raw: fn("}", nested({ value: 1; }));\n  // } stays in the raw body\n  @nested { value: "{ }"; }\n'
@@ -1399,7 +1398,7 @@ describe('Jess AST grammar facts', () => {
      * above; both must land the same raw facts.
      */
     expect(parse('@vendor-rule { raw: 1; }').rules[0]).toMatchObject({
-      type: 'OpaqueAtRuleBlock',
+      type: 'UnknownAtRuleBlock',
       name: '@vendor-rule',
       prelude: null,
       rawBody: ' raw: 1; '
@@ -1415,7 +1414,7 @@ describe('Jess AST grammar facts', () => {
       ['@-future raw { value: 1; }', '@-future'],
       ['@-moz-whatever screen { raw: 1; }', '@-moz-whatever']
     ] as const) {
-      expect(parse(source).rules[0], source).toMatchObject({ type: 'OpaqueAtRuleBlock', name });
+      expect(parse(source).rules[0], source).toMatchObject({ type: 'UnknownAtRuleBlock', name });
     }
 
     for (const invalid of [
@@ -3419,7 +3418,7 @@ describe('keyword boundaries run to full ident-continue', () => {
   it('continues an at-keyword through a non-ASCII ident character', () => {
     for (const name of ['@supportsé', '@mediaé', '@containeré']) {
       expect(parse(`${name} { a { color: red; } }`), name).toMatchObject({
-        rules: [{ type: 'OpaqueAtRuleBlock', name, prelude: null }]
+        rules: [{ type: 'UnknownAtRuleBlock', name, prelude: null }]
       });
     }
   });

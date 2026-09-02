@@ -295,7 +295,7 @@ const statementAtRuleName = token(noTrivia(sequence(
 )));
 
 /*
- * Opaque blocks are the public grammar's unknown-at-rule branch. Known block
+ * Unknown-at-rule blocks are the public grammar's unknown-at-rule branch. Known block
  * names must not fall through here when their typed header/body is malformed:
  * the public CST reports that error instead of silently making it opaque.
  */

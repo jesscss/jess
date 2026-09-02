@@ -105,7 +105,7 @@ import type {
 } from './nodes.js';
 
 // [atrule] block + statement at-rule node types
-import type { AtRuleBlock, AtRuleStatement, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
+import type { AtRuleBlock, AtRuleStatement, UnknownAtRuleBlock, Plugin } from './at-rule.js';
 
 // typed synchronous value evaluator seam + boundary-clean value domain.
 import {
@@ -3683,70 +3683,6 @@ function evalLogicalOperation(node: Operation, frame: Frame | null, e: EvalCtx):
     : evalTyped(node.right, frame, e));
 }
 
-/*
- * A CSS escape sequence (css-syntax-3 §4.3.7): a backslash then either 1-6 hex
- * digits with an OPTIONAL single trailing whitespace that terminates them, or any
- * single non-hex code point that is not a newline. It is spelled here because a
- * `<custom-ident>` may contain one, and an escape can carry a code point — a
- * space, a dot, a leading digit — that would otherwise end the identifier:
- * `[a\ b]`, `[a\.b]` and `[\31 23]` are each ONE line name, not two and not
- * invalid. A predicate that misses this rejects valid CSS.
- */
-const CSS_ESCAPE = String.raw`\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^0-9a-fA-F\n])`;
-const IDENT = `(?:${CSS_ESCAPE}|[-_a-zA-Z\\u{80}-\\u{10FFFF}])(?:${CSS_ESCAPE}|[-\\w\\u{80}-\\u{10FFFF}])*`;
-const WS = String.raw`[ \t\n\r\f]`;
-
-/** `<line-names>` = `'[' <custom-ident>* ']'` — the interior, without the brackets. */
-const LINE_NAMES = new RegExp(`^${WS}*(?:${IDENT}(?:${WS}+${IDENT})*${WS}*)?$`, 'u');
-
-/**
- * Whether a bracketed value's inner bytes are PRINTABLE CSS (§12.6c).
- *
- * `[ … ]` is a first-class list: it may be bound, passed to a function, iterated,
- * indexed and measured, and none of that is constrained. But CSS admits `[ … ]`
- * in a value position for exactly ONE thing — grid line names, whose grammar is
- * `<line-names> = '[' <custom-ident>* ']'` (css-grid-2 §7.1). So `[a]`, `[a b]`
- * and `[]` say something in CSS and `[1, 2, 3]` does not. `*` is zero-or-more,
- * which is why `[]` is admitted.
- *
- * DELIBERATE UNDER-APPROXIMATION, with a stated bound. `<custom-ident>` excludes
- * the CSS-wide keywords, and `<line-names>` additionally excludes `span` and
- * `auto`, so `[span]`, `[auto]` and `[inherit]` are admitted here though CSS
- * rejects them. Under-accepting would reject valid stylesheets; over-accepting
- * only fails to catch an author error a browser will catch, and keeping the rule
- * to one identifier test is what the ruling asked for. It must never REJECT
- * something CSS accepts — that is the direction that matters, and why the escape
- * production above is spelled out rather than approximated.
- *
- * This is the ONE definition, applied where a bracketed VALUE becomes output —
- * the `Block` case of {@link evalValue}.
- *
- * It is deliberately NOT applied inside `serializeValue`. That function is the
- * value domain's general byte derivation, not a print site: function-argument
- * materialization runs through it, so a rule enforced there rejects
- * `length([1, 2])`, which the ruling permits. Measured, not assumed.
- *
- * It is deliberately NOT applied in the two AT-RULE PRELUDE formatters
- * (`evalSupportsPrelude`, `evalQueryPrelude`), which spell their own brackets.
- * Those positions preserve GRAMMAR-OWNED author bytes rather than emitting a
- * value — which is why they exist as separate formatters at all — and CSS
- * ACCEPTS what they carry: `@supports ([1, 2])` is a well-formed general-enclosed
- * condition that simply evaluates false, and a malformed media feature is a query
- * that evaluates to `not all`, not a parse error. Enforcing the rule there would
- * reject valid CSS, which is the one direction this predicate must never take.
- *
- * TODO(§12.6c residual), both recorded OPEN in the design doc:
- *   1. a bracketed list the value domain BUILDS rather than the author writing it
- *      — `join([1], [2])` — reaches output through `serializeValue` without
- *      passing this site, and still prints `[1 2]`;
- *   2. a bracketed list SPLICED from a variable into a prelude —
- *      `$x: [1, 2]; @media (min-width: $x)` — prints, while the same `$x` in a
- *      declaration errors. That one IS a positional inconsistency; closing it
- *      needs the prelude formatters to distinguish a spliced value from the
- *      author's own bytes, which they currently do not.
- */
-const isLineNames = (bytes: string): boolean => LINE_NAMES.test(bytes);
-
 /**
  * Fold a value AST node bottom-up to an internal eval value (a bare-string literal
  * for the static path, or a typed value node/group for a computed
@@ -3973,11 +3909,16 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        * Transparent to computed bytes: a materialized (operated) inner strips the
        * paren (matching the legacy oracle); an un-forced literal keeps its parens.
        */
+      /*
+       * §12.6c: a bracketed value emits VERBATIM. Balanced `[ … ]` is a valid
+       * CSS simple block in any declaration value (css-syntax-3), so the emitter
+       * never rejects one — grid `<line-names>` validity (`'[' <custom-ident>* ']'`,
+       * the one property-value grammar that gives `[ … ]` meaning) is a
+       * PROPERTY-specific concern that belongs in the lint/diagnostic layer, not
+       * here where the property is unknown.
+       */
       return mapMaybe(inner, (v) => {
         if (isLiteral(v)) {
-          if (node.delimiter === 'square' && !isLineNames(v)) {
-            throw ERR.invalidLineNames({ node, ...callSiteLocation(node, e), meta: { bytes: v } });
-          }
           const open = node.delimiter === 'square' ? '[' : '(';
           const close = node.delimiter === 'square' ? ']' : ')';
           return literal(`${open}${v}${close}`);
@@ -9768,10 +9709,10 @@ function emitDocumentStatements(
           markAfterDocumentStatement(child);
         }
         break;
-      case 'OpaqueAtRuleBlock':
+      case 'UnknownAtRuleBlock':
         if (e.referenceImportDepth === 0) {
           emitBeforeDocumentStatement(child);
-          emitOpaqueAtRuleBlock(child, e);
+          emitUnknownAtRuleBlock(child, e);
           markAfterDocumentStatement(child);
         }
         break;
@@ -11004,25 +10945,25 @@ function walkBody(
         }
         break;
       }
-      case 'OpaqueAtRuleBlock': {
+      case 'UnknownAtRuleBlock': {
         const opaqueNode = node;
         if (partition) {
           queueLeadingGroup(group, partition);
           flushPending(partition);
           partition.encounteredContainer = true;
-          partition.trailing.push(() => emitOpaqueAtRuleBlock(opaqueNode, e));
+          partition.trailing.push(() => emitUnknownAtRuleBlock(opaqueNode, e));
         } else {
           const flushed = flush();
           if (isThenable(flushed)) {
             return flushed.then(() => {
-              emitOpaqueAtRuleBlock(node, e);
+              emitUnknownAtRuleBlock(node, e);
               return walkBody(
                 statements.slice(index + 1), composed, ancestor, frame, group, flush,
                 partition, e, imp, forceLeading, propertyScope, applyExpansion
               );
             });
           }
-          emitOpaqueAtRuleBlock(node, e);
+          emitUnknownAtRuleBlock(node, e);
         }
         break;
       }
@@ -13817,9 +13758,9 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
     e.depth++;
     settledEmission(emitStyleImport(node, frame, e, e.importDocument), node, e);
     e.depth--;
-  } else if (node.type === 'OpaqueAtRuleBlock') {
+  } else if (node.type === 'UnknownAtRuleBlock') {
     e.depth++;
-    emitOpaqueAtRuleBlock(node, e);
+    emitUnknownAtRuleBlock(node, e);
     e.depth--;
   }
 }
@@ -14427,7 +14368,7 @@ function emitModuleImport(node: ModuleImport, frame: Frame, e: Emit): void {
 }
 
 /** Write a grammar-owned opaque at-rule body without evaluating or walking it. */
-function emitOpaqueAtRuleBlock(node: OpaqueAtRuleBlock, e: Emit): void {
+function emitUnknownAtRuleBlock(node: UnknownAtRuleBlock, e: Emit): void {
   const start = e.off;
   if (e.depth > 0) {
     put(e, INDENT.repeat(e.depth));
@@ -15208,10 +15149,10 @@ function emitAtRuleBody(
               emitModuleImport(node, frame, e);
             })
           : undefined;
-      case 'OpaqueAtRuleBlock':
+      case 'UnknownAtRuleBlock':
         return e.referenceImportDepth === 0
           ? nested(node, () => {
-              emitOpaqueAtRuleBlock(node, e);
+              emitUnknownAtRuleBlock(node, e);
             })
           : undefined;
       case 'MixinCall':
@@ -15611,7 +15552,7 @@ function emitBubbleBody(
           e.depth--;
           break;
         }
-        case 'OpaqueAtRuleBlock': {
+        case 'UnknownAtRuleBlock': {
           if (e.referenceImportDepth !== 0) {
             break;
           }
@@ -15619,13 +15560,13 @@ function emitBubbleBody(
           if (isThenable(flushed)) {
             return flushed.then(() => {
               e.depth++;
-              emitOpaqueAtRuleBlock(node, e);
+              emitUnknownAtRuleBlock(node, e);
               e.depth--;
               return run(index + 1);
             });
           }
           e.depth++;
-          emitOpaqueAtRuleBlock(node, e);
+          emitUnknownAtRuleBlock(node, e);
           e.depth--;
           break;
         }
@@ -16077,10 +16018,10 @@ function emitNestedBody(
           emitModuleImport(node, frame, e);
           markAfterRootStatement(node);
           break;
-        case 'OpaqueAtRuleBlock':
+        case 'UnknownAtRuleBlock':
           flushBuf();
           emitBeforeRootStatement(node);
-          emitOpaqueAtRuleBlock(node, e);
+          emitUnknownAtRuleBlock(node, e);
           markAfterRootStatement(node);
           break;
 

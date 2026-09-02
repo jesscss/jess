@@ -17,6 +17,107 @@ Base at dispatch: `origin/dev` @ `93c67d0ae`.
 
 ---
 
+## ⟢ RECONCILIATION 2026-08-30 (origin/dev @ `dd0ce15d9`, parseman `^0.50.1`) — READ FIRST
+
+The top-matter below and much of the lane history are frozen at parseman 0.48.1
+and **undercount what has landed**. Verified against the code on 2026-08-30:
+
+- **Stage A (parseman compose lifts) — LANDED** (dev on `^0.50.1`; the §3.2
+  blocker is paid).
+- **Stage B css leaf-factoring — LANDED**: `simpleSelectorAtom`, `calcValueAtom`,
+  `valueAtom` are named + `g.`-referenced; `TopLevel*` selectors were **collapsed
+  away** (`7cb55892d`), not re-pointed — COMPOSE-SPEC §7's "still needed
+  `TopLevelCompoundSelector` twin" is obsolete.
+- **§9 CST convergence — LANDED**: main tower + batch-2 (`4c2b9dc93`).
+- **§9(a) nested `RelativeSelector` (P29) — LANDED in all four dialects**
+  (`9612d624b`); css + jess now ACCEPT `.parent { > .child }`. COMPOSE-SPEC §9's
+  "css + jess REJECT it" is contradicted by the code.
+- **At-rule prelude convergence — substantially LANDED** on dev (the
+  `at-prelude-superset-convergence` branch is 177 behind / 1 ahead = superseded).
+- **Backlog: #41, #50, #58 — LANDED.**
+
+**GENUINELY REMAINING grammar cleanup:**
+1. **Stage C compose — UNBLOCKED 2026-08-31 (parseman 0.50.4).** The blocker below was
+   a real parseman compose codegen bug, now FIXED + released: `compose([base, delta])`
+   rerouted an override's reducer but NOT the inherited parents' RECOGNIZER first-set
+   when the intermediate was a bare combinator const (css `CompoundSelector →
+   simpleSelectorAtom(bare choice) → BasicSelector`), so a widened leaf was gated out.
+   parseman `0.50.4` resolves cross-rule refs winner-first in `first-set.ts` + the table
+   encoder; verified end-to-end (real `cssBaseRules` routes `%ph` through the inherited
+   tower, AST+CST). jess bumped to `^0.50.4` (`cba470ff0`). ALSO corrected: the earlier
+   "no CST-mode base" claim was wrong — a single host-mode-complete `cssBaseRules` serves
+   all four variants via the outer `compose(…, { hostMode })`. Retained below: less's
+   GENUINE selector overrides (still kept, not deleted).
+
+   **Stage C prerequisite (2026-08-31): a grammar-side reducer-helper hoist — NOT a
+   parseman blocker.** A first "3-edit flip" attempt hit `compose()`'s free-binding
+   requirement, which initially read as a parseman blocker. Re-measuring at parseman
+   **0.50.4** (`PRODUCTION-COMPOSE-FEASIBILITY.md` §6, census probe
+   `scripts/probe/parseman-compose-reducer-census.mjs`) + owner ledger **P28**
+   (SETTLED: compose proven end-to-end at parseman 0.49.0) settles it: parseman is
+   DONE — block-bodied reducers serialize (0 structural rejects across all four
+   grammars), imported free bindings are carried. css fuses (`cssBaseRules =
+   compose([...])`, 0 fallbacks). The ONLY blocker is grammar-side: local
+   module-scope reducer helpers (less/scss/jess = 106/55/70 distinct) not yet hoisted
+   to importable modules as css already did. Fix = hoist them (shared →
+   `core/ast/grammar-helpers.ts`, dialect-specific → `*-grammar-helpers.ts`) +
+   enforce with a "no reducer helper in grammar.ts" gate; census→0 then W0 (compose
+   flip) is a genuine behaviour-neutral change. No parseman change required.
+
+   **Plan of record + live progress tracker:**
+   `docs/design/LESS-COMPOSE-REAUTHOR-PLAN.md` — full 186-rule classification, the
+   ordered W0→W-widen worklist, and the ⏱ status table (single source of truth for this
+   workstream). Payoff is MODEST by design (~11–20 rule deletions, ~6–11%); the win is
+   OR-1 single-sourcing, not shrinkage. W0 (compose-wiring flip) is gated on a cst-rehost
+   probe. Update the status table there as each increment lands; do not duplicate status here.
+
+   ORIGINAL STOP finding (the diagnosis, now resolved): "delete the skeleton, inherit
+   from css" needed the parseman fix + these stay genuine overrides:
+   - less's selector tower is a **genuine §4.2 override**, not a pure restatement:
+     `staticCombinator` (`less grammar.ts:2413`) includes `|` (css `combinator :496`
+     excludes it — namespace prefix); the compound loop carries `not(whenGuardAhead)`
+     (`:2593`, the Less mixin-guard lookahead) css lacks; the ruleset selector is the
+     extend-threaded `selectorListWithExtends` (`:6440`), not plain `SelectorList`.
+     Inheriting css's parents would change less's accepted language ⇒ KEEP as overrides.
+   - **No CST-mode base to compose on:** `cssBaseRules` is `{ hostMode: 'ast' }` only
+     (`css :3911`); less builds FOUR variants (ast/cst/positions ×2). A `cssBaseCstRules`
+     (or host-mode-parametric base) must be packaged before any superset cst variant
+     can inherit.
+   - Switching to `compose([cssBaseRules, delta])` makes ALL ~200 css rules the floor
+     for EVERY subsystem — a whole-grammar re-architecture, not selector-local.
+   Consistent with §8 STEP-2 (the scss pilot found the selector tower a genuine
+   CST-level override, correcting §4.1). **Realized byte payoff is modest** (lane-3:
+   ~5–9% vanishes outright); most superset structure is genuine override. The
+   convergence (names/shapes→css) + factoring + shared recognition (parser-shared) +
+   canonical AST are the cleanup that HAS landed. Whether/how to pursue the full
+   compose re-architecture is an OWNER decision (escalated 2026-08-30) — see the
+   enabling prerequisites the agent triaged: package a CST-mode base; externalize
+   css-parser/parser-shared in less-parser `tsdown.config.ts`; keep less's selector
+   parents as overrides.
+2. §9(b) pseudo-arg tower merge (less `PseudoArgument*` ×37, jess `PseudoSelector*`
+   tower) — structural merge, oracle-gated. **Absorbs §9(d)** (the `Nth*` node-layer
+   is part of this tower). Entangles with Stage C (less/jess) — likely folded there.
+3. §9(c) less simple-selector leaf / `LESS_SELECTOR_TYPES` LS special-case —
+   entangled with less mixin/extend heads; likely folded into Stage C (less).
+4. §9(d) `Nth*` name convergence — **VERIFIED-DEFER 2026-08-30** (agent
+   `chore/nth-cst-convergence`): name tokens already shared/converged; node-layer
+   `Nth*` are genuine per-dialect overrides (less rejects `:nth-child(.a)`, css/scss/jess
+   accept) — no byte-identical rename exists. Folds into §9(b). NOT a standalone unit.
+5. §7 css prelude residual — **CLOSED 2026-08-30** (no-op; css grammar byte-identical
+   between dev and the stale `at-prelude-superset-convergence` branch).
+6. `FunctionStatement` url/calc denylist (less `grammar.ts:3444`) — **VERIFIED LOAD-BEARING,
+   NOT redundant (2026-08-30, oracle-gated).** The arm routes through
+   `CallArgumentFunction`'s `routed(genericFunctionOpen)`, and `routed()` reuses the
+   dispatch opener token WITHOUT running `genericFunctionOpen`'s `not(keywords(['url(','calc(']))`
+   guard — so the regex is the only thing keeping url(/calc( from ENTERING the arm and
+   causing a committed dispatch failure (proven: `endsWith('(')` reparses bare
+   `calc(1px + 2px);` as a function statement). KEPT + documented in-code. A principled
+   rewrite needs `caseOf` diversion arms (like `IdentifierOrFunction`) = a behavior change,
+   deferred. Owner-flagged 2026-08-30.
+7. Backlog remnants: #25 math.div, #26 trailing comma, #40/#43, #45/#46, #56 Opaque*, #62.
+
+---
+
 ## CLEANUP EXECUTION PROGRAM (the actual work — grammar edits SERIALIZED)
 
 The analysis lanes are the reconnaissance; THIS is the deliverable. Compose is a
@@ -643,8 +744,8 @@ Not yet scheduled; recorded so nothing is lost. Promote into a lane when picked.
 - #52 node-shape survey hole · #54 collectTolerantDiagnostics ignores rule config
 - #55 oracle byte-identity blind to wrong-but-round-trippable trees
 - #56 Opaque* family removal (`docs/design/OPAQUE-FAMILY-REMOVAL.md`) — depends on lane 5
-- #58 **parser-runtime-boundary = ALPHA RELEASE BLOCKER** (verified 2026-08-29,
-  dev `ff36e59d9`). `verify:parser-runtime-boundary`'s ledger is empty (target 0)
+- #58 **parser-runtime-boundary — RESOLVED 2026-08-30** (dev `da1e33ada`; alpha
+  dry-run green end-to-end). `verify:parser-runtime-boundary`'s ledger is empty (target 0)
   and it is in the alpha release preflight (PR CI deliberately skips it — see
   `.github/workflows/ci.yml` ~line 161). It flagged 3 sites; the boundary is
   "grammar combinators OK, handwritten runtime recognition banned", and the gate
@@ -658,9 +759,13 @@ Not yet scheduled; recorded so nothing is lost. Promote into a lane when picked.
     positives.
   - `css/css-parser/src/cst-host.ts:157` — `value[0]` (`runtime-string-index`) in
     `startsWithDigit`, the host CST adapter re-deriving a selector's grammarType
-    from its leaf string. GENUINE hit (handwritten recognition in host
-    post-processing). Fix in progress: emit the selector grammarType in the css
-    grammar so the host does not re-derive from bytes.
+    from its leaf string. GENUINE hit. FIXED byte-identically (`da1e33ada`): the
+    same first-char digit test inlined onto the untyped `.value` receiver (the
+    detector only flagged it because the extracted helper's `value: string`
+    annotation made it provably-source). FOLLOW-UP (not release-critical): the
+    proper fix is the css grammar emitting the selector grammarType so the host
+    never inspects the leaf — deferred (BasicSelector is a shared widening point
+    across all four grammars + first-set gating; needs grammar+perf review).
 
 ---
 

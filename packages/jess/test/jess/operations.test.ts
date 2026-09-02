@@ -582,31 +582,23 @@ describe('OPERATIONS §4.4 — truthiness is EMPTINESS, not zero-ness', () => {
   });
 });
 
-describe('§12.6c — `[ … ]` is a LIST; printing one is constrained to `<line-names>`', () => {
+describe('§12.6c — `[ … ]` is a LIST value that EMITS VERBATIM', () => {
   /*
-   * Owner ruling: usable for lists, an error on PRINTING when the bytes are not
-   * valid CSS. CSS admits `[ … ]` in a value for exactly one thing — grid line
-   * names, `'[' <custom-ident>* ']'` (css-grid-2 §7.1) — so idents print and
-   * numbers/commas do not. `*` is ZERO or more, which is why `[]` prints.
+   * Owner ruling (2026-08-31): a balanced `[ … ]` is a valid CSS simple block in
+   * any declaration value (css-syntax-3), so the emitter prints it verbatim and
+   * never rejects one. `[ … ]` has property-value grammar meaning in exactly one
+   * place — grid `<line-names>` = `'[' <custom-ident>* ']'` (css-grid-2 §7.1) —
+   * and validating THAT is property-specific, so it belongs in the lint/
+   * diagnostic layer (see `lint`), not here where the property is unknown.
    *
-   * dart-sass 1.101.0 prints all six of these verbatim. Sass+ rejects invalid
-   * CSS (ledger P4), so `.scss` takes the rule too — recorded in
-   * `04-semantic-differences.mdx`.
+   * This matches dart-sass 1.101.0, which prints every one of these verbatim.
    */
-  const prints = ['[a]', '[a b]', '[]'];
-  const rejects = ['[1, 2, 3]', '[1 2]', '[a, b]'];
+  const emits = ['[a]', '[a b]', '[]', '[1]', '[1 2]', '[1, 2, 3]', '[a, b]', '[span]', '[auto]', '[inherit]'];
 
   for (const extension of ['.jess', '.scss'] as const) {
-    it(`${extension} — a <custom-ident>* interior prints as authored`, async () => {
-      for (const v of prints) {
+    it(`${extension} — every bracketed value prints as authored`, async () => {
+      for (const v of emits) {
         await expect(sheet(`.a { k: ${v}; }`, extension), `${v} must print`).resolves.toBe(`.a { k: ${v}; }`);
-      }
-    });
-
-    it(`${extension} — anything else is an error at the point of printing`, async () => {
-      for (const v of rejects) {
-        await expect(sheet(`.a { k: ${v}; }`, extension), `${v} must not print`)
-          .rejects.toMatchObject({ code: 'eval/invalid-line-names' });
       }
     });
 
@@ -616,14 +608,11 @@ describe('§12.6c — `[ … ]` is a LIST; printing one is constrained to `<line
     });
   }
 
-  it('an ESCAPED custom-ident is one line name, and must still print', async () => {
+  it('an ESCAPED custom-ident survives the round-trip', async () => {
     /*
-     * The direction that matters: the rule must never reject what CSS accepts.
      * A CSS escape (css-syntax-3 §4.3.7) can carry a code point that would
      * otherwise end the identifier — a space, a dot, a leading digit — so
-     * `[a\ b]`, `[a\.b]` and `[\31 23]` are each ONE `<custom-ident>`. A predicate
-     * that whitespace-splits raw bytes gets all three wrong; this row is what
-     * catches that.
+     * `[a\ b]`, `[a\.b]` and `[\31 23]` are each ONE token and must emit unharmed.
      */
     for (const name of ['a\\ b', 'a\\.b', '\\31 23', '--x']) {
       await expect(sheet(`.a { grid-template-columns: [${name}] 1fr; }`, '.jess'), `[${name}] must print`)
@@ -631,36 +620,19 @@ describe('§12.6c — `[ … ]` is a LIST; printing one is constrained to `<line
     }
   });
 
-  it('the rule is a DELIBERATE under-approximation, with a stated bound', async () => {
+  it('the list is a first-class value — bound, iterated, measured, AND printed', async () => {
     /*
-     * `<custom-ident>` excludes the CSS-wide keywords and `<line-names>` also
-     * excludes `span` and `auto`, so these three are NOT valid CSS and are
-     * nevertheless admitted. Under-accepting would reject valid stylesheets;
-     * over-accepting only fails to catch an author error the browser catches,
-     * and one identifier test is what "without too much logic machinery" buys.
-     * This row exists so the bound is a decision on the record, not a gap.
-     */
-    for (const name of ['span', 'auto', 'inherit']) {
-      await expect(sheet(`.a { k: [${name}]; }`, '.jess')).resolves.toBe(`.a { k: [${name}]; }`);
-    }
-  });
-
-  it('the error is at PRINT, not at construction — the list is still a first-class value', async () => {
-    /*
-     * The whole content of the ruling is in this row: an unprintable bracketed
-     * list may still be bound, re-bound, iterated and measured. Only emitting
-     * one is constrained. A rule enforced at construction would fail every line
-     * here instead of just the last.
+     * A bracketed list may be bound, re-bound, iterated and measured, and printing
+     * one is now unconstrained too: a variable holding `[1, 2, 3]` emits verbatim
+     * in a declaration-value position.
      */
     await expect(sheet('$x: [1, 2, 3]; .a { k: b; }', '.jess')).resolves.toBe('.a { k: b; }');
-    await expect(sheet('$x: [1, 2, 3]; $y: $x; .a { k: b; }', '.jess')).resolves.toBe('.a { k: b; }');
     await expect(sheet('$x: [1, 2, 3]; $for ($v of $x) { .a-${v} { k: $v; } }', '.jess'))
       .resolves.toBe('.a-1 { k: 1; } .a-2 { k: 2; } .a-3 { k: 3; }');
     await expect(sheet('$x: [1, 2, 3]; .a { k: length($x); c: nth($x, 1); }', '.scss'))
       .resolves.toBe('.a { k: 3; c: 1; }');
-
     await expect(sheet('$x: [1, 2, 3]; .a { k: $x; }', '.jess'))
-      .rejects.toMatchObject({ code: 'eval/invalid-line-names' });
+      .resolves.toBe('.a { k: [1, 2, 3]; }');
   });
 });
 

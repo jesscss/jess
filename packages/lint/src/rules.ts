@@ -2,7 +2,7 @@ import { LINT_CODES } from '@jesscss/diagnostics-core';
 import type { LintConfig, LintRuleSetting, LintSeverity } from 'styles-config';
 
 export const PARSE_SYNTAX_ERROR_CODE = 'parse/syntax-error';
-export const STABLE_LINT_RULE_SET_VERSION = 60;
+export const STABLE_LINT_RULE_SET_VERSION = 61;
 
 export type LintRuleComparisonKind = 'stylelint-equivalent' | 'stylelint-near' | 'vscode-equivalent' | 'jess-only';
 export type LintRuleTier = 'css-validity' | 'maintainability' | 'style-suggestion' | 'dialect-support';
@@ -26,6 +26,7 @@ export const LINT_RULE_NAMES = {
   keyframeDeclarationNoImportant: 'keyframe-declaration-no-important',
   declarationNoImportant: 'declaration-no-important',
   invalidNamedGridAreas: 'named-grid-areas-no-invalid',
+  invalidGridLineNames: 'jess/grid-line-names-no-invalid',
   fontFamilyDuplicateNames: 'font-family-no-duplicate-names',
   fontFamilyMissingGeneric: 'font-family-no-missing-generic-family-keyword',
   fontFaceMissingRequiredProperties: 'font-face-no-missing-required-properties',
@@ -119,6 +120,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.keyframeDeclarationNoImportant]: LINT_CODES.keyframeDeclarationNoImportant,
   [LINT_RULE_NAMES.declarationNoImportant]: LINT_CODES.declarationNoImportant,
   [LINT_RULE_NAMES.invalidNamedGridAreas]: LINT_CODES.invalidNamedGridAreas,
+  [LINT_RULE_NAMES.invalidGridLineNames]: LINT_CODES.invalidGridLineNames,
   [LINT_RULE_NAMES.fontFamilyDuplicateNames]: LINT_CODES.fontFamilyDuplicateNames,
   [LINT_RULE_NAMES.fontFamilyMissingGeneric]: LINT_CODES.fontFamilyMissingGeneric,
   [LINT_RULE_NAMES.fontFaceMissingRequiredProperties]: LINT_CODES.fontFaceMissingRequiredProperties,
@@ -194,6 +196,7 @@ const RULE_BY_DIAGNOSTIC: Record<string, LintRuleName> = {
   [LINT_CODES.keyframeDeclarationNoImportant]: LINT_RULE_NAMES.keyframeDeclarationNoImportant,
   [LINT_CODES.declarationNoImportant]: LINT_RULE_NAMES.declarationNoImportant,
   [LINT_CODES.invalidNamedGridAreas]: LINT_RULE_NAMES.invalidNamedGridAreas,
+  [LINT_CODES.invalidGridLineNames]: LINT_RULE_NAMES.invalidGridLineNames,
   [LINT_CODES.fontFamilyDuplicateNames]: LINT_RULE_NAMES.fontFamilyDuplicateNames,
   [LINT_CODES.fontFamilyMissingGeneric]: LINT_RULE_NAMES.fontFamilyMissingGeneric,
   [LINT_CODES.fontFaceMissingRequiredProperties]: LINT_RULE_NAMES.fontFaceMissingRequiredProperties,
@@ -269,6 +272,7 @@ const RECOMMENDED_RULES: Record<LintRuleName, LintRuleSetting> = {
   [LINT_RULE_NAMES.keyframeDeclarationNoImportant]: 'warn',
   [LINT_RULE_NAMES.declarationNoImportant]: 'warn',
   [LINT_RULE_NAMES.invalidNamedGridAreas]: 'warn',
+  [LINT_RULE_NAMES.invalidGridLineNames]: 'warn',
   [LINT_RULE_NAMES.fontFamilyDuplicateNames]: 'warn',
   [LINT_RULE_NAMES.fontFamilyMissingGeneric]: 'warn',
   [LINT_RULE_NAMES.fontFaceMissingRequiredProperties]: 'warn',
@@ -400,7 +404,8 @@ const COMPARISON_DISABLED_RULES: Record<string, LintRuleSetting> = {
   [LINT_RULE_NAMES.unboundedExtends]: 'off',
   [LINT_RULE_NAMES.deadExtends]: 'off',
   [LINT_RULE_NAMES.suspiciousMapKeyAccess]: 'off',
-  [LINT_RULE_NAMES.unsupportedSassForm]: 'off'
+  [LINT_RULE_NAMES.unsupportedSassForm]: 'off',
+  [LINT_RULE_NAMES.invalidGridLineNames]: 'off'
 };
 
 export const STABLE_LINT_RULES: readonly StableLintRule[] = [
@@ -1099,6 +1104,15 @@ export const STABLE_LINT_RULES: readonly StableLintRule[] = [
     defaultPolicy: 'warn',
     comparison: 'jess-only',
     notes: 'Jess dialect support diagnostic shared with the language service.'
+  },
+  {
+    diagnosticCode: LINT_CODES.invalidGridLineNames,
+    ruleName: LINT_RULE_NAMES.invalidGridLineNames,
+    title: 'Invalid grid line names',
+    tier: 'css-validity',
+    defaultPolicy: 'warn',
+    comparison: 'jess-only',
+    notes: 'Flags bracketed grid line-name slots that are not "[" <custom-ident>* "]" (css-grid-2 §7.1) on grid, grid-template, grid-template-columns, and grid-template-rows; brackets in non-grid properties are valid CSS the browser skips and are left alone.'
   }
 ];
 
