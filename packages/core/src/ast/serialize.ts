@@ -2365,8 +2365,6 @@ function callValueContainsVarRef(value: CallValue, name: string, lookup: 'live' 
       return value.parts.some(part => callValueContainsVarRef(part, name, lookup));
     case 'List':
       return value.value.some(part => callValueContainsVarRef(part, name, lookup));
-    case 'Sequence':
-      return value.parts.some(part => callValueContainsVarRef(part, name, lookup));
     case 'Important':
       return callValueContainsVarRef(value.value, name, lookup);
     case 'Operation':
