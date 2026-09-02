@@ -294,10 +294,10 @@ export interface ImportDocumentTree {
 /**
  * A Context-read `(inline)` import: raw source is deliberately never parsed.
  *
- * There is no media wrapper. `@import (inline) "a.txt" (min-width: 100px)` is a
- * PARSE ERROR — `(inline)` makes the import compile-time, and a postlude on a
- * compile-time import is rejected by the grammar — so the spliced bytes are
- * always emitted bare.
+ * The bytes are spliced at this StyleImport's lexical position. A media query on
+ * a legacy `@import (inline)` is not carried here: the less grammar desugars it
+ * into a `@media` `AtRuleBlock` that wraps the StyleImport, so the bytes splice
+ * INSIDE that media block. A `supports(...)`/`layer` tail is still a parse error.
  */
 export interface ImportDocumentInline {
   readonly inline: string;
@@ -14165,10 +14165,11 @@ function emitStyleImport(
             : emitDocumentStatements(loaded.document!.rules, frame, e, importDocument, true);
 
           /*
-           * A compile-time import has NO postlude to honour: the grammar rejects
-           * one outright, so the loaded document simply executes at this lexical
-           * position. Less 4.x instead wraps it in `@media <tail>`; that wrap is
-           * deliberately gone along with the syntax that reached it.
+           * The StyleImport itself has NO postlude to honour: the loaded document
+           * simply executes at this lexical position. A legacy `@import` + media
+           * query is wrapped by the less grammar in a `@media` `AtRuleBlock` whose
+           * body is this StyleImport, so the media wrap is an ENCLOSING node here,
+           * not something this emitter reconstructs from a tail.
            */
           const emit = (): MaybePromise<void> => emitDocument();
 

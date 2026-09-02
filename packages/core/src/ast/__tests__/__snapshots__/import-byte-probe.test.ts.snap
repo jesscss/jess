@@ -17,7 +17,10 @@ exports[`import byte probe > less, no loader 1`] = `
 @import "a.txt";
 
 --- "@import (inline) \\"a.txt\\" (min-width: 100px);"
-!! A compile-time @import cannot carry a media query.
+@media (min-width: 100px) {
+  @import "a.txt";
+}
+
 --- "@import (reference) \\"a\\";"
 @import "a";
 
@@ -29,7 +32,10 @@ exports[`import byte probe > less, no loader 1`] = `
 Reason: Symbol "@name" is undefined in this scope.
 Fix: Define "@name" or import a file that provides it.
 --- "@import \\"a\\" screen and (min-width: 100px);"
-!! A compile-time @import cannot carry a media query.
+@media screen and (min-width: 100px) {
+  @import "a";
+}
+
 --- "@import (css) \\"a.css\\";"
 @import "a.css";
 
@@ -82,7 +88,11 @@ RAW_BYTES
 
 
 --- "@import (inline) \\"a.txt\\" (min-width: 100px);"
-!! A compile-time @import cannot carry a media query.
+@media (min-width: 100px) {
+RAW_BYTES
+
+}
+
 --- "@import (reference) \\"a\\";"
 
 --- "@import (optional) \\"nope\\";"
@@ -93,7 +103,12 @@ RAW_BYTES
 Reason: Symbol "@name" is undefined in this scope.
 Fix: Define "@name" or import a file that provides it.
 --- "@import \\"a\\" screen and (min-width: 100px);"
-!! A compile-time @import cannot carry a media query.
+@media screen and (min-width: 100px) {
+.a {
+  color: red;
+}
+}
+
 --- "@import (css) \\"a.css\\";"
 @import "a.css";
 

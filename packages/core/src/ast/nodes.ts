@@ -1304,11 +1304,13 @@ export interface StyleImport extends SpanSlots {
   /*
    * There is deliberately NO postlude field. A media/layer/supports tail belongs
    * to the plain CSS `@import` form, which is an `AtRuleStatement` and carries it
-   * in the prelude. Once the parser has decided an import is compile-time, a
-   * trailing query is rejected AT PARSE TIME, so no `StyleImport` can ever hold
-   * one and nothing downstream may act on one. This diverges deliberately from
-   * Less 4.x, which accepts `@import "a.less" screen` and wraps the loaded rules
-   * in `@media screen`.
+   * in the prelude. A media query on a compile-time legacy `@import`/`@-import` is
+   * not held here either: the parser desugars it — as Less 4.x does — into a
+   * `@media <query>` `AtRuleBlock` that wraps this postlude-free `StyleImport`, so
+   * the query lives on the wrapper and the loaded document renders inside it (less
+   * grammar `ImportStatement`). A `supports(...)`/`layer` tail, and every non-
+   * `@import` compile-time form (`@-compose`), reject the postlude at parse time,
+   * so no `StyleImport` can ever hold one and nothing downstream may act on one.
    */
 
   readonly mode: 'compose' | 'import';

@@ -175,7 +175,7 @@ type LessRules = {
   Stylesheet: Combinator<Stylesheet>;
   Document: Combinator<Stylesheet>;
   VarDeclaration: Combinator<VariableDeclaration>;
-  ImportStatement: Combinator<StyleImport | AtRuleStatement>;
+  ImportStatement: Combinator<StyleImport | AtRuleStatement | AtRuleBlock>;
   PluginDirective: Combinator<Plugin>;
   ValueBlockDeclaration: Combinator<VariableDeclaration>;
   ValueBlock: Combinator<ValueNode>;
@@ -1084,10 +1084,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * Root boundary trivia is projected later from Parseman's sparse root index;
    * this reducer stays on its original children/fields/span ABI.
    *
-   * A postlude on the COMPILE-TIME branch is rejected here rather than carried:
-   * a media/layer/supports query describes a linked CSS resource, and a loaded
-   * document is spliced into this one instead. Deliberately unlike Less 4.x,
-   * which accepts `@import "foo.less" screen` and wraps the result in `@media`.
+   * A postlude on the COMPILE-TIME branch is handled by KEYWORD and TAIL KIND.
+   * The legacy `@import`/`@-import` form carrying a MEDIA QUERY is desugared —
+   * as Less 4.x does — into a `@media <query>` wrapper around the spliced
+   * `StyleImport`, so the loaded document renders inside the media block. A
+   * `supports(...)`/`layer` condition, and every non-`@import` compile-time form
+   * (`@-compose`), still reject the postlude here: only a media query has a
+   * wrapping desugaring, and `@compose` admits none. The tail stays TYPED on the
+   * wrapping `@media`; `StyleImport` remains postlude-free (nodes.ts §StyleImport).
+   * See docs/architecture/core/DESIGN-DECISIONS.md (owner-ruled 2026-09-02).
    */
   const ImportStatement = node(
     'ImportStatement',
@@ -1111,7 +1116,34 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       const tail = tailValue === undefined ? null : isValueNode(tailValue) ? tailValue : any(staticText(tailValue));
       if (importIsCompileTime(keyword.value, target, options)) {
         if (tail !== null) {
-          throw new LessImportPostludeError(span.start, span.end);
+          // Only the legacy `@import`/`@-import` form desugars a media tail into
+          // a `@media` wrapper; `@-compose` and any `supports(...)`/`layer` tail
+          // still reject. A CSS import postlude is `[ layer | layer(…) ]? [
+          // supports(…) ]? <media-query-list>`; only the trailing media-query-
+          // list has a `@media` desugaring. A pure media-query-list never spells
+          // the `supports`/`layer` keyword, so a text tail carrying either is a
+          // supports/layer condition (or a malformed mix) and is rejected. A
+          // parenthesized `(feature: value)` media feature (typed `ImportQueryTail`
+          // Block) or `@{…}` interpolation is a media query and carries neither.
+          // `importKeyword` only spells `@import`/`@-import`, so this is always a
+          // legacy import here; the `!isLegacyImport` guard is defensive against a
+          // future keyword (a compile-time `@-compose` admits no media wrap).
+          const lowered = keyword.value.toLowerCase();
+          const isLegacyImport = lowered === '@import' || lowered === '@-import';
+          // ponytail: substring test over the opaque text tail, NOT a regex —
+          // grammars forbid regex literals outside `regex()`. Upgrade path: a
+          // typed `ImportTail` split (media-query vs supports/layer), the same
+          // gap the tail comment above records; then this branches on `.type`.
+          // Structured (Block / `@{…}`) tails are `isValueNode` and bypass this.
+          const tailText = isAny(tail) ? tail.src.toLowerCase() : '';
+          const tailHasSupportsOrLayer = tailText.includes('supports') || tailText.includes('layer');
+          if (!isLegacyImport || tailHasSupportsOrLayer) {
+            throw new LessImportPostludeError(span.start, span.end);
+          }
+          return withSourceSpan(
+            atRuleBlock('@media', tail, [styleImport(keyword.value, target, { options, mode: 'import' })]),
+            span
+          );
         }
         return styleImport(keyword.value, target, { options, mode: 'import' });
       }

@@ -13,9 +13,12 @@ import { AbstractPlugin, type UrlTransformRequest } from '../../plugin.js';
  * `@import` is an `AtRuleStatement`, and a compile-time import is a `StyleImport`.
  * Tests author source-shaped imports and let the one shared predicate choose.
  *
- * A postlude on the compile-time branch throws here for the same reason the four
- * grammars throw on it: a media/layer/supports query describes a linked CSS
- * resource, and `StyleImport` has no field to put one in.
+ * `StyleImport` has NO postlude field, so this constructor throws when asked to
+ * put a tail on a compile-time import. The less grammar's media-query desugaring
+ * (legacy `@import` + media query → a `@media` wrapper around the postlude-free
+ * `StyleImport`, owner 2026-09-02) is a PARSE-time decision owned by that grammar
+ * and its tests; core tests exercise the SERIALIZE of that shape by building the
+ * `AtRuleBlock` wrapper directly, not by re-deriving the parse-time discriminant.
  */
 const authoredImport = (
   name: string,
@@ -25,6 +28,14 @@ const authoredImport = (
   tail: ValueNode | null = null
 ): StyleImport | AtRuleStatement => {
   if (importIsCompileTime(name, target, options, alias)) {
+    /*
+     * A compile-time StyleImport has NO postlude field, so this constructor
+     * cannot carry a tail on one. The less grammar's media-query desugaring
+     * (legacy `@import` + media → `@media` wrapper) is a PARSE-time decision
+     * owned by that grammar and its own tests; core tests that want the wrapped
+     * shape build the `AtRuleBlock` directly (see below) rather than re-deriving
+     * the parse-time discriminant here.
+     */
     if (tail !== null) {
       throw new SyntaxError('A compile-time @import cannot carry a media query.');
     }
@@ -653,7 +664,28 @@ describe('StyleImport', () => {
    * to build. Less 4.x accepts this source and emits the wrapper; the divergence
    * is intended. The loaded document simply executes at its lexical position.
    */
-  it('rejects a media tail on a loadable import instead of wrapping the loaded document', () => {
+  it('loads a document inside the @media wrapper the grammar desugars a media tail into', async () => {
+    /*
+     * The parser desugars a legacy `@import` + media query into this shape; core
+     * just serializes it. StyleImport stays postlude-free — the media lives on
+     * the wrapping @media (owner 2026-09-02).
+     */
+    const wrapped = atRuleBlock(
+      '@media',
+      any('screen and (max-width: 600px)'),
+      [styleImport('@import', quoted('"imported.less"', 'imported.less', '"', false), { options: list([any('multiple')], ','), mode: 'import' })]
+    );
+    const imported = stylesheet([rule('body', [decl('width', keyword('100%'))])]);
+    await expect(Promise.resolve(serialize(stylesheet([wrapped]), {
+      importDocument: ({ specifier }) => specifier === 'imported.less' ? { document: imported } : undefined
+    }))).resolves.toEqual({
+      css: '@media screen and (max-width: 600px) {\nbody {\n  width: 100%;\n}\n}\n'
+    });
+
+    /*
+     * The constructor still refuses a tail on a compile-time import (no postlude
+     * field); the parser's wrap/reject discriminant is tested in the less suite.
+     */
     expect(() => authoredImport(
       '@import',
       quoted('"imported.less"', 'imported.less', '"', false),
@@ -1771,13 +1803,16 @@ describe('StyleImport', () => {
    * Less 4.x instead wraps the spliced bytes in `@media (min-width: 600px)`;
    * that wrap and the syntax reaching it are both deliberately gone.
    */
-  it('rejects a media postlude on an inline import instead of wrapping the splice', () => {
-    expect(() => authoredImport(
-      '@import',
-      url(quoted('"raw.css"', 'raw.css', '"', false)),
-      list([keyword('inline')]),
-      null,
-      any('(min-width:600px)')
-    )).toThrow(SyntaxError);
+  it('splices (inline) bytes inside the @media wrapper the grammar desugars a media tail into', async () => {
+    const wrapped = atRuleBlock(
+      '@media',
+      any('(min-width:600px)'),
+      [styleImport('@import', url(quoted('"raw.css"', 'raw.css', '"', false)), { options: list([keyword('inline')]), mode: 'import' })]
+    );
+    await expect(Promise.resolve(serialize(stylesheet([wrapped]), {
+      importDocument: ({ specifier }) => specifier === 'raw.css' ? { inline: '.raw { color: red; }' } : undefined
+    }))).resolves.toEqual({
+      css: '@media (min-width: 600px) {\n.raw { color: red; }\n}\n'
+    });
   });
 });
