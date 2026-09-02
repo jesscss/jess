@@ -1,18 +1,12 @@
 /**
- * import-media-query.test.ts — a media/layer/supports postlude on a COMPILE-TIME
- * `@import` is a PARSE ERROR (§12.3b, owner ruling 2026-08-07).
+ * import-media-query.test.ts — a MEDIA QUERY on a compile-time legacy `@import`
+ * desugars to a `@media <query>` wrapper around the loaded document (owner ruling
+ * 2026-09-02, restoring lessc 4.x behavior). A `supports(...)`/`layer` condition,
+ * and every non-`@import` compile-time form, still reject the postlude at parse
+ * time — only a media query has a wrapping desugaring.
  *
- * This file used to pin the shape of the `@media` wrapper such an import
- * produced: `@import "file" screen and (max-width: 600px)` loaded the file and
- * wrapped its rules in ONE `@media <full query>` block (the bug it guarded was a
- * wrapper decomposed per query term). That whole construct is gone. A postlude
- * describes a LINKED CSS resource, and a loaded document is spliced into this
- * one instead — so once the parser has decided an import is compile-time, the
- * postlude has nothing left to describe and is rejected outright.
- *
- * This DIVERGES deliberately from lessc 4.x, which accepts the source and emits
- * the `@media` wrapper. A postlude remains valid on a plain CSS `@import`, where
- * it stays in the at-rule prelude and is emitted verbatim.
+ * A postlude also remains valid on a plain CSS `@import`, where it stays in the
+ * at-rule prelude and is emitted verbatim.
  */
 import { describe, it, expect } from 'vitest';
 import * as path from 'path';
@@ -27,9 +21,49 @@ const mkCompiler = () =>
     compile: { plugins: [lessPlugin()] }
   });
 
-describe('a media query on a compile-time @import is rejected', () => {
-  it('reports a parse error instead of wrapping the loaded document in @media', async () => {
+describe('a media query on a compile-time @import wraps the loaded document in @media', () => {
+  it('loads the file and wraps its rules in one @media <full query> block', async () => {
     const result = await mkCompiler().renderToResult(path.join(fixtures, 'main.less'));
+
+    expect(result.errors).toHaveLength(0);
+
+    /*
+     * The loaded rules indent inside the @media wrapper exactly like an authored
+     * `@media { body {…} }` body (owner 2026-09-02).
+     */
+    expect(result.css.trim()).toBe(
+      [
+        '@media screen and (max-width: 600px) {',
+        '  body {',
+        '    width: 100%;',
+        '  }',
+        '}'
+      ].join('\n')
+    );
+  });
+
+  it('splices a compile-time (inline) import inside the @media wrapper', async () => {
+    const result = await mkCompiler().renderToResult(path.join(fixtures, 'inline-main.less'));
+
+    expect(result.errors).toHaveLength(0);
+
+    /*
+     * `(inline)` bytes are spliced verbatim (never re-parsed) but indented to the
+     * wrapper's body depth, so the raw file's own trailing newline lands inside
+     * the wrapper (owner 2026-09-02).
+     */
+    expect(result.css.trim()).toBe(
+      [
+        '@media (min-width: 600px) {',
+        '  .raw { color: red; }',
+        '',
+        '}'
+      ].join('\n')
+    );
+  });
+
+  it('still rejects a supports() condition on a compile-time @import', async () => {
+    const result = await mkCompiler().renderToResult(path.join(fixtures, 'supports-main.less'));
 
     expect(result.css.trim()).toBe('');
     expect(result.errors).toHaveLength(1);

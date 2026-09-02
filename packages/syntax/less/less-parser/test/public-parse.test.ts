@@ -1147,10 +1147,29 @@ describe('public Less parse()', () => {
     expect(() => parse('@import "theme-@{name}.css;')).toThrow(SyntaxError);
 
     /*
-     * The same target with a media postlude is a compile-time import carrying
-     * a media query, which is rejected outright.
+     * The same target with a media postlude is a legacy `@import` carrying a
+     * media query: it desugars to a `@media screen` wrapper around the compile-
+     * time StyleImport (owner 2026-09-02), matching Less 4.x, not rejected.
      */
-    expect(() => parse('@import (less, multiple) "theme-@{name}.css" screen;'))
+    expect(parse('@import (less, multiple) "theme-@{name}.css" screen;')).toMatchObject({
+      type: 'Stylesheet',
+      rules: [
+        {
+          type: 'AtRuleBlock',
+          name: '@media',
+          prelude: { type: 'Any', src: 'screen' },
+          rules: [{ type: 'StyleImport', name: '@import', mode: 'import' }]
+        }
+      ]
+    });
+
+    /*
+     * A `supports(...)`/`layer` tail is NOT a media query and has no wrapping
+     * desugaring, so a compile-time import still rejects it outright.
+     */
+    expect(() => parse('@import (less) "theme.less" supports(display: grid);'))
+      .toThrow(LessImportPostludeError);
+    expect(() => parse('@import (less) "theme.less" layer;'))
       .toThrow(LessImportPostludeError);
   });
 
@@ -1276,9 +1295,22 @@ describe('public Less parse()', () => {
       serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css
     ).toBe('@import "theme.css" print;\n');
 
-    // The identical tail on a compile-time import is a parse error.
-    expect(() => parse('@import "theme.less" @{media};'))
-      .toThrow(LessImportPostludeError);
+    /*
+     * The identical tail on a compile-time import desugars to a `@media`
+     * wrapper (owner 2026-09-02): `@{media}` becomes the media prelude and the
+     * compile-time StyleImport is its body.
+     */
+    expect(parse('@import "theme.less" @{media};')).toMatchObject({
+      type: 'Stylesheet',
+      rules: [
+        {
+          type: 'AtRuleBlock',
+          name: '@media',
+          prelude: { type: 'Interpolation' },
+          rules: [{ type: 'StyleImport', name: '@import', target: { type: 'Quoted', value: 'theme.less' } }]
+        }
+      ]
+    });
 
     for (const invalid of [
       '@import "theme.css" @{media} screen;',
@@ -1320,6 +1352,40 @@ describe('public Less parse()', () => {
     expect(
       serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css
     ).toBe('@import url("//ha.com/file.css") (min-width: 100px);\n');
+  });
+
+  it('desugars a legacy compile-time @import with a media query into a @media wrapper', () => {
+    /*
+     * `(inline)` makes this compile-time; `(min-width:600px)` is a parenthesized
+     * media feature (Any text tail). Owner 2026-09-02: the legacy `@import` form
+     * wraps the postlude-free StyleImport in `@media <query>`, matching Less 4.x.
+     */
+    expect(parse('@import (inline) url("x.css") (min-width:600px);')).toMatchObject({
+      type: 'Stylesheet',
+      rules: [
+        {
+          type: 'AtRuleBlock',
+          name: '@media',
+          prelude: { type: 'Any', src: '(min-width:600px)' },
+          rules: [
+            {
+              type: 'StyleImport',
+              name: '@import',
+              mode: 'import',
+              target: { type: 'Url', value: { type: 'Quoted', value: 'x.css' } },
+              options: { type: 'List', value: [{ type: 'Any', src: 'inline' }] }
+            }
+          ]
+        }
+      ]
+    });
+
+    /*
+     * A supports()/layer condition on the same compile-time import has no media
+     * wrapping and is still rejected outright.
+     */
+    expect(() => parse('@import (inline) url("x.css") supports(display: flex);'))
+      .toThrow(LessImportPostludeError);
   });
 
   it('renders public typed interpolation in dynamic URL, import, and block-header positions', () => {

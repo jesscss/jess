@@ -217,22 +217,21 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
 
   /*
-   * INTENDED DIVERGENCE, not a defect (§12.3b, owner ruling 2026-08-07). A
-   * media/layer/supports postlude on a COMPILE-TIME `@import` is now a parse
-   * error: a postlude describes a linked CSS resource, and a loaded document is
-   * spliced into this one instead. lessc 4.x accepts the source and wraps the
-   * loaded rules in `@media`, which is what these two `.css` expectations still
-   * encode. The fixtures live in the owner-maintained `@less/test-data` corpus
-   * (`~/git/oss/less.js`, branch `alpha`), so they need an OWNER update to the
-   * v5 expectation before either fixture can graduate off this list.
+   * Owner 2026-09-02 restored the 4.x behavior: a media query on a legacy
+   * compile-time `@import` now desugars to a `@media <query>` wrapper around the
+   * spliced document, AND the spliced rules indent inside the wrapper exactly
+   * like an authored `@media` body (less grammar `ImportStatement` +
+   * `serialize.ts` `emitBubbleBody`; docs/architecture/core/DESIGN-DECISIONS.md
+   * A10). `import-inline.less` now matches its golden and has GRADUATED off this
+   * list. `import.less` still differs, but on grounds UNRELATED to the media
+   * wrap (its `@media` blocks now match byte-for-byte): a leading top-of-file
+   * block comment re-orders below the hoisted root CSS `@import`s, and π emits at
+   * jess's 10-digit output quantization (`3.1415926536`) vs the golden's full
+   * `3.141592653589793`.
    */
   [
     'tests-unit/import/import.less',
-    'lines 17/21/23/25 carry a media postlude on a compile-time @import (e.g. `@import (less, multiple) "import/import-test-d.css" screen and (max-width: 601px);`), which §12.3b now rejects at parse time; the .css expectation still encodes the 4.x @media wrap. OPEN N10 now supplies the formerly missing later-import mixin/variable visibility, so the postlude syntax is the sole active blocker in this fixture'
-  ],
-  [
-    'tests-unit/import/import-inline.less',
-    'line 2 is `@import (inline) url("import/import-test-d.css") (min-width:600px);` — `(inline)` makes the import compile-time, so §12.3b rejects its postlude at parse time; the .css expectation still encodes the 4.x behaviour of wrapping the spliced raw bytes in `@media (min-width: 600px)`'
+    'the compile-time-@import media wrap now matches (owner 2026-09-02). Remaining diffs are unrelated: a leading `/** comment at the top **/` orders below the hoisted root CSS @imports, and π prints at jess 10-digit output quantization (3.1415926536) vs the golden full 3.141592653589793'
   ],
   [
     'tests-unit/urls/urls.less',
@@ -364,11 +363,11 @@ const expectedFailureFixtures = new Map<string, string>([
 ]);
 
 const expectedFailureDiagnosticCodes = new Map<string, string>([
-  /* The §12.3b postlude rule fires at parse time. OPEN N10 fixes the formerly
-   * earlier import-fact lookup failure, but this fixture still intentionally
-   * stops at the maintained 4.x postlude syntax. */
-  ['tests-unit/import/import.less', 'parse/syntax-error'],
-  ['tests-unit/import/import-inline.less', 'parse/syntax-error'],
+  /* Owner 2026-09-02 restored the 4.x wrap: a media query on a legacy
+   * compile-time `@import` now desugars to `@media <query>` instead of raising a
+   * parse error, so these two import fixtures no longer surface a diagnostic —
+   * they still differ from the external golden only on render layout (see the
+   * expected-failure reasons), not on a parse error. */
   ['tests-unit/urls/urls.less', 'import/not-found']
 ]);
 

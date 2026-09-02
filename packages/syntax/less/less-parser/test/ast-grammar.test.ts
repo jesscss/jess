@@ -3143,10 +3143,10 @@ describe('Less AST grammar facts', () => {
 
   it('constructs static import options, url targets, and recursively balanced tails directly', () => {
     /*
-     * A media/supports/layer postlude is only legal on the plain-CSS `@import`
-     * form, so the option clause and the balanced tail are now separate facts:
-     * `(less, …)` makes the import compile-time, and a postlude on that form is
-     * a parse error rather than a carried query.
+     * A pure media query on a legacy compile-time `@import` desugars to a
+     * `@media` wrapper (owner 2026-09-02), but a `supports(...)`/`layer`
+     * condition has no wrapping and still rejects. This tail carries a
+     * `supports(...)` condition, so it is a parse error rather than a wrap.
      */
     expect(() => run(
       lessGrammar.Document,
@@ -3299,14 +3299,27 @@ describe('Less AST grammar facts', () => {
     });
 
     /*
-     * The same target with a `screen` postlude is a compile-time import
-     * carrying a media query, which is rejected outright.
+     * The same target with a `screen` postlude is a legacy compile-time
+     * `@import` carrying a media query: it desugars to a `@media screen` wrapper
+     * around the postlude-free StyleImport (owner 2026-09-02).
      */
-    expect(() => run(
+    const wrapped = run(
       lessGrammar.Document,
       '@import (less, multiple) "theme-@{name}.css" screen;',
       { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
-    )).toThrow(LessImportPostludeError);
+    );
+    expect(wrapped.ok).toBe(true);
+    expect(wrapped.value).toMatchObject({
+      type: 'Stylesheet',
+      rules: [
+        {
+          type: 'AtRuleBlock',
+          name: '@media',
+          prelude: { type: 'Any', src: 'screen' },
+          rules: [{ type: 'StyleImport', name: '@import', mode: 'import' }]
+        }
+      ]
+    });
   });
 
   it('constructs one complete interpolated import tail as a structural fact', () => {
@@ -3348,12 +3361,28 @@ describe('Less AST grammar facts', () => {
       ]
     });
 
-    // The identical tail on a compile-time import is a parse error.
-    expect(() => run(
+    /*
+     * The identical tail on a compile-time import desugars to a `@media`
+     * wrapper (owner 2026-09-02): `@{media}` is the media prelude and the
+     * compile-time StyleImport its body.
+     */
+    const wrapped = run(
       lessGrammar.Document,
       '@import (reference) "theme.less" @{media};',
       { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
-    )).toThrow(LessImportPostludeError);
+    );
+    expect(wrapped.ok).toBe(true);
+    expect(wrapped.value).toMatchObject({
+      type: 'Stylesheet',
+      rules: [
+        {
+          type: 'AtRuleBlock',
+          name: '@media',
+          prelude: { type: 'Interpolation' },
+          rules: [{ type: 'StyleImport', name: '@import', target: { type: 'Quoted', value: 'theme.less' } }]
+        }
+      ]
+    });
   });
 
   it('constructs unquoted dynamic URL values and import targets as typed interpolation', () => {
