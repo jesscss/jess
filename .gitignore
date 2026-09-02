@@ -100,3 +100,6 @@ packages/core/.bmark-ast/
 
 # Agent scratch space (worktree-local probes; never committed)
 .scratch/
+
+# Machine-local Conductor repository settings
+.conductor/settings.local.toml
