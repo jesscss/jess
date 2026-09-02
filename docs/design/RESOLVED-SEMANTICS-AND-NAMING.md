@@ -2215,7 +2215,7 @@ production building exactly one kind, under a different name.
 | --- | --- | --- |
 | scss | **all 7** (`Map`, `MapEntry`, `Paren`, `Square`, `Simple`, `Placeholder`, `SassInterpolation`) | none — **DONE** |
 | less | 11 of 14 | `MixinReferenceBase` (`:4376`), `SelectorBranch` (`:6172`, `:6337`, `:6349`, `:6355`, `:6387`), `ExtendTarget` (`:6296`) |
-| css | 0 of 11 | all — `BasicSelector`, `NestingSelector`, `keyframeSelector`, `Percentage`, `CalcParen`, `ParenValue`, `SquareValue`, `ValueList`, `TypedValueList`, `VarFallback`, `RelativeComplexSelector` |
+| css | 0 of 11 | all — `BasicSelector`, `NestingSelector`, `keyframeSelector`, `Percentage`, `CalcParen`, `ParenValue`, `SquareValue`, `ValueList`, `TypedValueList`, `VarFallback`, `RelativeSelector` |
 
 §12.5's "deletions before renames" held: §12.3 landed first, and the labels it
 was expected to kill are gone.
@@ -2232,7 +2232,7 @@ was expected to kill are gone.
 | css | `Percentage` | `dimension` | `Dimension` |
 | css | `CalcParen`, `ParenValue`, `SquareValue` | `block` | `Block` |
 | css | `ValueList`, `TypedValueList`, `VarFallback` | `list` | `List` |
-| css | `RelativeComplexSelector` | `relativeSelector` | `RelativeSelector` |
+| css | `RelativeSelector` | `relativeSelector` | `RelativeSelector` |
 | scss | `Map`, `MapEntry` | `collection`, `collectionEntry` | `Collection`, `CollectionEntry` |
 | scss | `Paren`, `Square` | `block` | `Block` |
 | scss | `Simple`, `Placeholder` | `simpleSelector` | `SimpleSelector` |

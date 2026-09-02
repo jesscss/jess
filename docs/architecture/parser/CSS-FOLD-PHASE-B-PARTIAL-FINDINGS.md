@@ -171,7 +171,7 @@ A reasonable plan for the next dispatch:
    AST build arrows into a single dispatched build arrow where the CST rule is
    a union (this requires checking children fields/types at parse time to fan
    out to the right AST constructor).
-3. For AST-only rules with no CST analog (CalcVar family, RelativeComplex,
+3. For AST-only rules with no CST analog (CalcVar family, RelativeSelector,
    DocumentBlock), keep them as internal `const X = node('X', ..., build)` but
    DO NOT expose them on the return map.
 4. Lift the lambda to a module-level `const cssFactory = (g: CssGrammarSelf) => {...}`
@@ -1067,7 +1067,7 @@ unprefixed names: `PseudoArgument`, `OfTypePseudoArgument`,
 `LeadingDashPseudoArgument`, `TypedNthPseudoArgument`,
 `LeadingDashOfTypePseudoArgument`, `TypedOfTypePseudoArgument`,
 `LeadingDashRawPseudoArgument`, `SelectorOnlyPseudoArgument`,
-`GenericPseudoArgument`, and `RelativeComplexSelector`. These helpers are still
+`GenericPseudoArgument`, and `RelativeSelector`. These helpers are still
 AST-local pseudo-argument machinery; the cleanup removes the obsolete `CssAst*`
 mode/owner prefix without changing pseudo selector acceptance or emitted AST.
 

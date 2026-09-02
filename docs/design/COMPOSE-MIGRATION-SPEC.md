@@ -351,7 +351,7 @@ inlined) — `094eb17a6`/`12d0754a6`/`2af6d7386`; LS fix `b3eda4dce`.
 | 2 | comma-tail | less/scss/jess | `SelectorTail`→inline `oneOrMoreSep` | `selist` (parent) |
 | 3 | `&` node name | scss/jess | `NestingSelector`/`Parent`→`SimpleSelector` | `simpleSelector` |
 | 4 | nested comma-tail | scss | `NestedSelectorTail`→inline | pass-through |
-| 5 | relative complex | scss/less | `RelativeComplex`→`RelativeComplexSelector` | `relativeSelector` |
+| 5 | relative complex | scss/less | `RelativeSelector`→`RelativeSelector` | `relativeSelector` |
 | 7 | pseudo-arg `*ComplexTail` | less/jess | inline the wrapper | pass-through |
 
 **Entangled residuals (need per-case care, still bump-independent):**
@@ -367,7 +367,7 @@ inlined) — `094eb17a6`/`12d0754a6`/`2af6d7386`; LS fix `b3eda4dce`.
   `RelativeSelector` to the admissible item shapes (alongside the ordinary
   `BasicSelector`/`CompoundSelector`/`ComplexSelector`), it does not restrict items to
   relative/complex — `> .a, .b` mixes a `RelativeSelector` with a plain `BasicSelector`.
-  css already has the producer `RelativeComplexSelector`
+  css already has the producer `RelativeSelector`
   (grammar.ts:1496), wired today only to `:has()` — reuse it for the nested ruleset.
   Touches eval/render (must emit `.parent > .child`) — semantics change, oracle-gated.
 - **Pseudo-argument tower merge** (less `PseudoArgument*`, jess `PseudoSelector*`): a
