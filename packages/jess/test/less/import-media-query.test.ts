@@ -70,7 +70,7 @@ describe('a media query on a compile-time @import wraps the loaded document in @
     expect(result.errors[0]).toMatchObject({
       code: 'parse/syntax-error',
       phase: 'parse',
-      message: 'A compile-time @import cannot carry a media query.'
+      message: 'A compile-time @import cannot carry a layer or supports condition.'
     });
   });
 

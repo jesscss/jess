@@ -177,27 +177,35 @@ export class LessUnparenthesizedMixinGuardError extends SyntaxError {
 }
 
 /**
- * A media/layer/supports postlude belongs to the plain CSS `@import` form only.
+ * Fired when a COMPILE-TIME (resolved) import carries a postlude that has no
+ * wrapping desugaring. The discriminant is real-CSS-vs-compile-time, NOT a
+ * dialect split (owner 2026-09-02; DESIGN-DECISIONS.md A10, §12.3b amendment):
+ * a RUNTIME / real CSS `@import` (one that stays in output as a CSS at-rule)
+ * carries its media/layer/supports postlude VERBATIM in every dialect — it is an
+ * `AtRuleStatement`, not a compile-time import, and never reaches this error.
  *
  * Once the parser has decided an `@import` is compile-time — it carries options,
- * or its target is a loadable (non-`.css`) path — a trailing query has nothing
- * left to describe: the loaded rules are spliced into this document, not linked
- * as a separate CSS resource. This DIVERGES deliberately from Less 4.x, which
- * accepts `@import "foo.less" screen;` and wraps the loaded rules in
- * `@media screen`.
+ * or its target is a loadable (non-`.css`) path — the loaded rules are spliced
+ * into this document, so the resolved content cannot carry a verbatim `@import`
+ * postlude. A MEDIA query is instead DESUGARED into a `@media <query>` wrapper
+ * (restoring Less 4.x; less grammar `ImportStatement`), so it does not throw.
+ * This error therefore fires only for a `layer`/`supports(...)` condition
+ * (deferred as non-trivial, owner-accepted 2026-09-02) and every non-`@import`
+ * compile-time form (`@-compose`); the author rewrites those as an explicit
+ * `@media`/`@layer`/`@supports` block.
  */
 export class LessImportPostludeError extends SyntaxError {
   readonly code = 'parse/import-postlude-on-compile-time-import' as const;
   readonly offset: number;
   readonly endOffset: number;
   readonly reason =
-    'A media, layer, or supports query is only valid on a plain CSS @import.';
+    'A layer or supports condition on a compile-time @import is not supported; a media query desugars to a @media wrapper, and a real CSS @import keeps all three verbatim.';
 
   readonly fix =
-    'Drop the query, or wrap the import in an explicit @media/@supports/@layer block.';
+    'Wrap the import in an explicit @media/@layer/@supports block.';
 
   constructor(offset: number, endOffset: number) {
-    super('A compile-time @import cannot carry a media query.');
+    super('A compile-time @import cannot carry a layer or supports condition.');
     this.name = 'LessImportPostludeError';
     this.offset = offset;
     this.endOffset = endOffset;
