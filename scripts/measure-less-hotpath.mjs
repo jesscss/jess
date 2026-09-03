@@ -299,6 +299,19 @@ function getGitCommit(cwd) {
   }
 }
 
+function getGitTopLevel(cwd) {
+  try {
+    const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore']
+    }).trim();
+    return fs.realpathSync(root);
+  } catch {
+    return undefined;
+  }
+}
+
 function packageVersion(root) {
   try {
     return JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
@@ -446,12 +459,17 @@ function writeHistory(file, records) {
 
 const options = parseArgs(process.argv.slice(2));
 const fixtures = options.fixtures;
+const sourceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const testDataRoot = fs.realpathSync(process.env.JESS_LESS_TEST_DATA_ROOT
   ?? path.dirname(require.resolve('@less/test-data')));
+const sourceGitRoot = getGitTopLevel(sourceRoot);
+const testDataGitRoot = getGitTopLevel(testDataRoot);
 const run = makeRunMeta(options, {
   root: testDataRoot,
   version: packageVersion(testDataRoot),
-  commit: getGitCommit(testDataRoot)
+  commit: testDataGitRoot !== undefined && testDataGitRoot !== sourceGitRoot
+    ? getGitCommit(testDataGitRoot)
+    : undefined
 });
 
 const compiler = new Compiler({

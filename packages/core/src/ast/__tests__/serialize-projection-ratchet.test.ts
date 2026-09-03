@@ -11,10 +11,10 @@ function occurrences(pattern: RegExp): number {
 
 describe('V19 one-evaluator projection ratchet', () => {
   it('names every statement evaluator that still dispatches a body', () => {
-    const dispatchers = [
+    const dispatchers = ([
       ['walkBody', /function walkBody\(/u],
       ['emitNestedBody', /function emitNestedBody\(/u]
-    ].filter(([, pattern]) => pattern.test(SOURCE)).map(([name]) => name);
+    ] as const).filter(([, pattern]) => pattern.test(SOURCE)).map(([name]) => name);
 
     expect(dispatchers).toEqual(['walkBody', 'emitNestedBody']);
   });
