@@ -9715,7 +9715,7 @@ function emitDocumentStatements(
         if (e.referenceImportDepth !== 0) {
           break;
         }
-        const body = selectIfBodyForRender(child, frame, e);
+        const body = selectIfBody(child, frame, e);
         if (!body) {
           break;
         }
@@ -9974,7 +9974,7 @@ function runWhile(
 ): MaybePromise<void> {
   /*
    * Publish the body's declarations into this frame's index BEFORE the first
-   * condition runs. `$if` gets the same index through `selectIfBodyForRender`;
+   * condition runs. `$if` gets the same index through `selectIfBody`;
    * a `$while` has no arm to select, so it registers its one body directly.
    */
   frame.selectedDeclIndex = collectSelectedDeclIndex(
@@ -10002,7 +10002,7 @@ function runWhile(
 }
 
 /** Select one `$if` branch and publish only that branch into this activation's scoped index. */
-function selectIfBodyForRender(node: If, frame: Frame, e: Emit): Statement[] | null {
+function selectIfBody(node: If, frame: Frame, e: Emit): Statement[] | null {
   const body = selectedIfBody(node, frame, e);
   if (!body) {
     return null;
@@ -10797,7 +10797,7 @@ function walkBody(
         break;
       }
       case 'If': {
-        const body = selectIfBodyForRender(node, frame, e);
+        const body = selectIfBody(node, frame, e);
         if (body) {
           const emitted = walkBody(body, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
           if (isThenable(emitted)) {
@@ -12584,8 +12584,10 @@ function bindingValueFramesForItem(bindings: Map<string, ValueSlot>, item: ForIt
  * Expand a Less `each()` loop: emit the callback `rules` once per iterable item,
  * binding the loop variables (`@value`/`@key`/`@index`, or the anonymous-mixin
  * param names) in each iteration's scope. The statement-emitting counterpart to
- * {@link expandCall}: it walks the SAME shared `group`/`flush` so a `+`/`+_` merge
- * accumulates across iterations (`index+: @index` → `1, 2, 3`).
+ * {@link expandCall}: both projections share iterable resolution, activation,
+ * plugin preparation, and continuation order. The selected writer receives its
+ * existing shared leaf buffer, so a `+`/`+_` merge accumulates across iterations
+ * (`index+: @index` → `1, 2, 3`) without a second loop evaluator.
  */
 function expandFor(
   node: For,
@@ -12599,7 +12601,9 @@ function expandFor(
   imp = false,
   forceLeading = false, // [partition] inherited leading-hoist context
   propertyScope: Frame = frame,
-  applyExpansion = false
+  applyExpansion = false,
+  source: NestedHeaderSource | null = null,
+  sharedLeaves?: NestedLeafBuffer
 ): MaybePromise<void> {
   const queue = e.plannedForExtendPlacements?.get(node);
   const planned = queue?.cursor ?? null;
@@ -12627,7 +12631,32 @@ function expandFor(
         bindForDetached(loopFrame, bindings, item);
         const emitted = mapMaybe(
           prepareBodyPlugins(node.rules, loopFrame, e),
-          () => walkBody(node.rules, composed, ancestor, loopFrame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion)
+          () => sharedLeaves === undefined
+            ? walkBody(
+                node.rules,
+                composed,
+                ancestor,
+                loopFrame,
+                group,
+                flush,
+                partition,
+                e,
+                imp,
+                forceLeading,
+                propertyScope,
+                applyExpansion
+              )
+            : emitNestedBody(
+                node.rules,
+                loopFrame,
+                e,
+                undefined,
+                imp,
+                source,
+                null,
+                sharedLeaves,
+                applyExpansion
+              )
         );
         if (isThenable(emitted)) {
           return emitted.then(() => run(i + 1));
@@ -15396,7 +15425,7 @@ function emitAtRuleBody(
         if (e.referenceImportDepth !== 0) {
           return undefined;
         }
-        const body = selectIfBodyForRender(node, frame, e);
+        const body = selectIfBody(node, frame, e);
         return body ? emitAtRuleBody(body, frame, e) : undefined;
       }
       case 'While':
@@ -15844,7 +15873,7 @@ function emitBubbleBody(
           if (e.referenceImportDepth !== 0) {
             break;
           }
-          const body = selectIfBodyForRender(node, frame, e);
+          const body = selectIfBody(node, frame, e);
           if (body) {
             const emitted = emitBubbleBody(body, ctx, frame, e);
             if (isThenable(emitted)) {
@@ -16227,7 +16256,22 @@ function emitNestedBody(
           break;
         case 'For':
           {
-            const emitted = expandNestedFor(node, frame, e, imp, source, inlineLeaves, applyExpansion);
+            const emitted = expandFor(
+              node,
+              null,
+              null,
+              frame,
+              inlineLeaves.leaves,
+              inlineLeaves.flush,
+              null,
+              e,
+              imp,
+              false,
+              inlineLeaves.propertyScope,
+              applyExpansion,
+              source,
+              inlineLeaves
+            );
             if (isThenable(emitted)) {
               return emitted.then(() => run(index + 1));
             }
@@ -16235,7 +16279,7 @@ function emitNestedBody(
           break;
         case 'If': {
           flushBuf();
-          const body = selectIfBodyForRender(node, frame, e);
+          const body = selectIfBody(node, frame, e);
           if (body) {
             const emitted = emitNestedBody(body, frame, e, hoist, imp, source, placement, undefined, applyExpansion);
             if (isThenable(emitted)) {
@@ -16868,55 +16912,6 @@ function emitHoisted(rule: Ruleset, frame: Frame, e: Emit): MaybePromise<void> {
   }
   e.hoistMode = prev;
   return emitted;
-}
-
-/** Expand an `each()` loop in nested mode: splice the callback body once per item
- *  with that iteration's loop-variable bindings. (A cross-iteration `+`/`+_` merge
- *  does not fold across the per-iteration bodies in nested mode — flat mode does.) */
-function expandNestedFor(
-  node: For,
-  frame: Frame,
-  e: Emit,
-  imp = false,
-  source: NestedHeaderSource | null = null,
-  sharedLeaves?: NestedLeafBuffer,
-  applyExpansion = false
-): MaybePromise<void> {
-  const queue = e.plannedForExtendPlacements?.get(node);
-  const planned = queue?.cursor ?? null;
-  if (queue !== undefined && planned !== null) {
-    queue.cursor = planned.next;
-  }
-  return mapMaybe(planned?.items ?? forItems(node.iterable, frame, e), (items) => {
-    const run = (start: number): MaybePromise<void> => {
-      for (let i = start; i < items.length; i++) {
-        const item = items[i]!;
-        const { value, key } = item;
-        const index = dimension(i + 1);
-        const bindings = bindForEntry(node, value, key, index);
-        const bindingValueFrames = bindingValueFramesForItem(bindings, item);
-        const extendPlacement = planned?.tokens[i];
-        const loopFrame: Frame = {
-          parent: frame,
-          mixins: collectMixins(node.rules),
-          declIndex: collectDeclIndex(node.rules, bindings), cells: cellsForParams(bindings, bindingValueFrames), reassign: null,
-          statements: node.rules,
-          sourceOwner: frame.sourceOwner ?? null,
-          ...(bindingValueFrames ? { bindingValueFrames } : {}),
-          ...(extendPlacement ? { extendPlacement } : {})
-        };
-        bindForDetached(loopFrame, bindings, item);
-        const emitted = mapMaybe(
-          prepareBodyPlugins(node.rules, loopFrame, e),
-          () => emitNestedBody(node.rules, loopFrame, e, undefined, imp, source, null, sharedLeaves, applyExpansion)
-        );
-        if (isThenable(emitted)) {
-          return emitted.then(() => run(i + 1));
-        }
-      }
-    };
-    return run(0);
-  });
 }
 
 /**

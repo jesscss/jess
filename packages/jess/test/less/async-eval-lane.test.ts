@@ -43,10 +43,10 @@ afterEach(() => {
   }
 });
 
-function render(source: string) {
+function render(source: string, collapseNesting = true) {
   const compiler = new Compiler({
     compile: { plugins: [lessPlugin(), lessCompatPlugin({ functions: [slowKeyword, slowWidth] })] },
-    output: { collapseNesting: true }
+    output: { collapseNesting }
   });
   return compiler.renderToResult(
     { source, filePath: '/virtual/async-lane.less', language: 'less', extension: '.less' },
@@ -89,14 +89,19 @@ describe('awaitable values in guard conditions', () => {
     });
   }, 20000);
 
-  it('iterates an each() list built from an awaitable value', async () => {
-    const result = await render(
-      '@item: aslow();\n'
-      + 'each(@item, {\n  .x-@{value} { color: red; }\n});\n'
-    );
-    expect(result.errors).toEqual([]);
-    expect(result.css).toContain('.x-zed');
-  }, 20000);
+  it.each([true, false])(
+    'iterates an each() list built from an awaitable value with collapseNesting=%s',
+    async (collapseNesting) => {
+      const result = await render(
+        '@item: aslow();\n'
+        + 'each(@item, {\n  .x-@{value} { color: red; }\n});\n',
+        collapseNesting
+      );
+      expect(result.errors).toEqual([]);
+      expect(result.css).toContain('.x-zed');
+    },
+    20000
+  );
 });
 
 describe('awaitable values in at-rule preludes', () => {

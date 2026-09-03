@@ -41,7 +41,7 @@ describe('V19 one-evaluator projection ratchet', () => {
   });
 
   it('does not grow the serializer helper or collection-construction surface', () => {
-    expect(occurrences(/^function |^async function /gmu)).toBe(418);
+    expect(occurrences(/^function |^async function /gmu)).toBe(417);
     expect(occurrences(/new Map/gu)).toBe(57);
     expect(occurrences(/new Set/gu)).toBe(34);
     expect(occurrences(/new WeakMap/gu)).toBe(5);
@@ -64,5 +64,15 @@ describe('V19 one-evaluator projection ratchet', () => {
     expect(occurrences(/mixinCallHomes/gu)).toBe(0);
     expect(SOURCE).toContain('const aliasWasExcluded = e.excluded.has(alias);');
     expect(SOURCE).toContain('if (!aliasWasExcluded) {\n            e.excluded.delete(alias);\n          }');
+  });
+
+  it('keeps one evaluator for control-flow selection and iteration', () => {
+    expect(occurrences(/function expandFor\(/gu)).toBe(1);
+    expect(occurrences(/function expandNestedFor\(/gu)).toBe(0);
+    expect(occurrences(/expandFor\(/gu)).toBe(6);
+    expect(occurrences(/expandNestedFor\(/gu)).toBe(0);
+    expect(occurrences(/selectIfBodyForRender\(/gu)).toBe(0);
+    expect(occurrences(/selectIfBody\(/gu)).toBe(6);
+    expect(occurrences(/runWhile\(/gu)).toBe(6);
   });
 });
