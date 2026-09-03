@@ -1893,6 +1893,18 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
+   * A relative-selector combinator (`>`/`+`/`~`, never the column `||` or
+   * namespace `|`): selectors-4 §4.2 lets a `:has()` argument branch open with
+   * one. Folded into `PseudoSelectorComplex` (below), guarded out of the nth
+   * bare-selector fallback, and reused by the CSS Nesting `RelativeSelector`.
+   */
+  const relativeSelectorCombinator = choice(
+    literal('>'),
+    literal('+'),
+    literal('~')
+  );
+
+  /*
    * `:nth-child`/`:nth-last-child` argument: a bare `<An+B>` OR `<An+B> of S`
    * (Selectors-4 §6.6.2, https://www.w3.org/TR/selectors-4/#the-nth-child-pseudo).
    * The shared `g.NthExpression`/`g.NthOfKeyword`/`g.PseudoSelectorCloseAhead`
@@ -1921,7 +1933,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
             )),
             g.PseudoSelectorCloseAhead
           ),
-          g.PseudoSelectorList
+
+          /*
+           * The bare selector fallback (`:nth-child(.a)`) is not a relative
+           * selector: a leading combinator makes it an invalid `<An+B>`
+           * (`:nth-child(+ n)`), so reject rather than re-capturing `+ n` now
+           * that `PseudoSelectorComplex` admits a leading combinator.
+           */
+          sequence(not(relativeSelectorCombinator), g.PseudoSelectorList)
         )
       )
     ),
@@ -1964,6 +1983,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
               g.NthOfKeyword
             )
           )),
+
+          /*
+           * Same guard as `:nth-child`: the bare selector fallback is not a
+           * relative selector, so a leading combinator (`:nth-of-type(+ n)`)
+           * rejects rather than parsing as `+ n`.
+           */
+          not(relativeSelectorCombinator),
           g.PseudoSelectorList
         )
       )
@@ -2088,9 +2114,20 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     literal('+'),
     literal('~')
   );
+
+  /*
+   * A functional-pseudo argument branch may open with a relative combinator
+   * (`:has(> .b)`, selectors-4 §4.2). css/less/scss all admit it; jess matches by
+   * folding an optional leading combinator into this complex, emitting a
+   * `RelativeSelector` when present and a bare branch otherwise — the same shape
+   * as less's `PseudoArgumentComplex`. This complex is also the nth argument's
+   * selector fallback, so the two callers there guard the leading combinator out:
+   * `:nth-child(+ n)` is an invalid `<An+B>`, not a relative selector.
+   */
   const PseudoSelectorComplex = node<SelectorBranch>(
     'PseudoSelectorComplex',
     sequence(
+      optional(relativeSelectorCombinator),
       g.PseudoSelectorCompound,
       many(sequence(
         optional(selectorCombinator),
@@ -2098,6 +2135,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       ))
     ),
     (children) => {
+      /*
+       * Position 0 is the optional leading combinator token, or the first
+       * compound (a `SelectorTerm`, never a token) when absent — so `isToken`
+       * alone identifies a relative branch without restating the combinator set.
+       */
+      const first = children[0];
+      const lead = isToken(first) ? first : undefined;
       const segments: Array<{ combinator?: JessComplexTail['combinator']; term: SelectorTerm }> = [];
       let combinator: JessComplexTail['combinator'] = ' ';
       for (const child of children) {
@@ -2110,7 +2154,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           combinator = jessCombinator(child);
         }
       }
-      return selectorBranchOf([segments[0]!, ...segments.slice(1)]);
+      const branch = selectorBranchOf([segments[0]!, ...segments.slice(1)]);
+      return lead === undefined ? branch : relativeSelector(jessRelativeCombinator(lead), jessBranchSegments(branch));
     }
   );
   const PseudoSelectorTail = node<SelectorBranch>(
@@ -2138,7 +2183,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
 
   /*
    * The generic (non-nth) functional-pseudo argument: a static `SelectorList`
-   * only (`:not(.a, .b)`, `:is(.a)`, `:lang(en)`). The nth families dispatch by
+   * only (`:not(.a, .b)`, `:is(.a)`, `:has(> .b)`). The nth families dispatch by
    * name to their own arguments above; CSS's generic raw pseudo-argument arm is
    * deliberately NOT used here — it would hide dynamic Jess interpolation as
    * source text. Retain the parsed `SelectorList` rather than collapsing it to
@@ -5175,13 +5220,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * parent (`.parent > .child`). This reuses `g.ComplexSelector` behind an
    * optional leading `>`/`+`/`~`, yielding a `RelativeSelector` when the
    * combinator is present and a bare `ComplexSelector` otherwise. Mirrors css's
-   * `RelativeSelector` (css `grammar.ts`) and scss's `RelativeSelector`.
+   * `RelativeSelector` (css `grammar.ts`) and scss's `RelativeSelector`. The
+   * `relativeSelectorCombinator` it opens with is shared with the functional-
+   * pseudo argument (defined above with the nth/pseudo selector rules).
    */
-  const relativeSelectorCombinator = choice(
-    literal('>'),
-    literal('+'),
-    literal('~')
-  );
   const RelativeSelector = node<SelectorBranch>(
     'RelativeSelector',
     sequence(

@@ -1103,6 +1103,44 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
+  it('accepts a leading combinator in a selector-pseudo argument (selectors-4 §4.2)', () => {
+    /*
+     * A `:has()` argument is a `<relative-selector-list>`, so a branch may open
+     * with a combinator (`:has(> .b)`). css/less/scss all admit a leading
+     * combinator on the shared selector-pseudo argument; Jess converges to that
+     * shape, keeping the branch as a structured `RelativeSelector` in `args`.
+     */
+    expect(parse('.x:has(> .b) { color: red; }')).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{
+        type: 'Ruleset',
+        selector: {
+          type: 'SelectorList',
+          selectors: [{
+            type: 'CompoundSelector',
+            value: [
+              { text: '.x' },
+              {
+                type: 'PseudoSelector',
+                name: ':has',
+                args: { type: 'SelectorList', selectors: [{ type: 'RelativeSelector', value: ['>', { text: '.b' }] }] }
+              }
+            ]
+          }]
+        }
+      }]
+    });
+
+    // The structured relative branch serializes back byte-identically.
+    for (const [source, expected] of [
+      ['.x:has(> .b) { color: red; }', '.x:has(> .b) {\n  color: red;\n}\n'],
+      ['.x:has(+ .b) { color: red; }', '.x:has(+ .b) {\n  color: red;\n}\n'],
+      ['.x:has(~ .b) { color: red; }', '.x:has(~ .b) {\n  color: red;\n}\n']
+    ] as const) {
+      expect(serialize(parse(source)).css, source).toEqual(expected);
+    }
+  });
+
   it('rejects paren-less nth pseudo names at the identifier boundary (cross-dialect divergence unification)', () => {
     /*
      * A bare, paren-less nth name is not a keyword pseudo — it must reach the

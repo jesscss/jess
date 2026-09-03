@@ -130,15 +130,15 @@ describe('Jess constructs discovered outside the parser suites', () => {
 
   it.each([
     ['child', 'a:has(> .b){c:d}'],
-    ['next sibling', 'a:has(+ .b){c:d}']
-  ])('PINNED DEFECT — rejects a leading combinator in a relative selector (%s)', (_label, source) => {
+    ['next sibling', 'a:has(+ .b){c:d}'],
+    ['subsequent sibling', 'a:has(~ .b){c:d}']
+  ])('accepts a leading combinator in a relative selector (%s)', (_label, source) => {
     /*
-     * selectors-4 §4.2: a relative selector may start with a combinator.
-     * CSS, Less and SCSS all accept `:has(> .b)`; only Jess does not, and it
-     * is plain CSS, so this is a Jess selector-grammar gap rather than a
-     * dialect decision.
+     * selectors-4 §4.2: a relative selector may start with a combinator. CSS,
+     * Less and SCSS all admit a leading combinator on the shared selector-pseudo
+     * argument, and it is plain CSS, so Jess accepts it too.
      */
-    expect(() => parse(source)).toThrow();
+    expect(() => parse(source)).not.toThrow();
   });
 
   it('accepts an A+B microsyntax with no spaces around the sign', () => {
