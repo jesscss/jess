@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { afterAll, describe, it, expect } from 'vitest';
 import * as glob from 'glob';
 import * as path from 'path';
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
+import { createHash } from 'node:crypto';
 import { invalidLess } from '@jesscss/shared';
 import { Compiler } from '../../src/index.js';
 import { outputDiagnostics } from '@jesscss/compiler/diagnostics';
@@ -91,6 +92,36 @@ const envFixturePattern = process.env.JESS_LESS_FIXTURE;
 const fixtureFilter = envFixturePattern
   ? new RegExp(envFixturePattern)
   : undefined;
+const forceCollapseNesting = process.env.JESS_FORCE_COLLAPSE_NESTING === 'true';
+const manifestOut = process.env.JESS_LESS_MANIFEST_OUT;
+
+type CorpusManifestRecord = {
+  case: string;
+  cssSha256?: string;
+  diagnosticCodes?: string[];
+};
+
+const manifestRecords: CorpusManifestRecord[] = [];
+
+function recordManifest(testCase: string, result: RenderResult): void {
+  if (manifestOut === undefined) {
+    return;
+  }
+  const diagnosticCodes = result.errors.map(diagnostic => diagnostic.code);
+  manifestRecords.push(diagnosticCodes.length === 0
+    ? {
+        case: testCase,
+        cssSha256: createHash('sha256').update(result.css).digest('hex')
+      }
+    : { case: testCase, diagnosticCodes });
+}
+
+afterAll(() => {
+  if (manifestOut !== undefined) {
+    manifestRecords.sort((left, right) => left.case.localeCompare(right.case));
+    writeFileSync(manifestOut, `${JSON.stringify(manifestRecords, null, 2)}\n`, 'utf8');
+  }
+});
 
 const fixtureTimeoutMs = 4500;
 
@@ -445,13 +476,15 @@ describe('Can render Less files to CSS', () => {
               },
               output: {
                 ...baseCompiler.opts.output,
-                ...(testCase.config.output || {})
+                ...(testCase.config.output || {}),
+                ...(forceCollapseNesting ? { collapseNesting: true } : {})
               }
             });
 
             const result = await testCompiler.renderToResult(lessPath, {
               outputFile: testCase.expectedFile
             });
+            recordManifest(`${testName}${configSuffix}`, result);
             return { expectedCss, result };
           };
 

@@ -47,8 +47,8 @@ known gap to fill when total-eval-vs-4.x becomes a focus.
 ## 2. measure:less:hotpath — jess render timing
 
 - Run: `pnpm run measure:less:hotpath` (measure only) / `pnpm run measure:less:hotpath:record` (save + compare to latest).
-- Script: `scripts/measure-less-hotpath.mjs`. Fixtures (default): `tests-unit/{functions,import/import-reference,mixins-guards,extend-chaining,media}` from the `@less/test-data` corpus. Override with `--fixture <rel>`; other flags: `--iterations N`, `--save`, `--history <file>`, `--compare-latest`.
-- History file: `docs/perf/node-copy-reduction/less-hotpath-history.jsonl` (append-only via `--save`).
+- Script: `scripts/measure-less-hotpath.mjs`. Fixtures (default): `tests-unit/{functions,import/import-reference,mixins-guards,extend-chaining,media}` from the `@less/test-data` corpus. Override with `--fixture <rel>`; select the writer explicitly with `--collapse-nesting true|false` (default `true`); set `JESS_LESS_TEST_DATA_ROOT` when a workspace's `link:` dependency does not resolve from the repository root; other flags: `--iterations N`, `--save`, `--history <file>`, `--compare-latest`.
+- History file: `docs/perf/node-copy-reduction/less-hotpath-history.jsonl` (append-only via `--save`). Each new run records the real corpus root and package version, plus the corpus Git commit when it has a Git top-level distinct from the Jess checkout. Comparisons reject a conflicting recorded corpus identity while retaining compatibility with legacy records that predate those fields.
 - Reports a stability `signal` (usable/unstable) per fixture — quote it; a contended machine reads "unstable".
 
 ## 3. perf:ab — jess vs an older jess commit (cross-worktree)
