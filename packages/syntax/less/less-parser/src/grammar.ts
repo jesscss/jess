@@ -192,8 +192,6 @@ type LessRules = {
   InterpolatedValue: Combinator<Interpolation>;
   InterpolatedProperty: Combinator<Interpolation>;
   Keyword: Combinator<ValueNode>;
-  Percentage: Combinator<string>;
-  Dimension: Combinator<ValueNode>;
   EscapeValue: Combinator<Any>;
   PagePseudo: Combinator<Any>;
   DoubledQuoteArgument: Combinator<Any>;
@@ -381,8 +379,15 @@ type SharedSyntax = {
   UnicodeRange: Combinator<Any>;
   // Converged to the CSS base (inherited via compose): same node type
   // SimpleSelector, byte-identical keyframeEndpoint, g.Percentage resolves to
-  // less's override; reducer differs only requireToken().value vs sourceText().
+  // the CSS base; reducer differs only requireToken().value vs sourceText().
   keyframeSelector: Combinator<SimpleSelector>;
+  // Converged to the CSS base (inherited via compose): same token rule
+  // token(noTrivia(sequence(<number>, '%'))), used only by keyframeSelector.
+  Percentage: Combinator<string>;
+  // Converged to the CSS base (inherited via compose): same recognizer
+  // (number + optional unit, `%` admitted as a unit) and same `dimension()`
+  // reducer; differs only requireToken().value vs tokenText().
+  Dimension: Combinator<ValueNode>;
   NthExpression: Combinator<unknown>;
   NthChildPseudoSelectorName: Combinator<string>;
   NthTypePseudoSelectorName: Combinator<string>;
@@ -1244,31 +1249,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'Keyword',
     g.ValueIdentifier,
     children => keyword(requireToken(children[0]).value)
-  );
-  /*
-   * `<percentage>` — css-values-4 §8.2: "a `<number>` immediately followed by a
-   * percent sign `%`", i.e. `<percentage> = <number> %`. It is a NAMED CSS value
-   * type, referenced by name from many productions — `<keyframe-selector> = from
-   * | to | <percentage>` (css-animations-1 §4), `image-set()`, `color-mix()`,
-   * `<position>` — so it is a rule here rather than a shape each consumer
-   * re-spells. Three dialects previously carried three different hand-rolled
-   * numeric regexes for it, none referenceable and none agreeing with this
-   * grammar's own `<number>` token.
-   *
-   * This does NOT add an AST node type: a percentage is still a `Dimension`
-   * whose unit is `%`, which is why this is a token rule and not a `node()`.
-   * `noTrivia` enforces the "immediately followed by" of the spec, so `50 %`
-   * is not a percentage.
-   */
-  const Percentage = token(noTrivia(sequence(g.NumberToken, literal('%'))));
-  const Dimension = node(
-    'Dimension',
-    noTrivia(sequence(g.NumberToken, optional(g.DimensionUnit))),
-    (children, _fields, span) => {
-      const numberText = requireToken(children[0]).value;
-      const unit = children.length > 1 ? requireToken(children[1]).value : '';
-      return dimension(Number(numberText), unit, `${numberText}${unit}`);
-    }
   );
   // CSS declaration hacks such as `#000 \\9` are a real one-token value
   // suffix. Keep the escape structural and narrow; this is not a raw-value
@@ -4784,8 +4764,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     InterpolatedValue,
     InterpolatedProperty,
     Keyword,
-    Percentage,
-    Dimension,
     EscapeValue,
     PagePseudo,
     DoubledQuoteArgument,

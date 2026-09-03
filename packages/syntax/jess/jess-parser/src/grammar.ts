@@ -167,7 +167,6 @@ type JessRules = {
   MixinGuard: Combinator<GuardNode>;
   Quoted: Combinator<Quoted | Interpolation>;
   LiteralQuoted: Combinator<Quoted>;
-  Dimension: Combinator<Dimension>;
   Url: Combinator<Url>;
   PlainUrlInner: Combinator<string>;
   UnquotedUrlText: Combinator<string>;
@@ -289,7 +288,6 @@ type JessRules = {
   PropertyName: Combinator<Keyword>;
   PropertyDescriptor: Combinator<Declaration>;
   PropertyAtRule: Combinator<AtRuleBlock>;
-  Percentage: Combinator<string>;
   KeyframeBlock: Combinator<Ruleset>;
   Keyframes: Combinator<AtRuleBlock>;
   UnknownAtRuleBlock: Combinator<UnknownAtRuleBlock>;
@@ -303,6 +301,18 @@ type JessRules = {
 };
 
 type SharedSyntax = {
+  /*
+   * Converged to the CSS base (inherited via compose): same token rule
+   * token(noTrivia(sequence(<number>, '%'))), used only by keyframeSelector.
+   */
+  Percentage: Combinator<string>;
+
+  /*
+   * Converged to the CSS base (inherited via compose): same recognizer
+   * (number + optional unit, `%` admitted as a unit) and same `dimension()`
+   * reducer; differs only requireToken().value vs tokenText().
+   */
+  Dimension: Combinator<Dimension>;
   AttributeModifier: Combinator<string>;
   AttributeOperator: Combinator<string>;
   DoubleQuotedText: Combinator<string>;
@@ -1683,38 +1693,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     () => NULL_NODE
   );
 
-  /*
-   * `<percentage>` — css-values-4 §8.2: "a `<number>` immediately followed by a
-   * percent sign `%`", i.e. `<percentage> = <number> %`. It is a NAMED CSS value
-   * type, referenced by name from many productions — `<keyframe-selector> = from
-   * | to | <percentage>` (css-animations-1 §4), `image-set()`, `color-mix()`,
-   * `<position>` — so it is a rule here rather than a shape each consumer
-   * re-spells. Three dialects previously carried three different hand-rolled
-   * numeric regexes for it, none referenceable and none agreeing with this
-   * grammar's own `<number>` token.
-   *
-   * This does NOT add an AST node type: a percentage is still a `Dimension`
-   * whose unit is `%`, which is why this is a token rule and not a `node()`.
-   * `noTrivia` enforces the "immediately followed by" of the spec, so `50 %`
-   * is not a percentage.
-   */
-  const Percentage = token(noTrivia(sequence(g.NumberToken, literal('%'))));
-  const Dimension = node<Dimension>(
-    'Dimension',
-    noTrivia(sequence(
-      g.NumberToken,
-      optional(g.DimensionUnit)
-    )),
-    (children) => {
-      const numberText = requireToken(children[0]).value;
-      const unit = children.length > 1 ? requireToken(children[1]).value : '';
-      return dimension(
-        Number(numberText),
-        unit,
-        `${numberText}${unit}`
-      );
-    }
-  );
   const UrlInterpolatedValue = node<Interpolation>(
     'UrlInterpolatedValue',
     noTrivia(sequence(
@@ -5388,14 +5366,12 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     PropertyName,
     PropertyDescriptor,
     PropertyAtRule,
-    Percentage,
     KeyframeBlock,
     Keyframes,
     UnknownAtRuleBlock,
     ScopeBlock,
     AtRuleBlock,
     AtRuleStatement,
-    Dimension,
     Url,
     CallComponent,
     CallArgument,

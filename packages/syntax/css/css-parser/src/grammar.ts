@@ -537,8 +537,7 @@ const attributeNamespace = regex(/(?:-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9a-fA-F
  */
 const hexColor = regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F])/);
 const numberValue = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)/);
-const numberNoPercentage = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)(?!%)/);
-const dimensionUnit = regex(/-?[_a-zA-Z\u0080-\uFFFF](?:[_a-zA-Z0-9\u0080-\uFFFF]|-(?![0-9]))*/);
+const dimensionUnit = regex(/-?[_a-zA-Z\u0080-\uFFFF](?:[_a-zA-Z0-9\u0080-\uFFFF]|-(?![0-9]))*|%/);
 const customDoubleQuotedText = regex(/(?:[^"\\]|\\[\s\S])*/);
 const customSingleQuotedText = regex(/(?:[^'\\]|\\[\s\S])*/);
 const customDoubleQuoted = sequence(
@@ -1292,25 +1291,25 @@ const cssFactory = (g: GrammarSelf) => {
     g.UnicodeRangeToken,
     children => any(tokenText(children[0]))
   );
-  const Percentage = node(
-    'Dimension',
-    noTrivia(sequence(
-      numberValue,
-      literal('%')
-    )),
-    (children) => {
-      const numberText = tokenText(children[0]);
-      return dimension(
-        Number(numberText),
-        '%',
-        `${numberText}%`
-      );
-    }
-  );
+
+  /*
+   * `<percentage>` — css-values-4 §8.2: "a `<number>` immediately followed by a
+   * percent sign `%`", i.e. `<percentage> = <number> %`. It is a NAMED CSS value
+   * type, referenced by name from productions such as `<keyframe-selector> =
+   * from | to | <percentage>` (css-animations-1 §4), so it is a rule here rather
+   * than a shape each consumer re-spells.
+   *
+   * This does NOT add an AST node type: in value position a percentage is a
+   * `Dimension` whose unit is `%` — `dimensionUnit` admits `%` exactly as the
+   * shared recognizer does — which is why this is a token rule and not a
+   * `node()`. `noTrivia` enforces the "immediately followed by" of the spec, so
+   * `50 %` is not a percentage.
+   */
+  const Percentage = token(noTrivia(sequence(numberValue, literal('%'))));
   const Dimension = node(
     'Dimension',
     noTrivia(sequence(
-      numberNoPercentage,
+      numberValue,
       optional(dimensionUnit)
     )),
     (children) => {
@@ -1748,7 +1747,6 @@ const cssFactory = (g: GrammarSelf) => {
    * the arithmetic-grouping shape, which is the one css-values-4 §10 defines.
    */
   const calcValueAtom = choice(
-    g.Percentage,
     g.Dimension,
     g.Color,
     g.UnicodeRange,
@@ -2243,7 +2241,6 @@ const cssFactory = (g: GrammarSelf) => {
    * this route.
    */
   const valueAtom = choice(
-    g.Percentage,
     g.Dimension,
     g.Color,
     g.UnicodeRange,
@@ -2310,7 +2307,6 @@ const cssFactory = (g: GrammarSelf) => {
   const TypedValue = node(
     'TypedValue',
     choice(
-      g.Percentage,
       g.Dimension,
       g.Color,
       g.Quoted,
