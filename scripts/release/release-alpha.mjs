@@ -3,10 +3,15 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import {
   applyLockstepVersion,
+  artifactsPresent,
   ensurePublishAuth,
   getAlphaReleasePlan,
   isReleaseArtifactPath,
-  resolveAlphaPublishVersion
+  preflightMarkerPath,
+  preflightTreeIdentity,
+  readPreflightMarker,
+  resolveAlphaPublishVersion,
+  writePreflightMarker
 } from './release-utils.mjs';
 
 function parseArgs(argv) {
@@ -279,10 +284,38 @@ if (!options.skipVersion) {
     + `publishedMax=${resolution.publishedMax ?? '(none)'}, reason=${resolution.reason}`);
 }
 
+/*
+ * The preflight is expensive and its result depends only on the committed tree
+ * (it starts with the clean-tree source-sync gate). A successful run records
+ * HEAD in an ignored marker; a later run on the same HEAD — the updater's
+ * `--release-dry-run` followed by `release:alpha`, or a dry-run followed by the
+ * ship — reuses that result instead of building and testing the same tree again.
+ */
+const treeIdentity = preflightTreeIdentity(rootDir);
+const marker = readPreflightMarker(rootDir);
+const preflightAlreadyVerified = treeIdentity !== null && marker?.identity === treeIdentity;
+
 if (options.skipCheck) {
   console.log('\nSkipping preflight suite (--skip-check); assuming the current tree is already verified.');
+} else if (preflightAlreadyVerified) {
+  console.log(`\nSkipping preflight suite: ${preflightMarkerPath(rootDir)} records a passing `
+    + `release:alpha:preflight for HEAD ${treeIdentity} (verified ${marker.verifiedAt}). `
+    + 'Change a source file or commit to re-run it; --skip-check remains the manual override.');
+  const { plan: buildPlan } = getReleaseState(rootDir);
+  const built = buildPlan.publishOrder.every((name) => {
+    const pkg = buildPlan.packagesByName.get(name);
+    return !pkg.manifest.scripts?.build || artifactsPresent(pkg);
+  });
+  if (built) {
+    process.env.ALPHA_REUSE_BUILD = '1';
+  } else {
+    console.log('Built artifacts are missing for some allowlisted packages; the publish step will rebuild them.');
+  }
 } else {
   runWithPreflightVersion(resolution, () => run('pnpm', ['run', 'release:alpha:preflight'], rootDir));
+  if (treeIdentity !== null) {
+    writePreflightMarker(rootDir, treeIdentity);
+  }
 
   /*
    * Preflight ran `build:release`, so every allowlisted package is freshly built
