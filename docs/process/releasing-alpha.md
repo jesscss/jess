@@ -290,9 +290,26 @@ check with the internally forwarded registry-resolved candidate.
 ### One preflight per release candidate
 
 The preflight builds the workspace exactly once (`build:release`); the later
-steps assume that built tree. `verify:less-alpha:checks` is the build-free
-half of `verify:less-alpha` (CI still runs the full script with its own build),
-and `verify:baseline -- --no-build` skips that gate's runtime-chain rebuild.
+steps assume that built tree, and `verify:baseline -- --no-build` skips that
+gate's runtime-chain rebuild.
+
+Each check runs once per preflight:
+
+- `test:jess-release` runs the `jess` package's public-API contract,
+  path-resolution and AST-v2 production-ratchet test files in one vitest
+  invocation (the same files `test:jess-public-api`,
+  `test:jess-path-resolution` and `test:jess-ast-v2-ratchet` run separately).
+- `test:less:test-data:unit` and `:config` are not in the preflight: they are
+  the `tests-unit/` and `tests-config/` halves of the corpus that
+  `verify:baseline` renders in full with the same expected-output comparison.
+  They remain in `verify:less-alpha:checks` for standalone use.
+- `verify:baseline -- --trust-ci` skips the core, less-parser and css-parser
+  suites only when GitHub reports the dev CI `Build · lint · types · tests ·
+  gates` and `Source tests (build-free)` jobs completed successfully for the
+  exact commit in `scripts/release/alpha-source-provenance.json` (the commit
+  the source-sync gate has already matched this tree to). It prints the suites
+  it skipped and the run URLs it relied on. Without `gh`, without network, or
+  with any job missing, failed or still running, the suites run as before.
 
 A passing preflight records HEAD in `node_modules/.cache/jess-release-preflight.json`.
 `release:alpha` (and `release:alpha:dry-run`) skips the preflight when that
