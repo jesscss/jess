@@ -50,4 +50,16 @@ describe('V19 one-evaluator projection ratchet', () => {
     expect(occurrences(/evaluateLeafStatement\(/gu)).toBe(3);
     expect(occurrences(/evaluateSilentStatement\(/gu)).toBe(5);
   });
+
+  it('pins the duplicate callable-expansion surface before slice 2', () => {
+    expect(occurrences(/function expandCall\(/gu)).toBe(1);
+    expect(occurrences(/function expandApply\(/gu)).toBe(1);
+    expect(occurrences(/function expandReferenceCall\(/gu)).toBe(1);
+    expect(occurrences(/function expandNestedCall\(/gu)).toBe(1);
+    expect(occurrences(/function expandNestedApply\(/gu)).toBe(1);
+    expect(occurrences(/function expandNestedReferenceCall\(/gu)).toBe(1);
+    expect(occurrences(/expandNestedCall\(/gu)).toBe(3);
+    expect(occurrences(/expandNestedApply\(/gu)).toBe(2);
+    expect(occurrences(/expandNestedReferenceCall\(/gu)).toBe(2);
+  });
 });
