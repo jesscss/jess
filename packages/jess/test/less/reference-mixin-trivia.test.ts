@@ -21,6 +21,146 @@ const fixtureDir = path.dirname(asyncFixture);
 
 describe('reference mixin trivia', () => {
   it.each([true, false])(
+    'drains root call trivia before the next ruleset (collapse=%s)',
+    async (collapseNesting) => {
+      const source = '.empty() { /* captured root-only */ }\n'
+        + '.empty();\n'
+        + '.a { x: 1; }\n';
+      const compiler = new Compiler({
+        output: { collapseNesting },
+        compile: { plugins: [lessPlugin()] }
+      });
+
+      const result = await compiler.renderToResult({
+        source,
+        language: 'less',
+        extension: '.less'
+      }, {});
+
+      expect(result.errors).toEqual([]);
+      expect(result.css).toBe(
+        '/* captured root-only */\n'
+        + '.a {\n'
+        + '  x: 1;\n'
+        + '}\n'
+      );
+    }
+  );
+
+  it.each([true, false])(
+    'drains direct at-rule call trivia before the next ruleset (collapse=%s)',
+    async (collapseNesting) => {
+      const source = '.empty() { /* captured atrule-only */ }\n'
+        + '@media screen {\n'
+        + '  .empty();\n'
+        + '  .a { x: 1; }\n'
+        + '}\n';
+      const compiler = new Compiler({
+        output: { collapseNesting },
+        compile: { plugins: [lessPlugin()] }
+      });
+
+      const result = await compiler.renderToResult({
+        source,
+        language: 'less',
+        extension: '.less'
+      }, {});
+
+      expect(result.errors).toEqual([]);
+      expect(result.css).toBe(
+        '@media screen {\n'
+        + '  /* captured atrule-only */\n'
+        + '  .a {\n'
+        + '    x: 1;\n'
+        + '  }\n'
+        + '}\n'
+      );
+    }
+  );
+
+  it.each([true, false])(
+    'does not leak trivia from a capture-only each() iterable (collapse=%s)',
+    async (collapseNesting) => {
+      const source = '.m() { a: 1; /* captured tail */ }\n'
+        + 'each(.m(), { .item-@{key} { value: @value; } });\n'
+        + '.after { z: 2; }\n';
+      const compiler = new Compiler({
+        output: { collapseNesting },
+        compile: { plugins: [lessPlugin()] }
+      });
+
+      const result = await compiler.renderToResult({
+        source,
+        language: 'less',
+        extension: '.less'
+      }, {});
+
+      expect(result.errors).toEqual([]);
+      expect(result.css).toBe(
+        '.item-a {\n'
+        + '  value: 1;\n'
+        + '}\n'
+        + '.after {\n'
+        + '  z: 2;\n'
+        + '}\n'
+      );
+    }
+  );
+
+  it.each([
+    [
+      true,
+      '.a {\n'
+      + '  x: 1;\n'
+      + '  /* mixin tail */\n'
+      + '}\n'
+      + '.a .child {\n'
+      + '  y: 2;\n'
+      + '}\n'
+      + '.a {\n'
+      + '  z: 3;\n'
+      + '}\n'
+    ],
+    [
+      false,
+      '.a {\n'
+      + '  x: 1;\n'
+      + '  .child {\n'
+      + '    y: 2;\n'
+      + '  }\n'
+      + '  z: 3;\n'
+      + '  /* mixin tail */\n'
+      + '}\n'
+    ]
+  ] as const)(
+    'keeps a mixin-tail comment with its buffer across a nested boundary (collapse=%s)',
+    async (collapseNesting, expected) => {
+      const source = '.mixin() {\n'
+        + '  z: 3;\n'
+        + '  /* mixin tail */\n'
+        + '}\n'
+        + '.a {\n'
+        + '  x: 1;\n'
+        + '  .child { y: 2; }\n'
+        + '  .mixin();\n'
+        + '}\n';
+      const compiler = new Compiler({
+        output: { collapseNesting },
+        compile: { plugins: [lessPlugin()] }
+      });
+
+      const result = await compiler.renderToResult({
+        source,
+        language: 'less',
+        extension: '.less'
+      }, {});
+
+      expect(result.errors).toEqual([]);
+      expect(result.css).toBe(expected);
+    }
+  );
+
+  it.each([true, false])(
     'replays the selected body comment with collapseNesting=%s',
     async (collapseNesting) => {
       const compiler = new Compiler({

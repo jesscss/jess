@@ -287,11 +287,10 @@ function formatPercent(value) {
   return `${(value * 100).toFixed(1)}%`;
 }
 
-function getGitCommit() {
+function getGitCommit(cwd) {
   try {
-    const scriptDir = path.dirname(fileURLToPath(import.meta.url));
     return execFileSync('git', ['rev-parse', 'HEAD'], {
-      cwd: path.resolve(scriptDir, '..'),
+      cwd,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore']
     }).trim();
@@ -300,11 +299,20 @@ function getGitCommit() {
   }
 }
 
-function makeRunMeta(options) {
+function packageVersion(root) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
+  } catch {
+    return undefined;
+  }
+}
+
+function makeRunMeta(options, testData) {
+  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
   return {
     type: 'less-hotpath-run',
     timestamp: new Date().toISOString(),
-    commit: getGitCommit(),
+    commit: getGitCommit(path.resolve(scriptDir, '..')),
     node: process.version,
     platform: process.platform,
     arch: process.arch,
@@ -315,6 +323,9 @@ function makeRunMeta(options) {
     warmup: options.warmup,
     batchSize: options.batchSize,
     collapseNesting: options.collapseNesting,
+    testDataRoot: testData.root,
+    testDataVersion: testData.version,
+    testDataCommit: testData.commit,
     note: options.note || undefined
   };
 }
@@ -334,6 +345,9 @@ function toRecord(run, fixture, result, times, rounds) {
     warmup: run.warmup,
     batchSize: run.batchSize,
     collapseNesting: run.collapseNesting,
+    testDataRoot: run.testDataRoot,
+    testDataVersion: run.testDataVersion,
+    testDataCommit: run.testDataCommit,
     note: run.note,
     summary: result,
     times,
@@ -373,6 +387,20 @@ function compareRecords(currentRecords, baselineRecords, threshold) {
         fixture: record.fixture,
         collapseNesting: record.collapseNesting,
         status: 'missing-baseline'
+      };
+    }
+    const identityFields = ['testDataRoot', 'testDataVersion', 'testDataCommit'];
+    const mismatchedIdentity = identityFields.find(field =>
+      baseline[field] !== undefined && baseline[field] !== record[field]);
+    if (mismatchedIdentity !== undefined) {
+      return {
+        fixture: record.fixture,
+        collapseNesting: record.collapseNesting,
+        baselineCommit: baseline.commit,
+        status: 'corpus-mismatch',
+        mismatchedIdentity,
+        baselineValue: baseline[mismatchedIdentity],
+        currentValue: record[mismatchedIdentity]
       };
     }
     const baselineMedian = baseline.summary.median;
@@ -418,8 +446,13 @@ function writeHistory(file, records) {
 
 const options = parseArgs(process.argv.slice(2));
 const fixtures = options.fixtures;
-const testDataRoot = path.dirname(require.resolve('@less/test-data'));
-const run = makeRunMeta(options);
+const testDataRoot = fs.realpathSync(process.env.JESS_LESS_TEST_DATA_ROOT
+  ?? path.dirname(require.resolve('@less/test-data')));
+const run = makeRunMeta(options, {
+  root: testDataRoot,
+  version: packageVersion(testDataRoot),
+  commit: getGitCommit(testDataRoot)
+});
 
 const compiler = new Compiler({
   output: {
@@ -490,6 +523,7 @@ if (options.json) {
 } else {
   console.log(`Less hot-path measurement (${options.iterations} iterations, ${options.warmup} warmup, ${options.repeat} repeat, batch ${options.batchSize}, ${formatPercent(options.trim)} trim, collapseNesting=${options.collapseNesting})`);
   console.log(`commit=${run.commit ?? 'unknown'} node=${run.node} platform=${run.platform}/${run.arch}`);
+  console.log(`testDataRoot=${run.testDataRoot} testDataVersion=${run.testDataVersion ?? 'unknown'} testDataCommit=${run.testDataCommit ?? 'unknown'}`);
   for (const record of records) {
     const result = record.summary;
     console.log(`${record.fixture}`);
@@ -497,7 +531,9 @@ if (options.json) {
     console.log(`  trimmedMean=${formatMs(result.trimmedMean)} trimmedRsd=${formatPercent(result.trimmedRelativeStdDev)} mad=${formatMs(result.mad)} iqr=${formatMs(result.iqr)}`);
     const compared = comparison.find(item => item.fixture === record.fixture
       && item.collapseNesting === record.collapseNesting);
-    if (compared && compared.status !== 'missing-baseline') {
+    if (compared?.status === 'corpus-mismatch') {
+      console.log(`  corpus mismatch: ${compared.mismatchedIdentity} baseline=${compared.baselineValue} current=${compared.currentValue}`);
+    } else if (compared && compared.status !== 'missing-baseline') {
       console.log(`  vs ${compared.baselineCommit?.slice(0, 8) ?? 'baseline'}: ${formatMs(compared.delta)} (${formatPercent(compared.ratio)}) ${compared.status}`);
     }
   }

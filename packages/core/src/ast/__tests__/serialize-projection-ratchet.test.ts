@@ -28,10 +28,26 @@ describe('V19 one-evaluator projection ratchet', () => {
     expect(SOURCE).toContain('  if (!e.collapse) {');
   });
 
-  it('pins the leaf-shape and pending-comment debt removed by slice 1', () => {
-    expect(occurrences(/new WeakMap<Leaf\[\], string\[\]>\(\)/gu)).toBe(1);
-    expect(occurrences(/pendingLeafBlockComments\.(?:get|set|delete)\(/gu)).toBe(8);
-    expect(occurrences(/\.\.\.\(imp \? \{ important: true \} : \{\}\)/gu)).toBe(3);
-    expect(occurrences(/\.\.\.\(applyExpansion \? \{ fromApply: true \} : \{\}\)/gu)).toBe(2);
+  it('keeps one leaf shape and no pending-comment side table', () => {
+    expect(occurrences(/new WeakMap<Leaf\[\], string\[\]>\(\)/gu)).toBe(0);
+    expect(occurrences(/pendingLeafBlockComments\.(?:get|set|delete)\(/gu)).toBe(0);
+    expect(occurrences(/\.\.\.\(imp \? \{ important: true \} : \{\}\)/gu)).toBe(0);
+    expect(occurrences(/\.\.\.\(applyExpansion \? \{ fromApply: true \} : \{\}\)/gu)).toBe(0);
+    expect(occurrences(/return \{ node, frame, important, leadingBlockComments, fromApply \};/gu)).toBe(1);
+    expect(occurrences(/place\(\{ node, frame, important, leadingBlockComments: null, fromApply \}\);/gu)).toBe(2);
+    expect(occurrences(/place\(\{ node: part, frame, important, leadingBlockComments: null, fromApply \}\);/gu)).toBe(1);
+    expect(SOURCE).toContain('pendingLeafBlockComments: string[] | null;');
+    expect(SOURCE).toContain('pendingLeafBlockCommentOwner: Leaf[] | null;');
+  });
+
+  it('does not grow the serializer helper or collection-construction surface', () => {
+    expect(occurrences(/^function |^async function /gmu)).toBe(421);
+    expect(occurrences(/new Map/gu)).toBe(58);
+    expect(occurrences(/new Set/gu)).toBe(34);
+    expect(occurrences(/new WeakMap/gu)).toBe(6);
+    expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);
+    expect(occurrences(/const buf = .*\?\? \[\]/gu)).toBe(1);
+    expect(occurrences(/evaluateLeafStatement\(/gu)).toBe(3);
+    expect(occurrences(/evaluateSilentStatement\(/gu)).toBe(5);
   });
 });

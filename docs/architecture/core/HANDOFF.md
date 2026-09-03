@@ -131,10 +131,11 @@ lookup, expansion, control-flow, import, or property-timeline function may read 
    existing `Frame`/`Leaf` spine. Move declaration/comment handling, nested-property
    expansion, property-timeline publication, definition/variable publication, and body
    trivia ownership into the one evaluator. Normalize `Leaf` construction to one field
-   shape and replace `pendingLeafBlockComments` with one closure-local nullable pending
-   comment slot beside the existing leaf buffer. The slot reuses the trivia-owned comment
-   list; it is not an expando on `Leaf[]`, a side table, a buffer wrapper, or a fresh empty
-   array/object per leaf. Both writers consume the same evaluated leaves.
+   shape and replace `pendingLeafBlockComments` with one owner-tagged nullable
+   pending-comment slot on the existing render context. Its two scalar fields reuse the
+   active `Leaf[]` identity and trivia-owned comment list; they are not an expando, side
+   table, buffer wrapper, or fresh empty array/object per leaf. Both writers consume the
+   same evaluated leaves.
    Red-to-green pins cover sibling/parent/mixin `$property` access and block-interior
    comments in both output modes.
    Add a source-level architecture ratchet that starts by naming both statement
@@ -4027,7 +4028,121 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: 2026-08-26 document-root static import fact publication under
+- Latest pass: 2026-09-03 V19 slice 1 shared lookup and leaf bookkeeping. This
+  is the first evaluator-fold slice and a correctness correction with no speed claim.
+- Architecture surface: `serialize.ts` declaration/comment evaluation, property
+  publication, callable-body trivia ownership, the existing render `Emit` context,
+  focused both-mode tests, forced-corpus manifest support, and the maintained Less
+  hot-path harness. Parser grammar, AST/CST schemas, public package APIs, and output
+  configuration policy are unchanged.
+- Separation/duplication: `evaluateLeafStatement` and `evaluateSilentStatement` now
+  own facts previously repeated in the collapsed and nested dispatchers. Every Leaf
+  uses the same field order; the shared evaluator constructs its Leaf directly to avoid
+  an added helper rung, while writer-only sites use `evaluatedLeaf`. The two dispatchers
+  remain only for later V19 slices.
+- Cumulative node weight: canonical AST/CST nodes and Frames gain zero fields.
+  Transient Leaves change from branch-dependent two-to-five-field shapes to one fixed
+  five-field shape. Every render-local Emit gains two nullable scalar fields for the
+  pending comment list and its exact `Leaf[]` owner.
+- New traversal: no source or AST traversal. Three bounded positive-comment emission
+  loops write the already-owned trailing comment list at document-root, direct at-rule,
+  and direct bubble boundaries; each performs one iteration per emitted comment.
+  Existing body walks call the shared evaluator once for each eligible
+  declaration/comment. Temporary instrumentation measured N=4 as 4 evaluator visits/4
+  writer callbacks, 2N=8 as 8/8, and two separate N projections as 8/8 total. A
+  disposable doubled visit made the assertion fail at 4 rather than 2.
+- New node/materialization: zero AST/CST nodes, retained evaluated trees, wrappers,
+  group arrays, Maps, Sets, or per-entry objects. WeakMap constructions fall 7 to 6;
+  the deleted comment side table and conditional Leaf clones are replaced by two
+  scalar context slots that reuse existing buffer/list identities.
+- Render path: both projections still stream to the canonical `Emit.chunks` buffer.
+  Root, direct at-rule, bubble, collapsed, and nested flushes consume only trivia owned
+  by their exact leaf buffer. Capture-only `each(.mixin())` expansion saves, clears, and
+  restores the two scalars rather than allocating isolated side storage.
+- Helper/API surface: private serializer helpers only. Statically named functions stay
+  421 to 421 and arrow sites fall 585 to 584. A simple declaration calls
+  `evaluateLeafStatement`, constructs its fixed Leaf directly, and deletes the prior
+  local placement plus attachment-helper calls: net zero evaluator/writer helper rungs.
+  Ordinary mixin and nested-rule placement also add zero net helper rungs.
+- Metadata mutations: only the two render-local pending-trivia scalars mutate. Canonical
+  source nodes, Frames, source ownership, parser trivia, and public results are untouched.
+- Review-flagged diff tokens: [side map] the per-buffer WeakMap is deleted; [object shape]
+  Leaf becomes one monomorphic five-field shape and Emit gains two fixed nullable slots;
+  [array/materialization] existing active `Leaf[]` and trivia-owned comment arrays are
+  reused; [loop/traversal] three positive-comment loops consume only the already-owned
+  list, once per emitted comment, with no source or AST scan; [helper-call] zero net rungs
+  for a declaration, ordinary mixin, and nested-rule placement; [routine error control]
+  `forItemsFromMixinCall` catches only an exceptional synchronous expansion failure to
+  restore outer transient ownership, while success, misses, and async success remain on
+  their direct existing paths; [source scan/reparse] none.
+- Evidence: focused property/comment/trivia review passes 25/25; the expanded both-mode
+  selection passes 66 with 5 todo; normal all-less passes 112/112; forced-collapse
+  before/after manifests have 111 records and identical SHA-256
+  `ab837140229078bfd56a5ab47fe07dc26ceaf34b339f68e8adab67da4ec5499c` with zero
+  changed names. Jess ratchet passes 1,421 tests with zero current, gating-baseline, or
+  flaky-baseline failures. Dependents pass plugin-less 14/14, fns 718/718, and
+  plugin-scss 2/2.
+- Behavior evidence: both modes now publish the same declaration/property facts and
+  retain callable trivia at nested, root, and at-rule buffer boundaries. Two focused
+  comment-only cases intentionally correct collapsed output that previously dropped the
+  comment; the maintained forced-collapse corpus remains byte-identical. Capture-only
+  iterable trivia remains discarded and cannot leak into the caller. A disposable
+  removal of the shared property-publication calls made all four focused accessor cases
+  fail in both modes and changed the forced-corpus `functions`, `property-accessors`, and
+  `property-targeted` records; restoring the calls returned those gates to green.
+- Build evidence: dependency-ordered `pnpm run build:release` and the final core build
+  pass. The required root `npx vitest run packages/core` gate is green: 199 files
+  passed / 1 skipped and 3,189 tests passed / 9 skipped / 2 todo. The package-local
+  full core run is also green: 209 files and 3,253 tests passed / 8 skipped / 2 todo.
+  Static counts are `serialize.ts` 17,013 to 17,089 lines, Map 58 to 58, Set 34 to 34,
+  WeakMap 7 to 6, Leaf-group sites 9 to 9, conditional Leaf spreads 5 to 0, and
+  evaluator-side `e.collapse` reads 2 to 2 for this first slice. A disposable seventh
+  `new WeakMap` made the source ratchet fail at 7 versus 6 before it was removed.
+- Boundary evidence: no public type/export changes. Semantics review approves all eight
+  invariants under SETTLED V19 and G28. Performance review approves invariants 1-11 and
+  incidents R1-R8 structurally after owner-lifetime and corpus-provenance findings were
+  fixed; final approval is tied to this evidence block and the aggressive-cutting gate.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "SETTLED V19 makes evaluation and lookup functions of the source stylesheet, independent of nesting output. Slice 1 centralizes leaf facts and trivia ownership while retaining the existing streaming spine and two writers.",
+    "dangerTokensJustification": "One fixed Leaf field order and two fixed Emit scalars replace five conditional field spreads, a WeakMap side table, its eight operations, and comment-associated Leaf cloning. The shared evaluator constructs its Leaf directly, leaving declaration, mixin, and nested-rule placement at zero net added helper rungs. N/2N probes measured exactly one evaluator visit and writer callback per eligible statement. The only new try/catch restores transient state after a real exceptional synchronous failure.",
+    "behaviorEvidence": "Focused both-mode tests, full core, Jess ratchet, normal all-less, and dependent suites pass. The forced-collapse 111-record manifest is byte-identical before/after; two focused collapsed comment omissions are intentionally corrected outside that corpus.",
+    "buildEvidence": "Dependency-ordered build:release passes. Static counts are named functions 421 unchanged, arrows 585 to 584, Map 58 unchanged, Set 34 unchanged, WeakMap 7 to 6, groups 9 unchanged, and conditional Leaf spreads 5 to 0. Same-session Node 24.11.1 hot-path timings are inconclusive: same-commit null drift reaches -19.9%/+9.5%; a disposable shared-evaluator control moves functions from 4.33/4.13 ms to 18.34/18.19 ms in collapsed/nested modes.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 47.37,
+      "outputSha256": "2b8d9abf3c103a6de7a0a5d66b3a448bcaef8c1818eff753de52d25a23b98f7d",
+      "outputBytes": 122568
+    }
+  }
+]
+```
+- Verdict: accepted as the smallest V19 leaf/fact fold after the owner-tag lifetime,
+  exceptional restore, and benchmark corpus-provenance findings were addressed. No
+  speed or neutrality claim is made; timing remains explicitly inconclusive.
+
+- Previous pass: 2026-08-26 document-root static import fact publication under
   OPEN N10. This is a Less compatibility correction with no speed claim.
 - Architecture surface: the existing AST-v2 static import planner and lexical
   import emitter in `serialize.ts`, the opaque `PreparedImports` token, focused
