@@ -1903,6 +1903,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     literal('+'),
     literal('~')
   );
+
   /*
    * `:nth-child`/`:nth-last-child` argument: a bare `<An+B>` OR `<An+B> of S`
    * (Selectors-4 §6.6.2, https://www.w3.org/TR/selectors-4/#the-nth-child-pseudo).
