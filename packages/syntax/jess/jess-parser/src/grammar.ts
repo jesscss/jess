@@ -264,6 +264,9 @@ type JessRules = {
   QueryClause: Combinator<ValueNode>;
   QueryPrelude: Combinator<ValueNode>;
   AtRulePrelude: Combinator<ValueNode | null>;
+  ContainerStyleQuery: Combinator<FunctionCall>;
+  ContainerQueryInParens: Combinator<ValueNode>;
+  ContainerQueryAtom: Combinator<ValueNode>;
   ContainerQueryClause: Combinator<ValueNode>;
   ContainerQueryPrelude: Combinator<ValueNode>;
   ContainerPrelude: Combinator<ValueNode>;
@@ -3390,17 +3393,101 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ['none'],
     { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF', caseInsensitive: true }
   );
+
+  /*
+   * A bare container name is one `<custom-ident>`, never the head of a query
+   * function: `style(--x: 1)` is a `<style-query>`, not a container named
+   * `style` followed by a stray group. Guarding on `<ident>(` keeps that
+   * function form on the query path, matching the css base's `not(QueryFunctionOpen)`.
+   */
+  const containerFunctionOpen = noTrivia(sequence(
+    g.Identifier,
+    literal('(')
+  ));
   const containerName = sequence(
+    not(containerFunctionOpen),
     not(containerNameReserved),
     g.Keyword
+  );
+
+  /*
+   * A `<style-query>` container header, `style(--x: 1)` (css-contain-3 §3.3).
+   * The opener is one token so `style(` cannot split across whitespace, and the
+   * argument is the same structural custom-property comparison the other
+   * dialects build — `funcCall('style', [Operation(':', <name>, <value>)])`,
+   * matching Less rather than an opaque header slice.
+   */
+  const jessStyleFunctionOpener = token(noTrivia(sequence(
+    word(
+      'style',
+      '-_a-zA-Z0-9\\u0080-\\uFFFF',
+      { caseInsensitive: true }
+    ),
+    literal('(')
+  )));
+  const ContainerStyleQuery = node<FunctionCall>(
+    'ContainerStyleQuery',
+    sequence(
+      jessStyleFunctionOpener,
+      g.CustomPropertyName,
+      literal(':'),
+      g.QueryValue,
+      literal(')')
+    ),
+    children => funcCall(
+      'style',
+      [operation(
+        ':',
+        keyword(requireToken(children[1]).value),
+        requireValueNode(children[3]),
+        false,
+        cssBaseMathOutsideParens(':')
+      )]
+    )
+  );
+
+  /*
+   * A `<query-in-parens>` group: `( <container-query> )` (css-contain-3 §3,
+   * media-queries-5 §3.1). Carries the parenthesised boolean form the features
+   * nest inside — `((width > 1px) and (height > 1px))`, `(style(--x: 1))` — and
+   * recurses through the clause so an inner `and`/`or` chain or a style query
+   * stays one grouped condition wrapped in `block(...)`, as css/less/scss emit.
+   */
+  const ContainerQueryInParens = node<ValueNode>(
+    'ContainerQueryInParens',
+    sequence(
+      literal('('),
+      g.ContainerQueryClause,
+      literal(')')
+    ),
+    children => block(requireValueNode(children[1]))
+  );
+
+  /*
+   * One `<container-query>` operand: a nested parenthesised group, a size
+   * feature, or a style query. The group is tried FIRST: a bare `(width > 1px)`
+   * feature or `style(...)` header has no leading `(`-then-`(`/`(`-then-fn, so it
+   * falls straight through to QueryFeature / ContainerStyleQuery, while leading
+   * with the group keeps QueryFeature's value-first range arm from speculatively
+   * reading a nested `style(--x: 1)` as a component value and recording a stray
+   * error (the same ordering the css base uses for its query-in-parens group).
+   */
+  const ContainerQueryAtom = node<ValueNode>(
+    'ContainerQueryAtom',
+    choice(
+      g.ContainerQueryInParens,
+      g.QueryFeature,
+      g.ContainerStyleQuery
+    ),
+    children => requireValueNode(children[0])
   );
   const ContainerQueryClause = node<ValueNode>(
     'ContainerQueryClause',
     sequence(
-      g.QueryFeature,
+      g.ContainerQueryAtom,
       many(sequence(
         g.QueryAndOr,
-        g.QueryFeature
+        g.ContainerQueryAtom
       ))
     ),
     (children) => {
@@ -5339,6 +5426,9 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     QueryClause,
     QueryPrelude,
     AtRulePrelude,
+    ContainerStyleQuery,
+    ContainerQueryInParens,
+    ContainerQueryAtom,
     ContainerQueryClause,
     ContainerQueryPrelude,
     ContainerPrelude,

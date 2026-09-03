@@ -119,7 +119,10 @@ type GrammarRuleName =
   | 'ConditionalBlock'
   | 'ConditionalGroupAtRule'
   | 'ContainerPrelude'
+  | 'ContainerQueryAtom'
   | 'ContainerQueryClause'
+  | 'ContainerQueryCondition'
+  | 'ContainerQueryInParens'
   | 'ContainerQueryPrelude'
   | 'ConditionalAtKeyword'
   | 'ContainerAtKeyword'
@@ -3009,10 +3012,85 @@ const cssFactory = (g: GrammarSelf) => {
     not(containerNameReserved),
     g.Keyword
   );
+
+  /*
+   * A `<query-in-parens>` group: `( <container-query> )` (css-contain-3 §3,
+   * media-queries-5 §3.1). It carries the parenthesised boolean form the size
+   * and style features nest inside — `((width > 1px) and (height > 1px))` and
+   * `(style(--x: 1))`. This is the container analogue of `SupportsInParens` /
+   * `SupportsCondition` above, and is built on the SAME three atoms (a nested
+   * group, a size feature, a general-enclosed function) so a grouped
+   * `style(...)` reads through `Enclosed`'s balanced content model rather than
+   * the opaque `QueryFunction` scan, which — like the media prelude — cannot be
+   * nested inside another paren. The result wraps in the same `block(...)` a
+   * size-feature paren produces, matching what SCSS's `QueryInParens` emits.
+   * It is a deliberate sibling of `SupportsCondition`, not a factoring of it:
+   * the two share the `not`/`and`/`or`-in-parens skeleton but their atom sets
+   * differ (a supports atom is a declaration/selector; a container atom is a
+   * size feature or style query), so collapsing them would gate one at-rule's
+   * accept set on the other's.
+   *
+   * Tried FIRST in `ContainerQueryClause` below: its `( <condition> )` opens on
+   * a paren whose interior is a nested group, a feature or an enclosed function,
+   * none of which a bare `(width > 1px)` feature or a `style(...)` header matches,
+   * so those fall straight through to `QueryFeature` / `QueryFunction` and keep
+   * their shapes (the bare `style(...)` header stays a `QueryFunction`). Leading
+   * with the group also keeps `QueryFeature`'s value arm from speculatively
+   * reading a nested `fn(a: b)` as a component value and recording a stray error.
+   */
+  const ContainerQueryAtom = node(
+    'ContainerQueryAtom',
+    choice(
+      g.ContainerQueryInParens,
+      g.QueryFeature,
+      g.Enclosed
+    ),
+    children => firstValue(children)
+  );
+  const ContainerQueryCondition = node(
+    'ContainerQueryCondition',
+    choice(
+      sequence(
+        g.QueryNot,
+        g.ContainerQueryAtom
+      ),
+      sequence(
+        g.ContainerQueryAtom,
+        many(sequence(
+          g.QueryAndOr,
+          g.ContainerQueryAtom
+        ))
+      )
+    ),
+    (children) => {
+      const values: ValueNode[] = [];
+      for (const child of children) {
+        if (isValue(child)) {
+          values.push(child);
+        } else {
+          const normalized = tokenText(child).toLowerCase();
+          if (normalized === 'not' || normalized === 'and' || normalized === 'or') {
+            values.push(keyword(tokenText(child)));
+          }
+        }
+      }
+      return values.length === 1 ? values[0]! : spaced(values);
+    }
+  );
+  const ContainerQueryInParens = node(
+    'ContainerQueryInParens',
+    sequence(
+      literal('('),
+      g.ContainerQueryCondition,
+      literal(')')
+    ),
+    children => block(firstValue(children))
+  );
   const ContainerQueryClause = node(
     'ContainerQueryClause',
     sequence(
       choice(
+        g.ContainerQueryInParens,
         g.QueryFeature,
         g.QueryFunction
       ),
@@ -3812,6 +3890,9 @@ const cssFactory = (g: GrammarSelf) => {
     QueryClause,
     QueryPrelude,
     ContainerQueryClause,
+    ContainerQueryAtom,
+    ContainerQueryCondition,
+    ContainerQueryInParens,
     ContainerQueryPrelude,
     ContainerPrelude,
     QueryFunction,

@@ -131,14 +131,6 @@ const DIRECTION_1_ALLOWLIST: readonly Allowed[] = [
       + 'layer statement.'
   },
   {
-    name: 'targeted:@container style()',
-    accepted: ['css', 'less', 'scss'],
-    validCss: true,
-    reason:
-      'css-contain-3 §5.2 defines style queries — `@container style(--x: 1) { … }` is valid CSS. '
-      + 'jess refuses it. Defect in jess: no style() arm in its container query condition.'
-  },
-  {
     name: 'targeted:@page with a pseudo',
     accepted: ['css', 'less', 'scss'],
     validCss: true,

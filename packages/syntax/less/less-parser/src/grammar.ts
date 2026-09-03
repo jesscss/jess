@@ -286,6 +286,7 @@ type LessRules = {
   ContainerScrollStateQuery: Combinator<FunctionCall>;
   ContainerName: Combinator<Keyword>;
   ContainerQueryAtom: Combinator<ValueNode>;
+  ContainerQueryInParens: Combinator<ValueNode>;
   ContainerCondition: Combinator<ValueNode>;
   MediaContainerBody: Combinator<readonly Statement[]>;
   MediaContainerBlock: Combinator<AtRuleBlock>;
@@ -3382,9 +3383,29 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     children => requireKeyword(children.at(-1))
   );
+  // A `<query-in-parens>` wrapping a single `<container-query>` operand —
+  // `(style(--x: 1))`, `((width > 1px))`, `(scroll-state(--x: 1))`
+  // (css-contain-3 §3, media-queries-5 §3.1). The inner is ONE atom, never an
+  // `and`/`or` chain, so the boolean group `((a) and (b))` and the negated form
+  // `(not (a))` still fall through to QueryFeature's QueryLogicalGroup /
+  // QueryNegatedFeature owners below (after the leading `(` there `and`/`or`/`not`
+  // is what the chain needs and this single-atom arm cannot supply). Tried FIRST
+  // in ContainerQueryAtom so QueryFeature's value-first range arm never
+  // speculatively reads the nested `style(--x: 1)` as a component value.
+  const ContainerQueryInParens = node(
+    'ContainerQueryInParens',
+    sequence(literal('('), choice(
+      g.ContainerStyleQuery,
+      g.ContainerScrollStateQuery,
+      g.QueryFeature,
+      g.ContainerQueryInParens
+    ), literal(')')),
+    children => block(requireValueNode(children[1]))
+  );
   const ContainerQueryAtom = node(
     'ContainerQueryAtom',
     choice(
+      g.ContainerQueryInParens,
       g.ContainerStyleQuery,
       g.ContainerScrollStateQuery,
       g.QueryFeature
@@ -4853,6 +4874,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ContainerScrollStateQuery,
     ContainerName,
     ContainerQueryAtom,
+    ContainerQueryInParens,
     ContainerCondition,
     MediaContainerBody,
     MediaContainerBlock,

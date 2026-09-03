@@ -202,30 +202,17 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   {
     id: '@container with a parenthesised condition group',
     group: 'at-rule',
-    source: '@container ((width > 1px) and (height > 1px)) { a { color: red } }',
-    brokenIn: ['css', 'jess'],
-    defect:
-      'css-contain-3 §3 makes `<container-condition>` a `<boolean-expr>`, whose '
-      + 'general form permits a parenthesised group. Less and SCSS accept it; CSS '
-      + 'and Jess reject it, so the BASE dialect is stricter than two supersets — '
-      + 'the one-way ruling inverted.'
+    source: '@container ((width > 1px) and (height > 1px)) { a { color: red } }'
   },
   {
     id: '@container with style()',
     group: 'at-rule',
-    source: '@container style(--x: 1) { a { color: red } }',
-    brokenIn: ['jess'],
-    defect: 'Jess rejects the css-contain-3 §3.3 `<style-query>` that the other three accept.'
+    source: '@container style(--x: 1) { a { color: red } }'
   },
   {
     id: '@container with a parenthesised style()',
     group: 'at-rule',
-    source: '@container (style(--x: 1)) { a { color: red } }',
-    brokenIn: ['css', 'less', 'jess'],
-    defect:
-      'Only SCSS accepts the parenthesised style query. Same root as the '
-      + 'condition-group entry above: the boolean-expression parens are missing '
-      + 'from three container preludes.'
+    source: '@container (style(--x: 1)) { a { color: red } }'
   },
   {
     id: '@keyframes with percentage and to selectors',

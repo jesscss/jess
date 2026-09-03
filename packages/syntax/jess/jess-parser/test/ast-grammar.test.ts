@@ -1635,11 +1635,24 @@ describe('Jess AST grammar facts', () => {
     });
     for (const rejected of [
       '@media (width >= $limit) { .card { color: blue; } }',
-      '@media (width < 80rem < 100rem) { .card { color: blue; } }',
-      '@container style(--theme: dark) { .card { color: blue; } }'
+      '@media (width < 80rem < 100rem) { .card { color: blue; } }'
     ]) {
       expect(() => parse(rejected), rejected).toThrow(SyntaxError);
     }
+
+    /*
+     * css-contain-3 §3.3 `<style-query>`: a typed container-header function, the
+     * structured `funcCall('style', [Operation(':', <name>, <value>)])` the other
+     * dialects build — not a widened opaque header.
+     */
+    expect(parse('@container style(--theme: dark) { .card { color: blue; } }').rules[0]).toMatchObject({
+      type: 'AtRuleBlock',
+      prelude: {
+        type: 'FunctionCall',
+        name: 'style',
+        args: [{ value: { type: 'Operation', operator: ':' } }]
+      }
+    });
   });
 
   it('constructs a media feature <ratio> value in every static query form', () => {

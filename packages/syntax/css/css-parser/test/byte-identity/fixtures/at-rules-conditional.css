@@ -28,3 +28,18 @@
     color: teal;
   }
 }
+@container ((width > 1px) and (height > 1px)) {
+  a {
+    color: red;
+  }
+}
+@container style(--x: 1) {
+  a {
+    color: red;
+  }
+}
+@container (style(--x: 1)) {
+  a {
+    color: red;
+  }
+}
