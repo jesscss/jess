@@ -51,6 +51,19 @@ export function unify(number: number, unit: string): { number: number; unit: str
 }
 
 /**
+ * Whether `fromUnit` converts to `toUnit`: the same unit, or two units of one
+ * conversion group. Decided by GROUP, never by whether a converted magnitude
+ * happened to change — a zero RHS (`1cm + 0mm`) converts like any other.
+ */
+export const convertible = (fromUnit: string, toUnit: string): boolean => {
+  if (fromUnit === toUnit) {
+    return true;
+  }
+  const fg = UNIT_TO_GROUP.get(fromUnit);
+  return fg !== undefined && fg === UNIT_TO_GROUP.get(toUnit);
+};
+
+/**
  * less.js `Dimension.convertTo`: rescale `number` from `fromUnit` to `toUnit` when
  * both share a conversion group. A non-convertible or cross-group pair (e.g.
  * `em`→`px`, `px`→`s`) is returned unchanged — matching less.js loose `+`/`-`, which

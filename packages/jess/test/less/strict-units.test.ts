@@ -39,6 +39,13 @@ describe('Less strict-unit final validation', () => {
     expect(result.css).toBe(expectedCss);
   });
 
+  it('applies unitMode loose: the Less 4.x fold, selected only by the explicit option', async () => {
+    const fixture = path.join(resolveLessTestDataRoot(), 'tests-config/units/loose/loose.less');
+    const expected = path.join(resolveLessTestDataRoot(), 'tests-config/units/loose/loose.css');
+    const result = await new Compiler().renderToResult(fixture, { outputFile: expected });
+    expect(result.css).toBe(readFileSync(expected, 'utf8'));
+  });
+
   it('folds scalar bare slashes while preserving lists and parens-division', async () => {
     const source = `
       .a {
