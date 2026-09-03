@@ -78,6 +78,29 @@ describe('Less structural errors through the public AST route', () => {
     ]);
   });
 
+  it('keeps an at-rule prelude lookup diagnostic at the same source position in both projections', async () => {
+    const source = '@media (min-width: @missing) {\n  .entry { color: red; }\n}';
+    const positions: Array<{ code: string; line: number; column: number }> = [];
+
+    for (const collapseNesting of [false, true]) {
+      const result = await new Compiler({ output: { collapseNesting } }).renderToResult({
+        source,
+        filePath: 'entry.less',
+        extension: '.less'
+      }, {
+        breakOnError: false,
+        suppressWarnings: true
+      });
+      const error = result.errors[0]!;
+      positions.push({ code: error.code, line: error.line!, column: error.column! });
+    }
+
+    expect(positions).toEqual([
+      { code: 'resolve/name-not-found', line: 1, column: 20 },
+      { code: 'resolve/name-not-found', line: 1, column: 20 }
+    ]);
+  });
+
   it.each(cases)('reports %s', async (_label, source, code) => {
     const compiler = new Compiler({ output: { collapseNesting: true } });
     await expect(compiler.renderString(source, {

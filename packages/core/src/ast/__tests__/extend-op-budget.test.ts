@@ -112,6 +112,34 @@ const contribComposesFor = (n: number): number => {
   return counters['astExtend.buildContribs.instructionsComposed'] ?? 0;
 };
 
+/** N repeated cross-`&` children, each requiring one nested-writer hoist placement. */
+const nestedHoistDoc = (n: number): ReturnType<CoreAst['stylesheet']> => {
+  const children = [];
+  for (let index = 0; index < n; index++) {
+    children.push(ast.rule(ast.complexSelector([
+      { term: ast.compoundSelectorOf([ast.simpleSelector(`.prefix-${index}`)]) },
+      { combinator: ' ', term: ast.compoundSelectorOf([ast.simpleSelector('&')]) },
+      { combinator: ' ', term: ast.compoundSelectorOf([ast.simpleSelector('.leaf')]) }
+    ]), [ast.decl(`value-${index}`, ast.keyword('yes'))]));
+  }
+  return ast.stylesheet([
+    ast.rule('.parent', children),
+    ast.rule('.alias', [], [{
+      target: ast.selist(ast.complexSelector([
+        { term: ast.compoundSelectorOf([ast.simpleSelector('.parent')]) },
+        { combinator: ' ', term: ast.compoundSelectorOf([ast.simpleSelector('.leaf')]) }
+      ])),
+      partial: true
+    }])
+  ]);
+};
+
+const nestedHoistPlacementsFor = (n: number): number => {
+  resetCounters();
+  serialize(nestedHoistDoc(n), { collapseNesting: false });
+  return counters['astExtend.emit.nestedHoistPlacements'] ?? 0;
+};
+
 const DISCOVER = process.env.EXTEND_BUDGET_DISCOVER === 'true';
 
 describe('extend operation-counter budgets', () => {
@@ -221,5 +249,14 @@ describe('extend operation-counter budgets', () => {
       + `the document has ONE instruction, so both must equal it. A larger count means `
       + `buildContribs went back to recomposing per subject instead of using the render memo.`
     ).toBe(base);
+  });
+
+  it('issues one nested hoist placement per crossing source rule', () => {
+    const base = nestedHoistPlacementsFor(8);
+    const doubled = nestedHoistPlacementsFor(16);
+
+    expect(base).toBe(8);
+    expect(doubled).toBe(16);
+    expect(doubled).toBeLessThanOrEqual(base * 2);
   });
 });
