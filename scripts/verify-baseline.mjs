@@ -17,6 +17,9 @@ import { shouldRunFullBaselineForFiles } from './shared-baseline-paths.mjs';
 const ROOT = process.cwd();
 const CHANGED_ONLY = process.argv.includes('--changed');
 
+/* --no-build: the caller already built the runtime chain (release preflight). */
+const NO_BUILD = process.argv.includes('--no-build');
+
 const BASELINE_PACKAGE_DIRS = new Set([
   'packages/core',
   'packages/syntax/less/less-parser',
@@ -252,7 +255,7 @@ const runtimeBuildOrder = [
   '@jesscss/plugin-less',
   '@jesscss/plugin-less-compat'
 ];
-if (needsRuntimeBuild) {
+if (needsRuntimeBuild && !NO_BUILD) {
   for (const packageName of runtimeBuildOrder) {
     run('pnpm', ['--filter', packageName, 'build']);
   }

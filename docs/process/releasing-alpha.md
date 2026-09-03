@@ -287,6 +287,22 @@ pnpm run release:alpha:dry-run
 The dry-run command runs the same preflight and then invokes the dry-run publish
 check with the internally forwarded registry-resolved candidate.
 
+### One preflight per release candidate
+
+The preflight builds the workspace exactly once (`build:release`); the later
+steps assume that built tree. `verify:less-alpha:checks` is the build-free
+half of `verify:less-alpha` (CI still runs the full script with its own build),
+and `verify:baseline -- --no-build` skips that gate's runtime-chain rebuild.
+
+A passing preflight records HEAD in `node_modules/.cache/jess-release-preflight.json`.
+`release:alpha` (and `release:alpha:dry-run`) skips the preflight when that
+marker names the current clean HEAD and says so in its output, so the updater's
+`--release-dry-run` followed by `pnpm run release:alpha` verifies the snapshot
+once, not twice. Any source change or new commit invalidates the marker.
+When the preflight is skipped, the publish step reuses the built artifacts only
+if every allowlisted package's entry point exists; otherwise it rebuilds.
+`--skip-check` remains the manual override.
+
 ### Packed clean-consumer proof
 
 `pnpm run verify:alpha:packed-consumer` packs every allowlisted package and
