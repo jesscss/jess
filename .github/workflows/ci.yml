@@ -51,6 +51,7 @@ on:
     branches:
       - main
       - alpha
+      - dev
   workflow_dispatch:
 
 permissions:
