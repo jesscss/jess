@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import fs from 'node:fs';
 import path from 'node:path';
 import {
   applyLockstepVersion,
+  artifactsPresent,
   compareSemver,
   computeMinAlphaTag,
   ensurePublishAuth,
@@ -72,18 +72,6 @@ function run(command, args, cwd) {
   if (result.status !== 0) {
     throw new Error(`Command failed (${result.status ?? 1}): ${rendered}`);
   }
-}
-
-/*
- * True when a package's published entry point already exists on disk, so a
- * prior `build:release` covers it and the per-package build can be skipped.
- * Checks the actual `main`/`module` entry; falls back to `lib/`. Any doubt
- * (entry missing) returns false so we rebuild rather than publish a stale tree.
- */
-function artifactsPresent(pkg) {
-  const entry = pkg.manifest.main ?? pkg.manifest.module;
-  const target = entry ? path.join(pkg.dir, entry) : path.join(pkg.dir, 'lib');
-  return fs.existsSync(target);
 }
 
 function currentBranch() {
