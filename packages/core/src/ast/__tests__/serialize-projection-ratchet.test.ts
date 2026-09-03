@@ -20,12 +20,11 @@ describe('V19 one-evaluator projection ratchet', () => {
   });
 
   it('names every output-setting read that can select evaluation behavior', () => {
-    expect(occurrences(/\be\.collapse\b/gu)).toBe(2);
+    expect(occurrences(/\be\.collapse\b/gu)).toBe(1);
     expect(SOURCE).toContain(
       'if (!e.collapse && e.referenceImportDepth === 0 && !hasDynamicImportTarget)'
     );
-    expect(SOURCE).toContain('function emitNestedRuleGuarded(');
-    expect(SOURCE).toContain('  if (!e.collapse) {');
+    expect(SOURCE).not.toContain('function emitNestedRuleGuarded(');
   });
 
   it('keeps one leaf shape and no pending-comment side table', () => {
@@ -41,8 +40,8 @@ describe('V19 one-evaluator projection ratchet', () => {
   });
 
   it('does not grow the serializer helper or collection-construction surface', () => {
-    expect(occurrences(/^function |^async function /gmu)).toBe(417);
-    expect(occurrences(/new Map/gu)).toBe(57);
+    expect(occurrences(/^function |^async function /gmu)).toBe(415);
+    expect(occurrences(/new Map/gu)).toBe(56);
     expect(occurrences(/new Set/gu)).toBe(34);
     expect(occurrences(/new WeakMap/gu)).toBe(5);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);
@@ -74,5 +73,18 @@ describe('V19 one-evaluator projection ratchet', () => {
     expect(occurrences(/selectIfBodyForRender\(/gu)).toBe(0);
     expect(occurrences(/selectIfBody\(/gu)).toBe(6);
     expect(occurrences(/runWhile\(/gu)).toBe(6);
+  });
+
+  it('keeps one evaluator for containers, at-rules, imports, and hoist placement', () => {
+    expect(occurrences(/function expandRule\(/gu)).toBe(1);
+    expect(occurrences(/function flatten\(/gu)).toBe(0);
+    expect(occurrences(/function emitNestedRule\(/gu)).toBe(0);
+    expect(occurrences(/function activateRuleFrame\(/gu)).toBe(1);
+    expect(occurrences(/function expandAtRuleBlock\(/gu)).toBe(1);
+    expect(occurrences(/function emitAtRuleBlock\(/gu)).toBe(0);
+    expect(occurrences(/function emitNestedAtRuleBlock\(/gu)).toBe(0);
+    expect(occurrences(/function expandStyleImport\(/gu)).toBe(1);
+    expect(occurrences(/function emitStyleImport\(/gu)).toBe(0);
+    expect(occurrences(/astExtend\.emit\.nestedHoistPlacements/gu)).toBe(1);
   });
 });
