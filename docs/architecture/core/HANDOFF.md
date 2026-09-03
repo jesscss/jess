@@ -62,6 +62,201 @@
     target is ONE shared lookup descriptor; adding a `lookup` or `keyKind` field to a
     reference node without it makes the duplication worse, not better.
 
+## ACTIVE PLAN — V19 one evaluator, nesting as a write-time projection
+
+**Authority and defect.** `DESIGN-DECISIONS.md` V19 requires evaluation and lookup to
+depend only on the source stylesheet; `collapseNesting` is an output setting. The live
+serializer violates that rule with two statement evaluators: `walkBody`/`flatten` for
+collapsed output and `emitNestedBody` for nested output. Both dispatch declarations,
+rulesets, calls, `$apply`, references, loops, conditionals, at-rules, imports, functions,
+definitions, and variables. Both also own property publication, callable expansion,
+control flow, trivia replay, and extend hoisting. G28's block-comment loss and #126's
+`$property` lookup failure were consequences of those evaluators drifting.
+
+### Target runtime shape
+
+The evaluator is extracted from the existing `walkBody` path because it already owns the
+more complete source-order lookup and callable semantics. Extraction does **not** make the
+flattened output algorithm canonical. It separates that algorithm into a writer just as
+the nested algorithm becomes a writer.
+
+The evaluated structure is the existing canonical source node plus its existing placement
+spine: `Frame` for lexical/live lookup state and `Leaf` for a statement at an evaluation
+placement. `Leaf` becomes the monomorphic evaluated placement carrier, with mandatory
+slots for the projection-independent result, call-level importance, `$apply` provenance,
+and trivia ownership; every constructor writes the same fields in the same order. Absent
+facts use `null`/`false` scalar sentinels, never fresh empty arrays or objects. The realized
+`Leaf` shape count must be exactly one. This replaces the current conditional-spread
+shapes rather than adding another wrapper. The fold adds no `Frame` field or constructor
+and may not increase the current 14 statically named `Frame` construction signatures.
+Ruleset and at-rule facts are passed to fixed-argument writer callbacks as the canonical
+node, placement `Frame`, evaluated header/prelude, parent context, and source owner in that
+order; they do not get a carrier object or a branch-specific argument shape.
+
+The evaluator resolves every lookup-dependent fact before invoking a writer: declaration
+values, selector interpolation, at-rule preludes, guards, import requests, callable
+selection/arguments, and control-flow results. An actually asynchronous result suspends
+that placement before it reaches the writer; no selected writer decides when a lookup or
+value is forced. The evaluated placements are consumed as the evaluator walks, so this is
+still the existing streaming spine rather than a retained evaluated AST, event array,
+cloned tree, `WeakMap`, or second node model. The synchronous fast path remains synchronous
+when every evaluated fact is synchronous.
+
+One source-order evaluator owns exactly these operations:
+
+- dispatch of every `Statement` kind;
+- frame creation and live declaration/mixin/function publication;
+- `recordPropertyDeclaration` and the property timeline;
+- mixin, `$apply`, detached-reference, and loop placement expansion;
+- `if`/`while` selection and iteration;
+- import execution order and source-owner changes; and
+- body/root trivia ownership.
+
+Two write projections consume those same placements through the existing `Emit` buffer:
+
+- the **collapsed writer** owns selector composition, parent-block partitioning, at-rule
+  bubbling, flattened extend headers, and collapsed block layout;
+- the **nested writer** owns authored selector headers, nesting indentation, adjacent
+  nested-block coalescing, and the small extend-driven hoist projection required even when
+  ordinary nesting is preserved.
+
+`collapseNesting` selects the writer once at the serialize boundary. No evaluator,
+lookup, expansion, control-flow, import, or property-timeline function may read it.
+
+### Landable slices — one PR per slice, each based on `dev`
+
+0. **Plan (this section).** Land the target shape, slices, and evidence contract before
+   production changes.
+1. **Shared lookup and leaf bookkeeping.** Introduce the projection boundary around the
+   existing `Frame`/`Leaf` spine. Move declaration/comment handling, nested-property
+   expansion, property-timeline publication, definition/variable publication, and body
+   trivia ownership into the one evaluator. Normalize `Leaf` construction to one field
+   shape and replace `pendingLeafBlockComments` with one closure-local nullable pending
+   comment slot beside the existing leaf buffer. The slot reuses the trivia-owned comment
+   list; it is not an expando on `Leaf[]`, a side table, a buffer wrapper, or a fresh empty
+   array/object per leaf. Both writers consume the same evaluated leaves.
+   Red-to-green pins cover sibling/parent/mixin `$property` access and block-interior
+   comments in both output modes.
+   Add a source-level architecture ratchet that starts by naming both statement
+   dispatchers and every evaluator-side output-setting read; each later slice removes
+   only the entries whose responsibility it deletes, and slice 5 takes both sets to zero.
+2. **Shared callable expansion.** Make mixin dispatch/selection/frame creation, body
+   plugin preparation, recursion accounting, scope leakage, `$apply`, and detached
+   reference calls evaluator-owned. Delete `expandNestedCall`, `expandNestedApply`, and
+   `expandNestedReferenceCall` as their responsibilities move. Both writers receive the
+   same expanded placements; only selector/block layout differs.
+3. **Shared control flow.** Move `$for`/`each`, `if`, and `while` dispatch and frame
+   creation to the evaluator. Delete `expandNestedFor`. Pin sync and async continuation
+   order plus both-mode lookup visibility across iterations and chosen branches.
+4. **Shared containers, imports, and hoisting.** Move ruleset/at-rule/import dispatch and
+   reference-import fact publication to the evaluator. The collapsed writer keeps
+   composition/bubbling/partition policy; the nested writer keeps authored nesting and
+   consumes evaluator-issued extend-hoist placements. Pin selector composition, `&`,
+   at-rule bubbling, import barriers, comments, and source order in both modes.
+5. **Delete the second dispatcher.** Remove `emitNestedBody` and every nested-only
+   evaluation helper left after slices 1–4. Select the writer once at the serialize
+   boundary. The final source audit must find zero `collapseNesting`/`e.collapse` reads in
+   evaluation, lookup, expansion, control-flow, and import code.
+
+If a slice cannot preserve its named before/after byte set, stop at that slice: do not
+move the discrepancy into an allowlist, fixture edit, or later cleanup PR.
+
+### Evidence contract for every slice
+
+Build first with `pnpm run build:release`, and record resolved package paths/versions
+before interpreting test or benchmark output. The method is governed by
+`docs/perf/V8-ARCHITECTURE.md`, including invariant 11's deterministic-count requirement.
+Every slice then reports these numbers:
+
+1. `npx vitest run packages/core`: total/passed/failed.
+2. `pnpm --dir packages/jess run test:ratchet`: total failures and exact named-baseline
+   comparison (the baseline is currently an empty named set, not merely the number zero).
+3. `packages/jess/test/less/property-accessor-nested.test.ts` plus every test that
+   parameterizes both `collapseNesting` values: total/passed/failed.
+   Any slice that moves value, selector, or at-rule evaluation also runs a focused
+   positional-equivalence fixture: the evaluated node/value source positions and
+   diagnostic location must be identical in both output modes. A disposable source-span
+   perturbation must make that fixture fail, so a green result proves the position path
+   is observed rather than merely comparing emitted bytes.
+4. The Less corpus under forced `collapseNesting:true`, captured before the slice as a
+   sorted per-case manifest of CSS SHA-256 or diagnostic code, then captured after the
+   slice with the identical fixture checkout/configuration. Required result: zero added,
+   removed, or changed case records. `all-less.test.ts` still runs as its independent
+   golden gate; matching counts alone do not satisfy this manifest comparison. The
+   manifest is regression context, not proof by itself: for the responsibility moved by
+   the slice, a disposable negative-control patch must change at least one named target
+   record, and the corresponding focused test must fail for the intended reason.
+5. Dependent suites/builds for `@jesscss/plugin-less`, `@jesscss/fns`, and
+   `@jesscss/plugin-scss`: total/passed/failed where tests exist, and build exit status.
+6. Extend the canonical `measure:less:hotpath` harness before the first production slice
+   so it accepts explicit `collapseNesting:true` and `collapseNesting:false`, without
+   changing its default fixture set. Run both modes before and after in the same
+   machine/session. Report each fixture's median, RSD/signal, and delta; a delta inside
+   the harness noise is inconclusive, while a regression beyond noise blocks the slice.
+   Attribute the instrument with a same-commit null run; for a no-change claim, a
+   disposable negative control must make the relevant mode move. Retain `b719ce11c` as
+   the fixed cumulative reference so a sequence of individually sub-noise regressions
+   cannot ratchet the lane slower.
+7. `pnpm run verify:aggressive-cutting-review`, plus evidence-per-invariant reviews from
+   `semantics-reviewer` and `perf-architecture-reviewer`. Acted-on findings belong in the
+   PR body; a bare verdict is not a review.
+8. Deterministic before/after hot-path counts: statement dispatchers and body loops;
+   evaluator visits and writer callbacks at N and 2N for a focused mixed-statement body;
+   `Leaf`/`Frame`/group allocation sites; conditional object spreads; `Map`/`Set`/`WeakMap`
+   construction and side-table operations; trivia/source scan starts; and added/removed
+   helper calls on one declaration, one mixin placement, and one nested-rule placement.
+   The temporary counter instrumentation must be removed before commit. Also run
+   `git diff --check`, report `serialize.ts` line count before/after, and count remaining
+   output-setting reads in evaluation code.
+
+Before editing a production slice, commit its counter baseline and pre-register the exact
+expected delta or non-increase bound in the PR notes. The lane-wide hard gates are: two
+statement dispatchers to one; evaluator-side `collapseNesting`/`e.collapse` reads to zero;
+three statically authored `Leaf` shapes to one; five conditional `Leaf` field spreads to
+zero; the pending-comment `WeakMap` from one construction/eight operations to zero; no new
+`Frame` field, constructor, or statically named signature above the current 14; and no new
+group, map, set, weak-map, scan-start, or helper-call count. For a body of N eligible
+statements, one render performs exactly N evaluator visits and N writer callbacks; running
+the two modes separately performs 2N of each, never two body walks in one render. Every
+touched counter gets a disposable sensitivity mutation that exceeds its registered bound
+and fails the counter assertion.
+
+Slice 4 also runs and extends `packages/core/src/ast/__tests__/extend-op-budget.test.ts`.
+Its existing comparison and contribution ceilings remain unchanged, and an explicit
+nested-hoist placement counter is pinned for N and 2N inputs in both output modes: the 2N
+count may be no greater than twice the N count plus a named constant setup cost. A
+disposable per-subject rescan makes that operation-budget test fail before the slice is
+accepted.
+
+Each PR body is written for a repository reader: V19 rationale, the exact evaluator
+responsibility moved, red-to-green tests, named gates and numbers, corpus manifest result,
+perf medians/signal, reviewer findings acted on, line-count delta, and remaining fold
+slices. No slice merges as part of this lane.
+
+### Aggressive Cutting Self-Prosecution — V19 plan
+
+- **New traversal:** none in this plan. The implementation must replace the two existing
+  statement traversals with one; a writer callback may consume the current placement but
+  may not walk the body again.
+- **New node/materialization:** none. The source node + existing `Frame`/`Leaf` placement
+  spine is the evaluated structure. `Leaf`'s existing allocation becomes monomorphic and
+  carries the evaluated result; it is not wrapped. A retained event list, evaluated-tree
+  clone, or new per-statement wrapper model is rejected.
+- **Render path:** both projections write directly to the existing `Emit.chunks` buffer.
+  Neither projection may materialize nodes/arrays merely to stringify them.
+- **Helper/API surface:** the temporary projection seam is private to `serialize.ts` and
+  must finish with fewer dispatch/expansion helpers than the two paths it replaces. Each
+  slice deletes its superseded nested helper in the same PR.
+- **Metadata mutations:** no new source/parent restoration, `frozen` mutation, structural
+  probe, or per-node side table is planned. Slice 1 removes the existing
+  `pendingLeafBlockComments` WeakMap in favor of leaf-buffer-owned state. Existing frame
+  placement state remains render-local and is dropped with the render; every slice counts
+  realized `Frame` and `Leaf` field shapes before and after.
+- **Evidence:** targeted negative controls and behavior tests prove the moved
+  responsibility is exercised; byte manifests are regression context. Timings are only
+  performance sanity. Deterministic path/allocation/scan counts enforce the compiler
+  architecture, and code deletion alone is not described as a speedup.
+
 ## SESSION HANDOFF — 2026-08-17, jess dev `6d7fbe82d` (CURRENT — read first)
 
 **CURRENT FOCUS (owner, 2026-08-17): strengthen the Less compilation story so we can
