@@ -65,4 +65,13 @@ describe('V19 one-evaluator projection ratchet', () => {
     expect(SOURCE).toContain('const aliasWasExcluded = e.excluded.has(alias);');
     expect(SOURCE).toContain('if (!aliasWasExcluded) {\n            e.excluded.delete(alias);\n          }');
   });
+
+  it('names the control-flow evaluation surface before the slice-three fold', () => {
+    expect(occurrences(/function expandFor\(/gu)).toBe(1);
+    expect(occurrences(/function expandNestedFor\(/gu)).toBe(1);
+    expect(occurrences(/expandFor\(/gu)).toBe(5);
+    expect(occurrences(/expandNestedFor\(/gu)).toBe(2);
+    expect(occurrences(/selectIfBodyForRender\(/gu)).toBe(6);
+    expect(occurrences(/runWhile\(/gu)).toBe(6);
+  });
 });

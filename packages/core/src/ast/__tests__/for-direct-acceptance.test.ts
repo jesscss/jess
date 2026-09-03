@@ -8,7 +8,8 @@ import {
 import { serialize } from '../serialize.js';
 
 const evaluator = buildEvaluator(makeLessRegistry());
-const render = (document: Stylesheet): string | undefined => serialize(document, { evaluator }).css;
+const render = (document: Stylesheet, collapseNesting = true): string | undefined =>
+  serialize(document, { evaluator, collapseNesting }).css;
 const entry = (name: string, value: Parameters<typeof collectionEntry>[1]): ReturnType<typeof collectionEntry> =>
   collectionEntry(keyword(name), value);
 
@@ -184,4 +185,34 @@ describe('For canonical AST emission', () => {
 
     expect(render(document)).toBe('.n {\n  r-1: 10px 1;\n  r-2: 15px 2;\n  r-1: 20px 1;\n  r-2: 25px 2;\n}\n');
   });
+
+  it.each([true, false])(
+    'keeps source-order iteration bindings visible with collapseNesting=%s',
+    (collapseNesting) => {
+      const document = stylesheet([
+        rule('.outer', [
+          forNode(
+            spaced([keyword('red'), keyword('blue')]),
+            [
+              decl(
+                interpolation([
+                  { lit: 'item-' },
+                  { ref: variableReference('index', 'scoped'), unquote: false }
+                ]),
+                variableReference('value', 'scoped')
+              )
+            ],
+            { kind: 'comma', names: ['value', 'key', 'index'] }
+          ),
+          decl('after', keyword('done'))
+        ])
+      ]);
+
+      expect(render(document, collapseNesting)).toBe('.outer {\n'
+        + '  item-1: red;\n'
+        + '  item-2: blue;\n'
+        + '  after: done;\n'
+        + '}\n');
+    }
+  );
 });
