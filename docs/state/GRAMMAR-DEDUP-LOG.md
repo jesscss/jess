@@ -1150,3 +1150,30 @@ now quantified — a big multi-week effort, not a switch.
 
 - 2026-08-11 — This log created after owner flagged there was no single live
   worklog. Prior state was scattered across memory files + HANDOFF + task chips.
+
+- 2026-09-03 — **NamedColor→Keyword (#57) LANDED at `411733b9d`** (V13 in
+  `docs/architecture/core/DESIGN-DECISIONS.md`). Do NOT re-dispatch it. Live status
+  for grammar convergence is §Lane 7 above plus the ⏱ tracker tables in
+  `docs/design/LESS-COMPOSE-REAUTHOR-PLAN.md`; every remaining row there is
+  KEPT-OVERRIDE. The sibling divergence the 2026-08-11 entry named
+  (`Percentage` token-vs-`Dimension` node, `%`-in-unit) is the next unit.
+
+- 2026-09-03 — **`Percentage`/`Dimension` converged: css is now the same language
+  as the three (DESIGN-DECISIONS V20).** The sibling divergence the 2026-08-11 note
+  named. Fix is ADDITIVE in css (the outlier): css `Dimension` uses the shared
+  `numberValue` + a `dimensionUnit` that admits `%`, and css's separate
+  `Percentage` NODE (`node('Dimension', …)`) is DELETED — css keeps `Percentage`
+  as the same **token** the other three carry, used only by `keyframeSelector`.
+  less/scss/jess then inherit css's `Dimension`+`Percentage` by name (all six
+  overrides deleted; dead scss-local `numberValue` regex removed). Public CST
+  numeric type is unaffected — `css-parser/src/cst-host.ts:numericGrammarType`
+  classifies from leaves (`%`→Percentage, unit→Dimension, none→Num). Proof
+  (same-tree before/after, the isolation method): less **ast 0 moved**, scss/jess
+  value position unchanged; the only moves are the `expected` label dropping the
+  `Percentage` alternative on pre-existing parse-error files (less cst 6, scss
+  ast+cst 3, jess ast+cst 1; every `threw` count unchanged, no parse↔error flip).
+  Four parser suites green (css 515, less 741, scss 622, jess 510); core 3249,
+  fns 718, LS 264, jess ratchet 1408/0-failing; macro/compose-fused/reducer-purity
+  all green. Tracker rows Less #3, jess `Dimension`+`Percentage`, scss `Percentage`
+  flipped ☑. The committed less/scss oracle baselines were already stale pre-edit
+  (drift-detectors, not CI-gated) and are NOT rebaselined here.

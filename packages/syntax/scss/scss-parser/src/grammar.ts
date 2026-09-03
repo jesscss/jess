@@ -38,7 +38,6 @@ type ScssRules = {
   Quoted: Combinator<Quoted | Interpolation>;
   LiteralQuoted: Combinator<Quoted>;
   CustomPropertyValue: Combinator<Keyword>;
-  Dimension: Combinator<Dimension>;
   InterpolatedUrlValue: Combinator<Interpolation>;
   InterpolatedValue: Combinator<Interpolation>;
   Paren: Combinator<ValueNode>;
@@ -147,7 +146,6 @@ type ScssRules = {
   CounterStyle: Combinator<AtRuleBlock>;
   PropertyName: Combinator<Keyword>;
   PropertyAtRule: Combinator<AtRuleBlock>;
-  Percentage: Combinator<string>;
   KeyframeSelector: Combinator<SimpleSelector>;
   KeyframeBlock: Combinator<Ruleset>;
   Keyframes: Combinator<AtRuleBlock>;
@@ -189,6 +187,18 @@ type ScssRules = {
  * here, mirroring less-parser's `SharedSyntax`.
  */
 type ScssSharedSyntax = {
+  /*
+   * Converged to the CSS base (inherited via compose): same token rule
+   * token(noTrivia(sequence(<number>, '%'))), used only by keyframeSelector.
+   */
+  Percentage: Combinator<string>;
+
+  /*
+   * Converged to the CSS base (inherited via compose): same recognizer
+   * (number + optional unit, `%` admitted as a unit) and same `dimension()`
+   * reducer; differs only requireToken().value vs tokenText().
+   */
+  Dimension: Combinator<Dimension>;
   Color: Combinator<Color>;
   UnicodeRange: Combinator<ValueNode>;
   Keyword: Combinator<Keyword>;
@@ -317,18 +327,15 @@ const selectorTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
 const generalTemplateText = regex(/(?:[^#()\[\]{}'"\\]|\\[\s\S]|#(?!\{))+/);
 
 /*
- * Grammar-local copies of the leading pseudo-colon, hex-color and number
- * recognizers (byte-identical to the shared PseudoSelectorColon /
- * HexColor / NumberToken). Leading a choice arm with a
+ * Grammar-local copy of the leading pseudo-colon recognizer (byte-identical
+ * to the shared PseudoSelectorColon). Leading a choice arm with a
  * cross-composition shared `g.*` reference leaves that arm's first-set
  * unresolved (`any`) across the compose artifact boundary, so the compiler
- * enters the PseudoSelector / Color / Dimension node frame SPECULATIVELY at every simple
- * selector and value atom. A grammar-local leading recognizer lets the compiler
- * resolve the arm's first-set (`:`, `#`, a digit/sign) and first-char-gate it,
- * skipping the doomed frame entirely.
+ * enters the PseudoSelector node frame SPECULATIVELY at every simple
+ * selector. A grammar-local leading recognizer lets the compiler resolve the
+ * arm's first-set (`:`) and first-char-gate it, skipping the doomed frame.
  */
 const pseudoColon = regex(/::?(?![ \t\n\r\f])/);
-const numberValue = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)/);
 
 /*
  * Grammar-local block/line comment recognizers (byte-identical to the shared
@@ -569,39 +576,6 @@ const scssFactory = (g: ScssInputRules) => {
     'CustomPropertyValue',
     g.CustomPropertyToken,
     children => keyword(requireToken(children[0]).value)
-  );
-
-  /*
-   * `<percentage>` — css-values-4 §8.2: "a `<number>` immediately followed by a
-   * percent sign `%`", i.e. `<percentage> = <number> %`. It is a NAMED CSS value
-   * type, referenced by name from many productions — `<keyframe-selector> = from
-   * | to | <percentage>` (css-animations-1 §4), `image-set()`, `color-mix()`,
-   * `<position>` — so it is a rule here rather than a shape each consumer
-   * re-spells. Three dialects previously carried three different hand-rolled
-   * numeric regexes for it, none referenceable and none agreeing with this
-   * grammar's own `<number>`.
-   *
-   * This does NOT add an AST node type: a percentage is still a `Dimension`
-   * whose unit is `%`, which is why this is a token rule and not a `node()`.
-   * `noTrivia` enforces the "immediately followed by" of the spec, so `50 %`
-   * is not a percentage.
-   */
-  const Percentage = token(noTrivia(sequence(numberValue, literal('%'))));
-  const Dimension = node<Dimension>(
-    'Dimension',
-    noTrivia(sequence(
-      numberValue,
-      optional(g.DimensionUnit)
-    )),
-    (children) => {
-      const numberText = requireToken(children[0]).value;
-      const unit = children.length > 1 ? requireToken(children[1]).value : '';
-      return dimension(
-        Number(numberText),
-        unit,
-        `${numberText}${unit}`
-      );
-    }
   );
 
   /*
@@ -4772,7 +4746,6 @@ const scssFactory = (g: ScssInputRules) => {
     Quoted,
     LiteralQuoted,
     CustomPropertyValue,
-    Dimension,
     InterpolatedUrlValue,
     InterpolatedValue,
     Paren,
@@ -4880,7 +4853,6 @@ const scssFactory = (g: ScssInputRules) => {
     CounterStyle,
     PropertyName,
     PropertyAtRule,
-    Percentage,
     KeyframeSelector,
     KeyframeBlock,
     Keyframes,
