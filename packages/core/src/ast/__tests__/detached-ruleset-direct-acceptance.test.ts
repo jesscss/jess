@@ -8,7 +8,8 @@ import { serialize } from '../serialize.js';
 import { makeLessRegistry } from '@jesscss/fns';
 
 const evaluator = buildEvaluator(makeLessRegistry());
-const render = (document: Stylesheet): string | undefined => serialize(document, { evaluator }).css;
+const render = (document: Stylesheet, collapseNesting = true): string | undefined =>
+  serialize(document, { evaluator, collapseNesting }).css;
 
 describe('variable-call canonical AST emission', () => {
   it('splices a direct detached ruleset through its definition scope and caller fallback', () => {
@@ -58,5 +59,21 @@ describe('variable-call canonical AST emission', () => {
     ]);
 
     expect(render(document)).toBe('.entry .inner {\n  width: 1px;\n}\n');
+    expect(render(document, false)).toBe('.entry {\n  .inner {\n    width: 1px;\n  }\n}\n');
+  });
+
+  it('inherits mixin-call importance through a detached-ruleset reference in both modes', () => {
+    const importantOuter = { ...mixinCall('.outer'), important: true };
+    const document = stylesheet([
+      variableDeclaration('theme', anonymousMixin([decl('color', keyword('red'))]), { mode: 'declare' }),
+      mixinDef('.outer', [], [
+        reference(variableReference('theme', 'scoped'), [{ type: 'Call', args: [] }], '@theme()')
+      ]),
+      rule('.entry', [importantOuter])
+    ]);
+    const expected = '.entry {\n  color: red !important;\n}\n';
+
+    expect(render(document)).toBe(expected);
+    expect(render(document, false)).toBe(expected);
   });
 });

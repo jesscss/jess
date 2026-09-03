@@ -704,7 +704,7 @@ export interface Frame {
    * never stored on AST nodes. */
   detachedBindings?: Map<ValueBlock, DetachedBinding>;
 
-  /** Per-activation value owners for synthetic parameter declarations. */
+  /** Per-activation lexical owners for values carried by parameter declarations. */
   bindingValueFrames?: Map<Binding, Frame>;
 
   /** Typed URL-bearing values for eager byte snapshots owned by this activation. */
@@ -1044,10 +1044,13 @@ function collectSelectedDeclIndex(
   return byName.size === 0 ? null : { byName };
 }
 
-/** Seed one activation's live cells from mixin/function parameters. */
+/** Seed one activation's live cells from mixin/function parameters.
+ * A call-valued argument keeps its caller on the existing `valueFrame` slot;
+ * constructing the four-field cell here avoids a later hidden-class transition. */
 function cellsForParams(
   params: Map<string, Binding> | null,
-  valueFrames?: ReadonlyMap<Binding, Frame>
+  valueFrames?: ReadonlyMap<Binding, Frame>,
+  mixinCallFrame?: Frame
 ): Map<string, BindingCell> | null {
   if (!params) {
     return null;
@@ -1055,7 +1058,8 @@ function cellsForParams(
   const cells = new Map<string, BindingCell>();
   for (const [name, value] of params) {
     const declaration = variableDeclaration(name, value, { mode: 'declare' });
-    const valueFrame = valueFrames?.get(value);
+    const valueFrame = valueFrames?.get(value)
+      ?? (!isValueSlotArray(value) && value.type === 'MixinCall' ? mixinCallFrame : undefined);
     cells.set(name, valueFrame
       ? { declaration, value, valueFrame, prev: null }
       : { declaration, value, prev: null });
@@ -2264,6 +2268,16 @@ function lookupScopedBinding(frame: Frame | null, name: string, e?: EvalCtx): { 
           continue;
         }
         if (!e?.excluded.has(declaration.value)) {
+          if (!isValueSlotArray(declaration.value) && declaration.value.type === 'MixinCall') {
+            /* A self-reading redeclaration can sit ahead of the synthetic
+             * parameter cell. This rare branch is bounded by distinct
+             * same-name declarations, never by render iteration count. */
+            for (let cell: BindingCell | null | undefined = f.cells?.get(name); cell; cell = cell.prev) {
+              if (cell.value === declaration.value && cell.valueFrame) {
+                return { value: declaration.value, frame: cell.valueFrame };
+              }
+            }
+          }
           return { value: declaration.value, frame: f.bindingValueFrames?.get(declaration.value) ?? f };
         }
       }
@@ -2881,8 +2895,6 @@ interface EvalCtx {
   /* Non-URL structure is visible only at function/plugin argument boundaries. */
   mixinValueBindings: Map<Binding, ValueGroup> | null;
 
-  /** Runtime-only lexical homes for mixin calls carried through an argument. */
-  mixinCallHomes?: WeakMap<MixinCall, Frame>;
 }
 
 /** Force an internal eval value to a typed value node/group. A computed STRING carries no parse
@@ -4821,7 +4833,15 @@ function resolveReferenceResult(
           if (typeof value.name !== 'string') {
             break;
           }
-          const aliased = resolveVarRef(valueFrame, value.name, value.scope, e);
+          const name = value.name;
+          const scope = value.scope;
+
+          /* Exclude the alias currently being followed so `@call: @call`
+           * reaches its prior parameter binding instead of selecting itself. */
+          const alias = value;
+          e.excluded.add(alias);
+          const aliased = resolveVarRef(valueFrame, name, scope, e);
+          e.excluded.delete(alias);
           if (!aliased) {
             break;
           }
@@ -10752,7 +10772,7 @@ function walkBody(
       }
       case 'Reference':
         {
-          const expanded = expandReferenceCall(node, composed, ancestor, frame, group, flush, partition, e, forceLeading, propertyScope, applyExpansion);
+          const expanded = expandReferenceCall(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
           if (isThenable(expanded)) {
             return expanded.then(() => walkBody(
               statements.slice(index + 1), composed, ancestor, frame, group, flush,
@@ -11229,7 +11249,9 @@ function expandCall(
   forceLeading = false, // [partition] inherited leading-hoist context
   captureFrames?: Frame[], // [namespace-accessor] collect each callee's callFrame
   propertyScope: Frame = frame, // caller scope receiving spliced declarations
-  applyExpansion = false
+  applyExpansion = false,
+  source: NestedHeaderSource | null = null,
+  sharedLeaves?: NestedLeafBuffer
 ): MaybePromise<void> {
   /*
    * A namespaced/compound call (`#ns .a .b()`, `.jo.ki()`, `.amp.support()`)
@@ -11313,75 +11335,88 @@ function expandCall(
         throw new RangeError('maximum mixin recursion depth exceeded');
       }
       e.mixinDepth++;
-      const finish = (): void => {
-        e.mixinDepth--;
-      };
-      const expandSelected = (index: number): MaybePromise<void> => {
-        if (index >= selected.length) {
-          return;
-        }
-        const { def, bindings, boundSourceKeys } = selected[index]!;
+      const run = (start: number): MaybePromise<void> => {
+        for (let index = start; index < selected.length; index++) {
+          const { def, bindings, boundSourceKeys } = selected[index]!;
 
-        /*
-         * [closure] free variables resolve in the mixin's DEFINITION scope FIRST, with
-         * the call-site scope as a fallback — less@4 evaluates a mixin body under
-         * `definitionFrames.concat(callerFrames)`. `parent` = the definition frame (so
-         * a `@var` written in the mixin's home scope wins over a same-name caller var,
-         * e.g. `mixins-closure`); `fallback` = the caller chain, which also keeps the
-         * DYNAMIC expansion stack reachable for the ruleset-mixin parent-exclusion
-         * check (`parentExcludes`) and lets the body see caller-published mixins. A
-         * namespaced call already descends to the definition scope (home is confined
-         * to the namespace), so it takes no caller fallback.
-        */
-        const homeFrame = homes.get(def) ?? frame;
-        const callFrame: Frame = {
-          parent: homeFrame,
-          mixins: collectMixins(def.rules),
-          declIndex: collectDeclIndex(def.rules, bindings), cells: cellsForParams(bindings), reassign: null,
-          statements: def.rules,
-          sourceOwner: sourceOwnerForBody(def.rules, frame, e),
-          mixinUrlBindings: undefined,
-          mixinValueBindings: undefined,
-          ...(namespaced || homeFrame === frame ? {} : { fallback: frame })
-        };
-        takeMixinValueBindings(boundSourceKeys, e, callFrame);
-        captureArgDefFrames(bindings, frame, callFrame, e);
+          /*
+           * [closure] free variables resolve in the mixin's DEFINITION scope FIRST, with
+           * the call-site scope as a fallback — less@4 evaluates a mixin body under
+           * `definitionFrames.concat(callerFrames)`. `parent` = the definition frame (so
+           * a `@var` written in the mixin's home scope wins over a same-name caller var,
+           * e.g. `mixins-closure`); `fallback` = the caller chain, which also keeps the
+           * DYNAMIC expansion stack reachable for the ruleset-mixin parent-exclusion
+           * check (`parentExcludes`) and lets the body see caller-published mixins. A
+           * namespaced call already descends to the definition scope (home is confined
+           * to the namespace), so it takes no caller fallback.
+           */
+          const homeFrame = homes.get(def) ?? frame;
+          const callFrame: Frame = {
+            parent: homeFrame,
+            mixins: collectMixins(def.rules),
+            declIndex: collectDeclIndex(def.rules, bindings), cells: cellsForParams(bindings, undefined, frame), reassign: null,
+            statements: def.rules,
+            sourceOwner: sourceOwnerForBody(def.rules, frame, e),
+            mixinUrlBindings: undefined,
+            mixinValueBindings: undefined,
+            ...(namespaced || homeFrame === frame ? {} : { fallback: frame })
+          };
+          takeMixinValueBindings(boundSourceKeys, e, callFrame);
+          captureArgDefFrames(bindings, frame, callFrame);
 
-        /*
-         * [namespace-accessor] expose the callee's evaluated scope so a `#ns.m[@var]`
-         * accessor can read its VARIABLE members (local `@x:` decls + nested-call
-         * leaked vars), which never appear in the emitted-declaration output.
-         */
-        captureFrames?.push(callFrame);
+          /*
+           * [namespace-accessor] expose the callee's evaluated scope so a `#ns.m[@var]`
+           * accessor can read its VARIABLE members (local `@x:` decls + nested-call
+           * leaked vars), which never appear in the emitted-declaration output.
+           */
+          captureFrames?.push(callFrame);
 
-        /*
-         * Only an argument-bearing mixin is a transparent parametric wrapper for
-         * this output rule. A zero-parameter `MixinDefinition` splices at its call site;
-         * treating every AST MixinDefinition as force-leading moved `.mixin2()` output
-         * ahead of an intervening nested rule in the Less property-accessor corpus.
-         */
-        const bodyForceLeading = forceLeading || def.params.length !== 0;
+          /*
+           * Only an argument-bearing mixin is a transparent parametric wrapper for
+           * this output rule. A zero-parameter `MixinDefinition` splices at its call site;
+           * treating every AST MixinDefinition as force-leading moved `.mixin2()` output
+           * ahead of an intervening nested rule in the Less property-accessor corpus.
+           */
+          const bodyForceLeading = forceLeading || def.params.length !== 0;
 
-        /*
-         * [adjacent-merge] each mixin expansion is a DISTINCT parent expansion: give
-         * its body a FRESH composed-array identity (same values → byte-identical
-         * composition) so nested rulesets from two separate calls of the same body do
-         * NOT reopen-merge (`.class .inner {} .class .inner {}` stay two blocks —
-         * `mixins-important`), while two nested siblings within ONE expansion still
-         * share it and merge.
-         */
-        const bodyComposed = composed === null ? null : composed.slice();
-        const executeBody = () => {
-          const bodyTrivia = def.rules.length === 0 ? undefined : bodyTriviaReplay(def, e);
-          const pluginVersion = e.fnScopeVersion ?? 0;
-          return mapMaybe(
-            prepareBodyPlugins(def.rules, callFrame, e),
-            () => {
-              if (!bindingsTrackedAtDispatch && (e.fnScopeVersion ?? 0) !== pluginVersion && bindings !== null) {
-                capturePreparedBodyPluginBindings(def, call, bindings, frame, homeFrame, e);
-              }
-              return mapMaybe(
-                walkBody(
+          /*
+           * [adjacent-merge] each mixin expansion is a DISTINCT parent expansion: give
+           * its body a FRESH composed-array identity (same values → byte-identical
+           * composition) so nested rulesets from two separate calls of the same body do
+           * NOT reopen-merge (`.class .inner {} .class .inner {}` stay two blocks —
+           * `mixins-important`), while two nested siblings within ONE expansion still
+           * share it and merge.
+           */
+          const bodyComposed = composed === null ? null : composed.slice();
+          let bodyTrivia: BodyTriviaReplay | undefined;
+          const executeBody = () => {
+            bodyTrivia = def.rules.length === 0 ? undefined : bodyTriviaReplay(def, e);
+            const pluginVersion = e.fnScopeVersion ?? 0;
+            return mapMaybe(
+              prepareBodyPlugins(def.rules, callFrame, e),
+              () => {
+                if (!bindingsTrackedAtDispatch && (e.fnScopeVersion ?? 0) !== pluginVersion && bindings !== null) {
+                  capturePreparedBodyPluginBindings(def, call, bindings, frame, homeFrame, e);
+                }
+                if (sharedLeaves !== undefined) {
+                  const placement = def.ruleMixin === true && source !== null
+                    ? { source, callFrame } satisfies NestedRuleMixinPlacement
+                    : null;
+                  return emitNestedBody(
+                    def.rules,
+                    callFrame,
+                    e,
+                    undefined,
+                    bodyImp,
+                    source,
+                    placement,
+                    sharedLeaves,
+                    applyExpansion,
+                    undefined,
+                    bodyTrivia
+                  );
+                }
+                return walkBody(
                   def.rules,
                   bodyComposed,
                   ancestor,
@@ -11396,16 +11431,28 @@ function expandCall(
                   applyExpansion,
                   false,
                   bodyTrivia
-                ),
-                () => {
-                  queueBodyTriviaTail(bodyTrivia, group, partition, e);
-                }
-              );
-            }
-          );
-        };
-        const emitted = withSourceOwner(e, callFrame.sourceOwner, executeBody);
-        return mapMaybe(emitted, () => {
+                );
+              }
+            );
+          };
+          const emitted = withSourceOwner(e, callFrame.sourceOwner, executeBody);
+          if (isThenable(emitted)) {
+            return emitted.then(() => {
+              if (sharedLeaves === undefined) {
+                queueBodyTriviaTail(bodyTrivia, group, partition, e);
+              }
+              leakBodyVars(frame, def.rules, callFrame, e);
+              publishOrderedMixins(frame, frameOrderedMixins(callFrame, e), callFrame);
+              if (def.ruleMixin !== true) {
+                publishExplicitRulesets(frame, def.rules, callFrame);
+              }
+              return run(index + 1);
+            });
+          }
+          if (sharedLeaves === undefined) {
+            queueBodyTriviaTail(bodyTrivia, group, partition, e);
+          }
+
           /*
            * [scope-leak] after expansion the mixin's own `@x:` declarations unlock into
            * the caller scope (visible to later siblings), matching less@4.
@@ -11427,26 +11474,25 @@ function expandCall(
           if (def.ruleMixin !== true) {
             publishExplicitRulesets(frame, def.rules, callFrame);
           }
-          return expandSelected(index + 1);
-        });
+        }
       };
       try {
-        const expanded = expandSelected(0);
+        const expanded = run(0);
         if (isThenable(expanded)) {
           return expanded.then(
             () => {
-              finish();
+              e.mixinDepth--;
             },
             (error) => {
-              finish();
+              e.mixinDepth--;
               throw error;
             }
           );
         }
-        finish();
-        return;
+        e.mixinDepth--;
+        return expanded;
       } catch (error) {
-        finish();
+        e.mixinDepth--;
         throw error;
       }
     });
@@ -11496,7 +11542,9 @@ function expandApply(
   e: Emit,
   imp = false,
   forceLeading = false,
-  propertyScope: Frame = frame
+  propertyScope: Frame = frame,
+  source: NestedHeaderSource | null = null,
+  sharedLeaves?: NestedLeafBuffer
 ): MaybePromise<void> {
   const selected: Array<{ rule: Ruleset; home: Frame }> = [];
 
@@ -11539,10 +11587,32 @@ function expandApply(
       };
       const emitted = withSourceOwner(e, applyFrame.sourceOwner, () => mapMaybe(
         prepareBodyPlugins(rule.rules, applyFrame, e),
-        () => walkBody(
-          rule.rules, composed, ancestor, applyFrame, group, flush, partition, e,
-          imp, forceLeading, propertyScope, true
-        )
+        () => sharedLeaves === undefined
+          ? walkBody(
+              rule.rules,
+              composed,
+              ancestor,
+              applyFrame,
+              group,
+              flush,
+              partition,
+              e,
+              imp,
+              forceLeading,
+              propertyScope,
+              true
+            )
+          : emitNestedBody(
+              rule.rules,
+              applyFrame,
+              e,
+              undefined,
+              imp,
+              source,
+              null,
+              sharedLeaves,
+              true
+            )
       ));
       if (isThenable(emitted)) {
         return emitted.then(() => run(index + 1));
@@ -11711,7 +11781,7 @@ function finishDefaultMixinValues(
 }
 
 /** Closure-bearing args capture their literal home frame in render-local state. */
-function captureArgDefFrames(bindings: Map<string, Binding> | null, callerFrame: Frame, callFrame: Frame, e: EvalCtx): void {
+function captureArgDefFrames(bindings: Map<string, Binding> | null, callerFrame: Frame, callFrame: Frame): void {
   if (!bindings) {
     return;
   }
@@ -11721,8 +11791,6 @@ function captureArgDefFrames(bindings: Map<string, Binding> | null, callerFrame:
     }
     if (isValueBlock(v)) {
       bindDetached(callFrame, v, callerFrame, callerFrame.sourceOwner ?? null);
-    } else if (v.type === 'MixinCall') {
-      (e.mixinCallHomes ??= new WeakMap()).set(v, callerFrame);
     }
   }
 }
@@ -11991,9 +12059,12 @@ function expandReferenceCall(
   flush: () => MaybePromise<void>,
   partition: Partition | null, // [partition] nested-ruleset sink (see walkBody)
   e: Emit,
+  imp = false,
   forceLeading = false, // [partition] inherited leading-hoist context
   propertyScope: Frame = frame,
-  applyExpansion = false
+  applyExpansion = false,
+  source: NestedHeaderSource | null = null,
+  sharedLeaves?: NestedLeafBuffer
 ): MaybePromise<void> {
   /*
    * `@alias: .something(foo); @alias();` — a variable bound to a MIXIN CALL is
@@ -12008,13 +12079,29 @@ function expandReferenceCall(
   const resolved = resolveReferenceResult(call, frame, e);
   if (!resolved) {
     if (call.base.type === 'Lookup' && call.base.kind === 'var') {
-      unresolvedSymbol(call.base, `@${call.base.name}`, e);
+      unresolvedSymbol(call, `@${call.base.name}`, e);
     }
     return;
   }
   if (isMixinCallValue(resolved.value)) {
-    const home = e.mixinCallHomes?.get(resolved.value) ?? resolved.frame ?? frame;
-    return expandCall(resolved.value, composed, ancestor, home, group, flush, partition, e, false, forceLeading, undefined, propertyScope, applyExpansion);
+    const home = resolved.frame ?? frame;
+    return expandCall(
+      resolved.value,
+      composed,
+      ancestor,
+      home,
+      group,
+      flush,
+      partition,
+      e,
+      imp,
+      forceLeading,
+      undefined,
+      propertyScope,
+      applyExpansion,
+      source,
+      sharedLeaves
+    );
   }
   if (step.args.length !== 0) {
     throw new Error('Reference call arguments require a callable mixin target.');
@@ -12041,7 +12128,32 @@ function expandReferenceCall(
   const drBody = valueBlockBody(r.dr);
   const executeBody = () => mapMaybe(
     prepareBodyPlugins(drBody, r.callFrame, e),
-    () => walkBody(drBody, composed, ancestor, r.callFrame, group, flush, partition, e, false, forceLeading, propertyScope, applyExpansion)
+    () => sharedLeaves === undefined
+      ? walkBody(
+          drBody,
+          composed,
+          ancestor,
+          r.callFrame,
+          group,
+          flush,
+          partition,
+          e,
+          imp,
+          forceLeading,
+          propertyScope,
+          applyExpansion
+        )
+      : emitNestedBody(
+          drBody,
+          r.callFrame,
+          e,
+          undefined,
+          imp,
+          source,
+          null,
+          sharedLeaves,
+          applyExpansion
+        )
   );
   return withSourceOwner(e, r.callFrame.sourceOwner, executeBody);
 }
@@ -16041,7 +16153,23 @@ function emitNestedBody(
         }
         case 'MixinCall':
           {
-            const emitted = expandNestedCall(node, frame, e, imp, source, inlineLeaves, applyExpansion);
+            const emitted = expandCall(
+              node,
+              null,
+              null,
+              frame,
+              inlineLeaves.leaves,
+              inlineLeaves.flush,
+              null,
+              e,
+              imp,
+              false,
+              undefined,
+              inlineLeaves.propertyScope,
+              applyExpansion,
+              source,
+              inlineLeaves
+            );
             if (isThenable(emitted)) {
               return emitted.then(() => run(index + 1));
             }
@@ -16049,7 +16177,21 @@ function emitNestedBody(
           break;
         case 'Apply':
           {
-            const emitted = expandNestedApply(node, frame, e, imp, source, inlineLeaves);
+            const emitted = expandApply(
+              node,
+              null,
+              null,
+              frame,
+              inlineLeaves.leaves,
+              inlineLeaves.flush,
+              null,
+              e,
+              imp,
+              false,
+              inlineLeaves.propertyScope,
+              source,
+              inlineLeaves
+            );
             if (isThenable(emitted)) {
               return emitted.then(() => run(index + 1));
             }
@@ -16057,7 +16199,22 @@ function emitNestedBody(
           break;
         case 'Reference':
           {
-            const emitted = expandNestedReferenceCall(node, frame, e, imp, source, inlineLeaves, applyExpansion);
+            const emitted = expandReferenceCall(
+              node,
+              null,
+              null,
+              frame,
+              inlineLeaves.leaves,
+              inlineLeaves.flush,
+              null,
+              e,
+              imp,
+              false,
+              inlineLeaves.propertyScope,
+              applyExpansion,
+              source,
+              inlineLeaves
+            );
             if (isThenable(emitted)) {
               return emitted.then(() => run(index + 1));
             }
@@ -16378,14 +16535,14 @@ function emitTransparentShells(
       const callFrame: Frame = {
         parent: shell.home,
         mixins: collectMixins(shell.def.rules),
-        declIndex: collectDeclIndex(shell.def.rules, shell.bindings), cells: cellsForParams(shell.bindings), reassign: null,
+        declIndex: collectDeclIndex(shell.def.rules, shell.bindings), cells: cellsForParams(shell.bindings, undefined, frame), reassign: null,
         statements: shell.def.rules,
         sourceOwner: sourceOwnerForBody(shell.def.rules, frame, e),
         mixinUrlBindings: undefined,
         mixinValueBindings: undefined
       };
       takeMixinValueBindings(shell.boundSourceKeys, e, callFrame);
-      captureArgDefFrames(shell.bindings, frame, callFrame, e);
+      captureArgDefFrames(shell.bindings, frame, callFrame);
       const source: NestedHeaderSource = { parent: parentSource, selector: shell.rule.selector, frame };
       const header = nestedSourceStrings(source, e);
       const markChunks = e.chunks.length;
@@ -16706,264 +16863,6 @@ function emitHoisted(rule: Ruleset, frame: Frame, e: Emit): MaybePromise<void> {
   }
   e.hoistMode = prev;
   return emitted;
-}
-
-/**
- * Expand a mixin call in nested mode: select the matching overloaded
- * definitions, then SPLICE each shared body inline at the current level — the
- * body's declarations join the call-site block and its nested rules nest under
- * the call site (own selectors). No clone, no per-placement node build.
- */
-function expandNestedCall(
-  call: MixinCall,
-  frame: Frame,
-  e: Emit,
-  imp = false,
-  source: NestedHeaderSource | null = null,
-  sharedLeaves?: NestedLeafBuffer,
-  applyExpansion = false
-): MaybePromise<void> {
-  /*
-   * Candidate resolution mirrors the flat-path {@link expandCall}: a bare `.m()`
-   * walks the scope chain accumulating same-name overloads (explicit `MixinDefinition`s
-   * AND paren-less rulesets callable as zero-arg mixins), a namespaced/compound
-   * call descends by element value; both record each candidate's DEFINITION frame
-   * in `homes` so the body + guards resolve free variables in the mixin's CLOSURE
-   * scope, not the call site (`mixins-closure`).
-   */
-  const namespaced = call.path.length > 0;
-  const homes = new Map<MixinDefinition, Frame>();
-
-  /*
-   * Candidate lookup builds each frame index as it reaches it, which can await
-   * when a rule's mixin key is interpolated from an awaitable value.
-   */
-  return mapMaybe(namespaced
-    ? findPathCandidates(frame, call, e, homes)
-    : lookupCandidates(frame, call.name, e, homes), (rawCandidates) => {
-  /*
-   * [parent-exclusion] a paren-less ruleset-mixin does not re-enter its own body
-   * while it is on the active expansion stack (see `expandCall`).
-   */
-    const candidates = rawCandidates.some(d => d.ruleMixin === true)
-      ? rawCandidates.filter(d => d.ruleMixin !== true || !parentExcludes(frame, d.rules))
-      : rawCandidates;
-    if (rawCandidates.length === 0) {
-      unresolvedMixinCall(call, e);
-    }
-    if (candidates.length === 0) {
-      return;
-    }
-    const bindingsTrackedAtDispatch = e.pluginHost?.invokeRawFunction !== undefined
-      && (e.scopedFunctionNames?.size ?? 0) > 0;
-    const runDispatch = (): MaybePromise<void> => mapMaybe(dispatch(candidates, call, frame, e, homes, true), (selected) => {
-      if (sharedLeaves !== undefined) {
-        queueCommentOnlySelectedBodies(selected, e, sharedLeaves.leaves);
-      }
-      if (selected.length === 0) {
-        return;
-      }
-      const bodyImp = imp || call.important; // [important] propagate call-level `!important`
-      if (e.mixinDepth >= MAX_MIXIN_DEPTH) {
-        throw new RangeError('maximum mixin recursion depth exceeded');
-      }
-      e.mixinDepth++;
-      const run = (start: number): MaybePromise<void> => {
-        for (let index = start; index < selected.length; index++) {
-          const { def, bindings, boundSourceKeys } = selected[index]!;
-
-          /*
-           * [closure] free variables resolve in the mixin's DEFINITION scope first, with
-           * the call-site scope as a fallback (a namespaced call is confined to the
-           * namespace, so it takes no caller fallback) — the same layering `expandCall`
-           * builds for the flat path.
-          */
-          const homeFrame = homes.get(def) ?? frame;
-          const callFrame: Frame = {
-            parent: homeFrame,
-            mixins: collectMixins(def.rules),
-            declIndex: collectDeclIndex(def.rules, bindings), cells: cellsForParams(bindings), reassign: null,
-            statements: def.rules,
-            sourceOwner: sourceOwnerForBody(def.rules, frame, e),
-            mixinUrlBindings: undefined,
-            mixinValueBindings: undefined,
-            ...(namespaced || homeFrame === frame ? {} : { fallback: frame })
-          };
-          takeMixinValueBindings(boundSourceKeys, e, callFrame);
-          captureArgDefFrames(bindings, frame, callFrame, e);
-          const placement = def.ruleMixin === true && source !== null
-            ? { source, callFrame } satisfies NestedRuleMixinPlacement
-            : null;
-          const executeBody = () => {
-            /* The selected-body prequeue is the sole owner of comment-only bodies. */
-            const bodyTrivia = def.rules.length === 0 ? undefined : bodyTriviaReplay(def, e);
-            const pluginVersion = e.fnScopeVersion ?? 0;
-            return mapMaybe(
-              prepareBodyPlugins(def.rules, callFrame, e),
-              () => {
-                if (!bindingsTrackedAtDispatch && (e.fnScopeVersion ?? 0) !== pluginVersion && bindings !== null) {
-                  capturePreparedBodyPluginBindings(def, call, bindings, frame, homeFrame, e);
-                }
-                return emitNestedBody(
-                  def.rules,
-                  callFrame,
-                  e,
-                  undefined,
-                  bodyImp,
-                  source,
-                  placement,
-                  sharedLeaves,
-                  applyExpansion,
-                  undefined,
-                  bodyTrivia
-                );
-              }
-            );
-          };
-          const emitted = withSourceOwner(e, callFrame.sourceOwner, executeBody);
-          if (isThenable(emitted)) {
-            return emitted.then(() => {
-              leakBodyVars(frame, def.rules, callFrame, e);
-              publishOrderedMixins(frame, frameOrderedMixins(callFrame, e), callFrame);
-              if (def.ruleMixin !== true) {
-                publishExplicitRulesets(frame, def.rules, callFrame);
-              }
-              return run(index + 1);
-            });
-          }
-
-          /*
-           * [scope-leak] the mixin's own `@x:` declarations and nested rulesets unlock
-           * into the caller scope for later siblings (less@4 splices evaluated rules as
-           * siblings of the call), matching the flat path.
-           */
-          leakBodyVars(frame, def.rules, callFrame, e);
-          publishOrderedMixins(frame, frameOrderedMixins(callFrame, e), callFrame);
-          if (def.ruleMixin !== true) {
-            publishExplicitRulesets(frame, def.rules, callFrame);
-          }
-        }
-      };
-      const emitted = run(0);
-      if (isThenable(emitted)) {
-        return emitted.then(
-          () => {
-            e.mixinDepth--;
-          },
-          (error) => {
-            e.mixinDepth--;
-            throw error;
-          }
-        );
-      }
-      e.mixinDepth--;
-      return emitted;
-    });
-    return runDispatch();
-  });
-}
-
-/** Nested-mode counterpart of {@link expandApply}. It keeps `$apply`'s
- * ruleset-only selection and explicit duplicate-preservation fact while sharing
- * the same canonical bodies and lexical frames as every other core expansion. */
-function expandNestedApply(
-  node: Apply,
-  frame: Frame,
-  e: Emit,
-  imp = false,
-  source: NestedHeaderSource | null = null,
-  sharedLeaves?: NestedLeafBuffer
-): MaybePromise<void> {
-  const selected: Array<{ rule: Ruleset; home: Frame }> = [];
-
-  /*
-   * [guards] Selecting which ruleset-mixin bodies apply may need an awaitable
-   * guard value, so candidates are gathered first and their guards folded in
-   * order — the fold stays fully synchronous until a guard actually awaits.
-   */
-  const candidates: Array<{ rule: Ruleset; home: Frame }> = [];
-  for (const selector of node.selectors) {
-    const key = selectorTermCanonical(selector);
-    for (let scope: Frame | null = frame; scope; scope = scope.parent) {
-      const matches = frameRulesets(scope)?.get(key);
-      if (!matches) {
-        continue;
-      }
-      for (const rule of matches) {
-        if (!parentExcludes(frame, rule.rules)) {
-          candidates.push({ rule, home: scope });
-        }
-      }
-    }
-  }
-  const gather = serialForEach(candidates, ({ rule, home }) =>
-    mapMaybe(ruleGuardPasses(rule, home, e), (passes) => {
-      if (passes) {
-        selected.push({ rule, home });
-      }
-    }));
-  const run = (start: number): MaybePromise<void> => {
-    for (let index = start; index < selected.length; index++) {
-      const { rule, home } = selected[index]!;
-      const applyFrame: Frame = {
-        parent: home,
-        mixins: collectMixins(rule.rules),
-        declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null,
-        statements: rule.rules,
-        sourceOwner: sourceOwnerForBody(rule.rules, frame, e),
-        ...(home === frame ? {} : { fallback: frame })
-      };
-      const emitted = withSourceOwner(e, applyFrame.sourceOwner, () => mapMaybe(
-        prepareBodyPlugins(rule.rules, applyFrame, e),
-        () => emitNestedBody(rule.rules, applyFrame, e, undefined, imp, source, null, sharedLeaves, true)
-      ));
-      if (isThenable(emitted)) {
-        return emitted.then(() => run(index + 1));
-      }
-    }
-  };
-  return mapMaybe(gather, () => run(0));
-}
-
-/** Expand a detached-ruleset call in nested mode. */
-function expandNestedReferenceCall(
-  call: Reference,
-  frame: Frame,
-  e: Emit,
-  imp = false,
-  source: NestedHeaderSource | null = null,
-  sharedLeaves?: NestedLeafBuffer,
-  applyExpansion = false
-): MaybePromise<void> {
-  /*
-   * A variable bound to a MIXIN CALL (`@alias: .something(foo); @alias();`) is
-   * dispatched as that call, not spliced as a detached ruleset.
-   */
-  const step = call.steps.at(-1);
-  if (step?.type !== 'Call') {
-    return;
-  }
-  const resolved = resolveReferenceResult(call, frame, e);
-  if (!resolved) {
-    return;
-  }
-  if (isMixinCallValue(resolved.value)) {
-    return expandNestedCall(resolved.value, frame, e, imp, source, sharedLeaves, applyExpansion);
-  }
-  if (step.args.length !== 0) {
-    throw new Error('Reference call arguments require a callable mixin target.');
-  }
-  const dr = resolveValueBlock(resolved.value, resolved.frame, e);
-  if (!dr) {
-    return;
-  }
-  const r = referenceCallFrame(dr, frame, resolved.frame, resolved.sourceOwner);
-  const drBody = valueBlockBody(r.dr);
-  const executeBody = () => mapMaybe(
-    prepareBodyPlugins(drBody, r.callFrame, e),
-    () => emitNestedBody(drBody, r.callFrame, e, undefined, imp, source, null, sharedLeaves, applyExpansion)
-  );
-  return withSourceOwner(e, r.callFrame.sourceOwner, executeBody);
 }
 
 /** Expand an `each()` loop in nested mode: splice the callback body once per item
