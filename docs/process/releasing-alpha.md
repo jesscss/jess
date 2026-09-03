@@ -143,8 +143,11 @@ pnpm run release:alpha:update-from-dev
 To prepare and push the branch in one command after the full dry-run gate:
 
 ```bash
-pnpm run release:alpha:update-from-dev -- --release-dry-run --push
+node scripts/release/update-alpha-from-dev.mjs --release-dry-run --push
 ```
+
+(Invoke the script directly for flags: pnpm forwards the `--` separator
+literally and the updater rejects it as an unknown argument.)
 
 The updater fetches the current pushed `origin/dev`, creates a recovery branch,
 imports the source tree with a binary two-tree patch, preserves only package
