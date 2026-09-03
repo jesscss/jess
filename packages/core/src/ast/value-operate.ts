@@ -292,17 +292,24 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
       u.num = bu.num;
       u.den = bu.den;
       u.backup = u.backup ?? bu.backup;
-    } else if (bu.num.length === 0 && u.den.length === 0) {
+    } else if (bu.num.length === 0 && bu.den.length === 0) {
       // Unitless RHS: keep the LHS unit; value already computed on raw magnitudes.
-    } else {
-      // Both carry units: convert the RHS toward the LHS unit before operating.
-      const target = u.num[0] ?? u.den[0] ?? '';
-      const from = bu.num[0] ?? bu.den[0] ?? '';
+    } else if (singular(u) && singular(bu)) {
+      // Both carry one unit: convert the RHS toward the LHS unit before operating.
+      const target = u.num[0] ?? '';
+      const from = bu.num[0] ?? '';
       const bVal = convertValue(b.number, from, target);
       if ((isStrict || modes.unitMode === 'preserve') && !convertible(from, target)) {
         throw new UnitArithmeticError(`Incompatible units. Change the units or use the unit function. Bad units: '${target}' and '${from}'.`);
       }
       value = calculate(a.number, op, bVal);
+    } else if ((isStrict || modes.unitMode === 'preserve') && !sameMultiset(u, bu)) {
+      /*
+       * A compound operand (`2em * 1px`) has no single unit to convert toward;
+       * `+`/`-` is only defined on an identical multiset. Loose keeps the 4.x
+       * fold on raw magnitudes under the LHS unit.
+       */
+      throw new UnitArithmeticError(`Incompatible units. Change the units or use the unit function. Bad units: '${displayUnit(u)}' and '${displayUnit(bu)}'.`);
     }
   } else if (op === '*' || op === '/') {
     composeUnits(u, bu, op);
@@ -337,8 +344,28 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
  * inside `calc()`. CSS flattens nested calc anyway, so the flat form is also the
  * one CSS would have produced.
  */
+const singular = (u: UnitSet): boolean => u.num.length === 1 && u.den.length === 0;
+
+const sameMultiset = (u: UnitSet, bu: UnitSet): boolean =>
+  u.num.length === bu.num.length && u.den.length === bu.den.length
+  && [...u.num].sort().every((x, i) => x === [...bu.num].sort()[i])
+  && [...u.den].sort().every((x, i) => x === [...bu.den].sort()[i]);
+
 function preservedSpelling(a: Dimension, op: string, b: Dimension): string {
-  return `${a.preserved ?? a.bytes} ${op} ${b.preserved ?? b.bytes}`;
+  const right = b.preserved !== undefined && op === '/' ? `(${b.preserved})` : b.preserved ?? b.bytes;
+  return `${a.preserved ?? a.bytes} ${op} ${right}`;
+}
+
+/**
+ * An operand spliced into a preserved `calc(…)` by `operate`'s guards. A
+ * preserved compound `Dimension` contributes its authored spelling (grouped by
+ * `spliceInner` exactly as a nested calc keyword is), never its `bytes`, which
+ * are already `calc(…)` and would nest: `(2em / 1px) + 20` is
+ * `calc(2em / 1px + 20)`, not `calc(calc(2em / 1px) + 20)`. One value, one
+ * spelling, whichever guard composes it.
+ */
+function spliceOperand(v: Value): string {
+  return v.type === 'Dimension' && v.preserved !== undefined ? spliceInner(v.preserved) : v.bytes;
 }
 
 /** Dimension ⊕ Color: coerce the dimension to a color (unit ignored, per less.js
@@ -508,7 +535,7 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes)
    */
   if (modes.inCalc && left.type === 'Dimension' && right.type === 'Dimension'
     && !calcSafe(op, left, right)) {
-    return makeKeyword(`calc(${left.bytes} ${op} ${right.bytes})`);
+    return makeKeyword(`calc(${spliceOperand(left)} ${op} ${spliceOperand(right)})`);
   }
 
   /*
@@ -540,7 +567,7 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes)
     throw new TypeError(`Cannot operate on ${left.type}`);
   } catch (err) {
     if (err instanceof TypeError && modes.unitMode === 'preserve') {
-      const preserved = makeKeyword(`calc(${left.bytes} ${op} ${right.bytes})`);
+      const preserved = makeKeyword(`calc(${spliceOperand(left)} ${op} ${spliceOperand(right)})`);
       if (err instanceof UnitArithmeticError) {
         preservedUnitClashes.add(preserved);
       }

@@ -106,6 +106,23 @@ describe('cross-unit arithmetic — parens-division (unit algebra vs less@4.6.7;
     expect(bytesOf('/', area, dim(1, 'px'))).toBe('1px');
   });
 
+  it('a preserved operand contributes its spelling, never a nested calc, whichever guard composes it', () => {
+    const ratio = operate('/', dim(2, 'em'), dim(1, 'px'), PRESERVE); // calc(2em / 1px)
+    const product = operate('*', dim(2, 'em'), dim(1, 'px'), PRESERVE); // calc(2em * 1px)
+    // additive clash with a preserved LHS/RHS → operate's catch
+    expect(bytesOf('+', ratio, dim(20))).toBe('calc(2em / 1px + 20)');
+    expect(bytesOf('+', dim(20), ratio)).toBe('calc(20 + 2em / 1px)');
+    expect(bytesOf('-', dim(3, 'em'), product)).toBe('calc(3em - 2em * 1px)');
+
+    // an additive preserved operand keeps its grouping when spliced
+    const sum = operate('+', dim(1, 'px'), dim(3, 'em'), PRESERVE); // calc(1px + 3em)
+    expect(bytesOf('-', dim(10, 'cm'), sum)).toBe('calc(10cm - (1px + 3em))');
+
+    // a preserved divisor is grouped so precedence survives: 20 / (2em * 1px)
+    expect(bytesOf('/', dim(20), product)).toBe('calc(20 / (2em * 1px))');
+    expect(bytesOf('*', dim(20), product)).toBe('calc(20 * 2em * 1px)');
+  });
+
   it('addition/subtraction convert a compatible RHS in every mode', () => {
     expect(bytesOf('+', dim(20, 'mm'), dim(1, 'cm'))).toBe('30mm');
     expect(bytesOf('+', dim(90, 'deg'), dim(0.25, 'turn'))).toBe('180deg');
