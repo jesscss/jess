@@ -4028,7 +4028,124 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: 2026-09-03 V19 slice 1 shared lookup and leaf bookkeeping. This
+- Latest pass: 2026-09-03 V19 slice 2 shared callable expansion. This folds mixin,
+  `$apply`, and detached-reference selection/evaluation while retaining the two
+  existing streaming writers; it makes no speed claim.
+- Architecture surface: `serialize.ts` callable lookup and dispatch, activation
+  frames, argument closure ownership, plugin preparation, recursion accounting,
+  scope publication, body-trivia replay, diagnostics, and the collapsed/nested
+  writer boundary. Parser grammar, canonical node schemas, public package APIs,
+  selector composition, at-rule bubbling, and output-option ownership are unchanged.
+- Separation/duplication: `expandNestedCall`, `expandNestedApply`, and
+  `expandNestedReferenceCall` are deleted. `expandCall`, `expandApply`, and
+  `expandReferenceCall` each select and evaluate once, then directly enter
+  `walkBody` or `emitNestedBody` according to the already-live nested leaf context.
+  The projection branch allocates no carrier and adds no callback/helper rung.
+- Cumulative node weight: canonical AST/CST nodes and Frame fields gain zero fields.
+  Mixin-call argument homes move from one render-global `WeakMap` to the existing
+  per-activation `BindingCell.valueFrame` slot. Owner-aware cells are constructed in
+  the pre-existing four-field order; no late property transition is introduced.
+- New traversal: no AST/source traversal. Selected bodies use one synchronous `for`
+  loop and recurse only when an existing async body suspends. The only new chain walk
+  runs after an O(1) name lookup, only when the winning binding is a `MixinCall`, and
+  is bounded by distinct self-reading same-name declarations rather than render
+  iterations. Temporary instrumentation with one self-copy per activation measured
+  N=4 as 8 evaluator entries, 8 body writes, 4 owner-aware cells, and 20 bounded cell
+  steps; 2N=8 measured 16/16/8/40 in both projections. Doubling the body-write counter
+  failed at 16 versus the asserted 8.
+- New node/materialization: zero AST/CST nodes, retained evaluated trees, projection
+  wrappers, group arrays, Sets, or per-entry event objects. Static `Map` constructions
+  fall 58 to 57 and `WeakMap` constructions fall 6 to 5. The removed WeakMap is not
+  replaced by a Frame/context map; the already-allocated parameter cell carries its
+  lexical owner for the activation lifetime.
+- Render path: both projections still stream into `Emit.chunks`. Callable selection,
+  frames, captured argument ownership, plugins, leakage, and publication are shared;
+  only the final direct body-writer call differs. Body trivia is acquired inside the
+  selected definition's source-owner scope. Collapsed output drains its tail after
+  `walkBody`; nested output retains `emitNestedBody`'s existing ownership.
+- Helper/API surface: private serializer machinery only. Named functions fall 421 to
+  418, raw arrow sites 605 to 583, `mapMaybe` sites 135 to 126, and `.then` sites 108
+  to 106. One selected callable body has no added writer callback, adapter, closure,
+  or helper-call rung. Frame construction sites fall 30 to 28.
+- Metadata mutations: only existing activation-local Frame/BindingCell state mutates.
+  Canonical source nodes, public results, and parser trivia remain immutable. The
+  call-alias loop now uses the existing exclusion set while following a self-copy so
+  it reaches the prior parameter cell instead of selecting itself indefinitely.
+- Review-flagged diff tokens: [side map] the render-global mixin-call-home WeakMap is
+  deleted; [object shape] owner-aware BindingCells use the existing four-field literal
+  order and no Frame field is added; [loop/traversal] the selected-body sync path is
+  iterative, while the rare MixinCall cell-chain scan is declaration-bounded and
+  measured above; [helper-call] the first callback/adapter version was rejected and
+  removed, leaving direct writer calls; [routine error control] no Error allocation or
+  exception was added for ordinary control flow; [source scan/reparse] none.
+- Behavior evidence: focused callable tests pass 35/35 and public diagnostic tests pass
+  27/27. The same canonical call-valued argument is reused in two caller frames and
+  resolves red then green in both projections, including a same-name self-copy. A
+  disposable removal of shared `leakBodyVars` failed the named both-mode publication
+  test and changed forced-collapse manifest records `namespacing-4` and `scope`; a
+  disposable diagnostic-source perturbation changed both expected columns 10 to 1.
+- Build evidence: dependency-ordered `pnpm run build:release` passes. Root core passes
+  200 files / 3,194 tests / 8 skipped / 2 todo. Jess ratchet passes 1,423 tests with
+  zero current, gating-baseline, or flaky-baseline failures; normal all-less passes
+  112/112. The forced-collapse before/after manifests contain the same 111 named
+  records and identical SHA-256
+  `f45fdeeb52bf1e000dba6c9fdd953de3ceabff1ed6ebccb522c890072ed9dc6c`.
+  The selected both-mode Jess files pass 73/73, including property accessors 4/4.
+  Dependents pass plugin-less 14/14, fns 718/718, and plugin-scss 2/2. Guardrails,
+  aggressive-cutting, touched-file lint, and diff-check pass. Shape stability retains
+  the target branch's stale AST corpus inventory/`SpacedValue` allowlist failures;
+  its monomorphic-node assertion and all five CST checks pass. Static counts are
+  `serialize.ts` 17,089 to 16,993 lines, Map 58 to 57, Set 34 to 34, WeakMap 6 to 5,
+  Frame construction sites 30 to 28, Leaf groups 9 to 9, and evaluator-side
+  `e.collapse` reads 2 to 2.
+- Boundary evidence: no public type/export changes. Semantics review approves all eight
+  invariants under SETTLED V19 after importance, diagnostic-position, closure, and
+  source-owner findings were fixed. Performance review found no code-level blocker
+  after the callback rung, recursive sync loop, late BindingCell transition, and
+  unbounded-lookup concerns were removed or bounded; final approval is tied to this
+  evidence block and the clean gates.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "SETTLED V19 makes evaluation and lookup functions of the source stylesheet, independent of nesting output. Slice 2 deletes three nested-only callable evaluators and sends their one shared evaluated activation directly to the existing collapsed or nested writer.",
+    "dangerTokensJustification": "The final projection choice is an allocation-free branch on the already-live nested leaf context and calls the existing writer directly. Selected bodies retain a synchronous for loop. The removed render-global WeakMap becomes the existing BindingCell.valueFrame initialized in its existing four-field shape. The rare MixinCall-only previous-cell walk is bounded by distinct same-name declarations and N/2N instrumentation measured 20 to 40 steps for 4 to 8 self-copying activations in both modes.",
+    "behaviorEvidence": "Focused callable and diagnostic suites pass. N/2N and doubled-write probes are sensitive; leak removal changes two named forced-collapse records; source-node perturbation changes the pinned diagnostic column in both modes.",
+    "buildEvidence": "Dependency-order build passes. Core passes 3194 tests; Jess ratchet passes 1423 with empty current/gating/flaky failure sets; all-less passes 112/112; the 111-record forced-collapse manifests are identical; selected both-mode Jess tests pass 73/73; dependents pass 14/14, 718/718, and 2/2. Guardrails, aggressive-cutting, touched-file lint, and diff-check pass. Shape stability retains the target branch's stale AST inventory/SpacedValue allowlist failures while its monomorphic-node and all CST assertions pass. Static counts: lines 17089 to 16993, named functions 421 to 418, arrows 605 to 583, Map 58 to 57, Set 34 unchanged, WeakMap 6 to 5, Frame construction sites 30 to 28. Same-session hot-path timings are reported separately and carry no speed claim.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 47.37,
+      "outputSha256": "2b8d9abf3c103a6de7a0a5d66b3a448bcaef8c1818eff753de52d25a23b98f7d",
+      "outputBytes": 122568
+    }
+  }
+]
+```
+- Verdict: accepted as the smallest V19 callable-evaluator fold after the writer
+  callback rung, sync-recursion, source-owner, importance, diagnostic-position, and
+  call-valued closure findings were addressed. Timing remains explicitly inconclusive
+  until the committed same-session harness is recorded.
+
+- Previous pass: 2026-09-03 V19 slice 1 shared lookup and leaf bookkeeping. This
   is the first evaluator-fold slice and a correctness correction with no speed claim.
 - Architecture surface: `serialize.ts` declaration/comment evaluation, property
   publication, callable-body trivia ownership, the existing render `Emit` context,
