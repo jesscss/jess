@@ -15694,6 +15694,9 @@ function emitBubbleBody(
 interface NestedLeafBuffer {
   readonly leaves: Leaf[];
   readonly flush: () => void;
+
+  /** The block whose `$name` property lookups see the leaves spliced here. */
+  readonly propertyScope: Frame;
 }
 
 /**
@@ -15813,7 +15816,7 @@ function emitNestedBody(
     }
     buf.length = 0;
   });
-  const inlineLeaves: NestedLeafBuffer = sharedLeaves ?? { leaves: buf, flush: flushBuf };
+  const inlineLeaves: NestedLeafBuffer = sharedLeaves ?? { leaves: buf, flush: flushBuf, propertyScope: frame };
   let rootTriviaCursor = frame.parent === null && sharedLeaves === undefined ? 0 : undefined;
   let rootTriviaSuppressedByDefinition = false;
   const rootTriviaExclusions = rootTriviaCursor === undefined
@@ -15869,6 +15872,17 @@ function emitNestedBody(
           }
           queueBodyTriviaBefore(bodyTrivia, node, buf, e);
           const pushLeaf = (leafNode: Declaration | Comment): void => {
+            /*
+             * [property-accessor] Publish the declaration for `$name` lookups
+             * exactly as the collapsed emitter does (its `propertyScope`): a
+             * spliced mixin/apply/loop body publishes into the block that owns
+             * the shared leaf buffer, while its values still evaluate in the
+             * call frame. The nested emitter skipped this, so `height: $width`
+             * was a name-not-found under the v5 default and fine when collapsed.
+             */
+            if (leafNode.type === 'Declaration') {
+              recordPropertyDeclaration(sharedLeaves?.propertyScope ?? frame, leafNode, frame);
+            }
             const leaf = attachPendingLeafBlockComments(buf, {
               node: leafNode,
               frame,
