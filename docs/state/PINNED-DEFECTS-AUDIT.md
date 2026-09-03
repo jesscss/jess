@@ -30,7 +30,9 @@ entries, two of which already say "needs an owner ruling".
 `OWNER-REQUIREMENTS.md` names none of the constructs.
 
 Pins that now FAIL because the defect was fixed (pins to flip): **0**. All
-pins reproduce on `a0b1e66ba`. One pin was already flipped in-tree
+90 executed `PINNED DEFECT` cases (css-parser, less-parser, scss-parser,
+jess-parser and the three `packages/jess/test` files; `it.each` rows counted
+individually) pass, i.e. every wrong behaviour still reproduces. One pin was already flipped in-tree
 (`less-parser/test/operator-adjacency.test.ts:81`, calc comment forms, G25)
 and is no longer a pin.
 
