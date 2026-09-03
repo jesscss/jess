@@ -7,7 +7,7 @@
     },
     "value-slash-separator.css": {
       "construct": "authored slash separator in a value",
-      "detail": "'12px/1.5', '1/2' and '16/9' emit as '12px / 1.5', '1 / 2', '16 / 9'. Two SETTLED rules collide on exactly this input: 'v5 preserves unoperated values verbatim' says keep '12px/1.5', 'v5 operators and separators are spaced' says emit '12px / 1.5'. The known carve-out that ':nth-*(2n+1)' is NOT spaced shows the spacing rule already admits exceptions. This is a deliberate transform, not a suspected defect, but which of the two rules governs an unoperated authored slash has not been ruled on, and the answer changes emitted CSS for real stylesheets (the 'font' and 'grid-area' shorthands above are ordinary CSS, not computed values). Needs an owner ruling."
+      "detail": "'12px/1.5', '1/2' and '16/9' emit as '12px / 1.5', '1 / 2', '16 / 9'. Two SETTLED rules collide on exactly this input: 'v5 preserves unoperated values verbatim' says keep '12px/1.5', 'v5 operators and separators are spaced' says emit '12px / 1.5'. The known carve-out that ':nth-*(2n+1)' is NOT spaced shows the spacing rule already admits exceptions. This is a deliberate transform, not a defect. RULED (owner 2026-09-03, DESIGN-DECISIONS G33): the SPACING rule governs the authored value slash — v5 applies minimal nice formatting (the same family as the single space after a comma), and whitespace around a shorthand slash is semantically inert in CSS (font/grid-row/aspect-ratio/calc all mean the same spaced or tight), so the spaced form is correct by design. ':nth-*(2n+1)' remains the carve-out."
     }
   },
   "settled": {
