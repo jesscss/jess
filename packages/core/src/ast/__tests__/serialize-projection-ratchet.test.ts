@@ -20,12 +20,11 @@ describe('V19 one-evaluator projection ratchet', () => {
   });
 
   it('names every output-setting read that can select evaluation behavior', () => {
-    expect(occurrences(/\be\.collapse\b/gu)).toBe(2);
+    expect(occurrences(/\be\.collapse\b/gu)).toBe(1);
     expect(SOURCE).toContain(
       'if (!e.collapse && e.referenceImportDepth === 0 && !hasDynamicImportTarget)'
     );
-    expect(SOURCE).toContain('function emitNestedRuleGuarded(');
-    expect(SOURCE).toContain('  if (!e.collapse) {');
+    expect(SOURCE).not.toContain('function emitNestedRuleGuarded(');
   });
 
   it('keeps one leaf shape and no pending-comment side table', () => {
@@ -41,8 +40,8 @@ describe('V19 one-evaluator projection ratchet', () => {
   });
 
   it('does not grow the serializer helper or collection-construction surface', () => {
-    expect(occurrences(/^function |^async function /gmu)).toBe(416);
-    expect(occurrences(/new Map/gu)).toBe(57);
+    expect(occurrences(/^function |^async function /gmu)).toBe(415);
+    expect(occurrences(/new Map/gu)).toBe(56);
     expect(occurrences(/new Set/gu)).toBe(34);
     expect(occurrences(/new WeakMap/gu)).toBe(5);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

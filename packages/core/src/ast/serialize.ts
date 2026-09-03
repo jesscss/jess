@@ -9567,7 +9567,7 @@ function emitDocumentStatements(
         continue;
       }
       flushBatch();
-      const emit = () => emitStyleImport(child, frame, e, importDocument);
+      const emit = () => expandStyleImport(child, frame, e, importDocument);
       if (pending) {
         pending = pending.then(() => Promise.resolve(emit()));
       } else {
@@ -9650,7 +9650,7 @@ function emitDocumentStatements(
           || referenceRuleIsVisible(child, frame, e)
           || extendProjection(frame, e)?.visibleReferenceRuleAncestors?.has(child) === true) {
           emitBeforeDocumentStatement(child);
-          const emitted = flatten(child, null, null, frame, e);
+          const emitted = expandRule(child, null, null, frame, e);
           markAfterDocumentStatement(child);
           return emitted;
         }
@@ -9658,7 +9658,7 @@ function emitDocumentStatements(
       case 'MixinDefinition':
         if (imported) {
           /*
-           * `emitStyleImport` already published this definition in the import's
+           * `expandStyleImport` already published this definition in the import's
            * source-order callable stream. Keep its existing ordinary-call
            * publication, but do not record the same source statement twice.
            */
@@ -9748,7 +9748,7 @@ function emitDocumentStatements(
         if (e.referenceImportDepth === 0
           || extendProjection(frame, e)?.visibleReferenceAtRules?.has(child) === true) {
           emitBeforeDocumentStatement(child);
-          const emitted = emitAtRuleBlock(child, frame, e);
+          const emitted = expandAtRuleBlock(child, frame, e);
           markAfterDocumentStatement(child);
           return emitted;
         }
@@ -9769,7 +9769,7 @@ function emitDocumentStatements(
       case 'StyleImport':
         emitBeforeDocumentStatement(child);
         {
-          const emitted = emitStyleImport(child, frame, e, importDocument);
+          const emitted = expandStyleImport(child, frame, e, importDocument);
           markAfterDocumentStatement(child);
           return emitted;
         }
@@ -10137,19 +10137,55 @@ function referenceRuleIsVisible(rule: Ruleset, frame: Frame, e: Emit): boolean {
   return false;
 }
 
-function flatten(
+/**
+ * Evaluate shared ruleset gates and placement, then call the selected writer.
+ * The optional nested arguments are existing writer state; their presence chooses
+ * the projection without consulting the output setting during evaluation.
+ */
+function expandRule(
   rule: Ruleset,
   parent: string[] | null,
   ancestor: string | null,
   frame: Frame,
   e: Emit,
   imp = false,
-  expandBubbledSelectorList = false
+  expandBubbledSelectorList = false,
+  nestedSource?: NestedHeaderSource | null,
+  nestedPlacement: NestedRuleMixinPlacement | null = null,
+  nestedHoist?: HoistEntry[]
 ): MaybePromise<void> {
+  if (nestedSource !== undefined && nestedHoist !== undefined) {
+    const nestedPlan = extendProjection(frame, e)?.nestedPlan.get(rule);
+    if (nestedPlan?.flatten) {
+      recordAstExtendProfile?.('astExtend.emit.nestedHoistPlacements');
+      nestedHoist.push({ rule, frame, bubble: nestedPlan.hoistBubble ?? 1 });
+      return;
+    }
+  }
+
   // [guards] a guarded ruleset emits its block only when the guard is true.
   return mapMaybe(ruleGuardPasses(rule, frame, e), (passes) => {
     if (!passes) {
       return;
+    }
+    if (nestedSource !== undefined) {
+      return mapMaybe(transparentShells(rule, frame, e), shells => (shells !== null
+        ? emitTransparentShells(
+            shells,
+            { parent: nestedSource, selector: rule.selector, frame },
+            frame,
+            e,
+            imp
+          )
+        : writeNestedRule(
+            rule,
+            frame,
+            e,
+            imp,
+            nestedSource,
+            nestedPlacement,
+            nestedHoist
+          )));
     }
     const rawComposed =
       parent === null ? rootStrings(rule.selector, frame, e) : compose(parent, rule.selector, frame, e);
@@ -10233,6 +10269,22 @@ function flattenResolved(
     ));
 }
 
+/** Establish one ordinary visible ruleset activation for either writer. */
+function activateRuleFrame(rule: Ruleset, frame: Frame, e: EvalCtx): Frame {
+  const priorPlacement = frame.rulePlacements?.get(rule);
+  const childFrame: Frame = priorPlacement?.parent === frame
+    ? priorPlacement
+    : {
+        parent: frame,
+        mixins: collectMixins(rule.rules),
+        declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null,
+        statements: rule.rules,
+        sourceOwner: sourceOwnerForBody(rule.rules, frame, e)
+      };
+  (frame.rulePlacements ??= new Map()).set(rule, childFrame);
+  return childFrame;
+}
+
 function flattenWithHeader(
   rule: Ruleset,
   parent: string[] | null,
@@ -10272,22 +10324,7 @@ function flattenWithHeader(
   if (header === null && !referenceAncestor) {
     return;
   }
-  const priorPlacement = frame.rulePlacements?.get(rule);
-  const childFrame: Frame = priorPlacement?.parent === frame
-    ? priorPlacement
-    : {
-        parent: frame,
-        mixins: collectMixins(rule.rules),
-        declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null,
-        statements: rule.rules,
-        sourceOwner: sourceOwnerForBody(rule.rules, frame, e)
-      };
-
-  /*
-   * Keep the exact render placement: imports within this Ruleset publish into its
-   * child frame and become visible to a later namespace descent through Ruleset.
-   */
-  (frame.rulePlacements ??= new Map()).set(rule, childFrame);
+  const childFrame = activateRuleFrame(rule, frame, e);
 
   /*
    * [import:reference] A hidden parent selector can be structurally necessary
@@ -10732,19 +10769,19 @@ function walkBody(
           queueLeadingGroup(group, partition, e);
           flushPending(partition);
           partition.encounteredContainer = true;
-          partition.trailing.push(() => flatten(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList));
+          partition.trailing.push(() => expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList));
         } else {
           const flushed = flush();
           if (isThenable(flushed)) {
             return flushed.then(() => mapMaybe(
-              flatten(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList),
+              expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList),
               () => walkBody(
                 statements.slice(index + 1), composed, ancestor, frame, group, flush,
                 partition, e, imp, forceLeading, propertyScope, applyExpansion, expandBubbledSelectorList
               )
             ));
           }
-          const emitted = flatten(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList);
+          const emitted = expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList);
           if (isThenable(emitted)) {
             return emitted.then(() => walkBody(
               statements.slice(index + 1), composed, ancestor, frame, group, flush,
@@ -10857,14 +10894,14 @@ function walkBody(
         const targetDepth = e.atRuleBodyDepth;
         const emitAt = (): MaybePromise<void> => {
           if (targetDepth === e.depth) {
-            return emitAtRuleBlock(atNode, atFrame, e, atComposed);
+            return expandAtRuleBlock(atNode, atFrame, e, atComposed);
           }
           const savedDepth = e.depth;
           e.depth = targetDepth;
           const restore = (): void => {
             e.depth = savedDepth;
           };
-          const r = emitAtRuleBlock(atNode, atFrame, e, atComposed);
+          const r = expandAtRuleBlock(atNode, atFrame, e, atComposed);
           if (isThenable(r)) {
             return r.then(restore, (err) => {
               restore();
@@ -10960,14 +10997,14 @@ function walkBody(
           const flushed = flush();
           if (isThenable(flushed)) {
             return flushed.then(() => mapMaybe(
-              emitStyleImport(node, frame, e, e.importDocument),
+              expandStyleImport(node, frame, e, e.importDocument),
               () => walkBody(
                 statements.slice(index + 1), composed, ancestor, frame, group,
                 flush, partition, e, imp, forceLeading, propertyScope
               )
             ));
           }
-          const imported = emitStyleImport(node, frame, e, e.importDocument);
+          const imported = expandStyleImport(node, frame, e, e.importDocument);
           if (isThenable(imported)) {
             return imported.then(() => walkBody(
               statements.slice(index + 1), composed, ancestor, frame, group,
@@ -10980,7 +11017,7 @@ function walkBody(
           const flushed = flush();
           if (isThenable(flushed)) {
             return flushed.then(() => mapMaybe(
-              emitStyleImport(node, frame, e, e.importDocument),
+              expandStyleImport(node, frame, e, e.importDocument),
               () => walkBody(
                 statements.slice(index + 1), composed, ancestor, frame, group,
                 flush, partition, e, imp, forceLeading, propertyScope
@@ -10993,7 +11030,7 @@ function walkBody(
            * asynchronous Context IO. Keep this body cursor alive so a deferred
            * callable's document scope survives the raw-byte read.
            */
-          const imported = emitStyleImport(node, frame, e, e.importDocument);
+          const imported = expandStyleImport(node, frame, e, e.importDocument);
           if (isThenable(imported)) {
             return imported.then(() => walkBody(
               statements.slice(index + 1), composed, ancestor, frame, group,
@@ -11089,11 +11126,11 @@ function walkReferenceAncestorBody(
       let emitted: MaybePromise<void>;
       switch (node.type) {
         case 'Ruleset':
-          emitted = flatten(node, composed, ancestor, frame, e, imp, expandBubbledSelectorList);
+          emitted = expandRule(node, composed, ancestor, frame, e, imp, expandBubbledSelectorList);
           break;
         case 'AtRuleBlock':
           emitted = extendProjection(frame, e)?.visibleReferenceAtRules?.has(node) === true
-            ? emitAtRuleBlock(node, frame, e, composed)
+            ? expandAtRuleBlock(node, frame, e, composed)
             : undefined;
           break;
         case 'For':
@@ -13981,7 +14018,7 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
      * block level deeper than the containing declarations.
      */
     e.depth++;
-    settledEmission(emitAtRuleBlock(node, frame, e), node, e);
+    settledEmission(expandAtRuleBlock(node, frame, e), node, e);
     e.depth--;
   } else if (node.type === 'AtRuleStatement') {
     e.depth++;
@@ -13989,7 +14026,7 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
     e.depth--;
   } else if (node.type === 'StyleImport') {
     e.depth++;
-    settledEmission(emitStyleImport(node, frame, e, e.importDocument), node, e);
+    settledEmission(expandStyleImport(node, frame, e, e.importDocument), node, e);
     e.depth--;
   } else if (node.type === 'UnknownAtRuleBlock') {
     e.depth++;
@@ -14336,7 +14373,7 @@ function emitAtRuleStatementRaw(
  * Core deliberately knows neither paths nor parser plugins; a declined request
  * remains a CSS import statement.
  */
-function emitStyleImport(
+function expandStyleImport(
   node: StyleImport,
   frame: Frame,
   e: Emit,
@@ -15191,18 +15228,34 @@ function atRulePreludeBytes(node: AtRuleBlock, frame: Frame, e: Emit): MaybeProm
   return evalBytes(node.prelude, frame, e);
 }
 
-function emitAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit, ctx: string[] | null = null): MaybePromise<void> {
+function expandAtRuleBlock(
+  node: AtRuleBlock,
+  frame: Frame,
+  e: Emit,
+  ctx: string[] | null = null,
+  nestedSource?: NestedHeaderSource | null
+): MaybePromise<void> {
   /*
    * The prelude resolves BEFORE any byte is written, so the rewind marks below
    * still bracket exactly this at-rule's output.
    */
-  return mapMaybe(atRulePreludeBytes(node, frame, e), prelude =>
-    emitAtRuleBlockResolved(node, frame, e, ctx, prelude));
+  return mapMaybe(atRulePreludeBytes(node, frame, e), (prelude) => {
+    const bodyFrame: Frame = {
+      parent: frame,
+      mixins: collectMixins(node.rules),
+      declIndex: collectDeclIndex(node.rules), cells: null, reassign: null,
+      statements: node.rules
+    };
+    return nestedSource === undefined
+      ? writeCollapsedAtRuleBlock(node, frame, bodyFrame, e, ctx, prelude)
+      : writeNestedAtRuleBlock(node, frame, bodyFrame, e, nestedSource, prelude);
+  });
 }
 
-function emitAtRuleBlockResolved(
+function writeCollapsedAtRuleBlock(
   node: AtRuleBlock,
   frame: Frame,
+  bodyFrame: Frame,
   e: Emit,
   ctx: string[] | null,
   prelude: string
@@ -15223,12 +15276,6 @@ function emitAtRuleBlockResolved(
   }
   put(e, ' {\n');
   const afterHeader = e.chunks.length;
-  const bodyFrame: Frame = {
-    parent: frame,
-    mixins: collectMixins(node.rules),
-    declIndex: collectDeclIndex(node.rules), cells: null, reassign: null,
-    statements: node.rules
-  };
   const emitted = prepareBodyPlugins(node.rules, bodyFrame, e);
   const finish = (): MaybePromise<void> => {
     if (e.chunks.length === afterHeader) {
@@ -15378,11 +15425,11 @@ function emitAtRuleBody(
         }
         return undefined;
       case 'Ruleset':
-        return nested(node, () => flatten(node, null, null, frame, e));
+        return nested(node, () => expandRule(node, null, null, frame, e));
       case 'AtRuleBlock':
         return e.referenceImportDepth === 0
           || extendProjection(frame, e)?.visibleReferenceAtRules?.has(node) === true
-          ? nested(node, () => emitAtRuleBlock(node, frame, e))
+          ? nested(node, () => expandAtRuleBlock(node, frame, e))
           : undefined;
       case 'AtRuleStatement':
         return e.referenceImportDepth === 0
@@ -15391,7 +15438,7 @@ function emitAtRuleBody(
       case 'Plugin':
         return undefined;
       case 'StyleImport':
-        return nested(node, () => emitStyleImport(node, frame, e, e.importDocument));
+        return nested(node, () => expandStyleImport(node, frame, e, e.importDocument));
       case 'ModuleImport':
         return e.referenceImportDepth === 0
           ? nested(node, () => {
@@ -15567,7 +15614,7 @@ function emitBubbleBody(
           if (deferStaticChildren) {
             deferredChildren!.push(() => {
               e.depth++;
-              const emitted = flatten(node, ctx, ctxAncestor, frame, e, false, ctx !== null);
+              const emitted = expandRule(node, ctx, ctxAncestor, frame, e, false, ctx !== null);
               if (isThenable(emitted)) {
                 return emitted.then(() => {
                   e.depth--;
@@ -15583,7 +15630,7 @@ function emitBubbleBody(
             if (isThenable(flushed)) {
               return flushed.then(() => {
                 e.depth++;
-                const emitted = flatten(node, ctx, ctxAncestor, frame, e, false, ctx !== null);
+                const emitted = expandRule(node, ctx, ctxAncestor, frame, e, false, ctx !== null);
                 if (isThenable(emitted)) {
                   return emitted.then(
                     () => {
@@ -15602,7 +15649,7 @@ function emitBubbleBody(
             }
             e.depth++;
             {
-              const emitted = flatten(node, ctx, ctxAncestor, frame, e, false, ctx !== null);
+              const emitted = expandRule(node, ctx, ctxAncestor, frame, e, false, ctx !== null);
               if (isThenable(emitted)) {
                 return emitted.then(
                   () => {
@@ -15627,7 +15674,7 @@ function emitBubbleBody(
           if (deferStaticChildren) {
             deferredChildren!.push(() => {
               e.depth++;
-              const nested = emitAtRuleBlock(node, frame, e, ctx);
+              const nested = expandAtRuleBlock(node, frame, e, ctx);
               if (isThenable(nested)) {
                 return nested.then(() => {
                   e.depth--;
@@ -15643,7 +15690,7 @@ function emitBubbleBody(
             if (isThenable(flushed)) {
               return flushed.then(() => {
                 e.depth++;
-                const nested = emitAtRuleBlock(node, frame, e, ctx);
+                const nested = expandAtRuleBlock(node, frame, e, ctx);
                 if (isThenable(nested)) {
                   return nested.then(
                     () => {
@@ -15661,7 +15708,7 @@ function emitBubbleBody(
               });
             }
             e.depth++;
-            const nested = emitAtRuleBlock(node, frame, e, ctx); // directly-nested at-rule inherits ctx
+            const nested = expandAtRuleBlock(node, frame, e, ctx); // directly-nested at-rule inherits ctx
             if (isThenable(nested)) {
               return nested.then(
                 () => {
@@ -15707,7 +15754,7 @@ function emitBubbleBody(
           if (isThenable(flushed)) {
             return flushed.then(() => {
               e.depth++;
-              const imported = emitStyleImport(
+              const imported = expandStyleImport(
                 node,
                 frame,
                 e,
@@ -15744,7 +15791,7 @@ function emitBubbleBody(
             });
           }
           e.depth++;
-          const imported = emitStyleImport(
+          const imported = expandStyleImport(
             node,
             frame,
             e,
@@ -16152,24 +16199,26 @@ function emitNestedBody(
           emitBeforeRootStatement(node);
 
           /*
-           * [extend] a rule whose extend match crosses the `&` FLATTENS: defer it to
-           * the enclosing rule's hoist queue. `hoistBubble` (default 1) is how many
-           * enclosing blocks it must rise out of — the per-boundary hoist distance.
-           */
-          if (hoist && extendProjection(frame, e)?.nestedPlan.get(node)?.flatten) {
-            const plan = extendProjection(frame, e)!.nestedPlan.get(node)!;
-            hoist.push({ rule: node, frame, bubble: plan.hoistBubble ?? 1 });
-            markAfterRootStatement(node);
-            break;
-          }
-
-          /*
            * Only a selected synthesized ruleset mixin gets a placement fact.  It
            * is consumed by the first `&`-bearing nested header; ordinary authored
            * nesting has no fact and stays literal in collapse:false mode.
            */
-          const appliesPlacement = placement !== null && selectorListHasAmpersand(node.selector);
-          const emitted = emitNestedRule(node, frame, e, imp, source, appliesPlacement ? placement : null, hoist);
+          const appliesPlacement = placement !== null
+            && !(hoist !== undefined
+              && extendProjection(frame, e)?.nestedPlan.get(node)?.flatten === true)
+            && selectorListHasAmpersand(node.selector);
+          const emitted = expandRule(
+            node,
+            null,
+            null,
+            frame,
+            e,
+            imp,
+            false,
+            source,
+            appliesPlacement ? placement : null,
+            hoist
+          );
           if (isThenable(emitted)) {
             return emitted.then(() => {
               if (appliesPlacement) {
@@ -16300,7 +16349,7 @@ function emitNestedBody(
           flushBuf();
           emitBeforeRootStatement(node);
           {
-            const emitted = emitNestedAtRuleBlock(node, frame, e, source);
+            const emitted = expandAtRuleBlock(node, frame, e, null, source);
             if (isThenable(emitted)) {
               return emitted.then(() => {
                 markAfterRootStatement(node);
@@ -16320,7 +16369,7 @@ function emitNestedBody(
           flushBuf();
           emitBeforeRootStatement(node);
           {
-            const imported = emitStyleImport(
+            const imported = expandStyleImport(
               node,
               frame,
               e,
@@ -16636,54 +16685,7 @@ function emitTransparentShells(
   return run(0);
 }
 
-function emitNestedRule(
-  rule: Ruleset,
-  frame: Frame,
-  e: Emit,
-  imp = false,
-  source: NestedHeaderSource | null = null,
-  placement: NestedRuleMixinPlacement | null = null,
-
-  /*
-   * [extend] the ENCLOSING block's hoist queue: a crossing child that must rise more
-   * than one level (`bubble > 1`) is re-pushed here (decremented) instead of emitted
-   * at this rule's level, so it keeps bubbling up the ancestor chain until it lands.
-   */
-  outerHoist?: HoistEntry[]
-): MaybePromise<void> {
-  /*
-   * [guards] a guarded ruleset emits its block only when the guard is true (the
-   * flattened path applies the same gate in `flatten`).
-   */
-  return mapMaybe(ruleGuardPasses(rule, frame, e), passes => passes
-    ? emitNestedRuleGuarded(rule, frame, e, imp, source, placement, outerHoist)
-    : undefined);
-}
-
-function emitNestedRuleGuarded(
-  rule: Ruleset,
-  frame: Frame,
-  e: Emit,
-  imp: boolean,
-  source: NestedHeaderSource | null,
-  placement: NestedRuleMixinPlacement | null,
-  outerHoist?: HoistEntry[]
-): MaybePromise<void> {
-  if (!e.collapse) {
-    return mapMaybe(transparentShells(rule, frame, e), shells => (shells !== null
-      ? emitTransparentShells(
-          shells,
-          { parent: source, selector: rule.selector, frame },
-          frame,
-          e,
-          imp
-        )
-      : emitNestedRuleAuthored(rule, frame, e, imp, source, placement, outerHoist)));
-  }
-  return emitNestedRuleAuthored(rule, frame, e, imp, source, placement, outerHoist);
-}
-
-function emitNestedRuleAuthored(
+function writeNestedRule(
   rule: Ruleset,
   frame: Frame,
   e: Emit,
@@ -16785,20 +16787,8 @@ function emitNestedRuleAuthored(
       put(e, ' {\n');
     }
     const afterHeader = e.chunks.length;
-    const childFrame: Frame = {
-      parent: frame,
-      mixins: collectMixins(rule.rules),
-      declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null,
-      statements: rule.rules
-    };
+    const childFrame = activateRuleFrame(rule, frame, e);
     const childSource: NestedHeaderSource = { parent: source, selector: rule.selector, frame };
-
-    /*
-     * Nested output owns the same lexical placement facts as flattened output:
-     * a later namespace call must enter this exact child frame to see imports that
-     * executed inside the Ruleset.
-     */
-    (frame.rulePlacements ??= new Map()).set(rule, childFrame);
 
     /*
      * [extend] children that flatten (extend crossed the `&`) bubble out to this
@@ -16877,7 +16867,7 @@ function emitNestedRuleAuthored(
             continue;
           }
           const emitted = extendProjection(h.frame, e)?.nestedPlan.get(h.rule)?.hoistNested
-            ? emitNestedRule(h.rule, h.frame, e, imp)
+            ? expandRule(h.rule, null, null, h.frame, e, imp, false, null)
             : emitHoisted(h.rule, h.frame, e);
           if (isThenable(emitted)) {
             return emitted.then(() => runHoist(hoistIndex + 1));
@@ -16898,7 +16888,7 @@ function emitNestedRuleAuthored(
 function emitHoisted(rule: Ruleset, frame: Frame, e: Emit): MaybePromise<void> {
   const prev = e.hoistMode;
   e.hoistMode = true;
-  const emitted = flatten(rule, null, null, frame, e);
+  const emitted = expandRule(rule, null, null, frame, e);
   if (isThenable(emitted)) {
     return emitted.then(
       () => {
@@ -16914,25 +16904,11 @@ function emitHoisted(rule: Ruleset, frame: Frame, e: Emit): MaybePromise<void> {
   return emitted;
 }
 
-/**
- * A block at-rule in nested mode: `@name prelude { …body }`. The header sits at
- * the current level; the body is a fresh nesting context one level deeper whose
- * nested rulesets STAY nested (they are not flattened). An at-rule whose body
- * renders empty is dropped entirely.
- */
-function emitNestedAtRuleBlock(
+/** Write one prelude-resolved at-rule through the authored-nesting projection. */
+function writeNestedAtRuleBlock(
   node: AtRuleBlock,
   frame: Frame,
-  e: Emit,
-  source: NestedHeaderSource | null = null
-): MaybePromise<void> {
-  return mapMaybe(atRulePreludeBytes(node, frame, e), prelude =>
-    emitNestedAtRuleBlockResolved(node, frame, e, source, prelude));
-}
-
-function emitNestedAtRuleBlockResolved(
-  node: AtRuleBlock,
-  frame: Frame,
+  bodyFrame: Frame,
   e: Emit,
   source: NestedHeaderSource | null,
   prelude: string
@@ -16952,12 +16928,6 @@ function emitNestedAtRuleBlockResolved(
   }
   put(e, ' {\n');
   const afterHeader = e.chunks.length;
-  const bodyFrame: Frame = {
-    parent: frame,
-    mixins: collectMixins(node.rules),
-    declIndex: collectDeclIndex(node.rules), cells: null, reassign: null,
-    statements: node.rules
-  };
   e.depth++;
   const finish = (): void => {
     e.depth--;
