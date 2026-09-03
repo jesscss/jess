@@ -31,6 +31,7 @@ const DEFAULT_STABLE_WARMUP = 20;
 function parseArgs(argv) {
   const options = {
     batchSize: 1,
+    collapseNesting: true,
     compare: undefined,
     compareLatest: false,
     fixtures: [],
@@ -59,6 +60,9 @@ function parseArgs(argv) {
         break;
       case '--compare-latest':
         options.compareLatest = true;
+        break;
+      case '--collapse-nesting':
+        options.collapseNesting = readBoolean(readValue(argv, ++i, arg), arg);
         break;
       case '--fixture':
         options.fixtures.push(readValue(argv, ++i, arg));
@@ -144,6 +148,16 @@ function readFloat(value, name) {
     throw new TypeError(`${name} must be a non-negative number`);
   }
   return number;
+}
+
+function readBoolean(value, name) {
+  if (value === 'true') {
+    return true;
+  }
+  if (value === 'false') {
+    return false;
+  }
+  throw new TypeError(`${name} must be true or false`);
 }
 
 function summarize(times, trimRatio = 0) {
@@ -300,6 +314,7 @@ function makeRunMeta(options) {
     trim: options.trim,
     warmup: options.warmup,
     batchSize: options.batchSize,
+    collapseNesting: options.collapseNesting,
     note: options.note || undefined
   };
 }
@@ -318,6 +333,7 @@ function toRecord(run, fixture, result, times, rounds) {
     trim: run.trim,
     warmup: run.warmup,
     batchSize: run.batchSize,
+    collapseNesting: run.collapseNesting,
     note: run.note,
     summary: result,
     times,
@@ -339,17 +355,25 @@ function readHistory(file) {
 function latestHistoryByFixture(records) {
   const latest = new Map();
   for (const record of records) {
-    latest.set(record.fixture, record);
+    latest.set(recordKey(record), record);
   }
   return latest;
+}
+
+function recordKey(record) {
+  return `${record.fixture}\0${record.collapseNesting ?? true}`;
 }
 
 function compareRecords(currentRecords, baselineRecords, threshold) {
   const baselineByFixture = latestHistoryByFixture(baselineRecords);
   return currentRecords.map((record) => {
-    const baseline = baselineByFixture.get(record.fixture);
+    const baseline = baselineByFixture.get(recordKey(record));
     if (!baseline) {
-      return { fixture: record.fixture, status: 'missing-baseline' };
+      return {
+        fixture: record.fixture,
+        collapseNesting: record.collapseNesting,
+        status: 'missing-baseline'
+      };
     }
     const baselineMedian = baseline.summary.median;
     const currentMedian = record.summary.median;
@@ -360,6 +384,7 @@ function compareRecords(currentRecords, baselineRecords, threshold) {
     const status = compareStatus(ratio, threshold, baselineSignalQuality, currentSignalQuality);
     return {
       fixture: record.fixture,
+      collapseNesting: record.collapseNesting,
       baselineCommit: baseline.commit,
       baselineMedian,
       currentMedian,
@@ -398,7 +423,7 @@ const run = makeRunMeta(options);
 
 const compiler = new Compiler({
   output: {
-    collapseNesting: true
+    collapseNesting: options.collapseNesting
   },
   compile: {
     plugins: [
@@ -463,14 +488,15 @@ if (options.json) {
     console.log(JSON.stringify(record));
   }
 } else {
-  console.log(`Less hot-path measurement (${options.iterations} iterations, ${options.warmup} warmup, ${options.repeat} repeat, batch ${options.batchSize}, ${formatPercent(options.trim)} trim)`);
+  console.log(`Less hot-path measurement (${options.iterations} iterations, ${options.warmup} warmup, ${options.repeat} repeat, batch ${options.batchSize}, ${formatPercent(options.trim)} trim, collapseNesting=${options.collapseNesting})`);
   console.log(`commit=${run.commit ?? 'unknown'} node=${run.node} platform=${run.platform}/${run.arch}`);
   for (const record of records) {
     const result = record.summary;
     console.log(`${record.fixture}`);
     console.log(`  signal=${result.signalQuality} median=${formatMs(result.median)} mean=${formatMs(result.mean)} sampleMedian=${formatMs(result.sampleMedian)} trimmedMedian=${formatMs(result.trimmedMedian)} p75=${formatMs(result.p75)} p90=${formatMs(result.p90)} min=${formatMs(result.min)} max=${formatMs(result.max)} rsd=${formatPercent(result.relativeStdDev)} roundRsd=${formatPercent(result.roundRelativeStdDev)} outliers=${result.outliers}/${result.samples}`);
     console.log(`  trimmedMean=${formatMs(result.trimmedMean)} trimmedRsd=${formatPercent(result.trimmedRelativeStdDev)} mad=${formatMs(result.mad)} iqr=${formatMs(result.iqr)}`);
-    const compared = comparison.find(item => item.fixture === record.fixture);
+    const compared = comparison.find(item => item.fixture === record.fixture
+      && item.collapseNesting === record.collapseNesting);
     if (compared && compared.status !== 'missing-baseline') {
       console.log(`  vs ${compared.baselineCommit?.slice(0, 8) ?? 'baseline'}: ${formatMs(compared.delta)} (${formatPercent(compared.ratio)}) ${compared.status}`);
     }
