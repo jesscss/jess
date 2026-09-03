@@ -13,12 +13,22 @@ import { execSync, spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { shouldRunFullBaselineForFiles } from './shared-baseline-paths.mjs';
+import { readAlphaSourceProvenance } from './release/alpha-source-sync.mjs';
+import { ciProvenanceDecision, fetchCheckRuns } from './release/ci-provenance.mjs';
 
 const ROOT = process.cwd();
 const CHANGED_ONLY = process.argv.includes('--changed');
 
 /* --no-build: the caller already built the runtime chain (release preflight). */
 const NO_BUILD = process.argv.includes('--no-build');
+
+/*
+ * --trust-ci: skip the core / less-parser / css-parser suites when dev CI is
+ * proven green for the commit named in the alpha provenance record (release
+ * preflight, whose source-sync gate has already matched the tree to that
+ * commit). Any doubt runs the suites.
+ */
+const TRUST_CI = process.argv.includes('--trust-ci');
 
 const BASELINE_PACKAGE_DIRS = new Set([
   'packages/core',
@@ -261,13 +271,38 @@ if (needsRuntimeBuild && !NO_BUILD) {
   }
 }
 
-if (runCore) {
+function ciProvenanceProven() {
+  if (!TRUST_CI || CHANGED_ONLY) {
+    return false;
+  }
+  let sha;
+  try {
+    sha = readAlphaSourceProvenance(ROOT).sourceCommit;
+  } catch (error) {
+    console.log(`\n--trust-ci: ${error instanceof Error ? error.message : String(error)}; running the source suites.`);
+    return false;
+  }
+  const decision = ciProvenanceDecision(sha, fetchCheckRuns(sha, ROOT));
+  if (!decision.proven) {
+    console.log(`\n--trust-ci: ${decision.reason}; running the source suites.`);
+    return false;
+  }
+  console.log(`\n--trust-ci: skipping the core, less-parser and css-parser suites; dev CI ran them on ${sha}:`);
+  for (const { name, url } of decision.runs) {
+    console.log(`  ${name}: ${url}`);
+  }
+  return true;
+}
+
+const sourceSuitesProven = ciProvenanceProven();
+
+if (runCore && !sourceSuitesProven) {
   run('pnpm', ['--filter', '@jesscss/core', 'test', '--', '--run']);
 }
-if (runLessParser) {
+if (runLessParser && !sourceSuitesProven) {
   run('pnpm', ['--filter', '@jesscss/less-parser', 'test']);
 }
-if (runCssParser) {
+if (runCssParser && !sourceSuitesProven) {
   run('pnpm', ['--filter', '@jesscss/css-parser', 'test']);
 }
 if (runJess) {
