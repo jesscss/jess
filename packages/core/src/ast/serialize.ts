@@ -11090,14 +11090,17 @@ function expandReferenceAncestorFor(
           ...(extendPlacement ? { extendPlacement } : {})
         };
         bindForDetached(loopFrame, bindings, item);
-        const emitted = walkReferenceAncestorBody(
-          node.rules,
-          composed,
-          ancestor,
-          loopFrame,
-          e,
-          imp,
-          expandBubbledSelectorList
+        const emitted = mapMaybe(
+          prepareBodyPlugins(node.rules, loopFrame, e),
+          () => walkReferenceAncestorBody(
+            node.rules,
+            composed,
+            ancestor,
+            loopFrame,
+            e,
+            imp,
+            expandBubbledSelectorList
+          )
         );
         if (isThenable(emitted)) {
           return emitted.then(() => run(index + 1));
@@ -12436,7 +12439,10 @@ function expandFor(
           ...(extendPlacement ? { extendPlacement } : {})
         };
         bindForDetached(loopFrame, bindings, item);
-        const emitted = walkBody(node.rules, composed, ancestor, loopFrame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
+        const emitted = mapMaybe(
+          prepareBodyPlugins(node.rules, loopFrame, e),
+          () => walkBody(node.rules, composed, ancestor, loopFrame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion)
+        );
         if (isThenable(emitted)) {
           return emitted.then(() => run(i + 1));
         }
@@ -16332,7 +16338,10 @@ function emitTransparentShells(
           put(e, '}\n');
         }
       };
-      const emitted = emitNestedBody(shell.def.rules, callFrame, e, undefined, imp, source);
+      const emitted = mapMaybe(
+        prepareBodyPlugins(shell.def.rules, callFrame, e),
+        () => emitNestedBody(shell.def.rules, callFrame, e, undefined, imp, source)
+      );
       if (isThenable(emitted)) {
         return emitted.then(() => {
           finish();
@@ -16413,7 +16422,10 @@ function emitNestedRuleAuthored(
       mixins: collectMixins(rule.rules),
       declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null
     };
-    return emitNestedBody(rule.rules, childFrame, e, undefined, imp, source, placement, undefined, false, rule);
+    return mapMaybe(
+      prepareBodyPlugins(rule.rules, childFrame, e),
+      () => emitNestedBody(rule.rules, childFrame, e, undefined, imp, source, placement, undefined, false, rule)
+    );
   }
   if (plan?.flatten && !plan.hoistNested) {
     /*
@@ -16508,7 +16520,8 @@ function emitNestedRuleAuthored(
 
     /*
      * [extend] children that flatten (extend crossed the `&`) bubble out to this
-     * rule's depth; collect them and emit flat after the block closes.
+     * rule's depth; collect them and emit flat after the block closes. A `@plugin`
+     * in this body registers before its siblings evaluate, as in `flatten`.
      */
     const hoist: HoistEntry[] = [];
     e.depth++;
@@ -16591,7 +16604,10 @@ function emitNestedRuleAuthored(
       };
       return mapMaybe(emitSplits(0), () => runHoist(0));
     };
-    return mapMaybe(emitNestedBody(rule.rules, childFrame, e, hoist, imp, childSource, null, undefined, false, rule), finish);
+    return mapMaybe(
+      prepareBodyPlugins(rule.rules, childFrame, e),
+      () => mapMaybe(emitNestedBody(rule.rules, childFrame, e, hoist, imp, childSource, null, undefined, false, rule), finish)
+    );
   });
 }
 
