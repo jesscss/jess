@@ -1302,15 +1302,22 @@ export interface StyleImport extends SpanSlots {
   readonly alias: ValueNode | null;
 
   /*
-   * There is deliberately NO postlude field. A media/layer/supports tail belongs
-   * to the plain CSS `@import` form, which is an `AtRuleStatement` and carries it
-   * in the prelude. A media query on a compile-time legacy `@import`/`@-import` is
-   * not held here either: the parser desugars it — as Less 4.x does — into a
-   * `@media <query>` `AtRuleBlock` that wraps this postlude-free `StyleImport`, so
-   * the query lives on the wrapper and the loaded document renders inside it (less
-   * grammar `ImportStatement`). A `supports(...)`/`layer` tail, and every non-
-   * `@import` compile-time form (`@-compose`), reject the postlude at parse time,
-   * so no `StyleImport` can ever hold one and nothing downstream may act on one.
+   * There is deliberately NO postlude field. The discriminant is
+   * real-CSS-vs-compile-time (`importIsCompileTime`), NOT a dialect split
+   * (owner-authorized 2026-09-02; RESOLVED-SEMANTICS-AND-NAMING.md §12.3b
+   * amendment). A RUNTIME / real CSS `@import` — one that stays in output as a
+   * CSS at-rule — carries its media/layer/supports tail VERBATIM, but it is an
+   * `AtRuleStatement` (tail in the prelude), not a `StyleImport`; valid CSS, so
+   * this holds in every dialect including `.jess`. Only a COMPILE-TIME (resolved)
+   * import becomes a `StyleImport`, and its resolved content cannot carry a
+   * verbatim tail: a media query is DESUGARED — as Less 4.x does — into a
+   * `@media <query>` `AtRuleBlock` wrapping this postlude-free `StyleImport` (less
+   * grammar `ImportStatement`), while a `supports(...)`/`layer` tail is deferred
+   * as non-trivial (owner-accepted 2026-09-02) and the author wraps it in an
+   * explicit `@media`/`@layer`/`@supports` block. The jess build-time
+   * `@-import`/`@-compose` module directive (not a CSS import) admits no postlude
+   * at all. So no `StyleImport` can ever hold one and nothing downstream may act
+   * on one.
    */
 
   readonly mode: 'compose' | 'import';

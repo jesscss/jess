@@ -248,7 +248,7 @@ svg.railroad-diagram rect {
     <a href="#rule-KeyframeBlock">KeyframeBlock</a>
     <a href="#rule-PseudoArgumentGroup">PseudoArgumentGroup</a>
     <a href="#rule-Complex">Complex</a>
-    <a href="#rule-RelativeComplex">RelativeComplex</a>
+    <a href="#rule-RelativeSelector">RelativeSelector</a>
     <a href="#rule-PseudoArgument">PseudoArgument</a>
     <a href="#rule-NestingSelector">NestingSelector</a>
     <a href="#rule-AttributeSelector">AttributeSelector</a>
@@ -1210,10 +1210,10 @@ svg.railroad-diagram rect {
     <div class="diagram" data-rule="Complex"></div>
     <div class="ebnf">Complex ::= Compound ComplexTail*</div>
   </section>
-  <section class="rule" id="rule-RelativeComplex">
-    <h2><a href="#rule-RelativeComplex">§</a> RelativeComplex</h2>
-    <div class="diagram" data-rule="RelativeComplex"></div>
-    <div class="ebnf">RelativeComplex ::= (&quot;&gt;&quot; | &quot;+&quot; | &quot;~&quot;)? Complex</div>
+  <section class="rule" id="rule-RelativeSelector">
+    <h2><a href="#rule-RelativeSelector">§</a> RelativeSelector</h2>
+    <div class="diagram" data-rule="RelativeSelector"></div>
+    <div class="ebnf">RelativeSelector ::= (&quot;&gt;&quot; | &quot;+&quot; | &quot;~&quot;)? Complex</div>
   </section>
   <section class="rule" id="rule-PseudoArgument">
     <h2><a href="#rule-PseudoArgument">§</a> PseudoArgument</h2>
@@ -1233,7 +1233,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-PseudoSelector">
     <h2><a href="#rule-PseudoSelector">§</a> PseudoSelector</h2>
     <div class="diagram" data-rule="PseudoSelector"></div>
-    <div class="ebnf">PseudoSelector ::= &quot;:&quot; or &quot;::&quot; Identifier &quot;(&quot;? (!MalformedPseudoSelectorNumericArgument PseudoArgument &quot;)&quot; | !MalformedPseudoSelectorNumericArgument !(NthExpression NthOfKeyword) PseudoArgument &quot;)&quot; | WHITESPACE? RelativeComplex (&quot;,&quot; RelativeComplex)* WHITESPACE? &quot;)&quot; | PseudoArgument &quot;)&quot; | ! | PseudoArgument &quot;)&quot; | /* empty */)</div>
+    <div class="ebnf">PseudoSelector ::= &quot;:&quot; or &quot;::&quot; Identifier &quot;(&quot;? (!MalformedPseudoSelectorNumericArgument PseudoArgument &quot;)&quot; | !MalformedPseudoSelectorNumericArgument !(NthExpression NthOfKeyword) PseudoArgument &quot;)&quot; | WHITESPACE? RelativeSelector (&quot;,&quot; RelativeSelector)* WHITESPACE? &quot;)&quot; | PseudoArgument &quot;)&quot; | ! | PseudoArgument &quot;)&quot; | /* empty */)</div>
   </section>
   <section class="rule" id="rule-Placeholder">
     <h2><a href="#rule-Placeholder">§</a> Placeholder</h2>
@@ -1268,7 +1268,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-NestedSelectorTail">
     <h2><a href="#rule-NestedSelectorTail">§</a> NestedSelectorTail</h2>
     <div class="diagram" data-rule="NestedSelectorTail"></div>
-    <div class="ebnf">NestedSelectorTail ::= &quot;,&quot; RelativeComplex</div>
+    <div class="ebnf">NestedSelectorTail ::= &quot;,&quot; RelativeSelector</div>
   </section>
   <section class="rule" id="rule-ScssGenericAtRuleName">
     <h2><a href="#rule-ScssGenericAtRuleName">§</a> ScssGenericAtRuleName</h2>
@@ -1288,7 +1288,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-NestedSelector">
     <h2><a href="#rule-NestedSelector">§</a> NestedSelector</h2>
     <div class="diagram" data-rule="NestedSelector"></div>
-    <div class="ebnf">NestedSelector ::= !(Placeholder &quot;,&quot;) RelativeComplex NestedSelectorTail*</div>
+    <div class="ebnf">NestedSelector ::= !(Placeholder &quot;,&quot;) RelativeSelector NestedSelectorTail*</div>
   </section>
   <section class="rule" id="rule-ModuleDirective">
     <h2><a href="#rule-ModuleDirective">§</a> ModuleDirective</h2>
@@ -2033,22 +2033,22 @@ At runtime, these constants can be found on the Diagram class.
   { name: "KeyframeBlock", dsl: function(){ return Diagram(Sequence(NonTerminal("KeyframeSelector"), ZeroOrMore(Sequence(ZeroOrMore(NonTerminal("Comment")), Terminal(","), ZeroOrMore(NonTerminal("Comment")), NonTerminal("KeyframeSelector"))), ZeroOrMore(NonTerminal("Comment")), Terminal("{"), ZeroOrMore(Choice(0, NonTerminal("Comment"), NonTerminal("Declaration"), Terminal(";"))), Terminal("}"))); } },
   { name: "PseudoArgumentGroup", dsl: function(){ return Diagram(Choice(0, Sequence(Terminal("("), ZeroOrMore(Choice(0, NonTerminal("PseudoArgumentGroup"), NonTerminal("LiteralQuoted"), NonTerminal("BlockCommentToken"), Terminal("PSEUDO-ARGUMENT TEXT"))), Terminal(")")), Sequence(Terminal("["), ZeroOrMore(Choice(0, NonTerminal("PseudoArgumentGroup"), NonTerminal("LiteralQuoted"), NonTerminal("BlockCommentToken"), Terminal("PSEUDO-ARGUMENT TEXT"))), Terminal("]")))); } },
   { name: "Complex", dsl: function(){ return Diagram(Sequence(NonTerminal("Compound"), ZeroOrMore(NonTerminal("ComplexTail")))); } },
-  { name: "RelativeComplex", dsl: function(){ return Diagram(Sequence(Optional(Choice(0, Terminal(">"), Terminal("+"), Terminal("~"))), NonTerminal("Complex"))); } },
+  { name: "RelativeSelector", dsl: function(){ return Diagram(Sequence(Optional(Choice(0, Terminal(">"), Terminal("+"), Terminal("~"))), NonTerminal("Complex"))); } },
   { name: "PseudoArgument", dsl: function(){ return Diagram(OneOrMore(Choice(0, NonTerminal("PseudoArgumentGroup"), NonTerminal("LiteralQuoted"), NonTerminal("BlockCommentToken"), Terminal("PSEUDO-ARGUMENT TEXT")))); } },
   { name: "NestingSelector", dsl: function(){ return Diagram(Terminal("&")); } },
   { name: "AttributeSelector", dsl: function(){ return Diagram(Sequence(Terminal("["), NonTerminal("Identifier"), Optional(Sequence(NonTerminal("AttributeOperator"), Choice(0, NonTerminal("Quoted"), NonTerminal("Identifier")), Optional(NonTerminal("AttributeModifier")))), Terminal("]"))); } },
-  { name: "PseudoSelector", dsl: function(){ return Diagram(Sequence(Terminal("\":\" or \"::\""), NonTerminal("Identifier"), Optional(Terminal("(")), Choice(0, Sequence(Sequence(Comment("not"), NonTerminal("MalformedPseudoSelectorNumericArgument")), NonTerminal("PseudoArgument"), Terminal(")")), Sequence(Sequence(Comment("not"), NonTerminal("MalformedPseudoSelectorNumericArgument")), Sequence(Comment("not"), Sequence(NonTerminal("NthExpression"), NonTerminal("NthOfKeyword"))), NonTerminal("PseudoArgument"), Terminal(")")), Sequence(Optional(Terminal("WHITESPACE")), NonTerminal("RelativeComplex"), ZeroOrMore(Sequence(Terminal(","), NonTerminal("RelativeComplex"))), Optional(Terminal("WHITESPACE")), Terminal(")")), Sequence(NonTerminal("PseudoArgument"), Terminal(")")), Sequence(Comment("not"), Skip()), Sequence(NonTerminal("PseudoArgument"), Terminal(")")), Skip()))); } },
+  { name: "PseudoSelector", dsl: function(){ return Diagram(Sequence(Terminal("\":\" or \"::\""), NonTerminal("Identifier"), Optional(Terminal("(")), Choice(0, Sequence(Sequence(Comment("not"), NonTerminal("MalformedPseudoSelectorNumericArgument")), NonTerminal("PseudoArgument"), Terminal(")")), Sequence(Sequence(Comment("not"), NonTerminal("MalformedPseudoSelectorNumericArgument")), Sequence(Comment("not"), Sequence(NonTerminal("NthExpression"), NonTerminal("NthOfKeyword"))), NonTerminal("PseudoArgument"), Terminal(")")), Sequence(Optional(Terminal("WHITESPACE")), NonTerminal("RelativeSelector"), ZeroOrMore(Sequence(Terminal(","), NonTerminal("RelativeSelector"))), Optional(Terminal("WHITESPACE")), Terminal(")")), Sequence(NonTerminal("PseudoArgument"), Terminal(")")), Sequence(Comment("not"), Skip()), Sequence(NonTerminal("PseudoArgument"), Terminal(")")), Skip()))); } },
   { name: "Placeholder", dsl: function(){ return Diagram(Terminal("/%-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*/")); } },
   { name: "InterpolatedSimple", dsl: function(){ return Diagram(Sequence(Optional(Terminal("/[.#](?!\\{)/")), ZeroOrMore(Terminal("NAME")), NonTerminal("SassInterpolation"), ZeroOrMore(Choice(0, NonTerminal("SassInterpolation"), Terminal("NAME"))))); } },
   { name: "Simple", dsl: function(){ return Diagram(NonTerminal("SimpleSelectorToken")); } },
   { name: "Compound", dsl: function(){ return Diagram(Sequence(OneOrMore(Choice(0, NonTerminal("NestingSelector"), NonTerminal("AttributeSelector"), NonTerminal("PseudoSelector"), NonTerminal("Placeholder"), NonTerminal("InterpolatedSimple"), NonTerminal("Simple"))), Sequence(Comment("not"), Terminal("\":\" or \"::\"")))); } },
   { name: "ComplexTail", dsl: function(){ return Diagram(Sequence(Optional(Choice(0, Terminal("||"), Terminal(">"), Terminal("+"), Terminal("~"))), NonTerminal("Compound"))); } },
   { name: "SelectorTail", dsl: function(){ return Diagram(Sequence(Terminal(","), NonTerminal("Complex"))); } },
-  { name: "NestedSelectorTail", dsl: function(){ return Diagram(Sequence(Terminal(","), NonTerminal("RelativeComplex"))); } },
+  { name: "NestedSelectorTail", dsl: function(){ return Diagram(Sequence(Terminal(","), NonTerminal("RelativeSelector"))); } },
   { name: "ScssGenericAtRuleName", dsl: function(){ return Diagram(Sequence(Sequence(Comment("not"), Choice(0, Terminal("@namespace"), Terminal("@function"), Terminal("@-compose"), Terminal("@forward"), Terminal("@include"), Terminal("@at-root"), Terminal("@content"), Terminal("@charset"), Terminal("@-export"), Terminal("@-import"), Terminal("@return"), Terminal("@extend"), Terminal("@mixin"), Terminal("@while"), Terminal("@debug"), Terminal("@error"), Terminal("@-from"), Terminal("@else"), Terminal("@each"), Terminal("@warn"), Terminal("@-use"), Terminal("@use"), Terminal("@for"), Terminal("@if"))), Sequence(Comment("not"), NonTerminal("TypedAtKeywordSharedRoutes")), Sequence(Comment("not"), NonTerminal("ConditionalAtKeyword")), Sequence(Comment("not"), NonTerminal("ImportAtKeyword")), NonTerminal("AtIdentifier"))); } },
   { name: "OpaqueAtPrelude", dsl: function(){ return Diagram(NonTerminal("PreprocessorOpaqueAtRulePreludeCapture")); } },
   { name: "OpaqueBody", dsl: function(){ return Diagram(NonTerminal("PreprocessorOpaqueAtRuleBodyCapture")); } },
-  { name: "NestedSelector", dsl: function(){ return Diagram(Sequence(Sequence(Comment("not"), Sequence(NonTerminal("Placeholder"), Terminal(","))), NonTerminal("RelativeComplex"), ZeroOrMore(NonTerminal("NestedSelectorTail")))); } },
+  { name: "NestedSelector", dsl: function(){ return Diagram(Sequence(Sequence(Comment("not"), Sequence(NonTerminal("Placeholder"), Terminal(","))), NonTerminal("RelativeSelector"), ZeroOrMore(NonTerminal("NestedSelectorTail")))); } },
   { name: "ModuleDirective", dsl: function(){ return Diagram(Sequence(NonTerminal("AtRuleKeyword"), Choice(0, Sequence(Choice(0, Sequence(Terminal("\""), Terminal("/(?:[^\"\\\\#]|#(?!\\{))*/"), Terminal("\"")), Sequence(Terminal("'"), Terminal("/(?:[^'\\\\#]|#(?!\\{))*/"), Terminal("'"))), Optional(NonTerminal("UseNamespace")), Terminal(";")), Sequence(Choice(0, Sequence(Terminal("\""), Terminal("/(?:[^\"\\\\#]|#(?!\\{))*/"), Terminal("\"")), Sequence(Terminal("'"), Terminal("/(?:[^'\\\\#]|#(?!\\{))*/"), Terminal("'"))), Terminal(";"))))); } },
   { name: "AtRuleStatement", dsl: function(){ return Diagram(Sequence(Terminal("/@(?:charset|namespace|layer)(?![-_a-zA-Z0-9\\u0080-\\uffff])/"), ZeroOrMore(Choice(0, NonTerminal("AtRulePreludeGroup"), NonTerminal("AtRulePreludeQuoted"), NonTerminal("BlockCommentToken"), NonTerminal("LineComment"), Terminal("/(?:[^#;()\\[\\]{}'\"\\\\/]|\\\\[\\s\\S]|#(?!\\{)|\\/(?![/*]))+/"))), Terminal(";"))); } },
   { name: "Stylesheet", dsl: function(){ return Diagram(Sequence(ZeroOrMore(Choice(0, NonTerminal("Comment"), NonTerminal("VariableDeclaration"), NonTerminal("ModuleDirective"))), ZeroOrMore(Choice(0, NonTerminal("Comment"), NonTerminal("ImportAtRule"), NonTerminal("AtRuleStatement"), NonTerminal("VariableDeclaration"), NonTerminal("SassDirective"), NonTerminal("ConditionalBlock"), NonTerminal("StartingStyleBlock"), NonTerminal("LayerBlock"), NonTerminal("ScopeBlock"), NonTerminal("DocumentBlock"), NonTerminal("PageBlock"), NonTerminal("FontFeatureValuesBlock"), NonTerminal("FontFace"), NonTerminal("CounterStyle"), NonTerminal("PropertyAtRule"), NonTerminal("Keyframes"), NonTerminal("OpaqueAtRuleBlock"), NonTerminal("OpaqueAtRuleStatement"), NonTerminal("Ruleset"))))); } },

@@ -2005,6 +2005,61 @@ piece; splitting it is how the duplication got there.
 
 ### 12.3b `@import` is TWO nodes, and `ImportAtRule` is neither — **LANDED** (`ImportAtRule` is not a kind; `StyleImport` carries the option surface, `nodes.ts:1267`)
 
+> **Owner ruling, 2026-09-02 — the discriminant is real-CSS-vs-compile-time
+> (`importIsCompileTime`), NOT a dialect split, and `StyleImport` stays
+> postlude-free.** This amends the `tail` field below (which is **superseded**,
+> see the annotation on it) without disturbing the two-node decision, which
+> stands. A media / layer / supports postlude is handled by WHICH of the two
+> nodes the import becomes:
+>
+> - **Runtime / real CSS `@import`** — one that stays in the output as a CSS
+>   at-rule (e.g. `@import url(x.css) screen`, `@import "x.css" supports(…)`,
+>   `@import "x.css" layer(base)`). It is an `AtRuleStatement`, not a
+>   `StyleImport`, and **carries the postlude VERBATIM** — media, layer, AND
+>   supports. This is valid CSS, so it works in **all dialects, including
+>   `.jess`** (jess grammar `ImportStatement` preserves the static prelude as one
+>   CSS-owned opaque value; jess tests
+>   `packages/syntax/jess/jess-parser/test/ast-grammar.test.ts:1469-1486` assert
+>   `@import "a.css" supports(display: grid)` / `layer(base)` /
+>   `supports(not (display: grid))` all parse).
+> - **Compile-time Less `@import`** — one resolved / inlined at build (`@import
+>   "x.less"`, `@import (inline)`), which becomes a `StyleImport`. The resolved
+>   content cannot carry a verbatim `@import` postlude, so:
+>   - a **MEDIA-query** postlude DESUGARS at parse time into a `@media <query>`
+>     wrapper around the spliced document — a Less 4.x compatibility feature
+>     (this is A10, `docs/architecture/core/DESIGN-DECISIONS.md`; less grammar
+>     `ImportStatement`);
+>   - a **layer / supports** postlude is NOT desugared — it throws
+>     `LessImportPostludeError`, deferred as non-trivial (a correct desugaring
+>     needs nested `@layer` / `@supports` / `@media` wrapping of a combinable
+>     `[ layer ]? [ supports(…) ]? <media-query-list>`, and the construct is
+>     rare). The author rewrites it as an explicit `@media` / `@layer` /
+>     `@supports { … }` block. Owner-accepted, not a hard "never."
+> - **The jess BUILD-TIME `@-import` / `@-compose`** — the namespaced
+>   `styleImportDirective`, which is a module directive, NOT a CSS import. It
+>   admits no postlude at all (the jess grammar has no postlude slot on that
+>   form; a trailing query is leftover input → parse error). This is the only
+>   jess "rejects" case, and it is about the build-time namespaced form — NOT
+>   `.jess` rejecting import postludes broadly (real CSS `@import` carries them,
+>   see above).
+> - **`StyleImport` is postlude-free.** For the compile-time case the media
+>   desugar produces the `@media` wrapper node, so no `tail` field is needed; the
+>   query lives on the wrapper, not the import. (The runtime case never reaches
+>   `StyleImport` — it stays an `AtRuleStatement` with the tail in its prelude.)
+>   The "carries a `tail` field" wording below is SUPERSEDED by this model.
+>
+> **The blanket rejection was an unauthorized deviation, now reconciled.** An
+> earlier agent implemented the OPPOSITE of the tail-field wording: it deleted
+> the field and added `LessImportPostludeError` to reject *every* postlude on a
+> compile-time import — including the Less 4.x media case — and stamped that
+> rejection "(owner ruling)" (dev commit `3159bfbbe`). That blanket rejection was
+> never authorized by the owner and regressed the Less 4.x
+> `@import (inline) … (media)` feature. The A10 desugar restores the media case;
+> this ruling records the correct division (real CSS `@import` carries the
+> postlude verbatim in every dialect; compile-time Less `@import` desugars media
+> and defers layer / supports; the jess build-time `@-import` / `@-compose`
+> carries none) and supersedes the tail-field wording.
+
 **Owner ruling, 2026-08-07, amending row 5.** There is `StyleImport`, which
 carries options and the rest, and there is `AtRule`. Nothing else. A plain CSS
 `@import` is *just an at-rule* and belongs in `AtRuleStatement`; every
@@ -2024,6 +2079,15 @@ per dialect quirk:
 ```
 options: List | null                   (inline), (reference), with (…), show/hide
 tail:    ValueNode | null              media / layer / supports postlude
+                                       ^ SUPERSEDED by the 2026-09-02 amendment
+                                         above: no `tail` field exists. A real
+                                         CSS `@import` keeps the postlude verbatim
+                                         (an `AtRuleStatement`, all dialects). On a
+                                         compile-time Less `@import` a media
+                                         postlude DESUGARS to a `@media` wrapper;
+                                         layer/supports are deferred (explicit
+                                         block). The jess build-time
+                                         `@-import`/`@-compose` carries none.
 alias:   ValueNode | null              as …
 target:  Quoted | Url | Interpolation  not just Quoted
 ```
@@ -2151,7 +2215,7 @@ production building exactly one kind, under a different name.
 | --- | --- | --- |
 | scss | **all 7** (`Map`, `MapEntry`, `Paren`, `Square`, `Simple`, `Placeholder`, `SassInterpolation`) | none — **DONE** |
 | less | 11 of 14 | `MixinReferenceBase` (`:4376`), `SelectorBranch` (`:6172`, `:6337`, `:6349`, `:6355`, `:6387`), `ExtendTarget` (`:6296`) |
-| css | 0 of 11 | all — `BasicSelector`, `NestingSelector`, `keyframeSelector`, `Percentage`, `CalcParen`, `ParenValue`, `SquareValue`, `ValueList`, `TypedValueList`, `VarFallback`, `RelativeComplexSelector` |
+| css | 0 of 11 | all — `BasicSelector`, `NestingSelector`, `keyframeSelector`, `Percentage`, `CalcParen`, `ParenValue`, `SquareValue`, `ValueList`, `TypedValueList`, `VarFallback`, `RelativeSelector` |
 
 §12.5's "deletions before renames" held: §12.3 landed first, and the labels it
 was expected to kill are gone.
@@ -2168,7 +2232,7 @@ was expected to kill are gone.
 | css | `Percentage` | `dimension` | `Dimension` |
 | css | `CalcParen`, `ParenValue`, `SquareValue` | `block` | `Block` |
 | css | `ValueList`, `TypedValueList`, `VarFallback` | `list` | `List` |
-| css | `RelativeComplexSelector` | `relativeSelector` | `RelativeSelector` |
+| css | `RelativeSelector` | `relativeSelector` | `RelativeSelector` |
 | scss | `Map`, `MapEntry` | `collection`, `collectionEntry` | `Collection`, `CollectionEntry` |
 | scss | `Paren`, `Square` | `block` | `Block` |
 | scss | `Simple`, `Placeholder` | `simpleSelector` | `SimpleSelector` |

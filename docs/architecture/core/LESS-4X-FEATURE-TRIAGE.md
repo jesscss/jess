@@ -575,11 +575,11 @@ tests themselves name the fix for. Nothing here belongs in §3 or §4.
 > where a leading combinator IS legal, and must not be confused with the
 > root-level ruling above. Cause:
 > `relativeSelectorListWithExtends` (`.../less-parser/src/grammar.ts:5961`) is
-> `choice(SelectorBranch, node('SelectorBranch', g.RelativeComplex, …))`. The
+> `choice(SelectorBranch, node('SelectorBranch', g.RelativeSelector, …))`. The
 > extend-carrying arm, `SelectorBranch` (`:5916`), opens on `ExtendComplex`
 > (`:5852`), whose head is `InlineExtendSubjectCompound` — there is no leading
 > combinator slot in it at all, so `> td:extend(.x)` cannot match it. The
-> fallback arm, `g.RelativeComplex`, does admit the combinator but has no extend
+> fallback arm, `g.RelativeSelector`, does admit the combinator but has no extend
 > tail and hard-codes `extensions: []`, so the `:extend(…)` is left unconsumed
 > and the whole parse fails rather than silently dropping the extend. Fixing it
 > means giving the relative branch the same extend tail the absolute one has,
@@ -658,7 +658,7 @@ documented whole-rule contract on `ExtendInstruction` and already what
 **RC-3** (landed separately as `a493bcee8`). `BodyStatement` composes `nestedGuardedRuleset`, the same
 production the ordinary nested `blockItem` uses, rather than the absolute
 `guardedRuleset`. A detached-ruleset / `each()` body is evaluated in the
-caller's nesting context, so its rules are nested rules. `RelativeComplex` is a
+caller's nesting context, so its rules are nested rules. `RelativeSelector` is a
 strict superset of `Complex` and reduces to the identical branch when no leading
 combinator is present, so this is a pure widening on the AST surface.
 

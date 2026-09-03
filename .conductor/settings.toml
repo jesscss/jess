@@ -1,0 +1,28 @@
+"$schema" = "https://conductor.build/schemas/settings.repo.schema.json"
+
+[git]
+archive_on_merge = true
+delete_branch_on_archive = true
+worktree_push_auto_setup_remote = true
+
+[scripts]
+setup = "pnpm install --frozen-lockfile && pnpm run build:release"
+run_mode = "concurrent"
+
+[scripts.run.tests]
+command = "pnpm test"
+default = true
+icon = "test-tube"
+
+[scripts.run.verify]
+command = "pnpm verify:pr"
+icon = "badge-check"
+
+[scripts.run.jess-docs]
+available_in = [ "local" ]
+command = "pnpm --filter jess-docs run build:facings && pnpm --filter jess-docs run dev --port \"$CONDUCTOR_PORT\" --no-open"
+icon = "book-open"
+
+[[preview_urls]]
+name = "Jess docs"
+url = "http://localhost:$CONDUCTOR_PORT"

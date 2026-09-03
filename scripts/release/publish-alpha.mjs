@@ -6,6 +6,7 @@ import {
   applyLockstepVersion,
   compareSemver,
   computeMinAlphaTag,
+  ensurePublishAuth,
   getAlphaReleasePlan,
   isAlphaClobber,
   resolveAlphaPublishVersion
@@ -179,16 +180,14 @@ function setLatestTag(pkgName, version, dryRun) {
 }
 
 function assertNpmAuth() {
-  const result = spawnSync('npm', ['whoami'], {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-    shell: process.platform === 'win32'
-  });
-  if (result.status !== 0) {
-    console.error('\nnpm is not authenticated. Run `npm login` to sign in, then retry.');
-    console.error('For CI, set NPM_TOKEN in the environment.\n');
-    process.exit(1);
-  }
+  /*
+   * Front-load publish auth (browser login when the account gates writes behind
+   * 2FA that `npm whoami` can't see). No-ops when release-alpha already verified
+   * it this run (via the inherited __ALPHA_AUTH_VERIFIED flag), so a standalone
+   * `release:alpha:publish` still prompts up front but the orchestrated path does
+   * not double-prompt.
+   */
+  ensurePublishAuth();
 }
 
 const options = parseArgs(process.argv);

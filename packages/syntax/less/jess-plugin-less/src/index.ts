@@ -9,7 +9,7 @@ import {
   type SafeParseOptions,
   buildEvaluator
 } from '@jesscss/core';
-import { type PluginHost } from '@jesscss/core';
+import { logger, type PluginHost } from '@jesscss/core';
 import { makeLessRegistry } from '@jesscss/fns/less/registry';
 import { LessApiBridge, type NativeLessPlugin } from '@jesscss/plugin-less-compat';
 import type { MathMode, UnitMode, LessOptions } from 'styles-config';
@@ -314,16 +314,26 @@ export class LessPlugin extends AbstractPlugin {
       mathMode = lessPluginDefaults.mathMode;
     }
 
-    // Handle deprecated strictUnits option -> unitMode conversion
+    /*
+     * `strictUnits` is the deprecated boolean alias of `unitMode` (owner ruling
+     * 2026-09-02): `true` → 'strict'; `false` means "not strict", i.e. the
+     * default 'preserve' — NOT the Less 4.x 'loose' fold, which is only ever
+     * selected by an explicit `unitMode: 'loose'`. Any use warns so the mapping
+     * is never discovered by staring at output.
+     */
     let unitMode: UnitMode;
     if (opts.unitMode !== undefined) {
       unitMode = opts.unitMode;
     } else if (opts.strictUnits === true) {
       unitMode = 'strict';
-    } else if (opts.strictUnits === false) {
-      unitMode = 'loose';
     } else {
       unitMode = lessPluginDefaults.unitMode;
+    }
+    if (opts.strictUnits !== undefined && opts.unitMode === undefined) {
+      logger.warn(
+        `strictUnits is deprecated; use unitMode. strictUnits: ${String(opts.strictUnits)} now means `
+        + `unitMode: '${unitMode}'${opts.strictUnits ? '' : ' (Less 4.x unit folding is unitMode: \'loose\')'}`
+      );
     }
     this.#dialectDefaults = Object.freeze({
       mathMode,

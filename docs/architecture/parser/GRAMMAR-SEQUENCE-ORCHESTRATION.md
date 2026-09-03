@@ -2481,7 +2481,7 @@ the An+B helper arms became `LeadingDashPseudoArgument`,
 `TypedNthPseudoArgument`, `LeadingDashOfTypePseudoArgument`,
 `TypedOfTypePseudoArgument`, and `LeadingDashRawPseudoArgument`, while
 selector-only pseudo helpers now use `SelectorOnlyPseudoArgument`,
-`GenericPseudoArgument`, and `RelativeComplexSelector`. `PseudoSelector` remains
+`GenericPseudoArgument`, and `RelativeSelector`. `PseudoSelector` remains
 the public selector rule; this cleanup changes rule keys and diagnostics only,
 not pseudo selector recognition or emitted selector AST.
 

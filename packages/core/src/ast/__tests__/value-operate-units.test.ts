@@ -7,14 +7,17 @@
  * compatible RHS first, and cancel the numerator/denominator multiset so a chained
  * op resolves the surviving unit (`8cats * 9dogs / 4cats` → `18dogs`).
  *
- * That port is now the `loose` rung. §4.7 puts an operation whose composed unit
- * CSS CANNOT EXPRESS on a three-rung ladder — `loose` folds, the default
- * `preserve` keeps the authored expression as `calc(…)`, `strict` rejects it —
- * so the rows below name the mode they assert rather than assuming one answer.
+ * That port is now the `loose` rung. §4.7 / V18 put every operation `strict`
+ * REJECTS — a non-convertible `+`/`-`, or a composed unit CSS cannot express
+ * (a product, a reciprocal, a surviving ratio) — on a three-rung ladder: `loose`
+ * folds like 4.x, the default `preserve` keeps the authored expression as
+ * `calc(…)` (strict without the error), `strict` rejects it — so the rows below
+ * name the mode they assert rather than assuming one answer.
  */
 import { describe, expect, it } from 'vitest';
 import { operate, validateFinalUnits } from '../value-operate.js';
 import { makeBlock, makeDimension, makeList } from '../value-factory.js';
+import { UnitArithmeticError } from '../value-eval.js';
 import type { EvalModes, Value } from '../value-eval.js';
 
 const PRESERVE: EvalModes = { unitMode: 'preserve' };
@@ -25,10 +28,18 @@ const dim = (n: number, u = ''): Value => makeDimension(n, u);
 const bytesOf = (op: string, a: Value, b: Value, m = PRESERVE) => operate(op, a, b, m).bytes;
 
 describe('cross-unit arithmetic — parens-division (unit algebra vs less@4.6.7; digits per DD F6)', () => {
-  it('division keeps the LHS unit for incompatible units', () => {
-    expect(bytesOf('/', dim(4, 'em'), dim(2, 'cm'))).toBe('2em');
-    expect(bytesOf('/', dim(14, 'px'), dim(1.4, 'em'))).toBe('10px');
-    expect(bytesOf('/', dim(2, 'px'), dim(3, 's'))).toBe('0.6666666667px');
+  it('division of incompatible units: loose folds to the LHS unit, preserve keeps the ratio as calc (V18)', () => {
+    expect(bytesOf('/', dim(4, 'em'), dim(2, 'cm'), LOOSE)).toBe('2em');
+    expect(bytesOf('/', dim(14, 'px'), dim(1.4, 'em'), LOOSE)).toBe('10px');
+    expect(bytesOf('/', dim(2, 'px'), dim(3, 's'), LOOSE)).toBe('0.6666666667px');
+
+    /*
+     * `em/cm` is a surviving ratio, not `em`: strict rejects it at the boundary,
+     * so preserve spells the authored expression instead of dropping `cm`.
+     */
+    expect(bytesOf('/', dim(4, 'em'), dim(2, 'cm'))).toBe('calc(4em / 2cm)');
+    expect(bytesOf('/', dim(14, 'px'), dim(1.4, 'em'))).toBe('calc(14px / 1.4em)');
+    expect(bytesOf('/', dim(2, 'px'), dim(3, 's'))).toBe('calc(2px / 3s)');
   });
 
   /*
@@ -95,11 +106,45 @@ describe('cross-unit arithmetic — parens-division (unit algebra vs less@4.6.7;
     expect(bytesOf('/', area, dim(1, 'px'))).toBe('1px');
   });
 
-  it('addition/subtraction convert a compatible RHS, else operate on raw magnitudes', () => {
+  it('a preserved operand contributes its spelling, never a nested calc, whichever guard composes it', () => {
+    const ratio = operate('/', dim(2, 'em'), dim(1, 'px'), PRESERVE); // calc(2em / 1px)
+    const product = operate('*', dim(2, 'em'), dim(1, 'px'), PRESERVE); // calc(2em * 1px)
+    // additive clash with a preserved LHS/RHS → operate's catch
+    expect(bytesOf('+', ratio, dim(20))).toBe('calc(2em / 1px + 20)');
+    expect(bytesOf('+', dim(20), ratio)).toBe('calc(20 + 2em / 1px)');
+    expect(bytesOf('-', dim(3, 'em'), product)).toBe('calc(3em - 2em * 1px)');
+
+    // an additive preserved operand keeps its grouping when spliced
+    const sum = operate('+', dim(1, 'px'), dim(3, 'em'), PRESERVE); // calc(1px + 3em)
+    expect(bytesOf('-', dim(10, 'cm'), sum)).toBe('calc(10cm - (1px + 3em))');
+
+    // a preserved divisor is grouped so precedence survives: 20 / (2em * 1px)
+    expect(bytesOf('/', dim(20), product)).toBe('calc(20 / (2em * 1px))');
+    expect(bytesOf('*', dim(20), product)).toBe('calc(20 * 2em * 1px)');
+  });
+
+  it('addition/subtraction convert a compatible RHS in every mode', () => {
     expect(bytesOf('+', dim(20, 'mm'), dim(1, 'cm'))).toBe('30mm');
     expect(bytesOf('+', dim(90, 'deg'), dim(0.25, 'turn'))).toBe('180deg');
-    expect(bytesOf('+', dim(1, 'px'), dim(1, 'em'))).toBe('2px'); // em non-convertible → raw add
-    expect(bytesOf('-', dim(100, '%'), dim(10, 'px'))).toBe('90%'); // % non-convertible → raw sub
+    expect(bytesOf('+', dim(20, 'mm'), dim(1, 'cm'), LOOSE)).toBe('30mm');
+    expect(bytesOf('+', dim(20, 'mm'), dim(1, 'cm'), STRICT)).toBe('30mm');
+
+    /*
+     * A zero RHS converts like any other: convertibility is decided by unit
+     * group, never by whether the converted magnitude happened to change.
+     */
+    expect(bytesOf('+', dim(1, 'cm'), dim(0, 'mm'))).toBe('1cm');
+    expect(bytesOf('+', dim(1, 'cm'), dim(0, 'mm'), STRICT)).toBe('1cm');
+    expect(bytesOf('-', dim(90, 'deg'), dim(0, 'turn'), STRICT)).toBe('90deg');
+  });
+
+  it('non-convertible addition/subtraction: loose adds raw magnitudes, preserve keeps calc (V18)', () => {
+    expect(bytesOf('+', dim(1, 'px'), dim(1, 'em'), LOOSE)).toBe('2px');
+    expect(bytesOf('-', dim(100, '%'), dim(10, 'px'), LOOSE)).toBe('90%');
+
+    // The canonical calc() case: `1px + 3em` is not 4px in any browser.
+    expect(bytesOf('+', dim(1, 'px'), dim(3, 'em'))).toBe('calc(1px + 3em)');
+    expect(bytesOf('-', dim(100, '%'), dim(10, 'px'))).toBe('calc(100% - 10px)');
   });
 
   it('unitless operands adopt the other operand unit', () => {
@@ -115,9 +160,28 @@ describe('cross-unit arithmetic — parens-division (unit algebra vs less@4.6.7;
     expect(bytesOf('/', dim(5), dim(2, 'px'), LOOSE)).toBe('2.5px');
   });
 
-  it('computes identically in loose and preserve (no calc() fallback)', () => {
-    expect(bytesOf('/', dim(4, 'em'), dim(2, 'cm'), LOOSE)).toBe('2em');
-    expect(bytesOf('/', dim(4, 'em'), dim(2, 'cm'), PRESERVE)).toBe('2em');
+  it('preserve is strict without the error: calc() exactly where strict rejects, identical where it computes (V18)', () => {
+    /*
+     * strict rejects (at the operation or at the final boundary) → preserve
+     * spells the authored expression instead.
+     */
+    const rejected: ReadonlyArray<readonly [string, Value, Value, string]> = [
+      ['/', dim(4, 'em'), dim(2, 'cm'), 'calc(4em / 2cm)'],
+      ['*', dim(2, 'px'), dim(3, 's'), 'calc(2px * 3s)'],
+      ['+', dim(1, 'px'), dim(3, 'em'), 'calc(1px + 3em)'],
+      ['-', dim(100, '%'), dim(10, 'px'), 'calc(100% - 10px)'],
+      ['/', dim(5), dim(2, 'px'), 'calc(5 / 2px)']
+    ];
+    for (const [op, a, b, spelled] of rejected) {
+      expect(bytesOf(op, a, b, PRESERVE)).toBe(spelled);
+      expect(() => validateFinalUnits(operate(op, a, b, STRICT), STRICT)).toThrow(UnitArithmeticError);
+    }
+
+    // strict computes → preserve computes the same bytes.
+    const chain = (m: EvalModes) =>
+      bytesOf('/', operate('*', dim(8, 'cats'), dim(9, 'dogs'), m), dim(4, 'cats'), m);
+    expect(chain(PRESERVE)).toBe('18dogs');
+    expect(chain(STRICT)).toBe('18dogs');
   });
 
   it('strict defers non-singular validation until final materialization', () => {

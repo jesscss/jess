@@ -194,15 +194,15 @@ _This has been replaced by the [`math`](#math) option._
 _Has been replaced by `rewriteUrls: "all"`_
 
 
-### Strict Units
+### Unit Mode
 
 | | |
 |---|---|
-| `lessc -su=on`<br>`lessc --strict-units=on` | `{ strictUnits: true }` |
+| `lessc --unit-mode=MODE` | `{ unitMode: MODE }` |
 
-Defaults to off/false.
+`MODE` is one of `preserve` (the default), `strict`, or `loose`, and controls how unit conversions are handled in math operations.
 
-Without this option, Less attempts to guess at the output unit when it does maths. For instance
+Without strict units, Less attempts to guess at the output unit when it does maths. For instance
 
 ```less
 .class {
@@ -212,7 +212,17 @@ Without this option, Less attempts to guess at the output unit when it does math
 
 In this case, things are clearly not right - a length multiplied by a length gives an area, but css does not support specifying areas. So we assume that the user meant for one of the values to be a value, not a unit of length and we output `2px`.
 
-With strict units on, we assume this is a bug in the calculation and throw an error.
+- `loose` — this guessing behavior (the Less 1.x–4.x default).
+- `strict` — assume this is a bug in the calculation and throw an error.
+- `preserve` (the default) — `strict` without the error: anything `strict` would reject is emitted as the authored expression inside `calc()` (`1px + 3em` → `calc(1px + 3em)`, the example above → `calc(1px * 2px)`) instead of guessing; anything `strict` computes, `preserve` computes identically.
+
+#### Strict Units (deprecated)
+
+| | |
+|---|---|
+| `lessc -su=on`<br>`lessc --strict-units=on` | `{ strictUnits: true }` |
+
+_Deprecated alias for `unitMode`: `on` / `true` sets `unitMode: 'strict'`; `off` / `false` means "not strict", i.e. the default `preserve` (the Less 4.x fold is only selected by an explicit `unitMode: 'loose'`). A deprecation warning naming the mapping is logged during compile whenever it is used._
 
 #### IE8 Compatibility (Deprecated)
 

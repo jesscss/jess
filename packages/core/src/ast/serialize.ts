@@ -132,7 +132,7 @@ import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scop
 import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
-import { UnitArithmeticError, calcInner, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
+import { UnitArithmeticError, calcInner, preservedUnitClashes, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeKeyword, makeBool, makeList, makeNull, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { groupItems } from './value-list.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
@@ -3206,6 +3206,14 @@ function evalTypedSlot(
 const unitOwners = new WeakMap<Value, Operation>();
 
 function hasInvalidFinalUnits(value: Value): boolean {
+  /*
+   * V18 — a non-convertible `+`/`-` under `preserve` is an opaque `calc(…)`
+   * keyword with no unit facts of its own; `operate` registers it so this
+   * boundary can still ask the one question and warn (§4.7: no silent rung).
+   */
+  if (value.type === 'Keyword') {
+    return preservedUnitClashes.has(value);
+  }
   if (value.type !== 'Dimension') {
     return false;
   }
