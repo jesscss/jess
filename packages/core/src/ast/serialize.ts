@@ -4839,9 +4839,14 @@ function resolveReferenceResult(
           /* Exclude the alias currently being followed so `@call: @call`
            * reaches its prior parameter binding instead of selecting itself. */
           const alias = value;
-          e.excluded.add(alias);
+          const aliasWasExcluded = e.excluded.has(alias);
+          if (!aliasWasExcluded) {
+            e.excluded.add(alias);
+          }
           const aliased = resolveVarRef(valueFrame, name, scope, e);
-          e.excluded.delete(alias);
+          if (!aliasWasExcluded) {
+            e.excluded.delete(alias);
+          }
           if (!aliased) {
             break;
           }

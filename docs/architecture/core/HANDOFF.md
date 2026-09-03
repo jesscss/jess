@@ -4095,7 +4095,7 @@ involved.
   aggressive-cutting, touched-file lint, and diff-check pass. Shape stability retains
   the target branch's stale AST corpus inventory/`SpacedValue` allowlist failures;
   its monomorphic-node assertion and all five CST checks pass. Static counts are
-  `serialize.ts` 17,089 to 16,988 lines, Map 58 to 57, Set 34 to 34, WeakMap 6 to 5,
+  `serialize.ts` 17,089 to 16,993 lines, Map 58 to 57, Set 34 to 34, WeakMap 6 to 5,
   Frame construction sites 30 to 28, Leaf groups 9 to 9, and evaluator-side
   `e.collapse` reads 2 to 2.
 - Boundary evidence: no public type/export changes. Semantics review approves all eight
@@ -4129,7 +4129,7 @@ involved.
     "why": "SETTLED V19 makes evaluation and lookup functions of the source stylesheet, independent of nesting output. Slice 2 deletes three nested-only callable evaluators and sends their one shared evaluated activation directly to the existing collapsed or nested writer.",
     "dangerTokensJustification": "The final projection choice is an allocation-free branch on the already-live nested leaf context and calls the existing writer directly. Selected bodies retain a synchronous for loop. The removed render-global WeakMap becomes the existing BindingCell.valueFrame initialized in its existing four-field shape. The rare MixinCall-only previous-cell walk is bounded by distinct same-name declarations and N/2N instrumentation measured 20 to 40 steps for 4 to 8 self-copying activations in both modes.",
     "behaviorEvidence": "Focused callable and diagnostic suites pass. N/2N and doubled-write probes are sensitive; leak removal changes two named forced-collapse records; source-node perturbation changes the pinned diagnostic column in both modes.",
-    "buildEvidence": "Dependency-order build passes. Core passes 3194 tests; Jess ratchet passes 1423 with empty current/gating/flaky failure sets; all-less passes 112/112; the 111-record forced-collapse manifests are identical; selected both-mode Jess tests pass 73/73; dependents pass 14/14, 718/718, and 2/2. Guardrails, aggressive-cutting, touched-file lint, and diff-check pass. Shape stability retains the target branch's stale AST inventory/SpacedValue allowlist failures while its monomorphic-node and all CST assertions pass. Static counts: lines 17089 to 16988, named functions 421 to 418, arrows 605 to 583, Map 58 to 57, Set 34 unchanged, WeakMap 6 to 5, Frame construction sites 30 to 28. Same-session hot-path timings are reported separately and carry no speed claim.",
+    "buildEvidence": "Dependency-order build passes. Core passes 3194 tests; Jess ratchet passes 1423 with empty current/gating/flaky failure sets; all-less passes 112/112; the 111-record forced-collapse manifests are identical; selected both-mode Jess tests pass 73/73; dependents pass 14/14, 718/718, and 2/2. Guardrails, aggressive-cutting, touched-file lint, and diff-check pass. Shape stability retains the target branch's stale AST inventory/SpacedValue allowlist failures while its monomorphic-node and all CST assertions pass. Static counts: lines 17089 to 16993, named functions 421 to 418, arrows 605 to 583, Map 58 to 57, Set 34 unchanged, WeakMap 6 to 5, Frame construction sites 30 to 28. Same-session hot-path timings are reported separately and carry no speed claim.",
     "baseline": {
       "fixture": "benchmark.less",
       "phase": "render",

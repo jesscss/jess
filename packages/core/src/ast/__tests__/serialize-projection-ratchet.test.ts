@@ -62,5 +62,7 @@ describe('V19 one-evaluator projection ratchet', () => {
     expect(occurrences(/writeCollapsedCallableBody/gu)).toBe(0);
     expect(occurrences(/writeNestedCallableBody/gu)).toBe(0);
     expect(occurrences(/mixinCallHomes/gu)).toBe(0);
+    expect(SOURCE).toContain('const aliasWasExcluded = e.excluded.has(alias);');
+    expect(SOURCE).toContain('if (!aliasWasExcluded) {\n            e.excluded.delete(alias);\n          }');
   });
 });
