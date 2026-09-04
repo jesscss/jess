@@ -293,19 +293,12 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   {
     id: '@page with a pseudo-page selector',
     group: 'at-rule',
-    source: '@page :first { margin: 1cm; }',
-    brokenIn: ['jess'],
-    defect:
-      'Jess consumes nothing for ANY `<pseudo-page>` (`:first`, `:left`, '
-      + '`:right`, `:blank`), spaced or not. css-page-3 §3 requires them. '
-      + '`@page wide { … }` — a bare page name — does parse in Jess.'
+    source: '@page :first { margin: 1cm; }'
   },
   {
     id: '@page with a name and a pseudo-page',
     group: 'at-rule',
-    source: '@page wide:left { margin: 1cm; }',
-    brokenIn: ['jess'],
-    defect: 'Same defect as the bare `<pseudo-page>` entry above.'
+    source: '@page wide:left { margin: 1cm; }'
   },
   {
     id: '@page with margin at-rules',
