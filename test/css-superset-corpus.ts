@@ -283,12 +283,7 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   {
     id: '@property with an unterminated last descriptor',
     group: 'at-rule',
-    source: '@property --x { syntax: "*"; inherits: true }',
-    brokenIn: ['jess'],
-    defect:
-      'Jess requires a trailing `;` on the last descriptor of an `@property` '
-      + 'body. css-syntax-3 §5.4.4 makes the final `;` optional in ANY declaration '
-      + 'list; adding it makes this exact source parse in Jess.'
+    source: '@property --x { syntax: "*"; inherits: true }'
   },
   {
     id: '@page bare',

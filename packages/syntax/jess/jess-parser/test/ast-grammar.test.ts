@@ -1818,6 +1818,23 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
+  it('accepts an @property body whose last descriptor omits the trailing `;`', () => {
+    const source = '@property --x { syntax: "*"; inherits: true }';
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
+    expect(direct.ok).toBe(true);
+    expect(direct.unconsumedFrom).toBeNull();
+    expect(parse(source)).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{
+        type: 'AtRuleBlock', name: '@property', prelude: { type: 'Keyword', src: '--x' },
+        rules: [{ type: 'Declaration', name: 'syntax' }, { type: 'Declaration', name: 'inherits' }]
+      }]
+    });
+
+    /* The optional final `;` is a separator, so the two spellings render identically. */
+    expect(serialize(parse(source))).toEqual(serialize(parse('@property --x { syntax: "*"; inherits: true; }')));
+  });
+
   it('keeps static @property descriptor lists and function values typed without admitting Jess values', () => {
     const source = '@property --offset { syntax: "<length>+"; inherits: false; initial-value: 1px 2px; } @property --accent { syntax: "<\\\\63olor>"; inherits: false; initial-value: color-mix(in srgb, rgb(1 2 3), blue); }';
     const root = parse(source);
