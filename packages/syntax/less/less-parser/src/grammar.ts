@@ -385,9 +385,10 @@ type SharedSyntax = {
   // Converged to the CSS base (inherited via compose): same token rule
   // token(noTrivia(sequence(<number>, '%'))), used only by keyframeSelector.
   Percentage: Combinator<string>;
-  // Converged to the CSS base (inherited via compose): same recognizer
-  // (number + optional unit, `%` admitted as a unit) and same `dimension()`
-  // reducer; differs only requireToken().value vs tokenText().
+  // Overrides the CSS base: same shape (number + optional unit, `%` admitted as
+  // a unit) and same `dimension()` reducer (differs only requireToken().value vs
+  // tokenText()), but swaps the unit terminal for `lessDimensionUnit` so a `-`
+  // glued to the unit before a comment is freed as a sum operator (G32/G34).
   Dimension: Combinator<ValueNode>;
   NthExpression: Combinator<unknown>;
   NthChildPseudoSelectorName: Combinator<string>;
@@ -644,6 +645,21 @@ const sumOperator = leaf(
   noTrivia(sequence(optional(mathTrivia), sumOperatorChar, optional(mathTrivia))),
   children => children[1] as string
 );
+/*
+ * A Less dimension unit is the CSS unit, EXCEPT a `-` glued to the unit and
+ * immediately followed by a comment is not part of it — it is a sum operator
+ * whose right operand a comment pads. The shared/CSS `dimensionUnit` admits any
+ * `-` not glued to a digit (`-(?![0-9])`), so `1px-/**\/2px` reads as one
+ * dimension with unit `px-` and never reaches `sumOperator` — the same
+ * comment-blind boundary G32 removed from the operator, one layer up in the
+ * operand. Rejecting a `-` before a comment opener (`/*` or `//`) as well stops
+ * the dimension at `px`, so the operator folds `1px-/**\/2px` to `-1px` like
+ * lessc while `1px-2px` (`-` glued to a digit) and `1px- /**\/2px` (`-` glued to
+ * whitespace, then a comment) are untouched. This narrower boundary is a
+ * Less-only value-math delta: CSS and SCSS keep the shared terminal, where the
+ * same input is a two-item list per their oracles (G32/G34, DESIGN-DECISIONS).
+ */
+const lessDimensionUnit = regex(/-?[_a-zA-Z\u0080-\uFFFF](?:[_a-zA-Z0-9\u0080-\uFFFF]|-(?![0-9]|\/[*/]))*|%/);
 // Generic Less at-rule names are grammar terminals. This grammar keeps
 // their prelude/body semantic only where the existing canonical AST has a
 // truthful structured representation; it never captures a block as text.
@@ -1677,6 +1693,30 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         lessMathOutsideParens(state, ':'))),
       span
     )
+  );
+  /*
+   * Same node as the CSS base, overridden only to swap the shared unit terminal
+   * for `lessDimensionUnit`: in Less a `-` glued to a unit and followed by a
+   * comment is a sum operator, not unit bytes, so `1px-/**\/2px` folds to `-1px`
+   * (G32/G34). Number recognition, the `%` unit, and the reduction are the CSS
+   * base's, unchanged — this is the smallest child Less value-math actually
+   * changes.
+   */
+  const Dimension = node(
+    'Dimension',
+    noTrivia(sequence(
+      g.NumberToken,
+      optional(lessDimensionUnit)
+    )),
+    (children) => {
+      const numberText = requireToken(children[0]).value;
+      const unit = children.length > 1 ? requireToken(children[1]).value : '';
+      return dimension(
+        Number(numberText),
+        unit,
+        `${numberText}${unit}`
+      );
+    }
   );
   const Value = node(
     'Value',
@@ -4813,6 +4853,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     FormatFunction,
     CallArgumentValue,
     FunctionStatement,
+    Dimension,
     Value,
     SelectorCapture,
     MathAtom,
