@@ -457,15 +457,18 @@ const unknownAtRuleBody = noTrivia(scanTo(
   literal('}'),
   { skip: [unknownAtRuleBrace] }
 ));
-// Trivia that may surround an UNAMBIGUOUS product operator (`*`/`/`/`%`):
-// whitespace, `//` line comments, or `/* */` block comments. This matches CSS,
-// where `*` and `/` need no whitespace and comments are freely allowed around
-// them (`1/**/*/**/2`, `1 // c\n * 2`). It is deliberately NOT used by the sum
-// terminal: `+`/`-` are sign-ambiguous, so — like CSS `calc()` — they require
-// real whitespace and comments do NOT count (see `sumOperator`). In
-// operator position this trivia is a separator the arithmetic consumes; a comment
-// in value-LIST position (`1 /* c */ 2`, no operator char follows) makes the
-// operator loop backtrack and is left as preserved value syntax.
+// Trivia that may surround an arithmetic operator: whitespace, `//` line
+// comments, or `/* */` block comments. This matches CSS, where `*` and `/` need
+// no whitespace and comments are freely allowed around them (`1/**/*/**/2`,
+// `1 // c\n * 2`). Both the product operators (`*`/`/`/`%`) and the sum operator
+// (`+`/`-`, see `sumOperator`) name this same table for their gaps — a comment
+// counts as a separator wherever whitespace does (css-syntax-3 §4). The sum
+// operator additionally states its own sign POLICY: `+`/`-` is sign-ambiguous,
+// so a real-whitespace pad before a glued digit is a signed list item, not
+// subtraction — that distinction is the operator's business, not this table's.
+// In operator position this trivia is a separator the arithmetic consumes; a
+// comment in value-LIST position (`1 /* c */ 2`, no operator char follows) makes
+// the operator loop backtrack and is left as preserved value syntax.
 const mathTrivia = classifiedTrivia({
   whitespace: whitespaceRun,
   lineComment,
@@ -597,44 +600,50 @@ const preservedSlashBoundary = leaf(
   }
 );
 /*
- * `+`/`-` are ambiguous between a binary operator and a leading sign, so the
- * operand must be SEPARATED from the operator for this to be arithmetic: `1 - 2`
- * subtracts, `1 -2` is a space list whose second item is the signed dimension.
- * Less additionally treats the fully glued `1-2` as arithmetic.
+ * `+`/`-` are ambiguous between a binary operator and a leading sign. A sign is
+ * the ONE non-arithmetic shape: real whitespace immediately before the operator
+ * AND a digit glued immediately after it — `1 -2` is a space list whose second
+ * item is the signed dimension. Everything else is arithmetic: `1 - 2`, `1-2`,
+ * `1px-2px` all subtract.
  *
- * What separates them is the DIALECT'S trivia, not a local spelling of it. This
- * used to hand-spell the pad as `comment* ws+ (comment ws*)*`, which is a second,
- * private definition of the trivia table inside one expression production
- * (DESIGN-DECISIONS G24) — and it drifted from the table in a way that was
- * visible in emitted CSS: because the pad REQUIRED a whitespace run, a comment
- * standing alone as the separator did not count, so `1px/**\/-/**\/2px` performed
- * no arithmetic and the comment bytes were emitted verbatim as value content.
- * `mathTrivia` is the same `classifiedTrivia` the `*`/`/`/`%` product operators
- * above already use, and `classifiedTrivia` is one-or-more by construction, so
- * naming it bare (rather than under `optional()`) IS the "must be separated"
- * assertion. css-syntax-3 §4 makes a comment trivia wherever whitespace is, so
- * both Less comment forms now count, exactly as the document trivia table says.
+ * What may sit between the operator and its operands is the DIALECT'S trivia,
+ * consumed through `mathTrivia` — the same `classifiedTrivia` the `*`/`/`/`%`
+ * product operators above already use — rather than a private `[ \t\n\r\f]`
+ * spelling of it (DESIGN-DECISIONS G24). The gap runs are `optional()` because a
+ * fully glued `1-2` has no gap at all; naming the table (not re-spelling it) is
+ * what lets a comment count wherever whitespace does (css-syntax-3 §4).
  *
- * The separation is required on BOTH sides, which is what keeps `1 -2` a list:
- * there is a pad before the `-` and none after it, so this arm cannot match and
- * the glued arms below reject it on their `(?![0-9.])` guard. That guard is why
- * the pad may not be relaxed to one side — a comment defeats it, since in
- * `1/**\/-2px` the lookahead sees `/` rather than the digit actually there.
+ * The sign is then a POLICY the production states, not something a separator
+ * regex decides by accident (G24). `sumOperatorChar` matches a `+`/`-` UNLESS it
+ * is that sign: the first arm takes any operator not glued to a digit; the
+ * second takes one glued to a digit only when the byte before it is not
+ * whitespace — a comment is trivia, not that whitespace, so a comment-padded
+ * `1px/**\/-2px` folds to `-1px` like lessc while `1px -2px` stays a list (G32,
+ * pinned in `packages/jess/test/less/operator-comment-boundary.test.ts`). The
+ * lookbehind reads the byte the leading `mathTrivia` just consumed, so the sign
+ * test sees the real operand boundary whether or not a comment padded it. The
+ * mirror `1px-/**\/2px` needs a second fix upstream: the shared `dimensionUnit`
+ * absorbs the glued `-` into the unit (`px-`) before this operator can see it,
+ * so that half of G32 waits on the dimension-unit terminal, not this arm.
  *
- * The three arms remain separated-both-sides | glued-to-number | asymmetric
- * reject guard. This one is a `leaf()` for the same reason the product operators
- * are: the leaf's value is exactly the sign, so `lessFoldOperation` still reads a
- * flat operator stream and no CST arity moves. Folding the pad into the operator
- * terminal instead would leave the reducer recovering the sign with `.trim()`
- * from bytes that can now hold a comment's own `/` and `*` — the parser handing
- * core a value to re-parse.
+ * `notAdjacent({ kinds: ['whitespace'] })` is the blessed spelling of this
+ * left-boundary test, but it is inert here: the whole math region runs under
+ * `noTrivia`, and an adjacency assertion probes AMBIENT trivia (which `noTrivia`
+ * clears), so it always reports "adjacent" no matter the input. It also may not
+ * be a sequence's first term, and the operand whose gap must be measured lives
+ * in the enclosing `many(...)`, one sequence out. So the lookbehind states the
+ * same policy in place; a `noTrivia`-compatible adjacency feature would retire
+ * it (tracked as G34 in DESIGN-DECISIONS.md).
+ *
+ * `leaf()` keeps the operator a single flat child — its value is exactly the
+ * sign — so `lessFoldOperation` still reads an alternating operand/operator
+ * stream and no CST arity moves.
  */
-const sumOperatorSpaced = leaf(
-  noTrivia(sequence(mathTrivia, keywords(['-', '+']), mathTrivia)),
+const sumOperatorChar = noTrivia(regex(/[-+](?![0-9.])|(?<![ \t\n\r\f])[-+](?=[0-9.])/));
+const sumOperator = leaf(
+  noTrivia(sequence(optional(mathTrivia), sumOperatorChar, optional(mathTrivia))),
   children => children[1] as string
 );
-const sumOperatorGlued = regex(/[-+](?=[0-9.])|[ \t\n\r\f]*[-+](?![0-9.])[ \t\n\r\f]*/);
-const sumOperator = choice(sumOperatorSpaced, sumOperatorGlued);
 // Generic Less at-rule names are grammar terminals. This grammar keeps
 // their prelude/body semantic only where the existing canonical AST has a
 // truthful structured representation; it never captures a block as text.
