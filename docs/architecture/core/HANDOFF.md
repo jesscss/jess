@@ -61,6 +61,13 @@
     different ways each, and a fifth copy of scope already sits on `VariableWrite`. The
     target is ONE shared lookup descriptor; adding a `lookup` or `keyKind` field to a
     reference node without it makes the duplication worse, not better.
+11. **What's next / roadmap?** The cross-session roadmap and its priority order live on the
+    jesscss GitHub Project board #2 — <https://github.com/orgs/jesscss/projects/2> — organized
+    as **Phase** (`0 · Foundations` → `1 · Less parity` → `2 · Sass+ parity` →
+    `3 · .jess completion` → `4 · 2.0 release`) crossed with a **Status** lane (Owner-decision,
+    Ready, In flight, Parked-behind-fold, Done). It is a prioritized *queue* only; this ledger
+    (`DESIGN-DECISIONS.md`) stays the decision record, and Less-parity cards are grounded in the
+    `expectedFailureFixtures` registry in `packages/jess/test/less/all-less.test.ts`, not memory.
 
 ## ACTIVE PLAN — V19 one evaluator, nesting as a write-time projection
 
