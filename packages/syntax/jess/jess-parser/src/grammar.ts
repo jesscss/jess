@@ -4196,7 +4196,17 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         literal(':'),
         g.HeaderValue
       )),
-      literal(';')
+
+      /*
+       * `;` SEPARATES descriptors; it never TERMINATES the last one. The final
+       * descriptor before `}` may omit it, exactly as css/less/scss spell every
+       * declaration-list body — the shared `declarationListDeclaration` separator
+       * `choice(literal(';'), peek(literal('}')))`. See DESIGN-DECISIONS P11.
+       */
+      choice(
+        literal(';'),
+        peek(literal('}'))
+      )
     ),
     (children, fields) => {
       const value = children[2];
