@@ -52,16 +52,65 @@ describe('Jess constructs discovered outside the parser suites', () => {
     ['leading only', 'a { b: ( c) }'],
     ['trailing only', 'a { b: (c ) }'],
     ['arithmetic group', 'a { b: (1 + 2) }']
-  ])('PINNED DEFECT — rejects a bare parenthesised component value (%s)', (_label, source) => {
+  ])('accepts a plain parenthesised component value (%s)', (_label, source) => {
     /*
      * Valid CSS is valid in every dialect, one way. `b: (c)` is an ordinary
-     * css-syntax-3 §5.4.7 simple block and CSS, Less and SCSS all accept at
-     * least the tight spelling — Jess accepts none of them. Jess spells an
-     * *expression* group `$(…)`, which is a separate construct and is
-     * asserted below; that spelling does not license rejecting the plain
-     * paren block.
+     * css-syntax-3 §5.4.7 simple block, and CSS, Less and SCSS all accept it
+     * (P18(a), DESIGN-DECISIONS.md). The parens make a plain component-value
+     * block, NOT the `$(…)` expression group asserted below — the block is
+     * inert and never evaluated. A bare infix arithmetic value with no parens
+     * is a separate construct that still rejects (P17), asserted below.
+     */
+    expect(() => parse(source)).not.toThrow();
+  });
+
+  it('models a parenthesised component value as a paren Block', () => {
+    expect(firstRule('a { b: (c) }')).toMatchObject({
+      rules: [{
+        type: 'Declaration',
+        name: 'b',
+        value: { type: 'Block', delimiter: 'paren', value: { type: 'Keyword', src: 'c' } }
+      }]
+    });
+  });
+
+  it('keeps a bare infix arithmetic value a parse error outside parens (P17)', () => {
+    /*
+     * P17: `.jess` arithmetic is spelled ONLY as `$(…)`; a bare `1 + 2` at
+     * value top level "shouldn't even parse". The paren block above does not
+     * license the unparenthesised form — the boundary is exactly the parens.
+     */
+    expect(() => parse('a { b: 1 + 2 }')).toThrow();
+  });
+
+  it.each([
+    ['empty', 'a { b: () }'],
+    ['whitespace only', 'a { b: ( ) }']
+  ])('keeps an empty parenthesised block a parse error (%s)', (_label, source) => {
+    /*
+     * P18(a) settles `(c)` / `( c )` / `(1 + 2)` and is silent on the empty
+     * block. The raw simple-block fallback declines it so `()` stays the clean
+     * rejection Jess already produced, rather than minting an empty `Any`.
      */
     expect(() => parse(source)).toThrow();
+  });
+
+  it.each([
+    ['nested parens', 'a { b: (1 + (2)) }', '1 + (2)'],
+    ['nested brackets', 'a { b: (1 + [2]) }', '1 + [2]'],
+    ['nested braces', 'a { b: (1 + {2}) }', '1 + {2}'],
+    ['string with a close paren', 'a { b: ("a)b" + 2) }', '"a)b" + 2'],
+    ['comment with a close paren', 'a { b: (1 /* ) */ + 2) }', '1 /* ) */ + 2']
+  ])('keeps a nested delimiter, string or comment from closing the raw block early (%s)', (_label, source, inner) => {
+    /*
+     * The raw §5.4.7 fallback scans to the matching `)`, skipping balanced
+     * groups, strings and comments — so an inner `)` cannot end the block.
+     * Pins the balanced/skip helpers: without them the block would close at the
+     * first inner `)` and the tail would be a parse error.
+     */
+    expect(firstRule(source)).toMatchObject({
+      rules: [{ type: 'Declaration', name: 'b', value: { type: 'Block', delimiter: 'paren', value: { type: 'Any', src: inner } } }]
+    });
   });
 
   it('accepts the Jess expression group', () => {
