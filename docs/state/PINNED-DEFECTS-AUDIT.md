@@ -108,7 +108,7 @@ Pinned through `<dialect>-parser/test/css-superset-constructs.test.ts:58`
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | D11 | Unbalanced `]` inside a custom property | css:183, less:146, scss:145, jess:156 | all four | `a{--x: foo(] bar}` → parse error → declaration keeps the token stream (css-syntax-3 §5.4.8: stray `]` is a consumed, non-fatal parse error) | HIGH-R | holds | P2 (custom-property values are a permissive arbitrary token stream) — this input violates the ruled shape | the custom-property value production balances brackets; make a stray closer a consumed token |
 | D12 | Attribute-flag spacing divergence | less:110 (Less keeps `[href="x" i]`); css side pinned as normal expectation in css `discovered-constructs.test.ts`; `css-parser/test/byte-identity.divergences.json` "open" | less vs css/scss/jess | `a[href="x" i]` → Less emits `[href="x" i]`, css/scss/jess emit `[href="x"i]` → ONE spelling in all four (which one is the ruling) | MEDIUM | holds | the json entry records it as needing an owner ruling; unruled | owner picks: byte-identity (keep authored space) or canonicalise; then align the other side |
-| D13 | Functional media-query prelude | less:182 | less | `@media foo(bar) {…}` → parse error → accepted (css, scss, jess accept) | HIGH-R | holds | unowned | Less media-query prelude override lacks the `<general-enclosed>` function form the css base has |
+| D13 | Functional media-query prelude | less:182 | less | `@media foo(bar) {…}` → parse error → accepted (css, scss, jess accept) | HIGH-R | FIXED (pin flipped to acceptance) | unowned (spec-mandated; SEMANTIC-INVARIANTS §4 one-way rule) | DONE — Less `QueryTerm` gained a `<general-enclosed>` function arm reusing the existing `Enclosed` node (`peek(EnclosedFunctionName)`-gated). less now byte-matches css/jess (`@media foo(bar){…}`). Follow-up (separate, scss-only): scss renders `@media foo (bar){…}` — it reads `foo(bar)` as keyword + paren block, not a general-enclosed function |
 | D14 | Bare parenthesised component value | jess:55 | jess | `a { b: (c) }`, `( c )`, `(1 + 2)` → parse error → accepted (css-syntax-3 §5.4.7 simple block); css/less/scss accept the tight form | HIGH-R | holds | P18 OPEN (where the CSS-superset guarantee stops in `.jess`) | needs the P18 ruling; test comment says `$(…)` does not license rejecting the plain paren block |
 | D15 | Less/Jess reject Sass module forms | less:206 (`ns.fn()`, `ns.$var`, `map.get($m,k)`, `color.mix(red,blue)`, `ns.$v: value;`), jess:249 (`ns.fn()`, `ns.$var`, `f($x: 1)`, `f($x...)`) | less, jess | Sass-only syntax → parse error → parse error is "arguably right"; pinned as leakage guards for whatever admits them in scss | LOW | holds | unowned (deliberate guard, not a defect claim) | none; flip only if a ruling admits these in Less/Jess |
 | D16 | SCSS star-hack property name lost | scss:92 | scss | `a{*color:red}` → `Declaration{name:"*", value:red}` (`color` discarded, parse succeeds) → `name:"*color"` as Less produces | HIGH | holds | unowned | scss property-name production takes `*` as the whole name; extend it to `*` + ident like Less |
@@ -155,9 +155,9 @@ Pinned through `<dialect>-parser/test/css-superset-constructs.test.ts:58`
 
 - D12 and D37 are one defect recorded in two places; counted once.
 - HIGH (3): D16, D19 (jess half), D25.
-- HIGH-R (21): D1–D11, D13, D14, D18, D20, D21, D23, D24, D24a, D26, D27.
+- HIGH-R (20 open; D13 FIXED): D1–D11, D14, D18, D20, D21, D23, D24, D24a, D26, D27.
   D19's scss half is folded into D19.
 - MEDIUM (8): D12, D22, D28, D29, D30, D31, D35, D36.
 - LOW (6): D15, D17, D32, D33, D34, D38 (D38 is by design).
-- Unowned (22): D1, D2, D3, D4, D6, D7, D8, D10, D13, D15, D16, D17, D18,
+- Unowned (21 open; D13 FIXED): D1, D2, D3, D4, D6, D7, D8, D10, D15, D16, D17, D18,
   D20, D22, D24, D25, D28, D29, D31, D32, D34.
