@@ -61,6 +61,7 @@ describe('Less math with a comment on the operator boundary', () => {
     ['spaced, with an interior comment', '1px /**/ - 2px'],
     ['comment after the operator', '1px - /**/ 2px'],
     ['comment before the operator, spaced after', '1px/**/- 2px'],
+    ['comment before the operator, glued after', '1px/**/-2px'],
     ['line comment as the separator', '1px //c\n- 2px'],
     ['addition, glued on both sides', '1px/**/+/**/2px']
   ])('treats a comment on the boundary as an operand separator (%s)', async (_label, value) => {
@@ -96,18 +97,26 @@ describe('Less math with a comment on the operator boundary', () => {
   });
 
   /*
-   * Unchanged, and NOT fixed by this: a pad on one side with the operator glued
-   * to a number on the other. lessc folds these to `-1px`; we leave them as
-   * lists. The glued arms use `(?![0-9.])` as their proxy for "this sign is not
-   * glued to a number", and a comment defeats that proxy — in `1px/**\/-2px`
-   * the lookahead sees `/` rather than the digit that is actually there. Fixing
-   * it needs the operand's adjacency asserted directly rather than sniffed
-   * through a lookahead, which is what `notAdjacent()` is for.
+   * Still pinned, but the root cause is NOT the sum operator — it is upstream in
+   * the shared `dimensionUnit` terminal. `1px-/**\/2px` never reaches the sum
+   * operator: `dimensionUnit` (`packages/parser-shared/src/recognition.ts`,
+   * mirrored in `packages/syntax/css/css-parser/src/grammar.ts`) admits a hyphen
+   * that is not glued to a DIGIT — `-(?![0-9])` — so the glued `1px-` is read as
+   * one dimension with unit `px-` before any operator can see it. That lookahead
+   * is comment-blind in the same way the sum operator's was: `1px-2px` splits
+   * (`-` followed by `2`) but `1px-/**\/2px` does not (`-` followed by `/`).
+   *
+   * lessc 4.x folds this to `-1px`; the fix belongs in the dimension-unit
+   * terminal and is shared across all four dialects, so it is deliberately out
+   * of this less-parser-only change. Its mirror `1px/**\/-2px` is comment-BEFORE
+   * the operator and folds today (moved to the pass group above), because the
+   * dimension stops at the comment and the sum operator handles the rest.
+   *
+   * PINNED DEFECT: asserts the CURRENT, WRONG behaviour. When the dimension-unit
+   * terminal stops absorbing an operator `-`, this pin fails — flip it to
+   * `-1px` and drop the marker.
    */
-  it.each([
-    ['comment before, glued after', '1px/**/-2px'],
-    ['glued before, comment after', '1px-/**/2px']
-  ])('PINNED DEFECT — leaves a one-sided pad unfolded where lessc folds it (%s)', async (_label, value) => {
-    await expect(render(`.a { width: ${value}; }`)).resolves.toBe(`.a { width: ${value}; }`);
+  it('PINNED DEFECT — leaves a glued-before pad unfolded where lessc folds it', async () => {
+    await expect(render('.a { width: 1px-/**/2px; }')).resolves.toBe('.a { width: 1px-/**/2px; }');
   });
 });
