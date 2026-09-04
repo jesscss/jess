@@ -775,6 +775,24 @@ describe('Jess AST grammar facts', () => {
     });
   });
 
+  it('keeps css-syntax-3 §4.3.6 escapes inside an unquoted url() body', () => {
+    /*
+     * `\ ` and `\)` are ordinary escaped code points in an unquoted url-token,
+     * so the base css/less/scss dialects accept them and Jess must too. The
+     * escaped bytes stay verbatim in the Url payload.
+     */
+    expect(parse('a { background: url(a\\ b.png) }')).toMatchObject({
+      rules: [{ type: 'Ruleset', rules: [
+        { name: 'background', value: { type: 'Url', value: { type: 'Any', src: 'a\\ b.png' } } }
+      ] }]
+    });
+    expect(parse('a { background: url(a\\)b.png) }')).toMatchObject({
+      rules: [{ type: 'Ruleset', rules: [
+        { name: 'background', value: { type: 'Url', value: { type: 'Any', src: 'a\\)b.png' } } }
+      ] }]
+    });
+  });
+
   it('reads a collection member in condition position exactly as in value position', () => {
     const source = '$c: { x: 4px; }; $if ($c.x > 0) { .a { width: $($c.x * 2); } }';
     expect(parse(source)).toMatchObject({

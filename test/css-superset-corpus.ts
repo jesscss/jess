@@ -590,19 +590,12 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   {
     id: 'url() with an escaped space',
     group: 'value',
-    source: 'a { background: url(a\\ b.png) }',
-    brokenIn: ['jess'],
-    defect:
-      'css-syntax-3 §4.3.6 consumes a url-token with escapes, so `\\ ` and '
-      + '`\\)` are ordinary escaped code points inside an unquoted url. Jess '
-      + 'rejects both.'
+    source: 'a { background: url(a\\ b.png) }'
   },
   {
     id: 'url() with an escaped close paren',
     group: 'value',
-    source: 'a { background: url(a\\)b.png) }',
-    brokenIn: ['jess'],
-    defect: 'Same defect as the escaped-space url() above.'
+    source: 'a { background: url(a\\)b.png) }'
   },
   {
     id: 'attr() bare',
