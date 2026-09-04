@@ -463,6 +463,18 @@ const calcSumOperator = sequence(
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const commentTrivia = regex(/\/(?:\*(?:[^*]|\*(?!\/))*\*\/|\/[^\n\r]*)/);
 
+/*
+ * Inside a compound selector a block comment is trivia, never a separator:
+ * `.e/*y*\/.f` is the compound `.e.f`, not the descendant `.e .f`
+ * (DESIGN-DECISIONS.md G26; css-syntax-3 §4 removes comments at tokenisation,
+ * so nothing separates the parts by the time selector structure is decided).
+ * Whitespace is deliberately absent from this table — real whitespace between
+ * simple selectors IS the descendant combinator, and it is resolved one level
+ * up in `ComplexSelector` under the document's ambient trivia. Mirrors the css
+ * base's `compoundTrivia`.
+ */
+const compoundTrivia = classifiedTrivia({ comment: blockComment });
+
 /* Keep custom-value comments visible as source trivia without making them
  * semantic custom-value parts. Jess names every comment `comment` in its
  * document trivia, and root capture is selected against that one table, so the
@@ -2096,16 +2108,19 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
   const PseudoSelectorCompound = node<SelectorTerm>(
     'PseudoSelectorCompound',
-    noTrivia(oneOrMore(choice(
-      parser(
-        { trivia: whitespace },
-        g.AttributeSelector
-      ),
-      g.PseudoSelector,
-      g.Parent,
-      g.NamespaceTypeSelector,
-      g.BasicSelector
-    ))),
+    noTrivia(parser(
+      { trivia: compoundTrivia },
+      oneOrMore(choice(
+        parser(
+          { trivia: whitespace },
+          g.AttributeSelector
+        ),
+        g.PseudoSelector,
+        g.Parent,
+        g.NamespaceTypeSelector,
+        g.BasicSelector
+      ))
+    )),
     reduceCompound
   );
   const selectorCombinator = choice(
@@ -5148,18 +5163,21 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
 
   const CompoundSelector = node<SelectorTerm>(
     'CompoundSelector',
-    noTrivia(oneOrMore(choice(
-      parser(
-        { trivia: whitespace },
-        g.AttributeSelector
-      ),
-      g.PseudoSelector,
-      g.InterpolatedParentSuffix,
-      g.InterpolatedSimple,
-      g.Parent,
-      g.NamespaceTypeSelector,
-      g.BasicSelector
-    ))),
+    noTrivia(parser(
+      { trivia: compoundTrivia },
+      oneOrMore(choice(
+        parser(
+          { trivia: whitespace },
+          g.AttributeSelector
+        ),
+        g.PseudoSelector,
+        g.InterpolatedParentSuffix,
+        g.InterpolatedSimple,
+        g.Parent,
+        g.NamespaceTypeSelector,
+        g.BasicSelector
+      ))
+    )),
     reduceCompound
   );
 

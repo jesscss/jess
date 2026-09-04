@@ -109,18 +109,51 @@ describe('Jess constructs discovered outside the parser suites', () => {
     });
   });
 
-  it('PINNED DEFECT — splits a compound selector on a comment', () => {
+  it('keeps a compound selector compound across a comment', () => {
     /*
      * `a/*c*` + `/.b` is the single compound `a.b`: a comment is trivia, not
-     * a descendant combinator, so it must not introduce one. Jess parses it
-     * as the *descendant* `a .b` — byte-identical output to the authored
-     * source, so it never surfaced, but the selector means something else
-     * entirely. CSS and Less both produce a CompoundSelector here; SCSS
-     * rejects the input (pinned in its own suite). Three different answers
-     * to one construct.
+     * a descendant combinator, so it must not introduce one (DESIGN-DECISIONS
+     * G26). CSS and Less already produce a CompoundSelector here; Jess now
+     * agrees. Only the no-whitespace form is compound — `a/*x*` + `/ b` and
+     * `a /*x*` + `/ b` stay descendant, asserted below.
      */
     expect(firstRule('a/*c*/.b{c:d}')).toMatchObject({
-      selector: { selectors: [{ type: 'ComplexSelector', value: [{ text: 'a' }, ' ', { text: '.b' }] }] }
+      selector: { selectors: [{ type: 'CompoundSelector', value: [{ text: 'a' }, { text: '.b' }] }] }
+    });
+  });
+
+  it('keeps a comment with adjacent whitespace a descendant separator', () => {
+    /*
+     * A block comment followed (or preceded) by real whitespace is an authored
+     * descendant combinator, not a manufactured one — the compound stops at the
+     * whitespace exactly as CSS and Less do. Guards against widening G26 past
+     * the no-whitespace case.
+     */
+    expect(firstRule('a/*x*/ b{c:d}')).toMatchObject({
+      selector: { selectors: [{ type: 'ComplexSelector', value: [{ text: 'a' }, ' ', { text: 'b' }] }] }
+    });
+  });
+
+  it('keeps a compound compound across a comment inside a pseudo argument', () => {
+    /*
+     * The same rule holds inside a functional pseudo: `:is(.e/*y*` + `/.f)` is
+     * `:is(.e.f)`, matching the CSS base, which reuses the one compound
+     * production everywhere.
+     */
+    expect(firstRule('a:is(.e/*y*/.f){c:d}')).toMatchObject({
+      selector: {
+        selectors: [{
+          type: 'CompoundSelector',
+          value: [
+            { text: 'a' },
+            {
+              type: 'PseudoSelector',
+              name: ':is',
+              args: { selectors: [{ type: 'CompoundSelector', value: [{ text: '.e' }, { text: '.f' }] }] }
+            }
+          ]
+        }]
+      }
     });
   });
 
