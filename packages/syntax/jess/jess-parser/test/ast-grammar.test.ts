@@ -3512,3 +3512,32 @@ describe('keyword boundaries run to full ident-continue', () => {
     expect(() => parse('.a { $extendé .b; }')).toThrow(JessParseError);
   });
 });
+
+describe('@layer dotted sub-layer names', () => {
+  it('reads a dotted name in a statement list as ONE Keyword, not a class selector', () => {
+    expect(parse('@layer a, b.c;')).toMatchObject({
+      rules: [{
+        type: 'AtRuleStatement',
+        name: '@layer',
+        prelude: {
+          type: 'List',
+          sep: ',',
+          value: [{ type: 'Keyword', src: 'a' }, { type: 'Keyword', src: 'b.c' }]
+        }
+      }]
+    });
+    expect(serialize(parse('@layer a, b.c;')).css).toBe('@layer a, b.c;\n');
+  });
+
+  it('reads a dotted block-header name as ONE Keyword', () => {
+    expect(parse('@layer a.b { c { color: red } }')).toMatchObject({
+      rules: [{
+        type: 'AtRuleBlock',
+        name: '@layer',
+        prelude: { type: 'Keyword', src: 'a.b' }
+      }]
+    });
+    expect(serialize(parse('@layer a.b { c { color: red } }')).css)
+      .toBe('@layer a.b {\n  c {\n    color: red;\n  }\n}\n');
+  });
+});
