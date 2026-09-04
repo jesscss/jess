@@ -175,7 +175,8 @@ describe('CSS constructs discovered outside the parser suites', () => {
     /*
      * These parsed while silently losing the `selector` / `foo` name off the
      * prelude — a wrong tree from a successful parse, the hardest kind to
-     * notice. Less still rejects the media form; that is pinned in its suite.
+     * notice. The media form is now accepted as `<general-enclosed>` in every
+     * dialect (Less's acceptance is pinned in its own discovered-constructs suite).
      */
     expect(() => parse(source)).not.toThrow();
   });

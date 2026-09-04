@@ -3307,6 +3307,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       attempt(g.MixinReference),
       g.QueryFeature,
       g.VariableReference,
+      // `<general-enclosed>` function form (media-queries-5 §2.1/§3.1:
+      // `<function-token> <any-value> )`), e.g. `@media foo(bar)`. This is the
+      // SAME general-enclosed node `@supports` already reuses; the `peek`
+      // restricts entry to the function arm so a bare `( … )` group still falls
+      // through to `QueryFeature`, matching the CSS base's term-level shape
+      // (which admits the function form but no bare-paren general-enclosed).
+      sequence(peek(g.EnclosedFunctionName), g.Enclosed),
       g.QueryNonOnlyKeyword
     ),
     children => requireValueNode(children[0])
