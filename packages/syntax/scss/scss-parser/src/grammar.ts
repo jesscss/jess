@@ -422,10 +422,13 @@ const scssFactory = (g: ScssInputRules) => {
    * CSS owns the ordinary property identifier. SCSS adds only the legacy `*`
    * declaration hack, so this is a disjoint two-arm extension rather than a
    * copied identifier regex. Keep the starred arm trivia-free: `* color` is
-   * not one property name.
+   * not one property name. `token(...)` collapses `*` + ident into ONE token so
+   * `*color` is the whole property name (`Declaration{name:'*color'}`), matching
+   * Less's `DeclarationPropertyToken`; without it the reducer reads only the `*`
+   * child and silently drops the ident.
    */
   const propertyIdentifier = choice(
-    noTrivia(sequence(literal('*'), g.Identifier)),
+    token(noTrivia(sequence(literal('*'), g.Identifier))),
     g.Identifier
   );
 

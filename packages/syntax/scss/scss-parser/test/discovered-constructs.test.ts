@@ -89,16 +89,34 @@ describe('SCSS constructs discovered outside the parser suites', () => {
     });
   });
 
-  it('PINNED DEFECT — drops the property name off a star-hack declaration', () => {
+  it('keeps the whole property name on a star-hack declaration', () => {
     /*
-     * `*color: red` must reach the AST with `name: "*color"` — the leading
-     * `*` is an IE hack that is part of the property name, and Less produces
-     * exactly that. SCSS instead produces `name: "*"` with `red` as the
-     * value, silently discarding `color`. This is data loss, not a rejection,
-     * which is why it went unnoticed: the parse "succeeds".
+     * `*color: red` reaches the AST with `name: "*color"` — the leading `*` is
+     * an IE hack that is part of the property name, and Less produces exactly
+     * that (G31 / pinned-defect D16). SCSS formerly produced `name: "*"` with
+     * `color` silently discarded; `token(...)` around the starred property arm
+     * now collapses `*color` into one property-name token.
      */
     expect(firstRule('a{*color:red}')).toMatchObject({
-      rules: [{ type: 'Declaration', name: '*', value: { type: 'Keyword', src: 'red' } }]
+      rules: [{ type: 'Declaration', name: '*color', value: { type: 'Keyword', src: 'red' } }]
+    });
+  });
+
+  it('keeps the whole property name on other star-hack properties', () => {
+    expect(firstRule('a{*width:1px}')).toMatchObject({
+      rules: [{ type: 'Declaration', name: '*width', value: { type: 'Dimension' } }]
+    });
+  });
+
+  it('leaves an ordinary property name unstarred', () => {
+    expect(firstRule('a{color:red}')).toMatchObject({
+      rules: [{ type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' } }]
+    });
+  });
+
+  it('keeps a custom property name intact', () => {
+    expect(firstRule('a{--x:red}')).toMatchObject({
+      rules: [{ type: 'Declaration', name: '--x' }]
     });
   });
 
