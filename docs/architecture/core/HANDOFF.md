@@ -258,6 +258,43 @@ slices. No slice merges as part of this lane.
   performance sanity. Deterministic path/allocation/scan counts enforce the compiler
   architecture, and code deletion alone is not described as a speedup.
 
+## SESSION HANDOFF — 2026-09-04 (grammar / pinned-defects / Less-gaps driver)
+
+Ran the grammar-cleanup, pinned-defect, and Less-gap lanes while the V19
+one-evaluator fold (ACTIVE PLAN above) landed slices 1-4 in parallel
+(`refactor/one-evaluator-lookup-leaf`, PRs #134-136). No conflict: every grammar
+fix here is parser-side only; the fold owns `serialize.ts`.
+
+**Landed to `dev` this session** (each its own PR, byte-identity + ratchet-exact +
+two blocking reviewers): Percentage->Dimension convergence #137; `@container`
+gaps #138; jess pseudo leading-combinator #140; jess comment->compound #142; SCSS
+star-hack #143; jess paren block #144; ledger rulings #139/#145; gap fixes
+#146-#152 (D8/D1/D5/D7/D13/D6) and the Less comment-fold pair #141+#148. Also
+earlier this session: fork sync, Jess 2.0.0-alpha.16 + Less 5.0.0-alpha.3 publish
+(browser bundle on CDN), less-preview restyle + version-gated options, the
+release-preflight dedupe #130/#131 (381s->90s), and the pinned-defect audit #128
+(`docs/state/PINNED-DEFECTS-AUDIT.md`). Full defect->PR map + rulings are in that
+audit's "Update — 2026-09-04" section and `GRAMMAR-DEDUP-LOG.md`'s 2026-09-04 entry.
+
+**BLOCKED ON THE FOLD — do not re-dispatch until slice 5 lands:** the SCSS
+block-comment trivia family (audit D9/D17/D21/D23/D27 + the SCSS half of D19,
+ledger G26/G29). Measured 2026-09-03: declaring `blockComment` in the scss trivia
+table alone DROPS block comments, because SCSS tags ~4 statement `withSourceSpan`
+sites vs Less's ~41, so G28's block-interior replay has no anchor. It needs (a) an
+SCSS statement-source-span lane and (b) a block-interior replay that lives in the
+`serialize.ts` trivia code THIS fold is consolidating (slice 1 = "body trivia
+ownership into the one evaluator"). Sequence: fold slice 5 -> SCSS statement
+spans -> declare `blockComment`. See
+`memory:scss-trivia-family-blocked-on-statement-spans-and-fold`.
+
+**Owner decisions still pending** (surfaced, not decided): D22 (jess escaped-interp
+`~"x$(1+1)y"` AST-shape model change), D24 (scss `&`-as-value node model). Owned/
+spec-clear but unscheduled: D24a (scss `@-` namespace, G30), D18 (scss Sass module
+forms), D11 (unbalanced `]` in custom props, P2, all four), D10 (top-level CDO/CDC,
+near-zero value). Cleanups: scss `@media foo(bar)` stray-space render (chip), and
+two grammar dedups (four `<query-in-parens>` forks; typed at-rule prelude x3).
+
+
 ## SESSION HANDOFF — 2026-08-17, jess dev `6d7fbe82d` (CURRENT — read first)
 
 **CURRENT FOCUS (owner, 2026-08-17): strengthen the Less compilation story so we can

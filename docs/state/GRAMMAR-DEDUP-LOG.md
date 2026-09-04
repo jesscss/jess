@@ -1177,3 +1177,27 @@ now quantified — a big multi-week effort, not a switch.
   all green. Tracker rows Less #3, jess `Dimension`+`Percentage`, scss `Percentage`
   flipped ☑. The committed less/scss oracle baselines were already stale pre-edit
   (drift-detectors, not CI-gated) and are NOT rebaselined here.
+- 2026-09-04 — **Pinned-defect / Less-gap batch LANDED** (all merged to `dev`,
+  each its own PR with byte-identity oracle + ratchet-exact + both reviewers):
+  `@container` prelude gaps #138 (D2/D3/D4); jess pseudo leading-combinator #140
+  (D20, converged to the base — all five selector pseudos, not `:has()`-special);
+  jess comment→compound #142 (D19, G26); SCSS star-hack name #143 (D16, G31);
+  jess paren block #144 (D14, P18(a)); jess `url()` escapes #146 (D8); jess
+  `@layer` dotted names #147 (D1); Less comment-fold pair #141+#148 (D25, G32/G34
+  — Less-LOCAL `Dimension` override widening the hyphen lookahead, shared
+  `parser-shared` terminal UNTOUCHED so CSS/SCSS/.jess keep `px-`); jess
+  `@property` optional final `;` #149 (D5, P11); scss `var()` empty fallback #150
+  (D7); less `@media foo(bar)` #151 (D13, reused `Enclosed`); jess `@page`
+  pseudo-page #152 (D6). Rulings recorded in DESIGN-DECISIONS: G26, P18(a), G31
+  (corrected: css REJECTS the star hack), G32/G34, G33 (spaced value slash
+  by-design), P29 status note. Process: added a whole-file `npx eslint <grammar>`
+  step to every grammar-agent brief (CI lints the whole file; the pre-commit hook
+  only checks changed lines — a stray `lines-around-comment` sank #140 once); and
+  the `*-macro-compiled` Vite-server test flakes under CI load (rerun-don't-debug,
+  see `memory:flake-triage-shared-corpus-and-process-isolation`). Still parked:
+  the SCSS block-comment trivia family (D9/D17/D21/D23/D27 + D19 scss half) is
+  BLOCKED on SCSS statement source-spans + a block-interior replay in the
+  `serialize.ts` trivia code the one-evaluator fold is consolidating — do not
+  re-dispatch until that fold's slice 5 lands. Two grammar dedups noted for later
+  (the four `<query-in-parens>` forks vs scss's unified one; the typed at-rule
+  prelude duplicated across jess/less/scss).

@@ -61,6 +61,52 @@ plain CSS — `:has(> .b)` (D20), `@page :first` (D6), `url(a\ b.png)` (D8),
 `@layer a, b.c` (D1) — each is a stylesheet that compiles in css/less/scss
 and fails in `.jess`.
 
+## Update — 2026-09-04 (fixes landed since the snapshot)
+
+The body below is the 2026-09-03 snapshot at `a0b1e66ba` and is left as-is.
+Since then the following defects were fixed and their pins flipped to
+acceptance (each its own merged PR against `dev`):
+
+| Id | Fix | PR |
+| --- | --- | --- |
+| D1 | jess `@layer a, b.c` dotted sub-layer names | #147 |
+| D2/D3/D4 | `@container` parenthesised condition group + `style()` query | #138 |
+| D5 | jess `@property` optional final `;` (P11) | #149 |
+| D6 | jess `@page :first` / `wide:left` pseudo-page | #152 |
+| D7 | scss `var(--x,)` empty fallback | #150 |
+| D8 | jess `url(a\ b.png)` escapes | #146 |
+| D13 | less `@media foo(bar)` general-enclosed prelude | #151 |
+| D14 | jess accepts a plain paren block `(c)` (P18(a)) | #144 |
+| D16 | scss keeps the full `*color` star-hack name (G31) | #143 |
+| D19 | jess `a/*c*/.b` is the compound `a.b` (G26); jess half only | #142 |
+| D20 | jess selector pseudos accept a leading combinator (`:has(> .b)`) | #140 |
+| D25 | Less folds a comment-padded operator to `-1px` (G32 + G34, both comment sides) | #141, #148 |
+| D36 | value slash is a spaced separator — settled by-design, no code (G33) | #139 |
+
+Owner rulings recorded (PR #139, corrected #145): **G26** (comment never splits
+a compound selector), **P18(a)** (a plain paren block parses in `.jess`),
+**G31** (SCSS/Less recover the star-hack name; **css rejects it** — do not
+converge css), **G32/G34** (Less parses a comment-split subtraction as an
+operation; CSS/SCSS/.jess keep the two-token list — measured against lessc 4.6.3
+and dart-sass 1.62.1), **G33** (spaced value slash by design).
+
+**Still open / parked:**
+- SCSS block-comment trivia family (D9, D17, D21, D23, D27) and the SCSS half of
+  D19 — blocked on an SCSS statement-source-span lane + a block-interior replay
+  that lives in the `serialize.ts` trivia code the one-evaluator fold is
+  consolidating. Do not re-dispatch until the fold's slice 5 lands.
+- Value-ladder `noTrivia` pads (D26-scss, D27, D21 `@forward … with(…)`) — the
+  separate G25 sum-pad change, not the trivia table.
+- Need an owner model decision: D22 (jess `~"x$(1+1)y"` escaped-interp AST shape),
+  D24 (scss `&` as a value node).
+- Owned/spec-clear, not yet scheduled: D24a (scss `@-` namespace, G30),
+  D18 (scss Sass module `ns.$v:` / spread), D11 (unbalanced `]` in custom
+  properties, P2, all four), D10 (top-level CDO/CDC, all four — near-zero value).
+- Cleanups: the scss `@media foo(bar)` stray-space render divergence (a chip),
+  and two grammar dedups (the four dialects' separate `<query-in-parens>`; the
+  typed at-rule prelude duplicated across jess/less/scss).
+
+
 ## Reporter noise
 
 The strings scroll by because the root `vitest.config.ts:285` sets
