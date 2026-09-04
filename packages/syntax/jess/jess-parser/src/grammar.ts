@@ -24,7 +24,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { attempt, choice, classifiedTrivia, compose, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, sequence, token, when, word } from 'parseman' with { type: 'macro' };
+import { attempt, balanced, choice, classifiedTrivia, compose, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, token, when, word } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -187,6 +187,7 @@ type JessRules = {
   IdentifierOrFunction: Combinator<[string, FunctionCall | Keyword | Null | Url]>;
   CollectionEntry: Combinator<CollectionEntry>;
   Collection: Combinator<Collection>;
+  ParenValue: Combinator<ValueNode>;
   SquareValue: Combinator<ValueNode>;
   ValueAtom: Combinator<ValueNode>;
   ValueSpaceGroup: Combinator<ValueSlot>;
@@ -511,6 +512,38 @@ const scanSkipSingleQuoted = sequence(
   literal('\''),
   plainSingleQuotedText,
   literal('\'')
+);
+
+/*
+ * The raw interior of a plain `( … )` value block (css-syntax-3 §5.4.7 simple
+ * block). The structured `ParenValue` arm parses the interior as an ordinary
+ * Jess `Value` and wins for every component-value form Jess models; this scan
+ * is the fallback for the one residual Jess's value model deliberately omits —
+ * a bare infix arithmetic operator between numeric operands (`(1 + 2)`), which
+ * P17 keeps out of top-level values but which is still valid CSS inside a block.
+ * The parens make it an inert component-value block, NOT the `$( … )` math
+ * boundary, so the bytes are kept verbatim rather than evaluated. Nested groups,
+ * strings and comments are inert exactly as they are for the base's own raw
+ * paren scan, so an inner `)` cannot close the block early.
+ */
+const balancedParens = balanced(
+  '(',
+  ')',
+  { skip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted] }
+);
+const balancedBrackets = balanced(
+  '[',
+  ']',
+  { skip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted] }
+);
+const balancedBraces = balanced(
+  '{',
+  '}',
+  { skip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted] }
+);
+const rawParenInner = scanTo(
+  literal(')'),
+  { skip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted, balancedParens, balancedBrackets, balancedBraces] }
 );
 
 /*
@@ -2911,6 +2944,50 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
+   * `( … )` in value position — an ordinary css-syntax-3 §5.4.7 simple block, and
+   * CSS, Less and SCSS all accept it (`b: (c)`, `b: (1 + 2)`). Jess accepts it too
+   * (P18(a)): the parens make a plain component-value block, NOT the `$( … )` math
+   * boundary — it is inert and never evaluated. The structured arm parses the
+   * interior as an ordinary Jess `Value`, so `(c)` yields `block(Keyword c)`
+   * byte-for-byte with the base; the raw arm is the §5.4.7 fallback for the one
+   * residual Jess's value model omits — a bare infix operator between numbers
+   * (`(1 + 2)`), which P17 keeps out of TOP-LEVEL values (`b: 1 + 2` still rejects)
+   * but which is valid CSS inside a block. The `not` guard preserves Jess's
+   * pre-existing clean rejection of the empty `()` / `( )` block — P18(a) settles
+   * only `(c)` / `( c )` / `(1 + 2)` and is silent on the empty form, so this keeps
+   * the conservative existing behaviour rather than minting an empty `Any` block
+   * (the CSS base instead throws in its `()` reducer; the empty-block form is a
+   * separate open question, not settled here).
+   */
+  const ParenValue = node<ValueNode>(
+    'ParenValue',
+    choice(
+      noTrivia(sequence(
+        literal('('),
+        optional(valueTrivia),
+        g.Value,
+        optional(valueTrivia),
+        literal(')')
+      )),
+      noTrivia(sequence(
+        literal('('),
+        not(sequence(
+          optional(valueTrivia),
+          literal(')')
+        )),
+        rawParenInner,
+        literal(')')
+      ))
+    ),
+    (children) => {
+      const slot = children.find(isJessValueSlotValue);
+      return slot === undefined
+        ? block(any(requireToken(children[1]).value), 'paren')
+        : block(slot, 'paren');
+    }
+  );
+
+  /*
    * `[a]` in value position — CSS `<line-names>`, and the same bytes Sass spells
    * as a bracketed list. Mirrors the CSS base's `SquareValue` so `.jess` stays a
    * superset; named for the delimiter rather than for grid, because the shape has
@@ -2956,6 +3033,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * `$foo: bar { … }` a positioned parse error instead of a silent two-value read.
    */
   const nonBlockValueAtom = choice(
+    g.ParenValue,
     g.SquareValue,
     g.DollarValue,
     g.ExpressionLambda,
@@ -5539,6 +5617,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     IdentifierOrFunction,
     CollectionEntry,
     Collection,
+    ParenValue,
     SquareValue,
     InterpolatedValue,
     ValueAtom,
