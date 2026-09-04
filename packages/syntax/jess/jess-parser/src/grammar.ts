@@ -3534,7 +3534,32 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * `<layer-name>` (`@layer a, b.c`), which `QueryClause` alone reads as a bare
    * `b` and abandons at the `.`.
    */
-  const atRulePreludeClause = choice(g.DottedAtRuleKeyword, g.QueryClause);
+  /*
+   * A `@page` header is an optional page name followed by one or more
+   * `<pseudo-page>`s — `:first`, `:left`, `:right`, `:blank` (css-page-3 §3).
+   * They are header atoms, not selector syntax, so the whole header reduces to
+   * one `Any` joined without a separator — `@page wide:left` emits `wide:left`,
+   * byte-identical to the css/scss base (whose `@page` prelude is raw text). A
+   * spaced value list would instead emit `wide :left`, a valid-CSS byte
+   * divergence. `PagePseudo` mirrors the Less base's atom name and drives
+   * recognition; the header requires at least one pseudo so a bare page name
+   * (`@page wide`) still falls through to the query clause, and a generic query
+   * prelude keeps abandoning a stray top-level `:`.
+   */
+  const PagePseudo = node<ValueNode>(
+    'PagePseudo',
+    sequence(literal(':'), g.Identifier),
+    children => any(`:${requireToken(children[1]).value}`)
+  );
+  const pageHeader = node<ValueNode>(
+    'PageHeader',
+    sequence(optional(g.Keyword), oneOrMore(PagePseudo)),
+    children => any(children
+      .filter(isValueNode)
+      .map(value => value.type === 'Keyword' || value.type === 'Any' ? value.src : '')
+      .join(''))
+  );
+  const atRulePreludeClause = choice(g.DottedAtRuleKeyword, pageHeader, g.QueryClause);
   const AtRulePrelude = node<ValueNode | null>(
     'AtRulePrelude',
     sequence(
