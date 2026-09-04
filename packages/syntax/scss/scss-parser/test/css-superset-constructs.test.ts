@@ -17,6 +17,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { parseScssCst } from '@jesscss/scss-parser/cst';
+import { parse } from '@jesscss/scss-parser';
 import { acceptedIn, pinnedDefectsIn, CSS_CONSTRUCTS } from '../../../../../test/css-superset-corpus.js';
 
 const DIALECT = 'scss';
@@ -66,4 +67,21 @@ describe('CSS construct space — SCSS grammar', () => {
       ).toBe(false);
     }
   );
+
+  /*
+   * `var()`'s empty fallback (css-variables-1 §3 `<declaration-value>?`) builds a
+   * `var(--x, «empty»)` call whose fallback is the empty `Any` node — the same
+   * node css records for it — and leaves the non-empty fallback path untouched.
+   */
+  it('builds var(--x,) as a var call with an empty Any fallback', () => {
+    const value = parse('a { color: var(--x,) }').rules[0].rules[0].value;
+    expect(value).toMatchObject({
+      type: 'FunctionCall',
+      name: 'var',
+      args: [
+        { value: { type: 'Keyword', src: '--x' } },
+        { value: { type: 'Any', src: '' } }
+      ]
+    });
+  });
 });

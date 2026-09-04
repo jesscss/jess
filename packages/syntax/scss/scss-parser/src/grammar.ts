@@ -858,6 +858,55 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
+   * `var(--x,)` — a trailing comma with nothing after it — is `var()` with an
+   * EMPTY fallback: css-variables-1 §3 spells the fallback `<declaration-value>?`,
+   * so the empty value is well-formed and means "the empty value". Every other
+   * dialect accepts it; the generic `Call` argument list has no empty-argument
+   * slot, so `var(` alone is routed to a var-specific tail that permits it. The
+   * empty fallback lowers to `any('')`, the same node css records for it, so the
+   * built call is `var(--x, «empty»)`.
+   */
+  const VarEmptyFallback = node<ScssArgumentPair>(
+    'VarEmptyFallback',
+    noTrivia(sequence(
+      optional(valueTrivia),
+      literal(','),
+      optional(valueTrivia)
+    )),
+    (children) => {
+      const separator = children.map(child => requireToken(child).value).join('');
+      if (!separator.includes(',')) {
+        throw new TypeError('VarEmptyFallback lost its comma.');
+      }
+      return { separator, value: callArg(any('')) };
+    }
+  );
+
+  /*
+   * A var-specific tail: the SAME argument grammar and reducer as `Call`, plus a
+   * single optional trailing empty fallback. Absent that trailing comma the
+   * sequence is byte-for-byte `Call`, so `var(--x)` / `var(--x, red)` /
+   * `var(--x, var(--y, red))` build the identical `FunctionCall` they always
+   * have. The trailing arm is reachable ONLY from the `var(` dispatch key, so a
+   * generic `foo(a,)` stays the parse error css also rejects.
+   */
+  const VarCall = node<FunctionCall | Reference | IfValue>(
+    'Call',
+    sequence(
+      routed(),
+      optional(valueTrivia),
+      optional(sequence(
+        g.CallArgument,
+        many(g.ArgumentPair)
+      )),
+      optional(VarEmptyFallback),
+      optional(valueTrivia),
+      literal(')')
+    ),
+    children => reduceScssCall(requireToken(children[0]).value.slice(0, -1), children, 0)
+  );
+
+  /*
    * A namespaced CALL keeps its authored callee path in the `FunctionCall` name
    * (`color.mix`). That is the lossless store: the parser cannot know whether a
    * qualifier names a built-in `sass:` module or a `@use`d file, and splitting
@@ -868,6 +917,7 @@ const scssFactory = (g: ScssInputRules) => {
   const IdentifierOrFunction = dispatch(
     identOrFunction,
     caseInsensitive('url(', UrlFunction),
+    caseInsensitive('var(', VarCall),
     when(endsWith('('), Call),
     when(matches(/\.\$/), NamespacedVariable),
     otherwise(KeywordOrInterpolatedValue)

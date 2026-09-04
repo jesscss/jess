@@ -539,12 +539,7 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   {
     id: 'var() with an empty fallback',
     group: 'value',
-    source: 'a { color: var(--x,) }',
-    brokenIn: ['scss'],
-    defect:
-      'css-variables-1 §3 makes the fallback `<declaration-value>?`, so the '
-      + 'empty fallback is well-formed and means "the empty value". SCSS alone '
-      + 'rejects it, with or without a space before the `)`.'
+    source: 'a { color: var(--x,) }'
   },
   {
     id: 'calc() nested in calc()',
