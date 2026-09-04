@@ -759,7 +759,20 @@ describe('Jess AST grammar facts', () => {
         { name: 'custom', value: { type: 'Keyword', src: '--accent' } }
       ] }]
     });
-    expect(() => parse('.x { color: rgb (15 23 42); }')).toThrow(SyntaxError);
+
+    /*
+     * Only the GLUED `rgb(…)` opener is a FunctionCall. With a space, `rgb (…)`
+     * is an identifier followed by a plain css-syntax-3 §5.4.7 paren block
+     * (P18(a)) — the same two atoms CSS and SCSS produce — not a function call.
+     */
+    expect(parse('.x { color: rgb (15 23 42); }')).toMatchObject({
+      rules: [{ type: 'Ruleset', rules: [
+        { name: 'color', value: [
+          { type: 'Keyword', src: 'rgb' },
+          { type: 'Block', delimiter: 'paren' }
+        ] }
+      ] }]
+    });
   });
 
   it('reads a collection member in condition position exactly as in value position', () => {
