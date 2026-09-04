@@ -3167,6 +3167,19 @@ const scssFactory = (g: ScssInputRules) => {
     'QueryClause',
     choice(
       QueryOnlyClause,
+
+      /*
+       * A leading `<general-enclosed>` function term — media-queries-5 §2.1/§3.1
+       * (`<function-token> <any-value> )`), e.g. `@media foo(bar)`. This reuses
+       * the SAME general-enclosed node `QueryInParens` already carries; the
+       * arm only has to move earlier. Without it the media-type arm below reads
+       * `foo` as a keyword and `(bar)` as a separate feature, rendering
+       * `foo (bar)` with a stray space while css/less/jess render `foo(bar)`.
+       * `QueryFunction` opens on `QueryFunctionName`, whose `(?=\()` lookahead
+       * matches only a name glued to `(`, so a bare `( … )` group still falls
+       * through to the media-type / QueryCondition arms.
+       */
+      g.QueryFunction,
       sequence(
         QueryNonOnlyKeyword,
         optional(g.QueryAndOr),
