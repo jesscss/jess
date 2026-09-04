@@ -156,18 +156,17 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   {
     id: '@layer statement with a dotted sub-layer name',
     group: 'at-rule',
-    source: '@layer a, b.c;',
-    brokenIn: ['jess'],
-    defect:
-      'Jess consumes nothing. css-cascade-5 §6.1 spells `<layer-name>` as '
-      + '`<ident> ["." <ident>]*`, so `b.c` is ONE layer name; the Jess prelude '
-      + 'appears to see the class-selector/mixin-call reading of `.c` instead. '
-      + 'The undotted forms above parse in all four.'
+    source: '@layer a, b.c;'
   },
   {
     id: '@layer block',
     group: 'at-rule',
     source: '@layer base { a { color: red } }'
+  },
+  {
+    id: '@layer block with a dotted sub-layer name',
+    group: 'at-rule',
+    source: '@layer a.b { c { color: red } }'
   },
   {
     id: '@layer anonymous block',

@@ -264,6 +264,7 @@ type JessRules = {
   QueryDashedIdentifier: Combinator<Keyword>;
   QueryClause: Combinator<ValueNode>;
   QueryPrelude: Combinator<ValueNode>;
+  DottedAtRuleKeyword: Combinator<Keyword>;
   AtRulePrelude: Combinator<ValueNode | null>;
   ContainerStyleQuery: Combinator<FunctionCall>;
   ContainerQueryInParens: Combinator<ValueNode>;
@@ -3506,18 +3507,41 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
+   * A `<layer-name>` is `<ident> ['.' <ident>]*` (css-cascade-5 §6.1): the dotted
+   * sub-layer spelling is ONE identifier, not a class selector or a post-parse
+   * string. It is glued — `b.c`, never `b . c` — so the dots and idents parse
+   * under `noTrivia`, and it reduces to the same plain `Keyword` every other
+   * generic prelude name takes, matching the `DottedAtRuleKeyword` Less produces
+   * for the same header.
+   */
+  const DottedAtRuleKeyword = node<Keyword>(
+    'DottedAtRuleKeyword',
+    sequence(
+      g.Identifier,
+      oneOrMore(sequence(
+        noTrivia(literal('.')),
+        noTrivia(g.Identifier)
+      ))
+    ),
+    children => keyword(children.map(child => requireToken(child).value).join(''))
+  );
+
+  /*
    * A generic at-rule prelude is a comma-separated `<media-query-list>` that
    * may also be absent, so its clause is `QueryClause` exactly as `QueryPrelude`'s
    * is. It carried a second name for its CALLER, `AtRulePreludeTerm`, and that
-   * is what kept a byte-identical copy alive.
+   * is what kept a byte-identical copy alive. Each clause first admits a dotted
+   * `<layer-name>` (`@layer a, b.c`), which `QueryClause` alone reads as a bare
+   * `b` and abandons at the `.`.
    */
+  const atRulePreludeClause = choice(g.DottedAtRuleKeyword, g.QueryClause);
   const AtRulePrelude = node<ValueNode | null>(
     'AtRulePrelude',
     sequence(
-      optional(g.QueryClause),
+      optional(atRulePreludeClause),
       many(sequence(
         literal(','),
-        g.QueryClause
+        atRulePreludeClause
       ))
     ),
     (children) => {
@@ -5569,6 +5593,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     QueryDashedIdentifier,
     QueryClause,
     QueryPrelude,
+    DottedAtRuleKeyword,
     AtRulePrelude,
     ContainerStyleQuery,
     ContainerQueryInParens,
