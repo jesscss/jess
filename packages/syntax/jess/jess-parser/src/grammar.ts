@@ -741,8 +741,14 @@ const plainUrlInner = regex(/(?:[^"'()\\$ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|\\
  * segment. Every other `$` remains CSS URL-token text, so `$foo` and
  * `$[key]` do not become Jess value lookups. Whitespace, quotes, and
  * parentheses stay outside this closed URL slice.
+ *
+ * `\\` is excluded from the plain-character class so a backslash can only start
+ * the css-syntax-3 §4.3.6 escape alternative, exactly as `plainUrlInner` and the
+ * shared css `urlInner` do. Otherwise `url(a\ b.png)` / `url(a\)b.png)` would
+ * read the backslash as literal text and stop at the following escaped space or
+ * paren — valid CSS the base dialects accept.
  */
-const unquotedUrlText = regex(/(?:[^"'()$\ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|\$(?!\{)|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+const unquotedUrlText = regex(/(?:[^"'()\\$ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|\$(?!\{)|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 
 /*
  * Jess's compiler namespace: the `@-\u2026` names a module directive lowers to. They
