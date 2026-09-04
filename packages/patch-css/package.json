@@ -1,7 +1,7 @@
 {
   "name": "@jesscss/patch-css",
   "type": "module",
-  "version": "2.0.0-alpha.16",
+  "version": "2.0.0-alpha.17",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
