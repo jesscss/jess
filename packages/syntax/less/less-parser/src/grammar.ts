@@ -192,8 +192,6 @@ type LessRules = {
   InterpolatedValue: Combinator<Interpolation>;
   InterpolatedProperty: Combinator<Interpolation>;
   Keyword: Combinator<ValueNode>;
-  Percentage: Combinator<string>;
-  Dimension: Combinator<ValueNode>;
   EscapeValue: Combinator<Any>;
   PagePseudo: Combinator<Any>;
   DoubledQuoteArgument: Combinator<Any>;
@@ -288,6 +286,7 @@ type LessRules = {
   ContainerScrollStateQuery: Combinator<FunctionCall>;
   ContainerName: Combinator<Keyword>;
   ContainerQueryAtom: Combinator<ValueNode>;
+  ContainerQueryInParens: Combinator<ValueNode>;
   ContainerCondition: Combinator<ValueNode>;
   MediaContainerBody: Combinator<readonly Statement[]>;
   MediaContainerBlock: Combinator<AtRuleBlock>;
@@ -381,8 +380,16 @@ type SharedSyntax = {
   UnicodeRange: Combinator<Any>;
   // Converged to the CSS base (inherited via compose): same node type
   // SimpleSelector, byte-identical keyframeEndpoint, g.Percentage resolves to
-  // less's override; reducer differs only requireToken().value vs sourceText().
+  // the CSS base; reducer differs only requireToken().value vs sourceText().
   keyframeSelector: Combinator<SimpleSelector>;
+  // Converged to the CSS base (inherited via compose): same token rule
+  // token(noTrivia(sequence(<number>, '%'))), used only by keyframeSelector.
+  Percentage: Combinator<string>;
+  // Overrides the CSS base: same shape (number + optional unit, `%` admitted as
+  // a unit) and same `dimension()` reducer (differs only requireToken().value vs
+  // tokenText()), but swaps the unit terminal for `lessDimensionUnit` so a `-`
+  // glued to the unit before a comment is freed as a sum operator (G32/G34).
+  Dimension: Combinator<ValueNode>;
   NthExpression: Combinator<unknown>;
   NthChildPseudoSelectorName: Combinator<string>;
   NthTypePseudoSelectorName: Combinator<string>;
@@ -451,15 +458,18 @@ const unknownAtRuleBody = noTrivia(scanTo(
   literal('}'),
   { skip: [unknownAtRuleBrace] }
 ));
-// Trivia that may surround an UNAMBIGUOUS product operator (`*`/`/`/`%`):
-// whitespace, `//` line comments, or `/* */` block comments. This matches CSS,
-// where `*` and `/` need no whitespace and comments are freely allowed around
-// them (`1/**/*/**/2`, `1 // c\n * 2`). It is deliberately NOT used by the sum
-// terminal: `+`/`-` are sign-ambiguous, so — like CSS `calc()` — they require
-// real whitespace and comments do NOT count (see `sumOperator`). In
-// operator position this trivia is a separator the arithmetic consumes; a comment
-// in value-LIST position (`1 /* c */ 2`, no operator char follows) makes the
-// operator loop backtrack and is left as preserved value syntax.
+// Trivia that may surround an arithmetic operator: whitespace, `//` line
+// comments, or `/* */` block comments. This matches CSS, where `*` and `/` need
+// no whitespace and comments are freely allowed around them (`1/**/*/**/2`,
+// `1 // c\n * 2`). Both the product operators (`*`/`/`/`%`) and the sum operator
+// (`+`/`-`, see `sumOperator`) name this same table for their gaps — a comment
+// counts as a separator wherever whitespace does (css-syntax-3 §4). The sum
+// operator additionally states its own sign POLICY: `+`/`-` is sign-ambiguous,
+// so a real-whitespace pad before a glued digit is a signed list item, not
+// subtraction — that distinction is the operator's business, not this table's.
+// In operator position this trivia is a separator the arithmetic consumes; a
+// comment in value-LIST position (`1 /* c */ 2`, no operator char follows) makes
+// the operator loop backtrack and is left as preserved value syntax.
 const mathTrivia = classifiedTrivia({
   whitespace: whitespaceRun,
   lineComment,
@@ -591,44 +601,65 @@ const preservedSlashBoundary = leaf(
   }
 );
 /*
- * `+`/`-` are ambiguous between a binary operator and a leading sign, so the
- * operand must be SEPARATED from the operator for this to be arithmetic: `1 - 2`
- * subtracts, `1 -2` is a space list whose second item is the signed dimension.
- * Less additionally treats the fully glued `1-2` as arithmetic.
+ * `+`/`-` are ambiguous between a binary operator and a leading sign. A sign is
+ * the ONE non-arithmetic shape: real whitespace immediately before the operator
+ * AND a digit glued immediately after it — `1 -2` is a space list whose second
+ * item is the signed dimension. Everything else is arithmetic: `1 - 2`, `1-2`,
+ * `1px-2px` all subtract.
  *
- * What separates them is the DIALECT'S trivia, not a local spelling of it. This
- * used to hand-spell the pad as `comment* ws+ (comment ws*)*`, which is a second,
- * private definition of the trivia table inside one expression production
- * (DESIGN-DECISIONS G24) — and it drifted from the table in a way that was
- * visible in emitted CSS: because the pad REQUIRED a whitespace run, a comment
- * standing alone as the separator did not count, so `1px/**\/-/**\/2px` performed
- * no arithmetic and the comment bytes were emitted verbatim as value content.
- * `mathTrivia` is the same `classifiedTrivia` the `*`/`/`/`%` product operators
- * above already use, and `classifiedTrivia` is one-or-more by construction, so
- * naming it bare (rather than under `optional()`) IS the "must be separated"
- * assertion. css-syntax-3 §4 makes a comment trivia wherever whitespace is, so
- * both Less comment forms now count, exactly as the document trivia table says.
+ * What may sit between the operator and its operands is the DIALECT'S trivia,
+ * consumed through `mathTrivia` — the same `classifiedTrivia` the `*`/`/`/`%`
+ * product operators above already use — rather than a private `[ \t\n\r\f]`
+ * spelling of it (DESIGN-DECISIONS G24). The gap runs are `optional()` because a
+ * fully glued `1-2` has no gap at all; naming the table (not re-spelling it) is
+ * what lets a comment count wherever whitespace does (css-syntax-3 §4).
  *
- * The separation is required on BOTH sides, which is what keeps `1 -2` a list:
- * there is a pad before the `-` and none after it, so this arm cannot match and
- * the glued arms below reject it on their `(?![0-9.])` guard. That guard is why
- * the pad may not be relaxed to one side — a comment defeats it, since in
- * `1/**\/-2px` the lookahead sees `/` rather than the digit actually there.
+ * The sign is then a POLICY the production states, not something a separator
+ * regex decides by accident (G24). `sumOperatorChar` matches a `+`/`-` UNLESS it
+ * is that sign: the first arm takes any operator not glued to a digit; the
+ * second takes one glued to a digit only when the byte before it is not
+ * whitespace — a comment is trivia, not that whitespace, so a comment-padded
+ * `1px/**\/-2px` folds to `-1px` like lessc while `1px -2px` stays a list (G32,
+ * pinned in `packages/jess/test/less/operator-comment-boundary.test.ts`). The
+ * lookbehind reads the byte the leading `mathTrivia` just consumed, so the sign
+ * test sees the real operand boundary whether or not a comment padded it. The
+ * mirror `1px-/**\/2px` needs a second fix upstream: the shared `dimensionUnit`
+ * absorbs the glued `-` into the unit (`px-`) before this operator can see it,
+ * so that half of G32 waits on the dimension-unit terminal, not this arm.
  *
- * The three arms remain separated-both-sides | glued-to-number | asymmetric
- * reject guard. This one is a `leaf()` for the same reason the product operators
- * are: the leaf's value is exactly the sign, so `lessFoldOperation` still reads a
- * flat operator stream and no CST arity moves. Folding the pad into the operator
- * terminal instead would leave the reducer recovering the sign with `.trim()`
- * from bytes that can now hold a comment's own `/` and `*` — the parser handing
- * core a value to re-parse.
+ * `notAdjacent({ kinds: ['whitespace'] })` is the blessed spelling of this
+ * left-boundary test, but it is inert here: the whole math region runs under
+ * `noTrivia`, and an adjacency assertion probes AMBIENT trivia (which `noTrivia`
+ * clears), so it always reports "adjacent" no matter the input. It also may not
+ * be a sequence's first term, and the operand whose gap must be measured lives
+ * in the enclosing `many(...)`, one sequence out. So the lookbehind states the
+ * same policy in place; a `noTrivia`-compatible adjacency feature would retire
+ * it (tracked as G34 in DESIGN-DECISIONS.md).
+ *
+ * `leaf()` keeps the operator a single flat child — its value is exactly the
+ * sign — so `lessFoldOperation` still reads an alternating operand/operator
+ * stream and no CST arity moves.
  */
-const sumOperatorSpaced = leaf(
-  noTrivia(sequence(mathTrivia, keywords(['-', '+']), mathTrivia)),
+const sumOperatorChar = noTrivia(regex(/[-+](?![0-9.])|(?<![ \t\n\r\f])[-+](?=[0-9.])/));
+const sumOperator = leaf(
+  noTrivia(sequence(optional(mathTrivia), sumOperatorChar, optional(mathTrivia))),
   children => children[1] as string
 );
-const sumOperatorGlued = regex(/[-+](?=[0-9.])|[ \t\n\r\f]*[-+](?![0-9.])[ \t\n\r\f]*/);
-const sumOperator = choice(sumOperatorSpaced, sumOperatorGlued);
+/*
+ * A Less dimension unit is the CSS unit, EXCEPT a `-` glued to the unit and
+ * immediately followed by a comment is not part of it — it is a sum operator
+ * whose right operand a comment pads. The shared/CSS `dimensionUnit` admits any
+ * `-` not glued to a digit (`-(?![0-9])`), so `1px-/**\/2px` reads as one
+ * dimension with unit `px-` and never reaches `sumOperator` — the same
+ * comment-blind boundary G32 removed from the operator, one layer up in the
+ * operand. Rejecting a `-` before a comment opener (`/*` or `//`) as well stops
+ * the dimension at `px`, so the operator folds `1px-/**\/2px` to `-1px` like
+ * lessc while `1px-2px` (`-` glued to a digit) and `1px- /**\/2px` (`-` glued to
+ * whitespace, then a comment) are untouched. This narrower boundary is a
+ * Less-only value-math delta: CSS and SCSS keep the shared terminal, where the
+ * same input is a two-item list per their oracles (G32/G34, DESIGN-DECISIONS).
+ */
+const lessDimensionUnit = regex(/-?[_a-zA-Z\u0080-\uFFFF](?:[_a-zA-Z0-9\u0080-\uFFFF]|-(?![0-9]|\/[*/]))*|%/);
 // Generic Less at-rule names are grammar terminals. This grammar keeps
 // their prelude/body semantic only where the existing canonical AST has a
 // truthful structured representation; it never captures a block as text.
@@ -1245,31 +1276,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.ValueIdentifier,
     children => keyword(requireToken(children[0]).value)
   );
-  /*
-   * `<percentage>` — css-values-4 §8.2: "a `<number>` immediately followed by a
-   * percent sign `%`", i.e. `<percentage> = <number> %`. It is a NAMED CSS value
-   * type, referenced by name from many productions — `<keyframe-selector> = from
-   * | to | <percentage>` (css-animations-1 §4), `image-set()`, `color-mix()`,
-   * `<position>` — so it is a rule here rather than a shape each consumer
-   * re-spells. Three dialects previously carried three different hand-rolled
-   * numeric regexes for it, none referenceable and none agreeing with this
-   * grammar's own `<number>` token.
-   *
-   * This does NOT add an AST node type: a percentage is still a `Dimension`
-   * whose unit is `%`, which is why this is a token rule and not a `node()`.
-   * `noTrivia` enforces the "immediately followed by" of the spec, so `50 %`
-   * is not a percentage.
-   */
-  const Percentage = token(noTrivia(sequence(g.NumberToken, literal('%'))));
-  const Dimension = node(
-    'Dimension',
-    noTrivia(sequence(g.NumberToken, optional(g.DimensionUnit))),
-    (children, _fields, span) => {
-      const numberText = requireToken(children[0]).value;
-      const unit = children.length > 1 ? requireToken(children[1]).value : '';
-      return dimension(Number(numberText), unit, `${numberText}${unit}`);
-    }
-  );
   // CSS declaration hacks such as `#000 \\9` are a real one-token value
   // suffix. Keep the escape structural and narrow; this is not a raw-value
   // fallback or a second scanner for declaration text.
@@ -1687,6 +1693,30 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         lessMathOutsideParens(state, ':'))),
       span
     )
+  );
+  /*
+   * Same node as the CSS base, overridden only to swap the shared unit terminal
+   * for `lessDimensionUnit`: in Less a `-` glued to a unit and followed by a
+   * comment is a sum operator, not unit bytes, so `1px-/**\/2px` folds to `-1px`
+   * (G32/G34). Number recognition, the `%` unit, and the reduction are the CSS
+   * base's, unchanged — this is the smallest child Less value-math actually
+   * changes.
+   */
+  const Dimension = node(
+    'Dimension',
+    noTrivia(sequence(
+      g.NumberToken,
+      optional(lessDimensionUnit)
+    )),
+    (children) => {
+      const numberText = requireToken(children[0]).value;
+      const unit = children.length > 1 ? requireToken(children[1]).value : '';
+      return dimension(
+        Number(numberText),
+        unit,
+        `${numberText}${unit}`
+      );
+    }
   );
   const Value = node(
     'Value',
@@ -3277,6 +3307,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       attempt(g.MixinReference),
       g.QueryFeature,
       g.VariableReference,
+      // `<general-enclosed>` function form (media-queries-5 §2.1/§3.1:
+      // `<function-token> <any-value> )`), e.g. `@media foo(bar)`. This is the
+      // SAME general-enclosed node `@supports` already reuses; the `peek`
+      // restricts entry to the function arm so a bare `( … )` group still falls
+      // through to `QueryFeature`, matching the CSS base's term-level shape
+      // (which admits the function form but no bare-paren general-enclosed).
+      sequence(peek(g.EnclosedFunctionName), g.Enclosed),
       g.QueryNonOnlyKeyword
     ),
     children => requireValueNode(children[0])
@@ -3402,9 +3439,29 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     children => requireKeyword(children.at(-1))
   );
+  // A `<query-in-parens>` wrapping a single `<container-query>` operand —
+  // `(style(--x: 1))`, `((width > 1px))`, `(scroll-state(--x: 1))`
+  // (css-contain-3 §3, media-queries-5 §3.1). The inner is ONE atom, never an
+  // `and`/`or` chain, so the boolean group `((a) and (b))` and the negated form
+  // `(not (a))` still fall through to QueryFeature's QueryLogicalGroup /
+  // QueryNegatedFeature owners below (after the leading `(` there `and`/`or`/`not`
+  // is what the chain needs and this single-atom arm cannot supply). Tried FIRST
+  // in ContainerQueryAtom so QueryFeature's value-first range arm never
+  // speculatively reads the nested `style(--x: 1)` as a component value.
+  const ContainerQueryInParens = node(
+    'ContainerQueryInParens',
+    sequence(literal('('), choice(
+      g.ContainerStyleQuery,
+      g.ContainerScrollStateQuery,
+      g.QueryFeature,
+      g.ContainerQueryInParens
+    ), literal(')')),
+    children => block(requireValueNode(children[1]))
+  );
   const ContainerQueryAtom = node(
     'ContainerQueryAtom',
     choice(
+      g.ContainerQueryInParens,
       g.ContainerStyleQuery,
       g.ContainerScrollStateQuery,
       g.QueryFeature
@@ -4784,8 +4841,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     InterpolatedValue,
     InterpolatedProperty,
     Keyword,
-    Percentage,
-    Dimension,
     EscapeValue,
     PagePseudo,
     DoubledQuoteArgument,
@@ -4805,6 +4860,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     FormatFunction,
     CallArgumentValue,
     FunctionStatement,
+    Dimension,
     Value,
     SelectorCapture,
     MathAtom,
@@ -4875,6 +4931,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ContainerScrollStateQuery,
     ContainerName,
     ContainerQueryAtom,
+    ContainerQueryInParens,
     ContainerCondition,
     MediaContainerBody,
     MediaContainerBlock,

@@ -759,7 +759,38 @@ describe('Jess AST grammar facts', () => {
         { name: 'custom', value: { type: 'Keyword', src: '--accent' } }
       ] }]
     });
-    expect(() => parse('.x { color: rgb (15 23 42); }')).toThrow(SyntaxError);
+
+    /*
+     * Only the GLUED `rgb(…)` opener is a FunctionCall. With a space, `rgb (…)`
+     * is an identifier followed by a plain css-syntax-3 §5.4.7 paren block
+     * (P18(a)) — the same two atoms CSS and SCSS produce — not a function call.
+     */
+    expect(parse('.x { color: rgb (15 23 42); }')).toMatchObject({
+      rules: [{ type: 'Ruleset', rules: [
+        { name: 'color', value: [
+          { type: 'Keyword', src: 'rgb' },
+          { type: 'Block', delimiter: 'paren' }
+        ] }
+      ] }]
+    });
+  });
+
+  it('keeps css-syntax-3 §4.3.6 escapes inside an unquoted url() body', () => {
+    /*
+     * `\ ` and `\)` are ordinary escaped code points in an unquoted url-token,
+     * so the base css/less/scss dialects accept them and Jess must too. The
+     * escaped bytes stay verbatim in the Url payload.
+     */
+    expect(parse('a { background: url(a\\ b.png) }')).toMatchObject({
+      rules: [{ type: 'Ruleset', rules: [
+        { name: 'background', value: { type: 'Url', value: { type: 'Any', src: 'a\\ b.png' } } }
+      ] }]
+    });
+    expect(parse('a { background: url(a\\)b.png) }')).toMatchObject({
+      rules: [{ type: 'Ruleset', rules: [
+        { name: 'background', value: { type: 'Url', value: { type: 'Any', src: 'a\\)b.png' } } }
+      ] }]
+    });
   });
 
   it('reads a collection member in condition position exactly as in value position', () => {
@@ -1100,6 +1131,44 @@ describe('Jess AST grammar facts', () => {
     for (const interpolated of ['.x:not(.a-$[t]) { c: d; }', '.x:is(.card-$[t]) { c: d; }']) {
       const rejected = run(jessGrammar.Stylesheet, interpolated, { trivia: jessGrammar.whitespace });
       expect(rejected.ok && rejected.unconsumedFrom === null, interpolated).toBe(false);
+    }
+  });
+
+  it('accepts a leading combinator in a selector-pseudo argument (selectors-4 §4.2)', () => {
+    /*
+     * A `:has()` argument is a `<relative-selector-list>`, so a branch may open
+     * with a combinator (`:has(> .b)`). css/less/scss all admit a leading
+     * combinator on the shared selector-pseudo argument; Jess converges to that
+     * shape, keeping the branch as a structured `RelativeSelector` in `args`.
+     */
+    expect(parse('.x:has(> .b) { color: red; }')).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{
+        type: 'Ruleset',
+        selector: {
+          type: 'SelectorList',
+          selectors: [{
+            type: 'CompoundSelector',
+            value: [
+              { text: '.x' },
+              {
+                type: 'PseudoSelector',
+                name: ':has',
+                args: { type: 'SelectorList', selectors: [{ type: 'RelativeSelector', value: ['>', { text: '.b' }] }] }
+              }
+            ]
+          }]
+        }
+      }]
+    });
+
+    // The structured relative branch serializes back byte-identically.
+    for (const [source, expected] of [
+      ['.x:has(> .b) { color: red; }', '.x:has(> .b) {\n  color: red;\n}\n'],
+      ['.x:has(+ .b) { color: red; }', '.x:has(+ .b) {\n  color: red;\n}\n'],
+      ['.x:has(~ .b) { color: red; }', '.x:has(~ .b) {\n  color: red;\n}\n']
+    ] as const) {
+      expect(serialize(parse(source)).css, source).toEqual(expected);
     }
   });
 
@@ -1635,11 +1704,24 @@ describe('Jess AST grammar facts', () => {
     });
     for (const rejected of [
       '@media (width >= $limit) { .card { color: blue; } }',
-      '@media (width < 80rem < 100rem) { .card { color: blue; } }',
-      '@container style(--theme: dark) { .card { color: blue; } }'
+      '@media (width < 80rem < 100rem) { .card { color: blue; } }'
     ]) {
       expect(() => parse(rejected), rejected).toThrow(SyntaxError);
     }
+
+    /*
+     * css-contain-3 §3.3 `<style-query>`: a typed container-header function, the
+     * structured `funcCall('style', [Operation(':', <name>, <value>)])` the other
+     * dialects build — not a widened opaque header.
+     */
+    expect(parse('@container style(--theme: dark) { .card { color: blue; } }').rules[0]).toMatchObject({
+      type: 'AtRuleBlock',
+      prelude: {
+        type: 'FunctionCall',
+        name: 'style',
+        args: [{ value: { type: 'Operation', operator: ':' } }]
+      }
+    });
   });
 
   it('constructs a media feature <ratio> value in every static query form', () => {
@@ -1734,6 +1816,23 @@ describe('Jess AST grammar facts', () => {
     ]) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
+  });
+
+  it('accepts an @property body whose last descriptor omits the trailing `;`', () => {
+    const source = '@property --x { syntax: "*"; inherits: true }';
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
+    expect(direct.ok).toBe(true);
+    expect(direct.unconsumedFrom).toBeNull();
+    expect(parse(source)).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{
+        type: 'AtRuleBlock', name: '@property', prelude: { type: 'Keyword', src: '--x' },
+        rules: [{ type: 'Declaration', name: 'syntax' }, { type: 'Declaration', name: 'inherits' }]
+      }]
+    });
+
+    /* The optional final `;` is a separator, so the two spellings render identically. */
+    expect(serialize(parse(source))).toEqual(serialize(parse('@property --x { syntax: "*"; inherits: true; }')));
   });
 
   it('keeps static @property descriptor lists and function values typed without admitting Jess values', () => {
@@ -3428,5 +3527,34 @@ describe('keyword boundaries run to full ident-continue', () => {
     expect(() => parse('$applyé .rounded;')).toThrow(JessParseError);
     expect(() => parse('.a { $extend .b; }')).not.toThrow();
     expect(() => parse('.a { $extendé .b; }')).toThrow(JessParseError);
+  });
+});
+
+describe('@layer dotted sub-layer names', () => {
+  it('reads a dotted name in a statement list as ONE Keyword, not a class selector', () => {
+    expect(parse('@layer a, b.c;')).toMatchObject({
+      rules: [{
+        type: 'AtRuleStatement',
+        name: '@layer',
+        prelude: {
+          type: 'List',
+          sep: ',',
+          value: [{ type: 'Keyword', src: 'a' }, { type: 'Keyword', src: 'b.c' }]
+        }
+      }]
+    });
+    expect(serialize(parse('@layer a, b.c;')).css).toBe('@layer a, b.c;\n');
+  });
+
+  it('reads a dotted block-header name as ONE Keyword', () => {
+    expect(parse('@layer a.b { c { color: red } }')).toMatchObject({
+      rules: [{
+        type: 'AtRuleBlock',
+        name: '@layer',
+        prelude: { type: 'Keyword', src: 'a.b' }
+      }]
+    });
+    expect(serialize(parse('@layer a.b { c { color: red } }')).css)
+      .toBe('@layer a.b {\n  c {\n    color: red;\n  }\n}\n');
   });
 });

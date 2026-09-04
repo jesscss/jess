@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import { cssBaseMathOutsideParens,
-  compoundSelectorOf, complexSelector, decl, dimension, funcCall, interpolatedSimpleSelector, interpolation, keyword, operation, quoted, selist, spaced, stylesheet, rule, variableDeclaration, variableReference,
+  apply, compoundSelectorOf, complexSelector, decl, dimension, funcCall, interpolatedSimpleSelector, interpolation, keyword, operation, quoted, reference, selist, simpleSelector, spaced, stylesheet, rule, variableDeclaration, variableReference,
   type MixinCall, type MixinDefinition, type Stylesheet, type Statement
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
@@ -272,7 +272,34 @@ describe('Mixin canonical AST emission', () => {
       rule('.out', [decl('width', variableReference('shared', 'scoped'))])
     ]);
 
-    expect(render(document)).toBe('.out {\n  width: 7px;\n}\n');
+    const expected = '.out {\n  width: 7px;\n}\n';
+    expect(render(document)).toBe(expected);
+    expect(render(document, false)).toBe(expected);
+  });
+
+  it('retains a mixin-call argument\'s caller closure in both output modes', () => {
+    const paintCall = call('.paint', [{ value: variableReference('color', 'scoped') }]);
+    const forwardCall = call('.forward', [{ value: paintCall }]);
+    const document = stylesheet([
+      mixin('.paint', [{ name: 'value' }], [decl('color', variableReference('value', 'scoped'))]),
+      mixin('.forward', [{ name: 'call' }], [
+        variableDeclaration('color', keyword('blue'), { mode: 'declare' }),
+        variableDeclaration('call', variableReference('call', 'scoped'), { mode: 'declare' }),
+        reference(variableReference('call', 'scoped'), [{ type: 'Call', args: [] }], '@call()')
+      ]),
+      rule('.first', [
+        variableDeclaration('color', keyword('red'), { mode: 'declare' }),
+        forwardCall
+      ]),
+      rule('.second', [
+        variableDeclaration('color', keyword('green'), { mode: 'declare' }),
+        forwardCall
+      ])
+    ]);
+    const expected = '.first {\n  color: red;\n}\n.second {\n  color: green;\n}\n';
+
+    expect(render(document)).toBe(expected);
+    expect(render(document, false)).toBe(expected);
   });
 
   it('places one shared mixin body correctly in flat and nested output modes', () => {
@@ -285,6 +312,23 @@ describe('Mixin canonical AST emission', () => {
     expect(render(document)).toBe('.outer {\n  color: red;\n}\n'
       + '.outer .inner {\n  width: 1px;\n}\n');
     expect(render(document, false)).toBe('.outer {\n  color: red;\n  .inner {\n    width: 1px;\n  }\n}\n');
+  });
+
+  it('places one selected $apply body through both output projections', () => {
+    const document = stylesheet([
+      rule('.paint', [
+        decl('color', keyword('red')),
+        rule('.shade', [decl('opacity', dimension(0.5))])
+      ]),
+      rule('.host', [apply([simpleSelector('.paint')])])
+    ]);
+
+    expect(render(document)).toBe('.paint {\n  color: red;\n}\n'
+      + '.paint .shade {\n  opacity: 0.5;\n}\n'
+      + '.host {\n  color: red;\n}\n'
+      + '.host .shade {\n  opacity: 0.5;\n}\n');
+    expect(render(document, false)).toBe('.paint {\n  color: red;\n  .shade {\n    opacity: 0.5;\n  }\n}\n'
+      + '.host {\n  color: red;\n  .shade {\n    opacity: 0.5;\n  }\n}\n');
   });
 
   it('projects only a selected ruleset-mixin ampersand header in nested output', () => {

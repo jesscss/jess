@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const RUNTIME_DEP_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies'];
@@ -223,6 +223,59 @@ export function isReleaseArtifactPath(file) {
     return true;
   }
   return false;
+}
+
+/*
+ * True when a package's published entry point already exists on disk, so a
+ * prior `build:release` covers it and the per-package build can be skipped.
+ * Checks the actual `main`/`module` entry; falls back to `lib/`. Any doubt
+ * (entry missing) returns false so we rebuild rather than publish a stale tree.
+ */
+export function artifactsPresent(pkg) {
+  const entry = pkg.manifest.main ?? pkg.manifest.module;
+  const target = entry ? path.join(pkg.dir, entry) : path.join(pkg.dir, 'lib');
+  return existsSync(target);
+}
+
+/*
+ * Identity of the tree a preflight verified. `release:alpha:preflight` starts
+ * with the source-sync gate, which requires a clean tree, so HEAD alone names
+ * the verified content; a tree with source changes has no identity (null) and
+ * therefore never matches a marker.
+ */
+export function preflightTreeIdentity(rootDir) {
+  const git = args => spawnSync('git', args, {
+    cwd: rootDir,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: process.platform === 'win32'
+  });
+  const status = git(['status', '--porcelain', '--untracked-files=all']);
+  const head = git(['rev-parse', 'HEAD']);
+  if (status.status !== 0 || head.status !== 0) {
+    return null;
+  }
+  const dirty = status.stdout.split('\n').map(line => line.trim()).filter(Boolean)
+    .some(line => !isReleaseArtifactPath(line.slice(3)));
+  return dirty ? null : head.stdout.trim();
+}
+
+export function preflightMarkerPath(rootDir) {
+  return path.join(rootDir, 'node_modules', '.cache', 'jess-release-preflight.json');
+}
+
+export function readPreflightMarker(rootDir) {
+  try {
+    return readJson(preflightMarkerPath(rootDir));
+  } catch {
+    return null;
+  }
+}
+
+export function writePreflightMarker(rootDir, identity) {
+  const file = preflightMarkerPath(rootDir);
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, `${JSON.stringify({ identity, verifiedAt: new Date().toISOString() }, null, 2)}\n`);
 }
 
 /**

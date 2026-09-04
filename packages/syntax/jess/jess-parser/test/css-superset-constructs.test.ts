@@ -16,7 +16,9 @@
  * the dialect from `brokenIn` and the entry becomes a contract.
  */
 import { describe, expect, it } from 'vitest';
+import { run } from 'parseman';
 import { parseJessCst } from '@jesscss/jess-parser/cst';
+import { jessGrammar } from '../src/grammar.js';
 import { acceptedIn, pinnedDefectsIn, CSS_CONSTRUCTS } from '../../../../../test/css-superset-corpus.js';
 
 const DIALECT = 'jess';
@@ -52,6 +54,31 @@ describe('CSS construct space — Jess grammar', () => {
       expect(clean, `${JSON.stringify(source)} → ${detail}`).toBe(true);
     }
   );
+
+  /*
+   * `@page` pseudo-pages are header atoms, not selector syntax (css-page-3 §3):
+   * the whole header reduces to one verbatim `Any`, byte-identical to the source,
+   * so `@page wide:left` never emits the `wide :left` a spaced list would.
+   */
+  it('reduces a bare @page pseudo-page to one verbatim Any header atom', () => {
+    const result = run(jessGrammar.Stylesheet, '@page :first { margin: 1cm; }', { trivia: jessGrammar.whitespace });
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{ type: 'AtRuleBlock', name: '@page', prelude: { type: 'Any', src: ':first' } }]
+    });
+  });
+
+  it('reduces a named @page pseudo-page to one verbatim Any header atom', () => {
+    const result = run(jessGrammar.Stylesheet, '@page wide:left { margin: 1cm; }', { trivia: jessGrammar.whitespace });
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{ type: 'AtRuleBlock', name: '@page', prelude: { type: 'Any', src: 'wide:left' } }]
+    });
+  });
 
   const pinned = pinnedDefectsIn(DIALECT);
   it.each(pinned.map(construct => [construct.id, construct.source, construct.defect ?? ''] as const))(

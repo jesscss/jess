@@ -13,30 +13,15 @@
  * source, which makes it the cleanest case in the language for why ADJACENCY,
  * and not "is a separator present", is the right primitive.
  *
- * Measured, four engines, three answers:
- *
- *   lessc 4.x       `.e.f`         oracle
- *   jess (css)      `.e.f`
- *   jess (less)     `.e.f`
- *   jess (jess)     `.e .f`        <- pinned below
- *   dart-sass       `.e .f`
- *   jess (scss)     parse error    <- pinned in the SCSS parser suite
- *
- * EXPECTED ANSWER, NOT YET RULED ON: `.e.f` in all four dialects. A comment is
- * trivia, and trivia does not split a compound selector — css-syntax-3 §4
- * removes comments during tokenisation, so by the time selector structure is
- * decided there is nothing between `.e` and `.f` at all. That makes `.e.f` the
- * spec answer, lessc 4.x already agrees, and dart-sass's `.e .f` is a quirk we
- * are not obliged to copy (reference behaviour is not intent).
- *
- * This is a SEMANTICS ruling and the owner has not made it, so this file pins
- * the current behaviour and states the expectation. It does not change it.
- *
- * PINNED DEFECT
- * -------------
- * Cases whose title starts with `PINNED DEFECT` assert the CURRENT, WRONG
- * behaviour. They are pins, not endorsements. When the ruling lands, flip the
- * assertion and drop the marker.
+ * RULED (DESIGN-DECISIONS G26, owner 2026-09-03): `.e.f` in every dialect. A
+ * comment is trivia, and trivia does not split a compound selector —
+ * css-syntax-3 §4 removes comments during tokenisation, so by the time selector
+ * structure is decided there is nothing between `.e` and `.f` at all. lessc 4.x,
+ * the CSS dialect and the Less dialect already agreed; jess now joins them, and
+ * dart-sass's `.e .f` is a quirk we are not obliged to copy (reference
+ * behaviour is not intent). The SCSS dialect's compound is fixed separately —
+ * it folds into the SCSS block-comment trivia lane (G29) and is still pinned in
+ * the SCSS parser suite.
  */
 import { describe, expect, it } from 'vitest';
 import { Compiler } from '../../src/index.js';
@@ -48,14 +33,14 @@ const render = async (source: string) =>
   })).replace(/\s+/g, ' ').trim();
 
 describe('Jess selector adjacency across a block comment', () => {
-  it('PINNED DEFECT — splits a compound selector on a comment', async () => {
+  it('keeps two compound parts compound across a comment', async () => {
     /*
-     * Expected `.e.f` (one element carrying both classes). We emit `.e .f`,
-     * which matches dart-sass and contradicts lessc 4.x, the CSS dialect and
-     * the Less dialect — all three of which give `.e.f` for the same bytes.
-     * A comment is trivia; trivia must not promote a compound to a descendant.
+     * `.e.f` — one element carrying both classes. A comment is trivia; trivia
+     * must not promote a compound to a descendant (DESIGN-DECISIONS G26). This
+     * now matches lessc 4.x, the CSS dialect and the Less dialect, all of which
+     * give `.e.f` for the same bytes.
      */
-    await expect(render('.e/*y*/.f { g: h; }')).resolves.toBe('.e .f { g: h; }');
+    await expect(render('.e/*y*/.f { g: h; }')).resolves.toBe('.e.f { g: h; }');
   });
 
   it('keeps a spaced comment a descendant separator', async () => {

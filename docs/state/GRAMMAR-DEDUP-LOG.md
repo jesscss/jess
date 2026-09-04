@@ -1150,3 +1150,54 @@ now quantified — a big multi-week effort, not a switch.
 
 - 2026-08-11 — This log created after owner flagged there was no single live
   worklog. Prior state was scattered across memory files + HANDOFF + task chips.
+
+- 2026-09-03 — **NamedColor→Keyword (#57) LANDED at `411733b9d`** (V13 in
+  `docs/architecture/core/DESIGN-DECISIONS.md`). Do NOT re-dispatch it. Live status
+  for grammar convergence is §Lane 7 above plus the ⏱ tracker tables in
+  `docs/design/LESS-COMPOSE-REAUTHOR-PLAN.md`; every remaining row there is
+  KEPT-OVERRIDE. The sibling divergence the 2026-08-11 entry named
+  (`Percentage` token-vs-`Dimension` node, `%`-in-unit) is the next unit.
+
+- 2026-09-03 — **`Percentage`/`Dimension` converged: css is now the same language
+  as the three (DESIGN-DECISIONS V20).** The sibling divergence the 2026-08-11 note
+  named. Fix is ADDITIVE in css (the outlier): css `Dimension` uses the shared
+  `numberValue` + a `dimensionUnit` that admits `%`, and css's separate
+  `Percentage` NODE (`node('Dimension', …)`) is DELETED — css keeps `Percentage`
+  as the same **token** the other three carry, used only by `keyframeSelector`.
+  less/scss/jess then inherit css's `Dimension`+`Percentage` by name (all six
+  overrides deleted; dead scss-local `numberValue` regex removed). Public CST
+  numeric type is unaffected — `css-parser/src/cst-host.ts:numericGrammarType`
+  classifies from leaves (`%`→Percentage, unit→Dimension, none→Num). Proof
+  (same-tree before/after, the isolation method): less **ast 0 moved**, scss/jess
+  value position unchanged; the only moves are the `expected` label dropping the
+  `Percentage` alternative on pre-existing parse-error files (less cst 6, scss
+  ast+cst 3, jess ast+cst 1; every `threw` count unchanged, no parse↔error flip).
+  Four parser suites green (css 515, less 741, scss 622, jess 510); core 3249,
+  fns 718, LS 264, jess ratchet 1408/0-failing; macro/compose-fused/reducer-purity
+  all green. Tracker rows Less #3, jess `Dimension`+`Percentage`, scss `Percentage`
+  flipped ☑. The committed less/scss oracle baselines were already stale pre-edit
+  (drift-detectors, not CI-gated) and are NOT rebaselined here.
+- 2026-09-04 — **Pinned-defect / Less-gap batch LANDED** (all merged to `dev`,
+  each its own PR with byte-identity oracle + ratchet-exact + both reviewers):
+  `@container` prelude gaps #138 (D2/D3/D4); jess pseudo leading-combinator #140
+  (D20, converged to the base — all five selector pseudos, not `:has()`-special);
+  jess comment→compound #142 (D19, G26); SCSS star-hack name #143 (D16, G31);
+  jess paren block #144 (D14, P18(a)); jess `url()` escapes #146 (D8); jess
+  `@layer` dotted names #147 (D1); Less comment-fold pair #141+#148 (D25, G32/G34
+  — Less-LOCAL `Dimension` override widening the hyphen lookahead, shared
+  `parser-shared` terminal UNTOUCHED so CSS/SCSS/.jess keep `px-`); jess
+  `@property` optional final `;` #149 (D5, P11); scss `var()` empty fallback #150
+  (D7); less `@media foo(bar)` #151 (D13, reused `Enclosed`); jess `@page`
+  pseudo-page #152 (D6). Rulings recorded in DESIGN-DECISIONS: G26, P18(a), G31
+  (corrected: css REJECTS the star hack), G32/G34, G33 (spaced value slash
+  by-design), P29 status note. Process: added a whole-file `npx eslint <grammar>`
+  step to every grammar-agent brief (CI lints the whole file; the pre-commit hook
+  only checks changed lines — a stray `lines-around-comment` sank #140 once); and
+  the `*-macro-compiled` Vite-server test flakes under CI load (rerun-don't-debug,
+  see `memory:flake-triage-shared-corpus-and-process-isolation`). Still parked:
+  the SCSS block-comment trivia family (D9/D17/D21/D23/D27 + D19 scss half) is
+  BLOCKED on SCSS statement source-spans + a block-interior replay in the
+  `serialize.ts` trivia code the one-evaluator fold is consolidating — do not
+  re-dispatch until that fold's slice 5 lands. Two grammar dedups noted for later
+  (the four `<query-in-parens>` forks vs scss's unified one; the typed at-rule
+  prelude duplicated across jess/less/scss).

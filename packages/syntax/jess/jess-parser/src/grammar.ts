@@ -24,7 +24,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { attempt, choice, classifiedTrivia, compose, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, sequence, token, when, word } from 'parseman' with { type: 'macro' };
+import { attempt, balanced, choice, classifiedTrivia, compose, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, token, when, word } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -167,7 +167,6 @@ type JessRules = {
   MixinGuard: Combinator<GuardNode>;
   Quoted: Combinator<Quoted | Interpolation>;
   LiteralQuoted: Combinator<Quoted>;
-  Dimension: Combinator<Dimension>;
   Url: Combinator<Url>;
   PlainUrlInner: Combinator<string>;
   UnquotedUrlText: Combinator<string>;
@@ -188,6 +187,7 @@ type JessRules = {
   IdentifierOrFunction: Combinator<[string, FunctionCall | Keyword | Null | Url]>;
   CollectionEntry: Combinator<CollectionEntry>;
   Collection: Combinator<Collection>;
+  ParenValue: Combinator<ValueNode>;
   SquareValue: Combinator<ValueNode>;
   ValueAtom: Combinator<ValueNode>;
   ValueSpaceGroup: Combinator<ValueSlot>;
@@ -264,7 +264,11 @@ type JessRules = {
   QueryDashedIdentifier: Combinator<Keyword>;
   QueryClause: Combinator<ValueNode>;
   QueryPrelude: Combinator<ValueNode>;
+  DottedAtRuleKeyword: Combinator<Keyword>;
   AtRulePrelude: Combinator<ValueNode | null>;
+  ContainerStyleQuery: Combinator<FunctionCall>;
+  ContainerQueryInParens: Combinator<ValueNode>;
+  ContainerQueryAtom: Combinator<ValueNode>;
   ContainerQueryClause: Combinator<ValueNode>;
   ContainerQueryPrelude: Combinator<ValueNode>;
   ContainerPrelude: Combinator<ValueNode>;
@@ -289,7 +293,6 @@ type JessRules = {
   PropertyName: Combinator<Keyword>;
   PropertyDescriptor: Combinator<Declaration>;
   PropertyAtRule: Combinator<AtRuleBlock>;
-  Percentage: Combinator<string>;
   KeyframeBlock: Combinator<Ruleset>;
   Keyframes: Combinator<AtRuleBlock>;
   UnknownAtRuleBlock: Combinator<UnknownAtRuleBlock>;
@@ -303,6 +306,18 @@ type JessRules = {
 };
 
 type SharedSyntax = {
+  /*
+   * Converged to the CSS base (inherited via compose): same token rule
+   * token(noTrivia(sequence(<number>, '%'))), used only by keyframeSelector.
+   */
+  Percentage: Combinator<string>;
+
+  /*
+   * Converged to the CSS base (inherited via compose): same recognizer
+   * (number + optional unit, `%` admitted as a unit) and same `dimension()`
+   * reducer; differs only requireToken().value vs tokenText().
+   */
+  Dimension: Combinator<Dimension>;
   AttributeModifier: Combinator<string>;
   AttributeOperator: Combinator<string>;
   DoubleQuotedText: Combinator<string>;
@@ -450,6 +465,18 @@ const calcSumOperator = sequence(
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const commentTrivia = regex(/\/(?:\*(?:[^*]|\*(?!\/))*\*\/|\/[^\n\r]*)/);
 
+/*
+ * Inside a compound selector a block comment is trivia, never a separator:
+ * `.e/*y*\/.f` is the compound `.e.f`, not the descendant `.e .f`
+ * (DESIGN-DECISIONS.md G26; css-syntax-3 §4 removes comments at tokenisation,
+ * so nothing separates the parts by the time selector structure is decided).
+ * Whitespace is deliberately absent from this table — real whitespace between
+ * simple selectors IS the descendant combinator, and it is resolved one level
+ * up in `ComplexSelector` under the document's ambient trivia. Mirrors the css
+ * base's `compoundTrivia`.
+ */
+const compoundTrivia = classifiedTrivia({ comment: blockComment });
+
 /* Keep custom-value comments visible as source trivia without making them
  * semantic custom-value parts. Jess names every comment `comment` in its
  * document trivia, and root capture is selected against that one table, so the
@@ -486,6 +513,38 @@ const scanSkipSingleQuoted = sequence(
   literal('\''),
   plainSingleQuotedText,
   literal('\'')
+);
+
+/*
+ * The raw interior of a plain `( … )` value block (css-syntax-3 §5.4.7 simple
+ * block). The structured `ParenValue` arm parses the interior as an ordinary
+ * Jess `Value` and wins for every component-value form Jess models; this scan
+ * is the fallback for the one residual Jess's value model deliberately omits —
+ * a bare infix arithmetic operator between numeric operands (`(1 + 2)`), which
+ * P17 keeps out of top-level values but which is still valid CSS inside a block.
+ * The parens make it an inert component-value block, NOT the `$( … )` math
+ * boundary, so the bytes are kept verbatim rather than evaluated. Nested groups,
+ * strings and comments are inert exactly as they are for the base's own raw
+ * paren scan, so an inner `)` cannot close the block early.
+ */
+const balancedParens = balanced(
+  '(',
+  ')',
+  { skip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted] }
+);
+const balancedBrackets = balanced(
+  '[',
+  ']',
+  { skip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted] }
+);
+const balancedBraces = balanced(
+  '{',
+  '}',
+  { skip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted] }
+);
+const rawParenInner = scanTo(
+  literal(')'),
+  { skip: [blockComment, scanSkipDoubleQuoted, scanSkipSingleQuoted, balancedParens, balancedBrackets, balancedBraces] }
 );
 
 /*
@@ -683,8 +742,14 @@ const plainUrlInner = regex(/(?:[^"'()\\$ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|\\
  * segment. Every other `$` remains CSS URL-token text, so `$foo` and
  * `$[key]` do not become Jess value lookups. Whitespace, quotes, and
  * parentheses stay outside this closed URL slice.
+ *
+ * `\\` is excluded from the plain-character class so a backslash can only start
+ * the css-syntax-3 §4.3.6 escape alternative, exactly as `plainUrlInner` and the
+ * shared css `urlInner` do. Otherwise `url(a\ b.png)` / `url(a\)b.png)` would
+ * read the backslash as literal text and stop at the following escaped space or
+ * paren — valid CSS the base dialects accept.
  */
-const unquotedUrlText = regex(/(?:[^"'()$\ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|\$(?!\{)|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+const unquotedUrlText = regex(/(?:[^"'()\\$ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|\$(?!\{)|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 
 /*
  * Jess's compiler namespace: the `@-\u2026` names a module directive lowers to. They
@@ -1683,38 +1748,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     () => NULL_NODE
   );
 
-  /*
-   * `<percentage>` — css-values-4 §8.2: "a `<number>` immediately followed by a
-   * percent sign `%`", i.e. `<percentage> = <number> %`. It is a NAMED CSS value
-   * type, referenced by name from many productions — `<keyframe-selector> = from
-   * | to | <percentage>` (css-animations-1 §4), `image-set()`, `color-mix()`,
-   * `<position>` — so it is a rule here rather than a shape each consumer
-   * re-spells. Three dialects previously carried three different hand-rolled
-   * numeric regexes for it, none referenceable and none agreeing with this
-   * grammar's own `<number>` token.
-   *
-   * This does NOT add an AST node type: a percentage is still a `Dimension`
-   * whose unit is `%`, which is why this is a token rule and not a `node()`.
-   * `noTrivia` enforces the "immediately followed by" of the spec, so `50 %`
-   * is not a percentage.
-   */
-  const Percentage = token(noTrivia(sequence(g.NumberToken, literal('%'))));
-  const Dimension = node<Dimension>(
-    'Dimension',
-    noTrivia(sequence(
-      g.NumberToken,
-      optional(g.DimensionUnit)
-    )),
-    (children) => {
-      const numberText = requireToken(children[0]).value;
-      const unit = children.length > 1 ? requireToken(children[1]).value : '';
-      return dimension(
-        Number(numberText),
-        unit,
-        `${numberText}${unit}`
-      );
-    }
-  );
   const UrlInterpolatedValue = node<Interpolation>(
     'UrlInterpolatedValue',
     noTrivia(sequence(
@@ -1912,6 +1945,18 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
+   * A relative-selector combinator (`>`/`+`/`~`, never the column `||` or
+   * namespace `|`): selectors-4 §4.2 lets a `:has()` argument branch open with
+   * one. Folded into `PseudoSelectorComplex` (below), guarded out of the nth
+   * bare-selector fallback, and reused by the CSS Nesting `RelativeSelector`.
+   */
+  const relativeSelectorCombinator = choice(
+    literal('>'),
+    literal('+'),
+    literal('~')
+  );
+
+  /*
    * `:nth-child`/`:nth-last-child` argument: a bare `<An+B>` OR `<An+B> of S`
    * (Selectors-4 §6.6.2, https://www.w3.org/TR/selectors-4/#the-nth-child-pseudo).
    * The shared `g.NthExpression`/`g.NthOfKeyword`/`g.PseudoSelectorCloseAhead`
@@ -1940,7 +1985,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
             )),
             g.PseudoSelectorCloseAhead
           ),
-          g.PseudoSelectorList
+
+          /*
+           * The bare selector fallback (`:nth-child(.a)`) is not a relative
+           * selector: a leading combinator makes it an invalid `<An+B>`
+           * (`:nth-child(+ n)`), so reject rather than re-capturing `+ n` now
+           * that `PseudoSelectorComplex` admits a leading combinator.
+           */
+          sequence(not(relativeSelectorCombinator), g.PseudoSelectorList)
         )
       )
     ),
@@ -1983,6 +2035,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
               g.NthOfKeyword
             )
           )),
+
+          /*
+           * Same guard as `:nth-child`: the bare selector fallback is not a
+           * relative selector, so a leading combinator (`:nth-of-type(+ n)`)
+           * rejects rather than parsing as `+ n`.
+           */
+          not(relativeSelectorCombinator),
           g.PseudoSelectorList
         )
       )
@@ -2089,16 +2148,19 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
   const PseudoSelectorCompound = node<SelectorTerm>(
     'PseudoSelectorCompound',
-    noTrivia(oneOrMore(choice(
-      parser(
-        { trivia: whitespace },
-        g.AttributeSelector
-      ),
-      g.PseudoSelector,
-      g.Parent,
-      g.NamespaceTypeSelector,
-      g.BasicSelector
-    ))),
+    noTrivia(parser(
+      { trivia: compoundTrivia },
+      oneOrMore(choice(
+        parser(
+          { trivia: whitespace },
+          g.AttributeSelector
+        ),
+        g.PseudoSelector,
+        g.Parent,
+        g.NamespaceTypeSelector,
+        g.BasicSelector
+      ))
+    )),
     reduceCompound
   );
   const selectorCombinator = choice(
@@ -2107,9 +2169,20 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     literal('+'),
     literal('~')
   );
+
+  /*
+   * A functional-pseudo argument branch may open with a relative combinator
+   * (`:has(> .b)`, selectors-4 §4.2). css/less/scss all admit it; jess matches by
+   * folding an optional leading combinator into this complex, emitting a
+   * `RelativeSelector` when present and a bare branch otherwise — the same shape
+   * as less's `PseudoArgumentComplex`. This complex is also the nth argument's
+   * selector fallback, so the two callers there guard the leading combinator out:
+   * `:nth-child(+ n)` is an invalid `<An+B>`, not a relative selector.
+   */
   const PseudoSelectorComplex = node<SelectorBranch>(
     'PseudoSelectorComplex',
     sequence(
+      optional(relativeSelectorCombinator),
       g.PseudoSelectorCompound,
       many(sequence(
         optional(selectorCombinator),
@@ -2117,6 +2190,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       ))
     ),
     (children) => {
+      /*
+       * Position 0 is the optional leading combinator token, or the first
+       * compound (a `SelectorTerm`, never a token) when absent — so `isToken`
+       * alone identifies a relative branch without restating the combinator set.
+       */
+      const first = children[0];
+      const lead = isToken(first) ? first : undefined;
       const segments: Array<{ combinator?: JessComplexTail['combinator']; term: SelectorTerm }> = [];
       let combinator: JessComplexTail['combinator'] = ' ';
       for (const child of children) {
@@ -2129,7 +2209,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           combinator = jessCombinator(child);
         }
       }
-      return selectorBranchOf([segments[0]!, ...segments.slice(1)]);
+      const branch = selectorBranchOf([segments[0]!, ...segments.slice(1)]);
+      return lead === undefined ? branch : relativeSelector(jessRelativeCombinator(lead), jessBranchSegments(branch));
     }
   );
   const PseudoSelectorTail = node<SelectorBranch>(
@@ -2157,7 +2238,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
 
   /*
    * The generic (non-nth) functional-pseudo argument: a static `SelectorList`
-   * only (`:not(.a, .b)`, `:is(.a)`, `:lang(en)`). The nth families dispatch by
+   * only (`:not(.a, .b)`, `:is(.a)`, `:has(> .b)`). The nth families dispatch by
    * name to their own arguments above; CSS's generic raw pseudo-argument arm is
    * deliberately NOT used here — it would hide dynamic Jess interpolation as
    * source text. Retain the parsed `SelectorList` rather than collapsing it to
@@ -2870,6 +2951,50 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
+   * `( … )` in value position — an ordinary css-syntax-3 §5.4.7 simple block, and
+   * CSS, Less and SCSS all accept it (`b: (c)`, `b: (1 + 2)`). Jess accepts it too
+   * (P18(a)): the parens make a plain component-value block, NOT the `$( … )` math
+   * boundary — it is inert and never evaluated. The structured arm parses the
+   * interior as an ordinary Jess `Value`, so `(c)` yields `block(Keyword c)`
+   * byte-for-byte with the base; the raw arm is the §5.4.7 fallback for the one
+   * residual Jess's value model omits — a bare infix operator between numbers
+   * (`(1 + 2)`), which P17 keeps out of TOP-LEVEL values (`b: 1 + 2` still rejects)
+   * but which is valid CSS inside a block. The `not` guard preserves Jess's
+   * pre-existing clean rejection of the empty `()` / `( )` block — P18(a) settles
+   * only `(c)` / `( c )` / `(1 + 2)` and is silent on the empty form, so this keeps
+   * the conservative existing behaviour rather than minting an empty `Any` block
+   * (the CSS base instead throws in its `()` reducer; the empty-block form is a
+   * separate open question, not settled here).
+   */
+  const ParenValue = node<ValueNode>(
+    'ParenValue',
+    choice(
+      noTrivia(sequence(
+        literal('('),
+        optional(valueTrivia),
+        g.Value,
+        optional(valueTrivia),
+        literal(')')
+      )),
+      noTrivia(sequence(
+        literal('('),
+        not(sequence(
+          optional(valueTrivia),
+          literal(')')
+        )),
+        rawParenInner,
+        literal(')')
+      ))
+    ),
+    (children) => {
+      const slot = children.find(isJessValueSlotValue);
+      return slot === undefined
+        ? block(any(requireToken(children[1]).value), 'paren')
+        : block(slot, 'paren');
+    }
+  );
+
+  /*
    * `[a]` in value position — CSS `<line-names>`, and the same bytes Sass spells
    * as a bracketed list. Mirrors the CSS base's `SquareValue` so `.jess` stays a
    * superset; named for the delimiter rather than for grid, because the shape has
@@ -2915,6 +3040,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * `$foo: bar { … }` a positioned parse error instead of a silent two-value read.
    */
   const nonBlockValueAtom = choice(
+    g.ParenValue,
     g.SquareValue,
     g.DollarValue,
     g.ExpressionLambda,
@@ -3381,18 +3507,66 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
+   * A `<layer-name>` is `<ident> ['.' <ident>]*` (css-cascade-5 §6.1): the dotted
+   * sub-layer spelling is ONE identifier, not a class selector or a post-parse
+   * string. It is glued — `b.c`, never `b . c` — so the dots and idents parse
+   * under `noTrivia`, and it reduces to the same plain `Keyword` every other
+   * generic prelude name takes, matching the `DottedAtRuleKeyword` Less produces
+   * for the same header.
+   */
+  const DottedAtRuleKeyword = node<Keyword>(
+    'DottedAtRuleKeyword',
+    sequence(
+      g.Identifier,
+      oneOrMore(sequence(
+        noTrivia(literal('.')),
+        noTrivia(g.Identifier)
+      ))
+    ),
+    children => keyword(children.map(child => requireToken(child).value).join(''))
+  );
+
+  /*
    * A generic at-rule prelude is a comma-separated `<media-query-list>` that
    * may also be absent, so its clause is `QueryClause` exactly as `QueryPrelude`'s
    * is. It carried a second name for its CALLER, `AtRulePreludeTerm`, and that
-   * is what kept a byte-identical copy alive.
+   * is what kept a byte-identical copy alive. Each clause first admits a dotted
+   * `<layer-name>` (`@layer a, b.c`), which `QueryClause` alone reads as a bare
+   * `b` and abandons at the `.`.
    */
+  /*
+   * A `@page` header is an optional page name followed by one or more
+   * `<pseudo-page>`s — `:first`, `:left`, `:right`, `:blank` (css-page-3 §3).
+   * They are header atoms, not selector syntax, so the whole header reduces to
+   * one `Any` joined without a separator — `@page wide:left` emits `wide:left`,
+   * byte-identical to the css/scss base (whose `@page` prelude is raw text). A
+   * spaced value list would instead emit `wide :left`, a valid-CSS byte
+   * divergence. `PagePseudo` mirrors the Less base's atom name and drives
+   * recognition; the header requires at least one pseudo so a bare page name
+   * (`@page wide`) still falls through to the query clause, and a generic query
+   * prelude keeps abandoning a stray top-level `:`.
+   */
+  const PagePseudo = node<ValueNode>(
+    'PagePseudo',
+    sequence(literal(':'), g.Identifier),
+    children => any(`:${requireToken(children[1]).value}`)
+  );
+  const pageHeader = node<ValueNode>(
+    'PageHeader',
+    sequence(optional(g.Keyword), oneOrMore(PagePseudo)),
+    children => any(children
+      .filter(isValueNode)
+      .map(value => value.type === 'Keyword' || value.type === 'Any' ? value.src : '')
+      .join(''))
+  );
+  const atRulePreludeClause = choice(g.DottedAtRuleKeyword, pageHeader, g.QueryClause);
   const AtRulePrelude = node<ValueNode | null>(
     'AtRulePrelude',
     sequence(
-      optional(g.QueryClause),
+      optional(atRulePreludeClause),
       many(sequence(
         literal(','),
-        g.QueryClause
+        atRulePreludeClause
       ))
     ),
     (children) => {
@@ -3412,17 +3586,101 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ['none'],
     { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF', caseInsensitive: true }
   );
+
+  /*
+   * A bare container name is one `<custom-ident>`, never the head of a query
+   * function: `style(--x: 1)` is a `<style-query>`, not a container named
+   * `style` followed by a stray group. Guarding on `<ident>(` keeps that
+   * function form on the query path, matching the css base's `not(QueryFunctionOpen)`.
+   */
+  const containerFunctionOpen = noTrivia(sequence(
+    g.Identifier,
+    literal('(')
+  ));
   const containerName = sequence(
+    not(containerFunctionOpen),
     not(containerNameReserved),
     g.Keyword
+  );
+
+  /*
+   * A `<style-query>` container header, `style(--x: 1)` (css-contain-3 §3.3).
+   * The opener is one token so `style(` cannot split across whitespace, and the
+   * argument is the same structural custom-property comparison the other
+   * dialects build — `funcCall('style', [Operation(':', <name>, <value>)])`,
+   * matching Less rather than an opaque header slice.
+   */
+  const jessStyleFunctionOpener = token(noTrivia(sequence(
+    word(
+      'style',
+      '-_a-zA-Z0-9\\u0080-\\uFFFF',
+      { caseInsensitive: true }
+    ),
+    literal('(')
+  )));
+  const ContainerStyleQuery = node<FunctionCall>(
+    'ContainerStyleQuery',
+    sequence(
+      jessStyleFunctionOpener,
+      g.CustomPropertyName,
+      literal(':'),
+      g.QueryValue,
+      literal(')')
+    ),
+    children => funcCall(
+      'style',
+      [operation(
+        ':',
+        keyword(requireToken(children[1]).value),
+        requireValueNode(children[3]),
+        false,
+        cssBaseMathOutsideParens(':')
+      )]
+    )
+  );
+
+  /*
+   * A `<query-in-parens>` group: `( <container-query> )` (css-contain-3 §3,
+   * media-queries-5 §3.1). Carries the parenthesised boolean form the features
+   * nest inside — `((width > 1px) and (height > 1px))`, `(style(--x: 1))` — and
+   * recurses through the clause so an inner `and`/`or` chain or a style query
+   * stays one grouped condition wrapped in `block(...)`, as css/less/scss emit.
+   */
+  const ContainerQueryInParens = node<ValueNode>(
+    'ContainerQueryInParens',
+    sequence(
+      literal('('),
+      g.ContainerQueryClause,
+      literal(')')
+    ),
+    children => block(requireValueNode(children[1]))
+  );
+
+  /*
+   * One `<container-query>` operand: a nested parenthesised group, a size
+   * feature, or a style query. The group is tried FIRST: a bare `(width > 1px)`
+   * feature or `style(...)` header has no leading `(`-then-`(`/`(`-then-fn, so it
+   * falls straight through to QueryFeature / ContainerStyleQuery, while leading
+   * with the group keeps QueryFeature's value-first range arm from speculatively
+   * reading a nested `style(--x: 1)` as a component value and recording a stray
+   * error (the same ordering the css base uses for its query-in-parens group).
+   */
+  const ContainerQueryAtom = node<ValueNode>(
+    'ContainerQueryAtom',
+    choice(
+      g.ContainerQueryInParens,
+      g.QueryFeature,
+      g.ContainerStyleQuery
+    ),
+    children => requireValueNode(children[0])
   );
   const ContainerQueryClause = node<ValueNode>(
     'ContainerQueryClause',
     sequence(
-      g.QueryFeature,
+      g.ContainerQueryAtom,
       many(sequence(
         g.QueryAndOr,
-        g.QueryFeature
+        g.ContainerQueryAtom
       ))
     ),
     (children) => {
@@ -3963,7 +4221,17 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         literal(':'),
         g.HeaderValue
       )),
-      literal(';')
+
+      /*
+       * `;` SEPARATES descriptors; it never TERMINATES the last one. The final
+       * descriptor before `}` may omit it, exactly as css/less/scss spell every
+       * declaration-list body — the shared `declarationListDeclaration` separator
+       * `choice(literal(';'), peek(literal('}')))`. See DESIGN-DECISIONS P11.
+       */
+      choice(
+        literal(';'),
+        peek(literal('}'))
+      )
     ),
     (children, fields) => {
       const value = children[2];
@@ -5038,18 +5306,21 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
 
   const CompoundSelector = node<SelectorTerm>(
     'CompoundSelector',
-    noTrivia(oneOrMore(choice(
-      parser(
-        { trivia: whitespace },
-        g.AttributeSelector
-      ),
-      g.PseudoSelector,
-      g.InterpolatedParentSuffix,
-      g.InterpolatedSimple,
-      g.Parent,
-      g.NamespaceTypeSelector,
-      g.BasicSelector
-    ))),
+    noTrivia(parser(
+      { trivia: compoundTrivia },
+      oneOrMore(choice(
+        parser(
+          { trivia: whitespace },
+          g.AttributeSelector
+        ),
+        g.PseudoSelector,
+        g.InterpolatedParentSuffix,
+        g.InterpolatedSimple,
+        g.Parent,
+        g.NamespaceTypeSelector,
+        g.BasicSelector
+      ))
+    )),
     reduceCompound
   );
 
@@ -5110,13 +5381,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * parent (`.parent > .child`). This reuses `g.ComplexSelector` behind an
    * optional leading `>`/`+`/`~`, yielding a `RelativeSelector` when the
    * combinator is present and a bare `ComplexSelector` otherwise. Mirrors css's
-   * `RelativeSelector` (css `grammar.ts`) and scss's `RelativeSelector`.
+   * `RelativeSelector` (css `grammar.ts`) and scss's `RelativeSelector`. The
+   * `relativeSelectorCombinator` it opens with is shared with the functional-
+   * pseudo argument (defined above with the nth/pseudo selector rules).
    */
-  const relativeSelectorCombinator = choice(
-    literal('>'),
-    literal('+'),
-    literal('~')
-  );
   const RelativeSelector = node<SelectorBranch>(
     'RelativeSelector',
     sequence(
@@ -5360,7 +5628,11 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     QueryDashedIdentifier,
     QueryClause,
     QueryPrelude,
+    DottedAtRuleKeyword,
     AtRulePrelude,
+    ContainerStyleQuery,
+    ContainerQueryInParens,
+    ContainerQueryAtom,
     ContainerQueryClause,
     ContainerQueryPrelude,
     ContainerPrelude,
@@ -5388,14 +5660,12 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     PropertyName,
     PropertyDescriptor,
     PropertyAtRule,
-    Percentage,
     KeyframeBlock,
     Keyframes,
     UnknownAtRuleBlock,
     ScopeBlock,
     AtRuleBlock,
     AtRuleStatement,
-    Dimension,
     Url,
     CallComponent,
     CallArgument,
@@ -5413,6 +5683,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     IdentifierOrFunction,
     CollectionEntry,
     Collection,
+    ParenValue,
     SquareValue,
     InterpolatedValue,
     ValueAtom,

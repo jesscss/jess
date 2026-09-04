@@ -119,7 +119,10 @@ type GrammarRuleName =
   | 'ConditionalBlock'
   | 'ConditionalGroupAtRule'
   | 'ContainerPrelude'
+  | 'ContainerQueryAtom'
   | 'ContainerQueryClause'
+  | 'ContainerQueryCondition'
+  | 'ContainerQueryInParens'
   | 'ContainerQueryPrelude'
   | 'ConditionalAtKeyword'
   | 'ContainerAtKeyword'
@@ -537,8 +540,7 @@ const attributeNamespace = regex(/(?:-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9a-fA-F
  */
 const hexColor = regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F])/);
 const numberValue = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)/);
-const numberNoPercentage = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)(?!%)/);
-const dimensionUnit = regex(/-?[_a-zA-Z\u0080-\uFFFF](?:[_a-zA-Z0-9\u0080-\uFFFF]|-(?![0-9]))*/);
+const dimensionUnit = regex(/-?[_a-zA-Z\u0080-\uFFFF](?:[_a-zA-Z0-9\u0080-\uFFFF]|-(?![0-9]))*|%/);
 const customDoubleQuotedText = regex(/(?:[^"\\]|\\[\s\S])*/);
 const customSingleQuotedText = regex(/(?:[^'\\]|\\[\s\S])*/);
 const customDoubleQuoted = sequence(
@@ -1292,25 +1294,25 @@ const cssFactory = (g: GrammarSelf) => {
     g.UnicodeRangeToken,
     children => any(tokenText(children[0]))
   );
-  const Percentage = node(
-    'Dimension',
-    noTrivia(sequence(
-      numberValue,
-      literal('%')
-    )),
-    (children) => {
-      const numberText = tokenText(children[0]);
-      return dimension(
-        Number(numberText),
-        '%',
-        `${numberText}%`
-      );
-    }
-  );
+
+  /*
+   * `<percentage>` — css-values-4 §8.2: "a `<number>` immediately followed by a
+   * percent sign `%`", i.e. `<percentage> = <number> %`. It is a NAMED CSS value
+   * type, referenced by name from productions such as `<keyframe-selector> =
+   * from | to | <percentage>` (css-animations-1 §4), so it is a rule here rather
+   * than a shape each consumer re-spells.
+   *
+   * This does NOT add an AST node type: in value position a percentage is a
+   * `Dimension` whose unit is `%` — `dimensionUnit` admits `%` exactly as the
+   * shared recognizer does — which is why this is a token rule and not a
+   * `node()`. `noTrivia` enforces the "immediately followed by" of the spec, so
+   * `50 %` is not a percentage.
+   */
+  const Percentage = token(noTrivia(sequence(numberValue, literal('%'))));
   const Dimension = node(
     'Dimension',
     noTrivia(sequence(
-      numberNoPercentage,
+      numberValue,
       optional(dimensionUnit)
     )),
     (children) => {
@@ -1748,7 +1750,6 @@ const cssFactory = (g: GrammarSelf) => {
    * the arithmetic-grouping shape, which is the one css-values-4 §10 defines.
    */
   const calcValueAtom = choice(
-    g.Percentage,
     g.Dimension,
     g.Color,
     g.UnicodeRange,
@@ -2243,7 +2244,6 @@ const cssFactory = (g: GrammarSelf) => {
    * this route.
    */
   const valueAtom = choice(
-    g.Percentage,
     g.Dimension,
     g.Color,
     g.UnicodeRange,
@@ -2310,7 +2310,6 @@ const cssFactory = (g: GrammarSelf) => {
   const TypedValue = node(
     'TypedValue',
     choice(
-      g.Percentage,
       g.Dimension,
       g.Color,
       g.Quoted,
@@ -3013,10 +3012,85 @@ const cssFactory = (g: GrammarSelf) => {
     not(containerNameReserved),
     g.Keyword
   );
+
+  /*
+   * A `<query-in-parens>` group: `( <container-query> )` (css-contain-3 §3,
+   * media-queries-5 §3.1). It carries the parenthesised boolean form the size
+   * and style features nest inside — `((width > 1px) and (height > 1px))` and
+   * `(style(--x: 1))`. This is the container analogue of `SupportsInParens` /
+   * `SupportsCondition` above, and is built on the SAME three atoms (a nested
+   * group, a size feature, a general-enclosed function) so a grouped
+   * `style(...)` reads through `Enclosed`'s balanced content model rather than
+   * the opaque `QueryFunction` scan, which — like the media prelude — cannot be
+   * nested inside another paren. The result wraps in the same `block(...)` a
+   * size-feature paren produces, matching what SCSS's `QueryInParens` emits.
+   * It is a deliberate sibling of `SupportsCondition`, not a factoring of it:
+   * the two share the `not`/`and`/`or`-in-parens skeleton but their atom sets
+   * differ (a supports atom is a declaration/selector; a container atom is a
+   * size feature or style query), so collapsing them would gate one at-rule's
+   * accept set on the other's.
+   *
+   * Tried FIRST in `ContainerQueryClause` below: its `( <condition> )` opens on
+   * a paren whose interior is a nested group, a feature or an enclosed function,
+   * none of which a bare `(width > 1px)` feature or a `style(...)` header matches,
+   * so those fall straight through to `QueryFeature` / `QueryFunction` and keep
+   * their shapes (the bare `style(...)` header stays a `QueryFunction`). Leading
+   * with the group also keeps `QueryFeature`'s value arm from speculatively
+   * reading a nested `fn(a: b)` as a component value and recording a stray error.
+   */
+  const ContainerQueryAtom = node(
+    'ContainerQueryAtom',
+    choice(
+      g.ContainerQueryInParens,
+      g.QueryFeature,
+      g.Enclosed
+    ),
+    children => firstValue(children)
+  );
+  const ContainerQueryCondition = node(
+    'ContainerQueryCondition',
+    choice(
+      sequence(
+        g.QueryNot,
+        g.ContainerQueryAtom
+      ),
+      sequence(
+        g.ContainerQueryAtom,
+        many(sequence(
+          g.QueryAndOr,
+          g.ContainerQueryAtom
+        ))
+      )
+    ),
+    (children) => {
+      const values: ValueNode[] = [];
+      for (const child of children) {
+        if (isValue(child)) {
+          values.push(child);
+        } else {
+          const normalized = tokenText(child).toLowerCase();
+          if (normalized === 'not' || normalized === 'and' || normalized === 'or') {
+            values.push(keyword(tokenText(child)));
+          }
+        }
+      }
+      return values.length === 1 ? values[0]! : spaced(values);
+    }
+  );
+  const ContainerQueryInParens = node(
+    'ContainerQueryInParens',
+    sequence(
+      literal('('),
+      g.ContainerQueryCondition,
+      literal(')')
+    ),
+    children => block(firstValue(children))
+  );
   const ContainerQueryClause = node(
     'ContainerQueryClause',
     sequence(
       choice(
+        g.ContainerQueryInParens,
         g.QueryFeature,
         g.QueryFunction
       ),
@@ -3816,6 +3890,9 @@ const cssFactory = (g: GrammarSelf) => {
     QueryClause,
     QueryPrelude,
     ContainerQueryClause,
+    ContainerQueryAtom,
+    ContainerQueryCondition,
+    ContainerQueryInParens,
     ContainerQueryPrelude,
     ContainerPrelude,
     QueryFunction,

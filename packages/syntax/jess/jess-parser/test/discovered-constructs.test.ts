@@ -52,16 +52,65 @@ describe('Jess constructs discovered outside the parser suites', () => {
     ['leading only', 'a { b: ( c) }'],
     ['trailing only', 'a { b: (c ) }'],
     ['arithmetic group', 'a { b: (1 + 2) }']
-  ])('PINNED DEFECT — rejects a bare parenthesised component value (%s)', (_label, source) => {
+  ])('accepts a plain parenthesised component value (%s)', (_label, source) => {
     /*
      * Valid CSS is valid in every dialect, one way. `b: (c)` is an ordinary
-     * css-syntax-3 §5.4.7 simple block and CSS, Less and SCSS all accept at
-     * least the tight spelling — Jess accepts none of them. Jess spells an
-     * *expression* group `$(…)`, which is a separate construct and is
-     * asserted below; that spelling does not license rejecting the plain
-     * paren block.
+     * css-syntax-3 §5.4.7 simple block, and CSS, Less and SCSS all accept it
+     * (P18(a), DESIGN-DECISIONS.md). The parens make a plain component-value
+     * block, NOT the `$(…)` expression group asserted below — the block is
+     * inert and never evaluated. A bare infix arithmetic value with no parens
+     * is a separate construct that still rejects (P17), asserted below.
+     */
+    expect(() => parse(source)).not.toThrow();
+  });
+
+  it('models a parenthesised component value as a paren Block', () => {
+    expect(firstRule('a { b: (c) }')).toMatchObject({
+      rules: [{
+        type: 'Declaration',
+        name: 'b',
+        value: { type: 'Block', delimiter: 'paren', value: { type: 'Keyword', src: 'c' } }
+      }]
+    });
+  });
+
+  it('keeps a bare infix arithmetic value a parse error outside parens (P17)', () => {
+    /*
+     * P17: `.jess` arithmetic is spelled ONLY as `$(…)`; a bare `1 + 2` at
+     * value top level "shouldn't even parse". The paren block above does not
+     * license the unparenthesised form — the boundary is exactly the parens.
+     */
+    expect(() => parse('a { b: 1 + 2 }')).toThrow();
+  });
+
+  it.each([
+    ['empty', 'a { b: () }'],
+    ['whitespace only', 'a { b: ( ) }']
+  ])('keeps an empty parenthesised block a parse error (%s)', (_label, source) => {
+    /*
+     * P18(a) settles `(c)` / `( c )` / `(1 + 2)` and is silent on the empty
+     * block. The raw simple-block fallback declines it so `()` stays the clean
+     * rejection Jess already produced, rather than minting an empty `Any`.
      */
     expect(() => parse(source)).toThrow();
+  });
+
+  it.each([
+    ['nested parens', 'a { b: (1 + (2)) }', '1 + (2)'],
+    ['nested brackets', 'a { b: (1 + [2]) }', '1 + [2]'],
+    ['nested braces', 'a { b: (1 + {2}) }', '1 + {2}'],
+    ['string with a close paren', 'a { b: ("a)b" + 2) }', '"a)b" + 2'],
+    ['comment with a close paren', 'a { b: (1 /* ) */ + 2) }', '1 /* ) */ + 2']
+  ])('keeps a nested delimiter, string or comment from closing the raw block early (%s)', (_label, source, inner) => {
+    /*
+     * The raw §5.4.7 fallback scans to the matching `)`, skipping balanced
+     * groups, strings and comments — so an inner `)` cannot end the block.
+     * Pins the balanced/skip helpers: without them the block would close at the
+     * first inner `)` and the tail would be a parse error.
+     */
+    expect(firstRule(source)).toMatchObject({
+      rules: [{ type: 'Declaration', name: 'b', value: { type: 'Block', delimiter: 'paren', value: { type: 'Any', src: inner } } }]
+    });
   });
 
   it('accepts the Jess expression group', () => {
@@ -109,18 +158,51 @@ describe('Jess constructs discovered outside the parser suites', () => {
     });
   });
 
-  it('PINNED DEFECT — splits a compound selector on a comment', () => {
+  it('keeps a compound selector compound across a comment', () => {
     /*
      * `a/*c*` + `/.b` is the single compound `a.b`: a comment is trivia, not
-     * a descendant combinator, so it must not introduce one. Jess parses it
-     * as the *descendant* `a .b` — byte-identical output to the authored
-     * source, so it never surfaced, but the selector means something else
-     * entirely. CSS and Less both produce a CompoundSelector here; SCSS
-     * rejects the input (pinned in its own suite). Three different answers
-     * to one construct.
+     * a descendant combinator, so it must not introduce one (DESIGN-DECISIONS
+     * G26). CSS and Less already produce a CompoundSelector here; Jess now
+     * agrees. Only the no-whitespace form is compound — `a/*x*` + `/ b` and
+     * `a /*x*` + `/ b` stay descendant, asserted below.
      */
     expect(firstRule('a/*c*/.b{c:d}')).toMatchObject({
-      selector: { selectors: [{ type: 'ComplexSelector', value: [{ text: 'a' }, ' ', { text: '.b' }] }] }
+      selector: { selectors: [{ type: 'CompoundSelector', value: [{ text: 'a' }, { text: '.b' }] }] }
+    });
+  });
+
+  it('keeps a comment with adjacent whitespace a descendant separator', () => {
+    /*
+     * A block comment followed (or preceded) by real whitespace is an authored
+     * descendant combinator, not a manufactured one — the compound stops at the
+     * whitespace exactly as CSS and Less do. Guards against widening G26 past
+     * the no-whitespace case.
+     */
+    expect(firstRule('a/*x*/ b{c:d}')).toMatchObject({
+      selector: { selectors: [{ type: 'ComplexSelector', value: [{ text: 'a' }, ' ', { text: 'b' }] }] }
+    });
+  });
+
+  it('keeps a compound compound across a comment inside a pseudo argument', () => {
+    /*
+     * The same rule holds inside a functional pseudo: `:is(.e/*y*` + `/.f)` is
+     * `:is(.e.f)`, matching the CSS base, which reuses the one compound
+     * production everywhere.
+     */
+    expect(firstRule('a:is(.e/*y*/.f){c:d}')).toMatchObject({
+      selector: {
+        selectors: [{
+          type: 'CompoundSelector',
+          value: [
+            { text: 'a' },
+            {
+              type: 'PseudoSelector',
+              name: ':is',
+              args: { selectors: [{ type: 'CompoundSelector', value: [{ text: '.e' }, { text: '.f' }] }] }
+            }
+          ]
+        }]
+      }
     });
   });
 
@@ -130,15 +212,15 @@ describe('Jess constructs discovered outside the parser suites', () => {
 
   it.each([
     ['child', 'a:has(> .b){c:d}'],
-    ['next sibling', 'a:has(+ .b){c:d}']
-  ])('PINNED DEFECT — rejects a leading combinator in a relative selector (%s)', (_label, source) => {
+    ['next sibling', 'a:has(+ .b){c:d}'],
+    ['subsequent sibling', 'a:has(~ .b){c:d}']
+  ])('accepts a leading combinator in a relative selector (%s)', (_label, source) => {
     /*
-     * selectors-4 §4.2: a relative selector may start with a combinator.
-     * CSS, Less and SCSS all accept `:has(> .b)`; only Jess does not, and it
-     * is plain CSS, so this is a Jess selector-grammar gap rather than a
-     * dialect decision.
+     * selectors-4 §4.2: a relative selector may start with a combinator. CSS,
+     * Less and SCSS all admit a leading combinator on the shared selector-pseudo
+     * argument, and it is plain CSS, so Jess accepts it too.
      */
-    expect(() => parse(source)).toThrow();
+    expect(() => parse(source)).not.toThrow();
   });
 
   it('accepts an A+B microsyntax with no spaces around the sign', () => {

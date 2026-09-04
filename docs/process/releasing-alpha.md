@@ -143,8 +143,11 @@ pnpm run release:alpha:update-from-dev
 To prepare and push the branch in one command after the full dry-run gate:
 
 ```bash
-pnpm run release:alpha:update-from-dev -- --release-dry-run --push
+node scripts/release/update-alpha-from-dev.mjs --release-dry-run --push
 ```
+
+(Invoke the script directly for flags: pnpm forwards the `--` separator
+literally and the updater rejects it as an unknown argument.)
 
 The updater fetches the current pushed `origin/dev`, creates a recovery branch,
 imports the source tree with a binary two-tree patch, preserves only package
@@ -283,6 +286,39 @@ pnpm run release:alpha:dry-run
 
 The dry-run command runs the same preflight and then invokes the dry-run publish
 check with the internally forwarded registry-resolved candidate.
+
+### One preflight per release candidate
+
+The preflight builds the workspace exactly once (`build:release`); the later
+steps assume that built tree, and `verify:baseline -- --no-build` skips that
+gate's runtime-chain rebuild.
+
+Each check runs once per preflight:
+
+- `test:jess-release` runs the `jess` package's public-API contract,
+  path-resolution and AST-v2 production-ratchet test files in one vitest
+  invocation (the same files `test:jess-public-api`,
+  `test:jess-path-resolution` and `test:jess-ast-v2-ratchet` run separately).
+- `test:less:test-data:unit` and `:config` are not in the preflight: they are
+  the `tests-unit/` and `tests-config/` halves of the corpus that
+  `verify:baseline` renders in full with the same expected-output comparison.
+  They remain in `verify:less-alpha:checks` for standalone use.
+- `verify:baseline -- --trust-ci` skips the core, less-parser and css-parser
+  suites only when GitHub reports the dev CI `Build · lint · types · tests ·
+  gates` and `Source tests (build-free)` jobs completed successfully for the
+  exact commit in `scripts/release/alpha-source-provenance.json` (the commit
+  the source-sync gate has already matched this tree to). It prints the suites
+  it skipped and the run URLs it relied on. Without `gh`, without network, or
+  with any job missing, failed or still running, the suites run as before.
+
+A passing preflight records HEAD in `node_modules/.cache/jess-release-preflight.json`.
+`release:alpha` (and `release:alpha:dry-run`) skips the preflight when that
+marker names the current clean HEAD and says so in its output, so the updater's
+`--release-dry-run` followed by `pnpm run release:alpha` verifies the snapshot
+once, not twice. Any source change or new commit invalidates the marker.
+When the preflight is skipped, the publish step reuses the built artifacts only
+if every allowlisted package's entry point exists; otherwise it rebuilds.
+`--skip-check` remains the manual override.
 
 ### Packed clean-consumer proof
 

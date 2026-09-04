@@ -38,7 +38,6 @@ type ScssRules = {
   Quoted: Combinator<Quoted | Interpolation>;
   LiteralQuoted: Combinator<Quoted>;
   CustomPropertyValue: Combinator<Keyword>;
-  Dimension: Combinator<Dimension>;
   InterpolatedUrlValue: Combinator<Interpolation>;
   InterpolatedValue: Combinator<Interpolation>;
   Paren: Combinator<ValueNode>;
@@ -147,7 +146,6 @@ type ScssRules = {
   CounterStyle: Combinator<AtRuleBlock>;
   PropertyName: Combinator<Keyword>;
   PropertyAtRule: Combinator<AtRuleBlock>;
-  Percentage: Combinator<string>;
   KeyframeSelector: Combinator<SimpleSelector>;
   KeyframeBlock: Combinator<Ruleset>;
   Keyframes: Combinator<AtRuleBlock>;
@@ -189,6 +187,18 @@ type ScssRules = {
  * here, mirroring less-parser's `SharedSyntax`.
  */
 type ScssSharedSyntax = {
+  /*
+   * Converged to the CSS base (inherited via compose): same token rule
+   * token(noTrivia(sequence(<number>, '%'))), used only by keyframeSelector.
+   */
+  Percentage: Combinator<string>;
+
+  /*
+   * Converged to the CSS base (inherited via compose): same recognizer
+   * (number + optional unit, `%` admitted as a unit) and same `dimension()`
+   * reducer; differs only requireToken().value vs tokenText().
+   */
+  Dimension: Combinator<Dimension>;
   Color: Combinator<Color>;
   UnicodeRange: Combinator<ValueNode>;
   Keyword: Combinator<Keyword>;
@@ -317,18 +327,15 @@ const selectorTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
 const generalTemplateText = regex(/(?:[^#()\[\]{}'"\\]|\\[\s\S]|#(?!\{))+/);
 
 /*
- * Grammar-local copies of the leading pseudo-colon, hex-color and number
- * recognizers (byte-identical to the shared PseudoSelectorColon /
- * HexColor / NumberToken). Leading a choice arm with a
+ * Grammar-local copy of the leading pseudo-colon recognizer (byte-identical
+ * to the shared PseudoSelectorColon). Leading a choice arm with a
  * cross-composition shared `g.*` reference leaves that arm's first-set
  * unresolved (`any`) across the compose artifact boundary, so the compiler
- * enters the PseudoSelector / Color / Dimension node frame SPECULATIVELY at every simple
- * selector and value atom. A grammar-local leading recognizer lets the compiler
- * resolve the arm's first-set (`:`, `#`, a digit/sign) and first-char-gate it,
- * skipping the doomed frame entirely.
+ * enters the PseudoSelector node frame SPECULATIVELY at every simple
+ * selector. A grammar-local leading recognizer lets the compiler resolve the
+ * arm's first-set (`:`) and first-char-gate it, skipping the doomed frame.
  */
 const pseudoColon = regex(/::?(?![ \t\n\r\f])/);
-const numberValue = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)/);
 
 /*
  * Grammar-local block/line comment recognizers (byte-identical to the shared
@@ -415,10 +422,13 @@ const scssFactory = (g: ScssInputRules) => {
    * CSS owns the ordinary property identifier. SCSS adds only the legacy `*`
    * declaration hack, so this is a disjoint two-arm extension rather than a
    * copied identifier regex. Keep the starred arm trivia-free: `* color` is
-   * not one property name.
+   * not one property name. `token(...)` collapses `*` + ident into ONE token so
+   * `*color` is the whole property name (`Declaration{name:'*color'}`), matching
+   * Less's `DeclarationPropertyToken`; without it the reducer reads only the `*`
+   * child and silently drops the ident.
    */
   const propertyIdentifier = choice(
-    noTrivia(sequence(literal('*'), g.Identifier)),
+    token(noTrivia(sequence(literal('*'), g.Identifier))),
     g.Identifier
   );
 
@@ -569,39 +579,6 @@ const scssFactory = (g: ScssInputRules) => {
     'CustomPropertyValue',
     g.CustomPropertyToken,
     children => keyword(requireToken(children[0]).value)
-  );
-
-  /*
-   * `<percentage>` — css-values-4 §8.2: "a `<number>` immediately followed by a
-   * percent sign `%`", i.e. `<percentage> = <number> %`. It is a NAMED CSS value
-   * type, referenced by name from many productions — `<keyframe-selector> = from
-   * | to | <percentage>` (css-animations-1 §4), `image-set()`, `color-mix()`,
-   * `<position>` — so it is a rule here rather than a shape each consumer
-   * re-spells. Three dialects previously carried three different hand-rolled
-   * numeric regexes for it, none referenceable and none agreeing with this
-   * grammar's own `<number>`.
-   *
-   * This does NOT add an AST node type: a percentage is still a `Dimension`
-   * whose unit is `%`, which is why this is a token rule and not a `node()`.
-   * `noTrivia` enforces the "immediately followed by" of the spec, so `50 %`
-   * is not a percentage.
-   */
-  const Percentage = token(noTrivia(sequence(numberValue, literal('%'))));
-  const Dimension = node<Dimension>(
-    'Dimension',
-    noTrivia(sequence(
-      numberValue,
-      optional(g.DimensionUnit)
-    )),
-    (children) => {
-      const numberText = requireToken(children[0]).value;
-      const unit = children.length > 1 ? requireToken(children[1]).value : '';
-      return dimension(
-        Number(numberText),
-        unit,
-        `${numberText}${unit}`
-      );
-    }
   );
 
   /*
@@ -881,6 +858,55 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
+   * `var(--x,)` — a trailing comma with nothing after it — is `var()` with an
+   * EMPTY fallback: css-variables-1 §3 spells the fallback `<declaration-value>?`,
+   * so the empty value is well-formed and means "the empty value". Every other
+   * dialect accepts it; the generic `Call` argument list has no empty-argument
+   * slot, so `var(` alone is routed to a var-specific tail that permits it. The
+   * empty fallback lowers to `any('')`, the same node css records for it, so the
+   * built call is `var(--x, «empty»)`.
+   */
+  const VarEmptyFallback = node<ScssArgumentPair>(
+    'VarEmptyFallback',
+    noTrivia(sequence(
+      optional(valueTrivia),
+      literal(','),
+      optional(valueTrivia)
+    )),
+    (children) => {
+      const separator = children.map(child => requireToken(child).value).join('');
+      if (!separator.includes(',')) {
+        throw new TypeError('VarEmptyFallback lost its comma.');
+      }
+      return { separator, value: callArg(any('')) };
+    }
+  );
+
+  /*
+   * A var-specific tail: the SAME argument grammar and reducer as `Call`, plus a
+   * single optional trailing empty fallback. Absent that trailing comma the
+   * sequence is byte-for-byte `Call`, so `var(--x)` / `var(--x, red)` /
+   * `var(--x, var(--y, red))` build the identical `FunctionCall` they always
+   * have. The trailing arm is reachable ONLY from the `var(` dispatch key, so a
+   * generic `foo(a,)` stays the parse error css also rejects.
+   */
+  const VarCall = node<FunctionCall | Reference | IfValue>(
+    'Call',
+    sequence(
+      routed(),
+      optional(valueTrivia),
+      optional(sequence(
+        g.CallArgument,
+        many(g.ArgumentPair)
+      )),
+      optional(VarEmptyFallback),
+      optional(valueTrivia),
+      literal(')')
+    ),
+    children => reduceScssCall(requireToken(children[0]).value.slice(0, -1), children, 0)
+  );
+
+  /*
    * A namespaced CALL keeps its authored callee path in the `FunctionCall` name
    * (`color.mix`). That is the lossless store: the parser cannot know whether a
    * qualifier names a built-in `sass:` module or a `@use`d file, and splitting
@@ -891,6 +917,7 @@ const scssFactory = (g: ScssInputRules) => {
   const IdentifierOrFunction = dispatch(
     identOrFunction,
     caseInsensitive('url(', UrlFunction),
+    caseInsensitive('var(', VarCall),
     when(endsWith('('), Call),
     when(matches(/\.\$/), NamespacedVariable),
     otherwise(KeywordOrInterpolatedValue)
@@ -4772,7 +4799,6 @@ const scssFactory = (g: ScssInputRules) => {
     Quoted,
     LiteralQuoted,
     CustomPropertyValue,
-    Dimension,
     InterpolatedUrlValue,
     InterpolatedValue,
     Paren,
@@ -4880,7 +4906,6 @@ const scssFactory = (g: ScssInputRules) => {
     CounterStyle,
     PropertyName,
     PropertyAtRule,
-    Percentage,
     KeyframeSelector,
     KeyframeBlock,
     Keyframes,

@@ -61,6 +61,7 @@ describe('Less math with a comment on the operator boundary', () => {
     ['spaced, with an interior comment', '1px /**/ - 2px'],
     ['comment after the operator', '1px - /**/ 2px'],
     ['comment before the operator, spaced after', '1px/**/- 2px'],
+    ['comment before the operator, glued after', '1px/**/-2px'],
     ['line comment as the separator', '1px //c\n- 2px'],
     ['addition, glued on both sides', '1px/**/+/**/2px']
   ])('treats a comment on the boundary as an operand separator (%s)', async (_label, value) => {
@@ -96,18 +97,42 @@ describe('Less math with a comment on the operator boundary', () => {
   });
 
   /*
-   * Unchanged, and NOT fixed by this: a pad on one side with the operator glued
-   * to a number on the other. lessc folds these to `-1px`; we leave them as
-   * lists. The glued arms use `(?![0-9.])` as their proxy for "this sign is not
-   * glued to a number", and a comment defeats that proxy — in `1px/**\/-2px`
-   * the lookahead sees `/` rather than the digit that is actually there. Fixing
-   * it needs the operand's adjacency asserted directly rather than sniffed
-   * through a lookahead, which is what `notAdjacent()` is for.
+   * Pin flipped. `1px-/**\/2px` — a `-` glued to the unit, then a comment — used
+   * to read as one dimension with unit `px-` and emit verbatim, because the
+   * shared/CSS `dimensionUnit` admits any hyphen not glued to a DIGIT
+   * (`-(?![0-9])`), so the operand ate the operator before `sumOperator` could
+   * see it. That lookahead is comment-blind in the same way the sum operator's
+   * was (`1px-2px` splits, `1px-/**\/2px` did not). The Less grammar now uses a
+   * `lessDimensionUnit` terminal that also refuses a `-` before a comment opener
+   * (`/*` or `//`), so the dimension stops at `px` and the operator folds to
+   * `-1px` like lessc. This is a Less-only value-math delta: CSS and SCSS keep
+   * the shared terminal, where the same input is a two-item list per their
+   * oracles (G32; the deferred-half tracking row G34 in DESIGN-DECISIONS.md).
    */
-  it.each([
-    ['comment before, glued after', '1px/**/-2px'],
-    ['glued before, comment after', '1px-/**/2px']
-  ])('PINNED DEFECT — leaves a one-sided pad unfolded where lessc folds it (%s)', async (_label, value) => {
-    await expect(render(`.a { width: ${value}; }`)).resolves.toBe(`.a { width: ${value}; }`);
+  it('folds a glued-before pad like lessc', async () => {
+    await expect(render('.a { width: 1px-/**/2px; }')).resolves.toBe('.a { width: -1px; }');
+  });
+
+  /*
+   * The coupling that scopes the fix above: a `-` glued to the unit but followed
+   * by WHITESPACE (then a comment) is NOT comment-adjacent, so `lessDimensionUnit`
+   * still absorbs it into the unit (`px-`) and this stays a two-item list — the
+   * dimension never reaches the sum operator. Unchanged by the narrowing; the
+   * `-1px` fold requires the comment to immediately follow the operator `-`.
+   */
+  it('leaves a whitespace-after glued dash a two-item list', async () => {
+    await expect(render('.a { width: 1px- /**/2px; }')).resolves.toBe('.a { width: 1px- /**/2px; }');
+  });
+
+  /*
+   * The consequence of freeing the dash as an operator: with a comment then NO
+   * right operand (`1px-/**\/`), the `-` is a subtraction with nothing to
+   * subtract, which is a parse error — as it would be for `1px - ;`. lessc reads
+   * the same dash as an operator, so this is the operator's error, not a
+   * regression toward the old `px-` unit. (Degenerate input; absent from every
+   * corpus, so no oracle/fixture is affected.)
+   */
+  it('rejects a glued-before dash with no right operand', async () => {
+    await expect(render('.a { width: 1px-/**/; }')).rejects.toThrow();
   });
 });

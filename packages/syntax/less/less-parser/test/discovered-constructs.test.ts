@@ -179,14 +179,29 @@ describe('Less constructs discovered outside the parser suites', () => {
     expect(clean.unconsumedFrom).toBeNull();
   });
 
-  it('PINNED DEFECT — rejects a functional media query prelude', () => {
+  it('accepts a functional media query prelude as general-enclosed', () => {
     /*
-     * `@media foo(bar)` is an unknown-but-well-formed media feature spelling;
-     * CSS, SCSS and Jess all accept it and Less alone rejects it. Valid CSS
-     * is valid in every dialect, one way, so a Less-only rejection of a CSS
-     * prelude shape is a gap.
+     * `@media foo(bar)` is the `<general-enclosed>` function form
+     * (media-queries-5 §2.1/§3.1: `<function-token> <any-value> )`); CSS, SCSS
+     * and Jess all accept it and Less used to reject it alone. Valid CSS is
+     * valid in every dialect, one way, so the Less media-query prelude reuses
+     * the SAME general-enclosed node `@supports` already carries — the payload
+     * is opaque, so any-value contents parse rather than being read as a typed
+     * Less argument list.
      */
-    expect(() => parse('@media foo(bar) { a { b: c } }')).toThrow();
+    const media = parse('@media foo(bar) { a { b: c } }').rules[0];
+    const prelude = media?.type === 'AtRuleBlock' ? media.prelude : null;
+
+    expect(prelude).toMatchObject({
+      type: 'FunctionCall',
+      name: 'foo',
+      args: [
+        { name: undefined, spread: false, value: { type: 'Interpolation' } }
+      ]
+    });
+
+    // The general-enclosed payload is an opaque any-value, not a typed arg list.
+    expect(() => parse('@media foo(a b !weird$) { a { b: c } }')).not.toThrow();
   });
 
   it.each([

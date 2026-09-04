@@ -156,18 +156,17 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   {
     id: '@layer statement with a dotted sub-layer name',
     group: 'at-rule',
-    source: '@layer a, b.c;',
-    brokenIn: ['jess'],
-    defect:
-      'Jess consumes nothing. css-cascade-5 §6.1 spells `<layer-name>` as '
-      + '`<ident> ["." <ident>]*`, so `b.c` is ONE layer name; the Jess prelude '
-      + 'appears to see the class-selector/mixin-call reading of `.c` instead. '
-      + 'The undotted forms above parse in all four.'
+    source: '@layer a, b.c;'
   },
   {
     id: '@layer block',
     group: 'at-rule',
     source: '@layer base { a { color: red } }'
+  },
+  {
+    id: '@layer block with a dotted sub-layer name',
+    group: 'at-rule',
+    source: '@layer a.b { c { color: red } }'
   },
   {
     id: '@layer anonymous block',
@@ -202,30 +201,17 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   {
     id: '@container with a parenthesised condition group',
     group: 'at-rule',
-    source: '@container ((width > 1px) and (height > 1px)) { a { color: red } }',
-    brokenIn: ['css', 'jess'],
-    defect:
-      'css-contain-3 §3 makes `<container-condition>` a `<boolean-expr>`, whose '
-      + 'general form permits a parenthesised group. Less and SCSS accept it; CSS '
-      + 'and Jess reject it, so the BASE dialect is stricter than two supersets — '
-      + 'the one-way ruling inverted.'
+    source: '@container ((width > 1px) and (height > 1px)) { a { color: red } }'
   },
   {
     id: '@container with style()',
     group: 'at-rule',
-    source: '@container style(--x: 1) { a { color: red } }',
-    brokenIn: ['jess'],
-    defect: 'Jess rejects the css-contain-3 §3.3 `<style-query>` that the other three accept.'
+    source: '@container style(--x: 1) { a { color: red } }'
   },
   {
     id: '@container with a parenthesised style()',
     group: 'at-rule',
-    source: '@container (style(--x: 1)) { a { color: red } }',
-    brokenIn: ['css', 'less', 'jess'],
-    defect:
-      'Only SCSS accepts the parenthesised style query. Same root as the '
-      + 'condition-group entry above: the boolean-expression parens are missing '
-      + 'from three container preludes.'
+    source: '@container (style(--x: 1)) { a { color: red } }'
   },
   {
     id: '@keyframes with percentage and to selectors',
@@ -297,12 +283,7 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   {
     id: '@property with an unterminated last descriptor',
     group: 'at-rule',
-    source: '@property --x { syntax: "*"; inherits: true }',
-    brokenIn: ['jess'],
-    defect:
-      'Jess requires a trailing `;` on the last descriptor of an `@property` '
-      + 'body. css-syntax-3 §5.4.4 makes the final `;` optional in ANY declaration '
-      + 'list; adding it makes this exact source parse in Jess.'
+    source: '@property --x { syntax: "*"; inherits: true }'
   },
   {
     id: '@page bare',
@@ -312,19 +293,12 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   {
     id: '@page with a pseudo-page selector',
     group: 'at-rule',
-    source: '@page :first { margin: 1cm; }',
-    brokenIn: ['jess'],
-    defect:
-      'Jess consumes nothing for ANY `<pseudo-page>` (`:first`, `:left`, '
-      + '`:right`, `:blank`), spaced or not. css-page-3 §3 requires them. '
-      + '`@page wide { … }` — a bare page name — does parse in Jess.'
+    source: '@page :first { margin: 1cm; }'
   },
   {
     id: '@page with a name and a pseudo-page',
     group: 'at-rule',
-    source: '@page wide:left { margin: 1cm; }',
-    brokenIn: ['jess'],
-    defect: 'Same defect as the bare `<pseudo-page>` entry above.'
+    source: '@page wide:left { margin: 1cm; }'
   },
   {
     id: '@page with margin at-rules',
@@ -558,12 +532,7 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   {
     id: 'var() with an empty fallback',
     group: 'value',
-    source: 'a { color: var(--x,) }',
-    brokenIn: ['scss'],
-    defect:
-      'css-variables-1 §3 makes the fallback `<declaration-value>?`, so the '
-      + 'empty fallback is well-formed and means "the empty value". SCSS alone '
-      + 'rejects it, with or without a space before the `)`.'
+    source: 'a { color: var(--x,) }'
   },
   {
     id: 'calc() nested in calc()',
@@ -603,19 +572,12 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   {
     id: 'url() with an escaped space',
     group: 'value',
-    source: 'a { background: url(a\\ b.png) }',
-    brokenIn: ['jess'],
-    defect:
-      'css-syntax-3 §4.3.6 consumes a url-token with escapes, so `\\ ` and '
-      + '`\\)` are ordinary escaped code points inside an unquoted url. Jess '
-      + 'rejects both.'
+    source: 'a { background: url(a\\ b.png) }'
   },
   {
     id: 'url() with an escaped close paren',
     group: 'value',
-    source: 'a { background: url(a\\)b.png) }',
-    brokenIn: ['jess'],
-    defect: 'Same defect as the escaped-space url() above.'
+    source: 'a { background: url(a\\)b.png) }'
   },
   {
     id: 'attr() bare',
