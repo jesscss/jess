@@ -19,6 +19,20 @@
 import { describe, expect, it } from 'vitest';
 import { parse } from '@jesscss/scss-parser';
 import { parseScssCst } from '@jesscss/scss-parser/cst';
+import { serialize as serializeMaybeAsync, type SerializeResult } from '../../../../core/src/ast/serialize.js';
+
+/*
+ * These fixtures are all-sync, so `serialize` never lifts onto its async branch;
+ * asserting that lets a case read `.css` directly and fails loudly rather than
+ * comparing against a pending Promise.
+ */
+function serialize(...args: Parameters<typeof serializeMaybeAsync>): SerializeResult {
+  const result = serializeMaybeAsync(...args);
+  if (result instanceof Promise) {
+    throw new TypeError('This SCSS test expects a synchronous serialize result.');
+  }
+  return result;
+}
 
 /*
  * Narrowed by predicate rather than by assertion: the dialect error class is
@@ -150,6 +164,41 @@ describe('SCSS constructs discovered outside the parser suites', () => {
 
   it('accepts an A+B microsyntax with no spaces around the sign', () => {
     expect(() => parse('a:nth-child(2n+1){c:d}')).not.toThrow();
+  });
+
+  it('accepts a leading functional media-query term as general-enclosed', () => {
+    /*
+     * `@media foo(bar)` is the `<general-enclosed>` function form
+     * (media-queries-5 §2.1/§3.1: `<function-token> <any-value> )`); css, less
+     * and jess render it `@media foo(bar)`. SCSS used to read the leading
+     * `foo` as a media-type keyword and `(bar)` as a separate feature, emitting
+     * `foo (bar)` with a stray space — a "valid CSS, valid in every dialect"
+     * byte-identity divergence. It now reuses the SAME `QueryFunction`
+     * general-enclosed node the shared query grammar already carries.
+     */
+    const sheet = parse('@media foo(bar) { a { b: c } }');
+    const media = sheet.rules[0];
+    const prelude = media?.type === 'AtRuleBlock' ? media.prelude : null;
+
+    expect(prelude).toMatchObject({
+      type: 'FunctionCall',
+      name: 'foo',
+      args: [
+        { spread: false, value: { type: 'Any', src: 'bar' } }
+      ]
+    });
+
+    /*
+     * The emitted bytes, not just the tree: `foo(bar)` with no stray space,
+     * byte-identical to what css/less/jess render for the same source.
+     */
+    expect(serialize(sheet).css).toBe('@media foo(bar) {\n  a {\n    b: c;\n  }\n}\n');
+
+    // The general-enclosed payload is an opaque any-value, not a typed arg list.
+    expect(() => parse('@media foo(a b !weird$) { a { b: c } }')).not.toThrow();
+
+    // A bare `( … )` group still falls through to the feature/condition arms.
+    expect(() => parse('@media (min-width: 10px) { a { b: c } }')).not.toThrow();
   });
 
   it.each([
