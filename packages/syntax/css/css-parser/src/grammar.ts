@@ -3086,6 +3086,17 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     children => block(firstValue(children))
   );
+
+  /*
+   * The top-level `<container-query>` of a `@container` prelude (css-contain-3
+   * §3): a first size feature, style query or grouped condition, then an
+   * `and`/`or` chain. Each chain operand is a `QueryTerm` OR a
+   * `ContainerQueryInParens`, so a grouped or negated operand — `(a) and (not
+   * (b))`, `(a) or ((b) and (c))` — routes through the same `( <condition> )`
+   * group the first atom uses instead of being rejected as a non-feature. A
+   * plain `(feature)` operand still falls to `QueryTerm` because its interior is
+   * not another condition, keeping existing single-feature chains byte-identical.
+   */
   const ContainerQueryClause = node(
     'ContainerQueryClause',
     sequence(
@@ -3094,7 +3105,10 @@ const cssFactory = (g: GrammarSelf) => {
         g.QueryFeature,
         g.QueryFunction
       ),
-      many(g.QueryTerm)
+      many(choice(
+        g.QueryTerm,
+        g.ContainerQueryInParens
+      ))
     ),
     (children) => {
       const values = valueChildren(children);
