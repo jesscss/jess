@@ -3674,14 +3674,29 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ),
     children => requireValueNode(children[0])
   );
+
+  /*
+   * One `<container-query>` (css-contain-3 §3): `not <query-in-parens>` or an
+   * atom followed by an `and`/`or` chain. The leading-`not` arm is tried first
+   * so a `( not (width > 1px) )` group negates its inner condition — the same
+   * shape css's `ContainerQueryCondition` produces, `Sequence[not, Block(…)]`.
+   * The reducer already lowers the `not`/`and`/`or` tokens to keywords, so both
+   * arms share it.
+   */
   const ContainerQueryClause = node<ValueNode>(
     'ContainerQueryClause',
-    sequence(
-      g.ContainerQueryAtom,
-      many(sequence(
-        g.QueryAndOr,
+    choice(
+      sequence(
+        g.QueryNot,
         g.ContainerQueryAtom
-      ))
+      ),
+      sequence(
+        g.ContainerQueryAtom,
+        many(sequence(
+          g.QueryAndOr,
+          g.ContainerQueryAtom
+        ))
+      )
     ),
     (children) => {
       const values = children
