@@ -1722,6 +1722,32 @@ describe('Jess AST grammar facts', () => {
         args: [{ value: { type: 'Operation', operator: ':' } }]
       }
     });
+
+    /*
+     * css-contain-3 §3 `<query-in-parens> = ( not <query-in-parens> )`: the
+     * leading-`not` arm negates its inner condition, including a `<style-query>`.
+     * The group wraps a `Sequence[not, Block(...)]`, matching what css/scss emit.
+     */
+    expect(parse('@container (not (width > 1px)) { .card { color: blue; } }').rules[0]).toMatchObject({
+      type: 'AtRuleBlock',
+      prelude: {
+        type: 'Block', delimiter: 'paren',
+        value: { type: 'Sequence', parts: [
+          { type: 'Keyword', src: 'not' },
+          { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: '>' } }
+        ] }
+      }
+    });
+    expect(parse('@container (not (style(--x: 1))) { .card { color: blue; } }').rules[0]).toMatchObject({
+      type: 'AtRuleBlock',
+      prelude: {
+        type: 'Block', delimiter: 'paren',
+        value: { type: 'Sequence', parts: [
+          { type: 'Keyword', src: 'not' },
+          { type: 'Block', delimiter: 'paren', value: { type: 'FunctionCall', name: 'style' } }
+        ] }
+      }
+    });
   });
 
   it('constructs a media feature <ratio> value in every static query form', () => {
