@@ -60,7 +60,7 @@ Jess spends its complexity budget — not a verdict on Sass's design.
 | `&--modifier` | ❓ | Rejected when written literally; `&--#{$name}` is accepted. CSS reserves the bare `--` name, so whether the literal spelling should be admissible is unresolved. |
 | Leading-combinator shorthand — `> .b`, `+ .b` | ⏳ | Write `& > .b`, which is the spelling CSS Nesting standardized. |
 | `@mixin` / `@include` | ✅ | Positional, default, keyword, and variadic parameters. |
-| `@content`, and `@include` with a block | ⏳ | `@include m { … }`, `@include m() { … }`, and `@include m using () { … }` are all rejected today. The largest single gap in Sass+. |
+| `@content`, and `@include` with a block | ⏳ | `@include m { … }`, `@include m() { … }`, and `@include m using () { … }` render the passed block. Passing **arguments** to the block — `@content($x)` with `@include … using ($x)` — is not yet supported. |
 | `@extend` | ✅ | Extend chains resolve transitively. |
 | Placeholder selectors — `%p` | ⏳ | `@extend %p` works, but `%p` is not yet silent — it reaches the CSS output. |
 | `@if` / `@else` / `@else if` | ✅ | Conditions are comparisons, `and`/`or` of comparisons, or boolean literals. Parentheses are allowed. |
