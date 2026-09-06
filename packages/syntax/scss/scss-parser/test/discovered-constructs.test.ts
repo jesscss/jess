@@ -491,8 +491,10 @@ describe('SCSS constructs discovered outside the parser suites', () => {
    *
    * `@while`, `@debug`, `@warn` and `@error` have since been routed and moved
    * to the list above. `@while` builds the canonical `While`; the three
-   * diagnostics build NOTHING — they own no AST kind, so their production
-   * reduces to null and the statement collector drops it.
+   * diagnostics REUSE the generic `AtRuleStatement` (name + message prelude) —
+   * no new AST kind (owner ruling 2026-09-05) — so eval can fire the diagnostic
+   * (`@debug`/`@warn` report and continue, `@error` halts) rather than emitting
+   * the directive into CSS.
    */
   it.each([
     ['@use', '@use "x";'],
