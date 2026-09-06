@@ -244,7 +244,7 @@ export default {
       {
         docs: {
           path: '../docs-content/.site/less',
-          sidebarPath: './sidebars.js',
+          sidebarPath: './sidebars.mjs',
           routeBasePath: 'docs',
           includeCurrentVersion: true,
           onlyIncludeVersions: ['current', '4.x'],
