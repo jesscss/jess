@@ -106,6 +106,7 @@ import type {
 
 // [atrule] block + statement at-rule node types
 import type { AtRuleBlock, AtRuleStatement, UnknownAtRuleBlock, Plugin } from './at-rule.js';
+import { isDiagnosticStatement } from './at-rule.js';
 
 // typed synchronous value evaluator seam + boundary-clean value domain.
 import {
@@ -10939,6 +10940,19 @@ function walkBody(
       }
       case 'AtRuleStatement': {
         /*
+         * [diagnostic] An SCSS `@debug`/`@warn`/`@error` reports (or halts) and
+         * emits no CSS. Guard here as well as in `emitAtRuleStatement`: the
+         * flatten path would otherwise treat a diagnostic in a selector context
+         * as a nested leaf (`staysNested` is true for these names) and never
+         * reach that function. This is the symmetric second evaluator to
+         * `emitNestedBody`. The marker (not the name) scopes this to SCSS.
+         */
+        if (isDiagnosticStatement(node)) {
+          emitDiagnosticDirective(node, frame, e);
+          break;
+        }
+
+        /*
          * A leaf only exists inside a SELECTOR context: the group it joins is
          * flushed as `<selector> { … }`. In a root-level control-flow body
          * (`@if true { @import "a.css"; }`) there is no selector, and flushing
@@ -14204,7 +14218,75 @@ function emitHoistedCssImports(rules: Statement[], frame: Frame, e: Emit): void 
   e.hoistedCssImports = hoisted;
 }
 
+/**
+ * SCSS compile-time diagnostics. Owner ruling 2026-09-05: these are "supported
+ * as-is without adding to the AST", so they reduce to an ordinary
+ * `AtRuleStatement` (no dedicated AST kind) and eval "add[s] those
+ * errors/warnings/debugs as expected". They never emit CSS: eval routes them
+ * here instead. `@debug`/`@warn` report through the warning channel and
+ * continue; `@error` halts by throwing.
+ *
+ * Routing is gated on {@link isDiagnosticStatement} — a marker ONLY the SCSS
+ * grammar sets — NOT on the at-rule name, because this serializer is
+ * dialect-blind: an identically-named `@error` in CSS/Less/jess is an unknown
+ * at-rule that must keep verbatim passthrough (no drop, no warn, no halt). The
+ * owner ruling is SCSS/Sass-scoped; .jess is pending a separate owner ruling
+ * and for now stays passthrough.
+ */
+
+/**
+ * The directive's message is the prelude value, evaluated like any Sass value
+ * (so `1 + 2` computes and `"need #{$x}"` interpolates). A top-level authored
+ * string literal reports its UNQUOTED text; every other prelude — a list, map,
+ * number, bare keyword, or bare `#{…}` — reports its serialized bytes verbatim,
+ * INCLUDING any inner quotes. The discriminator is the prelude's AST SHAPE, not
+ * its serialized bytes: a byte-level `stripOuterQuotes` over the whole message
+ * would wrongly unwrap the list `"a", "b"` to `a", "b`, whereas testing the
+ * node keeps the list intact.
+ *
+ * A string literal is either a static `Quoted` node, or — when it carries
+ * `#{…}` — an `Interpolation` whose FIRST part is the opening-quote literal (the
+ * grammar's `Quoted` reducer bakes the delimiters in as literal parts). A bare
+ * `#{x}` has a `ref` first part, so it is not a string literal. Because that
+ * shape guarantees the outer bytes ARE the author's quote delimiters,
+ * `stripOuterQuotes` removes exactly them.
+ */
+function diagnosticMessage(prelude: ValueNode, frame: Frame, e: Emit): string {
+  const bytes = evalBytesSync(prelude, frame, e);
+  const first = prelude.type === 'Interpolation' ? prelude.parts[0] : undefined;
+  const quoteWrapped = first !== undefined && 'lit' in first
+    && (first.lit.startsWith('"') || first.lit.startsWith('\''));
+  return prelude.type === 'Quoted' || quoteWrapped ? stripOuterQuotes(bytes) : bytes;
+}
+function emitDiagnosticDirective(node: AtRuleStatement, frame: Frame, e: Emit): void {
+  const message = node.prelude === null ? '' : diagnosticMessage(node.prelude, frame, e);
+  const name = node.name.toLowerCase();
+  if (name === '@error') {
+    throw ERR.scssError({
+      node,
+      ...callSiteLocation(node, e),
+      meta: { message }
+    });
+  }
+  e.context?.warnAtNode(
+    name === '@warn' ? 'eval/scss-warn' : 'eval/scss-debug',
+    'eval',
+    node,
+    { message }
+  );
+}
+
 function emitAtRuleStatement(node: AtRuleStatement, frame: Frame, e: Emit): void {
+  /*
+   * [diagnostic] An SCSS `@debug`/`@warn`/`@error` is not CSS output: report (or
+   * halt) and emit nothing. Guards every emission route that funnels through
+   * here. The marker (not the name) scopes this to SCSS.
+   */
+  if (isDiagnosticStatement(node)) {
+    emitDiagnosticDirective(node, frame, e);
+    return;
+  }
+
   /*
    * [charset] Inline `@charset` occurrences are dropped; `serialize` hoists the
    * first to the document top (dedupe).

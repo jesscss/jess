@@ -24,7 +24,7 @@ import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar';
 import { ScssImportPostludeError } from './parse-error.js';
-import { anonymousMixin, any, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, importIsCompileTime, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { anonymousMixin, any, asDiagnostic, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, importIsCompileTime, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 import { COMPARISON_OPERATORS, appendLiteral, scssBranchSegments, contentArgRaw, customValue, customValueFromParts, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isAnonymousMixin, isCollection, isCollectionEntry, isScssDeclaration, isExtendInstruction, isScssImportTarget, isScssInterpolation, isParamArray, isQuoted, isScriptModulePath, isScssValuePair, isScssValueTail, isScssSelectorBranch, isScssSelectorList, isSelectorTerm, isScssSimpleToken, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, keywordizeValues, mapKeyValue, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, scssSelectorTermFromTokens, scssSourceText, statementChildren, statements, staticQuoted, scssValueSlot } from './grammar-helpers.js';
 import type { ScssArgumentPair, ScssCallArg, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
@@ -99,7 +99,7 @@ type ScssRules = {
   IfBodyConditionalBlock: Combinator<AtRuleBlock>;
   IfRule: Combinator<If>;
   WhileRule: Combinator<While>;
-  DiagnosticDirective: Combinator<null>;
+  DiagnosticDirective: Combinator<AtRuleStatement>;
   QueryValue: Combinator<ValueNode>;
   QueryFeature: Combinator<ValueNode>;
   QueryFunction: Combinator<FunctionCall>;
@@ -2929,28 +2929,34 @@ const scssFactory = (g: ScssInputRules) => {
   /*
    * `@debug` / `@warn` / `@error` — Sass's compile-time diagnostics.
    *
-   * ONE production serves all three because all three lower to the same thing:
-   * NOTHING. By §12.0 a node exists only where there is a `.jess` spelling to
-   * read it off, and these have none — they are not CSS output, not a value, and
-   * not control flow. So the reduction returns `null` and `statementChildren`
-   * drops it, adding no AST kind. That is the ruling, and it is why the three
-   * at-keywords are three dispatch arms over one tail rather than three rules.
+   * ONE production serves all three because all three carry the same shape: an
+   * at-keyword and a message value. They add NO new AST kind — the reduction
+   * REUSES the generic `AtRuleStatement` (name + prelude), the same node
+   * `@charset`/`@namespace`/`@layer` build — so `AST_NODE_TYPES` is unchanged
+   * (owner ruling 2026-09-05: "supported as-is without adding to the AST").
+   * A diagnostic is not CSS output, so eval NEVER emits it verbatim: the
+   * serializer routes these three names to the diagnostic channel instead
+   * (`@debug`/`@warn` report and continue, `@error` halts). Keeping the message
+   * on the node is what lets that fire at EVAL — where a value reference, a
+   * loop, or a taken `@if` branch is resolved — rather than at parse.
    *
    * The message is recognized as an ordinary `Value` because that is what Sass
    * spells there — `@error 'need #{$fns}.'` is an interpolated string, and the
    * at-rule prelude scanners deliberately stop at `#{`, reserving interpolation
-   * for the typed productions. Recognizing it properly costs nothing (the value
-   * is discarded by the reduction) and it is the difference between the whole
+   * for the typed productions. That is the difference between the whole
    * directive parsing and it failing at the first `#{`.
    */
-  const DiagnosticDirective = node<null>(
+  const DiagnosticDirective = node<AtRuleStatement>(
     'DiagnosticDirective',
     sequence(
       routed(),
       g.Value,
       literal(';')
     ),
-    () => null
+    children => asDiagnostic(atRuleStatement(
+      requireToken(children[0]).value,
+      requireValue(children[1])
+    ))
   );
 
   /*

@@ -5,7 +5,7 @@
   "surfaces": [
     {
       "name": "ast",
-      "aggregate": "1e5acfaba4cce88ad3f22812bead0832257b9927fc0d900c3b9dd384c92db171",
+      "aggregate": "45f1109f3652c73822fa0b846a3d9f5dcc16f8aa2c3bdd305a06b479c9d27a00",
       "threw": 726
     },
     {
@@ -9560,7 +9560,7 @@
       "cst": "7be1d9b0006e4ac3"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/f31468e69cf28ac2.scss": {
-      "ast": "9ba17a426aaba7f6",
+      "ast": "3b93213743a1a483",
       "cst": "c7ab9d6014cb9a4d"
     },
     "packages/syntax/scss/scss-parser/.cache/sass-spec/inputs/f32b56a616be2a68.scss": {

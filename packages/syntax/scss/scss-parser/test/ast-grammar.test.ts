@@ -2332,19 +2332,25 @@ describe('SCSS canonical-AST grammar', () => {
     }
 
     /*
-     * `@debug`/`@warn`/`@error` PARSE, and produce no statement at all. They are
-     * compile-time diagnostics with no `.jess` spelling, so §12.0 owes them no
-     * AST kind — the assertion that matters is that the document is EMPTY, not
-     * that it holds an `AtRuleStatement` echoing the directive into CSS.
+     * `@debug`/`@warn`/`@error` PARSE and REUSE the generic `AtRuleStatement`
+     * (name + message prelude) — no new AST kind (owner ruling 2026-09-05:
+     * "supported as-is without adding to the AST"). The node carries the message
+     * so eval can fire the diagnostic; the serializer routes these names to the
+     * diagnostic channel instead of echoing them into CSS. The assertion that
+     * matters is the shape: one AtRuleStatement per directive with its name and a
+     * message value, NOT an empty document (which would drop the message and make
+     * eval-time diagnostics impossible).
      */
-    for (const dropped of [
-      '@debug "note";',
-      '@warn "note";',
-      '@error "note";'
-    ]) {
-      const direct = run(scssGrammar.Stylesheet, dropped, { trivia: scssGrammar.whitespace });
-      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), dropped).toBe(true);
-      expect(direct.ok && isStylesheet(direct.value) && direct.value.rules, dropped).toEqual([]);
+    for (const [source, name] of [
+      ['@debug "note";', '@debug'],
+      ['@warn "note";', '@warn'],
+      ['@error "note";', '@error']
+    ] as const) {
+      const direct = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
+      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(true);
+      expect(direct.value, source).toMatchObject({ type: 'Stylesheet', rules: [{
+        type: 'AtRuleStatement', name, prelude: { type: 'Quoted', value: 'note' }
+      }] });
     }
   });
 
