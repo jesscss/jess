@@ -254,16 +254,16 @@ const expectedFailureFixtures = new Map<string, string>([
    * like an authored `@media` body (less grammar `ImportStatement` +
    * `serialize.ts` `emitBubbleBody`; docs/architecture/core/DESIGN-DECISIONS.md
    * A10). `import-inline.less` now matches its golden and has GRADUATED off this
-   * list. `import.less` still differs, but on grounds UNRELATED to the media
-   * wrap (its `@media` blocks now match byte-for-byte): a leading top-of-file
-   * block comment re-orders below the hoisted root CSS `@import`s, and π emits at
-   * jess's 10-digit output quantization (`3.1415926536`) vs the golden's full
-   * `3.141592653589793`.
+   * list. `import.less` has ALSO GRADUATED. Two things closed its remaining gap:
+   * (1) DESIGN-DECISIONS.md N11 — a source-leading document block comment now
+   * emits after the hoisted `@charset` and before the hoisted root CSS `@import`s
+   * (CSS Syntax Module Level 3 §3.2 forces the charset first; serialize.ts
+   * `continueRender`); and
+   * (2) the stale 4.x golden π (`3.141592653589793`) was updated to jess's v5
+   * 10-digit output quantization (`3.1415926536`, DESIGN-DECISIONS.md V4). The
+   * owner authorized landing this `import.less` fix (2026-09-06); the placement
+   * itself is the OPEN N11 spec argument, not an owner placement ruling.
    */
-  [
-    'tests-unit/import/import.less',
-    'the compile-time-@import media wrap now matches (owner 2026-09-02). Remaining diffs are unrelated: a leading `/** comment at the top **/` orders below the hoisted root CSS @imports, and π prints at jess 10-digit output quantization (3.1415926536) vs the golden full 3.141592653589793'
-  ],
   [
     'tests-unit/urls/urls.less',
     'INTENDED DIVERGENCE (§12.3b): the fully interpolated target in `.add_an_import("file.css")` is authored as a compile-time StyleImport, so terminal classification does not defer until it evaluates to `file.css`; normal import resolution therefore reports the missing file'

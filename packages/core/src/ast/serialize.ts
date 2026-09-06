@@ -9519,6 +9519,19 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     emitHoistedCharset(root.rules, rootFrame, e);
 
     /*
+     * [comment-order] DESIGN-DECISIONS N11. A source-leading document block comment
+     * (offset 0) emits AFTER the hoisted `@charset` and BEFORE the hoisted root CSS
+     * `@import`s. This is NOT source order — the `@charset` may be hoisted out of an
+     * imported file yet must still come first, because CSS Syntax Module Level 3 §3.2
+     * (the input byte stream / determine-the-fallback-encoding algorithm) recognizes a
+     * charset declaration only as the stylesheet's first bytes (a comment ahead of it
+     * would demote it to an ineffective at-rule). The comment then precedes the hoisted
+     * imports (N9). Emit it here, once; the `emitBody` call is dedupe-guarded by
+     * `e.emittedBlockTrivia` and no-ops when the comment was already emitted here.
+     */
+    emitLeadingDocumentBlockComments(e);
+
+    /*
      * A caller-provided import handler owns terminal-import decisions itself. The
      * public Context route has no such driver callback, so it uses the typed
      * document-prelude plan while retaining Context loading for non-terminals.
