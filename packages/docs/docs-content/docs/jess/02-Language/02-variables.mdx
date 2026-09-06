@@ -42,27 +42,65 @@ $color: red;
 
 ## Declarations and assignments
 
-Both `$foo: value` and `$^foo: value` create or update **both** the live and
-scoped bindings. The sigil changes lookup behavior, not the kind of binding
-created.
+There are four assignment operators. They differ only in **which binding they
+write** and **what happens when the name is not yet bound**:
 
-| Form | Lookup used by the operation |
-| --- | --- |
-| `$foo?: value` | Test the live map; create/update both bindings if absent. |
-| `$^foo?: value` | Test the scoped/final map; create/update both bindings if absent. |
-| `$foo := value` | Update the live/current binding. |
-| `$^foo := value` | Update the scoped/final binding. |
+| Operator | Name | What it does |
+| --- | --- | --- |
+| `$x: value` | declare | Bind `x` in the current scope. If an outer scope already binds `x`, this **shadows** it locally — the outer binding is left untouched. |
+| `$x := value` | reassign | Write the **nearest existing** binding, wherever it lives up the scope chain. If `x` is not bound anywhere, this is a **compile error**. |
+| `$x?: value` | assign-if-unset | Bind `x` **only if it is not already bound**. If `x` already has a value, nothing happens. This is the equivalent of Sass's `!default`. |
+| `$x ::= value` | optional shadow | Write the nearest existing binding, or — if `x` is unbound anywhere — declare it locally. It always writes; only the fallback declaration is conditional. |
 
-```scss
-$theme: blue;       // creates both bindings (`$^theme: blue` does too)
-.card {
-  color: $theme;    // live reference
-  border: $^theme;  // scoped/final lookup
-}
+```less
+$x: 1;
+$x := 2;
+.a { width: $x; }   // 2 — reassigned the existing binding
 ```
 
-SCSS retains its own `$name: value`, `!default`, and `!global` syntax at the
-input boundary; see [Sass (SCSS) compatibility](/docs/guides/coming-from-sass/scss-compatibility).
+Reassigning a name that does not exist is an error, rather than quietly
+creating it:
+
+```less
+$x := 2;            // error: live variable $x is undefined
+```
+
+`?:` assigns only when the name is unset, so an earlier value wins:
+
+```less
+$brand: #06c;
+$brand?: #f00;
+.a { color: $brand; }   // #06c — the ?: was skipped
+```
+
+### `::=` is for Sass conversion, not hand-written Jess
+
+`::=` exists so an automated SCSS-to-Jess conversion can preserve one Sass rule:
+a bare `$x:` written inside a control-flow block reassigns an outer variable when
+one exists, which is what a `@for` / `@each` / `@while` accumulator relies on.
+When Jess reads SCSS, it lowers those in-loop `$x:` declarations to `::=` for you.
+
+In hand-written `.jess`, prefer the explicit operators — `:` when you mean
+"declare here" and `:=` when you mean "reassign an existing variable." Reach for
+`::=` only when you genuinely want "reassign if it exists, otherwise declare."
+
+### Scope
+
+A declaration's scope is the nearest enclosing **ruleset, mixin, or function
+body** — those are the `{ }` blocks that open a scope. Control-flow blocks
+(`$if` / `$for` / `$while`) do **not** open a scope: a `:` declaration inside one
+stays visible in the surrounding block after it, which is what lets a loop build
+up a value (see [Conditionals and iteration](./conditionals-iteration)).
+
+### Live and scoped forms
+
+Every operator also has a `$^` scoped/final form (`$^x: …`, `$^x := …`,
+`$^x?: …`). The sigil chooses which lookup the write and later reads use — live
+(`$x`) or scoped/final (`$^x`) — as described above; it does not change the kind
+of binding created.
+
+SCSS keeps its own `$name: value`, `!default`, and `!global` syntax at the input
+boundary; see [Sass (SCSS) compatibility](/docs/guides/coming-from-sass/scss-compatibility).
 
 ## Block-valued assignments
 
