@@ -62,6 +62,30 @@ describe('jess mixin-call content slot — grammar', () => {
     const fromScss = nestedCall(parseScss('.a { @include m { color: red; } }')).content;
     expect(shape(fromJess)).toEqual(shape(fromScss));
   });
+
+  it('rewinds the optional content slot when a `:`-leading sibling is not a block', () => {
+    /*
+     * No `;` after the call, and the next statement starts with `:`. The content
+     * arm speculatively matches that `:`, then fails at its required `{` (the next
+     * token is `hover`, not `{`) and must rewind so the sibling parses. Proves
+     * `optional(MixinContentBlock)` does not swallow an unrelated `:`.
+     */
+    const sheet = parse('.a {\n  $>m()\n  :hover { color: red; }\n}');
+    const ruleset = sheet.rules[0];
+    if (ruleset?.type !== 'Ruleset') {
+      throw new TypeError('expected a top-level ruleset');
+    }
+    const [call, sibling] = ruleset.rules;
+    if (call?.type !== 'MixinCall') {
+      throw new TypeError('expected a mixin call first');
+    }
+    expect(call.content).toBeNull();
+    expect(sibling?.type).toBe('Ruleset');
+    if (sibling?.type === 'Ruleset') {
+      expect(sibling.selector.selectors[0]?.type).toBe('SimpleSelector');
+      expect(shape(sibling.selector.selectors[0])).toMatchObject({ text: ':hover' });
+    }
+  });
 });
 
 describe('jess mixin-call content slot — end to end', () => {
