@@ -2007,11 +2007,13 @@ describe('SCSS canonical-AST grammar', () => {
   });
 
   it('lowers a static SCSS placeholder to the canonical escaped-backslash spelling', () => {
-    // `%notice` LOWERS to `\\notice`, the spelling `.jess` writes directly (`%` is
-    // modulo in Jess). Both dialects therefore reduce to the SAME node and can
-    // extend across each other. Two backslashes: `\\` is the CSS escape for a
-    // literal `\` (css-syntax-3 4.3.7), so the selector is a well-formed
-    // identifier that no element type can match -- inert by construction.
+    /*
+     * `%notice` LOWERS to `\\notice`, the spelling `.jess` writes directly (`%` is
+     * modulo in Jess). Both dialects therefore reduce to the SAME node and can
+     * extend across each other. Two backslashes: `\\` is the CSS escape for a
+     * literal `\` (css-syntax-3 4.3.7), so the selector is a well-formed
+     * identifier that no element type can match -- inert by construction.
+     */
     const source = '%notice { color: blue; }';
     const cst = parseScssCst(source);
     expect(cst.errors).toHaveLength(0);
@@ -2041,11 +2043,13 @@ describe('SCSS canonical-AST grammar', () => {
     const compoundResult = run(scssGrammar.Stylesheet, compound, { trivia: scssGrammar.whitespace });
     expect(compoundResult.ok && compoundResult.unconsumedFrom === null && isStylesheet(compoundResult.value)).toBe(true);
 
-    // A placeholder in a selector LIST is accepted. It used to be rejected by a
-    // dedicated `not(Placeholder ',')` guard because suppression was per-RULE and
-    // could not express the case; suppression is now per-BRANCH, so this parses
-    // and only the `%notice` branch is dropped at emit -- dart-sass renders
-    // `%notice, .card { color: blue }` as `.card { color: blue }`.
+    /*
+     * A placeholder in a selector LIST is accepted. It used to be rejected by a
+     * dedicated `not(Placeholder ',')` guard because suppression was per-RULE and
+     * could not express the case; suppression is now per-BRANCH, so this parses
+     * and only the `%notice` branch is dropped at emit -- dart-sass renders
+     * `%notice, .card { color: blue }` as `.card { color: blue }`.
+     */
     const list = '%notice, .card { color: blue; }';
     const listCst = parseScssCst(list);
     expect(listCst.errors).toHaveLength(0);
@@ -2098,10 +2102,13 @@ describe('SCSS canonical-AST grammar', () => {
         {
           type: 'Ruleset',
           selector: { selectors: [{ type: 'SimpleSelector', text: '.button' }] },
-          // `partial: true` is Less's `all` semantics. Sass has no exact/all
-          // distinction -- `@extend` always substitutes the target wherever it
-          // appears, including as one segment of a complex selector, so
-          // `%ph .c` + `.a { @extend %ph; }` must reach `.a .c`.
+
+          /*
+           * `partial: true` is Less's `all` semantics. Sass has no exact/all
+           * distinction -- `@extend` always substitutes the target wherever it
+           * appears, including as one segment of a complex selector, so
+           * `%ph .c` + `.a { @extend %ph; }` must reach `.a .c`.
+           */
           extendInstructions: [{
             partial: true,
             optional: false,
