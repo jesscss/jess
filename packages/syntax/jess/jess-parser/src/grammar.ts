@@ -4341,6 +4341,12 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * The `$name` + assignment-operator head shared by the ordinary and the
    * block-valued variable declaration. Both reduce with `reduceVarDeclaration`,
    * which reads the operator by position, so the head must stay one shape.
+   *
+   * The separable operators are ordered LONGEST-FIRST (`::=` before `:=` before
+   * `:`) so each tokenizes whole: `::=` optional-shadow (reassign nearest existing,
+   * else declare a block-local shadow), `:=` reassign (error if unbound), `:`
+   * declare (always local). `?:` (if-absent) is its own leading arm. Every operator
+   * exists for both `$name` (live) and `$^name` (scoped).
    */
   const assignHead = choice(
     noTrivia(sequence(
@@ -4361,6 +4367,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         dollarName
       )),
       choice(
+        literal('::='),
         literal(':='),
         literal(':')
       )
@@ -4371,6 +4378,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         dollarName
       )),
       choice(
+        literal('::='),
         literal(':='),
         literal(':')
       )

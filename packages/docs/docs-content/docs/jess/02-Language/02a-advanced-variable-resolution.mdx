@@ -34,5 +34,25 @@ performing an explicit optional/existence operation.
 | `$foo: value` / `$^foo: value` | Create or update both bindings. |
 | `$foo?: value` | Check the live binding; create/update both if absent. |
 | `$^foo?: value` | Check the scoped/final binding; create/update both if absent. |
-| `$foo := value` | Update the live/current binding. |
-| `$^foo := value` | Update the scoped/final binding. |
+| `$foo := value` | Update the live/current binding. Errors if it is unbound. |
+| `$^foo := value` | Update the scoped/final binding. Errors if it is unbound. |
+| `$foo ::= value` | Update the live/current binding if it exists; otherwise declare a block-local one. |
+| `$^foo ::= value` | Update the scoped/final binding if it exists; otherwise declare a block-local one. |
+
+## `::=`: optional shadowing
+
+`::=` reads as "`:` or `:=`". It always writes: it updates the nearest existing
+binding (like `:=`), but where `:=` errors when the name is unbound, `::=` instead
+declares a new block-local binding (like `:`). A name born this way is local to its
+block and does not leak past the closing brace.
+
+:::caution Not recommended for hand-written `.jess`
+
+Prefer the explicit operators when you write Jess by hand: `:` when you mean "a new
+local binding" and `:=` when you mean "update an existing one" (and want an error if
+it is missing). `::=` exists mainly for **Sass-conversion support** — a bare `$x:`
+inside a Sass control-flow block (`@if`/`@each`/`@for`/`@while`) is imperative
+reassignment, and the SCSS front end lowers it to `::=` so accumulator loops such as
+`$sum: $sum + $x` behave the way dart-sass evaluates them.
+
+:::

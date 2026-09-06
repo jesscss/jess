@@ -2441,6 +2441,42 @@ function liveCellPredecessor(
   return existing.value === node.value ? existing.prev : existing;
 }
 
+/**
+ * The frame whose live cells currently OWN `name` — the reassign target for an
+ * optional-shadow write. Unlike {@link lookupLiveCell}, this returns the frame that
+ * HOLDS the binding, never a cell's value frame, so a re-executed loop write always
+ * lands in the same store and the shadow chain accumulates there.
+ */
+function liveCellOwnerFrame(frame: Frame | null, name: string, e: EvalCtx): Frame | null {
+  let fb: Frame | null | undefined;
+  for (let f = frame; f; f = f.parent) {
+    for (let hit: BindingCell | null | undefined = f.cells?.get(name); hit; hit = hit.prev) {
+      if (!e.excluded.has(hit.value)) {
+        return f;
+      }
+    }
+    if (f.fallback && !fb) {
+      fb = f.fallback;
+    }
+  }
+  return fb ? liveCellOwnerFrame(fb, name, e) : null;
+}
+
+/**
+ * A `reassign-or-declare` (`::=`) live write snapshots a plain value node with a
+ * FRESH identity, so a loop that re-runs the same declaration accumulates instead
+ * of collapsing: identity drives both the shadow chain ({@link liveCellPredecessor})
+ * and the exclusion walk. Arrays keep identity (their value-layout side table is
+ * keyed on it) and detached rulesets / mixin calls keep identity ({@link bindDetached}
+ * keys the binding on it), so only a scalar value node is copied — the accumulator case.
+ */
+function snapshotLiveWrite(value: ValueSlot | MixinCall): ValueSlot | MixinCall {
+  if (isValueSlotArray(value) || isValueBlock(value) || value.type === 'MixinCall') {
+    return value;
+  }
+  return { ...value };
+}
+
 function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e: EvalCtx): void {
   if (
     node.write.mode === 'declare'
@@ -2494,6 +2530,39 @@ function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e:
       throw new ReferenceError(`scoped variable $^${node.name} is undefined`);
     }
     (found.frame.reassign ??= new Map()).set(node.name, node);
+    return;
+  }
+  if (node.write.mode === 'reassign-or-declare') {
+    /*
+     * Optional shadow (jess `::=`; SCSS `$x:` inside a control-flow block). Reassign
+     * the nearest existing binding; when none exists anywhere outer, declare a
+     * block-local shadow in the CURRENT frame — same target the `declare`/`reassign`
+     * arms write, chosen by whether a binding was found.
+     */
+    if (node.write.scope === 'live') {
+      const owner = liveCellOwnerFrame(frame, node.name, e) ?? frame;
+      const cells = owner.cells ??= new Map();
+
+      /*
+       * A loop re-executes the SAME declaration node each iteration, so an
+       * accumulator (`$i: $i + $x`) must write a value with a FRESH identity and
+       * remember the frame it evaluates in: fresh identity makes each write chain
+       * onto the previous one (see liveCellPredecessor) and lets the exclusion set
+       * — keyed on node identity — walk the chain rather than collapse it, and the
+       * value frame keeps the loop variable resolvable when the value is read after
+       * the loop. ponytail: read walks the write chain, so a very long accumulator
+       * loop is O(n^2) at read — snapshot eagerly if a hot loop ever needs it.
+       */
+      cells.set(node.name, {
+        declaration: node,
+        value: snapshotLiveWrite(node.value),
+        valueFrame: frame,
+        prev: liveCellPredecessor(cells, node)
+      });
+      return;
+    }
+    const found = lookupScopedBinding(frame, node.name, e);
+    ((found?.frame ?? frame).reassign ??= new Map()).set(node.name, node);
     return;
   }
   const cells = frame.cells ??= new Map();
