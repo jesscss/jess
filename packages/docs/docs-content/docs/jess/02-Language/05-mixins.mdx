@@ -502,46 +502,100 @@ $my-mixin: @{
 }
 ```
 
-## Passing sets of rules to mixins
+## Passing a block of rules to a mixin
 
-Like Sass, Jess supports passing sets of rules to mixins by "assigning" an anonymous mixin callback to the mixin call. The mixin can then render those rules by calling `$content()`.
+Like Sass, a mixin **call** can carry a block of rules. Write a `:` after the call's `)`, then the block. Inside the mixin, `$content()` renders that block wherever it sits.
 
-`content` is not a special name. Assigning a block **binds an ordinary variable named `content` in the call frame**, the way `arguments` is bound in a JavaScript function, and `$content()` is an ordinary call on it. So an enclosing frame's `content` is visible to an inner call like any other variable — and calling `$content()` where no block was assigned is a plain unbound-name error, not a silent no-op. See [Sass+ semantic differences](/docs/guides/coming-from-sass/semantic-differences#content-blocks-content-is-an-ordinary-variable) for how that differs from Sass.
+<Tabs groupId="dialect">
+  <TabItem value="jess" label="Jess">
+    ```less
+    // main.jess
+    my-mixin() {
+      $content();
+    }
+    .box {
+      $ > my-mixin(): {
+        color: red;
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem value="sass" label="Sass">
+    ```scss
+    // main.scss
+    @mixin my-mixin {
+      @content;
+    }
+    .box {
+      @include my-mixin {
+        color: red;
+      }
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+Both output:
+
+```css
+.box {
+  color: red;
+}
+```
+
+:::info[No `@` in the content slot]
+A standalone [anonymous mixin](#anonymous-mixins) is written `@{ … }` or `@() { … }`. In the content slot the `@` is dropped: after a complete call, a leading `:` can only introduce a content block, so the `:` alone is the signifier.
+:::
+
+### `content` is an ordinary variable
+
+`content` is not a special name. Passing a block **binds an ordinary variable named `content` in the call frame**, the way `arguments` is bound in a JavaScript function, and `$content()` is an ordinary call on it. Two things follow from that.
+
+**Call-site variables are visible inside the block.** The block is evaluated where it was written, so it closes over the caller's scope:
 
 ```less
+$brand: #06c;
 my-mixin() {
   $content();
 }
 .box {
-  $ > my-mixin(): @{
-    color: red;
+  $ > my-mixin(): {
+    color: $brand;
   }
 }
 ```
+→
+```css
+.box {
+  color: #06c;
+}
+```
 
-### Passing sets of rules to mixins with parameters
+**Calling `$content()` when no block was passed is a plain unbound-name error**, not a silent no-op. See [Sass+ semantic differences](/docs/guides/coming-from-sass/semantic-differences#content-blocks-content-is-an-ordinary-variable) for how that differs from Sass.
 
-You can also assign mixin callbacks to the mixin call.
+### Blocks with parameters
+
+Give the block a parameter list in `(…)` after the `:`, and call it in **value position** as `$content($value)`. The block then behaves like an anonymous function: the value you pass fills its parameter, and its `result` is what `$content($value)` returns.
 
 ```less
-media(...$types) {
-  $for ($type of $types) {
-    @media ${type} {
-      $content($type);
-    }
-  }
+// main.jess
+m() {
+  color: $content(#333);
 }
-
-$ > media(screen, print): @($type) {
-  h1 {
-    font-size: 40px;
-    $if ($type = print) {
-      font-family: Calluna;
-    }
+.card {
+  $ > m(): ($base) {
+    result: $base;
   }
 }
 ```
+→
+```css
+.card {
+  color: #333;
+}
+```
 
+In Sass this parameter list is spelled `@include m using ($base) { … }`. Note the position: Jess's `$content($value)` is a **value-position** call, while the plain `$content()` that renders a block in statement position takes no arguments.
 
 ## Calling mixins from other languages
 
