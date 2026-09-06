@@ -26,7 +26,7 @@ import { cssBaseRules } from '@jesscss/css-parser/grammar';
 import { ScssImportPostludeError } from './parse-error.js';
 import { anonymousMixin, any, asDiagnostic, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, importIsCompileTime, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { COMPARISON_OPERATORS, appendLiteral, scssBranchSegments, contentArgRaw, customValue, customValueFromParts, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isAnonymousMixin, isCollection, isCollectionEntry, isScssDeclaration, isExtendInstruction, isScssImportTarget, isScssInterpolation, isParamArray, isQuoted, isScriptModulePath, isScssValuePair, isScssValueTail, isScssSelectorBranch, isScssSelectorList, isSelectorTerm, isScssSimpleToken, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, keywordizeValues, mapKeyValue, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, scssSelectorTermFromTokens, scssSourceText, statementChildren, statements, staticQuoted, scssValueSlot } from './grammar-helpers.js';
+import { COMPARISON_OPERATORS, appendLiteral, controlBlockStatements, scssBranchSegments, contentArgRaw, customValue, customValueFromParts, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isAnonymousMixin, isCollection, isCollectionEntry, isScssDeclaration, isExtendInstruction, isScssImportTarget, isScssInterpolation, isParamArray, isQuoted, isScriptModulePath, isScssValuePair, isScssValueTail, isScssSelectorBranch, isScssSelectorList, isSelectorTerm, isScssSimpleToken, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, keywordizeValues, mapKeyValue, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, scssSelectorTermFromTokens, scssSourceText, statementChildren, statements, staticQuoted, scssValueSlot } from './grammar-helpers.js';
 import type { ScssArgumentPair, ScssCallArg, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
@@ -2561,10 +2561,10 @@ const scssFactory = (g: ScssInputRules) => {
       }
       return forNode(
         iterable,
-        statementChildren(
+        controlBlockStatements(statementChildren(
           children,
           true
-        ),
+        )),
         requireForBinding(children[1])
       );
     }
@@ -2605,13 +2605,13 @@ const scssFactory = (g: ScssInputRules) => {
         true,
         requireToken(children[4]).value.toLowerCase() === 'through'
       ),
-      statementChildren(
+      controlBlockStatements(statementChildren(
         children.slice(
           7,
           -1
         ),
         true
-      ),
+      )),
       { kind: 'single', name: requireString(children[1]) }
     )
   );
@@ -2879,7 +2879,7 @@ const scssFactory = (g: ScssInputRules) => {
       ))
     ),
     (children) => {
-      const branches: IfBranch[] = [{ guard: requireGuardNode(children[1]), rules: requireStatementList(children[2]) }];
+      const branches: IfBranch[] = [{ guard: requireGuardNode(children[1]), rules: controlBlockStatements(requireStatementList(children[2])) }];
       for (let index = 3; index < children.length;) {
         /*
          * Every tail begins with @else. An else-if has its literal `if`, guard,
@@ -2888,10 +2888,10 @@ const scssFactory = (g: ScssInputRules) => {
         index += 1;
         const child = children[index];
         if (isToken(child) && child.value.toLowerCase() === 'if') {
-          branches.push({ guard: requireGuardNode(children[index + 1]), rules: requireStatementList(children[index + 2]) });
+          branches.push({ guard: requireGuardNode(children[index + 1]), rules: controlBlockStatements(requireStatementList(children[index + 2])) });
           index += 3;
         } else {
-          branches.push({ guard: null, rules: requireStatementList(children[index]) });
+          branches.push({ guard: null, rules: controlBlockStatements(requireStatementList(children[index])) });
           index += 1;
         }
       }
@@ -2922,7 +2922,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     children => whileNode(
       requireGuardNode(children[1]),
-      requireStatementList(children[2])
+      controlBlockStatements(requireStatementList(children[2]))
     )
   );
 

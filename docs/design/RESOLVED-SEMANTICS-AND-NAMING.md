@@ -1973,12 +1973,12 @@ descriptor replaces the eight slices below)*
 | kind | represents |
 | --- | --- |
 | `Declaration` | `name: value;`. `name` may be an `Interpolation`; `merge` is `','` / `' '` / `null` |
-| `VariableDeclaration` | `@x: …` with a `write` mode of `declare` / `if-absent` / `reassign` |
+| `VariableDeclaration` | `@x: …` with a `write` mode of `declare` / `if-absent` / `reassign` / `reassign-or-declare` |
 | `Ruleset` | `sel { … }`; `extendInstructions` are hoisted here so the serializer's zero-cost gate holds |
 | `MixinDefinition` | canonical rules stored **once**, read through an overlay, never cloned; optional `when` guard |
 | `MixinCall` | args bind positional or named; `path` is the `#ns .a .b()` descent prefix |
 | `Apply` | Jess `$apply <selector-list>` — ruleset-only, whole-selector, merge-all. Deliberately **not** a `MixinCall` |
-| `If` | `$if` / `$else if` / `$else`, ordered as authored. **A control block is not a scope** |
+| `If` | `$if` / `$else if` / `$else`, ordered as authored. Braces are consistent: **a control block IS a scope** — a variable born inside it is block-local, and `reassign-or-declare` (`::=`) is what reaches an outer binding from within one |
 | `For` | `iterable` + `rules` + `binding` (single / comma / bracket / tuple) |
 | `Comment` | carried structurally in source order. Also a `ValueNode` |
 | `RawInline` | verbatim bytes from `@import (inline)`; no scope, no structure. *(§12.3 row 5 — deleted)* |

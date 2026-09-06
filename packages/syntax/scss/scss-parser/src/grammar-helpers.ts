@@ -972,6 +972,28 @@ export function statementChildren(children: readonly unknown[], allowDeclaration
   return result;
 }
 
+/**
+ * Retag a control-flow block body's DIRECT `$x:` declarations. A bare `$x:` sitting
+ * directly inside an `@if`/`@else`/`@each`/`@for`/`@while` body is an imperative
+ * REASSIGNMENT — it writes the nearest existing binding and only shadows block-locally
+ * when none exists — which is what a `@for`/`@while` accumulator (`$i: $i + 1`) relies
+ * on. It lowers to the optional-shadow write (`reassign-or-declare`, live store, to
+ * match the live reads SCSS emits). The same `$x:` at top level or inside a ruleset
+ * keeps its plain `declare`, so only bare declares are retagged here (`!default` →
+ * if-absent and `!global` → reassign pass through) and nested rulesets are opaque:
+ * their own declarations were already lowered as `declare` by the ruleset reducer.
+ * The source span is preserved by spreading the original node.
+ */
+export function controlBlockStatements(statements: Statement[]): Statement[] {
+  for (let i = 0; i < statements.length; i++) {
+    const statement = statements[i]!;
+    if (statement.type === 'VariableDeclaration' && statement.write.mode === 'declare') {
+      statements[i] = { ...statement, write: { mode: 'reassign-or-declare', scope: 'live' } };
+    }
+  }
+  return statements;
+}
+
 export function requireStatementList(value: unknown): Statement[] {
   if (!Array.isArray(value)) {
     throw new TypeError('SCSS grammar produced a non-statement list.');

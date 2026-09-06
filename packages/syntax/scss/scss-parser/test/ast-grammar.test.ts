@@ -75,6 +75,26 @@ describe('SCSS canonical-AST grammar', () => {
     expectExplicitListSeparators(result.value);
   });
 
+  it('lowers a `$x:` DIRECTLY in a control block to reassign-or-declare, but a nested ruleset keeps declare', () => {
+    const result = run(
+      scssGrammar.Stylesheet,
+      '@for $x from 1 through 1 { $a: 1; .r { $b: 2; } }',
+      { trivia: scssGrammar.whitespace }
+    );
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{
+        type: 'For',
+        rules: [
+          { type: 'VariableDeclaration', name: 'a', write: { mode: 'reassign-or-declare', scope: 'live' } },
+          { type: 'Ruleset', rules: [{ type: 'VariableDeclaration', name: 'b', write: { mode: 'declare' } }] }
+        ]
+      }]
+    });
+  });
+
   it('retains @supports general-enclosed bodies as structural interpolation templates', () => {
     const source = '@supports selector(.card-#{$tone}:has([data-x="#{$state}"])) { .card { color: blue; } }';
     const cst = parseScssCst(source);
