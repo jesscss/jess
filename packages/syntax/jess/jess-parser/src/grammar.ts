@@ -54,6 +54,7 @@ import {
   JESS_STRUCTURED_PSEUDOS,
   isParam,
   isParamList,
+  isAnonymousMixin,
   isMixinCallArray,
   isExtendInstructionArray,
   isValueNode,
@@ -203,6 +204,7 @@ type JessRules = {
   MixinParam: Combinator<Param>;
   MixinParams: Combinator<Param[]>;
   MixinCallArgument: Combinator<JessMixinCallArgument>;
+  MixinContentBlock: Combinator<AnonymousMixin>;
   MixinCall: Combinator<MixinCall>;
   ReferenceCall: Combinator<Reference>;
   Apply: Combinator<Apply>;
@@ -4817,6 +4819,30 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       return callArg(value, name?.value);
     }
   );
+
+  /*
+   * The `:`-introduced block trailing a call is its CONTENT block — the owner's
+   * `.jess` spelling of what Sass writes `@include m { … }`. It is the same
+   * `AnonymousMixin` the SCSS `MixinContentBlock` builds and the lambda family
+   * reduces (`reduceLambda`): the optional `(params)` is the `using (…)`
+   * equivalent and reuses `MixinParams`; the body reuses `nestedBodyStatement`.
+   * The `@` a value-position lambda carries is elided here — after a complete
+   * call, a leading `:` can only be the content signifier (a value-position
+   * mixin call, the only other `:` case, is not a Jess surface), so no marker is
+   * needed to disambiguate. `params` stays OMITTED for the bare block so that
+   * shape matches the SCSS content block byte-for-byte.
+   */
+  const MixinContentBlock = node<AnonymousMixin>(
+    'MixinContentBlock',
+    sequence(
+      literal(':'),
+      optional(g.MixinParams),
+      literal('{'),
+      many(nestedBodyStatement),
+      literal('}')
+    ),
+    reduceLambda
+  );
   const MixinCall = node<MixinCall>(
     'MixinCall',
     sequence(
@@ -4833,6 +4859,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         literal(',')
       )),
       literal(')'),
+      optional(g.MixinContentBlock),
       optional(literal(';'))
     ),
     (children) => {
@@ -4840,13 +4867,15 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         .map(token => token.value)
         .filter(value => value !== '$' && value !== '>' && value !== '(' && value !== ')' && value !== ',' && value !== ';');
       const args = children.filter(isJessMixinCallArgument);
+      const content = children.find(isAnonymousMixin) ?? null;
       const name = names.at(-1);
       if (name === undefined) {
         throw new TypeError('Jess grammar produced a mixin call without a name.');
       }
       const call = mixinCall(
         name,
-        args
+        args,
+        content
       );
       return names.length === 1
         ? call
@@ -5723,6 +5752,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     MixinParam,
     MixinParams,
     MixinCallArgument,
+    MixinContentBlock,
     MixinCall,
     ReferenceCall,
     Apply,
