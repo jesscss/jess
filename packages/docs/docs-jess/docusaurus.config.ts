@@ -122,7 +122,7 @@ export default {
            * })
            * },
            */
-          sidebarPath: './sidebars.js',
+          sidebarPath: './sidebars.mjs',
           includeCurrentVersion: true,
           lastVersion: 'current',
           versions: {
