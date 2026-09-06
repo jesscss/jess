@@ -962,6 +962,10 @@ function isMixinCall(value: unknown): value is MixinCall {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'MixinCall';
 }
 
+function isAnonymousMixin(value: unknown): value is AnonymousMixin {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'AnonymousMixin';
+}
+
 function isFor(value: unknown): value is For {
   return typeof value === 'object'
     && value !== null
@@ -1313,6 +1317,7 @@ export {
   isRuleset,
   isMixinDefinition,
   isMixinCall,
+  isAnonymousMixin,
   isFor,
   isIf,
   isWhile,
