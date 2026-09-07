@@ -378,14 +378,16 @@ const expectedFailureFixtures = new Map<string, string>([
    * whose stale 4.x golden was updated: (1) `min()`/`max()` over incompatible
    * units preserve every authored argument (`min(6em, 5, 4ex, 3, 2pt, 1)`) rather
    * than emitting less.js's order-dependent partial reduction, an "implementation
-   * accident, not a semantic" (`packages/fns/src/less/min-max.ts`); and (2) the
-   * numeric output policy is a single owner (`format-number.ts`, shortest decimal
-   * within 1e-10 relative, no significant-figure cap) — so `pi`/`tan`/`sin`/`cos`
-   * and the luma/luminance percentages carry more digits than less.js's 8-dp
-   * `numPrecision` rounding, which SEMANTIC-INVARIANTS §3/S1 records as a leak.
-   * The one genuine bug — bare `not <operand>` (`boolean(not false)`,
-   * `if(not false, …)`) was truthiness-tested as a two-keyword value instead of
-   * negated — was FIXED in the less grammar `not`-opener gate.
+   * accident, not a semantic" — DESIGN-DECISIONS C20 (OPEN, owner-to-ratify);
+   * `packages/fns/src/less/min-max.ts`. And (2) the numeric output policy is a
+   * single owner (`format-number.ts`, shortest decimal within 1e-10 relative, no
+   * significant-figure cap) — DESIGN-DECISIONS V4 (SETTLED) with F6 as its
+   * formatting-section cross-reference; SEMANTIC-INVARIANTS §3/S1 records less.js's
+   * 8-dp `numPrecision` rounding as a leak — so `pi`/`tan`/`sin`/`cos` and the
+   * luma/luminance percentages carry more digits than that rounding. The one
+   * genuine bug — bare `not <operand>` (`boolean(not false)`, `if(not false, …)`)
+   * was truthiness-tested as a two-keyword value instead of negated — was FIXED in
+   * the less grammar `not`-opener gate (P8/§B5 branch-lazy conditions unchanged).
    */
 ]);
 
