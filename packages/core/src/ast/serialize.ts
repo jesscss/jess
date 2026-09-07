@@ -7171,6 +7171,12 @@ interface DynamicExtendState {
   /** Rules already accounted for statically (main + static imported preflight); a
    * rule outside this set is a dynamic emission whose facts are recorded at emit. */
   staticRules: Set<Ruleset>;
+
+  /** [extend/dynamic] Main-document `For`/`MixinDefinition` nodes that actually bear a
+   * dynamic extend in their subtree. A loop iteration allocates its per-emission
+   * placement token ONLY when its `For` is in this set — an unrelated big loop pays no
+   * dead tokens just because some other extend armed dynamic recording. */
+  dynExtendBodies: Set<For | MixinDefinition>;
   subjects: PlanSubject[];
   instructions: PlanInstruction[];
   slots: DynExtendSlot[];
@@ -9055,19 +9061,49 @@ function classifyExtend(statements: readonly Statement[], inDynamic: boolean, ou
   }
 }
 
-/** [extend/dynamic] The Ruleset nodes the STATIC planner (`collectPlan`) records as
- * subjects for a document root — every rule reachable through ruleset / at-rule
- * nesting (NOT through a loop or mixin-definition body). A rule outside this set, when
- * emitted, was reached dynamically and has its extend facts recorded at emit time. */
-function collectStaticRuleSet(statements: readonly Statement[], out: Set<Ruleset>): void {
+/**
+ * [extend/dynamic] ONE armed-only walk that builds BOTH discriminator sets: the
+ * static-spine Ruleset nodes (`staticRules` — every rule reachable through ruleset /
+ * at-rule nesting, NOT through a loop or mixin body; a rule outside it was reached
+ * dynamically and records its facts at emit) and the `For`/`MixinDefinition` nodes that
+ * actually carry a dynamic extend (`bodies` — gates per-iteration token allocation).
+ * Runs only when dynamic recording is armed, so non-extend documents pay nothing.
+ * Returns whether this subtree (under `inDynamic`) contains a dynamic extend.
+ *
+ * F5 note: the planner's subject-rule set is NOT reused here — the pre-walk
+ * `computeExtends` returns null (building no plan) for the common dynamic-only document
+ * (extend only inside a loop/mixin, e.g. the bootstrap grid), exactly when `staticRules`
+ * is most needed. This single armed-only walk carries the F1 bodies collection for free.
+ */
+function collectDynamicExtendSets(
+  statements: readonly Statement[],
+  inDynamic: boolean,
+  staticRules: Set<Ruleset>,
+  bodies: Set<For | MixinDefinition>
+): boolean {
+  let dynamicHere = false;
   for (const st of statements) {
     if (st.type === 'Ruleset') {
-      out.add(st);
-      collectStaticRuleSet(st.rules, out);
+      if (!inDynamic) {
+        staticRules.add(st);
+      } else if (st.extendInstructions?.length) {
+        dynamicHere = true;
+      }
+      if (collectDynamicExtendSets(st.rules, inDynamic, staticRules, bodies)) {
+        dynamicHere = true;
+      }
     } else if (st.type === 'AtRuleBlock') {
-      collectStaticRuleSet(st.rules, out);
+      if (collectDynamicExtendSets(st.rules, inDynamic, staticRules, bodies)) {
+        dynamicHere = true;
+      }
+    } else if (st.type === 'For' || st.type === 'MixinDefinition') {
+      if (collectDynamicExtendSets(st.rules, true, staticRules, bodies)) {
+        bodies.add(st);
+        dynamicHere = true;
+      }
     }
   }
+  return dynamicHere;
 }
 
 /**
@@ -9114,9 +9150,9 @@ function planImportedStaticExtend(
           const extenderPath = inst.subject
             ? [...path, levelFromSelectorList(inst.subject)]
             : rulePath;
-          for (const target of inst.target.selectors.map(branchFromSelector)) {
+          for (const sel of inst.target.selectors) {
             overlay.instructions.push({
-              target, partial: inst.partial, extenderPath, scope,
+              target: branchFromSelector(sel), partial: inst.partial, extenderPath, scope,
               order: overlay.instructions.length, extenderHidden: subjectHidden,
               referenceBoundary
             });
@@ -9656,7 +9692,8 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
      */
     if (extendClass.dynamic || e.importedDynamicExtendPresent) {
       const staticRules = new Set<Ruleset>();
-      collectStaticRuleSet(plannedRoot.rules, staticRules);
+      const dynExtendBodies = new Set<For | MixinDefinition>();
+      collectDynamicExtendSets(plannedRoot.rules, false, staticRules, dynExtendBodies);
       if (e.importedStaticExtendRules) {
         for (const rule of e.importedStaticExtendRules) {
           staticRules.add(rule);
@@ -9668,6 +9705,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
         referenceBoundaries: planned.referenceBoundaries,
         baseOverlay: planned.overlay,
         staticRules,
+        dynExtendBodies,
         subjects: [],
         instructions: [],
         slots: [],
@@ -10312,6 +10350,11 @@ function isSelfComposed(rule: Ruleset, parent: string[], frame: Frame, e: Emit):
  *  - no mask, but the rule itself is `reference` and extend never changed it: all its
  *    (seed-only) branches are hidden → drop the whole rule.
  */
+/** [extend/dynamic] Shared empty scope for every dynamic subject/instruction (they all
+ * reach everything). The solver only reads `scope` (never mutates), so one array is safe.
+ * ponytail: shared const, never mutated — see the read-only audit in recordDynamicExtendFacts. */
+const EMPTY_SCOPE: number[] = [];
+
 /**
  * [extend/dynamic] Build a selector-IR level from ALREADY-COMPOSED header text. Each
  * composed branch becomes one opaque descendant compound — its serialized text is
@@ -10353,10 +10396,18 @@ function recordDynamicExtendFacts(e: Emit, rule: Ruleset, frame: Frame, headerCo
   const token = innermostExtendPlacement(frame);
   const hidden = e.referenceImportDepth > 0;
   const ownLocal = opaqueLevel(headerComposed);
+
+  /*
+   * The solver only READS `scope`/`path`/`extenderPath` (composePath clones, reaches
+   * reads, relativizeExtender slices — never mutates; a dynamic subject is top-level so
+   * relativize is never reached), so one shared empty scope and one shared `path`
+   * (== the extender path for a body-form extender) are safe to reuse per subject.
+   */
+  const path = [ownLocal];
   dyn.subjects.push({
     rule,
-    path: [ownLocal],
-    scope: [],
+    path,
+    scope: EMPTY_SCOPE,
     ownLocal,
     parent: null,
     mayMatch: false,
@@ -10369,14 +10420,13 @@ function recordDynamicExtendFacts(e: Emit, rule: Ruleset, frame: Frame, headerCo
     (dyn.hiddenReferenceRules ??= new Set()).add(rule);
   }
   if (rule.extendInstructions) {
-    const extenderPath = [ownLocal];
     for (const inst of rule.extendInstructions) {
-      for (const target of inst.target.selectors.map(branchFromSelector)) {
+      for (const sel of inst.target.selectors) {
         dyn.instructions.push({
-          target,
+          target: branchFromSelector(sel),
           partial: inst.partial,
-          extenderPath,
-          scope: [],
+          extenderPath: path,
+          scope: EMPTY_SCOPE,
           order: dyn.order++,
           extenderHidden: hidden,
           referenceBoundary: null
@@ -10512,26 +10562,39 @@ function arraysEqualText(a: readonly string[], b: readonly string[]): boolean {
 }
 
 /**
- * [extend/dynamic] `visibleHeader`, evaluated against an explicit projection (the
- * deferred fold has no live frame to walk). Same rules: drop reference-hidden branches
- * by mask, drop an all-hidden reference rule, else drop placeholder branches.
+ * Reduce a composed header to its visible branches against a resolved projection: drop
+ * reference-hidden branches by per-branch mask, drop an all-hidden reference rule
+ * (returns null), else drop placeholder branches. Shared by the live-walk `visibleHeader`
+ * (projection from the frame chain) and the deferred fold's `visibleHeaderFromProjection`
+ * (projection resolved post-walk), so the two never diverge.
  */
+function visibleHeaderCore(
+  rule: Ruleset,
+  header: string[],
+  projection: ExtendResults | ExtendPlacementResults | null,
+  refRules: ReadonlySet<Ruleset> | null | undefined
+): string[] | null {
+  const mask = projection?.hiddenByRule.get(rule);
+  if (mask?.length === header.length) {
+    const vis = header.filter((_, i) => mask[i] !== true);
+    return vis.length > 0 ? withoutPlaceholders(vis) : null;
+  }
+  if ((rule.reference === true || refRules?.has(rule) === true)
+    && projection?.flatByRule.has(rule) !== true) {
+    return null;
+  }
+  return withoutPlaceholders(header);
+}
+
+/** [extend/dynamic] `visibleHeader` against an explicit post-walk projection (the fold
+ * has no live frame to walk). */
 function visibleHeaderFromProjection(
   rule: Ruleset,
   header: string[],
   projection: ExtendResults | ExtendPlacementResults,
   resolved: ExtendResults
 ): string[] | null {
-  const mask = projection.hiddenByRule.get(rule);
-  if (mask?.length === header.length) {
-    const vis = header.filter((_, i) => mask[i] !== true);
-    return vis.length > 0 ? withoutPlaceholders(vis) : null;
-  }
-  if ((rule.reference === true || resolved.hiddenReferenceRules?.has(rule) === true)
-    && projection.flatByRule.has(rule) !== true) {
-    return null;
-  }
-  return withoutPlaceholders(header);
+  return visibleHeaderCore(rule, header, projection, resolved.hiddenReferenceRules);
 }
 
 function extendProjection(frame: Frame | null, e: Emit): ExtendResults | ExtendPlacementResults | null {
@@ -10584,17 +10647,7 @@ function withoutPlaceholders(header: string[]): string[] | null {
 }
 
 function visibleHeader(rule: Ruleset, header: string[], frame: Frame, e: Emit): string[] | null {
-  const ext = extendProjection(frame, e);
-  const mask = ext?.hiddenByRule.get(rule);
-  if (mask?.length === header.length) {
-    const vis = header.filter((_, i) => mask[i] !== true);
-    return vis.length > 0 ? withoutPlaceholders(vis) : null;
-  }
-  if ((rule.reference === true || e.extends?.hiddenReferenceRules?.has(rule) === true)
-    && ext?.flatByRule.has(rule) !== true) {
-    return null;
-  }
-  return withoutPlaceholders(header);
+  return visibleHeaderCore(rule, header, extendProjection(frame, e), e.extends?.hiddenReferenceRules);
 }
 
 /** A hidden reference subject emits only when its current extend projection has
@@ -12153,7 +12206,7 @@ function expandReferenceAncestorFor(
           statements: node.rules,
           sourceOwner: frame.sourceOwner ?? null,
           ...(bindingValueFrames ? { bindingValueFrames } : {}),
-          ...(e.dynamicExtend ? { extendPlacement: {} } : {})
+          ...(e.dynamicExtend?.dynExtendBodies.has(node) ? { extendPlacement: {} } : {})
         };
         bindForDetached(loopFrame, bindings, item);
         const emitted = mapMaybe(
@@ -13651,7 +13704,7 @@ function expandFor(
           statements: node.rules,
           sourceOwner: frame.sourceOwner ?? null,
           ...(bindingValueFrames ? { bindingValueFrames } : {}),
-          ...(e.dynamicExtend ? { extendPlacement: {} } : {})
+          ...(e.dynamicExtend?.dynExtendBodies.has(node) ? { extendPlacement: {} } : {})
         };
         bindForDetached(loopFrame, bindings, item);
         const emitted = mapMaybe(
