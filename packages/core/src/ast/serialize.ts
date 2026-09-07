@@ -3315,6 +3315,31 @@ function isOperationNode(node: object): node is Operation {
   return 'type' in node && node.type === 'Operation';
 }
 
+/** True when a `+`/`-` operator is GLUED to the right operand in source (a leading
+ *  sign, no whitespace after the operator), inferred from spans: an Operation's
+ *  span is `left <one space> op <ws?> right`, so the glued width is exactly
+ *  `leftWidth + 1 + operator.length + rightWidth`. Each operand's SOURCE width is
+ *  its span when present (variables/nested ops), else its literal token length
+ *  (`Keyword`/`Dimension`/`Color`/`Quoted`/`Any` carry `src` = the authored bytes). */
+const operationSignGlued = (node: Operation): boolean => {
+  const width = (n: ValueNode): number | null => {
+    const start = sourceStartOf(n);
+    const end = sourceEndOf(n);
+    if (start !== NO_SPAN && end !== NO_SPAN) {
+      return end - start;
+    }
+    return 'src' in n && typeof n.src === 'string' ? n.src.length : null;
+  };
+  const opStart = sourceStartOf(node);
+  const opEnd = sourceEndOf(node);
+  const leftWidth = width(node.left);
+  const rightWidth = width(node.right);
+  if (leftWidth === null || rightWidth === null || opStart === NO_SPAN || opEnd === NO_SPAN) {
+    return false;
+  }
+  return opEnd - opStart === leftWidth + 1 + node.operator.length + rightWidth;
+};
+
 function arithmeticSiteLocation(node: object, e: EvalCtx): {
   filePath?: string; source?: string; line?: number; column?: number;
 } {
@@ -4045,6 +4070,30 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'Operation': {
       if (node.operator === 'and' || node.operator === 'or') {
         return evalLogicalOperation(node, frame, e);
+      }
+
+      /*
+       * [value] A `+`/`-` GLUED to a right-hand custom-ident (`5px auto
+       * -webkit-focus-ring-color`) is a SIGN on that ident, not subtraction: the
+       * parser splits the leading `-` off the keyword into an operator, but the
+       * value is a space list whose last item is `-webkit-focus-ring-color`. Only
+       * a keyword right operand reaches here glued — a glued numeric (`5px -3px`)
+       * parses as a negative Dimension in a List, never an Operation. Non-numeric
+       * operands would hit `operate`'s keyword-preserve guard anyway (which has no
+       * source span and always spaces the operator); emit the authored glued form
+       * here where the spans still exist. `namedColor` right operands stay on the
+       * arithmetic path (V13 color coercion). ponytail: "glued" is span-width
+       * (one authored space before the sign); a rare double-space before falls
+       * back to the spaced form, which Less would collapse anyway.
+       */
+      if ((node.operator === '-' || node.operator === '+')
+        && node.right.type === 'Keyword'
+        && namedColor(node.right.src) === undefined
+        && operationSignGlued(node)) {
+        const l = evalValue(node.left, frame, e);
+        const r = evalValue(node.right, frame, e);
+        return combineAll([l, r], values =>
+          literal(`${emitValue(values[0]!)} ${node.operator}${emitValue(values[1]!)}`));
       }
       if (!e.ev) {
         // Fallback: un-evaluated, variable-resolved source assembly (no math).
@@ -7051,6 +7100,27 @@ function rootStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): Maybe
   }
   return combineAll(parts, values => values.flat());
 }
+
+/** [nesting] Nested-mode own selectors at a ROOT context (no parent): a parentless
+ * `&` FOLLOWED BY other compound/descendant content drops to that content
+ * (`& .underParents` → `.underParents`, Less elides the parentless ampersand), but
+ * a LONE `&` cannot become an empty selector, so it is preserved VERBATIM — the v5
+ * transparent-group form a nested `& when (…) { … }` / `& { … }` keeps (see
+ * `tests-config/namespacing/namespacing-7`). Non-ampersand selectors are canonical. */
+const rootStringsNested = (list: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> =>
+  combineAll(list.selectors.map((c) => {
+    /*
+     * Reuse `ownStrings`' expansion so captures/interpolation branch identically;
+     * only rewrite the parentless `&` on `&`-bearing branches.
+     */
+    if (!selectorBranchHasAmpersand(c)) {
+      return expandSelectorBranch(c, frame, e);
+    }
+    return mapMaybe(expandSelectorBranch(c, frame, e), branches => branches.map((value) => {
+      const stripped = value.split('&').join('').trim();
+      return stripped === '' ? value : stripped;
+    }));
+  }), values => values.flat());
 
 /* ------------------------------------------------------------- emit engine */
 
@@ -16308,6 +16378,40 @@ function emitBubbleBody(
   };
 
   /*
+   * [atrule-bubbling] A body-expanding statement (mixin/detached-ruleset call,
+   * `@each`) emits its nested rulesets INLINE via `expand*`, unlike the authored
+   * `Ruleset`/at-rule cases below that each raise `e.depth` for their block. Those
+   * expansions must indent to the SAME at-rule body level, so raise `e.depth`
+   * around the call. But the direct declarations the expansion interleaves are
+   * flushed through `flushDirect`, which raises `e.depth` ITSELF for the wrapping
+   * `ctx { … }` block — so hand the expansion a flush that drops back to the body
+   * base first, keeping those declarations one level in (not two).
+   */
+  const flushAtBase = (): MaybePromise<void> => {
+    e.depth--;
+    const flushed = flushDirect();
+    if (isThenable(flushed)) {
+      return flushed.then(() => {
+        e.depth++;
+      }, (error) => {
+        e.depth++;
+        throw error;
+      });
+    }
+    e.depth++;
+    return flushed;
+  };
+  const unbumpAfter = (expanded: MaybePromise<void>): MaybePromise<void> => {
+    if (isThenable(expanded)) {
+      return expanded.then(() => {
+        e.depth--;
+      });
+    }
+    e.depth--;
+    return undefined;
+  };
+
+  /*
    * Keep one direct-leaf group and one cursor for the whole body.  In
    * particular, an async import resumes this exact group/body placement rather
    * than closing over a per-statement callback or re-walking a sliced tail.
@@ -16592,7 +16696,8 @@ function emitBubbleBody(
             break;
           }
           {
-            const expanded = expandCall(node, ctx, ctxAncestor, frame, group, flushDirect, null, e);
+            e.depth++;
+            const expanded = unbumpAfter(expandCall(node, ctx, ctxAncestor, frame, group, flushAtBase, null, e));
             if (isThenable(expanded)) {
               return expanded.then(() => run(index + 1));
             }
@@ -16614,16 +16719,30 @@ function emitBubbleBody(
             break;
           }
           {
-            const expanded = expandReferenceCall(node, ctx, ctxAncestor, frame, group, flushDirect, null, e);
+            e.depth++;
+            const expanded = unbumpAfter(expandReferenceCall(node, ctx, ctxAncestor, frame, group, flushAtBase, null, e));
             if (isThenable(expanded)) {
               return expanded.then(() => run(index + 1));
             }
           }
           break;
         case 'For': {
-          const expanded = e.referenceImportDepth === 0
-            ? expandFor(node, ctx, ctxAncestor, frame, group, flushDirect, null, e)
-            : expandNestedReferenceAncestorFor(node, ctx, ctxAncestor, frame, e, ctx !== null);
+          /*
+           * `@each`/`each()`/`$for` route through `expandFor`, which (like the
+           * MixinCall/Reference expansions above) emits nested rulesets inline via
+           * `walkBody` and manages no `e.depth` — so a loop inside a bubbled at-rule
+           * needs the same body-level bump. The reference-ancestor branch handles
+           * its own depth and must NOT be bumped (visible reference at-rule loop).
+           */
+          if (e.referenceImportDepth !== 0) {
+            const expanded = expandNestedReferenceAncestorFor(node, ctx, ctxAncestor, frame, e, ctx !== null);
+            if (isThenable(expanded)) {
+              return expanded.then(() => run(index + 1));
+            }
+            break;
+          }
+          e.depth++;
+          const expanded = unbumpAfter(expandFor(node, ctx, ctxAncestor, frame, group, flushAtBase, null, e));
           if (isThenable(expanded)) {
             return expanded.then(() => run(index + 1));
           }
@@ -17016,7 +17135,16 @@ function writeNestedRule(
   const ownMaybe = plan
     ? plan.header
     : placement === null
-      ? ownStrings(rule.selector, frame, e)
+      ? source === null
+
+        /*
+         * [nesting] ROOT context (no enclosing selector, incl. a bubbled at-rule
+         * body top): a parentless `&` followed by other content drops to that
+         * content; a LONE `&` is preserved (`rootStringsNested`). A real parent
+         * keeps `&` verbatim (`ownStrings`).
+         */
+        ? rootStringsNested(rule.selector, frame, e)
+        : ownStrings(rule.selector, frame, e)
       : compose(nestedSourceStrings(placement.source, e), rule.selector, placement.callFrame, e);
   return mapMaybe(ownMaybe, (ownAll) => {
     /*
