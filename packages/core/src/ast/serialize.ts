@@ -142,8 +142,8 @@ import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness
 import { computeExtends, type ExtendPlacementResults, type ExtendResults } from './extend.js'; // [extend]
 import { documentHasExtend, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
 import type { PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
-import type { Branch, Level } from './extend/ir.js';
-import { branchFromSelector, descendantBranch, levelFromSelectorList, mkBranch } from './extend/ir.js';
+import type { Level } from './extend/ir.js';
+import { branchFromSelector, descendantBranch, levelFromSelectorList } from './extend/ir.js';
 import { DocumentContext, documentTriviaOf, type Context } from '../context.js';
 import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
@@ -7318,7 +7318,6 @@ interface Emit extends EvalCtx {
    * only at the second distinct identity and dies with this render.
    */
   prepublishedImportFacts: PrepublishedImportFacts;
-
 
   /** Document-root CSS terminals already written in the required output prelude. */
   hoistedCssImports: Set<AtRuleStatement> | null;
