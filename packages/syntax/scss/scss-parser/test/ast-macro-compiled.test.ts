@@ -36,7 +36,7 @@ test('canonical SCSS grammar macro-fuses recognition leaves with no runtime impo
   } finally {
     await server.close();
   }
-});
+}, 60000); // ponytail: macro-fuses the whole SCSS grammar (a slow one-time build); 30s default flakes under CI load
 
 test('compiler-facing SCSS entrypoint does not load the CST grammar', async () => {
   const server = await createServer({
