@@ -9014,50 +9014,45 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
 }
 
 /**
- * [extend/dynamic] Deep static scan: does this statement subtree contain ANY
- * `:extend()`, recursing through rulesets, at-rules, loop bodies and mixin
- * definitions? Used to decide whether a `$for`/`each()` or mixin-definition body is a
- * DYNAMIC extend surface. Pure shape analysis — no evaluation.
+ * [extend/dynamic] Whether a document carries STATIC and/or DYNAMIC `:extend()`.
+ * `static` — an extend on the ordinary Ruleset/AtRuleBlock spine (the pre-walk
+ * `computeExtends`/interp-prepass surface). `dynamic` — an extend reached only through
+ * a `$for`/`each()` loop or mixin-definition body (recorded by the ONE render walk,
+ * ledger X12). A document can have both.
  */
-function subtreeHasExtend(statements: readonly Statement[]): boolean {
-  for (const st of statements) {
-    if (st.type === 'Ruleset') {
-      if (st.extendInstructions?.length) {
-        return true;
-      }
-      if (subtreeHasExtend(st.rules)) {
-        return true;
-      }
-    } else if (st.type === 'AtRuleBlock' || st.type === 'For' || st.type === 'MixinDefinition') {
-      if (subtreeHasExtend(st.rules)) {
-        return true;
-      }
-    }
-  }
-  return false;
+interface ExtendClass {
+  static: boolean;
+  dynamic: boolean;
 }
 
 /**
- * [extend/dynamic] Does the document have an extend reachable ONLY through a dynamic
- * placement — inside a `$for`/`each()` loop body or a mixin-definition body? Such an
- * extend is invisible to the static planner (`collectPlan` skips those constructs) and
- * is recorded by the ONE render walk instead (ledger X12). Statically-nested extends
- * are handled by the pre-walk `computeExtends` and do not trip this gate, so a
- * static-only extend document pays zero dynamic-extend cost and stays byte-identical.
+ * [extend/dynamic] ONE spine traversal that classifies a document's extend surface,
+ * fusing what used to be two separate whole-document walks (`documentHasExtend` +
+ * `documentHasDynamicExtend`). Once inside a loop/mixin body (`inDynamic`) every extend
+ * is dynamic. A `{ static:false, dynamic:false }` result is the no-extend document: the
+ * caller then takes exactly the original zero-cost path. Pure shape analysis — no
+ * evaluation. Short-circuits once both bits are set.
  */
-function documentHasDynamicExtend(statements: readonly Statement[]): boolean {
+function classifyExtend(statements: readonly Statement[], inDynamic: boolean, out: ExtendClass): void {
   for (const st of statements) {
-    if (st.type === 'Ruleset' || st.type === 'AtRuleBlock') {
-      if (documentHasDynamicExtend(st.rules)) {
-        return true;
+    if (out.static && out.dynamic) {
+      return;
+    }
+    if (st.type === 'Ruleset') {
+      if (st.extendInstructions?.length) {
+        if (inDynamic) {
+          out.dynamic = true;
+        } else {
+          out.static = true;
+        }
       }
+      classifyExtend(st.rules, inDynamic, out);
+    } else if (st.type === 'AtRuleBlock') {
+      classifyExtend(st.rules, inDynamic, out);
     } else if (st.type === 'For' || st.type === 'MixinDefinition') {
-      if (subtreeHasExtend(st.rules)) {
-        return true;
-      }
+      classifyExtend(st.rules, true, out);
     }
   }
-  return false;
 }
 
 /** [extend/dynamic] The Ruleset nodes the STATIC planner (`collectPlan`) records as
@@ -9135,8 +9130,16 @@ function planImportedStaticExtend(
         : referenceAtRule;
       planImportedStaticExtend(statement.rules, e, overlay, path, scope, parent, hidden, referenceBoundary, owner);
     } else if (statement.type === 'For' || statement.type === 'MixinDefinition') {
-      if (hidden || subtreeHasExtend(statement.rules)) {
-        e.importedDynamicExtendPresent = true;
+      if (!e.importedDynamicExtendPresent) {
+        if (hidden) {
+          e.importedDynamicExtendPresent = true;
+        } else {
+          const sub: ExtendClass = { static: false, dynamic: false };
+          classifyExtend(statement.rules, true, sub);
+          if (sub.dynamic) {
+            e.importedDynamicExtendPresent = true;
+          }
+        }
       }
     }
   }
@@ -9627,11 +9630,20 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     const plannedRoot = planned.root;
 
     /*
-     * [extend/selector-interp] Resolve interpolated selectors to static text BEFORE the
-     * extend planner reads their IR — only when the document actually has an `:extend()`
-     * (the planner's own gate), so a non-extend document is byte- and cost-identical.
+     * [extend] ONE spine traversal classifies the document's extend surface (fusing the
+     * former `documentHasExtend` + `documentHasDynamicExtend` walks). A no-extend
+     * document (`!static && !dynamic`) skips the interp pre-pass and never allocates
+     * dynamic-extend state, so it is byte- and cost-identical to the base no-extend path.
      */
-    if (documentHasExtend(plannedRoot)) {
+    const extendClass: ExtendClass = { static: false, dynamic: false };
+    classifyExtend(plannedRoot.rules, false, extendClass);
+
+    /*
+     * [extend/selector-interp] Resolve interpolated selectors to static text BEFORE the
+     * extend planner reads their IR — only when the document has a STATIC `:extend()`
+     * (the pre-walk planner's surface), exactly as `documentHasExtend` gated before.
+     */
+    if (extendClass.static) {
       resolveSelectorInterpForExtend(plannedRoot.rules, rootFrame, e);
     }
     e.extends = computeExtends(plannedRoot, planned.hiddenRules, planned.referenceBoundaries, planned.overlay); // [extend] null when no `:extend()` anywhere
@@ -9642,7 +9654,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
      * main document or an import). A static-only extend document leaves this null and
      * is byte- and cost-identical to the pre-walk path (ledger X12 / EXTEND-SEMANTICS §1a).
      */
-    if (documentHasDynamicExtend(plannedRoot.rules) || e.importedDynamicExtendPresent) {
+    if (extendClass.dynamic || e.importedDynamicExtendPresent) {
       const staticRules = new Set<Ruleset>();
       collectStaticRuleSet(plannedRoot.rules, staticRules);
       if (e.importedStaticExtendRules) {
