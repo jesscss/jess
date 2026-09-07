@@ -269,10 +269,6 @@ const expectedFailureFixtures = new Map<string, string>([
     'INTENDED DIVERGENCE (§12.3b): the fully interpolated target in `.add_an_import("file.css")` is authored as a compile-time StyleImport, so terminal classification does not defer until it evaluates to `file.css`; normal import resolution therefore reports the missing file'
   ],
   [
-    'tests-config/static-urls/urls.less',
-    'rootpath/relativeUrls apply to url() (including variable-sourced values) and direct quoted CSS @import targets, and imported CSS terminals now retain source scope while joining the document prelude. The sole remaining diff is intentional v5 minimal-correctness: jess preserves the authored newline+indent in the multi-line `src: local(…),\\n url(…)` value while the 4.x golden collapses it'
-  ],
-  [
     'tests-config/sourcemaps-basepath/sourcemaps-basepath.less',
     'source-map annotation and artifact output need a dedicated harness'
   ],
@@ -300,10 +296,6 @@ const expectedFailureFixtures = new Map<string, string>([
   [
     'tests-unit/property-name-interp/property-name-interp.less',
     'OPEN F7(a): property-name interpolation renders byte-identically except that repeated `@{p}@{p}` loses the `/* foo */` source layout carried inside each complex interpolated value; interpolation-splice layout preservation awaits an owner ruling'
-  ],
-  [
-    'tests-unit/extract-and-length/extract-and-length.less',
-    'OPEN V17 typed structural mixin bindings now preserve nested list grouping through fixed, variadic, defaulted, forwarded, spread, and @arguments paths; the sole remaining mismatch is source-layout spacing on the custom property `--empty-value:   extract(~\'\', 1)` (jess emits one space after the colon)'
   ],
   [
     'tests-unit/variables/variables.less',
@@ -378,18 +370,16 @@ const expectedFailureFixtures = new Map<string, string>([
   /*
    * F5: Less/Jess deliberately leaves CSS-shaped, three-or-more-slot
    * un-operated color constructors as authored calls, even when Less 4's oracle
-   * would clamp/reformat them. These fixtures exercise that settled lazy
-   * boundary; keep them runnable so a future accidental eager dispatch trips
-   * the marker rather than hiding it. Less one-/two-slot overload fixtures are
-   * expected to stay green and are not listed here.
+   * would clamp/reformat them (settled: DESIGN-DECISIONS F5). color-functions/
+   * operations.less GRADUATED — its `.e { rgba(-99.9, 31.4159, 321, 0.42) }`
+   * un-operated overflow call now matches the v5-reconciled golden byte-for-byte.
+   * functions.less stays: its active diffs go BEYOND F5 (min()/max() argument
+   * reduction, a boolean-result row, and output-precision), so it is not a clean
+   * golden reconciliation.
    */
   [
-    'tests-unit/color-functions/operations.less',
-    'F5 keeps an un-operated overflowing rgba() call authored instead of Less 4 channel clamping'
-  ],
-  [
     'tests-unit/functions/functions.less',
-    'F5 keeps an un-operated hsl() call authored instead of Less 4 clamp/canonicalization'
+    'multiple independent mismatches remain: min()/max() emit every authored argument instead of reducing to the comparable set, a boolean-function row differs, and several trig/precision rows print at jess output quantization; not a pure stale-golden reconciliation'
   ]
 ]);
 
