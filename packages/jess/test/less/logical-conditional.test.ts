@@ -26,6 +26,28 @@ describe('Less logical / conditional functions', () => {
 `);
   });
 
+  it('bare `not <operand>` negates, identical to the grouped `not(<operand>)`', async () => {
+    /*
+     * Regression: an unparenthesized `not false` was eaten by the argument-value
+     * sequence as a two-keyword value and truthiness-tested (always false),
+     * instead of routing to the condition grammar and negating. `not true`
+     * happened to agree by accident; `not false` and the `if()` form did not.
+     */
+    const css = await render(`#bare-not {
+  d: boolean(not false);
+  e: boolean(not true);
+  m: if(not false, 1, 2);
+  n: if(not true, 1, 2);
+}`);
+    expect(css).toBe(`#bare-not {
+  d: true;
+  e: false;
+  m: 1;
+  n: 2;
+}
+`);
+  });
+
   it('if() picks a value branch from a guard condition', async () => {
     const css = await render(`#if {
   a: if(not(false), 1, 2);
