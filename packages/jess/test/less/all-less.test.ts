@@ -357,7 +357,7 @@ const expectedFailureFixtures = new Map<string, string>([
   [
     'tests-unit/media/media.less',
     'top-level bare @var at-rule preludes are rejected (@media @smartphone / @media @all and @tv)'
-  ],
+  ]
 
   /*
    * Previously-uncategorized hard failures — render but mismatch Less.
@@ -373,14 +373,20 @@ const expectedFailureFixtures = new Map<string, string>([
    * would clamp/reformat them (settled: DESIGN-DECISIONS F5). color-functions/
    * operations.less GRADUATED — its `.e { rgba(-99.9, 31.4159, 321, 0.42) }`
    * un-operated overflow call now matches the v5-reconciled golden byte-for-byte.
-   * functions.less stays: its active diffs go BEYOND F5 (min()/max() argument
-   * reduction, a boolean-result row, and output-precision), so it is not a clean
-   * golden reconciliation.
+   *
+   * functions.less GRADUATED — every remaining diff was an intended v5 divergence
+   * whose stale 4.x golden was updated: (1) `min()`/`max()` over incompatible
+   * units preserve every authored argument (`min(6em, 5, 4ex, 3, 2pt, 1)`) rather
+   * than emitting less.js's order-dependent partial reduction, an "implementation
+   * accident, not a semantic" (`packages/fns/src/less/min-max.ts`); and (2) the
+   * numeric output policy is a single owner (`format-number.ts`, shortest decimal
+   * within 1e-10 relative, no significant-figure cap) — so `pi`/`tan`/`sin`/`cos`
+   * and the luma/luminance percentages carry more digits than less.js's 8-dp
+   * `numPrecision` rounding, which SEMANTIC-INVARIANTS §3/S1 records as a leak.
+   * The one genuine bug — bare `not <operand>` (`boolean(not false)`,
+   * `if(not false, …)`) was truthiness-tested as a two-keyword value instead of
+   * negated — was FIXED in the less grammar `not`-opener gate.
    */
-  [
-    'tests-unit/functions/functions.less',
-    'multiple independent mismatches remain: min()/max() emit every authored argument instead of reducing to the comparable set, a boolean-function row differs, and several trig/precision rows print at jess output quantization; not a pure stale-golden reconciliation'
-  ]
 ]);
 
 const expectedFailureDiagnosticCodes = new Map<string, string>([
