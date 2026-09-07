@@ -95,6 +95,19 @@ const fixtureFilter = envFixturePattern
 const forceCollapseNesting = process.env.JESS_FORCE_COLLAPSE_NESTING === 'true';
 const manifestOut = process.env.JESS_LESS_MANIFEST_OUT;
 
+/*
+ * Fixtures whose maintained less.js golden is the FLATTENED 4.x output, so they
+ * are gated against that oracle at collapseNesting:true regardless of the
+ * fixture directory's collapseNesting:false default. Their sibling fixtures in
+ * the same directory (import-reference-issues, mixins/maps) keep genuine v5
+ * nested goldens and stay at the directory default. Nested-mode correctness for
+ * these two is covered by the separate nested==collapsed equivalence tests.
+ */
+const collapseNestingTrueFixtures = new Set<string>([
+  'tests-unit/import/import-reference.less',
+  'tests-unit/mixins/mixins.less'
+]);
+
 type CorpusManifestRecord = {
   case: string;
   cssSha256?: string;
@@ -244,7 +257,7 @@ const expectedFailureFixtures = new Map<string, string>([
    */
   [
     'tests-unit/import/import-reference.less',
-    'A7 reference visibility, nested pseudo propagation, and selected callable-body comment replay are implemented; remaining CSS differs in settled v5 :is() selector compaction and direct-self declaration coalescing, explicit nested output under collapseNesting:false, preservation of the source-asserted inline comment omitted by the alpha golden, and invalid-inline indentation'
+    'now gated at collapseNesting:true against the flattened 4.x golden (via collapseNestingTrueFixtures), so nesting is no longer the mismatch. A7 reference visibility, nested pseudo propagation, and selected callable-body comment replay are implemented; remaining CSS differs in extend/reference selector resolution (an extending `.b` renders its extended `.visible` target selector), settled v5 :is()/extend-list selector compaction and direct-self declaration coalescing, preservation of the source-asserted inline comment omitted by the alpha golden, and invalid-inline `div {}` wrapping'
   ],
 
   /*
@@ -288,11 +301,10 @@ const expectedFailureFixtures = new Map<string, string>([
   /*
    * Former async-deadlock / infinite-loop skips: no longer hang, now render but
    * still mismatch Less. Graduated from skip → expected-failure so they run.
+   * (mixins.less GRADUATED — its maintained golden is the flattened 4.x output,
+   * so it is gated at collapseNesting:true against that oracle via
+   * collapseNestingTrueFixtures and now renders byte-identical; a real pass.)
    */
-  [
-    'tests-unit/mixins/mixins.less',
-    'same-named nested ruleset resolves the outer .recursion() mixin; remaining mismatch is fixture-local collapseNesting=false rendering nested CSS against the maintained flattened expectation'
-  ],
   [
     'tests-unit/property-name-interp/property-name-interp.less',
     'OPEN F7(a): property-name interpolation renders byte-identically except that repeated `@{p}@{p}` loses the `/* foo */` source layout carried inside each complex interpolated value; interpolation-splice layout preservation awaits an owner ruling'
@@ -475,6 +487,9 @@ describe('Can render Less files to CSS', () => {
               output: {
                 ...baseCompiler.opts.output,
                 ...(testCase.config.output || {}),
+                ...(collapseNestingTrueFixtures.has(file)
+                  ? { collapseNesting: true }
+                  : {}),
                 ...(forceCollapseNesting ? { collapseNesting: true } : {})
               }
             });
