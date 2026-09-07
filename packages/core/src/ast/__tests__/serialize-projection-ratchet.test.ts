@@ -11,12 +11,32 @@ function occurrences(pattern: RegExp): number {
 
 describe('V19 one-evaluator projection ratchet', () => {
   it('names every statement evaluator that still dispatches a body', () => {
+    /*
+     * V19 slice 5: the second body dispatcher (`emitNestedBody`) is deleted; the
+     * one evaluator `walkBody` drives both write projections. The removed pattern
+     * stays listed so a re-introduced nested dispatcher fails this gate.
+     */
     const dispatchers = ([
       ['walkBody', /function walkBody\(/u],
       ['emitNestedBody', /function emitNestedBody\(/u]
     ] as const).filter(([, pattern]) => pattern.test(SOURCE)).map(([name]) => name);
 
-    expect(dispatchers).toEqual(['walkBody', 'emitNestedBody']);
+    expect(dispatchers).toEqual(['walkBody']);
+  });
+
+  it('routes the nested write projection through the one evaluator via a pure adapter', () => {
+    /*
+     * `nestedBody` is a calling-convention adapter with NO statement dispatch of
+     * its own: it forwards straight to `walkBody`. This proves the nested entry
+     * point is not a second dispatcher in disguise.
+     */
+    expect(SOURCE).toContain('function nestedBody(');
+    expect(SOURCE).toMatch(/function nestedBody\([\s\S]*?\n\): MaybePromise<void> \{\n  return walkBody\(/u);
+    const nestedBodySource = SOURCE.slice(
+      SOURCE.indexOf('function nestedBody('),
+      SOURCE.indexOf('function nestedBody(') + 800
+    );
+    expect(nestedBodySource).not.toContain('switch (node.type)');
   });
 
   it('names every output-setting read that can select evaluation behavior', () => {
@@ -45,7 +65,12 @@ describe('V19 one-evaluator projection ratchet', () => {
     expect(occurrences(/new Set/gu)).toBe(34);
     expect(occurrences(/new WeakMap/gu)).toBe(5);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);
-    expect(occurrences(/const buf = .*\?\? \[\]/gu)).toBe(1);
+
+    /*
+     * The single nested leaf buffer, now owned by the one evaluator and mode-gated
+     * so the collapsed projection allocates none.
+     */
+    expect(occurrences(/const buf: Leaf\[\] = nested \? \(sharedLeaves\?\.leaves \?\? \[\]\) : MOOT_LEAVES/gu)).toBe(1);
     expect(occurrences(/evaluateLeafStatement\(/gu)).toBe(3);
     expect(occurrences(/evaluateSilentStatement\(/gu)).toBe(5);
   });

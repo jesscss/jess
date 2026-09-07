@@ -9640,9 +9640,9 @@ function emitDocumentStatements(
       const current = batch;
       batch = [];
       if (pending) {
-        pending = pending.then(() => Promise.resolve(emitNestedBody(current, frame, e)));
+        pending = pending.then(() => Promise.resolve(nestedBody(current, frame, e)));
       } else {
-        const emitted = emitNestedBody(current, frame, e);
+        const emitted = nestedBody(current, frame, e);
         if (isThenable(emitted)) {
           pending = Promise.resolve(emitted);
         }
@@ -10744,12 +10744,28 @@ interface Partition {
   lastLeadingEmission?: (additionalBlockComments?: string[]) => MaybePromise<void>;
 }
 
-/**
- * Walk a body, expanding mixin calls inline against the shared canonical body.
- * `forceLeading` remains threaded for call expansion compatibility, but it never
- * overrides a collapsed-child boundary: authored declaration order determines CSS
- * cascade order for every direct or expanded body.
+/*
+ * [V19] The single source-order body evaluator. It dispatches every `Statement`
+ * kind exactly once, resolving the lookup-dependent facts (property publication,
+ * callable selection, control-flow, imports, trivia ownership) that must never
+ * depend on the output setting, then hands each placement to the selected write
+ * projection. `collapseNesting` selects the projection ONCE at the serialize
+ * boundary and is threaded here as `nested`; no evaluator, lookup, expansion,
+ * control-flow, or import path reads the setting again.
+ *
+ * The COLLAPSED projection (`nested === false`) owns selector composition,
+ * parent-block partitioning, at-rule bubbling and flattened block layout via the
+ * `composed`/`ancestor`/`group`/`flush`/`partition` state. The NESTED projection
+ * (`nested === true`) owns authored selector headers, nesting indentation,
+ * adjacent-block coalescing and the extend-driven hoist projection via the
+ * `buf`/`sharedLeaves`/`source`/`placement`/`hoist` state. The two never both run
+ * in one render.
  */
+const MOOT_LEAVES: Leaf[] = [];
+const MOOT_FLUSH = (): void => {};
+const NOOP_BEFORE_STATEMENT = (_node: Statement): void => {};
+const NOOP_TRAILING_TRIVIA = (): void => {};
+
 function walkBody(
   statements: Statement[],
   composed: string[] | null,
@@ -10764,446 +10780,884 @@ function walkBody(
   propertyScope: Frame = frame, // Less `$property` visibility owner
   applyExpansion = false,
   expandBubbledSelectorList = false,
-  bodyTrivia?: BodyTriviaReplay
-): MaybePromise<void> {
-  const placeLeaf = (leaf: Leaf): void => {
-    addLeaf(group, partition, leaf, forceLeading, e);
-  };
-  for (let index = 0; index < statements.length; index++) {
-    const node = statements[index]!;
-    if (node.type !== 'Declaration' && node.type !== 'Comment') {
-      queueBodyTriviaBefore(bodyTrivia, node, group, e);
-    }
-    switch (node.type) {
-      case 'Declaration':
-      case 'Comment':
-        /*
-         * Lookup publication, nested-property expansion, and the monomorphic
-         * placement shape are evaluator facts shared by both output projections.
-         */
-        evaluateLeafStatement(
-          node,
-          frame,
-          propertyScope,
-          e,
-          imp,
-          applyExpansion,
-          bodyTrivia,
-          group,
-          placeLeaf
-        );
-        break;
-      case 'Ruleset': {
-        /*
-         * a null `composed` (top-level mixin/detached call) keeps nested
-         * rules at the top level (own-strings), not composed against `[]`.
-         */
-        const rule = node;
-        const rFrame = frame;
-        const rComposed = composed;
-        const rAncestor = ancestor;
+  bodyTrivia?: BodyTriviaReplay,
 
-        /*
-         * [guards/&-merge] A nested rule whose selector composes to EXACTLY the
-         * enclosing block's selector (a bare `&`, e.g. `& when (@c) { … }`) is not
-         * a separate rule: its (guard-passing) body flows into THIS block, in place,
-         * rather than opening a duplicate same-selector block. This yields the v5
-         * single-block output (`.x { width; color; height }`) for `.x { width; &
-         * when(c){color} & when(c){height} }`.
-         */
-        if (composed !== null && isSelfComposed(rule, composed, frame, e)) {
-          const rComposedSelf = composed;
-          const emitSelf = (passes: boolean): MaybePromise<void> => {
-            if (!passes) {
-              return;
+  /*
+   * [V19] Nested write-projection state. Present (with `nested === true`) only when
+   * the serialize boundary selected `collapseNesting:false`. The collapsed
+   * parameters above are moot when nested; the nested parameters below are moot
+   * when collapsed. `placement` is consumed and cleared by the first `&`-bearing
+   * nested header, so it is mutated in place exactly as the nested emitter did.
+   */
+  nested = false,
+  hoist?: HoistEntry[],
+  source: NestedHeaderSource | null = null,
+  placement: NestedRuleMixinPlacement | null = null,
+  sharedLeaves?: NestedLeafBuffer,
+  owner?: object
+): MaybePromise<void> {
+  /*
+   * buffer consecutive DIRECT leaves so a `+`/`+_` merge group can fold at
+   * last-occurrence; flush when an interrupting nested rule/at-rule appears. Only
+   * a nested projection buffers; the collapsed projection places into `group`.
+   */
+  const buf: Leaf[] = nested ? (sharedLeaves?.leaves ?? []) : MOOT_LEAVES;
+  let bodyOwner: object | undefined;
+  let bodyTriviaCursor = 0;
+  let rootTriviaCursor: number | undefined;
+  let rootTriviaSuppressedByDefinition = false;
+  let inlineLeaves: NestedLeafBuffer | undefined;
+  let flushBuf: () => void = MOOT_FLUSH;
+  let replayBodyCommentsBefore: (statement: Statement) => void = NOOP_BEFORE_STATEMENT;
+  let emitBeforeRootStatement: (node: Statement) => void = NOOP_BEFORE_STATEMENT;
+  let markAfterRootStatement: (node: Statement) => void = NOOP_BEFORE_STATEMENT;
+  let emitTrailingRootTrivia: () => void = NOOP_TRAILING_TRIVIA;
+  let placeLeaf: (leaf: Leaf) => void;
+  if (nested) {
+    /*
+     * [G28] Body-interior comment replay, mirroring the walk the collapsed emitter
+     * already performs. Only armed when this call owns the body outright.
+     */
+    bodyOwner = sharedLeaves === undefined ? owner : undefined;
+    const bodyOwnerStart = bodyOwner === undefined ? NO_SPAN : bodyStartOf(bodyOwner);
+    bodyTriviaCursor = bodyOwnerStart === NO_SPAN ? 0 : bodyOwnerStart;
+    replayBodyCommentsBefore = (statement: Statement): void => {
+      if (bodyOwner === undefined) {
+        return;
+      }
+      emitBodyBlockCommentTriviaBefore(bodyOwner, statement, e, INDENT.repeat(e.depth), bodyTriviaCursor);
+      const end = sourceEndOf(statement);
+      bodyTriviaCursor = end === NO_SPAN ? bodyTriviaCursor : end;
+    };
+    flushBuf = sharedLeaves?.flush ?? (() => {
+      if (buf.length === 0 && e.pendingLeafBlockCommentOwner !== buf) {
+        return;
+      }
+      const trailingBlockComments = takePendingLeafBlockComments(e, buf);
+      const mergeMode = mergeGroupMode(buf);
+      if (mergeMode !== MERGE_NONE) {
+        mergeFold(
+          buf,
+          e,
+          e.depth > 0 ? INDENT.repeat(e.depth) : '',
+          emitNestedLeaf,
+          mergeMode
+        );
+      } else {
+        for (let index = 0; index < buf.length;) {
+          const leaf = buf[index]!;
+          const sourceOwner = leaf.frame.sourceOwner;
+          if (
+            sourceOwner !== null
+            && sourceOwner !== undefined
+            && e.context !== undefined
+            && sourceOwner !== e.context.documentContext
+          ) {
+            let end = index + 1;
+            while (end < buf.length && buf[end]!.frame.sourceOwner === sourceOwner) {
+              end++;
             }
-            const selfFrame: Frame = {
-              parent: frame,
-              mixins: collectMixins(rule.rules),
-              declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null,
-              statements: rule.rules
-            };
-            return walkBody(
-              rule.rules,
-              rComposedSelf,
-              ancestor,
-              selfFrame,
-              group,
-              flush,
-              partition,
+            const start = index;
+            settledEmission(withSourceOwner(e, sourceOwner, () => {
+              for (let at = start; at < end; at++) {
+                const owned = buf[at]!;
+                replayBodyCommentsBefore(owned.node);
+                emitNestedLeafOwned(owned, e);
+              }
+            }), leaf.node, e);
+            index = end;
+            continue;
+          }
+          replayBodyCommentsBefore(leaf.node);
+          emitNestedLeafOwned(leaf, e);
+          index++;
+        }
+      }
+      if (trailingBlockComments.length !== 0) {
+        const indent = e.depth > 0 ? INDENT.repeat(e.depth) : '';
+        for (const comment of trailingBlockComments) {
+          if (indent) {
+            put(e, indent);
+          }
+          put(e, comment);
+          put(e, '\n');
+        }
+      }
+      buf.length = 0;
+    });
+    inlineLeaves = sharedLeaves ?? { leaves: buf, flush: flushBuf, propertyScope: frame };
+    rootTriviaCursor = frame.parent === null && sharedLeaves === undefined ? 0 : undefined;
+    const rootTriviaExclusions = rootTriviaCursor === undefined
+      ? []
+      : statements.map((statement) => {
+          const start = statementStartOf(statement);
+          const end = statementEndOf(statement);
+          return start === undefined || end === undefined ? undefined : { start, end };
+        }).filter(isReplaySpan);
+    emitBeforeRootStatement = (node: Statement): void => {
+      if (rootTriviaCursor === undefined) {
+        return;
+      }
+      if (rootTriviaSuppressedByDefinition) {
+        rootTriviaCursor = statementStartOf(node) ?? rootTriviaCursor;
+        rootTriviaSuppressedByDefinition = false;
+        return;
+      }
+      emitBlockCommentTriviaBetween(e, rootTriviaCursor, statementStartOf(node), '', rootTriviaExclusions);
+    };
+    markAfterRootStatement = (node: Statement): void => {
+      if (rootTriviaCursor === undefined) {
+        return;
+      }
+      rootTriviaCursor = statementEndOf(node) ?? rootTriviaCursor;
+    };
+    emitTrailingRootTrivia = (): void => {
+      if (rootTriviaCursor === undefined) {
+        return;
+      }
+      emitTopLevelBlockCommentsBetween(e, rootTriviaCursor, Number.MAX_SAFE_INTEGER, '');
+    };
+    placeLeaf = (leaf: Leaf): void => {
+      const pendingBlockComments = e.pendingLeafBlockCommentOwner === buf
+        ? e.pendingLeafBlockComments
+        : null;
+      if (pendingBlockComments !== null) {
+        e.pendingLeafBlockComments = null;
+        e.pendingLeafBlockCommentOwner = null;
+        leaf.leadingBlockComments = pendingBlockComments;
+      }
+      buf.push(leaf);
+    };
+  } else {
+    placeLeaf = (leaf: Leaf): void => {
+      addLeaf(group, partition, leaf, forceLeading, e);
+    };
+  }
+  const run = (start: number): MaybePromise<void> => {
+    for (let index = start; index < statements.length; index++) {
+      const node = statements[index]!;
+      if (node.type !== 'Declaration' && node.type !== 'Comment') {
+        queueBodyTriviaBefore(bodyTrivia, node, nested ? buf : group, e);
+      }
+
+      /*
+       * Root sibling grouping is source-adjacent only. Any non-Ruleset—including a
+       * silent declaration/definition—forms a hard boundary. (Nested projection only.)
+       */
+      if (nested && frame.parent === null && node.type !== 'Ruleset') {
+        e.lastBlock.parentKey = null;
+      }
+      switch (node.type) {
+        case 'Declaration':
+        case 'Comment': {
+          /*
+           * Lookup publication, nested-property expansion, and the monomorphic
+           * placement shape are evaluator facts shared by both output projections.
+           */
+          if (nested) {
+            if (e.referenceImportDepth > 0) {
+              break;
+            }
+            evaluateLeafStatement(
+              node,
+              frame,
+              sharedLeaves?.propertyScope ?? frame,
               e,
               imp,
-              forceLeading,
-              propertyScope,
               applyExpansion,
-              expandBubbledSelectorList
+              bodyTrivia,
+              buf,
+              placeLeaf
             );
-          };
-          const passes = ruleGuardPasses(rule, frame, e);
-          const emitted = mapMaybe(passes, emitSelf);
-          if (isThenable(emitted)) {
-            return emitted.then(() => walkBody(
-              statements.slice(index + 1), rComposedSelf, ancestor, frame, group, flush,
-              partition, e, imp, forceLeading, propertyScope, applyExpansion, expandBubbledSelectorList
-            ));
+          } else {
+            evaluateLeafStatement(
+              node,
+              frame,
+              propertyScope,
+              e,
+              imp,
+              applyExpansion,
+              bodyTrivia,
+              group,
+              placeLeaf
+            );
           }
           break;
         }
+        case 'Ruleset': {
+          if (nested) {
+            if (e.referenceImportDepth > 0) {
+              break;
+            }
+            flushBuf();
+            replayBodyCommentsBefore(node);
+            emitBeforeRootStatement(node);
 
-        /*
-         * [partition] Queue the leading parent block before this collapsed child.
-         * Without a partition (top level / at-rule body) it flushes and emits
-         * inline in source order.
-         */
-        if (partition) {
-          queueLeadingGroup(group, partition, e);
-          flushPending(partition);
-          partition.encounteredContainer = true;
-          partition.trailing.push(() => expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList));
-        } else {
-          const flushed = flush();
-          if (isThenable(flushed)) {
-            return flushed.then(() => mapMaybe(
-              expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList),
-              () => walkBody(
+            /*
+             * Only a selected synthesized ruleset mixin gets a placement fact.  It
+             * is consumed by the first `&`-bearing nested header; ordinary authored
+             * nesting has no fact and stays literal in collapse:false mode.
+             */
+            const appliesPlacement = placement !== null
+              && !(hoist !== undefined
+                && extendProjection(frame, e)?.nestedPlan.get(node)?.flatten === true)
+              && selectorListHasAmpersand(node.selector);
+            const emitted = expandRule(
+              node,
+              null,
+              null,
+              frame,
+              e,
+              imp,
+              false,
+              source,
+              appliesPlacement ? placement : null,
+              hoist
+            );
+            if (isThenable(emitted)) {
+              return emitted.then(() => {
+                if (appliesPlacement) {
+                  placement = null;
+                }
+                markAfterRootStatement(node);
+                return run(index + 1);
+              });
+            }
+            if (appliesPlacement) {
+              placement = null;
+            }
+            markAfterRootStatement(node);
+            break;
+          }
+
+          /*
+           * a null `composed` (top-level mixin/detached call) keeps nested
+           * rules at the top level (own-strings), not composed against `[]`.
+           */
+          const rule = node;
+          const rFrame = frame;
+          const rComposed = composed;
+          const rAncestor = ancestor;
+
+          /*
+           * [guards/&-merge] A nested rule whose selector composes to EXACTLY the
+           * enclosing block's selector (a bare `&`, e.g. `& when (@c) { … }`) is not
+           * a separate rule: its (guard-passing) body flows into THIS block, in place,
+           * rather than opening a duplicate same-selector block. This yields the v5
+           * single-block output (`.x { width; color; height }`) for `.x { width; &
+           * when(c){color} & when(c){height} }`.
+           */
+          if (composed !== null && isSelfComposed(rule, composed, frame, e)) {
+            const rComposedSelf = composed;
+            const emitSelf = (passes: boolean): MaybePromise<void> => {
+              if (!passes) {
+                return;
+              }
+              const selfFrame: Frame = {
+                parent: frame,
+                mixins: collectMixins(rule.rules),
+                declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null,
+                statements: rule.rules
+              };
+              return walkBody(
+                rule.rules,
+                rComposedSelf,
+                ancestor,
+                selfFrame,
+                group,
+                flush,
+                partition,
+                e,
+                imp,
+                forceLeading,
+                propertyScope,
+                applyExpansion,
+                expandBubbledSelectorList
+              );
+            };
+            const passes = ruleGuardPasses(rule, frame, e);
+            const emitted = mapMaybe(passes, emitSelf);
+            if (isThenable(emitted)) {
+              return emitted.then(() => walkBody(
+                statements.slice(index + 1), rComposedSelf, ancestor, frame, group, flush,
+                partition, e, imp, forceLeading, propertyScope, applyExpansion, expandBubbledSelectorList
+              ));
+            }
+            break;
+          }
+
+          /*
+           * [partition] Queue the leading parent block before this collapsed child.
+           * Without a partition (top level / at-rule body) it flushes and emits
+           * inline in source order.
+           */
+          if (partition) {
+            queueLeadingGroup(group, partition, e);
+            flushPending(partition);
+            partition.encounteredContainer = true;
+            partition.trailing.push(() => expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList));
+          } else {
+            const flushed = flush();
+            if (isThenable(flushed)) {
+              return flushed.then(() => mapMaybe(
+                expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList),
+                () => walkBody(
+                  statements.slice(index + 1), composed, ancestor, frame, group, flush,
+                  partition, e, imp, forceLeading, propertyScope, applyExpansion, expandBubbledSelectorList
+                )
+              ));
+            }
+            const emitted = expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList);
+            if (isThenable(emitted)) {
+              return emitted.then(() => walkBody(
                 statements.slice(index + 1), composed, ancestor, frame, group, flush,
                 partition, e, imp, forceLeading, propertyScope, applyExpansion, expandBubbledSelectorList
-              )
-            ));
+              ));
+            }
           }
-          const emitted = expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList);
-          if (isThenable(emitted)) {
-            return emitted.then(() => walkBody(
-              statements.slice(index + 1), composed, ancestor, frame, group, flush,
-              partition, e, imp, forceLeading, propertyScope, applyExpansion, expandBubbledSelectorList
-            ));
-          }
-        }
-        break;
-      }
-      case 'MixinCall':
-        {
-          const expanded = expandCall(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, undefined, propertyScope, applyExpansion);
-          if (isThenable(expanded)) {
-            return expanded.then(() => walkBody(
-              statements.slice(index + 1), composed, ancestor, frame, group, flush,
-              partition, e, imp, forceLeading, propertyScope, applyExpansion
-            ));
-          }
-        }
-        break;
-      case 'Apply': {
-        const expanded = expandApply(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope);
-        if (isThenable(expanded)) {
-          return expanded.then(() => walkBody(
-            statements.slice(index + 1), composed, ancestor, frame, group, flush,
-            partition, e, imp, forceLeading, propertyScope, applyExpansion
-          ));
-        }
-        break;
-      }
-      case 'Reference':
-        {
-          const expanded = expandReferenceCall(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
-          if (isThenable(expanded)) {
-            return expanded.then(() => walkBody(
-              statements.slice(index + 1), composed, ancestor, frame, group, flush,
-              partition, e, imp, forceLeading, propertyScope, applyExpansion
-            ));
-          }
-        }
-        break;
-      case 'For': {
-        const expanded = expandFor(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
-        if (isThenable(expanded)) {
-          return expanded.then(() => walkBody(
-            statements.slice(index + 1), composed, ancestor, frame, group, flush,
-            partition, e, imp, forceLeading, propertyScope, applyExpansion
-          ));
-        }
-        break;
-      }
-      case 'If': {
-        const body = selectIfBody(node, frame, e);
-        if (body) {
-          const emitted = walkBody(body, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
-          if (isThenable(emitted)) {
-            return emitted.then(() => walkBody(
-              statements.slice(index + 1), composed, ancestor, frame, group, flush,
-              partition, e, imp, forceLeading, propertyScope, applyExpansion
-            ));
-          }
-        }
-        break;
-      }
-      case 'While': {
-        const emitted = runWhile(node, frame, e, rules => walkBody(
-          rules, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion
-        ));
-        if (isThenable(emitted)) {
-          return emitted.then(() => walkBody(
-            statements.slice(index + 1), composed, ancestor, frame, group, flush,
-            partition, e, imp, forceLeading, propertyScope, applyExpansion
-          ));
-        }
-        break;
-      }
-
-      /*
-       * [atrule-bubbling] an at-rule nested inside a ruleset body PROJECTS to this
-       * block level (flat mode already emits everything at `e.depth`), carrying the
-       * enclosing composed selector as its body context so a bubbleable at-rule
-       * wraps the ruleset's selector inside. The decl group flushes first so the
-       * at-rule sits after the ruleset's own block, matching Less's bubbling order.
-       */
-      case 'AtRuleBlock': {
-        /*
-         * [atrule-nested] `@starting-style` / unknown at-rules stay INSIDE this
-         * block (no bubble): buffer with the decl group so they emit in source
-         * order within the parent ruleset. Everything else bubbles out — a bubbling
-         * at-rule is a container, so (partitioned) it defers to `trailing` after the
-         * leading block, matching the legacy flatten order.
-         */
-        if (staysNested(node.name)) {
-          addLeaf(group, partition, evaluatedLeaf(node, frame), forceLeading, e);
           break;
         }
-        const atNode = node;
-        const atFrame = frame;
-        const atComposed = composed;
+        case 'MixinCall':
+          if (nested) {
+            const emitted = expandCall(
+              node,
+              null,
+              null,
+              frame,
+              inlineLeaves!.leaves,
+              inlineLeaves!.flush,
+              null,
+              e,
+              imp,
+              false,
+              undefined,
+              inlineLeaves!.propertyScope,
+              applyExpansion,
+              source,
+              inlineLeaves!
+            );
+            if (isThenable(emitted)) {
+              return emitted.then(() => run(index + 1));
+            }
+          } else {
+            const expanded = expandCall(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, undefined, propertyScope, applyExpansion);
+            if (isThenable(expanded)) {
+              return expanded.then(() => walkBody(
+                statements.slice(index + 1), composed, ancestor, frame, group, flush,
+                partition, e, imp, forceLeading, propertyScope, applyExpansion
+              ));
+            }
+          }
+          break;
+        case 'Apply':
+          if (nested) {
+            const emitted = expandApply(
+              node,
+              null,
+              null,
+              frame,
+              inlineLeaves!.leaves,
+              inlineLeaves!.flush,
+              null,
+              e,
+              imp,
+              false,
+              inlineLeaves!.propertyScope,
+              source,
+              inlineLeaves!
+            );
+            if (isThenable(emitted)) {
+              return emitted.then(() => run(index + 1));
+            }
+          } else {
+            const expanded = expandApply(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope);
+            if (isThenable(expanded)) {
+              return expanded.then(() => walkBody(
+                statements.slice(index + 1), composed, ancestor, frame, group, flush,
+                partition, e, imp, forceLeading, propertyScope, applyExpansion
+              ));
+            }
+          }
+          break;
+        case 'Reference':
+          if (nested) {
+            const emitted = expandReferenceCall(
+              node,
+              null,
+              null,
+              frame,
+              inlineLeaves!.leaves,
+              inlineLeaves!.flush,
+              null,
+              e,
+              imp,
+              false,
+              inlineLeaves!.propertyScope,
+              applyExpansion,
+              source,
+              inlineLeaves!
+            );
+            if (isThenable(emitted)) {
+              return emitted.then(() => run(index + 1));
+            }
+          } else {
+            const expanded = expandReferenceCall(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
+            if (isThenable(expanded)) {
+              return expanded.then(() => walkBody(
+                statements.slice(index + 1), composed, ancestor, frame, group, flush,
+                partition, e, imp, forceLeading, propertyScope, applyExpansion
+              ));
+            }
+          }
+          break;
+        case 'For':
+          if (nested) {
+            const emitted = expandFor(
+              node,
+              null,
+              null,
+              frame,
+              inlineLeaves!.leaves,
+              inlineLeaves!.flush,
+              null,
+              e,
+              imp,
+              false,
+              inlineLeaves!.propertyScope,
+              applyExpansion,
+              source,
+              inlineLeaves!
+            );
+            if (isThenable(emitted)) {
+              return emitted.then(() => run(index + 1));
+            }
+          } else {
+            const expanded = expandFor(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
+            if (isThenable(expanded)) {
+              return expanded.then(() => walkBody(
+                statements.slice(index + 1), composed, ancestor, frame, group, flush,
+                partition, e, imp, forceLeading, propertyScope, applyExpansion
+              ));
+            }
+          }
+          break;
+        case 'If': {
+          if (nested) {
+            flushBuf();
+            const body = selectIfBody(node, frame, e);
+            if (body) {
+              const emitted = nestedBody(body, frame, e, hoist, imp, source, placement, undefined, applyExpansion);
+              if (isThenable(emitted)) {
+                return emitted.then(() => run(index + 1));
+              }
+            }
+            break;
+          }
+          const body = selectIfBody(node, frame, e);
+          if (body) {
+            const emitted = walkBody(body, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
+            if (isThenable(emitted)) {
+              return emitted.then(() => walkBody(
+                statements.slice(index + 1), composed, ancestor, frame, group, flush,
+                partition, e, imp, forceLeading, propertyScope, applyExpansion
+              ));
+            }
+          }
+          break;
+        }
+        case 'While': {
+          if (nested) {
+            flushBuf();
+            const emitted = runWhile(node, frame, e, rules => nestedBody(rules, frame, e, hoist, imp, source, placement, undefined, applyExpansion));
+            if (isThenable(emitted)) {
+              return emitted.then(() => run(index + 1));
+            }
+            break;
+          }
+          const emitted = runWhile(node, frame, e, rules => walkBody(
+            rules, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion
+          ));
+          if (isThenable(emitted)) {
+            return emitted.then(() => walkBody(
+              statements.slice(index + 1), composed, ancestor, frame, group, flush,
+              partition, e, imp, forceLeading, propertyScope, applyExpansion
+            ));
+          }
+          break;
+        }
+        case 'AtRuleBlock': {
+          if (nested) {
+            flushBuf();
+            emitBeforeRootStatement(node);
+            const emitted = expandAtRuleBlock(node, frame, e, null, source);
+            if (isThenable(emitted)) {
+              return emitted.then(() => {
+                markAfterRootStatement(node);
+                return run(index + 1);
+              });
+            }
+            markAfterRootStatement(node);
+            break;
+          }
 
-        /*
-         * [atrule-nest] A bubbleable at-rule projects to the level of its nearest
-         * enclosing stay-open at-rule body: the selectors it bubbles THROUGH are
-         * re-emitted inside it, so they add no output nesting, but each enclosing
-         * `@media`/`@supports`/… body does. Its header indent is therefore the
-         * enclosing at-rule-body count (`atRuleBodyDepth`) — 0 at the document root
-         * (flush), 1 directly inside one `@media`, and so on — rather than the
-         * ambient `e.depth`, which also counts the bubbled-through selector blocks.
-         */
-        const targetDepth = e.atRuleBodyDepth;
-        const emitAt = (): MaybePromise<void> => {
-          if (targetDepth === e.depth) {
-            return expandAtRuleBlock(atNode, atFrame, e, atComposed);
+          /*
+           * [atrule-bubbling] an at-rule nested inside a ruleset body PROJECTS to this
+           * block level (flat mode already emits everything at `e.depth`), carrying the
+           * enclosing composed selector as its body context so a bubbleable at-rule
+           * wraps the ruleset's selector inside. The decl group flushes first so the
+           * at-rule sits after the ruleset's own block, matching Less's bubbling order.
+           *
+           * [atrule-nested] `@starting-style` / unknown at-rules stay INSIDE this
+           * block (no bubble): buffer with the decl group so they emit in source
+           * order within the parent ruleset. Everything else bubbles out — a bubbling
+           * at-rule is a container, so (partitioned) it defers to `trailing` after the
+           * leading block, matching the legacy flatten order.
+           */
+          if (staysNested(node.name)) {
+            addLeaf(group, partition, evaluatedLeaf(node, frame), forceLeading, e);
+            break;
           }
-          const savedDepth = e.depth;
-          e.depth = targetDepth;
-          const restore = (): void => {
-            e.depth = savedDepth;
+          const atNode = node;
+          const atFrame = frame;
+          const atComposed = composed;
+
+          /*
+           * [atrule-nest] A bubbleable at-rule projects to the level of its nearest
+           * enclosing stay-open at-rule body: the selectors it bubbles THROUGH are
+           * re-emitted inside it, so they add no output nesting, but each enclosing
+           * `@media`/`@supports`/… body does. Its header indent is therefore the
+           * enclosing at-rule-body count (`atRuleBodyDepth`) — 0 at the document root
+           * (flush), 1 directly inside one `@media`, and so on — rather than the
+           * ambient `e.depth`, which also counts the bubbled-through selector blocks.
+           */
+          const targetDepth = e.atRuleBodyDepth;
+          const emitAt = (): MaybePromise<void> => {
+            if (targetDepth === e.depth) {
+              return expandAtRuleBlock(atNode, atFrame, e, atComposed);
+            }
+            const savedDepth = e.depth;
+            e.depth = targetDepth;
+            const restore = (): void => {
+              e.depth = savedDepth;
+            };
+            const r = expandAtRuleBlock(atNode, atFrame, e, atComposed);
+            if (isThenable(r)) {
+              return r.then(restore, (err) => {
+                restore();
+                throw err;
+              });
+            }
+            restore();
+            return r;
           };
-          const r = expandAtRuleBlock(atNode, atFrame, e, atComposed);
-          if (isThenable(r)) {
-            return r.then(restore, (err) => {
-              restore();
-              throw err;
-            });
-          }
-          restore();
-          return r;
-        };
-        if (partition) {
-          queueLeadingGroup(group, partition, e);
-          flushPending(partition);
-          partition.encounteredContainer = true;
-          partition.trailing.push(emitAt);
-        } else {
-          const flushed = flush();
-          if (isThenable(flushed)) {
-            return flushed.then(() => mapMaybe(
-              emitAt(),
-              () => walkBody(
+          if (partition) {
+            queueLeadingGroup(group, partition, e);
+            flushPending(partition);
+            partition.encounteredContainer = true;
+            partition.trailing.push(emitAt);
+          } else {
+            const flushed = flush();
+            if (isThenable(flushed)) {
+              return flushed.then(() => mapMaybe(
+                emitAt(),
+                () => walkBody(
+                  statements.slice(index + 1), composed, ancestor, frame, group, flush,
+                  partition, e, imp, forceLeading, propertyScope
+                )
+              ));
+            }
+            const emitted = emitAt();
+            if (isThenable(emitted)) {
+              return emitted.then(() => walkBody(
                 statements.slice(index + 1), composed, ancestor, frame, group, flush,
                 partition, e, imp, forceLeading, propertyScope
-              )
-            ));
+              ));
+            }
           }
-          const emitted = emitAt();
-          if (isThenable(emitted)) {
-            return emitted.then(() => walkBody(
-              statements.slice(index + 1), composed, ancestor, frame, group, flush,
-              partition, e, imp, forceLeading, propertyScope
-            ));
-          }
-        }
-        break;
-      }
-      case 'AtRuleStatement': {
-        /*
-         * [diagnostic] An SCSS `@debug`/`@warn`/`@error` reports (or halts) and
-         * emits no CSS. Guard here as well as in `emitAtRuleStatement`: the
-         * flatten path would otherwise treat a diagnostic in a selector context
-         * as a nested leaf (`staysNested` is true for these names) and never
-         * reach that function. This is the symmetric second evaluator to
-         * `emitNestedBody`. The marker (not the name) scopes this to SCSS.
-         */
-        if (isDiagnosticStatement(node)) {
-          emitDiagnosticDirective(node, frame, e);
           break;
         }
-
-        /*
-         * A leaf only exists inside a SELECTOR context: the group it joins is
-         * flushed as `<selector> { … }`. In a root-level control-flow body
-         * (`@if true { @import "a.css"; }`) there is no selector, and flushing
-         * the group would invent an anonymous ` { … }` wrapper around the
-         * statement. Emit it at the current cursor instead — where a plain CSS
-         * `@import` at root belongs.
-         */
-        if (staysNested(node.name) && composed !== null && composed.length > 0) {
-          addLeaf(group, partition, evaluatedLeaf(node, frame), forceLeading, e);
-          break;
-        }
-        const atNode = node;
-        if (partition) {
-          queueLeadingGroup(group, partition, e);
-          flushPending(partition);
-          partition.encounteredContainer = true;
-          partition.trailing.push(() => emitAtRuleStatement(atNode, frame, e));
-        } else {
-          const flushed = flush();
-          if (isThenable(flushed)) {
-            return flushed.then(() => {
-              emitAtRuleStatement(node, frame, e);
-              return walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope, applyExpansion
-              );
-            });
-          }
-          emitAtRuleStatement(node, frame, e);
-        }
-        break;
-      }
-      case 'Plugin':
-        break;
-      case 'StyleImport': {
-        /*
-         * A CSS import recorded inside a canonical Ruleset is a rule-body
-         * statement, not a bubbling container. Keep it in the authored leaf
-         * group so it emits inside that rule (and inside any mixin/control-flow
-         * body expanded there). Root and at-rule-body imports retain their
-         * existing direct emission paths below.
-         *
-         * `(inline)` is raw-byte IO rather than a parsed document, but it is
-         * still an asynchronous Context operation. It cannot be buffered as a
-         * Leaf: leaf emission has no continuation slot, so the read would be
-         * abandoned and an otherwise empty Ruleset would render without its
-         * splice. Both Context-backed import forms run at this body cursor.
-         */
-        if (e.importDocument !== undefined) {
-          /*
-           * A Context-loaded import publishes lookup facts into this exact rule
-           * placement. Its continuation must complete before a later sibling
-           * statement dispatches (notably `#Namespace > .mixin()`); keeping it
-           * as a buffered leaf discarded that MaybePromise.
-           */
-          const flushed = flush();
-          if (isThenable(flushed)) {
-            return flushed.then(() => mapMaybe(
-              expandStyleImport(node, frame, e, e.importDocument),
-              () => walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group,
-                flush, partition, e, imp, forceLeading, propertyScope
-              )
-            ));
-          }
-          const imported = expandStyleImport(node, frame, e, e.importDocument);
-          if (isThenable(imported)) {
-            return imported.then(() => walkBody(
-              statements.slice(index + 1), composed, ancestor, frame, group,
-              flush, partition, e, imp, forceLeading, propertyScope
-            ));
-          }
-        } else if (partition !== null && composed !== null) {
-          addLeaf(group, partition, evaluatedLeaf(node, frame), forceLeading, e);
-        } else {
-          const flushed = flush();
-          if (isThenable(flushed)) {
-            return flushed.then(() => mapMaybe(
-              expandStyleImport(node, frame, e, e.importDocument),
-              () => walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group,
-                flush, partition, e, imp, forceLeading, propertyScope
-              )
-            ));
+        case 'AtRuleStatement': {
+          if (nested) {
+            flushBuf();
+            emitBeforeRootStatement(node);
+            emitAtRuleStatement(node, frame, e);
+            markAfterRootStatement(node);
+            break;
           }
 
           /*
-           * `(inline)` is intentionally not a document parse, but it is still
-           * asynchronous Context IO. Keep this body cursor alive so a deferred
-           * callable's document scope survives the raw-byte read.
+           * [diagnostic] An SCSS `@debug`/`@warn`/`@error` reports (or halts) and
+           * emits no CSS. Guard here as well as in `emitAtRuleStatement`: the
+           * flatten path would otherwise treat a diagnostic in a selector context
+           * as a nested leaf (`staysNested` is true for these names) and never
+           * reach that function. The marker (not the name) scopes this to SCSS.
            */
-          const imported = expandStyleImport(node, frame, e, e.importDocument);
-          if (isThenable(imported)) {
-            return imported.then(() => walkBody(
-              statements.slice(index + 1), composed, ancestor, frame, group,
-              flush, partition, e, imp, forceLeading, propertyScope
-            ));
+          if (isDiagnosticStatement(node)) {
+            emitDiagnosticDirective(node, frame, e);
+            break;
           }
-        }
-        break;
-      }
-      case 'ModuleImport': {
-        const importNode = node;
-        if (partition) {
-          queueLeadingGroup(group, partition, e);
-          flushPending(partition);
-          partition.encounteredContainer = true;
-          partition.trailing.push(() => emitModuleImport(importNode, frame, e));
-        } else {
-          const flushed = flush();
-          if (isThenable(flushed)) {
-            return flushed.then(() => {
-              emitModuleImport(node, frame, e);
-              return walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope, applyExpansion
-              );
-            });
-          }
-          emitModuleImport(node, frame, e);
-        }
-        break;
-      }
-      case 'UnknownAtRuleBlock': {
-        const opaqueNode = node;
-        if (partition) {
-          queueLeadingGroup(group, partition, e);
-          flushPending(partition);
-          partition.encounteredContainer = true;
-          partition.trailing.push(() => emitUnknownAtRuleBlock(opaqueNode, e));
-        } else {
-          const flushed = flush();
-          if (isThenable(flushed)) {
-            return flushed.then(() => {
-              emitUnknownAtRuleBlock(node, e);
-              return walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope, applyExpansion
-              );
-            });
-          }
-          emitUnknownAtRuleBlock(node, e);
-        }
-        break;
-      }
 
-      /*
-       * a bare value-position call statement (`e('/* … *\/');`): flush the pending
-       * decl group first so it emits at its authored position, then the line.
-       */
-      case 'FunctionCall': {
-        addLeaf(group, partition, evaluatedLeaf(node, frame), forceLeading, e);
-        break;
+          /*
+           * A leaf only exists inside a SELECTOR context: the group it joins is
+           * flushed as `<selector> { … }`. In a root-level control-flow body
+           * (`@if true { @import "a.css"; }`) there is no selector, and flushing
+           * the group would invent an anonymous ` { … }` wrapper around the
+           * statement. Emit it at the current cursor instead — where a plain CSS
+           * `@import` at root belongs.
+           */
+          if (staysNested(node.name) && composed !== null && composed.length > 0) {
+            addLeaf(group, partition, evaluatedLeaf(node, frame), forceLeading, e);
+            break;
+          }
+          const atNode = node;
+          if (partition) {
+            queueLeadingGroup(group, partition, e);
+            flushPending(partition);
+            partition.encounteredContainer = true;
+            partition.trailing.push(() => emitAtRuleStatement(atNode, frame, e));
+          } else {
+            const flushed = flush();
+            if (isThenable(flushed)) {
+              return flushed.then(() => {
+                emitAtRuleStatement(node, frame, e);
+                return walkBody(
+                  statements.slice(index + 1), composed, ancestor, frame, group, flush,
+                  partition, e, imp, forceLeading, propertyScope, applyExpansion
+                );
+              });
+            }
+            emitAtRuleStatement(node, frame, e);
+          }
+          break;
+        }
+        case 'Plugin':
+          break;
+        case 'StyleImport': {
+          if (nested) {
+            flushBuf();
+            emitBeforeRootStatement(node);
+            const imported = expandStyleImport(
+              node,
+              frame,
+              e,
+              e.importDocument,
+              (document, importFrame) => nestedBody(document.rules, importFrame, e, hoist, imp)
+            );
+            if (isThenable(imported)) {
+              return imported.then(() => {
+                markAfterRootStatement(node);
+                return run(index + 1);
+              });
+            }
+            markAfterRootStatement(node);
+            break;
+          }
+
+          /*
+           * A CSS import recorded inside a canonical Ruleset is a rule-body
+           * statement, not a bubbling container. Keep it in the authored leaf
+           * group so it emits inside that rule (and inside any mixin/control-flow
+           * body expanded there). Root and at-rule-body imports retain their
+           * existing direct emission paths below.
+           *
+           * `(inline)` is raw-byte IO rather than a parsed document, but it is
+           * still an asynchronous Context operation. It cannot be buffered as a
+           * Leaf: leaf emission has no continuation slot, so the read would be
+           * abandoned and an otherwise empty Ruleset would render without its
+           * splice. Both Context-backed import forms run at this body cursor.
+           */
+          if (e.importDocument !== undefined) {
+            /*
+             * A Context-loaded import publishes lookup facts into this exact rule
+             * placement. Its continuation must complete before a later sibling
+             * statement dispatches (notably `#Namespace > .mixin()`); keeping it
+             * as a buffered leaf discarded that MaybePromise.
+             */
+            const flushed = flush();
+            if (isThenable(flushed)) {
+              return flushed.then(() => mapMaybe(
+                expandStyleImport(node, frame, e, e.importDocument),
+                () => walkBody(
+                  statements.slice(index + 1), composed, ancestor, frame, group,
+                  flush, partition, e, imp, forceLeading, propertyScope
+                )
+              ));
+            }
+            const imported = expandStyleImport(node, frame, e, e.importDocument);
+            if (isThenable(imported)) {
+              return imported.then(() => walkBody(
+                statements.slice(index + 1), composed, ancestor, frame, group,
+                flush, partition, e, imp, forceLeading, propertyScope
+              ));
+            }
+          } else if (partition !== null && composed !== null) {
+            addLeaf(group, partition, evaluatedLeaf(node, frame), forceLeading, e);
+          } else {
+            const flushed = flush();
+            if (isThenable(flushed)) {
+              return flushed.then(() => mapMaybe(
+                expandStyleImport(node, frame, e, e.importDocument),
+                () => walkBody(
+                  statements.slice(index + 1), composed, ancestor, frame, group,
+                  flush, partition, e, imp, forceLeading, propertyScope
+                )
+              ));
+            }
+
+            /*
+             * `(inline)` is intentionally not a document parse, but it is still
+             * asynchronous Context IO. Keep this body cursor alive so a deferred
+             * callable's document scope survives the raw-byte read.
+             */
+            const imported = expandStyleImport(node, frame, e, e.importDocument);
+            if (isThenable(imported)) {
+              return imported.then(() => walkBody(
+                statements.slice(index + 1), composed, ancestor, frame, group,
+                flush, partition, e, imp, forceLeading, propertyScope
+              ));
+            }
+          }
+          break;
+        }
+        case 'ModuleImport': {
+          if (nested) {
+            flushBuf();
+            emitBeforeRootStatement(node);
+            emitModuleImport(node, frame, e);
+            markAfterRootStatement(node);
+            break;
+          }
+          const importNode = node;
+          if (partition) {
+            queueLeadingGroup(group, partition, e);
+            flushPending(partition);
+            partition.encounteredContainer = true;
+            partition.trailing.push(() => emitModuleImport(importNode, frame, e));
+          } else {
+            const flushed = flush();
+            if (isThenable(flushed)) {
+              return flushed.then(() => {
+                emitModuleImport(node, frame, e);
+                return walkBody(
+                  statements.slice(index + 1), composed, ancestor, frame, group, flush,
+                  partition, e, imp, forceLeading, propertyScope, applyExpansion
+                );
+              });
+            }
+            emitModuleImport(node, frame, e);
+          }
+          break;
+        }
+        case 'UnknownAtRuleBlock': {
+          if (nested) {
+            flushBuf();
+            emitBeforeRootStatement(node);
+            emitUnknownAtRuleBlock(node, e);
+            markAfterRootStatement(node);
+            break;
+          }
+          const opaqueNode = node;
+          if (partition) {
+            queueLeadingGroup(group, partition, e);
+            flushPending(partition);
+            partition.encounteredContainer = true;
+            partition.trailing.push(() => emitUnknownAtRuleBlock(opaqueNode, e));
+          } else {
+            const flushed = flush();
+            if (isThenable(flushed)) {
+              return flushed.then(() => {
+                emitUnknownAtRuleBlock(node, e);
+                return walkBody(
+                  statements.slice(index + 1), composed, ancestor, frame, group, flush,
+                  partition, e, imp, forceLeading, propertyScope, applyExpansion
+                );
+              });
+            }
+            emitUnknownAtRuleBlock(node, e);
+          }
+          break;
+        }
+        case 'FunctionCall': {
+          // a bare value-position call statement (`e('/* … */');`): evaluate + emit.
+          if (nested) {
+            flushBuf();
+            emitBeforeRootStatement(node);
+            const emitted = emitCallStatement(node, frame, e);
+            if (isThenable(emitted)) {
+              return emitted.then(() => {
+                markAfterRootStatement(node);
+                return run(index + 1);
+              });
+            }
+            markAfterRootStatement(node);
+            break;
+          }
+          addLeaf(group, partition, evaluatedLeaf(node, frame), forceLeading, e);
+          break;
+        }
+        case 'MixinDefinition':
+          if (nested) {
+            if (evaluateSilentStatement(node, frame, e) && rootTriviaCursor !== undefined) {
+              rootTriviaSuppressedByDefinition = true;
+            }
+          } else {
+            evaluateSilentStatement(node, frame, e);
+          }
+          break;
+        case 'VariableDeclaration':
+          if (nested) {
+            if (evaluateSilentStatement(node, frame, e) && rootTriviaCursor !== undefined) {
+              rootTriviaSuppressedByDefinition = true;
+            }
+          } else {
+            evaluateSilentStatement(node, frame, e);
+          }
+          break;
       }
-      case 'MixinDefinition':
-        evaluateSilentStatement(node, frame, e);
-        break;
-      case 'VariableDeclaration':
-        evaluateSilentStatement(node, frame, e);
-        break;
     }
-  }
+    if (nested) {
+      queueBodyTriviaTail(bodyTrivia, buf, null, e);
+      if (!sharedLeaves) {
+        flushBuf();
+
+        /*
+         * [G28] Comments after the LAST statement but still inside the block.
+         * The per-statement walk above only reaches comments that precede a
+         * statement, so without this a trailing `a { b: c; /* z *\/ }` is lost.
+         */
+        if (bodyOwner !== undefined) {
+          emitBlockCommentTriviaBetween(e, bodyTriviaCursor, bodyEndOf(bodyOwner), INDENT.repeat(e.depth));
+        }
+        emitTrailingRootTrivia();
+      }
+    }
+  };
+  return run(0);
+}
+
+/**
+ * [V19] Nested write-projection entry to the one body evaluator {@link walkBody}.
+ * A pure calling-convention adapter (no statement dispatch of its own): it maps
+ * the nested-projection argument shape to `walkBody`'s unified signature so the
+ * nested writers and the serialize boundary invoke the single evaluator.
+ */
+function nestedBody(
+  statements: Statement[],
+  frame: Frame,
+  e: Emit,
+  hoist?: HoistEntry[],
+  imp = false, // [important] call-level `!important` forced onto this body's decls
+  source: NestedHeaderSource | null = null,
+  placement: NestedRuleMixinPlacement | null = null,
+  sharedLeaves?: NestedLeafBuffer,
+  applyExpansion = false,
+  owner?: object,
+  bodyTrivia?: BodyTriviaReplay
+): MaybePromise<void> {
+  return walkBody(
+    statements, null, null, frame, MOOT_LEAVES, MOOT_FLUSH, null, e, imp, false, frame,
+    applyExpansion, false, bodyTrivia, true, hoist, source, placement, sharedLeaves, owner
+  );
 }
 
 /**
@@ -11547,7 +12001,7 @@ function expandCall(
                   const placement = def.ruleMixin === true && source !== null
                     ? { source, callFrame } satisfies NestedRuleMixinPlacement
                     : null;
-                  return emitNestedBody(
+                  return nestedBody(
                     def.rules,
                     callFrame,
                     e,
@@ -11747,7 +12201,7 @@ function expandApply(
               propertyScope,
               true
             )
-          : emitNestedBody(
+          : nestedBody(
               rule.rules,
               applyFrame,
               e,
@@ -12294,7 +12748,7 @@ function expandReferenceCall(
             propertyScope,
             applyExpansion
           )
-        : emitNestedBody(
+        : nestedBody(
             drBody,
             r.callFrame,
             e,
@@ -12837,7 +13291,7 @@ function expandFor(
                 propertyScope,
                 applyExpansion
               )
-            : emitNestedBody(
+            : nestedBody(
                 node.rules,
                 loopFrame,
                 e,
@@ -14039,8 +14493,8 @@ function collectNestedProperty(
  * valid CSS, and `--foo-a` bears no CSS-defined relationship to `--foo`, so
  * flattening would mint names into an open namespace we do not control.
  *
- * Returns `null` when `node` is not a nested-property carrier. BOTH emitters
- * (flattened `walkBody` and nested `emitNestedBody`) route through this one
+ * Returns `null` when `node` is not a nested-property carrier. The one body
+ * evaluator (`walkBody`) drives BOTH write projections through this single
  * function: a second implementation would drift, and an emitter divergence is
  * exactly the defect this guards.
  */
@@ -16262,446 +16716,6 @@ interface HoistEntry {
   bubble: number;
 }
 
-function emitNestedBody(
-  statements: Statement[],
-  frame: Frame,
-  e: Emit,
-  hoist?: HoistEntry[],
-  imp = false, // [important] call-level `!important` forced onto this body's decls
-  source: NestedHeaderSource | null = null,
-  placement: NestedRuleMixinPlacement | null = null,
-  sharedLeaves?: NestedLeafBuffer,
-  applyExpansion = false,
-
-  /*
-   * [G28] The block whose body these statements are, when this call owns that
-   * body outright. Supplies the source span the block-interior comment replay
-   * anchors on. The COLLAPSED emitter has always done this walk; the nested one
-   * never did, so a block comment between declarations was dropped whenever
-   * `collapseNesting` was false -- the v5 default, and therefore every real
-   * compile. Left undefined for a SHARED leaf buffer, where the body being
-   * emitted is not this call's to anchor against.
-   */
-  owner?: object,
-  bodyTrivia?: BodyTriviaReplay
-): MaybePromise<void> {
-  /*
-   * buffer consecutive DIRECT leaves so a `+`/`+_` merge group can fold at
-   * last-occurrence; flush when an interrupting nested rule/at-rule appears (a
-   * merge group does not span an interrupting nested block). Absent any merge the
-   * buffer flushes verbatim per-leaf (byte-identical to the prior stream).
-   */
-  const buf = sharedLeaves?.leaves ?? [];
-
-  /*
-   * [G28] Body-interior comment replay for the nested emitter, mirroring the
-   * walk the collapsed emitter already performs. Only armed when this call owns
-   * the body outright.
-   */
-  const bodyOwner = sharedLeaves === undefined ? owner : undefined;
-  const bodyOwnerStart = bodyOwner === undefined ? NO_SPAN : bodyStartOf(bodyOwner);
-  let bodyTriviaCursor = bodyOwnerStart === NO_SPAN ? 0 : bodyOwnerStart;
-  const replayBodyCommentsBefore = (statement: Statement): void => {
-    if (bodyOwner === undefined) {
-      return;
-    }
-    emitBodyBlockCommentTriviaBefore(bodyOwner, statement, e, INDENT.repeat(e.depth), bodyTriviaCursor);
-    const end = sourceEndOf(statement);
-    bodyTriviaCursor = end === NO_SPAN ? bodyTriviaCursor : end;
-  };
-  const flushBuf = sharedLeaves?.flush ?? (() => {
-    if (buf.length === 0 && e.pendingLeafBlockCommentOwner !== buf) {
-      return;
-    }
-    const trailingBlockComments = takePendingLeafBlockComments(e, buf);
-    const mergeMode = mergeGroupMode(buf);
-    if (mergeMode !== MERGE_NONE) {
-      mergeFold(
-        buf,
-        e,
-        e.depth > 0 ? INDENT.repeat(e.depth) : '',
-        emitNestedLeaf,
-        mergeMode
-      );
-    } else {
-      for (let index = 0; index < buf.length;) {
-        const leaf = buf[index]!;
-        const sourceOwner = leaf.frame.sourceOwner;
-        if (
-          sourceOwner !== null
-          && sourceOwner !== undefined
-          && e.context !== undefined
-          && sourceOwner !== e.context.documentContext
-        ) {
-          let end = index + 1;
-          while (end < buf.length && buf[end]!.frame.sourceOwner === sourceOwner) {
-            end++;
-          }
-          const start = index;
-          settledEmission(withSourceOwner(e, sourceOwner, () => {
-            for (let at = start; at < end; at++) {
-              const owned = buf[at]!;
-              replayBodyCommentsBefore(owned.node);
-              emitNestedLeafOwned(owned, e);
-            }
-          }), leaf.node, e);
-          index = end;
-          continue;
-        }
-        replayBodyCommentsBefore(leaf.node);
-        emitNestedLeafOwned(leaf, e);
-        index++;
-      }
-    }
-    if (trailingBlockComments.length !== 0) {
-      const indent = e.depth > 0 ? INDENT.repeat(e.depth) : '';
-      for (const comment of trailingBlockComments) {
-        if (indent) {
-          put(e, indent);
-        }
-        put(e, comment);
-        put(e, '\n');
-      }
-    }
-    buf.length = 0;
-  });
-  const inlineLeaves: NestedLeafBuffer = sharedLeaves ?? { leaves: buf, flush: flushBuf, propertyScope: frame };
-  let rootTriviaCursor = frame.parent === null && sharedLeaves === undefined ? 0 : undefined;
-  let rootTriviaSuppressedByDefinition = false;
-  const rootTriviaExclusions = rootTriviaCursor === undefined
-    ? []
-    : statements.map((statement) => {
-        const start = statementStartOf(statement);
-        const end = statementEndOf(statement);
-        return start === undefined || end === undefined ? undefined : { start, end };
-      }).filter(isReplaySpan);
-  const emitBeforeRootStatement = (node: Statement): void => {
-    if (rootTriviaCursor === undefined) {
-      return;
-    }
-    if (rootTriviaSuppressedByDefinition) {
-      rootTriviaCursor = statementStartOf(node) ?? rootTriviaCursor;
-      rootTriviaSuppressedByDefinition = false;
-      return;
-    }
-    emitBlockCommentTriviaBetween(e, rootTriviaCursor, statementStartOf(node), '', rootTriviaExclusions);
-  };
-  const markAfterRootStatement = (node: Statement): void => {
-    if (rootTriviaCursor === undefined) {
-      return;
-    }
-    rootTriviaCursor = statementEndOf(node) ?? rootTriviaCursor;
-  };
-  const emitTrailingRootTrivia = (): void => {
-    if (rootTriviaCursor === undefined) {
-      return;
-    }
-    emitTopLevelBlockCommentsBetween(e, rootTriviaCursor, Number.MAX_SAFE_INTEGER, '');
-  };
-  const placeLeaf = (leaf: Leaf): void => {
-    const pendingBlockComments = e.pendingLeafBlockCommentOwner === buf
-      ? e.pendingLeafBlockComments
-      : null;
-    if (pendingBlockComments !== null) {
-      e.pendingLeafBlockComments = null;
-      e.pendingLeafBlockCommentOwner = null;
-      leaf.leadingBlockComments = pendingBlockComments;
-    }
-    buf.push(leaf);
-  };
-  const run = (start: number): MaybePromise<void> => {
-    for (let index = start; index < statements.length; index++) {
-      const node = statements[index]!;
-
-      if (node.type !== 'Declaration' && node.type !== 'Comment') {
-        queueBodyTriviaBefore(bodyTrivia, node, buf, e);
-      }
-
-      /*
-       * Root sibling grouping is source-adjacent only. Any non-Ruleset—including a
-       * silent declaration/definition—forms a hard boundary.
-       */
-      if (frame.parent === null && node.type !== 'Ruleset') {
-        e.lastBlock.parentKey = null;
-      }
-      switch (node.type) {
-        case 'Declaration':
-        case 'Comment': {
-          if (e.referenceImportDepth > 0) {
-            break;
-          }
-
-          /*
-           * This is the same evaluator operation used by the collapsed writer:
-           * property publication, nested-property expansion, and Leaf creation
-           * cannot drift with output mode.
-           */
-          evaluateLeafStatement(
-            node,
-            frame,
-            sharedLeaves?.propertyScope ?? frame,
-            e,
-            imp,
-            applyExpansion,
-            bodyTrivia,
-            buf,
-            placeLeaf
-          );
-          break;
-        }
-        case 'Ruleset': {
-          if (e.referenceImportDepth > 0) {
-            break;
-          }
-          flushBuf();
-          replayBodyCommentsBefore(node);
-          emitBeforeRootStatement(node);
-
-          /*
-           * Only a selected synthesized ruleset mixin gets a placement fact.  It
-           * is consumed by the first `&`-bearing nested header; ordinary authored
-           * nesting has no fact and stays literal in collapse:false mode.
-           */
-          const appliesPlacement = placement !== null
-            && !(hoist !== undefined
-              && extendProjection(frame, e)?.nestedPlan.get(node)?.flatten === true)
-            && selectorListHasAmpersand(node.selector);
-          const emitted = expandRule(
-            node,
-            null,
-            null,
-            frame,
-            e,
-            imp,
-            false,
-            source,
-            appliesPlacement ? placement : null,
-            hoist
-          );
-          if (isThenable(emitted)) {
-            return emitted.then(() => {
-              if (appliesPlacement) {
-                placement = null;
-              }
-              markAfterRootStatement(node);
-              return run(index + 1);
-            });
-          }
-          if (appliesPlacement) {
-            placement = null;
-          }
-          markAfterRootStatement(node);
-          break;
-        }
-        case 'MixinCall':
-          {
-            const emitted = expandCall(
-              node,
-              null,
-              null,
-              frame,
-              inlineLeaves.leaves,
-              inlineLeaves.flush,
-              null,
-              e,
-              imp,
-              false,
-              undefined,
-              inlineLeaves.propertyScope,
-              applyExpansion,
-              source,
-              inlineLeaves
-            );
-            if (isThenable(emitted)) {
-              return emitted.then(() => run(index + 1));
-            }
-          }
-          break;
-        case 'Apply':
-          {
-            const emitted = expandApply(
-              node,
-              null,
-              null,
-              frame,
-              inlineLeaves.leaves,
-              inlineLeaves.flush,
-              null,
-              e,
-              imp,
-              false,
-              inlineLeaves.propertyScope,
-              source,
-              inlineLeaves
-            );
-            if (isThenable(emitted)) {
-              return emitted.then(() => run(index + 1));
-            }
-          }
-          break;
-        case 'Reference':
-          {
-            const emitted = expandReferenceCall(
-              node,
-              null,
-              null,
-              frame,
-              inlineLeaves.leaves,
-              inlineLeaves.flush,
-              null,
-              e,
-              imp,
-              false,
-              inlineLeaves.propertyScope,
-              applyExpansion,
-              source,
-              inlineLeaves
-            );
-            if (isThenable(emitted)) {
-              return emitted.then(() => run(index + 1));
-            }
-          }
-          break;
-        case 'For':
-          {
-            const emitted = expandFor(
-              node,
-              null,
-              null,
-              frame,
-              inlineLeaves.leaves,
-              inlineLeaves.flush,
-              null,
-              e,
-              imp,
-              false,
-              inlineLeaves.propertyScope,
-              applyExpansion,
-              source,
-              inlineLeaves
-            );
-            if (isThenable(emitted)) {
-              return emitted.then(() => run(index + 1));
-            }
-          }
-          break;
-        case 'If': {
-          flushBuf();
-          const body = selectIfBody(node, frame, e);
-          if (body) {
-            const emitted = emitNestedBody(body, frame, e, hoist, imp, source, placement, undefined, applyExpansion);
-            if (isThenable(emitted)) {
-              return emitted.then(() => run(index + 1));
-            }
-          }
-          break;
-        }
-        case 'While': {
-          flushBuf();
-          const emitted = runWhile(node, frame, e, rules => emitNestedBody(rules, frame, e, hoist, imp, source, placement, undefined, applyExpansion));
-          if (isThenable(emitted)) {
-            return emitted.then(() => run(index + 1));
-          }
-          break;
-        }
-        case 'AtRuleBlock':
-          flushBuf();
-          emitBeforeRootStatement(node);
-          {
-            const emitted = expandAtRuleBlock(node, frame, e, null, source);
-            if (isThenable(emitted)) {
-              return emitted.then(() => {
-                markAfterRootStatement(node);
-                return run(index + 1);
-              });
-            }
-          }
-          markAfterRootStatement(node);
-          break;
-        case 'AtRuleStatement':
-          flushBuf();
-          emitBeforeRootStatement(node);
-          emitAtRuleStatement(node, frame, e);
-          markAfterRootStatement(node);
-          break;
-        case 'StyleImport':
-          flushBuf();
-          emitBeforeRootStatement(node);
-          {
-            const imported = expandStyleImport(
-              node,
-              frame,
-              e,
-              e.importDocument,
-              (document, importFrame) => emitNestedBody(document.rules, importFrame, e, hoist, imp)
-            );
-            if (isThenable(imported)) {
-              return imported.then(() => {
-                markAfterRootStatement(node);
-                return run(index + 1);
-              });
-            }
-          }
-          markAfterRootStatement(node);
-          break;
-        case 'ModuleImport':
-          flushBuf();
-          emitBeforeRootStatement(node);
-          emitModuleImport(node, frame, e);
-          markAfterRootStatement(node);
-          break;
-        case 'UnknownAtRuleBlock':
-          flushBuf();
-          emitBeforeRootStatement(node);
-          emitUnknownAtRuleBlock(node, e);
-          markAfterRootStatement(node);
-          break;
-
-          // a bare value-position call statement (`e('/* … */');`): evaluate + emit.
-        case 'FunctionCall':
-          flushBuf();
-          emitBeforeRootStatement(node);
-          {
-            const emitted = emitCallStatement(node, frame, e);
-            if (isThenable(emitted)) {
-              return emitted.then(() => {
-                markAfterRootStatement(node);
-                return run(index + 1);
-              });
-            }
-          }
-          markAfterRootStatement(node);
-          break;
-        case 'MixinDefinition':
-          if (evaluateSilentStatement(node, frame, e) && rootTriviaCursor !== undefined) {
-            rootTriviaSuppressedByDefinition = true;
-          }
-          break;
-        case 'VariableDeclaration':
-          if (evaluateSilentStatement(node, frame, e) && rootTriviaCursor !== undefined) {
-            rootTriviaSuppressedByDefinition = true;
-          }
-          break;
-      }
-    }
-    queueBodyTriviaTail(bodyTrivia, buf, null, e);
-    if (!sharedLeaves) {
-      flushBuf();
-
-      /*
-       * [G28] Comments after the LAST statement but still inside the block.
-       * The per-statement walk above only reaches comments that precede a
-       * statement, so without this a trailing `a { b: c; /* z *\/ }` is lost.
-       */
-      if (bodyOwner !== undefined) {
-        emitBlockCommentTriviaBetween(e, bodyTriviaCursor, bodyEndOf(bodyOwner), INDENT.repeat(e.depth));
-      }
-      emitTrailingRootTrivia();
-    }
-  };
-  return run(0);
-}
-
 /** A `name: value;` / comment leaf at exactly the current `e.depth` level. */
 function emitNestedLeaf(leaf: Leaf, e: Emit): void {
   const sourceOwner = leaf.frame.sourceOwner;
@@ -16930,7 +16944,7 @@ function emitTransparentShells(
       };
       const emitted = mapMaybe(
         prepareBodyPlugins(shell.def.rules, callFrame, e),
-        () => emitNestedBody(shell.def.rules, callFrame, e, undefined, imp, source)
+        () => nestedBody(shell.def.rules, callFrame, e, undefined, imp, source)
       );
       if (isThenable(emitted)) {
         return emitted.then(() => {
@@ -16967,13 +16981,13 @@ function writeNestedRule(
     };
     return mapMaybe(
       prepareBodyPlugins(rule.rules, childFrame, e),
-      () => emitNestedBody(rule.rules, childFrame, e, undefined, imp, source, placement, undefined, false, rule)
+      () => nestedBody(rule.rules, childFrame, e, undefined, imp, source, placement, undefined, false, rule)
     );
   }
   if (plan?.flatten && !plan.hoistNested) {
     /*
      * Fallback (a top-level rule never flattens; a body-nested one is deferred by
-     * emitNestedBody's hoist queue). Emit via the flat path with compaction.
+     * the nested projection's hoist queue). Emit via the flat path with compaction.
      */
     return emitHoisted(rule, frame, e);
   }
@@ -17137,7 +17151,7 @@ function writeNestedRule(
     };
     return mapMaybe(
       prepareBodyPlugins(rule.rules, childFrame, e),
-      () => mapMaybe(emitNestedBody(rule.rules, childFrame, e, hoist, imp, childSource, null, undefined, false, rule), finish)
+      () => mapMaybe(nestedBody(rule.rules, childFrame, e, hoist, imp, childSource, null, undefined, false, rule), finish)
     );
   });
 }
@@ -17212,6 +17226,6 @@ function writeNestedAtRuleBlock(
   };
   return mapMaybe(
     prepareBodyPlugins(node.rules, bodyFrame, e),
-    () => mapMaybe(emitNestedBody(node.rules, bodyFrame, e, undefined, false, source, null, undefined, false, node), finish)
+    () => mapMaybe(nestedBody(node.rules, bodyFrame, e, undefined, false, source, null, undefined, false, node), finish)
   );
 }

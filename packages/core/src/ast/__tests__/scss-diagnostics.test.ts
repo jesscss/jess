@@ -109,10 +109,10 @@ describe('SCSS diagnostic directives', () => {
   });
 
   /*
-   * serialize.ts still carries TWO evaluators (the nested `emitNestedBody` path
-   * and the flatten walker); a diagnostic inside a selector context exercises the
-   * flatten path's `staysNested` branch, which does not funnel through
-   * `emitAtRuleStatement`. Assert the two emit forms agree until the fold lands.
+   * The one evaluator `walkBody` drives both write projections. In the collapsed
+   * projection a diagnostic inside a selector context exercises the `staysNested`
+   * branch, which does not funnel through `emitAtRuleStatement`. Assert the two
+   * emit forms agree.
    */
   it('nested and collapsed emit forms agree for @warn in a ruleset', () => {
     const nested = render('.a { @warn "w"; color: red; }', false);

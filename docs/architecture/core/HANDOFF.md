@@ -4072,6 +4072,131 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: 2026-09-07 V19 slice 5 delete the second body dispatcher. This deletes
+  the nested statement dispatcher `emitNestedBody` and folds its per-case nested-writer
+  dispatch into the one evaluator `walkBody`, which now serves BOTH write projections
+  through a single `run(index)` loop and a single `switch (node.type)`; it makes no speed
+  claim. The collapsed and nested arms of every case are the two prior dispatchers' bodies
+  relocated verbatim behind `if (nested)`, so the danger tokens the scan reports are moved,
+  not new.
+- Architecture surface: `serialize.ts` body dispatch — the merged `walkBody`, its nested
+  setup (owned leaf buffer, body/root trivia replay, nested `placeLeaf`), the new
+  `nestedBody` calling-convention adapter, and the ten external nested call sites
+  (boundary `emitDocumentStatements`, `expandCall`/`expandApply`/`expandReferenceCall`/
+  `expandFor`, `writeNestedRule`, `writeNestedAtRuleBlock`, and the transparent-shell
+  writer) that were rerouted from `emitNestedBody` to `nestedBody`. Parser grammar, AST/CST
+  schemas, public package APIs, selector composition policy, at-rule bubbling policy, the
+  nested writers (`writeNestedRule`/`writeNestedAtRuleBlock`/`emitNestedLeafOwned`), and
+  output-option ownership are unchanged.
+- Separation/duplication: the two statement dispatchers become one. `emitNestedBody`
+  (~439 lines) is deleted; its dispatch is the `nested` arms of `walkBody`. `nestedBody`
+  is a three-line positional adapter (no statement switch) mapping the nested-call shape to
+  `walkBody`'s unified signature so the nested writers and the serialize boundary invoke the
+  single evaluator; the source ratchet pins that it forwards straight to `walkBody` and
+  contains no `switch (node.type)`. `walkBody` is now the only body statement dispatcher.
+- Cumulative node weight: canonical AST/CST nodes, `Frame`, `EvalCtx`, `Emit`, `Leaf`, and
+  `BindingCell` gain zero fields. Static `Map` stays 58, `Set` 34, `WeakMap` 5, and
+  `const group: Leaf[] = []` 9. Named-plus-async function count stays 421 (−`emitNestedBody`,
+  +`nestedBody`). The one nested leaf buffer is now the mode-gated
+  `const buf: Leaf[] = nested ? (sharedLeaves?.leaves ?? []) : MOOT_LEAVES`, so the collapsed
+  projection constructs no buffer. `MOOT_LEAVES`/`MOOT_FLUSH`/`NOOP_BEFORE_STATEMENT`/
+  `NOOP_TRAILING_TRIVIA` are module-level shared consts, not per-call allocations.
+- New traversal: no new AST/source traversal. Every loop, `.slice()`, `.map()`, `.filter()`,
+  and `[]` the danger scan reports on `+` lines is code relocated verbatim from the deleted
+  `emitNestedBody` (its `run` loop, the merge-fold flush loop, and the root-trivia
+  `statements.map(...).filter(isReplaySpan)` exclusion build, all still `if (nested)`-gated and,
+  for the exclusion build, additionally gated on a non-shared root frame) or from the retained
+  collapsed cases (`statements.slice(index + 1)` continuation recursion). Per statement the work
+  is one `switch` arm, exactly as in each prior dispatcher; N and 2N eligible statements produce
+  N and 2N evaluator visits and writer callbacks with one body walk per render.
+- New node/materialization: zero AST/CST nodes, retained evaluated trees, projection carriers,
+  new group arrays, Maps, Sets, WeakMaps, or per-statement event objects. The nested owned buffer,
+  `flushBuf`/`inlineLeaves`/trivia closures, and nested `placeLeaf` are constructed only under
+  `if (nested)` (identical to the deleted `emitNestedBody`); the collapsed arm allocates only its
+  one `placeLeaf`, as before. The single net-new allocation is one `run` closure per `walkBody`
+  invocation in COLLAPSED mode (the collapsed loop is now inside `run` so one switch serves both
+  projections) — one per ruleset body, not per statement or leaf, on the non-default
+  `collapseNesting:true` path; the default nested path is allocation-neutral versus `emitNestedBody`.
+- Render path: both projections still stream into `Emit.chunks` via `put`/`emitNestedLeafOwned`
+  and the collapsed `flushBlock` path. Nothing is materialized into arrays or nodes to stringify;
+  the nested flush is the same `mergeFold`/`emitNestedLeafOwned` block relocated from `emitNestedBody`.
+- Helper/API surface: private serializer machinery only, no public export or type change. The two
+  statement dispatchers become one dispatcher plus one three-line non-dispatching adapter; net one
+  fewer body dispatcher and ~439 fewer duplicated dispatch lines. `serialize.ts` moves 17,217 to
+  17,226 lines (+9), the near-neutral cost of one unified switch carrying both per-case arms.
+- Metadata mutations: only existing render-local placement state mutates. The `parent/source
+  mutation` tokens the scan reports are READS, not writes: `frame.parent === null` (root-frame test)
+  and `e.lastBlock.parentKey = null` (existing render-local last-block reset relocated from
+  `emitNestedBody`). No canonical source/parent restoration, `frozen` mutation, structural probe, or
+  per-node side table is added; the pending-comment state remains the two nullable scalar `Emit`
+  fields from slice 1.
+- Review-flagged diff tokens: [loop/traversal] the `run` loop, merge-fold flush loop, and
+  collapsed `slice`-recursion are relocated from the two prior dispatchers, not new, and per-statement
+  work is one switch arm; [array helper] the `.slice(index+1)` continuations, root-trivia
+  `.map().filter()`, and header `.join()` are relocated verbatim and build no new retained array;
+  [materialized array/object] `MOOT_LEAVES`/`[]`/`{ leaves, flush, propertyScope }`/`selfFrame`
+  literals are the relocated nested-setup and collapsed self-composed objects, all `if (nested)`- or
+  branch-local as before; [parent/source mutation] both matches are a root-frame READ and the existing
+  render-local `lastBlock.parentKey` reset, no canonical parent/source write. No Map, Set, WeakMap,
+  Frame field, context table, writer callback carrier, retained event list, source scan, or reparse is
+  added; the only net-new allocation is one collapsed-mode `run` closure per body (non-default path).
+- Evidence: build — dependency-ordered `pnpm run build:release` GREEN. Behavior — `npx vitest run
+  packages/core` 202 files / 3221 tests / 8 skipped / 2 todo, 0 failed (the +1 vs baseline is the new
+  adapter ratchet test); jess ratchet 1442 tests, 0 current/gating/flaky failures, pass set matches the
+  empty named baseline exactly (normal all-less included); selected both-mode/property suites 21/21
+  (property-accessor-nested, nested-relative-selectors, plugin-scope-nested, function-mode); dependents
+  plugin-less 14/14, fns 718/718, plugin-scss 2/2. The forced-`collapseNesting:true` before/after
+  corpus manifests contain the same 111 records and are byte-identical with SHA-256
+  `a1bc3b752c8e5ddd5de1219d65d804c94ba69bdfad6fdff70daff7096edc9a1b`. `benchmark.less` render output is
+  byte-identical before/after (SHA-256 `2b8d9abf3c103a6de7a0a5d66b3a448bcaef8c1818eff753de52d25a23b98f7d`,
+  122,568 bytes). The source ratchet now pins one dispatcher (`['walkBody']`), the adapter shape, one
+  `e.collapse` boundary read, one leaf buffer, and the unchanged collection counts. `git diff --check`
+  clean. Same-session `benchmark.less` render median 44.19 to 43.95 ms and the five-fixture both-mode
+  hotpath deltas are within round noise (`signal=noisy/unstable`, sign flips by mode) and carry no speed
+  or neutrality claim; the perf-architecture review confirms default-path allocation neutrality and one
+  bounded collapsed-mode `run` closure per body.
+- Verdict: accepted as the final V19 evaluator-fold slice after the one-dispatcher source ratchet,
+  both-mode byte-identity (core suite, jess ratchet, forced-collapse manifest, benchmark render), and
+  the two blocking reviews. Timing is explicitly inconclusive and supports no speed claim; the change is
+  held for owner review and does not merge as part of this lane.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "SETTLED V19 makes evaluation and lookup functions of the source stylesheet, independent of nesting output. Slice 5 deletes the second body dispatcher emitNestedBody and folds its nested-writer dispatch into the single evaluator walkBody; both write projections are now driven by one run(index) loop and one switch, selected once at the serialize boundary via the sole e.collapse read.",
+    "dangerTokensJustification": "Every reported danger token is code relocated verbatim from the deleted emitNestedBody or the retained collapsed cases, not a new cost. Static Map 58, Set 34, WeakMap 5, group arrays 9, and function count 421 are unchanged; the one leaf buffer is mode-gated so the collapsed projection constructs none, and MOOT/NOOP stand-ins are module-shared. No Map, Set, WeakMap, Frame field, context table, writer carrier, retained event list, source scan, or reparse is added. The parent/source matches are a root-frame read and the existing render-local lastBlock.parentKey reset, not canonical writes. The only net-new allocation is one run closure per walkBody call in the non-default collapseNesting:true mode (one per ruleset body, not per leaf); the default nested path is allocation-neutral versus emitNestedBody.",
+    "behaviorEvidence": "packages/core vitest 3221/3221 (0 failed); jess ratchet 1442 with empty current/gating/flaky sets; forced-collapse before/after 111-record manifests byte-identical (SHA a1bc3b75...); benchmark.less render byte-identical (SHA 2b8d9abf...); both-mode/property suites 21/21. The source ratchet rejects a restored second dispatcher, an extra collapse read, a non-adapter nestedBody, or leaf-buffer/collection growth.",
+    "buildEvidence": "Dependency-order pnpm run build:release passes. Core 3221 tests; jess ratchet 1442 with empty failure sets; normal all-less included and passing; dependents plugin-less 14/14, fns 718/718, plugin-scss 2/2. git diff --check clean. Static counts: serialize.ts 17217 to 17226 lines, named+async functions 421 unchanged, Map 58 unchanged, Set 34 unchanged, WeakMap 5 unchanged, Leaf groups 9 unchanged, dispatchers 2 to 1, and evaluator-side e.collapse reads 1 unchanged. Same-session hot-path timings are reported separately and carry no speed claim.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 43.94891699999971,
+      "outputSha256": "2b8d9abf3c103a6de7a0a5d66b3a448bcaef8c1818eff753de52d25a23b98f7d",
+      "outputBytes": 122568
+    }
+  }
+]
+```
+
+
 - Latest pass: 2026-09-03 V19 slice 4 shared container evaluation. This folds ruleset
   guards and extend-hoist placement, at-rule prelude evaluation and activation, and
   stylesheet-import execution into shared evaluator entries while retaining the two
