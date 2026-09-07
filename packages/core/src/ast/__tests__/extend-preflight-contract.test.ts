@@ -51,7 +51,14 @@ describe('AST extend preflight cost contract', () => {
     expect(counters['astExtend.preflight.loopPlacements'] ?? 0).toBe(0);
   });
 
-  it('records only concrete imported-loop placements and their typed IR facts', async () => {
+  it('folds an imported-loop extend through the one render walk (no cold preflight)', async () => {
+    /*
+     * An imported `$for`/`each()` loop body is a DYNAMIC placement: the static import
+     * preflight cannot resolve its iterations, so its `:extend()` facts are recorded by
+     * the ONE render walk and folded into the target header by the deferred rewrite
+     * (ledger X12 / EXTEND-SEMANTICS §1a). This SUPERSEDES the reverted cold-twin
+     * preflight that re-evaluated the loop to pre-collect an overlay.
+     */
     const loopSelector = ast.complexSelector([{
       term: ast.compoundSelectorOf([ast.interpolatedSimpleSelector(ast.interpolation([
         { lit: '.from-' }, { ref: ast.variableReference('name', 'scoped'), unquote: true }
@@ -69,17 +76,21 @@ describe('AST extend preflight cost contract', () => {
       ast.rule('.target', [ast.decl('color', ast.color('red'))], [{ target: ast.selist(ast.sel('.does-not-match')), partial: true }])
     ]);
 
+    // The extenders `.from-one` / `.from-two` fold onto `.target` via the deferred rewrite.
     await expect(serialize(document, {
       importDocument: ({ specifier }) => specifier === 'loop.less' ? { document: imported, key: 'loop.less' } : undefined
     })).resolves.toEqual({ css: '.target,\n.from-one,\n.from-two {\n  color: red;\n}\n' });
 
+    // The static import preflight still runs and admits the feature-bearing import…
     expect(counters['astExtend.preflight.importsVisited']).toBe(1);
     expect(counters['astExtend.preflight.importsFeatureBearing']).toBe(1);
-    expect(counters['astExtend.preflight.loopBodies']).toBe(1);
-    expect(counters['astExtend.preflight.loopPlacements']).toBe(2);
-    expect(counters['astExtend.preflight.overlaySubjects']).toBe(2);
-    expect(counters['astExtend.preflight.overlayInstructions']).toBe(2);
-    expect(counters['astExtend.plan.overlaySubjects']).toBe(2);
-    expect(counters['astExtend.plan.overlayInstructions']).toBe(2);
+
+    // …but the cold re-evaluating loop preflight is GONE — no loop-placement overlay is
+    // pre-collected (the tell of a second evaluation pass).
+    expect(counters['astExtend.preflight.collectCalls'] ?? 0).toBe(0);
+    expect(counters['astExtend.preflight.loopBodies'] ?? 0).toBe(0);
+    expect(counters['astExtend.preflight.loopPlacements'] ?? 0).toBe(0);
+    expect(counters['astExtend.preflight.overlaySubjects'] ?? 0).toBe(0);
+    expect(counters['astExtend.preflight.overlayInstructions'] ?? 0).toBe(0);
   });
 });
