@@ -4937,7 +4937,14 @@ function resolveReferenceResult(
         break;
       }
       if (!isValueSlotArray(value) && value.type === 'AnonymousMixin'
-        && (lambdaResultValue(value.rules) !== undefined || value.params !== undefined || step.args.length > 0)) {
+        && lambdaResultValue(value.rules) !== undefined) {
+        /*
+         * Only a value lambda (a body that yields `result:`) invokes here. A
+         * params-carrying block WITHOUT a `result:` is a `using (…)` content
+         * block — a ruleset body spliced with its args bound to those params at
+         * the STATEMENT level (`expandReferenceCall`), never a value. Invoking it
+         * as a lambda threw `invalidFunction` (its body assigns no `result:`).
+         */
         const invoked = invokeValueLambda(value, step.args, valueFrame, frame, e);
         if (invoked === null) {
           return null;
@@ -12164,7 +12171,8 @@ function referenceCallFrame(
   dr: ValueBlock,
   frame: Frame,
   definitionFrame: Frame | null = frame,
-  sourceOwner: object | null = null
+  sourceOwner: object | null = null,
+  bindings: Map<string, CallValue> | null = null
 ): { dr: ValueBlock; callFrame: Frame } {
   /*
    * A value-block node is canonical and can be passed through several loop
@@ -12177,7 +12185,9 @@ function referenceCallFrame(
   const callFrame: Frame = {
     parent: def, // definition scope has priority
     mixins: own,
-    declIndex: collectDeclIndex(body), cells: null, reassign: null,
+
+    // A `using (…)` content block seeds its params here (`@content(args)`).
+    declIndex: collectDeclIndex(body, bindings), cells: cellsForParams(bindings), reassign: null,
     fallback: frame, // caller scope is the fallback
     statements: body,
     sourceOwner
@@ -12241,11 +12251,11 @@ function expandReferenceCall(
       sharedLeaves
     );
   }
-  if (step.args.length !== 0) {
-    throw new Error('Reference call arguments require a callable mixin target.');
-  }
   const dr = resolveValueBlock(resolved.value, resolved.frame, e);
   if (!dr) {
+    if (step.args.length !== 0) {
+      throw new Error('Reference call arguments require a callable mixin target.');
+    }
     return;
   }
 
@@ -12257,43 +12267,91 @@ function expandReferenceCall(
    * either way, so consult the render-local closure fact when it exists.
    */
   const binding = detachedBinding(resolved.frame ?? frame, dr);
-  const r = referenceCallFrame(
-    dr,
-    frame,
-    binding?.lexicalFrame ?? resolved.frame,
-    binding?.sourceOwner ?? resolved.sourceOwner
-  );
-  const drBody = valueBlockBody(r.dr);
-  const executeBody = () => mapMaybe(
-    prepareBodyPlugins(drBody, r.callFrame, e),
-    () => sharedLeaves === undefined
-      ? walkBody(
-          drBody,
-          composed,
-          ancestor,
-          r.callFrame,
-          group,
-          flush,
-          partition,
-          e,
-          imp,
-          forceLeading,
-          propertyScope,
-          applyExpansion
-        )
-      : emitNestedBody(
-          drBody,
-          r.callFrame,
-          e,
-          undefined,
-          imp,
-          source,
-          null,
-          sharedLeaves,
-          applyExpansion
-        )
-  );
-  return withSourceOwner(e, r.callFrame.sourceOwner, executeBody);
+  const definitionFrame = binding?.lexicalFrame ?? resolved.frame;
+  const splice = (bindings: Map<string, CallValue> | null): MaybePromise<void> => {
+    const r = referenceCallFrame(
+      dr,
+      frame,
+      definitionFrame,
+      binding?.sourceOwner ?? resolved.sourceOwner,
+      bindings
+    );
+    const drBody = valueBlockBody(r.dr);
+    const executeBody = () => mapMaybe(
+      prepareBodyPlugins(drBody, r.callFrame, e),
+      () => sharedLeaves === undefined
+        ? walkBody(
+            drBody,
+            composed,
+            ancestor,
+            r.callFrame,
+            group,
+            flush,
+            partition,
+            e,
+            imp,
+            forceLeading,
+            propertyScope,
+            applyExpansion
+          )
+        : emitNestedBody(
+            drBody,
+            r.callFrame,
+            e,
+            undefined,
+            imp,
+            source,
+            null,
+            sharedLeaves,
+            applyExpansion
+          )
+    );
+    return withSourceOwner(e, r.callFrame.sourceOwner, executeBody);
+  };
+
+  /*
+   * `@content(args)` (Sass) / `$block(args)` — a `using (…)` content block spliced
+   * with its args bound to those params. Args resolve in the CALLER frame; param
+   * defaults resolve in the block's DEFINITION frame — the same `bindArgs` contract
+   * a mixin call and a value lambda use. A bare `@content` (no args) splices with
+   * no extra bindings.
+   */
+  if (step.args.length === 0) {
+    return splice(null);
+  }
+  return mapMaybe(bindContentArgs(dr, step.args, frame, definitionFrame, e), (bindings) => {
+    if (bindings === null) {
+      throw ERR.arity({
+        node: dr,
+        meta: { callee: 'content', expectedCount: dr.params?.length ?? 0, gotCount: step.args.length }
+      });
+    }
+    return splice(bindings);
+  });
+}
+
+/** Bind a `@content(args)` call's args to a content block's `using (…)` params
+ *  (see {@link expandReferenceCall}). Same `bindArgs` contract as a value lambda:
+ *  args resolve in the caller frame, defaults in the block's definition frame. */
+function bindContentArgs(
+  block: ValueBlock,
+  args: CallArg[],
+  callerFrame: Frame,
+  defFrame: Frame | null,
+  e: EvalCtx
+): MaybePromise<Map<string, CallValue> | null> {
+  const syntheticDef: MixinDefinition = {
+    type: 'MixinDefinition', name: '', params: block.params ?? [], rules: valueBlockBody(block),
+    _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN
+  };
+  const call: MixinCall = { type: 'MixinCall', name: '', args, path: [], important: false, content: null, _s: NO_SPAN, _e: NO_SPAN };
+  const resolveCaller = makeResolver(callerFrame, e);
+  const resolveDefault: DefaultResolver = (v, boundSoFar) => {
+    const overlay: Frame = { parent: defFrame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
+    return mapMaybe(evalBytes(v, overlay, e), any);
+  };
+  const prepared = substituteClosureVarArgs(call, callerFrame, e, false);
+  return bindArgs(syntheticDef, prepared, resolveCaller, resolveDefault);
 }
 
 /* --------------------------------------------------------------- [each/For] */
@@ -12922,7 +12980,7 @@ function dispatch(
    * call site (Less variadic forwarding) BEFORE binding, so overloads select on the
    * splatted arity.
   */
-  return mapMaybe(expandSpreadArgs(call, resolveCaller, frame, e), (expanded) => {
+  return mapMaybe(expandSpreadArgs(dropEmptyVariadicArgs(call, frame), resolveCaller, frame, e), (expanded) => {
     const valueSpread = isValueBearingSpreadCall(expanded);
     const spreadValueBindings = valueSpread ? expanded.valueBindings : undefined;
     const call1 = valueSpread ? expanded.call : expanded;
@@ -13015,6 +13073,43 @@ type ExpandedSpreadArgs = MixinCall | ValueBearingSpreadCall;
 
 function isValueBearingSpreadCall(value: ExpandedSpreadArgs): value is ValueBearingSpreadCall {
   return !('type' in value);
+}
+
+/**
+ * [#4352] Forwarding an EMPTY variadic (`.forward(@a, @rest...) { .target(@a, @rest); }`
+ * called as `.forward(1)`) must not fill the next param slot: the empty `@rest`
+ * passes NO argument, so a defaulted param keeps its default (`b: fallback`),
+ * rather than binding empty bytes. An empty variadic is bound as an empty slot
+ * array; a filled one keeps its members, so only the zero-length case is dropped.
+ * Scoped to unnamed, non-spread var reads — a named or explicit-value arg is a
+ * deliberate pass, and a spread is already handled by `expandSpreadArgs`.
+ *
+ * ponytail: a bare-`@var` positional arg is resolved here and again in
+ * `substituteClosureVarArgs`; fold this into that pass if mixin dispatch shows up
+ * in a perf profile. The lookup is gated to bare-var positional args, so a
+ * literal-argument call pays nothing.
+ */
+function dropEmptyVariadicArgs(call: MixinCall, frame: Frame): MixinCall {
+  let kept: CallArg[] | undefined;
+  for (let index = 0; index < call.args.length; index++) {
+    const a = call.args[index]!;
+    const v = a.value;
+
+    // An empty variadic binds as a zero-length slot array (see `finishRest`).
+    const bound = a.name === undefined && a.spread !== true
+      && !isValueSlotArray(v) && !isMixinCallValue(v)
+      && v.type === 'Lookup' && v.kind === 'var' && typeof v.name === 'string'
+      ? lookupVarIn(frame, v.name)?.value
+      : undefined;
+    if (Array.isArray(bound) && bound.length === 0) {
+      kept ??= call.args.slice(0, index);
+    } else {
+      kept?.push(a);
+    }
+  }
+  return kept === undefined
+    ? call
+    : { type: 'MixinCall', name: call.name, args: kept, path: call.path, important: call.important, content: call.content, _s: call._s, _e: call._e };
 }
 
 function expandSpreadArgs(
