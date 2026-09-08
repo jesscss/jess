@@ -247,9 +247,7 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'helpers/_vr.scss',
   'mixins/_backdrop.scss',
   'mixins/_banner.scss',
-  // mixins/_border-radius.scss declares `$return:` — a now-reserved `$`-name
-  // (control-flow keyword), so it is a deliberate parse error and no longer in
-  // the passing set. See reserved-var-names.test.ts.
+  'mixins/_border-radius.scss',
   'mixins/_breakpoints.scss',
   'mixins/_box-shadow.scss',
   'mixins/_caret.scss',

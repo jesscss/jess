@@ -4364,13 +4364,16 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * the `@content` protocol name, so a user may not DECLARE them as variables
    * (`$content:`, `$for:`, … are parse errors). This is what lets `content` etc.
    * be true keywords rather than user variables — the fact R16's block-less
-   * `@content` behavior relies on. Names are case-SENSITIVE (Jess `$` variables
-   * are), so only these exact lowercase spellings collide; `$Content`/`$contents`
-   * remain ordinary names. The boundary matches `containerNameReserved` above so
-   * `keywords` rejects only a whole-name match, never a prefix.
+   * `@content` behavior relies on. `return` is deliberately NOT reserved: Jess's
+   * return mechanism is `result:` (a bare declaration, no sigil), so `$return`
+   * stays a legal user variable (the standard Sass return-accumulator). Names are
+   * case-SENSITIVE (Jess `$` variables are), so only these exact lowercase
+   * spellings collide; `$Content`/`$contents` remain ordinary names. The boundary
+   * matches `containerNameReserved` above so `keywords` rejects only a whole-name
+   * match, never a prefix.
    */
   const reservedVarName = keywords(
-    ['content', 'for', 'if', 'else', 'each', 'while', 'return'],
+    ['content', 'for', 'if', 'else', 'each', 'while'],
     { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
   );
 

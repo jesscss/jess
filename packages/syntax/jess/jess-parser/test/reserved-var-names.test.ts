@@ -17,7 +17,7 @@ import { parse } from '@jesscss/jess-parser';
  * Replicated as the scss-parser sibling (`reserved-var-names.test.ts`); both `$`
  * dialects enforce the same reserved set.
  */
-const RESERVED = ['content', 'for', 'if', 'else', 'each', 'while', 'return'];
+const RESERVED = ['content', 'for', 'if', 'else', 'each', 'while'];
 
 describe('reserved $-names (jess)', () => {
   it('rejects every reserved name as a `:` declaration', () => {
@@ -39,6 +39,9 @@ describe('reserved $-names (jess)', () => {
     expect(() => parse('a { $contents: red; }')).not.toThrow();
     expect(() => parse('a { $Content: red; }')).not.toThrow();
     expect(() => parse('a { $forEach: red; }')).not.toThrow();
+    // `return` is NOT reserved: Jess returns via `result:`, not `@return`, so
+    // `$return` stays a legal user variable (the Sass return-accumulator).
+    expect(() => parse('a { $return: red; }')).not.toThrow();
   });
 
   it('leaves reserved words untouched outside declaration position', () => {

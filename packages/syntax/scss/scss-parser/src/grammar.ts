@@ -460,11 +460,14 @@ const scssFactory = (g: ScssInputRules) => {
    * than user variables. The guard is applied ONLY at the declaration head
    * below — `scssVarSigilName` stays shared, so a `$content` reference, a
    * `$content` mixin/each binding, and a `module.$content` access are all
-   * unaffected. Names are case-SENSITIVE (SCSS `$` variables are); the boundary
-   * matches `scssOwnAtKeyword` so only a whole-name match is reserved.
+   * unaffected. `return` is deliberately NOT reserved — Jess's return mechanism
+   * is `result:` (a bare declaration), so `$return` stays a legal user variable
+   * (the standard Sass return-accumulator that Bootstrap/Foundation use). Names
+   * are case-SENSITIVE (SCSS `$` variables are); the boundary matches
+   * `scssOwnAtKeyword` so only a whole-name match is reserved.
    */
   const reservedVarName = keywords(
-    ['content', 'for', 'if', 'else', 'each', 'while', 'return'],
+    ['content', 'for', 'if', 'else', 'each', 'while'],
     { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
   );
   const reservedVarHead = noTrivia(sequence(

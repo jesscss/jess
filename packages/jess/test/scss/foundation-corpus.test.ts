@@ -473,9 +473,7 @@ const PARSE_PASS_BASELINE: readonly string[] = [
   'scss/util/_color.scss',
   'scss/util/_direction.scss',
   'scss/util/_flex.scss',
-  // scss/util/_selector.scss declares `$return:` — a now-reserved `$`-name
-  // (control-flow keyword), so it is a deliberate parse error and no longer in
-  // the passing set. See reserved-var-names.test.ts.
+  'scss/util/_selector.scss',
   'scss/util/_typography.scss',
   'scss/util/_unit.scss',
   'scss/util/_util.scss',
