@@ -2204,18 +2204,7 @@ function parentExcludes(frame: Frame | null, rules: Statement[]): boolean {
  * Reads WITHOUT an `EvalCtx` (the `lookupVar`/path/chain walks) keep traversing, so
  * `parentExcludes`, member access, and namespace descent are untouched. It is one
  * boolean sub-expression — no cost on the default path beyond that field read.
- *
- * EXEMPTION: the reserved SCSS `@content` block binding (`CONTENT_PROTOCOL_NAME`).
- * `bindArgs` seeds it (`mixin-dispatch.ts` — `bound.set('content', call.content)`)
- * as an ordinary live cell, but it is an EXPLICIT mixin-call-protocol dependency,
- * deliberately provided at the `@include` site — exactly like `@content` ARGS
- * (R15), which resolve in the caller frame. So a block-less `@include` whose body
- * reaches `@content` must still read the enclosing frame's protocol binding through
- * the caller `fallback`. Only the reserved NAME is exempt; any OTHER free var a
- * content block reads stays hermetic. Scoped to the live store because the binding
- * is live-only.
  */
-const CONTENT_PROTOCOL_NAME = 'content';
 
 /**
  * The nearest last-wins binding for `name` (top of the nearest non-empty stack).
@@ -2234,7 +2223,7 @@ function lookupLiveCell(frame: Frame | null, name: string, e?: EvalCtx): { value
         return { value: hit.value, frame: hit.valueFrame ?? f };
       }
     }
-    if (f.fallback && !fb && (e === undefined || e.allowCallerScope || f.callerFallback !== true || name === CONTENT_PROTOCOL_NAME)) {
+    if (f.fallback && !fb && (e === undefined || e.allowCallerScope || f.callerFallback !== true)) {
       fb = f.fallback;
     }
   }
@@ -2252,7 +2241,7 @@ function hasExcludedLiveCell(frame: Frame | null, name: string, e: EvalCtx): boo
         return true;
       }
     }
-    if (f.fallback && !fb && (e === undefined || e.allowCallerScope || f.callerFallback !== true || name === CONTENT_PROTOCOL_NAME)) {
+    if (f.fallback && !fb && (e === undefined || e.allowCallerScope || f.callerFallback !== true)) {
       fb = f.fallback;
     }
   }
@@ -13234,7 +13223,14 @@ function expandReferenceCall(
   }
   const resolved = resolveReferenceResult(call, frame, e);
   if (!resolved) {
-    if (call.base.type === 'Lookup' && call.base.kind === 'var') {
+    /*
+     * [content] `@content` / `$content()` with no block bound to THIS mixin's own
+     * activation splices EMPTY (dart-sass): the block binds only when the mixin was
+     * `@include`d with one (`mixin-dispatch.ts` — `bound.set('content', …)` on its
+     * own frame), so an unresolved `content` means "no block here", not an error and
+     * not a cross-frame read. Every OTHER unresolved reference is still a hard miss.
+     */
+    if (call.base.type === 'Lookup' && call.base.kind === 'var' && call.base.name !== 'content') {
       unresolvedSymbol(call, `@${call.base.name}`, e);
     }
     return;
