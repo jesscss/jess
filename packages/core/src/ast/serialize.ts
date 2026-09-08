@@ -2357,14 +2357,22 @@ function hasExcludedScopedBinding(frame: Frame | null, name: string, e: EvalCtx)
 
 /** {@link lookupVar} keeping the OWNING frame, for chain walks that must keep
  *  resolving in the scope each link came from rather than the scope they started in. */
-function lookupVarIn(frame: Frame | null, name: string): { value: Binding; frame: Frame } | undefined {
-  return lookupScopedBinding(frame, name)
-    ?? lookupLiveCell(frame, name)
-    ?? lookupLeakedBinding(frame, name);
+/*
+ * [R16] Pass `e` ONLY when this resolves a BODY's free reference (a member-access
+ * base `@p[k]`, a chain-follow `@a: @b`, an `isdefined`/`isruleset` probe): it
+ * threads the hermetic caller-read gate into the three lookup fns, so a
+ * `callerFallback` frame's `fallback` is skipped unless `allowCallerScope`. Leave
+ * `e` OFF for shape/candidate/arg probes (empty-variadic drop, closure-arg
+ * substitution) where the caller fallback IS the intended scope (R15).
+ */
+function lookupVarIn(frame: Frame | null, name: string, e?: EvalCtx): { value: Binding; frame: Frame } | undefined {
+  return lookupScopedBinding(frame, name, e)
+    ?? lookupLiveCell(frame, name, e)
+    ?? lookupLeakedBinding(frame, name, e);
 }
 
-function lookupVar(frame: Frame | null, name: string): Binding | undefined {
-  return lookupVarIn(frame, name)?.value;
+function lookupVar(frame: Frame | null, name: string, e?: EvalCtx): Binding | undefined {
+  return lookupVarIn(frame, name, e)?.value;
 }
 
 /**
@@ -2700,7 +2708,7 @@ function resolvePropRef(
         }
       }
     }
-    if (f.fallback && !fb) {
+    if (f.fallback && !fb && (e.allowCallerScope || f.callerFallback !== true)) {
       fb = f.fallback;
     }
   }
@@ -2722,7 +2730,7 @@ function hasExcludedPropRef(frame: Frame | null, name: string, e: EvalCtx): bool
         }
       }
     }
-    if (f.fallback && !fb) {
+    if (f.fallback && !fb && (e.allowCallerScope || f.callerFallback !== true)) {
       fb = f.fallback;
     }
   }
@@ -4789,7 +4797,7 @@ function resolveBaseDeclMap(
    * `each(.mixin(), …)` iterable uses — `forItemsFromMixinCall`).
    */
   if (base.type === 'Lookup' && base.kind === 'var' && frame) {
-    const bound = lookupVar(frame, literalName(base));
+    const bound = lookupVar(frame, literalName(base), e);
     if (bound && isMixinCallValue(bound)) {
       return declMapFromMixinCall(bound, frame, e);
     }
@@ -5241,7 +5249,7 @@ function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybeP
  * is unbound. Used by the detached-ruleset introspection functions, which must
  * inspect the BINDING (a value-block node) rather than materialize it.
  */
-function resolveBindingNode(node: Binding, frame: Frame | null): Binding | undefined {
+function resolveBindingNode(node: Binding, frame: Frame | null, e?: EvalCtx): Binding | undefined {
   let cur: Binding | undefined = node;
   const seen = new Set<Binding>();
   while (cur !== undefined && !isValueSlotArray(cur) && cur.type === 'Lookup' && cur.kind === 'var') {
@@ -5249,7 +5257,7 @@ function resolveBindingNode(node: Binding, frame: Frame | null): Binding | undef
       return undefined;
     } // cyclic
     seen.add(cur);
-    cur = lookupVar(frame, literalName(cur));
+    cur = lookupVar(frame, literalName(cur), e);
   }
   return cur;
 }
@@ -5261,7 +5269,7 @@ function resolveBindingNode(node: Binding, frame: Frame | null): Binding | undef
  * than throw `@x is undefined`). Returns the `true`/`false` literal, or `undefined`
  * when `node` is not one of these calls (fall through to normal dispatch).
  */
-function evalIntrospection(node: FunctionCall, frame: Frame | null): EvalValue | undefined {
+function evalIntrospection(node: FunctionCall, frame: Frame | null, e: EvalCtx): EvalValue | undefined {
   if (node.args.length !== 1) {
     return undefined;
   }
@@ -5272,12 +5280,12 @@ function evalIntrospection(node: FunctionCall, frame: Frame | null): EvalValue |
      * argument (a literal / call) is inherently defined.
      */
     const bound = !isValueSlotArray(arg) && arg.type === 'Lookup' && arg.kind === 'var'
-      ? resolveBindingNode(arg, frame)
+      ? resolveBindingNode(arg, frame, e)
       : arg;
     return literal(bound !== undefined ? 'true' : 'false');
   }
   if (node.name === 'isruleset') {
-    const bound = resolveBindingNode(arg, frame);
+    const bound = resolveBindingNode(arg, frame, e);
     return literal(bound !== undefined && !isValueSlotArray(bound) && isValueBlock(bound)
       ? 'true'
       : 'false');
@@ -6256,7 +6264,7 @@ function evalCall(
      */
     return makeBool(e.defaultFn());
   }
-  const intro = evalIntrospection(node, frame);
+  const intro = evalIntrospection(node, frame, e);
   if (intro !== undefined) {
     return intro;
   }
@@ -13114,7 +13122,7 @@ function resolveValueBlock(node: Binding, frame: Frame | null, e: EvalCtx): Valu
       return cur;
     }
     if (cur.type === 'Lookup' && cur.kind === 'var') {
-      const hit = lookupVarIn(cursor, literalName(cur));
+      const hit = lookupVarIn(cursor, literalName(cur), e);
       cur = hit?.value;
       cursor = hit?.frame ?? cursor;
       continue;
@@ -13440,7 +13448,7 @@ function resolveForRuleset(
     return { rules: valueBlockBody(node), frame: binding?.lexicalFrame ?? frame, detached: binding };
   }
   if (node.type === 'Lookup' && node.kind === 'var') {
-    const bound = lookupVar(frame, literalName(node));
+    const bound = lookupVar(frame, literalName(node), e);
     if (!bound) {
       return null;
     }
