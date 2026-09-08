@@ -15852,6 +15852,16 @@ function emitCssImportAtRule(node: StyleImport, frame: Frame, e: Emit): void {
   }
 }
 
+/*
+ * ponytail: TODO(jesscss/jess#182) — this is a stub. `@-use`/`@-from` are
+ * compile-time JS-module directives (the JS half of the `@use` target split;
+ * styles go through `@compose`/`StyleImport`, which loads via importDocument).
+ * They must be CONSUMED at eval — resolve the module, bind its exports, emit
+ * nothing — not re-serialized into output CSS as this does. No loader/binder
+ * for ModuleImport exists yet (never ported into AST-v2). The JS-module graph
+ * is partially implemented in the `@plugin` less-compat plugin and could share
+ * resolution (Deno). See #182 before wiring the real load/bind.
+ */
 function emitModuleImport(node: ModuleImport, frame: Frame, e: Emit): void {
   const start = e.off;
   if (e.depth > 0) {
