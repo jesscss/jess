@@ -16,13 +16,13 @@ const colorCompiler = new Compiler({
   compile: {
     plugins: [
       lessPlugin({
-        mathMode: 0
+        mathMode: 'always'
       })
     ]
   }
 });
 
-describe.todo('Color Functions', () => {
+describe('Color Functions', () => {
   const colorFiles = glob.sync(path.join(testData, 'tests-unit/color-functions/*.less'));
 
   colorFiles
