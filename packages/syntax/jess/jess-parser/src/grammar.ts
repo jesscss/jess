@@ -4359,39 +4359,74 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * declare (always local). `?:` (if-absent) is its own leading arm. Every operator
    * exists for both `$name` (live) and `$^name` (scoped).
    */
-  const assignHead = choice(
-    noTrivia(sequence(
-      literal('$'),
-      literal('^'),
-      dollarName,
-      literal('?:')
-    )),
-    noTrivia(sequence(
-      literal('$'),
-      dollarName,
-      literal('?:')
-    )),
-    sequence(
+  /*
+   * A small set of `$`-names is RESERVED: they are the control-flow keywords and
+   * the `@content` protocol name, so a user may not DECLARE them as variables
+   * (`$content:`, `$for:`, … are parse errors). This is what lets `content` etc.
+   * be true keywords rather than user variables — the fact R16's block-less
+   * `@content` behavior relies on. `return` is deliberately NOT reserved: Jess's
+   * return mechanism is `result:` (a bare declaration, no sigil), so `$return`
+   * stays a legal user variable (the standard Sass return-accumulator). Names are
+   * case-SENSITIVE (Jess `$` variables are), so only these exact lowercase
+   * spellings collide; `$Content`/`$contents` remain ordinary names. The boundary
+   * matches `containerNameReserved` above so `keywords` rejects only a whole-name
+   * match, never a prefix.
+   */
+  const reservedVarName = keywords(
+    ['content', 'for', 'if', 'else', 'each', 'while'],
+    { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
+  );
+
+  /*
+   * The reserved guard sits at the NAME position (after the `$` sigil and the
+   * optional `^` scope marker) so it fires for both `$name` and `$^name` heads
+   * and for every assignment operator — the guard is `not(...)`, a zero-width
+   * lookahead, so it emits no child and `reduceVarDeclaration`'s positions are
+   * unchanged. A reserved word elsewhere (a `$content()` call, a `@content`
+   * invocation, a loop/guard head) never reaches this head, so it is unaffected.
+   */
+  const reservedVarHead = noTrivia(sequence(
+    literal('$'),
+    optional(literal('^')),
+    reservedVarName
+  ));
+
+  const assignHead = sequence(
+    not(reservedVarHead),
+    choice(
       noTrivia(sequence(
         literal('$'),
         literal('^'),
-        dollarName
+        dollarName,
+        literal('?:')
       )),
-      choice(
-        literal('::='),
-        literal(':='),
-        literal(':')
-      )
-    ),
-    sequence(
       noTrivia(sequence(
         literal('$'),
-        dollarName
+        dollarName,
+        literal('?:')
       )),
-      choice(
-        literal('::='),
-        literal(':='),
-        literal(':')
+      sequence(
+        noTrivia(sequence(
+          literal('$'),
+          literal('^'),
+          dollarName
+        )),
+        choice(
+          literal('::='),
+          literal(':='),
+          literal(':')
+        )
+      ),
+      sequence(
+        noTrivia(sequence(
+          literal('$'),
+          dollarName
+        )),
+        choice(
+          literal('::='),
+          literal(':='),
+          literal(':')
+        )
       )
     )
   );
