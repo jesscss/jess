@@ -60,8 +60,11 @@ describe('V19 one-evaluator projection ratchet', () => {
   });
 
   it('does not grow the serializer helper or collection-construction surface', () => {
-    expect(occurrences(/^function |^async function /gmu)).toBe(430);
-    expect(occurrences(/new Map/gu)).toBe(58);
+    // +1 function (`memoPureDeclMap`) and +1 `new Map` (the lazy per-frame lookup memo,
+    // MIXIN-SCOPING-AND-LOOKUP-MEMO §4); `new WeakMap` stays 4 — the memo is a plain
+    // frame-owned Map, not a WeakMap, by design.
+    expect(occurrences(/^function |^async function /gmu)).toBe(431);
+    expect(occurrences(/new Map/gu)).toBe(59);
     expect(occurrences(/new Set/gu)).toBe(39);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

@@ -677,6 +677,21 @@ export interface Frame {
   propertyTimeline?: PropertyDeclarationFact[] | null;
 
   /*
+   * [lookup-memo] Render-scoped memo of member-lookup `DeclMap`s built for a PURE
+   * base resolved in THIS frame, keyed by the base value node identity. A repeated
+   * `BASE[member]` on the same binding rebuilt the index (or re-dispatched) per
+   * access; caching it on the resolving frame makes repeated reads O(1). Plain
+   * `Map` (not a WeakMap): the frame owns the lifetime and disposes it with the
+   * render; a node-keyed WeakMap would pin DeclMaps for the AST's whole cross-render
+   * lifetime. Assigned lazily only on a frame that performs a lookup, and populated
+   * ONLY for the pure builders (collection / namespace-selector / detached-ruleset
+   * body) — never a mixin-call dispatch (which mutates the caller frame) nor while an
+   * alias cycle is being resolved (`e.excluded` non-empty). See
+   * `docs/design/MIXIN-SCOPING-AND-LOOKUP-MEMO.md` §4.
+   */
+  declMapMemo?: Map<object, DeclMap> | null;
+
+  /*
    * [plugin/P1] functions registered by a `@plugin` (or, later, `@use`) directive
    * textually inside THIS frame's block, keyed lower-case like the global registry.
    * `null`/absent on EVERY frame unless this exact block loaded a scoped function
@@ -4640,6 +4655,37 @@ function recordMapPropertyTimeline(statements: readonly Statement[], frame: Fram
 }
 
 /** Resolve a map/namespace accessor's base to a declaration map + its frame. */
+/*
+ * [lookup-memo] Negative control: `JESS_NO_DECLMAP_MEMO=1` disables the member-lookup
+ * DeclMap memo so a measurement can reproduce the un-memoized rebuild/dispatch counts.
+ */
+const DECLMAP_MEMO_ENABLED = typeof process === 'undefined' || process.env?.JESS_NO_DECLMAP_MEMO !== '1';
+
+/**
+ * [lookup-memo] Cache a PURE base's DeclMap on the resolving frame, keyed by the base
+ * node identity, so a repeated `BASE[member]` on the same binding does not rebuild the
+ * index per access. Applied ONLY to the pure builders (collection / namespace-selector /
+ * detached-ruleset body) — never a mixin-call dispatch, which mutates the caller frame.
+ * Stores only when no alias cycle is being resolved (`e.excluded` empty), so a computed
+ * key that referenced an actively-excluded alias is never cached, and never caches a
+ * `null` (a not-yet-published base may resolve later). See
+ * `docs/design/MIXIN-SCOPING-AND-LOOKUP-MEMO.md` §4.
+ */
+function memoPureDeclMap(base: object, frame: Frame | null, e: EvalCtx, build: () => DeclMap | null): DeclMap | null {
+  if (!DECLMAP_MEMO_ENABLED || !frame) {
+    return build();
+  }
+  const hit = frame.declMapMemo?.get(base);
+  if (hit) {
+    return hit;
+  }
+  const built = build();
+  if (built !== null && e.excluded.size === 0) {
+    (frame.declMapMemo ??= new Map()).set(base, built);
+  }
+  return built;
+}
+
 function resolveBaseDeclMap(
   base: Binding,
   frame: Frame | null,
@@ -4653,7 +4699,7 @@ function resolveBaseDeclMap(
     return resolved === null ? null : resolveBaseDeclMap(resolved.value, resolved.frame, e);
   }
   if (base.type === 'Collection') {
-    return collectionToDeclMap(base, frame, e);
+    return memoPureDeclMap(base, frame, e, () => collectionToDeclMap(base, frame, e));
   }
 
   /*
@@ -4671,19 +4717,21 @@ function resolveBaseDeclMap(
    * The base is an opaque selector fragment (`Any`) or a bare ident (`Keyword`).
    */
   if (base.type === 'Any' || base.type === 'Keyword') {
-    const sel = base.src;
-    for (let f = frame; f; f = f.parent) {
-      const rules = f.rulesets !== undefined || f.statements ? frameRulesets(f)?.get(sel) : undefined;
-      if (rules?.length) {
-        const bodyFrame: Frame = {
-          parent: f,
-          mixins: null,
-          declIndex: collectDeclIndex(rules.flatMap(r => r.rules)), cells: null, reassign: null
-        };
-        return evalToDeclMap(rules.flatMap(r => r.rules), bodyFrame, e);
+    return memoPureDeclMap(base, frame, e, () => {
+      const sel = base.src;
+      for (let f = frame; f; f = f.parent) {
+        const rules = f.rulesets !== undefined || f.statements ? frameRulesets(f)?.get(sel) : undefined;
+        if (rules?.length) {
+          const bodyFrame: Frame = {
+            parent: f,
+            mixins: null,
+            declIndex: collectDeclIndex(rules.flatMap(r => r.rules)), cells: null, reassign: null
+          };
+          return evalToDeclMap(rules.flatMap(r => r.rules), bodyFrame, e);
+        }
       }
-    }
-    return null;
+      return null;
+    });
   }
 
   /*
@@ -4695,12 +4743,14 @@ function resolveBaseDeclMap(
    */
   const rs = resolveForRuleset(base, frame, e);
   if (rs) {
-    const bodyFrame: Frame = {
-      parent: rs.frame,
-      mixins: collectMixins(rs.rules),
-      declIndex: collectDeclIndex(rs.rules), cells: null, reassign: null
-    };
-    return evalToDeclMap(rs.rules, bodyFrame, e);
+    return memoPureDeclMap(base, frame, e, () => {
+      const bodyFrame: Frame = {
+        parent: rs.frame,
+        mixins: collectMixins(rs.rules),
+        declIndex: collectDeclIndex(rs.rules), cells: null, reassign: null
+      };
+      return evalToDeclMap(rs.rules, bodyFrame, e);
+    });
   }
 
   /*
