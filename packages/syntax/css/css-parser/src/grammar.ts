@@ -2166,6 +2166,15 @@ const cssFactory = (g: GrammarSelf) => {
       'var(',
       VarFunction
     ),
+
+    /*
+     * A trailing escaped paren is a value ident, not a function opener: `\(` and
+     * `a\(` are escaped code points (css-syntax-3 4.3.7). This more-specific
+     * suffix arm wins over the generic `(` arm, which cannot tell an escaped
+     * paren from a real one. (`\\(` — an escaped backslash then a real paren —
+     * is not valid CSS, so the parity blind spot has no reachable input.)
+     */
+    when(endsWith('\\('), IdentBlockOrKeyword),
     when(
       endsWith('('),
       GenericFunction
@@ -2224,6 +2233,12 @@ const cssFactory = (g: GrammarSelf) => {
       'var(',
       VarFunction
     ),
+
+    /*
+     * Escaped trailing paren -> a value keyword, not a call (see IdentOrFunction).
+     * Both css ladders carry this arm so the typed and non-typed routes agree.
+     */
+    when(endsWith('\\('), g.RoutedKeyword),
     when(
       endsWith('('),
       TypedGenericFunction

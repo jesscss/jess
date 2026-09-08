@@ -1629,6 +1629,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     identOrFunction,
     caseOf('url(', choice(RoutedVariableUrl, RoutedPlainUrl)),
     caseOf('calc(', g.CalcFunction),
+    /*
+     * A trailing escaped paren is a value ident, not a function opener: `\(` and
+     * `a\(` are escaped code points (css-syntax-3 4.3.7). This more-specific
+     * suffix arm wins over the generic `(` arm below, which cannot tell an
+     * escaped paren from a real one. (`\\(` — an escaped backslash then a real
+     * paren, i.e. a function named `\` — is not valid CSS, so the suffix test's
+     * parity blind spot has no reachable input.)
+     */
+    when(endsWith('\\('), Identifier),
     when(endsWith('('), g.GenericFunction),
     otherwise(Identifier)
   );

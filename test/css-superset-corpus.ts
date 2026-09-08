@@ -625,6 +625,21 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
     source: 'a { x: U+4?? }'
   },
   {
+    // css-syntax-3 4.3.7: a value identifier consumes CSS escapes, so an escaped
+    // delimiter is part of the ident, not a token boundary (DESIGN-DECISIONS G36).
+    id: 'escaped delimiter in a value identifier',
+    group: 'value',
+    source: 'a { b: \\;a } c { d: e\\;f }'
+  },
+  {
+    // A trailing escaped paren is a value ident, not a function opener — the
+    // generic-function dispatch takes the more-specific `endsWith('\\(')` arm
+    // first (DESIGN-DECISIONS G36).
+    id: 'escaped paren in a value identifier',
+    group: 'value',
+    source: 'a { b: \\( } c { d: e\\( }'
+  },
+  {
     id: 'empty custom property',
     group: 'value',
     source: 'a { --x:; }'
