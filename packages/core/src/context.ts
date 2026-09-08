@@ -297,6 +297,7 @@ export function resolveOptions(
     mathMode: compile?.mathMode ?? tree?.mathMode ?? OPTION_DEFAULTS.mathMode,
     unitMode: compile?.unitMode ?? tree?.unitMode ?? OPTION_DEFAULTS.unitMode,
     functionMode: compile?.functionMode ?? tree?.functionMode ?? OPTION_DEFAULTS.functionMode,
+
     /* `leakyScope` is the deprecated alias of `allowLeakyScope`: the new name wins
      * within a source, else the alias, before the next precedence tier. */
     allowLeakyScope: compile?.allowLeakyScope ?? compile?.leakyScope

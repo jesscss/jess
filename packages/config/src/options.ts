@@ -10,6 +10,7 @@ export interface StrictPresetOptions {
   strict?: boolean;
   unitMode?: 'loose' | 'preserve' | 'strict';
   allowLeakyScope?: boolean;
+
   /** @deprecated Use `allowLeakyScope`. */
   leakyScope?: boolean;
   allowCallerScope?: boolean;
@@ -31,6 +32,7 @@ export function applyStrictPreset<T extends StrictPresetOptions>(opts: T): T {
   }
   const filled = { ...opts };
   filled.unitMode ??= 'strict';
+
   /* Fill the canonical name; a deprecated `leakyScope` still resolves downstream. */
   filled.allowLeakyScope ??= false;
   filled.allowCallerScope ??= false;

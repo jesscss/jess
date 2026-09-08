@@ -360,6 +360,7 @@ export interface InputOptions extends FileMatchOptions {
   rewriteUrls?: boolean | 'all' | 'local' | 'off';
   rootpath?: string;
   allowLeakyScope?: boolean;
+
   /** @deprecated Use `allowLeakyScope`. Alias: used when `allowLeakyScope` is unset. */
   leakyScope?: boolean;
   allowCallerScope?: boolean;
@@ -490,6 +491,7 @@ export interface StylesConfig {
 
     /** See {@link LessOptions.allowLeakyScope}. */
     allowLeakyScope?: boolean;
+
     /** @deprecated See {@link LessOptions.leakyScope}. */
     leakyScope?: boolean;
 

@@ -7,9 +7,8 @@ import {
   type ISafeParseResult,
   type PluginInterface,
   type SafeParseOptions,
-  buildEvaluator
-} from '@jesscss/core';
-import { logger, type PluginHost } from '@jesscss/core';
+  buildEvaluator,
+  logger, type PluginHost } from '@jesscss/core';
 import { makeLessRegistry } from '@jesscss/fns/less/registry';
 import { LessApiBridge, type NativeLessPlugin } from '@jesscss/plugin-less-compat';
 import type { MathMode, UnitMode, LessOptions } from 'styles-config';
