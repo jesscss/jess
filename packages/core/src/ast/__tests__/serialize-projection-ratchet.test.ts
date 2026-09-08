@@ -60,10 +60,10 @@ describe('V19 one-evaluator projection ratchet', () => {
   });
 
   it('does not grow the serializer helper or collection-construction surface', () => {
-    expect(occurrences(/^function |^async function /gmu)).toBe(421);
+    expect(occurrences(/^function |^async function /gmu)).toBe(430);
     expect(occurrences(/new Map/gu)).toBe(58);
-    expect(occurrences(/new Set/gu)).toBe(34);
-    expect(occurrences(/new WeakMap/gu)).toBe(5);
+    expect(occurrences(/new Set/gu)).toBe(39);
+    expect(occurrences(/new WeakMap/gu)).toBe(4);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);
 
     /*

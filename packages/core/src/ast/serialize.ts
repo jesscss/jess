@@ -142,8 +142,8 @@ import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness
 import { computeExtends, type ExtendPlacementResults, type ExtendResults } from './extend.js'; // [extend]
 import { documentHasExtend, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
 import type { PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
-import type { Branch, Level } from './extend/ir.js';
-import { mkBranch } from './extend/ir.js';
+import type { Level } from './extend/ir.js';
+import { branchFromSelector, descendantBranch, levelFromSelectorList } from './extend/ir.js';
 import { DocumentContext, documentTriviaOf, type Context } from '../context.js';
 import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
@@ -7124,6 +7124,72 @@ const rootStringsNested = (list: SelectorList, frame: Frame | null, e: EvalCtx):
 
 /* ------------------------------------------------------------- emit engine */
 
+/**
+ * [extend/dynamic] One recorded target header slot: the render-buffer chunk holding a
+ * rule's emitted selector header, plus everything needed to recompose it once the
+ * deferred extend fold knows the rule's complete extended selector. Keyed per EMISSION
+ * (`token` distinguishes loop/mixin iterations that share one canonical Ruleset node).
+ */
+interface DynExtendSlot {
+  rule: Ruleset;
+  token: object | null;
+  chunkIndex: number;
+  indent: string;
+  hoistMode: boolean;
+
+  /** The visible header branch texts actually emitted into the chunk. Serves as both
+   * the change-detection baseline and the fallback header when the re-solve leaves
+   * this rule unchanged. */
+  emitted: string[];
+
+  /** [import:reference] The rule was emitted inside a `(reference)` import: its own
+   * seed branch is HIDDEN, so if no visible extender folds in, the RESERVED block
+   * (chunks `chunkIndex`…`blockEnd`) is blanked; otherwise its header is rewritten to
+   * the visible extender branches only. */
+  hiddenRef: boolean;
+
+  /** Exclusive end of the reserved block's chunk range (for blanking a hidden-ref
+   * rule the fold leaves with no visible branch). */
+  blockEnd: number;
+
+  /** The header was emitted by the NESTED writer (`writeNestedRule`): the deferred
+   * rewrite recomposes it from the re-solved NESTED projection (own-local `nestedPlan`
+   * header), not the flat composed header. */
+  nested: boolean;
+}
+
+/** [extend/dynamic] Facts collected during the one render walk for the deferred fold. */
+interface DynamicExtendState {
+  root: Stylesheet;
+  hiddenRules: ReadonlySet<Ruleset>;
+  referenceBoundaries: ReadonlyMap<Ruleset, object>;
+
+  /** The pre-walk STATIC overlay (reference/static imported subjects) this render's
+   * deferred fold must re-include alongside the dynamic facts. */
+  baseOverlay: PlanOverlay;
+
+  /** Rules already accounted for statically (main + static imported preflight); a
+   * rule outside this set is a dynamic emission whose facts are recorded at emit. */
+  staticRules: Set<Ruleset>;
+
+  /** [extend/dynamic] Main-document `For`/`MixinDefinition` nodes that actually bear a
+   * dynamic extend in their subtree. A loop iteration allocates its per-emission
+   * placement token ONLY when its `For` is in this set — an unrelated big loop pays no
+   * dead tokens just because some other extend armed dynamic recording. */
+  dynExtendBodies: Set<For | MixinDefinition>;
+  subjects: PlanSubject[];
+  instructions: PlanInstruction[];
+  slots: DynExtendSlot[];
+  hiddenReferenceRules: Set<Ruleset> | null;
+  order: number;
+
+  /** [extend/dynamic] Side channel: the chunk index (and indent) of the header
+   * `flushBlock` most recently PUT, or -1 when it reopened a merged block / wrote no
+   * header. The rule-emitting caller reads it to register a target slot. */
+  pendingHeaderChunk: number;
+  pendingHeaderIndent: string;
+}
+
 interface Emit extends EvalCtx {
   chunks: string[];
   off: number;
@@ -7161,6 +7227,34 @@ interface Emit extends EvalCtx {
    * `:extend()` (zero-cost gate: emit is byte-identical to the no-extend path).
    */
   extends: ExtendResults | null;
+
+  /*
+   * [extend/dynamic] Walk-time extend recording for DYNAMIC placements (`each`/`$for`
+   * loop bodies and mixin-call bodies, main or imported), the deferred-rewrite path
+   * that replaces the reverted cold re-evaluation (ledger X12 / EXTEND-SEMANTICS §1a).
+   * Allocated only when the document actually has a dynamic extend surface; null (and
+   * zero-cost) otherwise. Extender facts are recorded as the ONE render walk emits each
+   * rule (its selector already composed); target headers are recorded as addressable
+   * render-buffer slots; after the walk `foldDynamicExtends` folds the extenders into
+   * the target slots. It never re-drives evaluation.
+   */
+  dynamicExtend: DynamicExtendState | null;
+
+  /*
+   * [extend/dynamic] Ruleset nodes already accounted for statically — the main
+   * document's own subjects plus the pre-walk STATIC imported preflight's subjects.
+   * A rule NOT in this set, when emitted, was reached through a dynamic expansion and
+   * has its extend facts recorded at emit time instead. Populated only when
+   * `dynamicExtend` is active.
+   */
+  importedStaticExtendRules: Set<Ruleset> | null;
+
+  /*
+   * [extend/dynamic] Set by the pre-walk static imported preflight when an imported
+   * document carries an extend inside a `$for`/`each()` or mixin-definition body — a
+   * dynamic placement the static preflight cannot see, so walk-time recording must run.
+   */
+  importedDynamicExtendPresent: boolean;
 
   /*
    * [extend] set while emitting a hoisted (flattened) nested subtree via the flat
@@ -7225,13 +7319,6 @@ interface Emit extends EvalCtx {
    */
   prepublishedImportFacts: PrepublishedImportFacts;
 
-  /**
-   * Planner-issued identity tokens for each concrete `$for`/`each()` iteration.
-   * The token is selected by the execution index and placed on that iteration's
-   * lexical frame; it is intentionally not stored on the immutable AST.
-   */
-  plannedForExtendPlacements: WeakMap<For, PlannedForExtendQueue> | null;
-
   /** Document-root CSS terminals already written in the required output prelude. */
   hoistedCssImports: Set<AtRuleStatement> | null;
 
@@ -7284,6 +7371,9 @@ function scratchEmit(e: EvalCtx): Emit {
     depth: 0,
     collapse: true,
     extends: null,
+    dynamicExtend: null,
+    importedStaticExtendRules: null,
+    importedDynamicExtendPresent: false,
     hoistMode: false,
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1 }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] fresh scratch walk; own runaway backstop
@@ -7294,7 +7384,6 @@ function scratchEmit(e: EvalCtx): Emit {
     plannedImportDocuments: null,
     preparedImportsOwnedByCaller: false,
     prepublishedImportFacts: null,
-    plannedForExtendPlacements: null,
     hoistedCssImports: null,
     emittedBlockTrivia: new EmittedTrivia(),
     pendingLeafBlockComments: null,
@@ -8929,34 +9018,166 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
   }
 }
 
-/** Build extend IR from selector structure in the current render frame. Unlike the
- * old static prepass this never rewrites selector nodes: loop bodies are shared
- * canonical AST and can resolve differently on every iteration. */
-function resolvedExtendBranch(node: SelectorBranch, frame: Frame, e: EvalCtx): MaybePromise<Branch> {
-  const compound = (part: CompoundSelector): MaybePromise<Branch['segments'][number]['compound']> =>
-    combineAll(part.value.map(simple => resolveSimpleText(simple, frame, e)), texts => ({
-      value: texts.map(text => ({ t: 'text' as const, text }))
-    }));
-  const term = (part: SelectorTerm): MaybePromise<Branch['segments'][number]['compound']> =>
-    part.type === 'CompoundSelector'
-      ? compound(part)
-      : mapMaybe(resolveSimpleText(part, frame, e), text => ({ value: [{ t: 'text' as const, text }] }));
-  const terms = selectorBranchTerms(node);
-  const combinators = selectorBranchCombinators(node);
-  const parts = terms.map(part => term(part));
-  return combineAll(parts, (compounds) => {
-    const start = node.type === 'RelativeSelector' ? 1 : 0;
-    const segments: Branch['segments'] = [{ combinator: node.type === 'RelativeSelector' ? combinators[0]! : ' ', compound: compounds[0]! }];
-    for (let index = start; index < combinators.length; index++) {
-      const valueIndex = node.type === 'RelativeSelector' ? index : index + 1;
-      segments.push({ combinator: combinators[index]!, compound: compounds[valueIndex]! });
-    }
-    return mkBranch(segments);
-  });
+/**
+ * [extend/dynamic] Whether a document carries STATIC and/or DYNAMIC `:extend()`.
+ * `static` — an extend on the ordinary Ruleset/AtRuleBlock spine (the pre-walk
+ * `computeExtends`/interp-prepass surface). `dynamic` — an extend reached only through
+ * a `$for`/`each()` loop or mixin-definition body (recorded by the ONE render walk,
+ * ledger X12). A document can have both.
+ */
+interface ExtendClass {
+  static: boolean;
+  dynamic: boolean;
 }
 
-function resolvedExtendLevel(node: SelectorList, frame: Frame, e: EvalCtx): MaybePromise<Level> {
-  return combineAll(node.selectors.map(selector => resolvedExtendBranch(selector, frame, e)), branches => branches);
+/**
+ * [extend/dynamic] ONE spine traversal that classifies a document's extend surface,
+ * fusing what used to be two separate whole-document walks (`documentHasExtend` +
+ * `documentHasDynamicExtend`). Once inside a loop/mixin body (`inDynamic`) every extend
+ * is dynamic. A `{ static:false, dynamic:false }` result is the no-extend document: the
+ * caller then takes exactly the original zero-cost path. Pure shape analysis — no
+ * evaluation. Short-circuits once both bits are set.
+ */
+function classifyExtend(statements: readonly Statement[], inDynamic: boolean, out: ExtendClass): void {
+  for (const st of statements) {
+    if (out.static && out.dynamic) {
+      return;
+    }
+    if (st.type === 'Ruleset') {
+      if (st.extendInstructions?.length) {
+        if (inDynamic) {
+          out.dynamic = true;
+        } else {
+          out.static = true;
+        }
+      }
+      classifyExtend(st.rules, inDynamic, out);
+    } else if (st.type === 'AtRuleBlock') {
+      classifyExtend(st.rules, inDynamic, out);
+    } else if (st.type === 'For' || st.type === 'MixinDefinition') {
+      classifyExtend(st.rules, true, out);
+    }
+  }
+}
+
+/**
+ * [extend/dynamic] ONE armed-only walk that builds BOTH discriminator sets: the
+ * static-spine Ruleset nodes (`staticRules` — every rule reachable through ruleset /
+ * at-rule nesting, NOT through a loop or mixin body; a rule outside it was reached
+ * dynamically and records its facts at emit) and the `For`/`MixinDefinition` nodes that
+ * actually carry a dynamic extend (`bodies` — gates per-iteration token allocation).
+ * Runs only when dynamic recording is armed, so non-extend documents pay nothing.
+ * Returns whether this subtree (under `inDynamic`) contains a dynamic extend.
+ *
+ * F5 note: the planner's subject-rule set is NOT reused here — the pre-walk
+ * `computeExtends` returns null (building no plan) for the common dynamic-only document
+ * (extend only inside a loop/mixin, e.g. the bootstrap grid), exactly when `staticRules`
+ * is most needed. This single armed-only walk carries the F1 bodies collection for free.
+ */
+function collectDynamicExtendSets(
+  statements: readonly Statement[],
+  inDynamic: boolean,
+  staticRules: Set<Ruleset>,
+  bodies: Set<For | MixinDefinition>
+): boolean {
+  let dynamicHere = false;
+  for (const st of statements) {
+    if (st.type === 'Ruleset') {
+      if (!inDynamic) {
+        staticRules.add(st);
+      } else if (st.extendInstructions?.length) {
+        dynamicHere = true;
+      }
+      if (collectDynamicExtendSets(st.rules, inDynamic, staticRules, bodies)) {
+        dynamicHere = true;
+      }
+    } else if (st.type === 'AtRuleBlock') {
+      if (collectDynamicExtendSets(st.rules, inDynamic, staticRules, bodies)) {
+        dynamicHere = true;
+      }
+    } else if (st.type === 'For' || st.type === 'MixinDefinition') {
+      if (collectDynamicExtendSets(st.rules, true, staticRules, bodies)) {
+        bodies.add(st);
+        dynamicHere = true;
+      }
+    }
+  }
+  return dynamicHere;
+}
+
+/**
+ * [extend/dynamic] Pre-walk STATIC extend preflight for a loaded imported document.
+ * It records the imported document's STATICALLY-placed subjects and `:extend()`
+ * instructions into the shared overlay using selector SHAPES only (`levelFromSelectorList`
+ * / `branchFromSelector`) — never re-driving evaluation. `$for`/`each()` and
+ * mixin-definition bodies are left to the walk-time dynamic recorder (a placement the
+ * static preflight cannot resolve); encountering one with an extend flags
+ * `e.importedDynamicExtendPresent` so that recorder runs. This is the imported-document
+ * analogue of `collectPlan`, not a second evaluation pass.
+ */
+function planImportedStaticExtend(
+  statements: readonly Statement[],
+  e: Emit,
+  overlay: {
+    subjects: PlanSubject[];
+    instructions: PlanInstruction[];
+    hiddenReferenceRules: Set<Ruleset> | null;
+  },
+  path: Level[],
+  scope: number[],
+  parent: PlanSubject | null,
+  hidden: boolean,
+  referenceBoundary: object | null,
+  referenceAtRule: PlanReferenceAtRule | null
+): void {
+  for (const statement of statements) {
+    if (statement.type === 'Ruleset') {
+      const own = levelFromSelectorList(statement.selector);
+      const rulePath = [...path, own];
+      const subjectHidden = hidden || statement.reference === true;
+      const subject: PlanSubject = {
+        rule: statement, path: rulePath, scope, ownLocal: own, parent,
+        hidden: subjectHidden, referenceBoundary, mayMatch: false, referenceAtRule
+      };
+      overlay.subjects.push(subject);
+      (e.importedStaticExtendRules ??= new Set()).add(statement);
+      if (subjectHidden) {
+        (overlay.hiddenReferenceRules ??= new Set()).add(statement);
+      }
+      if (statement.extendInstructions) {
+        for (const inst of statement.extendInstructions) {
+          const extenderPath = inst.subject
+            ? [...path, levelFromSelectorList(inst.subject)]
+            : rulePath;
+          for (const sel of inst.target.selectors) {
+            overlay.instructions.push({
+              target: branchFromSelector(sel), partial: inst.partial, extenderPath, scope,
+              order: overlay.instructions.length, extenderHidden: subjectHidden,
+              referenceBoundary
+            });
+          }
+        }
+      }
+      planImportedStaticExtend(statement.rules, e, overlay, rulePath, scope, subject, hidden, referenceBoundary, referenceAtRule);
+    } else if (statement.type === 'AtRuleBlock') {
+      const owner = hidden
+        ? { node: statement, parent: referenceAtRule }
+        : referenceAtRule;
+      planImportedStaticExtend(statement.rules, e, overlay, path, scope, parent, hidden, referenceBoundary, owner);
+    } else if (statement.type === 'For' || statement.type === 'MixinDefinition') {
+      if (!e.importedDynamicExtendPresent) {
+        if (hidden) {
+          e.importedDynamicExtendPresent = true;
+        } else {
+          const sub: ExtendClass = { static: false, dynamic: false };
+          classifyExtend(statement.rules, true, sub);
+          if (sub.dynamic) {
+            e.importedDynamicExtendPresent = true;
+          }
+        }
+      }
+    }
+  }
 }
 
 function bodyMayPlanExtend(statements: readonly Statement[]): boolean {
@@ -8993,143 +9214,6 @@ function bodyMayPlanExtend(statements: readonly Statement[]): boolean {
   }
   recordAstExtendProfile?.('astExtend.preflight.bodyNoFeatureMisses');
   return false;
-}
-
-/**
- * Preflight concrete loop placements in source order. It evaluates only the
- * same typed iterable/bindings as `expandFor`, emits no CSS, and records typed
- * selector facts keyed by a fresh iteration token. The canonical body stays
- * shared; no selector or statement is copied into a synthetic stylesheet.
- */
-function collectPlacedExtendFacts(
-  statements: readonly Statement[],
-  frame: Frame,
-  e: Emit,
-  overlay: {
-    subjects: PlanSubject[];
-    instructions: PlanInstruction[];
-    hiddenReferenceRules: Set<Ruleset> | null;
-  },
-  path: Level[] = [],
-  scope: number[] = [],
-  parent: PlanSubject | null = null,
-  hidden = false,
-  referenceBoundary: object | null = null,
-  referenceAtRule: PlanReferenceAtRule | null = null
-): MaybePromise<void> {
-  recordAstExtendProfile?.('astExtend.preflight.collectCalls');
-  const run = (start: number): MaybePromise<void> => {
-    for (let index = start; index < statements.length; index++) {
-      const statement = statements[index]!;
-      if (statement.type === 'VariableDeclaration') {
-        activateVariableDeclaration(statement, frame, e);
-        continue;
-      }
-      if (statement.type === 'Ruleset') {
-        const own = resolvedExtendLevel(statement.selector, frame, e);
-        const addRule = (ownLocal: Level): MaybePromise<void> => {
-          const rulePath = [...path, ownLocal];
-          const subject: PlanSubject = {
-            rule: statement, path: rulePath, scope, ownLocal, parent,
-            hidden: hidden || statement.reference === true, referenceBoundary,
-            mayMatch: false, placement: frame.extendPlacement, referenceAtRule
-          };
-          overlay.subjects.push(subject);
-          if (subject.hidden) {
-            (overlay.hiddenReferenceRules ??= new Set()).add(statement);
-          }
-          recordAstExtendProfile?.('astExtend.preflight.overlaySubjects');
-          const addInstructions = (instructionIndex: number): MaybePromise<void> => {
-            const instruction = statement.extendInstructions?.[instructionIndex];
-            if (!instruction) {
-              const childFrame: Frame = {
-                parent: frame, mixins: collectMixins(statement.rules),
-                declIndex: collectDeclIndex(statement.rules), cells: null, reassign: null,
-                statements: statement.rules,
-                ...(frame.extendPlacement ? { extendPlacement: frame.extendPlacement } : {})
-              };
-              const nested = collectPlacedExtendFacts(statement.rules, childFrame, e, overlay, rulePath, scope, subject, hidden, referenceBoundary, referenceAtRule);
-              return isThenable(nested) ? nested.then(() => run(index + 1)) : run(index + 1);
-            }
-
-            /*
-             * `resolvedExtendLevel` is one selector-list level. An inline
-             * `:extend()` still lives at this rule's full ancestor path, just
-             * like the static planner's `[...path, levelFromSelectorList(...)]`.
-             * Keep the planner's `Level[]` contract here: passing a bare Level
-             * makes composePath treat its first Branch as a Level.
-             */
-            const resolvedExtender = instruction.subject
-              ? mapMaybe(resolvedExtendLevel(instruction.subject, frame, e), level => [...path, level])
-              : rulePath;
-            return mapMaybe(resolvedExtender, extenderPath => mapMaybe(resolvedExtendLevel(instruction.target, frame, e), (targets) => {
-              for (const target of targets) {
-                overlay.instructions.push({
-                  target, partial: instruction.partial, extenderPath,
-                  scope, order: overlay.instructions.length, extenderHidden: hidden || statement.reference === true,
-                  referenceBoundary
-                });
-                recordAstExtendProfile?.('astExtend.preflight.overlayInstructions');
-              }
-              return addInstructions(instructionIndex + 1);
-            }));
-          };
-          return addInstructions(0);
-        };
-        const placed = mapMaybe(own, addRule);
-        return placed;
-      }
-      if (statement.type === 'AtRuleBlock') {
-        let owner = referenceAtRule;
-        if (hidden) {
-          owner = {
-            node: statement,
-            parent: referenceAtRule,
-            placement: frame.extendPlacement
-          };
-        }
-        const nested = collectPlacedExtendFacts(statement.rules, frame, e, overlay, path, scope, parent, hidden, referenceBoundary, owner);
-        if (isThenable(nested)) {
-          return nested.then(() => run(index + 1));
-        }
-        continue;
-      }
-      if (statement.type === 'For' && (hidden || bodyMayPlanExtend(statement.rules))) {
-        return mapMaybe(forItems(statement.iterable, frame, e), (items) => {
-          const tokens = items.map(() => ({}));
-          const planned: PlannedForExtendPlacement = { tokens, items, next: null };
-          const plans = e.plannedForExtendPlacements ??= new WeakMap();
-          const queue = plans.get(statement);
-          if (queue === undefined) {
-            plans.set(statement, { tail: planned, cursor: planned });
-          } else {
-            queue.tail.next = planned;
-            queue.tail = planned;
-          }
-          recordAstExtendProfile?.('astExtend.preflight.loopBodies');
-          recordAstExtendProfile?.('astExtend.preflight.loopPlacements', items.length);
-          const iterations = (itemIndex: number): MaybePromise<void> => {
-            for (let i = itemIndex; i < items.length; i++) {
-              const item = items[i]!;
-              const bindings = bindForEntry(statement, item.value, item.key, dimension(i + 1));
-              const loopFrame: Frame = {
-                parent: frame, mixins: collectMixins(statement.rules),
-                declIndex: collectDeclIndex(statement.rules, bindings), cells: cellsForParams(bindings), reassign: null,
-                statements: statement.rules, extendPlacement: tokens[i]!
-              };
-              const nested = collectPlacedExtendFacts(statement.rules, loopFrame, e, overlay, path, scope, parent, hidden, referenceBoundary, referenceAtRule);
-              if (isThenable(nested)) {
-                return nested.then(() => iterations(i + 1));
-              }
-            }
-            return run(index + 1);
-          };
-          return iterations(0);
-        });
-      }
-    }
-  };
-  return run(0);
 }
 
 /**
@@ -9313,9 +9397,10 @@ function planImportedFacts(
 
       /*
        * Ordinary imports must not pay selector-IR/planning cost. The typed body
-       * itself is the admission fact: it includes static Ruleset extends and the
-       * possible `$for`/`each()` loop bodies whose concrete placements the
-       * planner must still preflight.
+       * itself is the admission fact: it carries STATICALLY-placed Ruleset extends,
+       * recorded here from selector SHAPES (never re-evaluated). Its `$for`/`each()`
+       * and mixin-definition bodies are DYNAMIC placements the static preflight cannot
+       * resolve — the ONE render walk records those (ledger X12).
        * A reference import contributes hidden Ruleset subjects even when the imported
        * document contains no own `:extend()`: a visible extender in the importing
        * document may still target one of those rules. Ordinary imports retain the
@@ -9325,10 +9410,7 @@ function planImportedFacts(
       if (bodyMayPlanExtend(loaded.document.rules) || reference) {
         recordAstExtendProfile?.('astExtend.preflight.importsFeatureBearing');
         const referenceBoundary = reference ? {} : null;
-        const placed = collectPlacedExtendFacts(loaded.document.rules, childFrame, e, overlay, [], [], null, referenceBoundary !== null, referenceBoundary);
-        if (isThenable(placed)) {
-          await placed;
-        }
+        planImportedStaticExtend(loaded.document.rules, e, overlay, [], [], null, referenceBoundary !== null, referenceBoundary, null);
       }
       const collect = async (): Promise<void> => {
         await visit(
@@ -9453,6 +9535,9 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     depth: 0,
     collapse: options?.collapseNesting !== false,
     extends: null,
+    dynamicExtend: null,
+    importedStaticExtendRules: null,
+    importedDynamicExtendPresent: false,
     hoistMode: false,
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1 },
     mixinDepth: 0,
@@ -9464,7 +9549,6 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     plannedImportDocuments: documents,
     preparedImportsOwnedByCaller: false,
     prepublishedImportFacts: null,
-    plannedForExtendPlacements: null,
     hoistedCssImports: null,
     emittedBlockTrivia: new EmittedTrivia(),
     pendingLeafBlockComments: null,
@@ -9536,6 +9620,9 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     depth: 0, // [atrule]
     collapse: options?.collapseNesting !== false, // [nested/R0] default = flatten
     extends: null, // [extend] computed below (after selector-interp pre-pass)
+    dynamicExtend: null,
+    importedStaticExtendRules: null,
+    importedDynamicExtendPresent: false,
     hoistMode: false, // [extend]
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1 }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] runaway mixin-expansion depth guard
@@ -9549,7 +9636,6 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
       : preparedImportDocuments(options.preparedImports),
     preparedImportsOwnedByCaller: options?.preparedImports !== undefined,
     prepublishedImportFacts: null,
-    plannedForExtendPlacements: null,
     hoistedCssImports: null,
     emittedBlockTrivia: new EmittedTrivia(),
     pendingLeafBlockComments: null,
@@ -9579,14 +9665,55 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     const plannedRoot = planned.root;
 
     /*
-     * [extend/selector-interp] Resolve interpolated selectors to static text BEFORE the
-     * extend planner reads their IR — only when the document actually has an `:extend()`
-     * (the planner's own gate), so a non-extend document is byte- and cost-identical.
+     * [extend] ONE spine traversal classifies the document's extend surface (fusing the
+     * former `documentHasExtend` + `documentHasDynamicExtend` walks). A no-extend
+     * document (`!static && !dynamic`) skips the interp pre-pass and never allocates
+     * dynamic-extend state, so it is byte- and cost-identical to the base no-extend path.
      */
-    if (documentHasExtend(plannedRoot)) {
+    const extendClass: ExtendClass = { static: false, dynamic: false };
+    classifyExtend(plannedRoot.rules, false, extendClass);
+
+    /*
+     * [extend/selector-interp] Resolve interpolated selectors to static text BEFORE the
+     * extend planner reads their IR — only when the document has a STATIC `:extend()`
+     * (the pre-walk planner's surface), exactly as `documentHasExtend` gated before.
+     */
+    if (extendClass.static) {
       resolveSelectorInterpForExtend(plannedRoot.rules, rootFrame, e);
     }
     e.extends = computeExtends(plannedRoot, planned.hiddenRules, planned.referenceBoundaries, planned.overlay); // [extend] null when no `:extend()` anywhere
+
+    /*
+     * [extend/dynamic] Arm walk-time extend recording only when the document has a
+     * DYNAMIC extend surface (an extend inside a loop or mixin-definition body, in the
+     * main document or an import). A static-only extend document leaves this null and
+     * is byte- and cost-identical to the pre-walk path (ledger X12 / EXTEND-SEMANTICS §1a).
+     */
+    if (extendClass.dynamic || e.importedDynamicExtendPresent) {
+      const staticRules = new Set<Ruleset>();
+      const dynExtendBodies = new Set<For | MixinDefinition>();
+      collectDynamicExtendSets(plannedRoot.rules, false, staticRules, dynExtendBodies);
+      if (e.importedStaticExtendRules) {
+        for (const rule of e.importedStaticExtendRules) {
+          staticRules.add(rule);
+        }
+      }
+      e.dynamicExtend = {
+        root: plannedRoot,
+        hiddenRules: planned.hiddenRules,
+        referenceBoundaries: planned.referenceBoundaries,
+        baseOverlay: planned.overlay,
+        staticRules,
+        dynExtendBodies,
+        subjects: [],
+        instructions: [],
+        slots: [],
+        hiddenReferenceRules: null,
+        order: 0,
+        pendingHeaderChunk: -1,
+        pendingHeaderIndent: ''
+      };
+    }
     const start = e.off;
 
     /*
@@ -9619,6 +9746,14 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
         : emitPlannedCssImports(planned.cssImports, e)
       : undefined;
     const finalize = (): SerializeResult => {
+      /*
+       * [extend/dynamic] DEFERRED REWRITE: fold the walk-recorded dynamic extenders
+       * into their target header slots before the buffer is stringified. Runs after
+       * every chunk (including async values) is placed; no-op when no dynamic fact
+       * was recorded (ledger X12 / EXTEND-SEMANTICS §1a).
+       */
+      foldDynamicExtends(e);
+
       /* [null] A declaration whose async value resolved to `null` is dropped here —
        * blanked rather than spliced, because a pending slot addresses BY INDEX. */
       for (const drop of e.drops) {
@@ -10214,6 +10349,253 @@ function isSelfComposed(rule: Ruleset, parent: string[], frame: Frame, e: Emit):
  *  - no mask, but the rule itself is `reference` and extend never changed it: all its
  *    (seed-only) branches are hidden → drop the whole rule.
  */
+/** [extend/dynamic] Shared empty scope for every dynamic subject/instruction (they all
+ * reach everything). The solver only reads `scope` (never mutates), so one array is safe.
+ * ponytail: shared const, never mutated — see the read-only audit in recordDynamicExtendFacts. */
+const EMPTY_SCOPE: number[] = [];
+
+/**
+ * [extend/dynamic] Build a selector-IR level from ALREADY-COMPOSED header text. Each
+ * composed branch becomes one opaque descendant compound — its serialized text is
+ * exact, and for the common simple-class extender (`.col-1`) it is token-identical to
+ * the AST-derived IR. A complex composed extender (`.parent .col-x`) is held as a
+ * single opaque compound: it serializes correctly and folds correctly, but is not
+ * re-split for match participation.
+ * ponytail: opaque single-compound branches, exact for simple-class extenders (the
+ * dynamic-extend common case). Upgrade path: a selector-text→IR splitter only if a
+ * COMPLEX dynamic extender ever has to chain as a match target.
+ */
+function opaqueLevel(header: readonly string[]): Level {
+  return header.map(text => descendantBranch([{ t: 'text', text }]));
+}
+
+/** [extend/dynamic] The innermost `$for`/mixin placement token on the frame chain, or
+ * null at a static top-level frame. Keys a dynamic emission's facts + header slot. */
+function innermostExtendPlacement(frame: Frame | null): object | null {
+  for (let cursor = frame; cursor; cursor = cursor.parent) {
+    if (cursor.extendPlacement) {
+      return cursor.extendPlacement;
+    }
+  }
+  return null;
+}
+
+/**
+ * [extend/dynamic] Record the extend facts for a rule reached through a dynamic
+ * expansion (a loop or mixin-call body). The rule's selector is ALREADY composed by
+ * the render walk (`headerComposed`); this only registers the fact — it never re-drives
+ * evaluation (ledger X12 / EXTEND-SEMANTICS §1a). A rule already accounted for
+ * statically is skipped (its facts are in the pre-walk plan).
+ */
+function recordDynamicExtendFacts(e: Emit, rule: Ruleset, frame: Frame, headerComposed: string[]): void {
+  const dyn = e.dynamicExtend!;
+  if (dyn.staticRules.has(rule)) {
+    return;
+  }
+  const token = innermostExtendPlacement(frame);
+  const hidden = e.referenceImportDepth > 0;
+  const ownLocal = opaqueLevel(headerComposed);
+
+  /*
+   * The solver only READS `scope`/`path`/`extenderPath` (composePath clones, reaches
+   * reads, relativizeExtender slices — never mutates; a dynamic subject is top-level so
+   * relativize is never reached), so one shared empty scope and one shared `path`
+   * (== the extender path for a body-form extender) are safe to reuse per subject.
+   */
+  const path = [ownLocal];
+  dyn.subjects.push({
+    rule,
+    path,
+    scope: EMPTY_SCOPE,
+    ownLocal,
+    parent: null,
+    mayMatch: false,
+    hidden,
+    referenceBoundary: null,
+    referenceAtRule: null,
+    ...(token ? { placement: token } : {})
+  });
+  if (hidden) {
+    (dyn.hiddenReferenceRules ??= new Set()).add(rule);
+  }
+  if (rule.extendInstructions) {
+    for (const inst of rule.extendInstructions) {
+      for (const sel of inst.target.selectors) {
+        dyn.instructions.push({
+          target: branchFromSelector(sel),
+          partial: inst.partial,
+          extenderPath: path,
+          scope: EMPTY_SCOPE,
+          order: dyn.order++,
+          extenderHidden: hidden,
+          referenceBoundary: null
+        });
+      }
+    }
+  }
+}
+
+/** [extend/dynamic] Register the header chunk `flushBlock` just wrote as a rewritable
+ * FLAT target slot (keyed per emission by the placement token). */
+function recordDynExtendSlot(e: Emit, rule: Ruleset, frame: Frame, emitted: string[]): void {
+  const dyn = e.dynamicExtend;
+  if (!dyn || dyn.pendingHeaderChunk < 0) {
+    return;
+  }
+  dyn.slots.push({
+    rule,
+    token: innermostExtendPlacement(frame),
+    chunkIndex: dyn.pendingHeaderChunk,
+    indent: dyn.pendingHeaderIndent,
+    hoistMode: e.hoistMode,
+    emitted,
+    hiddenRef: e.referenceImportDepth > 0,
+    blockEnd: e.chunks.length,
+    nested: false
+  });
+  dyn.pendingHeaderChunk = -1;
+}
+
+/** [extend/dynamic] Register a NESTED-writer header chunk as a rewritable target slot.
+ * The deferred rewrite recomposes it from the re-solved own-local `nestedPlan` header. */
+function recordNestedDynExtendSlot(e: Emit, rule: Ruleset, frame: Frame, chunkIndex: number, indent: string, emitted: string[], blockEnd: number): void {
+  const dyn = e.dynamicExtend;
+  if (!dyn) {
+    return;
+  }
+  dyn.slots.push({
+    rule,
+    token: innermostExtendPlacement(frame),
+    chunkIndex,
+    indent,
+    hoistMode: e.hoistMode,
+    emitted,
+    hiddenRef: e.referenceImportDepth > 0,
+    blockEnd,
+    nested: true
+  });
+}
+
+/**
+ * [extend/dynamic] DEFERRED REWRITE. After the ONE render walk, re-solve extend with
+ * the STATIC plan plus the walk-recorded dynamic facts, then overwrite each recorded
+ * target header slot whose complete selector now differs from what was emitted. No
+ * evaluation is re-driven — this reads resolved static shapes and rewrites text
+ * (ledger X12 / EXTEND-SEMANTICS §1a).
+ */
+function foldDynamicExtends(e: Emit): void {
+  const dyn = e.dynamicExtend;
+  if (!dyn || (dyn.subjects.length === 0 && dyn.instructions.length === 0)) {
+    return;
+  }
+  const base = dyn.baseOverlay;
+  let hiddenReferenceRules = base.hiddenReferenceRules;
+  if (dyn.hiddenReferenceRules !== null) {
+    hiddenReferenceRules = new Set([...(base.hiddenReferenceRules ?? []), ...dyn.hiddenReferenceRules]);
+  }
+  const overlay: PlanOverlay = {
+    subjects: [...base.subjects, ...dyn.subjects],
+    instructions: [...base.instructions, ...dyn.instructions],
+    hiddenReferenceRules
+  };
+  const resolved = computeExtends(dyn.root, dyn.hiddenRules, dyn.referenceBoundaries, overlay);
+  if (resolved === null) {
+    return;
+  }
+  e.extends = resolved;
+  for (const slot of dyn.slots) {
+    const projection = slot.token
+      ? resolved.byPlacement?.get(slot.token) ?? resolved
+      : resolved;
+    let visible: string[] | null;
+    if (slot.nested) {
+      /*
+       * NESTED writer: recompose from the own-local `nestedPlan` header (a flat
+       * composed header would double the ancestor prefix at a nested position). A
+       * flattened/hoisted nested plan is left as emitted — restructuring is not a
+       * deferred-rewrite operation (a bounded follow-up, see EXTEND-SEMANTICS §1a).
+       */
+      const plan = projection.nestedPlan.get(slot.rule);
+      visible = plan && !plan.flatten
+        ? withoutPlaceholders(plan.header)
+        : slot.emitted;
+    } else {
+      const header0 = slot.hoistMode
+        ? projection.hoistHeader.get(slot.rule) ?? projection.flatByRule.get(slot.rule) ?? slot.emitted
+        : projection.flatByRule.get(slot.rule) ?? slot.emitted;
+      visible = visibleHeaderFromProjection(slot.rule, header0, projection, resolved);
+    }
+    if (visible === null) {
+      /*
+       * [import:reference] A hidden `(reference)` rule with no visible extender folded
+       * in emits nothing: blank the RESERVED block it was emitted into. A non-reference
+       * rule never resolves to null here, so this only fires for reserved reference blocks.
+       */
+      if (slot.hiddenRef) {
+        for (let i = slot.chunkIndex; i < slot.blockEnd; i++) {
+          e.chunks[i] = '';
+        }
+      }
+      continue;
+    }
+    if (arraysEqualText(visible, slot.emitted)) {
+      continue;
+    }
+    e.chunks[slot.chunkIndex] = slot.indent
+      ? visible.join(',\n' + slot.indent)
+      : visible.join(',\n');
+  }
+}
+
+/** [extend/dynamic] Byte-array header-branch equality (change detection for a slot). */
+function arraysEqualText(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Reduce a composed header to its visible branches against a resolved projection: drop
+ * reference-hidden branches by per-branch mask, drop an all-hidden reference rule
+ * (returns null), else drop placeholder branches. Shared by the live-walk `visibleHeader`
+ * (projection from the frame chain) and the deferred fold's `visibleHeaderFromProjection`
+ * (projection resolved post-walk), so the two never diverge.
+ */
+function visibleHeaderCore(
+  rule: Ruleset,
+  header: string[],
+  projection: ExtendResults | ExtendPlacementResults | null,
+  refRules: ReadonlySet<Ruleset> | null | undefined
+): string[] | null {
+  const mask = projection?.hiddenByRule.get(rule);
+  if (mask?.length === header.length) {
+    const vis = header.filter((_, i) => mask[i] !== true);
+    return vis.length > 0 ? withoutPlaceholders(vis) : null;
+  }
+  if ((rule.reference === true || refRules?.has(rule) === true)
+    && projection?.flatByRule.has(rule) !== true) {
+    return null;
+  }
+  return withoutPlaceholders(header);
+}
+
+/** [extend/dynamic] `visibleHeader` against an explicit post-walk projection (the fold
+ * has no live frame to walk). */
+function visibleHeaderFromProjection(
+  rule: Ruleset,
+  header: string[],
+  projection: ExtendResults | ExtendPlacementResults,
+  resolved: ExtendResults
+): string[] | null {
+  return visibleHeaderCore(rule, header, projection, resolved.hiddenReferenceRules);
+}
+
 function extendProjection(frame: Frame | null, e: Emit): ExtendResults | ExtendPlacementResults | null {
   const ext = e.extends;
   const placed = ext?.byPlacement;
@@ -10264,17 +10646,7 @@ function withoutPlaceholders(header: string[]): string[] | null {
 }
 
 function visibleHeader(rule: Ruleset, header: string[], frame: Frame, e: Emit): string[] | null {
-  const ext = extendProjection(frame, e);
-  const mask = ext?.hiddenByRule.get(rule);
-  if (mask?.length === header.length) {
-    const vis = header.filter((_, i) => mask[i] !== true);
-    return vis.length > 0 ? withoutPlaceholders(vis) : null;
-  }
-  if ((rule.reference === true || e.extends?.hiddenReferenceRules?.has(rule) === true)
-    && ext?.flatByRule.has(rule) !== true) {
-    return null;
-  }
-  return withoutPlaceholders(header);
+  return visibleHeaderCore(rule, header, extendProjection(frame, e), e.extends?.hiddenReferenceRules);
 }
 
 /** A hidden reference subject emits only when its current extend projection has
@@ -10474,6 +10846,16 @@ function flattenWithHeader(
     : projection?.flatByRule.get(rule) ?? headerComposed;
 
   /*
+   * [extend/dynamic] Record this rule's extender fact if it was reached through a
+   * dynamic expansion (a loop or mixin-call body). Its selector is already composed
+   * (`headerComposed`); no evaluation is re-driven. Static rules are already in the
+   * pre-walk plan and are skipped (ledger X12).
+   */
+  if (e.dynamicExtend) {
+    recordDynamicExtendFacts(e, rule, frame, headerComposed);
+  }
+
+  /*
    * [import:reference] drop the header branches that originate ONLY from hidden
    * `(reference)` rules; a rule left with no visible branch emits nothing (its body
    * still emits when the rule is pulled in as a mixin — a separate expansion path).
@@ -10524,6 +10906,7 @@ function flattenWithHeader(
       return mapMaybe(flushBlock(
         visible, group, e, rule.selector, parent, rule, trailingBlockComments
       ), () => {
+        recordDynExtendSlot(e, rule, frame, visible);
         group.length = 0;
       });
     }
@@ -10540,9 +10923,11 @@ function flattenWithHeader(
     trailingBlockComments: readonly string[]
   ): MaybePromise<void> => {
     if (leaves.length || trailingBlockComments.length !== 0) {
-      return flushBlock(
+      return mapMaybe(flushBlock(
         visible, leaves, e, rule.selector, parent, rule, trailingBlockComments
-      );
+      ), () => {
+        recordDynExtendSlot(e, rule, frame, visible);
+      });
     }
   };
   const partition: Partition = {
@@ -10562,9 +10947,11 @@ function flattenWithHeader(
     };
     if (!partition.encounteredContainer) {
       if (group.length === 0 && e.pendingLeafBlockCommentOwner !== group && hasBodyBlockCommentTrivia(rule, e)) {
-        return flushBlock(
+        return mapMaybe(flushBlock(
           visible, [], e, rule.selector, parent, rule, EMPTY_LEAF_BLOCK_COMMENTS
-        );
+        ), () => {
+          recordDynExtendSlot(e, rule, frame, visible);
+        });
       }
       return flush();
     }
@@ -11802,19 +12189,13 @@ function expandReferenceAncestorFor(
   imp: boolean,
   expandBubbledSelectorList: boolean
 ): MaybePromise<void> {
-  const queue = e.plannedForExtendPlacements?.get(node);
-  const planned = queue?.cursor ?? null;
-  if (queue !== undefined && planned !== null) {
-    queue.cursor = planned.next;
-  }
-  return mapMaybe(planned?.items ?? forItems(node.iterable, frame, e), (items) => {
+  return mapMaybe(forItems(node.iterable, frame, e), (items) => {
     const run = (start: number): MaybePromise<void> => {
       for (let index = start; index < items.length; index++) {
         const item = items[index]!;
         const bindingIndex = dimension(index + 1);
         const bindings = bindForEntry(node, item.value, item.key, bindingIndex);
         const bindingValueFrames = bindingValueFramesForItem(bindings, item);
-        const extendPlacement = planned?.tokens[index];
         const loopFrame: Frame = {
           parent: frame,
           mixins: collectMixins(node.rules),
@@ -11824,7 +12205,7 @@ function expandReferenceAncestorFor(
           statements: node.rules,
           sourceOwner: frame.sourceOwner ?? null,
           ...(bindingValueFrames ? { bindingValueFrames } : {}),
-          ...(extendPlacement ? { extendPlacement } : {})
+          ...(e.dynamicExtend?.dynExtendBodies.has(node) ? { extendPlacement: {} } : {})
         };
         bindForDetached(loopFrame, bindings, item);
         const emitted = mapMaybe(
@@ -12889,19 +13270,6 @@ interface ForItem {
   detached?: DetachedBinding;
 }
 
-/** One preflight evaluation reused by the matching emission placement. */
-interface PlannedForExtendPlacement {
-  tokens: readonly object[];
-  items: readonly ForItem[];
-  next: PlannedForExtendPlacement | null;
-}
-
-/** Source-order occurrence queue for one reused canonical loop node. */
-interface PlannedForExtendQueue {
-  tail: PlannedForExtendPlacement;
-  cursor: PlannedForExtendPlacement | null;
-}
-
 /**
  * Split `text` at the TOP level on `,` (comma list) else a whitespace run (space
  * list), skipping anything nested in `()[]{}` or inside a quoted string. Mirrors
@@ -13320,12 +13688,7 @@ function expandFor(
   source: NestedHeaderSource | null = null,
   sharedLeaves?: NestedLeafBuffer
 ): MaybePromise<void> {
-  const queue = e.plannedForExtendPlacements?.get(node);
-  const planned = queue?.cursor ?? null;
-  if (queue !== undefined && planned !== null) {
-    queue.cursor = planned.next;
-  }
-  return mapMaybe(planned?.items ?? forItems(node.iterable, frame, e), (items) => {
+  return mapMaybe(forItems(node.iterable, frame, e), (items) => {
     const run = (start: number): MaybePromise<void> => {
       for (let i = start; i < items.length; i++) {
         const item = items[i]!;
@@ -13333,7 +13696,6 @@ function expandFor(
         const index = dimension(i + 1);
         const bindings = bindForEntry(node, value, key, index);
         const bindingValueFrames = bindingValueFramesForItem(bindings, item);
-        const extendPlacement = planned?.tokens[i];
         const loopFrame: Frame = {
           parent: frame,
           mixins: collectMixins(node.rules),
@@ -13341,7 +13703,7 @@ function expandFor(
           statements: node.rules,
           sourceOwner: frame.sourceOwner ?? null,
           ...(bindingValueFrames ? { bindingValueFrames } : {}),
-          ...(extendPlacement ? { extendPlacement } : {})
+          ...(e.dynamicExtend?.dynExtendBodies.has(node) ? { extendPlacement: {} } : {})
         };
         bindForDetached(loopFrame, bindings, item);
         const emitted = mapMaybe(
@@ -13934,11 +14296,24 @@ function flushBlock(
       && lb.depth === e.depth && lb.header === header && lb.endChunks === e.chunks.length;
     if (reopen) {
       popClose(e, idt); // remove the prior block's trailing `}` (and its indent)
+      if (e.dynamicExtend) {
+        e.dynamicExtend.pendingHeaderChunk = -1;
+      }
     } else {
       if (idt) {
         put(e, idt);
       }
       const selStart = e.off;
+
+      /*
+       * [extend/dynamic] The header is its OWN chunk; record its index so the
+       * deferred fold can overwrite it in place once dynamic extenders are known.
+       * Only meaningful for a real selector header (`selNode` present, non-empty).
+       */
+      if (e.dynamicExtend) {
+        e.dynamicExtend.pendingHeaderChunk = selNode !== undefined && selector.length > 0 ? e.chunks.length : -1;
+        e.dynamicExtend.pendingHeaderIndent = idt;
+      }
       put(e, header);
       if (e.positions && selNode) {
         e.positions.push({ node: selNode, type: selNode.type, start: selStart, end: e.off });
@@ -17160,6 +17535,18 @@ function writeNestedRule(
     if (own === null) {
       return;
     }
+
+    /*
+     * [extend/dynamic] Record this nested rule's extender fact if it was reached
+     * through a dynamic expansion (a loop or mixin-call body). `own` is its composed
+     * own-local selector; for the dynamic extender shapes this covers (top-level and
+     * root-`&`/mixin-hoisted rules) it IS the composed extender. No evaluation is
+     * re-driven (ledger X12). Genuinely deep-nested dynamic extenders fold as their
+     * own-local remainder — a bounded follow-up, see EXTEND-SEMANTICS §1a.
+     */
+    if (e.dynamicExtend) {
+      recordDynamicExtendFacts(e, rule, frame, own);
+    }
     const authoredHeader = plan === undefined && placement === null && source === null
       ? authoredSelectorHeaderWithTrivia(rule.selector, own, e)
       : null;
@@ -17174,6 +17561,7 @@ function writeNestedRule(
     const lb = e.lastBlock;
     const reopen = rootSibling && lb.parentKey === frame && lb.depth === e.depth
       && lb.header === header && lb.endChunks === e.chunks.length;
+    let headerChunkIndex = -1;
     if (reopen) {
       popClose(e, idt);
     } else {
@@ -17181,6 +17569,7 @@ function writeNestedRule(
         put(e, idt);
       }
       const selStart = e.off;
+      headerChunkIndex = e.chunks.length;
       put(e, header);
       if (e.positions) {
         e.positions.push({ node: rule.selector, type: rule.selector.type, start: selStart, end: e.off });
@@ -17224,6 +17613,14 @@ function writeNestedRule(
           lb.header = header;
           lb.depth = e.depth;
           lb.endChunks = e.chunks.length;
+        }
+
+        /*
+         * [extend/dynamic] The surviving nested block's header is a rewritable target
+         * slot: the deferred fold overwrites it in place if dynamic extenders fold in.
+         */
+        if (e.dynamicExtend && headerChunkIndex >= 0) {
+          recordNestedDynExtendSlot(e, rule, frame, headerChunkIndex, idt, own, e.chunks.length);
         }
       }
 

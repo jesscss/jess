@@ -44,6 +44,49 @@ css").
 
 The `:extend()` clause itself is never emitted — it is stripped before output.
 
+## 1a. Architectural law — extend consumes resolved static shapes (HARD RULE)
+
+Extend runs on the output of the **one** evaluator. By the time extend matches or
+rewrites anything, every mixin has already been expanded, every function already
+called, every loop already iterated, every variable already resolved, and every
+selector already composed — by the single render walk. Extend's whole job is the
+last sentence of §1: **extend selectors.** It appends the extender's compiled
+selector onto the target's compiled selector list, and does nothing else.
+
+Therefore extend collection and the extend engine (`packages/core/src/ast/extend/**`
+and any extend-fact collection in `serialize.ts`) **MUST NOT re-drive evaluation.**
+Specifically they may never call — directly or transitively — the evaluator
+entrypoints `expandCall` / `expandApply` / `expandReferenceCall` / `expandFor` /
+`expandRule` / `forItems` / `bindForEntry` / `activateVariableDeclaration`, nor
+re-expand a mixin body, re-run a loop, or re-resolve a selector to discover an
+extend placement. A rule inside a mixin-call body or a loop body is reached the
+one time the real walk expands it; its extend facts are recorded **at that
+moment**, keyed to the slot being emitted. There is no "extend preflight" that
+walks the program a second time.
+
+**Why this is not negotiable.** A second evaluation is not merely slow — it is
+*unsound*: mixins with side-effecting `@name` reassignment, `::=` optional-shadow,
+guard evaluation order, and once-only imports do not produce identical facts on a
+second pass, so a cold twin can silently disagree with the real output. It also
+scales the whole program's evaluation cost by the number of passes. Extend is a
+selector rewrite over already-computed shapes; anything more is a defect. See the
+class rule in `.cursor/rules/20-quality-bar.mdc` ("single pass over resolved
+shapes") and ledger row X13 in `DESIGN-DECISIONS.md`.
+
+**How the one pass satisfies "compute extends before you emit the target."** A
+target can be defined ahead of the extender that augments it, so the augmented
+selector list is not known when the target's header is first produced. This is
+resolved by a **deferred rewrite**, never by a look-ahead second evaluation: the
+walk emits selector headers as addressable slots into the render buffer and records
+extend facts inline; after the single walk completes, the extend engine folds each
+extender's compiled selector into the target slots (held **by reference** — a
+nested `&` holds a reference to the parent's composed selector, it is not
+re-flattened per rule); then the buffer is stringified. Match-time flattening is
+lazy and cached, and only for the selectors that actually participate in a match.
+
+This law is enforced by `extend-evaluator-isolation.test.ts` (a source-frontier
+gate: the extend paths may not name an evaluator entrypoint).
+
 ## 2. Forms
 
 | Form | Syntax | Notes |
