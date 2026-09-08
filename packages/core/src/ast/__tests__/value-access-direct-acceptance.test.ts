@@ -6,9 +6,13 @@ import {
   variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
+import { DEFAULT_MODES } from '../value-eval.js';
 
 const evaluator = buildEvaluator(makeLessRegistry());
 const render = (document: Stylesheet): string | undefined => serialize(document, { evaluator }).css;
+// [R16] the caller-read ($property reading the caller's timeline) is opt-in via allowCallerScope.
+const renderCallerScope = (document: Stylesheet): string | undefined =>
+  serialize(document, { evaluator, modes: { ...DEFAULT_MODES, allowCallerScope: true } }).css;
 const entry = (name: string, value: Parameters<typeof collectionEntry>[1]): ReturnType<typeof collectionEntry> =>
   collectionEntry(keyword(name), value);
 
@@ -299,7 +303,7 @@ describe('direct canonical value access', () => {
       + '}\n');
   });
 
-  it('resolves a mixin property read after the caller timeline has spliced later declarations', () => {
+  it('resolves a mixin property read after the caller timeline has spliced later declarations (allowCallerScope)', () => {
     const readColor = {
       type: 'MixinDefinition' as const,
       name: '.read-color',
@@ -315,7 +319,7 @@ describe('direct canonical value access', () => {
       ])
     ]);
 
-    expect(render(document)).toBe('.card {\n'
+    expect(renderCallerScope(document)).toBe('.card {\n'
       + '  color: red;\n'
       + '  from-mixin: blue;\n'
       + '  color: blue;\n'
