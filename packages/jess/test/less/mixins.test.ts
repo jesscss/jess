@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 
-describe.todo('Mixins', () => {
+describe('Mixins', () => {
   const compiler = new Compiler({
     output: {
       collapseNesting: true
@@ -12,7 +12,7 @@ describe.todo('Mixins', () => {
     }
   });
 
-  describe.todo('Basic Mixins', () => {
+  describe('Basic Mixins', () => {
     it('should handle simple mixin definition and usage', async () => {
       const lessCode = `
         .mixin() {
@@ -67,7 +67,7 @@ describe.todo('Mixins', () => {
     });
   });
 
-  describe.todo('Mixin Parameters', () => {
+  describe('Mixin Parameters', () => {
     it('should handle mixin with parameters', async () => {
       const lessCode = `
         .mixin(@color) {
@@ -148,7 +148,7 @@ describe.todo('Mixins', () => {
     });
   });
 
-  describe.todo('Mixin Guards', () => {
+  describe('Mixin Guards', () => {
     it('should handle mixin with when guard', async () => {
       const lessCode = `
         .mixin(@color) when (@color = red) {
@@ -206,7 +206,7 @@ describe.todo('Mixins', () => {
     });
   });
 
-  describe.todo('Mixin Pattern Matching', () => {
+  describe('Mixin Pattern Matching', () => {
     it('should handle mixin with pattern matching #1', async () => {
       const lessCode = `
         .mixin(@color, @size) when (@size > 10px) {
@@ -262,7 +262,7 @@ describe.todo('Mixins', () => {
     });
   });
 
-  describe.todo('Mixin with @arguments', () => {
+  describe('Mixin with @arguments', () => {
     it('should handle mixin with @arguments', async () => {
       const lessCode = `
         .mixin(@color, @size) {
@@ -283,7 +283,7 @@ describe.todo('Mixins', () => {
     });
   });
 
-  describe.todo('Recursive Mixins', () => {
+  describe('Recursive Mixins', () => {
     it('should handle recursive mixin calls without infinite loops', async () => {
       const lessCode = `
         .recursion() {

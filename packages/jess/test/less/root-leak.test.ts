@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
-describe.todo(':root selector context leak', () => {
+describe(':root selector context leak', () => {
   const compiler = new Compiler({
     compile: {
       plugins: [lessPlugin()]
