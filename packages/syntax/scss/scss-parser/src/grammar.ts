@@ -454,6 +454,25 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
+   * A small set of `$`-names is RESERVED: the control-flow keywords and the
+   * `@content` protocol name may not be DECLARED as variables (`$content:`,
+   * `$for:`, … are parse errors), so `content` etc. are true keywords rather
+   * than user variables. The guard is applied ONLY at the declaration head
+   * below — `scssVarSigilName` stays shared, so a `$content` reference, a
+   * `$content` mixin/each binding, and a `module.$content` access are all
+   * unaffected. Names are case-SENSITIVE (SCSS `$` variables are); the boundary
+   * matches `scssOwnAtKeyword` so only a whole-name match is reserved.
+   */
+  const reservedVarName = keywords(
+    ['content', 'for', 'if', 'else', 'each', 'while', 'return'],
+    { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
+  );
+  const reservedVarHead = noTrivia(sequence(
+    literal('$'),
+    reservedVarName
+  ));
+
+  /*
    * Static chunks stop at a real `#{` opener; the structural interpolation
    * production below owns that form. Ordinary `#foo` stays literal text and
    * escapes remain grammar-recognized.
@@ -1346,6 +1365,7 @@ const scssFactory = (g: ScssInputRules) => {
   const VariableDeclaration = node<VariableDeclaration>(
     'VariableDeclaration',
     sequence(
+      not(reservedVarHead),
       scssVarSigilName,
       literal(':'),
       g.Value,
