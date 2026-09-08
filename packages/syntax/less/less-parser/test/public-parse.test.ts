@@ -1079,7 +1079,7 @@ describe('public Less parse()', () => {
     expect(() => parse('.range { value: U+0-7F + 1; }')).toThrow(SyntaxError);
   });
 
-  it('retains escaped ordinary declaration names and the Less star hack without widening other identifier positions', () => {
+  it('retains escaped ordinary declaration names and the Less star hack, and reuses the CSS escape-aware ident in value keywords', () => {
     const source = '.card { \\63 olor: red; *zoom: 1; }';
     const cst = parseLessCst(source);
     const document = parse(source);
@@ -1110,8 +1110,27 @@ describe('public Less parse()', () => {
       serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css
     ).toBe('.card {\n  \\63 olor: red;\n  *zoom: 1;\n}\n');
 
+    /*
+     * A value keyword reuses the CSS escape-aware ident, so an escaped value is
+     * one ident (`r\65 d` is `red`) and serializes verbatim, exactly as in CSS.
+     */
+    expect(parse('a { color: r\\65 d; }')).toMatchObject({
+      type: 'Stylesheet',
+      rules: [
+        {
+          type: 'Ruleset',
+          rules: [
+            { type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'r\\65 d' } }
+          ]
+        }
+      ]
+    });
+
     for (const invalid of [
-      'color: r\\65 d;',
+      /*
+       * Less variable names do not admit escapes; a backslash before a newline
+       * is not a valid escape.
+       */
       '@\\63 olor: red;',
       '\\\ncolor: red;',
       '*\\\ncolor: red;'
