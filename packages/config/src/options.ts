@@ -9,7 +9,11 @@ import path from 'path';
 export interface StrictPresetOptions {
   strict?: boolean;
   unitMode?: 'loose' | 'preserve' | 'strict';
+  allowLeakyScope?: boolean;
+
+  /** @deprecated Use `allowLeakyScope`. */
   leakyScope?: boolean;
+  allowCallerScope?: boolean;
   allowOverloadedImport?: boolean;
 }
 
@@ -28,7 +32,10 @@ export function applyStrictPreset<T extends StrictPresetOptions>(opts: T): T {
   }
   const filled = { ...opts };
   filled.unitMode ??= 'strict';
-  filled.leakyScope ??= false;
+
+  /* Fill the canonical name; a deprecated `leakyScope` still resolves downstream. */
+  filled.allowLeakyScope ??= false;
+  filled.allowCallerScope ??= false;
   filled.allowOverloadedImport ??= false;
   return filled;
 }

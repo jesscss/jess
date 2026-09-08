@@ -319,7 +319,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
   }
 
   private _prepareMixinBodyVisibility(rules: Rules, context: Context): void {
-    if (context.options.leakyScope) {
+    if (context.options.allowLeakyScope) {
       rules.options.rulesVisibility.Mixin = 'public';
 
       /*

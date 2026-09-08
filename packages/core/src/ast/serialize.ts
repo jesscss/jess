@@ -614,6 +614,16 @@ export interface Frame {
   fallback?: Frame | null;
 
   /*
+   * [R16] This frame's `fallback` is the ambient CALL SITE (a mixin body,
+   * detached ruleset, value-lambda, or dispatch overlay — not a detached-closure
+   * member scope). Plain VARIABLE reads treat it as invisible unless
+   * `allowCallerScope` is on; `parentExcludes`, path/namespace lookups, and
+   * mixin-visibility publishing traverse `fallback` regardless, so recursion,
+   * member access, and caller-published mixins keep working.
+   */
+  callerFallback?: boolean;
+
+  /*
    * rulesets visible at this level, keyed by their own-local selector
    * string (namespace path descent). Lazily built only when a namespaced call or
    * map/namespace accessor needs it.
@@ -2185,6 +2195,17 @@ function parentExcludes(frame: Frame | null, rules: Statement[]): boolean {
   return false;
 }
 
+/*
+ * [R16] The `&& (e === undefined || e.allowCallerScope || f.callerFallback !== true)`
+ * guard on each `fallback` capture below is the hermetic caller-read gate: a plain
+ * VARIABLE read skips a frame whose `fallback` is the ambient call site (a
+ * `callerFallback` frame — mixin body / detached ruleset / value-lambda / dispatch
+ * overlay) unless `allowCallerScope` restores the legacy Less dynamic caller-read.
+ * Reads WITHOUT an `EvalCtx` (the `lookupVar`/path/chain walks) keep traversing, so
+ * `parentExcludes`, member access, and namespace descent are untouched. It is one
+ * boolean sub-expression — no cost on the default path beyond that field read.
+ */
+
 /**
  * The nearest last-wins binding for `name` (top of the nearest non-empty stack).
  * Used by the value-block / namespace paths that need the CURRENT value node
@@ -2202,7 +2223,7 @@ function lookupLiveCell(frame: Frame | null, name: string, e?: EvalCtx): { value
         return { value: hit.value, frame: hit.valueFrame ?? f };
       }
     }
-    if (f.fallback && !fb) {
+    if (f.fallback && !fb && (e === undefined || e.allowCallerScope || f.callerFallback !== true)) {
       fb = f.fallback;
     }
   }
@@ -2220,7 +2241,7 @@ function hasExcludedLiveCell(frame: Frame | null, name: string, e: EvalCtx): boo
         return true;
       }
     }
-    if (f.fallback && !fb) {
+    if (f.fallback && !fb && (e === undefined || e.allowCallerScope || f.callerFallback !== true)) {
       fb = f.fallback;
     }
   }
@@ -2239,7 +2260,7 @@ function lookupLeakedBinding(frame: Frame | null, name: string, e?: EvalCtx): { 
         }
       }
     }
-    if (f.fallback && !fb) {
+    if (f.fallback && !fb && (e === undefined || e.allowCallerScope || f.callerFallback !== true)) {
       fb = f.fallback;
     }
   }
@@ -2256,7 +2277,7 @@ function hasExcludedLeakedBinding(frame: Frame | null, name: string, e: EvalCtx)
     if (stack?.some(value => e.excluded.has(value))) {
       return true;
     }
-    if (f.fallback && !fb) {
+    if (f.fallback && !fb && (e === undefined || e.allowCallerScope || f.callerFallback !== true)) {
       fb = f.fallback;
     }
   }
@@ -2298,7 +2319,7 @@ function lookupScopedBinding(frame: Frame | null, name: string, e?: EvalCtx): { 
         }
       }
     }
-    if (f.fallback && !fb) {
+    if (f.fallback && !fb && (e === undefined || e.allowCallerScope || f.callerFallback !== true)) {
       fb = f.fallback;
     }
   }
@@ -2327,7 +2348,7 @@ function hasExcludedScopedBinding(frame: Frame | null, name: string, e: EvalCtx)
         }
       }
     }
-    if (f.fallback && !fb) {
+    if (f.fallback && !fb && (e === undefined || e.allowCallerScope || f.callerFallback !== true)) {
       fb = f.fallback;
     }
   }
@@ -2336,14 +2357,22 @@ function hasExcludedScopedBinding(frame: Frame | null, name: string, e: EvalCtx)
 
 /** {@link lookupVar} keeping the OWNING frame, for chain walks that must keep
  *  resolving in the scope each link came from rather than the scope they started in. */
-function lookupVarIn(frame: Frame | null, name: string): { value: Binding; frame: Frame } | undefined {
-  return lookupScopedBinding(frame, name)
-    ?? lookupLiveCell(frame, name)
-    ?? lookupLeakedBinding(frame, name);
+/*
+ * [R16] Pass `e` ONLY when this resolves a BODY's free reference (a member-access
+ * base `@p[k]`, a chain-follow `@a: @b`, an `isdefined`/`isruleset` probe): it
+ * threads the hermetic caller-read gate into the three lookup fns, so a
+ * `callerFallback` frame's `fallback` is skipped unless `allowCallerScope`. Leave
+ * `e` OFF for shape/candidate/arg probes (empty-variadic drop, closure-arg
+ * substitution) where the caller fallback IS the intended scope (R15).
+ */
+function lookupVarIn(frame: Frame | null, name: string, e?: EvalCtx): { value: Binding; frame: Frame } | undefined {
+  return lookupScopedBinding(frame, name, e)
+    ?? lookupLiveCell(frame, name, e)
+    ?? lookupLeakedBinding(frame, name, e);
 }
 
-function lookupVar(frame: Frame | null, name: string): Binding | undefined {
-  return lookupVarIn(frame, name)?.value;
+function lookupVar(frame: Frame | null, name: string, e?: EvalCtx): Binding | undefined {
+  return lookupVarIn(frame, name, e)?.value;
 }
 
 /**
@@ -2679,7 +2708,7 @@ function resolvePropRef(
         }
       }
     }
-    if (f.fallback && !fb) {
+    if (f.fallback && !fb && (e.allowCallerScope || f.callerFallback !== true)) {
       fb = f.fallback;
     }
   }
@@ -2701,7 +2730,7 @@ function hasExcludedPropRef(frame: Frame | null, name: string, e: EvalCtx): bool
         }
       }
     }
-    if (f.fallback && !fb) {
+    if (f.fallback && !fb && (e.allowCallerScope || f.callerFallback !== true)) {
       fb = f.fallback;
     }
   }
@@ -2841,6 +2870,15 @@ function makeTypedResolver(frame: Frame | null, e: EvalCtx): TypedResolver {
 interface EvalCtx {
   ev: ValueEvaluator | null;
   modes: EvalModes;
+
+  /**
+   * [R16] Resolved ONCE per render: `true` restores the legacy Less dynamic
+   * caller-read (a body resolves free variables in the ambient call site);
+   * `false` (default) is lexical/hermetic — the variable-read functions skip a
+   * frame's `callerFallback`, so a body sees only its definition scope + params.
+   * A single boolean read on the hot lookup path, never re-derived per lookup.
+   */
+  allowCallerScope: boolean;
 
   /** Context supplies document source only on genuine cold diagnostic paths. */
   context?: Context;
@@ -4759,7 +4797,7 @@ function resolveBaseDeclMap(
    * `each(.mixin(), …)` iterable uses — `forItemsFromMixinCall`).
    */
   if (base.type === 'Lookup' && base.kind === 'var' && frame) {
-    const bound = lookupVar(frame, literalName(base));
+    const bound = lookupVar(frame, literalName(base), e);
     if (bound && isMixinCallValue(bound)) {
       return declMapFromMixinCall(bound, frame, e);
     }
@@ -4935,7 +4973,7 @@ function invokeValueLambda(
     reassign: null,
     statements: lambda.rules,
     sourceOwner: defFrame ? sourceOwnerForBody(lambda.rules, defFrame, e) : null,
-    ...(callerFrame && callerFrame !== defFrame ? { fallback: callerFrame } : {})
+    ...(callerFrame && callerFrame !== defFrame ? { fallback: callerFrame, callerFallback: true } : {})
   };
   return { value: result, frame: activation };
 }
@@ -5211,7 +5249,7 @@ function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybeP
  * is unbound. Used by the detached-ruleset introspection functions, which must
  * inspect the BINDING (a value-block node) rather than materialize it.
  */
-function resolveBindingNode(node: Binding, frame: Frame | null): Binding | undefined {
+function resolveBindingNode(node: Binding, frame: Frame | null, e?: EvalCtx): Binding | undefined {
   let cur: Binding | undefined = node;
   const seen = new Set<Binding>();
   while (cur !== undefined && !isValueSlotArray(cur) && cur.type === 'Lookup' && cur.kind === 'var') {
@@ -5219,7 +5257,7 @@ function resolveBindingNode(node: Binding, frame: Frame | null): Binding | undef
       return undefined;
     } // cyclic
     seen.add(cur);
-    cur = lookupVar(frame, literalName(cur));
+    cur = lookupVar(frame, literalName(cur), e);
   }
   return cur;
 }
@@ -5231,7 +5269,7 @@ function resolveBindingNode(node: Binding, frame: Frame | null): Binding | undef
  * than throw `@x is undefined`). Returns the `true`/`false` literal, or `undefined`
  * when `node` is not one of these calls (fall through to normal dispatch).
  */
-function evalIntrospection(node: FunctionCall, frame: Frame | null): EvalValue | undefined {
+function evalIntrospection(node: FunctionCall, frame: Frame | null, e: EvalCtx): EvalValue | undefined {
   if (node.args.length !== 1) {
     return undefined;
   }
@@ -5242,12 +5280,12 @@ function evalIntrospection(node: FunctionCall, frame: Frame | null): EvalValue |
      * argument (a literal / call) is inherently defined.
      */
     const bound = !isValueSlotArray(arg) && arg.type === 'Lookup' && arg.kind === 'var'
-      ? resolveBindingNode(arg, frame)
+      ? resolveBindingNode(arg, frame, e)
       : arg;
     return literal(bound !== undefined ? 'true' : 'false');
   }
   if (node.name === 'isruleset') {
-    const bound = resolveBindingNode(arg, frame);
+    const bound = resolveBindingNode(arg, frame, e);
     return literal(bound !== undefined && !isValueSlotArray(bound) && isValueBlock(bound)
       ? 'true'
       : 'false');
@@ -6226,7 +6264,7 @@ function evalCall(
      */
     return makeBool(e.defaultFn());
   }
-  const intro = evalIntrospection(node, frame);
+  const intro = evalIntrospection(node, frame, e);
   if (intro !== undefined) {
     return intro;
   }
@@ -7400,6 +7438,7 @@ function scratchEmit(e: EvalCtx): Emit {
   return {
     ev: e.ev,
     modes: e.modes,
+    allowCallerScope: e.allowCallerScope, // [R16] preserve the caller-read policy
     trivia: e.trivia,
     excluded: e.excluded,
     propNames: e.propNames,
@@ -9575,6 +9614,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     positions: null,
     ev: options?.evaluator ?? options?.context?.evaluator ?? null,
     modes: options?.modes ?? options?.context?.options ?? DEFAULT_MODES,
+    allowCallerScope: options?.context?.options.allowCallerScope ?? options?.modes?.allowCallerScope ?? false,
     trivia: options?.trivia ?? triviaMapOf(root) ?? options?.context?.opts.trivia,
     context: options?.context,
     excluded: new Set(),
@@ -9660,6 +9700,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     positions: options?.trackPositions ? [] : null,
     ev: options?.evaluator ?? options?.context?.evaluator ?? null, // typed value evaluator
     modes: options?.modes ?? options?.context?.options ?? DEFAULT_MODES,
+    allowCallerScope: options?.context?.options.allowCallerScope ?? options?.modes?.allowCallerScope ?? false, // [R16] legacy caller-read, default hermetic
     trivia: options?.trivia ?? triviaMapOf(root) ?? options?.context?.opts.trivia,
     context: options?.context,
     excluded: new Set(), // [resolver] per-declaration cycle guard
@@ -12459,7 +12500,7 @@ function expandCall(
             sourceOwner: sourceOwnerForBody(def.rules, frame, e),
             mixinUrlBindings: undefined,
             mixinValueBindings: undefined,
-            ...(namespaced || homeFrame === frame ? {} : { fallback: frame })
+            ...(namespaced || homeFrame === frame ? {} : { fallback: frame, callerFallback: true })
           };
           takeMixinValueBindings(boundSourceKeys, e, callFrame);
           captureArgDefFrames(bindings, frame, callFrame);
@@ -12683,7 +12724,7 @@ function expandApply(
         declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null,
         statements: rule.rules,
         sourceOwner: sourceOwnerForBody(rule.rules, frame, e),
-        ...(home === frame ? {} : { fallback: frame })
+        ...(home === frame ? {} : { fallback: frame, callerFallback: true })
       };
       const emitted = withSourceOwner(e, applyFrame.sourceOwner, () => mapMaybe(
         prepareBodyPlugins(rule.rules, applyFrame, e),
@@ -13081,7 +13122,7 @@ function resolveValueBlock(node: Binding, frame: Frame | null, e: EvalCtx): Valu
       return cur;
     }
     if (cur.type === 'Lookup' && cur.kind === 'var') {
-      const hit = lookupVarIn(cursor, literalName(cur));
+      const hit = lookupVarIn(cursor, literalName(cur), e);
       cur = hit?.value;
       cursor = hit?.frame ?? cursor;
       continue;
@@ -13144,6 +13185,7 @@ function referenceCallFrame(
     // A `using (…)` content block seeds its params here (`@content(args)`).
     declIndex: collectDeclIndex(body, bindings), cells: cellsForParams(bindings), reassign: null,
     fallback: frame, // caller scope is the fallback
+    callerFallback: true, // [R16] but invisible to plain variable reads by default
     statements: body,
     sourceOwner
   };
@@ -13181,7 +13223,14 @@ function expandReferenceCall(
   }
   const resolved = resolveReferenceResult(call, frame, e);
   if (!resolved) {
-    if (call.base.type === 'Lookup' && call.base.kind === 'var') {
+    /*
+     * [content] `@content` / `$content()` with no block bound to THIS mixin's own
+     * activation splices EMPTY (dart-sass): the block binds only when the mixin was
+     * `@include`d with one (`mixin-dispatch.ts` — `bound.set('content', …)` on its
+     * own frame), so an unresolved `content` means "no block here", not an error and
+     * not a cross-frame read. Every OTHER unresolved reference is still a hard miss.
+     */
+    if (call.base.type === 'Lookup' && call.base.kind === 'var' && call.base.name !== 'content') {
       unresolvedSymbol(call, `@${call.base.name}`, e);
     }
     return;
@@ -13406,7 +13455,7 @@ function resolveForRuleset(
     return { rules: valueBlockBody(node), frame: binding?.lexicalFrame ?? frame, detached: binding };
   }
   if (node.type === 'Lookup' && node.kind === 'var') {
-    const bound = lookupVar(frame, literalName(node));
+    const bound = lookupVar(frame, literalName(node), e);
     if (!bound) {
       return null;
     }
@@ -13824,7 +13873,7 @@ function dispatch(
   ): TypedResolver => {
     const home = homes?.get(def);
     const overlay: Frame = home && home !== frame
-      ? { parent: home, mixins: null, declIndex: collectDeclIndex([], bindings), cells: cellsForParams(bindings), reassign: null, fallback: frame }
+      ? { parent: home, mixins: null, declIndex: collectDeclIndex([], bindings), cells: cellsForParams(bindings), reassign: null, fallback: frame, callerFallback: true }
       : { parent: frame, mixins: null, declIndex: collectDeclIndex([], bindings), cells: cellsForParams(bindings), reassign: null };
 
     /*
@@ -13848,7 +13897,7 @@ function dispatch(
   const resolveDefault: DefaultResolver = (v, boundSoFar, def) => {
     const home = homes?.get(def);
     const overlay: Frame = home && home !== frame
-      ? { parent: home, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null, fallback: frame }
+      ? { parent: home, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null, fallback: frame, callerFallback: true }
       : { parent: frame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
     let lookup: Lookup | undefined;
     let lookupName: string | undefined;

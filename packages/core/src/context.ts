@@ -142,12 +142,30 @@ export interface ContextOptions {
   searchPaths?: string[];
 
   /**
-   * Whether to leak variables and mixins into the caller scope,
-   * such that they can be referenced / called by subsequent rules.
+   * Whether a mixin/detached-ruleset body leaks its inner variables and mixins
+   * OUT into the caller scope (R9), so subsequent caller rules can reference /
+   * call them. Legacy Less behavior; `strict` sets it `false`.
    *
-   * @deprecated - a Less feature
+   * @default false
+   */
+  allowLeakyScope?: boolean;
+
+  /**
+   * @deprecated Use `allowLeakyScope` instead. Retained as an alias: when
+   * `leakyScope` is set and `allowLeakyScope` is not, `leakyScope` is used.
    */
   leakyScope?: boolean;
+
+  /**
+   * Whether a mixin-call / detached-ruleset / value-lambda BODY may resolve a
+   * free variable in the ambient CALL SITE (the legacy Less dynamic caller-read,
+   * R16). `true` = legacy caller-read; `false` (default) = lexical/hermetic — a
+   * body resolves free variables in its definition scope + params only. `strict`
+   * sets it `false`.
+   *
+   * @default false
+   */
+  allowCallerScope?: boolean;
 
   /**
    * Whether to bubble root-only at-rules (like @font-face, @keyframes)
@@ -234,7 +252,8 @@ export interface ResolvedOptions {
   mathMode: MathMode;
   unitMode: UnitMode;
   functionMode: FunctionMode;
-  leakyScope: boolean;
+  allowLeakyScope: boolean;
+  allowCallerScope: boolean;
   bubbleRootAtRules: boolean;
   processImports: boolean;
 }
@@ -247,9 +266,19 @@ const OPTION_DEFAULTS: ResolvedOptions = {
   mathMode: 'parens-division',
   unitMode: 'preserve',
   functionMode: 'preserve',
-  leakyScope: false,
+  allowLeakyScope: false,
+  allowCallerScope: false,
   bubbleRootAtRules: false,
   processImports: true
+};
+
+/**
+ * Resolved-option input to {@link resolveOptions}: a partial resolved set plus the
+ * deprecated `leakyScope` alias, which resolves into `allowLeakyScope`.
+ */
+type OptionInput = Partial<ResolvedOptions> & {
+  /** @deprecated alias of `allowLeakyScope`. */
+  leakyScope?: boolean;
 };
 
 /**
@@ -261,14 +290,19 @@ const OPTION_DEFAULTS: ResolvedOptions = {
  * mathMode).
  */
 export function resolveOptions(
-  compile: Partial<ResolvedOptions> | undefined,
-  tree: Partial<ResolvedOptions> | undefined
+  compile: OptionInput | undefined,
+  tree: OptionInput | undefined
 ): Readonly<ResolvedOptions> {
   return Object.freeze({
     mathMode: compile?.mathMode ?? tree?.mathMode ?? OPTION_DEFAULTS.mathMode,
     unitMode: compile?.unitMode ?? tree?.unitMode ?? OPTION_DEFAULTS.unitMode,
     functionMode: compile?.functionMode ?? tree?.functionMode ?? OPTION_DEFAULTS.functionMode,
-    leakyScope: compile?.leakyScope ?? tree?.leakyScope ?? OPTION_DEFAULTS.leakyScope,
+
+    /* `leakyScope` is the deprecated alias of `allowLeakyScope`: the new name wins
+     * within a source, else the alias, before the next precedence tier. */
+    allowLeakyScope: compile?.allowLeakyScope ?? compile?.leakyScope
+      ?? tree?.allowLeakyScope ?? tree?.leakyScope ?? OPTION_DEFAULTS.allowLeakyScope,
+    allowCallerScope: compile?.allowCallerScope ?? tree?.allowCallerScope ?? OPTION_DEFAULTS.allowCallerScope,
     bubbleRootAtRules: compile?.bubbleRootAtRules ?? tree?.bubbleRootAtRules ?? OPTION_DEFAULTS.bubbleRootAtRules,
     processImports: compile?.processImports ?? tree?.processImports ?? OPTION_DEFAULTS.processImports
   });
@@ -423,7 +457,9 @@ export class TreeContext extends DocumentContext {
     delete rest.mathMode;
     delete rest.unitMode;
     delete rest.functionMode;
+    delete rest.allowLeakyScope;
     delete rest.leakyScope;
+    delete rest.allowCallerScope;
     delete rest.bubbleRootAtRules;
     delete rest.processImports;
     this.opts = rest;

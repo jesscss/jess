@@ -105,7 +105,7 @@ export async function executeCallableCandidateLoop({
     const candidateState = prepareCallableCandidateState({
       candidate,
       callSiteRules: ordinaryCallSiteRules,
-      leakyScope: context.options.leakyScope === true,
+      leakyScope: context.options.allowLeakyScope === true,
       resolvedBindingInfo: resolvedParamBindings.get(candidate),
       createCallableRules,
       getRootSourceRules

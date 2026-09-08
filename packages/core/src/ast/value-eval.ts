@@ -371,6 +371,13 @@ export interface EvalModes {
   readonly functionMode?: FunctionMode;
 
   readonly inCalc?: boolean;
+
+  /**
+   * [R16] Legacy Less dynamic caller-read. Carried here so a context-free
+   * serialize consumer can opt into it via `modes` on the same path the Context
+   * supplies it (its resolved options already carry the field). Absent = hermetic.
+   */
+  readonly allowCallerScope?: boolean;
 }
 
 export const DEFAULT_MODES: EvalModes = {

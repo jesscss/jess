@@ -5,14 +5,18 @@ import {
   mixinCall, mixinDef, stylesheet, rule, variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
+import { DEFAULT_MODES } from '../value-eval.js';
 import { makeLessRegistry } from '@jesscss/fns';
 
 const evaluator = buildEvaluator(makeLessRegistry());
 const render = (document: Stylesheet, collapseNesting = true): string | undefined =>
   serialize(document, { evaluator, collapseNesting }).css;
+// [R16] the caller-read is opt-in (allowCallerScope) — used only by the caller-fallback case below.
+const renderCallerScope = (document: Stylesheet, collapseNesting = true): string | undefined =>
+  serialize(document, { evaluator, collapseNesting, modes: { ...DEFAULT_MODES, allowCallerScope: true } }).css;
 
 describe('variable-call canonical AST emission', () => {
-  it('splices a direct detached ruleset through its definition scope and caller fallback', () => {
+  it('splices a direct detached ruleset through its definition scope and caller fallback (allowCallerScope)', () => {
     const document = stylesheet([
       variableDeclaration('base', keyword('red'), { mode: 'declare' }),
       variableDeclaration('theme', anonymousMixin([
@@ -27,7 +31,7 @@ describe('variable-call canonical AST emission', () => {
       ])
     ]);
 
-    expect(render(document)).toBe('.card {\n  color: red;\n  width: 24px;\n}\n');
+    expect(renderCallerScope(document)).toBe('.card {\n  color: red;\n  width: 24px;\n}\n');
   });
 
   it('selects a conditional detached-ruleset branch without materializing it as a value', () => {
