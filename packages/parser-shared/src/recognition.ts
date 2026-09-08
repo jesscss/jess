@@ -447,9 +447,18 @@ const customDoubleQuoted = regex(/"(?:[^"\n\\]|\\.)*"/);
 const lessInterpolatedCustomPropertyStart = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 const lessInterpolatedCustomPropertyDash = regex(/-/);
 const lessInterpolatedCustomPropertyTail = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
-const lessInterpolatedValueStart = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+
+/*
+ * Less value identifiers REUSE the CSS ident, which already consumes CSS escapes
+ * (css-syntax-3 4.3.7) into the token, so `\;a`, `a\;b` and `\9` are ONE ident
+ * exactly as in CSS. Less's only addition is `@{...}` interpolation, layered by the
+ * grammar (`interpolatedValueTail`), not by widening or re-spelling this token.
+ * A separate escape-less spelling here was an invented near-duplicate of the CSS
+ * rule and split escaped delimiters into adjacent atoms that then failed to join.
+ */
+const lessInterpolatedValueStart = cssIdentifier;
 const lessInterpolatedValueDash = regex(/-/);
-const lessInterpolatedValueTail = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
+const lessInterpolatedValueTail = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 
 /*
  * Custom-property values remain CSS declaration-value text in Less, except for

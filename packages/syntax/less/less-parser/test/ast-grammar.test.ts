@@ -772,7 +772,7 @@ describe('Less AST grammar facts', () => {
     });
   });
 
-  it('keeps a CSS escape hack as a typed declaration-value suffix', () => {
+  it('keeps a CSS escape hack as one value keyword, reusing the CSS escape-aware ident', () => {
     const result = run(
       lessGrammar.Document,
       '.x { background-color: #000 \\9; }',
@@ -791,7 +791,7 @@ describe('Less AST grammar facts', () => {
               type: 'Declaration',
               value: [
                 { type: 'Color', src: '#000' },
-                { type: 'Any', src: '\\9' }
+                { type: 'Keyword', src: '\\9' }
               ]
             }
           ]
@@ -7737,7 +7737,7 @@ describe('Less AST grammar facts', () => {
     });
   });
 
-  it('keeps escaped and legacy-hack spelling confined to declaration names and CSS-escaped mixins', () => {
+  it('accepts CSS escapes in value keywords and declaration names alike, keeping variable names and malformed escapes out', () => {
     const accepts = run(
       lessGrammar.Document,
       '@base: red; -theme: blue; @import "plain.less";',
@@ -7749,7 +7749,16 @@ describe('Less AST grammar facts', () => {
       && isStylesheet(accepts.value)
     ).toBe(true);
 
-    for (const source of ['*color: red;', '\\63 olor: red;']) {
+    for (const source of [
+      '*color: red;',
+      '\\63 olor: red;',
+
+      /*
+       * A value keyword reuses the CSS escape-aware ident (css-syntax-3 4.3.7),
+       * so an escaped value is ONE ident exactly as in CSS: `r\65 d` is `red`.
+       */
+      'color: r\\65 d;'
+    ]) {
       const result = run(lessGrammar.Document, source, {
         trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
       });
@@ -7762,10 +7771,9 @@ describe('Less AST grammar facts', () => {
 
     for (const source of [
       /*
-       * The declaration-name terminal must not become a value/variable escape
-       * route, and malformed declaration escapes stay out.
+       * Less variable names do NOT admit escapes, and malformed declaration
+       * escapes (a backslash before a newline is not a valid escape) stay out.
        */
-      'color: r\\65 d;',
       '@\\63 olor: red;',
       '\\\ncolor: red;',
       '*\\\ncolor: red;'
