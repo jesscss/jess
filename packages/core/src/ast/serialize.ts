@@ -15614,7 +15614,16 @@ function expandStyleImport(
           const emitWithPlugins = (): MaybePromise<void> =>
             withDocumentTrivia(e, loaded.document!, () =>
               mapMaybe(prepareBodyPlugins(loaded.document!.rules, frame, e), () => {
-                if (e.referenceImportDepth === 0 && e.depth > 0) {
+                /*
+                 * Splice the imported document's own leading block comment (e.g. a
+                 * `/*!` license banner) at the import site. This must run for a
+                 * TOP-LEVEL import too (`e.depth === 0`): the importing document's
+                 * leading-comment pass reads the importer's trivia, never the loaded
+                 * file's, so without this a banner on the first imported file (the
+                 * bootstrap4 shape: a one-line entry that only `@import`s the framework)
+                 * was left unemitted here and swept to the output tail.
+                 */
+                if (e.referenceImportDepth === 0) {
                   emitLeadingDocumentBlockComments(e, INDENT.repeat(e.depth));
                 }
                 return emit();
