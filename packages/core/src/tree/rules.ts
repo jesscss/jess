@@ -5402,7 +5402,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
            * `injectSpineLeakyMixinSurfaceBindings` at the call's source index. Zero-cost
            * off leaky mode; no-ops when a surface has no plain var.
            */
-          if (context!.options.leakyScope === true && n.index !== undefined) {
+          if (context!.options.allowLeakyScope === true && n.index !== undefined) {
             for (const surface of resolved.surfaces) {
               this.injectSpineLeakyMixinSurfaceBindings(surface, n.index, context!);
             }
@@ -7180,7 +7180,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             rulesVisibility: result.options.rulesVisibility,
             readonly: result.options.readonly
           }, context);
-          if (context.options.leakyScope && isNode(rule, N.Call) && result.options.mixinOutputSlot) {
+          if (context.options.allowLeakyScope && isNode(rule, N.Call) && result.options.mixinOutputSlot) {
             out.injectLeakyMixinOutputBindings(result, idx);
           }
           if (result.hoistToRoot) {

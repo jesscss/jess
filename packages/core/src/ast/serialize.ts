@@ -614,6 +614,16 @@ export interface Frame {
   fallback?: Frame | null;
 
   /*
+   * [R16] This frame's `fallback` is the ambient CALL SITE (a mixin body,
+   * detached ruleset, value-lambda, or dispatch overlay — not a detached-closure
+   * member scope). Plain VARIABLE reads treat it as invisible unless
+   * `allowCallerScope` is on; `parentExcludes`, path/namespace lookups, and
+   * mixin-visibility publishing traverse `fallback` regardless, so recursion,
+   * member access, and caller-published mixins keep working.
+   */
+  callerFallback?: boolean;
+
+  /*
    * rulesets visible at this level, keyed by their own-local selector
    * string (namespace path descent). Lazily built only when a namespaced call or
    * map/namespace accessor needs it.
@@ -2185,6 +2195,17 @@ function parentExcludes(frame: Frame | null, rules: Statement[]): boolean {
   return false;
 }
 
+/*
+ * [R16] The `&& (e === undefined || e.allowCallerScope || f.callerFallback !== true)`
+ * guard on each `fallback` capture below is the hermetic caller-read gate: a plain
+ * VARIABLE read skips a frame whose `fallback` is the ambient call site (a
+ * `callerFallback` frame — mixin body / detached ruleset / value-lambda / dispatch
+ * overlay) unless `allowCallerScope` restores the legacy Less dynamic caller-read.
+ * Reads WITHOUT an `EvalCtx` (the `lookupVar`/path/chain walks) keep traversing, so
+ * `parentExcludes`, member access, and namespace descent are untouched. It is one
+ * boolean sub-expression — no cost on the default path beyond that field read.
+ */
+
 /**
  * The nearest last-wins binding for `name` (top of the nearest non-empty stack).
  * Used by the value-block / namespace paths that need the CURRENT value node
@@ -2202,7 +2223,7 @@ function lookupLiveCell(frame: Frame | null, name: string, e?: EvalCtx): { value
         return { value: hit.value, frame: hit.valueFrame ?? f };
       }
     }
-    if (f.fallback && !fb) {
+    if (f.fallback && !fb && (e === undefined || e.allowCallerScope || f.callerFallback !== true)) {
       fb = f.fallback;
     }
   }
@@ -2220,7 +2241,7 @@ function hasExcludedLiveCell(frame: Frame | null, name: string, e: EvalCtx): boo
         return true;
       }
     }
-    if (f.fallback && !fb) {
+    if (f.fallback && !fb && (e === undefined || e.allowCallerScope || f.callerFallback !== true)) {
       fb = f.fallback;
     }
   }
@@ -2239,7 +2260,7 @@ function lookupLeakedBinding(frame: Frame | null, name: string, e?: EvalCtx): { 
         }
       }
     }
-    if (f.fallback && !fb) {
+    if (f.fallback && !fb && (e === undefined || e.allowCallerScope || f.callerFallback !== true)) {
       fb = f.fallback;
     }
   }
@@ -2256,7 +2277,7 @@ function hasExcludedLeakedBinding(frame: Frame | null, name: string, e: EvalCtx)
     if (stack?.some(value => e.excluded.has(value))) {
       return true;
     }
-    if (f.fallback && !fb) {
+    if (f.fallback && !fb && (e === undefined || e.allowCallerScope || f.callerFallback !== true)) {
       fb = f.fallback;
     }
   }
@@ -2298,7 +2319,7 @@ function lookupScopedBinding(frame: Frame | null, name: string, e?: EvalCtx): { 
         }
       }
     }
-    if (f.fallback && !fb) {
+    if (f.fallback && !fb && (e === undefined || e.allowCallerScope || f.callerFallback !== true)) {
       fb = f.fallback;
     }
   }
@@ -2327,7 +2348,7 @@ function hasExcludedScopedBinding(frame: Frame | null, name: string, e: EvalCtx)
         }
       }
     }
-    if (f.fallback && !fb) {
+    if (f.fallback && !fb && (e === undefined || e.allowCallerScope || f.callerFallback !== true)) {
       fb = f.fallback;
     }
   }
@@ -2841,6 +2862,15 @@ function makeTypedResolver(frame: Frame | null, e: EvalCtx): TypedResolver {
 interface EvalCtx {
   ev: ValueEvaluator | null;
   modes: EvalModes;
+
+  /**
+   * [R16] Resolved ONCE per render: `true` restores the legacy Less dynamic
+   * caller-read (a body resolves free variables in the ambient call site);
+   * `false` (default) is lexical/hermetic — the variable-read functions skip a
+   * frame's `callerFallback`, so a body sees only its definition scope + params.
+   * A single boolean read on the hot lookup path, never re-derived per lookup.
+   */
+  allowCallerScope: boolean;
 
   /** Context supplies document source only on genuine cold diagnostic paths. */
   context?: Context;
@@ -4935,7 +4965,7 @@ function invokeValueLambda(
     reassign: null,
     statements: lambda.rules,
     sourceOwner: defFrame ? sourceOwnerForBody(lambda.rules, defFrame, e) : null,
-    ...(callerFrame && callerFrame !== defFrame ? { fallback: callerFrame } : {})
+    ...(callerFrame && callerFrame !== defFrame ? { fallback: callerFrame, callerFallback: true } : {})
   };
   return { value: result, frame: activation };
 }
@@ -7400,6 +7430,7 @@ function scratchEmit(e: EvalCtx): Emit {
   return {
     ev: e.ev,
     modes: e.modes,
+    allowCallerScope: e.allowCallerScope, // [R16] preserve the caller-read policy
     trivia: e.trivia,
     excluded: e.excluded,
     propNames: e.propNames,
@@ -9575,6 +9606,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     positions: null,
     ev: options?.evaluator ?? options?.context?.evaluator ?? null,
     modes: options?.modes ?? options?.context?.options ?? DEFAULT_MODES,
+    allowCallerScope: options?.context?.options.allowCallerScope ?? options?.modes?.allowCallerScope ?? false,
     trivia: options?.trivia ?? triviaMapOf(root) ?? options?.context?.opts.trivia,
     context: options?.context,
     excluded: new Set(),
@@ -9660,6 +9692,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     positions: options?.trackPositions ? [] : null,
     ev: options?.evaluator ?? options?.context?.evaluator ?? null, // typed value evaluator
     modes: options?.modes ?? options?.context?.options ?? DEFAULT_MODES,
+    allowCallerScope: options?.context?.options.allowCallerScope ?? options?.modes?.allowCallerScope ?? false, // [R16] legacy caller-read, default hermetic
     trivia: options?.trivia ?? triviaMapOf(root) ?? options?.context?.opts.trivia,
     context: options?.context,
     excluded: new Set(), // [resolver] per-declaration cycle guard
@@ -12459,7 +12492,7 @@ function expandCall(
             sourceOwner: sourceOwnerForBody(def.rules, frame, e),
             mixinUrlBindings: undefined,
             mixinValueBindings: undefined,
-            ...(namespaced || homeFrame === frame ? {} : { fallback: frame })
+            ...(namespaced || homeFrame === frame ? {} : { fallback: frame, callerFallback: true })
           };
           takeMixinValueBindings(boundSourceKeys, e, callFrame);
           captureArgDefFrames(bindings, frame, callFrame);
@@ -12683,7 +12716,7 @@ function expandApply(
         declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null,
         statements: rule.rules,
         sourceOwner: sourceOwnerForBody(rule.rules, frame, e),
-        ...(home === frame ? {} : { fallback: frame })
+        ...(home === frame ? {} : { fallback: frame, callerFallback: true })
       };
       const emitted = withSourceOwner(e, applyFrame.sourceOwner, () => mapMaybe(
         prepareBodyPlugins(rule.rules, applyFrame, e),
@@ -13144,6 +13177,7 @@ function referenceCallFrame(
     // A `using (…)` content block seeds its params here (`@content(args)`).
     declIndex: collectDeclIndex(body, bindings), cells: cellsForParams(bindings), reassign: null,
     fallback: frame, // caller scope is the fallback
+    callerFallback: true, // [R16] but invisible to plain variable reads by default
     statements: body,
     sourceOwner
   };
@@ -13824,7 +13858,7 @@ function dispatch(
   ): TypedResolver => {
     const home = homes?.get(def);
     const overlay: Frame = home && home !== frame
-      ? { parent: home, mixins: null, declIndex: collectDeclIndex([], bindings), cells: cellsForParams(bindings), reassign: null, fallback: frame }
+      ? { parent: home, mixins: null, declIndex: collectDeclIndex([], bindings), cells: cellsForParams(bindings), reassign: null, fallback: frame, callerFallback: true }
       : { parent: frame, mixins: null, declIndex: collectDeclIndex([], bindings), cells: cellsForParams(bindings), reassign: null };
 
     /*
@@ -13848,7 +13882,7 @@ function dispatch(
   const resolveDefault: DefaultResolver = (v, boundSoFar, def) => {
     const home = homes?.get(def);
     const overlay: Frame = home && home !== frame
-      ? { parent: home, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null, fallback: frame }
+      ? { parent: home, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null, fallback: frame, callerFallback: true }
       : { parent: frame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
     let lookup: Lookup | undefined;
     let lookupName: string | undefined;

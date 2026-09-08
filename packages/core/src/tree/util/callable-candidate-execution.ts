@@ -131,7 +131,7 @@ export async function executeCallableCandidate({
       lexicalScopeFrame,
       definedInImportedSurface: true
     });
-  } else if (context.options.leakyScope === true && parentFrame) {
+  } else if (context.options.allowLeakyScope === true && parentFrame) {
     wireCallableScopeFrames({
       rules,
       parentFrame,

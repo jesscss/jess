@@ -1188,13 +1188,13 @@ function lookupRulesReferenceTarget(args: {
   const first = performRulesReferenceLookup(args.resolvedTarget, args.lookupContext);
   if (isThenable(first)) {
     return Promise.resolve(first).then((resolved) => {
-      if (isRulesLookupResult(resolved) || !args.context.options.leakyScope) {
+      if (isRulesLookupResult(resolved) || !args.context.options.allowLeakyScope) {
         return resolved;
       }
       return lookupLeakyRulesReferenceTargets(args);
     });
   }
-  if (first !== undefined || !args.context.options.leakyScope) {
+  if (first !== undefined || !args.context.options.allowLeakyScope) {
     return first;
   }
   return lookupLeakyRulesReferenceTargets(args);
@@ -1377,7 +1377,7 @@ function rulesLookupHandleCommonEligible(
     && !env.semanticFilter
     && !env.hasTarget
     && !env.isInterpolatedVariable
-    && context.options.leakyScope !== true
+    && context.options.allowLeakyScope !== true
     && context.searchScope.size === 0
   );
 }
@@ -1687,7 +1687,7 @@ function readSourceStaticRulesLookupHandleBase(
     || handle.terminalMixinOnly !== (referenceNode.options.mixinRulesetCallHasArgs === true)
     || env.hasTarget
     || env.semanticFilter
-    || env.context.options.leakyScope === true
+    || env.context.options.allowLeakyScope === true
     || env.context.searchScope.size !== 0
     || env.readMode !== undefined
     || env.isInterpolatedVariable
@@ -2948,7 +2948,7 @@ function finalizeScopeFrameVariableBindingResult(
   const shouldUseDefinitionRulesContext = isNode(bindingSource, N.VarDeclaration) && (
     bindingSource.options?.paramVar
     || (
-      context.options.leakyScope !== true
+      context.options.allowLeakyScope !== true
       && isNode(bindingValue, N.Rules | N.Collection)
     )
     || ownerFrameRetainsParams
