@@ -16,7 +16,7 @@ Measured on the live engine (instrumented counters, 236f11674):
 - `@p: .mk-map(); .a { a: @p[one]; … f: @p[two]; }` — 6 member reads → **12** `declMapFromMixinCall` dispatches (2× per access). Each dispatch re-runs `expandCall(.mk-map)` — **true re-evaluation** of the mixin body per access.
 - `@m: { … }; .a { a: @m[one]; … }` — 5 reads → **10** `evalToDeclMap` rebuilds (2× per access) — re-indexing the body per access.
 
-So repeated member lookups are O(accesses) × O(body), not O(1) amortized. This is the same "don't re-derive what one pass already produced" principle as the extend rework (ledger X12).
+So repeated member lookups are O(accesses) × O(body), not O(1) amortized. This is the same repeated-re-derivation cost that ledger X12 (the extend rework) eliminated — recomputing what one pass already produced.
 
 Separately, the scoping question surfaced while designing the memo: a member lookup's result today can depend on the *call site's* variables (the leak), which both muddies the language rule and complicates any memo key.
 
