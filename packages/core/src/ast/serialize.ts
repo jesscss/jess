@@ -576,6 +576,17 @@ export interface Frame {
    */
   extendPlacement?: object;
 
+  /**
+   * [extend/splice] Set on a mixin-call body frame. A ruleset called as a mixin
+   * (`.b { .z(); }`) splices the ruleset's OWN nested `Ruleset` nodes by identity,
+   * so those nodes are in the static extend plan (`flatByRule`) under their
+   * DEFINITION selector (`.z .c`). At this call-site placement their header is the
+   * composed call-site selector (`.b .c`), not the static plan's — the `.z`-targeted
+   * extend must not leak onto the splice. Emit uses `headerComposed` for a static
+   * extend-target rule reached through such a placement (see `flattenWithHeader`).
+   */
+  mixinSplice?: boolean;
+
   // [guards] a name maps to ALL same-name defs (overloads), in definition order.
   mixins: Map<string, MixinDefinition[]> | null;
 
@@ -10471,6 +10482,18 @@ function innermostExtendPlacement(frame: Frame | null): object | null {
   return null;
 }
 
+/** [extend/splice] True when this rule is emitted through a mixin-call body splice —
+ * its static extend-plan header (keyed on the shared definition node) does NOT apply
+ * to this call-site placement (see {@link Frame.mixinSplice}). */
+function reachedViaMixinSplice(frame: Frame | null): boolean {
+  for (let cursor = frame; cursor; cursor = cursor.parent) {
+    if (cursor.mixinSplice) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * [extend/dynamic] Record the extend facts for a rule reached through a dynamic
  * expansion (a loop or mixin-call body). The rule's selector is ALREADY composed by
@@ -10662,7 +10685,8 @@ function visibleHeaderCore(
   rule: Ruleset,
   header: string[],
   projection: ExtendResults | ExtendPlacementResults | null,
-  refRules: ReadonlySet<Ruleset> | null | undefined
+  refRules: ReadonlySet<Ruleset> | null | undefined,
+  frame?: Frame | null
 ): string[] | null {
   const mask = projection?.hiddenByRule.get(rule);
   if (mask?.length === header.length) {
@@ -10671,6 +10695,18 @@ function visibleHeaderCore(
   }
   if ((rule.reference === true || refRules?.has(rule) === true)
     && projection?.flatByRule.has(rule) !== true) {
+    /*
+     * [extend/splice] A `(reference)` style CALLED AS A MIXIN outputs its rules at
+     * the call site "as normal" (Less docs) — reference hiding does not apply to a
+     * mixin call's output. But the extend pass records such rules in
+     * `hiddenReferenceRules`, which would re-hide them the moment the document has
+     * any `:extend`. So when this rule is reached through a mixin-call placement,
+     * keep its header. The chain walk runs only in this already-rare
+     * reference-hidden branch.
+     */
+    if (frame !== undefined && reachedViaMixinSplice(frame)) {
+      return withoutPlaceholders(header);
+    }
     return null;
   }
   return withoutPlaceholders(header);
@@ -10737,7 +10773,7 @@ function withoutPlaceholders(header: string[]): string[] | null {
 }
 
 function visibleHeader(rule: Ruleset, header: string[], frame: Frame, e: Emit): string[] | null {
-  return visibleHeaderCore(rule, header, extendProjection(frame, e), e.extends?.hiddenReferenceRules);
+  return visibleHeaderCore(rule, header, extendProjection(frame, e), e.extends?.hiddenReferenceRules, frame);
 }
 
 /** A hidden reference subject emits only when its current extend projection has
@@ -10932,9 +10968,32 @@ function flattenWithHeader(
    * extend override the header is byte-identical to the no-extend serializer.
    */
   const projection = extendProjection(frame, e);
-  const header0 = e.hoistMode
-    ? projection?.hoistHeader.get(rule) ?? projection?.flatByRule.get(rule) ?? headerComposed
-    : projection?.flatByRule.get(rule) ?? headerComposed;
+
+  /*
+   * [extend/splice] The static plan (`flatByRule`) is keyed on the rule NODE, but a
+   * ruleset called as a mixin splices that same node under a NEW call-site selector.
+   * A per-placement projection (a dynamic-extend loop/mixin body) already carries the
+   * right header; the STATIC projection does not, so for a static extend-target rule
+   * reached through a plain mixin splice the composed call-site header is authoritative.
+   * `flatByRule` only holds extend-TARGET rules, so this is a no-op for every other rule.
+   */
+  const flat = projection?.flatByRule.get(rule);
+  const hoist = e.hoistMode ? projection?.hoistHeader.get(rule) : undefined;
+
+  /*
+   * The frame-chain splice check runs ONLY when this rule has a static extend
+   * header at all (`flat`/`hoist` present) — a rule the plan never touched keeps
+   * the O(1) path. A per-placement projection (dynamic-extend body) is already
+   * placement-correct, so only the STATIC projection is overridden.
+   */
+  const spliced = (flat !== undefined || hoist !== undefined)
+    && (projection === null || projection === e.extends)
+    && reachedViaMixinSplice(frame);
+  const header0 = spliced
+    ? headerComposed
+    : e.hoistMode
+      ? hoist ?? flat ?? headerComposed
+      : flat ?? headerComposed;
 
   /*
    * [extend/dynamic] Record this rule's extender fact if it was reached through a
@@ -10997,7 +11056,9 @@ function flattenWithHeader(
       return mapMaybe(flushBlock(
         visible, group, e, rule.selector, parent, rule, trailingBlockComments
       ), () => {
-        recordDynExtendSlot(e, rule, frame, visible);
+        if (!spliced) {
+          recordDynExtendSlot(e, rule, frame, visible);
+        }
         group.length = 0;
       });
     }
@@ -11017,7 +11078,9 @@ function flattenWithHeader(
       return mapMaybe(flushBlock(
         visible, leaves, e, rule.selector, parent, rule, trailingBlockComments
       ), () => {
-        recordDynExtendSlot(e, rule, frame, visible);
+        if (!spliced) {
+          recordDynExtendSlot(e, rule, frame, visible);
+        }
       });
     }
   };
@@ -11041,7 +11104,9 @@ function flattenWithHeader(
         return mapMaybe(flushBlock(
           visible, [], e, rule.selector, parent, rule, EMPTY_LEAF_BLOCK_COMMENTS
         ), () => {
-          recordDynExtendSlot(e, rule, frame, visible);
+          if (!spliced) {
+            recordDynExtendSlot(e, rule, frame, visible);
+          }
         });
       }
       return flush();
@@ -12002,6 +12067,18 @@ function walkBody(
           }
 
           /*
+           * [inline-import] `@import (inline)` INSIDE a rule body belongs in that
+           * rule's block (`div { …raw… }`), not flushed and spliced at document
+           * root. Buffer it as an ordinary leaf; `emitLeafOwned` emits its raw bytes
+           * inside the block, reserving an async-patch chunk for the (async) read.
+           */
+          if (composed !== null && partition !== null && e.referenceImportDepth === 0
+            && importHasOption(importRequestOptions(node.options), 'inline')) {
+            addLeaf(group, partition, evaluatedLeaf(node, frame), forceLeading, e);
+            break;
+          }
+
+          /*
            * A CSS import recorded inside a canonical Ruleset is a rule-body
            * statement, not a bubbling container. Keep it in the authored leaf
            * group so it emits inside that rule (and inside any mixin/control-flow
@@ -12500,6 +12577,7 @@ function expandCall(
             sourceOwner: sourceOwnerForBody(def.rules, frame, e),
             mixinUrlBindings: undefined,
             mixinValueBindings: undefined,
+            mixinSplice: true,
             ...(namespaced || homeFrame === frame ? {} : { fallback: frame, callerFallback: true })
           };
           takeMixinValueBindings(boundSourceKeys, e, callFrame);
@@ -15214,9 +15292,34 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
     emitAtRuleStatement(node, frame, e);
     e.depth--;
   } else if (node.type === 'StyleImport') {
-    e.depth++;
-    settledEmission(expandStyleImport(node, frame, e, e.importDocument), node, e);
-    e.depth--;
+    const opts = importRequestOptions(node.options);
+    if (importHasOption(opts, 'inline') && !importHasOption(opts, 'reference')) {
+      /*
+       * [inline-import] Raw `@import (inline)` bytes emit AS this block's body. The
+       * read is async, so keep the walk sync by reserving an async-patch chunk (the
+       * context's own `chunks`/`pending`) that the resolved bytes fill after the walk.
+       */
+      const request: ImportDocumentRequest = {
+        node, specifier: importSpecifier(node, frame, e), options: opts
+      };
+      const loaded = e.importDocument?.(request);
+      const asBytes = (l: ImportDocument | undefined): string =>
+        l !== undefined && 'inline' in l ? idt + l.inline + '\n' : '';
+      if (isThenable(loaded)) {
+        const i = e.chunks.length;
+        e.chunks.push('');
+        e.pending.push({ i, p: Promise.resolve(mapMaybe(loaded, asBytes)) });
+      } else {
+        put(e, asBytes(loaded));
+      }
+      if (e.positions) {
+        e.positions.push({ node, type: node.type, start, end: e.off });
+      }
+    } else {
+      e.depth++;
+      settledEmission(expandStyleImport(node, frame, e, e.importDocument), node, e);
+      e.depth--;
+    }
   } else if (node.type === 'UnknownAtRuleBlock') {
     e.depth++;
     emitUnknownAtRuleBlock(node, e);

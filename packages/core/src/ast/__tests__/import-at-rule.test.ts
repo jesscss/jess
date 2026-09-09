@@ -1053,7 +1053,7 @@ describe('StyleImport', () => {
     expect(serialize(document)).toEqual({ css: '.card {\n  @import "mixin.css";\n}\n' });
   });
 
-  it('awaits a raw inline import inside a flattened rule instead of buffering it as a leaf', async () => {
+  it('emits a raw inline import inside its flattened rule block, not spliced at root', async () => {
     const document = stylesheet([
       rule('.source-only', [
         authoredImport(
@@ -1064,10 +1064,12 @@ describe('StyleImport', () => {
       ])
     ]);
 
+    /* The raw bytes are this rule's body (lessc 4.x: `.source-only { .from-inline … }`),
+     * not hoisted to document root; the async read completes via an async-patch chunk. */
     await expect(serialize(document, {
       collapseNesting: true,
       importDocument: () => Promise.resolve({ inline: '.from-inline { color: green; }', media: null })
-    })).resolves.toEqual({ css: '.from-inline { color: green; }\n' });
+    })).resolves.toEqual({ css: '.source-only {\n  .from-inline { color: green; }\n}\n' });
   });
 
   it('keeps a trailing import in its source-ordered parent block after a nested rule', () => {

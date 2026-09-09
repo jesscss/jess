@@ -257,7 +257,7 @@ const expectedFailureFixtures = new Map<string, string>([
    */
   [
     'tests-unit/import/import-reference.less',
-    'now gated at collapseNesting:true against the flattened 4.x golden (via collapseNestingTrueFixtures), so nesting is no longer the mismatch. A7 reference visibility, nested pseudo propagation, and selected callable-body comment replay are implemented; remaining CSS differs in extend/reference selector resolution (an extending `.b` renders its extended `.visible` target selector), settled v5 :is()/extend-list selector compaction and direct-self declaration coalescing, preservation of the source-asserted inline comment omitted by the alpha golden, and invalid-inline `div {}` wrapping'
+    'ALL RENDER BUGS FIXED (gated at collapseNesting:true) — the ruleset-mixin extend-splice leak (`.b { .z() }` no longer inherits `.z`\'s extend), the reference-mixin body drop under extends (`.zz()` keeps `.y`), and inline-import-inside-a-block placement (`div { @import(inline) … }`) all render correctly, byte-identical to the v5-reconciled golden. This entry is kept ONLY until the reconciled golden lands in the CI test-data corpus: the golden was updated on the less.js fork alpha (extend through a reference outputs only the extender — DESIGN-DECISIONS X13; bare-`&` emits a CSS-nesting block; source-asserted inline comment preserved; `only-with-visible` renamed `stays-invisible`). Graduate this entry once that corpus sync lands.'
   ],
 
   /*
