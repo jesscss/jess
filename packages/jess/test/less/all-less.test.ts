@@ -254,11 +254,15 @@ const expectedFailureFixtures = new Map<string, string>([
    * padding accumulated to 10 values) and (b) re-ran import resolution twice
    * (import-reference-issues threw "File not found" on the 2nd pass). Both now
    * match the Less golden .css under the harness config.
+   *
+   * import-reference.less GRADUATED too (gated at collapseNesting:true): the
+   * ruleset-mixin extend-splice leak (`.b { .z() }`), the reference-mixin body drop
+   * under extends (`.zz()` keeps `.y`), and inline-import-inside-a-block placement
+   * (`div { @import(inline) … }`) are all fixed, so it renders byte-identical to the
+   * v5-reconciled golden (extend through a reference outputs only the extender —
+   * DESIGN-DECISIONS X13; bare-`&` emits a CSS-nesting block; source-asserted inline
+   * comment preserved; `only-with-visible` renamed `stays-invisible`).
    */
-  [
-    'tests-unit/import/import-reference.less',
-    'ALL RENDER BUGS FIXED (gated at collapseNesting:true) — the ruleset-mixin extend-splice leak (`.b { .z() }` no longer inherits `.z`\'s extend), the reference-mixin body drop under extends (`.zz()` keeps `.y`), and inline-import-inside-a-block placement (`div { @import(inline) … }`) all render correctly, byte-identical to the v5-reconciled golden. This entry is kept ONLY until the reconciled golden lands in the CI test-data corpus: the golden was updated on the less.js fork alpha (extend through a reference outputs only the extender — DESIGN-DECISIONS X13; bare-`&` emits a CSS-nesting block; source-asserted inline comment preserved; `only-with-visible` renamed `stays-invisible`). Graduate this entry once that corpus sync lands.'
-  ],
 
   /*
    * Owner 2026-09-02 restored the 4.x behavior: a media query on a legacy
