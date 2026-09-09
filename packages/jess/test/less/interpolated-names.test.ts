@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { Compiler } from '../../src/index.js';
 
-describe.todo('Interpolated Names', () => {
+describe('Interpolated Names', () => {
   const compiler = new Compiler();
 
-  describe.todo('Declaration Names', () => {
+  describe('Declaration Names', () => {
     it('should handle interpolated declaration names', async () => {
       const lessCode = `
         @prefix: color;
@@ -34,7 +34,7 @@ describe.todo('Interpolated Names', () => {
     });
   });
 
-  describe.todo('Lookup', () => {
+  describe('Lookup', () => {
     it('should find declarations with interpolated names', async () => {
       const lessCode = `
         @type: primary;

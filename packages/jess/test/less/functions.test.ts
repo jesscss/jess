@@ -306,7 +306,7 @@ describe('Functions', () => {
     });
   });
 
-  describe.todo('Built-in Math Functions', () => {
+  describe('Built-in Math Functions', () => {
     it('should handle round function', async () => {
       const lessCode = `
         .test {
@@ -360,7 +360,7 @@ describe('Functions', () => {
     });
   });
 
-  describe.todo('Built-in String Functions', () => {
+  describe('Built-in String Functions', () => {
     it('should handle escape function', async () => {
       const lessCode = `
         .test {
@@ -384,7 +384,7 @@ describe('Functions', () => {
     });
   });
 
-  describe.todo('Built-in List Functions', () => {
+  describe('Built-in List Functions', () => {
     it('should handle length function', async () => {
       const lessCode = `
         .test {
@@ -740,7 +740,7 @@ describe('Functions', () => {
     });
   });
 
-  describe.todo('Built-in Type Functions', () => {
+  describe('Built-in Type Functions', () => {
     it('should handle isnumber function', async () => {
       const lessCode = `
         .test {
@@ -830,7 +830,7 @@ describe('Functions', () => {
     });
   });
 
-  describe.todo('Built-in Misc Functions', () => {
+  describe('Built-in Misc Functions', () => {
     it('should handle default function', async () => {
       const lessCode = `
         .test {
@@ -865,7 +865,7 @@ describe('Functions', () => {
     });
   });
 
-  describe.todo('Function with Variables', () => {
+  describe('Function with Variables', () => {
     it('should handle functions with variable parameters', async () => {
       const lessCode = `
         @color: #ff0000;
@@ -882,16 +882,16 @@ describe('Functions', () => {
 
     it('should handle functions with computed parameters', async () => {
       const lessCode = `
-        @base: 10;
+        @base: 10px;
         @multiplier: 2;
-        
+
         .test {
-          width: (@base * @multiplier)px;
+          width: (@base * @multiplier);
         }
       `;
 
       const css = await compiler.renderString(lessCode, { language: 'less' });
-      expect(css).toContain('width:');
+      expect(css).toContain('width: 20px');
     });
   });
 });
