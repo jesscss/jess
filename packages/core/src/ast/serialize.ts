@@ -5586,7 +5586,14 @@ function valueGroupHasUrl(value: ValueGroup): boolean {
 /** Whether eager byte binding would erase structure needed by typed consumers. */
 function valueGroupNeedsMixinCarrier(value: ValueGroup): boolean {
   return isValueGroupArray(value) || value.type === 'Url' || value.type === 'List'
-    || value.type === 'Block' || value.type === 'Collection';
+    || value.type === 'Block' || value.type === 'Collection'
+
+    /*
+     * A Color produced by an evaluated arg (e.g. `rgba(0,0,0,.5)`) serializes to
+     * function-call bytes that no longer re-parse as a color literal, so a typed
+     * consumer in the body (`darken(@arg)`) needs the retained Color, not bytes.
+     */
+    || value.type === 'Color';
 }
 
 const MIXIN_GROUP_SCALAR = 0;
