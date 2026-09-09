@@ -218,8 +218,14 @@ function requireCombinator(value: unknown): SelectorCombinator {
 }
 
 function isLessTerminalText(value: unknown, text: string): boolean {
+  /*
+   * A raw grammar terminal is a string or a `{ value }` token; an AST value
+   * node also carries a string `value` (a `Quoted` body is the notable one), so
+   * excluding anything with a `type` field keeps a quoted `"/"`/`"-"`/`"%"` from
+   * being mistaken for the bare slash/sign/percent operator terminal.
+   */
   return (typeof value === 'string' && value === text)
-    || (typeof value === 'object' && value !== null && 'value' in value && value.value === text);
+    || (typeof value === 'object' && value !== null && !('type' in value) && 'value' in value && value.value === text);
 }
 
 function requireField(fields: FieldMap | undefined, name: string): FieldCapture {
