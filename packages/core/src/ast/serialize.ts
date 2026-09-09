@@ -16375,6 +16375,17 @@ function evalQueryPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): May
       }
       return evalQueryPrelude(resolved.value, resolved.frame, e);
     }
+    case 'Quoted':
+      /*
+       * Keep the `~"…"` / `~'…'` wrapper so `normalizeQueryPrelude` treats the
+       * value as an OPAQUE run and prints it verbatim — a ratio `~"2/1"` stays
+       * tight (`2/1`), not ` / `-spaced by the plain-run rules. `evalBytes`
+       * unwraps an escaped string to its inner bytes, which would drop the marker
+       * and expose the value to plain-run spacing. A plain quoted string already
+       * keeps its quotes through `evalBytes` (`node.src`), so only the escaped
+       * form needs re-wrapping here.
+       */
+      return node.escaped ? `~${node.quote}${node.value}${node.quote}` : evalBytes(node, frame, e);
     default:
       return evalBytes(node, frame, e);
   }
