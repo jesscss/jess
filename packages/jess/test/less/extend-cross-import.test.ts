@@ -73,4 +73,18 @@ describe('extend across @import (output oracle vs less@4)', () => {
       ['.ext {', '  color: red;', '}', '.ext {', '  background: blue;', '}'].join('\n')
     );
   });
+
+  /*
+   * less@4 4.6.7 oracle:
+   *   .grid-column, .col-1, .col-2, .col-3 { color: red; }
+   * An IMPORTED mixin whose body carries `&:extend()` (Bootstrap's `#make-grid-columns()`
+   * grid-column shape) must arm walk-time dynamic extend recording — the imported
+   * extend-admission gate has to descend into MixinDefinition bodies, not just loops.
+   */
+  it('imported mixin-body &:extend() accumulates the extenders onto the target', async () => {
+    const css = await renderFile('main-mixin-extend.less');
+    expect(css).toBe(
+      ['.grid-column,', '.col-1,', '.col-2,', '.col-3 {', '  color: red;', '}'].join('\n')
+    );
+  });
 });

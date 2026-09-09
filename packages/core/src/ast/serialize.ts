@@ -9302,10 +9302,12 @@ function bodyMayPlanExtend(statements: readonly Statement[]): boolean {
       for (const child of statement.rules) {
         pending.push(child);
       }
-    } else if (statement.type === 'For') {
+    } else if (statement.type === 'For' || statement.type === 'MixinDefinition') {
       /*
-       * `$for`/`each()` bodies are the one dynamic placement form that must
-       * admit imported extend planning even before their iterable is evaluated.
+       * `$for`/`each()` AND mixin-definition bodies are dynamic placement forms
+       * that must admit imported extend planning before they execute — an imported
+       * mixin whose body carries `&:extend()` (e.g. Bootstrap's `#make-grid-columns()`
+       * grid columns) arms the walk-time dynamic recorder the same way a loop does.
        */
       for (const child of statement.rules) {
         pending.push(child);
