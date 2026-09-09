@@ -11043,7 +11043,9 @@ function flattenWithHeader(
       return mapMaybe(flushBlock(
         visible, group, e, rule.selector, parent, rule, trailingBlockComments
       ), () => {
-        recordDynExtendSlot(e, rule, frame, visible);
+        if (!spliced) {
+          recordDynExtendSlot(e, rule, frame, visible);
+        }
         group.length = 0;
       });
     }
@@ -11063,7 +11065,9 @@ function flattenWithHeader(
       return mapMaybe(flushBlock(
         visible, leaves, e, rule.selector, parent, rule, trailingBlockComments
       ), () => {
-        recordDynExtendSlot(e, rule, frame, visible);
+        if (!spliced) {
+          recordDynExtendSlot(e, rule, frame, visible);
+        }
       });
     }
   };
@@ -11087,7 +11091,9 @@ function flattenWithHeader(
         return mapMaybe(flushBlock(
           visible, [], e, rule.selector, parent, rule, EMPTY_LEAF_BLOCK_COMMENTS
         ), () => {
-          recordDynExtendSlot(e, rule, frame, visible);
+          if (!spliced) {
+            recordDynExtendSlot(e, rule, frame, visible);
+          }
         });
       }
       return flush();
