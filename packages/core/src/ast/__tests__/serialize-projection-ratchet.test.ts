@@ -63,7 +63,9 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +1 function (`memoPureDeclMap`) and +1 `new Map` (the lazy per-frame lookup memo,
     // MIXIN-SCOPING-AND-LOOKUP-MEMO §4); `new WeakMap` stays 4 — the memo is a plain
     // frame-owned Map, not a WeakMap, by design.
-    expect(occurrences(/^function |^async function /gmu)).toBe(431);
+    // +1 function (`reachedViaMixinSplice`): a chain walk keeping a ruleset's static
+    // extend plan off its mixin-call splice placement (extend/splice fix).
+    expect(occurrences(/^function |^async function /gmu)).toBe(432);
     expect(occurrences(/new Map/gu)).toBe(59);
     expect(occurrences(/new Set/gu)).toBe(39);
     expect(occurrences(/new WeakMap/gu)).toBe(4);

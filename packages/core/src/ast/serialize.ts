@@ -576,6 +576,17 @@ export interface Frame {
    */
   extendPlacement?: object;
 
+  /**
+   * [extend/splice] Set on a mixin-call body frame. A ruleset called as a mixin
+   * (`.b { .z(); }`) splices the ruleset's OWN nested `Ruleset` nodes by identity,
+   * so those nodes are in the static extend plan (`flatByRule`) under their
+   * DEFINITION selector (`.z .c`). At this call-site placement their header is the
+   * composed call-site selector (`.b .c`), not the static plan's — the `.z`-targeted
+   * extend must not leak onto the splice. Emit uses `headerComposed` for a static
+   * extend-target rule reached through such a placement (see `flattenWithHeader`).
+   */
+  mixinSplice?: boolean;
+
   // [guards] a name maps to ALL same-name defs (overloads), in definition order.
   mixins: Map<string, MixinDefinition[]> | null;
 
@@ -10471,6 +10482,18 @@ function innermostExtendPlacement(frame: Frame | null): object | null {
   return null;
 }
 
+/** [extend/splice] True when this rule is emitted through a mixin-call body splice —
+ * its static extend-plan header (keyed on the shared definition node) does NOT apply
+ * to this call-site placement (see {@link Frame.mixinSplice}). */
+function reachedViaMixinSplice(frame: Frame | null): boolean {
+  for (let cursor = frame; cursor; cursor = cursor.parent) {
+    if (cursor.mixinSplice) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * [extend/dynamic] Record the extend facts for a rule reached through a dynamic
  * expansion (a loop or mixin-call body). The rule's selector is ALREADY composed by
@@ -10932,9 +10955,32 @@ function flattenWithHeader(
    * extend override the header is byte-identical to the no-extend serializer.
    */
   const projection = extendProjection(frame, e);
-  const header0 = e.hoistMode
-    ? projection?.hoistHeader.get(rule) ?? projection?.flatByRule.get(rule) ?? headerComposed
-    : projection?.flatByRule.get(rule) ?? headerComposed;
+
+  /*
+   * [extend/splice] The static plan (`flatByRule`) is keyed on the rule NODE, but a
+   * ruleset called as a mixin splices that same node under a NEW call-site selector.
+   * A per-placement projection (a dynamic-extend loop/mixin body) already carries the
+   * right header; the STATIC projection does not, so for a static extend-target rule
+   * reached through a plain mixin splice the composed call-site header is authoritative.
+   * `flatByRule` only holds extend-TARGET rules, so this is a no-op for every other rule.
+   */
+  const flat = projection?.flatByRule.get(rule);
+  const hoist = e.hoistMode ? projection?.hoistHeader.get(rule) : undefined;
+
+  /*
+   * The frame-chain splice check runs ONLY when this rule has a static extend
+   * header at all (`flat`/`hoist` present) — a rule the plan never touched keeps
+   * the O(1) path. A per-placement projection (dynamic-extend body) is already
+   * placement-correct, so only the STATIC projection is overridden.
+   */
+  const spliced = (flat !== undefined || hoist !== undefined)
+    && (projection === null || projection === e.extends)
+    && reachedViaMixinSplice(frame);
+  const header0 = spliced
+    ? headerComposed
+    : e.hoistMode
+      ? hoist ?? flat ?? headerComposed
+      : flat ?? headerComposed;
 
   /*
    * [extend/dynamic] Record this rule's extender fact if it was reached through a
@@ -12500,6 +12546,7 @@ function expandCall(
             sourceOwner: sourceOwnerForBody(def.rules, frame, e),
             mixinUrlBindings: undefined,
             mixinValueBindings: undefined,
+            mixinSplice: true,
             ...(namespaced || homeFrame === frame ? {} : { fallback: frame, callerFallback: true })
           };
           takeMixinValueBindings(boundSourceKeys, e, callFrame);
