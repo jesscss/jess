@@ -12067,6 +12067,18 @@ function walkBody(
           }
 
           /*
+           * [inline-import] `@import (inline)` INSIDE a rule body belongs in that
+           * rule's block (`div { …raw… }`), not flushed and spliced at document
+           * root. Buffer it as an ordinary leaf; `emitLeafOwned` emits its raw bytes
+           * inside the block, reserving an async-patch chunk for the (async) read.
+           */
+          if (composed !== null && partition !== null && e.referenceImportDepth === 0
+            && importHasOption(importRequestOptions(node.options), 'inline')) {
+            addLeaf(group, partition, evaluatedLeaf(node, frame), forceLeading, e);
+            break;
+          }
+
+          /*
            * A CSS import recorded inside a canonical Ruleset is a rule-body
            * statement, not a bubbling container. Keep it in the authored leaf
            * group so it emits inside that rule (and inside any mixin/control-flow
@@ -15280,9 +15292,34 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
     emitAtRuleStatement(node, frame, e);
     e.depth--;
   } else if (node.type === 'StyleImport') {
-    e.depth++;
-    settledEmission(expandStyleImport(node, frame, e, e.importDocument), node, e);
-    e.depth--;
+    const opts = importRequestOptions(node.options);
+    if (importHasOption(opts, 'inline') && !importHasOption(opts, 'reference')) {
+      /*
+       * [inline-import] Raw `@import (inline)` bytes emit AS this block's body. The
+       * read is async, so keep the walk sync by reserving an async-patch chunk (the
+       * context's own `chunks`/`pending`) that the resolved bytes fill after the walk.
+       */
+      const request: ImportDocumentRequest = {
+        node, specifier: importSpecifier(node, frame, e), options: opts
+      };
+      const loaded = e.importDocument?.(request);
+      const asBytes = (l: ImportDocument | undefined): string =>
+        l !== undefined && 'inline' in l ? idt + l.inline + '\n' : '';
+      if (isThenable(loaded)) {
+        const i = e.chunks.length;
+        e.chunks.push('');
+        e.pending.push({ i, p: Promise.resolve(mapMaybe(loaded, asBytes)) });
+      } else {
+        put(e, asBytes(loaded));
+      }
+      if (e.positions) {
+        e.positions.push({ node, type: node.type, start, end: e.off });
+      }
+    } else {
+      e.depth++;
+      settledEmission(expandStyleImport(node, frame, e, e.importDocument), node, e);
+      e.depth--;
+    }
   } else if (node.type === 'UnknownAtRuleBlock') {
     e.depth++;
     emitUnknownAtRuleBlock(node, e);

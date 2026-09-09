@@ -254,11 +254,16 @@ const expectedFailureFixtures = new Map<string, string>([
    * padding accumulated to 10 values) and (b) re-ran import resolution twice
    * (import-reference-issues threw "File not found" on the 2nd pass). Both now
    * match the Less golden .css under the harness config.
+   *
+   * import-reference.less GRADUATED too (gated at collapseNesting:true): the
+   * ruleset-mixin extend-splice leak (`.b { .z() }` no longer inherits `.z`'s
+   * extend), the reference-mixin body drop under extends (`.zz()` keeps `.y`), and
+   * inline-import-inside-a-block placement (`div { @import(inline) … }`) are fixed;
+   * the golden was reconciled to v5 (extend through a reference outputs only the
+   * extender — DESIGN-DECISIONS X13; bare-`&` emits a CSS-nesting block; the
+   * source-asserted inline comment is preserved) and `only-with-visible` renamed
+   * `stays-invisible`.
    */
-  [
-    'tests-unit/import/import-reference.less',
-    'now gated at collapseNesting:true against the flattened 4.x golden (via collapseNestingTrueFixtures), so nesting is no longer the mismatch. A7 reference visibility, nested pseudo propagation, and selected callable-body comment replay are implemented; remaining CSS differs in extend/reference selector resolution (an extending `.b` renders its extended `.visible` target selector), settled v5 :is()/extend-list selector compaction and direct-self declaration coalescing, preservation of the source-asserted inline comment omitted by the alpha golden, and invalid-inline `div {}` wrapping'
-  ],
 
   /*
    * Owner 2026-09-02 restored the 4.x behavior: a media query on a legacy
