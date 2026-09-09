@@ -10685,7 +10685,8 @@ function visibleHeaderCore(
   rule: Ruleset,
   header: string[],
   projection: ExtendResults | ExtendPlacementResults | null,
-  refRules: ReadonlySet<Ruleset> | null | undefined
+  refRules: ReadonlySet<Ruleset> | null | undefined,
+  frame?: Frame | null
 ): string[] | null {
   const mask = projection?.hiddenByRule.get(rule);
   if (mask?.length === header.length) {
@@ -10694,6 +10695,18 @@ function visibleHeaderCore(
   }
   if ((rule.reference === true || refRules?.has(rule) === true)
     && projection?.flatByRule.has(rule) !== true) {
+    /*
+     * [extend/splice] A `(reference)` style CALLED AS A MIXIN outputs its rules at
+     * the call site "as normal" (Less docs) — reference hiding does not apply to a
+     * mixin call's output. But the extend pass records such rules in
+     * `hiddenReferenceRules`, which would re-hide them the moment the document has
+     * any `:extend`. So when this rule is reached through a mixin-call placement,
+     * keep its header. The chain walk runs only in this already-rare
+     * reference-hidden branch.
+     */
+    if (frame !== undefined && reachedViaMixinSplice(frame)) {
+      return withoutPlaceholders(header);
+    }
     return null;
   }
   return withoutPlaceholders(header);
@@ -10760,7 +10773,7 @@ function withoutPlaceholders(header: string[]): string[] | null {
 }
 
 function visibleHeader(rule: Ruleset, header: string[], frame: Frame, e: Emit): string[] | null {
-  return visibleHeaderCore(rule, header, extendProjection(frame, e), e.extends?.hiddenReferenceRules);
+  return visibleHeaderCore(rule, header, extendProjection(frame, e), e.extends?.hiddenReferenceRules, frame);
 }
 
 /** A hidden reference subject emits only when its current extend projection has
