@@ -640,7 +640,7 @@ const preservedSlashBoundary = leaf(
  * sign — so `lessFoldOperation` still reads an alternating operand/operator
  * stream and no CST arity moves.
  */
-const sumOperatorChar = noTrivia(regex(/[-+](?![0-9.])|(?<![ \t\n\r\f])[-+](?=[0-9.])/));
+const sumOperatorChar = noTrivia(regex(/[-+](?![0-9.@(])|(?<![ \t\n\r\f])[-+](?=[0-9.@(])/));
 const sumOperator = leaf(
   noTrivia(sequence(optional(mathTrivia), sumOperatorChar, optional(mathTrivia))),
   children => children[1] as string
