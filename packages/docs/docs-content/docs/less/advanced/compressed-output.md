@@ -71,11 +71,15 @@ lightningcss. `//` line comments are already trivia and never reach output.
 
 | Value | Pretty | Compressed | Notes |
 | --- | --- | --- | --- |
-| Foldable hex | `#ffffff` | `#fff` | 6→3 when each channel's pair is equal |
-| Named ↔ hex | `white` | `#fff` | shortest of the two (see conflicts) |
+| Foldable hex | `#ffffff`, `#ffffffff` | `#fff`, `#ffff` | 6→3 and 8→4 (`#rrggbbaa`→`#rgba`) when each channel's pair is equal |
+| Named color | `white` | `#fff` | a named color is written as whichever is shorter, the name or its hex (see conflicts) |
 | Leading zero | `0.5`, `-0.5` | `.5`, `-.5` | |
 | Trailing zeros | `1.50px` | `1.5px` | already applied to computed numbers; compress extends it to authored literals |
-| Opaque `rgb()`/`hsl()` | `rgb(255, 0, 0)` | `#f00` | fold to the shortest color spelling |
+
+Function-form colors (`rgb()`/`hsl()`/`hwb()`/…) are **not** rewritten to hex —
+`rgb(255,0,0)` stays `rgb(255,0,0)` (whitespace-tightened only). Converting a
+color between representations is a lossy-of-intent optimization that belongs
+behind a finer-grained option, not the default `compress`.
 
 **Zero units are kept** (`0px` stays `0px`, `0s` stays `0s`). A unitless `0` is
 valid only as a `<length>` — and not even inside `calc()` (the unit types the
@@ -98,16 +102,17 @@ rule):
 | --- | --- | --- | --- |
 | Zero units (`0px`, `0s`, `0%`) | drops the unit on zero **lengths** → `0` | keeps every unit | **keeps every unit** (match dart-sass) — unitless `0` is valid only as a `<length>`, and not inside `calc()`; the drop needs context analysis to stay correct and saves two bytes, so Jess doesn't do it. |
 | `!important` spacing | ` !important` | `!important` | **`!important`** — no leading space; valid and shorter. |
-| Named colors vs hex | never swaps | shortest of name/hex | **shortest of {name, hex}** — `white`→`#fff`, but `red` stays `red` (`< #f00`); ties keep the keyword. |
+| Named colors vs hex | never swaps | shortest of name/hex | **named colors only, shortest of {name, hex}** — `white`→`#fff`, but `red` stays `red` (`< #f00`); ties keep the keyword. Function-form colors are left as authored. |
 | `@media (` tightening | keeps the space | removes it | **remove** — `@media(…)`/`@supports(…)` parse without the space. |
 
 ## Extra folds (other minifiers)
 
 Trivial, always-safe folds also emitted by cssnano / lightningcss / esbuild and
-folded in here: leading/trailing-zero trimming, `rgb()/hsl()`→hex, and
+folded in here: leading/trailing-zero trimming, foldable-hex shortening, and
 bang-comment preservation (all above). Anything beyond a local, context-free byte
-rewrite is deliberately excluded — including the zero-unit drop, which is not
-context-free (see conflicts).
+rewrite is deliberately excluded — including the zero-unit drop (not context-free,
+see conflicts) and color-representation conversion (`rgb()`→hex), which is a
+separate finer-grained option, not part of `compress`.
 
 ## Non-goals
 
@@ -117,6 +122,10 @@ These change structure or risk the cascade and are **not** part of `compress`
 - Merging or deduplicating rules, selectors, or declarations.
 - Reordering declarations or rules.
 - Longhand ↔ shorthand rewriting (`margin: 0 0 0 0` → `margin: 0`).
+- Color-representation conversion (`rgb()`/`hsl()` → hex, or hex → named) —
+  a future finer-grained option; `compress` only shortens a color *within* its
+  representation (hex fold, named ↔ hex).
+- Dropping the unit on a zero value (`0px` → `0`) — not context-free.
 - `calc()` simplification / constant folding of authored expressions.
 - `@media` query merging — Jess never merges media queries regardless of
   `compress` (see [output model](/advanced/output-model)); nested conditional
