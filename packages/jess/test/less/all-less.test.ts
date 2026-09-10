@@ -235,16 +235,6 @@ const skippedFixtureReasons = new Map(
 );
 
 const expectedFailureFixtures = new Map<string, string>([
-  /*
-   * Was skipped as "broad third-party fixture" while it could not resolve
-   * `bootstrap-less-port` at all; it now resolves against the pinned fixture-deps
-   * root and fails on a real parser defect, so it runs as a marker instead of
-   * being hidden.
-   */
-  [
-    'tests-config/3rd-party/bootstrap4.less',
-    'the common @plugin ABI now carries comma-list maps through fixed defaulted/explicit mixin params and Bootstrap renders instead of failing at breakpoint-min; remaining independent mismatches include banner-comment placement, Less selector-list expansion/extend output, media-rule nesting/indentation, numeric precision, and `-webkit-` token spelling'
-  ],
 
   /*
    * NOTE: import-reference-issues.less and starting-style.less graduated OUT of
