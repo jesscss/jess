@@ -65,7 +65,9 @@ describe('V19 one-evaluator projection ratchet', () => {
     // frame-owned Map, not a WeakMap, by design.
     // +1 function (`reachedViaMixinSplice`): a chain walk keeping a ruleset's static
     // extend plan off its mixin-call splice placement (extend/splice fix).
-    expect(occurrences(/^function |^async function /gmu)).toBe(432);
+    // +1 function (`srcFile`): the active source file at a position-push site,
+    // read only when `trackPositions` is on (source-map generation).
+    expect(occurrences(/^function |^async function /gmu)).toBe(433);
     expect(occurrences(/new Map/gu)).toBe(59);
     expect(occurrences(/new Set/gu)).toBe(39);
     expect(occurrences(/new WeakMap/gu)).toBe(4);

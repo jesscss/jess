@@ -144,7 +144,7 @@ import { documentHasExtend, recordAstExtendProfile } from './extend/plan.js'; //
 import type { PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
 import type { Level } from './extend/ir.js';
 import { branchFromSelector, descendantBranch, levelFromSelectorList } from './extend/ir.js';
-import { DocumentContext, documentTriviaOf, type Context } from '../context.js';
+import { DocumentContext, documentTriviaOf, type Context, type SourceContext } from '../context.js';
 import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
@@ -194,6 +194,16 @@ export interface Position {
   type: NodeType;
   start: number;
   end: number;
+
+  /**
+   * The source file active when this chunk was emitted. Populated only when
+   * `trackPositions` is on, from `context.sourceContext.file` — which
+   * `withSourceOwner`/`withDocument` re-scope while emitting imported documents,
+   * so a position from an imported file carries THAT file's identity (its
+   * `_s`/`_e` offsets index into `source`), not the entry file's. This is what
+   * lets a multi-file source map attribute each mapping to the right file.
+   */
+  source?: SourceContext['file'];
 }
 
 export interface SerializeOptions {
@@ -7570,7 +7580,7 @@ function putValue(e: Emit, node: ValueSlot, frame: Frame | null, positionNode?: 
   const valStart = e.off;
   put(e, bytes);
   if (e.positions && positionNode) {
-    e.positions.push({ node: positionNode, type: positionNode.type, start: valStart, end: e.off });
+    e.positions.push({ node: positionNode, type: positionNode.type, start: valStart, end: e.off, source: srcFile(e) });
   }
   return bytes;
 }
@@ -7582,6 +7592,16 @@ function put(e: Emit, s: string): void {
   if (e.positions) {
     e.off += s.length;
   }
+}
+
+/**
+ * The source file active at this emit point. `context.sourceContext` follows the
+ * `withSourceOwner`/`withDocument` scope stack, so during an imported document's
+ * emission this returns the IMPORT's file (with its own `source` text and path).
+ * Read only from position-push sites, i.e. only when `trackPositions` is on.
+ */
+function srcFile(e: Emit): SourceContext['file'] {
+  return e.context?.sourceContext?.file;
 }
 
 /**
@@ -9878,7 +9898,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     };
     const finish = (): SerializeReturn => {
       if (e.positions) {
-        e.positions.push({ node: root, type: root.type, start, end: e.off });
+        e.positions.push({ node: root, type: root.type, start, end: e.off, source: srcFile(e) });
       }
 
       // lift to async ONLY if a genuinely-async built-in reserved a placeholder.
@@ -14502,7 +14522,7 @@ function flushBlock(
       }
       put(e, header);
       if (e.positions && selNode) {
-        e.positions.push({ node: selNode, type: selNode.type, start: selStart, end: e.off });
+        e.positions.push({ node: selNode, type: selNode.type, start: selStart, end: e.off, source: srcFile(e) });
       }
       put(e, ' {\n');
     }
@@ -15150,7 +15170,7 @@ function emitMergedLine(e: Emit, name: string, combined: string, important: bool
   }
   put(e, ';\n');
   if (e.positions) {
-    e.positions.push({ node: any(combined), type: 'Any', start, end: e.off });
+    e.positions.push({ node: any(combined), type: 'Any', start, end: e.off, source: srcFile(e) });
   }
 }
 
@@ -15261,11 +15281,11 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
       const valStart = e.off;
       put(e, important ? normalizeImportant(customValue) : customValue);
       if (e.positions && !isValueSlotArray(node.value)) {
-        e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.off });
+        e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.off, source: srcFile(e) });
       }
     }
     if (e.positions) {
-      e.positions.push({ node, type: node.type, start, end: e.off });
+      e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
     emitInlineBlockCommentTriviaAfter(node, e);
     put(e, ';\n');
@@ -15275,7 +15295,7 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
     put(e, node.text);
     put(e, '\n');
     if (e.positions) {
-      e.positions.push({ node, type: node.type, start, end: e.off });
+      e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
   } else if (node.type === 'FunctionCall') {
     const bytes = evalBytesSync(node, frame, e);
@@ -15286,7 +15306,7 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
     put(e, bytes);
     put(e, '\n');
     if (e.positions) {
-      e.positions.push({ node, type: node.type, start, end: e.off });
+      e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
   } else if (node.type === 'AtRuleBlock') {
     /*
@@ -15322,7 +15342,7 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
         put(e, asBytes(loaded));
       }
       if (e.positions) {
-        e.positions.push({ node, type: node.type, start, end: e.off });
+        e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
       }
     } else {
       e.depth++;
@@ -15693,7 +15713,7 @@ function emitAtRuleStatementRaw(
     putValueBoundaryTrivia(e, importBoundary.after, '');
     put(e, ';\n');
     if (e.positions) {
-      e.positions.push({ node, type: node.type, start, end: e.off });
+      e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
     return;
   }
@@ -15704,7 +15724,7 @@ function emitAtRuleStatementRaw(
     put(e, authored);
     put(e, '\n');
     if (e.positions) {
-      e.positions.push({ node, type: node.type, start, end: e.off });
+      e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
     return;
   }
@@ -15732,7 +15752,7 @@ function emitAtRuleStatementRaw(
   }
   put(e, ';\n');
   if (e.positions) {
-    e.positions.push({ node, type: node.type, start, end: e.off });
+    e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
   }
 }
 
@@ -15960,7 +15980,7 @@ function emitCssImportAtRule(node: StyleImport, frame: Frame, e: Emit): void {
   }
   put(e, ';\n');
   if (e.positions) {
-    e.positions.push({ node, type: node.type, start, end: e.off });
+    e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
   }
 }
 
@@ -16022,7 +16042,7 @@ function emitModuleImport(node: ModuleImport, frame: Frame, e: Emit): void {
     put(e, ';\n');
   }
   if (e.positions) {
-    e.positions.push({ node, type: node.type, start, end: e.off });
+    e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
   }
 }
 
@@ -16041,7 +16061,7 @@ function emitUnknownAtRuleBlock(node: UnknownAtRuleBlock, e: Emit): void {
   put(e, node.rawBody);
   put(e, '}\n');
   if (e.positions) {
-    e.positions.push({ node, type: node.type, start, end: e.off });
+    e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
   }
 }
 
@@ -16106,7 +16126,7 @@ function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precompute
     put(e, bytes);
     put(e, '\n');
     if (e.positions) {
-      e.positions.push({ node, type: node.type, start, end: e.off });
+      e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
   };
   const emitValueResult = (value: EvalValue): void => {
@@ -16695,7 +16715,7 @@ function writeCollapsedAtRuleBlock(
     }
     put(e, '}\n');
     if (e.positions) {
-      e.positions.push({ node, type: node.type, start, end: e.off });
+      e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
   };
   return mapMaybe(emitted, () => {
@@ -17500,9 +17520,9 @@ function emitNestedLeafOwned(leaf: Leaf, e: Emit): void {
     markSilentStatementBlockCommentTrivia(node, e);
     if (e.positions) {
       if (!isValueSlotArray(node.value)) {
-        e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.off });
+        e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.off, source: srcFile(e) });
       }
-      e.positions.push({ node, type: node.type, start, end: e.off });
+      e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
     emitInlineBlockCommentTriviaAfter(node, e);
     put(e, ';\n');
@@ -17514,7 +17534,7 @@ function emitNestedLeafOwned(leaf: Leaf, e: Emit): void {
     put(e, node.text);
     put(e, '\n');
     if (e.positions) {
-      e.positions.push({ node, type: node.type, start, end: e.off });
+      e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
   }
 }
@@ -17813,7 +17833,7 @@ function writeNestedRule(
       headerChunkIndex = e.chunks.length;
       put(e, header);
       if (e.positions) {
-        e.positions.push({ node: rule.selector, type: rule.selector.type, start: selStart, end: e.off });
+        e.positions.push({ node: rule.selector, type: rule.selector.type, start: selStart, end: e.off, source: srcFile(e) });
       }
       put(e, ' {\n');
     }
@@ -17847,7 +17867,7 @@ function writeNestedRule(
         }
         put(e, '}\n');
         if (e.positions) {
-          e.positions.push({ node: rule, type: rule.type, start, end: e.off });
+          e.positions.push({ node: rule, type: rule.type, start, end: e.off, source: srcFile(e) });
         }
         if (rootSibling) {
           lb.parentKey = frame;
@@ -17987,7 +18007,7 @@ function writeNestedAtRuleBlock(
     }
     put(e, '}\n');
     if (e.positions) {
-      e.positions.push({ node, type: node.type, start, end: e.off });
+      e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
   };
   return mapMaybe(
