@@ -98,6 +98,7 @@ export default {
       items: [
         'advanced/overview',
         'advanced/output-model',
+        'advanced/compressed-output',
         'advanced/selector-compaction',
         'advanced/extend-is-wrapping',
         'advanced/extend-semantics',
