@@ -314,10 +314,6 @@ const expectedFailureFixtures = new Map<string, string>([
     'OPEN F7(a): property-name interpolation renders byte-identically except that repeated `@{p}@{p}` loses the `/* foo */` source layout carried inside each complex interpolated value; interpolation-splice layout preservation awaits an owner ruling'
   ],
   [
-    'tests-unit/variables/variables.less',
-    'NOT a jess bug: `(@onePixel / @onePixel)` = `1px / 1px` — jess emits `1` (units cancel), which is the v5 ruling (RESOLVED-SEMANTICS-AND-NAMING §"2px / 1px → 2 — units cancel"). The golden encodes stale lessc-4.x `1px` (keeps left unit). Graduates once the owner v5 golden is updated to `1`'
-  ],
-  [
     'tests-unit/plugin-module/plugin-module.less',
     'the clean-css fixture uses a legacy CommonJS @plugin graph with require(\'./lib/clean\'), which the optional jess-plugin-js Deno compatibility runtime does not support'
   ],
