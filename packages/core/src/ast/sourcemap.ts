@@ -98,6 +98,15 @@ export function buildAstSourceMap(
   const contentAdded = new Set<string>();
 
   for (const position of positions) {
+    /*
+     * The document root is a whole-stylesheet anchor at output offset 0, not a
+     * content chunk; emitting it would map the first output byte to the ENTRY
+     * file's start even when that byte is spliced-in imported content, shadowing
+     * the correct per-chunk mapping. Less 4.x emits no such anchor — skip it.
+     */
+    if (position.type === 'Stylesheet') {
+      continue;
+    }
     const file = position.source;
     const filename = file?.fullPath;
     const sourceText = file?.source;
