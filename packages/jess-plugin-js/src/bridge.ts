@@ -17,7 +17,7 @@ export type JsBridgeDeclaration = { name: string; value: JsBridgeValue };
 export type JsBridgeValue =
   | { __jessBridge: true; kind: 'scalar'; value: string | number | boolean }
   | { __jessBridge: true; kind: 'dimension'; value: number; unit?: string }
-  | { __jessBridge: true; kind: 'color'; rgb: [number, number, number]; alpha?: number }
+  | { __jessBridge: true; kind: 'color'; rgb: [number, number, number]; alpha?: number; bytes?: string }
   | { __jessBridge: true; kind: 'quoted'; value: string; quote?: '"' | '\''; escaped?: boolean }
   | { __jessBridge: true; kind: 'anonymous'; value: string }
   | { __jessBridge: true; kind: 'list'; items: JsBridgeValue[]; separator: ',' | '/' | ';' }
@@ -73,7 +73,8 @@ function encodeFacadeValue(value: BridgeRecord): JsBridgeValue | undefined {
             __jessBridge: true,
             kind: 'color',
             rgb: [value.rgb[0], value.rgb[1], value.rgb[2]],
-            alpha: typeof value.alpha === 'number' ? value.alpha : undefined
+            alpha: typeof value.alpha === 'number' ? value.alpha : undefined,
+            bytes: typeof value.bytes === 'string' ? value.bytes : undefined
           }
         : undefined;
     case 'Quoted':
@@ -126,7 +127,7 @@ export function encodeBridgeValue(value: unknown): unknown {
   if (isValueNode(value)) {
     switch (value.type) {
       case 'Dimension': return { __jessBridge: true, kind: 'dimension', value: value.number, unit: value.unit } satisfies JsBridgeValue;
-      case 'Color': return { __jessBridge: true, kind: 'color', rgb: [value.rgb[0], value.rgb[1], value.rgb[2]], alpha: value.alpha } satisfies JsBridgeValue;
+      case 'Color': return { __jessBridge: true, kind: 'color', rgb: [value.rgb[0], value.rgb[1], value.rgb[2]], alpha: value.alpha, bytes: value.bytes } satisfies JsBridgeValue;
       case 'Quoted': return { __jessBridge: true, kind: 'quoted', value: value.value, quote: value.quote === '\'' ? '\'' : '"', escaped: value.escaped } satisfies JsBridgeValue;
       case 'List':
         return value.sep === ',' || value.sep === '/'
@@ -157,11 +158,16 @@ function decodeValue(value: JsBridgeValue): ValueGroup {
     case 'dimension': return makeDimension(value.value, value.unit ?? '');
 
     /*
-     * less.js renders a plugin-built colour as hex (`#b8daff`), not `rgb(...)`;
-     * matching that keeps the bytes Less-shaped and keeps the value sniffable as
-     * a colour when it later travels through a byte lane.
+     * A colour that crosses the bridge unmodified (a looked-up `@white: #fff`
+     * returned by `color-yiq`) keeps its authored bytes so the short form
+     * survives, exactly as less.js preserves a passed-through colour's spelling.
+     * A colour the plugin BUILDS or COMPUTES carries its own serialized bytes
+     * too (a 6-digit hex from `makeColorRgb`), so this one path matches less.js
+     * for both. `makeColorRgb` stays the fallback for a pre-`bytes` wire value.
      */
-    case 'color': return makeColorRgb(value.rgb, value.alpha ?? 1, HEX);
+    case 'color': return value.bytes !== undefined
+      ? sniffLiteral(value.bytes)
+      : makeColorRgb(value.rgb, value.alpha ?? 1, HEX);
     case 'quoted': return makeQuoted(value.value, value.quote ?? '"', value.escaped === true);
 
     /*

@@ -194,9 +194,15 @@ class Color extends Node {
    * less.js accepts an RGB triple OR a hex string WITHOUT the leading `#`
    * (`new tree.Color(someColor.toCSS().substr(1))`), which is precisely the
    * form bootstrap's `theme-color-level` plugin round-trips through.
+   *
+   * `originalForm` is the authored spelling of a colour that crossed the bridge
+   * unmodified (`@white: #fff`), mirroring less.js's Color `value`/originalForm:
+   * a pass-through keeps its short form, while a plugin-CONSTRUCTED colour has
+   * none and serialises to 6-digit hex.
    */
-  constructor(rgb, alpha = 1) {
+  constructor(rgb, alpha = 1, originalForm) {
     super();
+    this.originalForm = typeof originalForm === 'string' ? originalForm : undefined;
     if (Array.isArray(rgb)) {
       this.rgb = rgb.slice(0, 3).map(clampByte);
       this.alpha = typeof alpha === 'number' ? alpha : 1;
@@ -222,6 +228,9 @@ class Color extends Node {
 
   /** less.js renders an opaque colour as hex and a translucent one as `rgba()`. */
   toCSS() {
+    if (this.originalForm !== undefined) {
+      return this.originalForm;
+    }
     const [r, g, b] = this.rgb;
     return this.alpha === 1
       ? `#${hexPair(r)}${hexPair(g)}${hexPair(b)}`
@@ -621,7 +630,7 @@ const decodeBridgeValue = (value) => {
     case 'dimension':
       return new Dimension(value.value, value.unit ?? '');
     case 'color':
-      return new Color(value.rgb, value.alpha ?? 1);
+      return new Color(value.rgb, value.alpha ?? 1, value.bytes);
     case 'quoted':
       return new Quoted(value.quote ?? '"', value.value, value.escaped === true);
     case 'anonymous':
@@ -677,7 +686,8 @@ const encodeBridgeValue = (value) => {
       __jessBridge: true,
       kind: 'color',
       rgb: value.rgb,
-      alpha: value.alpha
+      alpha: value.alpha,
+      bytes: value.originalForm
     };
   }
   if (value instanceof Quoted) {

@@ -255,7 +255,7 @@ export function toNativeLessValue(value: PluginRawArgument | ValueGroup): unknow
   switch (value.type) {
     case 'Dimension': return new LessDimension(value.number, value.unit);
     case 'Quoted': return new LessQuoted(value.quote, value.value, value.escaped);
-    case 'Color': return { type: 'Color', rgb: value.rgb, alpha: value.alpha, valueOf: () => value.bytes };
+    case 'Color': return { type: 'Color', rgb: value.rgb, alpha: value.alpha, bytes: value.bytes, valueOf: () => value.bytes };
     case 'List':
       return value.sep === ',' || value.sep === '/'
         ? new LazyValueList(value)
