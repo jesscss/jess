@@ -75,8 +75,15 @@ lightningcss. `//` line comments are already trivia and never reach output.
 | Named ↔ hex | `white` | `#fff` | shortest of the two (see conflicts) |
 | Leading zero | `0.5`, `-0.5` | `.5`, `-.5` | |
 | Trailing zeros | `1.50px` | `1.5px` | already applied to computed numbers; compress extends it to authored literals |
-| Zero length | `0px`, `0rem` | `0` | length units only (see conflicts) |
 | Opaque `rgb()`/`hsl()` | `rgb(255, 0, 0)` | `#f00` | fold to the shortest color spelling |
+
+**Zero units are kept** (`0px` stays `0px`, `0s` stays `0s`). A unitless `0` is
+valid only as a `<length>` — and not even inside `calc()` (the unit types the
+operand) — while `<time>`/`<angle>`/`<percentage>`/`<frequency>`/`<resolution>`
+have no unitless-zero production at all (`transition-duration: 0` is invalid;
+`hsl(0 0% 0%)` is not `hsl(0 0 0)`). Rather than special-case the one safe
+context, Jess keeps every unit for consistency and correctness — the trade is two
+bytes on a length zero.
 
 Jess normally preserves an **authored** literal verbatim (see
 [Verbatim values](/advanced/verbatim-values)); `compress` is the one mode that
@@ -89,7 +96,7 @@ rule):
 
 | Case | Less 4.x | dart-sass `compressed` | Jess |
 | --- | --- | --- | --- |
-| Zero **length** (`0px`) | drops unit → `0` | keeps `0px` | **`0`** — shorter, and `0` is a valid `<length>`. Non-length zero units (`0s`, `0deg`, `0%`, `0fr`) are **kept**, because the unit changes the type and `0%` inside `hsl()`/gradients is semantically required. |
+| Zero units (`0px`, `0s`, `0%`) | drops the unit on zero **lengths** → `0` | keeps every unit | **keeps every unit** (match dart-sass) — unitless `0` is valid only as a `<length>`, and not inside `calc()`; the drop needs context analysis to stay correct and saves two bytes, so Jess doesn't do it. |
 | `!important` spacing | ` !important` | `!important` | **`!important`** — no leading space; valid and shorter. |
 | Named colors vs hex | never swaps | shortest of name/hex | **shortest of {name, hex}** — `white`→`#fff`, but `red` stays `red` (`< #f00`); ties keep the keyword. |
 | `@media (` tightening | keeps the space | removes it | **remove** — `@media(…)`/`@supports(…)` parse without the space. |
@@ -97,9 +104,10 @@ rule):
 ## Extra folds (other minifiers)
 
 Trivial, always-safe folds also emitted by cssnano / lightningcss / esbuild and
-folded in here: unitless zero, leading/trailing-zero trimming, `rgb()/hsl()`→hex,
-and bang-comment preservation (all above). Anything beyond a local, context-free
-byte rewrite is deliberately excluded.
+folded in here: leading/trailing-zero trimming, `rgb()/hsl()`→hex, and
+bang-comment preservation (all above). Anything beyond a local, context-free byte
+rewrite is deliberately excluded — including the zero-unit drop, which is not
+context-free (see conflicts).
 
 ## Non-goals
 
