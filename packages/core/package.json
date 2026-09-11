@@ -54,8 +54,8 @@
     "lodash-es": "^4.17.21"
   },
   "scripts": {
-    "ci": "pnpm build && pnpm test -- --run",
-    "prepublishOnly": "pnpm build && pnpm test -- --run",
+    "ci": "pnpm build && pnpm test --run",
+    "prepublishOnly": "pnpm build && pnpm test --run",
     "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
     "visualize": "vite build",
