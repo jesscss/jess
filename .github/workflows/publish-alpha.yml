@@ -3,18 +3,33 @@ name: Publish alpha packages
 on:
   workflow_dispatch:
 
+# contents: write so the successful publish can push its release tag
+# (vX.Y.Z-alpha.N). id-token: write is the OIDC grant for npm trusted publishing.
 permissions:
   id-token: write
-  contents: read
+  contents: write
 
 jobs:
   publish-alpha:
     runs-on: ubuntu-latest
+    # The preflight runs the corpus-backed jess tests (test/less/*.test.ts via
+    # resolveLessTestDataRoot). They resolve the @less/test-data corpus from a
+    # sibling checkout that is absent in CI; point them at the corpus checked out
+    # below, exactly as ci.yml does — without it the preflight fails to load them.
+    env:
+      LESS_TEST_DATA_ROOT: ${{ github.workspace }}/less-corpus/packages/test-data
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Checkout Less.js corpus (matthew-dean/less.js@alpha)
+        uses: actions/checkout@v4
+        with:
+          repository: matthew-dean/less.js
+          ref: alpha
+          path: less-corpus
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -44,4 +59,25 @@ jobs:
         run: pnpm run release:alpha:check
 
       - name: Publish allowlisted alpha packages
+        id: publish
         run: pnpm run release:alpha:publish
+
+      # Record the published version in git so the repo mirrors npm. The alpha
+      # branch is a disposable projection of dev, so the durable record is the
+      # tag (which also bypasses branch protection, unlike a branch push).
+      - name: Record the published version as a git tag
+        if: success() && steps.publish.outputs.version != ''
+        env:
+          VERSION: ${{ steps.publish.outputs.version }}
+        run: |
+          TAG="v$VERSION"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG already exists; nothing to record."
+          else
+            git tag -a "$TAG" -m "Release $TAG"
+            git push origin "$TAG"
+            echo "Pushed tag $TAG."
+          fi
+          echo "Tagged \`$TAG\`." >> "$GITHUB_STEP_SUMMARY"
