@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
+import { appendFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   applyLockstepVersion,
@@ -380,6 +381,21 @@ try {
   }
 
   console.log(`\n${options.dryRun ? 'Dry-run checks finished.' : 'Alpha publish finished.'}`);
+
+  /*
+   * Hand the published version back to the CI workflow so it can record the
+   * release as a git tag (`vX.Y.Z-alpha.N`). Only on a real publish — a dry-run
+   * publishes nothing to mirror. `GITHUB_OUTPUT`/`GITHUB_STEP_SUMMARY` are only
+   * set inside GitHub Actions, so this is a no-op locally.
+   */
+  if (!options.dryRun) {
+    if (process.env.GITHUB_OUTPUT) {
+      appendFileSync(process.env.GITHUB_OUTPUT, `version=${publishVersion}\n`);
+    }
+    if (process.env.GITHUB_STEP_SUMMARY) {
+      appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Published alpha \`${publishVersion}\` to npm.\n`);
+    }
+  }
 } finally {
   if (restoreVersions) {
     restoreVersions();

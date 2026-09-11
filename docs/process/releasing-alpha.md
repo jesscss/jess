@@ -177,10 +177,18 @@ The updater implements this controlled snapshot procedure:
    manifest versions, so alpha-only release notes or source changes must land
    on dev first. The snapshot must keep
    every current `dev` manifest field—especially dependencies, peer ranges,
-   exports, and publish configuration—and retain only the recovery alpha
-   versions until the registry-aware release step selects the next version.
+   exports, and publish configuration—changing only the lockstep `version`.
    This also preserves `dev`'s root scripts, release/readiness evidence, and
    handoff documentation; `pnpm-lock.yaml` remains unchanged.
+
+   The updater then sets the lockstep `version` across every publishable
+   manifest to the exact version this cut will publish — the npm `alpha`
+   dist-tag **+ 1**, from the registry-aware resolver (`resolveAlphaPublishVersion`).
+   So the `alpha` branch, its release tag, and npm all carry the same number
+   (no placeholder version on the branch), and the publish-time clobber guard
+   passes without a separate manual `increment-alpha` step. This is drift-free:
+   the resolver keys off what is actually published, so a cut that never
+   publishes resolves the same number next time rather than climbing the manifest.
 4. Reconcile the owner-reviewed release notes from the final gate evidence,
    commit one controlled refresh on `alpha`, and confirm a clean source tree.
 
@@ -218,9 +226,17 @@ flow.
 
 After the controlled snapshot is committed, run the preflight and release commands
 from `alpha` as described below. Do not copy `dev`'s placeholder version onto
-`alpha` manually: the release script's registry-aware resolver selects a fresh
-version. Its alpha-clobber guard deliberately rejects a snapshot whose
-manifest version is at or behind an already-published alpha.
+`alpha` manually: the cut's registry-aware resolver already wrote the fresh
+version (npm `alpha` + 1) into the manifests, so the branch mirrors what will
+publish. The alpha-clobber guard — which rejects a snapshot whose manifest
+version is at or behind an already-published alpha — therefore passes on a
+correctly cut snapshot; if it fires, the cut did not run or `dev`'s placeholder
+leaked through.
+
+When publishing via the `publish-alpha.yml` workflow (OIDC trusted publishing),
+a successful publish also pushes the annotated release tag `vX.Y.Z-alpha.N`, so
+publishing through CI records the same git tag the local `release:alpha` flow
+does — the repo mirrors npm either way.
 
 ### Moving the `latest` dist-tag during the alpha phase (gated, off by default)
 

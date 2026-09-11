@@ -57,8 +57,15 @@ pnpm run release:alpha
 2. Re-run `pnpm run release:alpha:publish`.
 3. Already-published versions are skipped automatically.
 
-## CI backup (manual only)
+## Publishing via CI (OIDC trusted publishing)
 
 - Workflow: `.github/workflows/publish-alpha.yml`
-- Trigger: `workflow_dispatch` only
-- Recommended default is still CLI (`pnpm run release:alpha`) so release ownership stays explicit.
+- Trigger: `workflow_dispatch` only (release ownership stays explicit — a publish
+  is never a side effect of a push or merge).
+- Publishes to npm with OIDC trusted publishing — no npm token is stored.
+- Runs `release:alpha:check` (full preflight) first; a failing preflight stops it
+  before anything reaches npm.
+- On a successful publish it pushes the annotated release tag `vX.Y.Z-alpha.N`, so
+  the repo mirrors npm exactly like the local `pnpm run release:alpha` flow does.
+- Requires the `alpha` branch to already carry the cut's resolved version (the
+  `update-alpha-from-dev` cut writes it), which it will on a correctly cut snapshot.
