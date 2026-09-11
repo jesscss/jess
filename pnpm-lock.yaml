@@ -893,8 +893,8 @@ importers:
         specifier: workspace:*
         version: link:../../../parser-shared
       sass-spec:
-        specifier: github:sass/sass-spec
-        version: https://codeload.github.com/sass/sass-spec/tar.gz/b39c3276821a6dc3dd4a0f7e1f63c48cb15e269b(@babel/core@7.29.7)(@jest/transform@29.7.0)(babel-jest@29.7.0(@babel/core@7.29.7))(eslint@9.39.5(jiti@1.21.7))(jest-util@29.7.0)(jiti@1.21.7)
+        specifier: github:sass/sass-spec#67c3b83a26fd3f9772dd0d3e318fe32aefb38eef
+        version: https://codeload.github.com/sass/sass-spec/tar.gz/67c3b83a26fd3f9772dd0d3e318fe32aefb38eef(@babel/core@7.29.7)(@jest/transform@29.7.0)(babel-jest@29.7.0(@babel/core@7.29.7))(eslint@9.39.5(jiti@1.21.7))(jest-util@29.7.0)(jiti@1.21.7)
 
 packages:
 
@@ -10899,8 +10899,8 @@ packages:
     engines: {node: '>=10.12.0'}
     hasBin: true
 
-  sass-spec@https://codeload.github.com/sass/sass-spec/tar.gz/b39c3276821a6dc3dd4a0f7e1f63c48cb15e269b:
-    resolution: {gitHosted: true, integrity: sha512-ERt9tXq/0ZPcsFPdTHiOocMBpypl6inP2LxGScD7HhK7jXKOAeHgXx8Gw1Hgyq+DQIFc6HxLsSpvSS9UmGS15w==, tarball: https://codeload.github.com/sass/sass-spec/tar.gz/b39c3276821a6dc3dd4a0f7e1f63c48cb15e269b}
+  sass-spec@https://codeload.github.com/sass/sass-spec/tar.gz/67c3b83a26fd3f9772dd0d3e318fe32aefb38eef:
+    resolution: {gitHosted: true, integrity: sha512-XKDVHWh285RgvVixlEF3Ix3PqgRv0cnfGi6o0kPS2sIyAikPun/y+u/0mFaSS7nJ8OgXOpHQA/XzTfjWZYfNvg==, tarball: https://codeload.github.com/sass/sass-spec/tar.gz/67c3b83a26fd3f9772dd0d3e318fe32aefb38eef}
     version: 3.5.4
     engines: {node: '>=v14.14.0'}
 
@@ -26473,7 +26473,7 @@ snapshots:
 
   sass-migrator@2.6.1: {}
 
-  sass-spec@https://codeload.github.com/sass/sass-spec/tar.gz/b39c3276821a6dc3dd4a0f7e1f63c48cb15e269b(@babel/core@7.29.7)(@jest/transform@29.7.0)(babel-jest@29.7.0(@babel/core@7.29.7))(eslint@9.39.5(jiti@1.21.7))(jest-util@29.7.0)(jiti@1.21.7):
+  sass-spec@https://codeload.github.com/sass/sass-spec/tar.gz/67c3b83a26fd3f9772dd0d3e318fe32aefb38eef(@babel/core@7.29.7)(@jest/transform@29.7.0)(babel-jest@29.7.0(@babel/core@7.29.7))(eslint@9.39.5(jiti@1.21.7))(jest-util@29.7.0)(jiti@1.21.7):
     dependencies:
       '@esbuild-plugins/node-modules-polyfill': 0.2.2(esbuild@0.28.2)
       '@eslint/eslintrc': 3.3.7
