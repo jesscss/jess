@@ -96,6 +96,25 @@ describe('output.compress — value folds (must fold)', () => {
       .toBe('a{transition:color 1px,background 2px}');
   });
 
+  it('tightens function-arg commas (list dividers) but keeps significant spaces', async () => {
+    /*
+     * The list-divider (comma) space is minified. A CSS-shaped call whose bytes are
+     * PRESERVED (rgba/rgb/hsl/… in a .less doc) keeps its arg spellings verbatim —
+     * the commas tighten, but the `0.1` is NOT re-spelled to `.1`: a preserved arg
+     * is an opaque string, and re-tokenizing it to fold would defeat preservation.
+     */
+    expect(await min('a { color: rgba(255, 238, 170, 0.1) }'))
+      .toBe('a{color:rgba(255,238,170,0.1)}');
+
+    // a generic (evaluated) call folds via typed nodes AND tightens commas
+    expect(await min('a { transform: translate(1px, 2px) }'))
+      .toBe('a{transform:translate(1px,2px)}');
+
+    // modern space-separated color syntax: the spaces ARE the separators, kept
+    expect(await min('a { color: rgb(15 23 42 / 0.5) }'))
+      .toBe('a{color:rgb(15 23 42 / 0.5)}');
+  });
+
   it('emits `!important` with no leading space', async () => {
     expect(await min('a { color: red !important }')).toBe('a{color:red!important}');
   });

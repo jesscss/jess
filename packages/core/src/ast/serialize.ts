@@ -5436,8 +5436,8 @@ function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): Mayb
   const items = node.args.map(a => evalValueSlot(a.value, frame, preserve));
   return combineAll(items, (vals) => {
     const authored = valueLayoutOf(node.args);
-    const glue = node.modern ? ' ' : ', ';
-    let inner = emitValue(vals[0]!);
+    const glue = node.modern ? ' ' : (e.compress === true ? ',' : ', ');
+    let inner = emitValueC(vals[0]!, e);
     for (let index = 1; index < vals.length; index += 1) {
       const separator = authored?.[index - 1];
 
@@ -5448,7 +5448,7 @@ function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): Mayb
        * verbatim are a newline + its indentation offset and a block comment.
        */
       inner += separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue;
-      inner += emitValue(vals[index]!);
+      inner += emitValueC(vals[index]!, e);
     }
     return literal(`${node.name}(${inner})`);
   });
@@ -6348,12 +6348,12 @@ function evalCall(
     const items = node.args.map(a => evalValueSlot(a.value, frame, e));
     return combineAll(items, (vals) => {
       const authored = valueLayoutOf(node.args);
-      const glue = sep === ' ' ? ' ' : ', ';
-      let inner = emitValue(vals[0]!);
+      const glue = sep === ' ' ? ' ' : (e.compress === true ? ',' : ', ');
+      let inner = emitValueC(vals[0]!, e);
       for (let index = 1; index < vals.length; index += 1) {
         const separator = authored?.[index - 1];
         inner += separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue;
-        inner += emitValue(vals[index]!);
+        inner += emitValueC(vals[index]!, e);
       }
       return literal(`${node.name}(${inner})`);
     });
@@ -9847,7 +9847,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     off: 0,
     positions: null,
     ev: options?.evaluator ?? options?.context?.evaluator ?? null,
-    modes: options?.modes ?? options?.context?.options ?? DEFAULT_MODES,
+    modes: { ...(options?.modes ?? options?.context?.options ?? DEFAULT_MODES), compress: options?.compress ?? false },
     allowCallerScope: options?.context?.options.allowCallerScope ?? options?.modes?.allowCallerScope ?? false,
     trivia: options?.trivia ?? triviaMapOf(root) ?? options?.context?.opts.trivia,
     context: options?.context,
@@ -9934,7 +9934,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     off: 0,
     positions: options?.trackPositions ? [] : null,
     ev: options?.evaluator ?? options?.context?.evaluator ?? null, // typed value evaluator
-    modes: options?.modes ?? options?.context?.options ?? DEFAULT_MODES,
+    modes: { ...(options?.modes ?? options?.context?.options ?? DEFAULT_MODES), compress: options?.compress ?? false },
     allowCallerScope: options?.context?.options.allowCallerScope ?? options?.modes?.allowCallerScope ?? false, // [R16] legacy caller-read, default hermetic
     trivia: options?.trivia ?? triviaMapOf(root) ?? options?.context?.opts.trivia,
     context: options?.context,

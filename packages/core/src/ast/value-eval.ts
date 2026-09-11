@@ -378,6 +378,13 @@ export interface EvalModes {
    * supplies it (its resolved options already carry the field). Absent = hermetic.
    */
   readonly allowCallerScope?: boolean;
+
+  /**
+   * [compress] Minified output. Carried here so the evaluator's verbatim
+   * unknown-fn fallback can tighten the comma list-divider (`a(1, 2)`→`a(1,2)`)
+   * on the same `modes` path the Context supplies; absent = pretty.
+   */
+  readonly compress?: boolean;
 }
 
 export const DEFAULT_MODES: EvalModes = {
