@@ -72,9 +72,9 @@ interface AuditResult {
   readonly sourcesSeen: Set<string>;
 }
 
-async function auditRoundTrip(entry: string, collapseNesting: boolean): Promise<AuditResult> {
+async function auditRoundTrip(entry: string, collapseNesting: boolean, compress = false): Promise<AuditResult> {
   const c = new Compiler({
-    output: { collapseNesting, sourceMap: { outputSourceFiles: true } },
+    output: { collapseNesting, compress, sourceMap: { outputSourceFiles: true } },
     compile: { plugins: [lessPlugin()] }
   });
   const r = await c.renderToResult(entry, {});
@@ -122,6 +122,21 @@ describe('source map round-trip is mathematically correct', () => {
     it(`reordered content: hoisted @charset + bubbled @media + nested selectors (collapseNesting=${collapseNesting})`, async () => {
       const r = await auditRoundTrip(path.join(fixtures, 'reorder.less'), collapseNesting);
       expect(r.count).toBeGreaterThanOrEqual(6);
+    });
+
+    /*
+     * Compress rewrites the emitted bytes but not the position mechanism (`put()`
+     * records offsets regardless of content), so the SAME independent decode +
+     * token round-trip must still hold with `{ compress: true }`.
+     */
+    it(`compressed output stays source-map-correct (collapseNesting=${collapseNesting})`, async () => {
+      const imports = await auditRoundTrip(path.join(fixtures, 'entry.less'), collapseNesting, true);
+      expect(imports.count).toBeGreaterThanOrEqual(5);
+      expect(imports.sourcesSeen.has('imported.less')).toBe(true);
+      expect(imports.sourcesSeen.has('entry.less')).toBe(true);
+
+      const reordered = await auditRoundTrip(path.join(fixtures, 'reorder.less'), collapseNesting, true);
+      expect(reordered.count).toBeGreaterThanOrEqual(6);
     });
   }
 });

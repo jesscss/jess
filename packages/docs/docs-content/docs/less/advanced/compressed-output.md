@@ -72,7 +72,7 @@ lightningcss. `//` line comments are already trivia and never reach output.
 | Value | Pretty | Compressed | Notes |
 | --- | --- | --- | --- |
 | Foldable hex | `#ffffff`, `#ffffffff` | `#fff`, `#ffff` | 6→3 and 8→4 (`#rrggbbaa`→`#rgba`) when each channel's pair is equal |
-| Named color | `white` | `#fff` | a named color is written as whichever is shorter, the name or its hex (see conflicts) |
+| Color → shortest name/hex | `#ff0000` | `red` | a value CLASSIFIED as a color prints as whichever is shorter, its folded hex or a named color (`#ff0000`→`red`, `#ffffff`→`#fff`) |
 | Leading zero | `0.5`, `-0.5` | `.5`, `-.5` | |
 | Trailing zeros | `1.50px` | `1.5px` | already applied to computed numbers; compress extends it to authored literals |
 
@@ -80,6 +80,16 @@ Function-form colors (`rgb()`/`hsl()`/`hwb()`/…) are **not** rewritten to hex 
 `rgb(255,0,0)` stays `rgb(255,0,0)` (whitespace-tightened only). Converting a
 color between representations is a lossy-of-intent optimization that belongs
 behind a finer-grained option, not the default `compress`.
+
+**An authored bare color keyword is left verbatim** — `color: white` stays
+`white`. Every fold is driven by the value's **classification**: `#ffffff` is a
+`Color`, `0.5px` is a `Dimension`, but a bare `white` is a `Keyword`. Knowing
+whether that `Keyword` is a *color* (`color: white`) or an *identifier*
+(`animation-name: white`, `font-family: white`, `counter-reset: white 0`) would
+require a per-property value grammar that jess deliberately does not consult, so
+`compress` never folds a keyword — it can't be done without guessing the
+property, and guessing wrong would corrupt the value. Only a value already
+classified as a color folds (and it folds to the shortest of hex/name).
 
 **Zero units are kept** (`0px` stays `0px`, `0s` stays `0s`). A unitless `0` is
 valid only as a `<length>` — and not even inside `calc()` (the unit types the
@@ -102,7 +112,7 @@ rule):
 | --- | --- | --- | --- |
 | Zero units (`0px`, `0s`, `0%`) | drops the unit on zero **lengths** → `0` | keeps every unit | **keeps every unit** (match dart-sass) — unitless `0` is valid only as a `<length>`, and not inside `calc()`; the drop needs context analysis to stay correct and saves two bytes, so Jess doesn't do it. |
 | `!important` spacing | ` !important` | `!important` | **`!important`** — no leading space; valid and shorter. |
-| Named colors vs hex | never swaps | shortest of name/hex | **named colors only, shortest of {name, hex}** — `white`→`#fff`, but `red` stays `red` (`< #f00`); ties keep the keyword. Function-form colors are left as authored. |
+| Colors, name vs hex | never swaps | shortest of name/hex | **shortest of {name, hex} on a value already CLASSIFIED as a color** — `#ff0000`→`red`, `#ffffff`→`#fff`. See the note below on why an authored bare keyword is left alone. |
 | `@media (` tightening | keeps the space | removes it | **remove** — `@media(…)`/`@supports(…)` parse without the space. |
 
 ## Extra folds (other minifiers)

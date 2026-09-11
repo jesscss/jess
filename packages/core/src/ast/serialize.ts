@@ -133,6 +133,8 @@ import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scop
 import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
+import { colorRgb, HEX } from './color.js'; // [compress] typed-color channel read + hex-format tag
+import { compressDimensionBytes, compressSelectorHeader, shortestColor, shortestColorFromHex } from './compress.js';
 import { UnitArithmeticError, calcInner, preservedUnitClashes, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeKeyword, makeBool, makeList, makeNull, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { groupItems } from './value-list.js';
@@ -237,6 +239,16 @@ export interface SerializeOptions {
    * their inner rules nested. Same single walk, second emit form.
    */
   collapseNesting?: boolean;
+
+  /**
+   * [compress] Minified output (`output.compress`). `true` removes all
+   * non-significant whitespace and comments (except `/*! … *&#47;` bang comments)
+   * and re-spells each value in its shortest still-valid form — driven by the
+   * value's CLASSIFICATION, never by re-scanning serialized bytes. Default (unset)
+   * is pretty output, byte-identical to before this option existed. See
+   * docs/less/advanced/compressed-output.md.
+   */
+  compress?: boolean;
 
   /**
    * [resolver] OPTIONAL resolution mode. Default (unset) is STRICT: a
@@ -2893,6 +2905,23 @@ interface EvalCtx {
   modes: EvalModes;
 
   /**
+   * [compress] `output.compress` — minified output. Read on both the value lane
+   * (folds Color/Dimension to shortest form; tightens list commas) and the
+   * structural lane (drops whitespace/comments). Optional so every non-compress
+   * EvalCtx construction is unchanged; a falsy read is the pretty path.
+   */
+  compress?: boolean;
+
+  /**
+   * [compress] Set by each `;`-terminator emission to whether it belonged to a
+   * CUSTOM-PROPERTY (`--*`) declaration. `emitBlockClose` reads it so the last-`;`
+   * drop skips a custom property (whose value region — `: value;` — is emitted
+   * verbatim, because trailing whitespace/`}` would otherwise be absorbed into the
+   * opaque value). Optional: unset (falsy) is the regular-declaration path.
+   */
+  lastDeclCustom?: boolean;
+
+  /**
    * [R16] Resolved ONCE per render: `true` restores the legacy Less dynamic
    * caller-read (a body resolves free variables in the ambient call site);
    * `false` (default) is lexical/hermetic — the variable-read functions skip a
@@ -3888,15 +3917,23 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'Null':
       return makeNull(true);
 
-    /*
+      /*
      * Every value LITERAL is inert here: emit its verbatim `src` as a bare string,
      * except an escaped Less quote, whose value semantics intentionally unquote it.
      * CORRECTION 5 — return `literal(node.src)` (a BARE STRING), never the node
      * object: an AST literal node must not leak into the `EvalValue = ValueGroup | string`
      * lane (a downstream `v.type==='Color'` would misread it as a value object).
      */
-    case 'Keyword':
+    /*
+     * [compress] A value CLASSIFIED `Color` (an AST `Color` node — always a `#hex`
+     * literal; named colors are `Keyword`, function colors are `FunctionCall`) folds
+     * to the shortest of {folded hex, named color}. The fold is selected by the node
+     * TYPE, never by sniffing bytes — a `Keyword` in this switch is left verbatim.
+     */
     case 'Color':
+      return literal(e.compress ? shortestColorFromHex(node.src) : node.src);
+
+    case 'Keyword':
     case 'Any':
     case 'Comment':
 
@@ -4008,10 +4045,10 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         const values = hit.merged.map(member =>
           withExcluded(e, member.node.value, () => evalValueSlot(member.node.value, member.frame, e)));
         return combineAll(values, (resolved) => {
-          let bytes = emitValue(resolved[0]!);
+          let bytes = emitValueC(resolved[0]!, e);
           for (let i = 1; i < resolved.length; i++) {
-            const separator = hit.merged![i]!.node.merge === ',' ? ', ' : ' ';
-            bytes += separator + emitValue(resolved[i]!);
+            const separator = hit.merged![i]!.node.merge === ',' ? (e.compress === true ? ',' : ', ') : ' ';
+            bytes += separator + emitValueC(resolved[i]!, e);
           }
           return literal(bytes);
         });
@@ -4058,7 +4095,11 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        */
       const items = node.value.map(it => evalValueSlot(it, frame, e));
       return combineAll(items, (vals) => {
-        const glue = node.sep === ',' ? ', ' : node.sep === '/' ? ' / ' : ' ';
+        /*
+         * [compress] tighten the comma separator (`, `→`,`); the `/` separator stays
+         * spaced and a space list keeps its single space.
+         */
+        const glue = node.sep === ',' ? (e.compress === true ? ',' : ', ') : node.sep === '/' ? ' / ' : ' ';
         const authored = valueLayoutOf(node);
 
         /* [null] An elided item takes its separator with it (§4.3): dart-sass
@@ -4072,9 +4113,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
           }
           if (!empty) {
             const separator = authored?.[index - 1];
-            out += separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue;
+            out += e.compress !== true && separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue;
           }
-          out += emitValue(item);
+          out += emitValueC(item, e);
           empty = false;
         }
         return empty && vals.length > 0 ? NULL : literal(out);
@@ -6551,13 +6592,51 @@ function joinSpacedBytes(node: Sequence, frame: Frame | null, e: EvalCtx): Maybe
   const authored = valueLayoutOf(node);
   const items = node.parts.map(part => evalValue(part, frame, e));
   return combineAll(items, (values) => {
-    let out = emitValue(values[0]!);
+    let out = emitValueC(values[0]!, e);
     for (let index = 1; index < values.length; index++) {
-      out += authored?.[index - 1] ?? ' ';
-      out += emitValue(values[index]!);
+      /*
+       * [compress] a space list keeps ONE space; the authored (possibly multi-line)
+       * boundary run is replayed only in pretty output.
+       */
+      out += e.compress === true ? ' ' : (authored?.[index - 1] ?? ' ');
+      out += emitValueC(values[index]!, e);
     }
     return literal(out);
   });
+}
+
+/**
+ * [compress] Compress-aware value emit. Off (or a bare-string literal that was
+ * already folded upstream in {@link evalValue}) is exactly {@link emitValue}. On,
+ * a typed COMPUTED leaf folds by its RESULT type: a hex-format `Color` to the
+ * shortest of {folded hex, named color}, a `Dimension` to its zero-trimmed
+ * spelling; a space-group recurses per item. Function-form colors (`rgb()`/`hsl()`,
+ * a non-HEX format) are left as their serialized bytes (no representation change).
+ */
+function emitValueC(v: EvalValue, e: EvalCtx): string {
+  if (e.compress !== true || typeof v === 'string') {
+    return emitValue(v);
+  }
+  if (isValueGroupArray(v)) {
+    let out = '';
+    let empty = true;
+    for (const item of v) {
+      if (isElided(item)) {
+        continue;
+      }
+      out = empty ? emitValueC(item, e) : `${out} ${emitValueC(item, e)}`;
+      empty = false;
+    }
+    return out;
+  }
+  if (v.type === 'Dimension') {
+    return compressDimensionBytes(v.bytes);
+  }
+  if (v.type === 'Color' && v.format === HEX) {
+    const [r, g, b] = colorRgb(v);
+    return shortestColor(r, g, b, v.alpha);
+  }
+  return v.bytes;
 }
 
 /** Fold a value node and return its emitted bytes. */
@@ -6575,7 +6654,7 @@ function evalBytes(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromi
         elideSink.elided = true;
       }
     }
-    return emitValue(value);
+    return emitValueC(value, e);
   });
 }
 
@@ -7392,7 +7471,7 @@ interface Emit extends EvalCtx {
    * block dedup). ONE preallocated record, mutated per block flush (no per-block
    * allocation); its seed `parentKey: null` matches nothing (merge needs pk !== null).
    */
-  lastBlock: { parentKey: object | null; header: string; depth: number; endChunks: number };
+  lastBlock: { parentKey: object | null; header: string; depth: number; endChunks: number; droppedSemi: boolean };
 
   /*
    * [recursion-backstop] current NESTED mixin-expansion depth (0 at the top of a
@@ -7487,12 +7566,13 @@ function scratchEmit(e: EvalCtx): Emit {
     drops: [],
     depth: 0,
     collapse: true,
+    compress: e.compress ?? false,
     extends: null,
     dynamicExtend: null,
     importedStaticExtendRules: null,
     importedDynamicExtendPresent: false,
     hoistMode: false,
-    lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1 }, // [adjacent-merge]
+    lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] fresh scratch walk; own runaway backstop
     loadedImports: null,
     multipleImportDepth: 0,
@@ -7539,7 +7619,12 @@ function reindentContinuations(bytes: string, contIndent: string): string {
  * single leading space (`100%!important` → `100% !important`) and kept verbatim
  * (never doubled — `20px ! important` stays as-is); an absent one is appended.
  * Only applied when the declaration carries `!important`. */
-function normalizeImportant(bytes: string): string {
+function normalizeImportant(bytes: string, compress = false): string {
+  // [compress] `!important` — no leading space, canonical spelling; valid and shorter.
+  if (compress) {
+    const m = /(\s*)(!\s*important)\s*$/iu.exec(bytes);
+    return (m ? bytes.slice(0, m.index) : bytes) + '!important';
+  }
   const m = /(\s*)(!\s*important)\s*$/iu.exec(bytes);
   return m ? bytes.slice(0, m.index) + ' ' + m[2] : bytes + ' !important';
 }
@@ -7566,9 +7651,9 @@ function putValue(e: Emit, node: ValueSlot, frame: Frame | null, positionNode?: 
      * (indented) continuation, so a value authored on its own line after `:`
      * re-emits with that layout (multi-line `grid-template-areas`).
      */
-    const lead = firstOnNewLine ? `\n${s}` : s;
-    const r = contIndent !== undefined ? reindentContinuations(lead, contIndent) : lead;
-    return emitImportant || sink.hit ? normalizeImportant(r) : r;
+    const lead = firstOnNewLine && e.compress !== true ? `\n${s}` : s;
+    const r = contIndent !== undefined && e.compress !== true ? reindentContinuations(lead, contIndent) : lead;
+    return emitImportant || sink.hit ? normalizeImportant(r, e.compress === true) : r;
   };
   if (isThenable(b)) {
     const i = e.chunks.length;
@@ -7592,6 +7677,112 @@ function put(e: Emit, s: string): void {
   if (e.positions) {
     e.off += s.length;
   }
+}
+
+/* ----------------------------------------------------------- [compress] layout
+ * Structural whitespace/layout helpers. Each returns the EXACT pretty-print bytes
+ * when compress is off, so uncompressed output stays byte-identical; under compress
+ * indentation and newlines vanish. The value serializers stay pure — compress is a
+ * flag on the context, never a global. */
+
+/** Block header/close indentation for the current depth (empty under compress). */
+function blockIndent(e: Emit): string {
+  return e.compress === true || e.depth <= 0 ? '' : INDENT.repeat(e.depth);
+}
+
+/** Leaf/body indentation, one level in from the block (empty under compress). */
+function bodyIndent(e: Emit): string {
+  return e.compress === true ? '' : INDENT.repeat(e.depth + 1);
+}
+
+/** A record newline, or nothing under compress. */
+function nl(e: Emit): string {
+  return e.compress === true ? '' : '\n';
+}
+
+/** The block-open bytes: `{` under compress, ` {\n` pretty. */
+function blockOpen(e: Emit): string {
+  return e.compress === true ? '{' : ' {\n';
+}
+
+/** The declaration terminator: `;` under compress, `;\n` pretty. */
+function declEnd(e: Emit): string {
+  return e.compress === true ? ';' : ';\n';
+}
+
+/**
+ * Emit a block-closing brace. Pretty: `idt` + `}\n`. Compress: DROP the trailing
+ * `;` of the block's last declaration (blank its chunk in place — never splice, so
+ * pending async chunk indices stay valid), note whether it did on `lb` (so an
+ * adjacent-merge reopen can restore the separator), then a bare `}`.
+ */
+function emitBlockClose(e: Emit, idt: string, lb?: Emit['lastBlock']): void {
+  if (e.compress === true) {
+    const c = e.chunks;
+    let k = c.length - 1;
+    while (k >= 0 && c[k] === '') {
+      k--;
+    }
+    let dropped = false;
+
+    /*
+     * [compress] a custom property keeps its `;` — its value is an opaque token
+     * stream and dropping the terminator lets it absorb trailing bytes.
+     */
+    if (k >= 0 && c[k] === ';' && e.lastDeclCustom !== true) {
+      c[k] = '';
+      if (e.positions) {
+        e.off -= 1;
+      }
+      dropped = true;
+    }
+    if (lb) {
+      lb.droppedSemi = dropped;
+    }
+    put(e, '}');
+    return;
+  }
+  if (idt) {
+    put(e, idt);
+  }
+  put(e, '}\n');
+}
+
+/**
+ * [compress] Whether a comment survives compression. Pretty keeps every comment;
+ * compress keeps only `/*! … *&#47;` bang comments (license headers), matching
+ * Less 4.x / dart-sass / cssnano / lightningcss.
+ */
+function keepComment(e: Emit, text: string): boolean {
+  return e.compress !== true || text.startsWith('/*!');
+}
+
+/** Emit one block comment on its own indented line (pretty), or bare with no
+ * surrounding whitespace (compress) — and only when it survives {@link keepComment}. */
+function putBlockComment(e: Emit, indent: string, text: string): void {
+  if (!keepComment(e, text)) {
+    return;
+  }
+  if (e.compress === true) {
+    put(e, text);
+    return;
+  }
+  put(e, indent);
+  put(e, text);
+  put(e, '\n');
+}
+
+/**
+ * [compress] The composed selector header. Pretty keeps the authored-trivia form
+ * (or the `,\n`+indent join). Compress joins branches with a bare `,` and collapses
+ * combinator whitespace on the final string only (never on the branch strings used
+ * for extend/adjacency matching upstream).
+ */
+function composeSelectorHeader(e: Emit, own: string[], idt: string, authoredHeader: string | null): string {
+  if (e.compress === true) {
+    return compressSelectorHeader(own.join(','));
+  }
+  return authoredHeader ?? (idt ? own.join(',\n' + idt) : own.join(',\n'));
 }
 
 /**
@@ -7901,9 +8092,11 @@ function emitBlockCommentTriviaBetween(
     }
     e.emittedBlockTrivia.addIndex(table, i);
     for (let c = from; c < to; c++) {
-      put(e, indent);
-      put(e, src.slice(table.commentStart[c]!, table.commentEnd[c]!));
-      put(e, '\n');
+      const text = src.slice(table.commentStart[c]!, table.commentEnd[c]!);
+      if (!keepComment(e, text)) {
+        continue;
+      }
+      putBlockComment(e, indent, text);
       emitted++;
     }
   }
@@ -8013,7 +8206,7 @@ function takeInlineBlockCommentTriviaAfter(node: Statement, e: Emit): string | n
 
 function emitInlineBlockCommentTriviaAfter(node: Statement, e: Emit): void {
   const text = takeInlineBlockCommentTriviaAfter(node, e);
-  if (text !== null) {
+  if (text !== null && keepComment(e, text)) {
     put(e, text);
   }
 }
@@ -8078,6 +8271,10 @@ function firstDeclarationColon(source: string, span: AstSourceSpan): number | nu
 }
 
 function declarationHeadTriviaText(node: Declaration, e: Emit): string {
+  // [compress] the name↔colon trivia (spacing/comments) is dropped under compress.
+  if (e.compress === true) {
+    return '';
+  }
   const trivia = e.trivia;
   if (trivia === undefined) {
     return '';
@@ -8363,9 +8560,7 @@ function emitLeadingDocumentBlockComments(e: Emit, indent = ''): void {
   }
   e.emittedBlockTrivia.addIndex(table, 0);
   for (let c = table.commentAt[0]!; c < table.commentAt[1]!; c++) {
-    put(e, indent);
-    put(e, src.slice(table.commentStart[c]!, table.commentEnd[c]!));
-    put(e, '\n');
+    putBlockComment(e, indent, src.slice(table.commentStart[c]!, table.commentEnd[c]!));
   }
 }
 
@@ -8518,10 +8713,9 @@ function emitTopLevelBlockCommentsBetween(
         && brackets === 0
         && braces === 0
         && emittedTriviaRunForRange(e, index, commentEnd) === undefined
+        && keepComment(e, source.slice(index, commentEnd))
       ) {
-        put(e, indent);
-        put(e, source.slice(index, commentEnd));
-        put(e, '\n');
+        putBlockComment(e, indent, source.slice(index, commentEnd));
         markTriviaRunForRange(e, index, commentEnd);
         emitted++;
       }
@@ -9640,7 +9834,7 @@ function planImportedFacts(
 
 export type PrepareStaticImportsOptions = Pick<
   SerializeOptions,
-  'context' | 'evaluator' | 'modes' | 'trivia' | 'optional' | 'collapseNesting' | 'importDocument' | 'pluginHost' | 'io'
+  'context' | 'evaluator' | 'modes' | 'trivia' | 'optional' | 'collapseNesting' | 'compress' | 'importDocument' | 'pluginHost' | 'io'
 >;
 
 export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticImportsOptions): MaybePromise<PreparedImports> {
@@ -9664,12 +9858,13 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     drops: [],
     depth: 0,
     collapse: options?.collapseNesting !== false,
+    compress: options?.compress ?? false,
     extends: null,
     dynamicExtend: null,
     importedStaticExtendRules: null,
     importedDynamicExtendPresent: false,
     hoistMode: false,
-    lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1 },
+    lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false },
     mixinDepth: 0,
     loadedImports: null,
     multipleImportDepth: 0,
@@ -9750,12 +9945,13 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     drops: [], // [null] declarations that may still elide on the async lane
     depth: 0, // [atrule]
     collapse: options?.collapseNesting !== false, // [nested/R0] default = flatten
+    compress: options?.compress ?? false, // [compress] minified output
     extends: null, // [extend] computed below (after selector-interp pre-pass)
     dynamicExtend: null,
     importedStaticExtendRules: null,
     importedDynamicExtendPresent: false,
     hoistMode: false, // [extend]
-    lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1 }, // [adjacent-merge]
+    lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] runaway mixin-expansion depth guard
     loadedImports: null,
     multipleImportDepth: 0,
@@ -10044,8 +10240,7 @@ function emitDocumentStatements(
       );
     }
     for (const comment of trailingBlockComments) {
-      put(e, comment);
-      put(e, '\n');
+      putBlockComment(e, '', comment);
     }
   };
   const run = (child: Statement, allowDefer: boolean): MaybePromise<void> => {
@@ -11481,7 +11676,7 @@ function walkBody(
         mergeFold(
           buf,
           e,
-          e.depth > 0 ? INDENT.repeat(e.depth) : '',
+          blockIndent(e),
           emitNestedLeaf,
           mergeMode
         );
@@ -11516,13 +11711,9 @@ function walkBody(
         }
       }
       if (trailingBlockComments.length !== 0) {
-        const indent = e.depth > 0 ? INDENT.repeat(e.depth) : '';
+        const indent = blockIndent(e);
         for (const comment of trailingBlockComments) {
-          if (indent) {
-            put(e, indent);
-          }
-          put(e, comment);
-          put(e, '\n');
+          putBlockComment(e, indent, comment);
         }
       }
       buf.length = 0;
@@ -14484,11 +14675,11 @@ function flushBlock(
   }
   const emit = (kept: Leaf[], mergeMode: MergeGroupMode = MERGE_NONE): void => {
     // [atrule] indent by the current block depth (0 at top level == prior behavior).
-    const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
-    const authoredHeader = parentKey === null && selector.length === selNode?.selectors.length
+    const idt = blockIndent(e);
+    const authoredHeader = e.compress !== true && parentKey === null && selector.length === selNode?.selectors.length
       ? authoredSelectorHeaderWithTrivia(selNode, selector, e)
       : null;
-    const header = authoredHeader ?? (idt ? selector.join(',\n' + idt) : selector.join(',\n'));
+    const header = composeSelectorHeader(e, selector, idt, authoredHeader);
 
     /*
      * [adjacent-merge] v5 merges consecutive same-selector SIBLING rulesets nested
@@ -14502,6 +14693,9 @@ function flushBlock(
       && lb.depth === e.depth && lb.header === header && lb.endChunks === e.chunks.length;
     if (reopen) {
       popClose(e, idt); // remove the prior block's trailing `}` (and its indent)
+      if (e.compress === true && lb.droppedSemi) {
+        put(e, ';'); // [compress] restore the separator dropped at the prior close
+      }
       if (e.dynamicExtend) {
         e.dynamicExtend.pendingHeaderChunk = -1;
       }
@@ -14524,13 +14718,13 @@ function flushBlock(
       if (e.positions && selNode) {
         e.positions.push({ node: selNode, type: selNode.type, start: selStart, end: e.off, source: srcFile(e) });
       }
-      put(e, ' {\n');
+      put(e, blockOpen(e));
     }
     if (owner !== undefined && kept.length === 0 && trailingBlockComments.length === 0) {
       emitBodyBlockCommentTrivia(owner, e, e.depth > 0 ? INDENT.repeat(e.depth + 1) : INDENT);
     }
     if (mergeMode !== MERGE_NONE) {
-      mergeFold(kept, e, INDENT.repeat(e.depth + 1), emitLeaf, mergeMode);
+      mergeFold(kept, e, bodyIndent(e), emitLeaf, mergeMode);
     } else {
       const bodyOwner = owner;
       const bodyStart = bodyOwner === undefined ? NO_SPAN : bodyStartOf(bodyOwner);
@@ -14558,9 +14752,7 @@ function flushBlock(
                 bodyTriviaCursor = statementEndOf(owned.node) ?? bodyTriviaCursor;
               }
               for (const comment of owned.leadingBlockComments ?? []) {
-                put(e, INDENT.repeat(e.depth + 1));
-                put(e, comment);
-                put(e, '\n');
+                putBlockComment(e, INDENT.repeat(e.depth + 1), comment);
               }
               emitLeafOwned(owned, e);
             }
@@ -14573,9 +14765,7 @@ function flushBlock(
           bodyTriviaCursor = statementEndOf(leaf.node) ?? bodyTriviaCursor;
         }
         for (const comment of leaf.leadingBlockComments ?? []) {
-          put(e, INDENT.repeat(e.depth + 1));
-          put(e, comment);
-          put(e, '\n');
+          putBlockComment(e, INDENT.repeat(e.depth + 1), comment);
         }
         emitLeafOwned(leaf, e);
         index++;
@@ -14585,14 +14775,9 @@ function flushBlock(
       }
     }
     for (const comment of trailingBlockComments) {
-      put(e, INDENT.repeat(e.depth + 1));
-      put(e, comment);
-      put(e, '\n');
+      putBlockComment(e, INDENT.repeat(e.depth + 1), comment);
     }
-    if (idt) {
-      put(e, idt);
-    }
-    put(e, '}\n');
+    emitBlockClose(e, idt, lb);
 
     // [adjacent-merge] update the single record in place (no per-block allocation).
     lb.parentKey = pk;
@@ -14612,11 +14797,13 @@ function flushBlock(
  * append inside the just-closed block. Only called when `lastBlock.endChunks`
  * proves those chunks are the current tail. */
 function popClose(e: Emit, idt: string): void {
-  const close = e.chunks.pop()!; // '}\n'
+  const close = e.chunks.pop()!; // '}\n' (pretty) or '}' (compress)
   if (e.positions) {
     e.off -= close.length;
   }
-  if (idt) {
+
+  // [compress] the close is a bare `}` with no preceding indent chunk.
+  if (idt && e.compress !== true) {
     const ind = e.chunks.pop()!; // the block-indent chunk
     if (e.positions) {
       e.off -= ind.length;
@@ -14799,9 +14986,7 @@ function mergeFoldOwned(group: Leaf[], e: Emit, idt: string, emitOne: (l: Leaf, 
     const n = leaf.node;
     if (n.type === 'Declaration' && n.merge !== null) {
       for (const comment of leaf.leadingBlockComments ?? []) {
-        put(e, idt);
-        put(e, comment);
-        put(e, '\n');
+        putBlockComment(e, idt, comment);
       }
       const indices = mergeGroups.get(names[i]!)!;
       if (i !== indices[indices.length - 1]) {
@@ -14910,9 +15095,7 @@ function emitMixedMergeMembers(
       continue;
     }
     for (const comment of leaf.leadingBlockComments ?? []) {
-      put(e, idt);
-      put(e, comment);
-      put(e, '\n');
+      putBlockComment(e, idt, comment);
     }
     const indices = mergeGroups.get(names[index]!)!;
     if (index !== indices[indices.length - 1]) {
@@ -15161,14 +15344,15 @@ function nestedPropertyDeclarations(node: Declaration, frame: Frame | null, e: E
 /** Emit one folded `name: combined[ !important];` line. */
 function emitMergedLine(e: Emit, name: string, combined: string, important: boolean, idt: string): void {
   const start = e.off;
+  e.lastDeclCustom = false; // [compress] merged (`+`) declarations are never custom properties
   put(e, idt);
   put(e, name);
-  put(e, ': ');
+  put(e, e.compress === true ? ':' : ': ');
   put(e, combined);
   if (important) {
-    put(e, ' !important');
+    put(e, e.compress === true ? '!important' : ' !important');
   }
-  put(e, ';\n');
+  put(e, declEnd(e));
   if (e.positions) {
     e.positions.push({ node: any(combined), type: 'Any', start, end: e.off, source: srcFile(e) });
   }
@@ -15243,7 +15427,7 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
    * A leaf emitted directly at the document root (not inside any block) sits flush
    * left at depth 0 rather than one level in.
    */
-  const idt = atRoot ? INDENT.repeat(e.depth) : e.depth > 0 ? INDENT.repeat(e.depth + 1) : INDENT;
+  const idt = atRoot ? blockIndent(e) : bodyIndent(e);
   if (node.type === 'Declaration') {
     assertDeclarationValueIsNotRuleset(node, frame, e);
     const name = declName(node, frame, e);
@@ -15256,13 +15440,20 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
     }
     const mark = dropMark(e);
     let deferred = false;
+    const isCustom = name.startsWith('--');
+    e.lastDeclCustom = isCustom; // [compress] gate the last-`;` drop in emitBlockClose
     put(e, idt);
     put(e, name); // resolve interpolated property name
     put(e, declarationHeadTriviaText(node, e));
     const onNewLine = node.valueOnNewLine === true;
-    put(e, onNewLine ? ':' : ': ');
+
+    /*
+     * [compress] a custom property keeps its value region EXACTLY as pretty — the
+     * `: ` separator is not collapsed (the space can be significant/opaque).
+     */
+    put(e, (e.compress === true && !isCustom) || onNewLine ? ':' : ': ');
     const important = node.important === true || leaf.important === true;
-    const customValue = name.startsWith('--')
+    const customValue = isCustom
       ? customPropertyValueWithTrivia(node.value, frame, e)
       : null;
     if (customValue === null) {
@@ -15275,11 +15466,11 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
       e.chunks.push('');
       e.pending.push({
         i,
-        p: Promise.resolve(mapMaybe(customValue, value => important ? normalizeImportant(value) : value))
+        p: Promise.resolve(mapMaybe(customValue, value => important ? normalizeImportant(value, e.compress === true) : value))
       });
     } else {
       const valStart = e.off;
-      put(e, important ? normalizeImportant(customValue) : customValue);
+      put(e, important ? normalizeImportant(customValue, e.compress === true) : customValue);
       if (e.positions && !isValueSlotArray(node.value)) {
         e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.off, source: srcFile(e) });
       }
@@ -15288,12 +15479,15 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
       e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
     emitInlineBlockCommentTriviaAfter(node, e);
-    put(e, ';\n');
+    put(e, declEnd(e));
     finishDrop(e, mark, deferred);
   } else if (node.type === 'Comment') {
+    if (!keepComment(e, node.text)) {
+      return;
+    }
     put(e, idt);
     put(e, node.text);
-    put(e, '\n');
+    put(e, nl(e));
     if (e.positions) {
       e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
@@ -15304,7 +15498,7 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
     }
     put(e, idt);
     put(e, bytes);
-    put(e, '\n');
+    put(e, nl(e));
     if (e.positions) {
       e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
@@ -15689,14 +15883,16 @@ function emitAtRuleStatementRaw(
   importTarget: Quoted | Url | null
 ): void {
   const start = e.off;
-  if (e.depth > 0) {
-    put(e, INDENT.repeat(e.depth));
+  e.lastDeclCustom = false; // [compress] an at-rule statement is not a custom property
+  const idt = blockIndent(e);
+  if (idt) {
+    put(e, idt);
   }
   const transformedImport = importTarget?.type !== 'Quoted'
     ? null
     : e.context?.transformUrl(importTarget.value, true, 'import') ?? importTarget.value;
   const importBoundary =
-    importTarget === null || node.prelude === null
+    e.compress === true || importTarget === null || node.prelude === null
       ? undefined
       : valueBoundaryTriviaOf(node.prelude);
   if (importTarget !== null && node.prelude !== null && importBoundary !== undefined) {
@@ -15717,7 +15913,7 @@ function emitAtRuleStatementRaw(
     }
     return;
   }
-  const authored = importTarget?.type === 'Quoted' && transformedImport !== importTarget.value
+  const authored = e.compress === true || (importTarget?.type === 'Quoted' && transformedImport !== importTarget.value)
     ? null
     : authoredStatementWithTrivia(node, e);
   if (authored !== null) {
@@ -15750,7 +15946,7 @@ function emitAtRuleStatementRaw(
       }
     }
   }
-  put(e, ';\n');
+  put(e, declEnd(e));
   if (e.positions) {
     e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
   }
@@ -16049,17 +16245,18 @@ function emitModuleImport(node: ModuleImport, frame: Frame, e: Emit): void {
 /** Write a grammar-owned opaque at-rule body without evaluating or walking it. */
 function emitUnknownAtRuleBlock(node: UnknownAtRuleBlock, e: Emit): void {
   const start = e.off;
-  if (e.depth > 0) {
-    put(e, INDENT.repeat(e.depth));
+  const idt = blockIndent(e);
+  if (idt) {
+    put(e, idt);
   }
   put(e, node.name);
   if (node.prelude !== null && node.prelude.length > 0) {
-    put(e, ' ');
+    put(e, e.compress === true && node.prelude.charCodeAt(0) === 0x28 /* ( */ ? '' : ' ');
     put(e, node.prelude);
   }
-  put(e, ' {');
+  put(e, e.compress === true ? '{' : ' {');
   put(e, node.rawBody);
-  put(e, '}\n');
+  put(e, e.compress === true ? '}' : '}\n');
   if (e.positions) {
     e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
   }
@@ -16081,11 +16278,11 @@ function emitRawInline(text: string, e: Emit): void {
    * content inside a bubbleable at-rule lines up with authored at-rule-body
    * content (owner 2026-09-02). Root splices (depth 0) stay at column 0.
    */
-  if (e.depth > 0) {
-    put(e, INDENT.repeat(e.depth));
+  if (blockIndent(e)) {
+    put(e, blockIndent(e));
   }
   put(e, text);
-  put(e, '\n');
+  put(e, nl(e));
 }
 
 function canEmitRootCallValue(value: EvalValue): boolean {
@@ -16120,11 +16317,11 @@ function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precompute
     if (bytes.length === 0) {
       return;
     }
-    if (e.depth > 0) {
-      put(e, INDENT.repeat(e.depth));
+    if (blockIndent(e)) {
+      put(e, blockIndent(e));
     }
     put(e, bytes);
-    put(e, '\n');
+    put(e, nl(e));
     if (e.positions) {
       e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
@@ -16262,11 +16459,14 @@ function generalEnclosedPayload(args: readonly CallArg<ValueSlot>[]): Interpolat
   return !isValueSlotArray(only) && only.type === 'Interpolation' ? only : null;
 }
 
-function normalizeSupportsBytes(p: string): string {
+function normalizeSupportsBytes(p: string, compress = false): string {
   let out = '';
   let plainStart = 0;
   const appendPlain = (end: number): void => {
-    out += p.slice(plainStart, end).replace(/\s+/gu, ' ').replace(/\(\s+/gu, '(').replace(/\s+\)/gu, ')');
+    const run = p.slice(plainStart, end).replace(/\s+/gu, ' ').replace(/\(\s+/gu, '(').replace(/\s+\)/gu, ')');
+
+    // [compress] tighten the declaration colon inside a `@supports (prop: val)` test.
+    out += compress ? run.replace(/\s*:\s*/gu, ':') : run;
   };
   for (let i = 0; i < p.length; i++) {
     const c = p[i]!;
@@ -16302,12 +16502,12 @@ function normalizeSupportsBytes(p: string): string {
   return out;
 }
 
-function normalizeSupportsPrelude(parts: readonly SupportsPreludePart[]): string {
+function normalizeSupportsPrelude(parts: readonly SupportsPreludePart[], compress = false): string {
   let out = '';
   let plain = '';
   const flushPlain = (): void => {
     if (plain.length > 0) {
-      out += normalizeSupportsBytes(plain);
+      out += normalizeSupportsBytes(plain, compress);
     }
     plain = '';
   };
@@ -16545,7 +16745,7 @@ function evalQueryPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): May
  * `screen, print, handheld`, `(a) or (b)`), so already-matching goldens are
  * unaffected.
  */
-function normalizeQueryPrelude(p: string): string {
+function normalizeQueryPrelude(p: string, compress = false): string {
   let out = '';
   let i = 0;
   const n = p.length;
@@ -16598,7 +16798,7 @@ function normalizeQueryPrelude(p: string): string {
       }
       j++;
     }
-    out += normalizeQueryPlainRun(p.slice(i, j));
+    out += normalizeQueryPlainRun(p.slice(i, j), compress);
     i = j;
   }
   return out;
@@ -16607,7 +16807,22 @@ function normalizeQueryPrelude(p: string): string {
 /** [atrule-prelude] Spacing normalization of ONE plain (non-quote/comment) run of
  * a query prelude. See {@link normalizeQueryPrelude} for the rules; each `replace`
  * is idempotent on canonical input. */
-function normalizeQueryPlainRun(s: string): string {
+function normalizeQueryPlainRun(s: string, compress = false): string {
+  if (compress) {
+    /*
+     * [compress] tighten the feature colon, comparisons, and ratio; keep a single
+     * space after `and`/`or`/`not` before `(` (`and(` would tokenize as a function).
+     */
+    return s
+      .replace(/\(\s+/gu, '(')
+      .replace(/\s+\)/gu, ')')
+      .replace(/\s*:\s*/gu, ':')
+      .replace(/\s*\/\s*/gu, '/')
+      .replace(/\s*(<=|>=|<|>)\s*/gu, '$1')
+      .replace(/\s*,\s*/gu, ',')
+      .replace(/[ \t\r\n]{2,}/gu, ' ')
+      .replace(/\b(and|or|not)\s*\(/gu, '$1 (');
+  }
   return s
     .replace(/\(\s+/gu, '(') // strip padding right after `(`
     .replace(/\s+\)/gu, ')') // strip padding right before `)`
@@ -16639,10 +16854,10 @@ function atRulePreludeBytes(node: AtRuleBlock, frame: Frame, e: Emit): MaybeProm
   }
   const lname = node.name.toLowerCase();
   if (lname === '@supports') {
-    return mapMaybe(evalSupportsPrelude(node.prelude, frame, e), normalizeSupportsPrelude);
+    return mapMaybe(evalSupportsPrelude(node.prelude, frame, e), parts => normalizeSupportsPrelude(parts, e.compress === true));
   }
   if (lname === '@media' || lname === '@container') {
-    return mapMaybe(evalQueryPrelude(node.prelude, frame, e), normalizeQueryPrelude);
+    return mapMaybe(evalQueryPrelude(node.prelude, frame, e), p => normalizeQueryPrelude(p, e.compress === true));
   }
   return evalBytes(node.prelude, frame, e);
 }
@@ -16683,17 +16898,21 @@ function writeCollapsedAtRuleBlock(
   const markOff = e.off;
   const markPos = e.positions ? e.positions.length : 0;
   const start = e.off;
-  const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
+  const idt = blockIndent(e);
   if (idt) {
     put(e, idt);
   }
-  const renderedPrelude = keyframesPreludeWithTrivia(node, e) ?? prelude;
+  const renderedPrelude = (e.compress !== true ? keyframesPreludeWithTrivia(node, e) : null) ?? prelude;
   put(e, node.name);
   if (renderedPrelude.length > 0) {
-    put(e, ' ');
+    /*
+     * [compress] `@media (…)`/`@supports (…)` → `@media(…)`: drop the name↔prelude
+     * space only when the prelude opens with `(` (still parses); keep it otherwise.
+     */
+    put(e, e.compress === true && renderedPrelude.charCodeAt(0) === 0x28 /* ( */ ? '' : ' ');
     put(e, renderedPrelude);
   }
-  put(e, ' {\n');
+  put(e, blockOpen(e));
   const afterHeader = e.chunks.length;
   const emitted = prepareBodyPlugins(node.rules, bodyFrame, e);
   const finish = (): MaybePromise<void> => {
@@ -16710,10 +16929,7 @@ function writeCollapsedAtRuleBlock(
         return;
       }
     }
-    if (idt) {
-      put(e, idt);
-    }
-    put(e, '}\n');
+    emitBlockClose(e, idt);
     if (e.positions) {
       e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
@@ -16778,7 +16994,7 @@ function emitAtRuleBody(
     if (group.length > 0) {
       const mergeMode = mergeGroupMode(group);
       if (mergeMode !== MERGE_NONE) {
-        mergeFold(group, e, INDENT.repeat(e.depth + 1), emitLeaf, mergeMode);
+        mergeFold(group, e, bodyIndent(e), emitLeaf, mergeMode);
       } else {
         for (const leaf of group) {
           if (owner !== undefined) {
@@ -16795,9 +17011,7 @@ function emitAtRuleBody(
     }
     const indent = INDENT.repeat(e.depth + 1);
     for (const comment of trailingBlockComments) {
-      put(e, indent);
-      put(e, comment);
-      put(e, '\n');
+      putBlockComment(e, indent, comment);
     }
   };
 
@@ -16997,7 +17211,7 @@ function emitBubbleBody(
     } else {
       const mergeMode = mergeGroupMode(group);
       if (mergeMode !== MERGE_NONE) {
-        mergeFold(group, e, INDENT.repeat(e.depth + 1), emitLeaf, mergeMode);
+        mergeFold(group, e, bodyIndent(e), emitLeaf, mergeMode);
       } else {
         for (const leaf of group) {
           emitLeaf(leaf, e);
@@ -17005,9 +17219,7 @@ function emitBubbleBody(
       }
       const indent = INDENT.repeat(e.depth + 1);
       for (const comment of trailingBlockComments) {
-        put(e, indent);
-        put(e, comment);
-        put(e, '\n');
+        putBlockComment(e, indent, comment);
       }
     }
     group.length = 0;
@@ -17493,13 +17705,9 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
 function emitNestedLeafOwned(leaf: Leaf, e: Emit): void {
   const { node, frame } = leaf;
   const start = e.off;
-  const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
+  const idt = blockIndent(e);
   for (const comment of leaf.leadingBlockComments ?? []) {
-    if (idt) {
-      put(e, idt);
-    }
-    put(e, comment);
-    put(e, '\n');
+    putBlockComment(e, idt, comment);
   }
   if (node.type === 'Declaration') {
     assertDeclarationValueIsNotRuleset(node, frame, e);
@@ -17507,10 +17715,15 @@ function emitNestedLeafOwned(leaf: Leaf, e: Emit): void {
     if (idt) {
       put(e, idt);
     }
-    put(e, declName(node, frame, e)); // resolve interpolated property name
+    const name = declName(node, frame, e); // resolve interpolated property name
+    const isCustom = name.startsWith('--');
+    e.lastDeclCustom = isCustom; // [compress] gate the last-`;` drop in emitBlockClose
+    put(e, name);
     put(e, declarationHeadTriviaText(node, e));
     const onNewLine = node.valueOnNewLine === true;
-    put(e, onNewLine ? ':' : ': ');
+
+    // [compress] a custom property keeps its `: ` separator verbatim (see emitLeafOwned).
+    put(e, (e.compress === true && !isCustom) || onNewLine ? ':' : ': ');
     const valStart = e.off;
     const important = node.important === true || leaf.important === true;
     const prevElide = e.elideSink;
@@ -17525,14 +17738,17 @@ function emitNestedLeafOwned(leaf: Leaf, e: Emit): void {
       e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
     emitInlineBlockCommentTriviaAfter(node, e);
-    put(e, ';\n');
+    put(e, declEnd(e));
     finishDrop(e, mark, deferred);
   } else if (node.type === 'Comment') {
+    if (!keepComment(e, node.text)) {
+      return;
+    }
     if (idt) {
       put(e, idt);
     }
     put(e, node.text);
-    put(e, '\n');
+    put(e, nl(e));
     if (e.positions) {
       e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
@@ -17674,12 +17890,12 @@ function emitTransparentShells(
       const markChunks = e.chunks.length;
       const markOff = e.off;
       const markPos = e.positions ? e.positions.length : 0;
-      const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
+      const idt = blockIndent(e);
       if (idt) {
         put(e, idt);
       }
-      put(e, idt ? header.join(',\n' + idt) : header.join(',\n'));
-      put(e, ' {\n');
+      put(e, composeSelectorHeader(e, header, idt, null));
+      put(e, blockOpen(e));
       const afterHeader = e.chunks.length;
       e.depth++;
       const finish = (): void => {
@@ -17691,10 +17907,7 @@ function emitTransparentShells(
             e.positions.length = markPos;
           }
         } else {
-          if (idt) {
-            put(e, idt);
-          }
-          put(e, '}\n');
+          emitBlockClose(e, idt);
         }
       };
       const emitted = mapMaybe(
@@ -17756,7 +17969,7 @@ function writeNestedRule(
   const markOff = e.off;
   const markPos = e.positions ? e.positions.length : 0;
   const start = e.off;
-  const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
+  const idt = blockIndent(e);
 
   /*
    * [extend] nested header uses the projected own-local branch list; children
@@ -17808,10 +18021,10 @@ function writeNestedRule(
     if (e.dynamicExtend) {
       recordDynamicExtendFacts(e, rule, frame, own);
     }
-    const authoredHeader = plan === undefined && placement === null && source === null
+    const authoredHeader = e.compress !== true && plan === undefined && placement === null && source === null
       ? authoredSelectorHeaderWithTrivia(rule.selector, own, e)
       : null;
-    const header = authoredHeader ?? (idt ? own.join(',\n' + idt) : own.join(',\n'));
+    const header = composeSelectorHeader(e, own, idt, authoredHeader);
 
     /*
      * Less only coalesces this nested-output root seam after an authored header
@@ -17825,6 +18038,9 @@ function writeNestedRule(
     let headerChunkIndex = -1;
     if (reopen) {
       popClose(e, idt);
+      if (e.compress === true && lb.droppedSemi) {
+        put(e, ';'); // [compress] restore the separator dropped at the prior close
+      }
     } else {
       if (idt) {
         put(e, idt);
@@ -17835,7 +18051,7 @@ function writeNestedRule(
       if (e.positions) {
         e.positions.push({ node: rule.selector, type: rule.selector.type, start: selStart, end: e.off, source: srcFile(e) });
       }
-      put(e, ' {\n');
+      put(e, blockOpen(e));
     }
     const afterHeader = e.chunks.length;
     const childFrame = activateRuleFrame(rule, frame, e);
@@ -17862,10 +18078,7 @@ function writeNestedRule(
           }
         }
       } else {
-        if (idt) {
-          put(e, idt);
-        }
-        put(e, '}\n');
+        emitBlockClose(e, idt, lb);
         if (e.positions) {
           e.positions.push({ node: rule, type: rule.type, start, end: e.off, source: srcFile(e) });
         }
@@ -17976,16 +18189,16 @@ function writeNestedAtRuleBlock(
   const markOff = e.off;
   const markPos = e.positions ? e.positions.length : 0;
   const start = e.off;
-  const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
+  const idt = blockIndent(e);
   if (idt) {
     put(e, idt);
   }
   put(e, node.name);
   if (prelude.length > 0) {
-    put(e, ' ');
+    put(e, e.compress === true && prelude.charCodeAt(0) === 0x28 /* ( */ ? '' : ' ');
     put(e, prelude);
   }
-  put(e, ' {\n');
+  put(e, blockOpen(e));
   const afterHeader = e.chunks.length;
   e.depth++;
   const finish = (): void => {
@@ -18002,10 +18215,7 @@ function writeNestedAtRuleBlock(
         return;
       }
     }
-    if (idt) {
-      put(e, idt);
-    }
-    put(e, '}\n');
+    emitBlockClose(e, idt);
     if (e.positions) {
       e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }

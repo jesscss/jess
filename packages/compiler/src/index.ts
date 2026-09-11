@@ -1154,6 +1154,7 @@ export class Compiler {
         this.activateDocumentPlugins(context);
         return serialize(document, {
           collapseNesting: context.opts.output?.collapseNesting ?? false,
+          compress: context.opts.output?.compress ?? false,
           context,
           pluginHost: context.pluginHost,
           io: { readFile: specifier => readOptionalBinary(context, specifier) },
