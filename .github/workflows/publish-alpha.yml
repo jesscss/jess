@@ -12,24 +12,24 @@ permissions:
 jobs:
   publish-alpha:
     runs-on: ubuntu-latest
-    # The preflight runs the corpus-backed jess tests (test/less/*.test.ts via
-    # resolveLessTestDataRoot). They resolve the @less/test-data corpus from a
-    # sibling checkout that is absent in CI; point them at the corpus cloned
-    # below. It is cloned OUTSIDE the repo (into RUNNER_TEMP) rather than checked
-    # out into the workspace, because the preflight's alpha source-sync gate
-    # requires a clean working tree and would flag a corpus dir under it.
-    env:
-      LESS_TEST_DATA_ROOT: ${{ runner.temp }}/less-corpus/packages/test-data
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # The preflight runs the corpus-backed jess tests (test/less/*.test.ts via
+      # resolveLessTestDataRoot). They resolve the @less/test-data corpus from a
+      # sibling checkout that is absent in CI. Clone it OUTSIDE the repo (into
+      # RUNNER_TEMP) so the preflight's alpha source-sync clean-tree gate does not
+      # flag a corpus dir under the workspace, and publish LESS_TEST_DATA_ROOT to
+      # later steps via GITHUB_ENV (the `runner` context is not available in a
+      # job-level `env:` block, only inside steps).
       - name: Clone Less.js corpus (matthew-dean/less.js@alpha) outside the repo
         run: |
           git clone --quiet --depth 1 --branch alpha --single-branch \
             https://github.com/matthew-dean/less.js "$RUNNER_TEMP/less-corpus"
+          echo "LESS_TEST_DATA_ROOT=$RUNNER_TEMP/less-corpus/packages/test-data" >> "$GITHUB_ENV"
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
