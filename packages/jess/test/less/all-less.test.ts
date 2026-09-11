@@ -185,7 +185,6 @@ const skippedFixtures: SkippedFixture[] = (
      * Config fixtures that need a dedicated compatibility decision or feature
      * work before they can be release gates.
      */
-    'tests-config/compression/compression.less', // parses only after its dead shadow-piercing (^/^^) selectors are removed, and needs function-arg comma tightening (rgba(…) args) to match the v5 superset golden — separate follow-up
     'tests-config/debug/linenumbers.less', // debug output fixture; no expected CSS in upstream fixture
     'tests-config/filemanagerPlugin/filemanager.less', // custom Less file manager plugin API needs scope decision
     'tests-config/include-path/import-test-e.less', // helper imported by include-path fixture; no expected CSS
