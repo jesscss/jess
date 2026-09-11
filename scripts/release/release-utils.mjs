@@ -745,6 +745,22 @@ export function ensurePublishAuth() {
   if (process.env.__ALPHA_AUTH_VERIFIED === '1') {
     return;
   }
+
+  /*
+   * [OIDC] Under GitHub Actions trusted publishing (`permissions: id-token: write`)
+   * there is no pre-existing npm login or token: pnpm exchanges the OIDC id-token
+   * for a short-lived publish credential DURING `pnpm publish`. A pre-publish
+   * `npm whoami` / `npm login` gate has nothing to check and, with no TTY, would
+   * fall into the interactive login and fail — blocking a publish that would
+   * otherwise authenticate itself. GitHub injects ACTIONS_ID_TOKEN_REQUEST_URL
+   * only when the id-token permission is granted, so treat its presence as
+   * "OIDC will handle auth" and skip the gate.
+   */
+  if (process.env.ACTIONS_ID_TOKEN_REQUEST_URL) {
+    process.env.__ALPHA_AUTH_VERIFIED = '1';
+    return;
+  }
+
   const useShell = process.platform === 'win32';
   const whoami = spawnSync('npm', ['whoami'], {
     encoding: 'utf8',
