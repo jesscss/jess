@@ -103,10 +103,19 @@ describe('update-alpha-from-dev release helper', () => {
     expect(run('git', ['log', '-1', '--pretty=%s'], alpha).trim()).toBe('chore(release): refresh alpha from dev');
     expect(run('git', ['rev-parse', '--verify', 'alpha-pre-refresh-test'], alpha).trim()).toMatch(/^[0-9a-f]{40}$/u);
 
+    /*
+     * The cut sets the manifest to the version this release will PUBLISH, from
+     * the registry-aware resolver (npm 'alpha' + 1). `@fixture/package` is not on
+     * npm, so the resolver returns the intended manifest version as-is — a first
+     * publish ships exactly that version rather than skipping to +1. (The
+     * published+1 branch is covered by resolve-alpha-version.test.ts, which mocks
+     * the registry.) The recovery version (alpha.9) is preserved, not dev's
+     * placeholder (alpha.5).
+     */
     const manifest = JSON.parse(readFileSync(path.join(alpha, 'packages/fixture/package.json'), 'utf8'));
     expect(manifest).toEqual({
       name: '@fixture/package',
-      version: '2.0.0-alpha.10',
+      version: '2.0.0-alpha.9',
       exports: { ['.']: './lib/index.js' },
       peerDependencies: { parseman: '^0.41.0' }
     });

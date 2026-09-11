@@ -6,7 +6,7 @@ import {
   currentBranch,
   fetchAlphaSource
 } from './alpha-source-sync.mjs';
-import { isReleaseArtifactPath } from './release-utils.mjs';
+import { applyLockstepVersion, isReleaseArtifactPath, resolveAlphaPublishVersion } from './release-utils.mjs';
 
 const scriptDir = new URL('.', import.meta.url);
 
@@ -212,10 +212,18 @@ function main() {
   runNodeHelper(rootDir, 'restore-alpha-package-versions.mjs', ['--from', recoveryRef, '--stage']);
   runNodeHelper(rootDir, 'record-alpha-source-provenance.mjs', ['--stage']);
 
-  /* The registry-aware resolver in release-alpha owns the version (always
-   * published+1). Bumping here too made every cut climb the manifest, so cuts
-   * that never published drifted it ahead of npm. The snapshot keeps the
-   * recovery ref's version; the release step resolves and applies the real one. */
+  /* Set the manifest to the EXACT version this cut will publish -- the npm
+   * 'alpha' dist-tag + 1, from the registry-aware resolver. This makes the alpha
+   * branch, its release tag, and npm all agree (no placeholder version on the
+   * branch) and clears the publish-time clobber guard without a separate manual
+   * `increment-alpha` step. It is drift-free: the resolver keys off what is
+   * actually published, so a cut that never publishes resolves the same number
+   * next time rather than climbing the manifest. */
+  const publishVersion = resolveAlphaPublishVersion({ rootDir }).resolved;
+  const applied = applyLockstepVersion(rootDir, publishVersion);
+  console.log(`Set alpha manifest to publish version ${publishVersion} `
+    + `(npm 'alpha' + 1) across ${applied.changed.length} manifest(s).`);
+
   if (!options.skipInstall) {
     run('pnpm', ['install'], rootDir);
   }
