@@ -132,9 +132,14 @@ These change structure or risk the cascade and are **not** part of `compress`
 - Merging or deduplicating rules, selectors, or declarations.
 - Reordering declarations or rules.
 - Longhand ↔ shorthand rewriting (`margin: 0 0 0 0` → `margin: 0`).
-- Color-representation conversion (`rgb()`/`hsl()` → hex, or hex → named) —
-  a future finer-grained option; `compress` only shortens a color *within* its
-  representation (hex fold, named ↔ hex).
+- Color-representation conversion (`rgb()`/`hsl()` → hex) — a future
+  finer-grained option; `compress` only shortens a value already classified as a
+  color (hex fold; shortest of hex/name).
+- Folding a color **keyword** (`color: white` → `#fff`) — a firm non-goal, not a
+  deferral. A bare keyword can only be recognized as a color from its property's
+  value grammar (`color` vs `animation-name`/`font-family`), and jess does not
+  consult a per-property table; folding it without one would corrupt non-color
+  uses of the same word. `white` stays `white`.
 - Dropping the unit on a zero value (`0px` → `0`) — not context-free.
 - `calc()` simplification / constant folding of authored expressions.
 - `@media` query merging — Jess never merges media queries regardless of
