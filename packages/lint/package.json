@@ -43,7 +43,7 @@
     "postcss-scss": "~4.0.9",
     "stylelint": "~17.14.1",
     "typescript": "~5.8.2",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.11"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",

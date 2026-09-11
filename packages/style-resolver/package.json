@@ -28,7 +28,7 @@
   },
   "devDependencies": {
     "typescript": "~5.8.2",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.11"
   },
   "module": "lib/index.js"
 }

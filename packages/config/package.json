@@ -35,7 +35,7 @@
     "@types/node": "^22.10.2",
     "@types/picomatch": "^3.0.1",
     "typescript": "^5.7.2",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.11"
   },
   "author": "Matthew Dean",
   "license": "MIT",
