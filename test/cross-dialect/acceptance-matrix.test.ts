@@ -114,7 +114,7 @@ interface Allowed {
 /* ------------------------------------------------------------------ DIRECTION 1
  * `css` accepts and at least one superset refuses.
  *
- * Three of these are inputs that ARE valid CSS and that `jess` alone refuses —
+ * Two of these are inputs that ARE valid CSS and that `jess` alone refuses —
  * real jess defects. The rest are `css` over-accepting invalid CSS through its
  * permissive at-rule statement arm, where the refusing dialect is arguably
  * correct and an owner ruling is what is actually needed.
@@ -129,14 +129,6 @@ const DIRECTION_1_ALLOWLIST: readonly Allowed[] = [
       'css-cascade-5 §3 admits layer statements BEFORE @import, so `@layer base; @import "a.css";` '
       + 'is valid CSS. jess refuses it. Defect in jess: its prologue does not admit @import after a '
       + 'layer statement.'
-  },
-  {
-    name: 'targeted:@page with a pseudo',
-    accepted: ['css', 'less', 'scss'],
-    validCss: true,
-    reason:
-      'css-page-3 §3 admits page pseudo-classes (:first/:left/:right/:blank) in a page selector, so '
-      + '`@page :first { margin: 1cm }` is valid CSS. jess refuses it. Defect in jess.'
   },
 
   // ---- css over-accepting invalid CSS. Needs an owner ruling, not a fix. ----
@@ -234,20 +226,8 @@ const DIRECTION_1_ALLOWLIST: readonly Allowed[] = [
     reason: 'Whole-file breadth row; construct not isolated by this channel.'
   },
   {
-    name: 'breadth:repo/packages/jess/benchmark/benchmark.css',
-    accepted: ['css', 'less', 'scss'],
-    validCss: 'n/a — whole file',
-    reason: 'Whole-file breadth row; construct not isolated by this channel.'
-  },
-  {
     name: 'breadth:repo/packages/jess/test/files/import-func.css',
     accepted: ['css', 'less', 'jess'],
-    validCss: 'n/a — whole file',
-    reason: 'Whole-file breadth row; construct not isolated by this channel.'
-  },
-  {
-    name: 'breadth:repo/packages/syntax/css/css-parser/test/css/atrule-decls.css',
-    accepted: ['css', 'less', 'scss'],
     validCss: 'n/a — whole file',
     reason: 'Whole-file breadth row; construct not isolated by this channel.'
   },
@@ -259,9 +239,12 @@ const DIRECTION_1_ALLOWLIST: readonly Allowed[] = [
   },
   {
     name: 'breadth:repo/packages/syntax/css/css-parser/test/css/escape.css',
-    accepted: ['css'],
+    accepted: ['css', 'less', 'jess'],
     validCss: 'n/a — whole file',
-    reason: 'Whole-file breadth row; construct not isolated by this channel.'
+    reason:
+      'Whole-file breadth row; construct not isolated by this channel. less now reuses the CSS '
+      + 'escape-aware value ident so escaped delimiters (`background: \\;a`) parse; scss remains the '
+      + 'lone refuser on a comment inside `:not()` args, a separate pseudo-arg convergence.'
   },
   {
     name: 'breadth:repo/packages/syntax/css/css-parser/test/css/function.css',

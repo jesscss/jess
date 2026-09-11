@@ -38,6 +38,9 @@ export type JessErrorCode =
   | 'eval/async-in-sync-position'
   | 'eval/recursive-reference'
   | 'eval/loop-iteration-limit'
+  | 'eval/scss-debug'
+  | 'eval/scss-warn'
+  | 'eval/scss-error'
   | 'eval/invalid-unit-arithmetic'
   | 'eval/unexpressible-unit'
   | 'eval/incomparable-operands'
@@ -289,6 +292,37 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'Invalid unit arithmetic',
       reason: '${reason}',
       fix: 'Use compatible units, cancel compound units before emission, or use unit() to normalize the value.'
+    }
+  ],
+
+  /*
+   * SCSS `@debug` / `@warn` / `@error`. The authored message IS the diagnostic,
+   * so the summary is the evaluated message verbatim; the reason/fix name which
+   * directive spoke it. `@debug`/`@warn` report and continue (warn channel);
+   * `@error` halts (thrown as an error).
+   */
+  [
+    'eval/scss-debug',
+    {
+      summary: '${message}',
+      reason: 'Emitted by a Sass @debug directive.',
+      fix: 'Remove the @debug once you are done inspecting the value.'
+    }
+  ],
+  [
+    'eval/scss-warn',
+    {
+      summary: '${message}',
+      reason: 'Emitted by a Sass @warn directive.',
+      fix: 'Address what the @warn reports, or remove the directive.'
+    }
+  ],
+  [
+    'eval/scss-error',
+    {
+      summary: '${message}',
+      reason: 'Raised by a Sass @error directive.',
+      fix: 'Satisfy the condition the @error guards, or remove the directive.'
     }
   ],
   [

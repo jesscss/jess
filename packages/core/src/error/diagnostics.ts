@@ -775,6 +775,18 @@ export const ERR = {
   },
 
   /**
+   * A Sass `@error` directive — the author asked the compile to halt with this
+   * message. The evaluated message IS the summary; there is nothing to add.
+   */
+  scssError(args: Common & { meta: { message: string } }) {
+    return makeJessError({
+      code: 'eval/scss-error',
+      phase: 'eval',
+      ...args
+    });
+  },
+
+  /**
    * A RELATIONAL comparison whose operands share no common ground (`1px > red`).
    * Relational is trichotomous over every grounded pair, so the alternative is
    * answering `false` to both `a > b` and `b > a` — which is what the author

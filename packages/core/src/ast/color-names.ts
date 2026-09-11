@@ -33,3 +33,29 @@ export function namedColor(name: string): NamedColor | undefined {
   const rgb = NAMED_RGB[key];
   return rgb ? { rgb: [rgb[0], rgb[1], rgb[2]], alpha: 1 } : undefined;
 }
+
+/**
+ * Reverse of {@link namedColor}: the SHORTEST CSS color keyword for an opaque
+ * rgb triple, or `undefined` when no name matches. Used by compressed output to
+ * pick the shorter of {folded hex, named color}. Built once from the SAME table
+ * `namedColor` reads (no duplicated color data); ties on length keep the first
+ * (shortest wins, then first-seen). `alpha` must be 1 — named colors are opaque.
+ */
+let REVERSE_NAMES: Map<number, string> | undefined;
+export function shortestColorName(r: number, g: number, b: number, alpha: number): string | undefined {
+  if (alpha !== 1) {
+    return undefined;
+  }
+  if (REVERSE_NAMES === undefined) {
+    REVERSE_NAMES = new Map();
+    for (const name of Object.keys(NAMED_RGB)) {
+      const rgb = NAMED_RGB[name]!;
+      const key = (rgb[0] << 16) | (rgb[1] << 8) | rgb[2];
+      const existing = REVERSE_NAMES.get(key);
+      if (existing === undefined || name.length < existing.length) {
+        REVERSE_NAMES.set(key, name);
+      }
+    }
+  }
+  return REVERSE_NAMES.get((r << 16) | (g << 8) | b);
+}

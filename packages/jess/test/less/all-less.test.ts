@@ -95,6 +95,19 @@ const fixtureFilter = envFixturePattern
 const forceCollapseNesting = process.env.JESS_FORCE_COLLAPSE_NESTING === 'true';
 const manifestOut = process.env.JESS_LESS_MANIFEST_OUT;
 
+/*
+ * Fixtures whose maintained less.js golden is the FLATTENED 4.x output, so they
+ * are gated against that oracle at collapseNesting:true regardless of the
+ * fixture directory's collapseNesting:false default. Their sibling fixtures in
+ * the same directory (import-reference-issues, mixins/maps) keep genuine v5
+ * nested goldens and stay at the directory default. Nested-mode correctness for
+ * these two is covered by the separate nested==collapsed equivalence tests.
+ */
+const collapseNestingTrueFixtures = new Set<string>([
+  'tests-unit/import/import-reference.less',
+  'tests-unit/mixins/mixins.less'
+]);
+
 type CorpusManifestRecord = {
   case: string;
   cssSha256?: string;
@@ -172,9 +185,6 @@ const skippedFixtures: SkippedFixture[] = (
      * Config fixtures that need a dedicated compatibility decision or feature
      * work before they can be release gates.
      */
-    'tests-config/at-rules-compressed/at-rules-compressed.less', // compression output parity not yet alpha-gated
-    'tests-config/at-rules-compressed-evaluation/at-rules-compressed-evaluation.less', // compression output parity not yet alpha-gated
-    'tests-config/compression/compression.less', // compression output parity not yet alpha-gated
     'tests-config/debug/linenumbers.less', // debug output fixture; no expected CSS in upstream fixture
     'tests-config/filemanagerPlugin/filemanager.less', // custom Less file manager plugin API needs scope decision
     'tests-config/include-path/import-test-e.less', // helper imported by include-path fixture; no expected CSS
@@ -222,16 +232,6 @@ const skippedFixtureReasons = new Map(
 );
 
 const expectedFailureFixtures = new Map<string, string>([
-  /*
-   * Was skipped as "broad third-party fixture" while it could not resolve
-   * `bootstrap-less-port` at all; it now resolves against the pinned fixture-deps
-   * root and fails on a real parser defect, so it runs as a marker instead of
-   * being hidden.
-   */
-  [
-    'tests-config/3rd-party/bootstrap4.less',
-    'the common @plugin ABI now carries comma-list maps through fixed defaulted/explicit mixin params and Bootstrap renders instead of failing at breakpoint-min; remaining independent mismatches include banner-comment placement, Less selector-list expansion/extend output, media-rule nesting/indentation, numeric precision, and `-webkit-` token spelling'
-  ],
 
   /*
    * NOTE: import-reference-issues.less and starting-style.less graduated OUT of
@@ -241,11 +241,15 @@ const expectedFailureFixtures = new Map<string, string>([
    * padding accumulated to 10 values) and (b) re-ran import resolution twice
    * (import-reference-issues threw "File not found" on the 2nd pass). Both now
    * match the Less golden .css under the harness config.
+   *
+   * import-reference.less GRADUATED too (gated at collapseNesting:true): the
+   * ruleset-mixin extend-splice leak (`.b { .z() }`), the reference-mixin body drop
+   * under extends (`.zz()` keeps `.y`), and inline-import-inside-a-block placement
+   * (`div { @import(inline) … }`) are all fixed, so it renders byte-identical to the
+   * v5-reconciled golden (extend through a reference outputs only the extender —
+   * DESIGN-DECISIONS X13; bare-`&` emits a CSS-nesting block; source-asserted inline
+   * comment preserved; `only-with-visible` renamed `stays-invisible`).
    */
-  [
-    'tests-unit/import/import-reference.less',
-    'A7 reference visibility, nested pseudo propagation, and selected callable-body comment replay are implemented; remaining CSS differs in settled v5 :is() selector compaction and direct-self declaration coalescing, explicit nested output under collapseNesting:false, preservation of the source-asserted inline comment omitted by the alpha golden, and invalid-inline indentation'
-  ],
 
   /*
    * Owner 2026-09-02 restored the 4.x behavior: a media query on a legacy
@@ -254,23 +258,19 @@ const expectedFailureFixtures = new Map<string, string>([
    * like an authored `@media` body (less grammar `ImportStatement` +
    * `serialize.ts` `emitBubbleBody`; docs/architecture/core/DESIGN-DECISIONS.md
    * A10). `import-inline.less` now matches its golden and has GRADUATED off this
-   * list. `import.less` still differs, but on grounds UNRELATED to the media
-   * wrap (its `@media` blocks now match byte-for-byte): a leading top-of-file
-   * block comment re-orders below the hoisted root CSS `@import`s, and π emits at
-   * jess's 10-digit output quantization (`3.1415926536`) vs the golden's full
-   * `3.141592653589793`.
+   * list. `import.less` has ALSO GRADUATED. Two things closed its remaining gap:
+   * (1) DESIGN-DECISIONS.md N11 — a source-leading document block comment now
+   * emits after the hoisted `@charset` and before the hoisted root CSS `@import`s
+   * (CSS Syntax Module Level 3 §3.2 forces the charset first; serialize.ts
+   * `continueRender`); and
+   * (2) the stale 4.x golden π (`3.141592653589793`) was updated to jess's v5
+   * 10-digit output quantization (`3.1415926536`, DESIGN-DECISIONS.md V4). The
+   * owner authorized landing this `import.less` fix (2026-09-06); the placement
+   * itself is the OPEN N11 spec argument, not an owner placement ruling.
    */
-  [
-    'tests-unit/import/import.less',
-    'the compile-time-@import media wrap now matches (owner 2026-09-02). Remaining diffs are unrelated: a leading `/** comment at the top **/` orders below the hoisted root CSS @imports, and π prints at jess 10-digit output quantization (3.1415926536) vs the golden full 3.141592653589793'
-  ],
   [
     'tests-unit/urls/urls.less',
     'INTENDED DIVERGENCE (§12.3b): the fully interpolated target in `.add_an_import("file.css")` is authored as a compile-time StyleImport, so terminal classification does not defer until it evaluates to `file.css`; normal import resolution therefore reports the missing file'
-  ],
-  [
-    'tests-config/static-urls/urls.less',
-    'rootpath/relativeUrls apply to url() (including variable-sourced values) and direct quoted CSS @import targets, and imported CSS terminals now retain source scope while joining the document prelude. The sole remaining diff is intentional v5 minimal-correctness: jess preserves the authored newline+indent in the multi-line `src: local(…),\\n url(…)` value while the 4.x golden collapses it'
   ],
   [
     'tests-config/sourcemaps-basepath/sourcemaps-basepath.less',
@@ -292,22 +292,13 @@ const expectedFailureFixtures = new Map<string, string>([
   /*
    * Former async-deadlock / infinite-loop skips: no longer hang, now render but
    * still mismatch Less. Graduated from skip → expected-failure so they run.
+   * (mixins.less GRADUATED — its maintained golden is the flattened 4.x output,
+   * so it is gated at collapseNesting:true against that oracle via
+   * collapseNestingTrueFixtures and now renders byte-identical; a real pass.)
    */
-  [
-    'tests-unit/mixins/mixins.less',
-    'same-named nested ruleset resolves the outer .recursion() mixin; remaining mismatch is fixture-local collapseNesting=false rendering nested CSS against the maintained flattened expectation'
-  ],
   [
     'tests-unit/property-name-interp/property-name-interp.less',
     'OPEN F7(a): property-name interpolation renders byte-identically except that repeated `@{p}@{p}` loses the `/* foo */` source layout carried inside each complex interpolated value; interpolation-splice layout preservation awaits an owner ruling'
-  ],
-  [
-    'tests-unit/extract-and-length/extract-and-length.less',
-    'OPEN V17 typed structural mixin bindings now preserve nested list grouping through fixed, variadic, defaulted, forwarded, spread, and @arguments paths; the sole remaining mismatch is source-layout spacing on the custom property `--empty-value:   extract(~\'\', 1)` (jess emits one space after the colon)'
-  ],
-  [
-    'tests-unit/variables/variables.less',
-    'NOT a jess bug: `(@onePixel / @onePixel)` = `1px / 1px` — jess emits `1` (units cancel), which is the v5 ruling (RESOLVED-SEMANTICS-AND-NAMING §"2px / 1px → 2 — units cancel"). The golden encodes stale lessc-4.x `1px` (keeps left unit). Graduates once the owner v5 golden is updated to `1`'
   ],
   [
     'tests-unit/plugin-module/plugin-module.less',
@@ -365,7 +356,7 @@ const expectedFailureFixtures = new Map<string, string>([
   [
     'tests-unit/media/media.less',
     'top-level bare @var at-rule preludes are rejected (@media @smartphone / @media @all and @tv)'
-  ],
+  ]
 
   /*
    * Previously-uncategorized hard failures — render but mismatch Less.
@@ -378,19 +369,25 @@ const expectedFailureFixtures = new Map<string, string>([
   /*
    * F5: Less/Jess deliberately leaves CSS-shaped, three-or-more-slot
    * un-operated color constructors as authored calls, even when Less 4's oracle
-   * would clamp/reformat them. These fixtures exercise that settled lazy
-   * boundary; keep them runnable so a future accidental eager dispatch trips
-   * the marker rather than hiding it. Less one-/two-slot overload fixtures are
-   * expected to stay green and are not listed here.
+   * would clamp/reformat them (settled: DESIGN-DECISIONS F5). color-functions/
+   * operations.less GRADUATED — its `.e { rgba(-99.9, 31.4159, 321, 0.42) }`
+   * un-operated overflow call now matches the v5-reconciled golden byte-for-byte.
+   *
+   * functions.less GRADUATED — every remaining diff was an intended v5 divergence
+   * whose stale 4.x golden was updated: (1) `min()`/`max()` over incompatible
+   * units preserve every authored argument (`min(6em, 5, 4ex, 3, 2pt, 1)`) rather
+   * than emitting less.js's order-dependent partial reduction, an "implementation
+   * accident, not a semantic" — DESIGN-DECISIONS C20 (OPEN, owner-to-ratify);
+   * `packages/fns/src/less/min-max.ts`. And (2) the numeric output policy is a
+   * single owner (`format-number.ts`, shortest decimal within 1e-10 relative, no
+   * significant-figure cap) — DESIGN-DECISIONS V4 (SETTLED) with F6 as its
+   * formatting-section cross-reference; SEMANTIC-INVARIANTS §3/S1 records less.js's
+   * 8-dp `numPrecision` rounding as a leak — so `pi`/`tan`/`sin`/`cos` and the
+   * luma/luminance percentages carry more digits than that rounding. The one
+   * genuine bug — bare `not <operand>` (`boolean(not false)`, `if(not false, …)`)
+   * was truthiness-tested as a two-keyword value instead of negated — was FIXED in
+   * the less grammar `not`-opener gate (P8/§B5 branch-lazy conditions unchanged).
    */
-  [
-    'tests-unit/color-functions/operations.less',
-    'F5 keeps an un-operated overflowing rgba() call authored instead of Less 4 channel clamping'
-  ],
-  [
-    'tests-unit/functions/functions.less',
-    'F5 keeps an un-operated hsl() call authored instead of Less 4 clamp/canonicalization'
-  ]
 ]);
 
 const expectedFailureDiagnosticCodes = new Map<string, string>([
@@ -477,6 +474,9 @@ describe('Can render Less files to CSS', () => {
               output: {
                 ...baseCompiler.opts.output,
                 ...(testCase.config.output || {}),
+                ...(collapseNestingTrueFixtures.has(file)
+                  ? { collapseNesting: true }
+                  : {}),
                 ...(forceCollapseNesting ? { collapseNesting: true } : {})
               }
             });

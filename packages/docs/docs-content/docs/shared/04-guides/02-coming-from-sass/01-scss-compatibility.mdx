@@ -199,3 +199,54 @@ Sass supports `!global` and `!default` on variable assignments ([variables](http
 Jess’s SCSS support intentionally does **not** implement Sass’s full `!global` shadowing model. It lowers `!global` to the scoped/final set-existing/no-shadow operation (`$^name := value`). SCSS `!default` corresponds to the scoped/final conditional operation (`$^name?: value`). Both `$name:` and `$^name:` create or update both bindings in native Jess.
 
 `!default` exists in Sass primarily to support module configuration (`@use ... with (...)`). Jess will align with Sass’s `@use` configuration behavior by ensuring configurable variables are explicitly marked and handled accordingly.
+
+## Accumulating a variable inside a loop
+
+Sass lets a bare `$x:` inside a control-flow block update a variable declared
+outside it — the pattern behind a running total. Jess preserves this:
+
+```scss
+$sum: 0;
+@for $i from 1 through 3 {
+  $sum: $sum + $i;
+}
+.total { width: $sum; }
+```
+
+```css
+.total {
+  width: 6;
+}
+```
+
+Inside `@if` / `@else` / `@for` / `@each` / `@while`, a bare `$x:` reassigns the
+nearest existing binding, and only declares a new block-local variable when the
+name is not bound anywhere. A `$x:` at the top level, or directly inside a
+ruleset, stays an ordinary declaration. This is the same "optional shadow" write
+that native Jess spells [`::=`](/docs/Language/variables) — reading SCSS lowers
+in-loop declarations to it so accumulators behave as they do in Sass.
+
+## Compile-time diagnostics: `@debug`, `@warn`, `@error`
+
+Sass's diagnostic at-rules are recognized. They never produce CSS:
+
+- `@debug "…";` and `@warn "…";` surface a message during compilation and let it
+  continue.
+- `@error "…";` aborts the compile with its message.
+
+```scss
+@warn "use the spacing tokens instead";
+.a { color: red; }
+```
+
+```css
+.a {
+  color: red;
+}
+```
+
+The `@warn` message is reported during compilation; the CSS is still produced. An
+`@error` reached during evaluation stops the compile with its message instead.
+
+These are SCSS-only. In native `.jess` (and in CSS and Less) `@debug` / `@warn` /
+`@error` are not diagnostic directives.

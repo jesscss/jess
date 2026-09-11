@@ -247,7 +247,7 @@ export interface LessOptions {
   /**
    * Convenience preset. When `true`, sets the strict bundle for any of these left
    * `undefined` (individual options always win): `unitMode: 'strict'`,
-   * `leakyScope: false`,
+   * `allowLeakyScope: false`, `allowCallerScope: false`,
    * `allowOverloadedImport: false`. Modeled after `tsconfig` `strict` — it only
    * sets semantic options, it is not itself a mode.
    * @default false
@@ -263,9 +263,8 @@ export interface LessOptions {
   allowOverloadedImport?: boolean;
 
   /**
-   * @deprecated This is legacy Less behavior.
-   *
-   * Controls whether mixins and detached rulesets "leak" their inner rules.
+   * Legacy Less behavior. Controls whether mixins and detached rulesets "leak"
+   * their inner rules OUT into the caller (R9).
    * When true:
    * - Mixins: Mixin and VarDeclaration nodes are 'public' and 'optional' respectively
    * - Detached rulesets: Mixin and VarDeclaration nodes are 'public' and 'private' respectively
@@ -273,7 +272,23 @@ export interface LessOptions {
    * - Both mixins and detached rulesets: Mixin and VarDeclaration nodes are 'private'
    * @default true
    */
+  allowLeakyScope?: boolean;
+
+  /**
+   * @deprecated Use `allowLeakyScope` instead. Retained as an alias: when
+   * `leakyScope` is set and `allowLeakyScope` is not, `leakyScope` is used.
+   */
   leakyScope?: boolean;
+
+  /**
+   * Legacy Less dynamic caller-read (R16). Whether a mixin-call / detached-ruleset
+   * / value-lambda BODY may resolve a free variable in the ambient CALL SITE.
+   * `true` = legacy caller-read; `false` (default) = lexical/hermetic (a body
+   * resolves free variables in its definition scope + params only). `strict` sets
+   * it `false`.
+   * @default false
+   */
+  allowCallerScope?: boolean;
 
   /**
    * Whether to collapse nested selectors (Less 1.x-4.x style flattening)

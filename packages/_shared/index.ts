@@ -97,9 +97,6 @@ export const invalidLess: string[] = [
   /** Comment-only deprecated-combinator fixture; empty render differs from its one-newline golden. */
   'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less',
 
-  /** Obsolete Less parent selectors `^` / `^^` were removed in Less v5 */
-  'tests-config/compression/compression.less',
-
   /** Inline JavaScript using backticks is intentionally unsupported */
   'tests-unit/javascript/javascript.less',
   'tests-config/js-type-errors/js-type-error.less',

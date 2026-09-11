@@ -962,6 +962,10 @@ function isMixinCall(value: unknown): value is MixinCall {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'MixinCall';
 }
 
+function isAnonymousMixin(value: unknown): value is AnonymousMixin {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'AnonymousMixin';
+}
+
 function isFor(value: unknown): value is For {
   return typeof value === 'object'
     && value !== null
@@ -1060,7 +1064,7 @@ function reduceGuardOr(children: readonly unknown[]): GuardNode {
 }
 function reduceVarDeclaration(children: readonly unknown[]): VariableDeclaration {
   const operatorIndex = children.findIndex(child => isToken(child)
-    && (child.value === ':' || child.value === '?:' || child.value === ':='));
+    && (child.value === ':' || child.value === '?:' || child.value === ':=' || child.value === '::='));
   if (operatorIndex < 1) {
     throw new TypeError('Jess variable declaration lost its assignment operator.');
   }
@@ -1070,7 +1074,9 @@ function reduceVarDeclaration(children: readonly unknown[]): VariableDeclaration
     ? { mode: 'if-absent' as const, scope: lookup }
     : operator === ':='
       ? { mode: 'reassign' as const, scope: lookup }
-      : { mode: 'declare' as const };
+      : operator === '::='
+        ? { mode: 'reassign-or-declare' as const, scope: lookup }
+        : { mode: 'declare' as const };
   return variableDeclaration(
     requireToken(children[operatorIndex - 1]).value,
     jessValueSlot(requireValueSlot(children[operatorIndex + 1])),
@@ -1311,6 +1317,7 @@ export {
   isRuleset,
   isMixinDefinition,
   isMixinCall,
+  isAnonymousMixin,
   isFor,
   isIf,
   isWhile,

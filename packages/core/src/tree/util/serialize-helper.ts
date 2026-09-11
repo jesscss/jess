@@ -1312,7 +1312,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
              */
             if (
               resolved.kind === 'fold'
-              && spineContext.options.leakyScope === true
+              && spineContext.options.allowLeakyScope === true
             ) {
               const callIndex = entryNode.index;
               const leakTarget = entryFrame ?? getContainerRules(node, options);

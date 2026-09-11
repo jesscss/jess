@@ -11,12 +11,32 @@ function occurrences(pattern: RegExp): number {
 
 describe('V19 one-evaluator projection ratchet', () => {
   it('names every statement evaluator that still dispatches a body', () => {
+    /*
+     * V19 slice 5: the second body dispatcher (`emitNestedBody`) is deleted; the
+     * one evaluator `walkBody` drives both write projections. The removed pattern
+     * stays listed so a re-introduced nested dispatcher fails this gate.
+     */
     const dispatchers = ([
       ['walkBody', /function walkBody\(/u],
       ['emitNestedBody', /function emitNestedBody\(/u]
     ] as const).filter(([, pattern]) => pattern.test(SOURCE)).map(([name]) => name);
 
-    expect(dispatchers).toEqual(['walkBody', 'emitNestedBody']);
+    expect(dispatchers).toEqual(['walkBody']);
+  });
+
+  it('routes the nested write projection through the one evaluator via a pure adapter', () => {
+    /*
+     * `nestedBody` is a calling-convention adapter with NO statement dispatch of
+     * its own: it forwards straight to `walkBody`. This proves the nested entry
+     * point is not a second dispatcher in disguise.
+     */
+    expect(SOURCE).toContain('function nestedBody(');
+    expect(SOURCE).toMatch(/function nestedBody\([\s\S]*?\n\): MaybePromise<void> \{\n  return walkBody\(/u);
+    const nestedBodySource = SOURCE.slice(
+      SOURCE.indexOf('function nestedBody('),
+      SOURCE.indexOf('function nestedBody(') + 800
+    );
+    expect(nestedBodySource).not.toContain('switch (node.type)');
   });
 
   it('names every output-setting read that can select evaluation behavior', () => {
@@ -40,12 +60,29 @@ describe('V19 one-evaluator projection ratchet', () => {
   });
 
   it('does not grow the serializer helper or collection-construction surface', () => {
-    expect(occurrences(/^function |^async function /gmu)).toBe(415);
-    expect(occurrences(/new Map/gu)).toBe(56);
-    expect(occurrences(/new Set/gu)).toBe(34);
-    expect(occurrences(/new WeakMap/gu)).toBe(5);
+    // +1 function (`memoPureDeclMap`) and +1 `new Map` (the lazy per-frame lookup memo,
+    // MIXIN-SCOPING-AND-LOOKUP-MEMO §4); `new WeakMap` stays 4 — the memo is a plain
+    // frame-owned Map, not a WeakMap, by design.
+    // +1 function (`reachedViaMixinSplice`): a chain walk keeping a ruleset's static
+    // extend plan off its mixin-call splice placement (extend/splice fix).
+    // +1 function (`srcFile`): the active source file at a position-push site,
+    // read only when `trackPositions` is on (source-map generation).
+    // +10 functions ([compress] `output.compress`): the layout helpers
+    // `blockIndent`/`bodyIndent`/`nl`/`blockOpen`/`declEnd`/`emitBlockClose`/
+    // `composeSelectorHeader`, the comment gate `keepComment`/`putBlockComment`,
+    // and the compress-aware value emit `emitValueC`. Each returns the exact
+    // pretty bytes when compress is off, so compress:off output is byte-identical.
+    expect(occurrences(/^function |^async function /gmu)).toBe(443);
+    expect(occurrences(/new Map/gu)).toBe(59);
+    expect(occurrences(/new Set/gu)).toBe(39);
+    expect(occurrences(/new WeakMap/gu)).toBe(4);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);
-    expect(occurrences(/const buf = .*\?\? \[\]/gu)).toBe(1);
+
+    /*
+     * The single nested leaf buffer, now owned by the one evaluator and mode-gated
+     * so the collapsed projection allocates none.
+     */
+    expect(occurrences(/const buf: Leaf\[\] = nested \? \(sharedLeaves\?\.leaves \?\? \[\]\) : MOOT_LEAVES/gu)).toBe(1);
     expect(occurrences(/evaluateLeafStatement\(/gu)).toBe(3);
     expect(occurrences(/evaluateSilentStatement\(/gu)).toBe(5);
   });

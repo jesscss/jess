@@ -105,57 +105,29 @@ describe('the two halves compose end to end', () => {
   });
 
   /*
-   * OWNER MODEL: `content` is JUST A SCOPED VARIABLE, bound in the call frame
-   * when — and only when — the caller passed a block, the way `arguments` is
-   * bound in a JS function. `$content()` is then a REGULAR call on that regular
-   * variable; the evaluator knows nothing about the name.
-   *
-   * OWNER RULING — SETTLED: the raise STAYS. A block-less `@include` leaves
-   * `content` unbound, and a regular call on an unbound variable is an ordinary
-   * resolve failure. This is not a decision about `@content`; it falls out of the
-   * model. dart-sass's no-op is a real convenience, but it is only purchasable by
-   * teaching the language that `content` is a special name — the exact thing the
-   * model removes. Restoring it would mean reintroducing a resolver special case,
-   * which is what deleting a sentinel constant and a miss-site hook bought.
-   * The divergence is public: see the "Content blocks: `content` is an ordinary
-   * variable" entry in
-   * `packages/docs/docs-content/docs/shared/04-guides/02-coming-from-sass/04-semantic-differences.mdx`.
-   *
-   * Migration for a library relying on the no-op: pass an EMPTY block,
-   * `@include m { }`. VERIFIED to render identically in jess and dart-sass
-   * 1.101.0 — empty output here, and `.a .in { color: blue; }` when the mixin
-   * body also carries a declaration of its own.
-   *
-   * Measured before ruling, over bootstrap 5.3.8 (92 `.scss`) and
-   * foundation-sites 6.9.0 (136 `.scss`) — 228 files. Bootstrap: 10 mixins
-   * containing `@content`, 287 block-less `@include` sites, 0 on a `@content`
-   * mixin. Foundation: 26 such mixins, 651 block-less sites, 5 on a `@content`
-   * mixin — all `grid-row`/`flex-grid-row`, whose `@content` sits behind
-   * `@if $columns != null`, and every one of those calls leaves `$columns` at its
-   * `null` default, so `@content` is never reached. (A sixth apparent hit,
-   * `-zf-each-breakpoint-in`, was a scan artifact: that call does pass a block.)
-   * ZERO affected files in either. That is the scope of risk on two libraries,
-   * NOT proof the pattern is rare in the wild.
+   * OWNER RULING — SETTLED (dart-sass semantics): a content block does NOT leak
+   * across frames. `@content` refers ONLY to the block passed to THIS mixin's own
+   * `@include`, bound in its own call frame (`mixin-dispatch.ts` — `bound.set(
+   * 'content', call.content)`, set only when `call.content !== null`). When no
+   * block was bound to this activation, `@content` splices EMPTY (a no-op), NOT an
+   * error and NOT a read of an enclosing/caller frame's `content`. This is the R16
+   * hermetic model: the block-less-include case never needs the caller fallback.
    */
-  it('raises where @content sits when no block was assigned', async () => {
-    await expect(render('@mixin m { .in { @content; } }\n.a { @include m; }'))
-      .rejects.toBeTruthy();
+  it('renders empty where @content sits when no block was assigned', async () => {
+    expect(await render('@mixin m { .in { @content; } }\n.a { @include m; }')).toBe('');
   });
 
   /*
-   * Ordinary scoping, not a special case: an `@include` with NO block that runs
-   * inside a mixin which DOES have one reads the enclosing frame's `content`.
-   * Under "just a scoped variable" the outer binding resolving is CORRECT.
-   *
-   * Load-bearing for the ruling above: dart-sass does not merely differ here, it
-   * REJECTS this program — `Mixin doesn't accept a content block.` at
-   * `@include outer { … }`, because `outer` does not itself mention `@content`.
-   * So this is not a silent divergence, and no Sass code can be relying on it.
+   * No cross-frame leak (dart-sass): a block passed to an OUTER mixin does not
+   * reach a block-less inner `@include`. `inner`'s `@content` is bound to nothing
+   * on `inner`'s own activation, so it splices empty — it does NOT propagate `.a`'s
+   * block. (dart-sass rejects this program outright — `Mixin doesn't accept a
+   * content block.` at `@include outer { … }` — so no Sass code relies on a leak.)
    */
-  it('resolves an enclosing frame\'s content binding', async () => {
+  it('does not leak an outer block into a block-less inner @include', async () => {
     expect(await render(
       '@mixin inner { .in { @content; } }\n@mixin outer { @include inner; }\n.a { @include outer { color: red; } }'
-    )).toBe('.a .in {\n  color: red;\n}\n');
+    )).toBe('');
   });
 
   /* The published migration path, pinned so the docs claim cannot go stale: an
@@ -173,5 +145,28 @@ describe('the two halves compose end to end', () => {
   it('still raises the unbound-reference error for any other name', async () => {
     await expect(render('@mixin m { .in { @include nope-not-bound; } }\n.a { @include m; }'))
       .rejects.toBeTruthy();
+  });
+});
+
+/*
+ * Rule-pin (dart-sass): `@content` binds only to THIS mixin's own `@include`
+ * block; it never leaks across frames and a missing block is a no-op, not an
+ * error. Pins the three cases so a future re-widening of content resolution
+ * (e.g. a caller-fallback read) fails a dedicated named test.
+ */
+describe('@content no cross-frame leak (dart-sass rule-pin)', () => {
+  it('(a) no block bound → empty splice, not an error', async () => {
+    expect(await render('@mixin m { .x { @content; } }\n.a { @include m; }')).toBe('');
+  });
+
+  it('(b) a block on an outer mixin does NOT reach a block-less inner @include', async () => {
+    expect(await render(
+      '@mixin inner { .x { @content; } }\n@mixin outer { @include inner; }\n.a { @include outer { color: red; } }'
+    )).toBe('');
+  });
+
+  it('(c) a direct @include with a block still splices it', async () => {
+    expect(await render('@mixin m { .x { @content; } }\n.a { @include m { color: red; } }'))
+      .toBe('.a .x {\n  color: red;\n}\n');
   });
 });

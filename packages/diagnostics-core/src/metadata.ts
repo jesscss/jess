@@ -503,7 +503,7 @@ function knownCssDataValue(data: PropertyValueData, value: CssPropertyValueFact,
     return undefined;
   }
   if (value.kind === 'keyword') {
-    return restrictions.has('identifier') ? true : false;
+    return !!restrictions.has('identifier');
   }
   if (value.kind === 'color') {
     return restrictions.has('color');

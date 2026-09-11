@@ -640,7 +640,7 @@ const preservedSlashBoundary = leaf(
  * sign — so `lessFoldOperation` still reads an alternating operand/operator
  * stream and no CST arity moves.
  */
-const sumOperatorChar = noTrivia(regex(/[-+](?![0-9.])|(?<![ \t\n\r\f])[-+](?=[0-9.])/));
+const sumOperatorChar = noTrivia(regex(/[-+](?![0-9.@(])|(?<![ \t\n\r\f])[-+](?=[0-9.@(])/));
 const sumOperator = leaf(
   noTrivia(sequence(optional(mathTrivia), sumOperatorChar, optional(mathTrivia))),
   children => children[1] as string
@@ -1406,13 +1406,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(g.MathSum, functionArgumentBoundaryAhead),
     children => requireValueNode(children[0])
   );
-  // `not(...)` is an explicit Less condition opener even without a comparison.
-  // Keep this bounded opener test local: it only distinguishes that condition
-  // form from an ordinary function value, and does not inspect an opaque
-  // argument body.
-  const functionConditionNotAhead = peek(parser(
-    { trivia: functionTrivia },
-    sequence(functionConditionNot, literal('('))
+  // `not` is an explicit Less condition opener even without a comparison, in
+  // BOTH its grouped `not(<cond>)` and its bare `not <operand>` forms — the
+  // fixture asserts they behave identically. Without this the bare form is eaten
+  // as a two-keyword value by `ArgumentValueSequence` before `FunctionCondition`
+  // is tried, so `boolean(not false)` truthiness-tests the value instead of
+  // negating. Keep this bounded opener test local: it only distinguishes the
+  // condition form from an ordinary function value, and does not inspect an
+  // opaque argument body. A bare `not` with no following operand (`not`, `not)`,
+  // `not,`) is left to reduce as an ordinary keyword value.
+  const functionConditionNotAhead = peek(choice(
+    parser({ trivia: functionTrivia }, sequence(functionConditionNot, literal('('))),
+    noTrivia(sequence(functionConditionNot, whitespaceRun, regex(/[^,;)]/)))
   ));
   // `name=value` is a call-argument PAIR, not a comparison — Less models it as a
   // dedicated assignment (`tree/assignment.js`) so `filter: alpha(opacity=50)`
@@ -1624,6 +1629,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     identOrFunction,
     caseOf('url(', choice(RoutedVariableUrl, RoutedPlainUrl)),
     caseOf('calc(', g.CalcFunction),
+    /*
+     * A trailing escaped paren is a value ident, not a function opener: `\(` and
+     * `a\(` are escaped code points (css-syntax-3 4.3.7). This more-specific
+     * suffix arm wins over the generic `(` arm below, which cannot tell an
+     * escaped paren from a real one. (`\\(` — an escaped backslash then a real
+     * paren, i.e. a function named `\` — is not valid CSS, so the suffix test's
+     * parity blind spot has no reachable input.)
+     */
+    when(endsWith('\\('), Identifier),
     when(endsWith('('), g.GenericFunction),
     otherwise(Identifier)
   );

@@ -2102,7 +2102,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       return;
     }
     node.options.rulesVisibility ??= {};
-    if (context.options.leakyScope) {
+    if (context.options.allowLeakyScope) {
       node.options.rulesVisibility.Mixin = 'public';
       node.options.rulesVisibility.VarDeclaration = 'optional';
     } else {

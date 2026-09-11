@@ -134,7 +134,7 @@ export async function evaluateCallableCandidateOutput({
     if (
       context.spineRootCallEmit
       && leakTargetRoot !== undefined
-      && context.options.leakyScope === true
+      && context.options.allowLeakyScope === true
       && candidateIndex !== undefined
       && newRules.options.mixinOutputSlot
     ) {

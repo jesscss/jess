@@ -1,0 +1,12 @@
+// An imported mixin whose body carries `&:extend()` in a (recursive) loop —
+// the Bootstrap `#make-grid-columns()` shape. The mixin is defined AND called here.
+.grid-column {
+  color: red;
+}
+#gen(@i: 1) when (@i <= 3) {
+  .col-@{i} {
+    &:extend(.grid-column);
+  }
+  #gen(@i + 1);
+}
+#gen();

@@ -1283,7 +1283,7 @@ export function createEngine(): JessLanguageServiceEngine {
   // Cached imported documents (loaded from disk)
   const importedDocs = new Map<string, TrackedDoc>();
   let semanticDiagnosticSeverities: Record<string, DiagnosticSeverity> = {
-    /* eslint-disable @typescript-eslint/naming-convention */
+
     /*
      * Shared diagnostics. Keys match diagnostics-core `LINT_CODES`, not the
      * public lint rule names from @jesscss/lint. The lint package owns the
@@ -1344,7 +1344,7 @@ export function createEngine(): JessLanguageServiceEngine {
      * guide specifies a warning at the use site, not a hard parse error.
      */
     [LINT_CODES.unsupportedSassForm]: DiagnosticSeverity.Warning
-    /* eslint-enable @typescript-eslint/naming-convention */
+
   };
   type SpecificityTuple = readonly [number, number, number];
   type SemanticDiagnosticOptions = {

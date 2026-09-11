@@ -1052,9 +1052,16 @@ export interface Declaration extends SpanSlots {
  * same fact, sitting outside the reference family proper. It spells it the way
  * {@link Lookup} does, so "which binding store" has one name repo-wide.
  */
+/*
+ * `reassign-or-declare` is the "optional shadow" write (jess `::=`, and what the
+ * SCSS grammar lowers a `$x:` inside a control-flow block body to): reassign the
+ * NEAREST existing binding in `scope`, or — when none exists anywhere outer —
+ * declare a block-local shadow in the current frame. It always writes; only the
+ * shadow is conditional. Contrast `reassign`, which ERRORS when nothing exists.
+ */
 export type VariableWrite =
   | { readonly mode: 'declare' }
-  | { readonly mode: 'if-absent' | 'reassign'; readonly scope: VariableLookup };
+  | { readonly mode: 'if-absent' | 'reassign' | 'reassign-or-declare'; readonly scope: VariableLookup };
 
 export interface VariableDeclaration extends SpanSlots {
   readonly type: 'VariableDeclaration';

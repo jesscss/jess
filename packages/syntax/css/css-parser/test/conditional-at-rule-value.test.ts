@@ -190,7 +190,14 @@ const COMPOSITION: Array<[string, string, object]> = [
   ['a list whose first query is an and chain', '@media screen and (hover), print { a { color: red; } }',
     list({ type: 'Sequence', parts: [kw('screen'), kw('and'), paren(kw('hover'))] }, kw('print'))],
   ['a comma-separated @container query list', '@container (width > 1px), (height > 1px) { a { color: red; } }',
-    list(paren(op('>', kw('width'), dim('1px'))), paren(op('>', kw('height'), dim('1px'))))]
+    list(paren(op('>', kw('width'), dim('1px'))), paren(op('>', kw('height'), dim('1px'))))],
+  ['a negated @container query-in-parens', '@container (not (width > 1px)) { a { color: red; } }',
+    paren({ type: 'Sequence', parts: [kw('not'), paren(op('>', kw('width'), dim('1px')))] })],
+  ['a bare negation in @container', '@container not (width > 1px) { a { color: red; } }',
+    { type: 'Sequence', parts: [kw('not'), paren(op('>', kw('width'), dim('1px')))] }],
+  ['a negated operand in an @container and-chain', '@container (width > 1px) and (not (height > 1px)) { a { color: red; } }',
+    { type: 'Sequence', parts: [paren(op('>', kw('width'), dim('1px'))), kw('and'),
+      paren({ type: 'Sequence', parts: [kw('not'), paren(op('>', kw('height'), dim('1px')))] })] }]
 ];
 
 /**

@@ -36,10 +36,22 @@ const importStartKey = Symbol.for('jess.ast.import-source-start');
 const importEndKey = Symbol.for('jess.ast.import-source-end');
 const importTailStartKey = Symbol.for('jess.ast.import-tail-start');
 
+/*
+ * A dialect marker, NOT a new node kind. Only the SCSS grammar sets it (on the
+ * `@debug`/`@warn`/`@error` statement it builds); CSS/Less/jess build the same
+ * `AtRuleStatement` shape for an unknown `@error` WITHOUT it, so those keep
+ * verbatim unknown-at-rule passthrough. The serializer reads it to decide
+ * whether a statement is a Sass diagnostic (report/halt, no CSS) rather than
+ * keying on the at-rule NAME, which is dialect-blind. Installed in the factory
+ * (default false) so every AtRuleStatement shares one hidden class.
+ */
+const diagnosticKey = Symbol.for('jess.ast.scss-diagnostic');
+
 interface ImportSourceSlots {
   [importStartKey]?: number;
   [importEndKey]?: number;
   [importTailStartKey]?: number;
+  [diagnosticKey]?: boolean;
 }
 
 /** A block-bearing at-rule: `@name prelude { …body }`. */
@@ -115,10 +127,27 @@ export const atRuleStatement = (
     _e: NO_SPAN,
     [importStartKey]: NO_SPAN,
     [importEndKey]: NO_SPAN,
-    [importTailStartKey]: NO_SPAN
+    [importTailStartKey]: NO_SPAN,
+    [diagnosticKey]: false
   };
   return statement;
 };
+
+/**
+ * Mark a statement as a Sass compile-time diagnostic (`@debug`/`@warn`/
+ * `@error`). Set ONLY by the SCSS grammar; the serializer reads it via
+ * {@link isDiagnosticStatement} to scope diagnostic behavior to SCSS and leave
+ * an identically-named unknown at-rule in CSS/Less/jess as verbatim passthrough.
+ */
+export function asDiagnostic<T extends AtRuleStatement>(statement: T): T {
+  statement[diagnosticKey] = true;
+  return statement;
+}
+
+/** True only for an SCSS-parsed `@debug`/`@warn`/`@error` statement. */
+export function isDiagnosticStatement(statement: AtRuleStatement): boolean {
+  return statement[diagnosticKey] === true;
+}
 
 /** Retain the parser-owned start of an import's typed tail in its fixed slot. */
 export function withImportTailStart<T extends AtRuleStatement>(

@@ -20,3 +20,31 @@ alwaysApply: true
 - Do **not** `JSON.stringify(...)` AST/parser objects (circular refs).
 - Do **not** stringify nodes via `.toString()` / `.toTrimmedString()` for debugging (can affect frame state).
 - Log **primitive values only** when tracing.
+
+## Single pass over resolved shapes (no re-derivation)
+A later phase consumes what an earlier phase already produced — it does **not**
+re-derive it by running the earlier phase again.
+
+- **Never re-evaluate to discover what one pass already computed.** If a feature
+  needs mixins expanded, functions called, loops iterated, variables resolved, or
+  selectors composed, it consumes the output of the single evaluator/render walk —
+  it must not call the evaluator a second time to rebuild those facts. A "preflight"
+  or "collection" phase that re-expands mixins, re-runs loops, or re-resolves
+  selectors is a **defect**, not an implementation detail. (The canonical incident:
+  extend's deleted `collectPlacedExtendFacts` cold twin — see `EXTEND-SEMANTICS.md`
+  §1a and ledger X12.)
+- **Why it is unsound, not just slow.** Evaluation has order-dependent effects
+  (`@name` reassignment, `::=` optional-shadow, guard evaluation, once-only imports),
+  so a second pass can silently disagree with the real output — and it multiplies
+  the program's evaluation cost by the number of passes.
+- **Forward references are solved by deferred rewrite, not look-ahead
+  re-evaluation.** When a later result must fold into something emitted earlier,
+  emit an addressable slot (a render-buffer entry, a `WeakMap`-keyed handle), record
+  the fact inline during the one walk, and rewrite the slot afterward. Hold shared
+  structure **by reference** (do not re-flatten or re-create nodes per use —
+  especially in loop bodies, which project reused nodes); materialize a flattened
+  view lazily and cached, only for the items that actually participate.
+- **When you catch yourself writing a second walk that mirrors an existing
+  evaluator** ("mirrors `expandCall`", "like the planner but for the main
+  document"), stop — that is the brute-force anti-pattern. Design the single pass
+  to record what the later phase needs, or escalate. Do not ship the mirror.

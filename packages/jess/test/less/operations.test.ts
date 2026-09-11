@@ -9,7 +9,7 @@ import lessPlugin from '@jesscss/plugin-less';
  * (`appendBareSlashTokens`) and stopped folding, while a hex color still folded.
  * lessc 4.x `--math=always`: `red / 2` → `#800000` AND `#ff0000 / 2` → `#800000`
  * (symmetric). The font-shorthand slash-SPACING row from the surrounding
- * `describe.todo('Operations')` block is deliberately NOT un-todoed here: it
+ * `describe('Operations')` block is deliberately NOT un-todoed here: it
  * asserts the spaced separator form (`small / 20px`), which is the OPEN V12
  * question (authored-slash spacing), unimplemented and unrelated to this change.
  */
@@ -35,14 +35,14 @@ describe('Operations — named-color division in math: always', () => {
   });
 });
 
-describe.todo('Operations', () => {
+describe('Operations', () => {
   const compiler = new Compiler({
     compile: {
       plugins: [lessPlugin()]
     }
   });
 
-  describe.todo('Basic Arithmetic Operations', () => {
+  describe('Basic Arithmetic Operations', () => {
     it('should handle addition', async () => {
       const lessCode = `
         .test {
@@ -96,7 +96,7 @@ describe.todo('Operations', () => {
     });
   });
 
-  describe.todo('Operations with Variables', () => {
+  describe('Operations with Variables', () => {
     it('should handle operations with variables', async () => {
       const lessCode = `
         @base: 10px;
@@ -132,7 +132,12 @@ describe.todo('Operations', () => {
       const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('width: 80px');
       expect(css).toContain('height: 60px');
-      expect(css).toContain('area: 5000px');
+
+      /*
+       * px * px composes a unit CSS cannot express: v5 warns and defers to calc()
+       * (Less 4.x naively produced `5000px`). Loose unitMode would multiply instead.
+       */
+      expect(css).toContain('area: calc(100px * 50px)');
     });
 
     it('preserves slash-list variable values inside later operations in parens-division mode', async () => {
@@ -218,7 +223,7 @@ describe.todo('Operations', () => {
     });
   });
 
-  describe.todo('Color Operations', () => {
+  describe('Color Operations', () => {
     it('should handle color arithmetic', async () => {
       const lessCode = `
         .test {
@@ -248,7 +253,7 @@ describe.todo('Operations', () => {
     });
   });
 
-  describe.todo('Unit Operations', () => {
+  describe('Unit Operations', () => {
     it('should handle operations with different units', async () => {
       const lessCode = `
         .test {
@@ -279,7 +284,7 @@ describe.todo('Operations', () => {
     });
   });
 
-  describe.todo('Parentheses and Precedence', () => {
+  describe('Parentheses and Precedence', () => {
     it('should handle parentheses for precedence', async () => {
       const lessCode = `
         .test {
@@ -307,7 +312,7 @@ describe.todo('Operations', () => {
     });
   });
 
-  describe.todo('calc() Function', () => {
+  describe('calc() Function', () => {
     it('should handle calc() function', async () => {
       const lessCode = `
         .test {
@@ -338,7 +343,7 @@ describe.todo('Operations', () => {
     });
   });
 
-  describe.todo('Edge Cases', () => {
+  describe('Edge Cases', () => {
     it('should handle operations with zero', async () => {
       const lessCode = `
         .test {

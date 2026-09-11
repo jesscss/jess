@@ -7,9 +7,8 @@ import {
   type ISafeParseResult,
   type PluginInterface,
   type SafeParseOptions,
-  buildEvaluator
-} from '@jesscss/core';
-import { logger, type PluginHost } from '@jesscss/core';
+  buildEvaluator,
+  logger, type PluginHost } from '@jesscss/core';
 import { makeLessRegistry } from '@jesscss/fns/less/registry';
 import { LessApiBridge, type NativeLessPlugin } from '@jesscss/plugin-less-compat';
 import type { MathMode, UnitMode, LessOptions } from 'styles-config';
@@ -21,7 +20,7 @@ import { safeParse as safeParseLess } from '@jesscss/less-parser';
 export type LessPluginOptions = LessOptions;
 type LessDialectDefaults = Required<Pick<
   NonNullable<ISafeParseResult['dialectDefaults']>,
-  'mathMode' | 'unitMode' | 'leakyScope' | 'bubbleRootAtRules' | 'processImports'
+  'mathMode' | 'unitMode' | 'allowLeakyScope' | 'allowCallerScope' | 'bubbleRootAtRules' | 'processImports'
 >>;
 
 /**
@@ -34,7 +33,8 @@ type LessDialectDefaults = Required<Pick<
 export const lessPluginDefaults = {
   mathMode: 'parens-division' as MathMode,
   unitMode: 'preserve' as UnitMode,
-  leakyScope: true,
+  allowLeakyScope: true,
+  allowCallerScope: false,
   bubbleRootAtRules: true,
   processImports: true,
   collapseNesting: false
@@ -147,7 +147,9 @@ export class LessPluginResolver {
       strictUnits: lessOptions.strictUnits,
       unitMode: lessOptions.unitMode,
       allowExtendSelectors: lessOptions.allowExtendSelectors,
+      allowLeakyScope: lessOptions.allowLeakyScope,
       leakyScope: lessOptions.leakyScope,
+      allowCallerScope: lessOptions.allowCallerScope,
       bubbleRootAtRules: lessOptions.bubbleRootAtRules,
       collapseNesting: lessOptions.collapseNesting,
       rootpath: lessOptions.rootpath,
@@ -338,7 +340,8 @@ export class LessPlugin extends AbstractPlugin {
     this.#dialectDefaults = Object.freeze({
       mathMode,
       unitMode,
-      leakyScope: opts.leakyScope ?? lessPluginDefaults.leakyScope,
+      allowLeakyScope: opts.allowLeakyScope ?? opts.leakyScope ?? lessPluginDefaults.allowLeakyScope,
+      allowCallerScope: opts.allowCallerScope ?? lessPluginDefaults.allowCallerScope,
       bubbleRootAtRules: opts.bubbleRootAtRules ?? lessPluginDefaults.bubbleRootAtRules,
       processImports: opts.processImports ?? lessPluginDefaults.processImports
     });

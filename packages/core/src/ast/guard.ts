@@ -104,7 +104,7 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): MaybePromise<bo
        * The walk stays synchronous whenever the left operand is, so a settled
        * guard never gains a microtask hop.
        */
-      const decided = node.g === 'and' ? false : true;
+      const decided = node.g !== 'and';
       const l = evalGuard(node.left, deps);
       const rest = (a: boolean): MaybePromise<boolean> => a === decided ? decided : evalGuard(node.right, deps);
       return isThenable(l) ? l.then(rest) : rest(l);

@@ -60,7 +60,7 @@ Jess spends its complexity budget — not a verdict on Sass's design.
 | `&--modifier` | ❓ | Rejected when written literally; `&--#{$name}` is accepted. CSS reserves the bare `--` name, so whether the literal spelling should be admissible is unresolved. |
 | Leading-combinator shorthand — `> .b`, `+ .b` | ⏳ | Write `& > .b`, which is the spelling CSS Nesting standardized. |
 | `@mixin` / `@include` | ✅ | Positional, default, keyword, and variadic parameters. |
-| `@content`, and `@include` with a block | ⏳ | `@include m { … }`, `@include m() { … }`, and `@include m using () { … }` are all rejected today. The largest single gap in Sass+. |
+| `@content`, and `@include` with a block | ⏳ | `@include m { … }`, `@include m() { … }`, and `@include m using () { … }` render the passed block. Passing **arguments** to the block — `@content($x)` with `@include … using ($x)` — is not yet supported. |
 | `@extend` | ✅ | Extend chains resolve transitively. |
 | Placeholder selectors — `%p` | ⏳ | `@extend %p` works, but `%p` is not yet silent — it reaches the CSS output. |
 | `@if` / `@else` / `@else if` | ✅ | Conditions are comparisons, `and`/`or` of comparisons, or boolean literals. Parentheses are allowed. |
@@ -91,7 +91,7 @@ Jess spends its complexity budget — not a verdict on Sass's design.
 | `math.div` | ⏳ | Use `($a / $b)` today. |
 | String concatenation — `"a" + "b"` | ❓ | Renders as a `calc()` expression rather than a joined string. Interpolation — `"#{$a}#{$b}"` — is the working spelling. |
 | `@media` bubbling, nested `@supports` | ✅ | Including a `@media` block written inside a mixin. |
-| `@debug` / `@warn` / `@error` | ⏳ | |
+| `@debug` / `@warn` / `@error` | ✅ | Recognized SCSS diagnostics; none emit CSS. `@warn` / `@debug` report a message and let the compile continue; `@error` aborts it. |
 | `sass:` built-in modules — `sass:math`, `sass:map`, `sass:string`, `sass:list` | ⏳ | `@use "sass:math"` parses; the module is not loaded and its members are unreachable. |
 | Color functions — `rgba`, `darken`, `lighten` | ✅ | |
 | `if()`, `length()`, `percentage()` | ✅ | |
@@ -465,6 +465,26 @@ A `@media` block inside a mixin bubbles the same way:
   /* shipped */
 }
 ```
+
+### Compile-time diagnostics
+
+`@warn` reports a message during compilation and lets it continue; the CSS is
+still produced:
+
+```scss
+@warn "use the spacing tokens instead";
+.a { color: red; }
+```
+
+```css
+.a {
+  color: red;
+}
+```
+
+`@error` reached during evaluation stops the compile with its message, and
+`@debug` behaves like `@warn` without the warning severity. None of the three
+emit CSS.
 
 ## How much of a real codebase this covers
 

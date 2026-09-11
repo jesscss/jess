@@ -267,7 +267,8 @@ describe('applyStrictPreset', () => {
     expect(out).toMatchObject({
       strict: true,
       unitMode: 'strict',
-      leakyScope: false,
+      allowLeakyScope: false,
+      allowCallerScope: false,
       allowOverloadedImport: false
     });
   });
@@ -276,12 +277,14 @@ describe('applyStrictPreset', () => {
     const out = applyStrictPreset({
       strict: true,
       unitMode: 'loose',
-      leakyScope: true,
+      allowLeakyScope: true,
+      allowCallerScope: true,
       allowOverloadedImport: true
     });
     expect(out).toMatchObject({
       unitMode: 'loose',
-      leakyScope: true,
+      allowLeakyScope: true,
+      allowCallerScope: true,
       allowOverloadedImport: true
     });
   });

@@ -54,6 +54,7 @@ import {
   JESS_STRUCTURED_PSEUDOS,
   isParam,
   isParamList,
+  isAnonymousMixin,
   isMixinCallArray,
   isExtendInstructionArray,
   isValueNode,
@@ -203,6 +204,7 @@ type JessRules = {
   MixinParam: Combinator<Param>;
   MixinParams: Combinator<Param[]>;
   MixinCallArgument: Combinator<JessMixinCallArgument>;
+  MixinContentBlock: Combinator<AnonymousMixin>;
   MixinCall: Combinator<MixinCall>;
   ReferenceCall: Combinator<Reference>;
   Apply: Combinator<Apply>;
@@ -2659,6 +2661,15 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       CSS_MATH_FUNCTION_OPENERS,
       g.MathFunction
     ),
+
+    /*
+     * A trailing escaped paren is a value keyword, not a call: `\(` and `a\(` are
+     * escaped code points (css-syntax-3 4.3.7). This more-specific suffix arm
+     * wins over the generic `(` arm, which cannot tell an escaped paren from a
+     * real one. (`\\(` — an escaped backslash then a real paren — is not valid
+     * CSS, so the parity blind spot has no reachable input.)
+     */
+    when(endsWith('\\('), g.KeywordValue),
     when(
       endsWith('('),
       GenericCall
@@ -3674,14 +3685,29 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ),
     children => requireValueNode(children[0])
   );
+
+  /*
+   * One `<container-query>` (css-contain-3 §3): `not <query-in-parens>` or an
+   * atom followed by an `and`/`or` chain. The leading-`not` arm is tried first
+   * so a `( not (width > 1px) )` group negates its inner condition — the same
+   * shape css's `ContainerQueryCondition` produces, `Sequence[not, Block(…)]`.
+   * The reducer already lowers the `not`/`and`/`or` tokens to keywords, so both
+   * arms share it.
+   */
   const ContainerQueryClause = node<ValueNode>(
     'ContainerQueryClause',
-    sequence(
-      g.ContainerQueryAtom,
-      many(sequence(
-        g.QueryAndOr,
+    choice(
+      sequence(
+        g.QueryNot,
         g.ContainerQueryAtom
-      ))
+      ),
+      sequence(
+        g.ContainerQueryAtom,
+        many(sequence(
+          g.QueryAndOr,
+          g.ContainerQueryAtom
+        ))
+      )
     ),
     (children) => {
       const values = children
@@ -4326,38 +4352,81 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * The `$name` + assignment-operator head shared by the ordinary and the
    * block-valued variable declaration. Both reduce with `reduceVarDeclaration`,
    * which reads the operator by position, so the head must stay one shape.
+   *
+   * The separable operators are ordered LONGEST-FIRST (`::=` before `:=` before
+   * `:`) so each tokenizes whole: `::=` optional-shadow (reassign nearest existing,
+   * else declare a block-local shadow), `:=` reassign (error if unbound), `:`
+   * declare (always local). `?:` (if-absent) is its own leading arm. Every operator
+   * exists for both `$name` (live) and `$^name` (scoped).
    */
-  const assignHead = choice(
-    noTrivia(sequence(
-      literal('$'),
-      literal('^'),
-      dollarName,
-      literal('?:')
-    )),
-    noTrivia(sequence(
-      literal('$'),
-      dollarName,
-      literal('?:')
-    )),
-    sequence(
+  /*
+   * A small set of `$`-names is RESERVED: they are the control-flow keywords and
+   * the `@content` protocol name, so a user may not DECLARE them as variables
+   * (`$content:`, `$for:`, … are parse errors). This is what lets `content` etc.
+   * be true keywords rather than user variables — the fact R16's block-less
+   * `@content` behavior relies on. `return` is deliberately NOT reserved: Jess's
+   * return mechanism is `result:` (a bare declaration, no sigil), so `$return`
+   * stays a legal user variable (the standard Sass return-accumulator). Names are
+   * case-SENSITIVE (Jess `$` variables are), so only these exact lowercase
+   * spellings collide; `$Content`/`$contents` remain ordinary names. The boundary
+   * matches `containerNameReserved` above so `keywords` rejects only a whole-name
+   * match, never a prefix.
+   */
+  const reservedVarName = keywords(
+    ['content', 'for', 'if', 'else', 'each', 'while'],
+    { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
+  );
+
+  /*
+   * The reserved guard sits at the NAME position (after the `$` sigil and the
+   * optional `^` scope marker) so it fires for both `$name` and `$^name` heads
+   * and for every assignment operator — the guard is `not(...)`, a zero-width
+   * lookahead, so it emits no child and `reduceVarDeclaration`'s positions are
+   * unchanged. A reserved word elsewhere (a `$content()` call, a `@content`
+   * invocation, a loop/guard head) never reaches this head, so it is unaffected.
+   */
+  const reservedVarHead = noTrivia(sequence(
+    literal('$'),
+    optional(literal('^')),
+    reservedVarName
+  ));
+
+  const assignHead = sequence(
+    not(reservedVarHead),
+    choice(
       noTrivia(sequence(
         literal('$'),
         literal('^'),
-        dollarName
+        dollarName,
+        literal('?:')
       )),
-      choice(
-        literal(':='),
-        literal(':')
-      )
-    ),
-    sequence(
       noTrivia(sequence(
         literal('$'),
-        dollarName
+        dollarName,
+        literal('?:')
       )),
-      choice(
-        literal(':='),
-        literal(':')
+      sequence(
+        noTrivia(sequence(
+          literal('$'),
+          literal('^'),
+          dollarName
+        )),
+        choice(
+          literal('::='),
+          literal(':='),
+          literal(':')
+        )
+      ),
+      sequence(
+        noTrivia(sequence(
+          literal('$'),
+          dollarName
+        )),
+        choice(
+          literal('::='),
+          literal(':='),
+          literal(':')
+        )
       )
     )
   );
@@ -4794,6 +4863,30 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       return callArg(value, name?.value);
     }
   );
+
+  /*
+   * The `:`-introduced block trailing a call is its CONTENT block — the owner's
+   * `.jess` spelling of what Sass writes `@include m { … }`. It is the same
+   * `AnonymousMixin` the SCSS `MixinContentBlock` builds and the lambda family
+   * reduces (`reduceLambda`): the optional `(params)` is the `using (…)`
+   * equivalent and reuses `MixinParams`; the body reuses `nestedBodyStatement`.
+   * The `@` a value-position lambda carries is elided here — after a complete
+   * call, a leading `:` can only be the content signifier (a value-position
+   * mixin call, the only other `:` case, is not a Jess surface), so no marker is
+   * needed to disambiguate. `params` stays OMITTED for the bare block so that
+   * shape matches the SCSS content block byte-for-byte.
+   */
+  const MixinContentBlock = node<AnonymousMixin>(
+    'MixinContentBlock',
+    sequence(
+      literal(':'),
+      optional(g.MixinParams),
+      literal('{'),
+      many(nestedBodyStatement),
+      literal('}')
+    ),
+    reduceLambda
+  );
   const MixinCall = node<MixinCall>(
     'MixinCall',
     sequence(
@@ -4810,6 +4903,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         literal(',')
       )),
       literal(')'),
+      optional(g.MixinContentBlock),
       optional(literal(';'))
     ),
     (children) => {
@@ -4817,13 +4911,15 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         .map(token => token.value)
         .filter(value => value !== '$' && value !== '>' && value !== '(' && value !== ')' && value !== ',' && value !== ';');
       const args = children.filter(isJessMixinCallArgument);
+      const content = children.find(isAnonymousMixin) ?? null;
       const name = names.at(-1);
       if (name === undefined) {
         throw new TypeError('Jess grammar produced a mixin call without a name.');
       }
       const call = mixinCall(
         name,
-        args
+        args,
+        content
       );
       return names.length === 1
         ? call
@@ -5700,6 +5796,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     MixinParam,
     MixinParams,
     MixinCallArgument,
+    MixinContentBlock,
     MixinCall,
     ReferenceCall,
     Apply,

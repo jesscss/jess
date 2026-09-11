@@ -19,8 +19,10 @@ import {
   type ErrorsConfigInput,
   serialize,
   prepareStaticImports,
+  buildAstSourceMap,
   type PreparedImports,
-  type PluginInterface
+  type PluginInterface,
+  type Position
 } from '@jesscss/core';
 import type { Stylesheet } from '@jesscss/core/ast';
 import {
@@ -106,6 +108,62 @@ function internalUnknownDiagnostic(
     column: frame?.column ?? 1,
     lines: frame?.lines
   };
+}
+
+/** The normalized object form of the `output.sourceMap` option. */
+type SourceMapConfig = Exclude<NonNullable<OutputOptions['sourceMap']>, boolean>;
+
+/** The generated CSS plus, when source maps are on, the v3 map and its URL. */
+export interface RenderedStylesheet {
+  css: string;
+
+  /** v3 source map JSON (external form), when source maps are enabled. */
+  map?: string;
+
+  /** The `sourceMappingURL` written into the CSS annotation, when one is written. */
+  sourceMapURL?: string;
+}
+
+/**
+ * Assemble the source map + CSS annotation from the render's position stream.
+ *
+ * Mirrors Less 4.x `SourceMapBuilder.getCSSAppendage`: an explicit
+ * `sourceMapURL` wins over `sourceMapFilename`; `sourceMapFileInline` embeds the
+ * map as a base64 `data:` URI; `disableSourcemapAnnotation` writes nothing. The
+ * external `.map` string is always returned for callers that write it to disk —
+ * this compiler has no file-writing CLI, so that is a caller concern.
+ */
+function assembleSourceMap(
+  css: string,
+  positions: Position[],
+  option: SourceMapConfig,
+  outputFilePath: string | undefined
+): RenderedStylesheet {
+  const encoded = buildAstSourceMap(css, positions, {
+    /*
+     * The map's `file` is the GENERATED css filename (Less `_outputFilename`),
+     * not the `.map` filename.
+     */
+    outputFilename: option.sourceMapOutputFilename ?? outputFilePath ?? option.sourceMapFullFilename,
+    sourceMapRootpath: option.sourceMapRootpath,
+    sourceMapBasepath: option.sourceMapBasepath,
+    outputSourceFiles: option.outputSourceFiles
+  });
+  const map = JSON.stringify(encoded);
+
+  let sourceMapURL = option.sourceMapURL ?? option.sourceMapFilename;
+  let annotationURL = sourceMapURL;
+  if (option.sourceMapFileInline === true) {
+    annotationURL = `data:application/json;base64,${Buffer.from(map, 'utf8').toString('base64')}`;
+  }
+
+  let annotatedCss = css;
+  if (option.disableSourcemapAnnotation !== true && annotationURL) {
+    const newline = css.length > 0 && !css.endsWith('\n') ? '\n' : '';
+    annotatedCss = `${css}${newline}/*# sourceMappingURL=${annotationURL} */\n`;
+  }
+
+  return { css: annotatedCss, map, sourceMapURL: sourceMapURL ?? undefined };
 }
 
 /**
@@ -526,7 +584,7 @@ export class Compiler {
 
     /*
      * Expand the `strict` convenience preset once, on the compile config, so the
-     * bundle it sets (unitMode/leakyScope/allowOverloadedImport)
+     * bundle it sets (unitMode/allowLeakyScope/allowCallerScope/allowOverloadedImport)
      * reaches eval via `context.opts` (contextOptions spreads compile). Individual
      * options already set always win.
      */
@@ -945,8 +1003,20 @@ export class Compiler {
       ? resolved.effectiveConfig.output
       : null;
     contextOptions.output = {
-      compress: cfgOutput?.compress,
-      sourceMap: typeof cfgOutput?.sourceMap === 'boolean' ? cfgOutput.sourceMap : Boolean(cfgOutput?.sourceMap),
+      /*
+       * `output.compress` wins, but the Less config shape carries it as
+       * `language.less.compress` — surfaced on `activeOptions` by `getOptions`.
+       * Fall back to it so a less.js-style config (and the corpus fixtures)
+       * honor `compress` without nesting it under `output`.
+       */
+      compress: cfgOutput?.compress
+        ?? (typeof resolved.activeOptions?.compress === 'boolean' ? resolved.activeOptions.compress : undefined),
+
+      /*
+       * Preserve the object form (sourceMapBasepath/rootpath/inline/…); coercing
+       * to a bool here would silently drop every source-map sub-option.
+       */
+      sourceMap: cfgOutput?.sourceMap,
       collapseNesting: resolved.printOptions.collapseNesting
     };
 
@@ -1081,17 +1151,22 @@ export class Compiler {
     document: Stylesheet,
     context: Context,
     profile?: RenderProfile,
-    preparedImports?: PreparedImports
-  ): Promise<string> {
+    preparedImports?: PreparedImports,
+    outputFilePath?: string
+  ): Promise<RenderedStylesheet> {
+    const sourceMapOption = context.opts.output?.sourceMap;
+    const trackPositions = Boolean(sourceMapOption);
     const result = await measureProfileAsync(profile, 'renderAstStylesheet', () =>
       Promise.resolve(context.withDocument(document, () => {
         this.activateDocumentPlugins(context);
         return serialize(document, {
           collapseNesting: context.opts.output?.collapseNesting ?? false,
+          compress: context.opts.output?.compress ?? false,
           context,
           pluginHost: context.pluginHost,
           io: { readFile: specifier => readOptionalBinary(context, specifier) },
-          preparedImports
+          preparedImports,
+          trackPositions
         });
       })));
     let css = result.css;
@@ -1102,7 +1177,17 @@ export class Compiler {
         css = plugin.postProcessCss(css, context);
       }
     }
-    return css;
+    if (!trackPositions || result.positions === undefined) {
+      return { css };
+    }
+
+    /*
+     * ponytail: positions index into the serialized CSS; a postprocessor that
+     * rewrites `css` desyncs the map (same limitation as Less 4.x, whose map is
+     * also built pre-postprocess). Regenerate through postprocessors if needed.
+     */
+    const option: SourceMapConfig = typeof sourceMapOption === 'object' ? sourceMapOption : {};
+    return assembleSourceMap(css, result.positions, option, outputFilePath);
   }
 
   /** @internal AST document preparation; no legacy evaluator tree is exposed. */
@@ -1180,10 +1265,12 @@ export class Compiler {
     const { resolved, context, profile } = await this.prepareRender(filePath, options);
     try {
       const input = { filePath };
-      const css = await this.renderStylesheet(
+      const { css } = await this.renderStylesheet(
         await this.prepareStylesheet(context, resolved, input, profile),
         context,
-        profile
+        profile,
+        undefined,
+        resolved.resolvedOutputFilePath
       );
       context.finalizeWarnings();
       this.reportCollected(context, options);
@@ -1222,10 +1309,12 @@ export class Compiler {
 
     try {
       const input = { filePath, source: content, language, extension };
-      const css = await this.renderStylesheet(
+      const { css } = await this.renderStylesheet(
         await this.prepareStylesheet(context, resolved, input, profile),
         context,
-        profile
+        profile,
+        undefined,
+        resolved.resolvedOutputFilePath
       );
       context.finalizeWarnings();
       this.reportCollected(context, renderOptions);
@@ -1265,6 +1354,12 @@ export class Compiler {
     errors: ErrorDiagnostic[];
     warnings: WarningDiagnostic[];
     loadedUrls: string[];
+
+    /** v3 source map JSON, present only when source maps are enabled. */
+    map?: string;
+
+    /** The `sourceMappingURL` written into the CSS annotation, when one is written. */
+    sourceMapURL?: string;
   }> {
     const isSourceContent = typeof input === 'object' && 'source' in input;
     const source = isSourceContent ? input.source : undefined;
@@ -1276,10 +1371,12 @@ export class Compiler {
 
     try {
       const input = { filePath, source, language, extension };
-      const css = await this.renderStylesheet(
+      const { css, map, sourceMapURL } = await this.renderStylesheet(
         await this.prepareStylesheet(context, resolved, input, profile),
         context,
-        profile
+        profile,
+        undefined,
+        resolved.resolvedOutputFilePath
       );
 
       context.finalizeWarnings();
@@ -1296,7 +1393,9 @@ export class Compiler {
         css,
         errors: [...context.errors],
         warnings: [...context.warnings],
-        loadedUrls
+        loadedUrls,
+        ...(map === undefined ? {} : { map }),
+        ...(sourceMapURL === undefined ? {} : { sourceMapURL })
       };
     } catch (err: unknown) {
       const errors: ErrorDiagnostic[] = [...context.errors];
@@ -1415,10 +1514,12 @@ export class Compiler {
 
     try {
       const input = { filePath };
-      const css = await this.renderStylesheet(
+      const { css } = await this.renderStylesheet(
         await this.prepareStylesheet(context, resolved, input, profile),
         context,
-        profile
+        profile,
+        undefined,
+        resolved.resolvedOutputFilePath
       );
 
       finalizeRenderProfile(profile, {

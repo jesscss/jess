@@ -91,36 +91,37 @@ a blanket optimization exemption or a new active architecture queue.
 ```json
 [
   {
-    "id": "ast-extend-import-preflight",
+    "id": "ast-extend-dynamic-fold",
     "kind": "semantic-preflight",
-    "surface": "typed imported-extend placement preflight",
+    "surface": "walk-time dynamic-extend recording + post-walk deferred fold",
     "files": ["packages/core/src/ast/serialize.ts"],
     "coverage": "owner-plus-named-carry-forward-support",
     "necessity": {
       "status": "proven",
-      "factSource": "A loaded import document's typed Rule, AtRuleBlock, and For bodies are the first authoritative source for whether imported selectors or concrete loop placements can contribute an extend.",
-      "rediscovery": "Without the preflight, the renderer would discover imported extend facts after the root extend plan was already computed, losing source-order cross-import placement semantics.",
-      "carryForward": "The loaded document body is inspected once in source order; only its existing typed selector facts and one token per concrete extend-bearing loop iteration are carried into the root plan overlay.",
-      "whyNotCarried": "The importer cannot carry an arbitrary imported document's extend fact before Context/plugin resolution loads that document; the loaded typed body is the earliest truthful boundary."
+      "factSource": "A dynamic extend placement (an extend inside a $for/each loop body or a mixin-definition body, in the main document or an import) is only resolved by the ONE render walk that expands it; its extender selector is recorded from the already-composed shape at that moment (recordDynamicExtendFacts, guarded by e.dynamicExtend).",
+      "rediscovery": "Without walk-time recording the renderer would need a second, re-evaluating pass over loops/mixins/imports to discover those placements — the cold twin the owner ruled illegal and unsound (ledger X12); it is deleted.",
+      "carryForward": "Each dynamic extender's fact is recorded inline as its rule emits, keyed to the emitted header slot; after the single walk foldDynamicExtends re-runs computeExtends over static + dynamic facts and rewrites only the target header slots whose complete selector changed.",
+      "whyNotCarried": "A target can be emitted before the extender that augments it, so the complete selector is unknown at emit time; the deferred rewrite over addressable render-buffer slots resolves the forward reference without a second evaluation.",
+      "knownRedundancy": "The post-walk foldDynamicExtends re-solves computeExtends over [...base, ...dynamic], re-doing the static portion the pre-walk computeExtends already solved to drive the live projection. This is irreducible without an incremental-merge API on computeExtends, and the dynamic facts are not known until the walk ends. Named upgrade path: an incremental computeExtends that merges new subjects/instructions into the existing solve instead of re-running it."
     },
     "semanticPreflight": {
-      "trigger": "a loadable imported document body is encountered",
-      "scope": "The preflight reads only typed loaded-import statements before selector-plan allocation. A false result does not enter the collector, create overlay IR, or issue loop-placement tokens; a true result carries only the concrete placement facts the existing root planner needs.",
+      "trigger": "the document has a dynamic extend surface (classifyExtend / an imported loop-or-mixin extend)",
+      "scope": "Walk-time recording is armed only when e.dynamicExtend is allocated (classifyExtend reports a dynamic extend, or an imported loop/mixin extend was admitted). A no-extend or static-only document allocates no dynamic-extend state, records no facts, patches no slots, and runs no post-walk fold — byte- and cost-identical to the base path.",
       "falsePath": {
         "fixture": "extend-preflight-contract:no-extend",
-        "requiredZeroCounters": ["collectorCalls", "overlaySubjects", "overlayInstructions", "loopPlacements"]
+        "requiredZeroCounters": ["preflight.collectCalls", "preflight.overlaySubjects", "preflight.overlayInstructions", "preflight.loopPlacements"]
       },
       "featurePath": {
         "fixture": "extend-preflight-contract:imported-loop",
-        "minimumCounters": {"importsVisited": 1, "loopPlacements": 2, "overlaySubjects": 2}
+        "minimumCounters": {"preflight.importsVisited": 1, "preflight.importsFeatureBearing": 1}
       },
       "baseline": {"fixture": "benchmark.less", "phase": "parse-render"}
     },
     "sourceCheck": {
       "file": "packages/core/src/ast/serialize.ts",
-      "caller": "function planImportedFacts(",
-      "guard": "bodyMayPlanExtend",
-      "call": "collectPlacedExtendFacts",
+      "caller": "function foldDynamicExtends(",
+      "guard": "e.dynamicExtend",
+      "call": "recordDynamicExtendFacts",
       "profile": "recordAstExtendProfile"
     },
     "evidence": {"command":["pnpm","--filter","@jesscss/core","test","--","--run","src/ast/__tests__/extend-preflight-contract.test.ts"]}
