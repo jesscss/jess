@@ -22,15 +22,20 @@ import type { FnRegistry } from './value-dispatch.js';
 import { dispatchFn } from './value-dispatch.js';
 import { makeKeyword } from './value-factory.js';
 
-/** Join an unknown-fn's arg bytes verbatim (per separator). */
-function verbatimArgs(args: ValueGroup): string {
+/** Join an unknown-fn's arg bytes verbatim (per separator). Under compress the
+ *  comma list-divider tightens (`,`); space and `/` separators are significant
+ *  and kept (v5 keeps `/` spaced). Arg SPELLINGS stay verbatim either way. */
+function verbatimArgs(args: ValueGroup, modes?: EvalModes): string {
   const separator = groupSeparator(args);
-  return groupItems(args).map(emitValue).join(separator === ' ' ? ' ' : sepGlue(separator));
+  const glue = separator === ' '
+    ? ' '
+    : (separator === ',' && modes?.compress === true ? ',' : sepGlue(separator));
+  return groupItems(args).map(emitValue).join(glue);
 }
 
 /** Preserve an optional CSS call after name resolution or invocation failed. */
-function fallbackCall(name: string, args: ValueGroup): Value {
-  return makeKeyword(`${name}(${verbatimArgs(args)})`);
+function fallbackCall(name: string, args: ValueGroup, modes?: EvalModes): Value {
+  return makeKeyword(`${name}(${verbatimArgs(args, modes)})`);
 }
 
 /**
@@ -47,7 +52,7 @@ function recoverCallFailure(
   if (modes.functionMode === 'error') {
     throw error;
   }
-  return fallbackCall(name, args);
+  return fallbackCall(name, args, modes);
 }
 
 /** Keep the ordinary synchronous path allocation-free; attach recovery only to an async result. */
@@ -123,7 +128,7 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     }
 
     // Unknown function: emit verbatim.
-    return fallbackCall(name, args);
+    return fallbackCall(name, args, modes);
   };
 
   /* The callee's declared parameter names — the binding surface a keyword
