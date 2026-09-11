@@ -1003,7 +1003,14 @@ export class Compiler {
       ? resolved.effectiveConfig.output
       : null;
     contextOptions.output = {
-      compress: cfgOutput?.compress,
+      /*
+       * `output.compress` wins, but the Less config shape carries it as
+       * `language.less.compress` — surfaced on `activeOptions` by `getOptions`.
+       * Fall back to it so a less.js-style config (and the corpus fixtures)
+       * honor `compress` without nesting it under `output`.
+       */
+      compress: cfgOutput?.compress
+        ?? (typeof resolved.activeOptions?.compress === 'boolean' ? resolved.activeOptions.compress : undefined),
 
       /*
        * Preserve the object form (sourceMapBasepath/rootpath/inline/…); coercing
