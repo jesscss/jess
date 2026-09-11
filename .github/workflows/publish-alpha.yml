@@ -44,9 +44,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Ensure npm supports trusted publishing
-        run: npm install -g npm@latest
-
       - name: Enforce alpha branch release policy
         run: |
           if [ "${{ github.ref_name }}" != "alpha" ]; then
