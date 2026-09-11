@@ -3947,8 +3947,16 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       /*
        * Typed materialization owns Less's numeric spelling canonicalization
        * (`.3s` → `0.3s`) without a post-render CSS rewrite.
+       *
+       * [compress] The byte lane (`ev === null`, the preserved-call arg path) keeps
+       * a dimension's authored spelling — EXCEPT that `output.compress` folds it by
+       * its CLASSIFICATION here, exactly as `emitValueC` does for the typed lane. A
+       * `Dimension` is a `Dimension` whatever position it lands in, so `rgba(…,0.1)`
+       * trims to `.1` off the node type, never by re-scanning the joined arg string.
        */
-      return e.ev ? dimensionFromFields(node.number, node.unit, node.src) : literal(node.src);
+      return e.ev
+        ? dimensionFromFields(node.number, node.unit, node.src)
+        : literal(e.compress === true ? compressDimensionBytes(node.src) : node.src);
     case 'Quoted':
       return literal(node.escaped ? node.value : node.src);
     case 'Url':
