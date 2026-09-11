@@ -75,4 +75,4 @@ jobs:
       # emitted lib/ + .d.ts yet. --workspace-concurrency=1 keeps the parser
       # builds serial (they gate on each other).
       - name: Verify public Jess CLI
-        run: pnpm --filter "jess..." --workspace-concurrency=1 build && pnpm --filter jess test -- cli.test.ts --run --globals
+        run: pnpm --filter "jess..." --workspace-concurrency=1 build && pnpm --filter jess test cli.test.ts --run --globals
