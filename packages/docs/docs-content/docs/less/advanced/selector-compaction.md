@@ -16,6 +16,15 @@ This is the *nesting-collapse* form of `:is()` compaction. It is distinct from t
 compound. Here the rule is about how a descendant block joins onto the selector it
 is nested inside.
 
+:::info Mode
+The examples below show the **`collapseNesting: 'compact'`** flatten style, which folds
+a multi-branch **child** list into a single `:is(…)`. The default flatten,
+**`'native'`**, keeps the parent `:is()` but DISTRIBUTES the child list (`A b1, A b2, …`,
+the CSS Nesting desugaring) so each branch keeps its own specificity. `false` (the
+overall default) preserves authored nesting and emits no `:is()`. See
+[Specificity and `:is()` grouping](#specificity-and-is-grouping-nesting--extend) below.
+:::
+
 ## The rule
 
 Joining a nested `&`-less descendant `B` onto its ancestor `A` emits:
@@ -159,16 +168,23 @@ A common real-world shape is a table reset that nests several element selectors 
 `:is()` scores `(0,0,2)` and the whole selector scores **`(0,1,2)`**. Under 4.x the
 `.table-borderless th` row scored `(0,1,1)`; collapsed, it now scores `(0,1,2)`, so a
 later `(0,1,1)` rule that used to override `.table-borderless th` no longer wins.
-There is no `:is()`-internal fix — the score is the group maximum by definition. If a
-stylesheet relies on those per-row scores, keep the default nested output
-(`collapseNesting: false`), which emits no `:is()` at the join.
+There is no `:is()`-internal fix — the score is the group maximum by definition.
+
+This child-list fold is the **`'compact'`** flatten style only. The default flatten,
+**`'native'`**, DISTRIBUTES the child list — `.table-borderless th, .table-borderless
+td, .table-borderless thead th, .table-borderless tbody + tbody` — matching the CSS
+Nesting desugaring, so each branch keeps its own specificity. Nested output
+(`collapseNesting: false`) emits no `:is()` at the join at all.
 
 :::note
-The nesting-collapse `:is()` grouping shown here is the **flattened**-output form
-(`collapseNesting: true`). In the 5.x default nested output the multi-parent header
-stays a plain comma list (`.a, #b { .c {…} }`) and no `:is()` is emitted at the join,
-so this specificity shift applies to flattened output. Extend's `:is()` grafting, by
-contrast, appears in **both** nested and flattened output.
+`collapseNesting` selects the flatten STYLE: **`false`** (default) preserves authored
+nesting; **`'native'`** flattens like native CSS nesting — parent `:is()`, child lists
+DISTRIBUTED (specificity-faithful); **`'compact'`** additionally folds same-combinator
+descendant child runs into one `:is(…)` (the group-max specificity shown above). The
+**parent** `:is()` (`:is(.a, #b) .c`) is emitted by BOTH `'native'` and `'compact'` —
+it is the native desugaring of a multi-parent header, and its group-max specificity is
+unavoidable. Extend's `:is()` grafting appears in every mode. (`true` is a deprecated
+alias for `'native'`.)
 :::
 
 See also: [Output Model](./output-model.md) ·
