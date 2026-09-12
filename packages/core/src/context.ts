@@ -402,7 +402,7 @@ export interface TreeContextOptions extends DocumentContextOptions {
   selectorBits?: BitSetLibrary<string>;
 
   /** Plugin-supplied output policy carried on the tree (read via print/emit options). */
-  collapseNesting?: boolean;
+  collapseNesting?: boolean | 'native' | 'compact';
 
   /** Plugin-supplied allow-list of extend selector kinds. */
   allowExtendSelectors?: ExtendSelectorKind[];

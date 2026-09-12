@@ -291,11 +291,16 @@ export interface LessOptions {
   allowCallerScope?: boolean;
 
   /**
-   * Whether to collapse nested selectors (Less 1.x-4.x style flattening)
-   * When true, nested selectors like `.parent { .child { } }` are flattened to `.parent .child { }`
+   * How to flatten authored nesting into composed selectors.
+   * - `false` (default): keep authored nesting (native CSS nested output).
+   * - `'native'`: CSS Nesting desugaring — parent wrapped in `:is()`, child
+   *   selector lists distributed, so each branch keeps its own specificity.
+   * - `'compact'`: like `'native'` but also folds same-combinator descendant
+   *   runs into a single `:is()` (group-max specificity).
+   * - `true`: deprecated alias for `'native'`.
    * @default false
    */
-  collapseNesting?: boolean;
+  collapseNesting?: boolean | 'native' | 'compact';
 
   /**
    * @deprecated This is legacy Less behavior.
