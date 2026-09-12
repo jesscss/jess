@@ -16,7 +16,7 @@ import { JsFunction } from '../js-function.js';
 import { JsObject } from '../js-object.js';
 import { createPublicBool } from '../bool.js';
 import { isNode } from './is-node.js';
-import isPlainObject from 'lodash-es/isPlainObject.js';
+import { isPlainObject } from 'lodash-es';
 
 const { isArray } = Array;
 
