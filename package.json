@@ -179,14 +179,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/matthew-dean/jess.git"
+    "url": "git+https://github.com/jesscss/jess.git"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/matthew-dean/jess/issues"
+    "url": "https://github.com/jesscss/jess/issues"
   },
-  "homepage": "https://github.com/matthew-dean/jess#readme",
+  "homepage": "https://github.com/jesscss/jess#readme",
   "pnpm": {
     "patchedDependencies": {
       "superstruct@1.0.3": "patches/superstruct@1.0.3.patch",

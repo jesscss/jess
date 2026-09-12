@@ -1,5 +1,10 @@
 {
   "name": "@jesscss/plugin-less-compat",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jesscss/jess.git",
+    "directory": "packages/syntax/less/jess-plugin-less-compat"
+  },
   "publishConfig": {
     "access": "public"
   },
