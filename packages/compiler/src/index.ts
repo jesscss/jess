@@ -638,7 +638,7 @@ export class Compiler {
      * selects a specific array entry. Returns undefined when nothing sets it —
      * the caller falls back to the language default.
      */
-    const collapseFromOutput = (): boolean | undefined => {
+    const collapseFromOutput = (): boolean | 'native' | 'compact' | undefined => {
       const output = effectiveConfig.output;
       if (!Array.isArray(output)) {
         return output?.collapseNesting;
