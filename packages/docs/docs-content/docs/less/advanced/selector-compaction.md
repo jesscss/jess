@@ -140,6 +140,29 @@ classes (`:is(.a, .b)`) — nothing changes. The shift is observable only when b
 of **different** specificity are grouped: the lower-specificity branch inherits the
 group's higher score, which can flip a close cascade that 4.x resolved per-row.
 
+A common real-world shape is a table reset that nests several element selectors of
+**different lengths** under one class:
+
+```less
+.table-borderless {
+  th, td, thead th, tbody + tbody { border: 0; }
+}
+```
+
+```css
+.table-borderless :is(th, td, thead th, tbody + tbody) {
+  border: 0;
+}
+```
+
+`th` and `td` are `(0,0,1)` while `thead th` and `tbody + tbody` are `(0,0,2)`, so the
+`:is()` scores `(0,0,2)` and the whole selector scores **`(0,1,2)`**. Under 4.x the
+`.table-borderless th` row scored `(0,1,1)`; collapsed, it now scores `(0,1,2)`, so a
+later `(0,1,1)` rule that used to override `.table-borderless th` no longer wins.
+There is no `:is()`-internal fix — the score is the group maximum by definition. If a
+stylesheet relies on those per-row scores, keep the default nested output
+(`collapseNesting: false`), which emits no `:is()` at the join.
+
 :::note
 The nesting-collapse `:is()` grouping shown here is the **flattened**-output form
 (`collapseNesting: true`). In the 5.x default nested output the multi-parent header
