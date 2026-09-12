@@ -69,3 +69,19 @@ pnpm run release:alpha
   the repo mirrors npm exactly like the local `pnpm run release:alpha` flow does.
 - Requires the `alpha` branch to already carry the cut's resolved version (the
   `update-alpha-from-dev` cut writes it), which it will on a correctly cut snapshot.
+
+### First-time setup: register the trusted publisher (per package)
+
+OIDC publishing only works once each allowlisted package has a GitHub Actions
+trusted publisher registered on npmjs.com (repo `jesscss/jess`, workflow
+`publish-alpha.yml`). Without it the publish fails with `npm error 404 … could not
+be found or you do not have permission`. Configure all allowlisted packages at once
+(npm CLI >= 11.10.0, logged in with publish rights):
+
+```bash
+npm login            # if `npm whoami` fails
+pnpm run release:alpha:trust
+```
+
+This reads `scripts/release/alpha-allowlist.json`, so re-run it after adding a new
+package to the release set.
