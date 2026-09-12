@@ -1,5 +1,10 @@
 {
   "name": "@jesscss/awaitable-pipe",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jesscss/jess.git",
+    "directory": "packages/awaitable-pipe"
+  },
   "version": "2.0.0-alpha.18",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
@@ -29,10 +34,6 @@
     "test:types": "tsc -p tsconfig.json --noEmit",
     "test:watch": "vitest",
     "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/matthew-dean/jess.git"
   },
   "keywords": [
     "pipe",

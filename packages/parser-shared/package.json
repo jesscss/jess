@@ -1,5 +1,10 @@
 {
   "name": "@jesscss/parser-shared",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jesscss/jess.git",
+    "directory": "packages/parser-shared"
+  },
   "version": "2.0.0-alpha.18",
   "type": "module",
   "publishConfig": {

@@ -158,6 +158,7 @@
     "release:alpha:update-from-dev": "node scripts/release/update-alpha-from-dev.mjs",
     "release:alpha:version": "node scripts/release/increment-alpha.mjs",
     "release:alpha:publish": "node scripts/release/publish-alpha.mjs --tag alpha",
+    "release:alpha:trust": "node scripts/release/configure-trusted-publishers.mjs",
     "release:alpha:dry-run": "node scripts/release/release-alpha.mjs --dry-run",
     "release:alpha:pack-dry-run": "node scripts/release/publish-alpha.mjs --dry-run --tag alpha",
     "release:alpha": "node scripts/release/release-alpha.mjs",
@@ -178,14 +179,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/matthew-dean/jess.git"
+    "url": "git+https://github.com/jesscss/jess.git"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/matthew-dean/jess/issues"
+    "url": "https://github.com/jesscss/jess/issues"
   },
-  "homepage": "https://github.com/matthew-dean/jess#readme",
+  "homepage": "https://github.com/jesscss/jess#readme",
   "pnpm": {
     "patchedDependencies": {
       "superstruct@1.0.3": "patches/superstruct@1.0.3.patch",

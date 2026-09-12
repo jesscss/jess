@@ -1,5 +1,10 @@
 {
   "name": "@jesscss/plugin-node-modules",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jesscss/jess.git",
+    "directory": "packages/jess-plugin-node-modules"
+  },
   "version": "2.0.0-alpha.18",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

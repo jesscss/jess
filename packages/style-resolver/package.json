@@ -1,5 +1,10 @@
 {
   "name": "@jesscss/style-resolver",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jesscss/jess.git",
+    "directory": "packages/style-resolver"
+  },
   "version": "2.0.0-alpha.18",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

@@ -1,5 +1,10 @@
 {
   "name": "@jesscss/patch-css",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jesscss/jess.git",
+    "directory": "packages/patch-css"
+  },
   "type": "module",
   "version": "2.0.0-alpha.18",
   "engines": {

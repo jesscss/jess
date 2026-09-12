@@ -1,5 +1,10 @@
 {
   "name": "@jesscss/plugin-scss",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jesscss/jess.git",
+    "directory": "packages/syntax/scss/jess-plugin-scss"
+  },
   "publishConfig": {
     "access": "public"
   },

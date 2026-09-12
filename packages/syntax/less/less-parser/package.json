@@ -1,5 +1,10 @@
 {
   "name": "@jesscss/less-parser",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jesscss/jess.git",
+    "directory": "packages/syntax/less/less-parser"
+  },
   "type": "module",
   "publishConfig": {
     "access": "public"
