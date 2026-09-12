@@ -1,4 +1,4 @@
-import isPlainObject from 'lodash-es/isPlainObject.js';
+import { isPlainObject } from 'lodash-es';
 import { AbstractClass, Class, OmitIndexSignature } from 'type-fest';
 import { isNode } from './tree/util/is-node.js';
 import { N } from './tree/node-type.js';
