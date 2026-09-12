@@ -1,5 +1,10 @@
 {
   "name": "@jesscss/lint",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jesscss/jess.git",
+    "directory": "packages/lint"
+  },
   "type": "module",
   "publishConfig": {
     "access": "public"
