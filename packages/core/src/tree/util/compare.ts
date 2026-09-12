@@ -1,5 +1,5 @@
 import { isNode } from './is-node.js';
-import isObject from 'lodash-es/isObject.js';
+import { isObject } from 'lodash-es';
 import { type Node } from '../node.js';
 
 /** Normalize loose CSS value text for guard/comparison coercion. */

@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-import mergeWith from 'lodash-es/mergeWith.js';
+import { mergeWith } from 'lodash-es';
 import { getConfigWithMeta } from './config.js';
 import {
   Context,

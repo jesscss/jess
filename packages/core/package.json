@@ -52,7 +52,7 @@
     "@ungap/set-methods": "~0.1.1",
     "big.js": "^7.0.1",
     "bitset": "~5.2.3",
-    "chalk": "^5.2.0",
+    "chalk": "^4.1.2",
     "color-name": "~2.0.0",
     "combinate": "^1.1.11",
     "data-structure-typed": "~2.0.0",
