@@ -158,6 +158,7 @@
     "release:alpha:update-from-dev": "node scripts/release/update-alpha-from-dev.mjs",
     "release:alpha:version": "node scripts/release/increment-alpha.mjs",
     "release:alpha:publish": "node scripts/release/publish-alpha.mjs --tag alpha",
+    "release:alpha:trust": "node scripts/release/configure-trusted-publishers.mjs",
     "release:alpha:dry-run": "node scripts/release/release-alpha.mjs --dry-run",
     "release:alpha:pack-dry-run": "node scripts/release/publish-alpha.mjs --dry-run --tag alpha",
     "release:alpha": "node scripts/release/release-alpha.mjs",
