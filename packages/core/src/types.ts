@@ -1,6 +1,6 @@
 export interface StylesConfig {
   output?: {
-    collapseNesting?: boolean;
+    collapseNesting?: boolean | 'native' | 'compact';
     compress?: boolean;
 
     /**

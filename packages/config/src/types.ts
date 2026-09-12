@@ -295,11 +295,16 @@ export interface LessOptions {
   allowCallerScope?: boolean;
 
   /**
-   * Whether to collapse nested selectors (Less 1.x-4.x style flattening)
-   * When true, nested selectors like `.parent { .child { } }` are flattened to `.parent .child { }`
+   * Whether/how to flatten nested selectors.
+   * - `false` (default): keep authored nesting, emit no `:is()`.
+   * - `'native'`: flatten like native CSS Nesting — parent wrapped in `:is()`,
+   *   child selector lists DISTRIBUTED (each branch keeps its own specificity).
+   * - `'compact'`: like `'native'`, but also fold same-combinator descendant
+   *   child runs into a single `:is(…)` (group-max specificity).
+   * `true` is a deprecated alias for `'native'`.
    * @default false
    */
-  collapseNesting?: boolean;
+  collapseNesting?: boolean | 'native' | 'compact';
 
   /**
    * @deprecated This is legacy Less behavior.
@@ -315,7 +320,7 @@ export interface ScssOptions {
   allowExtendSelectors?: ExtendSelectorKind[];
   allowApplySelectors?: ApplySelectorKind[];
   unitMode?: UnitMode;
-  collapseNesting?: boolean;
+  collapseNesting?: boolean | 'native' | 'compact';
 
   [key: string]: any;
 }
@@ -364,7 +369,7 @@ export interface InputOptions extends FileMatchOptions {
   /** @deprecated Use `allowLeakyScope`. Alias: used when `allowLeakyScope` is unset. */
   leakyScope?: boolean;
   allowCallerScope?: boolean;
-  collapseNesting?: boolean;
+  collapseNesting?: boolean | 'native' | 'compact';
   bubbleRootAtRules?: boolean;
 
   /** Allow additional language-specific options */
@@ -375,7 +380,7 @@ export interface InputOptions extends FileMatchOptions {
  * Output file options - can override output settings per output file
  */
 export interface OutputOptions extends FileMatchOptions {
-  collapseNesting?: boolean;
+  collapseNesting?: boolean | 'native' | 'compact';
   compress?: boolean;
   sourceMap?: boolean | {
     sourceMapFullFilename?: string;

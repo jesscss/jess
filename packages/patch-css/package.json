@@ -6,7 +6,7 @@
     "directory": "packages/patch-css"
   },
   "type": "module",
-  "version": "2.0.0-alpha.19",
+  "version": "2.0.0-alpha.20",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },

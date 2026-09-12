@@ -6,7 +6,7 @@
     "directory": "packages/jess"
   },
   "type": "module",
-  "version": "2.0.0-alpha.19",
+  "version": "2.0.0-alpha.20",
   "description": "JavaScript Enhanced Style Sheets",
   "main": "lib/index.cjs",
   "types": "lib/index-public.d.ts",
