@@ -265,12 +265,20 @@ type ResolvedRenderConfig = {
   activeOptions: Record<string, unknown>;
   resolvedOutputFilePath?: string;
   jsPluginConfig: JsPluginConfig;
-  printOptions: { collapseNesting?: boolean };
+  printOptions: { collapseNesting?: boolean | 'native' | 'compact' };
 
   /** Dialect of this render's entry source; selects the built-in fn set. */
   language?: string;
   optionsFor(language?: string): Record<string, unknown>;
 };
+
+/**
+ * Serialize accepts only `false | 'native' | 'compact'`; `collapseNesting: true`
+ * is a deprecated alias for `'native'`. Normalize the config value here.
+ */
+const collapseNestingFor = (
+  value: boolean | 'native' | 'compact' | undefined
+): false | 'native' | 'compact' => (value === true ? 'native' : (value ?? false));
 
 const createBaseConfig = (): ConfigOptions => ({
   compile: {},
@@ -630,7 +638,7 @@ export class Compiler {
      * selects a specific array entry. Returns undefined when nothing sets it —
      * the caller falls back to the language default.
      */
-    const collapseFromOutput = (): boolean | undefined => {
+    const collapseFromOutput = (): boolean | 'native' | 'compact' | undefined => {
       const output = effectiveConfig.output;
       if (!Array.isArray(output)) {
         return output?.collapseNesting;
@@ -1139,7 +1147,7 @@ export class Compiler {
       Promise.resolve(context.withDocument(document, () => {
         this.activateDocumentPlugins(context);
         return prepareStaticImports(document, {
-          collapseNesting: context.opts.output?.collapseNesting ?? false,
+          collapseNesting: collapseNestingFor(context.opts.output?.collapseNesting),
           context,
           pluginHost: context.pluginHost,
           io: { readFile: specifier => readOptionalBinary(context, specifier) }
@@ -1160,7 +1168,7 @@ export class Compiler {
       Promise.resolve(context.withDocument(document, () => {
         this.activateDocumentPlugins(context);
         return serialize(document, {
-          collapseNesting: context.opts.output?.collapseNesting ?? false,
+          collapseNesting: collapseNestingFor(context.opts.output?.collapseNesting),
           compress: context.opts.output?.compress ?? false,
           context,
           pluginHost: context.pluginHost,

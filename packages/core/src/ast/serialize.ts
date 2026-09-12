@@ -237,8 +237,13 @@ export interface SerializeOptions {
    * emits its OWN local selector — `&`/`> .x`/`.b, .c` stay literal), placed
    * mixin bodies splice inline under the call site, and `@media` bodies keep
    * their inner rules nested. Same single walk, second emit form.
+   *
+   * When flattening, the STYLE is `'native'` (default) — the CSS Nesting
+   * desugaring, parent `:is()` with child selector lists DISTRIBUTED
+   * (specificity-faithful) — or `'compact'`, which also folds same-combinator
+   * descendant runs into a single `:is(…)` (group-max specificity).
    */
-  collapseNesting?: boolean;
+  collapseNesting?: false | 'native' | 'compact';
 
   /**
    * [compress] Minified output (`output.compress`). `true` removes all
@@ -7238,11 +7243,19 @@ function leadsWithCombinator(c: SelectorBranch): boolean {
  * Descendant branches keep the compaction, so a MIXED list splits by shape:
  * `.nav-fill` + `> .nav-link, .nav-item` → `.nav-fill > .nav-link, .nav-fill .nav-item`.
  * Consecutive descendant branches stay one group, preserving authored order. */
-function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: Emit): MaybePromise<string[]> {
   const canons = child.selectors.map(c => resolveSelectorBranch(c, frame, e));
   return combineAll(canons, (values) => {
     if (values.length === 1) {
       return [a + ' ' + values[0]!];
+    }
+
+    /* [nested] `'native'` (default) DISTRIBUTES the child list — the CSS Nesting
+     * desugaring (`A b1, A b2, …`) — so each branch keeps its own specificity.
+     * Only `'compact'` folds a same-combinator descendant run into one `:is(…)`
+     * (group-max specificity), via the run logic below. */
+    if (e.collapseMode !== 'compact') {
+      return values.map(v => a + ' ' + v);
     }
     if (!child.selectors.some(leadsWithCombinator)) {
       return [a + ' :is(' + values.join(', ') + ')'];
@@ -7424,6 +7437,12 @@ interface Emit extends EvalCtx {
    * flatten to composed selector strings (4.x / collapseNesting:true).
    */
   collapse: boolean;
+
+  /* [nested] flatten STYLE (only meaningful when `collapse`): `'compact'` folds
+   * same-combinator descendant child runs into `:is(…)`; anything else — incl.
+   * unset — is `'native'`, distributing them (CSS Nesting desugaring,
+   * specificity-faithful). Read only via `=== 'compact'`, so unset == native. */
+  collapseMode?: 'native' | 'compact';
 
   /*
    * [extend] per-rule extend overrides, or null when the document has no
@@ -9866,6 +9885,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     drops: [],
     depth: 0,
     collapse: options?.collapseNesting !== false,
+    collapseMode: options?.collapseNesting === 'compact' ? 'compact' : 'native',
     compress: options?.compress ?? false,
     extends: null,
     dynamicExtend: null,
@@ -9953,6 +9973,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     drops: [], // [null] declarations that may still elide on the async lane
     depth: 0, // [atrule]
     collapse: options?.collapseNesting !== false, // [nested/R0] default = flatten
+    collapseMode: options?.collapseNesting === 'compact' ? 'compact' : 'native', // [nested] fold vs distribute
     compress: options?.compress ?? false, // [compress] minified output
     extends: null, // [extend] computed below (after selector-interp pre-pass)
     dynamicExtend: null,
