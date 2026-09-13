@@ -3,12 +3,14 @@ import { isNode, type Node } from '../node.js';
 import {
   collection,
   collectionEntry,
+  collectionSpread,
   block,
   declarationReference,
   funcCall,
   important,
   interpolation,
   keyword,
+  nestedPropertyBlock,
   selectorCapture,
   reference,
   variableDeclaration,
@@ -38,8 +40,20 @@ describe('AST node contract', () => {
     expect(isNode(value)).toBe(true);
   });
 
+  it('admits NestedPropertyBlock through the exported Node union', () => {
+    const value: Node = nestedPropertyBlock([]);
+
+    expect(isNode(value)).toBe(true);
+  });
+
   it('admits CollectionEntry through the exported Node union', () => {
     const value: Node = collectionEntry(keyword('a'), keyword('b'));
+
+    expect(isNode(value)).toBe(true);
+  });
+
+  it('admits CollectionSpread through the exported Node union', () => {
+    const value: Node = collectionSpread(keyword('defaults'));
 
     expect(isNode(value)).toBe(true);
   });

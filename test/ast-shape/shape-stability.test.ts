@@ -85,7 +85,8 @@ const scssSources: CorpusSource[] = [
   s('nesting-combinator', '.nesting { a: 1; .child { b: 2; & + & { c: 3; } } }'),
   s('media', '@media screen and (min-width: 100px) { .r { d: 4; } }'),
   s('interp-value', '.interp { content: "pre#{$x}post"; }'),
-  s('interp-selector', '.col-#{$i} { width: 1px; }')
+  s('interp-selector', '.col-#{$i} { width: 1px; }'),
+  s('nested-property', '.card { font: 20px { family: serif; } }')
 ];
 
 /**
@@ -105,7 +106,8 @@ const jessSources: CorpusSource[] = [
   // LOOKUP form and is a value-position construct, not selector interpolation.
   s('apply-and-for', 'paint() { color: red; } $held: { background: blue; }; $items: one, two; .host { $ > paint(); $held(); $apply .paint; $for ($item of $items) { .item-${item} { order: $item; } } }'),
   s('apply-selectors', '$apply .rounded, #theme, button[data-x]:hover;', ALL_APPLY_KINDS),
-  s('mixin-params', 'outer($tone) { .inside { color: $tone; } } .one { $ > outer(red); }')
+  s('mixin-params', 'outer($tone) { .inside { color: $tone; } } .one { $ > outer(red); }'),
+  s('collection-spread', '$a: { x: 1; }; $b: { ...$a; x: 2; };')
 ];
 
 interface DialectCorpus {
@@ -143,10 +145,10 @@ const CORPUS_NODE_TYPES: readonly string[] = [
   'AtRuleBlock',
   'AtRuleStatement',
   'Block',
-  'BracketLookup',
   'Call',
   'Collection',
   'CollectionEntry',
+  'CollectionSpread',
   'Color',
   'ComplexSelector',
   'CompoundSelector',
@@ -155,12 +157,14 @@ const CORPUS_NODE_TYPES: readonly string[] = [
   'For',
   'FunctionCall',
   'If',
-  'ImportAtRule',
   'Interpolation',
   'Keyword',
   'List',
+  'Lookup',
+  'LookupStep',
   'MixinCall',
   'MixinDefinition',
+  'NestedPropertyBlock',
   'Operation',
   'PseudoSelector',
   'Quoted',
@@ -169,13 +173,12 @@ const CORPUS_NODE_TYPES: readonly string[] = [
   'RelativeSelector',
   'Ruleset',
   'SelectorList',
+  'Sequence',
   'SimpleSelector',
-  'SpacedValue',
+  'StyleImport',
   'Stylesheet',
   'Url',
-  'VarIndirect',
-  'VariableDeclaration',
-  'VariableReference'
+  'VariableDeclaration'
 ];
 
 describe('AST v2 shape stability', () => {

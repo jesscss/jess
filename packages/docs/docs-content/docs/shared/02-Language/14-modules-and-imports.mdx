@@ -184,6 +184,18 @@ by their bare name (there is no `$myFunc()` call form).
 JSON is a pure data import; evaluating local/package JS/TS while compiling needs
 `@jesscss/plugin-js` (which isolates execution on Deno).
 
+The formal spelling for a recursive collection overlay uses the Sass map
+module. Jess's native `...` collection spread remains shallow:
+
+```less
+@-use '#sass/map' as map;
+$theme: $map.deep-merge($defaults, $overrides);
+```
+
+The `deep-merge` implementation is available to JavaScript consumers from
+`@jesscss/fns/sass/map`. The stylesheet form above becomes executable when the
+module resolver described below lands.
+
 :::caution Resolution is not wired yet
 
 In the 2.x alpha the module at-rules parse and round-trip to the output, but no

@@ -58,7 +58,8 @@ This outputs:
 For a list, the key is its **1-based** source-order position. (In the example
 above the values happen to equal their positions, so `width` and `height` match.)
 For a Jess collection the key is the entry's key **value** — a bare name like
-`small` is the string `"small"`.
+`small` is a `Keyword`. It compares equal to the quoted string `"small"` under
+Sass map equality, but it is not parsed as a quoted string or a color.
 
 :::
 

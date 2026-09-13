@@ -175,9 +175,6 @@ export const SHAPE_DEBT_ALLOWLIST: Readonly<Record<string, readonly string[]>> =
   Ruleset: [
     'type,selector,rules,_s,_e,_bs,_be',
     'type,selector,rules,extendInstructions,_s,_e,_bs,_be'
-  ],
+  ]
 
-  // TODO(shape-debt): SpacedValue omits `separators` when no authored separator
-  // layout is retained.
-  SpacedValue: ['type,parts,separators', 'type,parts']
 };

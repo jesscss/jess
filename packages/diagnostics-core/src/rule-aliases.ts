@@ -73,6 +73,7 @@ export const LINT_RULE_NAMES = {
   unboundedExtends: 'jess/no-unbounded-extend',
   deadExtends: 'jess/no-dead-extend',
   suspiciousMapKeyAccess: 'jess/no-suspicious-map-key-access',
+  duplicateCollectionKeys: 'jess/no-duplicate-collection-keys',
   unsupportedSassForm: 'jess/unsupported-sass-form'
 } as const;
 
@@ -151,6 +152,7 @@ const DIAGNOSTIC_BY_RULE: Record<LintRuleName, string> = {
   [LINT_RULE_NAMES.unboundedExtends]: LINT_CODES.unboundedExtends,
   [LINT_RULE_NAMES.deadExtends]: LINT_CODES.deadExtends,
   [LINT_RULE_NAMES.suspiciousMapKeyAccess]: LINT_CODES.suspiciousMapKeyAccess,
+  [LINT_RULE_NAMES.duplicateCollectionKeys]: LINT_CODES.duplicateCollectionKeys,
   [LINT_RULE_NAMES.unsupportedSassForm]: LINT_CODES.unsupportedSassForm
 };
 

@@ -4,7 +4,8 @@ Status: audit/recommendations plus implementation tranche.
 
 Implemented in `codex/ast-v2-dx-fns`:
 
-- AST v2 `Collection.entries` now uses `CollectionEntry { key, value }`.
+- AST v2 `Collection.entries` now uses `CollectionItem = CollectionEntry |
+  CollectionSpread`; evaluated value-domain collections remain entry-only.
 - Jess collection literals parse through a dedicated entry grammar; explicit
   `@{ ... }` remains the anonymous-mixin/callable spelling.
 - SCSS map keys preserve typed authored shape instead of squeezing through
@@ -177,7 +178,8 @@ Current value domain:
 
 - `packages/core/src/ast/value-eval.ts` has
   `CollectionEntry { key: ValueGroup, value: ValueGroup }`.
-- `Collection.entries` is `readonly CollectionEntry[]`.
+- Value-domain `Collection.entries` is `readonly CollectionEntry[]`; AST
+  `Collection.entries` is `CollectionItem[]` so authored spreads remain edges.
 - `packages/core/src/ast/value-collection.ts` owns key lookup through
   `collectionKeyIndex()` and value equality.
 
@@ -387,9 +389,9 @@ shape fixes are pending.
 
 ### Implemented P0: Fix split-brained `Collection`
 
-1. Add AST `CollectionEntry { key: ValueSlot, value: ValueSlot, variable?,
-   important? }`.
-2. Retype AST `Collection.entries` away from declarations.
+1. Add AST `CollectionEntry { key: ValueSlot, value: ValueSlot, important? }`
+   and `CollectionSpread { value: ValueSlot }`.
+2. Retype AST `Collection.entries` to `CollectionItem[]`, away from declarations.
 3. Split "collection as map data" from "nested property structure" at the
    consumer sites that currently rely on `Declaration`.
 4. Update traversal edge ownership so collection entries expose key and value

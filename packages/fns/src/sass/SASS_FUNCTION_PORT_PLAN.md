@@ -83,10 +83,10 @@ Functions that are straightforward conversions with minimal logic:
 - [ ] `list-separator($list)` - Get separator
 
 **Map Functions:**
-- [ ] `map-get($map, $key, $keys...)` - Get value (nested)
-- [ ] `map-keys($map)` - Get all keys
-- [ ] `map-values($map)` - Get all values
-- [ ] `map-has-key($map, $key, $keys...)` - Check key existence
+- [x] `map-get($map, $key, $keys...)` / `map.get()` - Get value (nested)
+- [x] `map-keys($map)` / `map.keys()` - Get all keys
+- [x] `map-values($map)` / `map.values()` - Get all values
+- [x] `map-has-key($map, $key, $keys...)` / `map.has-key()` - Check key existence
 
 ### Phase 2: Medium Complexity Functions
 
@@ -133,9 +133,11 @@ Functions that are straightforward conversions with minimal logic:
 - [ ] `zip($lists...)` - Zip lists (variadic)
 
 **Map Functions:**
-- [ ] `map-set($map, $key, $value)` - Set value
-- [ ] `map-merge($map1, $map2)` - Merge maps
-- [ ] `map-remove($map, $keys...)` - Remove keys
+- [x] `map.set($map, $key, $value)` - Set value
+- [x] `map-merge($map1, $map2)` - Merge maps
+- [x] `map-remove($map, $keys...)` / `map.remove()` - Remove keys
+- [x] `map.deep-merge($map1, $map2)` - Recursively merge nested maps
+- [ ] `map.deep-remove($map, $keys...)` - Remove a nested key path
 
 ### Phase 3: Complex Functions
 

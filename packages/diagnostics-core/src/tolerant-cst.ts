@@ -6,7 +6,16 @@
  */
 import { type CssCstChild, type CssCstNode, type CssCstParseResult, type ParseDoc } from '@jesscss/css-parser/cst-host';
 import { parseCssCst as parseCssDiagnosticCst, parseCssDoc as parseCssDiagnosticDoc } from '@jesscss/css-parser/cst/positions';
-import { namedColor, type Phase } from '@jesscss/core';
+import {
+  CollectionOverlay,
+  makeKeyword,
+  makeNull,
+  makeQuoted,
+  namedColor,
+  sniffLiteral,
+  type Phase,
+  type ValueGroup
+} from '@jesscss/core';
 import { parseJessCst as parseJessDiagnosticCst, parseJessDoc as parseJessDiagnosticDoc } from '@jesscss/jess-parser/cst/positions';
 import { parseLessCst as parseLessDiagnosticCst, parseLessDoc as parseLessDiagnosticDoc } from '@jesscss/less-parser/cst/positions';
 import { parseScssCst as parseScssDiagnosticCst, parseScssDoc as parseScssDiagnosticDoc } from '@jesscss/scss-parser/cst/positions';
@@ -96,6 +105,7 @@ export const LINT_CODES = {
   deadExtends: 'lint/no-dead-extend',
   selfExtend: 'lint/no-self-extend',
   suspiciousMapKeyAccess: 'lint/no-suspicious-map-key-access',
+  duplicateCollectionKeys: 'lint/no-duplicate-collection-keys',
   unsupportedSassForm: 'unsupported/sass-form'
 } as const;
 
@@ -2895,6 +2905,55 @@ function childNodesOfType(node: CssCstNode, grammarType: string): CssCstNode[] {
   return childNodesOf(node).filter(child => child.grammarType === grammarType);
 }
 
+type StaticCollectionKey = {
+  readonly value: ValueGroup;
+  readonly display: string;
+  readonly span: DiagnosticSpan;
+};
+
+function staticJessCollectionKey(source: string, entry: CssCstNode): StaticCollectionKey | null {
+  const direct = cstChildrenOf(entry);
+  const computed = direct.some(child => child._tag === 'leaf' && child.value === '[');
+  let raw: string;
+  let span: DiagnosticSpan;
+  if (computed) {
+    const key = firstChildNodeOf(entry, 'Value');
+    if (key === undefined) {
+      return null;
+    }
+    raw = source.slice(absoluteStart(key), absoluteEnd(key)).trim();
+    span = key.span;
+  } else {
+    const key = direct.find(child => child._tag === 'leaf' && child.value !== ':' && child.value !== ';');
+    if (key?._tag !== 'leaf') {
+      return null;
+    }
+    raw = key.value;
+    span = key.span;
+  }
+
+  if (hasDynamicSyntax(raw)) {
+    return null;
+  }
+  if (computed && raw === 'null') {
+    return { value: makeNull(true), display: raw, span };
+  }
+  if (isCssIdentifier(raw)) {
+    return { value: makeKeyword(raw), display: raw, span };
+  }
+  const quoted = quotedStringInnerText(raw);
+  if (quoted !== null && !quoted.includes('\\')) {
+    return { value: makeQuoted(quoted, raw[0]!, false), display: quoted, span };
+  }
+  if (isValidHexColor(raw)
+    || cssNumberValue(raw) !== null
+    || cssPercentageValue(raw) !== null
+    || cssDimensionUnit(raw) !== null) {
+    return { value: sniffLiteral(raw), display: raw, span };
+  }
+  return null;
+}
+
 function firstDescendantNodeOf(node: CssCstNode, grammarType: string): CssCstNode | undefined {
   for (const child of cstChildrenOf(node)) {
     if (!isCstNode(child)) {
@@ -5299,7 +5358,8 @@ export function cstLintDiagnostics(
   language: JessLanguage,
   metadata?: Partial<CssDiagnosticMetadata>,
   filePath?: string,
-  tolerantSourceScan = true
+  tolerantSourceScan = true,
+  shouldCollect?: (code: string) => boolean
 ): SourceDiagnostic[] {
   if (root === null) {
     return tolerantSourceScan ? tolerantSourceScanDiagnostics(source, language, filePath) : [];
@@ -5495,6 +5555,28 @@ export function cstLintDiagnostics(
       const key = normalizedSelectorText(source, start, end);
       if (key.length > 0) {
         ruleSelectorKeys.add(key);
+      }
+    }
+
+    if (language === 'jess' && gt === 'Collection' && (shouldCollect?.(LINT_CODES.duplicateCollectionKeys) ?? true)) {
+      const seenKeys = new CollectionOverlay<true>();
+      for (const child of cstChildrenOf(node)) {
+        if (!isCstNode(child) || child.grammarType !== 'CollectionEntry') {
+          continue;
+        }
+        const entry = child;
+        const key = staticJessCollectionKey(source, entry);
+        if (key === null) {
+          continue;
+        }
+        if (!seenKeys.set(key.value, true)) {
+          push(
+            LINT_CODES.duplicateCollectionKeys,
+            'warning',
+            `Duplicate collection key "${key.display}"; the later value wins`,
+            key.span
+          );
+        }
       }
     }
 
@@ -6670,7 +6752,8 @@ export function collectTolerantDiagnostics(input: CollectDiagnosticsInput): Coll
         input.language,
         input.metadata,
         input.filePath,
-        needsTolerantSourceScan
+        needsTolerantSourceScan,
+        input.shouldCollect
       )
     : needsTolerantSourceScan
       ? tolerantSourceScanDiagnostics(input.source, input.language, input.filePath)

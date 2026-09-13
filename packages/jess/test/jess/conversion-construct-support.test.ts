@@ -182,6 +182,8 @@ const CONSTRUCTS: Construct[] = [
   { group: 'values', name: 'string interpolation', src: '$n: a;\n.a { content: "${n}"; }', supported: true, origin: 'less' },
   { group: 'values', name: 'indirect reference $[$n]', src: '$n: color;\n$color: red;\n.a { c: $[$n]; }', supported: true, origin: 'less' },
   { group: 'values', name: 'collection lookup $m[k]', src: '$m: { k: 1; };\n.a { w: $m[k]; }', supported: true, origin: 'sass' },
+  { group: 'values', name: 'collection computed key [expr]', src: '$key: accent;\n$m: { [$key]: 1; [#c6538c]: 2; };', supported: true, origin: 'sass' },
+  { group: 'values', name: 'collection shallow spread', src: '$base: { a: 1; };\n$m: { ...$base; a: 2; };', supported: true, origin: 'sass' },
   { group: 'values', name: '@media prelude via ${…}', src: '$m: screen;\n@media ${m} { .a { c: red; } }', supported: true, origin: 'less' },
   {
     group: 'values',
@@ -345,7 +347,9 @@ const SUPPORTED_BASELINE: Record<'css' | 'less' | 'sass', readonly string[]> = {
     '$while',
     '@-compose ... as',
     '@-compose module',
+    'collection computed key [expr]',
     'collection lookup $m[k]',
+    'collection shallow spread',
     'expression $($w / 2)',
     'mixin call $ > box()',
     'mixin def box() (from @mixin)'

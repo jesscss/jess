@@ -6,8 +6,7 @@
  * @example
  * map.merge((a: 1), (b: 2)) // (a: 1, b: 2)
  */
-import { defineFunction, makeCollection } from '@jesscss/core';
-import { entryIndex } from './util.js';
+import { CollectionOverlay, defineFunction, makeCollection } from '@jesscss/core';
 
 const merge = defineFunction(
   'merge',
@@ -17,16 +16,14 @@ const merge = defineFunction(
       { name: 'map2', type: 'Collection' }
     ] as const,
     body: (map1, map2) => {
-      const entries = [...map1.entries];
-      for (const entry of map2.entries) {
-        const index = entryIndex(entries, entry.key);
-        if (index < 0) {
-          entries.push(entry);
-        } else {
-          entries[index] = entry;
-        }
+      const entries = new CollectionOverlay<(typeof map1.entries)[number]>();
+      for (const entry of map1.entries) {
+        entries.set(entry.key, entry);
       }
-      return makeCollection(entries, map1.base);
+      for (const entry of map2.entries) {
+        entries.set(entry.key, entry);
+      }
+      return makeCollection(entries.items);
     }
   }
 );

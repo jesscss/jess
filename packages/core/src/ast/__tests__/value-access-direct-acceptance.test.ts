@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { makeLessRegistry } from '@jesscss/fns';
+import { makeLessRegistry, makeSassRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import {
-  decl, collection, collectionEntry, declarationReference, dimension, keyword, list, mixinCall, mixinDef, propertyReference, reference, stylesheet, rule,
+  color, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, funcCall, keyword, list, mixinCall, mixinDef, propertyReference, quoted, reference, stylesheet, rule,
   variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
 import { DEFAULT_MODES } from '../value-eval.js';
 
 const evaluator = buildEvaluator(makeLessRegistry());
+const sassEvaluator = buildEvaluator(makeSassRegistry());
 const render = (document: Stylesheet): string | undefined => serialize(document, { evaluator }).css;
+const renderStrict = (document: Stylesheet): string | undefined =>
+  serialize(document, { evaluator: sassEvaluator, modes: { ...DEFAULT_MODES, unitMode: 'strict' } }).css;
+
 // [R16] the caller-read ($property reading the caller's timeline) is opt-in via allowCallerScope.
 const renderCallerScope = (document: Stylesheet): string | undefined =>
   serialize(document, { evaluator, modes: { ...DEFAULT_MODES, allowCallerScope: true } }).css;
@@ -80,6 +84,132 @@ describe('direct canonical value access', () => {
     ]);
 
     expect(render(document)).toBe('.card {\n  color: teal;\n}\n');
+  });
+
+  it('keeps sibling nested collection lookup memos distinct', () => {
+    const nestedMember = (name: string) => reference(
+      variableReference('theme', 'scoped'),
+      [
+        { type: 'LookupStep' as const, kind: 'member' as const, name },
+        { type: 'LookupStep' as const, kind: 'member' as const, name: 'tone' }
+      ],
+      `$theme.${name}.tone`
+    );
+    const document = stylesheet([
+      variableDeclaration('theme', collection([
+        entry('first', collection([entry('tone', keyword('blue'))])),
+        entry('second', collection([entry('tone', keyword('red'))]))
+      ]), { mode: 'declare' }),
+      rule('.card', [
+        decl('first', nestedMember('first')),
+        decl('second', nestedMember('second'))
+      ])
+    ]);
+
+    expect(render(document)).toBe('.card {\n  first: blue;\n  second: red;\n}\n');
+  });
+
+  it('looks up the effective later-wins value after collection spread', () => {
+    const document = stylesheet([
+      variableDeclaration('defaults', collection([entry('tone', keyword('blue'))]), { mode: 'declare' }),
+      variableDeclaration('theme', collection([
+        collectionSpread(variableReference('defaults', 'scoped')),
+        entry('tone', keyword('teal'))
+      ]), { mode: 'declare' }),
+      rule('.card', [decl('color', reference(
+        variableReference('theme', 'scoped'),
+        [{ type: 'LookupStep', kind: 'member', name: 'tone' }],
+        '@theme[tone]'
+      ))])
+    ]);
+
+    expect(render(document)).toBe('.card {\n  color: teal;\n}\n');
+  });
+
+  it('uses ordered Sass equality for non-transitive collection keys in both orders', () => {
+    const lookupRed = (name: string) => reference(
+      variableReference(name, 'scoped'),
+      [{ type: 'LookupStep' as const, kind: 'member' as const, name: keyword('red') }],
+      `@${name}[red]`
+    );
+    const document = stylesheet([
+      variableDeclaration('color-first', collection([
+        collectionEntry(color('#ff0000'), keyword('color-value')),
+        collectionEntry(quoted('"red"', 'red', '"', false), keyword('quoted-value'))
+      ]), { mode: 'declare' }),
+      variableDeclaration('quoted-first', collection([
+        collectionEntry(quoted('"red"', 'red', '"', false), keyword('quoted-value')),
+        collectionEntry(color('#ff0000'), keyword('color-value'))
+      ]), { mode: 'declare' }),
+      rule('.card', [
+        decl('first', lookupRed('color-first')),
+        decl('second', lookupRed('quoted-first'))
+      ])
+    ]);
+
+    expect(render(document)).toBe('.card {\n  first: color-value;\n  second: quoted-value;\n}\n');
+  });
+
+  it('keeps Sass map-key equality independent of strict unit mode', () => {
+    const document = stylesheet([
+      variableDeclaration('key', dimension(1, 'em'), { mode: 'declare' }),
+      variableDeclaration('sizes', collection([
+        collectionEntry(dimension(1, 'px'), keyword('pixel')),
+        collectionEntry(dimension(1, 'em'), keyword('em'))
+      ]), { mode: 'declare' }),
+      rule('.card', [decl('value', funcCall('map-get', [
+        variableReference('sizes', 'scoped'),
+        variableReference('key', 'scoped')
+      ]))])
+    ]);
+
+    expect(renderStrict(document)).toBe('.card {\n  value: em;\n}\n');
+  });
+
+  it('routes computed numeric subscripts to positions before map-key lookup', () => {
+    const access = (key: string) => reference(
+      variableReference('values', 'scoped'),
+      [{ type: 'LookupStep' as const, kind: 'var' as const, name: variableReference(key, 'scoped'), indexBase: 0 as const }],
+      `@values[@${key}]`
+    );
+    const values = collection([
+      entry('first', keyword('zero-position')),
+      entry('second', keyword('one-position')),
+      collectionEntry(dimension(1), keyword('numeric-key')),
+      collectionEntry(dimension(1.5), keyword('fractional-key')),
+      collectionEntry(dimension(1, 'px'), keyword('unit-key'))
+    ]);
+    const document = stylesheet([
+      variableDeclaration('values', values, { mode: 'declare' }),
+      variableDeclaration('zero', dimension(0), { mode: 'declare' }),
+      variableDeclaration('one', dimension(1), { mode: 'declare' }),
+      variableDeclaration('last', dimension(-1), { mode: 'declare' }),
+      variableDeclaration('named', keyword('first'), { mode: 'declare' }),
+      rule('.card', [
+        decl('zero', access('zero')),
+        decl('one', access('one')),
+        decl('last', access('last')),
+        decl('named', access('named'))
+      ])
+    ]);
+
+    expect(render(document)).toBe('.card {\n'
+      + '  zero: zero-position;\n'
+      + '  one: one-position;\n'
+      + '  last: unit-key;\n'
+      + '  named: zero-position;\n'
+      + '}\n');
+
+    for (const [name, key] of [
+      ['unit', dimension(1, 'px')],
+      ['fraction', dimension(1.5)]
+    ] as const) {
+      expect(() => render(stylesheet([
+        variableDeclaration('values', values, { mode: 'declare' }),
+        variableDeclaration(name, key, { mode: 'declare' }),
+        rule('.card', [decl('value', access(name))])
+      ]))).toThrow(/Name not found/);
+    }
   });
 
   it('resolves declaration-member references across property and variable namespaces', () => {

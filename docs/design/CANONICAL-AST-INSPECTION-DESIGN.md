@@ -230,8 +230,10 @@ Core must own the child-edge table. Consumers must never recurse with
 | `Condition` | `value.condition.guard` |
 | `Reference` | `value.reference.base` for `ValueNode` or `MixinCall`; `value.reference.bracket-key` for value keys; `value.reference.call-arg` for call args using the shared `CallValue` rule |
 | `Range` | `value.range.start`, `value.range.end`, `value.range.step` when present |
-| `Collection` | `value.collection.base` when present; `value.collection.entry` for each value-keyed entry |
+| `Collection` | `value.collection.entry` for each authored item (`CollectionEntry` or `CollectionSpread`) |
+| `NestedPropertyBlock` | `value.nested-property.base` when present; `value.nested-property.entry` for each structural entry |
 | `CollectionEntry` | `value.collection.key`, `value.collection.value` |
+| `CollectionSpread` | `value.collection.spread` for its operand |
 | `AnonymousMixin` | `value.anonymous-mixin.param-default`, `value.anonymous-mixin.param-pattern`, `value.anonymous-mixin.rules` |
 
 ### Call Values
@@ -308,10 +310,12 @@ findings that must be resolved before a Less visitor bridge claims support:
 
 Collections are not an AST-pressure item for this design. The design of record
 is the value-keyed map model in `docs/design/COLLECTION-VALUE-KEYS.md`:
-`Collection.entries` are `CollectionEntry { key, value }` records, both sides are
-values, and keys compare by value equality. Traversal should target that model
-and should not encode the older declaration-backed collection shape as the
-canonical edge contract.
+AST `Collection.entries` are `CollectionItem = CollectionEntry |
+CollectionSpread` records. Entry keys and values are values; spread operands are
+value edges. After evaluation, value-domain Collections are entry-only because
+spreads have been folded and keys compare by value equality. Traversal should
+target those explicit authored edges and should not encode the older
+declaration-backed collection shape as the canonical contract.
 
 ### Parser Construction Pressure
 
@@ -329,7 +333,7 @@ Current evidence:
 | `Ruleset` statement from ruleset syntax | natural for core AST: selector, guard, rules statements, and extend facts are all available in ruleset reductions |
 | `SelectorList` / `ComplexSelector` / `CompoundSelector` | mostly natural: selector grammar already produces selector facts directly; Less `Element` compatibility should be a lazy facade over these edges, not a parser obligation |
 | `Collection` maps | natural: map grammars already see `key: value` boundaries and should reduce them directly to `CollectionEntry` records with typed value keys |
-| SCSS nested properties | natural but role-specific: the grammar sees declaration-shaped leaf names, but this is the structural nested-property role of `Collection`, not evidence that data-map entries should be declarations |
+| SCSS nested properties | natural but role-specific: the grammar sees declaration-shaped leaf names and reduces them to `NestedPropertyBlock`; this structural node is distinct from data-only `Collection` and is not evidence that map entries should be declarations |
 | `Ruleset.extendInstructions` | natural to parse as selector facts, but hoisting body-form extends off `Ruleset.rules` loses the source-order node shape Less visitors may expect |
 | `MixinCall.path` / `name` | current parsers deliberately preserve raw selector/name strings for dispatch; if Less plugins need element-level path visitation, the parser can carry structured facts, but the AST must ask for them explicitly |
 
@@ -808,12 +812,14 @@ Findings accepted into this revision:
   callback.
 - The edge matrix missed real authored structure. Section 6 now includes
   `Declaration.name` interpolation, `Ruleset.extend` selector edges,
-  `CollectionEntry` key/value edges, `VariableReference` / `PropertyReference`,
+  `CollectionEntry` key/value and `CollectionSpread` value edges,
+  `VariableReference` / `PropertyReference`,
   and shared
   `CallValue` traversal for nested `MixinCall` values.
 - The collection finding from review was corrected by owner feedback and
   `docs/design/COLLECTION-VALUE-KEYS.md`: collections are value-keyed maps with
-  `CollectionEntry { key, value }`; traversal targets that design and does not
+  `CollectionItem = CollectionEntry | CollectionSpread`; traversal targets that
+  authored design, while evaluated Collections are entry-only, and does not
   encode declaration-backed collections as canonical.
 - Parser pressure is a first-class design test. Section 6 now records which
   desired nodes are grammar-natural and which current AST shapes force coercion,

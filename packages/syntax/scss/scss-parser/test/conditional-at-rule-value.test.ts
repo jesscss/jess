@@ -357,7 +357,7 @@ describe('SCSS conditional at-rule value holes', () => {
           type: 'Declaration',
           name: 'color',
           value: {
-            type: 'Collection',
+            type: 'NestedPropertyBlock',
             base: [{ type: 'Keyword', src: 'red' }, { type: 'Keyword', src: 'b' }],
             entries: [{ type: 'CollectionEntry', key: { type: 'Keyword', src: 'x' }, value: { type: 'Dimension', src: '1' } }]
           }

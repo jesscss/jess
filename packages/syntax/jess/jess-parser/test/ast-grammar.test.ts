@@ -403,7 +403,7 @@ describe('Jess AST grammar facts', () => {
         } },
         { type: 'Declaration', name: 'dynamic', value: {
           type: 'Reference', base: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme', scope: 'live' },
-          steps: [{ type: 'LookupStep', name: { type: 'Lookup', kind: 'var', name: 'key', raw: '@key', scope: 'live' }, kind: 'var' }], raw: '$theme[$key]'
+          steps: [{ type: 'LookupStep', name: { type: 'Lookup', kind: 'var', name: 'key', raw: '@key', scope: 'live' }, kind: 'var', indexBase: 0 }], raw: '$theme[$key]'
         } }
       ] }]
     });
@@ -2874,6 +2874,95 @@ describe('Jess AST grammar facts', () => {
         }
       }]
     });
+  });
+
+  it('constructs computed collection keys and ordered spread items', () => {
+    const source = '$key: accent; $defaults: { red: 1; }; $collection: { ...$defaults; [red]: 2; [#c6538c]: 3; [$key]: 4; };';
+    const legacy = parseJessCst(source);
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
+
+    expect(legacy.errors).toHaveLength(0);
+    expect(legacy.unconsumedFrom).toBeNull();
+    expect(direct.ok).toBe(true);
+    expect(direct.unconsumedFrom).toBeNull();
+    expect(bare(parse(source))).toEqual(bare(direct.value));
+    expect(parse(source)).toMatchObject({
+      rules: [
+        { type: 'VariableDeclaration', name: 'key' },
+        { type: 'VariableDeclaration', name: 'defaults' },
+        {
+          type: 'VariableDeclaration',
+          name: 'collection',
+          value: {
+            type: 'Collection',
+            entries: [
+              { type: 'CollectionSpread', value: { type: 'Lookup', name: 'defaults' } },
+              { type: 'CollectionEntry', key: { type: 'Keyword', src: 'red' } },
+              { type: 'CollectionEntry', key: { type: 'Color', src: '#c6538c' } },
+              { type: 'CollectionEntry', key: { type: 'Lookup', name: 'key' } }
+            ]
+          }
+        }
+      ]
+    });
+    expect(serialize(parse(`${source} .x { value: emit($collection); }`)).css).toBe(
+      '.x {\n  value: emit({ red: 2; #c6538c: 3; accent: 4 });\n}\n'
+    );
+  });
+
+  it('keeps nested collection values and direct collection spread operands structural', () => {
+    const source = '$collection: { nested: { inner: 1; }; direct: { ...{ a: 1; }; b: 2; }; };';
+    const legacy = parseJessCst(source);
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
+
+    expect(legacy.errors).toHaveLength(0);
+    expect(legacy.unconsumedFrom).toBeNull();
+    expect(direct.ok).toBe(true);
+    expect(direct.unconsumedFrom).toBeNull();
+    expect(bare(parse(source))).toEqual(bare(direct.value));
+    expect(parse(source)).toMatchObject({
+      rules: [{
+        value: {
+          type: 'Collection',
+          entries: [
+            {
+              type: 'CollectionEntry',
+              key: { type: 'Keyword', src: 'nested' },
+              value: { type: 'Collection', entries: [{ type: 'CollectionEntry' }] }
+            },
+            {
+              type: 'CollectionEntry',
+              key: { type: 'Keyword', src: 'direct' },
+              value: {
+                type: 'Collection',
+                entries: [
+                  { type: 'CollectionSpread', value: { type: 'Collection' } },
+                  { type: 'CollectionEntry', key: { type: 'Keyword', src: 'b' } }
+                ]
+              }
+            }
+          ]
+        }
+      }]
+    });
+  });
+
+  it('requires a semicolon to delimit a collection spread from the next item', () => {
+    const source = '$defaults: { a: 1; }; $map: { ...$defaults b: 2; };';
+    const legacy = parseJessCst(source);
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
+
+    expect(legacy.errors.length > 0 || legacy.unconsumedFrom !== null).toBe(true);
+    expect(direct.ok && direct.unconsumedFrom === null).toBe(false);
+    expect(() => parse(source)).toThrow();
+  });
+
+  it('iterates the effective later-wins entries of a spread collection', () => {
+    const source = '$left: { a: 1; b: 2; }; $right: { a: 3; c: 4; }; $map: { ...$left; ...$right; b: 5; }; $for ([$key, $value] of $map) { .${key} { value: $value; } }';
+
+    expect(serialize(parse(source)).css).toBe(
+      '.a {\n  value: 3;\n}\n.b {\n  value: 5;\n}\n.c {\n  value: 4;\n}\n'
+    );
   });
 
   it('preserves public variable range bounds, exclusions, steps, and descending order as typed Range fields', () => {

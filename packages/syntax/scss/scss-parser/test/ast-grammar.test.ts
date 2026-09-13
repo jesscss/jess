@@ -846,11 +846,11 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'Ruleset', rules: [
-        { type: 'Declaration', name: 'font', value: { type: 'Collection', entries: [
+        { type: 'Declaration', name: 'font', value: { type: 'NestedPropertyBlock', entries: [
           { type: 'CollectionEntry', key: { type: 'Keyword', src: 'family' }, value: { src: 'fantasy' } },
           { type: 'CollectionEntry', key: { type: 'Keyword', src: 'weight' }, value: { src: 'bold' }, important: false }
         ] } },
-        { type: 'Declaration', name: 'font', value: { type: 'Collection', base: { src: '20px' }, entries: [
+        { type: 'Declaration', name: 'font', value: { type: 'NestedPropertyBlock', base: { src: '20px' }, entries: [
           { type: 'CollectionEntry', key: { type: 'Keyword', src: 'size' }, value: { src: '1rem' } }
         ] } }
       ] }]
@@ -882,13 +882,13 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'VariableDeclaration', name: 'prefix' }, { type: 'VariableDeclaration', name: 'part' }, {
         type: 'Ruleset', rules: [
-          { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'prefix', raw: '@prefix' } }] }, value: { type: 'Collection', entries: [
+          { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'prefix', raw: '@prefix' } }] }, value: { type: 'NestedPropertyBlock', entries: [
             { type: 'CollectionEntry', key: { type: 'Keyword', src: 'color' }, value: { src: 'red' } }
           ] } },
-          { type: 'Declaration', name: 'font', value: { type: 'Collection', entries: [
+          { type: 'Declaration', name: 'font', value: { type: 'NestedPropertyBlock', entries: [
             { type: 'CollectionEntry', key: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'part', raw: '@part' } }] }, value: { src: 'bold' } }
           ] } },
-          { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'prefix', raw: '@prefix' } }] }, value: { type: 'Collection', entries: [
+          { type: 'Declaration', name: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'prefix', raw: '@prefix' } }] }, value: { type: 'NestedPropertyBlock', entries: [
             { type: 'CollectionEntry', key: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'part', raw: '@part' } }] }, value: { src: '700' } }
           ] } }
         ]
@@ -910,7 +910,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'Ruleset', rules: [
-        { type: 'Declaration', name: 'font', important: true, value: { type: 'Collection', base: { src: '20px' }, entries: [
+        { type: 'Declaration', name: 'font', important: true, value: { type: 'NestedPropertyBlock', base: { src: '20px' }, entries: [
           { type: 'CollectionEntry', key: { type: 'Keyword', src: 'size' }, important: false, value: { src: '1rem' } }
         ] } }
       ] }]
@@ -930,7 +930,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'Ruleset', rules: [
-      { type: 'Declaration', name: 'font', value: { type: 'Collection', entries: [] } }
+      { type: 'Declaration', name: 'font', value: { type: 'NestedPropertyBlock', entries: [] } }
     ] }] });
     expect(serialize(stylesheet(result.value))).toEqual({ css: '' });
   });
@@ -2479,6 +2479,27 @@ describe('SCSS canonical-AST grammar', () => {
     // A non-canonical arity stays a plain FunctionCall for `fns` routing.
     expect(parse('.x { color: map-get($m); }').rules[0]).toMatchObject({
       rules: [{ value: { type: 'FunctionCall', name: 'map-get' } }]
+    });
+  });
+
+  it('leaves map merge calls for the function registry', () => {
+    for (const spelling of ['map-merge', 'map.merge']) {
+      expect(parse(`.x { value: ${spelling}($left, $right); }`).rules[0]).toMatchObject({
+        rules: [{
+          value: {
+            type: 'FunctionCall',
+            name: spelling,
+            args: [{ value: { type: 'Lookup', name: 'left' } }, { value: { type: 'Lookup', name: 'right' } }]
+          }
+        }]
+      });
+    }
+
+    expect(parse('.x { value: map.merge($map: $left, $map2: $right); }').rules[0]).toMatchObject({
+      rules: [{ value: { type: 'FunctionCall', name: 'map.merge' } }]
+    });
+    expect(parse('.x { value: map.merge($left, a, $right); }').rules[0]).toMatchObject({
+      rules: [{ value: { type: 'FunctionCall', name: 'map.merge' } }]
     });
   });
 

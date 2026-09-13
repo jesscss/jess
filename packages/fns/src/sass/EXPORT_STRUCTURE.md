@@ -2,11 +2,10 @@
 
 This document explains the export structure for Sass functions, matching Sass's module system.
 
-> **Source roadmap, not a published package surface.** The current alpha
-> publishes only `@jesscss/fns` and `@jesscss/fns/builtins`. The Sass folders
-> below describe source ownership and future module organization; their
-> `@jesscss/fns/sass/*` examples are not importable until matching runtime
-> entrypoints are built and explicitly exported from `package.json`.
+> **Published package surface.** The current alpha exports `@jesscss/fns/sass`
+> plus `/sass/registry`, `/sass/color`, `/sass/list`, `/sass/map`, `/sass/math`,
+> and `/sass/string`. These entrypoints expose JavaScript function objects; the
+> stylesheet module resolver that will bind `@use`/`@-use` is separate work.
 
 ## Structure Overview
 
@@ -126,10 +125,13 @@ Functions available in `sass:list` module.
 
 Functions available in `sass:map` module.
 
-### TODO: All Module Functions
+### Module Functions
 - `get()`, `set()`, `merge()`, `remove()`
 - `keys()`, `values()`, `has-key()`
-- `deep-merge()`, `deep-remove()`
+- `deep-merge()`
+
+### TODO
+- `deep-remove()`
 
 ## Usage Examples
 

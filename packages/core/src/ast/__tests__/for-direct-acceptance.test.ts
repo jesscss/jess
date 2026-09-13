@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { makeLessRegistry } from '@jesscss/fns';
+import { makeLessRegistry, makeSassRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import {
-  decl, collection, collectionEntry, dimension, forNode, funcCall, interpolation, keyword, list,
-  propertyReference, range, stylesheet, rule, spaced, variableDeclaration, variableReference, type Stylesheet
+  anonymousMixin, decl, collection, collectionEntry, dimension, forNode, funcCall, interpolation, keyword, list,
+  propertyReference, range, reference, stylesheet, rule, spaced, variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
+import { isCollection, makeKeyword } from '../../value.js';
+import { createFnRegistry, defineFunction } from '../value-dispatch.js';
 
 const evaluator = buildEvaluator(makeLessRegistry());
+const sassEvaluator = buildEvaluator(makeSassRegistry());
 const render = (document: Stylesheet, collapseNesting = true): string | undefined =>
   serialize(document, { evaluator, collapseNesting }).css;
 const entry = (name: string, value: Parameters<typeof collectionEntry>[1]): ReturnType<typeof collectionEntry> =>
@@ -73,10 +76,10 @@ describe('For canonical AST emission', () => {
     expect(render(document)).toBe('.set {\n  one: blue;\n  two: green;\n  three: red;\n}\n');
   });
 
-  it('evaluates detached-map member values through the map property timeline when bound to @value', () => {
-    const map = collection([
-      entry('background-color', keyword('black')),
-      entry('color', propertyReference('background-color'))
+  it('evaluates detached-ruleset member values through the property timeline when bound to @value', () => {
+    const map = anonymousMixin([
+      decl('background-color', keyword('black')),
+      decl('color', propertyReference('background-color'))
     ]);
     const document = stylesheet([
       variableDeclaration('vars', map, { mode: 'declare' }),
@@ -109,6 +112,122 @@ describe('For canonical AST emission', () => {
     ]);
 
     expect(render(document)).toBe('.set {\n  one: blue;\n  two: green;\n}\n');
+  });
+
+  it('preserves typed values while iterating a computed collection spread', () => {
+    const nested = collection([entry('inner', keyword('blue'))]);
+    const merged = funcCall('map-merge', [
+      collection([entry('outer', nested)]),
+      collection([])
+    ]);
+    const document = stylesheet([
+      rule('.set', [
+        forNode(
+          collection([{ type: 'CollectionSpread', value: merged }]),
+          [decl('value', funcCall('map-get', [variableReference('value', 'scoped'), keyword('inner')]))],
+          { kind: 'single', name: 'value' }
+        )
+      ])
+    ]);
+
+    expect(serialize(document, { evaluator: sassEvaluator }).css)
+      .toBe('.set {\n  value: blue;\n}\n');
+  });
+
+  it('indexes a typed list value carried from a collection loop', () => {
+    const firstValue = reference(
+      variableReference('value', 'scoped'),
+      [{ type: 'LookupStep', kind: 'index', name: 1, indexBase: 1 }],
+      '$value[1]'
+    );
+    const document = stylesheet([
+      rule('.set', [
+        forNode(
+          collection([{ type: 'CollectionSpread', value: collection([
+            collectionEntry(keyword('row'), list([keyword('first'), keyword('second')], ','))
+          ]) }]),
+          [decl('first', firstValue)],
+          { kind: 'single', name: 'value' }
+        )
+      ])
+    ]);
+
+    expect(render(document)).toBe('.set {\n  first: first;\n}\n');
+  });
+
+  it('iterates a typed list value carried from an outer collection loop', () => {
+    const document = stylesheet([
+      rule('.set', [
+        forNode(
+          collection([entry('row', list([keyword('first'), keyword('second')], ','))]),
+          [forNode(
+            variableReference('value', 'scoped'),
+            [decl('item', variableReference('value', 'scoped'))],
+            { kind: 'single', name: 'value' }
+          )],
+          { kind: 'single', name: 'value' }
+        )
+      ])
+    ]);
+
+    expect(render(document)).toBe('.set {\n  item: first;\n  item: second;\n}\n');
+  });
+
+  it('evaluates every collection key and value once in source order before later-wins iteration', () => {
+    const calls: string[] = [];
+    let keyCount = 0;
+    let valueCount = 0;
+    const registry = createFnRegistry();
+    registry.register(defineFunction('next-key', {
+      params: [],
+      body: () => {
+        calls.push(`key-${++keyCount}`);
+        return makeKeyword('same');
+      }
+    }));
+    registry.register(defineFunction('next-value', {
+      params: [],
+      body: () => {
+        calls.push(`value-${++valueCount}`);
+        return makeKeyword(`v${valueCount}`);
+      }
+    }));
+    const document = stylesheet([
+      rule('.set', [
+        forNode(
+          collection([
+            collectionEntry(funcCall('next-key', []), funcCall('next-value', [])),
+            collectionEntry(funcCall('next-key', []), funcCall('next-value', []))
+          ]),
+          [decl('result', variableReference('value', 'scoped'))],
+          { kind: 'single', name: 'value' }
+        )
+      ])
+    ]);
+
+    expect(serialize(document, { evaluator: buildEvaluator(registry) }).css)
+      .toBe('.set {\n  result: v2;\n}\n');
+    expect(calls).toEqual(['key-1', 'value-1', 'key-2', 'value-2']);
+  });
+
+  it('does not reinterpret an executable block stored in a Jess Collection as nested map data', () => {
+    const registry = createFnRegistry();
+    registry.register(defineFunction('value-kind', {
+      params: [{ name: 'value', type: 'any' }],
+      body: value => makeKeyword(isCollection(value) ? 'Collection' : value.type)
+    }));
+    const document = stylesheet([
+      rule('.set', [
+        forNode(
+          collection([entry('block', anonymousMixin([decl('inside', keyword('yes'))]))]),
+          [decl('kind', funcCall('value-kind', [variableReference('value', 'scoped')]))],
+          { kind: 'single', name: 'value' }
+        )
+      ])
+    ]);
+
+    expect(serialize(document, { evaluator: buildEvaluator(registry) }).css)
+      .toBe('.set {\n  kind: Keyword;\n}\n');
   });
 
   it('binds comma key and counter positions for both lists and maps', () => {

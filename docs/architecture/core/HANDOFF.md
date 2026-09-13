@@ -2228,7 +2228,8 @@ not repeat a specific ratio as if it were measured here.
 
 ### Model correction — COMPLETE
 
-- [x] SCSS nested-property → `Collection` (`b3976867e`).
+- [x] SCSS nested-property → `NestedPropertyBlock` (`b3976867e` first used
+      `Collection`; P14's later data-only ruling supersedes that representation).
 - [x] `AnonymousMixin` added, value blocks content-classified, AST `DetachedRuleset` node
       DELETED (`b7f413d08`). LESSON: a CST grammar rule is not an AST node — keep the CST
       `DetachedRuleset` rule name; renaming it dangled `compose()` and a stale build masked it.
@@ -4071,6 +4072,138 @@ involved.
   worktree; still requires slice commits and normal parser macro/compose/oracle gates before merge.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Latest pass: 2026-09-12 typed Jess collection overlays. Collection literals now
+  accept computed keys and semicolon-terminated spreads, evaluate entries once in
+  source order, and collapse duplicate keys with the last value winning. Sass
+  `map.deep-merge` remains an imported function rather than a second spread form.
+- Architecture surface: Jess collection grammar and CST/AST reductions; canonical
+  `CollectionSpread`, data-only `Collection`, and distinct `NestedPropertyBlock`
+  shapes; collection evaluation, typed lookup, `$for` iteration, Sass map functions,
+  duplicate-key diagnostics, public exports, fixtures, and documentation.
+- Separation/duplication: one `CollectionOverlay` owns Sass-equality lookup,
+  replacement, retained-key order, and candidate indexing for evaluator lookup,
+  diagnostics, and Sass map functions. SCSS function calls remain `FunctionCall`
+  nodes and no parser-side `map.merge` lowering or deep-spread grammar exists.
+- Cumulative node weight: two monomorphic node shapes are added. `CollectionSpread`
+  has one value edge; `NestedPropertyBlock` has `entries` plus a nullable `base`.
+  The serializer's named-plus-async function count falls from 443 to 441 and
+  its `Map` count remains 59, both pinned by the source ratchet. Collection
+  evaluation replaces the former property-timeline/key-string helpers instead
+  of adding parallel construction paths.
+- New traversal: collection evaluation and overlay construction each make one
+  source-order pass. Candidate buckets avoid restart scans; exact Sass equality is
+  authoritative only within the bounded candidate bucket. Keyword and quoted-key
+  cost tests pin linear type-read growth at 10,000 entries.
+- New node/materialization: collection evaluation constructs one result entry
+  array. A spread contributes its already-evaluated entries and does not clone a
+  tree. The candidate index stays unallocated for zero/one-entry overlays and is
+  created lazily for larger overlays. Existing `BindingCell`/`DeclEntry` records
+  carry computed typed values through `$for` and nested lookup, so neither path
+  flattens then reparses serialized bytes.
+- Render path: collections remain non-rendering data values. Lookup and iteration
+  consume typed evaluated entries; ordinary Less detached rulesets retain their
+  anonymous-mixin behavior. The complete 115-test Less corpus is green and owner
+  `.css` goldens are unchanged.
+- Helper/API surface: `CollectionOverlay` is the shared typed helper; collection
+  item and nested-property node types are public AST facts. `map.deep-merge` is
+  exported through the existing Sass map namespace. No compatibility alias,
+  parser host, runtime scanner, reparse, or new public construction host is added.
+- Metadata mutations: `BindingCell` is monomorphized with mandatory nullable
+  `valueFrame` and `evaluated` slots, and `DeclEntry` gains the same mandatory
+  nullable `evaluated` fact. A shared inert binding node stands in only where a
+  typed value has no authored AST node. No frame side map or canonical AST
+  mutation is added.
+- Review-flagged diff tokens: [loop/traversal] indexed/source-order loops evaluate
+  each collection item once and visit candidate buckets only; [array helper] `$for`
+  projections map already-evaluated lists without a second evaluator walk;
+  [array spread/materialization] call-site location spreads are existing diagnostic
+  records and numeric candidate keys append to one local signature list;
+  [node construction] `TypeError` is reserved for invalid spread operands and the
+  `CollectionOverlay` creates bounded candidate sets only on signature collision;
+  [side map/set] one lazily-created overlay bucket map indexes Sass-equality
+  candidates; [routine error control] `TypeError` is created only for an invalid
+  spread operand, never for an ordinary lookup miss, duplicate, or candidate mismatch;
+  [materialized array/object] the effective-entry array and existing
+  frame/cell records replace byte flattening/reparse and are linear in effective
+  entries. No recursive source scan or overlay-wide restart is introduced;
+  candidate-local association validation scans each distinct candidate map once.
+- Behavior evidence: full `@jesscss/core` Vitest passed 217 files and 3,331 tests
+  (10 skipped, 2 todo); the full Less data corpus passed 115/115, including nested
+  maps and `functions-each`; focused collection, lookup, `$for`, nested-property,
+  traversal, Sass map, parser AST/CST, diagnostic, and lint tests pass.
+- Build evidence: dependency-ordered `pnpm run build:release`, `check:macro` with
+  zero interpreter fallbacks, and `verify:compose-integrity` with zero fallbacks
+  pass on the changed sources.
+- Boundary evidence: AST shape stability, package exports, and core public-type
+  checks pass. Jess parser tests cover AST and CST forms plus a missing-semicolon
+  negative control; SCSS parser tests prove `map.merge` remains a `FunctionCall`.
+- Evidence: complete Less corpus and core suite are green after the final detached-map
+  compatibility fix. Jess and SCSS AST medians were neutral-to-lower; the SCSS CST
+  +2.86–3.32% signal is recorded as inconclusive because repeated identical-graph
+  measurements were flat and the method of record warns of false timing failures.
+  No speed claim is made. The canonical hot-path harness cannot
+  run in this checkout because `@less/test-data` is not installed, so the unchanged
+  `benchmark.less` output baseline from the active semantic-runtime contract is
+  retained rather than fabricating a new measurement.
+- Verdict: accepted as a semantic collection feature with explicit linear-cost
+  coverage and compatibility evidence; performanceClaim remains `none`.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Collection-spread-computed-key-overlay-and-iteration",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "Computed keys and spreads are typed collection semantics: source-order evaluation, Sass-equality replacement, lookup, and iteration must agree without flattening values to bytes. The shared overlay and existing binding-cell carrier implement that behavior across cooperating evaluator owners; this record makes no neutrality, byte-identity, or speed claim.",
+    "dangerTokensJustification": "The source-order loops are linear and the lazily-created candidate index bounds exact equality checks by comparator-owned signatures; keyword, quoted, and structural-key tests pin that growth. The effective-entry array, collision sets, and mandatory nullable evaluated slots replace byte flattening or repeated whole-collection scans. No AST descendant walk, source scan, reparse, per-entry tree clone, frame side map, or routine Error allocation is added.",
+    "behaviorEvidence": "Full core passed 217 files and 3,331 tests; all-less passed 115/115. Focused collection evaluation, lookup, iteration, nested-property, traversal, Sass map, diagnostic, lint, and parser AST/CST tests pass, including strict-unit and non-transitive Sass-equality cases.",
+    "buildEvidence": "Dependency-order build:release passes. Macro and compose-integrity checks report zero interpreter fallbacks; AST shape stability, package exports, and core public-type gates pass.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 43.94891699999971,
+      "outputSha256": "2b8d9abf3c103a6de7a0a5d66b3a448bcaef8c1818eff753de52d25a23b98f7d",
+      "outputBytes": 122568
+    }
+  },
+  {
+    "id": "ast-value-guard-comparison-op",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "cases": [
+      "loose-common-ground",
+      "type-equal-declines-coercion",
+      "sass-equal-numeric-dispatch"
+    ],
+    "why": "Collection overlays use the existing typed sass-equal comparison kind as their sole equality authority. The comparison now carries strict numeric type equality recursively through List and Collection members so lookup, replacement, and Sass map functions share one policy without ambient equality mode.",
+    "dangerTokensJustification": "Recursive comparison visits only the already-selected structural candidate pair and allocates no Error or control-flow result. Candidate indexing and deterministic operation counters bound the collection search independently; this record makes no timing, neutrality, or speed claim.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 43.94891699999971,
+      "outputSha256": "2b8d9abf3c103a6de7a0a5d66b3a448bcaef8c1818eff753de52d25a23b98f7d",
+      "outputBytes": 122568
+    }
+  }
+]
+```
 
 - Latest pass: 2026-09-07 V19 slice 5 delete the second body dispatcher. This deletes
   the nested statement dispatcher `emitNestedBody` and folds its per-case nested-writer

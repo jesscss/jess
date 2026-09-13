@@ -5,6 +5,12 @@ D-EVAL flip + mandated post-flip re-profile (dependency noted, not a gate). Shap
 settled per `NODE-SLIM-FOLLOWONS.md` §Question 1 — this spec executes it, it does not
 re-open it.
 
+**Historical boundary:** the producer inventory and proposed tag table below were
+captured before V13 removed parser-level named-color classification. Their
+`LIT_COLOR_NAMED` steps are retained as design history, not as a description of
+the current canonical AST; named colors now parse as `Keyword` and coerce only
+at a color point of use.
+
 ## 0. What the code does today (grounding)
 
 **Producer builds eager literal nodes.** `cssRecursiveParser.processValueToken`
@@ -15,8 +21,9 @@ static value token it allocates:
 - `new Num(parseFloat)` from `T.Number` / `MathConstant` (`:646-648`, `:626-644`) —
   `Num extends Dimension` (`number.ts:15`).
 - `new Color(tokValue)` (hex) from `T.Color` (`:650-652`).
-- `new Color({node,rgb,alpha})` (named) for `transparent`/color-table idents from
-  `T.Ident` (`:601-617`).
+- The former tree parser constructed `new Color({node,rgb,alpha})` for named
+  `T.Ident` values (`:601-617`). The canonical AST no longer does: V13 parses
+  named colors as `Keyword` and converts them only at a color-operation boundary.
 - `new Any(tokValue,{role:'ident'})` for other idents (`:618`); `Bool` for `true`/`false`
   (less override, `lessRecursiveParser.ts:270-272`).
 
@@ -215,7 +222,7 @@ verbatim string (simpler, still node-free until operated).
 
 ## 6. Byte-identity plan
 
-- **Color (hex + named): clean, no output change.** Already serializes verbatim `node`
+- **Color (hex only; named colors are now Keyword per V13): clean, no output change.** Already serializes verbatim `node`
   string; only the wrapper is shed. Zero-risk.
 - **Keyword/Ident/Bool/Any: clean.** Already emitted verbatim; tag is additive.
 - **Dimension / Num: the one real change — verbatim vs canonicalized.** Today an
