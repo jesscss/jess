@@ -475,6 +475,7 @@ export function isScssValue(value: unknown): value is ValueNode {
     case 'Null':
       return 'src' in value && typeof value.src === 'string';
     case 'Collection':
+    case 'NestedPropertyBlock':
       return 'entries' in value && Array.isArray(value.entries);
     case 'Reference':
       return 'base' in value && 'steps' in value && Array.isArray(value.steps);

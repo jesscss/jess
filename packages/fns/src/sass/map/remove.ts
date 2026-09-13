@@ -22,7 +22,7 @@ const remove = defineFunction(
       }
       const keyEntries = keys.map(key => ({ key, value: key }));
       const entries = map.entries.filter(entry => entryIndex(keyEntries, entry.key) < 0);
-      return entries.length === map.entries.length ? map : makeCollection(entries, map.base);
+      return entries.length === map.entries.length ? map : makeCollection(entries);
     }
   }
 );

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { cssBaseMathOutsideParens,
   collection,
   collectionEntry,
+  collectionSpread,
   decl,
   dimension,
   funcCall,
@@ -10,6 +11,7 @@ import { cssBaseMathOutsideParens,
   list,
   mixinCall,
   mixinDef,
+  nestedPropertyBlock,
   operation,
   rule,
   sel,
@@ -96,7 +98,11 @@ describe('canonical authored AST traversal', () => {
     const document = stylesheet([
       rule('.host', [
         decl(name, collection([
-          collectionEntry(keyword('entry'), dimension(0, 'px', '0px'))
+          collectionEntry(keyword('entry'), dimension(0, 'px', '0px')),
+          collectionSpread(keyword('defaults'))
+        ])),
+        decl('font', nestedPropertyBlock([
+          collectionEntry(keyword('size'), dimension(0, 'rem', '0rem'))
         ], dimension(0, 'em', '0em'))),
         variableDeclaration('from-call', mixinCall('.make', [
           { value: mixinCall('.inner', [dimension(0, 'rem', '0rem')]) }
@@ -123,10 +129,12 @@ describe('canonical authored AST traversal', () => {
     expect(edges).toContain('ruleset.guard');
     expect(edges).toContain('ruleset.extend.target');
     expect(edges).toContain('ruleset.extend.subject');
-    expect(edges).toContain('value.collection.base');
     expect(edges).toContain('value.collection.entry');
     expect(edges).toContain('value.collection.key');
     expect(edges).toContain('value.collection.value');
+    expect(edges).toContain('value.collection.spread');
+    expect(edges).toContain('value.nested-property.base');
+    expect(edges).toContain('value.nested-property.entry');
     expect(edges).toContain('variable.value');
     expect(edges).toContain('mixin-call.arg');
     expect(edges).toContain('mixin.param-default');

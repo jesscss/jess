@@ -46,7 +46,9 @@ import type {
   Interpolation,
   AnonymousMixin,
   Collection,
+  NestedPropertyBlock,
   CollectionEntry,
+  CollectionSpread,
   Reference,
   Range,
   For,
@@ -66,7 +68,7 @@ export type NodeType =
   | 'Sequence' | 'List' | 'Lookup' | 'MixinDefinition' | 'MixinCall' | 'VariableDeclaration'
   | 'Important' | 'Operation' | 'FunctionCall' | 'Block' | 'Expression' | 'Condition' | 'IfValue'
   | 'AtRuleBlock' | 'AtRuleStatement' | 'Plugin' | 'UnknownAtRuleBlock' | 'Interpolation'
-  | 'AnonymousMixin' | 'Collection' | 'CollectionEntry' | 'Reference' | 'Range' | 'For' | 'If' | 'While' | 'StyleImport' | 'ModuleImport';
+  | 'AnonymousMixin' | 'Collection' | 'NestedPropertyBlock' | 'CollectionEntry' | 'CollectionSpread' | 'Reference' | 'Range' | 'For' | 'If' | 'While' | 'StyleImport' | 'ModuleImport';
 
 /** Combinator between two compounds in a complex selector. `|` is the CSS
  * namespace separator (tight, no spaces: `foo|h1`); `||` is the column
@@ -88,8 +90,8 @@ export type Node =
   | Stylesheet | Ruleset | Declaration | Comment | SelectorList | ComplexSelector | RelativeSelector | CompoundSelector
   | SimpleSelector | SelectorCapture | Keyword | Null | Color | Quoted | Any | Url | Dimension | Sequence | List | Lookup | MixinDefinition | MixinCall
   | VariableDeclaration | Important | Operation | FunctionCall | Block | Expression | Condition | IfValue
-  | AtRuleBlock | AtRuleStatement | Plugin | UnknownAtRuleBlock | Interpolation | AnonymousMixin | Collection
-  | CollectionEntry | Reference | Range | For | If | While | StyleImport | ModuleImport;
+  | AtRuleBlock | AtRuleStatement | Plugin | UnknownAtRuleBlock | Interpolation | AnonymousMixin | Collection | NestedPropertyBlock
+  | CollectionEntry | CollectionSpread | Reference | Range | For | If | While | StyleImport | ModuleImport;
 
 /**
  * The frozen set of the structural `type` strings — the membership basis for
@@ -112,7 +114,7 @@ export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
   'Sequence', 'List', 'Lookup', 'MixinDefinition', 'MixinCall', 'VariableDeclaration',
   'Important', 'Operation', 'FunctionCall', 'Block', 'Expression', 'Condition', 'IfValue',
   'AtRuleBlock', 'AtRuleStatement', 'Plugin', 'UnknownAtRuleBlock', 'Interpolation',
-  'AnonymousMixin', 'Collection', 'CollectionEntry', 'Reference', 'Range', 'For', 'If', 'While', 'StyleImport', 'ModuleImport'
+  'AnonymousMixin', 'Collection', 'NestedPropertyBlock', 'CollectionEntry', 'CollectionSpread', 'Reference', 'Range', 'For', 'If', 'While', 'StyleImport', 'ModuleImport'
 ]);
 
 /** Value predicate for a tree2 AST node (replaces the old `x instanceof Node`). */

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { atRuleBlock, atRuleStatement } from '../at-rule.js';
 import type { AtRuleStatement } from '../at-rule.js';
 import type { Interpolation, List, Quoted, StyleImport, Url, ValueNode } from '../nodes.js';
-import { any, block, color, comment, importIsCompileTime, styleImport, spaced, complexSelector, compoundSelectorOf, decl, dimension, forNode, interpolatedSimpleSelector, interpolation, keyword, list, mixinCall, mixinDef, operation, pseudoSelector, quoted, reference, rule, sel, selist, simpleSelector, stylesheet, url, variableDeclaration, variableReference } from '../nodes.js';
+import { any, block, collection, collectionEntry, color, comment, importIsCompileTime, styleImport, spaced, complexSelector, compoundSelectorOf, decl, dimension, forNode, interpolatedSimpleSelector, interpolation, keyword, list, mixinCall, mixinDef, operation, pseudoSelector, quoted, reference, rule, sel, selist, simpleSelector, stylesheet, url, variableDeclaration, variableReference } from '../nodes.js';
 import { createTriviaMapFromRanges, withBodySpan, withSourceSpan, withTriviaMap } from '../provenance.js';
 import { prepareStaticImports, serialize } from '../serialize.js';
 import { Context } from '../../context.js';
@@ -1302,6 +1302,40 @@ describe('StyleImport', () => {
           rule('.loop-target', [decl('color', keyword('blue'))])
         ],
         { kind: 'single', name: 'name' }
+      )
+    ]);
+    const document = stylesheet([
+      authoredImport(
+        '@import',
+        quoted('"reference.less"', 'reference.less', '"', false),
+        list([keyword('reference')], ',')
+      ),
+      rule('.visible', [], [{ target: selist(sel('.loop-target')), partial: true }])
+    ]);
+
+    await expect(serialize(document, {
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'reference.less'
+        ? { document: imported, key: 'reference.less' }
+        : undefined)
+    })).resolves.toEqual({
+      css: '.visible {\n  color: blue;\n}\n'
+    });
+  });
+
+  it('retains an evaluated list binding through a visible reference loop', async () => {
+    const imported = stylesheet([
+      forNode(
+        collection([
+          collectionEntry(keyword('row'), list([keyword('blue')], ','))
+        ]),
+        [
+          forNode(
+            variableReference('value', 'scoped'),
+            [rule('.loop-target', [decl('color', variableReference('item', 'scoped'))])],
+            { kind: 'single', name: 'item' }
+          )
+        ],
+        { kind: 'single', name: 'value' }
       )
     ]);
     const document = stylesheet([

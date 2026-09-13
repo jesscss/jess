@@ -69,7 +69,7 @@ export {
 } from './ast/value-list.js';
 
 // --- value-domain map (Collection) accessors ---
-export { isCollection, collectionEntries, collectionEntryIndex, collectionKeyIndex } from './ast/value-collection.js';
+export { CollectionOverlay, isCollection, collectionEntries, collectionEntryIndex, collectionKeyIndex } from './ast/value-collection.js';
 
 // --- value serializer ---
 export { HEX, RGB, HSL, serializeColor, hslToRgb } from './ast/color.js';

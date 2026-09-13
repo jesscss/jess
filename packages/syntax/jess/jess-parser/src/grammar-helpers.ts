@@ -27,7 +27,7 @@
 import {  } from 'parseman';
 import type { FieldCapture, FieldMap } from 'parseman';
 import { any, anonymousMixin, block, selectorBranchCanonical, declarationReference, interpolation, isComplexSelector, isForBinding, isModuleImport, isRelativeSelector, isToken, keyword, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, selectorTermOf, selist, url, variableDeclaration, variableReference, withSourceSpan } from '@jesscss/core/ast';
-import type { Token, AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Combinator as AstCombinator, Declaration, CollectionEntry, ExtendInstruction, For, ForBinding, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDefinition, UnknownAtRuleBlock, Param, Quoted, PseudoSelector, Reference, SelectorBranch, SelectorTerm, Ruleset, SelectorList, SimpleSelector, SimpleToken, Sequence, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
+import type { Token, AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Combinator as AstCombinator, Declaration, CollectionItem, ExtendInstruction, For, ForBinding, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDefinition, UnknownAtRuleBlock, Param, Quoted, PseudoSelector, Reference, SelectorBranch, SelectorTerm, Ruleset, SelectorList, SimpleSelector, SimpleToken, Sequence, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
 type JessOperatorFact = { readonly value: string; readonly src: string };
@@ -939,14 +939,16 @@ function isJessDeclaration(value: unknown): value is Declaration {
       || (Array.isArray(value.value) && value.value.every(isValueNode)));
 }
 
-function isCollectionEntry(value: unknown): value is CollectionEntry {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'CollectionEntry'
+function isCollectionItem(value: unknown): value is CollectionItem {
+  if (typeof value !== 'object' || value === null || !('type' in value) || !('value' in value)) {
+    return false;
+  }
+  if (value.type === 'CollectionSpread') {
+    return isJessValueSlotValue(value.value);
+  }
+  return value.type === 'CollectionEntry'
     && 'key' in value
     && isJessValueSlotValue(value.key)
-    && 'value' in value
     && isJessValueSlotValue(value.value);
 }
 
@@ -1313,7 +1315,7 @@ export {
   urlFromChildren,
   requireLiteralQuoted,
   isJessDeclaration,
-  isCollectionEntry,
+  isCollectionItem,
   isRuleset,
   isMixinDefinition,
   isMixinCall,

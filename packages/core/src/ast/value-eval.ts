@@ -215,24 +215,23 @@ export interface Null {
 }
 
 /**
- * One key/value pair of a {@link Collection}, in AUTHORED order.
+ * One effective key/value pair of a {@link Collection}. Entries retain the
+ * first matching slot's order after later-wins overlay folding.
  *
  * `key` is a full {@link ValueGroup}, not a string: a Sass map key is a VALUE
- * (`(1: a)` keys on the number `1`, `(red: a)` on the colour), and equality is
+ * (`(1: a)` keys on the number `1`, `(#c6538c: a)` on a colour), and equality is
  * value equality, never byte equality. It is a `ValueGroup` rather than a
  * scalar `Value` so parsers can hand over sequence keys without a breaking
  * narrowing here.
  *
- * `variable` / `important` are BYTE facts carried from the authoring dialect so
- * the canonical spelling survives a round trip (`{ @a: 1 }`, `{ a: 1 !important }`).
- * Both are omitted on the ordinary entry, keeping the common shape monomorphic.
+ * `important` is a BYTE fact carried from the authoring dialect so the canonical
+ * spelling survives a round trip (`{ a: 1 !important }`). It is omitted on the
+ * ordinary entry, keeping the common shape monomorphic.
  */
 export interface CollectionEntry {
   readonly key: ValueGroup;
   readonly value: ValueGroup;
 
-  /** Authored as a VARIABLE declaration (`{ @a: 1 }`) — emits the `@` sigil. */
-  readonly variable?: boolean;
   readonly important?: boolean;
 }
 
@@ -241,10 +240,8 @@ export interface CollectionEntry {
  * `nodes.ts`, module-qualified against it exactly as the value {@link Dimension}
  * is against the AST `Dimension`.
  *
- * This is the DATA half of the Collection two-role model: a `Collection` reaching
- * a value/arg position is data (this type), while a `Collection` at a property
- * root is structure (expanded to hyphenated declarations by the serializer's body
- * walk, which never reaches here).
+ * An AST `Collection` is always data. SCSS nested-property structure uses the
+ * distinct AST `NestedPropertyBlock` and is expanded before this value boundary.
  *
  * Entries are ORDERED and key-equality-sensitive, matching Sass map semantics.
  * A Collection is also a LIST of pairs: `groupItems` yields each entry as a
@@ -258,10 +255,6 @@ export interface CollectionEntry {
 export interface Collection {
   readonly type: 'Collection';
   readonly entries: readonly CollectionEntry[];
-
-  /** The carrier's own value in the SCSS nested property `font: 20px { … }`;
-   * omitted when the block has no own value. */
-  readonly base?: ValueGroup;
   readonly bytes: string;
 }
 

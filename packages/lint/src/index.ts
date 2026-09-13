@@ -158,6 +158,14 @@ function settingSeverity(setting: LintRuleSetting | LintSeverity | undefined): L
   return isSettingTuple(setting) ? setting[0] : setting;
 }
 
+function shouldCollectDiagnostic(code: string, config: LintConfig): boolean {
+  const ruleName = lintRuleNameForDiagnostic(code);
+  const policy = (ruleName !== undefined ? config.rules?.[ruleName] : undefined)
+    ?? config.diagnostics?.[code];
+  const severity = settingSeverity(policy);
+  return severity !== undefined && severity !== null && severity !== 'off';
+}
+
 function settingOptions(setting: LintRuleSetting | undefined): LintRuleOptions | undefined {
   return Array.isArray(setting) ? setting[1] : undefined;
 }
@@ -499,7 +507,8 @@ export async function lintText(input: LintTextInput, options: LintOptions = {}):
     source: input.source,
     filePath: input.filePath,
     language,
-    metadata
+    metadata,
+    shouldCollect: code => shouldCollectDiagnostic(code, lintConfig)
   });
   return toLintResult(
     input.filePath,
@@ -538,7 +547,13 @@ export async function lintFiles(patterns: string | readonly string[], options: L
   for (const filePath of files) {
     const source = await readFile(filePath, 'utf8');
     const language = languageFromPath(filePath, options.language);
-    const collected = collectTolerantDiagnostics({ source, filePath, language, metadata });
+    const collected = collectTolerantDiagnostics({
+      source,
+      filePath,
+      language,
+      metadata,
+      shouldCollect: code => shouldCollectDiagnostic(code, lintConfig)
+    });
     results.push(toLintResult(
       filePath,
       applyPolicy(collected.diagnostics, source, lintConfig, options),

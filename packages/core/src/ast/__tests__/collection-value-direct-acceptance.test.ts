@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildEvaluator } from '../evaluator.js';
 import {
-  classifyValueBlock, collection, collectionEntry, decl, dimension, funcCall, interpolation, keyword,
+  classifyValueBlock, collection, collectionEntry, collectionSpread, decl, dimension, funcCall, interpolation, keyword, nestedPropertyBlock,
   rule, stylesheet, variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
@@ -75,18 +75,18 @@ describe('Collection in a value/arg position', () => {
     expect(render(document)).toBe('.x {\n  y: foo({ a: 1 });\n}\n');
   });
 
-  it('keeps Less variable-only value blocks as collection data', () => {
-    const map = classifyValueBlock([
+  it('keeps Less variable-only value blocks executable', () => {
+    const block = classifyValueBlock([
       variableDeclaration('a', dimension(1), { mode: 'declare' }),
       variableDeclaration('b', dimension(2), { mode: 'declare' })
     ]);
-    expect(map.type).toBe('Collection');
+    expect(block.type).toBe('AnonymousMixin');
 
     const document = stylesheet([
-      rule('.x', [decl('y', funcCall('foo', [map]))])
+      rule('.x', [decl('y', funcCall('foo', [block]))])
     ]);
 
-    expect(render(document)).toBe('.x {\n  y: foo({ a: 1; b: 2 });\n}\n');
+    expect(render(document)).toBe('.x {\n  y: foo();\n}\n');
   });
 
   it('keeps non-map Less detached rulesets as anonymous mixins', () => {
@@ -110,6 +110,47 @@ describe('Collection in a value/arg position', () => {
     expect(render(document)).toBe('.x {\n  y: foo({});\n}\n');
   });
 
+  it('overlays spreads and explicit entries from left to right', () => {
+    const document = stylesheet([
+      variableDeclaration('defaults', collection([
+        entry('a', dimension(1)),
+        entry('b', dimension(2))
+      ]), { mode: 'declare' }),
+      variableDeclaration('overrides', collection([
+        entry('b', dimension(3)),
+        entry('c', dimension(4))
+      ]), { mode: 'declare' }),
+      rule('.x', [decl('y', funcCall('foo', [collection([
+        collectionSpread(variableReference('defaults', 'scoped')),
+        collectionSpread(variableReference('overrides', 'scoped')),
+        entry('a', dimension(5))
+      ])]))])
+    ]);
+
+    expect(render(document)).toBe('.x {\n  y: foo({ a: 5; b: 3; c: 4 });\n}\n');
+  });
+
+  it('resolves duplicate explicit keys with the later value', () => {
+    const document = stylesheet([
+      rule('.x', [decl('y', funcCall('foo', [collection([
+        entry('a', dimension(1)),
+        entry('a', dimension(2))
+      ])]))])
+    ]);
+
+    expect(render(document)).toBe('.x {\n  y: foo({ a: 2 });\n}\n');
+  });
+
+  it('rejects a non-Collection spread operand', () => {
+    const document = stylesheet([
+      rule('.x', [decl('y', funcCall('foo', [collection([
+        collectionSpread(dimension(12, 'px'))
+      ])]))])
+    ]);
+
+    expect(() => render(document)).toThrow('Collection spread expected Collection, got Dimension');
+  });
+
   it('keeps `!important` on a collection entry', () => {
     const document = stylesheet([
       rule('.x', [decl('y', funcCall('foo', [collection([entry('a', dimension(1), true)])]))])
@@ -125,7 +166,10 @@ describe('Collection in a value/arg position', () => {
    */
   it('leaves the SCSS nested-property flatten path untouched', () => {
     const document = stylesheet([
-      rule('.x', [decl('font', collection([entry('family', keyword('serif'))], dimension(20, 'px')))])
+      rule('.x', [decl('font', nestedPropertyBlock(
+        [entry('family', keyword('serif'))],
+        dimension(20, 'px')
+      ))])
     ]);
 
     expect(render(document)).toBe('.x {\n  font: 20px;\n  font-family: serif;\n}\n');

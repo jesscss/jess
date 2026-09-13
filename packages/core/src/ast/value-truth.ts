@@ -55,7 +55,7 @@ function isEmptyGroup(value: ValueGroup): boolean {
   switch (value.type) {
     case 'Null': return true;
     case 'List': return value.value.length === 0;
-    case 'Collection': return value.entries.length === 0 && value.base === undefined;
+    case 'Collection': return value.entries.length === 0;
     default: return false;
   }
 }
@@ -86,7 +86,7 @@ export function isTruthy(value: ValueGroup): boolean {
     case 'Null': return false;
     case 'Quoted': return value.value !== '';
     case 'List': return value.value.length !== 0;
-    case 'Collection': return value.entries.length !== 0 || value.base !== undefined;
+    case 'Collection': return value.entries.length !== 0;
     case 'Block':
       return value.delimiter === 'paren' ? isTruthy(value.value) : !isEmptyGroup(value.value);
     default: return true;

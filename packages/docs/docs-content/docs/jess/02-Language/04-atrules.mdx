@@ -13,6 +13,14 @@ Jess compiler at-rules use a dash prefix: `@-compose`, `@-use`, `@-from`,
 `@-export`, and `@-import`. Bare CSS at-rules stay bare, so Jess can add
 compile-time behavior without taking names away from CSS.
 
+:::caution[Module loading is not wired yet]
+
+These module at-rules parse and round-trip in the current alpha, but no resolver
+loads or evaluates their targets yet. The examples below document the settled
+syntax and intended behavior.
+
+:::
+
 ## @-compose
 
 This is probably the most important at-rule. It's what you will use to compose together different stylesheets. It is most similar to, and largely a drop-in replacement of Sass's `@use` at-rule.

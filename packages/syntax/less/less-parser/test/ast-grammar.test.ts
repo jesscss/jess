@@ -7007,7 +7007,7 @@ describe('Less AST grammar facts', () => {
     );
   });
 
-  it('classifies variable-only value blocks as Collections and reads their typed members', () => {
+  it('keeps variable-only value blocks executable and reads their members', () => {
     /*
      * Upstream tests-config/namespacing/namespacing-1.less: the map declaration
      * follows its reads, and `@@varToGet` selects the `@default-color` member.
@@ -7031,21 +7031,21 @@ describe('Less AST grammar facts', () => {
       type: 'VariableDeclaration',
       name: 'defaults',
       value: {
-        type: 'Collection',
-        entries: [
+        type: 'AnonymousMixin',
+        rules: [
           {
-            type: 'CollectionEntry',
-            key: { type: 'Keyword', src: 'default-color' }
+            type: 'VariableDeclaration',
+            name: 'default-color'
           },
           {
-            type: 'CollectionEntry',
-            key: { type: 'Keyword', src: 'nested' },
+            type: 'VariableDeclaration',
+            name: 'nested',
             value: {
-              type: 'Collection',
-              entries: [
+              type: 'AnonymousMixin',
+              rules: [
                 {
-                  type: 'CollectionEntry',
-                  key: { type: 'Keyword', src: 'color' }
+                  type: 'VariableDeclaration',
+                  name: 'color'
                 }
               ]
             }

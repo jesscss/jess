@@ -81,14 +81,15 @@ $font-weights: {
 }
 ```
 
-### Key normalization rules
+### Key comparison rules
 
 A collection key is a **value**, matched by value equality — the same model Sass
 maps use, where `map.get($m, 1px)` must match the number `1px` and not the text
 `"1px"`.
 
-- **Quoted string keys** with no interpolation are treated as plain keys.
-  - `"regular"` becomes the bare `regular`, which is the string key `"regular"`.
+- A quoted key such as `"regular"` remains a `Quoted` value in the current AST,
+  while bare `regular` is a `Keyword`. Sass equality treats those keys as equal;
+  quote-normalized storage and output are recorded follow-up work.
 - Other Sass map keys (numbers, colors, lists) stay the values they are; see
   [Namespaces, collections, and maps](/docs/Language/namespaces-and-maps) for the
   key model and for why a numeric subscript is a position rather than a key.

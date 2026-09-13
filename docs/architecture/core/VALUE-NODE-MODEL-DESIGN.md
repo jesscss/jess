@@ -48,8 +48,9 @@ only) shipped per these, which supersede any conflicting statement in §1–§6:
    `v.type === 'Color'` would misread it as a value-domain object missing its rgb
    fields. Enforced explicitly in the inert arms.
 
-**Node set as shipped:** `Keyword{src}` · `Color{src}` (hex vs named via
-`src[0]==='#'`) · `Quoted{src,value,quote,escaped}` · `Dimension{number,unit,src}` ·
+**Node set as shipped:** `Keyword{src}` (including named-color spellings, which
+convert only at a color point of use) · `Color{src}` (hex literals only) ·
+`Quoted{src,value,quote,escaped}` · `Dimension{number,unit,src}` ·
 `Any{src}` (the only sniffing leaf, only when operated). `RawInline` stays a distinct
 `Statement` (its `.text` was left as-is — the optional `src` rename skipped). The
 materialize per-type build bodies (`colorFromSrc` / `dimensionFromFields` /
@@ -81,9 +82,9 @@ regex (constitution P0). The `ValueNode` union member `Word` is replaced by:
 
 | `type` | Fields (all `readonly`) | Carries | Inert emit | Forced (operated) → value-domain |
 |---|---|---|---|---|
-| `Keyword` | `src` | ident bytes (`solid`, `auto`) | `src` | `makeKeyword(src)` |
+| `Keyword` | `src` | ident bytes (`solid`, `auto`, `red`) | `src` | `makeKeyword(src)`; named colors coerce only at a color point of use |
 | `Dimension` | `src`, `number`, `unit` | numeric literal (`10px`, `1.0px`, `50%`, `5`) | `src` | build value `Dimension` from `number`/`unit` (denoise exception §2.3) |
-| `Color` | `src` | hex or named (`#fff`, `red`, `transparent`) | `src` | `#`-prefix ⇒ `parseHex`; else `namedColor(src)`; miss ⇒ keyword |
+| `Color` | `src` | hex color literal (`#fff`, `#c6538c`) | `src` | `parseHex(src)` |
 | `Quoted` | `src`, `value`, `quote`, `escaped` | string literal (`"x"`, `'y'`) | `src` | build value `Quoted` from the fields |
 | `Bool` | `src` | `true`/`false` (Less) | `src` | `{ value: src === 'true' }` |
 | `Any` | `src` | arbitrary/opaque bytes (raw prelude fragment, computed/joined fragment, `url(...)`, list piece, mixin-arg bytes) | `src` | **sniff** (`tagForWord(src)` + build) — the ONLY sniffing node |
@@ -214,7 +215,7 @@ build `t2.word(bytes, tag, lit)`; each flips to its typed constructor:
 |---|---|---|
 | `Numeric` (`numericLeaf`, :66/:74) | `word(bytes, Dimension, {number,unit})` | `dimension(number, unit, /*src=*/bytes)` — the grammar's number/unit leaf split feeds `number`/`unit` directly |
 | `Color` (:178) | `word(bytes, ColorHex)` | `color(bytes)` |
-| `NamedColor` (:181) | `word(bytes, ColorNamed)` | `color(bytes)` (materialize resolves by name; grammar already authoritative it's a color) |
+| `NamedColor` (:181; historical, deleted by V13) | `word(bytes, ColorNamed)` | `keyword(bytes)`; current grammars classify named-color spellings as `Keyword` and color operations coerce at point of use |
 | `Keyword` (:183) | `word(bytes, Keyword)` | `keyword(bytes)` |
 | `Quoted` (`quotedLeaf`, :150) | `word(bytes, Quoted, {value,quote,escaped})` | `quoted(bytes, value, quote, escaped)` (interp branch unchanged → `Interp`) |
 | `EscapedValue` (`escapedLeaf`, :170/:172) | `word(inner)` / `word(bytes)` | `any(inner)` / `any(bytes)` (escaped, unquoted-output, opaque) |
@@ -337,10 +338,9 @@ tag.
 2. **`src` vs `bytes` field name (§1.1).** Keep `src` (preserves the `'bytes' in v`
    escape hatch; honest source-vs-canonical distinction) or collapse to `bytes` and
    rely on the lane invariant alone? Recommendation: keep `src`.
-3. **`Color` hex-vs-named discriminator (§1).** Materialize distinguishes by
-   `src[0] === '#'` (one char, lazy path only). Acceptable, or carry an explicit
-   `named` flag to fully honor P0? Recommendation: `#`-prefix check — it reads one
-   byte on the cold operated path, not structural re-derivation.
+3. **`Color` discriminator (§1) — superseded by V13.** `Color` now carries only
+   hex literals. Named-color spellings parse as `Keyword` and coerce at a color
+   point of use, so no hex-vs-named field or discriminator exists on `Color`.
 4. **`RawInline.text` → `src` (§1.2).** Rename for field-name consistency, or leave?
    Non-blocking; recommend a trivial follow-up rename, not part of #44.
 5. **Sequencing (owner-settled elsewhere, restated).** Per

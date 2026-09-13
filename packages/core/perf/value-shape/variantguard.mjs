@@ -7,7 +7,7 @@
  * is byte-identical between the two variants (the factories live in a sibling
  * chunk), so file hashing is NOT a sufficient check — only behaviour is.
  *
- *   UNIFIED     -> Color has 11 keys, Collection 4, Block 5
+ *   UNIFIED     -> Color has 11 keys, Collection 3, Block 5
  *   CONDITIONAL -> Color has  5 keys, Collection 3, Block 4
  */
 import { fileURLToPath } from 'node:url';
@@ -20,7 +20,7 @@ const shapes = {
   'ColorRgb(no opts)': Object.keys(v.makeColorRgb([1, 2, 3], 1, 0)),
   'ColorRgb(node)': Object.keys(v.makeColorRgb([1, 2, 3], 1, 0, { node: 'red' })),
   ColorHsl: Object.keys(v.makeColorHsl([1, 0.5, 0.5], 1, 0)),
-  'Collection(no base)': Object.keys(v.makeCollection([])),
+  Collection: Object.keys(v.makeCollection([])),
   'Block(not escaped)': Object.keys(v.makeBlock({ type: 'Keyword', text: 'a', bytes: 'a' }, 'square'))
 };
 for (const [k, keys] of Object.entries(shapes)) {

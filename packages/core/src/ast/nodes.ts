@@ -76,8 +76,8 @@ export interface Null {
   readonly src: string;
 }
 
-/** A color literal leaf, hex or named, e.g. `#fff`, `red`, `transparent`.
- *  Hex vs named is `src[0] === '#'` (read only on the cold operated path). */
+/** A color literal leaf, e.g. `#fff`. Named colors are Keywords in every
+ * dialect and materialize as colors only at a color-operation boundary. */
 export interface Color {
   readonly type: 'Color';
   readonly src: string;
@@ -427,26 +427,35 @@ export interface CollectionEntry {
   readonly valueOnNewLine?: boolean;
 }
 
+/** One ordered shallow-merge operand in a {@link Collection}. */
+export interface CollectionSpread {
+  readonly type: 'CollectionSpread';
+  readonly value: ValueSlot;
+}
+
+/** One authored item in a Collection literal. */
+export type CollectionItem = CollectionEntry | CollectionSpread;
+
 /**
  * A data/map block value `{ key: value; … }`. Its ROOT-LEVEL children are
  * key/value ENTRIES only — never declarations, variable declarations, at-rules,
  * mixin calls, or rulesets. An entry's VALUE may be any value node (including an
  * {@link AnonymousMixin}).
  *
- * Used for SCSS nested properties (`font: 20px { family: serif }`): the carrier
- * Declaration's `value` is a Collection whose entries keep LEAF-ONLY names, plus
- * an optional `base` holding the carrier's own declaration value (`20px`). The
- * hyphenated flattening happens at serialize time, never at parse. Also used for
- * Jess collection literals and Less value-position `{ … }` blocks that are
- * clearly data maps.
+ * Used for Sass maps and Jess collection literals. Less `{ … }` blocks remain
+ * executable {@link AnonymousMixin} values; SCSS nested-property syntax has its
+ * own structural {@link NestedPropertyBlock}. A Collection is always data.
  */
 export interface Collection {
   readonly type: 'Collection';
-  readonly entries: CollectionEntry[];
+  readonly entries: CollectionItem[];
+}
 
-  /** The carrier's own declaration value, e.g. `20px` in `font: 20px { … }`;
-   * omitted when the nested property has no own value. */
-  readonly base?: ValueSlot;
+/** SCSS's structural `font: 20px { family: serif }` property block. */
+export interface NestedPropertyBlock {
+  readonly type: 'NestedPropertyBlock';
+  readonly entries: CollectionEntry[];
+  readonly base: ValueSlot | null;
 }
 
 /** A value-position executable `{ … }` block. Collections are value nodes too,
@@ -548,6 +557,7 @@ export type ValueNode =
   | Interpolation
   | AnonymousMixin
   | Collection
+  | NestedPropertyBlock
   | Reference
   | Range;
 
@@ -1501,25 +1511,10 @@ export const interpolation = (parts: InterpPart[]): Interpolation => ({ type: 'I
 export const anonymousMixin = (rules: Statement[], params?: Param[]): AnonymousMixin =>
   params === undefined ? { type: 'AnonymousMixin', rules } : { type: 'AnonymousMixin', rules, params };
 
-/**
- * Classify a Less-style detached `{ … }` block by its direct statement shape.
- * Jess collections parse through their own entry grammar and never reach this
- * helper; Less keeps its legacy heuristic where variable-only blocks are data
- * maps and every other statement body is an executable anonymous mixin.
- */
-type CollectionVariableDeclaration = VariableDeclaration & { readonly value: ValueSlot };
-
-const isCollectionVariableDeclaration = (statement: Statement): statement is CollectionVariableDeclaration =>
-  statement.type === 'VariableDeclaration'
-  && (!('type' in statement.value) || statement.value.type !== 'MixinCall');
-
-export const classifyValueBlock = (rules: Statement[]): AnonymousMixin | Collection => {
-  if (rules.length === 0 || !rules.every(isCollectionVariableDeclaration)) {
-    return anonymousMixin(rules);
-  }
-  return collection(rules.map(entry =>
-    collectionEntry(keyword(entry.name), entry.value)
-  ));
+/** Less-style `{ … }` blocks are executable anonymous mixins. Jess and Sass
+ * data collections are constructed by their dedicated collection grammars. */
+export const classifyValueBlock = (rules: Statement[]): AnonymousMixin => {
+  return anonymousMixin(rules);
 };
 export const forNode = (
   iterable: ValueSlot | MixinCall,
@@ -1621,10 +1616,17 @@ export const collectionEntry = (
     ? { type: 'CollectionEntry', key, value, merge, important, valueOnNewLine: true }
     : { type: 'CollectionEntry', key, value, merge, important };
 
-/** A data/map block value: leaf-named `entries`, plus an optional `base` carrier
- * value (`20px` in `font: 20px { … }`). See {@link Collection}. */
-export const collection = (entries: CollectionEntry[], base?: ValueSlot): Collection =>
-  base === undefined ? { type: 'Collection', entries } : { type: 'Collection', entries, base };
+/** An ordered shallow-merge item in a data Collection. */
+export const collectionSpread = (value: ValueSlot): CollectionSpread =>
+  ({ type: 'CollectionSpread', value });
+
+/** A data Collection. */
+export const collection = (entries: CollectionItem[]): Collection =>
+  ({ type: 'Collection', entries });
+
+/** A structural SCSS nested-property block, deliberately not a Collection. */
+export const nestedPropertyBlock = (entries: CollectionEntry[], base?: ValueSlot): NestedPropertyBlock =>
+  ({ type: 'NestedPropertyBlock', entries, base: base ?? null });
 export const comment = (text: string): Comment => ({ type: 'Comment', text, _s: NO_SPAN, _e: NO_SPAN });
 
 /** A bound-variable reference — {@link Lookup} of kind `var`. `name` may be a

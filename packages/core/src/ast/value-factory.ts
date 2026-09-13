@@ -172,14 +172,12 @@ export function makeList(
 /**
  * Build a value-domain map. `entries` keep their AUTHORED order — Sass maps are
  * ordered, and a key-rewriting function (`map.set`) replaces in place rather than
- * appending. De-duplication is the CALLER's policy (the evaluator preserves what
- * the author wrote; `map.merge` collapses), so this never silently drops a pair.
+ * appending. De-duplication is the CALLER's policy: the collection evaluator and
+ * map mutation functions resolve collisions before calling this factory, while
+ * direct value-domain callers may deliberately retain authored pairs.
  */
-export function makeCollection(entries: readonly CollectionEntry[], base?: ValueGroup): Collection {
+export function makeCollection(entries: readonly CollectionEntry[]): Collection {
   const c: Mutable<Collection> = { type: 'Collection', entries, bytes: '' };
-  if (base !== undefined) {
-    c.base = base;
-  }
   c.bytes = serializeValue(c);
   return c;
 }
