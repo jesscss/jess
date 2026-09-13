@@ -61,7 +61,7 @@ import type {
   Any,
   Apply,
   Collection,
-  CollectionEntry as AstCollectionEntry,
+  NestedPropertyBlock,
   Color,
   Comment,
   ComplexSelector,
@@ -123,6 +123,7 @@ import {
   type PluginHost,
   type PluginRawArgument,
   type PluginVariableHit,
+  type Collection as ValueCollection,
   type CollectionEntry as ValueCollectionEntry,
   type EvalValue,
   type ValueEvaluator,
@@ -137,6 +138,7 @@ import { colorRgb, HEX } from './color.js'; // [compress] typed-color channel re
 import { compressDimensionBytes, compressSelectorHeader, shortestColor, shortestColorFromHex } from './compress.js';
 import { UnitArithmeticError, calcInner, preservedUnitClashes, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeKeyword, makeBool, makeList, makeNull, makeUrlValue, NULL } from './value-factory.js'; // [calc]
+import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, guardUsesDefault, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
@@ -494,6 +496,11 @@ const INDENT = '  ';
  */
 type Binding = CallValue;
 
+/* Typed collection entries have no authored AST value node. Their mandatory
+ * `evaluated` slot carries the value; this inert singleton only satisfies the
+ * existing binding/declaration shape without allocating one wrapper per item. */
+const EVALUATED_BINDING: ValueNode = any('');
+
 type MixinRank = readonly number[];
 
 interface OrderedMixinCandidate {
@@ -540,8 +547,15 @@ interface DeclIndex {
 interface BindingCell {
   declaration: VariableDeclaration;
   value: Binding;
-  valueFrame?: Frame;
+  valueFrame: Frame | null;
+  evaluated: ValueGroup | null;
   prev: BindingCell | null;
+}
+
+interface BindingHit {
+  value: Binding;
+  frame: Frame;
+  evaluated: ValueGroup | null;
 }
 
 /** Render-local closure/source facts for one detached-ruleset binding. */
@@ -1024,13 +1038,15 @@ function collectMixins(statements: Statement[]): Map<string, MixinDefinition[]> 
  */
 function collectDeclIndex(
   statements: Statement[],
-  params: Map<string, Binding> | null = null
+  params: Map<string, Binding> | null = null,
+  cells: ReadonlyMap<string, BindingCell> | null = null
 ): DeclIndex | null {
   const byName = new Map<string, VariableDeclaration[]>();
   if (params) {
     for (const [name, value] of params) {
       const stack = byName.get(name);
-      const declaration = variableDeclaration(name, value, { mode: 'declare' });
+      const declaration = cells?.get(name)?.declaration
+        ?? variableDeclaration(name, value, { mode: 'declare' });
       if (stack) {
         stack.push(declaration);
       } else {
@@ -1110,23 +1126,49 @@ function collectSelectedDeclIndex(
 
 /** Seed one activation's live cells from mixin/function parameters.
  * A call-valued argument keeps its caller on the existing `valueFrame` slot;
- * constructing the four-field cell here avoids a later hidden-class transition. */
+ * constructing the complete cell here avoids a later hidden-class transition. */
 function cellsForParams(
   params: Map<string, Binding> | null,
   valueFrames?: ReadonlyMap<Binding, Frame>,
-  mixinCallFrame?: Frame
+  mixinCallFrame?: Frame,
+  forBinding?: For['binding'],
+  collectionEntry?: ValueCollectionEntry,
+  destructured: readonly ValueGroup[] | null = null,
+  evaluatedItem: ValueGroup | null = null
 ): Map<string, BindingCell> | null {
   if (!params) {
     return null;
   }
   const cells = new Map<string, BindingCell>();
+  let parameterIndex = 0;
   for (const [name, value] of params) {
     const declaration = variableDeclaration(name, value, { mode: 'declare' });
     const valueFrame = valueFrames?.get(value)
       ?? (!isValueSlotArray(value) && value.type === 'MixinCall' ? mixinCallFrame : undefined);
-    cells.set(name, valueFrame
-      ? { declaration, value, valueFrame, prev: null }
-      : { declaration, value, prev: null });
+    let evaluated: ValueGroup | null = null;
+    if (forBinding !== undefined && (collectionEntry !== undefined || evaluatedItem !== null)) {
+      if (forBinding.kind === 'single') {
+        evaluated = collectionEntry?.value ?? evaluatedItem;
+      } else if (forBinding.kind === 'comma') {
+        evaluated = parameterIndex === 0
+          ? collectionEntry?.value ?? evaluatedItem
+          : parameterIndex === 1 ? collectionEntry?.key ?? null : null;
+      } else if (forBinding.kind === 'bracket') {
+        evaluated = parameterIndex === 0
+          ? collectionEntry?.key ?? null
+          : collectionEntry?.value ?? evaluatedItem;
+      } else {
+        evaluated = destructured?.[parameterIndex] ?? null;
+      }
+    }
+    cells.set(name, {
+      declaration,
+      value,
+      valueFrame: valueFrame ?? null,
+      evaluated,
+      prev: null
+    });
+    parameterIndex += 1;
   }
   return cells;
 }
@@ -2251,14 +2293,14 @@ function parentExcludes(frame: Frame | null, rules: Statement[]): boolean {
  * because those callers resolve a name to a concrete ruleset binding, not a lazy
  * self-referential value. The regular value read uses `resolveVarRef` instead.
  */
-function lookupLiveCell(frame: Frame | null, name: string, e?: EvalCtx): { value: Binding; frame: Frame } | undefined {
+function lookupLiveCell(frame: Frame | null, name: string, e?: EvalCtx): BindingHit | undefined {
   let fb: Frame | null | undefined;
   for (let f = frame; f; f = f.parent) {
     /* Newest binding first, then the ones it shadowed — the live-store twin of
      * `lookupScopedBinding`'s backward walk over the per-name declaration stack. */
     for (let hit: BindingCell | null | undefined = f.cells?.get(name); hit; hit = hit.prev) {
       if (!e?.excluded.has(hit.value)) {
-        return { value: hit.value, frame: hit.valueFrame ?? f };
+        return { value: hit.value, frame: hit.valueFrame ?? f, evaluated: hit.evaluated };
       }
     }
     if (f.fallback && !fb && (e === undefined || e.allowCallerScope || f.callerFallback !== true)) {
@@ -2286,7 +2328,7 @@ function hasExcludedLiveCell(frame: Frame | null, name: string, e: EvalCtx): boo
   return fb ? hasExcludedLiveCell(fb, name, e) : false;
 }
 
-function lookupLeakedBinding(frame: Frame | null, name: string, e?: EvalCtx): { value: Binding; frame: Frame } | undefined {
+function lookupLeakedBinding(frame: Frame | null, name: string, e?: EvalCtx): BindingHit | undefined {
   let fb: Frame | null | undefined;
   for (let f = frame; f; f = f.parent) {
     const stack = f.leaked?.get(name);
@@ -2294,7 +2336,7 @@ function lookupLeakedBinding(frame: Frame | null, name: string, e?: EvalCtx): { 
       for (let i = stack.length - 1; i >= 0; i--) {
         const value = stack[i]!;
         if (!e?.excluded.has(value)) {
-          return { value, frame: f };
+          return { value, frame: f, evaluated: null };
         }
       }
     }
@@ -2322,12 +2364,12 @@ function hasExcludedLeakedBinding(frame: Frame | null, name: string, e: EvalCtx)
   return fb ? hasExcludedLeakedBinding(fb, name, e) : false;
 }
 
-function lookupScopedBinding(frame: Frame | null, name: string, e?: EvalCtx): { value: Binding; frame: Frame } | undefined {
+function lookupScopedBinding(frame: Frame | null, name: string, e?: EvalCtx): BindingHit | undefined {
   let fb: Frame | null | undefined;
   for (let f = frame; f; f = f.parent) {
     const replacement = f.reassign?.get(name);
     if (replacement && (!e?.excluded.has(replacement.value))) {
-      return { value: replacement.value, frame: f.bindingValueFrames?.get(replacement.value) ?? f };
+      return { value: replacement.value, frame: f.bindingValueFrames?.get(replacement.value) ?? f, evaluated: null };
     }
     const stack = (f.selectedDeclIndex ?? f.declIndex)?.byName.get(name);
     if (stack) {
@@ -2343,17 +2385,27 @@ function lookupScopedBinding(frame: Frame | null, name: string, e?: EvalCtx): { 
           continue;
         }
         if (!e?.excluded.has(declaration.value)) {
-          if (!isValueSlotArray(declaration.value) && declaration.value.type === 'MixinCall') {
-            /* A self-reading redeclaration can sit ahead of the synthetic
-             * parameter cell. This rare branch is bounded by distinct
-             * same-name declarations, never by render iteration count. */
-            for (let cell: BindingCell | null | undefined = f.cells?.get(name); cell; cell = cell.prev) {
-              if (cell.value === declaration.value && cell.valueFrame) {
-                return { value: declaration.value, frame: cell.valueFrame };
-              }
+          /* A self-reading redeclaration can sit ahead of the synthetic
+           * parameter cell. This rare branch is bounded by distinct same-name
+           * declarations, never by render iteration count. Parameter cells
+           * also own typed collection values that have no AST representation.
+           *
+           * Older activation sites still synthesize their parameter declaration
+           * separately from the cell. Preserve the call-valued argument's caller
+           * closure there by matching its unique MixinCall value, while typed
+           * collection cells use declaration identity (their shared inert value
+           * cannot safely identify one parameter). */
+          for (let cell: BindingCell | null | undefined = f.cells?.get(name); cell; cell = cell.prev) {
+            if (cell.declaration === declaration
+              || (isMixinCallValue(declaration.value) && cell.value === declaration.value)) {
+              return { value: cell.value, frame: cell.valueFrame ?? f, evaluated: cell.evaluated };
             }
           }
-          return { value: declaration.value, frame: f.bindingValueFrames?.get(declaration.value) ?? f };
+          return {
+            value: declaration.value,
+            frame: f.bindingValueFrames?.get(declaration.value) ?? f,
+            evaluated: null
+          };
         }
       }
     }
@@ -2403,7 +2455,7 @@ function hasExcludedScopedBinding(frame: Frame | null, name: string, e: EvalCtx)
  * `e` OFF for shape/candidate/arg probes (empty-variadic drop, closure-arg
  * substitution) where the caller fallback IS the intended scope (R15).
  */
-function lookupVarIn(frame: Frame | null, name: string, e?: EvalCtx): { value: Binding; frame: Frame } | undefined {
+function lookupVarIn(frame: Frame | null, name: string, e?: EvalCtx): BindingHit | undefined {
   return lookupScopedBinding(frame, name, e)
     ?? lookupLiveCell(frame, name, e)
     ?? lookupLeakedBinding(frame, name, e);
@@ -2430,7 +2482,7 @@ function lookupVar(frame: Frame | null, name: string, e?: EvalCtx): Binding | un
  * a live cell was a single slot, so write `N` destroyed `N-1` and `$i: 3;
  * $i: $i - 1` reported a false `Recursive reference` — the read correctly skipped
  * its own node and then found nothing behind it. */
-function resolveVarRef(frame: Frame | null, name: string, lookup: 'live' | 'scoped', e: EvalCtx): { value: Binding; frame: Frame } | undefined {
+function resolveVarRef(frame: Frame | null, name: string, lookup: 'live' | 'scoped', e: EvalCtx): BindingHit | undefined {
   return lookup === 'live'
     ? lookupLiveCell(frame, name, e)
     : lookupScopedBinding(frame, name, e) ?? lookupLeakedBinding(frame, name, e);
@@ -2593,7 +2645,10 @@ function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e:
       return;
     }
     const cells = frame.cells ??= new Map();
-    cells.set(node.name, { declaration: node, value: node.value, prev: liveCellPredecessor(cells, node) });
+    cells.set(node.name, {
+      declaration: node, value: node.value, valueFrame: null, evaluated: null,
+      prev: liveCellPredecessor(cells, node)
+    });
     (frame.reassign ??= new Map()).set(node.name, node);
     return;
   }
@@ -2604,7 +2659,10 @@ function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e:
         throw new ReferenceError(`live variable $${node.name} is undefined`);
       }
       const cells = found.frame.cells!;
-      cells.set(node.name, { declaration: node, value: node.value, prev: liveCellPredecessor(cells, node) });
+      cells.set(node.name, {
+        declaration: node, value: node.value, valueFrame: null, evaluated: null,
+        prev: liveCellPredecessor(cells, node)
+      });
       return;
     }
     const found = lookupScopedBinding(frame, node.name, e);
@@ -2639,6 +2697,7 @@ function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e:
         declaration: node,
         value: snapshotLiveWrite(node.value),
         valueFrame: frame,
+        evaluated: null,
         prev: liveCellPredecessor(cells, node)
       });
       return;
@@ -2648,7 +2707,10 @@ function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e:
     return;
   }
   const cells = frame.cells ??= new Map();
-  cells.set(node.name, { declaration: node, value: node.value, prev: liveCellPredecessor(cells, node) });
+  cells.set(node.name, {
+    declaration: node, value: node.value, valueFrame: null, evaluated: null,
+    prev: liveCellPredecessor(cells, node)
+  });
 }
 
 /**
@@ -2802,8 +2864,13 @@ function withExcluded<T>(e: EvalCtx, node: Binding, run: () => T): T {
  * binding is not byte-serializable there — it is only accessible/callable (`@p[k]`,
  * `@p()`), so like a detached ruleset reaching a value position it folds to empty
  * bytes; every other binding is an ordinary value node. */
-function evalBinding(b: Binding, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
-  return 'type' in b && b.type === 'MixinCall' ? literal('') : evalValueSlot(b, frame, e);
+function evalBinding(
+  b: Binding,
+  frame: Frame | null,
+  e: EvalCtx,
+  evaluated: ValueGroup | null = null
+): MaybePromise<EvalValue> {
+  return evaluated ?? ('type' in b && b.type === 'MixinCall' ? literal('') : evalValueSlot(b, frame, e));
 }
 
 function unresolvedSymbol(node: object, symbol: string, e: EvalCtx): never {
@@ -3650,7 +3717,7 @@ function evalTyped(
           return force(e, unresolvedRef(node, nm, e));
         }
         const bound = hit.value;
-        return withExcluded(e, bound, () =>
+        return hit.evaluated ?? withExcluded(e, bound, () =>
           isMixinCallValue(bound)
             ? force(e, literal(''))
             : evalTypedSlot(bound, hit.frame, e, projectMixinValues));
@@ -3667,7 +3734,8 @@ function evalTyped(
       }
       return isMixinCallValue(resolved.value)
         ? force(e, literal(node.raw))
-        : evalTypedSlot(resolved.value, resolved.frame, e, projectMixinValues);
+        : resolved.evaluated
+          ?? evalTypedSlot(resolved.value, resolved.frame, e, projectMixinValues);
     }
     case 'Block':
       /*
@@ -3719,6 +3787,10 @@ function evalTyped(
        * a map argument can never silently regress to a sniffed keyword.
        */
       return evalCollection(node, frame, e, projectMixinValues);
+    case 'NestedPropertyBlock':
+      return node.base === null
+        ? force(e, literal(''))
+        : evalTypedSlot(node.base, frame, e, projectMixinValues);
     case 'List': {
       /*
        * A comma-list materializes to the value-domain `List`, its items materialized
@@ -4027,7 +4099,11 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
             }
             return unresolvedRef(node, nm, e);
           }
-          return withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
+          return hit.evaluated ?? withExcluded(
+            e,
+            hit.value,
+            () => evalBinding(hit.value, hit.frame, e, hit.evaluated)
+          );
         });
       }
 
@@ -4332,6 +4408,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       return literal('');
     case 'Collection':
       return evalCollection(node, frame, e);
+    case 'NestedPropertyBlock':
+      return node.base === null ? literal('') : evalValueSlot(node.base, frame, e);
   }
 }
 
@@ -4339,9 +4417,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
  * A {@link Collection} reaching a value/arg position — an SCSS map literal
  * (`$m: (a: 1, b: 2)`, lowered to a Collection at parse) passed to a function, or
  * the authorable Jess collection `$m: { a: 1; b: 2 }` — evaluates to the
- * value-domain map (`value-eval.ts` `Collection`). In declaration property-root
- * position, the same canonical node also represents SCSS nested-property
- * structure and is flattened before it reaches this value path.
+ * value-domain map (`value-eval.ts` `Collection`). SCSS nested-property syntax
+ * uses a distinct `NestedPropertyBlock`; it never projects structural entries
+ * into this data-only value type.
  *
  * Producing a typed map (rather than the bytes it renders to) is what makes map
  * functions possible: a value-domain `Fn` receives the entries themselves. Its
@@ -4353,42 +4431,126 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
  * they were authored with and nested maps stay maps rather than collapsing to
  * bytes.
  *
- * A `base` (the carrier's own value in the SCSS nested
- * property `font: 20px { … }`) is kept ahead of the block; that shape only reaches
- * here when the structural flatten did not run for it, and keeping it makes the
- * authored value visible instead of silently dropping it.
  */
+function evalCollectionEntries(
+  node: Collection | AnonymousMixin,
+  frame: Frame | null,
+  e: EvalCtx,
+  projectMixinValues = false
+): MaybePromise<CollectionOverlay<ValueCollectionEntry>> {
+  const entries = new CollectionOverlay<ValueCollectionEntry>();
+  const addSpread = (spread: ValueGroup): void => {
+    if (!isCollection(spread)) {
+      const actual = isValueGroupArray(spread) ? 'sequence' : spread.type;
+      throw new TypeError(`Collection spread expected Collection, got ${actual}`);
+    }
+    for (const entry of spread.entries) {
+      entries.set(entry.key, entry);
+    }
+  };
+  const addEntry = (important: boolean, key: ValueGroup, value: ValueGroup): void => {
+    const entry: ValueCollectionEntry = important
+      ? { key, value, important: true }
+      : { key, value };
+    entries.set(key, entry);
+  };
+  const run = (start: number): MaybePromise<CollectionOverlay<ValueCollectionEntry>> => {
+    const source = node.type === 'AnonymousMixin' ? node.rules : node.entries;
+    for (let index = start; index < source.length; index += 1) {
+      const item = source[index]!;
+      if (item.type === 'CollectionSpread') {
+        if (!isValueSlotArray(item.value) && item.value.type === 'Collection') {
+          const spreadEntries = evalCollectionEntries(item.value, frame, e, projectMixinValues);
+          if (isThenable(spreadEntries)) {
+            return spreadEntries.then((resolved) => {
+              for (const entry of resolved.items) {
+                entries.set(entry.key, entry);
+              }
+              return run(index + 1);
+            });
+          }
+          for (const entry of spreadEntries.items) {
+            entries.set(entry.key, entry);
+          }
+          continue;
+        }
+        const spread = evalTypedSlot(item.value, frame, e, projectMixinValues);
+        if (isThenable(spread)) {
+          return spread.then((resolved) => {
+            addSpread(resolved);
+            return run(index + 1);
+          });
+        }
+        addSpread(spread);
+        continue;
+      }
+
+      if (item.type !== 'CollectionEntry' && item.type !== 'Declaration' && item.type !== 'VariableDeclaration') {
+        continue;
+      }
+
+      const valueSlot = item.value;
+      const important = item.type === 'VariableDeclaration' ? false : item.important;
+      const directKey = item.type === 'VariableDeclaration'
+        ? makeKeyword(item.name)
+        : item.type === 'Declaration' && typeof item.name === 'string'
+          ? makeKeyword(item.name)
+          : undefined;
+      let key: MaybePromise<ValueGroup>;
+      if (directKey !== undefined) {
+        key = directKey;
+      } else if (item.type === 'CollectionEntry') {
+        key = evalTypedSlot(item.key, frame, e, projectMixinValues);
+      } else if (item.type === 'Declaration') {
+        key = typeof item.name === 'string'
+          ? makeKeyword(item.name)
+          : evalTypedSlot(item.name, frame, e, projectMixinValues);
+      } else {
+        key = makeKeyword(item.name);
+      }
+      if (isThenable(key)) {
+        return key.then((resolvedKey) => {
+          const value = isMixinCallValue(valueSlot)
+            ? force(e, literal(''))
+            : projectMixinValues && node.type === 'AnonymousMixin'
+              && !isValueSlotArray(valueSlot) && valueSlot.type === 'AnonymousMixin'
+              ? evalCollection(valueSlot, frame, e, true)
+              : evalTypedSlot(valueSlot, frame, e, projectMixinValues);
+          return mapMaybe(value, (resolvedValue) => {
+            addEntry(important, resolvedKey, resolvedValue);
+            return run(index + 1);
+          });
+        });
+      }
+      const value = isMixinCallValue(valueSlot)
+        ? force(e, literal(''))
+        : projectMixinValues && node.type === 'AnonymousMixin'
+          && !isValueSlotArray(valueSlot) && valueSlot.type === 'AnonymousMixin'
+          ? evalCollection(valueSlot, frame, e, true)
+          : evalTypedSlot(valueSlot, frame, e, projectMixinValues);
+      if (isThenable(value)) {
+        return value.then((resolvedValue) => {
+          addEntry(important, key, resolvedValue);
+          return run(index + 1);
+        });
+      }
+      addEntry(important, key, value);
+    }
+    return entries;
+  };
+  return run(0);
+}
+
 function evalCollection(
-  node: Collection,
+  node: Collection | AnonymousMixin,
   frame: Frame | null,
   e: EvalCtx,
   projectMixinValues = false
 ): MaybePromise<Value> {
-  const keys: Array<MaybePromise<ValueGroup>> = [];
-  const values: Array<MaybePromise<ValueGroup>> = [];
-  for (const entry of node.entries) {
-    keys.push(evalTypedSlot(entry.key, frame, e, projectMixinValues));
-
-    /*
-     * A `@p: .mk-map()` binding is accessible/callable only and is not a value;
-     * it folds to the same empty bytes every other binding read gives it.
-     */
-    values.push(isMixinCallValue(entry.value)
-      ? force(e, literal(''))
-      : evalTypedSlot(entry.value, frame, e, projectMixinValues));
-  }
-  if (node.base !== undefined) {
-    values.push(evalTypedSlot(node.base, frame, e, projectMixinValues));
-  }
-  return combineAll([...keys, ...values], (resolved) => {
-    const count = node.entries.length;
-    const entries = node.entries.map((entry, index): ValueCollectionEntry => {
-      const key = resolved[index]!;
-      const value = resolved[count + index]!;
-      return entry.important ? { key, value, important: true } : { key, value };
-    });
-    return makeCollection(entries, node.base === undefined ? undefined : resolved[count * 2]);
-  });
+  return mapMaybe(
+    evalCollectionEntries(node, frame, e, projectMixinValues),
+    resolved => makeCollection(resolved.items)
+  );
 }
 
 /**
@@ -4514,7 +4676,11 @@ function resolveEmergentInterp(input: string, frame: Frame | null, e: EvalCtx): 
           const name = cur.slice(i + 2, j).trim();
           const hit = resolveVarRef(frame, name, 'scoped', e);
           if (hit) {
-            const val = withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
+            const val = hit.evaluated ?? withExcluded(
+              e,
+              hit.value,
+              () => evalBinding(hit.value, hit.frame, e, hit.evaluated)
+            );
             if (!isThenable(val)) {
               out += stripOuterQuotes(emitValue(val));
               i = j + 1;
@@ -4555,6 +4721,7 @@ interface DeclEntry {
   name: string;
   value: Binding;
   frame: Frame | null;
+  evaluated: ValueGroup | null;
   important: boolean;
 }
 
@@ -4569,7 +4736,8 @@ interface DeclMap {
   byVar: Map<string, DeclEntry>;
   byProp: Map<string, DeclEntry>;
   list: DeclEntry[];
-  unified?: boolean;
+  unified: boolean;
+  valueEntries: CollectionOverlay<DeclEntry> | null;
 
   /**
    * [namespace-accessor] For a mixin-DISPATCH base (`#ns.m[@x]`), the callee's
@@ -4578,7 +4746,7 @@ interface DeclMap {
    * its emitted-declaration output (`byVar` stays empty for this base kind). Frames
    * are in candidate/source order; last match wins (Less per-name last-declaration).
    */
-  varFrames?: Frame[];
+  varFrames: Frame[] | null;
 }
 
 /** Pick the member map an accessor key targets (`var` vs `prop`), per its kind. */
@@ -4608,7 +4776,9 @@ function lookupVarMember(map: DeclMap, name: string, e: EvalCtx): DeclEntry | un
      * is renderable.
      */
     if (bound) {
-      hit = { name, value: bound, frame: resolved.frame, important: false };
+      hit = {
+        name, value: bound, frame: resolved.frame, evaluated: resolved.evaluated, important: false
+      };
     }
   }
   return hit;
@@ -4628,7 +4798,9 @@ function lastVarMember(map: DeclMap, e: EvalCtx): DeclEntry | undefined {
     for (const name of frame.declIndex?.byName.keys() ?? []) {
       const resolved = resolveVarRef(frame, name, 'scoped', e);
       if (resolved) {
-        hit = { name, value: resolved.value, frame: resolved.frame, important: false };
+        hit = {
+          name, value: resolved.value, frame: resolved.frame, evaluated: resolved.evaluated, important: false
+        };
       }
     }
   }
@@ -4639,10 +4811,10 @@ function lastVarMember(map: DeclMap, e: EvalCtx): DeclEntry | undefined {
  * [loose-key] Value-equality rescan for a bracket key that no NAME matched.
  *
  * `byProp`/`byVar` are keyed by BYTE identity. That is the right O(1) fast path
- * and the wrong definition of "same key": `$foo['1px']` finds a `1px` member
- * today only by byte coincidence, and `$foo[1px]` against a `'1px'` member
- * misses outright (§1). Lookup is LOOSE — the same `=` the guards compare on —
- * so a quoted key and the value it spells name the same member.
+ * and the wrong definition of "same key": `$foo[red]` and `$foo["red"]` name
+ * the same member on string ground (§1). Lookup is LOOSE — the same `=` the
+ * guards compare on — so a quoted key and the value it spells name the same
+ * member. Numeric subscripts take P15's positional lane before this helper.
  *
  * Fast path PLUS fallback, never a replacement: this is reached only after every
  * byte lookup has already missed, one step before the unresolved-symbol error,
@@ -4656,8 +4828,13 @@ function looseMemberLookup(
   map: DeclMap,
   key: string,
   kind: 'var' | 'prop' | 'member',
-  e: EvalCtx
+  e: EvalCtx,
+  valueKey?: ValueGroup
 ): DeclEntry | undefined {
+  if (map.valueEntries !== null) {
+    const wanted = valueKey ?? (e.ev?.materialize(key) ?? makeKeyword(key));
+    return map.valueEntries.get(wanted);
+  }
   const ev = e.ev;
   if (!ev) {
     return undefined;
@@ -4688,11 +4865,16 @@ function resolveDeclarationMember(
     throw new Error(`Ambiguous reference member: ${name}`);
   }
   if (prop) {
-    return { name, value: prop.value, frame: prop.frame, important: prop.important };
+    return {
+      name, value: prop.value, frame: prop.frame, evaluated: null, important: prop.important
+    };
   }
   return variable === undefined
     ? undefined
-    : { name, value: variable.value, frame: variable.frame, important: false };
+    : {
+        name, value: variable.value, frame: variable.frame,
+        evaluated: variable.evaluated, important: false
+      };
 }
 
 /** Collect a body's declarations into name→value maps (+ ordered list). */
@@ -4710,50 +4892,52 @@ function evalToDeclMap(statements: Statement[], frame: Frame | null, e: EvalCtx)
      */
     if (s.type === 'Declaration') {
       const name = typeof s.name === 'string' ? s.name : evalBytesSync(s.name, frame, e);
-      const entry: DeclEntry = { name, value: s.value, frame, important: s.important };
+      const entry: DeclEntry = {
+        name, value: s.value, frame, evaluated: null, important: s.important
+      };
       byProp.set(name, entry); // last-wins
       list.push(entry);
     } else if (s.type === 'VariableDeclaration') {
-      const entry: DeclEntry = { name: s.name, value: s.value, frame, important: false };
+      const entry: DeclEntry = {
+        name: s.name, value: s.value, frame, evaluated: null, important: false
+      };
       byVar.set(s.name, entry); // last-wins
       list.push(entry);
     }
   }
-  return { byVar, byProp, list };
+  return { byVar, byProp, list, unified: false, valueEntries: null, varFrames: null };
 }
 
-function recordCollectionPropertyTimeline(entries: readonly AstCollectionEntry[], frame: Frame | null, e: EvalCtx): void {
-  if (!frame || frame.propertyTimeline !== undefined) {
-    return;
-  }
-  for (const entry of entries) {
-    const name = collectionEntryPropertyName(entry, frame, e);
-    if (name !== null) {
-      recordPropertyDeclaration(frame, decl(name, entry.value, entry.merge, entry.important), frame);
-    }
-  }
-}
-
-function collectionToDeclMap(node: Collection, frame: Frame | null, e: EvalCtx): DeclMap {
-  recordCollectionPropertyTimeline(node.entries, frame, e);
-  const byProp = new Map<string, DeclEntry>();
-  const list: DeclEntry[] = [];
-  for (const entry of node.entries) {
-    const name = collectionEntryPropertyName(entry, frame, e);
-    if (name === null) {
-      continue;
-    }
-    const key = typeof name === 'string' ? name : evalBytesSync(name, frame, e);
+function valueCollectionToDeclMap(value: ValueCollection, parent: Frame | null): DeclMap {
+  const valueEntries = new CollectionOverlay<DeclEntry>();
+  const valueFrame: Frame = {
+    parent,
+    mixins: null,
+    declIndex: collectDeclIndex([]),
+    cells: null,
+    reassign: null
+  };
+  for (const entry of value.entries) {
+    const name = isValueGroupArray(entry.key)
+      ? ''
+      : entry.key.type === 'Quoted' ? entry.key.value : entry.key.bytes;
     const mapped: DeclEntry = {
-      name: key,
-      value: entry.value,
-      frame,
-      important: entry.important
+      name,
+      value: EVALUATED_BINDING,
+      frame: valueFrame,
+      evaluated: entry.value,
+      important: entry.important === true
     };
-    byProp.set(key, mapped);
-    list.push(mapped);
+    valueEntries.set(entry.key, mapped);
   }
-  return { byVar: new Map(), byProp, list, unified: true };
+  return {
+    byVar: new Map(),
+    byProp: new Map(),
+    list: valueEntries.items,
+    unified: true,
+    valueEntries,
+    varFrames: null
+  };
 }
 
 function recordMapPropertyTimeline(statements: readonly Statement[], frame: Frame | null): void {
@@ -4802,17 +4986,37 @@ function memoPureDeclMap(base: object, frame: Frame | null, e: EvalCtx, build: (
 function resolveBaseDeclMap(
   base: Binding,
   frame: Frame | null,
-  e: EvalCtx
+  e: EvalCtx,
+  evaluated: ValueGroup | null = null
 ): DeclMap | null {
   if (isValueSlotArray(base)) {
     return null;
   }
+  if (evaluated !== null && isCollection(evaluated)) {
+    return memoPureDeclMap(evaluated, frame, e, () => valueCollectionToDeclMap(evaluated, frame));
+  }
   if (base.type === 'Reference') {
     const resolved = resolveReferenceResult(base, frame, e);
-    return resolved === null ? null : resolveBaseDeclMap(resolved.value, resolved.frame, e);
+    return resolved === null
+      ? null
+      : resolveBaseDeclMap(resolved.value, resolved.frame, e, resolved.evaluated);
   }
   if (base.type === 'Collection') {
-    return memoPureDeclMap(base, frame, e, () => collectionToDeclMap(base, frame, e));
+    return memoPureDeclMap(base, frame, e, () => {
+      const resolved = evalCollection(base, frame, e, true);
+      if (isThenable(resolved)) {
+        observeRejectedThenable(resolved);
+        throw ERR.asyncInSyncPosition({
+          node: base,
+          ...callSiteLocation(base, e),
+          meta: { where: 'collection member lookup' }
+        });
+      }
+      if (!isCollection(resolved)) {
+        throw new TypeError('Collection evaluation did not produce a Collection value');
+      }
+      return valueCollectionToDeclMap(resolved, frame);
+    });
   }
 
   /*
@@ -4938,12 +5142,13 @@ function declMapFromMixinCall(
       name,
       value,
       frame: leaf.frame,
+      evaluated: null,
       important: leaf.important === true || (n.type === 'Declaration' && n.important)
     };
     into.set(name, entry);
     list.push(entry);
   }
-  return { byVar, byProp, list, varFrames };
+  return { byVar, byProp, list, unified: false, valueEntries: null, varFrames };
 }
 
 /** The value yielded by a called value-lambda: the LAST top-level `result:`
@@ -5057,9 +5262,15 @@ function resolveReferenceResult(
   node: Reference,
   frame: Frame | null,
   e: EvalCtx
-): { value: ValueSlot | MixinCall; frame: Frame | null; sourceOwner: object | null } | null {
+): {
+  value: ValueSlot | MixinCall;
+  frame: Frame | null;
+  evaluated: ValueGroup | null;
+  sourceOwner: object | null;
+} | null {
   let value: ValueSlot | MixinCall = node.base;
   let valueFrame = frame;
+  let evaluated: ValueGroup | null = null;
   let sourceOwner = frame?.sourceOwner ?? null;
   if (!isValueSlotArray(value) && value.type === 'Lookup' && value.kind === 'var') {
     if (typeof value.name !== 'string') {
@@ -5071,6 +5282,7 @@ function resolveReferenceResult(
     }
     value = resolved.value;
     valueFrame = resolved.frame;
+    evaluated = resolved.evaluated;
     sourceOwner = detachedBinding(valueFrame, value)?.sourceOwner
       ?? sourceOwnerForBody(!isValueSlotArray(value) && isValueBlock(value) ? valueBlockBody(value) : value, valueFrame, e);
   }
@@ -5092,6 +5304,7 @@ function resolveReferenceResult(
       }
       value = matched.value;
       valueFrame = matched.frame;
+      evaluated = matched.evaluated;
       continue;
     }
     if (step.type === 'Call') {
@@ -5134,6 +5347,7 @@ function resolveReferenceResult(
           }
           value = aliased.value;
           valueFrame = aliased.frame;
+          evaluated = aliased.evaluated;
           continue;
         }
         if (value.type === 'Reference') {
@@ -5143,6 +5357,7 @@ function resolveReferenceResult(
           }
           value = aliased.value;
           valueFrame = aliased.frame;
+          evaluated = aliased.evaluated;
           sourceOwner = aliased.sourceOwner ?? sourceOwner;
           continue;
         }
@@ -5163,14 +5378,40 @@ function resolveReferenceResult(
         }
         value = invoked.value;
         valueFrame = invoked.frame;
+        evaluated = null;
       }
       continue;
     }
+    const evaluatedItems = evaluated === null
+      ? null
+      : isValueGroupArray(evaluated)
+        ? evaluated
+        : evaluated.type === 'List' ? evaluated.value : null;
     if (step.type === 'LookupStep' && typeof step.name !== 'string' && step.kind === 'index' && typeof step.name === 'number'
-      && (isValueSlotArray(value) || (!isValueSlotArray(value) && (value.type === 'List' || value.type === 'Sequence')))) {
-      const items = isValueSlotArray(value)
-        ? value
-        : value.type === 'List' ? value.value : value.parts;
+      && (evaluatedItems !== null || isValueSlotArray(value)
+        || (!isValueSlotArray(value) && (value.type === 'List' || value.type === 'Sequence')))) {
+      if (evaluatedItems !== null) {
+        const index = step.name < 0
+          ? evaluatedItems.length + step.name
+          : step.indexBase === 0 ? step.name : step.name - 1;
+        const item = evaluatedItems[index];
+        if (item === undefined) {
+          return null;
+        }
+        value = EVALUATED_BINDING;
+        evaluated = item;
+        continue;
+      }
+      let items: readonly ValueSlot[];
+      if (isValueSlotArray(value)) {
+        items = value;
+      } else if (value.type === 'List') {
+        items = value.value;
+      } else if (value.type === 'Sequence') {
+        items = value.parts;
+      } else {
+        return null;
+      }
       const index = step.name < 0
         ? items.length + step.name
         : step.indexBase === 0 ? step.name : step.name - 1;
@@ -5179,12 +5420,13 @@ function resolveReferenceResult(
         return null;
       }
       value = item;
+      evaluated = null;
       continue;
     }
     if (isValueSlotArray(value)) {
       return null;
     }
-    const map = resolveBaseDeclMap(value, valueFrame, e);
+    const map = resolveBaseDeclMap(value, valueFrame, e, evaluated);
     if (!map) {
       return null;
     }
@@ -5197,12 +5439,16 @@ function resolveReferenceResult(
      * fallback arm of a fast path, not a replacement for it.
      */
     let looseKey: string | undefined;
+    let looseValueKey: ValueGroup | undefined;
     let looseKind: 'var' | 'prop' | 'member' | undefined;
     if (step.type === 'LookupStep' && typeof step.name === 'string') {
       missingSymbol = step.name;
       looseKey = step.name;
+      looseValueKey = makeKeyword(step.name);
       looseKind = 'member';
-      const prop = map.byProp.get(step.name);
+      const prop = map.valueEntries === null
+        ? map.byProp.get(step.name)
+        : map.valueEntries.get(looseValueKey);
       const variable = map.unified ? undefined : map.byVar.get(step.name) ?? lookupVarMember(map, step.name, e);
       if (prop && variable) {
         throw new Error(`Ambiguous reference member: ${step.name}`);
@@ -5242,7 +5488,9 @@ function resolveReferenceResult(
          */
         const name = stripOuterQuotes(evalBytesSync(step.name.name, frame ?? valueFrame, e));
         missingSymbol = `@${name}`;
-        matched = mapForKind(map, 'var').get(name) ?? lookupVarMember(map, name, e);
+        matched = map.valueEntries?.get(makeKeyword(name))
+          ?? mapForKind(map, 'var').get(name)
+          ?? lookupVarMember(map, name, e);
       } else if (step.kind === 'prop' && typeof step.name === 'object' && step.name.type === 'Lookup'
         && step.name.kind === 'prop' && typeof step.name.name === 'string') {
         const propKey = step.name.name;
@@ -5254,28 +5502,62 @@ function resolveReferenceResult(
          */
         matched = map.byProp.get(propKey);
       } else if (typeof step.name === 'object') {
-        const key = evalBytesSync(step.name, valueFrame, e);
-        missingSymbol = step.kind === 'var'
-          ? `@${key}`
-          : step.kind === 'prop' ? `$${key}` : key;
-        looseKey = key;
+        const evaluatedKey = evalTypedSlot(step.name, valueFrame, e, true);
+        if (isThenable(evaluatedKey)) {
+          observeRejectedThenable(evaluatedKey);
+          throw ERR.asyncInSyncPosition({
+            node: step.name,
+            ...callSiteLocation(step.name, e),
+            meta: { where: 'collection member key' }
+          });
+        }
+        looseValueKey = evaluatedKey;
         looseKind = step.kind === 'member' ? 'member' : step.kind === 'prop' ? 'prop' : 'var';
-        if (step.kind === 'member') {
-          const prop = map.byProp.get(key);
-          const variable = map.unified ? undefined : map.byVar.get(key) ?? lookupVarMember(map, key, e);
-          if (prop && variable) {
-            throw new Error(`Ambiguous reference member: ${key}`);
+        let key: string | undefined;
+        if (!isValueGroupArray(evaluatedKey) && evaluatedKey.type === 'Dimension') {
+          /* P15: a computed numeric subscript is positional before receiver
+           * dispatch. Numeric Collection keys remain reachable only through
+           * map.get(); they must never win merely because this map has one. */
+          key = emitValue(evaluatedKey);
+          missingSymbol = step.kind === 'var'
+            ? `@${key}`
+            : step.kind === 'prop' ? `$${key}` : key;
+          const indexBase = step.indexBase ?? 1;
+          if (evaluatedKey.unit === '' && Number.isInteger(evaluatedKey.number)
+            && (evaluatedKey.number !== 0 || indexBase === 0)) {
+            const index = evaluatedKey.number;
+            matched = map.list[index < 0 ? map.list.length + index : index - indexBase];
           }
-          matched = prop ?? variable;
+          looseValueKey = undefined;
+          looseKind = undefined;
+        } else if (map.valueEntries !== null) {
+          matched = map.valueEntries.get(evaluatedKey);
         } else {
-          matched = mapForKind(map, step.kind === 'prop' ? 'prop' : 'var').get(key);
-          if (!matched && step.kind === 'var') {
-            matched = lookupVarMember(map, key, e);
+          key = emitValue(evaluatedKey);
+          looseKey = key;
+          if (step.kind === 'member') {
+            const prop = map.byProp.get(key);
+            const variable = map.unified ? undefined : map.byVar.get(key) ?? lookupVarMember(map, key, e);
+            if (prop && variable) {
+              throw new Error(`Ambiguous reference member: ${key}`);
+            }
+            matched = prop ?? variable;
+          } else {
+            matched = mapForKind(map, step.kind === 'prop' ? 'prop' : 'var').get(key);
+            if (!matched && step.kind === 'var') {
+              matched = lookupVarMember(map, key, e);
+            }
           }
         }
-        if (!matched && isIntegerString(key)) {
-          const i = parseInt(key, 10);
-          matched = map.list[i < 0 ? map.list.length + i : i - 1];
+        if (matched === undefined && key === undefined) {
+          key = emitValue(evaluatedKey);
+          missingSymbol = step.kind === 'var'
+            ? `@${key}`
+            : step.kind === 'prop' ? `$${key}` : key;
+        } else if (matched === undefined && key !== undefined) {
+          missingSymbol = step.kind === 'var'
+            ? `@${key}`
+            : step.kind === 'prop' ? `$${key}` : key;
         }
       }
     } else {
@@ -5283,14 +5565,14 @@ function resolveReferenceResult(
         return null;
       }
       const idx = step.name;
-      const i = idx < 0 ? map.list.length + idx : idx - 1;
+      const i = idx < 0 ? map.list.length + idx : idx - (step.indexBase ?? 1);
       matched = map.list[i] ?? (idx === -1 && map.list.length === 0 ? lastVarMember(map, e) : undefined);
       if (!matched) {
         return null;
       }
     }
     if (!matched && looseKey !== undefined && looseKind !== undefined) {
-      matched = looseMemberLookup(map, looseKey, looseKind, e);
+      matched = looseMemberLookup(map, looseKey, looseKind, e, looseValueKey);
     }
     if (!matched) {
       unresolvedSymbol(node, missingSymbol, e);
@@ -5304,8 +5586,9 @@ function resolveReferenceResult(
     }
     value = matched.value;
     valueFrame = matched.frame;
+    evaluated = matched.evaluated;
   }
-  return { value, frame: valueFrame, sourceOwner };
+  return { value, frame: valueFrame, evaluated, sourceOwner };
 }
 
 function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
@@ -5315,7 +5598,7 @@ function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybeP
   }
   return isMixinCallValue(resolved.value)
     ? literal(node.raw)
-    : evalValueSlot(resolved.value, resolved.frame, e);
+    : resolved.evaluated ?? evalValueSlot(resolved.value, resolved.frame, e);
 }
 
 /**
@@ -5366,21 +5649,6 @@ function evalIntrospection(node: FunctionCall, frame: Frame | null, e: EvalCtx):
       : 'false');
   }
   return undefined;
-}
-
-/** True when every char of `s` is an ASCII digit (optionally a leading `-`). */
-function isIntegerString(s: string): boolean {
-  let i = s.charCodeAt(0) === 0x2d /* - */ ? 1 : 0;
-  if (i >= s.length) {
-    return false;
-  }
-  for (; i < s.length; i++) {
-    const c = s.charCodeAt(i);
-    if (c < 0x30 || c > 0x39) {
-      return false;
-    }
-  }
-  return true;
 }
 
 /**
@@ -5532,7 +5800,7 @@ interface MixinValueSources {
   readonly additionalValueSources: ReadonlyMap<CallValue, Exclude<MixinValueSourceMode, typeof MIXIN_VALUE_NONE>> | null;
 }
 
-type MixinValueHit = { value: Binding; frame: Frame } | undefined;
+type MixinValueHit = BindingHit | undefined;
 
 /** Whether an alias to this typed source needs a parallel structural fact. */
 function valueSlotRequiresAliasCarrier(value: ValueSlot): boolean {
@@ -5593,6 +5861,9 @@ function classifyMixinValuePart(source: CallValue, frame: Frame, e: EvalCtx): Mi
 
 /** Classify one already-resolved variable root without repeating its scope walk. */
 function classifyMixinValueHit(hit: MixinValueHit, e: EvalCtx): MixinValuePartMode {
+  if (hit?.evaluated !== null && hit?.evaluated !== undefined) {
+    return MIXIN_VALUE_CANONICAL;
+  }
   if (!hit || isMixinCallValue(hit.value)
     || (!isValueSlotArray(hit.value) && isValueBlock(hit.value))) {
     return MIXIN_VALUE_NONE;
@@ -5635,9 +5906,6 @@ function valueGroupHasUrl(value: ValueGroup): boolean {
     return valueGroupHasUrl(value.value);
   }
   if (value.type === 'Collection') {
-    if (value.base !== undefined && valueGroupHasUrl(value.base)) {
-      return true;
-    }
     for (const entry of value.entries) {
       if (valueGroupHasUrl(entry.key) || valueGroupHasUrl(entry.value)) {
         return true;
@@ -5679,15 +5947,15 @@ function snapshotPreparedMixinValue(
   mode: MixinGroupMode,
   bytes: string,
   e: EvalCtx,
-  retain: (key: Binding) => void
+  retain?: (key: Binding) => void
 ): Any {
   const bound = any(bytes);
   if (mode === MIXIN_GROUP_URL) {
     (e.mixinUrlBindings ??= new Map()).set(bound, value);
-    retain(bound);
+    retain?.(bound);
   } else if (mode === MIXIN_GROUP_VALUE) {
     (e.mixinValueBindings ??= new Map()).set(bound, value);
-    retain(bound);
+    retain?.(bound);
   }
   return bound;
 }
@@ -5755,6 +6023,15 @@ function resolvePluginBoundHit(
 ): MaybePromise<CallValue> {
   if (!hit) {
     return mapMaybe(evalBytes(source, frame, e), any);
+  }
+  if (hit.evaluated !== null) {
+    return snapshotPreparedMixinValue(
+      hit.evaluated,
+      mixinGroupMode(hit.evaluated),
+      emitValue(hit.evaluated),
+      e,
+      retain
+    );
   }
   const value = hit.value;
   if (!isValueSlotArray(value) && isValueBlock(value)) {
@@ -6109,6 +6386,9 @@ function pluginRawArgument(slot: ValueSlot, frame: Frame | null, e: EvalCtx): Ma
   if (!isValueSlotArray(slot) && slot.type === 'Lookup' && slot.kind === 'var') {
     const hit = resolveVarRef(frame, literalName(slot), slot.scope, e);
     if (hit) {
+      if (hit.evaluated !== null) {
+        return hit.evaluated;
+      }
       const carried = hit.frame.mixinValueBindings?.get(hit.value)
         ?? e.mixinValueBindings?.get(hit.value)
         ?? hit.frame.mixinUrlBindings?.get(hit.value)
@@ -6181,6 +6461,9 @@ function pluginVariableHit(name: string, frame: Frame | null, e: EvalCtx): Plugi
     ?? resolveVarRef(frame, bare, 'live', e);
   if (!hit) {
     return null;
+  }
+  if (hit.evaluated !== null) {
+    return { value: hit.evaluated, important: false };
   }
   const projected = pluginDetachedProjection(hit.value, hit.frame, e);
   const resolved = projected ?? (isValueSlotArray(hit.value) || hit.value.type !== 'MixinCall'
@@ -9071,7 +9354,7 @@ function evaluateLeafStatement(
     return;
   }
 
-  const parts = nestedPropertyDeclarations(node, frame, e);
+  const parts = nestedPropertyDeclarations(node);
   if (parts === null) {
     recordPropertyDeclaration(propertyScope, node, frame);
     place({ node, frame, important, leadingBlockComments: null, fromApply });
@@ -12608,23 +12891,67 @@ function expandReferenceAncestorFor(
 ): MaybePromise<void> {
   return mapMaybe(forItems(node.iterable, frame, e), (items) => {
     const run = (start: number): MaybePromise<void> => {
-      for (let index = start; index < items.length; index++) {
-        const item = items[index]!;
+      const collectionEntries = Array.isArray(items)
+        ? null
+        : items instanceof CollectionOverlay
+          ? items.items
+          : 'evaluatedItems' in items
+            ? null
+            : items.entries;
+      const plainItems = Array.isArray(items) ? items : null;
+      const evaluatedItems = !Array.isArray(items) && 'evaluatedItems' in items
+        ? items.evaluatedItems
+        : null;
+      const length = collectionEntries?.length ?? plainItems?.length ?? evaluatedItems!.length;
+      for (let index = start; index < length; index++) {
+        const collectionEntry = collectionEntries?.[index];
+        const item = collectionEntry === undefined ? plainItems?.[index] ?? null : null;
+        const evaluatedItem = collectionEntry === undefined ? evaluatedItems?.[index] ?? null : null;
         const bindingIndex = dimension(index + 1);
-        const bindings = bindForEntry(node, item.value, item.key, bindingIndex);
-        const bindingValueFrames = bindingValueFramesForItem(bindings, item);
+        const destructured = node.binding.kind !== 'tuple'
+          ? null
+          : collectionEntry !== undefined
+            ? groupItems(collectionEntry.value)
+            : evaluatedItem !== null
+              ? groupItems(evaluatedItem)
+              : null;
+        const bindings = collectionEntry === undefined && evaluatedItem === null
+          ? bindForEntry(node, item!.value, item!.key, bindingIndex, destructured)
+          : collectionEntry === undefined
+            ? bindForEntry(node, EVALUATED_BINDING, null, bindingIndex, destructured)
+            : bindForEntry(
+                node,
+                EVALUATED_BINDING,
+                EVALUATED_BINDING,
+                bindingIndex,
+                destructured
+              );
+        const bindingValueFrames = item === null
+          ? undefined
+          : bindingValuesForItem(bindings, item, item.valueFrame);
+        const cells = cellsForParams(
+          bindings,
+          bindingValueFrames,
+          undefined,
+          collectionEntry === undefined && evaluatedItem === null ? undefined : node.binding,
+          collectionEntry,
+          destructured,
+          evaluatedItem
+        );
         const loopFrame: Frame = {
           parent: frame,
           mixins: collectMixins(node.rules),
-          declIndex: collectDeclIndex(node.rules, bindings),
-          cells: cellsForParams(bindings, bindingValueFrames),
+          declIndex: collectDeclIndex(node.rules, bindings, cells),
+          cells,
           reassign: null,
           statements: node.rules,
           sourceOwner: frame.sourceOwner ?? null,
           ...(bindingValueFrames ? { bindingValueFrames } : {}),
           ...(e.dynamicExtend?.dynExtendBodies.has(node) ? { extendPlacement: {} } : {})
         };
-        bindForDetached(loopFrame, bindings, item);
+        if (item !== null) {
+          bindForDetached(loopFrame, bindings, item);
+        }
         const emitted = mapMaybe(
           prepareBodyPlugins(node.rules, loopFrame, e),
           () => walkReferenceAncestorBody(
@@ -13470,10 +13797,10 @@ function resolveValueBlock(node: Binding, frame: Frame | null, e: EvalCtx): Valu
 }
 
 /** An anonymous mixin is callable, not a CSS declaration value. Jess collection
- * data is a real value and SCSS nested-property Collections are flattened
+ * data is a real value and SCSS nested-property blocks are flattened
  * elsewhere, so only value-block resolution is rejected here. */
 function assertDeclarationValueIsNotRuleset(node: Declaration, frame: Frame | null, e: EvalCtx): void {
-  if (!isValueSlotArray(node.value) && node.value.type === 'Collection') {
+  if (!isValueSlotArray(node.value) && (node.value.type === 'Collection' || node.value.type === 'NestedPropertyBlock')) {
     return;
   }
   if (!resolveValueBlock(node.value, frame, e)) {
@@ -13696,6 +14023,12 @@ interface ForItem {
   detached?: DetachedBinding;
 }
 
+interface EvaluatedForItems {
+  readonly evaluatedItems: readonly ValueGroup[];
+}
+
+type ForItems = ForItem[] | EvaluatedForItems | CollectionOverlay<ValueCollectionEntry> | ValueCollection;
+
 /**
  * Split `text` at the TOP level on `,` (comma list) else a whitespace run (space
  * list), skipping anything nested in `()[]{}` or inside a quoted string. Mirrors
@@ -13821,12 +14154,12 @@ function resolveForNode(
   node: ValueSlot,
   frame: Frame | null,
   e: EvalCtx
-): { node: ValueSlot; frame: Frame | null } {
+): { node: ValueSlot; frame: Frame | null; evaluated: ValueGroup | null } {
   let cur = node;
   let f = frame;
   for (;;) {
     if (isValueSlotArray(cur)) {
-      return { node: cur, frame: f };
+      return { node: cur, frame: f, evaluated: null };
     }
     if (cur.type === 'Block') {
       cur = cur.value;
@@ -13841,13 +14174,16 @@ function resolveForNode(
        * iterable proper is handled up front in `forItems`).
        */
       if (!hit || isMixinCallValue(hit.value)) {
-        return { node: cur, frame: f };
+        return { node: cur, frame: f, evaluated: null };
+      }
+      if (hit.evaluated !== null) {
+        return { node: hit.value, frame: hit.frame, evaluated: hit.evaluated };
       }
       cur = hit.value;
       f = hit.frame;
       continue;
     }
-    return { node: cur, frame: f };
+    return { node: cur, frame: f, evaluated: null };
   }
 }
 
@@ -13908,24 +14244,16 @@ function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): MaybePro
   }
 }
 
-function forItemsFromCollection(node: Collection, frame: Frame | null, e: Emit): ForItem[] {
-  const collectionFrame: Frame = {
-    parent: frame,
-    mixins: null,
-    declIndex: collectDeclIndex([]), cells: null, reassign: null,
-    statements: [],
-    sourceOwner: frame?.sourceOwner ?? null
-  };
-  recordCollectionPropertyTimeline(node.entries, collectionFrame, e);
-  return node.entries.map(entry => ({
-    value: entry.value,
-    key: isValueSlotArray(entry.key) ? any(evalBytesSync(entry.key, collectionFrame, e)) : entry.key,
-    valueFrame: collectionFrame
-  }));
+function forItemsFromCollection(
+  node: Collection,
+  frame: Frame | null,
+  e: Emit
+): MaybePromise<CollectionOverlay<ValueCollectionEntry>> {
+  return evalCollectionEntries(node, frame, e, true);
 }
 
 /** The ordered items an `each()` iterable expands to. */
-function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): MaybePromise<ForItem[]> {
+function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): MaybePromise<ForItems> {
   // [each mixin-call iterable] `.mixin()` output → iterate its declarations.
   if (isMixinCallValue(node)) {
     return frame === null ? [] : forItemsFromMixinCall(node, frame, e);
@@ -13934,6 +14262,11 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Ma
     return forRangeItems(node, frame, e);
   }
   const resolvedIterable = resolveForNode(node, frame, e);
+  if (resolvedIterable.evaluated !== null) {
+    return isCollection(resolvedIterable.evaluated)
+      ? resolvedIterable.evaluated
+      : { evaluatedItems: groupItems(resolvedIterable.evaluated) };
+  }
   if (!isValueSlotArray(resolvedIterable.node) && resolvedIterable.node.type === 'Collection') {
     return forItemsFromCollection(resolvedIterable.node, resolvedIterable.frame, e);
   }
@@ -13996,8 +14329,12 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Ma
    * (a `@plugin` result, a module-provided list). It resolves in place when it is
    * already settled, so the ordinary `each()` never becomes awaitable.
    */
-  return mapMaybe(evalTyped(base, baseFrame, e), v =>
-    groupItems(v).map(item => ({ value: any(emitValue(item)), key: null })));
+  return mapMaybe(evalTypedSlot(base, baseFrame, e, true), (v) => {
+    if (isCollection(v)) {
+      return v;
+    }
+    return { evaluatedItems: groupItems(v) };
+  });
 }
 
 function forRangeItems(node: Range, frame: Frame | null, e: Emit): ForItem[] {
@@ -14039,7 +14376,13 @@ function forRangeItems(node: Range, frame: Frame | null, e: Emit): ForItem[] {
   return items;
 }
 
-function bindForEntry(node: For, value: ValueSlot, key: ValueNode | null, index: ValueNode): Map<string, ValueSlot> {
+function bindForEntry(
+  node: For,
+  value: ValueSlot,
+  key: ValueNode | null,
+  index: ValueNode,
+  destructured: readonly ValueGroup[] | null = null
+): Map<string, ValueSlot> {
   const bindings = new Map<string, ValueSlot>();
   const binding = node.binding;
   if (binding.kind === 'single') {
@@ -14055,8 +14398,14 @@ function bindForEntry(node: For, value: ValueSlot, key: ValueNode | null, index:
   } else if (binding.kind === 'bracket') {
     bindings.set(binding.names[0], key ?? index);
     bindings.set(binding.names[1], value);
+  } else if (destructured !== null) {
+    for (let i = 0; i < binding.names.length && i < destructured.length; i++) {
+      bindings.set(binding.names[i]!, EVALUATED_BINDING);
+    }
   } else {
-    const values = isValueSlotArray(value) ? value : value.type === 'Sequence' ? value.parts : value.type === 'List' ? value.value : [value];
+    const values = isValueSlotArray(value)
+      ? value
+      : value.type === 'Sequence' ? value.parts : value.type === 'List' ? value.value : [value];
     for (let i = 0; i < binding.names.length && i < values.length; i++) {
       bindings.set(binding.names[i]!, values[i]!);
     }
@@ -14076,17 +14425,25 @@ function bindForDetached(frame: Frame, bindings: Map<string, ValueSlot>, item: F
   }
 }
 
-function bindingValueFramesForItem(bindings: Map<string, ValueSlot>, item: ForItem): Map<Binding, Frame> | undefined {
-  if (!item.valueFrame) {
+function bindingValuesForItem<T>(
+  bindings: Map<string, ValueSlot>,
+  item: ForItem,
+  itemValue: T | undefined
+): Map<Binding, T> | undefined {
+  if (itemValue === undefined) {
     return undefined;
   }
-  let frames: Map<Binding, Frame> | undefined;
+  let values: Map<Binding, T> | undefined;
   for (const value of bindings.values()) {
-    if (value === item.value) {
-      (frames ??= new Map()).set(value, item.valueFrame);
+    let carried: T | undefined;
+    if (value === item.value && itemValue !== undefined) {
+      carried = itemValue;
+    }
+    if (carried !== undefined) {
+      (values ??= new Map()).set(value, carried);
     }
   }
-  return frames;
+  return values;
 }
 
 /**
@@ -14116,22 +14473,59 @@ function expandFor(
 ): MaybePromise<void> {
   return mapMaybe(forItems(node.iterable, frame, e), (items) => {
     const run = (start: number): MaybePromise<void> => {
-      for (let i = start; i < items.length; i++) {
-        const item = items[i]!;
-        const { value, key } = item;
+      const collectionEntries = Array.isArray(items)
+        ? null
+        : items instanceof CollectionOverlay
+          ? items.items
+          : 'evaluatedItems' in items
+            ? null
+            : items.entries;
+      const plainItems = Array.isArray(items) ? items : null;
+      const evaluatedItems = !Array.isArray(items) && 'evaluatedItems' in items
+        ? items.evaluatedItems
+        : null;
+      const length = collectionEntries?.length ?? plainItems?.length ?? evaluatedItems!.length;
+      for (let i = start; i < length; i++) {
+        const collectionEntry = collectionEntries?.[i];
+        const item = collectionEntry === undefined ? plainItems?.[i] ?? null : null;
+        const evaluatedItem = collectionEntry === undefined ? evaluatedItems?.[i] ?? null : null;
         const index = dimension(i + 1);
-        const bindings = bindForEntry(node, value, key, index);
-        const bindingValueFrames = bindingValueFramesForItem(bindings, item);
+        const destructured = node.binding.kind !== 'tuple'
+          ? null
+          : collectionEntry !== undefined
+            ? groupItems(collectionEntry.value)
+            : evaluatedItem !== null
+              ? groupItems(evaluatedItem)
+              : null;
+        const bindings = collectionEntry === undefined && evaluatedItem === null
+          ? bindForEntry(node, item!.value, item!.key, index, destructured)
+          : collectionEntry === undefined
+            ? bindForEntry(node, EVALUATED_BINDING, null, index, destructured)
+            : bindForEntry(node, EVALUATED_BINDING, EVALUATED_BINDING, index, destructured);
+        const bindingValueFrames = item === null
+          ? undefined
+          : bindingValuesForItem(bindings, item, item.valueFrame);
+        const cells = cellsForParams(
+          bindings,
+          bindingValueFrames,
+          undefined,
+          collectionEntry === undefined && evaluatedItem === null ? undefined : node.binding,
+          collectionEntry,
+          destructured,
+          evaluatedItem
+        );
         const loopFrame: Frame = {
           parent: frame,
           mixins: collectMixins(node.rules),
-          declIndex: collectDeclIndex(node.rules, bindings), cells: cellsForParams(bindings, bindingValueFrames), reassign: null,
+          declIndex: collectDeclIndex(node.rules, bindings, cells), cells, reassign: null,
           statements: node.rules,
           sourceOwner: frame.sourceOwner ?? null,
           ...(bindingValueFrames ? { bindingValueFrames } : {}),
           ...(e.dynamicExtend?.dynExtendBodies.has(node) ? { extendPlacement: {} } : {})
         };
-        bindForDetached(loopFrame, bindings, item);
+        if (item !== null) {
+          bindForDetached(loopFrame, bindings, item);
+        }
         const emitted = mapMaybe(
           prepareBodyPlugins(node.rules, loopFrame, e),
           () => sharedLeaves === undefined
@@ -14489,6 +14883,9 @@ function evalTypedSpread(
   }
   if (value.type === 'Lookup' && value.kind === 'var') {
     const hit = resolveVarRef(frame, literalName(value), value.scope, e);
+    if (hit?.evaluated !== null && hit?.evaluated !== undefined) {
+      return hit.evaluated;
+    }
     const hitValue = hit?.value;
     if (hit && hitValue !== undefined && isValueSlot(hitValue)) {
       return withExcluded(e, hitValue, () => evalTypedSpread(hitValue, hit.frame, e));
@@ -15240,9 +15637,9 @@ function mergeFoldMixedOwners(
   }
 }
 
-/** A declaration value that is an SCSS nested-property {@link Collection}. */
-function isCollectionValue(value: ValueSlot): value is Collection {
-  return !isValueSlotArray(value) && value.type === 'Collection';
+/** A declaration value that is an SCSS nested-property block. */
+function isNestedPropertyValue(value: ValueSlot): value is NestedPropertyBlock {
+  return !isValueSlotArray(value) && value.type === 'NestedPropertyBlock';
 }
 
 /** Append literal text to an interpolation part list, coalescing adjacent literals. */
@@ -15294,47 +15691,31 @@ function isCustomPropertyName(name: string | Interpolation): boolean {
   return head !== undefined && 'lit' in head && head.lit.startsWith('--');
 }
 
-function collectionEntryPropertyName(entry: AstCollectionEntry, frame: Frame | null, e: EvalCtx): string | Interpolation | null {
-  if (isValueSlotArray(entry.key)) {
-    return null;
-  }
-  switch (entry.key.type) {
-    case 'Keyword':
-    case 'Color':
-    case 'Dimension':
-    case 'Any':
-      return entry.key.src;
-    case 'Quoted':
-      return entry.key.value;
-    case 'Interpolation':
-      return entry.key;
-    default:
-      return evalBytesSync(entry.key, frame, e);
-  }
-}
-
 /** [nested-property] Append one carrier level's declarations to `out`, recursing
  * through an entry that is itself a `{ … }` block (`font: { family: { weight: bold } }`). */
 function collectNestedProperty(
   name: string | Interpolation,
-  block: Collection,
+  block: NestedPropertyBlock,
   merge: Declaration['merge'],
   important: boolean,
-  out: Declaration[],
-  frame: Frame | null,
-  e: EvalCtx
+  out: Declaration[]
 ): void {
-  if (block.base !== undefined) {
+  if (block.base !== null) {
     out.push(decl(name, block.base, merge, important));
   }
   for (const entry of block.entries) {
-    const leaf = collectionEntryPropertyName(entry, frame, e);
+    const key = entry.key;
+    const leaf = isValueSlotArray(key)
+      ? null
+      : key.type === 'Keyword' || key.type === 'Color' || key.type === 'Dimension' || key.type === 'Any'
+        ? key.src
+        : key.type === 'Quoted' ? key.value : key.type === 'Interpolation' ? key : null;
     if (leaf === null) {
       continue;
     }
     const joined = joinNestedPropertyName(name, leaf);
-    if (isCollectionValue(entry.value)) {
-      collectNestedProperty(joined, entry.value, entry.merge, entry.important, out, frame, e);
+    if (isNestedPropertyValue(entry.value)) {
+      collectNestedProperty(joined, entry.value, entry.merge, entry.important, out);
     } else {
       out.push(decl(joined, entry.value, entry.merge, entry.important));
     }
@@ -15342,31 +15723,27 @@ function collectNestedProperty(
 }
 
 /**
- * [nested-property] A `Collection` has two roles selected by POSITION: in
- * value/argument position it is DATA (serialized as `{ a: 1; b: 2 }`); at a
- * PROPERTY ROOT it is STRUCTURE and expands to hyphenated declarations — the
+ * [nested-property] A parser-owned `NestedPropertyBlock` expands to hyphenated
+ * declarations, while a `Collection` is always data and serializes as
+ * `{ a: 1; b: 2 }`. The
  * carrier's own `base` value first, then each entry with its outer name joined
  * by `-`, in source order.
  *
- * The trigger is the literal block SYNTAX in property position (`node.value` is
- * an unevaluated `Collection` node), not a value that merely evaluates to a
- * Collection.
- *
- * Carve-out: a custom property takes the DATA role. `--foo: { a: 1 }` is already
- * valid CSS, and `--foo-a` bears no CSS-defined relationship to `--foo`, so
- * flattening would mint names into an open namespace we do not control.
+ * The trigger is the parser-owned structural node in property position, not a
+ * data `Collection` and not a value that merely evaluates to one. A custom
+ * property that carries map data uses `Collection` directly.
  *
  * Returns `null` when `node` is not a nested-property carrier. The one body
  * evaluator (`walkBody`) drives BOTH write projections through this single
  * function: a second implementation would drift, and an emitter divergence is
  * exactly the defect this guards.
  */
-function nestedPropertyDeclarations(node: Declaration, frame: Frame | null, e: EvalCtx): Declaration[] | null {
-  if (!isCollectionValue(node.value) || isCustomPropertyName(node.name)) {
+function nestedPropertyDeclarations(node: Declaration): Declaration[] | null {
+  if (!isNestedPropertyValue(node.value) || isCustomPropertyName(node.name)) {
     return null;
   }
   const out: Declaration[] = [];
-  collectNestedProperty(node.name, node.value, node.merge, node.important, out, frame, e);
+  collectNestedProperty(node.name, node.value, node.merge, node.important, out);
   return out;
 }
 
@@ -16727,6 +17104,9 @@ function evalQueryPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): May
         if (isMixinCallValue(value)) {
           return evalBytes(node, frame, e);
         }
+        if (hit.evaluated !== null) {
+          return emitValue(hit.evaluated);
+        }
         return withExcluded(e, value, () => evalQueryPrelude(value, hit.frame, e));
       });
     case 'Reference': {
@@ -16734,7 +17114,9 @@ function evalQueryPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): May
       if (resolved === null || isMixinCallValue(resolved.value)) {
         return evalBytes(node, frame, e);
       }
-      return evalQueryPrelude(resolved.value, resolved.frame, e);
+      return resolved.evaluated !== null
+        ? emitValue(resolved.evaluated)
+        : evalQueryPrelude(resolved.value, resolved.frame, e);
     }
     case 'Quoted':
       /*

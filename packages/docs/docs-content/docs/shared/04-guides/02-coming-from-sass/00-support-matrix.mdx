@@ -71,9 +71,12 @@ Jess spends its complexity budget — not a verdict on Sass's design.
 | `@for … from … through` / `… to` | ✅ | |
 | `@while` | ⏳ | Neither `@while $i > 0` nor `@while ($i > 0)` is accepted. |
 | `@function` / `@return` | ✅ | Including default parameters and nested calls. |
-| Map literals + `map-get` | ✅ | Quoted keys in a literal are normalized to plain keys, so `("bold": 700)` is read back as `map-get($m, bold)`. |
-| `map-get` with a quoted or variable key | ⏳ | `map-get($m, "bold")` does not resolve — use the unquoted key. `map-get($m, $k)` does not resolve — `map-get($m, #{$k})` does. |
-| `map-keys` / `map-values` / `map-merge` / `map-has-key` | ⏳ | |
+| Map literals + `map-get` | ✅ | Map lookup uses value equality, so `("bold": 700)` is read back as `map-get($m, bold)`. |
+| `map-get` with a quoted or variable key | ✅ | Keys stay typed and resolve with Sass map equality. |
+| Two-map `map-merge($left, $right)` | ✅ | Runs through the Sass global function registry; it is not parser syntax. |
+| `map.merge($left, $right)` | ⏳ | The module function exists, but Sass/Jess module resolution is not wired into stylesheet evaluation yet. |
+| `map-keys` / `map-values` / `map-has-key` | ✅ | Available through the Sass global function registry. |
+| `map.deep-merge($left, $right)` | ⏳ | The recursive function is implemented and exported by `@jesscss/fns/sass/map`, but Sass/Jess module resolution is not wired into stylesheet evaluation yet. |
 | `@import` | ✅ | Partials, `_`-prefixed files, and cross-file variables and mixins. A plain-CSS `@import url(…)` passes through untouched. |
 | `@use` / `@forward` | ⏳ | Both parse, but module resolution is not wired up: the at-rule reaches the CSS output instead of loading the module. |
 | `@use … with (…)` configuration | ⏳ | The configuration clause is not in the grammar. |
@@ -97,7 +100,7 @@ Jess spends its complexity budget — not a verdict on Sass's design.
 | `if()`, `length()`, `percentage()` | ✅ | |
 | `mix()` | ⏳ | Warns, then passes through unevaluated. |
 | List, string, and introspection functions — `nth`, `append`, `join`, `index`, `quote`, `unquote`, `str-length`, `to-upper-case`, `type-of` | ❓ | Passed through to the CSS output unevaluated. How much of this surface Sass+ should carry is unresolved. |
-| Property nesting — `font: { family: … }` | ❓ | Not implemented, and currently emits an empty declaration rather than reporting an error. |
+| Property nesting — `font: { family: … }` | ✅ | Flattens nested properties, for example to `font-family`. |
 | `null` values | ❓ | Sass drops a declaration whose value is `null`; Sass+ emits the word. |
 | Comments — `//` and `/* */` | ✅ | `//` is build-time only; `/* */` is emitted. |
 | Invalid CSS that Sass tolerates | ❌ | Doubled or dangling combinators and escaped at-rule keywords are parse errors. See [Stricter than Sass](./stricter-than-sass). |
@@ -271,7 +274,7 @@ $weights: (regular: 400, bold: 700);
 .a { font-weight: map-get($weights, bold); }
 ```
 
-A quoted key in the literal is normalized, so the unquoted spelling reads it back:
+A quoted and an unquoted spelling compare equal as map keys:
 
 ```scss
 $weights: ("bold": 700);
@@ -283,6 +286,22 @@ Both produce:
 ```css
 .a {
   font-weight: 700;
+}
+```
+
+A global `map-merge` call is a shallow, later-wins overlay evaluated by the
+Sass function registry:
+
+```scss
+$left: (a: 1, b: 2);
+$right: (b: 3, c: 4);
+$merged: map-merge($left, $right);
+.a { value: map-get($merged, b); }
+```
+
+```css
+.a {
+  value: 3;
 }
 ```
 

@@ -398,8 +398,8 @@ one flat module.
 - `sass/list/` → `sass:list`: `append`, `is-bracketed`, `join`, `length`, `list-index`
   (= `list.index`), `nth`, `separator`, `set-nth`, `zip`. All nine correct. Only the
   *global* alias for `separator` is wrong (§6).
-- `sass/map/` → `sass:map`: `get`, `set`, `merge`, `remove`, `keys`, `values`, `has-key`.
-  All seven correct as module members.
+- `sass/map/` → `sass:map`: `get`, `set`, `merge`, `deep-merge`, `remove`, `keys`,
+  `values`, `has-key`. All eight correct as module members.
 - `sass/string/length.ts` → `sass:string`. Correct module, wrong global name.
 - `sass/color/red.ts` → `sass:color`. Correct.
 - `sass/math/abs.ts` → `sass:math`. Correct.
@@ -508,7 +508,7 @@ which is a truthful regression.~~
 rewritten as `Fn` before they can be registered. Order by dependency: `sass:math`
 (`unit`, `unitless`, `percentage`, `compatible`/`comparable`, `random`) → `sass:string`
 (the eight files, plus the `str-length` name) → `sass:color` (the thirteen files) →
-`sass:map` (the seven). `sass:list` is already value-domain and needs only the
+`sass:map` (the eight). `sass:list` is already value-domain and needs only the
 `list-separator` global name.
 
 **B-3. Land the DIVERGENT splits**, each with its own Sass body. Expected SCSS deltas,

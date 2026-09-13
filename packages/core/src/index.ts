@@ -108,6 +108,7 @@ export {
   groupSeparator,
   listValueAt,
   isBracketedList,
+  CollectionOverlay,
   isCollection,
   collectionEntries,
   collectionEntryIndex,

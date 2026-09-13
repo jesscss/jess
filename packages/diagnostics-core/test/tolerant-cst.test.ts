@@ -706,6 +706,30 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('warns for provable duplicate Jess collection keys without guessing about spreads or dynamic keys', () => {
+    const source = '$m: { a: 1; [a]: 2; ["a"]: 3; [#c6538c]: 4; [#fff]: 5; [#ffffff]: 6; [1]: 7; [1.0]: 8; ["red"]: 9; red: 10; [#ff0000]: 11; null: 12; [null]: 13; [null]: 14; [$key]: 15; [$key]: 16; ["${key}"]: 17; ["${key}"]: 18; ...$other; };';
+    const result = collectTolerantDiagnostics({ source, language: 'jess' });
+    const duplicates = result.diagnostics.filter(diagnostic => diagnostic.code === LINT_CODES.duplicateCollectionKeys);
+
+    expect(duplicates.map(diagnostic => diagnostic.message)).toEqual([
+      'Duplicate collection key "a"; the later value wins',
+      'Duplicate collection key "a"; the later value wins',
+      'Duplicate collection key "#ffffff"; the later value wins',
+      'Duplicate collection key "1.0"; the later value wins',
+      'Duplicate collection key "red"; the later value wins',
+      'Duplicate collection key "#ff0000"; the later value wins',
+      'Duplicate collection key "null"; the later value wins'
+    ]);
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === 'parse/syntax-error')).toBe(false);
+    expect(collectTolerantDiagnostics({ source: '$m: (a: 1, a: 2);', language: 'scss' }).diagnostics
+      .some(diagnostic => diagnostic.code === LINT_CODES.duplicateCollectionKeys)).toBe(false);
+    expect(collectTolerantDiagnostics({
+      source,
+      language: 'jess',
+      shouldCollect: code => code !== LINT_CODES.duplicateCollectionKeys
+    }).diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.duplicateCollectionKeys)).toBe(false);
+  });
+
   it('reports unknown at-rule descriptors without also reporting unknown properties', () => {
     const source = '@font-face { font-family: Inter; src: url(inter.woff2); made-up: nope; }\n'
       + '@property --x { syntax: "<length>"; inherits: false; initial-value: 0px; unknown: yes; }\n'

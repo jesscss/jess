@@ -24,7 +24,7 @@ import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar';
 import { ScssImportPostludeError } from './parse-error.js';
-import { anonymousMixin, any, asDiagnostic, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, importIsCompileTime, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { anonymousMixin, any, asDiagnostic, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, importIsCompileTime, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 import { COMPARISON_OPERATORS, appendLiteral, controlBlockStatements, scssBranchSegments, contentArgRaw, customValue, customValueFromParts, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isAnonymousMixin, isCollection, isCollectionEntry, isScssDeclaration, isExtendInstruction, isScssImportTarget, isScssInterpolation, isParamArray, isQuoted, isScriptModulePath, isScssValuePair, isScssValueTail, isScssSelectorBranch, isScssSelectorList, isSelectorTerm, isScssSimpleToken, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, keywordizeValues, mapKeyValue, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, scssSelectorTermFromTokens, scssSourceText, statementChildren, statements, staticQuoted, scssValueSlot } from './grammar-helpers.js';
 import type { ScssArgumentPair, ScssCallArg, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
@@ -738,10 +738,10 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * A Sass map literal `(a: 1, b: 2)` lowers to the shared `Collection` (the same
-   * key/value-entries node used for SCSS nested properties), disambiguated from a
-   * paren value-list `(1 2 3)` by the `key: value` entry shape. Empty `()` and a
-   * single `(a: 1)` are both maps. This arm sits before `Paren` in the
+   * A Sass map literal `(a: 1, b: 2)` lowers to the data-only shared
+   * `Collection`; SCSS nested properties use `NestedPropertyBlock` instead.
+   * Maps are disambiguated from a paren value-list `(1 2 3)` by the `key: value`
+   * entry shape. Empty `()` and a single `(a: 1)` are both maps. This arm sits before `Paren` in the
    * value-atom choice; when no entry carries a colon it backtracks to the paren
    * list/arithmetic form.
    */
@@ -1763,8 +1763,9 @@ const scssFactory = (g: ScssInputRules) => {
 
       /*
        * The leaf entries stay LEAF-ONLY-keyed CollectionEntries inside a
-       * Collection value. Hyphenation and own-value placement move to the
-       * serializer; the carrier's own value (when present) rides on `base`.
+       * structural NestedPropertyBlock. Hyphenation and own-value placement
+       * move to the serializer; the block's own value (when present) rides on
+       * `base`.
        */
       const entries: CollectionEntry[] = [];
       for (let index = open + 1; index < close; index++) {
@@ -1777,10 +1778,7 @@ const scssFactory = (g: ScssInputRules) => {
       }
       const node = decl(
         prefix,
-        collection(
-          entries,
-          ownValue ?? undefined
-        ),
+        nestedPropertyBlock(entries, ownValue ?? undefined),
         null,
         ownValue === null ? false : ownImportant
       );

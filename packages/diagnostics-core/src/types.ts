@@ -82,6 +82,9 @@ export interface CollectDiagnosticsInput {
   readonly language: JessLanguage;
   readonly filePath?: string;
   readonly metadata?: Partial<CssDiagnosticMetadata>;
+
+  /** Optional lint policy gate for diagnostics that are expensive to compute. */
+  readonly shouldCollect?: (code: string) => boolean;
 }
 
 export interface CollectDiagnosticsResult {

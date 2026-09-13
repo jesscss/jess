@@ -109,20 +109,24 @@ A collection key is a **value**, not a property name, and lookups match by value
 equality:
 
 ```less
-// the key here is the STRING "small"
+// the key here is the Keyword `small`
 $m: {
   small: 4px;
 }
 ```
 
 A bare name is unambiguous because `$` is what marks a variable: `small` is the
-string key, `$small` is the variable. So `$m.small`, `$m[small]`, `$m["small"]`,
+Keyword key, `$small` is the variable. So `$m.small`, `$m[small]`, `$m["small"]`,
 and `$m[$k]` (where `$k` holds `small`) all reach the same entry.
 
-The value model is the same one Sass maps use: keys are compared by their value,
-not by a serialized property-name string. That means a map can distinguish the
-number `1`, the string `"1"`, and the color `red` when those keys arrive from
-SCSS input or from the value-domain map APIs.
+The value model is the same one Sass maps use: keys retain their value type and
+are compared by value, not by a serialized property-name string. Some different
+spellings are equal under that comparison, such as `a` and `"a"` or `1` and
+`1.0`.
+
+A bare word is a Keyword, including a word that CSS can use as a named color.
+Consequently, `red:` and `[red]:` are the same key. Color conversion happens only
+when an operation requires it; `[#c6538c]:` authors an actual Color key.
 
 Jess collection literals author the common CSS-object shape directly:
 
@@ -134,21 +138,59 @@ $font-weights: {
 }
 ```
 
-Non-identifier keys can exist in Jess collections when they arrive from SCSS maps
-or map APIs. Native literal syntax for authoring those keys directly is still
-being held back until it is parser-tested.
-
-{/*
-Future runnable example:
-
 ```less
+$key: accent;
+
 $m: {
   [1px]: a;
-  [red]: b;
+  [#c6538c]: b;
   [$key]: c;
 }
 ```
-*/}
+
+Computed keys are collection-only. They cannot be used as CSS property names.
+
+## Overlaying collections
+
+Spread a collection to make a shallow, left-to-right overlay. The syntax follows
+JavaScript object spread while keeping Jess's semicolon-separated entries:
+
+```less
+$defaults: {
+  color: #06c;
+  radius: 4px;
+}
+
+$brand: {
+  color: #c6538c;
+}
+
+$theme: {
+  ...$defaults;
+  ...$brand;
+  radius: 6px;
+}
+```
+
+`$theme` evaluates to `{ color: #c6538c; radius: 6px; }`. A later value replaces
+the earlier value without moving the key; a new key appends. An explicit
+duplicate follows the same rule, so `{ a: 1; a: 2; }` evaluates as `{ a: 2; }`.
+
+The `jess/no-duplicate-collection-keys` lint rule warns when duplicate explicit
+keys in one literal are statically obvious. It never rejects the collection and
+does not speculate about dynamic keys or keys introduced by a spread.
+
+Spread is shallow: if both collections contain `colors`, the later `colors`
+value replaces the earlier one. Recursive overlays use Sass's map function:
+
+```less
+@-use '#sass/map' as map;
+$theme: $map.deep-merge($defaults, $overrides);
+```
+
+`deep-merge` is available from the `@jesscss/fns/sass/map` JavaScript entrypoint.
+The Jess `@-use` resolver is not wired yet, so the stylesheet example above is
+the settled module spelling rather than an executable import today.
 
 ## Subscripts: the key's type decides
 
@@ -157,10 +199,10 @@ you get — **the subscript's own type, never the receiver's**:
 
 | Subscript | Meaning |
 | --- | --- |
-| a **number** — `$x[1]`, `$x[-1]` | **positional index**; negative counts from the end |
+| a **number** — `$x[0]`, `$x[-1]` | **zero-based positional index**; negative counts from the end |
 | a **member key** — `$x[small]`, `$x[$k]`, `$x["a"]` | **key lookup** by value equality |
 
-`$x[1]` is positional whether `$x` turns out to be a list or a collection. A
+`$x[0]` is positional whether `$x` turns out to be a list or a collection. A
 subscript whose meaning shifted with the receiver's runtime type would be a
 footgun; this way you can read the source and know.
 

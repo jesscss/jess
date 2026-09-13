@@ -29,8 +29,8 @@ import type { Combinator } from 'parseman';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar';
-import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { Token, AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
+import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { Token, AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 import {
   requireToken,
   requireFields,
@@ -101,7 +101,7 @@ import {
   urlFromChildren,
   requireLiteralQuoted,
   isJessDeclaration,
-  isCollectionEntry,
+  isCollectionItem,
   requireExactToken,
   reduceGuardTruth,
   reduceIfCompare,
@@ -187,6 +187,7 @@ type JessRules = {
   MathFunction: Combinator<FunctionCall>;
   IdentifierOrFunction: Combinator<[string, FunctionCall | Keyword | Null | Url]>;
   CollectionEntry: Combinator<CollectionEntry>;
+  CollectionSpread: Combinator<CollectionSpread>;
   Collection: Combinator<Collection>;
   ParenValue: Combinator<ValueNode>;
   SquareValue: Combinator<ValueNode>;
@@ -2678,32 +2679,85 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * Jess collections are value-position maps. The canonical AST already has a
-   * dedicated detached-ruleset carrier and the serializer already iterates its
-   * declaration names/values for bracket `$for` bindings; lower it directly
-   * instead of preserving a CST-shaped collection node or opaque source bytes.
+   * Jess collections are ordered value-keyed maps. An entry chooses either a
+   * bare Identifier key or a bracketed computed Value key, then shares one
+   * `: value ;?` tail. The surrounding Collection interleaves these entries
+   * with CollectionSpread items in authored order.
    */
   const CollectionEntry = node<CollectionEntry>(
     'CollectionEntry',
     sequence(
-      g.Identifier,
+      choice(
+        g.Identifier,
+        sequence(
+          literal('['),
+          parser(
+            { trivia: whitespace },
+            g.Value
+          ),
+          optional(rawWhitespace),
+          literal(']')
+        )
+      ),
       literal(':'),
       parser(
         { trivia: whitespace },
         choice(
-          g.ValueBlock,
+          g.BlockLambda,
           g.Value
         )
       ),
       optional(literal(';'))
     ),
     (children) => {
-      const value = children[2];
+      const computed = requireToken(children[0]).value === '[';
+      let firstValue: ValueSlot | undefined;
+      let secondValue: ValueSlot | undefined;
+      for (const child of children) {
+        if (!isJessValueSlotValue(child)) {
+          continue;
+        }
+        if (firstValue === undefined) {
+          firstValue = child;
+        } else {
+          secondValue = child;
+          break;
+        }
+      }
+
+      /*
+       * Bare names are Keywords. Brackets opt into a full value expression;
+       * they do not retag identifiers, so `red:` and `[red]:` are the same
+       * Keyword key while `[#c6538c]:` is a Color key.
+       */
+      const key = computed
+        ? requireValueSlot(firstValue)
+        : keyword(requireToken(children[0]).value);
       return collectionEntry(
-        keyword(requireToken(children[0]).value),
-        Array.isArray(value) ? value : jessValueSlot(requireValueNode(value))
+        key,
+        requireValueSlot(computed ? secondValue : firstValue)
       );
     }
+  );
+
+  /*
+   * The semicolon is the spread item's boundary: a spread accepts the complete
+   * data-value grammar, so `...value` cannot safely infer where the following
+   * collection item begins. A block lambda may be stored as an entry value, but
+   * is not itself a spread operand. Evaluation folds spreads and entries
+   * left-to-right; an equal later key replaces the earlier value.
+   */
+  const CollectionSpread = node<CollectionSpread>(
+    'CollectionSpread',
+    sequence(
+      literal('...'),
+      parser(
+        { trivia: whitespace },
+        g.Value
+      ),
+      literal(';')
+    ),
+    children => collectionSpread(requireValueSlot(children[1]))
   );
   const Collection = node<Collection>(
     'Collection',
@@ -2711,12 +2765,23 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       literal('{'),
       parser(
         { trivia: whitespace },
-        many(g.CollectionEntry)
+        many(choice(
+          g.CollectionSpread,
+          g.CollectionEntry
+        ))
       ),
       optional(rawWhitespace),
       literal('}')
     ),
-    children => collection(children.filter(isCollectionEntry))
+    (children) => {
+      const entries: CollectionItem[] = [];
+      for (const child of children) {
+        if (isCollectionItem(child)) {
+          entries.push(child);
+        }
+      }
+      return collection(entries);
+    }
   );
 
   /*
@@ -2751,7 +2816,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       (children) => {
         const key = children[1];
         if (isValueNode(key) && key.type === 'Lookup' && key.kind === 'var') {
-          return { step: lookupStep('var', key), src: `[${key.scope === 'scoped' ? '$^' : '$'}${lookupNameSource(key.name)}]` };
+          return { step: lookupStep('var', key, 0), src: `[${key.scope === 'scoped' ? '$^' : '$'}${lookupNameSource(key.name)}]` };
         }
         if (isValueNode(key) && key.type === 'Quoted') {
           return { step: lookupStep('member', key), src: `[${key.src}]` };
@@ -5778,6 +5843,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     MathFunction,
     IdentifierOrFunction,
     CollectionEntry,
+    CollectionSpread,
     Collection,
     ParenValue,
     SquareValue,

@@ -15,6 +15,7 @@ import { describe, it, expect } from 'vitest';
 import get from '../sass/map/get.js';
 import set from '../sass/map/set.js';
 import merge from '../sass/map/merge.js';
+import { deepMerge } from '../sass/map/index.js';
 import remove from '../sass/map/remove.js';
 import keys from '../sass/map/keys.js';
 import values from '../sass/map/values.js';
@@ -152,6 +153,35 @@ describe('Sass map functions', () => {
       const map2 = createMap([['b', makeDimension(2)]]);
       const result = collectionOf(sync(merge(map1, map2)));
       expect(dimensionOf(sync(get(result, key('b')))).number).toBe(2);
+    });
+  });
+
+  describe('deep-merge()', () => {
+    it('recursively merges nested maps without mutating either input', () => {
+      const colors = createMap([['primary', key('blue')], ['secondary', key('grey')]]);
+      const defaults = makeCollection([{ key: key('colors'), value: colors }, { key: key('space'), value: makeDimension(4) }]);
+      const overrideColors = createMap([['primary', key('teal')]]);
+      const overrides = makeCollection([{ key: key('colors'), value: overrideColors }]);
+
+      const result = collectionOf(sync(deepMerge(defaults, overrides)));
+      const resultColors = collectionOf(sync(get(result, key('colors'))));
+
+      expect(sync(get(resultColors, key('primary')))).toEqual(key('teal'));
+      expect(sync(get(resultColors, key('secondary')))).toEqual(key('grey'));
+      expect(dimensionOf(sync(get(result, key('space')))).number).toBe(4);
+      expect(sync(get(collectionOf(sync(get(defaults, key('colors')))), key('primary')))).toEqual(key('blue'));
+      expect(result.entries.map(entry => entry.key)).toEqual([key('colors'), key('space')]);
+    });
+
+    it('replaces collisions when only one side is a map', () => {
+      const nested = createMap([['a', makeDimension(1)]]);
+      const leftMap = makeCollection([{ key: key('value'), value: nested }]);
+      const rightScalar = makeCollection([{ key: key('value'), value: makeDimension(2) }]);
+      const leftScalar = makeCollection([{ key: key('value'), value: makeDimension(2) }]);
+      const rightMap = makeCollection([{ key: key('value'), value: nested }]);
+
+      expect(dimensionOf(sync(get(collectionOf(sync(deepMerge(leftMap, rightScalar))), key('value')))).number).toBe(2);
+      expect(collectionOf(sync(get(collectionOf(sync(deepMerge(leftScalar, rightMap))), key('value')))).entries).toHaveLength(1);
     });
   });
 

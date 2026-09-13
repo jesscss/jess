@@ -21,7 +21,7 @@ import { register } from 'node:module';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
- * Two loader concerns, both needed to import a grammar module directly:
+ * Three loader concerns are needed to import a grammar module directly:
  *
  * 1. `type: 'macro'` import attributes. Node rejects an attribute it does not
  *    know, so every macro-authored grammar dies on import. Dropping the
@@ -32,6 +32,10 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
  * 2. `.js` specifiers that name a `.ts` source. Node's native type stripping
  *    does not rewrite extensions, so `import … from './parse-error.js'` inside
  *    `src/` fails. Resolve to the sibling `.ts` when it exists on disk.
+ * 3. Dialect grammars import `@jesscss/css-parser/grammar`. Package resolution
+ *    finds the macro-built table artifact, whose serialized builders cannot be
+ *    runtime-composed for inspection. Redirect that one edge to the source
+ *    grammar so every composed piece remains inspectable by `parseman/spec`.
  */
 const LOADER_HOOK = `
 import { existsSync } from 'node:fs'
@@ -45,6 +49,13 @@ const strip = (context) => {
 }
 export async function resolve(specifier, context, nextResolve) {
   const ctx = strip(context)
+  // Keep the inspected dialect and its composed CSS base on the same source path.
+  if (specifier === '@jesscss/css-parser/grammar') {
+    return {
+      url: ${JSON.stringify(pathToFileURL(join(ROOT, 'packages/syntax/css/css-parser/src/grammar.ts')).href)},
+      shortCircuit: true
+    }
+  }
   if (specifier.startsWith('.') && specifier.endsWith('.js') && ctx.parentURL) {
     const url = new URL(specifier, ctx.parentURL)
     const ts = fileURLToPath(url).slice(0, -3) + '.ts'
@@ -85,10 +96,9 @@ const BALANCED_PINS = {
  *
  * Nothing is pinned for looks. These pages are read as an instrument: a rule that
  * renders as an unreadable ladder is telling you something about the rule, and
- * hiding it behind a prose name would destroy the measurement. `NamedColorToken`
- * — a `keywords([…])` of 148 CSS colour names that draws a 4,500-pixel vertical
- * alternation on the Less page, and exists in NO other dialect — is exactly the
- * kind of thing that must stay visible. See scripts/analyze-grammar-complexity.mjs.
+ * hiding it behind a prose name would destroy the measurement. A large
+ * `keywords([…])` or deeply nested alternation is exactly the kind of thing that
+ * must stay visible. See scripts/analyze-grammar-complexity.mjs.
  *
  * The `BALANCED_PINS` above are not an exception to this: without them the
  * emitter does not produce a page at all.
