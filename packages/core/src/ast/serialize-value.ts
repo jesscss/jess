@@ -56,9 +56,8 @@ export function serializeQuoted(q: Quoted): string {
  * `1.0px` to `1px` purely by being inside a map.
  */
 function collectionEntryBytes(entry: CollectionEntry): string {
-  const sigil = entry.variable === true ? '@' : '';
   const important = entry.important === true ? ' !important' : '';
-  return `${sigil}${emitValue(entry.key)}: ${emitValue(entry.value)}${important}`;
+  return `${emitValue(entry.key)}: ${emitValue(entry.value)}${important}`;
 }
 
 /*
@@ -92,8 +91,7 @@ export function serializeValue(v: ValueGroup): string {
     }
     case 'Collection': {
       const body = v.entries.map(collectionEntryBytes).join('; ');
-      const block = body === '' ? '{}' : `{ ${body} }`;
-      return v.base === undefined ? block : `${emitValue(v.base)} ${block}`;
+      return body === '' ? '{}' : `{ ${body} }`;
     }
   }
 }

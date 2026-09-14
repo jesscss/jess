@@ -257,7 +257,7 @@ describe('@jesscss/scss-parser public parse API', () => {
 
     expect(root).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'Ruleset', rules: [
-        { type: 'Declaration', name: 'font', value: { type: 'Collection', entries: [
+        { type: 'Declaration', name: 'font', value: { type: 'NestedPropertyBlock', entries: [
           { type: 'CollectionEntry', key: { type: 'Keyword', src: 'family' }, value: { src: 'fantasy' } },
           { type: 'CollectionEntry', key: { type: 'Keyword', src: 'weight' }, value: { src: 'bold' } }
         ] } }
@@ -269,7 +269,7 @@ describe('@jesscss/scss-parser public parse API', () => {
 
     const empty = parse('.empty { font: {}; }');
     expect(empty).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'Ruleset', rules: [
-      { type: 'Declaration', name: 'font', value: { type: 'Collection', entries: [] } }
+      { type: 'Declaration', name: 'font', value: { type: 'NestedPropertyBlock', entries: [] } }
     ] }] });
     expect(serialize(empty)).toEqual({ css: '' });
 
@@ -278,13 +278,13 @@ describe('@jesscss/scss-parser public parse API', () => {
     const dynamic = parse(interpolated);
     expect(dynamic).toMatchObject({
       rules: [{ type: 'VariableDeclaration' }, { type: 'VariableDeclaration' }, { type: 'Ruleset', rules: [
-        { name: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'prefix', raw: '@prefix' } }] }, value: { type: 'Collection', entries: [
+        { name: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'prefix', raw: '@prefix' } }] }, value: { type: 'NestedPropertyBlock', entries: [
           { key: { type: 'Keyword', src: 'color' }, value: { src: 'red' } }
         ] } },
-        { name: 'font', value: { type: 'Collection', entries: [
+        { name: 'font', value: { type: 'NestedPropertyBlock', entries: [
           { key: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'part', raw: '@part' } }] }, value: { src: 'bold' } }
         ] } },
-        { name: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'prefix', raw: '@prefix' } }] }, value: { type: 'Collection', entries: [
+        { name: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'prefix', raw: '@prefix' } }] }, value: { type: 'NestedPropertyBlock', entries: [
           { key: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'part', raw: '@part' } }] }, value: { src: '700' } }
         ] } }
       ] }]
@@ -297,7 +297,7 @@ describe('@jesscss/scss-parser public parse API', () => {
     expect(parseScssCst(important).errors).toHaveLength(0);
     expect(parse(important)).toMatchObject({
       rules: [{ type: 'Ruleset', rules: [
-        { type: 'Declaration', name: 'font', important: true, value: { type: 'Collection', entries: [
+        { type: 'Declaration', name: 'font', important: true, value: { type: 'NestedPropertyBlock', entries: [
           { type: 'CollectionEntry', key: { type: 'Keyword', src: 'size' }, important: false }
         ] } }
       ] }]

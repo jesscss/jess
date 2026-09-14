@@ -67,7 +67,7 @@ value object at rest). Two fold entry points read it:
 
 ```
 Keyword   → { type:'Keyword', text: node.src, bytes: node.src }
-Color     → colorFromSrc(node.src)                       // # ⇒ parseHex; else namedColor
+Color     → colorFromSrc(node.src)                       // parsed Color nodes are hex literals
 Dimension → dimensionFromFields(node.number, node.unit, node.src)
 Quoted    → quotedFromFields(node.value, node.quote, node.escaped, node.src)
 Any       → materializeAny(node.src)                     // the ONLY byte sniff (regex)

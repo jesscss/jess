@@ -3,6 +3,7 @@ import type {
   ComplexSelector,
   CompoundSelector,
   CollectionEntry,
+  CollectionSpread,
   Declaration,
   FunctionCall,
   If,
@@ -35,6 +36,7 @@ export type AstVisitNode =
   | Statement
   | ValueNode
   | CollectionEntry
+  | CollectionSpread
   | SelectorList
   | ComplexSelector
   | RelativeSelector
@@ -106,10 +108,12 @@ export type AstEdge =
   | 'value.range.start'
   | 'value.range.end'
   | 'value.range.step'
-  | 'value.collection.base'
   | 'value.collection.entry'
+  | 'value.nested-property.base'
+  | 'value.nested-property.entry'
   | 'value.collection.key'
   | 'value.collection.value'
+  | 'value.collection.spread'
   | 'value.anonymous-mixin.param-default'
   | 'value.anonymous-mixin.param-pattern'
   | 'value.anonymous-mixin.rules'
@@ -616,16 +620,24 @@ function walkNode(
       }
       break;
     case 'Collection':
-      if (node.base !== undefined) {
-        walkValueSlot(node.base, hooks, 'value.collection.base', node, 0, depth + 1);
-      }
       for (let i = 0; i < node.entries.length; i++) {
         walkNode(node.entries[i]!, hooks, 'value.collection.entry', node, i, depth + 1);
+      }
+      break;
+    case 'NestedPropertyBlock':
+      if (node.base !== null) {
+        walkValueSlot(node.base, hooks, 'value.nested-property.base', node, 0, depth + 1);
+      }
+      for (let i = 0; i < node.entries.length; i++) {
+        walkNode(node.entries[i]!, hooks, 'value.nested-property.entry', node, i, depth + 1);
       }
       break;
     case 'CollectionEntry':
       walkValueSlot(node.key, hooks, 'value.collection.key', node, 0, depth + 1);
       walkValueSlot(node.value, hooks, 'value.collection.value', node, 1, depth + 1);
+      break;
+    case 'CollectionSpread':
+      walkValueSlot(node.value, hooks, 'value.collection.spread', node, 0, depth + 1);
       break;
     case 'AnonymousMixin':
       if (node.params !== undefined) {

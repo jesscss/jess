@@ -72,7 +72,9 @@ describe('V19 one-evaluator projection ratchet', () => {
     // `composeSelectorHeader`, the comment gate `keepComment`/`putBlockComment`,
     // and the compress-aware value emit `emitValueC`. Each returns the exact
     // pretty bytes when compress is off, so compress:off output is byte-identical.
-    expect(occurrences(/^function |^async function /gmu)).toBe(443);
+    // Collection overlays reuse existing BindingCell/DeclEntry records for typed
+    // values, so no serializer-side Map or helper-count increase is permitted.
+    expect(occurrences(/^function |^async function /gmu)).toBe(441);
     expect(occurrences(/new Map/gu)).toBe(59);
     expect(occurrences(/new Set/gu)).toBe(39);
     expect(occurrences(/new WeakMap/gu)).toBe(4);

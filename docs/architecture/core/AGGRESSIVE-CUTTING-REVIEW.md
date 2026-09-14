@@ -217,6 +217,7 @@ a blanket optimization exemption or a new active architecture queue.
       "packages/core/src/ast/mixin-dispatch.ts",
       "packages/core/src/ast/provenance.ts",
       "packages/core/src/ast/value-dispatch.ts",
+      "packages/core/src/ast/value-collection.ts",
       "packages/core/src/ast/value-eval.ts",
       "packages/core/src/ast/value-factory.ts",
       "packages/core/src/ast/value-guards.ts",
@@ -230,11 +231,12 @@ a blanket optimization exemption or a new active architecture queue.
     ],
     "semanticRuntime": {
       "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
-      "scope": "This coordinated cutover changes recursive ValueGroup/List/Block facts, authored value layout, callable binding, mixin argument resolution, reference/index access, strict final-unit validation, typed guard equality, Less lazy color-call demand, and asynchronous declaration deduplication across cooperating runtime owners. Those changes are semantic architecture work with real traversal and allocation shape; no single admission counter, byte-identical A/B, or speed claim would describe them truthfully.",
+      "scope": "This coordinated cutover changes recursive ValueGroup/List/Block facts, authored value layout, callable binding, mixin argument resolution, reference/index access, typed Collection overlay equality and iteration, strict final-unit validation, typed guard equality, Less lazy color-call demand, and asynchronous declaration deduplication across cooperating runtime owners. Those changes are semantic architecture work with real traversal and allocation shape; no single admission counter, byte-identical A/B, or speed claim would describe them truthfully.",
       "cases": [
         "ValueSlot-array-evaluation-and-authored-layout",
         "List-value-separator-and-Block-delimiter-facts",
         "reference-index-and-For-array-access",
+        "Collection-spread-computed-key-overlay-and-iteration",
         "Less-lazy-color-call-demand-boundary",
         "defineFunction-typed-positional-named-and-lazy-binding",
         "mixin-dispatch-ValueSlot-argument-resolution",
@@ -249,7 +251,7 @@ a blanket optimization exemption or a new active architecture queue.
       "baseline": {"fixture": "benchmark.less", "phase": "render"}
     },
     "evidence": {
-      "behaviorCommand": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run", "src/ast/__tests__/value-define-function.test.ts", "src/ast/__tests__/value-list.test.ts", "src/ast/__tests__/plugin-direct-body-scope.test.ts", "src/ast/__tests__/extend-direct-acceptance.test.ts", "src/ast/__tests__/extend-preflight-contract.test.ts", "src/ast/__tests__/value-operate-units.test.ts", "src/tree/__tests__/declaration.test.ts", "src/tree/__tests__/declaration-merge.test.ts"],
+      "behaviorCommand": ["pnpm", "--filter", "@jesscss/core", "exec", "vitest", "run", "src/ast/__tests__/collection-value-direct-acceptance.test.ts", "src/ast/__tests__/collection-value-domain.test.ts", "src/ast/__tests__/for-direct-acceptance.test.ts", "src/ast/__tests__/value-access-direct-acceptance.test.ts", "src/ast/__tests__/nested-property-flatten-direct-acceptance.test.ts", "src/ast/__tests__/serialize-projection-ratchet.test.ts", "src/ast/__tests__/traversal.test.ts"],
       "buildCommand": ["pnpm", "--filter", "@jesscss/core", "build"]
     }
   },

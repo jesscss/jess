@@ -186,9 +186,9 @@ This document catalogs all built-in Sass functions from dart-sass, categorized b
 
 ### Medium Complexity
 - `map.set($map, $key, $value)` - Set value (overloaded)
-- `map.merge($map1, $map2)` - Merge maps (overloaded, deep merge support)
+- `map.merge($map1, $map2)` - Shallow merge
 - `map.remove($map, $keys...)` - Remove keys (variadic)
-- `map.deep-merge($map1, $map2)` - Deep merge
+- `map.deep-merge($map1, $map2)` - Recursive merge
 - `map.deep-remove($map, $keys...)` - Deep remove
 
 ### Global Map Functions (Deprecated)

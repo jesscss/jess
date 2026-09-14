@@ -26,7 +26,7 @@ const set = defineFunction(
       } else {
         entries[index] = entry;
       }
-      return makeCollection(entries, map.base);
+      return makeCollection(entries);
     }
   }
 );

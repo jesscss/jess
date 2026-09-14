@@ -252,7 +252,12 @@ function nullCompare(a: Value, b: Value, unitMode: UnitMode | undefined): Compar
  *  - same-kind scalars compare LEXICOGRAPHICALLY on their own spelling; lists
  *    compare element-wise (same separator, length, and recursively-equal items).
  */
-function compareNodes(a: Value, b: Value, unitMode: UnitMode | undefined): Compared {
+function compareNodes(
+  a: Value,
+  b: Value,
+  unitMode: UnitMode | undefined,
+  sassEquality = false
+): Compared {
   /*
    * STRING GROUND (§4.1 row 2), taken by the PAIR before any typed dispatch: an
    * opaque unquoted operand (`e("4")`, `~"4"`) against anything compares each
@@ -288,9 +293,57 @@ function compareNodes(a: Value, b: Value, unitMode: UnitMode | undefined): Compa
     if (a.entries.length !== b.entries.length) {
       return undefined;
     }
-    for (const entry of a.entries) {
-      const other = b.entries.find(candidate => compareGroups(candidate.key, entry.key, unitMode) === 0);
-      if (other === undefined || compareGroups(other.value, entry.value, unitMode) !== 0) {
+    if (a.entries.length === 0) {
+      return 0;
+    }
+
+    /* Authored-order equality is overwhelmingly the common case. Prove it
+     * without allocating the matching graph; only a permutation or a loose,
+     * non-transitive pairing pays for the one-to-one fallback below. */
+    let aligned = true;
+    for (let index = 0; index < a.entries.length; index += 1) {
+      const left = a.entries[index]!;
+      const right = b.entries[index]!;
+      if (compareGroups(left.key, right.key, unitMode, sassEquality) !== 0
+        || compareGroups(left.value, right.value, unitMode, sassEquality) !== 0) {
+        aligned = false;
+        break;
+      }
+    }
+    if (aligned) {
+      return 0;
+    }
+
+    /* Pair entries one-to-one. A plain `.find` lets two left entries consume the
+     * same right entry when loose key equality is non-transitive, making map
+     * equality directed and allowing unequal duplicate-pair sets to compare
+     * equal. Augmenting paths give the entry pairs their actual multiset
+     * semantics without making authored order significant. */
+    const rightToLeft = new Int32Array(b.entries.length);
+    rightToLeft.fill(-1);
+    const seen = new Uint32Array(b.entries.length);
+    const assign = (leftIndex: number, pass: number): boolean => {
+      const entry = a.entries[leftIndex]!;
+      for (let rightIndex = 0; rightIndex < b.entries.length; rightIndex += 1) {
+        if (seen[rightIndex] === pass) {
+          continue;
+        }
+        const candidate = b.entries[rightIndex]!;
+        if (compareGroups(candidate.key, entry.key, unitMode, sassEquality) !== 0
+          || compareGroups(candidate.value, entry.value, unitMode, sassEquality) !== 0) {
+          continue;
+        }
+        seen[rightIndex] = pass;
+        const previous = rightToLeft[rightIndex]!;
+        if (previous < 0 || assign(previous, pass)) {
+          rightToLeft[rightIndex] = leftIndex;
+          return true;
+        }
+      }
+      return false;
+    };
+    for (let leftIndex = 0; leftIndex < a.entries.length; leftIndex += 1) {
+      if (!assign(leftIndex, leftIndex + 1)) {
         return undefined;
       }
     }
@@ -301,7 +354,7 @@ function compareNodes(a: Value, b: Value, unitMode: UnitMode | undefined): Compa
       return undefined;
     }
     for (let i = 0; i < a.value.length; i++) {
-      if (compareGroups(a.value[i]!, b.value[i]!, unitMode) !== 0) {
+      if (compareGroups(a.value[i]!, b.value[i]!, unitMode, sassEquality) !== 0) {
         return undefined;
       }
     }
@@ -319,20 +372,32 @@ function compareNodes(a: Value, b: Value, unitMode: UnitMode | undefined): Compa
   return primCompare(a.bytes, b.bytes);
 }
 
-function compareGroups(a: ValueGroup, b: ValueGroup, unitMode: UnitMode | undefined): Compared {
+function compareGroups(
+  a: ValueGroup,
+  b: ValueGroup,
+  unitMode: UnitMode | undefined,
+  sassEquality = false
+): Compared {
   if (isValueGroupArray(a) || isValueGroupArray(b)) {
     if (!isValueGroupArray(a) || !isValueGroupArray(b) || a.length !== b.length) {
       return undefined;
     }
     for (let index = 0; index < a.length; index += 1) {
-      if (compareGroups(a[index]!, b[index]!, unitMode) !== 0) {
+      if (compareGroups(a[index]!, b[index]!, unitMode, sassEquality) !== 0) {
         return undefined;
       }
     }
     return 0;
   }
-  return compareNodes(a, b, unitMode);
+  const compared = compareNodes(a, b, unitMode, sassEquality);
+  return sassEquality && compared === 0 && isNumericPair(a, b) && !sameType(a, b)
+    ? undefined
+    : compared;
 }
+
+/** The recursive equality used specifically for members of a Sass Collection. */
+export const sassCollectionMemberEqual = (left: ValueGroup, right: ValueGroup): boolean =>
+  compareGroups(left, right, undefined, true) === 0;
 
 /**
  * Whether two operands share a TYPE, for `.jess`'s `==` (OPERATIONS.md §4.1:
@@ -372,6 +437,167 @@ function sameType(a: ValueGroup, b: ValueGroup): boolean {
 /** Whether BOTH operands are numbers — the type {@link SASS_EQUAL} dispatches on. */
 const isNumericPair = (a: ValueGroup, b: ValueGroup): boolean =>
   !isValueGroupArray(a) && !isValueGroupArray(b) && a.type === 'Dimension' && b.type === 'Dimension';
+
+function pushNumericCandidateKeys(into: string[], path: number, number: number, unit: string): void {
+  if (!Number.isFinite(number)) {
+    into.push(`${path}:number:${unit}:${String(number)}`);
+    return;
+  }
+  const exponent = Math.floor(Math.log10(Math.max(Math.abs(number), 1)));
+  for (let scale = exponent - 1; scale <= exponent + 1; scale += 1) {
+    const width = COMPARE_TOLERANCE * 10 ** (scale + 1);
+    const bucket = Math.floor(number / width);
+    into.push(
+      `${path}:number:${unit}:${scale}:${bucket - 1}`,
+      `${path}:number:${unit}:${scale}:${bucket}`,
+      `${path}:number:${unit}:${scale}:${bucket + 1}`
+    );
+  }
+}
+
+function pushScalarSassEqualityCandidateKeys(
+  into: string[],
+  value: Value,
+  type: Value['type'],
+  path: number
+): void {
+  into.push(`${path}:spelling:${type === 'Quoted' && 'quote' in value ? value.value : value.bytes}`);
+  if (type === 'Dimension' && 'number' in value && 'unit' in value) {
+    let normalizedNumber = value.number;
+    let normalizedUnit = '';
+    if (value.unit !== '') {
+      const normalized = unify(value.number, value.unit);
+      normalizedNumber = normalized.number;
+      normalizedUnit = normalized.unit;
+    }
+    pushNumericCandidateKeys(
+      into,
+      path,
+      normalizedNumber,
+      normalizedUnit === '' ? '<unitless>' : normalizedUnit
+    );
+    if (Math.abs(value.number) <= COMPARE_TOLERANCE) {
+      into.push(`${path}:null-zero`);
+    }
+  } else if (type === 'Null') {
+    into.push(`${path}:null-zero`);
+  } else if (type === 'Color' && 'rgb' in value) {
+    into.push(`${path}:color:${value.rgb[0]}:${value.rgb[1]}:${value.rgb[2]}:${value.alpha}`);
+  } else if (type === 'Keyword' && 'text' in value) {
+    const color = namedColor(value.text);
+    if (color !== undefined) {
+      into.push(`${path}:color:${color.rgb[0]}:${color.rgb[1]}:${color.rgb[2]}:${color.alpha}`);
+    }
+  }
+}
+
+const CANDIDATE_PATH_ROOT = 0x811c9dc5;
+const ARRAY_PATH = 0x61727261;
+const LIST_PATH = 0x6c697374;
+const COLLECTION_KEY_PATH = 0x6b657900;
+const COLLECTION_VALUE_PATH = 0x76616c00;
+
+/** A bounded-size structural address. Collisions only add exact-compare work. */
+function candidatePath(parent: number, kind: number, index: number): number {
+  let path = Math.imul(parent ^ kind, 0x01000193);
+  path = Math.imul(path ^ index, 0x01000193);
+  return path >>> 0;
+}
+
+/**
+ * Conservative candidate constraints for {@link SASS_EQUAL}. Each `groupEnds`
+ * item is an exclusive signature end; strings within a group are alternatives.
+ * `fallbackSignatures` contains whole-structure spelling routes. An index scans
+ * those in addition to a chosen structural group, because a List/Collection at
+ * any nesting level can instead compare on string ground with Quoted/Any.
+ *
+ * Structural groups include their children instead of putting every same-shape
+ * value in one bucket. That keeps unique arrays/lists/maps linear without
+ * turning this index into a second equality implementation; {@link compare}
+ * remains the final authority for every candidate.
+ */
+function writeSassEqualityCandidatePlanAt(
+  value: ValueGroup,
+  signatures: string[],
+  groupEnds: number[],
+  fallbackSignatures: string[],
+  path: number
+): void {
+  if (isValueGroupArray(value)) {
+    signatures.push(`${path}:array:${value.length}`);
+    groupEnds.push(signatures.length);
+    for (let index = 0; index < value.length; index += 1) {
+      writeSassEqualityCandidatePlanAt(
+        value[index]!,
+        signatures,
+        groupEnds,
+        fallbackSignatures,
+        candidatePath(path, ARRAY_PATH, index)
+      );
+    }
+    return;
+  }
+  const type = value.type;
+  if (type === 'List') {
+    /* The fallback keeps string-ground equality reachable when a nested List
+     * is compared with Quoted/Any. It stays outside the structural group:
+     * reordered/loosely-equal structures need not have identical bytes. */
+    signatures.push(`${path}:list:${value.sep}:${value.value.length}`);
+    groupEnds.push(signatures.length);
+    fallbackSignatures.push(`${path}:spelling:${value.bytes}`);
+    for (let index = 0; index < value.value.length; index += 1) {
+      writeSassEqualityCandidatePlanAt(
+        value.value[index]!,
+        signatures,
+        groupEnds,
+        fallbackSignatures,
+        candidatePath(path, LIST_PATH, index)
+      );
+    }
+    return;
+  }
+  if (type === 'Collection') {
+    signatures.push(`${path}:collection:${value.entries.length}`);
+    groupEnds.push(signatures.length);
+    fallbackSignatures.push(`${path}:spelling:${value.bytes}`);
+    for (const entry of value.entries) {
+      /* Collection equality is order-insensitive, so member constraints cannot
+       * encode authored position. Exact comparison resolves any bucket ties. */
+      writeSassEqualityCandidatePlanAt(
+        entry.key,
+        signatures,
+        groupEnds,
+        fallbackSignatures,
+        candidatePath(path, COLLECTION_KEY_PATH, 0)
+      );
+      writeSassEqualityCandidatePlanAt(
+        entry.value,
+        signatures,
+        groupEnds,
+        fallbackSignatures,
+        candidatePath(path, COLLECTION_VALUE_PATH, 0)
+      );
+    }
+    return;
+  }
+  pushScalarSassEqualityCandidateKeys(signatures, value, type, path);
+  groupEnds.push(signatures.length);
+}
+
+export function writeSassEqualityCandidatePlan(
+  value: ValueGroup,
+  signatures: string[],
+  groupEnds: number[],
+  fallbackSignatures: string[]
+): void {
+  writeSassEqualityCandidatePlanAt(
+    value,
+    signatures,
+    groupEnds,
+    fallbackSignatures,
+    CANDIDATE_PATH_ROOT
+  );
+}
 
 /**
  * A 3-way ORDER over two operands, on §4.1's ground — the ordering primitive
@@ -450,7 +676,7 @@ export function compare(
   right: ValueGroup,
   unitMode?: UnitMode
 ): boolean {
-  const c = compareGroups(left, right, unitMode);
+  const c = compareGroups(left, right, unitMode, op === SASS_EQUAL);
   if (c === NO_GROUND) {
     /*
      * RELATIONAL is trichotomous (§4.2), so a groundless pair raises rather than
@@ -493,7 +719,12 @@ export function compareMatch(
   right: ValueGroup,
   unitMode?: UnitMode
 ): boolean {
-  return answer(op, compareGroups(left, right, unitMode), left, right);
+  return answer(
+    op,
+    compareGroups(left, right, unitMode, op === SASS_EQUAL),
+    left,
+    right
+  );
 }
 
 /** An operand's authored spelling, for the incomparable-operands message. */

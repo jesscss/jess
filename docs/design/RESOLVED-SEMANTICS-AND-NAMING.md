@@ -40,15 +40,15 @@ until 2026-08-01 not in version control),
 
 Plus a structural note that turns out to be load-bearing: these comparisons
 should be **function-based compare / operate primitives**, reused elsewhere —
-notably Collection index lookup, where `$foo['1px']` matches a `1px` key
-*because* lookup uses loose equality.
+notably Collection key lookup, where `$foo[tone]` matches a `"tone"` key
+because lookup uses the shared Sass-equality primitive.
 
 ```jess
 $foo: {
-  [1px]: bar;  // 1px is a true dimension value
+  ["tone"]: bar;
 }
 .a {
-  foo: $foo['1px']; // bar, because we use loose equality
+  foo: $foo[tone]; // bar, because quoted and bare strings are Sass-equal
 }
 ```
 
@@ -1421,14 +1421,16 @@ used to DEFAULT to `'sass'`, now name `SASS_EQUAL` outright.
 |---|---|
 | Sass map fns | `value-collection.ts` → `compare(SASS_EQUAL, …)` — **conforms** |
 | Sass `min`/`max` | `fns/src/sass/math/compare.ts` → `compareOrder` — **conforms**; the private numeric comparison is deleted, only dart-sass's failure MESSAGE is kept |
-| `.jess` / Less bracket lookup | `serialize.ts` `looseMemberLookup` — **conforms**; the byte `Map` is still the fast path |
+| `.jess` / Less bracket lookup | typed Collections use `CollectionOverlay`; legacy declaration namespaces use `serialize.ts` `looseMemberLookup` after their byte fast path — **conforms** |
 
-The lookup bypass is the case §1 names by example: `$foo['1px']` used to work
-only by byte coincidence and failed for `$foo[1px]` against a `'1px'` key. It is
-a fast-path-plus-fallback, not a replacement — the value scan runs only after
-every byte lookup has missed, one step before the unresolved-symbol error,
-because a compare scan is O(n) and cannot live on the hit path. The two member
-namespaces stay disjoint: the rescan walks the same map the byte lookup did.
+The lookup bypass is the value-keyed Collection case: `$foo[red]` and
+`$foo["red"]` must reach the same key by Sass equality rather than rendered-byte
+identity. Typed Collections therefore use the shared candidate-indexed overlay.
+Legacy declaration namespaces keep their O(1) byte lookup and run the loose
+value comparison only after that misses. The two declaration-member namespaces
+stay disjoint: the rescan walks the same map the byte lookup did. Numeric
+subscripts take P15's positional lane before either path; numeric Collection keys
+remain accessible through `map.get`, not brackets.
 
 **Truthiness has no mode at all.** `guard.ts`, `'truth'`:
 
@@ -1910,8 +1912,8 @@ parser's classification *is* the node.
 
 | kind | represents |
 | --- | --- |
-| `Keyword` | identifier / keyword leaf — `solid`, `auto`, `true` |
-| `Color` | color literal, hex or named — `#fff`, `red` |
+| `Keyword` | identifier / keyword leaf — `solid`, `auto`, `true`, `red`; a named-color spelling converts only at a color point of use |
+| `Color` | hex color literal — `#fff`, `#c6538c` |
 | `Quoted` | quoted string — `"x"`, `'y'`; pre-split fields so forcing never re-scans `src` |
 | `Dimension` | number + unit split plus the verbatim `src` spelling — `0px`, `50%` |
 | `Any` | opaque value bytes. **The only leaf that sniffs its `src`**, and only when operated |

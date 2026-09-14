@@ -1,7 +1,7 @@
 /**
  * TEMPORARY counter instrumentation for `packages/core/src/ast/value-factory.ts`.
  *
- * Adds a `globalThis.__VF__` census to the six value factories so `census.mjs`
+ * Adds a `globalThis.__VF__` census to the five instrumented value factories so `census.mjs`
  * can report, per value-node type: how many objects a real compile constructs,
  * and which CONDITIONAL-field combination each one used — i.e. how many V8 maps
  * the conditional spelling actually produces on that workload, as opposed to the
@@ -14,7 +14,7 @@
  *   node packages/core/perf/value-shape/census.mjs <workload> <out.json>
  *   git checkout -- packages/core/src/ast/value-factory.ts   # remove
  *
- * Idempotent, and asserts it patched all six sites rather than silently
+ * Idempotent, and asserts it patched all five sites rather than silently
  * under-instrumenting when the factory source drifts.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -74,17 +74,13 @@ s = s.replace(
     type: 'Color', rgb: [0, 0, 0], alpha, hsl, format,`
 );
 s = s.replace(
-  '  const c: Mutable<Collection> = { type: \'Collection\', entries, base, bytes: \'\' };',
-  '  vf(\'makeCollection\', base !== undefined ? \'base\' : \'-\');\n  const c: Mutable<Collection> = { type: \'Collection\', entries, base, bytes: \'\' };'
-);
-s = s.replace(
   '  const block: Mutable<Block> = { type: \'Block\', inner, delimiter, escaped, bytes: \'\' };',
   '  vf(\'makeBlock\', escaped ? \'escaped\' : \'-\');\n  const block: Mutable<Block> = { type: \'Block\', inner, delimiter, escaped, bytes: \'\' };'
 );
 
 const n = (s.match(/vf\('/g) ?? []).length;
-if (n !== 6) {
-  console.error(`EXPECTED 6 counter sites, patched ${n} — the factory source has drifted; fix the anchors.`);
+if (n !== 5) {
+  console.error(`EXPECTED 5 counter sites, patched ${n} — the factory source has drifted; fix the anchors.`);
   process.exit(1);
 }
 writeFileSync(F, s);

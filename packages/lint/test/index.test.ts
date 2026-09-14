@@ -92,6 +92,7 @@ describe('stable rule set', () => {
       LINT_CODES.unboundedExtends,
       LINT_CODES.deadExtends,
       LINT_CODES.suspiciousMapKeyAccess,
+      LINT_CODES.duplicateCollectionKeys,
       LINT_CODES.unsupportedSassForm,
       LINT_CODES.invalidGridLineNames
     ]);
@@ -167,10 +168,11 @@ describe('stable rule set', () => {
       LINT_RULE_NAMES.unboundedExtends,
       LINT_RULE_NAMES.deadExtends,
       LINT_RULE_NAMES.suspiciousMapKeyAccess,
+      LINT_RULE_NAMES.duplicateCollectionKeys,
       LINT_RULE_NAMES.unsupportedSassForm,
       LINT_RULE_NAMES.invalidGridLineNames
     ]);
-    expect(STABLE_LINT_RULE_SET_VERSION).toBe(61);
+    expect(STABLE_LINT_RULE_SET_VERSION).toBe(62);
     expect(recommended[LINT_RULE_NAMES.hexColorLength]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidColorFunctionChannels]).toBe('error');
     expect(recommended[LINT_RULE_NAMES.invalidTypedCustomPropertyRegistration]).toBe('warn');
@@ -207,6 +209,7 @@ describe('stable rule set', () => {
     expect(recommended[LINT_RULE_NAMES.unboundedExtends]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.deadExtends]).toBe('warn');
     expect(recommended[LINT_RULE_NAMES.suspiciousMapKeyAccess]).toBe('warn');
+    expect(recommended[LINT_RULE_NAMES.duplicateCollectionKeys]).toBe('warn');
   });
 
   it('keeps the Stylelint comparison policy limited to comparable rules', () => {
@@ -285,6 +288,7 @@ describe('stable rule set', () => {
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unboundedExtends]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.deadExtends]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.suspiciousMapKeyAccess]).toBe('off');
+    expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.duplicateCollectionKeys]).toBe('off');
     expect(STYLELINT_COMPARISON_LINT_CONFIG.rules?.[LINT_RULE_NAMES.unsupportedSassForm]).toBe('off');
   });
 });
@@ -2077,6 +2081,34 @@ describe('lintText', () => {
     expect(result.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code, diagnostic.severity])).toEqual([
       [LINT_RULE_NAMES.suspiciousMapKeyAccess, LINT_CODES.suspiciousMapKeyAccess, 'error']
     ]);
+  });
+
+  it('applies policy to duplicate Jess collection keys without rejecting the source', async () => {
+    const result = await lintText(
+      {
+        source: '$tokens: { tone: blue; [tone]: red; };',
+        filePath: '/tmp/input.jess'
+      },
+      {
+        stylesConfig: {
+          lint: {
+            rules: {
+              [LINT_RULE_NAMES.duplicateCollectionKeys]: 'error'
+            }
+          }
+        }
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => [diagnostic.ruleName, diagnostic.code, diagnostic.severity])).toEqual([
+      [LINT_RULE_NAMES.duplicateCollectionKeys, LINT_CODES.duplicateCollectionKeys, 'error']
+    ]);
+
+    const disabled = await lintText(
+      { source: '$tokens: { tone: blue; [tone]: red; };', filePath: '/tmp/input.jess' },
+      { lintConfig: { rules: { [LINT_RULE_NAMES.duplicateCollectionKeys]: 'off' } } }
+    );
+    expect(disabled.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.duplicateCollectionKeys)).toBe(false);
   });
 });
 
