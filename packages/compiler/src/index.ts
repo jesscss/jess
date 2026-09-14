@@ -265,7 +265,11 @@ type ResolvedRenderConfig = {
   activeOptions: Record<string, unknown>;
   resolvedOutputFilePath?: string;
   jsPluginConfig: JsPluginConfig;
-  printOptions: { collapseNesting?: boolean | 'native' | 'compact' };
+  printOptions: {
+    collapseNesting?: boolean | 'native' | 'compact';
+    compress?: boolean;
+    sourceMap?: OutputOptions['sourceMap'];
+  };
 
   /** Dialect of this render's entry source; selects the built-in fn set. */
   language?: string;
@@ -634,14 +638,18 @@ export class Compiler {
     const language = parseInput.language ?? inferLanguage(configInputPath);
 
     /*
-     * The output `collapseNesting`, honored whether or not an `outputFile`
-     * selects a specific array entry. Returns undefined when nothing sets it —
-     * the caller falls back to the language default.
+     * Resolve one `output` option, honored whether or not an `outputFile`
+     * selects a specific array entry. A render-time output (an object, or the
+     * file-less array entry the config merge appends) overrides a file-local
+     * config the same way for EVERY key — collapseNesting, compress, and
+     * sourceMap alike — so the projection/serialization options can be combined
+     * in one render. Returns undefined when nothing sets the key; the caller
+     * applies its own fallback.
      */
-    const collapseFromOutput = (): boolean | 'native' | 'compact' | undefined => {
+    const readOutput = <K extends keyof OutputOptions>(key: K): OutputOptions[K] | undefined => {
       const output = effectiveConfig.output;
       if (!Array.isArray(output)) {
-        return output?.collapseNesting;
+        return output?.[key];
       }
       const isObj = (e: OutputOptions | undefined): e is OutputOptions =>
         !!e && typeof e === 'object';
@@ -656,10 +664,10 @@ export class Compiler {
           }
           const pattern = String(entry.file ?? '{name}.css');
           if (path.join(dir, pattern.replace('{name}', name)) === resolvedOutputFilePath) {
-            if ('collapseNesting' in entry) {
-              return entry.collapseNesting;
+            if (key in entry) {
+              return entry[key];
             }
-            return defaults?.collapseNesting;
+            return defaults?.[key];
           }
         }
         return undefined;
@@ -671,15 +679,23 @@ export class Compiler {
        * so honor a file-less default here, else a lone file entry's flag. Stay
        * out of it when several file entries disagree (fall to the default).
        */
-      if (defaults && 'collapseNesting' in defaults) {
-        return defaults.collapseNesting;
+      if (defaults && key in defaults) {
+        return defaults[key];
       }
-      const flagged = output.filter(e => isObj(e) && 'file' in e && 'collapseNesting' in e);
-      return flagged.length === 1 ? flagged[0]!.collapseNesting : undefined;
+      const flagged = output.filter(e => isObj(e) && 'file' in e && key in e);
+      return flagged.length === 1 ? flagged[0]![key] : undefined;
     };
 
+    /*
+     * Resolve all three output options here. `compress` also honors the less.js
+     * `language.less.compress` shape surfaced on `activeOptions`; `sourceMap`
+     * keeps its object form so the sub-options survive.
+     */
     const printOptions = {
-      collapseNesting: collapseFromOutput() ?? activeOptions.collapseNesting
+      collapseNesting: readOutput('collapseNesting') ?? activeOptions.collapseNesting,
+      compress: readOutput('compress')
+        ?? (typeof activeOptions.compress === 'boolean' ? activeOptions.compress : undefined),
+      sourceMap: readOutput('sourceMap')
     };
 
     return {
@@ -1007,24 +1023,17 @@ export class Compiler {
     const usesDeprecatedDisablePluginRule = Boolean(contextOptions.disablePluginRule);
     contextOptions.disableScriptModules = Boolean(contextOptions.disableScriptModules
       || contextOptions.disablePluginRule);
-    const cfgOutput = typeof resolved.effectiveConfig.output === 'object' && !Array.isArray(resolved.effectiveConfig.output)
-      ? resolved.effectiveConfig.output
-      : null;
     contextOptions.output = {
       /*
-       * `output.compress` wins, but the Less config shape carries it as
-       * `language.less.compress` — surfaced on `activeOptions` by `getOptions`.
-       * Fall back to it so a less.js-style config (and the corpus fixtures)
-       * honor `compress` without nesting it under `output`.
+       * All three projection/serialization options are resolved once in
+       * resolveRenderConfig via readOutput — honoring a render-time output entry
+       * over a file-local config for every key, and the object form of
+       * `sourceMap` (basepath/rootpath/inline/…) — so a render can combine e.g.
+       * `collapseNesting` with `sourceMap`. `compress` keeps its
+       * `language.less.compress` (`activeOptions`) fallback, applied there.
        */
-      compress: cfgOutput?.compress
-        ?? (typeof resolved.activeOptions?.compress === 'boolean' ? resolved.activeOptions.compress : undefined),
-
-      /*
-       * Preserve the object form (sourceMapBasepath/rootpath/inline/…); coercing
-       * to a bool here would silently drop every source-map sub-option.
-       */
-      sourceMap: cfgOutput?.sourceMap,
+      compress: resolved.printOptions.compress,
+      sourceMap: resolved.printOptions.sourceMap,
       collapseNesting: resolved.printOptions.collapseNesting
     };
 
