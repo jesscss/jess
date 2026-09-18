@@ -15,6 +15,10 @@ Notable entries:
   `$`-led shapes the way `--*` is reserved.
 - [`DIALECT-TO-JESS-COMPILED-CONVERSION.md`](./DIALECT-TO-JESS-COMPILED-CONVERSION.md)
   — there is no `jess convert` command; this is the design for one.
+- [`REMOTE-IMPORTS-NETWORK-POLICY.md`](./REMOTE-IMPORTS-NETWORK-POLICY.md) —
+  there is no network `@import` today (URL imports are CSS terminals); this is
+  the opt-in design, with a host allowlist enforced by Deno `--allow-net` and a
+  test that proves the runtime *denies* an off-list host.
 - [`OPAQUE-FAMILY-REMOVAL.md`](./OPAQUE-FAMILY-REMOVAL.md) — the whole `Opaque*`
   family across the four grammars and `parser-shared`, enumerated with
   file:line, and why an unknown at-rule must parse known rules rather than carry
