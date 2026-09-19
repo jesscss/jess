@@ -37,6 +37,7 @@ import {
   operation,
   spaced,
   variableDeclaration,
+  anonymousMixin,
   isLiteralNode,
   isTypedLiteral,
   isValueBlock,
@@ -10022,20 +10023,26 @@ function planImportedFacts(
       rememberImportedCallableBodies(loaded.document, loaded.document.rules, e.context);
 
       /*
-       * Match the importer: a loaded document is a lexical splice and publishes
-       * its direct facts into the importing frame before its body is walked.
+       * `@compose` is isolated and non-transitive: its facts are NOT spliced into
+       * the importer (the render path's `publishComposedModule` owns the namespace
+       * binding / `as *` merge), and its body walks in an isolated frame so nested
+       * `@compose`/`@import` never leak up. `@import` keeps splicing its direct
+       * facts into the importing frame before its body is walked.
        */
-      const published = publishImportedDocumentFacts(loaded.document.rules, scope, e);
-      if (isThenable(published)) {
-        await published;
-      }
-      if (publishFrame !== null && claimPrepublishedImportFact(e, st)) {
-        const prepublished = publishImportedDocumentFacts(loaded.document.rules, publishFrame, e, true);
-        if (isThenable(prepublished)) {
-          await prepublished;
+      const isCompose = st.mode === 'compose';
+      if (!isCompose) {
+        const published = publishImportedDocumentFacts(loaded.document.rules, scope, e);
+        if (isThenable(published)) {
+          await published;
+        }
+        if (publishFrame !== null && claimPrepublishedImportFact(e, st)) {
+          const prepublished = publishImportedDocumentFacts(loaded.document.rules, publishFrame, e, true);
+          if (isThenable(prepublished)) {
+            await prepublished;
+          }
         }
       }
-      const childFrame: Frame = { parent: scope, mixins: collectMixins(loaded.document.rules), declIndex: collectDeclIndex(loaded.document.rules), cells: null, reassign: null, statements: loaded.document.rules };
+      const childFrame: Frame = { parent: isCompose ? null : scope, mixins: collectMixins(loaded.document.rules), declIndex: collectDeclIndex(loaded.document.rules), cells: null, reassign: null, statements: loaded.document.rules };
 
       /*
        * Ordinary imports must not pay selector-IR/planning cost. The typed body
@@ -10061,7 +10068,7 @@ function planImportedFacts(
           reference ? null : importCssPlan,
           loaded.withinDocument ?? withinDocument,
           multipleImportDepth || importHasOption(options, 'multiple'),
-          publishFrame
+          isCompose ? null : publishFrame
         );
       };
       if (loaded.withinDocument) {
@@ -16516,6 +16523,109 @@ function configuredModuleFrame(
 }
 
 /**
+ * An UNCONFIGURED `@compose` module also evaluates in its own isolated overlay
+ * frame (`parent: null`), so its body's nested `@compose`/`@import` publish into
+ * THIS frame and never leak up to the importer — `@compose` is non-transitive,
+ * unlike the transitively-leaky `@import`. The importer reaches the module's own
+ * members only through the namespace binding built by {@link publishComposedModule}.
+ */
+function unconfiguredModuleFrame(statements: Statement[]): Frame {
+  return {
+    parent: null,
+    mixins: collectMixins(statements),
+    declIndex: collectDeclIndex(statements),
+    cells: null,
+    reassign: null,
+    statements,
+    sourceOwner: null
+  };
+}
+
+/* A usable module namespace identifier (the same ident shape the grammars use). */
+const MODULE_NAMESPACE_IDENT = /^-?[_a-zA-Z\u0080-\uFFFF][-_a-zA-Z0-9\u0080-\uFFFF]*$/;
+
+/**
+ * The auto-derived `@compose`/`@use` namespace: Sass's default-namespace rule
+ * applied to the SPECIFIER STRING the author wrote (never the plugin-resolved
+ * path). Take the last `/`-segment, strip a trailing file extension, strip a
+ * leading `_` partial marker. `./foo.less` → `foo`, `#sass/map` → `map`,
+ * `@co/design-tokens` → `design-tokens`, `./_theme.scss` → `theme`. Returns
+ * `null` when the result is not a usable identifier — the author must then
+ * spell an explicit `as <name>`.
+ */
+function deriveModuleNamespace(specifier: string): string | null {
+  const lastSlash = specifier.lastIndexOf('/');
+  let base = lastSlash === -1 ? specifier : specifier.slice(lastSlash + 1);
+  const dot = base.lastIndexOf('.');
+  if (dot > 0) {
+    base = base.slice(0, dot);
+  }
+  if (base.startsWith('_')) {
+    base = base.slice(1);
+  }
+  return MODULE_NAMESPACE_IDENT.test(base) ? base : null;
+}
+
+/**
+ * Expose a composed module's OWN top-level members to the importer per its `as`
+ * clause, WITHOUT splicing its body into the importer frame (that emission is a
+ * separate isolated walk under `bodyFrame`). `namespace` follows the grammar
+ * convention: `'*'` merges members unqualified, a name binds them under
+ * `@<name>`, and `null` auto-derives from the specifier.
+ *
+ * A named module binds `@<ns>` to a value block over the module's rules whose
+ * member lookups resolve in the isolated `bodyFrame` — so `@ns.member` (and the
+ * chained `@ns.map.key` from the forward member-access chain) reaches the
+ * module's own facts and nothing its sub-modules composed.
+ */
+function publishComposedModule(
+  node: StyleImport,
+  children: Statement[],
+  importerFrame: Frame,
+  bodyFrame: Frame,
+  specifier: string,
+  e: Emit
+): void {
+  const namespace = node.namespace ?? deriveModuleNamespace(specifier);
+  if (namespace === '*') {
+    /*
+     * `as *`: the module's OWN top-level members merge unqualified into the
+     * importer. Their value-block members still resolve in the isolated
+     * bodyFrame, so redirect each value block's closure there.
+     */
+    for (const child of children) {
+      if (child.type === 'VariableDeclaration') {
+        publishImportedVariableDeclaration(importerFrame, child);
+        if (isValueBlockBinding(child.value)) {
+          bindDetached(importerFrame, child.value, bodyFrame, bodyFrame.sourceOwner ?? null);
+        }
+      } else if (child.type === 'MixinDefinition') {
+        publishImportedMixinDefinition(importerFrame, child);
+      } else if (child.type === 'Ruleset') {
+        /*
+         * ponytail: publishes the ruleset for namespace descent + reference, but NOT
+         * the synthesized zero-arg `.name()` callable fact that a flat `@import` adds
+         * (publishImportedDocumentFacts). `as *` is the discouraged path; wire the
+         * ordered-mixin publish here if a bare `.name()` call across `as *` is needed.
+         */
+        publishImportedRuleset(importerFrame, child);
+      }
+    }
+    return;
+  }
+  if (namespace === null) {
+    throw moduleConfigRejected(
+      node,
+      `@compose "${specifier}" cannot derive a namespace from its path; add an explicit "as <name>".`,
+      specifier
+    );
+  }
+  const block = anonymousMixin(children);
+  publishImportedVariableDeclaration(importerFrame, variableDeclaration(namespace, block, { mode: 'declare' }));
+  bindDetached(importerFrame, block, bodyFrame, bodyFrame.sourceOwner ?? null);
+}
+
+/**
  * Emit a typed import. With a driver-supplied document capability, a loaded
  * canonical document executes at this exact source-order point in `frame`.
  * Core deliberately knows neither paths nor parser plugins; a declined request
@@ -16601,18 +16711,26 @@ function expandStyleImport(
         const children = loaded.document?.rules ?? [];
 
         /*
-         * A CONFIGURED `@compose` (spec R6 Part E) evaluates the module in its own
-         * isolated overlay frame (like a mixin-call body), NOT spliced into the
-         * importing frame. Its facts must not publish into the importer, and its
-         * body walks under `configuredModuleFrame` instead of `frame`.
+         * A `@compose` (spec R6 Part E) evaluates the module in its own isolated
+         * overlay frame (like a mixin-call body), NOT spliced into the importing
+         * frame: its own nested `@compose`/`@import` stay local, so `@compose` is
+         * non-transitive (unlike the transitively-leaky `@import`). Its facts never
+         * flat-publish into the importer; instead its OWN top-level members are
+         * exposed through a namespace binding (`@ns.member`) or, with `as *`, merged
+         * unqualified. A CONFIGURED compose additionally overlays its `with`/`set`
+         * values in `configuredModuleFrame`.
          */
+        const isCompose = node.mode === 'compose';
         if (config !== null) {
           validateModuleConfig(node, request.specifier, config, children, e);
         }
-        const bodyFrame = config !== null
-          ? configuredModuleFrame(children, config, frame)
+        const bodyFrame = isCompose
+          ? (config !== null ? configuredModuleFrame(children, config, frame) : unconfiguredModuleFrame(children))
           : frame;
-        const publishChildren = config !== null || hasPrepublishedImportFact(e, node)
+        if (isCompose) {
+          publishComposedModule(node, children, frame, bodyFrame, request.specifier, e);
+        }
+        const publishChildren = isCompose || hasPrepublishedImportFact(e, node)
           ? undefined
           : publishImportedDocumentFacts(children, frame, e);
 
