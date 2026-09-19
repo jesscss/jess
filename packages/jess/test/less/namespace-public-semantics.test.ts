@@ -135,4 +135,37 @@ describe('Less namespace semantic contracts through the public AST route', () =>
       '.first {\n  color: red;\n}\n.second {\n  color: blue;\n}\n'
     );
   });
+
+  /*
+   * Forward-dispatched reference chain: the `#`/`.` head is recognized without
+   * an `attempt` rewind. These forms exercise the reference tail-step families
+   * (bracket lookup, dot member lookup, call) that the chain builds.
+   */
+  it('reads a namespace/detached-ruleset member through a bracket accessor', async () => {
+    await expect(parseAndRender(`
+      @theme: { key: 9; }
+      .a { x: @theme[key]; }
+    `)).resolves.toBe('.a {\n  x: 9;\n}\n');
+  });
+
+  it('resolves a bare-dot member (var-or-prop lookup) off a detached-ruleset head', async () => {
+    await expect(parseAndRender(`
+      @foo: { bar: 3; }
+      .a { x: @foo.bar; }
+    `)).resolves.toBe('.a {\n  x: 3;\n}\n');
+  });
+
+  it('calls a namespaced mixin and reads a member of its result', async () => {
+    await expect(parseAndRender(`
+      #ns() { .mixin() { result: 7; } }
+      .a { x: #ns.mixin()[result]; }
+    `)).resolves.toBe('.a {\n  x: 7;\n}\n');
+  });
+
+  it('folds a mixed namespace call, argument, and bracket lookup into one reference', async () => {
+    await expect(parseAndRender(`
+      #library() { .add(@n) { result: @n; } }
+      .a { x: #library.add(1)[result]; }
+    `)).resolves.toBe('.a {\n  x: 1;\n}\n');
+  });
 });
