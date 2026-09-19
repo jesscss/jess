@@ -128,6 +128,41 @@ describe('public Less parse()', () => {
     expect(result.css).toBe('.a {\n  color: blue;\n}\n');
   });
 
+  it('persists a `set` configuration to a later plain compose of the same module', async () => {
+    const moduleDoc = parse('@x: blue;\n.a { color: @x; }');
+    const importer = parse('@compose "m" set { @x: red; }\n@compose "m";');
+    const result = await Promise.resolve(serialize(importer, {
+      evaluator: buildEvaluator(makeLessRegistry()),
+      importDocument: ({ specifier }) => specifier === 'm'
+        ? { document: moduleDoc, key: 'm' }
+        : undefined
+    }));
+    expect(result.css).toBe('.a {\n  color: red;\n}\n.a {\n  color: red;\n}\n');
+  });
+
+  it('does not leak a `with` configuration to a later plain compose of the same module', async () => {
+    const moduleDoc = parse('@x: blue;\n.a { color: @x; }');
+    const importer = parse('@compose "m" with { @x: red; }\n@compose "m";');
+    const result = await Promise.resolve(serialize(importer, {
+      evaluator: buildEvaluator(makeLessRegistry()),
+      importDocument: ({ specifier }) => specifier === 'm'
+        ? { document: moduleDoc, key: 'm' }
+        : undefined
+    }));
+    expect(result.css).toBe('.a {\n  color: red;\n}\n.a {\n  color: blue;\n}\n');
+  });
+
+  it('rejects a second conflicting `set` configuration of the same module', async () => {
+    const moduleDoc = parse('@x: blue;\n.a { color: @x; }');
+    const importer = parse('@compose "m" set { @x: red; }\n@compose "m" set { @x: green; }');
+    await expect(Promise.resolve(serialize(importer, {
+      evaluator: buildEvaluator(makeLessRegistry()),
+      importDocument: ({ specifier }) => specifier === 'm'
+        ? { document: moduleDoc, key: 'm' }
+        : undefined
+    }))).rejects.toThrow(/already configured with a different set of values/);
+  });
+
   it('keeps selector and body provenance without a duplicate ruleset span', () => {
     const source = '.a{color:red;}';
     const document = parse(source);

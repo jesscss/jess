@@ -97,6 +97,7 @@ import type {
   List,
   Statement,
   StyleImport,
+  StyleImportConfig,
   ValueNode,
   ValueSlot,
   VariableDeclaration,
@@ -7792,6 +7793,13 @@ interface Emit extends EvalCtx {
    */
   mixinDepth: number;
   loadedImports: Set<string> | null;
+
+  /**
+   * [module config] Per module IDENTITY (`loaded.key`) `set` configuration, so a
+   * later plain `@compose`/`@use` of the same module inherits it and a conflicting
+   * reconfiguration can be rejected (spec R6 Part E §E.2/E-d).
+   */
+  moduleConfigs?: Map<string, StyleImportConfig> | null;
 
   /** A `(multiple)` import makes its transitive imports multiple too. */
   multipleImportDepth: number;
@@ -16368,12 +16376,12 @@ function emitAtRuleStatementRaw(
 function validateModuleConfig(
   node: StyleImport,
   specifier: string,
+  config: StyleImportConfig,
   moduleRules: readonly Statement[],
   e: Emit
 ): void {
-  const config = node.config;
   const plugins = e.context?.plugins;
-  if (config === null || !plugins || plugins.length === 0) {
+  if (!plugins || plugins.length === 0) {
     return;
   }
   const dot = specifier.lastIndexOf('.');
@@ -16390,15 +16398,63 @@ function validateModuleConfig(
   });
   if (rejections && rejections.length > 0) {
     const first = rejections[0]!;
-    throw new JessError({
-      code: 'eval/module-config-rejected',
-      phase: 'eval',
-      node,
-      summary: first.message,
-      reason: first.message,
-      meta: { reason: first.message, name: first.name }
-    });
+    throw moduleConfigRejected(node, first.message, first.name);
   }
+}
+
+function moduleConfigRejected(node: StyleImport, message: string, name: string): JessError {
+  return new JessError({
+    code: 'eval/module-config-rejected',
+    phase: 'eval',
+    node,
+    summary: message,
+    reason: message,
+    meta: { reason: message, name }
+  });
+}
+
+/**
+ * Structural equality that ignores span slots (`_s`/`_e` and other `_`-prefixed
+ * provenance), so two textually-identical config blocks authored at different
+ * source positions compare equal. Used to tell an idempotent re-`set` from a
+ * CONFLICTING reconfiguration (spec R6 Part E §E.4/E-d).
+ */
+function structurallyEqualIgnoringSpans(a: unknown, b: unknown): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (typeof a !== 'object' || a === null || typeof b !== 'object' || b === null) {
+    return false;
+  }
+  const aArray = Array.isArray(a);
+  const bArray = Array.isArray(b);
+  if (aArray || bArray) {
+    if (!aArray || !bArray || a.length !== b.length) {
+      return false;
+    }
+    for (let i = 0; i < a.length; i++) {
+      if (!structurallyEqualIgnoringSpans(a[i], b[i])) {
+        return false;
+      }
+    }
+    return true;
+  }
+  const aEntries = Object.entries(a).filter(([key]) => !key.startsWith('_'));
+  const bEntries = Object.entries(b).filter(([key]) => !key.startsWith('_'));
+  if (aEntries.length !== bEntries.length) {
+    return false;
+  }
+  const bByKey = new Map(bEntries);
+  return aEntries.every(([key, value]) => bByKey.has(key) && structurallyEqualIgnoringSpans(value, bByKey.get(key)));
+}
+
+/**
+ * Two configurations conflict unless they set the same names to the same values;
+ * the `with`/`set` spelling is not part of that identity (a `with` that merely
+ * restates a recorded `set` is not a reconfiguration).
+ */
+function sameModuleConfig(a: StyleImportConfig, b: StyleImportConfig): boolean {
+  return structurallyEqualIgnoringSpans(a.bindings, b.bindings);
 }
 
 /**
@@ -16497,7 +16553,41 @@ function expandStyleImport(
           }
           return;
         }
-        if (request.options === null && e.multipleImportDepth === 0 && loaded.key !== undefined) {
+
+        /*
+         * [module config] Resolve the EFFECTIVE configuration for this compose edge
+         * (spec R6 Part E §E.2/E-d). `set` persists per module IDENTITY (`loaded.key`):
+         * it is recorded so a LATER plain `@compose` of the same module inherits it.
+         * `with` configures only this edge and is never recorded. A second config —
+         * `set` or a reconfiguring `with` — whose values differ from the recorded
+         * `set` is a conflict and rejects; an identical restatement is not.
+         */
+        const authoredConfig = node.mode === 'compose' ? node.config ?? null : null;
+        let config = authoredConfig;
+        if (node.mode === 'compose' && loaded.key !== undefined) {
+          const recorded = e.moduleConfigs?.get(loaded.key) ?? null;
+          if (authoredConfig !== null) {
+            if (recorded !== null && !sameModuleConfig(recorded, authoredConfig)) {
+              throw moduleConfigRejected(
+                node,
+                `Module "${request.specifier}" is already configured with a different set of values; a module can only be configured once.`,
+                request.specifier
+              );
+            }
+            if (authoredConfig.kind === 'set' && recorded === null) {
+              (e.moduleConfigs ??= new Map()).set(loaded.key, authoredConfig);
+            }
+          } else if (recorded !== null) {
+            config = recorded;
+          }
+        }
+
+        /*
+         * Load-once dedup for plain option-less imports. A CONFIGURED compose is a
+         * distinct instantiation (its own overlay), so it bypasses the dedup and
+         * always renders; only an unconfigured compose/import loads once.
+         */
+        if (config === null && request.options === null && e.multipleImportDepth === 0 && loaded.key !== undefined) {
           const seen = e.loadedImports ??= new Set();
           if (seen.has(loaded.key)) {
             return;
@@ -16513,9 +16603,8 @@ function expandStyleImport(
          * importing frame. Its facts must not publish into the importer, and its
          * body walks under `configuredModuleFrame` instead of `frame`.
          */
-        const config = node.mode === 'compose' ? node.config ?? null : null;
         if (config !== null) {
-          validateModuleConfig(node, request.specifier, children, e);
+          validateModuleConfig(node, request.specifier, config, children, e);
         }
         const bodyFrame = config !== null
           ? configuredModuleFrame(children, config, frame)
