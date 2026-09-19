@@ -81,13 +81,8 @@ const CONSTRUCTS: Construct[] = [
     group: 'documented-mapping',
     name: '@-compose ... with { } configuration',
     src: '@-compose "./theme" with { $a: 1; };',
-    supported: false,
-    origin: 'sass',
-    scope: 'gap',
-    note:
-      'The migration guide documents `with { }` as THE Sass `@use ... with` mapping, but the '
-      + '`@-compose` production accepts only `<quoted> [as <name>] [;]` — there is no `with` '
-      + 'clause in the grammar at all. `@-compose "./t" as t;` works.'
+    supported: true,
+    origin: 'sass'
   },
 
   // ── plain CSS: a gap here is unambiguously a bug ───────────────────────────
@@ -346,6 +341,7 @@ const SUPPORTED_BASELINE: Record<'css' | 'less' | 'sass', readonly string[]> = {
     '$var reference (from Sass $var)',
     '$while',
     '@-compose ... as',
+    '@-compose ... with { } configuration',
     '@-compose module',
     'collection computed key [expr]',
     'collection lookup $m[k]',
@@ -361,7 +357,6 @@ const GAP_SCOPE_BASELINE: Record<'gap' | 'by-design' | 'undecided', readonly str
   gap: [
     '!important on a mixin call',
     '&:extend() in a rule body',
-    '@-compose ... with { } configuration',
     '@import (css)',
     '@import (optional)',
     'anonymous-mixin call',
