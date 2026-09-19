@@ -74,8 +74,15 @@ describe('V19 one-evaluator projection ratchet', () => {
     // pretty bytes when compress is off, so compress:off output is byte-identical.
     // Collection overlays reuse existing BindingCell/DeclEntry records for typed
     // values, so no serializer-side Map or helper-count increase is permitted.
-    expect(occurrences(/^function |^async function /gmu)).toBe(441);
-    expect(occurrences(/new Map/gu)).toBe(59);
+    // +2 functions and +2 `new Map` (module configuration, spec R6 Part E):
+    // `validateModuleConfig` (routes `@compose … with/set { … }` names to the
+    // providing plugin for accept/reject) and `configuredModuleFrame` (builds the
+    // module's isolated overlay frame and applies config as a scoped reassignment).
+    // The two Maps are that frame's `reassign` overlay and its `bindingValueFrames`
+    // (config values evaluate in the importer's scope), created only for a
+    // configured compose.
+    expect(occurrences(/^function |^async function /gmu)).toBe(443);
+    expect(occurrences(/new Map/gu)).toBe(61);
     expect(occurrences(/new Set/gu)).toBe(39);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

@@ -104,6 +104,30 @@ describe('public Less parse()', () => {
     );
   });
 
+  it('overrides a composed .less module variable with a `with` configuration end to end', async () => {
+    const moduleDoc = parse('@x: blue;\n.a { color: @x; }');
+    const importer = parse('@compose "m" with { @x: red; }');
+    const result = await Promise.resolve(serialize(importer, {
+      evaluator: buildEvaluator(makeLessRegistry()),
+      importDocument: ({ specifier }) => specifier === 'm'
+        ? { document: moduleDoc, key: 'm' }
+        : undefined
+    }));
+    expect(result.css).toBe('.a {\n  color: red;\n}\n');
+  });
+
+  it('renders a composed .less module with its own variable when unconfigured', async () => {
+    const moduleDoc = parse('@x: blue;\n.a { color: @x; }');
+    const importer = parse('@compose "m";');
+    const result = await Promise.resolve(serialize(importer, {
+      evaluator: buildEvaluator(makeLessRegistry()),
+      importDocument: ({ specifier }) => specifier === 'm'
+        ? { document: moduleDoc, key: 'm' }
+        : undefined
+    }));
+    expect(result.css).toBe('.a {\n  color: blue;\n}\n');
+  });
+
   it('keeps selector and body provenance without a duplicate ruleset span', () => {
     const source = '.a{color:red;}';
     const document = parse(source);
