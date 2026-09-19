@@ -128,7 +128,7 @@ describe('public Less parse()', () => {
     expect(result.css).toBe('.a {\n  color: blue;\n}\n');
   });
 
-  it('persists a `set` configuration to a later plain compose of the same module', async () => {
+  it('persists a `set` configuration to a later plain compose without re-emitting the shared module', async () => {
     const moduleDoc = parse('@x: blue;\n.a { color: @x; }');
     const importer = parse('@compose "m" set { @x: red; }\n@compose "m";');
     const result = await Promise.resolve(serialize(importer, {
@@ -137,7 +137,7 @@ describe('public Less parse()', () => {
         ? { document: moduleDoc, key: 'm' }
         : undefined
     }));
-    expect(result.css).toBe('.a {\n  color: red;\n}\n.a {\n  color: red;\n}\n');
+    expect(result.css).toBe('.a {\n  color: red;\n}\n');
   });
 
   it('does not leak a `with` configuration to a later plain compose of the same module', async () => {
@@ -161,6 +161,42 @@ describe('public Less parse()', () => {
         ? { document: moduleDoc, key: 'm' }
         : undefined
     }))).rejects.toThrow(/already configured with a different set of values/);
+  });
+
+  it('renders a shared `set` module once for two identical configured composes', async () => {
+    const moduleDoc = parse('@x: blue;\n.a { color: @x; }');
+    const importer = parse('@compose "m" set { @x: red; }\n@compose "m" set { @x: red; }');
+    const result = await Promise.resolve(serialize(importer, {
+      evaluator: buildEvaluator(makeLessRegistry()),
+      importDocument: ({ specifier }) => specifier === 'm'
+        ? { document: moduleDoc, key: 'm' }
+        : undefined
+    }));
+    expect(result.css).toBe('.a {\n  color: red;\n}\n');
+  });
+
+  it('renders an unconfigured shared module once when composed twice', async () => {
+    const moduleDoc = parse('@x: blue;\n.a { color: @x; }');
+    const importer = parse('@compose "m";\n@compose "m";');
+    const result = await Promise.resolve(serialize(importer, {
+      evaluator: buildEvaluator(makeLessRegistry()),
+      importDocument: ({ specifier }) => specifier === 'm'
+        ? { document: moduleDoc, key: 'm' }
+        : undefined
+    }));
+    expect(result.css).toBe('.a {\n  color: blue;\n}\n');
+  });
+
+  it('renders a per-edge `with` module once per edge with its own params', async () => {
+    const moduleDoc = parse('@x: blue;\n.a { color: @x; }');
+    const importer = parse('@compose "m" with { @x: red; }\n@compose "m" with { @x: green; }');
+    const result = await Promise.resolve(serialize(importer, {
+      evaluator: buildEvaluator(makeLessRegistry()),
+      importDocument: ({ specifier }) => specifier === 'm'
+        ? { document: moduleDoc, key: 'm' }
+        : undefined
+    }));
+    expect(result.css).toBe('.a {\n  color: red;\n}\n.a {\n  color: green;\n}\n');
   });
 
   it('keeps selector and body provenance without a duplicate ruleset span', () => {

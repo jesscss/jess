@@ -34,4 +34,9 @@ describe('jess module configuration (with)', () => {
     await expect(render('@-compose "m.jess" with { $x: red; }', hardModule))
       .rejects.toThrow(/configurable only when declared optional/);
   });
+
+  it('renders a per-edge `with` once per edge with its own params (two outputs)', async () => {
+    await expect(render('@-compose "m.jess" with { $x: red; }\n@-compose "m.jess" with { $x: green; }', knobModule))
+      .resolves.toBe('.a {\n  color: red;\n}\n.a {\n  color: green;\n}\n');
+  });
 });

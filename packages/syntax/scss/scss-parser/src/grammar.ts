@@ -2101,7 +2101,15 @@ const scssFactory = (g: ScssInputRules) => {
         : styleImport('@-compose', path, {
             namespace,
             mode: 'compose',
-            config: configBindings.length > 0 ? { kind: 'with', bindings: configBindings } : null
+
+            /*
+             * `@use … with (…)` configures the module as a SHARED singleton (Sass:
+             * a module is loaded once and configured at most once), so it lowers to
+             * the shared `set` config-kind rather than the per-edge `with` kind that
+             * jess/.less `with { … }` uses. This keeps one core eval path keyed on
+             * shared-vs-per-edge instead of scattering dialect checks through eval.
+             */
+            config: configBindings.length > 0 ? { kind: 'set', bindings: configBindings } : null
           });
     }
   );

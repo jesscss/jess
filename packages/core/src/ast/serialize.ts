@@ -16696,11 +16696,17 @@ function expandStyleImport(
         }
 
         /*
-         * Load-once dedup for plain option-less imports. A CONFIGURED compose is a
-         * distinct instantiation (its own overlay), so it bypasses the dedup and
-         * always renders; only an unconfigured compose/import loads once.
+         * Emit-once dedup keyed on module IDENTITY for SHARED modules — a plain
+         * import/compose, an inherited `set`, or an authored `set` (jess/.less
+         * `set { … }` and SCSS `@use … with (…)`, which the scss grammar lowers to
+         * the shared `set` kind). A shared module is a singleton: it renders ONCE,
+         * and a later plain/inherited import of the same identity does NOT re-emit.
+         * A PER-EDGE `with { … }` (less/jess only) is a distinct instantiation — like
+         * a mixin call with its own params — so it bypasses the dedup and each edge
+         * renders its own output.
          */
-        if (config === null && request.options === null && e.multipleImportDepth === 0 && loaded.key !== undefined) {
+        const sharedModule = config === null || config.kind === 'set';
+        if (sharedModule && request.options === null && e.multipleImportDepth === 0 && loaded.key !== undefined) {
           const seen = e.loadedImports ??= new Set();
           if (seen.has(loaded.key)) {
             return;
