@@ -605,6 +605,131 @@ interpolation must yield a string, and `ns.mixin()` yields a ruleset body). See
 
 ---
 
+## Part E — PROPOSED: module configuration (`with` / `set`)
+
+> **STATUS: PROPOSED — owner-reasoned 2026-09-19, pending sign-off.** A module can
+> be configured at import — supply values for the module's variables so the
+> importer tunes it without editing it. Sass spells this `@use "m" with (…)`;
+> `.less`/`.jess` use a rule-style block instead of a paren map. This part fixes
+> the *semantics* (what a value does, who decides, what can be rejected). It rides
+> §C's module scope and reuses ordinary binding evaluation — no new value machinery.
+
+### E.1 The mechanism — overwrite the module's outer-scope binding
+
+A configured value **sets the binding in the module's outermost scope**, full
+stop. It is NOT a source-level statement spliced at the top or bottom of the
+module, and it does not "take effect at the variable's first-defined line." A
+module's outer scope resolves each variable to one value (Less `@name` last-wins;
+`.jess`/`.scss` `$name` live); configuration replaces that value. Because every
+reference is resolved against that binding, all uses — and every derived variable
+(`@primary-dark: darken(@primary, 10%)`) — follow. Nested rules that locally
+shadow the name still shadow; configuration targets the **outer** binding, which
+is the correct knob level.
+
+This is the CSS custom-property model (a scope has a value; you set it), and it
+sidesteps the top-vs-bottom question entirely — that question only arose from the
+wrong "splice a declaration and let the cascade sort it out" framing.
+
+### E.2 `with` vs `set` are DISTINCT features, not spellings
+
+- **`with`** — configure **this import edge only**. The values apply to the module
+  as seen through this importer; they do not propagate onward.
+- **`set`** — the configured values **persist as the module's configuration for
+  onward importers** (a downstream `@compose`/`@use` of the same module inherits
+  them).
+
+This propagation scope is dialect-independent and lives in **core** (it is graph
+bookkeeping over the module DAG). Core also tracks per-module load/config state so
+it can tell a provider "already configured with X" (enabling a reject; §E.4).
+
+### E.3 No new representation — the block is ordinary AST bindings
+
+The dialect dictates only the **surface** of the block (`@name:` vs `$name:`,
+curly block vs paren map). Once parsed, every dialect's config block is the SAME
+thing in the shared AST: a **binding-list block** (the same shape as a ruleset
+body / detached block of assignments) hanging off the `@compose`/`@use` node.
+There is no dialect-specific config node. Consequently:
+
+1. **Parse** — normal, per dialect, into the shared AST. No special "config parse"
+   — the block is text in the importer's own file, parsed with it.
+2. **Evaluate** — the block's value expressions evaluate **in the importer's
+   scope** (they are authored there, in the importer's dialect, and may reference
+   importer variables), yielding resolved `name → value` bindings. Standard eval,
+   nothing new.
+3. **Route** — core carries the `with`/`set` propagation (§E.2) and hands the
+   resolved bindings to the module's **providing** plugin.
+4. **Apply** — the provider applies them to the module's outer scope, or rejects
+   (§E.4).
+
+### E.4 The PROVIDER's dialect owns the semantics — a plugin hook
+
+The plugin that **provides** the module (its extension → `plugin-less` /
+`plugin-scss` / `plugin-jess` / a `@use` JS loader) owns "what a value does,"
+because that dialect defined what a configurable variable *is*. The importer only
+supplies values; the provider decides whether/how they land. This resolves the
+cross-dialect question cleanly: **the module being configured governs, not the file
+doing the configuring** — a `.scss` module is knob-gated to every importer, a
+`.less` module is permissive to every importer.
+
+One optional hook on the dialect plugin, alongside `safeParse`/`setContext`
+(`packages/core/src/plugin.ts`):
+
+```ts
+applyModuleConfig?(
+  moduleScope: Scope,
+  bindings: ReadonlyMap<string, Value>,
+  ctx: ModuleConfigContext   // carries prior-config state, source spans for diagnostics
+): void   // applies bindings, or raises a diagnostic
+```
+
+**Reject is a first-class outcome**, not just apply. A provider may: apply the
+bindings; reject a specific name (not a knob / not declared / a typo); reject
+`set` while accepting `with`; reject re-configuration of an already-configured
+module; or reject configuration entirely. Rejection is a raised diagnostic.
+
+**Validation is apply-time (v1).** The provider validates when it applies, at
+resolve/eval time — a bad config name surfaces when the module loads. A
+`configurableKnobs(scope)` companion (declared-knob set for early validation +
+editor autocomplete) is a LATER add, only if tooling needs it. Do not build it now.
+
+### E.5 Per-plugin deferrals (NOT core decisions)
+
+Because §E.4 puts semantics in the provider, the two sub-questions that have no
+clean global answer are deferred to each plugin, correctly:
+
+| provider | what a knob is | configure an undeclared / non-knob name | override strength |
+|---|---|---|---|
+| `plugin-less` | no marker exists in Less today | permissive: sets the outer binding (v1); a "name never appears in module" *warn* is optional | blanket (the set value is the outer binding) |
+| `plugin-scss` | `$x: v !default` | reject — Sass parity ("not declared with !default") | plugin-scss's call: blanket outer-binding (simplest) vs faithful `!default`-only (a later hard reassign wins). A knob that is also hard-reassigned is ~pathological; blanket almost certainly holds the "`.scss → .jess → .css` == `.scss → .css` for 99%" bar. |
+| `plugin-jess` | `$x ?: v` (optional-assign; see `jess-optional-shadow-assign-operator`) | reject non-`?:`/typo — the strict, encapsulated surface | provider's call |
+| `@use` JS loader | provider-defined (settable exports / init options) | provider-defined | provider-defined |
+
+### E.6 Conversion is a non-issue from the Less side
+
+The legacy Less we convert to `.jess` is **v4**, and **Less v4 has no
+`@compose`/`@use`/configuration** — its `@import` folds flat. So there is nothing
+on the Less side to lower into this feature; configuration is net-new in the
+v5/jess era, not a migrated construct. Making `.jess` the strict/specific surface
+therefore cannot break Less→jess conversion. The only conversion that exercises
+configuration is **`.scss → .jess`**, and Sass is `!default`-gated exactly like
+`.jess` is `?:`-gated (§E.5), so it round-trips.
+
+### E.7 Open questions (owner to rule)
+
+- **[R6.E-a] Grammar surface of the block.** Confirm the `.less`/`.jess` block is a
+  rule-style `{ … }` of assignments (not a paren map), and the keyword split
+  (`with` = this edge, `set` = propagate). SCSS keeps Sass's `with (…)` paren map.
+- **[R6.E-b] `plugin-scss` override strength.** Blanket outer-binding (accepts the
+  ~pathological knob+reassign divergence) vs faithful `!default`-only. §E.5.
+- **[R6.E-c] `plugin-less` knob marker.** Stay permissive (v1), or give Less v5 a
+  `!default`-equivalent so `.less` is knob-gated like the others? Permissive is the
+  v1 default; a marker is an additive later decision.
+- **[R6.E-d] `set` semantics detail.** Confirm `set` persists per module *identity*
+  (all onward importers) vs per subtree; and whether core rejects a conflicting
+  second `set` or last-wins.
+
+---
+
 ## Invariants
 
 1. **Boundary held.** No `tree2/` file imports `../tree` or anything Less-branded.
@@ -695,6 +820,12 @@ interpolation must yield a string, and `ns.mixin()` yields a ruleset body). See
    (§6.9 residual). If dropped, `less-plugin-inline-urls` loses pre-eval; if kept,
    the gated pre-walk over bridge output (Part A.3) is the shape. **Needs owner
    confirmation.**
+7. **[R6.E-a…d] Module configuration (`with`/`set`).** The mechanism (overwrite the
+   module's outer-scope binding), the provider-owns-semantics hook, and core-owned
+   `with`/`set` propagation are owner-reasoned (§Part E). Open: block grammar
+   surface + keyword split [R6.E-a], `plugin-scss` override strength [R6.E-b],
+   whether Less v5 gains a `!default`-style knob marker [R6.E-c], `set` propagation
+   detail [R6.E-d]. **Needs owner sign-off (Part E is PROPOSED).**
 
 ---
 
