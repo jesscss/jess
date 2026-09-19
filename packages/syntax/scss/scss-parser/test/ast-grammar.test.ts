@@ -360,7 +360,7 @@ describe('SCSS canonical-AST grammar', () => {
       rules: [{
         type: 'StyleImport', name: '@import', options: null,
         target: { type: 'Url', value: { type: 'Any', src: '' } },
-        alias: null, mode: 'import', namespace: null, forward: false
+        alias: null, mode: 'import', namespace: null, forward: false, config: null
       }]
     });
     expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe('@import url();\n');

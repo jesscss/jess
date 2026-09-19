@@ -149,6 +149,7 @@ import type { PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } f
 import type { Level } from './extend/ir.js';
 import { branchFromSelector, descendantBranch, levelFromSelectorList } from './extend/ir.js';
 import { DocumentContext, documentTriviaOf, type Context, type SourceContext } from '../context.js';
+import type { ModuleConfigRejection } from '../plugin.js';
 import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
@@ -16359,6 +16360,90 @@ function emitAtRuleStatementRaw(
 }
 
 /**
+ * Ask the module's PROVIDING plugin (matched by the module specifier's extension)
+ * whether the configured names are valid knobs (spec R6 Part E §E.4). A provider
+ * that does not implement the hook — `plugin-less`, which is permissive — accepts
+ * every name. Rejections become an eval diagnostic. Core owns the scope write.
+ */
+function validateModuleConfig(
+  node: StyleImport,
+  specifier: string,
+  moduleRules: readonly Statement[],
+  e: Emit
+): void {
+  const config = node.config;
+  const plugins = e.context?.plugins;
+  if (config === null || !plugins || plugins.length === 0) {
+    return;
+  }
+  const dot = specifier.lastIndexOf('.');
+  const ext = dot === -1 ? '' : specifier.slice(dot + 1).toLowerCase();
+  if (ext === '') {
+    return;
+  }
+  const provider = plugins.find(plugin => plugin.supportedExtensions?.includes(ext));
+  const rejections: readonly ModuleConfigRejection[] | void = provider?.applyModuleConfig?.({
+    kind: config.kind,
+    moduleRules,
+    bindings: config.bindings.map(binding => ({ name: binding.name }))
+  });
+  if (rejections && rejections.length > 0) {
+    const first = rejections[0]!;
+    throw new JessError({
+      code: 'eval/invalid-statement',
+      phase: 'eval',
+      node,
+      reason: first.message,
+      meta: { name: first.name }
+    });
+  }
+}
+
+/**
+ * Build the isolated scope a configured `@compose`d module evaluates under, and
+ * overlay its configuration (spec R6 Part E). This is the MIXIN-CALL/loop-body
+ * model: the module's built AST is the reusable definition, and this frame is the
+ * overlay the ordinary body emitter walks ONCE — the module is NOT re-spliced into
+ * the importer's scope. The frame is its OWN root (`parent: null`) so the importer's
+ * locals stay invisible (isolation); configuration OVERWRITES the module's
+ * outer-scope binding so every reference — and every derived variable — sees the
+ * configured value.
+ *
+ * Config is applied as a scoped REASSIGNMENT (the `:=` store, consulted before a
+ * frame's own last-wins declarations in {@link lookupScopedBinding}), which is
+ * exactly "overwrite the outer-scope binding" for a `.less` module's `@name`. The
+ * config VALUES were authored in the importer's file, so they evaluate in the
+ * importer frame (`bindingValueFrames`).
+ *
+ * ponytail: reassignment covers scoped Less `@name` (the shipped slice). Live
+ * `$name` (.jess/.scss) reads the cell store, where the module's own declaration
+ * overwrites a config cell — that override path, and provider reject wiring for
+ * scss/jess, are follow-ups.
+ */
+function configuredModuleFrame(
+  statements: Statement[],
+  config: NonNullable<StyleImport['config']>,
+  importerFrame: Frame
+): Frame {
+  const reassign = new Map<string, VariableDeclaration>();
+  const bindingValueFrames = new Map<Binding, Frame>();
+  for (const binding of config.bindings) {
+    reassign.set(binding.name, binding);
+    bindingValueFrames.set(binding.value, importerFrame);
+  }
+  return {
+    parent: null,
+    mixins: collectMixins(statements),
+    declIndex: collectDeclIndex(statements),
+    cells: null,
+    reassign,
+    bindingValueFrames,
+    statements,
+    sourceOwner: null
+  };
+}
+
+/**
  * Emit a typed import. With a driver-supplied document capability, a loaded
  * canonical document executes at this exact source-order point in `frame`.
  * Core deliberately knows neither paths nor parser plugins; a declined request
@@ -16408,7 +16493,21 @@ function expandStyleImport(
         }
 
         const children = loaded.document?.rules ?? [];
-        const publishChildren = hasPrepublishedImportFact(e, node)
+
+        /*
+         * A CONFIGURED `@compose` (spec R6 Part E) evaluates the module in its own
+         * isolated overlay frame (like a mixin-call body), NOT spliced into the
+         * importing frame. Its facts must not publish into the importer, and its
+         * body walks under `configuredModuleFrame` instead of `frame`.
+         */
+        const config = node.mode === 'compose' ? node.config ?? null : null;
+        if (config !== null) {
+          validateModuleConfig(node, request.specifier, children, e);
+        }
+        const bodyFrame = config !== null
+          ? configuredModuleFrame(children, config, frame)
+          : frame;
+        const publishChildren = config !== null || hasPrepublishedImportFact(e, node)
           ? undefined
           : publishImportedDocumentFacts(children, frame, e);
 
@@ -16424,8 +16523,8 @@ function expandStyleImport(
           }
           rememberImportedCallableBodies(loaded.document, loaded.document.rules, e.context);
           const emitDocument = () => emitLoaded
-            ? emitLoaded(loaded.document!, frame)
-            : emitDocumentStatements(loaded.document!.rules, frame, e, importDocument, true);
+            ? emitLoaded(loaded.document!, bodyFrame)
+            : emitDocumentStatements(loaded.document!.rules, bodyFrame, e, importDocument, true);
 
           /*
            * The StyleImport itself has NO postlude to honour: the loaded document
@@ -16446,7 +16545,7 @@ function expandStyleImport(
            */
           const emitWithPlugins = (): MaybePromise<void> =>
             withDocumentTrivia(e, loaded.document!, () =>
-              mapMaybe(prepareBodyPlugins(loaded.document!.rules, frame, e), () => {
+              mapMaybe(prepareBodyPlugins(loaded.document!.rules, bodyFrame, e), () => {
                 /*
                  * Splice the imported document's own leading block comment (e.g. a
                  * `/*!` license banner) at the import site. This must run for a

@@ -30,7 +30,7 @@ import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar';
 import { NO_SPAN, any, atRuleBlock, atRuleStatement, block, bodySpanFromRaw, callArg, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, unknownAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 import {
@@ -176,6 +176,8 @@ type LessRules = {
   Document: Combinator<Stylesheet>;
   VarDeclaration: Combinator<VariableDeclaration>;
   ImportStatement: Combinator<StyleImport | AtRuleStatement | AtRuleBlock>;
+  ComposeStatement: Combinator<StyleImport>;
+  ComposeStatementConfig: Combinator<StyleImportConfig>;
   PluginDirective: Combinator<Plugin>;
   ValueBlockDeclaration: Combinator<VariableDeclaration>;
   ValueBlock: Combinator<ValueNode>;
@@ -1125,6 +1127,42 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * wrapping `@media`; `StyleImport` remains postlude-free (nodes.ts §StyleImport).
    * See docs/architecture/core/DESIGN-DECISIONS.md (owner-ruled 2026-09-02).
    */
+  /*
+   * `@compose "m" [ (with|set) { @x: red; … } ]` — the v5 module form (spec R6
+   * Part E). Unlike a legacy `@import`, a `@compose` never folds into the importer
+   * or carries a media tail; it loads an isolated module and OPTIONALLY configures
+   * it with a rule-style `{ … }` block (NOT a `with (map)` paren form). `with`
+   * configures this import edge only, `set` persists onward. The block reuses the
+   * ordinary `VarDeclaration` rule, so config bindings are plain `@x:` assignments.
+   */
+  const composeKeyword = keywords(['@compose'], { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' });
+  const ComposeStatementConfig = node(
+    'StyleImportConfig',
+    sequence(choice(lessWord('with'), lessWord('set')), literal('{'), many(g.VarDeclaration), literal('}')),
+    (children) => {
+      const kind = requireToken(children[0]).value === 'set' ? 'set' : 'with';
+      const bindings = children.filter(
+        (child): child is VariableDeclaration =>
+          typeof child === 'object' && child !== null && 'type' in child && child.type === 'VariableDeclaration'
+      );
+      return { kind, bindings };
+    }
+  );
+  const ComposeStatement = node(
+    'ComposeStatement',
+    sequence(composeKeyword, g.ImportTarget, optional(g.ComposeStatementConfig), optional(literal(';'))),
+    (children, _fields, span) => {
+      const target = children.find((child): child is Quoted | Url | Interpolation => isQuoted(child) || isUrl(child) || isInterp(child));
+      if (target === undefined) {
+        throw new TypeError('Less grammar produced no @compose target.');
+      }
+      const config = children.find(
+        (child): child is StyleImportConfig =>
+          typeof child === 'object' && child !== null && !('type' in child) && 'kind' in child && 'bindings' in child
+      ) ?? null;
+      return withSourceSpan(styleImport('@compose', target, { mode: 'compose', config }), span);
+    }
+  );
   const ImportStatement = node(
     'ImportStatement',
     sequence(importKeyword, optional(g.ImportOptions), g.ImportTarget, optional(field('tail', g.ImportTail)), literal(';')),
@@ -2838,7 +2876,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // `dispatch(...)` yet: Less `@name` forms need more than bare `@` or bare
   // `@name` to distinguish variable declarations, reference calls, known
   // at-rules, generic blocks, and generic statements.
-  const atStatement = choice(g.ImportStatement, g.PluginDirective, g.ValueBlockDeclaration, g.VarDeclaration, g.SupportsBlock, g.MediaContainerBlock, g.ReferenceCall, g.Keyframes, g.AtRuleBlock, g.UnknownAtRuleBlock, g.AtRuleStatement);
+  const atStatement = choice(g.ImportStatement, g.ComposeStatement, g.PluginDirective, g.ValueBlockDeclaration, g.VarDeclaration, g.SupportsBlock, g.MediaContainerBlock, g.ReferenceCall, g.Keyframes, g.AtRuleBlock, g.UnknownAtRuleBlock, g.AtRuleStatement);
   // Class/id statement starts are resolved by `ClassIdStatement` below. It
   // parses the selector prefix once, then the literal-led continuation decides
   // whether the retained structure is a mixin definition/call or a ruleset.
@@ -4839,6 +4877,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     Document: Stylesheet,
     VarDeclaration,
     ImportStatement,
+    ComposeStatement,
+    ComposeStatementConfig,
     PluginDirective,
     ValueBlockDeclaration,
     ValueBlock,
