@@ -16377,11 +16377,12 @@ function validateModuleConfig(
     return;
   }
   const dot = specifier.lastIndexOf('.');
-  const ext = dot === -1 ? '' : specifier.slice(dot + 1).toLowerCase();
-  if (ext === '') {
+  const ext = dot === -1 ? '' : specifier.slice(dot).toLowerCase();
+  if (ext === '' || ext === '.') {
     return;
   }
-  const provider = plugins.find(plugin => plugin.supportedExtensions?.includes(ext));
+  const provider = plugins.find(plugin =>
+    plugin.supportedExtensions?.some(supported => supported.toLowerCase() === ext));
   const rejections: readonly ModuleConfigRejection[] | void = provider?.applyModuleConfig?.({
     kind: config.kind,
     moduleRules,
@@ -16390,11 +16391,12 @@ function validateModuleConfig(
   if (rejections && rejections.length > 0) {
     const first = rejections[0]!;
     throw new JessError({
-      code: 'eval/invalid-statement',
+      code: 'eval/module-config-rejected',
       phase: 'eval',
       node,
+      summary: first.message,
       reason: first.message,
-      meta: { name: first.name }
+      meta: { reason: first.message, name: first.name }
     });
   }
 }
@@ -16409,16 +16411,19 @@ function validateModuleConfig(
  * outer-scope binding so every reference — and every derived variable — sees the
  * configured value.
  *
- * Config is applied as a scoped REASSIGNMENT (the `:=` store, consulted before a
- * frame's own last-wins declarations in {@link lookupScopedBinding}), which is
- * exactly "overwrite the outer-scope binding" for a `.less` module's `@name`. The
- * config VALUES were authored in the importer's file, so they evaluate in the
- * importer frame (`bindingValueFrames`).
+ * Config is SEEDED into the overlay frame BEFORE the module body evaluates, into
+ * BOTH binding stores so it wins in every dialect:
+ * - scoped `@name`/`$^name` (Less `@x`, SCSS `!default`): the `reassign` store,
+ *   consulted before a frame's own last-wins declarations in
+ *   {@link lookupScopedBinding} — "overwrite the outer-scope binding".
+ * - live `$name` (`.jess` `?:`): the cell store. A knob is an if-absent write
+ *   (`$x ?: blue` / `$x: blue !default`); once config has seeded the cell, the
+ *   module's own if-absent declaration finds it and NO-OPS, so config wins. A
+ *   HARD `$x:` would clobber the seed, which is exactly why a non-knob name is
+ *   rejected by the providing plugin (`applyModuleConfig`) rather than configured.
  *
- * ponytail: reassignment covers scoped Less `@name` (the shipped slice). Live
- * `$name` (.jess/.scss) reads the cell store, where the module's own declaration
- * overwrites a config cell — that override path, and provider reject wiring for
- * scss/jess, are follow-ups.
+ * The config VALUES were authored in the importer's file, so they evaluate in the
+ * importer frame (cell `valueFrame` / `bindingValueFrames`).
  */
 function configuredModuleFrame(
   statements: Statement[],
@@ -16426,16 +16431,24 @@ function configuredModuleFrame(
   importerFrame: Frame
 ): Frame {
   const reassign = new Map<string, VariableDeclaration>();
+  const cells = new Map<string, BindingCell>();
   const bindingValueFrames = new Map<Binding, Frame>();
   for (const binding of config.bindings) {
     reassign.set(binding.name, binding);
+    cells.set(binding.name, {
+      declaration: binding,
+      value: binding.value,
+      valueFrame: importerFrame,
+      evaluated: null,
+      prev: null
+    });
     bindingValueFrames.set(binding.value, importerFrame);
   }
   return {
     parent: null,
     mixins: collectMixins(statements),
     declIndex: collectDeclIndex(statements),
-    cells: null,
+    cells,
     reassign,
     bindingValueFrames,
     statements,

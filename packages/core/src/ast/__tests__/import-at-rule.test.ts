@@ -605,6 +605,28 @@ describe('StyleImport', () => {
     }))).resolves.toEqual({ css: '.a {\n  color: red;\n}\n' });
   });
 
+  it('seeds a live optional (?:) knob so the module default no-ops and config wins', async () => {
+    const moduleDoc = stylesheet([
+      variableDeclaration('x', color('blue'), { mode: 'if-absent', scope: 'live' }),
+      rule('.a', [decl('color', variableReference('x', 'live'))])
+    ]);
+    const entry = stylesheet([
+      styleImport('@-compose', quoted('"m"', 'm', '"', false), {
+        mode: 'compose',
+        config: {
+          kind: 'with',
+          bindings: [variableDeclaration('x', color('red'), { mode: 'declare' })]
+        }
+      })
+    ]);
+
+    await expect(Promise.resolve(serialize(entry, {
+      importDocument: ({ specifier }) => specifier === 'm'
+        ? { document: moduleDoc, key: 'm' }
+        : undefined
+    }))).resolves.toEqual({ css: '.a {\n  color: red;\n}\n' });
+  });
+
   it('keeps an unclaimed external import terminal without invoking Context resolution', async () => {
     const context = new Context({}, [{
       name: 'no-network',

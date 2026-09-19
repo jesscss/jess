@@ -1136,7 +1136,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * ordinary `VarDeclaration` rule, so config bindings are plain `@x:` assignments.
    */
   const composeKeyword = keywords(['@compose'], { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' });
-  const ComposeStatementConfig = node(
+  const ComposeStatementConfig = node<StyleImportConfig>(
     'StyleImportConfig',
     sequence(choice(lessWord('with'), lessWord('set')), literal('{'), many(g.VarDeclaration), literal('}')),
     (children) => {

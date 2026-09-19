@@ -31,6 +31,7 @@ export type JessErrorCode =
   | 'eval/invalid-function'
   | 'eval/ambiguous-default'
   | 'eval/invalid-statement'
+  | 'eval/module-config-rejected'
   | 'eval/property-in-root'
   | 'eval/root-call-without-root'
   | 'eval/guarded-selector-list'
@@ -230,6 +231,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       reason:
         '${what} is a value; it cannot stand on its own in a rules body — it was likely returned by a function/mixin or leaked from a detached ruleset.',
       fix: 'Wrap it in a declaration (property: value) or return a valid statement node (ruleset, declaration, at-rule).'
+    }
+  ],
+  [
+    'eval/module-config-rejected',
+    {
+      summary: 'Module configuration was rejected',
+      reason: '${reason}',
+      fix: 'Declare the variable as a configurable knob in the module, or remove it from the configuration block.'
     }
   ],
   [
