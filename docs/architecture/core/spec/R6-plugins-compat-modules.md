@@ -594,9 +594,9 @@ interpolation must yield a string, and `ns.mixin()` yields a ruleset body). See
 
 ---
 
-## Part E — PROPOSED: module configuration (`with` / `set`)
+## Part E — SETTLED: module configuration (`with` / `set`)
 
-> **STATUS: PROPOSED — owner-reasoned 2026-09-19, pending sign-off.** A module can
+> **STATUS: SETTLED — owner-reasoned and signed off 2026-09-19.** A module can
 > be configured at import — supply values for the module's variables so the
 > importer tunes it without editing it. Sass spells this `@use "m" with (…)`;
 > `.less`/`.jess` use a rule-style block instead of a paren map. This part fixes
@@ -688,7 +688,7 @@ clean global answer are deferred to each plugin, correctly:
 
 | provider | what a knob is | configure an undeclared / non-knob name | override strength |
 |---|---|---|---|
-| `plugin-less` | no marker exists in Less today | permissive: sets the outer binding (v1); a "name never appears in module" *warn* is optional | blanket (the set value is the outer binding) |
+| `plugin-less` | **none — owner ruled 2026-09-19 that Less v5 gets NO `!default`/knob marker** | permissive: sets the outer binding for any name; a "name never appears in module" *warn* is optional | blanket (the set value is the outer binding) |
 | `plugin-scss` | `$x: v !default` | reject — Sass parity ("not declared with !default") | plugin-scss's call: blanket outer-binding (simplest) vs faithful `!default`-only (a later hard reassign wins). A knob that is also hard-reassigned is ~pathological; blanket almost certainly holds the "`.scss → .jess → .css` == `.scss → .css` for 99%" bar. |
 | `plugin-jess` | `$x ?: v` (optional-assign; see `jess-optional-shadow-assign-operator`) | reject non-`?:`/typo — the strict, encapsulated surface | provider's call |
 | `@use` JS loader | provider-defined (settable exports / init options) | provider-defined | provider-defined |
@@ -703,19 +703,24 @@ therefore cannot break Less→jess conversion. The only conversion that exercise
 configuration is **`.scss → .jess`**, and Sass is `!default`-gated exactly like
 `.jess` is `?:`-gated (§E.5), so it round-trips.
 
-### E.7 Open questions (owner to rule)
+### E.7 Resolutions (owner signed off 2026-09-19)
 
-- **[R6.E-a] Grammar surface of the block.** Confirm the `.less`/`.jess` block is a
-  rule-style `{ … }` of assignments (not a paren map), and the keyword split
-  (`with` = this edge, `set` = propagate). SCSS keeps Sass's `with (…)` paren map.
-- **[R6.E-b] `plugin-scss` override strength.** Blanket outer-binding (accepts the
-  ~pathological knob+reassign divergence) vs faithful `!default`-only. §E.5.
-- **[R6.E-c] `plugin-less` knob marker.** Stay permissive (v1), or give Less v5 a
-  `!default`-equivalent so `.less` is knob-gated like the others? Permissive is the
-  v1 default; a marker is an additive later decision.
-- **[R6.E-d] `set` semantics detail.** Confirm `set` persists per module *identity*
-  (all onward importers) vs per subtree; and whether core rejects a conflicting
-  second `set` or last-wins.
+- **[R6.E-a] Grammar surface of the block — SETTLED.** `.less`/`.jess` use a
+  rule-style `{ … }` block of assignments (not a paren map); `with` = this import
+  edge, `set` = propagate onward. SCSS keeps Sass's `with (…)` paren map. (The
+  concrete grammar tail is the first build step.)
+- **[R6.E-b] `plugin-scss` override strength — SETTLED: blanket is the default.**
+  Config sets the outer-scope binding; the ~pathological knob-that-is-also-hard-
+  reassigned case is accepted (holds the "`.scss → .jess → .css` == `.scss → .css`
+  for 99%" bar). Remains `plugin-scss`'s implementation call to tighten to faithful
+  `!default`-only later if a real case demands it.
+- **[R6.E-c] `plugin-less` knob marker — RULED: NO.** Less v5 does **not** get a
+  `!default`/knob marker. `plugin-less` is permissive — it sets the outer-scope
+  binding for any configured name. This is final, not a "v1 default."
+- **[R6.E-d] `set` semantics — SETTLED.** `set` persists per module **identity**
+  (every onward importer of that module inherits the configured values). A
+  conflicting second configuration of an already-configured module is a reject
+  (the "reject re-configuration" outcome of §E.4), not silent last-wins.
 
 ---
 
@@ -809,12 +814,13 @@ configuration is **`.scss → .jess`**, and Sass is `!default`-gated exactly lik
    (§6.9 residual). If dropped, `less-plugin-inline-urls` loses pre-eval; if kept,
    the gated pre-walk over bridge output (Part A.3) is the shape. **Needs owner
    confirmation.**
-7. **[R6.E-a…d] Module configuration (`with`/`set`).** The mechanism (overwrite the
-   module's outer-scope binding), the provider-owns-semantics hook, and core-owned
-   `with`/`set` propagation are owner-reasoned (§Part E). Open: block grammar
-   surface + keyword split [R6.E-a], `plugin-scss` override strength [R6.E-b],
-   whether Less v5 gains a `!default`-style knob marker [R6.E-c], `set` propagation
-   detail [R6.E-d]. **Needs owner sign-off (Part E is PROPOSED).**
+7. **[R6.E-a…d] Module configuration (`with`/`set`) — SIGNED OFF 2026-09-19.** Part E
+   is SETTLED: overwrite the module's outer-scope binding; provider-owns-semantics
+   hook; core-owned `with`/`set` propagation; apply-time validation. Resolutions:
+   rule-style `{ }` block + `with`/`set` split [E-a]; `plugin-scss` blanket default
+   [E-b]; **Less v5 gets NO `!default` marker — `plugin-less` permissive** [E-c];
+   `set` persists per module identity, conflicting re-config rejects [E-d]. No open
+   items — ready to build (grammar tail + core routing + `plugin-less` hook first).
 
 ---
 
