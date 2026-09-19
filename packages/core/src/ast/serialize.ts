@@ -16384,9 +16384,12 @@ function validateModuleConfig(
   if (!plugins || plugins.length === 0) {
     return;
   }
-  const dot = specifier.lastIndexOf('.');
-  const ext = dot === -1 ? '' : specifier.slice(dot).toLowerCase();
-  if (ext === '' || ext === '.') {
+
+  /* The module specifier's extension (with leading dot), matched only within the
+     final path segment so it never runs back across a `/` or `.`. */
+  const extMatch = /\.[^./\\]+$/.exec(specifier);
+  const ext = extMatch ? extMatch[0].toLowerCase() : '';
+  if (ext === '') {
     return;
   }
   const provider = plugins.find(plugin =>
