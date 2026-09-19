@@ -34,4 +34,18 @@ describe('scss module configuration (@use … with)', () => {
     await expect(render('@use "m.scss" with ($x: red);', hardModule))
       .rejects.toThrow(/configurable only when declared with `!default`/);
   });
+
+  it('renders `@use … with` as a SHARED module — one emission across two uses', async () => {
+    /*
+     * Sass singleton: `with` configures the one module, so it renders ONCE and a
+     * later plain `@use` inherits the config without re-emitting.
+     */
+    await expect(render('@use "m.scss" with ($x: red);\n@use "m.scss";', knobModule))
+      .resolves.toBe('.a {\n  color: red;\n}\n');
+  });
+
+  it('rejects a conflicting second `@use … with` of the same module', async () => {
+    await expect(render('@use "m.scss" with ($x: red);\n@use "m.scss" with ($x: green);', knobModule))
+      .rejects.toThrow(/already configured with a different set of values/);
+  });
 });

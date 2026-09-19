@@ -571,7 +571,12 @@ describe('SCSS canonical-AST grammar', () => {
         type: 'StyleImport', name: '@-compose', mode: 'compose',
         target: { type: 'Quoted', value: './theme.scss' },
         config: {
-          kind: 'with',
+          /*
+           * `@use … with (…)` is a SHARED module config (Sass singleton), so the
+           * scss grammar lowers it to the shared `set` kind — not the per-edge
+           * `with` kind that jess/.less `with { … }` carries.
+           */
+          kind: 'set',
           bindings: [{
             type: 'VariableDeclaration',
             name: 'tone',
