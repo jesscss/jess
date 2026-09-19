@@ -322,7 +322,7 @@ describe('@jesscss/scss-parser public parse API', () => {
       rules: [{
         type: 'StyleImport', name: '@import', options: null,
         target: { type: 'Url', value: { type: 'Any', src: '' } },
-        alias: null, mode: 'import', namespace: null, forward: false
+        alias: null, mode: 'import', namespace: null, forward: false, config: null
       }]
     });
     expect(serialize(root)).toEqual({ css: '@import url();\n' });

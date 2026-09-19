@@ -1,4 +1,4 @@
-import type { Stylesheet } from './ast/nodes.js';
+import type { Statement, Stylesheet } from './ast/nodes.js';
 import type { ImportOptions } from './import-options.js';
 export type { ImportOptions } from './import-options.js';
 import type { Context, ContextOptions, ResolvedOptions } from './context.js';
@@ -91,6 +91,31 @@ export interface UrlTransformRequest {
   entryFilePath?: string;
 }
 
+/**
+ * A module-configuration request handed to the PROVIDING plugin (the plugin that
+ * supplies the configured module, chosen by extension). Spec R6 Part E §E.4: the
+ * provider's dialect owns "what a value does" — it decides whether a configured
+ * name is a valid knob and may reject. Core owns the actual scope write (it owns
+ * the eval frame) and the `with`/`set` propagation (§E.2); the provider only
+ * validates the NAMES against the module's own declarations.
+ */
+export interface ModuleConfigRequest {
+  /** `with` = this import edge only; `set` = persists onward (§E.2). */
+  kind: 'with' | 'set';
+
+  /** The module's own top-level statements, so a provider can see which names it declares as knobs (`!default`, `?:`). */
+  moduleRules: readonly Statement[];
+
+  /** The configured names supplied by the importer. */
+  bindings: readonly { name: string }[];
+}
+
+/** One rejected configuration name plus a human-facing reason. */
+export interface ModuleConfigRejection {
+  name: string;
+  message: string;
+}
+
 export interface PluginInterface {
   /**
    * e.g. 'less-plugin'
@@ -172,6 +197,17 @@ export interface PluginInterface {
   /** Optional lifecycle hooks used by lazy plugin loading. */
   prewarm?(): void | Promise<void>;
   dispose?(): void | Promise<void>;
+
+  /**
+   * Validate a `@compose "m" with { … }` / `set { … }` configuration for a module
+   * this plugin provides (spec R6 Part E §E.4). Return the rejected names (a name
+   * that is not a knob / not declared / a typo), or nothing / an empty array to
+   * accept. `plugin-less` is permissive (no implementation — every name is
+   * accepted); `plugin-scss` rejects a name not declared `!default`, `plugin-jess`
+   * a name not declared `?:`. Core applies the accepted bindings to the module's
+   * outer scope and owns `with`/`set` propagation.
+   */
+  applyModuleConfig?(request: ModuleConfigRequest): readonly ModuleConfigRejection[] | void;
 
   /** Optional compiler hooks used by compatibility plugins. */
   setContext?(context: Context): void;

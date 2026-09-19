@@ -1340,6 +1340,25 @@ export interface StyleImport extends SpanSlots {
   readonly mode: 'compose' | 'import';
   readonly namespace: string | null;
   readonly forward: boolean;
+
+  /**
+   * Module configuration (`@compose "m" with { … }` / `set { … }`). The block is
+   * ordinary AST bindings authored in the importer's file (spec R6 Part E §E.3):
+   * `with` configures this import edge only, `set` persists onward. Absent for a
+   * plain import or an unconfigured compose.
+   */
+  readonly config: StyleImportConfig | null;
+}
+
+/**
+ * A parsed module-configuration block. `kind` is the `with`/`set` propagation
+ * scope (core-owned, spec §E.2); `bindings` are the block's assignments, the same
+ * shape as a ruleset body of variable declarations. No dialect-specific node — the
+ * surface differs (curly block vs `with (map)`), the parsed shape is shared.
+ */
+export interface StyleImportConfig {
+  readonly kind: 'with' | 'set';
+  readonly bindings: readonly VariableDeclaration[];
 }
 
 /** Optional `StyleImport` facts; every dialect fills only the ones it spells. */
@@ -1349,6 +1368,7 @@ export interface StyleImportFields {
   mode?: StyleImport['mode'];
   namespace?: string | null;
   forward?: boolean;
+  config?: StyleImportConfig | null;
 }
 
 /** A selected ESM binding in a Jess `@-from` statement. */
@@ -1896,6 +1916,7 @@ export const styleImport = (
   mode: fields.mode ?? 'compose',
   namespace: fields.namespace ?? null,
   forward: fields.forward ?? false,
+  config: fields.config ?? null,
   _s: NO_SPAN,
   _e: NO_SPAN
 });

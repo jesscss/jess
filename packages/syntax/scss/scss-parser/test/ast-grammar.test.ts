@@ -360,7 +360,7 @@ describe('SCSS canonical-AST grammar', () => {
       rules: [{
         type: 'StyleImport', name: '@import', options: null,
         target: { type: 'Url', value: { type: 'Any', src: '' } },
-        alias: null, mode: 'import', namespace: null, forward: false
+        alias: null, mode: 'import', namespace: null, forward: false, config: null
       }]
     });
     expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe('@import url();\n');
@@ -543,8 +543,9 @@ describe('SCSS canonical-AST grammar', () => {
   it('rejects unrepresentable SCSS @use and @forward forms without classifying or resolving them', () => {
     /*
      * `@use "./theme.scss" with (…)` LEFT this list: the configuration is a Sass
-     * map, so it is now captured into the shared `options` carrier rather than
-     * being unrepresentable. It is pinned as an accepted fact below.
+     * map, so it is now lowered into the typed `config` field (module
+     * configuration, spec R6 Part E) rather than being unrepresentable. It is
+     * pinned as an accepted fact below.
      */
     for (const source of [
       '@use "theme-#{$name}.scss";',
@@ -569,11 +570,15 @@ describe('SCSS canonical-AST grammar', () => {
       type: 'Stylesheet', rules: [{
         type: 'StyleImport', name: '@-compose', mode: 'compose',
         target: { type: 'Quoted', value: './theme.scss' },
-        options: { type: 'List', value: [{ type: 'Collection', entries: [{
-          type: 'CollectionEntry',
-          key: { type: 'Lookup', kind: 'var', name: 'tone' },
-          value: { type: 'Keyword', src: 'red' }
-        }] }] }
+        config: {
+          kind: 'with',
+          bindings: [{
+            type: 'VariableDeclaration',
+            name: 'tone',
+            value: { type: 'Keyword', src: 'red' },
+            write: { mode: 'declare' }
+          }]
+        }
       }]
     });
   });
