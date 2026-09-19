@@ -177,6 +177,7 @@ type LessRules = {
   VarDeclaration: Combinator<VariableDeclaration>;
   ImportStatement: Combinator<StyleImport | AtRuleStatement | AtRuleBlock>;
   ComposeStatement: Combinator<StyleImport>;
+  ComposeStatementNamespace: Combinator<string>;
   ComposeStatementConfig: Combinator<StyleImportConfig>;
   PluginDirective: Combinator<Plugin>;
   ValueBlockDeclaration: Combinator<VariableDeclaration>;
@@ -1150,19 +1151,31 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return { kind, bindings };
     }
   );
+  /*
+   * `@compose "m" as ns` / `as *` — the module namespace clause (spec R6 Part E).
+   * `as *` merges the module's members unqualified into the importer; `as ns`
+   * binds them under `@ns`; omitting it auto-derives the namespace from the
+   * specifier. Mirrors the SCSS `@use … as` qualifier (grammar UseNamespace).
+   */
+  const ComposeStatementNamespace = node<string>(
+    'ComposeStatementNamespace',
+    sequence(lessWord('as'), choice(literal('*'), staticIdentifier)),
+    children => requireToken(children[1]).value
+  );
   const ComposeStatement = node(
     'ComposeStatement',
-    sequence(composeKeyword, g.ImportTarget, optional(g.ComposeStatementConfig), optional(literal(';'))),
+    sequence(composeKeyword, g.ImportTarget, optional(g.ComposeStatementNamespace), optional(g.ComposeStatementConfig), optional(literal(';'))),
     (children, _fields, span) => {
       const target = children.find((child): child is Quoted | Url | Interpolation => isQuoted(child) || isUrl(child) || isInterp(child));
       if (target === undefined) {
         throw new TypeError('Less grammar produced no @compose target.');
       }
+      const namespace = children.find((child): child is string => typeof child === 'string') ?? null;
       const config = children.find(
         (child): child is StyleImportConfig =>
           typeof child === 'object' && child !== null && !('type' in child) && 'kind' in child && 'bindings' in child
       ) ?? null;
-      return withSourceSpan(styleImport('@compose', target, { mode: 'compose', config }), span);
+      return withSourceSpan(styleImport('@compose', target, { mode: 'compose', namespace, config }), span);
     }
   );
   const ImportStatement = node(
@@ -4911,6 +4924,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     VarDeclaration,
     ImportStatement,
     ComposeStatement,
+    ComposeStatementNamespace,
     ComposeStatementConfig,
     PluginDirective,
     ValueBlockDeclaration,
