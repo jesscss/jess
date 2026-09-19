@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar';
-import { NO_SPAN, any, atRuleBlock, atRuleStatement, block, bodySpanFromRaw, callArg, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, unknownAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, atRuleBlock, atRuleStatement, block, bodySpanFromRaw, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, unknownAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -247,7 +247,9 @@ type LessRules = {
   FlatMixinCall: Combinator<MixinCall>;
   NamespacedMixinCall: Combinator<MixinCall>;
   NamespacedMixinValue: Combinator<MixinCall>;
-  MixinReference: Combinator<Reference>;
+  HexColorValue: Combinator<ValueNode>;
+  MixinReference: Combinator<ValueNode>;
+  MixinReferenceChain: Combinator<Reference>;
   ReferenceCall: Combinator<Reference>;
   MixinGuard: Combinator<MixinGuard>;
   MixinGuardTopOr: Combinator<MixinGuard>;
@@ -1773,7 +1775,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const Value = node(
     'Value',
     choice(
-      attempt(g.MixinReference),
+      g.MixinReference,
       g.InterpolatedValue,
       g.EscapedQuoted,
       g.Quoted,
@@ -2017,7 +2019,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       // This transaction owns the WHOLE accessor-bearing value. Keeping it out
       // of Value means its typed mixin arguments do not recurse through the
       // same candidate before the required accessor fact has been established.
-      attempt(sequence(g.MixinReference, not(choice(topProductOperator, sumOperator)))),
+      attempt(sequence(g.MixinReferenceChain, not(choice(topProductOperator, sumOperator)))),
       oneOrMoreSep(
         g.ValueSequence,
         field('separator', regex(/,[ \t\n\r\f]*/))
@@ -2680,13 +2682,30 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return { call: withPath, raw };
     }
   );
+  // A `#`-headed value that spells a complete hex color and is NOT continued by
+  // a reference opener (`.`/`[`/`(`) is a Color, recognized FORWARD. This leads
+  // the shared-head arm so the ubiquitous `#fff` never enters the reference
+  // chain, fails a required accessor, and rewinds — the exact `attempt` cost the
+  // old ordering paid on every hex color. The negative lookahead also excludes a
+  // trailing hex digit, so a longer run (`#fffff`) declines here and falls to the
+  // chain like any other non-color head.
+  const HexColorValue = node(
+    'Color',
+    regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F.[(])/),
+    // Byte-identical to the shared `g.Color` reducer this arm precedes (a plain
+    // `color(text)`, no span), so a hex color reduces to the exact same node
+    // whether it is reached here or through the ordinary Color arm.
+    children => color(requireToken(children[0]).value)
+  );
   // A static namespace/mixin invocation remains the existing typed MixinCall
   // (including its selector-path combinators). Once the shared base is followed
   // by a lookup/call accessor, the whole value is a Reference. The first
   // accessor delimiter is consumed once and routed to the matching tail builder,
   // so malformed accessor bodies stay on the selected reference route instead
-  // of probing forward with a broad value-position lookahead.
-  const MixinReference = node(
+  // of probing forward with a broad value-position lookahead. This is the ONE
+  // chain builder — a whole-value `ValueList` reference and the merged atom arm
+  // below both project through it, so the head/tail machinery is single-sourced.
+  const MixinReferenceChain = node(
     'MixinReference',
     sequence(
       MixinReferenceBase,
@@ -2696,6 +2715,17 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       const base = requireMixinReferenceBaseFact(children.find(isMixinReferenceBaseFact));
       return withSourceSpan(referenceWithTails(base.call, base.raw, children.filter(isReferenceTailFact)), span);
     }
+  );
+  // The value-atom reference arm: a forward hex color OR a Reference chain, first
+  // set `[.#]`, no rewind on the hot path. `HexColorValue` recognizes `#fff`
+  // outright; a head continued by an accessor declines that lookahead and routes
+  // to the chain (`#ns[key]`, `#library.add(1)[result]`). A tail-less non-color
+  // head (`.class`, `#ns`, `.mixin()`) matches NEITHER and fails cleanly — the
+  // enclosing choice then falls to its selector/color siblings, exactly as the
+  // old `attempt(MixinReference)` did after rewinding, but without throwing.
+  const MixinReference = choice(
+    HexColorValue,
+    attempt(g.MixinReferenceChain)
   );
   const ReferenceCall = node(
     'VarCall',
@@ -2729,9 +2759,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     // Whether that comparison means anything is a language-service fact.
     choice(
       mixinGuardDefaultOperand,
-      // Guard operands reuse the ordinary typed access References. The
-      // namespace branch must backtrack for ordinary non-accessor colors.
-      attempt(g.MixinReference),
+      // Guard operands reuse the ordinary typed access References. The shared
+      // `#`/`.` head is forward-dispatched: a tail-less hex head reduces to a
+      // Color inside the one arm, so ordinary non-accessor colors need no rewind.
+      g.MixinReference,
       g.VariableReferenceChain,
       g.Quoted,
       g.EscapedQuoted,
@@ -3353,10 +3384,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const QueryTerm = node(
     'QueryTerm',
     choice(
-      // A namespace/map read is a whole query term only after its required
-      // accessor has succeeded; otherwise ordinary colors and mixin prefixes
-      // continue to the existing query alternatives.
-      attempt(g.MixinReference),
+      // A namespace/map read is a whole query term only through the tail-required
+      // chain: a query term has no Color alternative, so the merged hex arm would
+      // over-accept a bare `#fff` as a term. Requiring one accessor keeps a bare
+      // hex/mixin prefix falling through to the ordinary query alternatives, and
+      // the `attempt` localizes the shared-head rollback to this arm.
+      attempt(g.MixinReferenceChain),
       g.QueryFeature,
       g.VariableReference,
       // `<general-enclosed>` function form (media-queries-5 §2.1/§3.1:
@@ -4949,7 +4982,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     FlatMixinCall,
     NamespacedMixinCall,
     NamespacedMixinValue,
+    HexColorValue,
     MixinReference,
+    MixinReferenceChain,
     ReferenceCall,
     MixinGuard,
     MixinGuardTopOr,
