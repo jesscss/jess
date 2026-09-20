@@ -16669,17 +16669,19 @@ function expandStyleImport(
 
         /*
          * [module config] Resolve the EFFECTIVE configuration for this compose edge
-         * (spec R6 Part E §E.2/E-d). `set` persists per module IDENTITY (`loaded.key`):
-         * it is recorded so a LATER plain `@compose` of the same module inherits it.
-         * `with` configures only this edge and is never recorded. A second config —
-         * `set` or a reconfiguring `with` — whose values differ from the recorded
-         * `set` is a conflict and rejects; an identical restatement is not.
+         * (spec R6 Part E §E.2/E-d). A SHARED config (`set`, and scss `@use … with`
+         * lowered to `set`) persists per module IDENTITY (`loaded.key`): it is
+         * recorded so a LATER plain `@compose` of the same module inherits it, and a
+         * second SHARED config whose values differ conflicts and rejects (an
+         * identical restatement does not). A PER-EDGE `with { … }` (less/jess) is an
+         * INDEPENDENT mixin-like instantiation: it uses only its own values, never
+         * inherits a recorded shared config, and never conflicts with one.
          */
         const authoredConfig = node.mode === 'compose' ? node.config ?? null : null;
         let config = authoredConfig;
         if (node.mode === 'compose' && loaded.key !== undefined) {
           const recorded = e.moduleConfigs?.get(loaded.key) ?? null;
-          if (authoredConfig !== null) {
+          if (authoredConfig !== null && authoredConfig.kind === 'set') {
             if (recorded !== null && !sameModuleConfig(recorded, authoredConfig)) {
               throw moduleConfigRejected(
                 node,
@@ -16687,10 +16689,10 @@ function expandStyleImport(
                 request.specifier
               );
             }
-            if (authoredConfig.kind === 'set' && recorded === null) {
+            if (recorded === null) {
               (e.moduleConfigs ??= new Map()).set(loaded.key, authoredConfig);
             }
-          } else if (recorded !== null) {
+          } else if (authoredConfig === null && recorded !== null) {
             config = recorded;
           }
         }

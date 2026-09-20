@@ -199,6 +199,18 @@ describe('public Less parse()', () => {
     expect(result.css).toBe('.a {\n  color: red;\n}\n.a {\n  color: green;\n}\n');
   });
 
+  it('keeps a per-edge `with` independent of a shared `set` on the same module (no conflict)', async () => {
+    const moduleDoc = parse('@x: blue;\n.a { color: @x; }');
+    const importer = parse('@compose "m" set { @x: red; }\n@compose "m" with { @x: green; }');
+    const result = await Promise.resolve(serialize(importer, {
+      evaluator: buildEvaluator(makeLessRegistry()),
+      importDocument: ({ specifier }) => specifier === 'm'
+        ? { document: moduleDoc, key: 'm' }
+        : undefined
+    }));
+    expect(result.css).toBe('.a {\n  color: red;\n}\n.a {\n  color: green;\n}\n');
+  });
+
   it('keeps selector and body provenance without a duplicate ruleset span', () => {
     const source = '.a{color:red;}';
     const document = parse(source);
