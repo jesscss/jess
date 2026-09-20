@@ -2738,7 +2738,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // old `attempt(MixinReference)` did after rewinding, but without throwing.
   const MixinReference = choice(
     HexColorValue,
-    attempt(g.MixinReferenceChain)
+    g.MixinReferenceChain
   );
   const ReferenceCall = node(
     'VarCall',

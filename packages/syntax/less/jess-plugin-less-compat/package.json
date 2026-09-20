@@ -9,7 +9,7 @@
     "access": "public"
   },
   "description": "Less function compatibility bridge for Jess",
-  "version": "2.0.0-alpha.21",
+  "version": "2.0.0-alpha.22",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
