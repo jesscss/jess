@@ -92,7 +92,7 @@
   },
   "dependencies": {
     "@jesscss/parser-shared": "workspace:*",
-    "parseman": "^0.50.5"
+    "parseman": "^0.50.7"
   },
   "peerDependencies": {
     "@jesscss/core": "workspace:*"

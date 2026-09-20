@@ -81,7 +81,7 @@
   "dependencies": {
     "@jesscss/css-parser": "workspace:*",
     "color-name": "~2.0.0",
-    "parseman": "^0.50.5"
+    "parseman": "^0.50.7"
   },
   "peerDependencies": {
     "@jesscss/core": "workspace:*"
