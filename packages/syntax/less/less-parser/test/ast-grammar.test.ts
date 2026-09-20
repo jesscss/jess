@@ -1400,6 +1400,26 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('captures the @compose namespace clause (`as ns`, `as *`, and none)', () => {
+    const named = run(lessGrammar.Document, '@compose "m" as ns;', { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE });
+    expect(named.ok).toBe(true);
+    expect(bare(named.value)).toMatchObject({
+      rules: [{ type: 'StyleImport', name: '@compose', mode: 'compose', namespace: 'ns' }]
+    });
+
+    const star = run(lessGrammar.Document, '@compose "m" as *;', { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE });
+    expect(star.ok).toBe(true);
+    expect(bare(star.value)).toMatchObject({
+      rules: [{ type: 'StyleImport', name: '@compose', mode: 'compose', namespace: '*' }]
+    });
+
+    const plain = run(lessGrammar.Document, '@compose "m";', { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE });
+    expect(plain.ok).toBe(true);
+    expect(bare(plain.value)).toMatchObject({
+      rules: [{ type: 'StyleImport', name: '@compose', mode: 'compose', namespace: null }]
+    });
+  });
+
   it('constructs canonical import, variable, declaration, and ruleset facts directly', () => {
     const result = run(
       lessGrammar.Document,
