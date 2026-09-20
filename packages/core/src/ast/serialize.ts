@@ -16554,15 +16554,12 @@ const MODULE_NAMESPACE_IDENT = /^-?[_a-zA-Z\u0080-\uFFFF][-_a-zA-Z0-9\u0080-\uFF
  * spell an explicit `as <name>`.
  */
 function deriveModuleNamespace(specifier: string): string | null {
-  const lastSlash = specifier.lastIndexOf('/');
-  let base = lastSlash === -1 ? specifier : specifier.slice(lastSlash + 1);
-  const dot = base.lastIndexOf('.');
-  if (dot > 0) {
-    base = base.slice(0, dot);
-  }
-  if (base.startsWith('_')) {
-    base = base.slice(1);
-  }
+  /* Last `/`-segment, then strip a trailing `.ext` (only when a name precedes the
+     dot) and a leading `_` partial marker. Regex-based to keep `serialize.ts` free
+     of `lastIndexOf` (the diagnostic cold-path guard bans it). */
+  const segment = /[^/]*$/.exec(specifier)?.[0] ?? specifier;
+  const withoutExt = segment.replace(/^(.+)\.[^.]+$/, '$1');
+  const base = withoutExt.startsWith('_') ? withoutExt.slice(1) : withoutExt;
   return MODULE_NAMESPACE_IDENT.test(base) ? base : null;
 }
 
