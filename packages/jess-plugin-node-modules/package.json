@@ -31,7 +31,8 @@
     "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
-    "@jesscss/core": "workspace:*"
+    "@jesscss/core": "workspace:*",
+    "@jesscss/fns": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

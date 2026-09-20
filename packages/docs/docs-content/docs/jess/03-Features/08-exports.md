@@ -10,8 +10,7 @@ Jess currently keeps exporting simple and predictable.
 ## Current practical export patterns
 
 - In stylesheet space, share reusable APIs through `@-compose` stylesheet
-  modules. The `@-from` / `@-use` script-module syntax is still a preview and
-  does not bind exports in the current alpha. See
+  modules. The `@-from` / `@-use` script-module syntax binds exports at compile time. See
   [Modules & imports](/docs/language/modules-and-imports).
 - In bundler space, `rollup-plugin-jess` currently exports the compiled CSS string as the default JS export and emits a CSS asset.
 

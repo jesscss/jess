@@ -6,12 +6,13 @@ audiences:
 origin: jess
 ---
 
-:::caution Script imports are still a preview
+:::info Script and data imports
 
-`@-compose` stylesheet modules load, evaluate, and bind today. `@-use` and
-`@-from` script/data imports only parse and round-trip; their exports are not
-bound yet. See [Modules & imports](/docs/language/modules-and-imports) for the
-canonical support table.
+`@-use` and `@-from` bind module exports at compile time. JSON modules need
+no script runtime; JavaScript and TypeScript modules require
+`@jesscss/plugin-js`. See
+[Modules & imports](/docs/language/modules-and-imports) for the canonical
+contract.
 
 :::
 

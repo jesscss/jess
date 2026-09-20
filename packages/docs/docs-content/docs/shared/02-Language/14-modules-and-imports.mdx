@@ -19,7 +19,7 @@ status:
 | Module family | Jess | Less 5 | Current status |
 | --- | --- | --- | --- |
 | Stylesheets | `@-compose` | `@compose` | Available |
-| Scripts and data | `@-use` / `@-from` | `@use` / `@from`, with dashed aliases | Planned; do not use yet |
+| Scripts and data | `@-use` / `@-from` | `@use` / `@-use` | Available |
 
 The compose family loads stylesheet code, exposes that stylesheet's own public
 members, and may emit CSS. `@use` and `@from` are reserved for JavaScript,
@@ -246,43 +246,80 @@ When translating SCSS to Jess source, use `@-compose` for stylesheet modules:
 
 </AudienceGate>
 
-## Script and data modules: reserved, not executable yet
+## Script and data modules
 
-The script-module syntax is reserved for a later release:
+Script and data imports are compile-time dependencies. The directive itself is
+removed from the emitted CSS. Write these directives at the stylesheet top level,
+before the rules that consume their bindings.
 
 <AudienceGate include={['jess']}>
 
+Jess supports namespace, flat, and selected imports:
+
 ```less
-// Planned syntax; these directives are not executable yet.
 @-use "./tokens.json" as tokens;
+@-use "./functions.js" as fn;
+@-use "./functions.js" as *;
+
 @-from "./functions.js" import (double);
+@-from "./functions.js" import (double as twice);
+@-from "./functions.js" import * as fn;
 ```
 
-Jess currently parses `@-use` and `@-from` into module import nodes, but the
-evaluator does not consume those nodes or bind their exports. They round-trip to
-CSS, and references that depend on the import remain unresolved. The compiler's
-module loader and sandbox runtime exist, but this import-to-binding connection
-has not shipped.
+Read data members through the namespace and call imported functions by their
+bound name:
+
+```less
+@-use "./tokens.json" as tokens;
+@-from "./functions.js" import (double as twice);
+
+.card {
+  color: $tokens.color;
+  width: twice(10px);
+}
+```
+
+When `@-use` has no `as` clause, the namespace comes from the file name.
+`as *` exposes every export without a namespace. Prefer a namespace when
+several modules can export the same name.
 
 </AudienceGate>
 
 <AudienceGate include={['less']}>
 
+Less 5 supports `@use` and its dashed alias `@-use`. The namespace always
+comes from the file name; Less does not accept an `as` clause and does not
+implement `@from`.
+
 ```less
-// Planned syntax; Less 5 does not recognize or execute this as a module yet.
-@use "./tokens.json" as tokens;
-@from "./functions.js" import (double);
+@use "./tokens.json";
+@use "./my-functions.js";
+
+.card {
+  color: @tokens[color];
+  width: @my-functions.double(10px);
+}
 ```
 
-Less 5 does not currently recognize these as script-module directives. Continue
-to use preloaded plugins or the deprecated `@plugin` bridge when JavaScript
-integration is unavoidable. Inline backtick JavaScript remains removed.
+Use `@plugin` only for legacy Less plugin modules. It is deprecated in favor
+of `@use`.
 
 </AudienceGate>
 
-JSON will be a data-only import. Local or package JavaScript and TypeScript will
-require the opt-in `@jesscss/plugin-js` runtime and its Deno sandbox policy. The
-syntax above should be treated as a preview until this page marks it available.
+JSON modules are data-only and need no script runtime. Strings, numbers,
+booleans, arrays, nested objects, and `null` become stylesheet values. Cyclic
+objects and unsupported export values are errors.
+
+Local and package JavaScript or TypeScript modules require the optional
+`@jesscss/plugin-js` package. It runs scripts in its Deno sandbox; use
+`jsReadRoot` and the other plugin policy options to grant only the access a
+module needs. Set `disableScriptModules` to reject executable script imports
+entirely. Built-in compiler modules such as SCSS `sass:math` are trusted
+package modules and do not require `@jesscss/plugin-js`.
+
+A module is loaded once per compilation and its bindings are lexical to that
+stylesheet. Missing exports, unsupported values, and unavailable script
+runtimes are compile errors.
 
 ## Native CSS imports
 

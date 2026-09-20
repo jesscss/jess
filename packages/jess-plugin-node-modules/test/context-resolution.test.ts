@@ -69,6 +69,26 @@ describe('NodeModulesPlugin Context resolver protocol', () => {
     });
   });
 
+  it('loads trusted built-in function modules without the script runtime', async () => {
+    const context = new Context({}, [new NodeModulesPlugin({ basePath: process.cwd() })]);
+
+    await expect(context.getModule('#sass/math')).resolves.toMatchObject({
+      resolvedPath: expect.stringContaining('fns'),
+      module: {
+        abs: expect.any(Function),
+        percentage: expect.any(Function)
+      }
+    });
+
+    await expect(context.getModule('#less')).resolves.toMatchObject({
+      resolvedPath: expect.stringContaining('fns'),
+      module: {
+        lighten: expect.any(Function),
+        unit: expect.any(Function)
+      }
+    });
+  });
+
   it('resolves a mapped remote package URL through the resolver-plugin pipeline', async () => {
     const context = new Context({}, [{
       name: 'remote-map',
