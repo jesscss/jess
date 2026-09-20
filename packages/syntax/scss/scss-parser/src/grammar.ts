@@ -2065,7 +2065,20 @@ const scssFactory = (g: ScssInputRules) => {
         throw new TypeError('SCSS @use requires a quoted module path.');
       }
       const namespace = children.find((child): child is string => typeof child === 'string') ?? null;
-      const config = children.find(isCollection) ?? null;
+      const configMap = children.find(isCollection) ?? null;
+      const configBindings: VariableDeclaration[] = [];
+      if (configMap !== null) {
+        for (const entry of configMap.entries) {
+          if (entry.type !== 'CollectionEntry') {
+            throw new TypeError('SCSS @use with-clause admits only $variable: value entries.');
+          }
+          const key = entry.key;
+          if (isValueSlotArray(key) || key.type !== 'Lookup' || key.kind !== 'var' || typeof key.name !== 'string') {
+            throw new TypeError('SCSS @use with-clause requires $variable keys.');
+          }
+          configBindings.push(variableDeclaration(key.name, entry.value, { mode: 'declare' }));
+        }
+      }
       if (path.value.startsWith('sass:')) {
         const rewritten = `#sass/${path.value.slice('sass:'.length)}`;
         return moduleImport(
@@ -2086,9 +2099,17 @@ const scssFactory = (g: ScssInputRules) => {
             namespace
           )
         : styleImport('@-compose', path, {
-            options: config === null ? null : list([config], ','),
             namespace,
-            mode: 'compose'
+            mode: 'compose',
+
+            /*
+             * `@use … with (…)` configures the module as a SHARED singleton (Sass:
+             * a module is loaded once and configured at most once), so it lowers to
+             * the shared `set` config-kind rather than the per-edge `with` kind that
+             * jess/.less `with { … }` uses. This keeps one core eval path keyed on
+             * shared-vs-per-edge instead of scattering dialect checks through eval.
+             */
+            config: configBindings.length > 0 ? { kind: 'set', bindings: configBindings } : null
           });
     }
   );

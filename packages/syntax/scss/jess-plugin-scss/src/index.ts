@@ -2,6 +2,8 @@ import {
   type Plugin,
   AbstractPlugin,
   type ISafeParseResult,
+  type ModuleConfigRejection,
+  type ModuleConfigRequest,
   parserDiagnostic,
   type UnitMode,
   type Context,
@@ -78,6 +80,30 @@ export class ScssPlugin extends AbstractPlugin {
         warnings: []
       };
     }
+  }
+
+  /*
+   * An SCSS module variable is configurable only when declared `$x: v !default`
+   * (an if-absent write; Sass `@use … with` parity, spec R6 Part E §E.5).
+   * Configuring a name not declared `!default` is rejected.
+   */
+  applyModuleConfig(request: ModuleConfigRequest): ModuleConfigRejection[] {
+    const knobs = new Set<string>();
+    for (const statement of request.moduleRules) {
+      if (statement.type === 'VariableDeclaration' && statement.write.mode === 'if-absent') {
+        knobs.add(statement.name);
+      }
+    }
+    const rejected: ModuleConfigRejection[] = [];
+    for (const binding of request.bindings) {
+      if (!knobs.has(binding.name)) {
+        rejected.push({
+          name: binding.name,
+          message: `Cannot configure "$${binding.name}": an SCSS module variable is configurable only when declared with \`!default\`.`
+        });
+      }
+    }
+    return rejected;
   }
 }
 

@@ -5,6 +5,8 @@ import {
   parserDiagnostic,
   type Context,
   type ISafeParseResult,
+  type ModuleConfigRejection,
+  type ModuleConfigRequest,
   type Plugin,
   type SafeParseOptions
 } from '@jesscss/core';
@@ -67,6 +69,30 @@ export class JessPlugin extends AbstractPlugin {
         warnings: []
       };
     }
+  }
+
+  /*
+   * A `.jess` module variable is configurable only when declared OPTIONAL with
+   * `?:` (an if-absent write; spec R6 Part E §E.5). Configuring any other name —
+   * a hard `$x:` or a typo — is rejected: the strict, encapsulated surface.
+   */
+  applyModuleConfig(request: ModuleConfigRequest): ModuleConfigRejection[] {
+    const knobs = new Set<string>();
+    for (const statement of request.moduleRules) {
+      if (statement.type === 'VariableDeclaration' && statement.write.mode === 'if-absent') {
+        knobs.add(statement.name);
+      }
+    }
+    const rejected: ModuleConfigRejection[] = [];
+    for (const binding of request.bindings) {
+      if (!knobs.has(binding.name)) {
+        rejected.push({
+          name: binding.name,
+          message: `Cannot configure "$${binding.name}": a .jess module variable is configurable only when declared optional as \`$${binding.name} ?: …\`.`
+        });
+      }
+    }
+    return rejected;
   }
 }
 

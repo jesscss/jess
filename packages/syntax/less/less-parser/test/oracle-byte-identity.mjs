@@ -34,16 +34,12 @@
  * digest could not be computed or the harness itself failed. Only 0 and 1 are
  * statements about the grammar; see TWO FAILURE CHANNELS below.
  *
- * THE COMMITTED BASELINE IS OLDER THAN THE ALIAS COLLAPSE
- * -------------------------------------------------------
- * `oracle-byte-identity.baseline.json` was taken before `collapseChildrenAlias`
- * existed, on a `cst` value that still carried the duplicated `children` array.
- * So the `cst` aggregate moves against it by construction, and the first thing
- * to check on a `moved` cst verdict is whether the entries also moved on `ast`.
- * The baseline is deliberately NOT regenerated here: the `ast` differential
- * against it is still meaningful, and re-baselining is how a real regression
- * gets absorbed. Regenerate it as its own reviewed change, not as a side effect
- * of a grammar edit.
+ * BASELINE POLICY
+ * ---------------
+ * Regenerate `oracle-byte-identity.baseline.json` only in a reviewed change
+ * that names every corpus change and proves the candidate against its exact
+ * parent on the same set of entries. A fresh aggregate by itself can absorb a
+ * real parser regression.
  *
  * WHY IT PARSES THE BUILT `lib/`, NOT `src/`
  * ------------------------------------------
@@ -86,7 +82,7 @@ const ROOTS = [
   'node_modules/@less/test-data/tests-config',
   'node_modules/@less/test-data/tests-error',
   'node_modules/@less/test-data/data',
-  'node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less',
+  'packages/jess/node_modules/bootstrap-less-port/less',
   'packages/jess/test',
   'packages/syntax/less/less-parser/test',
   'packages/syntax/css/css-parser/test'

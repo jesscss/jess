@@ -80,7 +80,7 @@
   },
   "dependencies": {
     "@jesscss/css-parser": "workspace:*",
-    "parseman": "^0.50.5"
+    "parseman": "^0.50.7"
   },
   "peerDependencies": {
     "@jesscss/core": "workspace:*"

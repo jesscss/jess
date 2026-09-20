@@ -37,6 +37,7 @@ import {
   operation,
   spaced,
   variableDeclaration,
+  anonymousMixin,
   isLiteralNode,
   isTypedLiteral,
   isValueBlock,
@@ -97,6 +98,7 @@ import type {
   List,
   Statement,
   StyleImport,
+  StyleImportConfig,
   ValueNode,
   ValueSlot,
   VariableDeclaration,
@@ -149,6 +151,7 @@ import type { PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } f
 import type { Level } from './extend/ir.js';
 import { branchFromSelector, descendantBranch, levelFromSelectorList } from './extend/ir.js';
 import { DocumentContext, documentTriviaOf, type Context, type SourceContext } from '../context.js';
+import type { ModuleConfigRejection } from '../plugin.js';
 import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
@@ -7792,6 +7795,13 @@ interface Emit extends EvalCtx {
   mixinDepth: number;
   loadedImports: Set<string> | null;
 
+  /**
+   * [module config] Per module IDENTITY (`loaded.key`) `set` configuration, so a
+   * later plain `@compose`/`@use` of the same module inherits it and a conflicting
+   * reconfiguration can be rejected (spec R6 Part E §E.2/E-d).
+   */
+  moduleConfigs?: Map<string, StyleImportConfig> | null;
+
   /** A `(multiple)` import makes its transitive imports multiple too. */
   multipleImportDepth: number;
 
@@ -10013,20 +10023,26 @@ function planImportedFacts(
       rememberImportedCallableBodies(loaded.document, loaded.document.rules, e.context);
 
       /*
-       * Match the importer: a loaded document is a lexical splice and publishes
-       * its direct facts into the importing frame before its body is walked.
+       * `@compose` is isolated and non-transitive: its facts are NOT spliced into
+       * the importer (the render path's `publishComposedModule` owns the namespace
+       * binding / `as *` merge), and its body walks in an isolated frame so nested
+       * `@compose`/`@import` never leak up. `@import` keeps splicing its direct
+       * facts into the importing frame before its body is walked.
        */
-      const published = publishImportedDocumentFacts(loaded.document.rules, scope, e);
-      if (isThenable(published)) {
-        await published;
-      }
-      if (publishFrame !== null && claimPrepublishedImportFact(e, st)) {
-        const prepublished = publishImportedDocumentFacts(loaded.document.rules, publishFrame, e, true);
-        if (isThenable(prepublished)) {
-          await prepublished;
+      const isCompose = st.mode === 'compose';
+      if (!isCompose) {
+        const published = publishImportedDocumentFacts(loaded.document.rules, scope, e);
+        if (isThenable(published)) {
+          await published;
+        }
+        if (publishFrame !== null && claimPrepublishedImportFact(e, st)) {
+          const prepublished = publishImportedDocumentFacts(loaded.document.rules, publishFrame, e, true);
+          if (isThenable(prepublished)) {
+            await prepublished;
+          }
         }
       }
-      const childFrame: Frame = { parent: scope, mixins: collectMixins(loaded.document.rules), declIndex: collectDeclIndex(loaded.document.rules), cells: null, reassign: null, statements: loaded.document.rules };
+      const childFrame: Frame = { parent: isCompose ? null : scope, mixins: collectMixins(loaded.document.rules), declIndex: collectDeclIndex(loaded.document.rules), cells: null, reassign: null, statements: loaded.document.rules };
 
       /*
        * Ordinary imports must not pay selector-IR/planning cost. The typed body
@@ -10052,7 +10068,7 @@ function planImportedFacts(
           reference ? null : importCssPlan,
           loaded.withinDocument ?? withinDocument,
           multipleImportDepth || importHasOption(options, 'multiple'),
-          publishFrame
+          isCompose ? null : publishFrame
         );
       };
       if (loaded.withinDocument) {
@@ -16359,6 +16375,254 @@ function emitAtRuleStatementRaw(
 }
 
 /**
+ * Ask the module's PROVIDING plugin (matched by the module specifier's extension)
+ * whether the configured names are valid knobs (spec R6 Part E §E.4). A provider
+ * that does not implement the hook — `plugin-less`, which is permissive — accepts
+ * every name. Rejections become an eval diagnostic. Core owns the scope write.
+ */
+function validateModuleConfig(
+  node: StyleImport,
+  specifier: string,
+  config: StyleImportConfig,
+  moduleRules: readonly Statement[],
+  e: Emit
+): void {
+  const plugins = e.context?.plugins;
+  if (!plugins || plugins.length === 0) {
+    return;
+  }
+
+  /* The module specifier's extension (with leading dot), matched only within the
+     final path segment so it never runs back across a `/` or `.`. */
+  const extMatch = /\.[^./\\]+$/.exec(specifier);
+  const ext = extMatch ? extMatch[0].toLowerCase() : '';
+  if (ext === '') {
+    return;
+  }
+  const provider = plugins.find(plugin =>
+    plugin.supportedExtensions?.some(supported => supported.toLowerCase() === ext));
+  const rejections: readonly ModuleConfigRejection[] | void = provider?.applyModuleConfig?.({
+    kind: config.kind,
+    moduleRules,
+    bindings: config.bindings.map(binding => ({ name: binding.name }))
+  });
+  if (rejections && rejections.length > 0) {
+    const first = rejections[0]!;
+    throw moduleConfigRejected(node, first.message, first.name);
+  }
+}
+
+function moduleConfigRejected(node: StyleImport, message: string, name: string): JessError {
+  return new JessError({
+    code: 'eval/module-config-rejected',
+    phase: 'eval',
+    node,
+    summary: message,
+    reason: message,
+    meta: { reason: message, name }
+  });
+}
+
+/**
+ * Structural equality that ignores span slots (`_s`/`_e` and other `_`-prefixed
+ * provenance), so two textually-identical config blocks authored at different
+ * source positions compare equal. Used to tell an idempotent re-`set` from a
+ * CONFLICTING reconfiguration (spec R6 Part E §E.4/E-d).
+ */
+function structurallyEqualIgnoringSpans(a: unknown, b: unknown): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (typeof a !== 'object' || a === null || typeof b !== 'object' || b === null) {
+    return false;
+  }
+  const aArray = Array.isArray(a);
+  const bArray = Array.isArray(b);
+  if (aArray || bArray) {
+    if (!aArray || !bArray || a.length !== b.length) {
+      return false;
+    }
+    for (let i = 0; i < a.length; i++) {
+      if (!structurallyEqualIgnoringSpans(a[i], b[i])) {
+        return false;
+      }
+    }
+    return true;
+  }
+  const aEntries = Object.entries(a).filter(([key]) => !key.startsWith('_'));
+  const bEntries = Object.entries(b).filter(([key]) => !key.startsWith('_'));
+  if (aEntries.length !== bEntries.length) {
+    return false;
+  }
+  const bByKey = new Map(bEntries);
+  return aEntries.every(([key, value]) => bByKey.has(key) && structurallyEqualIgnoringSpans(value, bByKey.get(key)));
+}
+
+/**
+ * Two configurations conflict unless they set the same names to the same values;
+ * the `with`/`set` spelling is not part of that identity (a `with` that merely
+ * restates a recorded `set` is not a reconfiguration).
+ */
+function sameModuleConfig(a: StyleImportConfig, b: StyleImportConfig): boolean {
+  return structurallyEqualIgnoringSpans(a.bindings, b.bindings);
+}
+
+/**
+ * Build the isolated scope a configured `@compose`d module evaluates under, and
+ * overlay its configuration (spec R6 Part E). This is the MIXIN-CALL/loop-body
+ * model: the module's built AST is the reusable definition, and this frame is the
+ * overlay the ordinary body emitter walks ONCE — the module is NOT re-spliced into
+ * the importer's scope. The frame is its OWN root (`parent: null`) so the importer's
+ * locals stay invisible (isolation); configuration OVERWRITES the module's
+ * outer-scope binding so every reference — and every derived variable — sees the
+ * configured value.
+ *
+ * Config is SEEDED into the overlay frame BEFORE the module body evaluates, into
+ * BOTH binding stores so it wins in every dialect:
+ * - scoped `@name`/`$^name` (Less `@x`, SCSS `!default`): the `reassign` store,
+ *   consulted before a frame's own last-wins declarations in
+ *   {@link lookupScopedBinding} — "overwrite the outer-scope binding".
+ * - live `$name` (`.jess` `?:`): the cell store. A knob is an if-absent write
+ *   (`$x ?: blue` / `$x: blue !default`); once config has seeded the cell, the
+ *   module's own if-absent declaration finds it and NO-OPS, so config wins. A
+ *   HARD `$x:` would clobber the seed, which is exactly why a non-knob name is
+ *   rejected by the providing plugin (`applyModuleConfig`) rather than configured.
+ *
+ * The config VALUES were authored in the importer's file, so they evaluate in the
+ * importer frame (cell `valueFrame` / `bindingValueFrames`).
+ */
+function configuredModuleFrame(
+  statements: Statement[],
+  config: NonNullable<StyleImport['config']>,
+  importerFrame: Frame
+): Frame {
+  const reassign = new Map<string, VariableDeclaration>();
+  const cells = new Map<string, BindingCell>();
+  const bindingValueFrames = new Map<Binding, Frame>();
+  for (const binding of config.bindings) {
+    reassign.set(binding.name, binding);
+    cells.set(binding.name, {
+      declaration: binding,
+      value: binding.value,
+      valueFrame: importerFrame,
+      evaluated: null,
+      prev: null
+    });
+    bindingValueFrames.set(binding.value, importerFrame);
+  }
+  return {
+    parent: null,
+    mixins: collectMixins(statements),
+    declIndex: collectDeclIndex(statements),
+    cells,
+    reassign,
+    bindingValueFrames,
+    statements,
+    sourceOwner: null
+  };
+}
+
+/**
+ * An UNCONFIGURED `@compose` module also evaluates in its own isolated overlay
+ * frame (`parent: null`), so its body's nested `@compose`/`@import` publish into
+ * THIS frame and never leak up to the importer — `@compose` is non-transitive,
+ * unlike the transitively-leaky `@import`. The importer reaches the module's own
+ * members only through the namespace binding built by {@link publishComposedModule}.
+ */
+function unconfiguredModuleFrame(statements: Statement[]): Frame {
+  return {
+    parent: null,
+    mixins: collectMixins(statements),
+    declIndex: collectDeclIndex(statements),
+    cells: null,
+    reassign: null,
+    statements,
+    sourceOwner: null
+  };
+}
+
+/* A usable module namespace identifier (the same ident shape the grammars use). */
+const MODULE_NAMESPACE_IDENT = /^-?[_a-zA-Z\u0080-\uFFFF][-_a-zA-Z0-9\u0080-\uFFFF]*$/;
+
+/**
+ * The auto-derived `@compose`/`@use` namespace: Sass's default-namespace rule
+ * applied to the SPECIFIER STRING the author wrote (never the plugin-resolved
+ * path). Take the last `/`-segment, strip a trailing file extension, strip a
+ * leading `_` partial marker. `./foo.less` → `foo`, `#sass/map` → `map`,
+ * `@co/design-tokens` → `design-tokens`, `./_theme.scss` → `theme`. Returns
+ * `null` when the result is not a usable identifier — the author must then
+ * spell an explicit `as <name>`.
+ */
+function deriveModuleNamespace(specifier: string): string | null {
+  /* Last `/`-segment, then strip a trailing `.ext` (only when a name precedes the
+     dot) and a leading `_` partial marker. Regex-based to keep `serialize.ts` free
+     of `lastIndexOf` (the diagnostic cold-path guard bans it). */
+  const segment = /[^/]*$/.exec(specifier)?.[0] ?? specifier;
+  const withoutExt = segment.replace(/^(.+)\.[^.]+$/, '$1');
+  const base = withoutExt.startsWith('_') ? withoutExt.slice(1) : withoutExt;
+  return MODULE_NAMESPACE_IDENT.test(base) ? base : null;
+}
+
+/**
+ * Expose a composed module's OWN top-level members to the importer per its `as`
+ * clause, WITHOUT splicing its body into the importer frame (that emission is a
+ * separate isolated walk under `bodyFrame`). `namespace` follows the grammar
+ * convention: `'*'` merges members unqualified, a name binds them under
+ * `@<name>`, and `null` auto-derives from the specifier.
+ *
+ * A named module binds `@<ns>` to a value block over the module's rules whose
+ * member lookups resolve in the isolated `bodyFrame` — so `@ns.member` (and the
+ * chained `@ns.map.key` from the forward member-access chain) reaches the
+ * module's own facts and nothing its sub-modules composed.
+ */
+function publishComposedModule(
+  node: StyleImport,
+  children: Statement[],
+  importerFrame: Frame,
+  bodyFrame: Frame,
+  specifier: string,
+  e: Emit
+): void {
+  const namespace = node.namespace ?? deriveModuleNamespace(specifier);
+  if (namespace === '*') {
+    /*
+     * `as *`: the module's OWN top-level members merge unqualified into the
+     * importer. Their value-block members still resolve in the isolated
+     * bodyFrame, so redirect each value block's closure there.
+     */
+    for (const child of children) {
+      if (child.type === 'VariableDeclaration') {
+        publishImportedVariableDeclaration(importerFrame, child);
+        if (isValueBlockBinding(child.value)) {
+          bindDetached(importerFrame, child.value, bodyFrame, bodyFrame.sourceOwner ?? null);
+        }
+      } else if (child.type === 'MixinDefinition') {
+        publishImportedMixinDefinition(importerFrame, child);
+      } else if (child.type === 'Ruleset') {
+        /*
+         * ponytail: publishes the ruleset for namespace descent + reference, but NOT
+         * the synthesized zero-arg `.name()` callable fact that a flat `@import` adds
+         * (publishImportedDocumentFacts). `as *` is the discouraged path; wire the
+         * ordered-mixin publish here if a bare `.name()` call across `as *` is needed.
+         */
+        publishImportedRuleset(importerFrame, child);
+      }
+    }
+    return;
+  }
+  if (namespace === null) {
+    throw moduleConfigRejected(
+      node,
+      `@compose "${specifier}" cannot derive a namespace from its path; add an explicit "as <name>".`,
+      specifier
+    );
+  }
+  const block = anonymousMixin(children);
+  publishImportedVariableDeclaration(importerFrame, variableDeclaration(namespace, block, { mode: 'declare' }));
+  bindDetached(importerFrame, block, bodyFrame, bodyFrame.sourceOwner ?? null);
+}
+
+/**
  * Emit a typed import. With a driver-supplied document capability, a loaded
  * canonical document executes at this exact source-order point in `frame`.
  * Core deliberately knows neither paths nor parser plugins; a declined request
@@ -16399,7 +16663,49 @@ function expandStyleImport(
           }
           return;
         }
-        if (request.options === null && e.multipleImportDepth === 0 && loaded.key !== undefined) {
+
+        /*
+         * [module config] Resolve the EFFECTIVE configuration for this compose edge
+         * (spec R6 Part E §E.2/E-d). A SHARED config (`set`, and scss `@use … with`
+         * lowered to `set`) persists per module IDENTITY (`loaded.key`): it is
+         * recorded so a LATER plain `@compose` of the same module inherits it, and a
+         * second SHARED config whose values differ conflicts and rejects (an
+         * identical restatement does not). A PER-EDGE `with { … }` (less/jess) is an
+         * INDEPENDENT mixin-like instantiation: it uses only its own values, never
+         * inherits a recorded shared config, and never conflicts with one.
+         */
+        const authoredConfig = node.mode === 'compose' ? node.config ?? null : null;
+        let config = authoredConfig;
+        if (node.mode === 'compose' && loaded.key !== undefined) {
+          const recorded = e.moduleConfigs?.get(loaded.key) ?? null;
+          if (authoredConfig !== null && authoredConfig.kind === 'set') {
+            if (recorded !== null && !sameModuleConfig(recorded, authoredConfig)) {
+              throw moduleConfigRejected(
+                node,
+                `Module "${request.specifier}" is already configured with a different set of values; a module can only be configured once.`,
+                request.specifier
+              );
+            }
+            if (recorded === null) {
+              (e.moduleConfigs ??= new Map()).set(loaded.key, authoredConfig);
+            }
+          } else if (authoredConfig === null && recorded !== null) {
+            config = recorded;
+          }
+        }
+
+        /*
+         * Emit-once dedup keyed on module IDENTITY for SHARED modules — a plain
+         * import/compose, an inherited `set`, or an authored `set` (jess/.less
+         * `set { … }` and SCSS `@use … with (…)`, which the scss grammar lowers to
+         * the shared `set` kind). A shared module is a singleton: it renders ONCE,
+         * and a later plain/inherited import of the same identity does NOT re-emit.
+         * A PER-EDGE `with { … }` (less/jess only) is a distinct instantiation — like
+         * a mixin call with its own params — so it bypasses the dedup and each edge
+         * renders its own output.
+         */
+        const sharedModule = config === null || config.kind === 'set';
+        if (sharedModule && request.options === null && e.multipleImportDepth === 0 && loaded.key !== undefined) {
           const seen = e.loadedImports ??= new Set();
           if (seen.has(loaded.key)) {
             return;
@@ -16408,7 +16714,28 @@ function expandStyleImport(
         }
 
         const children = loaded.document?.rules ?? [];
-        const publishChildren = hasPrepublishedImportFact(e, node)
+
+        /*
+         * A `@compose` (spec R6 Part E) evaluates the module in its own isolated
+         * overlay frame (like a mixin-call body), NOT spliced into the importing
+         * frame: its own nested `@compose`/`@import` stay local, so `@compose` is
+         * non-transitive (unlike the transitively-leaky `@import`). Its facts never
+         * flat-publish into the importer; instead its OWN top-level members are
+         * exposed through a namespace binding (`@ns.member`) or, with `as *`, merged
+         * unqualified. A CONFIGURED compose additionally overlays its `with`/`set`
+         * values in `configuredModuleFrame`.
+         */
+        const isCompose = node.mode === 'compose';
+        if (config !== null) {
+          validateModuleConfig(node, request.specifier, config, children, e);
+        }
+        const bodyFrame = isCompose
+          ? (config !== null ? configuredModuleFrame(children, config, frame) : unconfiguredModuleFrame(children))
+          : frame;
+        if (isCompose) {
+          publishComposedModule(node, children, frame, bodyFrame, request.specifier, e);
+        }
+        const publishChildren = isCompose || hasPrepublishedImportFact(e, node)
           ? undefined
           : publishImportedDocumentFacts(children, frame, e);
 
@@ -16424,8 +16751,8 @@ function expandStyleImport(
           }
           rememberImportedCallableBodies(loaded.document, loaded.document.rules, e.context);
           const emitDocument = () => emitLoaded
-            ? emitLoaded(loaded.document!, frame)
-            : emitDocumentStatements(loaded.document!.rules, frame, e, importDocument, true);
+            ? emitLoaded(loaded.document!, bodyFrame)
+            : emitDocumentStatements(loaded.document!.rules, bodyFrame, e, importDocument, true);
 
           /*
            * The StyleImport itself has NO postlude to honour: the loaded document
@@ -16446,7 +16773,7 @@ function expandStyleImport(
            */
           const emitWithPlugins = (): MaybePromise<void> =>
             withDocumentTrivia(e, loaded.document!, () =>
-              mapMaybe(prepareBodyPlugins(loaded.document!.rules, frame, e), () => {
+              mapMaybe(prepareBodyPlugins(loaded.document!.rules, bodyFrame, e), () => {
                 /*
                  * Splice the imported document's own leading block comment (e.g. a
                  * `/*!` license banner) at the import site. This must run for a
