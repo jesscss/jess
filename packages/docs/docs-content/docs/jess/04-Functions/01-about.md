@@ -9,7 +9,7 @@ You can optionally install the `@jesscss/fns` package to add a number of helper 
 
 Most of these functions (especially color functions) are imported and converted from Less.js.
 
-To use, import them like:
+The future explicit import form is:
 ```css
 @-from '@jesscss/fns' import (mix);
 
@@ -42,16 +42,17 @@ This is intended to produce:
 }
 ```
 
-:::caution Import resolution is not wired yet
+:::caution Script imports do not bind yet
 
-In the 2.x alpha the `@-from` line parses and round-trips, but no module is
-resolved. Two consequences today:
+In the 2.x alpha the `@-from` line parses and round-trips, but the evaluator
+does not bind its exports. Two consequences today:
 
 - **Import aliasing does not work.** `jessRgb(1, 2, 3)` above is passed through
   verbatim — it is not evaluated as `rgb()`.
-- **Built-in helpers resolve by name whether or not you import them.** The `mix`
-  example above produces `#800080` even with the `@-from` line removed. Keep
-  writing the import — it is the intended contract — but don't rely on the
-  import being what makes it work.
+- **Built-in helpers resolve by name without an import today.** The `mix`
+  example above produces `#800080` with the `@-from` line removed.
+
+See [Modules & imports](/docs/language/modules-and-imports) for the canonical
+module status.
 
 :::

@@ -37,4 +37,5 @@ need the exact rule behind a specific output difference.
 - **[String Formatting (`%()`)](./string-format.md)** — the `%()` compat alias and how
   it lowers to a string-format call.
 - **[Inline JavaScript Removed](./inline-javascript.md)** — backtick JS is gone; use
-  `@use` / `@-use` script modules.
+  plain Less expressions or the current plugin bridge while script modules are
+  still planned.

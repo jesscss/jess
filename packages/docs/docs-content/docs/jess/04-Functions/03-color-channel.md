@@ -8,7 +8,6 @@ origin: jess
 ---
 Example:
 ```css
-@-from '@jesscss/fns' import (hue, hsl);
 
 .box {
   value: hue(hsl(90, 100%, 50%));
