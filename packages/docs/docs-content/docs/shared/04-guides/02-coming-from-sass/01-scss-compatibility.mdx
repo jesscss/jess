@@ -51,14 +51,12 @@ forwarding through `@-export`.
 
 ### `@use` (scripts) → `@-use` / `@-from`
 
-This is a syntax preview in the current alpha. `@-use` is planned as the
-namespace form for JS/TS/JSON modules, while `@-from` is planned for named,
-default, or namespace imports. The evaluator does not bind those imports yet.
-
-When parsing SCSS, Jess treats `@use` as a stylesheet import by default. A path
-that clearly targets `.js`, `.ts`, or `.json` parses to a script-module
-node, which currently round-trips without binding exports. See
-[Modules & imports](/docs/language/modules-and-imports) for the canonical status.
+`@-use` imports a JS/TS/JSON namespace, while `@-from` imports named,
+default, or namespace exports. When parsing SCSS, Jess treats `@use` as a
+stylesheet import by default; a path that clearly targets `.js`, `.ts`, or
+`.json` is a script or data module. Built-in `sass:*` modules are available
+without a script runtime. See [Modules & imports](/docs/language/modules-and-imports)
+for the canonical syntax and runtime requirements.
 
 ### `@forward` (SCSS) → `@-export`
 

@@ -21,7 +21,7 @@
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { any, callArg, condition, dimension, expression, funcCall, ifNode, ifValue, important, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, quoted, reference, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, semanticGapText, simpleSelector, sourceSpanOf, spaced, valueLayoutOf, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorCapture, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorCapture, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { requireLessParseState } from './parse-state.js';
 import { LessUnsupportedVariableNameError } from './parse-error.js';
 
@@ -1916,6 +1916,8 @@ function isStatement(value: unknown): value is Statement {
     return false;
   }
   switch (value.type) {
+    case 'ModuleImport':
+      return true;
     case 'StyleImport':
       return isStyleImport(value);
     case 'VariableDeclaration':

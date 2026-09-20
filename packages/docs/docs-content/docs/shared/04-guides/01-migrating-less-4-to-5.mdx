@@ -48,8 +48,9 @@ plugin boundary:
 
 - Prefer a plain Less expression or function when one exists
   (`@columns: max(12, 8);`).
-- For genuine scripting, use a preloaded plugin or the deprecated `@plugin`
-  bridge until script modules ship.
+- For genuine scripting, import the module with `@use`; local or package
+  JavaScript and TypeScript require `@jesscss/plugin-js`. Use the deprecated
+  `@plugin` bridge only for legacy Less plugins.
 
 `javascriptEnabled` no longer re-enables inline backticks; at most it gates
 `@plugin` loading. To turn executable scripts off entirely use
@@ -61,8 +62,7 @@ compatibility).
 <AudienceGate include={['jess']}>
 
 In Jess there is no inline-JavaScript syntax at all. Express values with
-built-in functions where possible (`@columns: max(12, 8);`). Script and data
-imports with `@-use` / `@-from` are still a syntax preview; see
+built-in functions where possible (`@columns: max(12, 8);`). Script and data imports use `@-use` / `@-from`; see
 [Modules & imports](/docs/language/modules-and-imports).
 
 </AudienceGate>

@@ -14,8 +14,8 @@ to the platform.
 | `@-compose` | Load an isolated stylesheet module | Available |
 | `@-export` | Forward a stylesheet module API | Available |
 | `@-import` | Fold a stylesheet into shared scope | Available, discouraged |
-| `@-use` | Load a script or data module namespace | Syntax preview |
-| `@-from` | Import selected script or data exports | Syntax preview |
+| `@-use` | Load a script or data module namespace | Available |
+| `@-from` | Import selected script or data exports | Available |
 
 The complete module contract and current support status live on
 [Modules & imports](/docs/language/modules-and-imports). That shared page is the
@@ -83,19 +83,23 @@ declaration rejects configuration.
 
 ## `@-use` and `@-from`
 
-These spellings are reserved for JavaScript, TypeScript, JSON, and built-in
-function modules:
+These directives load JavaScript, TypeScript, JSON, and built-in function
+modules at compile time:
 
 ```less
-// Syntax preview; not executable in the current alpha.
 @-use "./tokens.json" as tokens;
 @-from "./functions.js" import (double as twice);
+
+.card {
+  color: $tokens.color;
+  width: twice(10px);
+}
 ```
 
-The parser creates structured module import nodes, but evaluation does not yet
-bind exports from them. The directives currently round-trip to CSS. See
-[Modules & imports](/docs/language/modules-and-imports#script-and-data-modules-reserved-not-executable-yet)
-for the exact boundary.
+The directives emit no CSS. JSON needs no script runtime; local and package
+JavaScript or TypeScript require `@jesscss/plugin-js`. See
+[Modules & imports](/docs/language/modules-and-imports#script-and-data-modules)
+for namespace, flat, default, and selected import forms.
 
 ## `@-import`
 
