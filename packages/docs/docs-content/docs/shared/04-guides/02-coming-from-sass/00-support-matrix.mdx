@@ -74,13 +74,14 @@ Jess spends its complexity budget — not a verdict on Sass's design.
 | Map literals + `map-get` | ✅ | Map lookup uses value equality, so `("bold": 700)` is read back as `map-get($m, bold)`. |
 | `map-get` with a quoted or variable key | ✅ | Keys stay typed and resolve with Sass map equality. |
 | Two-map `map-merge($left, $right)` | ✅ | Runs through the Sass global function registry; it is not parser syntax. |
-| `map.merge($left, $right)` | ⏳ | The module function exists, but Sass/Jess module resolution is not wired into stylesheet evaluation yet. |
+| `map.merge($left, $right)` | ⏳ | The module function exists, but script and built-in module imports do not bind exports yet. |
 | `map-keys` / `map-values` / `map-has-key` | ✅ | Available through the Sass global function registry. |
-| `map.deep-merge($left, $right)` | ⏳ | The recursive function is implemented and exported by `@jesscss/fns/sass/map`, but Sass/Jess module resolution is not wired into stylesheet evaluation yet. |
+| `map.deep-merge($left, $right)` | ⏳ | The recursive function is exported by `@jesscss/fns/sass/map`, but script and built-in module imports do not bind exports yet. |
 | `@import` | ✅ | Partials, `_`-prefixed files, and cross-file variables and mixins. A plain-CSS `@import url(…)` passes through untouched. |
-| `@use` / `@forward` | ⏳ | Both parse, but module resolution is not wired up: the at-rule reaches the CSS output instead of loading the module. |
-| `@use … with (…)` configuration | ⏳ | The configuration clause is not in the grammar. |
-| Namespaced access — `ns.$var`, `ns.fn()` | ⏳ | Rejected with and without an explicit `as` alias. |
+| Stylesheet `@use` / basic `@forward` | ✅ | Stylesheet paths load as isolated modules; basic forwarding is supported. |
+| `@use … with (…)` configuration | ✅ | Configures a `!default` variable on the shared module; conflicting later configuration is an error. |
+| Namespaced access — `ns.$var`, `ns.fn()` | ✅ | Supported for loaded stylesheet modules. |
+| Script/data and `sass:` `@use` targets | ⏳ | They parse to module import nodes, but evaluation does not bind their exports yet. |
 | `@forward … show` / `hide` | ❌ | Visibility belongs to the module that defines a name, not to a module that re-exports it. A module declares its own public surface, and an importer does not get to re-filter it. |
 | `@forward … as prefix-*` | ❌ | Automatic prefixing makes the forwarding module the owner of names it did not define, which makes a call site hard to trace back to its definition. Use an explicit namespace. |
 | `@at-root` | ❌ | `@at-root` exists to relocate a rule after the fact. Jess owns a real AST and controls evaluation order, so a rule can be written where it belongs from the start — at the root, or in its own module. |

@@ -8,10 +8,11 @@ origin: jess
 
 :::danger Imported functions are not resolved yet
 
-`@-from` parses and is preserved, but there is no module resolver in the 2.x
-alpha, so an imported function is never loaded or called. A call like
-`double(10px)` is passed through to the output verbatim. The syntax below is
-current; the behavior is the target.
+`@-from` parses into a structured module import, but the evaluator does not yet
+bind its exports. An imported function is therefore never called, and a call
+like `double(10px)` is passed through to the output verbatim. The syntax below
+is a preview; the behavior is the target. See
+[Modules & imports](/docs/language/modules-and-imports) for the canonical status.
 
 Jess's **built-in** functions (`mix`, `hsl`, `luma`, …) do work today — and they
 resolve by name, without an import.

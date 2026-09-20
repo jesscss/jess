@@ -46,16 +46,19 @@ Jess equivalent:
 .box { color: $theme.primary-color; }
 ```
 
-Jess stylesheet imports support namespaces, configuration, and export/protection
-flags.
+Jess stylesheet imports support namespaces, isolated scope, configuration, and
+forwarding through `@-export`.
 
 ### `@use` (scripts) → `@-use` / `@-from`
 
-In Jess, `@-use` is the namespace form for JS/TS/JSON modules. Like Sass, it can
-infer the namespace from the module name when `as` is omitted. `@-from` is the
-ESM-style form for named imports or `import * as ns` namespace imports.
+This is a syntax preview in the current alpha. `@-use` is planned as the
+namespace form for JS/TS/JSON modules, while `@-from` is planned for named,
+default, or namespace imports. The evaluator does not bind those imports yet.
 
-When parsing SCSS, Jess will treat `@use` as a stylesheet import by default, but if the `@use` path clearly targets a script module (for example `./tokens.js`, `./tokens.ts`, `./tokens.json`), it will parse to a JS import node instead.
+When parsing SCSS, Jess treats `@use` as a stylesheet import by default. A path
+that clearly targets `.js`, `.ts`, or `.json` parses to a script-module
+node, which currently round-trips without binding exports. See
+[Modules & imports](/docs/language/modules-and-imports) for the canonical status.
 
 ### `@forward` (SCSS) → `@-export`
 
