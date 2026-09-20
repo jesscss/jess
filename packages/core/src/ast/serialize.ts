@@ -3977,6 +3977,7 @@ function evalTyped(
       if (moduleCall !== undefined) {
         return mapMaybe(moduleCall, value => force(e, value));
       }
+
       /*
        * A typed guard comparison must retain the matched member's AST tag.
        * Falling through `evalValue` turns a typed `Keyword('true')` into an
