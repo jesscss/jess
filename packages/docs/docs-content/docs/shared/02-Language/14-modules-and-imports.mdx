@@ -18,8 +18,11 @@ status:
 
 | Module family | Jess | Less 5 | Current status |
 | --- | --- | --- | --- |
-| Stylesheets | `@-compose` | `@compose` | Available |
-| Scripts and data | `@-use` / `@-from` | `@use` / `@-use` | Available |
+| Stylesheets | `@-compose` | `@compose` or `@-compose` | Available |
+| Scripts and data | `@-use` / `@-from` | `@use` or `@-use` | Available |
+
+Jess always writes its compiler at-rules with a leading dash. Less 5 accepts
+every Less-specific at-rule with or without the dash.
 
 The compose family loads stylesheet code, exposes that stylesheet's own public
 members, and may emit CSS. `@use` and `@from` are reserved for JavaScript,
@@ -28,6 +31,22 @@ TypeScript, JSON, and built-in function modules. They do not replace one another
 <AudienceGate include={['less']}>
 
 # Stylesheet modules in Less 5
+
+## Dashed at-rules in Less 5
+
+Every Less-specific at-rule has two spellings: the plain name used throughout
+these docs, and a dashed name that marks it explicitly as a compiler directive.
+`@compose` and `@-compose` are the same directive, as are `@use` and `@-use`.
+The dash applies only to Less's own at-rules; CSS at-rules such as `@media` or
+`@layer` have no dashed form.
+
+`@import` is the one exception, because the plain name is also a CSS at-rule:
+
+- `@import` detects its kind. It either stays in the output as a CSS import or
+  folds a Less stylesheet into the current scope, using the rules
+  [below](#import-remains-a-legacy-bridge).
+- `@-import` always imports a Less stylesheet and accepts only Less stylesheet
+  import syntax.
 
 Use `@compose` for a stylesheet dependency with isolated scope.
 
@@ -105,8 +124,8 @@ declaration as its default:
 ## `@import` remains a legacy bridge
 
 `@import` keeps Less 4 behavior: extensions and options decide whether it emits
-a CSS import or folds source into the current scope. `@-import` is the explicit
-source-fold form. Both continue to work for migration, but warn in Less 5 because
+a CSS import or folds source into the current scope. `@-import` always folds a
+Less stylesheet. Both continue to work for migration, but warn in Less 5 because
 their shared scope is harder to reason about.
 
 ```less
@@ -287,7 +306,7 @@ several modules can export the same name.
 
 <AudienceGate include={['less']}>
 
-Less 5 supports `@use` and its dashed alias `@-use`. The namespace always
+Less 5 supports `@use`, also spelled `@-use`. The namespace always
 comes from the file name; Less does not accept an `as` clause and does not
 implement `@from`.
 
