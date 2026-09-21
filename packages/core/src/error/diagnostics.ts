@@ -4,7 +4,7 @@ import {
   type ILexingResult
 } from 'chevrotain';
 import type { Deprecation } from '../deprecation.js';
-import { type JessErrorCode, type Phase, isJessErrorCode } from './codes.js';
+import { type JessErrorCode, type ParseErrorCode, type Phase, isJessErrorCode, isParseErrorCode } from './codes.js';
 import { lineColAt, extractRelevantLines } from './code-frame.js';
 import {
   JessError,
@@ -56,15 +56,7 @@ export interface ErrorDiagnostic {
  * from the source that the plugin already owns.
  */
 export interface ParserFailure {
-  readonly code?:
-    | 'parse/syntax-error'
-    | 'parse/invalid-value'
-    | 'parse/dynamic-charset'
-    | 'parse/unsupported-inline-javascript'
-    | 'parse/unsupported-bare-variable-interpolation'
-    | 'parse/unsupported-variable-name'
-    | 'parse/unsupported-mixin-name'
-    | 'parse/unparenthesized-mixin-guard';
+  readonly code?: ParseErrorCode;
   readonly offset: number;
   readonly endOffset?: number;
   readonly line?: number;
@@ -120,15 +112,7 @@ function parserFailureFrom(error: unknown): ParserFailure | undefined {
         )))
       : undefined;
   const code =
-    'code' in error
-    && (error.code === 'parse/syntax-error'
-      || error.code === 'parse/invalid-value'
-      || error.code === 'parse/dynamic-charset'
-      || error.code === 'parse/unsupported-inline-javascript'
-      || error.code === 'parse/unsupported-bare-variable-interpolation'
-      || error.code === 'parse/unsupported-variable-name'
-      || error.code === 'parse/unsupported-mixin-name'
-      || error.code === 'parse/unparenthesized-mixin-guard')
+    'code' in error && typeof error.code === 'string' && isParseErrorCode(error.code)
       ? error.code
       : undefined;
   const reason =
