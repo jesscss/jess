@@ -29,10 +29,10 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar';
-import { NO_SPAN, any, atRuleBlock, atRuleStatement, block, bodySpanFromRaw, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, atRuleBlock, atRuleStatement, block, bodySpanFromRaw, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, importOptionWords, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { requireLessParseState } from './parse-state.js';
-import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
+import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessSourceImportSyntaxError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 import {
   appendInterpolationLiteral,
   argumentFunctionFromChildren,
@@ -1229,9 +1229,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       // opaque source bytes.
       const tailValue = tailField === undefined ? undefined : requireField(fields, 'tail').value;
       const tail = tailValue === undefined ? null : isValueNode(tailValue) ? tailValue : any(staticText(tailValue));
+      const lowered = keyword.value.toLowerCase();
+      if (lowered === '@-import') {
+        // `@-import` never detects a CSS import, so CSS-only import syntax is an
+        // error rather than a silent CSS passthrough or `@media` wrapper.
+        const words = importOptionWords(options);
+        if (tail !== null || words.includes('css') || words.includes('inline')) {
+          throw new LessSourceImportSyntaxError(span.start, span.end);
+        }
+      }
       if (importIsCompileTime(keyword.value, target, options)) {
         if (tail !== null) {
-          // Only the legacy `@import`/`@-import` form desugars a media tail into
+          // Only the legacy `@import` form desugars a media tail into
           // a `@media` wrapper; `@-compose` and any `supports(...)`/`layer` tail
           // still reject. A CSS import postlude is `[ layer | layer(…) ]? [
           // supports(…) ]? <media-query-list>`; only the trailing media-query-
@@ -1240,11 +1249,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           // supports/layer condition (or a malformed mix) and is rejected. A
           // parenthesized `(feature: value)` media feature (typed `ImportQueryTail`
           // Block) or `@{…}` interpolation is a media query and carries neither.
-          // `importKeyword` only spells `@import`/`@-import`, so this is always a
-          // legacy import here; the `!isLegacyImport` guard is defensive against a
-          // future keyword (a compile-time `@-compose` admits no media wrap).
-          const lowered = keyword.value.toLowerCase();
-          const isLegacyImport = lowered === '@import' || lowered === '@-import';
+          // `@-import` rejected every tail above, so this is always a bare
+          // `@import`; the `!isLegacyImport` guard is defensive against a future
+          // keyword (a compile-time `@-compose` admits no media wrap).
+          const isLegacyImport = lowered === '@import';
           // ponytail: substring test over the opaque text tail, NOT a regex —
           // grammars forbid regex literals outside `regex()`. Upgrade path: a
           // typed `ImportTail` split (media-query vs supports/layer), the same
@@ -1275,7 +1283,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       );
     }
   );
-  // `@plugin` is a compile-time directive, not an unknown CSS at-rule. Its
+  // `@plugin`/`@-plugin` is a compile-time directive, not an unknown CSS at-rule. Its
   // target and the *inner* option string are grammar facts so the evaluator
   // never rediscovers either from raw prelude bytes. EnclosedContent
   // recursively closes delimiters and preserves arbitrary option text as
@@ -1283,10 +1291,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const PluginDirective = node(
     'Plugin',
     sequence(
-      word(
-        '@plugin',
-        '-_a-zA-Z0-9\\u0080-\\uFFFF',
-        { caseInsensitive: true }
+      keywords(
+        ['@-plugin', '@plugin'],
+        { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
       ),
       optional(sequence(literal('('), field('options', g.EnclosedContent), literal(')'))),
       field('target', quotedOrUrlTarget),
