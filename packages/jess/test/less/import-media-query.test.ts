@@ -68,7 +68,7 @@ describe('a media query on a compile-time @import wraps the loaded document in @
     expect(result.css.trim()).toBe('');
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]).toMatchObject({
-      code: 'parse/syntax-error',
+      code: 'parse/import-postlude-on-compile-time-import',
       phase: 'parse',
       message: 'A compile-time @import cannot carry a layer or supports condition.'
     });
