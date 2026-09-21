@@ -1233,8 +1233,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       if (lowered === '@-import') {
         // `@-import` never detects a CSS import, so CSS-only import syntax is an
         // error rather than a silent CSS passthrough or `@media` wrapper.
-        const words = importOptionWords(options);
-        if (tail !== null || words.includes('css') || words.includes('inline')) {
+        if (tail !== null || importOptionWords(options).includes('css')) {
           throw new LessSourceImportSyntaxError(span.start, span.end);
         }
       }

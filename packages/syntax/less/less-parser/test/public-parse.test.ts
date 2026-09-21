@@ -3529,14 +3529,17 @@ describe('dashed spellings of Less at-rules', () => {
       type: 'Stylesheet',
       rules: [{ type: 'StyleImport', name: '@-import', mode: 'import' }]
     });
+    expect(parse('@-import (inline) "theme.css";')).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{ type: 'StyleImport', name: '@-import', mode: 'import' }]
+    });
 
     for (const source of [
       '@-import "theme.less" screen;',
       '@-import url("theme.less") print;',
       '@-import "theme.less" supports(display: grid);',
       '@-import "theme.less" layer;',
-      '@-import (css) "theme.css";',
-      '@-import (inline) "theme.css";'
+      '@-import (css) "theme.css";'
     ]) {
       expect(() => parse(source), source).toThrow(LessSourceImportSyntaxError);
     }
