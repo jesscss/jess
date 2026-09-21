@@ -25,11 +25,13 @@ $if ($theme = "dark") {
 
 #### 2. Feature Flags for Styles
 ```less
-@-use 'https://example.com/my-flags.json';
+$flags: {
+  enable-fancy-shadows: true;
+}
 
 .card {
   border-radius: 8px;
-  $if ($my-flags.enableFancyShadows) {
+  $if ($flags.enable-fancy-shadows) {
     box-shadow: 0 8px 32px #0002;
   }
 }
@@ -37,10 +39,7 @@ $if ($theme = "dark") {
 #### 3. Seasonal settings
 
 ```less
-// An NPM module that gives us a season method
-@-use "some-date-fns" as date; 
-
-$season: $date.getSeason($date.now()); // e.g., returns "spring", "summer", etc.
+$season: "spring";
 
 $if ($season = "spring") {
   body { background: #d8f5d1; }

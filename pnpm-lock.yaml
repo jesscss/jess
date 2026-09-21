@@ -644,6 +644,9 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core
+      '@jesscss/fns':
+        specifier: workspace:*
+        version: link:../fns
     devDependencies:
       '@types/node':
         specifier: ^20.0.0

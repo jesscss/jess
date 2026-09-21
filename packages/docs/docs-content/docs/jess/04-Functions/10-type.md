@@ -10,7 +10,6 @@ Type functions test the kind of a value and return a boolean. Import the ones yo
 need from `@jesscss/fns`. Each mirrors the equivalent Less built-in.
 
 ```css
-@-from '@jesscss/fns' import (isnumber, isstring, iscolor, iskeyword, isurl);
 ```
 
 ### isnumber(_value_)
@@ -110,7 +109,6 @@ Returns `true` when the value is an anonymous mixin or a collection (in Less
 source, a detached ruleset), `false` otherwise. The argument is evaluated lazily.
 
 ```css
-@-from '@jesscss/fns' import (isruleset);
 $rules: {
   color: red;
 };
@@ -127,7 +125,6 @@ argument is evaluated lazily, so an undefined reference yields `false` rather th
 erroring.
 
 ```css
-@-from '@jesscss/fns' import (isdefined);
 $foo: 1;
 .box {
   a: isdefined($foo); // true

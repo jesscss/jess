@@ -81,9 +81,10 @@ evaluation context per call. The Jess module system is
 `@use "./theme";` maps most cleanly to `@-compose "./theme";`, not `@-import`.
 Use `@-import` for the first pass, then promote real modules to `@-compose`.
 
-`@-compose` currently accepts a quoted path and an optional `as` alias
-(`@-compose "./theme" as t;`). Sass's `@use ... with (...)` configuration has no
-`@-compose` equivalent yet.
+`@-compose` accepts a quoted path, an optional `as` namespace, and `with { … }`
+or `set { … }` configuration. See
+[Modules & imports](/docs/language/modules-and-imports) for the shared module
+contract.
 :::
 
 ### Variable declarations

@@ -90,10 +90,18 @@ describe('V19 one-evaluator projection ratchet', () => {
     // `@<ns>` — or merges them unqualified for `as *` — instead of flat-splicing them, which
     // is what `@import` still does). No new Map/Set: the namespace binding reuses the
     // existing declIndex/detached-binding records.
-    expect(occurrences(/^function |^async function /gmu)).toBe(449);
-    expect(occurrences(/new Map/gu)).toBe(64);
-    expect(occurrences(/new Set/gu)).toBe(39);
+    // +13 functions (`ModuleImport` load/bind/eval, #182): module export
+    // conversion, namespace/selected binding, and the two existing Reference
+    // shapes that dispatch namespaced module functions directly, without a
+    // temporary Reference node. +3 `new Set`: render-local imported-function
+    // and namespace-value identity plus one lazy JSON cycle guard. +2 `new Map`:
+    // document-scoped module facts in the compile plan and direct-serialize
+    // fallback; strong ownership avoids per-node ephemeron tables.
+    expect(occurrences(/^function |^async function /gmu)).toBe(462);
+    expect(occurrences(/new Map/gu)).toBe(66);
+    expect(occurrences(/new Set/gu)).toBe(42);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
+    expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);
 
     /*

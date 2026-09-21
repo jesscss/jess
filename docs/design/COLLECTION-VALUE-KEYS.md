@@ -64,9 +64,8 @@ Spread is deliberately shallow. Recursive merging uses the Sass map function:
 $theme: $map.deep-merge($defaults, $overrides);
 ```
 
-The function is exported by `@jesscss/fns/sass/map`; Jess module at-rules still
-only parse and round-trip today, so the `@-use` example records the formal module
-shape rather than claiming that the resolver is already wired.
+The function is exported by `@jesscss/fns/sass/map`; the trusted built-in
+module loader binds it without requiring the optional script runtime.
 
 ## `foo:` and `["foo"]:` are the SAME key
 

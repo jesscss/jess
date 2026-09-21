@@ -1,9 +1,10 @@
 # Reference-call / member-call — a callable, chained Reference
 
-Status: SCOPE + PLAN ONLY. No production code changed. The **core Reference-call
-machinery** (grammar + node + eval + render) is the buildable prerequisite; the
-**module member-access semantics** it enables are PROPOSED and gated on owner
-sign-off of R6 Part D / R4 §R4.6.
+Status: IMPLEMENTED MECHANISM. The core `Reference` lookup/call chain is in
+production. Script/data module imports now bind namespace values and functions,
+including Less `@module.fn()` and Jess `$module.fn()` calls. The broader A8
+member-access policy remains owner-open in `DESIGN-DECISIONS.md`; this status
+records shipped code and does not close that requirement.
 
 ## Parseman routing requirement (observed during direct Less implementation)
 

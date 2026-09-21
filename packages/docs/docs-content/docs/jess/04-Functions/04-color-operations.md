@@ -10,7 +10,6 @@ Color operations generally take parameters in the same units as the values they 
 
 Example:
 ```css
-@-from '@jesscss/fns' import (saturate, hsl);
 
 .box {
   color: saturate(hsl(90, 80%, 50%), 20%);

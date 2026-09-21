@@ -187,6 +187,13 @@ export interface PluginInterface {
   import?(absoluteFilePath: string): Promise<Record<string, any>>;
 
   /**
+   * Claim a resolved module path before extension-based executable-module
+   * selection. This is for trusted package-owned modules whose file extension
+   * is also used by sandboxed user scripts.
+   */
+  canImportModule?(absoluteFilePath: string): boolean;
+
+  /**
    * Optional executable-plugin loader. Context selects this capability by file
    * extension just like ordinary module import; the dialect adapter owns the
    * returned module ABI. Kept distinct from `import()` because a legacy plugin
