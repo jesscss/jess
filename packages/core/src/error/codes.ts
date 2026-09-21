@@ -22,6 +22,8 @@ export type JessErrorCode =
   | 'parse/unsupported-variable-name'
   | 'parse/unsupported-mixin-name'
   | 'parse/unparenthesized-mixin-guard'
+  | 'parse/import-postlude-on-compile-time-import'
+  | 'parse/source-import-css-syntax'
   | 'resolve/name-not-found'
   | 'import/circular-compose'
   | 'import/not-found'
@@ -154,6 +156,22 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'Less mixin guard conditions must be parenthesized',
       reason: 'Top-level Less mixin guards require each condition after when to be wrapped in parentheses.',
       fix: 'Wrap the guard condition, for example: when (default()).'
+    }
+  ],
+  [
+    'parse/import-postlude-on-compile-time-import',
+    {
+      summary: 'A compile-time @import cannot carry a layer or supports condition',
+      reason: 'A layer or supports condition on a compile-time @import is not supported.',
+      fix: 'Wrap the import in an explicit @media/@layer/@supports block.'
+    }
+  ],
+  [
+    'parse/source-import-css-syntax',
+    {
+      summary: '@-import cannot carry a media, supports or layer condition without (css)',
+      reason: '@-import has Less import semantics, so a CSS import condition needs the (css) option.',
+      fix: 'Remove the media, supports or layer condition, or add (css) to emit a CSS @import.'
     }
   ],
 
@@ -486,6 +504,12 @@ const JESS_ERROR_CODE_SET: ReadonlySet<string> = new Set(TEMPLATES.keys());
 
 export function isJessErrorCode(code: string): code is JessErrorCode {
   return JESS_ERROR_CODE_SET.has(code);
+}
+
+export type ParseErrorCode = Extract<JessErrorCode, `parse/${string}`>;
+
+export function isParseErrorCode(code: string): code is ParseErrorCode {
+  return code.startsWith('parse/') && JESS_ERROR_CODE_SET.has(code);
 }
 
 /**
