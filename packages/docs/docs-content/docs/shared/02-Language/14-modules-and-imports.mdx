@@ -45,9 +45,11 @@ The dash applies only to Less's own at-rules; CSS at-rules such as `@media` or
 - `@import` detects its kind. It either stays in the output as a CSS import or
   folds a Less stylesheet into the current scope, using the rules
   [below](#import-remains-a-legacy-bridge).
-- `@-import` always has Less import semantics. It accepts the Less import
-  options below, but not the `(css)` option or a media, `supports()` or `layer`
-  condition, because those would make it a CSS import.
+- `@-import` always has Less import semantics and accepts the Less import
+  options below. It does not wrap imported rules in a media query, so a media,
+  `supports()` or `layer` condition is an error. The one exception is `(css)`,
+  which asks for a CSS import: `@-import (css) "print.css" print;` outputs
+  `@import "print.css" print;`.
 
 Use `@compose` for a stylesheet dependency with isolated scope.
 

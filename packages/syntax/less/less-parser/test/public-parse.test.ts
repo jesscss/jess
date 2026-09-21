@@ -3538,10 +3538,18 @@ describe('dashed spellings of Less at-rules', () => {
       '@-import "theme.less" screen;',
       '@-import url("theme.less") print;',
       '@-import "theme.less" supports(display: grid);',
-      '@-import "theme.less" layer;',
-      '@-import (css) "theme.css";'
+      '@-import "theme.less" layer;'
     ]) {
       expect(() => parse(source), source).toThrow(LessSourceImportSyntaxError);
+    }
+  });
+
+  it('parses @-import (css) as a CSS @import', () => {
+    for (const tail of ['', ' screen', ' layer(base) supports(display: grid) print']) {
+      const dashed = parse(`@-import (css) "theme.css"${tail};`);
+      expect(dashed.rules[0], tail).toMatchObject({ type: 'AtRuleStatement', name: '@import' });
+      expect(bare(dashed), tail).toEqual(bare(parse(`@import (css) "theme.css"${tail};`)));
+      expect(serialize(dashed).css, tail).toBe(`@import "theme.css"${tail};\n`);
     }
   });
 });

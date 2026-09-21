@@ -1230,12 +1230,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       const tailValue = tailField === undefined ? undefined : requireField(fields, 'tail').value;
       const tail = tailValue === undefined ? null : isValueNode(tailValue) ? tailValue : any(staticText(tailValue));
       const lowered = keyword.value.toLowerCase();
-      if (lowered === '@-import') {
-        // `@-import` never detects a CSS import, so CSS-only import syntax is an
-        // error rather than a silent CSS passthrough or `@media` wrapper.
-        if (tail !== null || importOptionWords(options).includes('css')) {
-          throw new LessSourceImportSyntaxError(span.start, span.end);
-        }
+      // `@-import` never detects a CSS import. Only `(css)` asks for one, and
+      // then the rest parses and emits as a plain CSS `@import`; without it a
+      // CSS postlude is an error rather than a silent `@media` wrapper.
+      const isSourceImport = lowered === '@-import';
+      if (isSourceImport && tail !== null && !importOptionWords(options).includes('css')) {
+        throw new LessSourceImportSyntaxError(span.start, span.end);
       }
       if (importIsCompileTime(keyword.value, target, options)) {
         if (tail !== null) {
@@ -1272,7 +1272,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return withImportSourceSpan(
         withImportTailStart(
           atRuleStatement(
-            keyword.value,
+            isSourceImport ? '@import' : keyword.value,
             tail === null ? target : spaced([target, tail])
           ),
           tailField === undefined || Array.isArray(tailField) ? NO_SPAN : tailField.span.start

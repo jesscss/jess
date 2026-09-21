@@ -197,21 +197,21 @@ export class LessUnparenthesizedMixinGuardError extends SyntaxError {
 /**
  * `@-import` is the dashed spelling of a Less import. Unlike bare `@import`, it
  * never detects a CSS import, so it rejects a media, `supports(...)` or `layer`
- * postlude and the `(css)` option, which would turn it into a CSS import. Every
- * other Less import option keeps its meaning.
+ * postlude. The `(css)` option is the one explicit request for a CSS import;
+ * with it, the postlude parses and emits as a plain CSS `@import`.
  */
 export class LessSourceImportSyntaxError extends SyntaxError {
   readonly code = 'parse/source-import-css-syntax' as const;
   readonly offset: number;
   readonly endOffset: number;
   readonly reason =
-    '@-import always imports a Less stylesheet, so it accepts only Less stylesheet import syntax.';
+    '@-import has Less import semantics, so a CSS import condition needs the (css) option.';
 
   readonly fix =
-    'Remove the media, supports or layer condition and the (css) option, or use @import for a CSS import.';
+    'Remove the media, supports or layer condition, or add (css) to emit a CSS @import.';
 
   constructor(offset: number, endOffset: number) {
-    super('@-import accepts only Less stylesheet import syntax.');
+    super('@-import cannot carry a media, supports or layer condition without (css).');
     this.name = 'LessSourceImportSyntaxError';
     this.offset = offset;
     this.endOffset = endOffset;
