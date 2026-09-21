@@ -85,6 +85,37 @@ describe('Less parser errors through the public AST route', () => {
     });
   });
 
+  it('keeps import parser error codes on result and throw paths', async () => {
+    const cases = [
+      {
+        source: '@-import "theme.less" screen;',
+        code: 'parse/source-import-css-syntax',
+        message: '@-import cannot carry a media, supports or layer condition without (css).',
+        fix: 'Remove the media, supports or layer condition, or add (css) to emit a CSS @import.'
+      },
+      {
+        source: '@import (less) "theme.less" layer;',
+        code: 'parse/import-postlude-on-compile-time-import',
+        message: 'A compile-time @import cannot carry a layer or supports condition.',
+        fix: 'Wrap the import in an explicit @media/@layer/@supports block.'
+      }
+    ];
+    const compiler = new Compiler();
+    for (const { source, code, message, fix } of cases) {
+      const result = await compiler.renderToResult(
+        { source, filePath: 'imports.less', extension: '.less' },
+        { breakOnError: false }
+      );
+      expect(result.errors, source).toHaveLength(1);
+      expect(result.errors[0], source).toMatchObject({ code, phase: 'parse', message, fix, line: 1, column: 1 });
+
+      await expect(compiler.renderString(source, {
+        filePath: 'imports.less',
+        extension: '.less'
+      }), source).rejects.toMatchObject({ code, fix, line: 1, column: 1 });
+    }
+  });
+
   it('reports unsupported legacy Less variable names through the public compiler route', async () => {
     const compiler = new Compiler();
     const cases = [
