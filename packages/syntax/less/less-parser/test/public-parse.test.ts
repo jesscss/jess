@@ -13,6 +13,7 @@ import {
   LessBareVariableInterpolationError,
   LessImportPostludeError,
   LessParseError,
+  LessSourceImportSyntaxError,
   LessUnsupportedVariableNameError,
   parse
 } from '@jesscss/less-parser';
@@ -3506,5 +3507,49 @@ describe('keyword boundaries run to full ident-continue', () => {
     expect(parse('@supports (color: red) { a { color: red; } }')).toMatchObject({
       rules: [{ type: 'AtRuleBlock', name: '@supports', prelude: { type: 'Block', delimiter: 'paren' } }]
     });
+  });
+});
+
+describe('dashed spellings of Less at-rules', () => {
+  it('parses @-plugin as the same Plugin directive as @plugin', () => {
+    for (const source of ['@plugin (x=1) "./plugin.js";', '@-plugin (x=1) "./plugin.js";', '@-PLUGIN "./plugin.js";']) {
+      expect(parse(source)).toMatchObject({
+        type: 'Stylesheet',
+        rules: [{ type: 'Plugin', target: { type: 'Quoted', value: './plugin.js' } }]
+      });
+    }
+  });
+
+  it('keeps @-import to Less stylesheet import syntax', () => {
+    expect(parse('@-import (reference, optional) "theme.less";')).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{ type: 'StyleImport', name: '@-import', mode: 'import' }]
+    });
+    expect(parse('@-import "theme.css";')).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{ type: 'StyleImport', name: '@-import', mode: 'import' }]
+    });
+    expect(parse('@-import (inline) "theme.css";')).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{ type: 'StyleImport', name: '@-import', mode: 'import' }]
+    });
+
+    for (const source of [
+      '@-import "theme.less" screen;',
+      '@-import url("theme.less") print;',
+      '@-import "theme.less" supports(display: grid);',
+      '@-import "theme.less" layer;'
+    ]) {
+      expect(() => parse(source), source).toThrow(LessSourceImportSyntaxError);
+    }
+  });
+
+  it('parses @-import (css) as a CSS @import', () => {
+    for (const tail of ['', ' screen', ' layer(base) supports(display: grid) print']) {
+      const dashed = parse(`@-import (css) "theme.css"${tail};`);
+      expect(dashed.rules[0], tail).toMatchObject({ type: 'AtRuleStatement', name: '@import' });
+      expect(bare(dashed), tail).toEqual(bare(parse(`@import (css) "theme.css"${tail};`)));
+      expect(serialize(dashed).css, tail).toBe(`@import "theme.css"${tail};\n`);
+    }
   });
 });

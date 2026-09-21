@@ -182,7 +182,7 @@ describe('Less import CST facts', () => {
   });
 
   it('keeps a url target and the @-import keyword', () => {
-    const result = parseLessCst('@-import (reference) url("theme.less") print;');
+    const result = parseLessCst('@-import (reference) url("theme.less");');
     expect(result.errors).toHaveLength(0);
     const imp = findNode(result.tree, 'ImportStatement');
     expect(imp).toBeDefined();
@@ -190,7 +190,6 @@ describe('Less import CST facts', () => {
     expect(findNode(imp!, 'ImportOptions')).toBeDefined();
     expect(findNode(imp!, 'ImportTarget')).toBeDefined();
     expect(findNode(imp!, 'Url')).toBeDefined();
-    expect(findNode(imp!, 'ImportTail')).toBeDefined();
     expectNoModeLabels(result.tree);
   });
 
