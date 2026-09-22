@@ -425,7 +425,6 @@ describe('Can render Less files to CSS', () => {
       value => forcedIncludes.has(value) || !invalidLess.includes(value)
     )
     .filter(value => !skippedFixtureReasons.has(value)) // Skip files tested elsewhere or outside the current alpha lane
-    .filter(value => !value.startsWith('tests-unit/plugin-')) // Keep only plugin/plugin.less, not plugin-* variants
     .filter(value => !fixtureFilter || fixtureFilter.test(value))
 
     // .filter(value => value <= 'tests-unit/whitespace/whitespace.less')
