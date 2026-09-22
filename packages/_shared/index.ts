@@ -36,6 +36,7 @@ export const notSameSerialized = [
   /** Serialization issues */
   /** Has a pi value that was not rounded properly */
   'tests-unit/plugin/plugin.css',
+
   /** It's valid but not formatted, which we're also testing */
   'tests-unit/plugin-module/plugin-module.css',
   'tests-unit/import/import.css',
@@ -61,40 +62,39 @@ export const invalidLess: string[] = [
   /** This file is full of errors. */
   // 'tests-unit/css-3/css-3.less',
 
-  // 'tests-unit/css-guards/css-guards.less',
-  // Currently failing parsing; treat as invalid until less-parser supports them fully.
-  // 'tests-unit/extract-and-length/extract-and-length.less',
-  // 'tests-unit/functions/functions.less',
-  // 'tests-unit/mixins-interpolated/mixins-interpolated.less',
+  /*
+   * 'tests-unit/css-guards/css-guards.less',
+   * Currently failing parsing; treat as invalid until less-parser supports them fully.
+   * 'tests-unit/extract-and-length/extract-and-length.less',
+   * 'tests-unit/functions/functions.less',
+   * 'tests-unit/mixins-interpolated/mixins-interpolated.less',
+   */
 
   'tests-unit/permissive-parse/permissive-parse.less',
   'tests-unit/permissive-parse/legacy/permissive-parse.less',
 
   /** OPEN F7(a): repeated complex property-name interpolation drops value-owned layout trivia. */
   'tests-unit/property-name-interp/property-name-interp.less',
-  // // 'tests-config/math/parens-division/new-division.less',
-  // 'tests-config/math-strict/css.less',
-  // 'tests-unit/import/invalid-css.less',
+
+  /*
+   * // 'tests-config/math/parens-division/new-division.less',
+   * 'tests-config/math-strict/css.less',
+   * 'tests-unit/import/invalid-css.less',
+   */
   'tests-unit/import/import/invalid-css.less',
 
-  /** Contains invalid `[prop=10%]` and other edge syntax */
-  'tests-unit/selectors/selectors.less',
-
-  // Currently failing parsing; treat as invalid until less-parser supports them fully.
-  // 'tests-unit/functions-each/functions-each.less',
+  /*
+   * Currently failing parsing; treat as invalid until less-parser supports them fully.
+   * 'tests-unit/functions-each/functions-each.less',
+   */
   'tests-unit/functions/legacy/functions.less',
-  'tests-unit/operations/operations.less',
 
-  /** Has an unsupported token - `5_large` numeric separator */
-  'tests-unit/variables/variables.less',
-
-  /** Numeric property name `{5:-}` on last line */
-  'tests-unit/css-guards/css-guards.less',
-
-  /** `*-z-${name}` splits into LegacyPropIdent + InterpolatedIdent */
-  'tests-unit/parser-property-interp/parser-property-interp.less',
-
-  /** Comment-only deprecated-combinator fixture; empty render differs from its one-newline golden. */
+  /**
+   * Comment-only fixture whose golden is a single newline while both jess and
+   * lessc 4.9.1 render it as zero bytes — measured 2026-09-22. The golden is the
+   * outlier, so this stays excluded only until the upstream fixture is trimmed;
+   * it is NOT a jess divergence.
+   */
   'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less',
 
   /** Inline JavaScript using backticks is intentionally unsupported */
@@ -108,13 +108,6 @@ export const invalidLess: string[] = [
    * instead). Both files use `./` in a math context.
    */
   'tests-config/math-parens-division/new-division.less',
-  'tests-config/math-always/no-sm-operations.less',
+  'tests-config/math-always/no-sm-operations.less'
 
-  /**
-   * v5 STRICT at-rule preludes: a top-level bare `@variable` in a non-value
-   * at-rule prelude/name/identifier position is a HARD parse error (4.x only
-   * warned). This fixture uses `@media @breakpoint, print`. The migration target
-   * is `@{breakpoint}` interpolation; a `@var` inside `(...)` stays valid.
-   */
-  'tests-config/at-rules-compressed-evaluation/at-rules-compressed-evaluation.less'
 ];
