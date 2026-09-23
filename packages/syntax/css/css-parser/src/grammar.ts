@@ -446,13 +446,33 @@ const punctuationValueCharacter = choice(
 );
 
 /*
- * One value-term slash boundary, with its authored whitespace on either side.
- * Whitespace around the separator is optional on input (`16/9` and `16 / 9` are
- * the same value); the emitted form is the spaced one either way, per G33.
- * The negative lookahead keeps a comment opener (`/*`) out of the boundary so a
- * commented value still fails exactly where it did before.
+ * One value-term slash boundary, with its authored padding on either side.
+ * Padding around the separator is optional on input (`16/9` and `16 / 9` are the
+ * same value); the emitted form is the spaced one either way, per G33.
+ *
+ * The padding is `cssValueTrivia`, NOT a bare whitespace run, because a comment
+ * is trivia wherever whitespace is (css-syntax-3 §4) — so `12px /* c *\/ / 1.5`
+ * and `12px / /* c *\/ 1.5` are both regular CSS and both have to parse. The
+ * first spelling of this const used `[ \t\n\r\f]*` and rejected exactly those
+ * two, which NARROWED the base: they parse on the commit this rung landed on
+ * top of, and less still accepts the second. The rule and this defect class are
+ * already written down at `cssValueTrivia`'s docblock; this is the same shape
+ * `authoredArgumentComma` uses.
+ *
+ * The `not(literal('*'))` guard survives, and its remaining job is narrow but
+ * real: a TERMINATED comment is eaten by the padding above, so the guard can
+ * only still fire on an UNTERMINATED `/*`. Without it, `p: 3px /*unclosed` reads
+ * as `3px / *unclosed` — the leading `/` becomes a separator and `*unclosed`
+ * becomes a punctuation run — where it is a parse error on the commit this rung
+ * landed on top of. Keeping it means the only acceptance this branch changes is
+ * the leading slash it set out to change.
  */
-const valueSlashBoundary = regex(/[ \t\n\r\f]*\/(?!\*)[ \t\n\r\f]*/);
+const valueSlashBoundary = noTrivia(sequence(
+  optional(cssValueTrivia),
+  literal('/'),
+  not(literal('*')),
+  optional(cssValueTrivia)
+));
 
 /*
  * punctuationValueCharacter minus `/`. Leading this (a concrete 16-char

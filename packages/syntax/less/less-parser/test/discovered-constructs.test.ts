@@ -301,7 +301,15 @@ describe('the value slash needs a left operand (P33)', () => {
     ['protocol-relative url', 'a { p: url(//cdn/x.png) }'],
     ['modern colour alpha component', 'a { p: rgb(15 23 42 / .22) }'],
     ['custom property keeps <declaration-value>', 'a { --v: /img }'],
-    ['An+B is not a value', 'a:nth-child(2n+1) { c: d }']
+    ['An+B is not a value', 'a:nth-child(2n+1) { c: d }'],
+
+    /*
+     * Less admits a comment as padding AFTER the separator via
+     * `preservedSlashBoundary`. Pinned as the cross-dialect control for the css
+     * side: css's first `valueSlashBoundary` spelling rejected this shape while
+     * less accepted it, which is how the narrowing was caught.
+     */
+    ['comment after the slash', 'a { p: 12px / /* c */ 1.5 }']
   ])('leaves a slash with an operand on each side alone (%s)', (_label, source) => {
     expect(() => parse(source), source).not.toThrow();
   });

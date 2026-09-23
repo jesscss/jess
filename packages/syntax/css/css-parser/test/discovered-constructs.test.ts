@@ -378,6 +378,73 @@ describe('the value slash is a separator rung (P33)', () => {
   });
 
   /*
+   * The right side of a slash stays ONE space group. If the rung flattened, this
+   * would be a three-item list and `font` would render as `12px / 1.5 / Arial`.
+   */
+  it('keeps each side of the slash as one space group', () => {
+    expect(parse('a { font: 12px/1.5 Arial }').rules[0]).toMatchObject({
+      rules: [{
+        type: 'Declaration',
+        name: 'font',
+        value: {
+          type: 'List',
+          sep: '/',
+          value: [
+            { type: 'Dimension', src: '12px' },
+            [{ type: 'Dimension', src: '1.5' }, { type: 'Keyword', src: 'Arial' }]
+          ]
+        }
+      }]
+    });
+  });
+
+  /*
+   * A comment is trivia wherever whitespace is (css-syntax-3 §4), so it is legal
+   * padding around the separator and these are regular CSS.
+   *
+   * REGRESSION: the first spelling of `valueSlashBoundary` padded with a bare
+   * `[ \t\n\r\f]*` run and rejected the first two of these, NARROWING the base —
+   * they parse on the commit this rung landed on top of, and less still accepts
+   * the second. Caught in review, not by either oracle: no corpus file and no
+   * authored fixture carries the shape.
+   */
+  it.each([
+    ['comment before the slash', 'a { p: 12px /* c */ / 1.5 }'],
+    ['comment after the slash', 'a { p: 12px / /* c */ 1.5 }'],
+    ['comment glued on both sides', 'a { p: 12px/*c*//1.5 }'],
+    ['trailing comment after the last group', 'a { border-radius: 3px / 7px /* end */ }']
+  ])('admits a comment as padding around the separator (%s)', (_label, source) => {
+    expect(() => parse(source), source).not.toThrow();
+  });
+
+  /*
+   * An UNTERMINATED comment opener is still not a separator. This is the whole
+   * remaining job of the `not(literal('*'))` guard — a terminated comment is
+   * consumed by the padding before the guard is ever reached — and without it
+   * `3px /*unclosed` would read as `3px / *unclosed`, which is an acceptance
+   * this branch has no business changing.
+   */
+  it('does not read an unterminated comment opener as a separator', () => {
+    expect(() => parse('a { p: 3px /*unclosed }')).toThrow();
+  });
+
+  /*
+   * A separator missing an operand on EITHER side fails, for the one reason.
+   * `1px /` has no right operand; `//` and `a//b` put two separators in a row,
+   * so the middle operand is empty.
+   */
+  it.each([
+    ['no right operand', 'a { p: 1px / }'],
+    ['bare double slash', 'a { p: // }'],
+    ['double slash between operands', 'a { p: a//b }'],
+    ['spaced double slash', 'a { p: 1px // 2px }']
+  ])('rejects a separator with a missing operand (%s)', (_label, source) => {
+    const failure = failureOf(source);
+    expect(failure.message).toBe('Unexpected CSS syntax. Expected valid CSS syntax here.');
+    expect(failure.offset).toBe(4);
+  });
+
+  /*
    * Controls: constructs that contain a `/` but are not the value separator, and
    * must be untouched by the rung.
    */
