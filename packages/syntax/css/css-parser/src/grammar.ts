@@ -103,6 +103,7 @@ type GrammarRuleName =
   | 'AttributeOperator'
   | 'AttributeSelector'
   | 'BasicSelector'
+  | 'BlockCommentToken'
   | 'CalcCall'
   | 'CalcIdentOrFunction'
   | 'CalcParen'
@@ -112,6 +113,7 @@ type GrammarRuleName =
   | 'CalcValue'
   | 'MathFunction'
   | 'Call'
+  | 'CharsetPrelude'
   | 'CharsetStatement'
   | 'Color'
   | 'ComplexSelector'
@@ -288,6 +290,20 @@ type GrammarSelf = {
     ? (typeof cssSyntax)[K]
     : Combinator<unknown>
 };
+
+/*
+ * The expected-set atom a refused `@charset` prelude reports, and the one public
+ * spelling of it. `CharsetStatement` below is what emits it; the three
+ * dialects' `expectedMessage` helpers recognize it by this exact string, the way
+ * they already recognize `'")"'` and `'CustomPropertyName'` — those helpers
+ * deliberately hold no grammar import, and the parseman macro cannot read a
+ * cross-module constant inside a combinator argument (it needs a literal), so
+ * the less grammar spells the same string rather than importing this one. Each
+ * of the three dialects asserts the resulting MESSAGE, so a change to this atom
+ * that the other spellings do not follow fails those tests rather than silently
+ * degrading to the generic message.
+ */
+export const CHARSET_PRELUDE_EXPECTED = '@charset quoted string';
 
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 
@@ -2642,6 +2658,39 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * `@charset` is the one at-rule whose prelude css-syntax-3 §3.2 fixes to a
+   * single `<string>`: `@charset "utf-8";` and nothing else. The generic
+   * `StatementPrelude` is arbitrary bytes, so reading the prelude through it is
+   * what let `@charset url(utf-8);`, `@charset utf-8;` and `@charset;` parse.
+   *
+   * The narrowest thing that differs is this slot, so the slot is a rule of its
+   * own and `CharsetStatement` below is otherwise unchanged — a superset
+   * inherits the statement and, if its string differs, overrides only this.
+   *
+   * The `BlockCommentToken` runs are not redundant. A comment is TRIVIA in css
+   * and less and a NODE in scss, so a bare quoted string is a rule that only
+   * works in two of the three; spelling the comment positions makes ONE rule
+   * correct in all of them, and it costs css nothing because trivia has already
+   * consumed them by the time `many` runs. They are dropped from the reduced
+   * prelude, which is what css produced for the same source before.
+   */
+  const CharsetPrelude = node(
+    'CharsetPrelude',
+    sequence(
+      many(g.BlockCommentToken),
+      g.AtRulePreludeQuoted,
+      many(g.BlockCommentToken)
+    ),
+    children => any(
+      children
+        .map(child => tokenText(child))
+        .filter(text => !text.startsWith('/*'))
+        .join('')
+        .trim()
+    )
+  );
+
+  /*
    * `@charset` is the first thing a stylesheet may contain (css-syntax-3 §3.2),
    * and css-cascade-5 §3 then admits `@import` before any other rule. Without a
    * prologue arm of its own `@charset` is only reachable as an ordinary body
@@ -2650,17 +2699,60 @@ const cssFactory = (g: GrammarSelf) => {
    * followed by a rule, a comment, `@media` or `@layer` all parsed. The
    * statement stays a plain `AtRuleStatement` fact so nothing downstream has a
    * new node shape to learn.
+   *
+   * `routed(charsetAtKeyword)` makes this ONE rule serve both positions it is
+   * needed in: the `Stylesheet` prologue arm, where there is no dispatch above
+   * it and the fallback recognizes `@charset` in place, and the `@charset` arm
+   * of the two at-rule dispatches, where it reuses the routed token. The second
+   * position is not optional — without it `@charset` fell through to
+   * `unknownAtRuleOtherwise` and got the permissive `RoutedAtRuleStatement`
+   * prelude straight back, so narrowing the prologue arm alone only makes that
+   * arm DECLINE and lets the body arm re-accept the same bytes.
+   *
+   * The refusal is spelled with `expect` + the ordinary prelude rather than as a
+   * plain failure because a plain failure cannot carry a diagnostic here: the
+   * sibling opaque-block arm scans further before IT fails, and a `choice`
+   * reports the arm that got furthest, so this rule's expectation is discarded
+   * every time. `expect` records the expectation and recovers zero-width, the
+   * refused bytes are then consumed by `StatementPrelude`, and the statement
+   * MATCHES with a recorded error — which every caller already treats as a
+   * rejection (`parse()` throws on `errors[0]`; the cross-dialect verdict
+   * requires `errors.length === 0`). Nothing becomes permissive, and a tolerant
+   * consumer gets the tree AND the squiggle on the prelude instead of one error
+   * at offset 0.
+   *
+   * `peek(';')` is what keeps the string slot exact: the `<string>` must BE the
+   * whole prelude, so `@charset "utf-8" junk;` takes the refusal path instead of
+   * matching the string and letting `StatementPrelude` swallow the rest. It
+   * leads the recovery term for the same reason — an accepted prelude ends AT
+   * the `;` and has nothing to recover, so a well-formed `@charset` must not
+   * carry an empty `StatementPrelude` node through the CST.
+   *
+   * `@charset {…}` is left alone by all of it: neither path reaches the `;`, the
+   * statement declines, and the opaque block arm of the dispatch case takes it
+   * exactly as `otherwise` did. A failed branch's recovery errors are rolled
+   * back with it, so declining that way records nothing.
    */
   const CharsetStatement = node(
     'CharsetStatement',
     sequence(
-      charsetAtKeyword,
-      g.StatementPrelude,
+      routed(charsetAtKeyword),
+      expect(
+        sequence(
+          g.CharsetPrelude,
+          peek(literal(';'))
+        ),
+        CHARSET_PRELUDE_EXPECTED
+      ),
+      choice(
+        peek(literal(';')),
+        g.StatementPrelude
+      ),
       literal(';')
     ),
     children => atRuleStatement(
       tokenText(children[0]),
-      optionalValue(children[1])
+      children.find(isValue) ?? null
     )
   );
   const LayerStatement = node(
@@ -3543,6 +3635,23 @@ const cssFactory = (g: GrammarSelf) => {
       g.DocumentBlock
     )
   );
+
+  /*
+   * `@charset` is position-independent in the same sense as the cases above, and
+   * it needs a case of its own for the SAME reason `@scope` and `@page` do: its
+   * statement spelling is typed, so the generic `RoutedAtRuleStatement` in
+   * `unknownAtRuleOtherwise` must not be allowed to re-accept a prelude
+   * `CharsetStatement` refused. The block arm is retained because `@charset {…}`
+   * has no charset reading at all and stays ordinary opaque CSS, exactly as the
+   * `otherwise` arm treated it.
+   */
+  const charsetAtRuleCase = cssCase(
+    '@charset',
+    choice(
+      g.CharsetStatement,
+      g.UnknownAtRuleBlock
+    )
+  );
   const unknownAtRuleOtherwise = otherwise(choice(
     g.RoutedAtRuleStatement,
     g.UnknownAtRuleBlock
@@ -3569,6 +3678,7 @@ const cssFactory = (g: GrammarSelf) => {
     keyframesAtRuleCase,
     fontFeatureValuesAtRuleCase,
     documentAtRuleCase,
+    charsetAtRuleCase,
     unknownAtRuleOtherwise
   );
   const DeclarationListAtRule = dispatch(
@@ -3593,6 +3703,7 @@ const cssFactory = (g: GrammarSelf) => {
     keyframesAtRuleCase,
     fontFeatureValuesAtRuleCase,
     documentAtRuleCase,
+    charsetAtRuleCase,
     unknownAtRuleOtherwise
   );
   const ConditionalGroupAtRule = dispatch(
@@ -3895,6 +4006,7 @@ const cssFactory = (g: GrammarSelf) => {
     AtRulePreludeQuoted,
     AtRulePreludeText,
     AtRulePreludeSegments,
+    CharsetPrelude,
     CharsetStatement,
     LayerStatement,
     AtRulePrelude,

@@ -204,6 +204,21 @@ type ScssSharedSyntax = {
   Keyword: Combinator<Keyword>;
   Important: Combinator<true>;
   NestingSelector: Combinator<SimpleSelector>;
+
+  /*
+   * Inherited verbatim from the CSS base, with no local override at all.
+   * css-syntax-3 §3.2 fixes the `@charset` prelude to a single `<string>` and
+   * SCSS has no delta on that shape: the CSS rule reads the string through
+   * `AtRulePreludeQuoted`, which SCSS already overrides, and that override
+   * reserves `#{` — so `@charset "#{$x}";` stays refused here exactly as it was,
+   * under the same rule that holds every dynamic header back.
+   *
+   * SCSS previously folded `@charset` into the `@(?:charset|namespace|layer)`
+   * arm of its own `AtRuleStatement`, whose prelude is arbitrary bytes, so
+   * `@charset url(utf-8);` parsed here and not in a parser that implements
+   * the spec.
+   */
+  CharsetStatement: Combinator<AtRuleStatement>;
 };
 
 type ScssInputRules =
@@ -3510,11 +3525,18 @@ const scssFactory = (g: ScssInputRules) => {
    * CSS statement at-rules retain the existing canonical statement fact. This
    * deliberately excludes Sass diagnostics (`@debug`, `@warn`, `@error`) and
    * all dynamic headers: neither can truthfully lower to CSS output here.
+   *
+   * `@charset` is NOT in the name set any more. Its prelude is a `<string>` and
+   * nothing else (css-syntax-3 §3.2), which is a narrower shape than the
+   * arbitrary-byte `StatementPrelude` the other two names need, and the CSS base
+   * already spells it — `g.CharsetStatement` is used directly in `Stylesheet`
+   * below. `@namespace` and `@layer` genuinely do take the permissive prelude
+   * (`svg url("…")`, `a.b, c`), so they stay.
    */
   const AtRuleStatement = node<AtRuleStatement>(
     'AtRuleStatement',
     sequence(
-      regex(/@(?:charset|namespace|layer)(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      regex(/@(?:namespace|layer)(?![-_a-zA-Z0-9\u0080-\uffff])/i),
       StatementPrelude,
       literal(';')
     ),
@@ -4838,6 +4860,7 @@ const scssFactory = (g: ScssInputRules) => {
       many(choice(
         g.Comment,
         g.ImportStatement,
+        g.CharsetStatement,
         g.AtRuleStatement,
         g.VariableDeclaration,
         g.SassDirective,

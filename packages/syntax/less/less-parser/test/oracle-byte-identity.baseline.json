@@ -5,12 +5,12 @@
   "surfaces": [
     {
       "name": "ast",
-      "aggregate": "281c782980379cbb76624787d8007513d79045a2a62e23be79bda400a3c9e9bd",
+      "aggregate": "b7a31fdef3d2d74f44e174e24a9b2559cd88a4619c988821d9c94a5a2ffebcb1",
       "threw": 113
     },
     {
       "name": "cst",
-      "aggregate": "9d58cc3dfbbe5a0bc1934739ccdbaadb7faee0dc768ff0d71b46041285fbede5",
+      "aggregate": "766bd1aec34a555c60f60f259c69cc06fdf926b05c34e8607dc684b69a3de1fa",
       "threw": 0
     }
   ],
@@ -2772,8 +2772,8 @@
       "cst": "17b8f6a2beeb1b61"
     },
     "packages/syntax/css/css-parser/test/css/errors/charset.css": {
-      "ast": "05875765c152f691",
-      "cst": "176fa1a8ca81ac5a"
+      "ast": "733703c285609637",
+      "cst": "c0c7f0497a40d447"
     },
     "packages/syntax/css/css-parser/test/css/errors/comment-eof-unclosed.css": {
       "ast": "733703c285609637",

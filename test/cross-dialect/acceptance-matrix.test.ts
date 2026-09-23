@@ -22,11 +22,13 @@
  *
  * `@charset` is the calibration case for that choice. less named its production
  * `CharsetStatement`, jess named it `Charset`, and **scss had no named
- * production at all** — it is one arm of a `@(?:charset|namespace|layer)` regex
- * (`packages/syntax/scss/scss-parser/src/grammar.ts:4478`). Any check that
- * diffs rule-name sets misses it in scss entirely, and misses every construct
- * hidden inside a shared regex arm. This gate only ever asks "did this input
- * parse", so spelling and structure are invisible to it.
+ * production at all** — it was one arm of a `@(?:charset|namespace|layer)`
+ * regex. Any check that diffs rule-name sets misses it in scss entirely, and
+ * misses every construct hidden inside a shared regex arm. This gate only ever
+ * asks "did this input parse", so spelling and structure are invisible to it.
+ * (scss now inherits the CSS `CharsetStatement`, which is what the `url()`
+ * prelude fix produced — but the gate had to be able to see the construct
+ * BEFORE that was true, which is the whole point.)
  *
  * The verdict itself comes from `test/dialects.ts`, which is why `ok` alone is
  * not trusted (parseman reports `ok` for a run that consumed nothing).
@@ -132,16 +134,6 @@ const DIRECTION_1_ALLOWLIST: readonly Allowed[] = [
   },
 
   // ---- css over-accepting invalid CSS. Needs an owner ruling, not a fix. ----
-  {
-    name: 'targeted:@charset with a url() prelude',
-    accepted: ['css', 'less', 'scss'],
-    validCss: false,
-    reason:
-      'css-syntax-3 §3.2 gives @charset a <string> prelude only, so `@charset url(utf-8);` is NOT '
-      + 'valid CSS. css/less/scss all accept it and jess refuses. OWNER RULING: three dialects are '
-      + 'over-permissive here and jess is the one behaving to spec — the ruling decides whether the '
-      + 'superset rule obliges jess to match the over-acceptance.'
-  },
   {
     name: 'targeted:@keyframes without a block',
     accepted: ['css'],
