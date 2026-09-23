@@ -246,6 +246,7 @@ type ScssSharedSyntax = {
    * spelling, which is why `@font-face;` parsed in CSS and not here.
    */
   AtRuleStatement: Combinator<AtRuleStatement>;
+
   /*
    * Inherited verbatim from the CSS base, with no local override at all.
    * css-syntax-3 §3.2 fixes the `@charset` prelude to a single `<string>` and
