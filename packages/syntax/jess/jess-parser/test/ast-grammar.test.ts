@@ -107,6 +107,43 @@ describe('Jess AST grammar facts', () => {
     expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe('.card {\n  color: white;\n}\n');
   });
 
+  it('parses a `with` module-configuration block on @-compose', () => {
+    const source = '@-compose "m" with { $x: red; $y: blue; }';
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
+
+    expect(direct.ok).toBe(true);
+    expect(direct.unconsumedFrom).toBeNull();
+    expect(direct.value).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{
+        type: 'StyleImport',
+        name: '@-compose',
+        mode: 'compose',
+        config: {
+          kind: 'with',
+          bindings: [
+            { type: 'VariableDeclaration', name: 'x' },
+            { type: 'VariableDeclaration', name: 'y' }
+          ]
+        }
+      }]
+    });
+  });
+
+  it('parses a `set` module-configuration block and leaves an unconfigured @-compose config null', () => {
+    const withSet = run(jessGrammar.Stylesheet, '@-compose "m" set { $x: red; }', { trivia: jessGrammar.whitespace });
+    expect(withSet.ok).toBe(true);
+    expect(withSet.value).toMatchObject({
+      rules: [{ type: 'StyleImport', mode: 'compose', config: { kind: 'set' } }]
+    });
+
+    const plain = run(jessGrammar.Stylesheet, '@-compose "m";', { trivia: jessGrammar.whitespace });
+    expect(plain.ok).toBe(true);
+    expect(plain.value).toMatchObject({
+      rules: [{ type: 'StyleImport', mode: 'compose', config: null }]
+    });
+  });
+
   it('constructs strict logical $if guard trees directly and evaluates their selected branch', () => {
     const source = '$enabled: true; $disabled: false; $if ((($enabled=true) and not($disabled)) or false) { .card { color: green; } } $else { .card { color: red; } }';
     const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });

@@ -1,14 +1,12 @@
 ---
-title: "Inline JavaScript Removed (@use)"
+title: "Inline JavaScript Removed"
 slug: "/advanced/inline-javascript"
 audiences:
   - less
 origin: less
 ---
 
-> Backtick inline JavaScript (`` `expr` ``) is removed in Less 5.x. Script behavior
-> now goes through explicit `@from` / `@-from` or `@use` / `@-use` module
-> boundaries.
+> Backtick inline JavaScript (`` `expr` ``) is removed in Less 5.x.
 
 Legacy Less could execute inline JavaScript embedded in backticks anywhere a value
 was expected:
@@ -34,33 +32,20 @@ JavaScript.
 @version: "2026-03";
 ```
 
-**Use `@from` / `@-from` or a `@use` / `@-use` script module** when you genuinely
-need JavaScript. Script modules replace implicit inline execution with an
-explicit, sandboxed
-import:
-
-```less
-@use "./columns.js";
-
-.grid {
-  grid-template-columns: repeat(columns.count(), 1fr);
-}
-```
-
-Script modules run under an opt-in runtime (`@jesscss/plugin-js`, executing on
-Deno), which is secure by default: scripts cannot read outside the configured
-sandbox root, cannot access environment variables, and cannot use the network
-unless policy explicitly allows it. JSON imports are data-only and need no runtime.
+**Use a preloaded plugin or the deprecated `@plugin` bridge** when JavaScript is
+unavoidable today. Executable plugin files run through the opt-in
+`@jesscss/plugin-js` Deno sandbox: scripts cannot read outside the configured
+root, access environment variables, or use the network unless policy allows it.
 
 To disable executable script modules entirely, use `disableScriptModules` (this
 also disables file-based `@plugin`).
 
-## The `@-` compiler at-rules
+## Planned script modules
 
-`@use` is one of the namespace-safe **compiler at-rules**. In `.less` files the bare
-form is tolerated; the dash-prefixed `@-use` form makes it explicit that this is the
-compiler directive rather than a CSS at-rule. See
-[Modules and Imports](../features/modules-and-imports.mdx) for the full family
-(`@-import`, `@-compose`, `@-use`, `@-from`, `@-export`).
+`@use` and `@from` are reserved for explicit script and data module imports,
+but Less 5 does not recognize or execute them as modules yet. See
+[Modules and Imports](../features/modules-and-imports.mdx) for the canonical
+support status. Do not migrate production code to those spellings until that
+page marks them available.
 
 See also: [Plugins](../features/plugins.md) · [Migrating to v5](../usage/migrating-to-v5.md#safer-javascript-execution-model).

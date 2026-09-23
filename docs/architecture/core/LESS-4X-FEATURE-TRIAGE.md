@@ -53,16 +53,28 @@ below was checked by **rendering Less source**, not by reading an index.
 ## 1. The seven declared work-in-progress areas — verified
 
 The v5 alpha CHANGELOG (`~/git/oss/less.js/CHANGELOG.md`, `v5.0.0-alpha.1
-(unreleased)`, @ `2f309b66`) lists seven WIP areas. **Three of the seven are
-wrong.**
+(unreleased)`, @ `2f309b66`) lists seven WIP areas.
+
+> **Re-measured 2026-09-13** (jess `2.0.0-alpha.20` via published
+> `less@5.0.0-alpha.7`). **Four of the seven declarations are now stale:**
+> source maps (row 3), URL rewriting (row 4), and compressed output (row 5) are
+> all **IMPLEMENTED in the engine**. For those three the only remaining gap is
+> the Less **public wrapper** (`packages/less/lib/options.js`), which still
+> rejects `sourceMap*`, `rootpath`, `rewriteUrls`, `urlArgs`, and `compress` via
+> `unsupportedAlphaOptions`, and whose `mapRenderResult` does not forward
+> `result.map`. Wiring these through the wrapper (as was done for
+> `collapseNesting`) — plus a source-map annotation/artifact harness — is the
+> real Less-parity work here, not new engine features. The rows below marked
+> "re-measured 2026-09-13" reflect this; the rest still carry the 2026-07-30
+> provenance and should be re-measured before use.
 
 | # | Declared WIP | Verified status | Evidence |
 | --- | --- | --- | --- |
 | 1 | legacy plugin execution | **PARTIAL — function registration works, hooks do not** | `plugin.install?.(this.less, undefined, this.registry)` — `packages/syntax/less/jess-plugin-less-compat/src/less-api-bridge.ts:360`; the manager parameter is typed `undefined` at `:35`. `less.functions.functionRegistry.add/addMultiple` work (used by the `all-less` harness plugin, `packages/jess/test/less/all-less.test.ts:32-48`). `less.tree` exposes only `Dimension`, `Quoted`, `Color`, `Anonymous` (`less-api-bridge.ts:46-52`) against 4.x's full `tree` export. |
 | 2 | file-manager and pre/post-processor hooks | **MISSING — confirmed, structurally unreachable** | `addVisitor` / `addPreProcessor` / `addPostProcessor` / `addFileManager` appear **nowhere in any source package** — only in two test files. Because the manager argument is `undefined` (row 1) there is no object to call them on. The four corresponding fixtures are skipped as "needs scope decision": `packages/jess/test/less/all-less.test.ts:145-149,161`. |
-| 3 | source maps | **MISSING — confirmed** | `renderToResult(f, { outputFile })` with `output.sourceMap: true` returns keys `css,errors,warnings,loadedUrls` — no map of any kind, inline or external. Same with `sourceMapFileInline`. Nine `sourcemaps*` fixtures are skipped or expected-failures (`all-less.test.ts:152-159,214-229`). |
+| 3 | source maps | **IMPLEMENTED (engine) — re-measured 2026-09-13; wrapper gap remains** | `renderToResult` with `output.sourceMap: true` now returns a v3 map alongside `css,errors,warnings,loadedUrls`: `{ version: 3, sources: ["virtual..less"], mappings }`. Assembled by `assembleSourceMap`/`buildAstSourceMap` (`packages/compiler/src/index.ts:136,1198`) from `packages/core/src/ast/sourcemap.ts`. **Wrapper gap:** the public `less.render` API still rejects `sourceMap*` (`unsupportedAlphaOptions`, `packages/less/lib/options.js`) and `mapRenderResult` does not forward `result.map`; the annotation is only written when an `outputFile`/`sourceMapURL` is given. The nine `sourcemaps*` fixtures stay skipped/xfail pending the wrapper wire-through + an annotation/artifact harness (`all-less.test.ts:152-159,214-229`). |
 | 4 | URL rewriting options | **WRONG — these are IMPLEMENTED** | `output.rewriteUrls:'all'` on `@import "sub/inner.less"` gives `url("sub/rel.png")`, byte-identical to `lessc --rewrite-urls=all`. `output.rootpath:'/cdn/'` → `url("/cdn/img/a.png")` = `lessc --rootpath`. `output.urlArgs:'v=1'` → `url("img/a.png?v=1")` = `lessc --url-args`. **The options live in `output`, not `compile`** — passing them in `compile` is silently ignored, which is how this was mis-recorded. See §6. |
-| 5 | compressed-output parity | **MISSING — confirmed** | `compress: true` in **either** `output` or `compile` returns fully expanded CSS. `lessc -x` gives `.x{background:url("img/a.png");color:red}`. Three compression fixtures skipped (`all-less.test.ts:141-144`). |
+| 5 | compressed-output parity | **IMPLEMENTED (engine) — re-measured 2026-09-13; wrapper gap remains** | `output.compress: true` now returns compressed CSS: `.x { color: red; .y { width: (1 + 1) } }` → `.x{color:red;.y{width:2}}` (whitespace stripped; `.y` stays nested because `collapseNesting` defaults to `false`). Ledger **O3** still reads `SETTLED (impl pending)` — that "impl pending" is now stale and wants an owner refresh. **Wrapper gap:** `compress` is in `unsupportedAlphaOptions` (`packages/less/lib/options.js`), so the public `less.render` API rejects it; the three compression fixtures stay skipped (`all-less.test.ts:141-144`). |
 | 6 | browser compilation | **MISSING — confirmed, as declared** | `packages/jess/package.json` has no `browser` field, `exports` is `"."` + `"./package.json"` only, and no browser entry/bundle target exists in any package. |
 | 7 | "the remaining long-tail Less 4 fixture corpus" | **Not a status — this is the admission §2-§5 replaces** | — |
 

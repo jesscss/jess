@@ -15,7 +15,6 @@ Parses a string into a color. Accepts a named CSS color or a 3/4/6/8-digit hex
 string.
 
 ```css
-@-from '@jesscss/fns' import (color);
 .box {
   color: color("#aaa");
 }
@@ -34,7 +33,6 @@ Removes or changes the unit of a dimension without converting the number. Omit
 *with* conversion.
 
 ```css
-@-from '@jesscss/fns' import (unit);
 .box {
   a: unit(5, px); // 5px
   b: unit(5em);   // 5
@@ -47,7 +45,6 @@ Returns the unit of a dimension as a keyword (empty when the number is unitless)
 Exposed under the JavaScript export name `getUnit` (the Less function is `get-unit`).
 
 ```css
-@-from '@jesscss/fns' import (getUnit);
 .box {
   a: getUnit(5px); // px
   b: getUnit(5);   //
@@ -66,7 +63,6 @@ Compatible unit groups:
 * angle: `rad`, `deg`, `grad`, `turn`
 
 ```css
-@-from '@jesscss/fns' import (convert);
 .box {
   a: convert(9s, "ms");  // 9000ms
   b: convert(14cm, mm);  // 140mm
@@ -88,7 +84,6 @@ environment.
 :::
 
 ```css
-@-from '@jesscss/fns' import (dataUri);
 .box {
   background: dataUri('image/jpeg;base64', '../data/image.jpg');
 }
@@ -102,7 +97,6 @@ of `to bottom`, `to right`, `to bottom right`, `to top right`, `ellipse` or
 optional position).
 
 ```css
-@-from '@jesscss/fns' import (svgGradient);
 .box {
   $stops: red, green 30%, blue;
   background-image: svgGradient(to right, $stops);
@@ -121,7 +115,6 @@ These read from the filesystem, so they are only available in the node environme
 :::
 
 ```css
-@-from '@jesscss/fns' import (imageSize, imageWidth, imageHeight);
 .box {
   a: imageWidth("file.png");  // 10px
   b: imageHeight("file.png"); // 10px

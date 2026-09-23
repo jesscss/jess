@@ -122,8 +122,8 @@ importers:
         specifier: ^8.0.1
         version: 8.0.1
       parseman:
-        specifier: ^0.50.5
-        version: 0.50.6
+        specifier: ^0.50.7
+        version: 0.50.7
       puppeteer:
         specifier: ^19.10.1
         version: 19.11.1(typescript@7.0.1-rc)
@@ -644,6 +644,9 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core
+      '@jesscss/fns':
+        specifier: workspace:*
+        version: link:../fns
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -698,8 +701,8 @@ importers:
   packages/parser-shared:
     dependencies:
       parseman:
-        specifier: ^0.50.5
-        version: 0.50.6
+        specifier: ^0.50.7
+        version: 0.50.7
     devDependencies:
       tsdown:
         specifier: ~0.21.7
@@ -735,8 +738,8 @@ importers:
         specifier: workspace:*
         version: link:../../../parser-shared
       parseman:
-        specifier: ^0.50.5
-        version: 0.50.6
+        specifier: ^0.50.7
+        version: 0.50.7
     devDependencies:
       '@jesscss/core':
         specifier: workspace:*
@@ -760,8 +763,8 @@ importers:
         specifier: ~2.0.0
         version: 2.0.2
       parseman:
-        specifier: ^0.50.5
-        version: 0.50.6
+        specifier: ^0.50.7
+        version: 0.50.7
     devDependencies:
       '@jesscss/core':
         specifier: workspace:*
@@ -837,8 +840,8 @@ importers:
         specifier: ~0.37.0
         version: 0.37.0
       parseman:
-        specifier: ^0.50.5
-        version: 0.50.6
+        specifier: ^0.50.7
+        version: 0.50.7
     devDependencies:
       '@jesscss/core':
         specifier: workspace:*
@@ -883,8 +886,8 @@ importers:
         specifier: workspace:*
         version: link:../../css/css-parser
       parseman:
-        specifier: ^0.50.5
-        version: 0.50.6
+        specifier: ^0.50.7
+        version: 0.50.7
     devDependencies:
       '@jesscss/core':
         specifier: workspace:*
@@ -9692,8 +9695,8 @@ packages:
   parse5@7.3.0:
     resolution: {integrity: sha512-IInvU7fabl34qmi9gY8XOVxhYyMyuH2xUNpb2q8/Y+7552KlejkRvqvD19nMoUW/uQGGbqNpA6Tufu5FL5BZgw==}
 
-  parseman@0.50.6:
-    resolution: {integrity: sha512-LqUc1Tk2G/vdrC3si+CkQxUc/3t3xHzg+2tseGFAdr1Ce8OsO5N7xoAw/gaJZIc+v2HnGIxYxAjMNdn/6exFvQ==}
+  parseman@0.50.7:
+    resolution: {integrity: sha512-b7j6hioozeIBOzCE6ZypSFeqwhuEO/veyfodQ4Jhi3Sg+rLriVjvOLT0jGwY8G/PtbxMU0RVi7RUdnhdYVD5yg==}
     engines: {node: ^20.19.0 || >=22.13.0}
     hasBin: true
 
@@ -25049,7 +25052,7 @@ snapshots:
     dependencies:
       entities: 6.0.1
 
-  parseman@0.50.6:
+  parseman@0.50.7:
     dependencies:
       linecraft: 0.2.6
       magic-string: 0.30.21

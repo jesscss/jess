@@ -9,7 +9,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "2.0.0-alpha.21",
+  "version": "2.0.0-alpha.24",
   "description": "The Jess Core Library",
   "main": "lib/index.cjs",
   "module": "lib/index.js",

@@ -74,10 +74,34 @@ describe('V19 one-evaluator projection ratchet', () => {
     // pretty bytes when compress is off, so compress:off output is byte-identical.
     // Collection overlays reuse existing BindingCell/DeclEntry records for typed
     // values, so no serializer-side Map or helper-count increase is permitted.
-    expect(occurrences(/^function |^async function /gmu)).toBe(441);
-    expect(occurrences(/new Map/gu)).toBe(59);
-    expect(occurrences(/new Set/gu)).toBe(39);
+    // +5 functions and +5 `new Map` (module configuration, spec R6 Part E):
+    // `validateModuleConfig` (routes `@compose … with/set { … }` names to the
+    // providing plugin), `configuredModuleFrame` (the module's isolated overlay
+    // frame + apply), `moduleConfigRejected` (the shared reject diagnostic), and
+    // `structurallyEqualIgnoringSpans`/`sameModuleConfig` (idempotent-vs-conflicting
+    // `set` comparison). The Maps: the overlay's `reassign` (scoped `@name`/
+    // `!default`), seed `cells` (live `$name` `?:`), `bindingValueFrames` (config
+    // evaluates in importer scope), the equality helper's key map, and the
+    // per-module-identity `set` registry (`e.moduleConfigs`).
+    // +3 functions (@compose module isolation, spec R6 Part E): `unconfiguredModuleFrame`
+    // (the isolated overlay frame for a plain `@compose`, so it is non-transitive like the
+    // configured case), `deriveModuleNamespace` (Sass default-namespace inference from the
+    // specifier string), and `publishComposedModule` (binds the module's members under
+    // `@<ns>` — or merges them unqualified for `as *` — instead of flat-splicing them, which
+    // is what `@import` still does). No new Map/Set: the namespace binding reuses the
+    // existing declIndex/detached-binding records.
+    // +13 functions (`ModuleImport` load/bind/eval, #182): module export
+    // conversion, namespace/selected binding, and the two existing Reference
+    // shapes that dispatch namespaced module functions directly, without a
+    // temporary Reference node. +3 `new Set`: render-local imported-function
+    // and namespace-value identity plus one lazy JSON cycle guard. +2 `new Map`:
+    // document-scoped module facts in the compile plan and direct-serialize
+    // fallback; strong ownership avoids per-node ephemeron tables.
+    expect(occurrences(/^function |^async function /gmu)).toBe(462);
+    expect(occurrences(/new Map/gu)).toBe(66);
+    expect(occurrences(/new Set/gu)).toBe(42);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
+    expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);
 
     /*

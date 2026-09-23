@@ -320,6 +320,17 @@ Recompute when `@plugin`-injected visitors widen the set mid-run.
 
 ## Part C — Module semantics (`@use`/`@compose`/`@-import`/`@-use`)
 
+> **Current implementation (2026-09-20):** The tree2 framing below is historical.
+> Canonical AST `ModuleImport` directives are now loaded by the compiler's
+> `prepareStaticImports` dependency phase and carried in its opaque plan; render
+> activates those exports in the stylesheet frame without repeating module IO.
+> These are top-level dependency directives in every implemented grammar. Jess
+> supports `@-use` and `@-from`; Less supports `@use`/`@-use` with a filename-derived
+> namespace; SCSS `sass:*` routes to trusted `@jesscss/fns` modules. JSON binds
+> as data, while local/package JS and TS use `@jesscss/plugin-js`. A8's broader
+> member-access policy remains owner-open; this records implementation state
+> without closing that requirement.
+
 Source of truth: **owner memory `import-atrule-semantics-less-vs-jess`** (settled)
 and `forward-as-export-design-thread` (open). tree2 has NO module handling today
 (`grep` for `@use`/`@compose` in `tree2/` + `tree2-frontend/` = 0 hits); `@import`
@@ -415,14 +426,14 @@ build `@-export` semantics** beyond parsing/accepting the node; flag as owner-op
 
 ## Part D — PROPOSED: `@use`/`@compose` namespace-access syntax
 
-> **STATUS: PROPOSED — pending owner sign-off (ruled 2026-07-18, not yet landed).**
+> **STATUS: PARTLY IMPLEMENTED; A8 REMAINS OWNER-OPEN.**
 > Source of truth is owner memory `namespace-access-use-compose-model` (owner-
 > decided 2026-07-18, verbatim). This part specifies HOW a namespaced module's
 > members are *accessed* once §C's module scope exists (`@compose` isolated scope,
 > `@use` JS import). It ties directly into R4.4's namespace/accessor resolution
 > engine — the interpolation-body half of the model lives in
 > `R4-interpolation-detached-merge-namespaces.md` §R4.6 (cross-linked below).
-> Nothing here is built until the owner signs off.
+> Namespace data reads and script-module function calls are built; other A8 policy remains open.
 >
 > **Blocked on / see [`REFERENCE-CALL-PLAN.md`](../REFERENCE-CALL-PLAN.md)** — the
 > core Reference-call machinery (grammar member-call chain + node + eval dispatch

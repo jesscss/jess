@@ -43,13 +43,14 @@ unsupported-syntax diagnostic — not a flag you can opt back into.
 
 <AudienceGate include={['less']}>
 
-Where you relied on backtick JS, migrate to a plain expression or to an explicit
-script/module boundary:
+Where you relied on backtick JS, migrate to a plain expression or the current
+plugin boundary:
 
 - Prefer a plain Less expression or function when one exists
   (`@columns: max(12, 8);`).
-- For genuine scripting, move the logic behind `@from` / `@-from`,
-  `@use` / `@-use`, or a plugin function.
+- For genuine scripting, import the module with `@use`; local or package
+  JavaScript and TypeScript require `@jesscss/plugin-js`. Use the deprecated
+  `@plugin` bridge only for legacy Less plugins.
 
 `javascriptEnabled` no longer re-enables inline backticks; at most it gates
 `@plugin` loading. To turn executable scripts off entirely use
@@ -60,9 +61,9 @@ compatibility).
 
 <AudienceGate include={['jess']}>
 
-In Jess there is no inline-JavaScript syntax at all. Move any scripted values to
-a module you pull in with `@-use`, or express them with built-in functions
-(`@columns: max(12, 8);`).
+In Jess there is no inline-JavaScript syntax at all. Express values with
+built-in functions where possible (`@columns: max(12, 8);`). Script and data imports use `@-use` / `@-from`; see
+[Modules & imports](/docs/language/modules-and-imports).
 
 </AudienceGate>
 
@@ -73,10 +74,8 @@ a module you pull in with `@-use`, or express them with built-in functions
 `@import` (and its explicit source-fold form `@-import`) are **discouraged** in
 Less 5.x and warn — they use the old leaky scope, and bare `@import` is _heuristic_
 (extension and options decide passthrough-vs-fold). The fix for either is the
-module system, **`@compose`** — a namespaced import with isolated scope. Write it
-bare or dashed (`@compose` / `@-compose` are the same rule; the dash is the
-collision-safe canonical). Your existing `@import` keeps working (with a warning),
-so migrate at your own pace.
+module system, **`@compose`** — a namespaced import with isolated scope. Your
+existing `@import` keeps working (with a warning), so migrate at your own pace.
 
 ```less
 // Discouraged (both warn) — the leaky source-fold:

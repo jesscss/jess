@@ -1735,10 +1735,10 @@ export class Context {
    * @param importPath
    * @param importOptions
    */
-  async getModule(importPath: string, importOptions: ImportOptions = {}) {
+  async getModule(importPath: string, importOptions: ImportOptions = {}): Promise<LoadedModuleResult> {
     const cacheKey = this.moduleCacheKey(importPath, importOptions);
     const cached = this.moduleCache.get(cacheKey);
-    if (cached !== undefined || this.moduleCache.has(cacheKey)) {
+    if (cached !== undefined) {
       return cached;
     }
     const loading = this.getModuleUncached(importPath, importOptions);
@@ -1787,7 +1787,8 @@ export class Context {
     }
 
     if (!plugin) {
-      plugin = plugins.find(plugin => plugin.supportedExtensions?.includes(ext) && plugin.import);
+      plugin = plugins.find(plugin => plugin.import && plugin.canImportModule?.(resolvedPath) === true)
+        ?? plugins.find(plugin => plugin.supportedExtensions?.includes(ext) && plugin.import);
       if (!plugin) {
         plugin = await this.opts.loadPluginForExtension?.(ext);
         if (plugin && !this.plugins.includes(plugin)) {

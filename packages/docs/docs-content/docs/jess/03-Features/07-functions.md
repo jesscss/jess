@@ -6,15 +6,13 @@ audiences:
 origin: jess
 ---
 
-:::danger Imported functions are not resolved yet
+:::info
 
-`@-from` parses and is preserved, but there is no module resolver in the 2.x
-alpha, so an imported function is never loaded or called. A call like
-`double(10px)` is passed through to the output verbatim. The syntax below is
-current; the behavior is the target.
-
-Jess's **built-in** functions (`mix`, `hsl`, `luma`, …) do work today — and they
-resolve by name, without an import.
+Imported functions are lexical. `@-from` binds selected names and aliases;
+`@-use` binds them through a namespace. Jess has no ambient Less or Sass
+function namespace. See
+[Modules & imports](/docs/language/modules-and-imports) for the canonical
+contract.
 
 :::
 

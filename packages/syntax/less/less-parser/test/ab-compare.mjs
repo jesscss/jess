@@ -48,9 +48,9 @@ const warmup = process.argv[4] ?? '8';
 const timed = process.argv[5] ?? '25';
 
 const FILES = [
-  'packages/parser-shared/src/opaque-at-rule.ts',
   'packages/parser-shared/src/pseudo-consts.ts',
   'packages/parser-shared/src/recognition.ts',
+  'packages/parser-shared/src/unknown-at-rule.ts',
   'packages/syntax/css/css-parser/src/cst-host.ts',
   'packages/syntax/css/css-parser/src/cst.ts',
   'packages/syntax/css/css-parser/src/cst/positions.ts',
@@ -66,6 +66,7 @@ const FILES = [
   'packages/syntax/css/css-parser/src/trivia-labels.ts',
   'packages/syntax/less/less-parser/src/cst.ts',
   'packages/syntax/less/less-parser/src/cst/positions.ts',
+  'packages/syntax/less/less-parser/src/grammar-helpers.ts',
   'packages/syntax/less/less-parser/src/grammar.ts',
   'packages/syntax/less/less-parser/src/grammar/ast.ts',
   'packages/syntax/less/less-parser/src/grammar/ast/positions.ts',
@@ -73,6 +74,7 @@ const FILES = [
   'packages/syntax/less/less-parser/src/grammar/cst/positions.ts',
   'packages/syntax/less/less-parser/src/index.ts',
   'packages/syntax/less/less-parser/src/parse-error.ts',
+  'packages/syntax/less/less-parser/src/parse-state.ts',
   'packages/syntax/less/less-parser/src/parse-with.ts',
   'packages/syntax/less/less-parser/src/positions.ts',
   'packages/syntax/less/less-parser/src/trivia-labels.ts',
