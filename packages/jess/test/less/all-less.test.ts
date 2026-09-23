@@ -3,12 +3,27 @@ import * as glob from 'glob';
 import * as path from 'path';
 import { readFileSync, writeFileSync } from 'fs';
 import { createHash } from 'node:crypto';
-import { invalidLess } from '@jesscss/shared';
 import { Compiler } from '../../src/index.js';
 import { outputDiagnostics } from '@jesscss/compiler/diagnostics';
 import { getTestCases, resolveLessTestDataRoot, lessFixturePackagesPlugin } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
+
+/*
+ * HOW A FIXTURE CAN FAIL TO RUN — all of it is in this file, on purpose.
+ *
+ * 1. `skippedFixtures` — not run. Every entry needs a reason, every entry is
+ *    reported as a skipped test so it shows up in the run, and the stale-skip
+ *    gate at the bottom of this file fails if one starts matching its golden.
+ * 2. `expectedFailureFixtures` — RUN, and asserted to fail. Fixing the cause
+ *    fails the entry, which is how a fix gets noticed.
+ * 3. no `.css` golden next to the `.less` — a helper or partial, never a fixture.
+ *
+ * There used to be a fourth: an `invalidLess` array in `@jesscss/shared` that
+ * filtered fixtures out of the glob silently. Six of its entries had gone stale
+ * and were passing unnoticed, so it is gone and its contents live in (1).
+ * Do not add another list. If a fixture must not run, give it a reason here.
+ */
 
 const readNumericFunctionArg = (value: any): number => {
   if (typeof value?.value === 'number') {
@@ -166,6 +181,13 @@ async function withFixtureTimeout<T>(
 type SkippedFixture = {
   file: string;
   reason: string;
+
+  /**
+   * Justification for exempting this entry from the stale-skip gate, for the
+   * case where matching the golden is not evidence that the feature works.
+   * A bare skip cannot say that, which is why it has to be written down.
+   */
+  gateExempt?: string;
 };
 
 /*
@@ -185,39 +207,92 @@ const skippedFixtures: SkippedFixture[] = (
      * Config fixtures that need a dedicated compatibility decision or feature
      * work before they can be release gates.
      */
-    'tests-config/debug/linenumbers.less', // debug output fixture; no expected CSS in upstream fixture
-    'tests-config/filemanagerPlugin/filemanager.less', // custom Less file manager plugin API needs scope decision
-    'tests-config/include-path/import-test-e.less', // helper imported by include-path fixture; no expected CSS
-    'tests-config/import-redirect/import-redirect.less', // no expected CSS in upstream fixture
-    'tests-config/js-type-errors/js-type-error.less', // expected error fixture, not render-to-CSS fixture
-    'tests-config/math-always/mixins-guards.less', // no expected CSS in upstream fixture
-    'tests-config/math-always/no-sm-operations.less', // no expected CSS in upstream fixture
-    'tests-config/math-parens-division/media-math.less', // no expected CSS in upstream fixture
-    'tests-config/math-parens-division/mixins-args.less', // no expected CSS in upstream fixture
-    'tests-config/math-parens-division/new-division.less', // no expected CSS in upstream fixture
-    'tests-config/math-parens-division/parens.less', // no expected CSS in upstream fixture
-    'tests-config/math-strict/css.less', // no expected CSS in upstream fixture
-    'tests-config/math-strict/media-math.less', // no expected CSS in upstream fixture
-    'tests-config/math-strict/mixins-args.less', // no expected CSS in upstream fixture
-    'tests-config/math-strict/parens.less', // no expected CSS in upstream fixture
-    'tests-config/no-js-errors/no-js-errors.less', // expected error fixture, not render-to-CSS fixture
-    'tests-config/postProcessorPlugin/postProcessor.less', // Less postprocessor plugin API needs scope decision
-    'tests-config/preProcessorPlugin/preProcessor.less', // Less preprocessor plugin API needs scope decision
-    'tests-config/root-registry/file.less', // no expected CSS in upstream fixture
-    'tests-config/root-registry/root.less', // no expected CSS in upstream fixture
-    'tests-config/strict-imports/imported.less', // helper imported by strict-imports fixture; no expected CSS
-    'tests-config/sourcemaps/basic.less', // source-map output suite needs dedicated output artifact checks
-    'tests-config/sourcemaps/custom-props.less', // source-map output suite needs dedicated output artifact checks
-    'tests-config/sourcemaps-disable-annotation/basic.less', // source-map output suite needs dedicated output artifact checks
-    'tests-config/sourcemaps-empty/empty.less', // source-map output suite needs dedicated output artifact checks
-    'tests-config/sourcemaps-empty/var-defs.less', // source-map output suite needs dedicated output artifact checks
-    'tests-config/sourcemaps-variable-selector/basic.less', // source-map output suite needs dedicated output artifact checks
-    'tests-config/sourcemaps-variable-selector/vars.less', // source-map output suite needs dedicated output artifact checks
-    'tests-config/visitorPlugin/visitor.less', // Less visitor plugin API needs scope decision
+    { file: 'tests-config/debug/linenumbers.less', reason: 'debug output fixture; no expected CSS in upstream fixture' },
+    { file: 'tests-config/filemanagerPlugin/filemanager.less', reason: 'custom Less file manager plugin API needs scope decision' },
+    { file: 'tests-config/include-path/import-test-e.less', reason: 'helper imported by include-path fixture; no expected CSS' },
+    { file: 'tests-config/import-redirect/import-redirect.less', reason: 'no expected CSS in upstream fixture' },
+    { file: 'tests-config/js-type-errors/js-type-error.less', reason: 'expected error fixture, not render-to-CSS fixture' },
+    { file: 'tests-config/math-always/mixins-guards.less', reason: 'no expected CSS in upstream fixture' },
+    { file: 'tests-config/math-always/no-sm-operations.less', reason: 'no expected CSS in upstream fixture' },
+    { file: 'tests-config/math-parens-division/media-math.less', reason: 'no expected CSS in upstream fixture' },
+    { file: 'tests-config/math-parens-division/mixins-args.less', reason: 'no expected CSS in upstream fixture' },
+    { file: 'tests-config/math-parens-division/new-division.less', reason: 'no expected CSS in upstream fixture' },
+    { file: 'tests-config/math-parens-division/parens.less', reason: 'no expected CSS in upstream fixture' },
+    { file: 'tests-config/math-strict/css.less', reason: 'no expected CSS in upstream fixture' },
+    { file: 'tests-config/math-strict/media-math.less', reason: 'no expected CSS in upstream fixture' },
+    { file: 'tests-config/math-strict/mixins-args.less', reason: 'no expected CSS in upstream fixture' },
+    { file: 'tests-config/math-strict/parens.less', reason: 'no expected CSS in upstream fixture' },
+    { file: 'tests-config/no-js-errors/no-js-errors.less', reason: 'expected error fixture, not render-to-CSS fixture' },
+    { file: 'tests-config/postProcessorPlugin/postProcessor.less', reason: 'Less postprocessor plugin API needs scope decision' },
+    { file: 'tests-config/preProcessorPlugin/preProcessor.less', reason: 'Less preprocessor plugin API needs scope decision' },
+    { file: 'tests-config/root-registry/file.less', reason: 'no expected CSS in upstream fixture' },
+    { file: 'tests-config/root-registry/root.less', reason: 'no expected CSS in upstream fixture' },
+    { file: 'tests-config/strict-imports/imported.less', reason: 'helper imported by strict-imports fixture; no expected CSS' },
+    { file: 'tests-config/sourcemaps/basic.less', reason: 'source-map output suite needs dedicated output artifact checks' },
+    { file: 'tests-config/sourcemaps/custom-props.less', reason: 'source-map output suite needs dedicated output artifact checks' },
+    { file: 'tests-config/sourcemaps-disable-annotation/basic.less', reason: 'source-map output suite needs dedicated output artifact checks' },
+    { file: 'tests-config/sourcemaps-empty/empty.less', reason: 'source-map output suite needs dedicated output artifact checks' },
+    { file: 'tests-config/sourcemaps-empty/var-defs.less', reason: 'source-map output suite needs dedicated output artifact checks' },
+    { file: 'tests-config/sourcemaps-variable-selector/basic.less', reason: 'source-map output suite needs dedicated output artifact checks' },
+    { file: 'tests-config/sourcemaps-variable-selector/vars.less', reason: 'source-map output suite needs dedicated output artifact checks' },
+    { file: 'tests-config/visitorPlugin/visitor.less', reason: 'Less visitor plugin API needs scope decision' },
     {
       file: 'tests-unit/import/import-remote.less',
       reason:
-        'remote URL imports require an explicit network/IO allowlist, which is not part of the alpha harness policy'
+        'remote URL imports require an explicit network/IO allowlist, which is not part of the alpha harness policy',
+      gateExempt:
+        'matches its golden OFFLINE only because the harness fixture-package plugin maps those cdn.jsdelivr.net URLs onto the local corpus. That is not evidence that remote imports work — jess#219 decides the network policy, and Phase C of the release plan gates on it.'
+    },
+
+    /*
+     * CARRIED OVER from the former `invalidLess` list in `@jesscss/shared`,
+     * which filtered fixtures out of the glob with no trace in a test run. One
+     * list now holds every exclusion, every entry states a reason, and the
+     * stale-skip gate below re-measures them.
+     */
+    {
+      file: 'tests-unit/permissive-parse/permissive-parse.less',
+      reason: 'INTENDED DIVERGENCE (P7): a bare `@function-name` at-rule prelude is rejected'
+    },
+    {
+      file: 'tests-unit/permissive-parse/legacy/permissive-parse.less',
+      reason: 'same P7 prelude ruling as its non-legacy sibling'
+    },
+    {
+      file: 'tests-unit/property-name-interp/property-name-interp.less',
+      reason: 'OPEN F7(a): repeated complex property-name interpolation drops value-owned layout trivia'
+    },
+    {
+      file: 'tests-unit/import/import/invalid-css.less',
+      reason: 'no reason was recorded when this entry was added; not re-measured'
+    },
+    {
+      file: 'tests-unit/functions/legacy/functions.less',
+      reason: 'non-Less `$list` parameter syntax is deliberately unsupported'
+    },
+    {
+      file: 'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less',
+      reason: 'VACUOUS UPSTREAM FIXTURE: every case in it is commented out, so it asserts nothing, and its golden is one newline while jess and lessc 4.9.1 both render zero bytes — the sibling `tests-unit/empty` golden is 0 bytes, so the corpus disagrees with itself. Delete it upstream'
+    },
+    {
+      file: 'tests-unit/javascript/javascript.less',
+      reason: 'inline backtick JavaScript is intentionally unsupported in v5'
+    },
+    {
+      file: 'tests-config/js-type-errors/js-type-error.less',
+      reason: 'inline backtick JavaScript is intentionally unsupported in v5'
+    },
+    {
+      file: 'tests-config/no-js-errors/no-js-errors.less',
+      reason: 'inline backtick JavaScript is intentionally unsupported in v5'
+    },
+    {
+      file: 'tests-config/math-parens-division/new-division.less',
+      reason: 'the deprecated `./` dot-slash division operator was removed in v5; it is now a parse error'
+    },
+    {
+      file: 'tests-config/math-always/no-sm-operations.less',
+      reason: 'no reason was recorded when this entry was added; not re-measured'
     }
   ] as Array<string | SkippedFixture>
 ).map((entry): SkippedFixture => {
@@ -406,7 +481,7 @@ const diagnosticCodesFor = (result: RenderResult): string[] => [
   ...result.warnings.map(diagnostic => diagnostic.code)
 ];
 
-// Allow specific fixtures even when they are listed in shared invalidLess.
+// Allow specific fixtures even when they carry a skip reason.
 const forcedIncludes = new Set<string>([]);
 
 describe('Can render Less files to CSS', () => {
@@ -421,10 +496,7 @@ describe('Can render Less files to CSS', () => {
 
   allFiles
     .map(value => path.relative(testData, value))
-    .filter(
-      value => forcedIncludes.has(value) || !invalidLess.includes(value)
-    )
-    .filter(value => !skippedFixtureReasons.has(value)) // Skip files tested elsewhere or outside the current alpha lane
+    .filter(value => forcedIncludes.has(value) || !skippedFixtureReasons.has(value))
     .filter(value => !fixtureFilter || fixtureFilter.test(value))
 
     // .filter(value => value <= 'tests-unit/whitespace/whitespace.less')
@@ -550,6 +622,69 @@ describe('Can render Less files to CSS', () => {
         });
       }
     });
+});
+
+/*
+ * Every skipped fixture is REPORTED, so `invalidLess`-style invisible exclusions
+ * cannot come back: a reader of the test output sees the file and the reason.
+ */
+describe('Skipped Less fixtures (not run)', () => {
+  for (const { file, reason, gateExempt } of skippedFixtures) {
+    it.skip(
+      `${file} — ${reason}${gateExempt === undefined ? '' : ` [exempt from the stale-skip gate: ${gateExempt}]`}`,
+      () => {}
+    );
+  }
+});
+
+/*
+ * A skip is a claim that the fixture does not match its golden yet. This gate
+ * re-measures that claim, because six exclusions had silently gone stale. A
+ * fixture that renders byte-identically must lose its skip and become a gate.
+ *
+ * Anything that throws, times out, or has no golden still counts as "does not
+ * match" — this gate only fires on the one case a skip cannot explain.
+ */
+describe('Skipped Less fixtures are still failing', () => {
+  const measurable = skippedFixtures.filter(({ file, gateExempt }) => {
+    if (gateExempt !== undefined) {
+      return false;
+    }
+    try {
+      return getTestCases(path.join(testData, file)).length > 0;
+    } catch {
+      return false;
+    }
+  });
+
+  for (const { file, reason } of measurable) {
+    it(`${file} still differs from its golden`, async () => {
+      const lessPath = path.join(testData, file);
+      const [testCase] = getTestCases(lessPath);
+      let matched = false;
+      try {
+        const expectedCss = readFileSync(testCase.expectedFile, 'utf8');
+        const result = await withFixtureTimeout(file, () => new Compiler({
+          ...baseCompiler.opts,
+          ...testCase.config,
+          output: {
+            ...baseCompiler.opts.output,
+            ...(testCase.config.output || {}),
+            ...(collapseNestingTrueFixtures.has(file) ? { collapseNesting: true } : {})
+          }
+        }).renderToResult(lessPath, { outputFile: testCase.expectedFile }));
+        matched = result.css === expectedCss;
+      } catch {
+        matched = false;
+      }
+
+      expect(
+        matched,
+        `${file} now matches its golden, so its skip is stale — remove it from `
+        + `skippedFixtures and let it gate. Recorded reason: ${reason}`
+      ).toBe(false);
+    }, 10000);
+  }
 });
 
 describe('Less fixture harness diagnostics', () => {
