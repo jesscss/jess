@@ -34,7 +34,88 @@ three things at once: the converter emits **valid `.jess` source** rather than
 merely a valid AST; the `.jess` parser can **read back** what the emitter writes;
 and **evaluation** of the re-parsed tree agrees.
 
+## Status (2026-09-23): built — the Less arm
+
+The emitter and the Less harness exist. The owner's position on the emitter,
+verbatim: *"okay but we can infer one... we know what parses in .jess or what
+should parse and we know how the nodes serialize"*.
+
+- **Emitter** — `packages/core/src/ast/emit-jess.ts`, exported from
+  `@jesscss/core` as `emitJess(root, { importPath? })` and `NoJessSpelling`. It
+  prints the PARSED `Stylesheet` as `.jess` source and evaluates nothing. Each
+  spelling is the inverse of a production in
+  `packages/syntax/jess/jess-parser/src/grammar.ts`; leaf bytes are the parser's
+  own `src`. A node with no `.jess` spelling throws
+  `NoJessSpelling: <node type> (<why>)`, and the error's `gaps` lists every gap
+  in the document — that list is the map of what `.jess` cannot express yet. It
+  never prints an approximation: no `$( … )` is inferred around bare math, no
+  live read is printed for a scoped one.
+- **Emitter self-test** — `packages/syntax/jess/jess-parser/test/emit-jess-roundtrip.test.ts`:
+  for every hand-written `.jess` fixture, `parse(emitJess(parse(src)))` is the
+  same tree. 21 of the 22 fixtures round-trip; `packages/jess/benchmark/chunk.jess`
+  does not parse at all (a stale port with bare `$a * 5` math) and is named there.
+- **Harness** — `packages/jess/test/jess/less-jess-equivalence.test.ts`, built to
+  the design below: arm A `safeRender(file.less)`, convert (the product parse via
+  `safeCompile`, then `emitJess`, then write `file.jess`), arm B
+  `safeRender(file.jess)`, gate `cssB === cssA`, both arms on one explicit
+  configuration, in both `collapseNesting` modes. Every converted file must also
+  be a fixed point: its `.jess` tree prints back to text that parses to the same
+  tree. The ratchet lists every non-passing fixture with a cause and a reason.
+
+Measured on the commit that added the harness (identical in both modes):
+
+| Corpus | Fixtures | Pass | P35 (bare math) | Cannot express | Lost info | Less arm does not render |
+| --- | --: | --: | --: | --: | --: | --: |
+| `all-less` test-data | 138 | 29 | 14 | 82 | 1 | 12 |
+| `bootstrap-less-port@2.5.1` (3 entry points) | 3 | 0 | 0 | 3 | 0 | 0 |
+
+"Cannot express" is 70 fixtures where the emitter threw `NoJessSpelling` (in the
+file or in a partial it imports) plus 12 that convert and render but differ: Less
+built-in function calls (`.jess` has no ambient function namespace and no
+`@-from` module exports the Less built-ins) and Less-plugin URL rewriting. The
+one "lost info" fixture imports a bare package specifier that the `./` rewrite
+turns file-relative. Math is its own cause because ledger P35 rules that Less
+math lowers into an `Expression`; those 14 entries flip when it lands. The Sass
+arm is not built.
+
+### Where the grammar and the recorded spellings disagree
+
+Found while inferring the emitter from the grammar (the grammar wins):
+
+- Extensionless imports. The migration guide spells `@import "variables"` as
+  `@-import "./variables"; // variables.jess`, but `.jess` resolves no extension:
+  `@-import "./variables"` is `import/not-found`. The converter names the file
+  (`./variables.jess`) through the `importPath` option.
+- `$type.iscolor($x)` is the `GuardCall` spelling of a type-check guard; the
+  inventory row "guard calling a function" says no spelling works (it tests only
+  the bare `iscolor($x)`).
+- `$d();` (`ReferenceCall`) calls a variable-bound block; the inventory row
+  "anonymous-mixin call" tests only `$ > $d()`. It reads the LIVE store only, so a
+  Less `@d()` (scoped) still has no spelling.
+- `$extend .a [!exact];` (`Extend`) is the body-placement extend; the inventory row
+  "`&:extend()` in a rule body" tests only `&:extend(.a);`. Conversely, the two
+  "supported" `:extend()`-in-a-selector rows parse as plain pseudo TEXT
+  (`:extend(.b)`), not as extend instructions — `.jess` has no selector-placement
+  extend.
+- `@-reference` and `@-plugin` parse only as inert generic at-rule statements;
+  nothing implements either, though the inventory marks both supported.
+- `$d: { color: red; }` is a `Collection` (data) in `.jess`; the executable block
+  is `$d: @{ … }`. The inventory's "anonymous-mixin declaration" row tests the
+  collection.
+- `IfValue` documents `foo: $if (…) { … } $else { … }` as its `.jess` form; no
+  production builds it.
+- A standalone `$( … )` value parses to a one-part `Interpolation` around the
+  `Expression`, not a bare `Expression` — relevant to P35's shape proxy.
+- Parser defects in the `.jess` mixin rules (recorded as emitter gaps, not
+  worked around): the `MixinCallArgument` reducer reads a positional string
+  argument's content as a keyword name (`$ > m("x")` binds `$x`), and throws on a
+  space-run argument (`$ > m(1px solid)`); the `MixinParam` reducer silently drops
+  a space-run default (`.m($a: 1px solid)` has no default).
+
 ## Feasibility verdict: not buildable today
+
+> **Superseded 2026-09-23** by the Status section above: both capabilities now
+> exist. Kept as the record of what was measured before them.
 
 Two capabilities are required. **Neither exists.**
 
@@ -69,6 +150,8 @@ Two capabilities are required. **Neither exists.**
 - All 24 `.jess` files in the repo are hand-written fixtures. No code writes a
   `.jess` file.
 
+> **Superseded 2026-09-23:** the emitter and the harness were built (see Status).
+
 **Per the standing instruction, no converter was built.** Building one is a
 substantially larger project than a test harness, and it should be scoped
 deliberately. What was built instead is the blocking-construct inventory (below),
@@ -86,6 +169,10 @@ frontmatter description and the "coming from Sass" guide both repeat the claim.
 No such subcommand exists; the CLI would treat `convert` as an input filename and
 fail with a file-not-found error. This is user-facing and worth fixing
 independently of the harness.
+
+> Observed 2026-09-23: the guide now states there is **no** `jess convert`
+> command. `emitJess` is the component such a command would call; the command
+> itself is not built.
 
 The same file is, however, the closest thing to a **converter specification** in
 the repo — its mapping tables define the intended target spellings, and they are
@@ -112,13 +199,21 @@ parsed one, which retains the abstractions — a parsed Less tree carries
 An emitter has no choice but to walk that, so `@color: red` must emit as
 `$color: red` and mixins must stay mixins.
 
+> **Superseded 2026-09-23** — the estimate in the next paragraph. Owner, verbatim:
+> *"we don't eval so this is dumb... it's just serialization of the tree and then
+> reparsing as .jess"*. A source printer walks the parsed tree and evaluates
+> nothing, so it shares no traversal with `serialize()` and needs no "preserve,
+> then write" mode; it is a plain printer (`emit-jess.ts`). What stays true is the
+> paragraph above: walking the PARSED tree is what keeps the round trip from
+> being vacuous.
+
 The cost of the same property is the real engineering estimate: because eval and
 emit are **fused**, a `.jess` emitter is a sibling in *shape* only. The existing
 walk's core behaviour is "resolve, then write"; the emitter needs "preserve, then
 write" at every value, mixin, guard and control-flow site. It is a parallel
 emission target over a shared traversal, not a flag on the existing one.
 
-## Harness design (to build once the emitter exists)
+## Harness design (built for the Less arm — see Status)
 
 Follow the ratchet convention already established by
 `packages/jess/test/scss/bootstrap-corpus.test.ts`.
@@ -224,11 +319,13 @@ Roughly in dependency order:
    These are promises the docs already make.
 4. **Close the Less-arm gaps** — the seven rows above. This is the bulk of the
    language work and is what "successor to Less" actually costs.
-5. **Build the `.jess` emitter** — a parallel emission target over the shared
+5. ~~**Build the `.jess` emitter**~~ — done 2026-09-23 as a plain printer
+   (`emit-jess.ts`), not a sibling traversal; see Status. Original text: a parallel emission target over the shared
    parsed-tree traversal, preserving abstractions rather than resolving them.
    This is the large piece, and the fused eval/emit architecture means it is a
    sibling traversal rather than a flag.
-6. **Wire the harness** — mechanical once 5 exists.
+6. ~~**Wire the harness**~~ — done 2026-09-23 for the Less arm
+   (`less-jess-equivalence.test.ts`).
 7. **Fix the migration guide** — either implement `jess convert` or stop claiming
    it ships. Worth doing immediately and independently.
 

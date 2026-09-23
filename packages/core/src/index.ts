@@ -36,6 +36,10 @@ export type { ApplySelectorKind, ExtendSelectorKind, SelectorPolicyKind } from '
 export { prepareStaticImports, serialize } from './ast/serialize.js';
 export type { PreparedImports, PrepareStaticImportsOptions, SerializeOptions, Position } from './ast/serialize.js';
 
+/** Print a parsed stylesheet as `.jess` source (no evaluation). */
+export { emitJess, NoJessSpelling } from './ast/emit-jess.js';
+export type { EmitJessOptions, JessSpellingGap } from './ast/emit-jess.js';
+
 /** Build a v3 source map from the render's position stream (see `trackPositions`). */
 export { buildAstSourceMap } from './ast/sourcemap.js';
 export type { AstSourceMapOptions } from './ast/sourcemap.js';
