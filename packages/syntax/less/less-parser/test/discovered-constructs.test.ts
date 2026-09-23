@@ -251,6 +251,70 @@ describe('Less constructs discovered outside the parser suites', () => {
     });
   });
 
+  it.each([
+    ['slash-led path', '@p: /img/icon.svg;', '/img/icon.svg'],
+    ['bare slash-led name', '@p: /img;', '/img'],
+    ['class-shaped name', '@p: .a;', '.a'],
+    ['id-shaped name', '@p: #id;', '#id'],
+    ['id-shaped compound', '@p: #id.b;', '#id.b'],
+    ['doubled dot', '@p: ..a;', '..a']
+  ])('keeps a variable value the value grammar cannot start as verbatim bytes (%s)', (_label, source, src) => {
+    /*
+     * jess#235 / jess#236. lessc 4.9.1 compiles every one of these and emits
+     * the bytes unchanged, because only its VARIABLE branch falls back to
+     * `permissiveValue()` when `value()` declines (`parser.js:1841`). `#id`
+     * was in neither issue and is the same gap: `#id` is two characters, so it
+     * is not a hex colour and nothing else in the value grammar starts a `#`.
+     */
+    expect(firstRule(source)).toMatchObject({
+      type: 'VariableDeclaration',
+      name: 'p',
+      value: { type: 'Any', src }
+    });
+  });
+
+  it.each([
+    ['slash-led path', '.x { p: /img/x.svg; }'],
+    ['bare slash-led name', '.x { p: /img; }'],
+    ['class-shaped name', '.x { p: .a; }'],
+    ['id-shaped name', '.x { p: #id; }']
+  ])('still rejects the same value in property position (%s)', (_label, source) => {
+    /*
+     * The control for the rule above, and the reason it lives on the variable
+     * declaration rather than in the shared value grammar: lessc 4.9.1 rejects
+     * all four here too ("Unrecognised input"), so rejecting them is parity.
+     */
+    expect(() => parse(source)).toThrow();
+  });
+
+  it.each([
+    ['leading-dot number', '@p: .5;', { type: 'Dimension', src: '.5' }],
+    ['hex colour', '@p: #fff;', { type: 'Color', src: '#fff' }],
+    ['identifier', '@p: red;', { type: 'Keyword', src: 'red' }],
+    ['escaped string', '@p: ~"/img";', { type: 'Quoted', escaped: true }]
+  ])('leaves a variable value the value grammar CAN start structured (%s)', (_label, source, value) => {
+    /* The verbatim arm is last, so it never claims a value that already parses. */
+    expect(firstRule(source)).toMatchObject({ type: 'VariableDeclaration', value });
+  });
+
+  it('keeps a slash-led value that follows an operand as a preserved slash group', () => {
+    /* `1 /img` was already a slash group and must not become verbatim bytes. */
+    expect(firstRule('@p: 1 /img;')).toMatchObject({
+      type: 'VariableDeclaration',
+      value: { type: 'Sequence', parts: [{ src: '1' }, { src: '/' }, { src: 'img' }] }
+    });
+  });
+
+  it('still reports a genuinely missing semicolon as one', () => {
+    /*
+     * The verbatim arm must not swallow the end of a declaration: `@p: red`
+     * with no terminator is still the error it always was, at the same place.
+     */
+    const failure = failureOf('@p: red\n.x { color: red; }');
+
+    expect(failure.message).toBe('Missing semicolon.');
+  });
+
   it('does not read a colon as a keyword argument when no variable precedes it', () => {
     /* The key regex carries the operator lookahead, so only `@name:` opens the
      * keyword arm — `f(name: 1)` is no more accepted than it was before. */

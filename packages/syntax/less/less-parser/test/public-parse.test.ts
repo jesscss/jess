@@ -438,7 +438,7 @@ describe('public Less parse()', () => {
 
   it('keeps direct parse error messages free of raw Parseman expected tokens', () => {
     const source =
-      '.theme(){foo:bar;} .val { @alias: .theme; foo: @alias[foo]; }';
+      '.theme(){foo:bar;} .val { @alias: (); foo: @alias[foo]; }';
     let thrown: unknown;
 
     try {
@@ -453,7 +453,9 @@ describe('public Less parse()', () => {
     }
 
     /*
-     * The failure lands on the `:` in `@alias:`. Under parseman 0.48.1's honest
+     * The failure lands on the `(` of the empty group. An empty group starts no
+     * value and `VerbatimValue` cannot rescue it either, because a bare `(` is
+     * not verbatim value text. Under parseman 0.48.1's honest
      * narrowing the deepest frame is a rule/selector position — a block,
      * combinator, class/id selector, or mixin call could continue — not a value
      * position; it only reported "Expected a Less value" while the 0.46.0

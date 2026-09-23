@@ -273,8 +273,10 @@ describe('Less parser errors through the public AST route', () => {
 
   it('summarizes selector-context parser failures without leaking atom internals', async () => {
     /*
-     * The failure lands on the `:` at line 6, column 9. Under correct 0.48.1
-     * narrowing the deepest frame is a rule/selector position (a block,
+     * The failure lands on the `(` of the empty group at line 6, column 11: it
+     * starts no value, and the verbatim variable-value arm cannot rescue it
+     * either because a bare `(` is not verbatim value text. Under correct
+     * 0.48.1 narrowing the deepest frame is a rule/selector position (a block,
      * combinator, class/id selector, or mixin call could continue), NOT a value
      * position — it only looked like one while the 0.46.0 OP_CHOICE union bug
      * widened the expected set into the value-atom signature. The clean summary
@@ -286,7 +288,7 @@ describe('Less parser errors through the public AST route', () => {
       '}',
       '',
       '.val {',
-      '  @alias: .theme;',
+      '  @alias: ();',
       '  foo: @alias[foo];',
       '}'
     ].join('\n');

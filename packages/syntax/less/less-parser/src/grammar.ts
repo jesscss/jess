@@ -229,6 +229,7 @@ type LessRules = {
   ValueSequence: Combinator<ValueSlot>;
   ValueList: Combinator<ValueSlot>;
   VariableValue: Combinator<ValueSlot>;
+  VerbatimValue: Combinator<Any>;
   ImportantValue: Combinator<Important>;
   ValueListWithPriority: Combinator<ValueSlot>;
   CustomPropertyName: Combinator<string | Interpolation>;
@@ -1330,9 +1331,31 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     noTrivia(sequence(literal('@'), lessVariableName)),
     (children, _fields, span) => `@${requireSupportedVariableName(children[1], span.start, span.end)}`
   );
+  /**
+   * `@name: value;`, with the value arms ordered most specific first.
+   *
+   * The structured value arm must reach this declaration's own end before the
+   * choice commits to it. Without that anchor `@p: /img` takes the bare-slash
+   * value piece, succeeds having consumed one character, and leaves `img` for
+   * `declarationEnd` — which then fails the whole declaration with a "missing
+   * semicolon" on a line that ends in one, because no later arm is reachable
+   * once an earlier one has matched. Anchoring the arm makes the partial match
+   * a failed arm instead, so {@link VerbatimValue} can claim the whole run.
+   */
   const VarDeclaration = node(
     'VariableDeclaration',
-    sequence(variableName, literal(':'), choice(sequence(g.NamespacedMixinValue, mixinValueWithoutLookup), g.ImportantValue, sequence(g.FlatMixinCall, mixinValueWithoutLookup), sequence(not(literal('{')), g.VariableValue)), declarationEnd),
+    sequence(
+      variableName,
+      literal(':'),
+      choice(
+        sequence(g.NamespacedMixinValue, mixinValueWithoutLookup),
+        g.ImportantValue,
+        sequence(g.FlatMixinCall, mixinValueWithoutLookup),
+        sequence(not(literal('{')), g.VariableValue, peek(declarationEnd)),
+        g.VerbatimValue
+      ),
+      declarationEnd
+    ),
     (children, _fields, span) => {
       const name = requireTerminalText(children[0]).slice(1);
       const value = children[2];
@@ -2098,6 +2121,30 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     (children, fields, _span, rawChildren, triviaLog, state) =>
       commaListWithTriviaFromChildren(children, fields, triviaLog, state, isLessValueSlotValue, rawChildren)
+  );
+  /**
+   * One run of value bytes that the value grammar cannot start, kept verbatim.
+   *
+   * A Less VARIABLE value is not restricted to CSS component values:
+   * `@p: /img/icon.svg`, `@p: .a` and `@p: #id` all compile on lessc 4.9.1 and
+   * emit their bytes unchanged, while the same text in PROPERTY position is a
+   * parse error there and here. That asymmetry is not an accident of the
+   * implementation, it is its declaration rule: only the variable branch falls
+   * back to `permissiveValue()` after `value()` declines (less 4.9.1
+   * `parser.js:1841`), so only a variable value accepts this shape.
+   *
+   * This is a Less ADDITION — CSS has no declaration-value shape starting `/`,
+   * `.` or `#` — so it is a new rule rather than an override, and it is reached
+   * only from {@link VarDeclaration} so property values keep rejecting it.
+   * The run ends at any byte that structures Less: whitespace, a quote, a
+   * group/block delimiter, `;` or `,`. The fact emitted is `Any`, the opaque
+   * leaf that preserves its bytes and is typed only when a later operation
+   * forces it.
+   */
+  const VerbatimValue = node(
+    'VerbatimValue',
+    regex(/[^ \t\n\r\f"'(){}[\];,\x00-\x08\x0B\x0E-\x1F\x7F]+/),
+    children => any(requireToken(children[0]).value)
   );
   // `!important` is a grammar-owned declaration/value modifier.  Variables
   // carry the wrapper so references hoist importance once; declarations expose
@@ -5028,6 +5075,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ValueSequence,
     ValueList,
     VariableValue,
+    VerbatimValue,
     ImportantValue,
     ValueListWithPriority,
     CustomPropertyName,

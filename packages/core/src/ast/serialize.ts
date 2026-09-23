@@ -3443,7 +3443,18 @@ function evalBinding(
   return evaluated ?? ('type' in b && b.type === 'MixinCall' ? literal('') : evalValueSlot(b, frame, e));
 }
 
-function unresolvedSymbol(node: object, symbol: string, e: EvalCtx): never {
+/**
+ * `override` replaces the catalogue's "is undefined in this scope" wording for
+ * the callers where that sentence would be false — a lookup whose BASE resolved
+ * and whose step simply cannot apply. Saying a defined name is undefined sends
+ * the author looking for the wrong thing.
+ */
+function unresolvedSymbol(
+  node: object,
+  symbol: string,
+  e: EvalCtx,
+  override?: { reason: string; fix: string }
+): never {
   const file = e.context?.sourceContext?.file;
   const source = file?.source;
   const span = source === undefined ? undefined : sourceSpanOf(node);
@@ -3456,6 +3467,7 @@ function unresolvedSymbol(node: object, symbol: string, e: EvalCtx): never {
     source,
     line: location?.line,
     column: location?.column,
+    ...override,
     meta: { symbol }
   });
 }
@@ -5863,6 +5875,16 @@ function resolveReferenceResult(
   let evaluated: ValueGroup | null = null;
   let sourceOwner = frame?.sourceOwner ?? null;
   let stepIndex = 0;
+
+  /*
+   * An UNBOUND base leaves the whole reference verbatim (`@compose … as *` does
+   * not bind the namespace, so `@foo.colors.primary` must survive as bytes).
+   * A BOUND base whose step cannot apply is the opposite case: the author named
+   * a real binding and asked it for something it does not have, which is a
+   * resolve failure and therefore an eval error — the same answer the bound
+   * base with a missing MEMBER already gives a few lines below.
+   */
+  let baseIsBound = false;
   if (
     e.moduleNamespaceValues !== undefined
     && !isValueSlotArray(value)
@@ -5894,6 +5916,7 @@ function resolveReferenceResult(
     if (!resolved) {
       return null;
     }
+    baseIsBound = true;
     value = resolved.value;
     valueFrame = resolved.frame;
     evaluated = resolved.evaluated;
@@ -6043,6 +6066,12 @@ function resolveReferenceResult(
     }
     const map = resolveBaseDeclMap(value, valueFrame, e, evaluated);
     if (!map) {
+      if (baseIsBound && !e.optional) {
+        unresolvedSymbol(node, node.raw, e, {
+          reason: `"${node.raw}" looks up a member of a value that has none.`,
+          fix: 'Bind the base to a ruleset, map, or list before looking a member up on it.'
+        });
+      }
       return null;
     }
     let matched: DeclEntry | undefined;
