@@ -125,7 +125,8 @@ type ScssRules = {
   AtRulePreludeAtom: Combinator<Token>;
   AtRulePreludeGroup: Combinator<Token>;
   AtRulePreludeQuoted: Combinator<Token>;
-  AtRuleStatement: Combinator<AtRuleStatement>;
+  StatementAtRuleName: Combinator<string>;
+  StatementPrelude: Combinator<ValueNode | null>;
   AtRootFilterPrelude: Combinator<ValueNode>;
   SassDirective: Combinator<[string, unknown]>;
   SassNestedDirective: Combinator<[string, unknown]>;
@@ -164,7 +165,6 @@ type ScssRules = {
   Extend: Combinator<ExtendInstruction>;
   ScssGenericAtRuleName: Combinator<string>;
   UnknownAtRuleBlock: Combinator<UnknownAtRuleBlock>;
-  GenericAtRuleStatement: Combinator<AtRuleStatement>;
   Ruleset: Combinator<Ruleset>;
   NestedRuleset: Combinator<Ruleset>;
   rw: Combinator<unknown>;
@@ -235,6 +235,17 @@ type ScssSharedSyntax = {
   Keyword: Combinator<Keyword>;
   Important: Combinator<true>;
   NestingSelector: Combinator<SimpleSelector>;
+
+  /*
+   * Converged to the CSS base (inherited via compose): CSS already spells
+   * `<at-keyword> <statement prelude> ;`, and SCSS's delta is entirely in the
+   * two children it overrides by name (`StatementAtRuleName`,
+   * `StatementPrelude`). SCSS previously carried two forks of this rule — one
+   * hard-coding `@charset|@namespace|@layer`, one for names with no typed block
+   * — and between them no typed at-rule name could ever take its statement
+   * spelling, which is why `@font-face;` parsed in CSS and not here.
+   */
+  AtRuleStatement: Combinator<AtRuleStatement>;
 };
 
 type ScssInputRules =
@@ -416,20 +427,33 @@ const scssScanSkipSingleString = noTrivia(sequence(
  * vendor prefix (`@-webkit-anything`) stays ordinary unknown CSS.
  */
 /*
- * The SCSS-only at-rule names, declared ONCE. The CSS at-rule names are NOT
- * re-spelled here: `ScssGenericAtRuleName` below excludes them by composing
+ * The Sass-evaluated directive names, declared ONCE. The CSS at-rule names are
+ * NOT re-spelled here: `ScssGenericAtRuleName` below excludes them by composing
  * `not()` over cssSyntax's own `TypedAtKeyword`/`ConditionalAtKeyword`/
  * `ImportAtKeyword` leaves, so this list cannot drift from the CSS set the way
  * a hand-copied one did (it was missing @color-profile, @font-palette-values,
  * @position-try and @view-transition).
  */
-const scssOwnAtKeyword = keywords(
+const sassDirectiveAtKeyword = keywords(
   [
     '@use', '@forward', '@mixin', '@include', '@function', '@return',
     '@if', '@else', '@each', '@for', '@while', '@extend', '@at-root',
-    '@content', '@debug', '@warn', '@error', '@charset', '@namespace',
+    '@content', '@debug', '@warn', '@error',
     '@-use', '@-compose', '@-export', '@-import', '@-from'
   ],
+  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
+);
+
+/*
+ * `@charset` and `@namespace` are CSS names, not SCSS-only ones: they reach the
+ * inherited `AtRuleStatement` and must NOT be excluded from it, but they have no
+ * block spelling and so must stay out of the opaque-block branch. Split out for
+ * exactly the reason `descriptorAtKeywordTyped`/`descriptorAtKeywordCssOnly` are
+ * split in the shared recognition artifact -- one declaration per name, the
+ * union below unchanged, and each negative form excludes only what it means to.
+ */
+const statementOnlyAtKeyword = keywords(
+  ['@charset', '@namespace'],
   { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
 );
 
@@ -2389,7 +2413,7 @@ const scssFactory = (g: ScssInputRules) => {
     g.PageBlock,
     g.FontFeatureValuesBlock,
     g.UnknownAtRuleBlock,
-    g.GenericAtRuleStatement
+    g.AtRuleStatement
   );
 
   /*
@@ -2489,7 +2513,7 @@ const scssFactory = (g: ScssInputRules) => {
     g.FontFeatureValuesBlock,
     g.Keyframes,
     g.UnknownAtRuleBlock,
-    g.GenericAtRuleStatement,
+    g.AtRuleStatement,
     g.NestedRuleset
   ));
   const startingLayerBlockBody = many(choice(
@@ -2504,7 +2528,7 @@ const scssFactory = (g: ScssInputRules) => {
     g.FontFeatureValuesBlock,
     g.Keyframes,
     g.UnknownAtRuleBlock,
-    g.GenericAtRuleStatement,
+    g.AtRuleStatement,
     g.NestedRuleset
   ));
   const MixinDefinitionRule = node<MixinDefinition>(
@@ -3515,8 +3539,14 @@ const scssFactory = (g: ScssInputRules) => {
   /*
    * Statement headers need the same nested syntax as block headers but
    * must leave their top-level semicolon to the statement production.
+   *
+   * A top-level `$` is a sentinel, exactly as it is in the opaque at-rule
+   * prelude capture: a dynamic header cannot truthfully lower to verbatim CSS
+   * output, so `@view-transition $x;` must be rejected rather than emitted. `$`
+   * inside a quoted string or a balanced group belongs to the arm that owns
+   * those bytes and is unaffected.
    */
-  const statementPreludeText = regex(/(?:[^#;()\[\]{}'"\\/]|\\[\s\S]|#(?!\{)|\/(?![/*]))+/);
+  const statementPreludeText = regex(/(?:[^#$;()\[\]{}'"\\/]|\\[\s\S]|#(?!\{)|\/(?![/*]))+/);
   const StatementPrelude = node<ValueNode | null>(
     'StatementPrelude',
     noTrivia(many(choice(
@@ -3534,24 +3564,6 @@ const scssFactory = (g: ScssInputRules) => {
       const text = children.map(requireToken).filter(token => !token.value.startsWith('//')).map(token => token.value).join('').trim();
       return text.length === 0 ? null : any(text);
     }
-  );
-
-  /*
-   * CSS statement at-rules retain the existing canonical statement fact. This
-   * deliberately excludes Sass diagnostics (`@debug`, `@warn`, `@error`) and
-   * all dynamic headers: neither can truthfully lower to CSS output here.
-   */
-  const AtRuleStatement = node<AtRuleStatement>(
-    'AtRuleStatement',
-    sequence(
-      regex(/@(?:charset|namespace|layer)(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-      StatementPrelude,
-      literal(';')
-    ),
-    children => atRuleStatement(
-      requireToken(children[0]).value,
-      scssOptionalValue(children[1])
-    )
   );
 
   /*
@@ -4703,10 +4715,27 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
+   * CSS's statement at-rule name, narrowed by the two things SCSS adds: its own
+   * evaluated directives, which are never verbatim CSS output, and the
+   * conditional group at-keywords, whose statement spelling CSS itself rejects.
+   * Everything else CSS admits here stays admitted -- including every name with
+   * a typed BLOCK production, because a block production never matches a
+   * statement and CSS's own dispatch pairs each typed block with exactly this
+   * statement arm (`choice(RoutedAtRuleStatement, <block>)`).
+   */
+  const StatementAtRuleName = token(noTrivia(sequence(
+    not(sassDirectiveAtKeyword),
+    not(g.ConditionalAtKeyword),
+    not(g.ImportAtKeyword),
+    g.AtIdentifier
+  )));
+
   /*
-   * Excludes the SCSS-only names AND the CSS at-rule set, the latter by
-   * inverting the very leaves that define it positively -- one source, both
-   * polarities. css-syntax-3 §4.3.11 boundary throughout.
+   * The opaque BLOCK's name. It is the statement name minus the names that have
+   * a typed block production, so the two polarities cannot drift: a name with a
+   * typed header/body must report that production's own error rather than
+   * silently degrading to opaque bytes, and `@charset`/`@namespace` have no
+   * block spelling at all.
    *
    * `TypedAtKeywordSharedRoutes`, not `TypedAtKeyword`: SCSS has typed routes
    * for `@font-face`, `@counter-style` and `@property` but NOT for
@@ -4716,11 +4745,9 @@ const scssFactory = (g: ScssInputRules) => {
    * four must reach the opaque branch below.
    */
   const ScssGenericAtRuleName = token(noTrivia(sequence(
-    not(scssOwnAtKeyword),
+    not(statementOnlyAtKeyword),
     not(g.TypedAtKeywordSharedRoutes),
-    not(g.ConditionalAtKeyword),
-    not(g.ImportAtKeyword),
-    g.AtIdentifier
+    g.StatementAtRuleName
   )));
   const UnknownAtRuleBlock = node<UnknownAtRuleBlock>(
     'UnknownAtRuleBlock',
@@ -4746,29 +4773,6 @@ const scssFactory = (g: ScssInputRules) => {
     }
   );
 
-  /*
-   * The statement spelling of the same fact (`@view-transition;`). It shares the
-   * block's name recognizer, so the two are disjoint from every typed arm and
-   * from each other — this one requires `;` where the block requires `{`.
-   */
-  const GenericAtRuleStatement = node<AtRuleStatement>(
-    'AtRuleStatement',
-    sequence(
-      g.ScssGenericAtRuleName,
-      noTrivia(sequence(
-        g.PreprocessorUnknownAtRulePreludeCapture,
-        literal(';')
-      ))
-    ),
-    (children) => {
-      const preludeText = requireToken(children[1]).value === ';' ? '' : requireToken(children[1]).value.trim();
-      const prelude = preludeText === '' ? null : preludeText;
-      return atRuleStatement(
-        requireToken(children[0]).value,
-        prelude === null ? null : any(prelude)
-      );
-    }
-  );
   const Ruleset = node<Ruleset>(
     'Ruleset',
     sequence(
@@ -4854,7 +4858,6 @@ const scssFactory = (g: ScssInputRules) => {
         g.PropertyAtRule,
         g.Keyframes,
         g.UnknownAtRuleBlock,
-        g.GenericAtRuleStatement,
         g.Ruleset
       ))
     ),
@@ -4955,7 +4958,8 @@ const scssFactory = (g: ScssInputRules) => {
     AtRulePreludeAtom,
     AtRulePreludeGroup,
     AtRulePreludeQuoted,
-    AtRuleStatement,
+    StatementAtRuleName,
+    StatementPrelude,
     AtRootFilterPrelude,
     SassDirective,
     SassNestedDirective,
@@ -4981,7 +4985,6 @@ const scssFactory = (g: ScssInputRules) => {
     Keyframes,
     ScssGenericAtRuleName,
     UnknownAtRuleBlock,
-    GenericAtRuleStatement,
     InterpolatedSimple,
     Placeholder,
     AttributeSelector,

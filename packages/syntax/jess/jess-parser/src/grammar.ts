@@ -291,6 +291,7 @@ type JessRules = {
   SupportsCondition: Combinator<ValueNode>;
   Charset: Combinator<AtRuleStatement>;
   ImportStatement: Combinator<AtRuleStatement>;
+  LayerStatement: Combinator<AtRuleStatement>;
   SupportsAtRuleBlock: Combinator<AtRuleBlock>;
   PropertyName: Combinator<Keyword>;
   PropertyDescriptor: Combinator<Declaration>;
@@ -344,6 +345,7 @@ type SharedSyntax = {
   HexColor: Combinator<string>;
   ImportantToken: Combinator<string>;
   KeyframesAtKeyword: Combinator<string>;
+  LayerAtKeyword: Combinator<string>;
   Identifier: Combinator<string>;
   NthExpression: Combinator<string>;
   NthOfKeyword: Combinator<string>;
@@ -814,8 +816,16 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.Identifier,
     optional(literal('('))
   )));
-  const typedAtRuleHeaderNames = [
-    '@keyframes', '@charset', '@import', '@supports', '@property',
+
+  /*
+   * Names another typed production owns in EVERY position, statement included:
+   * `@charset` and `@import` have their own statement productions, `@supports`
+   * is a conditional group whose statement spelling CSS rejects outright, and
+   * the compiler namespace is not CSS output at all. A generic header must not
+   * steal any of them.
+   */
+  const typedAtRuleStatementNames = [
+    '@charset', '@import', '@supports',
     '@-use', '@-compose', '@-export', '@-import', '@-from'
   ];
 
@@ -3878,6 +3888,25 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const requiredContainerPrelude = expect(g.ContainerPrelude, 'container prelude');
 
   /*
+   * `@scope`'s prelude is a pair of parenthesised SELECTOR lists (css-cascade-6
+   * §3), which the typed `AtRulePrelude` cannot represent — the same reason
+   * `ScopeBlock` below reads it through the shared static capture instead. The
+   * statement spelling needs the identical prelude: CSS carries both in ONE
+   * dispatch case (`cssCase('@scope', choice(g.RoutedAtRuleStatement,
+   * g.ScopeBlock))`), and this is that case's statement arm over the same
+   * capture, which also keeps `@scope ($sel);` rejected rather than hidden in
+   * raw bytes.
+   */
+  const ScopeStatementPrelude = node<ValueNode | null>(
+    'ScopeStatementPrelude',
+    g.PreprocessorUnknownAtRulePreludeCapture,
+    (children) => {
+      const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
+      return text === '' ? null : any(text);
+    }
+  );
+
+  /*
    * Statement headers remain interpolation-free. The documented deferred media form
    * is a block-only construct, so it cannot silently become `@media $(x);`.
    * The one consumed at-keyword routes `@media` to its stricter statement
@@ -3890,6 +3919,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     dispatch(
       atRuleHeaderKeyword,
       caseInsensitiveWhen(
+        '@scope',
+        sequence(
+          routed(),
+          ScopeStatementPrelude
+        )
+      ),
+      caseInsensitiveWhen(
         '@media',
         sequence(
           routed(),
@@ -3900,8 +3936,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           g.AtRulePrelude
         )
       ),
-      caseInsensitiveWhen(typedAtRuleHeaderNames, g.typedAtRuleHeader),
-      when(endsWith('-keyframes'), g.typedAtRuleHeader, { caseInsensitive: true }),
+      caseInsensitiveWhen(typedAtRuleStatementNames, g.typedAtRuleHeader),
       otherwise(sequence(
         routed(),
         g.AtRulePrelude
@@ -3957,8 +3992,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           requiredContainerPrelude
         )
       ),
-      caseInsensitiveWhen(typedAtRuleHeaderNames, g.typedAtRuleHeader),
-      when(endsWith('-keyframes'), g.typedAtRuleHeader, { caseInsensitive: true }),
+      caseInsensitiveWhen(typedAtRuleStatementNames, g.typedAtRuleHeader),
       otherwise(RoutedAtRuleStatementHeader)
     ),
     (children) => {
@@ -4236,6 +4270,27 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         any(tail === null ? targetText : `${targetText} ${tail}`)
       );
     }
+  );
+
+  /*
+   * css-cascade-5 §3 admits a layer STATEMENT in the document prologue, before
+   * `@import`. This is the CSS base's own prologue rule and keeps its name; the
+   * delta is the prelude only, because Jess at-rule preludes are typed values
+   * rather than CSS's raw `StatementPrelude` text and `@layer a, b.c;` must not
+   * reduce to an opaque `Any` here while the identical body-position statement
+   * reduces to a `List` of `Keyword`s.
+   */
+  const LayerStatement = node<AtRuleStatement>(
+    'LayerStatement',
+    sequence(
+      g.LayerAtKeyword,
+      g.AtRulePrelude,
+      literal(';')
+    ),
+    children => atRuleStatement(
+      requireToken(children[0]).value,
+      children.find(isValueNode) ?? null
+    )
   );
 
   /*
@@ -4837,9 +4892,27 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       ), rawChildren), span);
     }
   );
+
+  /*
+   * `@keyframes`/`@-x-keyframes`/`@property` have block-only typed productions
+   * above, and the generic block must not steal their input. That exclusion is
+   * a DECLINING `not()` on this sequence rather than a rejecting case inside
+   * `AtRuleHeader`'s dispatch, because a dispatch branch failure is COMMITTED
+   * (parseman `dispatch.ts`: a failed selected branch returns
+   * `committed: true`) and therefore aborts the enclosing statement list. That
+   * commit is what stopped `@keyframes a;` and `@property --x;` from ever
+   * reaching `AtRuleStatement`, which is the last arm of every statement list —
+   * CSS accepts both through the statement arm its own dispatch pairs with each
+   * typed block. Declining here leaves the name to that arm and still keeps a
+   * malformed typed block out of the generic route.
+   */
   const AtRuleBlock = node<AtRuleBlock>(
     'AtRuleBlock',
     sequence(
+      not(token(noTrivia(choice(
+        g.KeyframesAtKeyword,
+        propertyAtRuleName
+      )))),
       g.AtRuleHeader,
       literal('{'),
       many(atBlockStatement),
@@ -5715,13 +5788,20 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
        * Compiler directives and variable declarations may precede a CSS import:
        * a `$[...]` import target is a live read and therefore needs its binding
        * activated in source order. CSS imports still cannot appear after a rule.
+       *
+       * `LayerStatement` is the CSS base's own prologue rule, overridden by name
+       * for its prelude only: css-cascade-5 §3 admits a layer statement before
+       * `@import`, and without this arm `@layer base;` matched as an ordinary
+       * body item, which ends the prologue and makes the following `@import`
+       * unparseable.
        */
       many(choice(
         g.StyleImport,
         g.ModuleImport,
         g.ValueBlockDeclaration,
         g.VariableDeclaration,
-        g.ImportStatement
+        g.ImportStatement,
+        g.LayerStatement
       )),
       many(choice(
         g.MixinCall,
@@ -5833,6 +5913,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     UnquotedUrlText: unquotedUrlText,
     Charset,
     ImportStatement,
+    LayerStatement,
     SupportsAtRuleBlock,
     PropertyName,
     PropertyDescriptor,
