@@ -529,11 +529,23 @@ type Binding = CallValue;
  * existing binding/declaration shape without allocating one wrapper per item. */
 const EVALUATED_BINDING: ValueNode = any('');
 
-type MixinRank = readonly number[];
+/**
+ * The source-fold position of one fact inside a frame's body: the path of
+ * statement indexes that reaches it. An authored top-level statement is `[i]`; a
+ * statement inside a selected `$if` arm is `[i, j]`; a fact published by the
+ * `@import` at `[i]` is `[i, j]` where `j` is its index in the imported
+ * document, so an imported fact sorts AT its import's lexical position — Less
+ * folds an `@import`'s statements in where the `@import` is written, so a local
+ * fact after it overrides the imported one and a local fact before it does not.
+ */
+type SourceRank = readonly number[];
+
+/** A fact with no recorded rank sorts ahead of every ranked one. */
+const UNRANKED_FACT: SourceRank = [];
 
 interface OrderedMixinCandidate {
   readonly definition: MixinDefinition;
-  readonly rank: MixinRank;
+  readonly rank: SourceRank;
 }
 
 interface OrderedMixinIndex {
@@ -546,7 +558,7 @@ interface SelectedMixinPath {
 }
 
 interface MixinDefinitionMeta {
-  readonly rank: MixinRank;
+  readonly rank: SourceRank;
   readonly selectedPath: readonly SelectedMixinPath[];
 }
 
@@ -721,6 +733,24 @@ export interface Frame {
   importedCallables?: Array<MixinDefinition | Ruleset> | null;
 
   /**
+   * {@link SourceRank} of every fact that can be looked up in this frame: each
+   * authored top-level statement at its own index, plus each published import
+   * fact at its `@import`'s position. Built ONCE, on the first import
+   * publication into this frame — a frame no import publishes into never
+   * allocates it, and no lookup ever computes a rank.
+   */
+  factRanks?: Map<Statement, SourceRank>;
+
+  /**
+   * [import-fold] {@link importedCallables} merged with {@link statements} in
+   * source-fold order, cached like {@link rulesets} and dropped by the next
+   * publication. Namespace descent walks this instead of imported-then-authored,
+   * which filed every imported fact ahead of every local one regardless of where
+   * its `@import` was written.
+   */
+  sourceOrderedCallables?: readonly Statement[];
+
+  /**
    * Source-ordered direct ruleset placements unlocked by executed explicit
    * mixins. They are visible only to later lookup in this caller frame.
    */
@@ -746,8 +776,15 @@ export interface Frame {
   /** Lexical rank/path facts; indexing does not publish any selected-arm definition. */
   mixinDefinitionMeta?: Map<MixinDefinition, MixinDefinitionMeta>;
 
-  /** Definitions reached while walking selected arms in this activation. */
-  selectedMixinEvents?: Map<string, OrderedMixinCandidate[]>;
+  /**
+   * Rank-bearing definitions PUBLISHED into this frame rather than authored
+   * directly in its body: definitions reached while walking selected `$if` arms
+   * in this activation, and definitions an `@import` folded in.
+   * {@link frameCandidatesInOrder} merges them into the authored candidate list
+   * BY RANK, so a published definition dispatches at its source position instead
+   * of after every authored one.
+   */
+  publishedMixinEvents?: Map<string, OrderedMixinCandidate[]>;
 
   /*
    * [closure/publish] a mixin def UNLOCKED into this frame by a body expansion
@@ -1412,7 +1449,7 @@ function cellsForParams(
  * collect the rulesets defined directly in a scope, keyed by own-local
  * selector string (namespace-path descent). Built lazily on first path lookup.
  */
-function collectRulesets(statements: Statement[]): Map<string, Ruleset[]> | null {
+function collectRulesets(statements: readonly Statement[]): Map<string, Ruleset[]> | null {
   let map: Map<string, Ruleset[]> | null = null;
   const add = (key: string, s: Ruleset): void => {
     const list = (map ??= new Map()).get(key);
@@ -1445,11 +1482,36 @@ function collectRulesets(statements: Statement[]): Map<string, Ruleset[]> | null
   return map;
 }
 
+/**
+ * [import-fold] One frame's published import facts merged with its authored
+ * statements in source-fold order. Sorting is STABLE, so a fact this frame never
+ * learned an import site for ({@link UNRANKED_FACT}) keeps the import-first
+ * position it historically had, and equal ranks keep publication order.
+ *
+ * Callers cache the result ({@link Frame.rulesets},
+ * {@link Frame.sourceOrderedCallables}); this never runs per lookup.
+ */
+function factsInSourceOrder(
+  frame: Frame,
+  published: readonly Statement[] | null | undefined,
+  statements: readonly Statement[]
+): readonly Statement[] {
+  if (!published?.length) {
+    return statements;
+  }
+  const merged = [...published, ...statements];
+  const ranks = frame.factRanks;
+  if (ranks !== undefined) {
+    merged.sort((a, b) => compareSourceRanks(ranks.get(a) ?? UNRANKED_FACT, ranks.get(b) ?? UNRANKED_FACT));
+  }
+  return merged;
+}
+
 function frameRulesets(frame: Frame): Map<string, Ruleset[]> | null {
   if (frame.rulesets !== undefined) {
     return frame.rulesets;
   }
-  const built = collectRulesets([...(frame.importedRules ?? []), ...(frame.statements ?? [])]);
+  const built = collectRulesets(factsInSourceOrder(frame, frame.importedRules, frame.statements ?? []));
   frame.rulesets = built;
   return built;
 }
@@ -1513,7 +1575,7 @@ function orderedMixinsForStatements(
   e: EvalCtx
 ): MaybePromise<OrderedMixinIndex | null> {
   const byName = new Map<string, OrderedMixinCandidate[]>();
-  const add = (name: string, definition: MixinDefinition, rank: MixinRank): void => {
+  const add = (name: string, definition: MixinDefinition, rank: SourceRank): void => {
     const list = byName.get(name);
     const candidate = { definition, rank };
     if (list) {
@@ -1692,7 +1754,7 @@ function ensureFrameIndex(f: Frame, e: EvalCtx): MaybePromise<void> {
   return undefined;
 }
 
-function compareMixinRanks(a: MixinRank, b: MixinRank): number {
+function compareSourceRanks(a: SourceRank, b: SourceRank): number {
   const length = Math.min(a.length, b.length);
   for (let i = 0; i < length; i++) {
     if (a[i] !== b[i]) {
@@ -1707,7 +1769,7 @@ function frameMixinDefinitionMeta(frame: Frame): Map<MixinDefinition, MixinDefin
     return frame.mixinDefinitionMeta;
   }
   const meta = new Map<MixinDefinition, MixinDefinitionMeta>();
-  const visit = (rules: Statement[], rank: MixinRank, selectedPath: readonly SelectedMixinPath[]): void => {
+  const visit = (rules: Statement[], rank: SourceRank, selectedPath: readonly SelectedMixinPath[]): void => {
     for (let index = 0; index < rules.length; index++) {
       const statement = rules[index]!;
       const at = [...rank, index];
@@ -1737,27 +1799,84 @@ function publishSelectedMixinDefinition(frame: Frame, definition: MixinDefinitio
   if (!selected || !meta.selectedPath.every(path => selected.get(path.node) === path.rules)) {
     return;
   }
-  const events = frame.selectedMixinEvents ??= new Map<string, OrderedMixinCandidate[]>();
-  const list = events.get(definition.name);
-  if (list?.some(candidate => candidate.definition === definition)) {
+  if (frame.publishedMixinEvents?.get(definition.name)?.some(c => c.definition === definition)) {
     return;
   }
-  const candidate = { definition, rank: meta.rank };
+  publishRankedMixinEvent(frame, definition, meta.rank);
+}
+
+/** File one published definition in this frame's rank-ordered event list. */
+function publishRankedMixinEvent(frame: Frame, definition: MixinDefinition, rank: SourceRank): void {
+  const events = frame.publishedMixinEvents ??= new Map<string, OrderedMixinCandidate[]>();
+  const candidate = { definition, rank };
+  const list = events.get(definition.name);
   if (!list) {
     events.set(definition.name, [candidate]);
     return;
   }
   let index = list.length;
-  while (index > 0 && compareMixinRanks(candidate.rank, list[index - 1]!.rank) < 0) {
+  while (index > 0 && compareSourceRanks(candidate.rank, list[index - 1]!.rank) < 0) {
     index--;
   }
   list.splice(index, 0, candidate);
 }
 
+/**
+ * [import-fold] Every fact that can be looked up in this frame, keyed by its
+ * {@link SourceRank}. Seeded once from the authored body; import publication then
+ * adds one entry per published fact. Nothing on a lookup path builds or consults
+ * this — the merges it feeds are all cached or performed at publication time.
+ */
+function frameFactRanks(frame: Frame): Map<Statement, SourceRank> {
+  const existing = frame.factRanks;
+  if (existing) {
+    return existing;
+  }
+  const ranks = new Map<Statement, SourceRank>();
+  const statements = frame.statements;
+  if (statements) {
+    for (let index = 0; index < statements.length; index++) {
+      ranks.set(statements[index]!, [index]);
+    }
+  }
+  return (frame.factRanks = ranks);
+}
+
+/**
+ * [import-fold] The source-fold position of one `@import` inside the frame it
+ * publishes into — the rank every fact it folds in is filed under. `null` when
+ * the statement is not a direct member of that frame's body (an at-rule block
+ * that shares its parent's frame), which keeps those facts in their historical
+ * publication order. Runs ONCE per import, never per lookup.
+ */
+function importSiteRank(frame: Frame | null, node: Statement): SourceRank | null {
+  const at = frame?.statements?.indexOf(node) ?? -1;
+  return at < 0 ? null : [at];
+}
+
+/** [import-fold] The rank one imported fact takes in the importing frame: the
+ *  `@import`'s own position extended by the fact's index in the imported
+ *  document. `null` when the import site is unknown, which keeps the fact's
+ *  historical publication order. */
+function importedFactRank(frame: Frame, fact: Statement, site: SourceRank | null, index: number): SourceRank | null {
+  if (site === null) {
+    return null;
+  }
+  const rank = [...site, index];
+  frameFactRanks(frame).set(fact, rank);
+  return rank;
+}
+
 /** Publish an imported definition into the importing frame's existing lookup
  * map. Static planning exposes document-root facts before output evaluation;
- * lexical import execution still owns the imported document's body and CSS. */
-function publishImportedMixinDefinition(frame: Frame, definition: MixinDefinition, recordCallable = true): void {
+ * lexical import execution still owns the imported document's body and CSS.
+ * `rank` files it at its `@import`'s source position for dispatch ordering. */
+function publishImportedMixinDefinition(
+  frame: Frame,
+  definition: MixinDefinition,
+  recordCallable = true,
+  rank: SourceRank | null = null
+): void {
   const mixins = frame.mixins ??= new Map();
   const candidates = mixins.get(definition.name);
   if (candidates) {
@@ -1767,31 +1886,69 @@ function publishImportedMixinDefinition(frame: Frame, definition: MixinDefinitio
   }
   if (recordCallable) {
     (frame.importedCallables ??= []).push(definition);
+    frame.sourceOrderedCallables = undefined;
+  }
+
+  /*
+   * `frameCandidatesInOrder` merges ranked events into the authored candidate
+   * list and then appends only the `mixins` entries it has not already placed,
+   * so this is a POSITION for the same definition, never a second candidate.
+   */
+  if (rank !== null && !frame.publishedMixinEvents?.get(definition.name)?.some(c => c.definition === definition)) {
+    publishRankedMixinEvent(frame, definition, rank);
   }
 }
 
-/** Publish an imported declaration into the current frame's existing scoped index. */
-function publishImportedVariableDeclaration(frame: Frame, declaration: VariableDeclaration): void {
+/** Publish an imported declaration into the current frame's existing scoped
+ * index. `rank` splices it at its `@import`'s source position, so a later local
+ * declaration of the same name still wins the backward scoped read. */
+function publishImportedVariableDeclaration(
+  frame: Frame,
+  declaration: VariableDeclaration,
+  rank: SourceRank | null = null
+): void {
   const index = frame.declIndex ??= { byName: new Map() };
   const declarations = index.byName.get(declaration.name);
-  if (declarations) {
-    declarations.push(declaration);
-  } else {
+  if (!declarations) {
     index.byName.set(declaration.name, [declaration]);
+    return;
   }
+  if (rank === null) {
+    declarations.push(declaration);
+    return;
+  }
+
+  /*
+   * The stack is already rank-sorted (authored declarations in source order,
+   * earlier imports spliced at their own positions), so one backward walk finds
+   * the slot. A parameter declaration has no rank and stops the walk: it belongs
+   * ahead of every body fact.
+   */
+  const ranks = frameFactRanks(frame);
+  let at = declarations.length;
+  while (at > 0) {
+    const previous = ranks.get(declarations[at - 1]!);
+    if (previous === undefined || compareSourceRanks(rank, previous) >= 0) {
+      break;
+    }
+    at--;
+  }
+  declarations.splice(at, 0, declaration);
 }
 
-/** Publish an imported root ruleset for namespace-path descent. Import rules
- * retain import/source order ahead of the importing document's own facts. */
+/** Publish an imported root ruleset for namespace-path descent. Its position
+ * among the importing document's own facts comes from {@link Frame.factRanks},
+ * which {@link publishImportedDocumentFacts} fills from the `@import`'s site. */
 function publishImportedRuleset(frame: Frame, rule: Ruleset): void {
   (frame.importedRules ??= []).push(rule);
   (frame.importedCallables ??= []).push(rule);
 
   /*
-   * It may have been materialized before this import; rebuild lazily with the
-   * newly published import prefix on the next namespace lookup.
+   * Both may have been materialized before this import; rebuild lazily with the
+   * newly published fact in source-fold position on the next namespace lookup.
    */
   frame.rulesets = undefined;
+  frame.sourceOrderedCallables = undefined;
 }
 
 type PrepublishedImportFacts = Statement | Set<Statement> | null;
@@ -1825,12 +1982,18 @@ function claimPrepublishedImportFact(e: Emit, statement: Statement): boolean {
 
 /** Publish one imported document's direct lookup facts without executing or
  * copying its body. Static planning and lexical emission share this owner so a
- * definition is never classified through two different paths. */
+ * definition is never classified through two different paths.
+ *
+ * `site` is the `@import`'s own {@link SourceRank} in `frame`. Every fact is
+ * filed at `site` + its index in the imported document, which is what makes
+ * `@import` a SOURCE FOLD rather than an append: a local fact written after the
+ * `@import` outranks the imported one, and one written before it does not. */
 function publishImportedDocumentFacts(
   statements: readonly Statement[],
   frame: Frame,
   e: Emit,
   prepublish = false,
+  site: SourceRank | null = null,
   from = 0
 ): MaybePromise<void> {
   for (let index = from; index < statements.length; index++) {
@@ -1839,14 +2002,14 @@ function publishImportedDocumentFacts(
       if (prepublish && !claimPrepublishedImportFact(e, child)) {
         continue;
       }
-      publishImportedMixinDefinition(frame, child);
+      publishImportedMixinDefinition(frame, child, true, importedFactRank(frame, child, site, index));
       continue;
     }
     if (child.type === 'VariableDeclaration') {
       if (prepublish && !claimPrepublishedImportFact(e, child)) {
         continue;
       }
-      publishImportedVariableDeclaration(frame, child);
+      publishImportedVariableDeclaration(frame, child, importedFactRank(frame, child, site, index));
       continue;
     }
     if (child.type !== 'Ruleset') {
@@ -1855,6 +2018,7 @@ function publishImportedDocumentFacts(
     if (prepublish && !claimPrepublishedImportFact(e, child)) {
       continue;
     }
+    const rank = importedFactRank(frame, child, site, index);
     publishImportedRuleset(frame, child);
 
     /* A plain imported ruleset is also a zero-argument Less mixin. Its
@@ -1864,11 +2028,25 @@ function publishImportedDocumentFacts(
     if (isThenable(built)) {
       const next = index + 1;
       return built.then((mixins) => {
-        publishOrderedMixins(frame, mixins, frame);
-        return publishImportedDocumentFacts(statements, frame, e, prepublish, next);
+        publishImportedRuleMixins(frame, mixins, rank);
+        return publishImportedDocumentFacts(statements, frame, e, prepublish, site, next);
       });
     }
-    publishOrderedMixins(frame, built, frame);
+    publishImportedRuleMixins(frame, built, rank);
+  }
+}
+
+/** The zero-argument callables synthesized for ONE imported ruleset, published at
+ *  that ruleset's own source-fold position. The Ruleset itself is already the
+ *  namespace fact, so these are not recorded as callables a second time. */
+function publishImportedRuleMixins(frame: Frame, index: OrderedMixinIndex | null, rank: SourceRank | null): void {
+  if (!index) {
+    return;
+  }
+  for (const candidates of index.byName.values()) {
+    for (const candidate of candidates) {
+      publishImportedMixinDefinition(frame, candidate.definition, false, rank);
+    }
   }
 }
 
@@ -1895,9 +2073,12 @@ function rememberImportedCallableBodies(
 
 /**
  * [dedup] A frame's source-ordered candidate list for `name`: the cached
- * interleaved parametric-def/ruleset-mixin list, plus any dynamically PUBLISHED
- * defs (detached-ruleset scope unlocking via `@rs()`, which pushes into `mixins`
- * without touching `statements`) appended.
+ * interleaved parametric-def/ruleset-mixin list, merged BY RANK with the defs
+ * published into this frame (`$if`-selected arms, `@import` folds), then any
+ * remaining `mixins` entry that carries no rank (detached-ruleset scope unlocking
+ * via `@rs()`, which pushes into `mixins` without touching `statements`)
+ * appended. The merge is why a rank is assigned at PUBLICATION time: this runs on
+ * every dispatch and may not compute one.
  */
 function frameCandidatesInOrder(f: Frame, name: string, e: EvalCtx): MixinDefinition[] {
   const mapDefs = f.mixins?.get(name);
@@ -1905,14 +2086,14 @@ function frameCandidatesInOrder(f: Frame, name: string, e: EvalCtx): MixinDefini
     return mapDefs?.slice() ?? [];
   }
   const base = frameOrderedMixins(f, e)?.byName.get(name) ?? [];
-  const events = f.selectedMixinEvents?.get(name) ?? [];
+  const events = f.publishedMixinEvents?.get(name) ?? [];
   const out: MixinDefinition[] = [];
   let baseIndex = 0;
   let eventIndex = 0;
   while (baseIndex < base.length || eventIndex < events.length) {
     const direct = base[baseIndex];
     const selected = events[eventIndex];
-    if (!selected || (direct !== undefined && compareMixinRanks(direct.rank, selected.rank) <= 0)) {
+    if (!selected || (direct !== undefined && compareSourceRanks(direct.rank, selected.rank) <= 0)) {
       out.push(direct!.definition);
       baseIndex++;
     } else {
@@ -1924,7 +2105,8 @@ function frameCandidatesInOrder(f: Frame, name: string, e: EvalCtx): MixinDefini
     return out;
   }
 
-  // Append published defs (in `mixins` but not authored in `statements`).
+  /* Append the rest: a def in `mixins` that neither `statements` authored nor a
+   * ranked event placed. An imported def is already positioned above. */
   for (const d of mapDefs) {
     if (!out.includes(d)) {
       out.push(d);
@@ -2416,13 +2598,15 @@ function findPathInScope(
 
   /*
    * Imported root rules are lexical splices in this scope. They must take part
-   * in element-value namespace descent just like authored rules, and are kept
-   * ahead of the importing document's source facts in import execution order.
+   * in element-value namespace descent just like authored rules, AT the position
+   * of the `@import` that folded them in — an imported `#ns` precedes a local
+   * `#ns` only when its `@import` was written first. Cached on the frame, so
+   * descent into an import-free scope walks its statements exactly as before.
    */
-  for (const s of scope.importedCallables ?? scope.importedRules ?? []) {
-    visit(s);
-  }
-  for (const s of st ?? []) {
+  const published = scope.importedCallables ?? scope.importedRules;
+  for (const s of published?.length
+    ? scope.sourceOrderedCallables ??= factsInSourceOrder(scope, published, st ?? [])
+    : st ?? []) {
     visit(s);
   }
 
@@ -10346,7 +10530,14 @@ function planImportedFacts(
     cssPlan: CssImportPlan | null,
     withinDocument: NonNullable<ImportDocumentTree['withinDocument']> | null,
     multipleImportDepth: boolean,
-    publishFrame: Frame | null
+    publishFrame: Frame | null,
+
+    /*
+     * [import-fold] Source-fold position, RELATIVE TO `publishFrame`, of the
+     * root-level `@import` this walk descends from. `null` at the document being
+     * served, where `publishFrame`'s own body yields each import's site directly.
+     */
+    publishRank: SourceRank | null = null
   ): Promise<void> => {
     const deferred: StyleImport[] = [];
     let deferredAnchors: number[] | null = null;
@@ -10387,13 +10578,25 @@ function planImportedFacts(
        * facts into the importing frame before its body is walked.
        */
       const isCompose = st.mode === 'compose';
+
+      /*
+       * [import-fold] Where this `@import` sits in each frame it publishes into.
+       * `scope` always owns the document being walked, so its own body yields the
+       * site. `publishFrame` is the ROOT render frame throughout the walk, so a
+       * nested import extends the site of the root-level import that reached it
+       * (`publishSite`) instead of pretending to be one of the root's statements.
+       */
+      const site = importSiteRank(scope, st);
+      const publishSite = publishRank === null
+        ? importSiteRank(publishFrame, st)
+        : site === null ? publishRank : [...publishRank, ...site];
       if (!isCompose) {
-        const published = publishImportedDocumentFacts(loaded.document.rules, scope, e);
+        const published = publishImportedDocumentFacts(loaded.document.rules, scope, e, false, site);
         if (isThenable(published)) {
           await published;
         }
         if (publishFrame !== null && claimPrepublishedImportFact(e, st)) {
-          const prepublished = publishImportedDocumentFacts(loaded.document.rules, publishFrame, e, true);
+          const prepublished = publishImportedDocumentFacts(loaded.document.rules, publishFrame, e, true, publishSite);
           if (isThenable(prepublished)) {
             await prepublished;
           }
@@ -10425,7 +10628,8 @@ function planImportedFacts(
           reference ? null : importCssPlan,
           loaded.withinDocument ?? withinDocument,
           multipleImportDepth || importHasOption(options, 'multiple'),
-          isCompose ? null : publishFrame
+          isCompose ? null : publishFrame,
+          publishSite
         );
       };
       if (loaded.withinDocument) {
@@ -17110,7 +17314,7 @@ function expandStyleImport(
         }
         const publishChildren = isCompose || hasPrepublishedImportFact(e, node)
           ? undefined
-          : publishImportedDocumentFacts(children, frame, e);
+          : publishImportedDocumentFacts(children, frame, e, false, importSiteRank(frame, node));
 
         /*
          * Published UNCONDITIONALLY here, before the document is remembered and

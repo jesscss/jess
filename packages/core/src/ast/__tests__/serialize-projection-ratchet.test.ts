@@ -97,8 +97,17 @@ describe('V19 one-evaluator projection ratchet', () => {
     // and namespace-value identity plus one lazy JSON cycle guard. +2 `new Map`:
     // document-scoped module facts in the compile plan and direct-serialize
     // fallback; strong ownership avoids per-node ephemeron tables.
-    expect(occurrences(/^function |^async function /gmu)).toBe(462);
-    expect(occurrences(/new Map/gu)).toBe(66);
+    // +6 functions and +1 `new Map` (`@import` is a SOURCE FOLD, jess#229): an
+    // imported fact used to be APPENDED to whichever index it landed in, so it
+    // outranked every local fact however early its `@import` was written.
+    // `importSiteRank`/`importedFactRank`/`frameFactRanks` (the Map) assign each
+    // published fact a `SourceRank` AT PUBLICATION TIME — the `@import`'s own
+    // statement index plus the fact's index in the imported document — and
+    // `publishRankedMixinEvent`/`factsInSourceOrder`/`publishImportedRuleMixins`
+    // merge by that rank. All three merges are cached or performed on publication:
+    // no lookup computes a rank.
+    expect(occurrences(/^function |^async function /gmu)).toBe(468);
+    expect(occurrences(/new Map/gu)).toBe(67);
     expect(occurrences(/new Set/gu)).toBe(42);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
