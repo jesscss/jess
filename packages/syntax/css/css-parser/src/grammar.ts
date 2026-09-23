@@ -233,6 +233,7 @@ type GrammarRuleName =
   | 'Value'
   | 'ValueList'
   | 'ValueSequence'
+  | 'ValueTerm'
   | 'TypedValue'
   | 'TypedValueList'
   | 'TypedValueSequence'
@@ -445,10 +446,39 @@ const punctuationValueCharacter = choice(
 );
 
 /*
- * punctuationValueCharacter minus `/`. Leading the punctuation-run arm with this
- * (concrete 16-char first-set) instead of a `not('/*')` guard lets the compiler
- * resolve PunctuationValue's first-set and first-char-gate it; the `/` cases
- * keep their adjacent-comment guard in the dedicated slash arm.
+ * One value-term slash boundary, with its authored padding on either side.
+ * Padding around the separator is optional on input (`16/9` and `16 / 9` are the
+ * same value); the emitted form is the spaced one either way, per G33.
+ *
+ * The padding is `cssValueTrivia`, NOT a bare whitespace run, because a comment
+ * is trivia wherever whitespace is (css-syntax-3 §4) — so `12px /* c *\/ / 1.5`
+ * and `12px / /* c *\/ 1.5` are both regular CSS and both have to parse. The
+ * first spelling of this const used `[ \t\n\r\f]*` and rejected exactly those
+ * two, which NARROWED the base: they parse on the commit this rung landed on
+ * top of, and less still accepts the second. The rule and this defect class are
+ * already written down at `cssValueTrivia`'s docblock; this is the same shape
+ * `authoredArgumentComma` uses.
+ *
+ * The `not(literal('*'))` guard survives, and its remaining job is narrow but
+ * real: a TERMINATED comment is eaten by the padding above, so the guard can
+ * only still fire on an UNTERMINATED `/*`. Without it, `p: 3px /*unclosed` reads
+ * as `3px / *unclosed` — the leading `/` becomes a separator and `*unclosed`
+ * becomes a punctuation run — where it is a parse error on the commit this rung
+ * landed on top of. Keeping it means the only acceptance this branch changes is
+ * the leading slash it set out to change.
+ */
+const valueSlashBoundary = noTrivia(sequence(
+  optional(cssValueTrivia),
+  literal('/'),
+  not(literal('*')),
+  optional(cssValueTrivia)
+));
+
+/*
+ * punctuationValueCharacter minus `/`. Leading this (a concrete 16-char
+ * first-set) instead of a `not('/*')` guard lets the compiler resolve
+ * PunctuationValue's first-set and first-char-gate it. There is no longer a
+ * slash arm to contrast with: `/` is a SEPARATOR and belongs to `ValueTerm`.
  * An at-keyword may not BEGIN a declaration-value component. `;` separates
  * declarations rather than terminating them (css-syntax-3 §5.4.7), so the last
  * declaration in a block ends at whatever follows it — and when that is a nested
@@ -778,8 +808,16 @@ const cssFactory = (g: GrammarSelf) => {
     g.TypedValueSequence,
     authoredArgumentComma
   );
+
+  /*
+   * A function argument is a whole value TERM, not just a space group: the
+   * modern colour syntaxes separate their alpha component with a slash
+   * (`rgb(15 23 42 / .22)`, css-color-4 §5), and `grid-template` tracks carry
+   * one too. That slash is the same separator rung a declaration value uses, so
+   * this points at `ValueTerm` rather than re-spelling a slash here.
+   */
   const genericFunctionArguments = sepBy(
-    g.ValueSequence,
+    g.ValueTerm,
     authoredArgumentComma
   );
   const BasicSelector = node(
@@ -1988,11 +2026,6 @@ const cssFactory = (g: GrammarSelf) => {
       1
     )
   );
-  const slashValueBoundaryAhead = peek(choice(
-    literal('.'),
-    regex(/[0-9]/),
-    regex(/[ \t\n\r\f]/)
-  ));
   const identOrFunction = token(noTrivia(
     sequence(
       genericIdentifier,
@@ -2003,33 +2036,20 @@ const cssFactory = (g: GrammarSelf) => {
     'PunctuationValue',
 
     /*
-     * Slash is a component boundary before a number or whitespace. Keep just
-     * that slash as one structured punctuation component so `/ .5` does not
-     * swallow the numeric leaf into opaque bytes; punctuation runs such as
-     * `//` remain losslessly represented as one Any node.
+     * `/` is NOT an arm here. A slash is a list separator, so it belongs to the
+     * `ValueTerm` rung above, not to the value ATOM — modelling it as an atom
+     * was the category error that let a leading `/` parse as a value. The arm
+     * that used to consume it (`literal('/')` + a comment guard + either a
+     * boundary lookahead or a punctuation run) is deleted; `ValueTerm` now owns
+     * every value slash, and a slash with no left operand fails there.
      *
-     * Both original arms led with not('/*'), collapsing this node's first-set to
-     * 'any' so it (and the whole value atom it terminates) entered speculatively
-     * at every value-term boundary. This value path runs under the enclosing
-     * value-term noTrivia, so the '/*' guard is adjacent-only; split on the first
-     * char instead: the '/' arm consumes '/', rejects an adjacent '*' (comment),
-     * then keeps the single-slash-before-number/ws case or continues the run; the
-     * non-slash arm leads with the 16 non-'/' punctuation literals. Every arm now
-     * resolves a concrete first-set, so the compiler first-char-gates it.
+     * The remaining arm leads with the 16 non-`/` punctuation literals, so it
+     * still resolves a concrete first-set and the compiler first-char-gates it.
+     * Dropping the `/` arm also shrinks that first-set by one character.
      */
-    choice(
-      noTrivia(sequence(
-        literal('/'),
-        not(literal('*')),
-        choice(
-          slashValueBoundaryAhead,
-          many(punctuationValueCharacter)
-        )
-      )),
-      sequence(
-        nonSlashPunctuationValueStart,
-        many(punctuationValueCharacter)
-      )
+    sequence(
+      nonSlashPunctuationValueStart,
+      many(punctuationValueCharacter)
     ),
     children => any(children.map(tokenText).join(''))
   );
@@ -2317,10 +2337,47 @@ const cssFactory = (g: GrammarSelf) => {
       );
     }
   );
+
+  /*
+   * The slash level. `/` is a LIST SEPARATOR, not a value, so it takes its own
+   * rung between the comma level (`ValueList`) and the space level
+   * (`ValueSequence`): comma is loosest, then slash, then whitespace.
+   * `border-radius: 1px 2px / 3px 4px` is what fixes the order — the slash
+   * separates two space groups — and `background: a, 1px / 2px` fixes comma
+   * above it. Each side stays ONE space group; flattening would render
+   * `font: 12px/1.5 Arial` as `12px / 1.5 / Arial`.
+   *
+   * A leading `/` then fails for exactly the reason a leading `,` fails: a
+   * separator has no left operand, and the rung below it cannot start on the
+   * separator. There is deliberately NO first-position guard anywhere — the
+   * rejection is emergent, and an added guard would be the wrong build.
+   *
+   * This is the same rung scss (`ValueTerm`) and jess (`ValueTerm`) already
+   * carry, moved into the base so all four dialects share one definition.
+   */
+  const ValueTerm = node(
+    'ValueTerm',
+    noTrivia(sequence(
+      g.ValueSequence,
+      many(sequence(
+        valueSlashBoundary,
+        g.ValueSequence
+      ))
+    )),
+    (children) => {
+      const groups = valueSlotChildren(children);
+      return groups.length === 1
+        ? groups[0]!
+        : list(
+            groups,
+            '/'
+          );
+    }
+  );
   const ValueList = node(
     'ValueList',
     oneOrMoreSep(
-      g.ValueSequence,
+      g.ValueTerm,
       authoredValueComma
     ),
     (children, fields) => {
@@ -3978,6 +4035,7 @@ const cssFactory = (g: GrammarSelf) => {
     RawParenValue,
     PunctuationValue,
     ValueSequence,
+    ValueTerm,
     ValueList,
     calcValueAtom,
     CalcValue,
