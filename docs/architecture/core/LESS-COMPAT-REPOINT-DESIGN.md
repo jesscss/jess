@@ -10,9 +10,9 @@ fusion endgame can delete the legacy `tree/` engine (and, with it, the last reas
 This doc **fills the named OPEN item** that two specs point at without owning:
 - `BUILDERHOST-RETIREMENT-DESIGN.md` §6.4 ("Bridge re-point ownership") + step **R4**
   ("re-point the less-compat bridge to `ast/` nodes").
-- `GRAMMAR-AST-FUSION-DESIGN.md` (the fusion gate — **not yet written**; this doc is a
-  precondition input to it). Until it exists, `BUILDERHOST-RETIREMENT-DESIGN.md` is the
-  authoritative downstream owner and this doc slots in at its R4.
+- `GRAMMAR-AST-FUSION-DESIGN.md` (the fusion gate). It exists — reductions construct
+  canonical AST nodes directly, with no construction host or bridge ABI — so it, not
+  `BUILDERHOST-RETIREMENT-DESIGN.md`, is the downstream owner this doc feeds at R4.
 
 **Headline (owner-decision framing):** the bridge is a genuine fork, but the
 investigation changes the stakes. Two premises this task inherited from
