@@ -114,23 +114,28 @@ interface Allowed {
 /* ------------------------------------------------------------------ DIRECTION 1
  * `css` accepts and at least one superset refuses.
  *
- * Two of these are inputs that ARE valid CSS and that `jess` alone refuses —
- * real jess defects. The rest are `css` over-accepting invalid CSS through its
- * permissive at-rule statement arm, where the refusing dialect is arguably
- * correct and an owner ruling is what is actually needed.
+ * The "without a block" family that used to fill this list is GONE, and the way
+ * it went is the point. Eight of the nine targeted entries were not dialect
+ * policy at all: each superset had RE-SPELLED a CSS at-rule with a mandatory
+ * block instead of inheriting the CSS shape, where CSS itself pairs every typed
+ * at-rule with its statement spelling in one route
+ * (`choice(g.RoutedAtRuleStatement, g.DescriptorBlock)`). That is a hard-rule-3
+ * violation — a shape css-grammar already defines, redefined downstream — so
+ * the repair was inheritance, not an owner ruling:
+ *
+ *  - scss inherits `AtRuleStatement` (two forks deleted) and overrides only
+ *    `StatementAtRuleName`/`StatementPrelude`;
+ *  - less stopped excluding `@keyframes`, its one BLOCK-only typed route, from
+ *    the generic statement name;
+ *  - jess moved its `@keyframes`/`@property` exclusion out of a dispatch branch
+ *    (whose failure is COMMITTED and aborted the statement list) into a
+ *    declining `not()`, and inherited the CSS prologue `LayerStatement`.
+ *
+ * The one entry left is `css` over-accepting invalid CSS where the refusing
+ * dialect is the one behaving to spec, which is an owner ruling and not
+ * something inheritance can decide.
  */
 const DIRECTION_1_ALLOWLIST: readonly Allowed[] = [
-  // -- valid CSS that a superset refuses. These are defects in that superset. --
-  {
-    name: 'targeted:@layer statement then @import',
-    accepted: ['css', 'less', 'scss'],
-    validCss: true,
-    reason:
-      'css-cascade-5 §3 admits layer statements BEFORE @import, so `@layer base; @import "a.css";` '
-      + 'is valid CSS. jess refuses it. Defect in jess: its prologue does not admit @import after a '
-      + 'layer statement.'
-  },
-
   // ---- css over-accepting invalid CSS. Needs an owner ruling, not a fix. ----
   {
     name: 'targeted:@charset with a url() prelude',
@@ -140,63 +145,9 @@ const DIRECTION_1_ALLOWLIST: readonly Allowed[] = [
       'css-syntax-3 §3.2 gives @charset a <string> prelude only, so `@charset url(utf-8);` is NOT '
       + 'valid CSS. css/less/scss all accept it and jess refuses. OWNER RULING: three dialects are '
       + 'over-permissive here and jess is the one behaving to spec — the ruling decides whether the '
-      + 'superset rule obliges jess to match the over-acceptance.'
-  },
-  {
-    name: 'targeted:@keyframes without a block',
-    accepted: ['css'],
-    validCss: false,
-    reason:
-      '`@keyframes a;` is not valid CSS (css-animations-1 §4 — @keyframes is a block at-rule). Only '
-      + 'css accepts it, via its permissive generic at-rule STATEMENT arm. All three supersets '
-      + 'refuse. OWNER RULING: this is css over-accepting, not three supersets under-accepting.'
-  },
-  {
-    name: 'targeted:@scope without a block',
-    accepted: ['css', 'less'],
-    validCss: false,
-    reason:
-      '`@scope (.a);` is not valid CSS (css-cascade-6 §3 — @scope is a block at-rule). css and less '
-      + 'accept via the permissive statement arm; scss and jess refuse. Same OWNER RULING as the '
-      + 'rest of the "without a block" family.'
-  },
-  {
-    name: 'targeted:@property without a block',
-    accepted: ['css', 'less'],
-    validCss: false,
-    reason:
-      '`@property --x;` is not valid CSS (css-properties-values-api-1 §2 — @property is a block '
-      + 'at-rule). css and less accept; scss and jess refuse. Same OWNER RULING.'
-  },
-  {
-    name: 'targeted:@font-face without a block',
-    accepted: ['css', 'less', 'jess'],
-    validCss: false,
-    reason:
-      '`@font-face;` is not valid CSS (css-fonts-4 §11). scss alone refuses — consistent with Sass+ '
-      + 'deliberately rejecting invalid CSS. Same OWNER RULING.'
-  },
-  {
-    name: 'targeted:@counter-style without a block',
-    accepted: ['css', 'less', 'jess'],
-    validCss: false,
-    reason:
-      '`@counter-style a;` is not valid CSS (css-counter-styles-3 §2). scss alone refuses. Same '
-      + 'OWNER RULING.'
-  },
-  {
-    name: 'targeted:@page without a block',
-    accepted: ['css', 'less', 'jess'],
-    validCss: false,
-    reason: '`@page;` is not valid CSS (css-page-3 §3). scss alone refuses. Same OWNER RULING.'
-  },
-  {
-    name: 'targeted:@starting-style without a block',
-    accepted: ['css', 'less', 'jess'],
-    validCss: false,
-    reason:
-      '`@starting-style;` is not valid CSS (css-transitions-2 §4). scss alone refuses. Same OWNER '
-      + 'RULING.'
+      + 'superset rule obliges jess to match the over-acceptance. Deliberately NOT closed by the '
+      + 'inheritance sweep that removed the rest of this family: jess would have had to start '
+      + 'accepting invalid CSS, which is the owner\'s call and not an agent\'s.'
   },
 
   /* ------------------------------------------------------------- breadth

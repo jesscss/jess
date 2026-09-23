@@ -10141,3 +10141,48 @@ describe('Less AST grammar facts', () => {
     });
   });
 });
+
+/*
+ * `@keyframes` is the one typed route whose Less production is BLOCK-only, and
+ * it was excluded from the generic statement name alongside the three names
+ * that DO own a statement spelling. CSS pairs this very name with a statement
+ * arm (`choice(g.RoutedAtRuleStatement, g.Keyframes)`), so `@keyframes a;`
+ * parsed in CSS and in no other dialect. Less is the only dialect that refused
+ * it once SCSS and Jess were fixed.
+ */
+describe('statement spelling of @keyframes', () => {
+  it('reads @keyframes a; as the canonical AtRuleStatement fact', () => {
+    const result = run(
+      lessGrammar.Document,
+      '@keyframes a;',
+      { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
+    );
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{ type: 'AtRuleStatement', name: '@keyframes' }]
+    });
+  });
+
+  it('still routes the BLOCK spelling to the typed Keyframes production', () => {
+    const result = run(
+      lessGrammar.Document,
+      '@keyframes a { 0% { opacity: 0 } }',
+      { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
+    );
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{ type: 'AtRuleBlock', name: '@keyframes' }]
+    });
+  });
+
+  it('keeps the other three typed routes out of the generic statement name', () => {
+    /* `@media screen;` is a reject in css-parser too; `@import`/`@plugin` own
+     * their own statement productions and must not degrade to a generic one. */
+    expect(parsesCompleteStylesheet('@media screen;')).toBe(false);
+    expect(parsesCompleteStylesheet('@supports (display: grid);')).toBe(false);
+  });
+});
