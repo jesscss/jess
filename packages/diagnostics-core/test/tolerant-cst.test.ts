@@ -337,6 +337,24 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  /*
+   * A comma member is one `ValueTerm` (the slash rung, P33). A member holding a
+   * slash is two space groups, not a single value, so it is not a simple member
+   * and is not checked on its own — `1px / 2px` is never reported as though it
+   * were `1px`. This held before the rung existed too, when the slash sat among
+   * the values and made the member a three-value run; the walk now reads the
+   * group count instead of tripping over a `/` pseudo-value.
+   */
+  it('skips a slash-separated comma member rather than checking half of it', () => {
+    const source = '.a { animation-duration: nonsense, 1px / 2px; }';
+    const result = collectTolerantDiagnostics({ source, language: 'css' });
+    const unknownPropertyValues = result.diagnostics.filter(
+      diagnostic => diagnostic.code === LINT_CODES.unknownPropertyValues
+    );
+
+    expect(unknownPropertyValues.map(diagnostic => source.slice(diagnostic.start, diagnostic.end))).toEqual(['nonsense']);
+  });
+
   it('reports deprecated CSS properties from web custom data', () => {
     const source = '.a { clip: auto; color: red; -ms-filter: none; }';
     const result = collectTolerantDiagnostics({ source, language: 'css' });

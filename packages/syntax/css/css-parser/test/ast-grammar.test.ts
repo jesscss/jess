@@ -5,8 +5,7 @@ import type { SelectorBranch, SelectorTerm, Stylesheet } from '@jesscss/core/ast
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { simpleTokenText } from '../../../../core/src/ast/nodes.js';
 import { cssGrammar } from '../src/grammar.js';
-import { parseCssCst } from '../src/cst.js';
-import { commentTriviaLabels } from '../src/cst.js';
+import { parseCssCst, commentTriviaLabels } from '../src/cst.js';
 import { parse } from '../src/index.js';
 import { wptAnbParsing } from './wpt-syntax-vectors.js';
 import { bare } from '../../../../../test/provenance-free.js';
@@ -90,7 +89,14 @@ describe('CSS canonical-AST grammar', () => {
       rules: [
         { type: 'Declaration', name: 'space', value: [{ type: 'Keyword', src: 'red' }, { type: 'Keyword', src: 'blue' }] },
         { type: 'Declaration', name: 'comma', value: { type: 'List', sep: ',' } },
-        { type: 'Declaration', name: 'ratio', value: [{ type: 'Dimension', src: '1' }, { type: 'Any', src: '/' }, { type: 'Dimension', src: '2' }] }
+
+        /*
+         * A slash IS an explicit separator, so it reserves a `List` exactly as a
+         * comma does — this case used to assert the category error the title
+         * argues against, `[Dimension, Any '/', Dimension]`, with the separator
+         * smuggled in as a value atom. P33.
+         */
+        { type: 'Declaration', name: 'ratio', value: { type: 'List', sep: '/', value: [{ type: 'Dimension', src: '1' }, { type: 'Dimension', src: '2' }] } }
       ]
     });
     expectExplicitListSeparators(document);
@@ -1959,9 +1965,10 @@ describe('CSS canonical-AST grammar', () => {
     expect(document.rules[0]).toMatchObject({
       type: 'Ruleset',
       rules: [
-        { type: 'Declaration', name: 'a', value: [{ type: 'Url' }, { type: 'Any', src: '/' }, { type: 'Keyword', src: 'cover' }] },
+        /* The `/` component boundary is a separator, so it reserves a `List` (P33). */
+        { type: 'Declaration', name: 'a', value: { type: 'List', sep: '/', value: [{ type: 'Url' }, { type: 'Keyword', src: 'cover' }] } },
         { type: 'Declaration', name: 'b', value: [{ type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--x' } }] }, { type: 'Keyword', src: 'solid' }] },
-        { type: 'Declaration', name: 'c', value: [{ type: 'FunctionCall', name: 'rgb', args: [{ value: { type: 'Dimension', number: 1 } }, { value: { type: 'Dimension', number: 2 } }, { value: { type: 'Dimension', number: 3 } }] }, { type: 'Any', src: '/' }, { type: 'Dimension', number: 0.5 }] },
+        { type: 'Declaration', name: 'c', value: { type: 'List', sep: '/', value: [{ type: 'FunctionCall', name: 'rgb', args: [{ value: { type: 'Dimension', number: 1 } }, { value: { type: 'Dimension', number: 2 } }, { value: { type: 'Dimension', number: 3 } }] }, { type: 'Dimension', number: 0.5 }] } },
         { type: 'Declaration', name: 'd', value: [{ type: 'FunctionCall', name: 'foo', args: [{ value: { type: 'Keyword', src: 'bar' } }] }, { type: 'Keyword', src: 'baz' }] },
         { type: 'Declaration', name: 'e', value: { type: 'FunctionCall', name: 'calc', args: [{ value: { type: 'Operation', operator: '+', right: { type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--x' } }] } } }] } },
         { type: 'Declaration', name: 'f', value: { type: 'FunctionCall', name: 'calc', args: [{ value: { type: 'Operation', operator: '+', left: { type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--x' } }, { value: [{ type: 'Dimension', number: 1, unit: 'px' }, { type: 'Any', src: '+' }, { type: 'Dimension', number: 2, unit: 'px' }] }] }, right: { type: 'Dimension', number: 2, unit: 'px' } } }] } },

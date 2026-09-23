@@ -257,3 +257,60 @@ describe('Less constructs discovered outside the parser suites', () => {
     expect(() => parse('a { b: f(name: 1) }')).toThrow();
   });
 });
+
+/*
+ * A slash is a SEPARATOR, so it is only reachable BETWEEN two value pieces
+ * (DESIGN-DECISIONS P33, owner 2026-09-23). `valuePiece` used to carry a bare
+ * `literal('/')` arm beside `topSumMaybeDivision`, and that arm was the only
+ * thing letting a slash stand with NO left operand — which is why `p: / 1`
+ * parsed here while css and the other supersets rejected it. That asymmetry is
+ * the measurement P33 was raised over.
+ *
+ * The rejection is EMERGENT: nothing checks first position. `topSumMaybeDivision`
+ * requires a left operand by construction, so a leading slash simply has no
+ * production to enter.
+ */
+describe('the value slash needs a left operand (P33)', () => {
+  it.each([
+    ['bare ident', 'a { p: /img }'],
+    ['bare number', 'a { p: /1 }'],
+    ['spaced from its operand', 'a { p: / 1 }']
+  ])('rejects a value whose slash has no left operand (%s)', (_label, source) => {
+    const failure = failureOf(source);
+    expect(failure.message).toBe('Unexpected Less syntax.');
+    expect(failure.offset).toBe(0);
+  });
+
+  it('rejects a punctuation-led Less variable value', () => {
+    const failure = failureOf('@p: /img;');
+    expect(failure.offset).toBe(2);
+  });
+
+  /*
+   * Less math is untouched. A bare `/` still reduces through
+   * `topSumMaybeDivision` under `lessMathOutsideParens`, and the escape hatch
+   * for a real path value is unchanged.
+   */
+  it.each([
+    ['division operand pair', '@a: 4 / 2;'],
+    ['escaped path value', '@p: ~"/img";'],
+    ['font shorthand', 'a { font: 12px/1.5 Arial }'],
+    ['two space groups', 'a { border-radius: 1px 2px / 3px 4px }'],
+    ['slash inside a comma list', 'a { background: a, 1px / 2px }'],
+    ['absolute url path', 'a { background: url(/a.png) no-repeat }'],
+    ['protocol-relative url', 'a { p: url(//cdn/x.png) }'],
+    ['modern colour alpha component', 'a { p: rgb(15 23 42 / .22) }'],
+    ['custom property keeps <declaration-value>', 'a { --v: /img }'],
+    ['An+B is not a value', 'a:nth-child(2n+1) { c: d }'],
+
+    /*
+     * Less admits a comment as padding AFTER the separator via
+     * `preservedSlashBoundary`. Pinned as the cross-dialect control for the css
+     * side: css's first `valueSlashBoundary` spelling rejected this shape while
+     * less accepted it, which is how the narrowing was caught.
+     */
+    ['comment after the slash', 'a { p: 12px / /* c */ 1.5 }']
+  ])('leaves a slash with an operand on each side alone (%s)', (_label, source) => {
+    expect(() => parse(source), source).not.toThrow();
+  });
+});
