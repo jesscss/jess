@@ -289,7 +289,7 @@ const skippedFixtures: SkippedFixture[] = (
     },
     {
       file: 'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less',
-      reason: 'every case in the upstream fixture is commented out, so it renders to nothing while its golden is a stray newline. The cases are commented out because `/deep/` and `/shadow/` do not parse in jess though lessc 4.9.1 accepts them — jess#247. Uncommenting them upstream pins whichever way that is ruled'
+      reason: 'every case in the upstream fixture is commented out, so it renders to nothing while its golden is a stray newline. The cases are commented out because `/deep/` and `/shadow/` do not parse in jess — RULED (G37): slashed combinators are not selectors (Selectors 4 §14 lists neither) and v5 rejects them deliberately, so the fixture belongs in tests-error with its cases restored, or deleted — jess#247'
     },
     {
       file: 'tests-unit/javascript/javascript.less',
