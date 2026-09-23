@@ -97,17 +97,23 @@ describe('V19 one-evaluator projection ratchet', () => {
     // and namespace-value identity plus one lazy JSON cycle guard. +2 `new Map`:
     // document-scoped module facts in the compile plan and direct-serialize
     // fallback; strong ownership avoids per-node ephemeron tables.
-    // +6 functions and +1 `new Map` (`@import` is a SOURCE FOLD, jess#229): an
+    // +9 functions and +2 `new Map` (`@import` is a SOURCE FOLD, jess#229): an
     // imported fact used to be APPENDED to whichever index it landed in, so it
-    // outranked every local fact however early its `@import` was written.
-    // `importSiteRank`/`importedFactRank`/`frameFactRanks` (the Map) assign each
-    // published fact a `SourceRank` AT PUBLICATION TIME — the `@import`'s own
-    // statement index plus the fact's index in the imported document — and
-    // `publishRankedMixinEvent`/`factsInSourceOrder`/`publishImportedRuleMixins`
-    // merge by that rank. All three merges are cached or performed on publication:
-    // no lookup computes a rank.
-    expect(occurrences(/^function |^async function /gmu)).toBe(468);
-    expect(occurrences(/new Map/gu)).toBe(67);
+    // outranked every local fact however early its `@import` was written. A
+    // published fact is now given a `SourceRank` AT PUBLICATION TIME — the
+    // `@import`'s own statement index (`importSiteRank`, `importedFactRank`,
+    // `factSite`) extended by the fact's index in the imported document — and
+    // `publishRankedMixinEvent` / `insertRankedFact` / `factsInSourceOrder` /
+    // `publishImportedRuleMixins` file each fact at it. `compareSourceRankToIndex`
+    // compares a rank against an authored statement's position WITHOUT
+    // materializing `[index]`, which is why no authored statement gets a tuple.
+    // The two Maps are `factRanks` (published declarations only — the ordered
+    // declaration stack is the one consumer that compares two published facts) and
+    // `frameStatementIndex`'s positions, both written and read at publication.
+    // Ordered LOOKUP paths carry a parallel int site array instead, so namespace
+    // descent merges integers with no array, no sort, no cache and no Map.
+    expect(occurrences(/^function |^async function /gmu)).toBe(471);
+    expect(occurrences(/new Map/gu)).toBe(68);
     expect(occurrences(/new Set/gu)).toBe(42);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
