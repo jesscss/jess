@@ -4073,81 +4073,104 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: 2026-09-12 typed Jess collection overlays. Collection literals now
-  accept computed keys and semicolon-terminated spreads, evaluate entries once in
-  source order, and collapse duplicate keys with the last value winning. Sass
-  `map.deep-merge` remains an imported function rather than a second spread form.
-- Architecture surface: Jess collection grammar and CST/AST reductions; canonical
-  `CollectionSpread`, data-only `Collection`, and distinct `NestedPropertyBlock`
-  shapes; collection evaluation, typed lookup, `$for` iteration, Sass map functions,
-  duplicate-key diagnostics, public exports, fixtures, and documentation.
-- Separation/duplication: one `CollectionOverlay` owns Sass-equality lookup,
-  replacement, retained-key order, and candidate indexing for evaluator lookup,
-  diagnostics, and Sass map functions. SCSS function calls remain `FunctionCall`
-  nodes and no parser-side `map.merge` lowering or deep-spread grammar exists.
-- Cumulative node weight: two monomorphic node shapes are added. `CollectionSpread`
-  has one value edge; `NestedPropertyBlock` has `entries` plus a nullable `base`.
-  The serializer's named-plus-async function count falls from 443 to 441 and
-  its `Map` count remains 59, both pinned by the source ratchet. Collection
-  evaluation replaces the former property-timeline/key-string helpers instead
-  of adding parallel construction paths.
-- New traversal: collection evaluation and overlay construction each make one
-  source-order pass. Candidate buckets avoid restart scans; exact Sass equality is
-  authoritative only within the bounded candidate bucket. Keyword and quoted-key
-  cost tests pin linear type-read growth at 10,000 entries.
-- New node/materialization: collection evaluation constructs one result entry
-  array. A spread contributes its already-evaluated entries and does not clone a
-  tree. The candidate index stays unallocated for zero/one-entry overlays and is
-  created lazily for larger overlays. Existing `BindingCell`/`DeclEntry` records
-  carry computed typed values through `$for` and nested lookup, so neither path
-  flattens then reparses serialized bytes.
-- Render path: collections remain non-rendering data values. Lookup and iteration
-  consume typed evaluated entries; ordinary Less detached rulesets retain their
-  anonymous-mixin behavior. The complete 115-test Less corpus is green and owner
-  `.css` goldens are unchanged.
-- Helper/API surface: `CollectionOverlay` is the shared typed helper; collection
-  item and nested-property node types are public AST facts. `map.deep-merge` is
-  exported through the existing Sass map namespace. No compatibility alias,
-  parser host, runtime scanner, reparse, or new public construction host is added.
-- Metadata mutations: `BindingCell` is monomorphized with mandatory nullable
-  `valueFrame` and `evaluated` slots, and `DeclEntry` gains the same mandatory
-  nullable `evaluated` fact. A shared inert binding node stands in only where a
-  typed value has no authored AST node. No frame side map or canonical AST
-  mutation is added.
-- Review-flagged diff tokens: [loop/traversal] indexed/source-order loops evaluate
-  each collection item once and visit candidate buckets only; [array helper] `$for`
-  projections map already-evaluated lists without a second evaluator walk;
-  [array spread/materialization] call-site location spreads are existing diagnostic
-  records and numeric candidate keys append to one local signature list;
-  [node construction] `TypeError` is reserved for invalid spread operands and the
-  `CollectionOverlay` creates bounded candidate sets only on signature collision;
-  [side map/set] one lazily-created overlay bucket map indexes Sass-equality
-  candidates; [routine error control] `TypeError` is created only for an invalid
-  spread operand, never for an ordinary lookup miss, duplicate, or candidate mismatch;
-  [materialized array/object] the effective-entry array and existing
-  frame/cell records replace byte flattening/reparse and are linear in effective
-  entries. No recursive source scan or overlay-wide restart is introduced;
-  candidate-local association validation scans each distinct candidate map once.
-- Behavior evidence: full `@jesscss/core` Vitest passed 217 files and 3,331 tests
-  (10 skipped, 2 todo); the full Less data corpus passed 115/115, including nested
-  maps and `functions-each`; focused collection, lookup, `$for`, nested-property,
-  traversal, Sass map, parser AST/CST, diagnostic, and lint tests pass.
-- Build evidence: dependency-ordered `pnpm run build:release`, `check:macro` with
-  zero interpreter fallbacks, and `verify:compose-integrity` with zero fallbacks
-  pass on the changed sources.
-- Boundary evidence: AST shape stability, package exports, and core public-type
-  checks pass. Jess parser tests cover AST and CST forms plus a missing-semicolon
-  negative control; SCSS parser tests prove `map.merge` remains a `FunctionCall`.
-- Evidence: complete Less corpus and core suite are green after the final detached-map
-  compatibility fix. Jess and SCSS AST medians were neutral-to-lower; the SCSS CST
-  +2.86–3.32% signal is recorded as inconclusive because repeated identical-graph
-  measurements were flat and the method of record warns of false timing failures.
-  No speed claim is made. The canonical hot-path harness cannot
-  run in this checkout because `@less/test-data` is not installed, so the unchanged
-  `benchmark.less` output baseline from the active semantic-runtime contract is
-  retained rather than fabricating a new measurement.
-- Verdict: accepted as a semantic collection feature with explicit linear-cost
-  coverage and compatibility evidence; performanceClaim remains `none`.
+- Latest pass: 2026-09-20 script/data module execution and Less `@use`. The
+  compiler dependency plan loads `ModuleImport` facts once; render activates
+  their values and functions in the authored lexical frame and emits no CSS.
+- Architecture surface: canonical AST serializer/evaluator module binding,
+  `Context` module dispatch, trusted node-module resolution, Less grammar,
+  public integration tests, and the shared Jess/Less module documentation.
+- Separation/duplication: `Context.getModule` remains the sole resolver/cache/
+  loader owner. `prepareStaticImports` carries resolved exports in its opaque
+  reusable plan. The serializer owns only typed value conversion and lexical
+  binding; it neither resolves paths nor reparses source. Legacy `@plugin`
+  remains on its existing activation lane.
+- Cumulative node weight: no node kind or node field is added. JSON-compatible
+  exports become existing `Keyword`, `Dimension`, `List`, `Collection`, and
+  `Null` nodes at the module-binding boundary. Namespaced Jess calls now consume
+  the existing typed `Reference` chain directly; the reviewed version removed a
+  temporary replacement `Reference` node and `steps.slice()` from evaluation.
+- New traversal: the compiler's existing import-plan source-order pass loads
+  direct module facts. Script/data directives are stylesheet-top-level grammar
+  facts in Jess, SCSS, and Less; Less now pins that boundary explicitly. Render
+  scans the root body only while caller-planned module bindings remain, or scans
+  another body when the legacy plugin/direct-serialize fallback is armed. A plan
+  with zero modules returns before touching the body, and the pending count
+  reaches zero after root activation, so ordinary nested bodies do not acquire a
+  dependency walk. Reference evaluation advances one monotonic index through its
+  existing chain.
+- New node/materialization: the opaque plan owns one document-scoped strong
+  module `Map`; render owns sparse function/namespace identity `Set`s only after
+  a module binds. JSON arrays/objects and call arguments materialize the exact
+  canonical values consumed downstream. There is no AST copy, output wrapper,
+  per-node weak table, source-byte materialization, or tree rewalk.
+- Render path: `@use`/`@-use` and Jess `@-use`/`@-from` bind before the body walk
+  and emit nothing. Prepared exports are read without IO; direct low-level
+  `serialize({ context })` retains a cached Context fallback. Module call results
+  enter the existing typed evaluator and canonical output buffer.
+- Helper/API surface: private conversion/binding helpers isolate the module
+  boundary. `PluginInterface.canImportModule` is one optional capability for
+  trusted package-owned modules whose extension overlaps sandboxed scripts;
+  `PreparedImports` remains opaque. No parser host, construction host, alias, or
+  second module registry is introduced.
+- Metadata mutations: only render-local evaluator facts are added: imported
+  function identities, namespace-value identities, the module plan reference,
+  and a scalar pending count. They do not mutate canonical AST nodes and die with
+  the render. The reusable compiler plan itself is not consumed or mutated.
+- Review-flagged diff tokens: [loop/traversal] every module export/specifier,
+  reference step, and call argument is visited once at binding/call time;
+  [array helper] JSON array/object conversion creates the canonical `List` or
+  `Collection` payload once; [array spread/materialization] the callable rest
+  signature and spread invoke the selected external JS function without an
+  intermediate stylesheet serialization; [node construction] typed value nodes
+  are the owned module boundary and `TypeError`s cover exceptional cyclic,
+  missing, or unsupported exports only; [generic defensive read]
+  `hasOwnProperty` distinguishes a missing named export from an own export whose
+  value is `undefined`; [side map/set] module facts use a document-scoped strong
+  map and identity sets are sparse render-local gates, with no ephemeron table;
+  [materialized array/object] prepared state, namespace value bags, and call
+  arguments are the exact typed records consumed downstream, not predicate-only
+  allocations. No routine Error control, source scan, restart scan, or generic
+  object crawl is introduced.
+- Behavior evidence: focused core module and projection tests pass 13/13,
+  including one-load/two-render plan reuse, namespace calls, JSON nesting,
+  shadowing, and missing exports. Public Jess/SCSS/Less compiler routes pass 5/5;
+  node-module resolution passes 6/6; the full Less parser passes 762/762 and
+  pins nested `@use` rejection; the Less render corpus passes 114/114; the AST-v2
+  production ratchet passes 4/4.
+- Build evidence: strict core TypeScript, the core package build, and the
+  dependency-ordered release build pass. `check:macro` reports zero interpreter
+  fallbacks in all five grammar packages; `verify:compose-integrity`,
+  `verify:aggressive-cutting-review`, `check:guardrails`,
+  `verify:parser-runtime-boundary`, `verify:package-exports`, `verify:jess-api`,
+  `verify:shape-stability`, and docs-content validation are green.
+- Parse-performance evidence: same-directory interleaved B/A on built artifacts,
+  4 rounds × 3 processes × 25 timed samples after 8 warmups, measured
+  `benchmark.less/ast` 29.892ms → 31.018ms (+3.8%; B spread 28.94–30.75,
+  A 29.10–33.87, A wins 3/12) and its CST control 32.324ms → 32.951ms
+  (+1.9%; A wins 2/12). CSS controls moved +1.7% to +3.2%. The AST movement is
+  inside the harness's documented noise and tracks the controls, so the result
+  is `UNRESOLVABLE-NOISE`, not a slowdown claim. Common marker `const atStatement`
+  is 1/1 and one-sided marker `const useKeyword` is 1/0. Node v25.9.0;
+  `parseman@0.50.7` resolves to this worktree's pnpm store path. The absolute
+  drift reporter graded zero cases because its committed baseline/null
+  calibration and optional comparators remain absent; that report is not used as
+  evidence.
+- Boundary evidence: ledger A1/A2/N7/P17 owns the directive spellings, module
+  classification, and non-ambient Jess function model. A8 remains owner-open;
+  this pass records only the explicitly implemented namespace data/function
+  slice. The shared module page is the Jess/Less public source of truth.
+- Evidence: performance invariants 1-11 and incidents R1-R8 were checked. The
+  change adds no polymorphic AST shape, re-derivation, full-tree render walk,
+  nonlinear search, per-node weak state, output path, source rediscovery, or
+  grammar fallback. Semantic invariants 1-8 were checked against A1/A2/N7/P17:
+  module directives are construct-level compile dependencies, typed values use
+  existing emit policy, Context/plugin/parser ownership is singular, valid CSS
+  is untouched, dialect syntax is recorded, parsing remains structural,
+  unsupported values fail during evaluation, and no behavior is justified by a
+  reference implementation. This is a semantic feature; no speed claim is made.
+- Verdict: accepted as the bounded module-execution slice for issue #182, with
+  `performanceClaim: none`; the code review rejected weak per-node state and
+  temporary reference-node materialization before this record was written.
 - Hot-path cost contracts:
 ```json
 [
@@ -4171,10 +4194,10 @@ involved.
       "recursive-ValueGroup-final-unit-validation",
       "async-declaration-dedup-output-order"
     ],
-    "why": "Computed keys and spreads are typed collection semantics: source-order evaluation, Sass-equality replacement, lookup, and iteration must agree without flattening values to bytes. The shared overlay and existing binding-cell carrier implement that behavior across cooperating evaluator owners; this record makes no neutrality, byte-identity, or speed claim.",
-    "dangerTokensJustification": "The source-order loops are linear and the lazily-created candidate index bounds exact equality checks by comparator-owned signatures; keyword, quoted, and structural-key tests pin that growth. The effective-entry array, collision sets, and mandatory nullable evaluated slots replace byte flattening or repeated whole-collection scans. No AST descendant walk, source scan, reparse, per-entry tree clone, frame side map, or routine Error allocation is added.",
-    "behaviorEvidence": "Full core passed 217 files and 3,331 tests; all-less passed 115/115. Focused collection evaluation, lookup, iteration, nested-property, traversal, Sass map, diagnostic, lint, and parser AST/CST tests pass, including strict-unit and non-transitive Sass-equality cases.",
-    "buildEvidence": "Dependency-order build:release passes. Macro and compose-integrity checks report zero interpreter fallbacks; AST shape stability, package exports, and core public-type gates pass.",
+    "why": "ModuleImport execution is canonical AST semantic work: compile-owned exports become typed lexical bindings and module calls enter the existing evaluator. This record makes no neutrality, byte-identity, or speed claim.",
+    "dangerTokensJustification": "The compiler plan owns one strong module map; sparse render-local sets gate imported function and namespace identity. Linear export/reference/argument loops consume already-typed facts once. JSON conversion constructs the canonical values it must bind. No source scan, parser replay, AST copy, temporary Reference node, per-node weak table, output path, or routine Error control is added.",
+    "behaviorEvidence": "Focused module and serializer projection tests pass 13/13; public compiler module tests pass 5/5; node-module resolution passes 6/6; the full Less parser passes 762/762; the Less render corpus passes 114/114; the AST-v2 production ratchet passes 4/4.",
+    "buildEvidence": "Strict core TypeScript, the core package build, and the dependency-ordered release build pass; macro compilation reports zero interpreter fallbacks in all five grammar packages; compose-integrity and the aggressive-cutting review pass.",
     "baseline": {
       "fixture": "benchmark.less",
       "phase": "render",
@@ -4184,16 +4207,24 @@ involved.
     }
   },
   {
-    "id": "ast-value-guard-comparison-op",
+    "id": "core-context-emit-selector-contract",
     "verdict": "accepted",
     "performanceClaim": "none",
+    "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
     "cases": [
-      "loose-common-ground",
-      "type-equal-declines-coercion",
-      "sass-equal-numeric-dispatch"
+      "Context-plugin-source-parser-dispatch",
+      "emit-walk-context-output-option",
+      "Ruleset-interpolated-selector-boundary",
+      "selector-match-string-and-node-combinators",
+      "extend-index-tagged-graft-atoms",
+      "Sequence-subclass-preserving-evaluation",
+      "callable-output-root-property-guard",
+      "serializer-at-rule-and-selector-surface"
     ],
-    "why": "Collection overlays use the existing typed sass-equal comparison kind as their sole equality authority. The comparison now carries strict numeric type equality recursively through List and Collection members so lookup, replacement, and Sass map functions share one policy without ambient equality mode.",
-    "dangerTokensJustification": "Recursive comparison visits only the already-selected structural candidate pair and allocates no Error or control-flow result. Candidate indexing and deterministic operation counters bound the collection search independently; this record makes no timing, neutrality, or speed claim.",
+    "why": "Context remains the one module resolver/cache/loader while the serializer consumes its typed result. The explicit LoadedModuleResult return and trusted-module capability clarify that existing dispatch boundary without adding a resolver, output policy, parser host, or alternate evaluator.",
+    "dangerTokensJustification": "The cache read and plugin capability selection are one-time compile dependency work. They add no source scan, tree traversal, AST materialization, hot-path Error result, or render output branch.",
+    "behaviorEvidence": "Core module evaluation, public compiler module routes, and node-module resolution pass, including trusted builtins without plugin-js and the expected unavailable-runtime error for local JS.",
+    "buildEvidence": "Strict core TypeScript and the core and node-module package builds pass.",
     "baseline": {
       "fixture": "benchmark.less",
       "phase": "render",

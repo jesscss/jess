@@ -22,6 +22,8 @@ export type JessErrorCode =
   | 'parse/unsupported-variable-name'
   | 'parse/unsupported-mixin-name'
   | 'parse/unparenthesized-mixin-guard'
+  | 'parse/import-postlude-on-compile-time-import'
+  | 'parse/source-import-css-syntax'
   | 'resolve/name-not-found'
   | 'import/circular-compose'
   | 'import/not-found'
@@ -31,6 +33,7 @@ export type JessErrorCode =
   | 'eval/invalid-function'
   | 'eval/ambiguous-default'
   | 'eval/invalid-statement'
+  | 'eval/module-config-rejected'
   | 'eval/property-in-root'
   | 'eval/root-call-without-root'
   | 'eval/guarded-selector-list'
@@ -155,6 +158,22 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       fix: 'Wrap the guard condition, for example: when (default()).'
     }
   ],
+  [
+    'parse/import-postlude-on-compile-time-import',
+    {
+      summary: 'A compile-time @import cannot carry a layer or supports condition',
+      reason: 'A layer or supports condition on a compile-time @import is not supported.',
+      fix: 'Wrap the import in an explicit @media/@layer/@supports block.'
+    }
+  ],
+  [
+    'parse/source-import-css-syntax',
+    {
+      summary: '@-import cannot carry a media, supports or layer condition without (css)',
+      reason: '@-import has Less import semantics, so a CSS import condition needs the (css) option.',
+      fix: 'Remove the media, supports or layer condition, or add (css) to emit a CSS @import.'
+    }
+  ],
 
   // Resolve/Import
   [
@@ -230,6 +249,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       reason:
         '${what} is a value; it cannot stand on its own in a rules body — it was likely returned by a function/mixin or leaked from a detached ruleset.',
       fix: 'Wrap it in a declaration (property: value) or return a valid statement node (ruleset, declaration, at-rule).'
+    }
+  ],
+  [
+    'eval/module-config-rejected',
+    {
+      summary: 'Module configuration was rejected',
+      reason: '${reason}',
+      fix: 'Declare the variable as a configurable knob in the module, or remove it from the configuration block.'
     }
   ],
   [
@@ -477,6 +504,12 @@ const JESS_ERROR_CODE_SET: ReadonlySet<string> = new Set(TEMPLATES.keys());
 
 export function isJessErrorCode(code: string): code is JessErrorCode {
   return JESS_ERROR_CODE_SET.has(code);
+}
+
+export type ParseErrorCode = Extract<JessErrorCode, `parse/${string}`>;
+
+export function isParseErrorCode(code: string): code is ParseErrorCode {
+  return code.startsWith('parse/') && JESS_ERROR_CODE_SET.has(code);
 }
 
 /**

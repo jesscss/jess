@@ -194,6 +194,30 @@ export class LessUnparenthesizedMixinGuardError extends SyntaxError {
  * compile-time form (`@-compose`); the author rewrites those as an explicit
  * `@media`/`@layer`/`@supports` block.
  */
+/**
+ * `@-import` is the dashed spelling of a Less import. Unlike bare `@import`, it
+ * never detects a CSS import, so it rejects a media, `supports(...)` or `layer`
+ * postlude. The `(css)` option is the one explicit request for a CSS import;
+ * with it, the postlude parses and emits as a plain CSS `@import`.
+ */
+export class LessSourceImportSyntaxError extends SyntaxError {
+  readonly code = 'parse/source-import-css-syntax' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason =
+    '@-import has Less import semantics, so a CSS import condition needs the (css) option.';
+
+  readonly fix =
+    'Remove the media, supports or layer condition, or add (css) to emit a CSS @import.';
+
+  constructor(offset: number, endOffset: number) {
+    super('@-import cannot carry a media, supports or layer condition without (css).');
+    this.name = 'LessSourceImportSyntaxError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+  }
+}
+
 export class LessImportPostludeError extends SyntaxError {
   readonly code = 'parse/import-postlude-on-compile-time-import' as const;
   readonly offset: number;

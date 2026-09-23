@@ -35,23 +35,8 @@ Note that there is no `;` after the collection's closing brace. A block-valued
 assignment ends at its closing brace, so the semicolon is optional. See
 [block-valued assignments](./variables#block-valued-assignments) for the rule.
 
-Collections can also come from JS/TS modules once module resolution is enabled:
-```js
-// tokens.js
-export const sizes = {
-  small: '10px',
-  medium: '20px',
-  large: '30px'
-}
-```
-
-```less
-@-use "./tokens.js";
-
-.box {
-  padding: $tokens.sizes.small;
-}
-```
+Script and data modules expose imported objects as collections. See
+[Modules & imports](/docs/language/modules-and-imports#script-and-data-modules).
 
 ### Sub-collections
 
@@ -181,16 +166,10 @@ keys in one literal are statically obvious. It never rejects the collection and
 does not speculate about dynamic keys or keys introduced by a spread.
 
 Spread is shallow: if both collections contain `colors`, the later `colors`
-value replaces the earlier one. Recursive overlays use Sass's map function:
-
-```less
-@-use '#sass/map' as map;
-$theme: $map.deep-merge($defaults, $overrides);
-```
-
-`deep-merge` is available from the `@jesscss/fns/sass/map` JavaScript entrypoint.
-The Jess `@-use` resolver is not wired yet, so the stylesheet example above is
-the settled module spelling rather than an executable import today.
+value replaces the earlier one. JavaScript consumers can use `deep-merge` from
+the `@jesscss/fns/sass/map` entrypoint when a recursive overlay is needed. The
+planned stylesheet spelling uses the `#sass/map` script module, but script
+module imports are not executable in the current alpha.
 
 ## Subscripts: the key's type decides
 

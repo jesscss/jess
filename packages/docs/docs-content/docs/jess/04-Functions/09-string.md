@@ -15,7 +15,6 @@ CSS value that isn't valid CSS syntax, or that uses proprietary syntax Jess does
 recognize. Mirrors Less's `e()`.
 
 ```css
-@-from '@jesscss/fns' import (e);
 .filter {
   $mscode: "ms:alwaysHasItsOwnSyntax.For.Stuff()";
   filter: e($mscode);
@@ -35,7 +34,6 @@ characters in the input string. `encodeURI` is applied first, then the character
 `=`, `:`, `#`, `;`, `(` and `)` are additionally escaped. Mirrors Less's `escape()`.
 
 ```css
-@-from '@jesscss/fns' import (escape);
 .box {
   content: escape('a=1');
 }
@@ -54,7 +52,6 @@ is a non-escaped quoted string the result keeps its quoting; otherwise it is ret
 as an unquoted value. `$1`-style group references are supported in the replacement.
 
 ```css
-@-from '@jesscss/fns' import (replace);
 .box {
   a: replace("Hello, Mars?", "Mars\?", "Earth!");
   b: replace("One + one = 4", "one", "2", "gi");
@@ -84,7 +81,6 @@ Its public alias is still being finalized — see the
 :::
 
 ```css
-@-from '@jesscss/fns' import (format);
 .box {
   a: format("repetitions: %s file: %s", 1 + 2, "directory/file.less");
   b: format("repetitions: %S file: %S", 1 + 2, "directory/file.less");

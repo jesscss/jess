@@ -21,6 +21,7 @@ export {
   LessImportPostludeError,
   LessInlineJavaScriptError,
   LessParseError,
+  LessSourceImportSyntaxError,
   LessUnparenthesizedMixinGuardError,
   LessUnsupportedMixinNameError,
   LessUnsupportedVariableNameError

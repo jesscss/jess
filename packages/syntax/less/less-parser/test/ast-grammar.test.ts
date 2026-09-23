@@ -1359,6 +1359,116 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('constructs a @compose module directive with a `with` configuration block', () => {
+    const result = run(
+      lessGrammar.Document,
+      '@compose "m" with { @x: red; @y: blue; }',
+      { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(bare(result.value)).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{
+        type: 'StyleImport',
+        name: '@compose',
+        mode: 'compose',
+        target: { type: 'Quoted', value: 'm' },
+        config: {
+          kind: 'with',
+          bindings: [
+            { type: 'VariableDeclaration', name: 'x' },
+            { type: 'VariableDeclaration', name: 'y' }
+          ]
+        }
+      }]
+    });
+  });
+
+  it('constructs an unconfigured @compose and a `set` configuration directly', () => {
+    const plain = run(lessGrammar.Document, '@compose "m";', { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE });
+    expect(plain.ok).toBe(true);
+    expect(bare(plain.value)).toMatchObject({
+      rules: [{ type: 'StyleImport', name: '@compose', mode: 'compose', config: null }]
+    });
+
+    const withSet = run(lessGrammar.Document, '@compose "m" set { @x: red; }', { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE });
+    expect(withSet.ok).toBe(true);
+    expect(bare(withSet.value)).toMatchObject({
+      rules: [{ type: 'StyleImport', mode: 'compose', config: { kind: 'set' } }]
+    });
+  });
+
+  it('captures the @compose namespace clause (`as ns`, `as *`, and none)', () => {
+    const named = run(lessGrammar.Document, '@compose "m" as ns;', { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE });
+    expect(named.ok).toBe(true);
+    expect(bare(named.value)).toMatchObject({
+      rules: [{ type: 'StyleImport', name: '@compose', mode: 'compose', namespace: 'ns' }]
+    });
+
+    const star = run(lessGrammar.Document, '@compose "m" as *;', { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE });
+    expect(star.ok).toBe(true);
+    expect(bare(star.value)).toMatchObject({
+      rules: [{ type: 'StyleImport', name: '@compose', mode: 'compose', namespace: '*' }]
+    });
+
+    const plain = run(lessGrammar.Document, '@compose "m";', { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE });
+    expect(plain.ok).toBe(true);
+    expect(bare(plain.value)).toMatchObject({
+      rules: [{ type: 'StyleImport', name: '@compose', mode: 'compose', namespace: null }]
+    });
+  });
+
+  it('constructs bare and dashed @use script modules with a derived namespace', () => {
+    for (const source of ['@use "./my-functions.js";', '@-use "./my-functions.js";']) {
+      const result = run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace,
+        state: LESS_TEST_STATE
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.unconsumedFrom).toBeNull();
+      expect(bare(result.value)).toMatchObject({
+        type: 'Stylesheet',
+        rules: [{
+          type: 'ModuleImport',
+          mode: 'use',
+          path: { type: 'Quoted', value: './my-functions.js' },
+          namespace: null,
+          defaultImport: null,
+          imports: []
+        }]
+      });
+    }
+  });
+
+  it('accepts the dashed @compose alias and keeps Less @use free of an as clause', () => {
+    const composed = run(lessGrammar.Document, '@-compose "m";', {
+      trivia: lessGrammar.whitespace,
+      state: LESS_TEST_STATE
+    });
+    expect(composed.ok).toBe(true);
+    expect(composed.unconsumedFrom).toBeNull();
+    expect(bare(composed.value)).toMatchObject({
+      rules: [{ type: 'StyleImport', name: '@-compose', mode: 'compose' }]
+    });
+
+    expect(parsesCompleteStylesheet('@use "./mod.js" as mod;')).toBe(false);
+    const from = run(lessGrammar.Document, '@from "./mod.js" import (value);', {
+      trivia: lessGrammar.whitespace,
+      state: LESS_TEST_STATE
+    });
+    expect(bare(from.value)).toMatchObject({
+      rules: [{ type: 'AtRuleStatement', name: '@from' }]
+    });
+  });
+
+  it('keeps @use at the stylesheet dependency boundary', () => {
+    expect(parsesCompleteStylesheet('.scope { @use "./mod.js"; }')).toBe(false);
+    expect(parsesCompleteStylesheet('@media screen { @-use "./mod.js"; }')).toBe(false);
+  });
+
   it('constructs canonical import, variable, declaration, and ruleset facts directly', () => {
     const result = run(
       lessGrammar.Document,
@@ -1416,7 +1526,8 @@ describe('Less AST grammar facts', () => {
           alias: null,
           mode: 'import',
           namespace: null,
-          forward: false
+          forward: false,
+          config: null
         },
         {
           type: 'StyleImport',
@@ -1432,7 +1543,8 @@ describe('Less AST grammar facts', () => {
           alias: null,
           mode: 'import',
           namespace: null,
-          forward: false
+          forward: false,
+          config: null
         }
       ]
     });
@@ -3181,7 +3293,8 @@ describe('Less AST grammar facts', () => {
           alias: null,
           mode: 'import',
           namespace: null,
-          forward: false
+          forward: false,
+          config: null
         }
       ]
     });

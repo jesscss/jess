@@ -13,6 +13,7 @@ import {
   LessBareVariableInterpolationError,
   LessImportPostludeError,
   LessParseError,
+  LessSourceImportSyntaxError,
   LessUnsupportedVariableNameError,
   parse
 } from '@jesscss/less-parser';
@@ -102,6 +103,113 @@ describe('public Less parse()', () => {
     ).toBe(
       '.b {\n  color: blue;\n}\n'
     );
+  });
+
+  it('overrides a composed .less module variable with a `with` configuration end to end', async () => {
+    const moduleDoc = parse('@x: blue;\n.a { color: @x; }');
+    const importer = parse('@compose "m" with { @x: red; }');
+    const result = await Promise.resolve(serialize(importer, {
+      evaluator: buildEvaluator(makeLessRegistry()),
+      importDocument: ({ specifier }) => specifier === 'm'
+        ? { document: moduleDoc, key: 'm' }
+        : undefined
+    }));
+    expect(result.css).toBe('.a {\n  color: red;\n}\n');
+  });
+
+  it('renders a composed .less module with its own variable when unconfigured', async () => {
+    const moduleDoc = parse('@x: blue;\n.a { color: @x; }');
+    const importer = parse('@compose "m";');
+    const result = await Promise.resolve(serialize(importer, {
+      evaluator: buildEvaluator(makeLessRegistry()),
+      importDocument: ({ specifier }) => specifier === 'm'
+        ? { document: moduleDoc, key: 'm' }
+        : undefined
+    }));
+    expect(result.css).toBe('.a {\n  color: blue;\n}\n');
+  });
+
+  it('persists a `set` configuration to a later plain compose without re-emitting the shared module', async () => {
+    const moduleDoc = parse('@x: blue;\n.a { color: @x; }');
+    const importer = parse('@compose "m" set { @x: red; }\n@compose "m";');
+    const result = await Promise.resolve(serialize(importer, {
+      evaluator: buildEvaluator(makeLessRegistry()),
+      importDocument: ({ specifier }) => specifier === 'm'
+        ? { document: moduleDoc, key: 'm' }
+        : undefined
+    }));
+    expect(result.css).toBe('.a {\n  color: red;\n}\n');
+  });
+
+  it('does not leak a `with` configuration to a later plain compose of the same module', async () => {
+    const moduleDoc = parse('@x: blue;\n.a { color: @x; }');
+    const importer = parse('@compose "m" with { @x: red; }\n@compose "m";');
+    const result = await Promise.resolve(serialize(importer, {
+      evaluator: buildEvaluator(makeLessRegistry()),
+      importDocument: ({ specifier }) => specifier === 'm'
+        ? { document: moduleDoc, key: 'm' }
+        : undefined
+    }));
+    expect(result.css).toBe('.a {\n  color: red;\n}\n.a {\n  color: blue;\n}\n');
+  });
+
+  it('rejects a second conflicting `set` configuration of the same module', async () => {
+    const moduleDoc = parse('@x: blue;\n.a { color: @x; }');
+    const importer = parse('@compose "m" set { @x: red; }\n@compose "m" set { @x: green; }');
+    await expect(Promise.resolve(serialize(importer, {
+      evaluator: buildEvaluator(makeLessRegistry()),
+      importDocument: ({ specifier }) => specifier === 'm'
+        ? { document: moduleDoc, key: 'm' }
+        : undefined
+    }))).rejects.toThrow(/already configured with a different set of values/);
+  });
+
+  it('renders a shared `set` module once for two identical configured composes', async () => {
+    const moduleDoc = parse('@x: blue;\n.a { color: @x; }');
+    const importer = parse('@compose "m" set { @x: red; }\n@compose "m" set { @x: red; }');
+    const result = await Promise.resolve(serialize(importer, {
+      evaluator: buildEvaluator(makeLessRegistry()),
+      importDocument: ({ specifier }) => specifier === 'm'
+        ? { document: moduleDoc, key: 'm' }
+        : undefined
+    }));
+    expect(result.css).toBe('.a {\n  color: red;\n}\n');
+  });
+
+  it('renders an unconfigured shared module once when composed twice', async () => {
+    const moduleDoc = parse('@x: blue;\n.a { color: @x; }');
+    const importer = parse('@compose "m";\n@compose "m";');
+    const result = await Promise.resolve(serialize(importer, {
+      evaluator: buildEvaluator(makeLessRegistry()),
+      importDocument: ({ specifier }) => specifier === 'm'
+        ? { document: moduleDoc, key: 'm' }
+        : undefined
+    }));
+    expect(result.css).toBe('.a {\n  color: blue;\n}\n');
+  });
+
+  it('renders a per-edge `with` module once per edge with its own params', async () => {
+    const moduleDoc = parse('@x: blue;\n.a { color: @x; }');
+    const importer = parse('@compose "m" with { @x: red; }\n@compose "m" with { @x: green; }');
+    const result = await Promise.resolve(serialize(importer, {
+      evaluator: buildEvaluator(makeLessRegistry()),
+      importDocument: ({ specifier }) => specifier === 'm'
+        ? { document: moduleDoc, key: 'm' }
+        : undefined
+    }));
+    expect(result.css).toBe('.a {\n  color: red;\n}\n.a {\n  color: green;\n}\n');
+  });
+
+  it('keeps a per-edge `with` independent of a shared `set` on the same module (no conflict)', async () => {
+    const moduleDoc = parse('@x: blue;\n.a { color: @x; }');
+    const importer = parse('@compose "m" set { @x: red; }\n@compose "m" with { @x: green; }');
+    const result = await Promise.resolve(serialize(importer, {
+      evaluator: buildEvaluator(makeLessRegistry()),
+      importDocument: ({ specifier }) => specifier === 'm'
+        ? { document: moduleDoc, key: 'm' }
+        : undefined
+    }));
+    expect(result.css).toBe('.a {\n  color: red;\n}\n.a {\n  color: green;\n}\n');
   });
 
   it('keeps selector and body provenance without a duplicate ruleset span', () => {
@@ -3399,5 +3507,49 @@ describe('keyword boundaries run to full ident-continue', () => {
     expect(parse('@supports (color: red) { a { color: red; } }')).toMatchObject({
       rules: [{ type: 'AtRuleBlock', name: '@supports', prelude: { type: 'Block', delimiter: 'paren' } }]
     });
+  });
+});
+
+describe('dashed spellings of Less at-rules', () => {
+  it('parses @-plugin as the same Plugin directive as @plugin', () => {
+    for (const source of ['@plugin (x=1) "./plugin.js";', '@-plugin (x=1) "./plugin.js";', '@-PLUGIN "./plugin.js";']) {
+      expect(parse(source)).toMatchObject({
+        type: 'Stylesheet',
+        rules: [{ type: 'Plugin', target: { type: 'Quoted', value: './plugin.js' } }]
+      });
+    }
+  });
+
+  it('keeps @-import to Less stylesheet import syntax', () => {
+    expect(parse('@-import (reference, optional) "theme.less";')).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{ type: 'StyleImport', name: '@-import', mode: 'import' }]
+    });
+    expect(parse('@-import "theme.css";')).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{ type: 'StyleImport', name: '@-import', mode: 'import' }]
+    });
+    expect(parse('@-import (inline) "theme.css";')).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{ type: 'StyleImport', name: '@-import', mode: 'import' }]
+    });
+
+    for (const source of [
+      '@-import "theme.less" screen;',
+      '@-import url("theme.less") print;',
+      '@-import "theme.less" supports(display: grid);',
+      '@-import "theme.less" layer;'
+    ]) {
+      expect(() => parse(source), source).toThrow(LessSourceImportSyntaxError);
+    }
+  });
+
+  it('parses @-import (css) as a CSS @import', () => {
+    for (const tail of ['', ' screen', ' layer(base) supports(display: grid) print']) {
+      const dashed = parse(`@-import (css) "theme.css"${tail};`);
+      expect(dashed.rules[0], tail).toMatchObject({ type: 'AtRuleStatement', name: '@import' });
+      expect(bare(dashed), tail).toEqual(bare(parse(`@import (css) "theme.css"${tail};`)));
+      expect(serialize(dashed).css, tail).toBe(`@import "theme.css"${tail};\n`);
+    }
   });
 });

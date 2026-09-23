@@ -80,6 +80,7 @@ export type AstEdge =
   | 'import.options'
   | 'import.target'
   | 'import.alias'
+  | 'import.config'
   | 'plugin.target'
   | 'plugin.options'
   | 'selector.branch'
@@ -470,6 +471,12 @@ function walkStyleImport(node: StyleImport, hooks: AstVisitHooks, depth: number)
   walkNode(node.target, hooks, 'import.target', node, 0, depth + 1);
   if (node.alias !== null) {
     walkNode(node.alias, hooks, 'import.alias', node, 0, depth + 1);
+  }
+  if (node.config !== null) {
+    const bindings = node.config.bindings;
+    for (let i = 0; i < bindings.length; i++) {
+      walkNode(bindings[i]!, hooks, 'import.config', node, i, depth + 1);
+    }
   }
 }
 

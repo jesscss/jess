@@ -6,15 +6,13 @@ audiences:
 origin: jess
 ---
 
-:::caution Syntax is current; resolution is not wired yet
+:::info Script and data imports
 
-The import **syntax** on this page is the current 2.x spelling and parses today.
-Import **resolution** does not exist yet in the alpha: `@-compose` and `@-from`
-are recognized, kept in the document, and serialized back out verbatim. The
-compiler does not yet load, evaluate, or inline the referenced file, so the
-behavior described below is the target, not today's output — and referencing a
-name that would come from an import is currently a compile error
-(`Name not found`).
+`@-use` and `@-from` bind module exports at compile time. JSON modules need
+no script runtime; JavaScript and TypeScript modules require
+`@jesscss/plugin-js`. See
+[Modules & imports](/docs/language/modules-and-imports) for the canonical
+contract.
 
 :::
 
@@ -24,14 +22,6 @@ Every Jess compiler at-rule is dash-prefixed (`@-compose`, `@-from`, `@-use`), s
 Jess never claims a bare CSS at-keyword. A bare `@import` in a `.jess` file is
 always plain CSS.
 
-```css
-// JavaScript example
-@-from './constants.js' import (WIDTH);
-
-.box {
-  width: $($WIDTH * 1px);
-}
-```
 ```css
 // Jess example
 @-compose './mixins.jess' as *;

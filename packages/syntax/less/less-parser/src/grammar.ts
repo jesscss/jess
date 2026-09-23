@@ -29,10 +29,10 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar';
-import { NO_SPAN, any, atRuleBlock, atRuleStatement, block, bodySpanFromRaw, callArg, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, unknownAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { NO_SPAN, any, atRuleBlock, atRuleStatement, block, bodySpanFromRaw, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, importOptionWords, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { requireLessParseState } from './parse-state.js';
-import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
+import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessSourceImportSyntaxError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 import {
   appendInterpolationLiteral,
   argumentFunctionFromChildren,
@@ -176,6 +176,10 @@ type LessRules = {
   Document: Combinator<Stylesheet>;
   VarDeclaration: Combinator<VariableDeclaration>;
   ImportStatement: Combinator<StyleImport | AtRuleStatement | AtRuleBlock>;
+  UseStatement: Combinator<ModuleImport>;
+  ComposeStatement: Combinator<StyleImport>;
+  ComposeStatementNamespace: Combinator<string>;
+  ComposeStatementConfig: Combinator<StyleImportConfig>;
   PluginDirective: Combinator<Plugin>;
   ValueBlockDeclaration: Combinator<VariableDeclaration>;
   ValueBlock: Combinator<ValueNode>;
@@ -245,7 +249,9 @@ type LessRules = {
   FlatMixinCall: Combinator<MixinCall>;
   NamespacedMixinCall: Combinator<MixinCall>;
   NamespacedMixinValue: Combinator<MixinCall>;
-  MixinReference: Combinator<Reference>;
+  HexColorValue: Combinator<ValueNode>;
+  MixinReference: Combinator<ValueNode>;
+  MixinReferenceChain: Combinator<Reference>;
   ReferenceCall: Combinator<Reference>;
   MixinGuard: Combinator<MixinGuard>;
   MixinGuardTopOr: Combinator<MixinGuard>;
@@ -675,7 +681,7 @@ const layerAtRuleName = word(
   '-_a-zA-Z0-9\\u0080-\\uFFFF',
   { caseInsensitive: true }
 );
-/*
+/**
  * The Less-only compiler-namespace at-rule names, declared ONCE. The CSS names
  * this must also exclude (@import, @layer, @media/@container/@supports,
  * @keyframes) are NOT re-spelled: `AtRuleName` below inverts cssSyntax's own
@@ -683,7 +689,7 @@ const layerAtRuleName = word(
  * css-syntax-3 §4.3.11 boundary is inherited rather than re-typed.
  */
 const lessOwnAtKeyword = keywords(
-  ['@-import', '@-export'],
+  ['@-import', '@-compose', '@compose', '@-use', '@use', '@-export'],
   { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
 );
 /* `staticAtRuleStatementName` is now the composed `g.StaticAtRuleStatementName` rule. */
@@ -1125,6 +1131,84 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * wrapping `@media`; `StyleImport` remains postlude-free (nodes.ts §StyleImport).
    * See docs/architecture/core/DESIGN-DECISIONS.md (owner-ruled 2026-09-02).
    */
+  /**
+   * `@compose "m" [ (with|set) { @x: red; … } ]` — the v5 module form (spec R6
+   * Part E); `@-compose` is its accepted transition alias. Unlike a legacy
+   * `@import`, a compose directive never folds into the importer
+   * or carries a media tail; it loads an isolated module and OPTIONALLY configures
+   * it with a rule-style `{ … }` block (NOT a `with (map)` paren form). `with`
+   * configures this import edge only, `set` persists onward. The block reuses the
+   * ordinary `VarDeclaration` rule, so config bindings are plain `@x:` assignments.
+   */
+  const composeKeyword = keywords(
+    ['@-compose', '@compose'],
+    { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
+  );
+  /** The typed `with`/`set` configuration block attached to one compose edge. */
+  const ComposeStatementConfig = node<StyleImportConfig>(
+    'StyleImportConfig',
+    sequence(choice(lessWord('with'), lessWord('set')), literal('{'), many(g.VarDeclaration), literal('}')),
+    (children) => {
+      const kind = requireToken(children[0]).value === 'set' ? 'set' : 'with';
+      const bindings = children.filter(
+        (child): child is VariableDeclaration =>
+          typeof child === 'object' && child !== null && 'type' in child && child.type === 'VariableDeclaration'
+      );
+      return { kind, bindings };
+    }
+  );
+  /**
+   * `@compose "m" as ns` / `as *` — the module namespace clause (spec R6 Part E).
+   * `as *` merges the module's members unqualified into the importer; `as ns`
+   * binds them under `@ns`; omitting it auto-derives the namespace from the
+   * specifier. Mirrors the SCSS `@use … as` qualifier (grammar UseNamespace).
+   */
+  const ComposeStatementNamespace = node<string>(
+    'ComposeStatementNamespace',
+    sequence(lessWord('as'), choice(literal('*'), staticIdentifier)),
+    children => requireToken(children[1]).value
+  );
+  /**
+   * A quoted or URL stylesheet module plus its optional namespace and typed
+   * configuration. The reducer retains the accepted dashed or plain keyword.
+   */
+  const ComposeStatement = node(
+    'ComposeStatement',
+    sequence(composeKeyword, g.ImportTarget, optional(g.ComposeStatementNamespace), optional(g.ComposeStatementConfig), optional(literal(';'))),
+    (children, _fields, span) => {
+      const target = children.find((child): child is Quoted | Url | Interpolation => isQuoted(child) || isUrl(child) || isInterp(child));
+      if (target === undefined) {
+        throw new TypeError('Less grammar produced no @compose target.');
+      }
+      const namespace = children.find((child): child is string => typeof child === 'string') ?? null;
+      const config = children.find(
+        (child): child is StyleImportConfig =>
+          typeof child === 'object' && child !== null && !('type' in child) && 'kind' in child && 'bindings' in child
+      ) ?? null;
+      return withSourceSpan(styleImport(requireToken(children[0]).value, target, { mode: 'compose', namespace, config }), span);
+    }
+  );
+  /** The two Less spellings share one case-insensitive, identifier-bounded terminal. */
+  const useKeyword = keywords(['@-use', '@use'], {
+    caseInsensitive: true,
+    boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF'
+  });
+  /**
+   * Less script/data modules accept only a quoted static target and optional
+   * semicolon. Namespace derivation belongs to module binding, so this grammar
+   * deliberately admits neither Jess's `as` clause nor an `@from` production.
+   */
+  const UseStatement = node<ModuleImport>(
+    'ModuleImport',
+    sequence(useKeyword, g.Quoted, optional(literal(';'))),
+    (children) => {
+      const path = children[1];
+      if (!isQuoted(path)) {
+        throw new TypeError('Less @use requires a quoted module path.');
+      }
+      return moduleImport(path, 'use', null);
+    }
+  );
   const ImportStatement = node(
     'ImportStatement',
     sequence(importKeyword, optional(g.ImportOptions), g.ImportTarget, optional(field('tail', g.ImportTail)), literal(';')),
@@ -1145,9 +1229,17 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       // opaque source bytes.
       const tailValue = tailField === undefined ? undefined : requireField(fields, 'tail').value;
       const tail = tailValue === undefined ? null : isValueNode(tailValue) ? tailValue : any(staticText(tailValue));
+      const lowered = keyword.value.toLowerCase();
+      // `@-import` never detects a CSS import. Only `(css)` asks for one, and
+      // then the rest parses and emits as a plain CSS `@import`; without it a
+      // CSS postlude is an error rather than a silent `@media` wrapper.
+      const isSourceImport = lowered === '@-import';
+      if (isSourceImport && tail !== null && !importOptionWords(options).includes('css')) {
+        throw new LessSourceImportSyntaxError(span.start, span.end);
+      }
       if (importIsCompileTime(keyword.value, target, options)) {
         if (tail !== null) {
-          // Only the legacy `@import`/`@-import` form desugars a media tail into
+          // Only the legacy `@import` form desugars a media tail into
           // a `@media` wrapper; `@-compose` and any `supports(...)`/`layer` tail
           // still reject. A CSS import postlude is `[ layer | layer(…) ]? [
           // supports(…) ]? <media-query-list>`; only the trailing media-query-
@@ -1156,11 +1248,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           // supports/layer condition (or a malformed mix) and is rejected. A
           // parenthesized `(feature: value)` media feature (typed `ImportQueryTail`
           // Block) or `@{…}` interpolation is a media query and carries neither.
-          // `importKeyword` only spells `@import`/`@-import`, so this is always a
-          // legacy import here; the `!isLegacyImport` guard is defensive against a
-          // future keyword (a compile-time `@-compose` admits no media wrap).
-          const lowered = keyword.value.toLowerCase();
-          const isLegacyImport = lowered === '@import' || lowered === '@-import';
+          // `@-import` rejected every tail above, so this is always a bare
+          // `@import`; the `!isLegacyImport` guard is defensive against a future
+          // keyword (a compile-time `@-compose` admits no media wrap).
+          const isLegacyImport = lowered === '@import';
           // ponytail: substring test over the opaque text tail, NOT a regex —
           // grammars forbid regex literals outside `regex()`. Upgrade path: a
           // typed `ImportTail` split (media-query vs supports/layer), the same
@@ -1181,7 +1272,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return withImportSourceSpan(
         withImportTailStart(
           atRuleStatement(
-            keyword.value,
+            isSourceImport ? '@import' : keyword.value,
             tail === null ? target : spaced([target, tail])
           ),
           tailField === undefined || Array.isArray(tailField) ? NO_SPAN : tailField.span.start
@@ -1191,7 +1282,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       );
     }
   );
-  // `@plugin` is a compile-time directive, not an unknown CSS at-rule. Its
+  // `@plugin`/`@-plugin` is a compile-time directive, not an unknown CSS at-rule. Its
   // target and the *inner* option string are grammar facts so the evaluator
   // never rediscovers either from raw prelude bytes. EnclosedContent
   // recursively closes delimiters and preserves arbitrary option text as
@@ -1199,10 +1290,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const PluginDirective = node(
     'Plugin',
     sequence(
-      word(
-        '@plugin',
-        '-_a-zA-Z0-9\\u0080-\\uFFFF',
-        { caseInsensitive: true }
+      keywords(
+        ['@-plugin', '@plugin'],
+        { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
       ),
       optional(sequence(literal('('), field('options', g.EnclosedContent), literal(')'))),
       field('target', quotedOrUrlTarget),
@@ -1735,7 +1825,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const Value = node(
     'Value',
     choice(
-      attempt(g.MixinReference),
+      g.MixinReference,
       g.InterpolatedValue,
       g.EscapedQuoted,
       g.Quoted,
@@ -1979,7 +2069,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       // This transaction owns the WHOLE accessor-bearing value. Keeping it out
       // of Value means its typed mixin arguments do not recurse through the
       // same candidate before the required accessor fact has been established.
-      attempt(sequence(g.MixinReference, not(choice(topProductOperator, sumOperator)))),
+      attempt(sequence(g.MixinReferenceChain, not(choice(topProductOperator, sumOperator)))),
       oneOrMoreSep(
         g.ValueSequence,
         field('separator', regex(/,[ \t\n\r\f]*/))
@@ -2642,13 +2732,30 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return { call: withPath, raw };
     }
   );
+  // A `#`-headed value that spells a complete hex color and is NOT continued by
+  // a reference opener (`.`/`[`/`(`) is a Color, recognized FORWARD. This leads
+  // the shared-head arm so the ubiquitous `#fff` never enters the reference
+  // chain, fails a required accessor, and rewinds — the exact `attempt` cost the
+  // old ordering paid on every hex color. The negative lookahead also excludes a
+  // trailing hex digit, so a longer run (`#fffff`) declines here and falls to the
+  // chain like any other non-color head.
+  const HexColorValue = node(
+    'Color',
+    regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F.[(])/),
+    // Byte-identical to the shared `g.Color` reducer this arm precedes (a plain
+    // `color(text)`, no span), so a hex color reduces to the exact same node
+    // whether it is reached here or through the ordinary Color arm.
+    children => color(requireToken(children[0]).value)
+  );
   // A static namespace/mixin invocation remains the existing typed MixinCall
   // (including its selector-path combinators). Once the shared base is followed
   // by a lookup/call accessor, the whole value is a Reference. The first
   // accessor delimiter is consumed once and routed to the matching tail builder,
   // so malformed accessor bodies stay on the selected reference route instead
-  // of probing forward with a broad value-position lookahead.
-  const MixinReference = node(
+  // of probing forward with a broad value-position lookahead. This is the ONE
+  // chain builder — a whole-value `ValueList` reference and the merged atom arm
+  // below both project through it, so the head/tail machinery is single-sourced.
+  const MixinReferenceChain = node(
     'MixinReference',
     sequence(
       MixinReferenceBase,
@@ -2658,6 +2765,17 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       const base = requireMixinReferenceBaseFact(children.find(isMixinReferenceBaseFact));
       return withSourceSpan(referenceWithTails(base.call, base.raw, children.filter(isReferenceTailFact)), span);
     }
+  );
+  // The value-atom reference arm: a forward hex color OR a Reference chain, first
+  // set `[.#]`, no rewind on the hot path. `HexColorValue` recognizes `#fff`
+  // outright; a head continued by an accessor declines that lookahead and routes
+  // to the chain (`#ns[key]`, `#library.add(1)[result]`). A tail-less non-color
+  // head (`.class`, `#ns`, `.mixin()`) matches NEITHER and fails cleanly — the
+  // enclosing choice then falls to its selector/color siblings, exactly as the
+  // old `attempt(MixinReference)` did after rewinding, but without throwing.
+  const MixinReference = choice(
+    HexColorValue,
+    g.MixinReferenceChain
   );
   const ReferenceCall = node(
     'VarCall',
@@ -2691,9 +2809,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     // Whether that comparison means anything is a language-service fact.
     choice(
       mixinGuardDefaultOperand,
-      // Guard operands reuse the ordinary typed access References. The
-      // namespace branch must backtrack for ordinary non-accessor colors.
-      attempt(g.MixinReference),
+      // Guard operands reuse the ordinary typed access References. The shared
+      // `#`/`.` head is forward-dispatched: a tail-less hex head reduces to a
+      // Color inside the one arm, so ordinary non-accessor colors need no rewind.
+      g.MixinReference,
       g.VariableReferenceChain,
       g.Quoted,
       g.EscapedQuoted,
@@ -2828,17 +2947,31 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // `BodyStatement` deliberately keep their own ordered arm sets
   // because they legitimately differ (comment-first root ordering; the
   // punctuation-map arm and function/ruleset reordering in body statements).
-  // `@`-led statement group. Every body context lists these eleven arms in this
-  // exact contiguous order, so grouping them into one nested choice is
-  // byte-identical to the flat listing (a bare `choice` passes its winning arm's
-  // value through unchanged, and firstMatch order is preserved). This is the
-  // structural "one at-rule choice group"; parseman already first-set-gates the
-  // whole group behind a single `@` (codepoint 64) check, so a non-`@` statement
-  // skips all ten arms with one integer compare. This is deliberately not a
-  // `dispatch(...)` yet: Less `@name` forms need more than bare `@` or bare
-  // `@name` to distinguish variable declarations, reference calls, known
-  // at-rules, generic blocks, and generic statements.
-  const atStatement = choice(g.ImportStatement, g.PluginDirective, g.ValueBlockDeclaration, g.VarDeclaration, g.SupportsBlock, g.MediaContainerBlock, g.ReferenceCall, g.Keyframes, g.AtRuleBlock, g.UnknownAtRuleBlock, g.AtRuleStatement);
+  /**
+   * `@`-led statement group. Every body context lists these twelve arms in this
+   * exact contiguous order, so grouping them into one nested choice is
+   * byte-identical to the flat listing: a bare `choice` passes its winning arm's
+   * value through unchanged, and firstMatch order is preserved. Parseman
+   * first-set-gates the whole group behind one `@` check, so a non-`@` statement
+   * skips every arm with one integer compare. This is deliberately not a
+   * `dispatch(...)`: Less `@name` forms need more than the keyword to distinguish
+   * variable declarations, reference calls, known at-rules, generic blocks, and
+   * generic statements.
+   */
+  const atStatement = choice(
+    g.ImportStatement,
+    g.ComposeStatement,
+    g.PluginDirective,
+    g.ValueBlockDeclaration,
+    g.VarDeclaration,
+    g.SupportsBlock,
+    g.MediaContainerBlock,
+    g.ReferenceCall,
+    g.Keyframes,
+    g.AtRuleBlock,
+    g.UnknownAtRuleBlock,
+    g.AtRuleStatement
+  );
   // Class/id statement starts are resolved by `ClassIdStatement` below. It
   // parses the selector prefix once, then the literal-led continuation decides
   // whether the retained structure is a mixin definition/call or a ruleset.
@@ -3315,10 +3448,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const QueryTerm = node(
     'QueryTerm',
     choice(
-      // A namespace/map read is a whole query term only after its required
-      // accessor has succeeded; otherwise ordinary colors and mixin prefixes
-      // continue to the existing query alternatives.
-      attempt(g.MixinReference),
+      // A namespace/map read is a whole query term only through the tail-required
+      // chain: a query term has no Color alternative, so the merged hex arm would
+      // over-accept a bare `#fff` as a term. Requiring one accessor keeps a bare
+      // hex/mixin prefix falling through to the ordinary query alternatives, and
+      // the `attempt` localizes the shared-head rollback to this arm.
+      attempt(g.MixinReferenceChain),
       g.QueryFeature,
       g.VariableReference,
       // `<general-enclosed>` function form (media-queries-5 §2.1/§3.1:
@@ -4829,7 +4964,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const Stylesheet = node(
     'Stylesheet',
-    sequence(many(choice(atStatement, mixinStatement, g.FunctionStatement, guardedRuleset, rootDeclarationItem, literal(';'))), optional(g.Call)),
+    sequence(many(choice(g.UseStatement, atStatement, mixinStatement, g.FunctionStatement, guardedRuleset, rootDeclarationItem, literal(';'))), optional(g.Call)),
     children => stylesheet(children.filter(isStatement)),
     { trailingTrivia: true }
   );
@@ -4839,6 +4974,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     Document: Stylesheet,
     VarDeclaration,
     ImportStatement,
+    UseStatement,
+    ComposeStatement,
+    ComposeStatementNamespace,
+    ComposeStatementConfig,
     PluginDirective,
     ValueBlockDeclaration,
     ValueBlock,
@@ -4909,7 +5048,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     FlatMixinCall,
     NamespacedMixinCall,
     NamespacedMixinValue,
+    HexColorValue,
     MixinReference,
+    MixinReferenceChain,
     ReferenceCall,
     MixinGuard,
     MixinGuardTopOr,

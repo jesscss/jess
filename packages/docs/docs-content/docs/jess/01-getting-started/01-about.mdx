@@ -9,18 +9,19 @@ origin: jess
 ```scss
 // I am a Jess file
 
-@-use '#less'; // Use built-in modules!
-@-use './sizes.ts'; // Use a custom module!
 @-compose './theme.less'; // Compose a theme!
 @-compose './mixins.scss' as *; // Import mixins from Sass into local mixin scope!
 
 .container {
-  width: $less.unit($sizes.width);
   color: $theme.primary-color;
   display: flex;
   $box();
 }
 ```
+
+Stylesheet composition and script/data imports with `@-use` and `@-from`
+work in the current alpha. The shared contract is on
+[Modules & imports](/docs/language/modules-and-imports).
 
 ## What is Jess?
 

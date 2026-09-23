@@ -30,7 +30,7 @@ import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar';
 import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { Token, AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
+import type { Token, AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 import {
   requireToken,
   requireFields,
@@ -253,6 +253,7 @@ type JessRules = {
   If: Combinator<If>;
   While: Combinator<While>;
   StyleImport: Combinator<StyleImport>;
+  StyleImportConfig: Combinator<StyleImportConfig>;
   ModuleSpecifier: Combinator<ModuleImportSpecifier>;
   ModuleImport: Combinator<ModuleImport>;
   HeaderValueAtom: Combinator<ValueNode>;
@@ -1521,6 +1522,29 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       moduleBindingName
     )
   );
+
+  /*
+   * Module configuration block (spec R6 Part E). `.jess` spells it as a rule-style
+   * `{ … }` of ordinary `$x:` assignments after `with`/`set`, not a `with (map)`
+   * paren form. `with` configures this import edge only; `set` persists onward.
+   */
+  const StyleImportConfig = node<StyleImportConfig>(
+    'StyleImportConfig',
+    sequence(
+      choice(syntaxWord('with'), syntaxWord('set')),
+      literal('{'),
+      many(g.VariableDeclaration),
+      literal('}')
+    ),
+    (children) => {
+      const kind = requireToken(children[0]).value === 'set' ? 'set' : 'with';
+      const bindings = children.filter(
+        (child): child is VariableDeclaration =>
+          typeof child === 'object' && child !== null && 'type' in child && child.type === 'VariableDeclaration'
+      );
+      return { kind, bindings };
+    }
+  );
   const styleImportDirective = keywords(['@-compose', '@-export', '@-import'], {
     boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF'
   });
@@ -1534,6 +1558,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           routed(),
           g.Quoted,
           optional(styleImportAsClause),
+          optional(g.StyleImportConfig),
           optional(literal(';'))
         )
       ),
@@ -1560,9 +1585,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       const names = children.slice(2).filter(isToken)
         .map(requireToken).map(token => token.value);
       if (source === '@-compose') {
+        const config = children.find(
+          (child): child is StyleImportConfig =>
+            typeof child === 'object' && child !== null && !('type' in child) && 'kind' in child && 'bindings' in child
+        ) ?? null;
         return styleImport('@-compose', path, {
           mode: 'compose',
-          namespace: names.find(name => name !== 'as' && name !== ';') ?? null
+          namespace: names.find(name => name !== 'as' && name !== ';') ?? null,
+          config
         });
       }
       if (source === '@-export') {
@@ -5775,6 +5805,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     Quoted,
     LiteralQuoted,
     StyleImport,
+    StyleImportConfig,
     ModuleSpecifier,
     ModuleImport,
     HeaderValueAtom,

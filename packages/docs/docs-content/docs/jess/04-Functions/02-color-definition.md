@@ -16,7 +16,6 @@ If you're not performing operations on a color, you don't have to import `rgb` /
 
 Example:
 ```css
-@-from '@jesscss/fns' import (hue, hsl);
 
 .box {
   value: hue(hsl(90, 100%, 50%));

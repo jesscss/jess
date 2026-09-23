@@ -29,14 +29,21 @@ import type { Combinator, Node, NodeType } from './node.js';
 import {
   any,
   callArg,
+  collection,
+  collectionEntry,
   decl,
   dimension,
+  funcCall,
   importOptionWords,
   interpolation,
   mixinCall,
   operation,
+  keyword,
+  list,
+  NULL_NODE,
   spaced,
   variableDeclaration,
+  anonymousMixin,
   isLiteralNode,
   isTypedLiteral,
   isValueBlock,
@@ -78,6 +85,7 @@ import type {
   Interpolation,
   Keyword,
   Reference,
+  ReferenceCall,
   MixinCall,
   MixinDefinition,
   ModuleImport,
@@ -97,6 +105,7 @@ import type {
   List,
   Statement,
   StyleImport,
+  StyleImportConfig,
   ValueNode,
   ValueSlot,
   VariableDeclaration,
@@ -113,6 +122,7 @@ import {
   DEFAULT_MODES,
   IncomparableOperandsError,
   emitValue,
+  isValueGroup,
   isValueGroupArray,
   isElided,
   isLiteral,
@@ -131,13 +141,14 @@ import {
   type Value
 } from './value-eval.js';
 import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
+import { defineFunction } from './value-dispatch.js';
 import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
-import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } from './literal-tag.js'; // [value node model]
+import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { colorRgb, HEX } from './color.js'; // [compress] typed-color channel read + hex-format tag
 import { compressDimensionBytes, compressSelectorHeader, shortestColor, shortestColorFromHex } from './compress.js';
 import { UnitArithmeticError, calcInner, preservedUnitClashes, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
-import { makeAny, makeBlock, makeCollection, makeKeyword, makeBool, makeList, makeNull, makeUrlValue, NULL } from './value-factory.js'; // [calc]
+import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
@@ -149,6 +160,7 @@ import type { PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } f
 import type { Level } from './extend/ir.js';
 import { branchFromSelector, descendantBranch, levelFromSelectorList } from './extend/ir.js';
 import { DocumentContext, documentTriviaOf, type Context, type SourceContext } from '../context.js';
+import type { ModuleConfigRejection } from '../plugin.js';
 import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
@@ -340,6 +352,13 @@ interface PlannedImportDocument {
   loaded: ImportDocument | undefined;
 }
 
+type PreparedModule = Readonly<Record<string, unknown>>;
+
+interface PreparedImportState {
+  documents: WeakMap<StyleImport, PlannedImportDocument>;
+  modules: Map<ModuleImport, PreparedModule>;
+}
+
 declare const PREPARED_IMPORTS_BRAND: unique symbol;
 
 /** Opaque compile-time import plan. Its mutable document records are internal
@@ -348,16 +367,25 @@ export interface PreparedImports {
   readonly [PREPARED_IMPORTS_BRAND]: true;
 }
 
-type PreparedImportsReader = () => WeakMap<StyleImport, PlannedImportDocument>;
+type PreparedImportsReader = () => PreparedImportState;
 
-function makePreparedImports(documents: WeakMap<StyleImport, PlannedImportDocument>): PreparedImports {
+function makePreparedImports(
+  documents: WeakMap<StyleImport, PlannedImportDocument>,
+  modules: Map<ModuleImport, PreparedModule>
+): PreparedImports {
+  const state: PreparedImportState = { documents, modules };
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the callable is the private runtime carrier for this nominal token.
-  return (() => documents) as PreparedImportsReader & PreparedImports;
+  return (() => state) as PreparedImportsReader & PreparedImports;
 }
 
 function preparedImportDocuments(prepared: PreparedImports): WeakMap<StyleImport, PlannedImportDocument> {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- only makePreparedImports constructs this nominal token.
-  return (prepared as unknown as PreparedImportsReader)();
+  return (prepared as unknown as PreparedImportsReader)().documents;
+}
+
+function preparedModules(prepared: PreparedImports): Map<ModuleImport, PreparedModule> {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- only makePreparedImports constructs this nominal token.
+  return (prepared as unknown as PreparedImportsReader)().modules;
 }
 
 /**
@@ -887,20 +915,227 @@ function scopedFunctionNames(fns: ReadonlyMap<string, Fn> | null): Set<string> |
   return fns === null ? undefined : new Set(fns.keys());
 }
 
+function isModuleFn(value: unknown): value is Fn {
+  return typeof value === 'function'
+    && 'params' in value
+    && Array.isArray(value.params);
+}
+
+type ModuleCallable = (...args: unknown[]) => unknown;
+
+function isModuleCallable(value: unknown): value is ModuleCallable {
+  return typeof value === 'function';
+}
+
+function moduleFunctionResult(value: unknown, name: string): ValueGroup {
+  if (isValueGroup(value)) {
+    return value;
+  }
+  if (typeof value === 'number') {
+    return makeDimension(value);
+  }
+  if (typeof value === 'string') {
+    return sniffLiteral(value);
+  }
+  if (typeof value === 'boolean') {
+    return makeBool(value);
+  }
+  if (value === null || value === undefined) {
+    return NULL;
+  }
+  throw new TypeError(`Module function "${name}" returned an unsupported value.`);
+}
+
+function bindModuleFunction(value: ModuleCallable | Fn, name: string): Fn {
+  if (isModuleFn(value)) {
+    return defineFunction(name, {
+      params: value.params,
+      variadic: true,
+      body: (args, context) => value(args, context)
+    });
+  }
+  return defineFunction(name, {
+    params: [],
+    variadic: true,
+    body: args => mapMaybe(
+      value(...groupItems(args)),
+      result => moduleFunctionResult(result, name)
+    )
+  });
+}
+
+function moduleAstValue(value: unknown, name: string, seen: Set<object> | null = null): ValueSlot {
+  if (value === null) {
+    return NULL_NODE;
+  }
+  if (typeof value === 'string') {
+    return keyword(value);
+  }
+  if (typeof value === 'number') {
+    return dimension(value);
+  }
+  if (typeof value === 'boolean') {
+    return keyword(value ? 'true' : 'false');
+  }
+  if (typeof value === 'object') {
+    if (seen?.has(value)) {
+      throw new TypeError(`Module export "${name}" is cyclic.`);
+    }
+    seen ??= new Set();
+    seen.add(value);
+    if (Array.isArray(value)) {
+      const result = list(value.map((item, index) => moduleAstValue(item, `${name}[${index}]`, seen)));
+      seen.delete(value);
+      return result;
+    }
+    const entries = Object.entries(value).map(([key, member]) =>
+      collectionEntry(keyword(key), moduleAstValue(member, `${name}.${key}`, seen))
+    );
+    seen.delete(value);
+    return collection(entries);
+  }
+  throw new TypeError(`Module export "${name}" is not a supported stylesheet value.`);
+}
+
+function addModuleFunction(frame: Frame, fn: Fn, e: EvalCtx): void {
+  addScopedFns(frame, [fn], e);
+  (e.moduleFns ??= new Set()).add(fn);
+}
+
+function bindModuleValue(frame: Frame, name: string, value: unknown, e: EvalCtx): ValueSlot {
+  const binding = moduleAstValue(value, name);
+  const declaration = variableDeclaration(name, binding, { mode: 'declare' });
+  publishImportedVariableDeclaration(frame, declaration);
+  activateVariableDeclaration(declaration, frame, e);
+  return binding;
+}
+
+function requireModuleExport(module: Readonly<Record<string, unknown>>, name: string): unknown {
+  if (!Object.prototype.hasOwnProperty.call(module, name)) {
+    throw new TypeError(`Module has no export named "${name}".`);
+  }
+  return module[name];
+}
+
+function bindModuleNamespace(
+  module: Readonly<Record<string, unknown>>,
+  namespace: string,
+  frame: Frame,
+  e: EvalCtx
+): void {
+  const values: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(module)) {
+    if (isModuleCallable(value)) {
+      addModuleFunction(frame, bindModuleFunction(value, `${namespace}.${name}`), e);
+    } else {
+      values[name] = value;
+    }
+  }
+  const binding = bindModuleValue(frame, namespace, values, e);
+  if (!isValueSlotArray(binding)) {
+    (e.moduleNamespaceValues ??= new Set()).add(binding);
+  }
+}
+
+function bindModuleImport(
+  node: ModuleImport,
+  module: Readonly<Record<string, unknown>>,
+  frame: Frame,
+  e: EvalCtx
+): void {
+  if (node.mode === 'use') {
+    const namespace = node.namespace ?? deriveModuleNamespace(node.path.value);
+    if (namespace === null) {
+      throw new TypeError(`@-use "${node.path.value}" cannot derive a namespace; add an explicit "as <name>".`);
+    }
+    if (namespace === '*') {
+      for (const [name, value] of Object.entries(module)) {
+        if (isModuleCallable(value)) {
+          addModuleFunction(frame, bindModuleFunction(value, name), e);
+        } else {
+          bindModuleValue(frame, name, value, e);
+        }
+      }
+      return;
+    }
+    bindModuleNamespace(module, namespace, frame, e);
+    return;
+  }
+
+  if (node.namespace !== null) {
+    bindModuleNamespace(module, node.namespace, frame, e);
+  }
+  if (node.defaultImport !== null) {
+    const value = requireModuleExport(module, 'default');
+    if (isModuleCallable(value)) {
+      addModuleFunction(frame, bindModuleFunction(value, node.defaultImport), e);
+    } else {
+      bindModuleValue(frame, node.defaultImport, value, e);
+    }
+  }
+  for (const specifier of node.imports) {
+    const value = requireModuleExport(module, specifier.name);
+    const localName = specifier.alias ?? specifier.name;
+    if (isModuleCallable(value)) {
+      addModuleFunction(frame, bindModuleFunction(value, localName), e);
+    } else {
+      bindModuleValue(frame, localName, value, e);
+    }
+  }
+}
+
 /**
- * Prepare exactly one lexical body before evaluating it. This deliberately scans
- * only its direct statements (historic Less evaluates imports/plugins before the
- * rest of that same Ruleset), never descends, and never recovers source syntax.
+ * Activate module bindings and plugin dependencies in one scan of exactly one lexical
+ * body before evaluating it. This deliberately scans only direct statements
+ * (historic Less evaluates dependencies before the rest of that same Ruleset),
+ * never descends, and never recovers source syntax.
  */
-function prepareBodyPlugins(statements: readonly Statement[], frame: Frame, e: EvalCtx): MaybePromise<void> {
+function activateBodyDependencies(
+  statements: readonly Statement[],
+  frame: Frame,
+  e: EvalCtx,
+  bindModules = true
+): MaybePromise<void> {
+  const context = e.context;
   const load = e.pluginHost?.loadPlugin;
-  if (!load) {
+  const plannedModules = bindModules ? e.plannedModuleImports : null;
+  const hasPendingPlannedModule = bindModules
+    && e.pendingPlannedModuleImports !== undefined
+    && e.pendingPlannedModuleImports > 0;
+  const mayLoadUnplannedModule = bindModules
+    && !e.preparedImportsOwnedByCaller
+    && context !== undefined;
+  if (!hasPendingPlannedModule && !mayLoadUnplannedModule && !load) {
     return;
   }
   const run = (start: number): MaybePromise<void> => {
     for (let index = start; index < statements.length; index++) {
       const statement = statements[index]!;
+      if (statement.type === 'ModuleImport') {
+        if (!bindModules) {
+          continue;
+        }
+        const prepared = plannedModules?.get(statement);
+        if (prepared !== undefined) {
+          bindModuleImport(statement, prepared, frame, e);
+          if (e.preparedImportsOwnedByCaller) {
+            e.pendingPlannedModuleImports!--;
+          }
+          continue;
+        }
+        if (!mayLoadUnplannedModule) {
+          continue;
+        }
+        return context.getModule(statement.path.value).then(({ module }) => {
+          plannedModules?.set(statement, module);
+          bindModuleImport(statement, module, frame, e);
+          return run(index + 1);
+        });
+      }
       if (statement.type !== 'Plugin') {
+        continue;
+      }
+      if (!load) {
         continue;
       }
       const specifier = statement.target.type === 'Quoted'
@@ -3126,6 +3361,21 @@ interface EvalCtx {
    */
   pluginHost?: PluginHost;
 
+  /** Functions bound by ModuleImport rather than the legacy raw-plugin ABI. */
+  moduleFns?: Set<Fn>;
+
+  /** Namespace collection identities used to disambiguate `$ns.member()` calls. */
+  moduleNamespaceValues?: Set<object>;
+
+  /** Compile-loaded script/data modules keyed by their canonical import fact. */
+  plannedModuleImports?: Map<ModuleImport, PreparedModule> | null;
+
+  /** Unactivated entries in a caller-owned module plan; zero skips every body scan. */
+  pendingPlannedModuleImports?: number;
+
+  /** True when module facts came from the reusable compiler dependency plan. */
+  preparedImportsOwnedByCaller?: boolean;
+
   /*
    * [plugin/A9] The ordinary mixin binding remains its eager Less byte snapshot.
    * When that binding came directly from a parser-owned typed value, retain the
@@ -3723,6 +3973,11 @@ function evalTyped(
             : evalTypedSlot(bound, hit.frame, e, projectMixinValues));
       });
     case 'Reference': {
+      const moduleCall = evalModuleReferenceCall(node, frame, e);
+      if (moduleCall !== undefined) {
+        return mapMaybe(moduleCall, value => force(e, value));
+      }
+
       /*
        * A typed guard comparison must retain the matched member's AST tag.
        * Falling through `evalValue` turns a typed `Keyword('true')` into an
@@ -5272,7 +5527,31 @@ function resolveReferenceResult(
   let valueFrame = frame;
   let evaluated: ValueGroup | null = null;
   let sourceOwner = frame?.sourceOwner ?? null;
-  if (!isValueSlotArray(value) && value.type === 'Lookup' && value.kind === 'var') {
+  let stepIndex = 0;
+  if (
+    e.moduleNamespaceValues !== undefined
+    && !isValueSlotArray(value)
+    && value.type === 'Lookup'
+    && value.kind === 'entry'
+    && node.steps.length > 0
+  ) {
+    const namespaceStep = node.steps[0]!;
+    if (namespaceStep.type === 'LookupStep' && typeof namespaceStep.name === 'string') {
+      const binding = resolveVarRef(frame, namespaceStep.name, 'live', e)
+        ?? resolveVarRef(frame, namespaceStep.name, 'scoped', e);
+      if (
+        binding !== undefined
+        && !isValueSlotArray(binding.value)
+        && e.moduleNamespaceValues.has(binding.value)
+      ) {
+        value = binding.value;
+        valueFrame = binding.frame;
+        evaluated = binding.evaluated;
+        stepIndex = 1;
+      }
+    }
+  }
+  if (stepIndex === 0 && !isValueSlotArray(value) && value.type === 'Lookup' && value.kind === 'var') {
     if (typeof value.name !== 'string') {
       return null;
     }
@@ -5286,7 +5565,8 @@ function resolveReferenceResult(
     sourceOwner = detachedBinding(valueFrame, value)?.sourceOwner
       ?? sourceOwnerForBody(!isValueSlotArray(value) && isValueBlock(value) ? valueBlockBody(value) : value, valueFrame, e);
   }
-  for (const step of node.steps) {
+  for (; stepIndex < node.steps.length; stepIndex++) {
+    const step = node.steps[stepIndex]!;
     if (!isValueSlotArray(value) && value.type === 'Lookup' && value.kind === 'entry') {
       if (step.type !== 'LookupStep' || typeof step.name !== 'string') {
         return null;
@@ -5591,7 +5871,85 @@ function resolveReferenceResult(
   return { value, frame: valueFrame, evaluated, sourceOwner };
 }
 
+function moduleReferenceCall(
+  node: Reference,
+  frame: Frame | null,
+  e: EvalCtx
+): { name: string; call: ReferenceCall } | undefined {
+  if (e.moduleNamespaceValues === undefined || isValueSlotArray(node.base) || node.base.type !== 'Lookup') {
+    return undefined;
+  }
+  let name: string;
+  let stepIndex: number;
+  let resolved: BindingHit | undefined;
+  if (node.base.kind === 'var' && typeof node.base.name === 'string') {
+    name = node.base.name;
+    stepIndex = 0;
+    resolved = resolveVarRef(frame, name, node.base.scope, e);
+  } else if (node.base.kind === 'entry' && node.steps.length > 0) {
+    const namespaceStep = node.steps[0]!;
+    if (namespaceStep.type !== 'LookupStep' || typeof namespaceStep.name !== 'string') {
+      return undefined;
+    }
+    name = namespaceStep.name;
+    stepIndex = 1;
+    resolved = resolveVarRef(frame, name, 'live', e)
+      ?? resolveVarRef(frame, name, 'scoped', e);
+  } else {
+    return undefined;
+  }
+  if (node.steps.length - stepIndex < 2) {
+    return undefined;
+  }
+  const call = node.steps[node.steps.length - 1]!;
+  if (call.type !== 'Call') {
+    return undefined;
+  }
+  if (
+    !resolved
+    || isValueSlotArray(resolved.value)
+    || !e.moduleNamespaceValues.has(resolved.value)
+  ) {
+    return undefined;
+  }
+  for (; stepIndex < node.steps.length - 1; stepIndex++) {
+    const step = node.steps[stepIndex]!;
+    if (step.type !== 'LookupStep' || typeof step.name !== 'string') {
+      return undefined;
+    }
+    name += `.${step.name}`;
+  }
+  const lowerName = name.toLowerCase();
+  if (e.scopedFunctionNames?.has(lowerName) !== true) {
+    return undefined;
+  }
+  return { name, call };
+}
+
+function evalModuleReferenceCall(
+  node: Reference,
+  frame: Frame | null,
+  e: EvalCtx
+): MaybePromise<EvalValue> | undefined {
+  const selected = moduleReferenceCall(node, frame, e);
+  if (selected === undefined) {
+    return undefined;
+  }
+  const args: CallArg<ValueSlot>[] = [];
+  for (const arg of selected.call.args) {
+    if (isMixinCallValue(arg.value)) {
+      throw new TypeError(`Module function "${selected.name}" cannot receive a mixin call argument.`);
+    }
+    args.push(callArg(arg.value, arg.name, arg.spread));
+  }
+  return evalCall(funcCall(selected.name, args), frame, e, true);
+}
+
 function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
+  const moduleCall = evalModuleReferenceCall(node, frame, e);
+  if (moduleCall !== undefined) {
+    return moduleCall;
+  }
   const resolved = resolveReferenceResult(node, frame, e);
   if (resolved === null) {
     return literal(node.raw);
@@ -6687,7 +7045,7 @@ function evalCall(
    * survives as a declaration map) and the live-frame capabilities. `undefined`
    * from the host means "not mine", which falls back to ordinary dispatch.
    */
-  if (selected && rawInvoker) {
+  if (selected && rawInvoker && e.moduleFns?.has(selected) !== true) {
     const raw = node.args.map(arg => pluginRawArgument(arg.value, frame, e));
     return combineAll(raw, (args) => {
       const sourceOwner = frame?.sourceOwner ?? e.context?.currentSourceOwner?.() ?? null;
@@ -7792,6 +8150,13 @@ interface Emit extends EvalCtx {
   mixinDepth: number;
   loadedImports: Set<string> | null;
 
+  /**
+   * [module config] Per module IDENTITY (`loaded.key`) `set` configuration, so a
+   * later plain `@compose`/`@use` of the same module inherits it and a conflicting
+   * reconfiguration can be rejected (spec R6 Part E §E.2/E-d).
+   */
+  moduleConfigs?: Map<string, StyleImportConfig> | null;
+
   /** A `(multiple)` import makes its transitive imports multiple too. */
   multipleImportDepth: number;
 
@@ -7813,9 +8178,6 @@ interface Emit extends EvalCtx {
 
   /** Canonical documents already loaded by the extend planner, consumed once by emission. */
   plannedImportDocuments: WeakMap<StyleImport, PlannedImportDocument> | null;
-
-  /** Caller-owned prepared import plans remain reusable across renders. */
-  preparedImportsOwnedByCaller: boolean;
 
   /**
    * Render-local document-root import facts already published before output
@@ -7865,6 +8227,8 @@ function scratchEmit(e: EvalCtx): Emit {
     lambdaFunctionNames: e.lambdaFunctionNames, // [lambda-fn] preserve the user-`@function` gate
     fnScopeVersion: e.fnScopeVersion,
     pluginHost: e.pluginHost, // [plugin/P2] preserve the injected plugin runtime
+    moduleFns: e.moduleFns,
+    moduleNamespaceValues: e.moduleNamespaceValues,
     pluginRawBindings: e.pluginRawBindings,
     mixinUrlBindings: e.mixinUrlBindings,
     mixinValueBindings: e.mixinValueBindings,
@@ -7889,6 +8253,7 @@ function scratchEmit(e: EvalCtx): Emit {
     referenceImportDepth: 0,
     atRuleBodyDepth: 0,
     plannedImportDocuments: null,
+    plannedModuleImports: e.plannedModuleImports,
     preparedImportsOwnedByCaller: false,
     prepublishedImportFacts: null,
     hoistedCssImports: null,
@@ -9938,7 +10303,9 @@ function planImportedFacts(
    */
   if (e.context?.options.processImports === false
     || !importDocument
-    || (!documentHasExtend(root) && !root.rules.some(child => child.type === 'StyleImport'))) {
+    || (!documentHasExtend(root) && !root.rules.some(child =>
+      child.type === 'StyleImport' || child.type === 'ModuleImport'
+    ))) {
     recordAstExtendProfile?.('astExtend.preflight.noFeatureBypasses');
     return {
       root,
@@ -10013,20 +10380,26 @@ function planImportedFacts(
       rememberImportedCallableBodies(loaded.document, loaded.document.rules, e.context);
 
       /*
-       * Match the importer: a loaded document is a lexical splice and publishes
-       * its direct facts into the importing frame before its body is walked.
+       * `@compose` is isolated and non-transitive: its facts are NOT spliced into
+       * the importer (the render path's `publishComposedModule` owns the namespace
+       * binding / `as *` merge), and its body walks in an isolated frame so nested
+       * `@compose`/`@import` never leak up. `@import` keeps splicing its direct
+       * facts into the importing frame before its body is walked.
        */
-      const published = publishImportedDocumentFacts(loaded.document.rules, scope, e);
-      if (isThenable(published)) {
-        await published;
-      }
-      if (publishFrame !== null && claimPrepublishedImportFact(e, st)) {
-        const prepublished = publishImportedDocumentFacts(loaded.document.rules, publishFrame, e, true);
-        if (isThenable(prepublished)) {
-          await prepublished;
+      const isCompose = st.mode === 'compose';
+      if (!isCompose) {
+        const published = publishImportedDocumentFacts(loaded.document.rules, scope, e);
+        if (isThenable(published)) {
+          await published;
+        }
+        if (publishFrame !== null && claimPrepublishedImportFact(e, st)) {
+          const prepublished = publishImportedDocumentFacts(loaded.document.rules, publishFrame, e, true);
+          if (isThenable(prepublished)) {
+            await prepublished;
+          }
         }
       }
-      const childFrame: Frame = { parent: scope, mixins: collectMixins(loaded.document.rules), declIndex: collectDeclIndex(loaded.document.rules), cells: null, reassign: null, statements: loaded.document.rules };
+      const childFrame: Frame = { parent: isCompose ? null : scope, mixins: collectMixins(loaded.document.rules), declIndex: collectDeclIndex(loaded.document.rules), cells: null, reassign: null, statements: loaded.document.rules };
 
       /*
        * Ordinary imports must not pay selector-IR/planning cost. The typed body
@@ -10052,7 +10425,7 @@ function planImportedFacts(
           reference ? null : importCssPlan,
           loaded.withinDocument ?? withinDocument,
           multipleImportDepth || importHasOption(options, 'multiple'),
-          publishFrame
+          isCompose ? null : publishFrame
         );
       };
       if (loaded.withinDocument) {
@@ -10095,6 +10468,10 @@ function planImportedFacts(
             (deferredAnchors ??= []).push(anchor);
           }
         }
+      } else if (st.type === 'ModuleImport' && e.context) {
+        const { module } = await e.context.getModule(st.path.value);
+        e.plannedModuleImports?.set(st, module);
+        bindModuleImport(st, module, scope, e);
       } else if (st.type === 'AtRuleBlock') {
         await visit(st.rules, scope, null, withinDocument, multipleImportDepth, null);
       }
@@ -10152,6 +10529,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
   const importDocument = options?.importDocument ?? (options?.context ? importThroughContext(options.context) : undefined);
   const rootFns = globalScopedFns(pluginHost);
   const documents = new WeakMap<StyleImport, PlannedImportDocument>();
+  const modules = new Map<ModuleImport, PreparedModule>();
   const e: Emit = {
     chunks: [],
     off: 0,
@@ -10183,6 +10561,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     atRuleBodyDepth: 0,
     importDocument,
     plannedImportDocuments: documents,
+    plannedModuleImports: modules,
     preparedImportsOwnedByCaller: false,
     prepublishedImportFacts: null,
     hoistedCssImports: null,
@@ -10225,13 +10604,13 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     plannerRootFrame.fnScope = plannerRootFrame;
     plannerRootFrame.fnScopeVersion = e.fnScopeVersion;
   }
-  const prepare = prepareBodyPlugins(root.rules, rootFrame, e);
+  const prepare = activateBodyDependencies(root.rules, rootFrame, e, false);
   const plan = (): MaybePromise<PreparedImports> => {
     if (!importDocument) {
-      return makePreparedImports(documents);
+      return makePreparedImports(documents, modules);
     }
     const planned = planImportedFacts(root, plannerRootFrame, e, importDocument, IMPORT_PLAN_PREPARE);
-    return mapMaybe(planned, () => makePreparedImports(documents));
+    return mapMaybe(planned, () => makePreparedImports(documents, modules));
   };
   return mapMaybe(prepare, plan);
 }
@@ -10240,6 +10619,9 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
   const pluginHost = options?.pluginHost;
   const importDocument = options?.importDocument ?? (options?.context ? importThroughContext(options.context) : undefined);
   const rootFns = globalScopedFns(pluginHost);
+  const preparedModulePlan = options?.preparedImports === undefined
+    ? null
+    : preparedModules(options.preparedImports);
   const e: Emit = {
     chunks: [],
     off: 0,
@@ -10273,6 +10655,10 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     plannedImportDocuments: options?.preparedImports === undefined
       ? (importDocument ? new WeakMap() : null)
       : preparedImportDocuments(options.preparedImports),
+    plannedModuleImports: options?.preparedImports === undefined
+      ? (options?.context ? new Map() : null)
+      : preparedModulePlan,
+    pendingPlannedModuleImports: preparedModulePlan?.size,
     preparedImportsOwnedByCaller: options?.preparedImports !== undefined,
     prepublishedImportFacts: null,
     hoistedCssImports: null,
@@ -10441,7 +10827,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     plannerRootFrame.fnScope = plannerRootFrame;
     plannerRootFrame.fnScopeVersion = e.fnScopeVersion;
   }
-  const prepare = prepareBodyPlugins(root.rules, rootFrame, e);
+  const prepare = activateBodyDependencies(root.rules, rootFrame, e);
   const plan = (): SerializeReturn => {
     const mode = options?.importDocument
       ? IMPORT_PLAN_RENDER_EXPLICIT
@@ -11563,7 +11949,7 @@ function flattenWithHeader(
    */
   if (referenceAncestor) {
     const executeReferenceAncestor = () => mapMaybe(
-      prepareBodyPlugins(rule.rules, childFrame, e),
+      activateBodyDependencies(rule.rules, childFrame, e),
       () => walkReferenceAncestorBody(
         rule.rules,
         childComposed,
@@ -11652,7 +12038,7 @@ function flattenWithHeader(
     return runTrailing(0);
   };
   const executeBody = () => mapMaybe(
-    prepareBodyPlugins(rule.rules, childFrame, e),
+    activateBodyDependencies(rule.rules, childFrame, e),
     () => walkBody(
       rule.rules,
       childComposed,
@@ -12953,7 +13339,7 @@ function expandReferenceAncestorFor(
           bindForDetached(loopFrame, bindings, item);
         }
         const emitted = mapMaybe(
-          prepareBodyPlugins(node.rules, loopFrame, e),
+          activateBodyDependencies(node.rules, loopFrame, e),
           () => walkReferenceAncestorBody(
             node.rules,
             composed,
@@ -13188,7 +13574,7 @@ function expandCall(
             bodyTrivia = def.rules.length === 0 ? undefined : bodyTriviaReplay(def, e);
             const pluginVersion = e.fnScopeVersion ?? 0;
             return mapMaybe(
-              prepareBodyPlugins(def.rules, callFrame, e),
+              activateBodyDependencies(def.rules, callFrame, e),
               () => {
                 if (!bindingsTrackedAtDispatch && (e.fnScopeVersion ?? 0) !== pluginVersion && bindings !== null) {
                   capturePreparedBodyPluginBindings(def, call, bindings, frame, homeFrame, e);
@@ -13381,7 +13767,7 @@ function expandApply(
         ...(home === frame ? {} : { fallback: frame, callerFallback: true })
       };
       const emitted = withSourceOwner(e, applyFrame.sourceOwner, () => mapMaybe(
-        prepareBodyPlugins(rule.rules, applyFrame, e),
+        activateBodyDependencies(rule.rules, applyFrame, e),
         () => sharedLeaves === undefined
           ? walkBody(
               rule.rules,
@@ -13782,6 +14168,9 @@ function resolveValueBlock(node: Binding, frame: Frame | null, e: EvalCtx): Valu
       continue;
     }
     if (cur.type === 'Reference') {
+      if (moduleReferenceCall(cur, cursor, e) !== undefined) {
+        return undefined;
+      }
       const resolved = resolveReferenceResult(cur, cursor, e);
       cur = resolved?.value;
       cursor = resolved?.frame ?? cursor;
@@ -13936,7 +14325,7 @@ function expandReferenceCall(
     );
     const drBody = valueBlockBody(r.dr);
     const executeBody = () => mapMaybe(
-      prepareBodyPlugins(drBody, r.callFrame, e),
+      activateBodyDependencies(drBody, r.callFrame, e),
       () => sharedLeaves === undefined
         ? walkBody(
             drBody,
@@ -14527,7 +14916,7 @@ function expandFor(
           bindForDetached(loopFrame, bindings, item);
         }
         const emitted = mapMaybe(
-          prepareBodyPlugins(node.rules, loopFrame, e),
+          activateBodyDependencies(node.rules, loopFrame, e),
           () => sharedLeaves === undefined
             ? walkBody(
                 node.rules,
@@ -16359,6 +16748,254 @@ function emitAtRuleStatementRaw(
 }
 
 /**
+ * Ask the module's PROVIDING plugin (matched by the module specifier's extension)
+ * whether the configured names are valid knobs (spec R6 Part E §E.4). A provider
+ * that does not implement the hook — `plugin-less`, which is permissive — accepts
+ * every name. Rejections become an eval diagnostic. Core owns the scope write.
+ */
+function validateModuleConfig(
+  node: StyleImport,
+  specifier: string,
+  config: StyleImportConfig,
+  moduleRules: readonly Statement[],
+  e: Emit
+): void {
+  const plugins = e.context?.plugins;
+  if (!plugins || plugins.length === 0) {
+    return;
+  }
+
+  /* The module specifier's extension (with leading dot), matched only within the
+     final path segment so it never runs back across a `/` or `.`. */
+  const extMatch = /\.[^./\\]+$/.exec(specifier);
+  const ext = extMatch ? extMatch[0].toLowerCase() : '';
+  if (ext === '') {
+    return;
+  }
+  const provider = plugins.find(plugin =>
+    plugin.supportedExtensions?.some(supported => supported.toLowerCase() === ext));
+  const rejections: readonly ModuleConfigRejection[] | void = provider?.applyModuleConfig?.({
+    kind: config.kind,
+    moduleRules,
+    bindings: config.bindings.map(binding => ({ name: binding.name }))
+  });
+  if (rejections && rejections.length > 0) {
+    const first = rejections[0]!;
+    throw moduleConfigRejected(node, first.message, first.name);
+  }
+}
+
+function moduleConfigRejected(node: StyleImport, message: string, name: string): JessError {
+  return new JessError({
+    code: 'eval/module-config-rejected',
+    phase: 'eval',
+    node,
+    summary: message,
+    reason: message,
+    meta: { reason: message, name }
+  });
+}
+
+/**
+ * Structural equality that ignores span slots (`_s`/`_e` and other `_`-prefixed
+ * provenance), so two textually-identical config blocks authored at different
+ * source positions compare equal. Used to tell an idempotent re-`set` from a
+ * CONFLICTING reconfiguration (spec R6 Part E §E.4/E-d).
+ */
+function structurallyEqualIgnoringSpans(a: unknown, b: unknown): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (typeof a !== 'object' || a === null || typeof b !== 'object' || b === null) {
+    return false;
+  }
+  const aArray = Array.isArray(a);
+  const bArray = Array.isArray(b);
+  if (aArray || bArray) {
+    if (!aArray || !bArray || a.length !== b.length) {
+      return false;
+    }
+    for (let i = 0; i < a.length; i++) {
+      if (!structurallyEqualIgnoringSpans(a[i], b[i])) {
+        return false;
+      }
+    }
+    return true;
+  }
+  const aEntries = Object.entries(a).filter(([key]) => !key.startsWith('_'));
+  const bEntries = Object.entries(b).filter(([key]) => !key.startsWith('_'));
+  if (aEntries.length !== bEntries.length) {
+    return false;
+  }
+  const bByKey = new Map(bEntries);
+  return aEntries.every(([key, value]) => bByKey.has(key) && structurallyEqualIgnoringSpans(value, bByKey.get(key)));
+}
+
+/**
+ * Two configurations conflict unless they set the same names to the same values;
+ * the `with`/`set` spelling is not part of that identity (a `with` that merely
+ * restates a recorded `set` is not a reconfiguration).
+ */
+function sameModuleConfig(a: StyleImportConfig, b: StyleImportConfig): boolean {
+  return structurallyEqualIgnoringSpans(a.bindings, b.bindings);
+}
+
+/**
+ * Build the isolated scope a configured `@compose`d module evaluates under, and
+ * overlay its configuration (spec R6 Part E). This is the MIXIN-CALL/loop-body
+ * model: the module's built AST is the reusable definition, and this frame is the
+ * overlay the ordinary body emitter walks ONCE — the module is NOT re-spliced into
+ * the importer's scope. The frame is its OWN root (`parent: null`) so the importer's
+ * locals stay invisible (isolation); configuration OVERWRITES the module's
+ * outer-scope binding so every reference — and every derived variable — sees the
+ * configured value.
+ *
+ * Config is SEEDED into the overlay frame BEFORE the module body evaluates, into
+ * BOTH binding stores so it wins in every dialect:
+ * - scoped `@name`/`$^name` (Less `@x`, SCSS `!default`): the `reassign` store,
+ *   consulted before a frame's own last-wins declarations in
+ *   {@link lookupScopedBinding} — "overwrite the outer-scope binding".
+ * - live `$name` (`.jess` `?:`): the cell store. A knob is an if-absent write
+ *   (`$x ?: blue` / `$x: blue !default`); once config has seeded the cell, the
+ *   module's own if-absent declaration finds it and NO-OPS, so config wins. A
+ *   HARD `$x:` would clobber the seed, which is exactly why a non-knob name is
+ *   rejected by the providing plugin (`applyModuleConfig`) rather than configured.
+ *
+ * The config VALUES were authored in the importer's file, so they evaluate in the
+ * importer frame (cell `valueFrame` / `bindingValueFrames`).
+ */
+function configuredModuleFrame(
+  statements: Statement[],
+  config: NonNullable<StyleImport['config']>,
+  importerFrame: Frame
+): Frame {
+  const reassign = new Map<string, VariableDeclaration>();
+  const cells = new Map<string, BindingCell>();
+  const bindingValueFrames = new Map<Binding, Frame>();
+  for (const binding of config.bindings) {
+    reassign.set(binding.name, binding);
+    cells.set(binding.name, {
+      declaration: binding,
+      value: binding.value,
+      valueFrame: importerFrame,
+      evaluated: null,
+      prev: null
+    });
+    bindingValueFrames.set(binding.value, importerFrame);
+  }
+  return {
+    parent: null,
+    mixins: collectMixins(statements),
+    declIndex: collectDeclIndex(statements),
+    cells,
+    reassign,
+    bindingValueFrames,
+    statements,
+    sourceOwner: null
+  };
+}
+
+/**
+ * An UNCONFIGURED `@compose` module also evaluates in its own isolated overlay
+ * frame (`parent: null`), so its body's nested `@compose`/`@import` publish into
+ * THIS frame and never leak up to the importer — `@compose` is non-transitive,
+ * unlike the transitively-leaky `@import`. The importer reaches the module's own
+ * members only through the namespace binding built by {@link publishComposedModule}.
+ */
+function unconfiguredModuleFrame(statements: Statement[]): Frame {
+  return {
+    parent: null,
+    mixins: collectMixins(statements),
+    declIndex: collectDeclIndex(statements),
+    cells: null,
+    reassign: null,
+    statements,
+    sourceOwner: null
+  };
+}
+
+/* A usable module namespace identifier (the same ident shape the grammars use). */
+const MODULE_NAMESPACE_IDENT = /^-?[_a-zA-Z\u0080-\uFFFF][-_a-zA-Z0-9\u0080-\uFFFF]*$/;
+
+/**
+ * The auto-derived `@compose`/`@use` namespace: Sass's default-namespace rule
+ * applied to the SPECIFIER STRING the author wrote (never the plugin-resolved
+ * path). Take the last `/`-segment, strip a trailing file extension, strip a
+ * leading `_` partial marker. `./foo.less` → `foo`, `#sass/map` → `map`,
+ * `@co/design-tokens` → `design-tokens`, `./_theme.scss` → `theme`. Returns
+ * `null` when the result is not a usable identifier — the author must then
+ * spell an explicit `as <name>`.
+ */
+function deriveModuleNamespace(specifier: string): string | null {
+  /* Last `/`-segment, then strip a trailing `.ext` (only when a name precedes the
+     dot) and a leading `_` partial marker. Regex-based to keep `serialize.ts` free
+     of `lastIndexOf` (the diagnostic cold-path guard bans it). */
+  const segment = /[^/]*$/.exec(specifier)?.[0] ?? specifier;
+  const withoutExt = segment.replace(/^(.+)\.[^.]+$/, '$1');
+  const base = withoutExt.startsWith('_') ? withoutExt.slice(1) : withoutExt;
+  return MODULE_NAMESPACE_IDENT.test(base) ? base : null;
+}
+
+/**
+ * Expose a composed module's OWN top-level members to the importer per its `as`
+ * clause, WITHOUT splicing its body into the importer frame (that emission is a
+ * separate isolated walk under `bodyFrame`). `namespace` follows the grammar
+ * convention: `'*'` merges members unqualified, a name binds them under
+ * `@<name>`, and `null` auto-derives from the specifier.
+ *
+ * A named module binds `@<ns>` to a value block over the module's rules whose
+ * member lookups resolve in the isolated `bodyFrame` — so `@ns.member` (and the
+ * chained `@ns.map.key` from the forward member-access chain) reaches the
+ * module's own facts and nothing its sub-modules composed.
+ */
+function publishComposedModule(
+  node: StyleImport,
+  children: Statement[],
+  importerFrame: Frame,
+  bodyFrame: Frame,
+  specifier: string,
+  e: Emit
+): void {
+  const namespace = node.namespace ?? deriveModuleNamespace(specifier);
+  if (namespace === '*') {
+    /*
+     * `as *`: the module's OWN top-level members merge unqualified into the
+     * importer. Their value-block members still resolve in the isolated
+     * bodyFrame, so redirect each value block's closure there.
+     */
+    for (const child of children) {
+      if (child.type === 'VariableDeclaration') {
+        publishImportedVariableDeclaration(importerFrame, child);
+        if (isValueBlockBinding(child.value)) {
+          bindDetached(importerFrame, child.value, bodyFrame, bodyFrame.sourceOwner ?? null);
+        }
+      } else if (child.type === 'MixinDefinition') {
+        publishImportedMixinDefinition(importerFrame, child);
+      } else if (child.type === 'Ruleset') {
+        /*
+         * ponytail: publishes the ruleset for namespace descent + reference, but NOT
+         * the synthesized zero-arg `.name()` callable fact that a flat `@import` adds
+         * (publishImportedDocumentFacts). `as *` is the discouraged path; wire the
+         * ordered-mixin publish here if a bare `.name()` call across `as *` is needed.
+         */
+        publishImportedRuleset(importerFrame, child);
+      }
+    }
+    return;
+  }
+  if (namespace === null) {
+    throw moduleConfigRejected(
+      node,
+      `@compose "${specifier}" cannot derive a namespace from its path; add an explicit "as <name>".`,
+      specifier
+    );
+  }
+  const block = anonymousMixin(children);
+  publishImportedVariableDeclaration(importerFrame, variableDeclaration(namespace, block, { mode: 'declare' }));
+  bindDetached(importerFrame, block, bodyFrame, bodyFrame.sourceOwner ?? null);
+}
+
+/**
  * Emit a typed import. With a driver-supplied document capability, a loaded
  * canonical document executes at this exact source-order point in `frame`.
  * Core deliberately knows neither paths nor parser plugins; a declined request
@@ -16399,7 +17036,49 @@ function expandStyleImport(
           }
           return;
         }
-        if (request.options === null && e.multipleImportDepth === 0 && loaded.key !== undefined) {
+
+        /*
+         * [module config] Resolve the EFFECTIVE configuration for this compose edge
+         * (spec R6 Part E §E.2/E-d). A SHARED config (`set`, and scss `@use … with`
+         * lowered to `set`) persists per module IDENTITY (`loaded.key`): it is
+         * recorded so a LATER plain `@compose` of the same module inherits it, and a
+         * second SHARED config whose values differ conflicts and rejects (an
+         * identical restatement does not). A PER-EDGE `with { … }` (less/jess) is an
+         * INDEPENDENT mixin-like instantiation: it uses only its own values, never
+         * inherits a recorded shared config, and never conflicts with one.
+         */
+        const authoredConfig = node.mode === 'compose' ? node.config ?? null : null;
+        let config = authoredConfig;
+        if (node.mode === 'compose' && loaded.key !== undefined) {
+          const recorded = e.moduleConfigs?.get(loaded.key) ?? null;
+          if (authoredConfig !== null && authoredConfig.kind === 'set') {
+            if (recorded !== null && !sameModuleConfig(recorded, authoredConfig)) {
+              throw moduleConfigRejected(
+                node,
+                `Module "${request.specifier}" is already configured with a different set of values; a module can only be configured once.`,
+                request.specifier
+              );
+            }
+            if (recorded === null) {
+              (e.moduleConfigs ??= new Map()).set(loaded.key, authoredConfig);
+            }
+          } else if (authoredConfig === null && recorded !== null) {
+            config = recorded;
+          }
+        }
+
+        /*
+         * Emit-once dedup keyed on module IDENTITY for SHARED modules — a plain
+         * import/compose, an inherited `set`, or an authored `set` (jess/.less
+         * `set { … }` and SCSS `@use … with (…)`, which the scss grammar lowers to
+         * the shared `set` kind). A shared module is a singleton: it renders ONCE,
+         * and a later plain/inherited import of the same identity does NOT re-emit.
+         * A PER-EDGE `with { … }` (less/jess only) is a distinct instantiation — like
+         * a mixin call with its own params — so it bypasses the dedup and each edge
+         * renders its own output.
+         */
+        const sharedModule = config === null || config.kind === 'set';
+        if (sharedModule && request.options === null && e.multipleImportDepth === 0 && loaded.key !== undefined) {
           const seen = e.loadedImports ??= new Set();
           if (seen.has(loaded.key)) {
             return;
@@ -16408,7 +17087,28 @@ function expandStyleImport(
         }
 
         const children = loaded.document?.rules ?? [];
-        const publishChildren = hasPrepublishedImportFact(e, node)
+
+        /*
+         * A `@compose` (spec R6 Part E) evaluates the module in its own isolated
+         * overlay frame (like a mixin-call body), NOT spliced into the importing
+         * frame: its own nested `@compose`/`@import` stay local, so `@compose` is
+         * non-transitive (unlike the transitively-leaky `@import`). Its facts never
+         * flat-publish into the importer; instead its OWN top-level members are
+         * exposed through a namespace binding (`@ns.member`) or, with `as *`, merged
+         * unqualified. A CONFIGURED compose additionally overlays its `with`/`set`
+         * values in `configuredModuleFrame`.
+         */
+        const isCompose = node.mode === 'compose';
+        if (config !== null) {
+          validateModuleConfig(node, request.specifier, config, children, e);
+        }
+        const bodyFrame = isCompose
+          ? (config !== null ? configuredModuleFrame(children, config, frame) : unconfiguredModuleFrame(children))
+          : frame;
+        if (isCompose) {
+          publishComposedModule(node, children, frame, bodyFrame, request.specifier, e);
+        }
+        const publishChildren = isCompose || hasPrepublishedImportFact(e, node)
           ? undefined
           : publishImportedDocumentFacts(children, frame, e);
 
@@ -16424,8 +17124,8 @@ function expandStyleImport(
           }
           rememberImportedCallableBodies(loaded.document, loaded.document.rules, e.context);
           const emitDocument = () => emitLoaded
-            ? emitLoaded(loaded.document!, frame)
-            : emitDocumentStatements(loaded.document!.rules, frame, e, importDocument, true);
+            ? emitLoaded(loaded.document!, bodyFrame)
+            : emitDocumentStatements(loaded.document!.rules, bodyFrame, e, importDocument, true);
 
           /*
            * The StyleImport itself has NO postlude to honour: the loaded document
@@ -16446,7 +17146,7 @@ function expandStyleImport(
            */
           const emitWithPlugins = (): MaybePromise<void> =>
             withDocumentTrivia(e, loaded.document!, () =>
-              mapMaybe(prepareBodyPlugins(loaded.document!.rules, frame, e), () => {
+              mapMaybe(activateBodyDependencies(loaded.document!.rules, bodyFrame, e), () => {
                 /*
                  * Splice the imported document's own leading block comment (e.g. a
                  * `/*!` license banner) at the import site. This must run for a
@@ -16586,17 +17286,16 @@ function emitCssImportAtRule(node: StyleImport, frame: Frame, e: Emit): void {
   }
 }
 
-/*
- * ponytail: TODO(jesscss/jess#182) — this is a stub. `@-use`/`@-from` are
- * compile-time JS-module directives (the JS half of the `@use` target split;
- * styles go through `@compose`/`StyleImport`, which loads via importDocument).
- * They must be CONSUMED at eval — resolve the module, bind its exports, emit
- * nothing — not re-serialized into output CSS as this does. No loader/binder
- * for ModuleImport exists yet (never ported into AST-v2). The JS-module graph
- * is partially implemented in the `@plugin` less-compat plugin and could share
- * resolution (Deno). See #182 before wiring the real load/bind.
+/**
+ * A context-backed render receives this directive's loaded module through the
+ * compiler dependency plan and activates its bindings before walking the body,
+ * so it emits no CSS. Context-free serialization preserves the syntax for AST
+ * round-trip tools that deliberately do no IO.
  */
 function emitModuleImport(node: ModuleImport, frame: Frame, e: Emit): void {
+  if (e.context) {
+    return;
+  }
   const start = e.off;
   if (e.depth > 0) {
     put(e, INDENT.repeat(e.depth));
@@ -17325,7 +18024,7 @@ function writeCollapsedAtRuleBlock(
   }
   put(e, blockOpen(e));
   const afterHeader = e.chunks.length;
-  const emitted = prepareBodyPlugins(node.rules, bodyFrame, e);
+  const emitted = activateBodyDependencies(node.rules, bodyFrame, e);
   const finish = (): MaybePromise<void> => {
     if (e.chunks.length === afterHeader) {
       if (hasBodyBlockCommentTrivia(node, e)) {
@@ -18322,7 +19021,7 @@ function emitTransparentShells(
         }
       };
       const emitted = mapMaybe(
-        prepareBodyPlugins(shell.def.rules, callFrame, e),
+        activateBodyDependencies(shell.def.rules, callFrame, e),
         () => nestedBody(shell.def.rules, callFrame, e, undefined, imp, source)
       );
       if (isThenable(emitted)) {
@@ -18359,7 +19058,7 @@ function writeNestedRule(
       declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null
     };
     return mapMaybe(
-      prepareBodyPlugins(rule.rules, childFrame, e),
+      activateBodyDependencies(rule.rules, childFrame, e),
       () => nestedBody(rule.rules, childFrame, e, undefined, imp, source, placement, undefined, false, rule)
     );
   }
@@ -18560,7 +19259,7 @@ function writeNestedRule(
       return mapMaybe(emitSplits(0), () => runHoist(0));
     };
     return mapMaybe(
-      prepareBodyPlugins(rule.rules, childFrame, e),
+      activateBodyDependencies(rule.rules, childFrame, e),
       () => mapMaybe(nestedBody(rule.rules, childFrame, e, hoist, imp, childSource, null, undefined, false, rule), finish)
     );
   });
@@ -18632,7 +19331,7 @@ function writeNestedAtRuleBlock(
     }
   };
   return mapMaybe(
-    prepareBodyPlugins(node.rules, bodyFrame, e),
+    activateBodyDependencies(node.rules, bodyFrame, e),
     () => mapMaybe(nestedBody(node.rules, bodyFrame, e, undefined, false, source, null, undefined, false, node), finish)
   );
 }
