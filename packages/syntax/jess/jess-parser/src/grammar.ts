@@ -211,7 +211,6 @@ type JessRules = {
   Apply: Combinator<Apply>;
   Extend: Combinator<ExtendInstruction[]>;
   MixinDefinition: Combinator<MixinDefinition>;
-  BasicSelector: Combinator<SimpleSelector>;
   Parent: Combinator<SimpleSelector>;
   InterpolatedSimple: Combinator<SimpleSelector>;
   InterpolatedParentSuffix: Combinator<SimpleSelector>;
@@ -231,7 +230,6 @@ type JessRules = {
   PseudoSelectorList: Combinator<SelectorList>;
   SelectorCapture: Combinator<SelectorCapture>;
   ComplexSelector: Combinator<SelectorBranch>;
-  SelectorList: Combinator<SelectorList>;
   NestedSelectorList: Combinator<SelectorList>;
   Ruleset: Combinator<Ruleset>;
   NestedRuleset: Combinator<Ruleset>;
@@ -322,6 +320,24 @@ type SharedSyntax = {
    * reducer; differs only requireToken().value vs tokenText().
    */
   Dimension: Combinator<Dimension>;
+
+  /*
+   * Converged to the CSS base (inherited via compose): the same simple-selector
+   * recognizer. Jess spelled it `g.SimpleSelectorToken` (parser-shared
+   * `recognition.ts`) and css spells it as a grammar-local regex so the choice
+   * arm's first-set resolves; the two patterns differ only in the hex case of
+   * their `\u0080-\uffff` escapes.
+   */
+  BasicSelector: Combinator<SimpleSelector>;
+
+  /*
+   * Converged to the CSS base (inherited via compose): same recognizer
+   * oneOrMoreSep(g.ComplexSelector, literal(',')) — `g.ComplexSelector` still
+   * resolves to Jess's override — and the same spanned `selist()` reducer;
+   * Jess's `reduceSelectorList` is css's `selectorBranches(children)` filter
+   * with deeper shape checks over the same node set.
+   */
+  SelectorList: Combinator<SelectorList>;
   AttributeModifier: Combinator<string>;
   AttributeOperator: Combinator<string>;
   DoubleQuotedText: Combinator<string>;
@@ -352,7 +368,6 @@ type SharedSyntax = {
   UrlOpen: Combinator<string>;
   UrlInner: Combinator<string>;
   GenericAtRuleName: Combinator<string>;
-  SimpleSelectorToken: Combinator<string>;
   PseudoSelectorColon: Combinator<string>;
   MediaAtKeyword: Combinator<string>;
   StatementAtRuleName: Combinator<string>;
@@ -1828,18 +1843,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       ))
     ),
     urlFromChildren
-  );
-
-  /*
-   * These static selector reductions are deliberately declared before values:
-   * `*[…]` uses them as an ordered selector payload, while selectors themselves
-   * never need to parse a value. Keeping that dependency one-way avoids a
-   * recording-phase forward-reference cycle.
-   */
-  const BasicSelector = node<SimpleSelector>(
-    'BasicSelector',
-    g.SimpleSelectorToken,
-    children => simpleSelector(requireToken(children[0]).value)
   );
 
   /*
@@ -5549,24 +5552,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * A ruleset's selector list carries the STATEMENT's start offset: the
-   * renderer reads `sourceStartOf(node.selector)` for a `Ruleset`, because a
-   * `Ruleset` itself has no span of its own. Without it the root trivia cursor
-   * never advances past a rule. Spanned here rather than in the shared
-   * `reduceSelectorList`, which `PseudoSelectorList` also uses: a pseudo
-   * argument is never a `Ruleset`'s selector, so a span there would move the
-   * tree for nothing. Less draws the same line.
-   */
-  const SelectorList = node<SelectorList>(
-    'SelectorList',
-    oneOrMoreSep(
-      g.ComplexSelector,
-      literal(',')
-    ),
-    (children, _fields, span) => withSourceSpan(reduceSelectorList(children), span)
-  );
-
-  /*
    * A NESTING leading combinator: CSS Nesting lets a nested selector open with a
    * combinator (`.parent { > .child { … } }`), where `>` relates to the implicit
    * parent (`.parent > .child`). This reuses `g.ComplexSelector` behind an
@@ -5899,7 +5884,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     Apply,
     Extend,
     MixinDefinition,
-    BasicSelector,
     Parent,
     InterpolatedSimple,
     InterpolatedParentSuffix,
@@ -5919,7 +5903,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     PseudoSelectorList,
     SelectorCapture,
     ComplexSelector,
-    SelectorList,
     NestedSelectorList,
     Ruleset,
     NestedRuleset,
