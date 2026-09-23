@@ -147,16 +147,13 @@ type ScssRules = {
   CounterStyle: Combinator<AtRuleBlock>;
   PropertyName: Combinator<Keyword>;
   PropertyAtRule: Combinator<AtRuleBlock>;
-  KeyframeSelector: Combinator<SimpleSelector>;
   KeyframeBlock: Combinator<Ruleset>;
   Keyframes: Combinator<AtRuleBlock>;
   NestedConditionalBlock: Combinator<AtRuleBlock>;
   NestedStartingStyleBlock: Combinator<AtRuleBlock>;
   NestedLayerBlock: Combinator<AtRuleBlock>;
-  BasicSelector: Combinator<SimpleSelector>;
   InterpolatedSimple: Combinator<SimpleSelector>;
   Placeholder: Combinator<SimpleSelector>;
-  NamespaceTypeSelector: Combinator<SimpleSelector>;
   AttributeSelector: Combinator<SimpleSelector>;
   PseudoArgument: Combinator<string>;
   PseudoArgumentGroup: Combinator<string>;
@@ -164,7 +161,6 @@ type ScssRules = {
   CompoundSelector: Combinator<SelectorTerm>;
   ComplexSelector: Combinator<SelectorBranch>;
   RelativeSelector: Combinator<SelectorBranch>;
-  SelectorList: Combinator<SelectorList>;
   NestedSelector: Combinator<SelectorList>;
   Extend: Combinator<ExtendInstruction>;
   ScssGenericAtRuleName: Combinator<string>;
@@ -194,6 +190,41 @@ type ScssSharedSyntax = {
   Percentage: Combinator<string>;
 
   /*
+   * Converged to the CSS base (inherited via compose): same node type
+   * SimpleSelector over a byte-identical `keyframeEndpoint` recognizer and
+   * `g.Percentage`; the reducer differed only requireToken().value vs
+   * tokenText(). SCSS's copy was additionally misnamed `KeyframeSelector`.
+   */
+  keyframeSelector: Combinator<SimpleSelector>;
+
+  /*
+   * Converged to the CSS base (inherited via compose): the same simple-selector
+   * recognizer. SCSS spelled it `g.SimpleSelectorToken` (parser-shared
+   * `recognition.ts`) and css spells it as a grammar-local regex so the choice
+   * arm's first-set resolves; the two patterns differ only in the hex case of
+   * their `\u0080-\uffff` escapes.
+   */
+  BasicSelector: Combinator<SimpleSelector>;
+
+  /*
+   * Converged to the CSS base (inherited via compose): byte-identical body
+   * noTrivia(sequence(attributeNamespace, choice(g.Identifier, literal('*'))));
+   * the reducer differed only scssSourceText vs tokenText, which agree on the
+   * token children this rule produces.
+   */
+  NamespaceTypeSelector: Combinator<SimpleSelector>;
+
+  /*
+   * Converged to the CSS base (inherited via compose): same recognizer
+   * oneOrMoreSep(g.ComplexSelector, literal(',')) — `g.ComplexSelector` still
+   * resolves to SCSS's override — and the same spanned `selist()` reducer;
+   * SCSS's `children.filter(isScssSelectorBranch)` is css's
+   * `selectorBranches(children)` with deeper shape checks over the same node
+   * set.
+   */
+  SelectorList: Combinator<SelectorList>;
+
+  /*
    * Converged to the CSS base (inherited via compose): same recognizer
    * (number + optional unit, `%` admitted as a unit) and same `dimension()`
    * reducer; differs only requireToken().value vs tokenText().
@@ -215,6 +246,21 @@ type ScssSharedSyntax = {
    * spelling, which is why `@font-face;` parsed in CSS and not here.
    */
   AtRuleStatement: Combinator<AtRuleStatement>;
+
+  /*
+   * Inherited verbatim from the CSS base, with no local override at all.
+   * css-syntax-3 §3.2 fixes the `@charset` prelude to a single `<string>` and
+   * SCSS has no delta on that shape: the CSS rule reads the string through
+   * `AtRulePreludeQuoted`, which SCSS already overrides, and that override
+   * reserves `#{` — so `@charset "#{$x}";` stays refused here exactly as it was,
+   * under the same rule that holds every dynamic header back.
+   *
+   * Before the two forks above were deleted, SCSS folded `@charset` into the
+   * `@(?:charset|namespace|layer)` arm of its own `AtRuleStatement`, whose
+   * prelude is arbitrary bytes — so `@charset url(utf-8);` parsed here and not
+   * in a parser that implements the spec.
+   */
+  CharsetStatement: Combinator<AtRuleStatement>;
 };
 
 type ScssInputRules =
@@ -306,7 +352,6 @@ const valueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
 const scssNotKeyword = regex(/not(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const scssAndKeyword = regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const scssOrKeyword = regex(/or(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const keyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 
 /*
  * A CSS-namespaces prefix: `<ident>|`, `*|`, or bare `|`, glued (no whitespace
@@ -4131,18 +4176,10 @@ const scssFactory = (g: ScssInputRules) => {
    * keyframe names/selectors need typed selector interpolation rather than raw
    * text capture.
    */
-  const KeyframeSelector = node<SimpleSelector>(
-    'SimpleSelector',
-    choice(
-      keyframeEndpoint,
-      g.Percentage
-    ),
-    children => simpleSelector(requireToken(children[0]).value)
-  );
   const KeyframeBlock = node<Ruleset>(
     'KeyframeBlock',
     sequence(
-      g.KeyframeSelector,
+      g.keyframeSelector,
 
       /*
        * Comments are valid selector-list delimiters.  Keep them as grammar
@@ -4153,7 +4190,7 @@ const scssFactory = (g: ScssInputRules) => {
         many(g.Comment),
         literal(','),
         many(g.Comment),
-        g.KeyframeSelector
+        g.keyframeSelector
       )),
       many(g.Comment),
       literal('{'),
@@ -4212,11 +4249,6 @@ const scssFactory = (g: ScssInputRules) => {
    * attribute selectors and pseudo arguments remain explicit
    * follow-up families rather than being flattened into a string fallback.
    */
-  const BasicSelector = node<SimpleSelector>(
-    'BasicSelector',
-    g.SimpleSelectorToken,
-    children => simpleSelector(requireToken(children[0]).value)
-  );
 
   /*
    * The leading `.`/`#` is a class/id sigil, and it must not claim the `#` that
@@ -4301,14 +4333,6 @@ const scssFactory = (g: ScssInputRules) => {
    * text, matching the CSS base and the other dialects (one representation per
    * construct).
    */
-  const NamespaceTypeSelector = node<SimpleSelector>(
-    'NamespaceTypeSelector',
-    noTrivia(sequence(
-      attributeNamespace,
-      choice(g.Identifier, literal('*'))
-    )),
-    children => simpleSelector(children.map(scssSourceText).join(''))
-  );
 
   /*
    * CSS owns the attribute frame. SCSS overrides only its universal `Quoted`
@@ -4648,14 +4672,6 @@ const scssFactory = (g: ScssInputRules) => {
    * pseudo-argument list here is left alone for the same reason — it is never a
    * `Ruleset`'s selector, so a span there would move the tree for nothing.
    */
-  const SelectorList = node<SelectorList>(
-    'SelectorList',
-    oneOrMoreSep(
-      g.ComplexSelector,
-      literal(',')
-    ),
-    (children, _fields, span) => withSourceSpan(selist(...children.filter(isScssSelectorBranch)), span)
-  );
 
   /*
    * The NESTED ruleset's selector list carries the ORDINARY selector item shapes
@@ -4842,6 +4858,7 @@ const scssFactory = (g: ScssInputRules) => {
       many(choice(
         g.Comment,
         g.ImportStatement,
+        g.CharsetStatement,
         g.AtRuleStatement,
         g.VariableDeclaration,
         g.SassDirective,
@@ -4980,15 +4997,12 @@ const scssFactory = (g: ScssInputRules) => {
     CounterStyle,
     PropertyName,
     PropertyAtRule,
-    KeyframeSelector,
     KeyframeBlock,
     Keyframes,
     ScssGenericAtRuleName,
     UnknownAtRuleBlock,
-    BasicSelector,
     InterpolatedSimple,
     Placeholder,
-    NamespaceTypeSelector,
     AttributeSelector,
     PseudoArgument,
     PseudoArgumentGroup,
@@ -4996,7 +5010,6 @@ const scssFactory = (g: ScssInputRules) => {
     CompoundSelector,
     ComplexSelector,
     RelativeSelector,
-    SelectorList,
     NestedSelector,
     Extend,
     Ruleset,

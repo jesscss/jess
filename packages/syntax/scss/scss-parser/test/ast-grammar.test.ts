@@ -2608,6 +2608,52 @@ describe('SCSS canonical-AST grammar', () => {
 });
 
 /*
+ * css-syntax-3 §3.2 gives `@charset` a `<string>` prelude and nothing else. SCSS
+ * used to read it as one arm of its own `@(?:charset|namespace|layer)` statement,
+ * whose prelude is arbitrary bytes, so `@charset url(utf-8);` parsed here and
+ * not in a parser that implements the spec. `@charset` now reaches the CSS
+ * base's own `CharsetStatement`; the other two names keep the permissive prelude
+ * they genuinely need (`svg url("…")`, `a.b, c`).
+ */
+describe('SCSS @charset inherits the CSS <string> prelude', () => {
+  it('refuses a prelude that is not a quoted string, and says so', () => {
+    for (const source of [
+      '@charset url(utf-8);',
+      '@charset utf-8;',
+      '@charset;',
+      '@charset "utf-8" trailing;',
+      '.a { color: red }\n@charset url(utf-8);'
+    ]) {
+      expect(() => parse(source), source).toThrow(
+        'An @charset prelude must be a quoted string, as in @charset "utf-8";.'
+      );
+    }
+  });
+
+  it('keeps the well-formed forms, including the SCSS-only comment position', () => {
+    /* A block comment is a NODE in SCSS and TRIVIA in CSS, which is why the CSS
+     * rule spells the comment positions instead of taking a bare string. */
+    for (const source of ['@charset "utf-8";', '@charset /* keep */ "utf-8";', "@charset 'utf-8'  ;"]) {
+      const cst = parseScssCst(source);
+      expect(cst.errors, source).toHaveLength(0);
+      expect(cst.unconsumedFrom, source).toBeNull();
+      expect(parse(source).rules[0], source).toMatchObject({
+        type: 'AtRuleStatement',
+        name: '@charset',
+        prelude: { type: 'Any' }
+      });
+    }
+  });
+
+  it('leaves @namespace and @layer on the permissive statement prelude', () => {
+    expect(parse('@namespace svg url("https://example.test/svg");\n@layer a.b, c;').rules).toMatchObject([
+      { type: 'AtRuleStatement', name: '@namespace', prelude: { src: 'svg url("https://example.test/svg")' } },
+      { type: 'AtRuleStatement', name: '@layer', prelude: { src: 'a.b, c' } }
+    ]);
+  });
+});
+
+/*
  * An at-rule with a typed BLOCK production also has a statement spelling, and
  * CSS pairs the two on the same name (`choice(g.RoutedAtRuleStatement,
  * g.DescriptorBlock)`). SCSS carried two forks of the CSS statement rule — one
