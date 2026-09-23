@@ -31,7 +31,20 @@ function expectedMessage(expected: readonly string[]): string {
   if (looksLikeValueProduction) {
     return 'Unexpected Less syntax. Expected a Less value.';
   }
-  if (expectedIncludes(expectedSet, '";"')) {
+  /*
+   * `";"` is in the expected set of EVERY failing variable declaration, because
+   * each of its value arms carries the declaration terminator. Reading that as
+   * "Missing semicolon." is how a value that never started came to be reported
+   * as a missing semicolon on a line that ends in one (jess#235). A set that
+   * ALSO offers a value start is a value failure, not a terminator one, so it
+   * falls through rather than naming the wrong cause; a genuine unterminated
+   * declaration offers the terminator and nothing that could begin a value.
+   */
+  const startsAValue =
+    expectedIncludes(expectedSet, 'NumberToken')
+    && expectedIncludes(expectedSet, 'ValueIdentifier')
+    && expectedIncludes(expectedSet, 'Color');
+  if (expectedIncludes(expectedSet, '";"') && !startsAValue) {
     return 'Missing semicolon.';
   }
   return 'Unexpected Less syntax. Expected valid Less syntax here.';

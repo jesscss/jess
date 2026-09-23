@@ -25,11 +25,13 @@ import { parseLessCst } from '@jesscss/less-parser/cst';
  * bundled per entry point, so `instanceof` against the imported class is not
  * reliable, and an `as` cast would silently accept a non-parse throw.
  */
-function isLocatedFailure(value: unknown): value is Error & { offset: number } {
+type LocatedFailure = Error & { offset: number; expected?: readonly string[] };
+
+function isLocatedFailure(value: unknown): value is LocatedFailure {
   return value instanceof Error && 'offset' in value && typeof value.offset === 'number';
 }
 
-function failureOf(source: string): Error & { offset: number } {
+function failureOf(source: string): LocatedFailure {
   try {
     parse(source);
   } catch (error) {
@@ -260,31 +262,22 @@ describe('Less constructs discovered outside the parser suites', () => {
     ['doubled dot', '@p: ..a;', '..a']
   ])('keeps a variable value the value grammar cannot start as verbatim bytes (%s)', (_label, source, src) => {
     /*
-     * jess#235 / jess#236. lessc 4.9.1 compiles every one of these and emits
-     * the bytes unchanged, because only its VARIABLE branch falls back to
-     * `permissiveValue()` when `value()` declines (`parser.js:1841`). `#id`
-     * was in neither issue and is the same gap: `#id` is two characters, so it
-     * is not a hex colour and nothing else in the value grammar starts a `#`.
+     * jess#235 / jess#236. `/` and `.` are ordinary CSS value punctuation and
+     * the run composes on the CSS base's `PunctuationValue` to read them; `#id`
+     * was in neither issue and is the one genuine addition, because CSS holds
+     * `#` back for the strict colour production and `#id` is not a `<hex-color>`
+     * (two characters, and `i` is not a hex digit).
+     *
+     * Whether the same text should also parse in PROPERTY position is NOT
+     * settled here, and there is deliberately no test pinning it either way —
+     * our own CSS parser accepts `a { p: /img }`, which makes the Less
+     * rejection a dialect divergence rather than a rule. DESIGN-DECISIONS P32.
      */
     expect(firstRule(source)).toMatchObject({
       type: 'VariableDeclaration',
       name: 'p',
       value: { type: 'Any', src }
     });
-  });
-
-  it.each([
-    ['slash-led path', '.x { p: /img/x.svg; }'],
-    ['bare slash-led name', '.x { p: /img; }'],
-    ['class-shaped name', '.x { p: .a; }'],
-    ['id-shaped name', '.x { p: #id; }']
-  ])('still rejects the same value in property position (%s)', (_label, source) => {
-    /*
-     * The control for the rule above, and the reason it lives on the variable
-     * declaration rather than in the shared value grammar: lessc 4.9.1 rejects
-     * all four here too ("Unrecognised input"), so rejecting them is parity.
-     */
-    expect(() => parse(source)).toThrow();
   });
 
   it.each([
@@ -305,14 +298,62 @@ describe('Less constructs discovered outside the parser suites', () => {
     });
   });
 
-  it('still reports a genuinely missing semicolon as one', () => {
+  it.each([
+    ['runs into the next statement', '@p: red\n.x { color: red; }'],
+    ['runs off the end of the stylesheet', '@p: red']
+  ])('still reports a genuinely missing semicolon as one (%s)', (_label, source) => {
     /*
-     * The verbatim arm must not swallow the end of a declaration: `@p: red`
-     * with no terminator is still the error it always was, at the same place.
+     * The verbatim arm must not swallow the end of a declaration, and each
+     * value arm carries `declarationEnd` so an unterminated declaration still
+     * fails on a bare `";"` rather than on an opaque lookahead label.
      */
-    const failure = failureOf('@p: red\n.x { color: red; }');
+    const failure = failureOf(source);
 
     expect(failure.message).toBe('Missing semicolon.');
+    expect(failure.expected).toContain('";"');
+  });
+
+  it.each([
+    ['dangling operator', '@p: 1+;'],
+    ['stray priority marker', '@p: red!;'],
+    ['unsupported variable name', '@1: red;']
+  ])('does not let the verbatim arm swallow a broken value (%s)', (_label, source) => {
+    /*
+     * The `[/.#]` first set is what makes this the LAST arm rather than a
+     * catch-all: without it every partially-parsed value fell through to
+     * verbatim bytes.
+     */
+    expect(() => parse(source)).toThrow();
+  });
+
+  it('still raises the removed-backtick-JavaScript diagnostic in a variable value', () => {
+    /*
+     * That diagnostic is a reducer `throw`, so it only fires if the backtick
+     * arm survives. A catch-all verbatim arm silently replaced it with `Any`.
+     */
+    expect(() => parse('@p: `a`x;')).toThrow(/Inline backtick JavaScript/u);
+  });
+
+  it.each([
+    ['glued', '@p: /img!important;'],
+    ['spaced', '@p: /img !important;']
+  ])('does not bake a priority marker into verbatim value bytes (%s)', (_label, source) => {
+    /*
+     * `!` is not a CSS `punctuationValueCharacter`, so the inherited run stops
+     * there and neither spelling can hide `!important` inside the bytes. Both
+     * reject identically — the point is that the answer does not depend on
+     * whether the author typed a space.
+     */
+    expect(() => parse(source)).toThrow();
+  });
+
+  it('keeps a block comment out of verbatim value bytes', () => {
+    /* Comments are trivia. `PunctuationValue`'s own `not('*')` after `/` is
+     * what stops the run before `/*`. */
+    expect(firstRule('@p: /img/*c*/;')).toMatchObject({
+      type: 'VariableDeclaration',
+      value: { type: 'Any', src: '/img' }
+    });
   });
 
   it('does not read a colon as a keyword argument when no variable precedes it', () => {

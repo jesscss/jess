@@ -65,11 +65,16 @@ describe('Less variable references through the public AST route', () => {
   });
 
   /*
-   * jess#235 and the third case neither issue lists. A Less VARIABLE value may
-   * start with bytes no CSS declaration value can, and lessc 4.9.1 emits them
-   * unchanged; the same text in PROPERTY position is a parse error in lessc
-   * 4.9.1 and here, so the last two rows are the control that keeps the rule
-   * on the variable declaration rather than in the shared value grammar.
+   * jess#235 and the third case neither issue lists. These are the RENDERED
+   * halves of the parser fixtures in
+   * `packages/syntax/less/less-parser/test/discovered-constructs.test.ts`: the
+   * value survives evaluation as its authored bytes, including through
+   * interpolation, which is the only reason holding a path in a variable is
+   * useful at all.
+   *
+   * Whether the same text should also parse in PROPERTY position is open and
+   * deliberately unpinned — our own CSS parser accepts `a { p: /img }`.
+   * DESIGN-DECISIONS P32.
    */
   it.each([
     ['slash-led path', '@p: /img/icon.svg;\n.x { u: @p; }', '.x {\n  u: /img/icon.svg;\n}\n'],
@@ -122,18 +127,5 @@ describe('Less variable references through the public AST route', () => {
 
     expect(result.errors).toHaveLength(0);
     expect(result.css).toBe('.val {\n  foo: @nope[foo];\n}\n');
-  });
-
-  it.each([
-    ['slash-led path in property position', '.x { p: /img/x.svg; }'],
-    ['bare slash-led name in property position', '.x { p: /img; }']
-  ])('still rejects the same value in property position (%s)', async (_label, source) => {
-    const result = await new Compiler().renderToResult(
-      { source, filePath: 'entry.less', extension: '.less' },
-      { breakOnError: false }
-    );
-
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]).toMatchObject({ code: 'parse/syntax-error' });
   });
 });

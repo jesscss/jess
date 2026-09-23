@@ -196,7 +196,6 @@ type LessRules = {
   InterpolatedValue: Combinator<Interpolation>;
   InterpolatedProperty: Combinator<Interpolation>;
   Keyword: Combinator<ValueNode>;
-  EscapeValue: Combinator<Any>;
   PagePseudo: Combinator<Any>;
   DoubledQuoteArgument: Combinator<Any>;
   FunctionArgument: Combinator<ValueSlot | LessCallArg>;
@@ -419,6 +418,12 @@ type SharedSyntax = {
   QueryFunctionName: Combinator<unknown>;
   ImportantToken: Combinator<unknown>;
   BlockCommentToken: Combinator<unknown>;
+  // Inherited from the CSS base unchanged: the punctuation-run value component
+  // (`css-parser/src/grammar.ts` `PunctuationValue`), which already reduces a
+  // `/`- or `.`-led run to the same `Any` fact. `VerbatimValue` composes on it
+  // rather than re-spelling those two characters. Less's own value atom does
+  // NOT admit it — see the `VerbatimValue` docblock.
+  PunctuationValue: Combinator<Any>;
 };
 
 const lineComment = regex(/\/\/[^\n\r]*/);
@@ -1334,13 +1339,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   /**
    * `@name: value;`, with the value arms ordered most specific first.
    *
-   * The structured value arm must reach this declaration's own end before the
-   * choice commits to it. Without that anchor `@p: /img` takes the bare-slash
-   * value piece, succeeds having consumed one character, and leaves `img` for
-   * `declarationEnd` — which then fails the whole declaration with a "missing
-   * semicolon" on a line that ends in one, because no later arm is reachable
-   * once an earlier one has matched. Anchoring the arm makes the partial match
-   * a failed arm instead, so {@link VerbatimValue} can claim the whole run.
+   * Each arm ends at the declaration's own terminator rather than the choice
+   * being followed by one shared `declarationEnd`. That is what makes the later
+   * arms reachable: with the terminator outside, `@p: /img` takes the
+   * bare-slash value piece, the arm SUCCEEDS having consumed one character, and
+   * the shared terminator then fails the whole declaration — reporting a
+   * missing semicolon on a line that ends in one — because parseman cannot
+   * re-enter a choice an arm has already won. Inside, the same partial match is
+   * a failed arm, so {@link VerbatimValue} gets its turn, and an unterminated
+   * declaration still reports the `";"` its terminator expected.
    */
   const VarDeclaration = node(
     'VariableDeclaration',
@@ -1348,13 +1355,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       variableName,
       literal(':'),
       choice(
-        sequence(g.NamespacedMixinValue, mixinValueWithoutLookup),
-        g.ImportantValue,
-        sequence(g.FlatMixinCall, mixinValueWithoutLookup),
-        sequence(not(literal('{')), g.VariableValue, peek(declarationEnd)),
-        g.VerbatimValue
-      ),
-      declarationEnd
+        sequence(g.NamespacedMixinValue, mixinValueWithoutLookup, declarationEnd),
+        sequence(g.ImportantValue, declarationEnd),
+        sequence(g.FlatMixinCall, mixinValueWithoutLookup, declarationEnd),
+        sequence(not(literal('{')), g.VariableValue, declarationEnd),
+        sequence(g.VerbatimValue, declarationEnd)
+      )
     ),
     (children, _fields, span) => {
       const name = requireTerminalText(children[0]).slice(1);
@@ -1388,14 +1394,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'Keyword',
     g.ValueIdentifier,
     children => keyword(requireToken(children[0]).value)
-  );
-  // CSS declaration hacks such as `#000 \\9` are a real one-token value
-  // suffix. Keep the escape structural and narrow; this is not a raw-value
-  // fallback or a second scanner for declaration text.
-  const EscapeValue = node(
-    'EscapeValue',
-    regex(/(?:\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/),
-    children => any(requireToken(children[0]).value)
   );
   const PercentEscape = node(
     'PercentEscape',
@@ -1866,7 +1864,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.QueryColonFeature,
       g.Paren,
       gridLineName,
-      g.EscapeValue,
       PercentEscape
     ),
     children => requireValueNode(children.find(isValueNode))
@@ -2123,28 +2120,42 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       commaListWithTriviaFromChildren(children, fields, triviaLog, state, isLessValueSlotValue, rawChildren)
   );
   /**
-   * One run of value bytes that the value grammar cannot start, kept verbatim.
+   * A glued `/`-, `.`- or `#`-led run in a Less VARIABLE value.
    *
-   * A Less VARIABLE value is not restricted to CSS component values:
-   * `@p: /img/icon.svg`, `@p: .a` and `@p: #id` all compile on lessc 4.9.1 and
-   * emit their bytes unchanged, while the same text in PROPERTY position is a
-   * parse error there and here. That asymmetry is not an accident of the
-   * implementation, it is its declaration rule: only the variable branch falls
-   * back to `permissiveValue()` after `value()` declines (less 4.9.1
-   * `parser.js:1841`), so only a variable value accepts this shape.
+   * `/` and `.` are NOT a Less invention and this rule does not re-spell them:
+   * both are already CSS value components, and the run below composes on the
+   * CSS base's `PunctuationValue`, which recognises exactly that punctuation
+   * run and reduces it to the same `Any` fact. Measured on the built CSS
+   * parser, `a { p: /img/icon.svg }` is `[Any '/', Keyword img, Any '/',
+   * Keyword icon, Any '.', Keyword svg]` and `a { p: .a }` is `[Any '.',
+   * Keyword a]`. Less's own value atom omits the CSS punctuation component —
+   * that divergence is a separate, unresolved question (DESIGN-DECISIONS
+   * P32), not something this rule decides.
    *
-   * This is a Less ADDITION — CSS has no declaration-value shape starting `/`,
-   * `.` or `#` — so it is a new rule rather than an override, and it is reached
-   * only from {@link VarDeclaration} so property values keep rejecting it.
-   * The run ends at any byte that structures Less: whitespace, a quote, a
-   * group/block delimiter, `;` or `,`. The fact emitted is `Any`, the opaque
-   * leaf that preserves its bytes and is typed only when a later operation
-   * forces it.
+   * `#` is the one genuine gap. CSS deliberately withholds it from the
+   * punctuation run — `css-parser/src/grammar.ts:405-409`, "`#` stays reserved
+   * for the strict color production" — so `#id` (two characters, not a
+   * `<hex-color>`) starts no CSS value component at all. That single literal is
+   * the only recognition this rule adds.
+   *
+   * The leading `[/.#]` is a first-set gate, not a guard: this is the LAST arm
+   * of the variable-value choice, so without three concrete first characters it
+   * would claim every partially-parsed value and swallow the reducer
+   * diagnostics that fire from the arms before it (removed backtick
+   * JavaScript, bare `@name` interpolation, unsupported variable names).
+   *
+   * The run's stop set is CSS's, inherited: `!` is not a
+   * `punctuationValueCharacter`, so `!important` stays the declaration's
+   * priority tail rather than becoming value bytes, and `PunctuationValue`'s
+   * own `not('*')` after `/` keeps a block comment out of the payload.
    */
   const VerbatimValue = node(
     'VerbatimValue',
-    regex(/[^ \t\n\r\f"'(){}[\];,\x00-\x08\x0B\x0E-\x1F\x7F]+/),
-    children => any(requireToken(children[0]).value)
+    noTrivia(sequence(
+      peek(regex(/[/.#]/)),
+      oneOrMore(choice(g.PunctuationValue, literal('#'), g.ValueIdentifier))
+    )),
+    children => any(children.map(child => (isAny(child) ? child.src : requireToken(child).value)).join(''))
   );
   // `!important` is a grammar-owned declaration/value modifier.  Variables
   // carry the wrapper so references hoist importance once; declarations expose
@@ -3537,15 +3548,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       )
     ),
     (children, _fields, _span, _rawChildren, triviaLog, state) => queryClauseReducer(children, triviaLog, state)
-  );
-  const QueryPrelude = node(
-    'QueryPrelude',
-    oneOrMoreSep(
-      g.QueryClause,
-      field('separator', regex(/,[ \t\n\r\f]*/))
-    ),
-    (children, fields, _span, rawChildren, triviaLog, state) =>
-      commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueNode, rawChildren)
   );
   // Less permits a variable interpolation as an ordinary `@media` query term:
   // `@media @{all} and @{tv}`. That is not a container-query form, so retain
@@ -5041,7 +5043,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     InterpolatedValue,
     InterpolatedProperty,
     Keyword,
-    EscapeValue,
     PagePseudo,
     DoubledQuoteArgument,
     FunctionArgument,
