@@ -2652,3 +2652,63 @@ describe('SCSS @charset inherits the CSS <string> prelude', () => {
     ]);
   });
 });
+
+/*
+ * An at-rule with a typed BLOCK production also has a statement spelling, and
+ * CSS pairs the two on the same name (`choice(g.RoutedAtRuleStatement,
+ * g.DescriptorBlock)`). SCSS carried two forks of the CSS statement rule — one
+ * hard-coding `@charset|@namespace|@layer`, one for names with no typed block —
+ * and between them no typed at-rule name could take its statement spelling at
+ * all. `@font-face;` parsed in CSS and not here, which is a hard-rule-3
+ * violation (a shape CSS already defines, respelled downstream), not a missing
+ * feature. SCSS now inherits `AtRuleStatement` and overrides only its two
+ * children.
+ */
+describe('statement spelling of the typed at-rules', () => {
+  it.each([
+    ['@font-face;', '@font-face', null],
+    ['@counter-style a;', '@counter-style', 'a'],
+    ['@page;', '@page', null],
+    ['@starting-style;', '@starting-style', null],
+    ['@keyframes a;', '@keyframes', 'a'],
+    ['@scope (.a);', '@scope', '(.a)'],
+    ['@property --x;', '@property', '--x']
+  ])('reads %s as the canonical AtRuleStatement fact', (source, name, prelude) => {
+    expect(parse(source)).toMatchObject({
+      rules: [{
+        type: 'AtRuleStatement',
+        name,
+        prelude: prelude === null ? null : { src: prelude }
+      }]
+    });
+  });
+
+  it('still routes the BLOCK spelling of those names to its typed production', () => {
+    expect(parse('@font-face { font-family: a; }')).toMatchObject({
+      rules: [{ type: 'AtRuleBlock', name: '@font-face' }]
+    });
+    expect(parse('@keyframes a { 0% { opacity: 0 } }')).toMatchObject({
+      rules: [{ type: 'AtRuleBlock', name: '@keyframes' }]
+    });
+  });
+
+  it('keeps the CSS statement-only names parsing as before', () => {
+    expect(parse('@charset "utf-8";')).toMatchObject({
+      rules: [{ type: 'AtRuleStatement', name: '@charset', prelude: { src: '"utf-8"' } }]
+    });
+    expect(parse('@namespace url(http://x);')).toMatchObject({
+      rules: [{ type: 'AtRuleStatement', name: '@namespace', prelude: { src: 'url(http://x)' } }]
+    });
+  });
+
+  it('still rejects a dynamic statement header rather than emitting it verbatim', () => {
+    expect(() => parse('@view-transition $x;')).toThrow();
+    expect(() => parse('@layer $x;')).toThrow();
+  });
+
+  it('still rejects the conditional group at-keywords in statement position', () => {
+    /* CSS rejects `@media screen;` too — its dispatch keyword excludes them. */
+    expect(() => parse('@media screen;')).toThrow();
+    expect(() => parse('@supports (display: grid);')).toThrow();
+  });
+});

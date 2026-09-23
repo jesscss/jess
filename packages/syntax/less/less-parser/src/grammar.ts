@@ -3973,11 +3973,31 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * own compiler namespace plus cssSyntax's shared CSS leaves -- so the
    * positive form (`CustomValueAtKeyword`) and the two negative forms below
    * cannot drift. This replaced three hand-spelled copies of the same set.
+   *
+   * The set is split in two because the statement name and the opaque-block
+   * name exclude different halves of it. These three may never take the generic
+   * STATEMENT spelling: Less's compiler namespace and `@import` own statement
+   * productions of their own, and the conditional group at-keywords have no
+   * statement spelling in CSS either (`@media screen;` is a reject in
+   * css-parser). One declaration per name, both negatives below read from these
+   * same two consts.
    */
-  const CustomValueAtKeyword = token(noTrivia(choice(
+  const NonStatementAtKeyword = token(noTrivia(choice(
     lessOwnAtKeyword,
     g.ImportAtKeyword,
-    g.ConditionalAtKeyword,
+    g.ConditionalAtKeyword
+  )));
+
+  /*
+   * `@keyframes` is the fourth typed route, and the only one whose production is
+   * BLOCK-only. It therefore belongs in the opaque-block exclusion but NOT in
+   * the statement exclusion: CSS pairs this very name with a statement arm
+   * (`choice(g.RoutedAtRuleStatement, g.Keyframes)`), so `@keyframes a;` is a
+   * plain at-rule statement there. Excluding it here was what made Less the one
+   * dialect that refused it.
+   */
+  const CustomValueAtKeyword = token(noTrivia(choice(
+    NonStatementAtKeyword,
     g.KeyframesAtKeyword
   )));
   /*
@@ -3989,7 +4009,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * an ordinary opaque at-rule block via `AtRuleName`.
    */
   const StaticAtRuleStatementName = token(noTrivia(sequence(
-    not(CustomValueAtKeyword),
+    not(NonStatementAtKeyword),
     not(charsetAtRuleName),
     g.AtIdentifierUnescaped
   )));
