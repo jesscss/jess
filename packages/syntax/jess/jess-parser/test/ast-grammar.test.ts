@@ -3710,3 +3710,91 @@ describe('@layer dotted sub-layer names', () => {
       .toBe('@layer a.b {\n  c {\n    color: red;\n  }\n}\n');
   });
 });
+
+/*
+ * An at-rule with a typed BLOCK production also has a statement spelling, and
+ * CSS pairs the two inside ONE dispatch case
+ * (`choice(g.RoutedAtRuleStatement, g.Keyframes)`). Jess instead rejected those
+ * names inside `AtRuleHeader`'s dispatch, and a parseman dispatch branch failure
+ * is COMMITTED — it aborts the whole statement list, so `AtRuleStatement` (the
+ * last arm) was never reached and `@keyframes a;` / `@property --x;` failed the
+ * document outright. The exclusion is now a declining `not()` on `AtRuleBlock`.
+ */
+describe('statement spelling of the typed at-rules', () => {
+  it.each([
+    ['@keyframes a;', '@keyframes'],
+    ['@-webkit-keyframes a;', '@-webkit-keyframes'],
+    ['@property --x;', '@property'],
+    ['@scope (.a);', '@scope']
+  ])('reads %s as the canonical AtRuleStatement fact', (source, name) => {
+    expect(parse(source)).toMatchObject({
+      rules: [{ type: 'AtRuleStatement', name }]
+    });
+  });
+
+  it('still routes the BLOCK spelling of those names to its typed production', () => {
+    expect(parse('@keyframes a { 0% { opacity: 0 } }')).toMatchObject({
+      rules: [{ type: 'AtRuleBlock', name: '@keyframes', rules: [{ type: 'Ruleset' }] }]
+    });
+    expect(parse('@property --x { syntax: "*"; inherits: false; }')).toMatchObject({
+      rules: [{ type: 'AtRuleBlock', name: '@property', prelude: { src: '--x' } }]
+    });
+    expect(parse('@scope (.a) { b { color: red } }')).toMatchObject({
+      rules: [{ type: 'AtRuleBlock', name: '@scope', prelude: { src: '(.a)' } }]
+    });
+  });
+
+  it('still keeps a malformed typed block out of the generic at-rule block', () => {
+    expect(() => parse('@keyframes { }')).toThrow(JessParseError);
+    expect(() => parse('@property { }')).toThrow(JessParseError);
+  });
+
+  it('keeps a typed block header that is NOT a generic statement prelude working', () => {
+    /* `style(--x: 1)` is not a value the typed `AtRulePrelude` can hold. The
+     * statement arm must therefore stay AFTER `AtRuleBlock`, or its committed
+     * dispatch failure takes the whole container rule with it. */
+    expect(parse('@container style(--x: 1) { a { color: red } }')).toMatchObject({
+      rules: [{ type: 'AtRuleBlock', name: '@container' }]
+    });
+  });
+});
+
+/*
+ * css-cascade-5 §3 admits a layer statement in the document prologue, BEFORE
+ * `@import`. Jess had no spelling for that position, so `@layer base;` matched
+ * as an ordinary body item, which ends the prologue and left the following
+ * `@import` unparseable. This is the one entry of the nine that is valid CSS.
+ */
+describe('@layer statement in the document prologue', () => {
+  it('admits a CSS @import after a layer statement', () => {
+    expect(parse('@layer base;\n@import "a.css";')).toMatchObject({
+      rules: [
+        { type: 'AtRuleStatement', name: '@layer', prelude: { type: 'Keyword', src: 'base' } },
+        { type: 'AtRuleStatement', name: '@import' }
+      ]
+    });
+    expect(serialize(parse('@layer base;\n@import "a.css";')).css)
+      .toBe('@layer base;\n@import "a.css";\n');
+  });
+
+  it('keeps the prologue layer statement on the same typed prelude as the body one', () => {
+    expect(parse('@layer a, b.c;\n@import "a.css";')).toMatchObject({
+      rules: [
+        {
+          type: 'AtRuleStatement',
+          name: '@layer',
+          prelude: {
+            type: 'List',
+            sep: ',',
+            value: [{ type: 'Keyword', src: 'a' }, { type: 'Keyword', src: 'b.c' }]
+          }
+        },
+        { type: 'AtRuleStatement', name: '@import' }
+      ]
+    });
+  });
+
+  it('still refuses a CSS @import after an ordinary rule', () => {
+    expect(() => parse('a { color: red }\n@import "a.css";')).toThrow(JessParseError);
+  });
+});
