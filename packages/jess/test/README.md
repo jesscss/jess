@@ -11,11 +11,11 @@ test-data fixtures through `Compiler.renderToResult(...)`, so it covers the
 public eval-plus-render path rather than a test-only compile-plus-`toString`
 path.
 
-See [`less/README.md`](./less/README.md) before using any other Less test file.
-Most remaining Less files are `describe.todo` sketches from earlier parser and
-serializer investigations. Treat their expectations as untrusted until they are
-revalidated against upstream Less behavior, Jess behavior docs, or focused core
-tests.
+See [`less/README.md`](./less/README.md) for how the Less tests are organised.
+The `describe.todo` sketches that used to fill this directory are gone: the four
+that remained were retired in 2026-09, after each case was compared against the
+fixture corpus and `lessc` (most were redundant, and three asserted behaviour
+Less itself rejects). Every Less test here now runs.
 
 ## Running The Main Signal
 

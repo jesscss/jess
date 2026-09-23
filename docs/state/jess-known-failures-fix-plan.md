@@ -1,12 +1,21 @@
-# Jess suite known-failures — remediation plan
+# Jess suite known-failures — remediation plan (CLEARED 2026-09-23)
 
-Companion to `packages/jess/test/known-failures.json`. Every entry in that
-baseline points here. These are **long-standing, deterministic** failures on
-`dev` (none are timeouts). They are baselined so the PR quality gate reflects
-reality; this document is the plan to actually clear them, so the baseline
-shrinks rather than calcifies.
+**The baseline this plan served is empty.** `packages/jess/test/known-failures.json`
+holds `knownFailures: []`, and every test named below passes on `dev` — re-run
+2026-09-23, including the `#7 + #8` bootstrap pair the plan marked owner-gated
+and "escalate before touching". Nothing here is work waiting to be done.
+
+The one live entry in that file is `knownFlakyElsewhere`: `extend-exact`, which
+passes in isolation and fails intermittently in full-suite runs, recorded there
+as cross-compile state contamination under separate investigation.
+
+Kept as the record of how the baseline was cleared rather than deleted: each
+section below still shows the diagnosis, the root cause and the fix that was
+taken, which is the useful part now. Do not read the ordering section as a queue.
 
 Diagnosis date: 2026-08-28. Traced against `dev` at the CI-setup fix.
+Verified cleared: 2026-09-23 against `dev` — 27 tests across the four named
+files, all passing.
 
 ## Recommended order (quickest / highest-value first)
 
