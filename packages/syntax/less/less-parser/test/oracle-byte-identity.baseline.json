@@ -5,12 +5,12 @@
   "surfaces": [
     {
       "name": "ast",
-      "aggregate": "281c782980379cbb76624787d8007513d79045a2a62e23be79bda400a3c9e9bd",
-      "threw": 113
+      "aggregate": "6348ae4f9a75a6502a427322d403ac920fe9e1d0b5634b2315059098cb854830",
+      "threw": 112
     },
     {
       "name": "cst",
-      "aggregate": "9d58cc3dfbbe5a0bc1934739ccdbaadb7faee0dc768ff0d71b46041285fbede5",
+      "aggregate": "6b9532e831b1c57b76cfef34e0f7b254e0bf0a2384b2c3f7ec75ad1eeea72882",
       "threw": 0
     }
   ],
@@ -748,8 +748,8 @@
       "cst": "d40ef2750d163fcf"
     },
     "node_modules/@less/test-data/tests-error/eval/namespacing-3.less": {
-      "ast": "05875765c152f691",
-      "cst": "2fe9eca8e50abcf2"
+      "ast": "e0ae8e0cb09ec18f",
+      "cst": "72b457b2904de3c3"
     },
     "node_modules/@less/test-data/tests-error/eval/namespacing-4.less": {
       "ast": "2d964827e1ba621c",
@@ -1893,7 +1893,7 @@
     },
     "node_modules/@less/test-data/tests-unit/permissive-parse/permissive-parse.less": {
       "ast": "3723f4512753fd7f",
-      "cst": "8737b41a78d3316f"
+      "cst": "1680d06df1977568"
     },
     "node_modules/@less/test-data/tests-unit/plugi/plugi.css": {
       "ast": "461fb4b76f18ee98",
