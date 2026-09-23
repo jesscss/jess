@@ -1,7 +1,7 @@
 import { afterAll, describe, it, expect } from 'vitest';
 import * as glob from 'glob';
 import * as path from 'path';
-import { readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { createHash } from 'node:crypto';
 import { Compiler } from '../../src/index.js';
 import { outputDiagnostics } from '@jesscss/compiler/diagnostics';
@@ -250,6 +250,27 @@ const skippedFixtures: SkippedFixture[] = (
      * list now holds every exclusion, every entry states a reason, and the
      * stale-skip gate below re-measures them.
      */
+    /*
+     * Nested fixtures, visible since the lane started discovering one level
+     * deeper. Both features are deferred, and these four are the only nested
+     * fixtures with goldens that do not pass.
+     */
+    {
+      file: 'tests-config/debug/all/linenumbers-all.less',
+      reason: 'dumpLineNumbers is declared in the config surface (core/src/types/config.ts) but nothing consumes it — the golden expects `/* line N, {path} */` annotations (same feature as the tests-config/debug/linenumbers.less skip)'
+    },
+    {
+      file: 'tests-config/debug/comments/linenumbers-comments.less',
+      reason: 'dumpLineNumbers is not implemented — the golden expects `/* line N, {path} */` annotations'
+    },
+    {
+      file: 'tests-config/debug/mediaquery/linenumbers-mediaquery.less',
+      reason: 'dumpLineNumbers is not implemented — the golden expects @media-encoded line annotations'
+    },
+    {
+      file: 'tests-config/sourcemaps/comprehensive/comprehensive.less',
+      reason: 'source-map output suite needs dedicated output artifact checks (same reason as the other sourcemaps fixtures)'
+    },
     {
       file: 'tests-unit/permissive-parse/permissive-parse.less',
       reason: 'INTENDED DIVERGENCE (P7): a bare `@function-name` at-rule prelude is rejected'
@@ -263,16 +284,12 @@ const skippedFixtures: SkippedFixture[] = (
       reason: 'OPEN F7(a): repeated complex property-name interpolation drops value-owned layout trivia'
     },
     {
-      file: 'tests-unit/import/import/invalid-css.less',
-      reason: 'no reason was recorded when this entry was added; not re-measured'
-    },
-    {
       file: 'tests-unit/functions/legacy/functions.less',
       reason: 'non-Less `$list` parameter syntax is deliberately unsupported'
     },
     {
       file: 'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less',
-      reason: 'VACUOUS UPSTREAM FIXTURE: every case in it is commented out, so it asserts nothing, and its golden is one newline while jess and lessc 4.9.1 both render zero bytes — the sibling `tests-unit/empty` golden is 0 bytes, so the corpus disagrees with itself. Delete it upstream'
+      reason: 'every case in the upstream fixture is commented out, so it renders to nothing while its golden is a stray newline. The cases are commented out because `/deep/` and `/shadow/` do not parse in jess though lessc 4.9.1 accepts them — jess#247. Uncommenting them upstream pins whichever way that is ruled'
     },
     {
       file: 'tests-unit/javascript/javascript.less',
@@ -492,7 +509,18 @@ describe('Can render Less files to CSS', () => {
   const configFiles: string[] = glob.sync(
     path.join(testData, 'tests-config/*/*.less')
   );
-  const allFiles = [...unitFiles, ...configFiles];
+
+  /*
+   * The corpus nests some fixtures one level deeper (`tests-config/units/loose/`,
+   * `tests-unit/functions/legacy/`). A two-level glob silently skipped all ten of
+   * them, goldens and all — including the three `unitMode` fixtures, which pass.
+   * An undiscovered fixture leaves no trace, so depth is a discovery bug, not a
+   * policy: anything that should not run belongs in `skippedFixtures` with a reason.
+   */
+  const nestedFiles: string[] = glob
+    .sync(path.join(testData, 'tests-{unit,config}/*/*/*.less'))
+    .filter(file => existsSync(file.replace(/\.less$/, '.css')));
+  const allFiles = [...unitFiles, ...configFiles, ...nestedFiles];
 
   allFiles
     .map(value => path.relative(testData, value))
