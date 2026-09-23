@@ -1990,7 +1990,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       );
     }
   );
-  const valuePiece = choice(g.UnicodeRange, topSumMaybeDivision, literal('/'), literal('-'), literal('%'));
+  /*
+   * No bare `literal('/')` arm: a slash is a SEPARATOR, not a value piece, so
+   * it is only ever reachable BETWEEN two pieces — which is what
+   * `topSumMaybeDivision` already spells. The bare arm was the only thing that
+   * let a slash stand with no left operand, so `p: / 1` parsed here while css
+   * and the other supersets rejected it. Dropping it makes the rejection
+   * emergent, exactly as a leading `,` already fails (DESIGN-DECISIONS P33).
+   */
+  const valuePiece = choice(g.UnicodeRange, topSumMaybeDivision, literal('-'), literal('%'));
   const nestedAtRuleValueStart = regex(/@[^;{}()'"]*\{/);
   const valueTriviaBoundary = parser(
     { trivia: whitespace },
