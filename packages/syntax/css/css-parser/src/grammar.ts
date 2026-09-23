@@ -430,10 +430,19 @@ const punctuationValueCharacter = choice(
 );
 
 /*
- * punctuationValueCharacter minus `/`. Leading the punctuation-run arm with this
- * (concrete 16-char first-set) instead of a `not('/*')` guard lets the compiler
- * resolve PunctuationValue's first-set and first-char-gate it; the `/` cases
- * keep their adjacent-comment guard in the dedicated slash arm.
+ * One value-term slash boundary, with its authored whitespace on either side.
+ * Whitespace around the separator is optional on input (`16/9` and `16 / 9` are
+ * the same value); the emitted form is the spaced one either way, per G33.
+ * The negative lookahead keeps a comment opener (`/*`) out of the boundary so a
+ * commented value still fails exactly where it did before.
+ */
+const valueSlashBoundary = regex(/[ \t\n\r\f]*\/(?!\*)[ \t\n\r\f]*/);
+
+/*
+ * punctuationValueCharacter minus `/`. Leading this (a concrete 16-char
+ * first-set) instead of a `not('/*')` guard lets the compiler resolve
+ * PunctuationValue's first-set and first-char-gate it. There is no longer a
+ * slash arm to contrast with: `/` is a SEPARATOR and belongs to `ValueTerm`.
  * An at-keyword may not BEGIN a declaration-value component. `;` separates
  * declarations rather than terminating them (css-syntax-3 §5.4.7), so the last
  * declaration in a block ends at whatever follows it — and when that is a nested
@@ -449,15 +458,6 @@ const punctuationValueCharacter = choice(
  * unguarded because it also carries the `var()` fallback, where an at-keyword is
  * a legal `<declaration-value>` token (css-variables-1 §2.1).
  */
-/*
- * One value-term slash boundary, with its authored whitespace on either side.
- * Whitespace around the separator is optional on input (`16/9` and `16 / 9` are
- * the same value); the emitted form is the spaced one either way, per G33.
- * The negative lookahead keeps a comment opener (`/*`) out of the boundary so a
- * commented value still fails exactly where it did before.
- */
-const valueSlashBoundary = regex(/[ \t\n\r\f]*\/(?!\*)[ \t\n\r\f]*/);
-
 const nonSlashPunctuationValueStart = choice(
   customEscape,
   literal('+'),
