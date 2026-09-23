@@ -192,6 +192,22 @@ export function parseWith(
     state,
     rootTrivia: { select: commentTriviaLabels }
   });
+
+  /*
+   * A recovery error outranks the two branches below, exactly as it does in the
+   * CSS parser this one mirrors: it localises the FIRST real problem, where
+   * `result.span` only reports where the run gave up and the `unconsumedFrom`
+   * branches carry no expected set at all. An `expect()` recovers in place, so
+   * without this the run finishes "successfully" over input a rule refused.
+   */
+  const recoveryError = result.errors[0];
+  if (recoveryError !== undefined) {
+    throw new LessParseError(
+      recoveryError.span.start,
+      recoveryError.expected,
+      lineOptions(input, recoveryError.span)
+    );
+  }
   if (!result.ok) {
     throw new LessParseError(result.span.start, result.expected, lineOptions(input, result.span));
   }

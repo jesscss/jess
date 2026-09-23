@@ -5,12 +5,12 @@
   "surfaces": [
     {
       "name": "ast",
-      "aggregate": "281c782980379cbb76624787d8007513d79045a2a62e23be79bda400a3c9e9bd",
+      "aggregate": "cfda56b0012885fd4aa011c209833412a4891761e4e860ff48211f2d34edcd78",
       "threw": 113
     },
     {
       "name": "cst",
-      "aggregate": "e32865725d2e3642ad0d8c3467be390600b42849aaf1814de91a922f4b5b9fbf",
+      "aggregate": "06bf129f4e49c141920d984566eea867d73a24a7da07056a3c90134d23164346",
       "threw": 0
     }
   ],
@@ -1468,8 +1468,8 @@
       "cst": "f2033af0eec463b9"
     },
     "node_modules/@less/test-data/tests-unit/import/import-reference.css": {
-      "ast": "733703c285609637",
-      "cst": "a470aa3380478f4c"
+      "ast": "6d04afbf30e8ab5f",
+      "cst": "ca3e0636b363cbca"
     },
     "node_modules/@less/test-data/tests-unit/import/import-reference.less": {
       "ast": "7a69f0432a82ec7d",
@@ -1612,8 +1612,8 @@
       "cst": "f2e6f5b9f389f553"
     },
     "node_modules/@less/test-data/tests-unit/import/legacy/import-reference.css": {
-      "ast": "733703c285609637",
-      "cst": "03c024911025c16b"
+      "ast": "6d04afbf30e8ab5f",
+      "cst": "d63d180cac9b995e"
     },
     "node_modules/@less/test-data/tests-unit/javascript-REMOVED/legacy/javascript.css": {
       "ast": "733703c285609637",
@@ -1893,7 +1893,7 @@
     },
     "node_modules/@less/test-data/tests-unit/permissive-parse/permissive-parse.less": {
       "ast": "3723f4512753fd7f",
-      "cst": "a0311f811c8b1097"
+      "cst": "8737b41a78d3316f"
     },
     "node_modules/@less/test-data/tests-unit/plugi/plugi.css": {
       "ast": "461fb4b76f18ee98",
@@ -2772,8 +2772,8 @@
       "cst": "17b8f6a2beeb1b61"
     },
     "packages/syntax/css/css-parser/test/css/errors/charset.css": {
-      "ast": "05875765c152f691",
-      "cst": "176fa1a8ca81ac5a"
+      "ast": "733703c285609637",
+      "cst": "c0c7f0497a40d447"
     },
     "packages/syntax/css/css-parser/test/css/errors/comment-eof-unclosed.css": {
       "ast": "733703c285609637",
@@ -2824,20 +2824,20 @@
       "cst": "39f5d31244bddce6"
     },
     "packages/syntax/css/css-parser/test/css/errors/keyframes-bad-ident-selector.css": {
-      "ast": "05ff841cacec261a",
-      "cst": "39f5d31244bddce6"
+      "ast": "6d04afbf30e8ab5f",
+      "cst": "e25e49853359d7ca"
     },
     "packages/syntax/css/css-parser/test/css/errors/keyframes-block-no-selector.css": {
-      "ast": "05ff841cacec261a",
-      "cst": "39f5d31244bddce6"
+      "ast": "6d04afbf30e8ab5f",
+      "cst": "e25e49853359d7ca"
     },
     "packages/syntax/css/css-parser/test/css/errors/keyframes-dimension-selector.css": {
-      "ast": "05ff841cacec261a",
-      "cst": "39f5d31244bddce6"
+      "ast": "6d04afbf30e8ab5f",
+      "cst": "e25e49853359d7ca"
     },
     "packages/syntax/css/css-parser/test/css/errors/keyframes-number-selector.css": {
-      "ast": "05ff841cacec261a",
-      "cst": "39f5d31244bddce6"
+      "ast": "6d04afbf30e8ab5f",
+      "cst": "e25e49853359d7ca"
     },
     "packages/syntax/css/css-parser/test/css/errors/media-decl.css": {
       "ast": "05875765c152f691",

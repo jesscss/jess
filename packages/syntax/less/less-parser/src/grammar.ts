@@ -22,7 +22,7 @@
 import {
   attempt, rules, classifiedTrivia, compose,
   node, regex, literal, sequence, choice, many, oneOrMore, oneOrMoreSep, optional,
-  not, scanTo, balanced, parser, noTrivia, label, word, keywords, field, leaf, peek,
+  not, scanTo, balanced, expect, parser, noTrivia, label, word, keywords, field, leaf, peek,
   dispatch, endsWith, makeWhen, makeWord, matches, otherwise, routed, token, transform, when
 } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
@@ -3981,15 +3981,44 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * own compiler namespace plus cssSyntax's shared CSS leaves -- so the
    * positive form (`CustomValueAtKeyword`) and the two negative forms below
    * cannot drift. This replaced three hand-spelled copies of the same set.
+   *
+   * The set is split in two because the statement name and the opaque-block
+   * name exclude different halves of it. These three may never take the generic
+   * STATEMENT spelling: Less's compiler namespace and `@import` own statement
+   * productions of their own, and the conditional group at-keywords have no
+   * statement spelling in CSS either (`@media screen;` is a reject in
+   * css-parser). One declaration per name, both negatives below read from these
+   * same two consts.
    */
-  const CustomValueAtKeyword = token(noTrivia(choice(
+  const NonStatementAtKeyword = token(noTrivia(choice(
     lessOwnAtKeyword,
     g.ImportAtKeyword,
-    g.ConditionalAtKeyword,
+    g.ConditionalAtKeyword
+  )));
+
+  /*
+   * `@keyframes` is the fourth typed route, and the only one whose production is
+   * BLOCK-only. It therefore belongs in the opaque-block exclusion but NOT in
+   * the statement exclusion: CSS pairs this very name with a statement arm
+   * (`choice(g.RoutedAtRuleStatement, g.Keyframes)`), so `@keyframes a;` is a
+   * plain at-rule statement there. Excluding it here was what made Less the one
+   * dialect that refused it.
+   */
+  const CustomValueAtKeyword = token(noTrivia(choice(
+    NonStatementAtKeyword,
     g.KeyframesAtKeyword
   )));
+  /*
+   * `@charset` is excluded HERE and not from `CustomValueAtKeyword`, because the
+   * two negatives mean different things: `CharsetStatement` below is the only
+   * STATEMENT route for the name, so the generic statement must not re-admit a
+   * prelude that route refused (`@charset url(utf-8);` used to parse for exactly
+   * that reason), while `@charset {…}` has no charset reading at all and stays
+   * an ordinary opaque at-rule block via `AtRuleName`.
+   */
   const StaticAtRuleStatementName = token(noTrivia(sequence(
-    not(CustomValueAtKeyword),
+    not(NonStatementAtKeyword),
+    not(charsetAtRuleName),
     g.AtIdentifierUnescaped
   )));
   const AtRuleName = token(noTrivia(sequence(
@@ -4024,19 +4053,54 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       );
     }
   );
-  // CSS @charset is a single static token. Less 4 interpolated inside it, but
-  // Less 5 deliberately rejects that legacy form. Recognize the authored form
-  // here so the public diagnostic carries its exact grammar span instead of
-  // falling through the root repetition as generic trailing input.
+  /*
+   * CSS @charset is a single static token. Less 4 interpolated inside it, but
+   * Less 5 deliberately rejects that legacy form. Recognize the authored form
+   * here so the public diagnostic carries its exact grammar span instead of
+   * falling through the root repetition as generic trailing input.
+   *
+   * This is the CSS base's `@charset` statement term for term — the
+   * `<string>`-only prelude of css-syntax-3 §3.2, the `expect` that names what
+   * was wanted on the same atom, the refused bytes consumed so the refusal is a
+   * located error rather than a document-level one. It is spelled out rather
+   * than inheriting `g.CharsetStatement` for ONE reason: an interpolated prelude
+   * is rejected with the WHOLE STATEMENT's span (`parse/dynamic-charset` reports
+   * at column 1), and only the rule that spans the statement can raise it.
+   *
+   * `peek(';')` leads the recovery choice because an ACCEPTED prelude ends at
+   * the `;` and has nothing to recover: without it a well-formed `@charset`
+   * carries an empty `AtRulePrelude` node through the CST.
+   *
+   * `g.InterpolatedValue` precedes the opaque prelude because a dynamic
+   * prelude is a SETTLED case with an error of its own: recognized as the
+   * interpolation it is, it reaches the reducer as one and routes
+   * `@charset @{encoding};` to `parse/dynamic-charset` instead of the generic
+   * refusal it used to get.
+   */
   const CharsetStatement = node(
     'AtRuleStatement',
-    sequence(charsetAtRuleName, g.Quoted, literal(';')),
+    sequence(
+      charsetAtRuleName,
+      expect(
+        sequence(
+          g.Quoted,
+          peek(literal(';'))
+        ),
+        '@charset quoted string'
+      ),
+      choice(
+        peek(literal(';')),
+        g.InterpolatedValue,
+        g.AtRulePrelude
+      ),
+      literal(';')
+    ),
     (children, _fields, span) => {
-      const prelude = requireValueNode(children[1]);
-      if (prelude.type === 'Interpolation') {
+      const prelude = children.find(isValueNode);
+      if (prelude?.type === 'Interpolation') {
         throw new LessDynamicCharsetError(span.start, span.end);
       }
-      return atRuleStatement(requireToken(children[0]).value, prelude);
+      return atRuleStatement(requireToken(children[0]).value, prelude ?? null);
     }
   );
   const AtRuleStatement: Combinator<AtRuleStatement> = choice(

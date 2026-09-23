@@ -22,6 +22,7 @@ import {
   LessUnsupportedMixinNameError,
   LessUnsupportedVariableNameError
 } from '../src/parse-error.js';
+import { parse } from '../src/index.js';
 import { bare } from '../../../../../test/provenance-free.js';
 
 function isStylesheet(value: unknown): value is Stylesheet {
@@ -4850,20 +4851,62 @@ describe('Less AST grammar facts', () => {
       )
     ).toThrow(LessDynamicCharsetError);
 
-    for (const rejectedSource of [
-      '@charset @{encoding};',
-      '@custom foo@{name};'
+    /*
+     * A BARE interpolated prelude is the same settled rejection as an
+     * interpolated string one, and now reports it as such. It used to fall out
+     * of the grammar as unrecognized trailing input, so the author got the
+     * generic "unexpected Less syntax" for a case the ledger already has a
+     * named error for (`parse/dynamic-charset`).
+     */
+    expect(() =>
+      run(
+        lessGrammar.Document,
+        '@charset @{encoding};',
+        { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
+      )
+    ).toThrow(LessDynamicCharsetError);
+
+    const rejected = run(lessGrammar.Document, '@custom foo@{name};', {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    });
+    expect(
+      rejected.ok
+      && rejected.unconsumedFrom === null
+      && isStylesheet(rejected.value)
+    ).toBe(false);
+  });
+
+  /*
+   * css-syntax-3 §3.2 gives `@charset` a `<string>` prelude and nothing else. A
+   * non-string prelude used to fall through to the generic static at-rule
+   * statement, which takes arbitrary bytes, so `@charset url(utf-8);` parsed.
+   * `@charset` is now excluded from that generic name and this is its only
+   * statement route.
+   */
+  it('refuses an @charset prelude that is not a quoted string, and says so', () => {
+    for (const source of [
+      '@charset url(utf-8);',
+      '@charset utf-8;',
+      '@charset;',
+      '@charset "utf-8" trailing;',
+      '.a { color: red }\n@charset url(utf-8);'
     ]) {
-      const rejected = run(lessGrammar.Document, rejectedSource, {
-        trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
-      });
-      expect(
-        rejected.ok
-        && rejected.unconsumedFrom === null
-        && isStylesheet(rejected.value),
-        rejectedSource
-      ).toBe(false);
+      expect(() => parse(source), source).toThrow(
+        'An @charset prelude must be a quoted string, as in @charset "utf-8";.'
+      );
     }
+  });
+
+  it('still reads a well-formed @charset, and leaves `@charset {…}` an opaque block', () => {
+    expect(parse('@charset \'utf-8\'  ;').rules[0]).toMatchObject({
+      type: 'AtRuleStatement',
+      name: '@charset',
+      prelude: { type: 'Quoted', value: 'utf-8' }
+    });
+    expect(parse('@charset { rules: raw; }').rules[0]).toMatchObject({
+      type: 'AtRuleBlock',
+      name: '@charset'
+    });
   });
 
   it('recognizes inline backtick JavaScript as removed Less syntax', () => {
@@ -10139,5 +10182,50 @@ describe('Less AST grammar facts', () => {
         }
       ]
     });
+  });
+});
+
+/*
+ * `@keyframes` is the one typed route whose Less production is BLOCK-only, and
+ * it was excluded from the generic statement name alongside the three names
+ * that DO own a statement spelling. CSS pairs this very name with a statement
+ * arm (`choice(g.RoutedAtRuleStatement, g.Keyframes)`), so `@keyframes a;`
+ * parsed in CSS and in no other dialect. Less is the only dialect that refused
+ * it once SCSS and Jess were fixed.
+ */
+describe('statement spelling of @keyframes', () => {
+  it('reads @keyframes a; as the canonical AtRuleStatement fact', () => {
+    const result = run(
+      lessGrammar.Document,
+      '@keyframes a;',
+      { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
+    );
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{ type: 'AtRuleStatement', name: '@keyframes' }]
+    });
+  });
+
+  it('still routes the BLOCK spelling to the typed Keyframes production', () => {
+    const result = run(
+      lessGrammar.Document,
+      '@keyframes a { 0% { opacity: 0 } }',
+      { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
+    );
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      rules: [{ type: 'AtRuleBlock', name: '@keyframes' }]
+    });
+  });
+
+  it('keeps the other three typed routes out of the generic statement name', () => {
+    /* `@media screen;` is a reject in css-parser too; `@import`/`@plugin` own
+     * their own statement productions and must not degrade to a generic one. */
+    expect(parsesCompleteStylesheet('@media screen;')).toBe(false);
+    expect(parsesCompleteStylesheet('@supports (display: grid);')).toBe(false);
   });
 });

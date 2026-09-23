@@ -22,11 +22,13 @@
  *
  * `@charset` is the calibration case for that choice. less named its production
  * `CharsetStatement`, jess named it `Charset`, and **scss had no named
- * production at all** — it is one arm of a `@(?:charset|namespace|layer)` regex
- * (`packages/syntax/scss/scss-parser/src/grammar.ts:4478`). Any check that
- * diffs rule-name sets misses it in scss entirely, and misses every construct
- * hidden inside a shared regex arm. This gate only ever asks "did this input
- * parse", so spelling and structure are invisible to it.
+ * production at all** — it was one arm of a `@(?:charset|namespace|layer)`
+ * regex. Any check that diffs rule-name sets misses it in scss entirely, and
+ * misses every construct hidden inside a shared regex arm. This gate only ever
+ * asks "did this input parse", so spelling and structure are invisible to it.
+ * (scss now inherits the CSS `CharsetStatement`, which is what the `url()`
+ * prelude fix produced — but the gate had to be able to see the construct
+ * BEFORE that was true, which is the whole point.)
  *
  * The verdict itself comes from `test/dialects.ts`, which is why `ok` alone is
  * not trusted (parseman reports `ok` for a run that consumed nothing).
@@ -114,91 +116,33 @@ interface Allowed {
 /* ------------------------------------------------------------------ DIRECTION 1
  * `css` accepts and at least one superset refuses.
  *
- * Two of these are inputs that ARE valid CSS and that `jess` alone refuses —
- * real jess defects. The rest are `css` over-accepting invalid CSS through its
- * permissive at-rule statement arm, where the refusing dialect is arguably
- * correct and an owner ruling is what is actually needed.
+ * The "without a block" family that used to fill this list is GONE, and the way
+ * it went is the point. Eight of the nine targeted entries were not dialect
+ * policy at all: each superset had RE-SPELLED a CSS at-rule with a mandatory
+ * block instead of inheriting the CSS shape, where CSS itself pairs every typed
+ * at-rule with its statement spelling in one route
+ * (`choice(g.RoutedAtRuleStatement, g.DescriptorBlock)`). That is a hard-rule-3
+ * violation — a shape css-grammar already defines, redefined downstream — so
+ * the repair was inheritance, not an owner ruling:
+ *
+ *  - scss inherits `AtRuleStatement` (two forks deleted) and overrides only
+ *    `StatementAtRuleName`/`StatementPrelude`;
+ *  - less stopped excluding `@keyframes`, its one BLOCK-only typed route, from
+ *    the generic statement name;
+ *  - jess moved its `@keyframes`/`@property` exclusion out of a dispatch branch
+ *    (whose failure is COMMITTED and aborted the statement list) into a
+ *    declining `not()`, and inherited the CSS prologue `LayerStatement`.
+ *
+ * The ninth entry went a different way. `@charset url(utf-8);` was css, less
+ * and scss over-accepting invalid CSS while jess alone behaved to spec, which
+ * inheritance cannot decide — so it took an owner ruling, and the ruling was
+ * that the spec wins: css narrowed the prelude to the single `<string>`
+ * css-syntax-3 §3.2 gives it, and less and scss inherited the narrowing.
+ *
+ * The targeted channel is therefore EMPTY. That is the pin: an entry appearing
+ * here is a NEW divergence, never a pre-existing one being recorded.
  */
 const DIRECTION_1_ALLOWLIST: readonly Allowed[] = [
-  // -- valid CSS that a superset refuses. These are defects in that superset. --
-  {
-    name: 'targeted:@layer statement then @import',
-    accepted: ['css', 'less', 'scss'],
-    validCss: true,
-    reason:
-      'css-cascade-5 §3 admits layer statements BEFORE @import, so `@layer base; @import "a.css";` '
-      + 'is valid CSS. jess refuses it. Defect in jess: its prologue does not admit @import after a '
-      + 'layer statement.'
-  },
-
-  // ---- css over-accepting invalid CSS. Needs an owner ruling, not a fix. ----
-  {
-    name: 'targeted:@charset with a url() prelude',
-    accepted: ['css', 'less', 'scss'],
-    validCss: false,
-    reason:
-      'css-syntax-3 §3.2 gives @charset a <string> prelude only, so `@charset url(utf-8);` is NOT '
-      + 'valid CSS. css/less/scss all accept it and jess refuses. OWNER RULING: three dialects are '
-      + 'over-permissive here and jess is the one behaving to spec — the ruling decides whether the '
-      + 'superset rule obliges jess to match the over-acceptance.'
-  },
-  {
-    name: 'targeted:@keyframes without a block',
-    accepted: ['css'],
-    validCss: false,
-    reason:
-      '`@keyframes a;` is not valid CSS (css-animations-1 §4 — @keyframes is a block at-rule). Only '
-      + 'css accepts it, via its permissive generic at-rule STATEMENT arm. All three supersets '
-      + 'refuse. OWNER RULING: this is css over-accepting, not three supersets under-accepting.'
-  },
-  {
-    name: 'targeted:@scope without a block',
-    accepted: ['css', 'less'],
-    validCss: false,
-    reason:
-      '`@scope (.a);` is not valid CSS (css-cascade-6 §3 — @scope is a block at-rule). css and less '
-      + 'accept via the permissive statement arm; scss and jess refuse. Same OWNER RULING as the '
-      + 'rest of the "without a block" family.'
-  },
-  {
-    name: 'targeted:@property without a block',
-    accepted: ['css', 'less'],
-    validCss: false,
-    reason:
-      '`@property --x;` is not valid CSS (css-properties-values-api-1 §2 — @property is a block '
-      + 'at-rule). css and less accept; scss and jess refuse. Same OWNER RULING.'
-  },
-  {
-    name: 'targeted:@font-face without a block',
-    accepted: ['css', 'less', 'jess'],
-    validCss: false,
-    reason:
-      '`@font-face;` is not valid CSS (css-fonts-4 §11). scss alone refuses — consistent with Sass+ '
-      + 'deliberately rejecting invalid CSS. Same OWNER RULING.'
-  },
-  {
-    name: 'targeted:@counter-style without a block',
-    accepted: ['css', 'less', 'jess'],
-    validCss: false,
-    reason:
-      '`@counter-style a;` is not valid CSS (css-counter-styles-3 §2). scss alone refuses. Same '
-      + 'OWNER RULING.'
-  },
-  {
-    name: 'targeted:@page without a block',
-    accepted: ['css', 'less', 'jess'],
-    validCss: false,
-    reason: '`@page;` is not valid CSS (css-page-3 §3). scss alone refuses. Same OWNER RULING.'
-  },
-  {
-    name: 'targeted:@starting-style without a block',
-    accepted: ['css', 'less', 'jess'],
-    validCss: false,
-    reason:
-      '`@starting-style;` is not valid CSS (css-transitions-2 §4). scss alone refuses. Same OWNER '
-      + 'RULING.'
-  },
-
   /* ------------------------------------------------------------- breadth
    * Whole real stylesheets. This channel names the FILE, not the construct:
    * a file is one row and one construct anywhere in it flips the verdict. The
