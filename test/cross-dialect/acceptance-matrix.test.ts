@@ -22,11 +22,13 @@
  *
  * `@charset` is the calibration case for that choice. less named its production
  * `CharsetStatement`, jess named it `Charset`, and **scss had no named
- * production at all** — it is one arm of a `@(?:charset|namespace|layer)` regex
- * (`packages/syntax/scss/scss-parser/src/grammar.ts:4478`). Any check that
- * diffs rule-name sets misses it in scss entirely, and misses every construct
- * hidden inside a shared regex arm. This gate only ever asks "did this input
- * parse", so spelling and structure are invisible to it.
+ * production at all** — it was one arm of a `@(?:charset|namespace|layer)`
+ * regex. Any check that diffs rule-name sets misses it in scss entirely, and
+ * misses every construct hidden inside a shared regex arm. This gate only ever
+ * asks "did this input parse", so spelling and structure are invisible to it.
+ * (scss now inherits the CSS `CharsetStatement`, which is what the `url()`
+ * prelude fix produced — but the gate had to be able to see the construct
+ * BEFORE that was true, which is the whole point.)
  *
  * The verdict itself comes from `test/dialects.ts`, which is why `ok` alone is
  * not trusted (parseman reports `ok` for a run that consumed nothing).
@@ -131,25 +133,16 @@ interface Allowed {
  *    (whose failure is COMMITTED and aborted the statement list) into a
  *    declining `not()`, and inherited the CSS prologue `LayerStatement`.
  *
- * The one entry left is `css` over-accepting invalid CSS where the refusing
- * dialect is the one behaving to spec, which is an owner ruling and not
- * something inheritance can decide.
+ * The ninth entry went a different way. `@charset url(utf-8);` was css, less
+ * and scss over-accepting invalid CSS while jess alone behaved to spec, which
+ * inheritance cannot decide — so it took an owner ruling, and the ruling was
+ * that the spec wins: css narrowed the prelude to the single `<string>`
+ * css-syntax-3 §3.2 gives it, and less and scss inherited the narrowing.
+ *
+ * The targeted channel is therefore EMPTY. That is the pin: an entry appearing
+ * here is a NEW divergence, never a pre-existing one being recorded.
  */
 const DIRECTION_1_ALLOWLIST: readonly Allowed[] = [
-  // ---- css over-accepting invalid CSS. Needs an owner ruling, not a fix. ----
-  {
-    name: 'targeted:@charset with a url() prelude',
-    accepted: ['css', 'less', 'scss'],
-    validCss: false,
-    reason:
-      'css-syntax-3 §3.2 gives @charset a <string> prelude only, so `@charset url(utf-8);` is NOT '
-      + 'valid CSS. css/less/scss all accept it and jess refuses. OWNER RULING: three dialects are '
-      + 'over-permissive here and jess is the one behaving to spec — the ruling decides whether the '
-      + 'superset rule obliges jess to match the over-acceptance. Deliberately NOT closed by the '
-      + 'inheritance sweep that removed the rest of this family: jess would have had to start '
-      + 'accepting invalid CSS, which is the owner\'s call and not an agent\'s.'
-  },
-
   /* ------------------------------------------------------------- breadth
    * Whole real stylesheets. This channel names the FILE, not the construct:
    * a file is one row and one construct anywhere in it flips the verdict. The

@@ -246,6 +246,21 @@ type ScssSharedSyntax = {
    * spelling, which is why `@font-face;` parsed in CSS and not here.
    */
   AtRuleStatement: Combinator<AtRuleStatement>;
+
+  /*
+   * Inherited verbatim from the CSS base, with no local override at all.
+   * css-syntax-3 §3.2 fixes the `@charset` prelude to a single `<string>` and
+   * SCSS has no delta on that shape: the CSS rule reads the string through
+   * `AtRulePreludeQuoted`, which SCSS already overrides, and that override
+   * reserves `#{` — so `@charset "#{$x}";` stays refused here exactly as it was,
+   * under the same rule that holds every dynamic header back.
+   *
+   * Before the two forks above were deleted, SCSS folded `@charset` into the
+   * `@(?:charset|namespace|layer)` arm of its own `AtRuleStatement`, whose
+   * prelude is arbitrary bytes — so `@charset url(utf-8);` parsed here and not
+   * in a parser that implements the spec.
+   */
+  CharsetStatement: Combinator<AtRuleStatement>;
 };
 
 type ScssInputRules =
@@ -4843,6 +4858,7 @@ const scssFactory = (g: ScssInputRules) => {
       many(choice(
         g.Comment,
         g.ImportStatement,
+        g.CharsetStatement,
         g.AtRuleStatement,
         g.VariableDeclaration,
         g.SassDirective,

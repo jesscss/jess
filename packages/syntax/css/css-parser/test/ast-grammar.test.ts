@@ -1390,7 +1390,7 @@ describe('CSS canonical-AST grammar', () => {
       @STARTING-STYLE legacy header { .start { color: red; } }
       @SCOPE { color: red; .scoped { color: blue; } }
       @KEYFRAMES fade alternate { from { opacity: 0; } }
-      @CHARSET custom (encoding);
+      @CHARSET "custom-encoding";
       @namespace svg /* keep */ url("https://example.test/ns");
     `;
     const cst = parseCssCst(source);
@@ -1401,7 +1401,7 @@ describe('CSS canonical-AST grammar', () => {
       { type: 'AtRuleBlock', name: '@STARTING-STYLE', prelude: { type: 'Any', src: 'legacy header' }, rules: [{ type: 'Ruleset' }] },
       { type: 'AtRuleBlock', name: '@SCOPE', prelude: null, rules: [{ type: 'Declaration' }, { type: 'Ruleset' }] },
       { type: 'AtRuleBlock', name: '@KEYFRAMES', prelude: { type: 'Any', src: 'fade alternate' }, rules: [{ type: 'Ruleset' }] },
-      { type: 'AtRuleStatement', name: '@CHARSET', prelude: { type: 'Any', src: 'custom (encoding)' } },
+      { type: 'AtRuleStatement', name: '@CHARSET', prelude: { type: 'Any', src: '"custom-encoding"' } },
       { type: 'AtRuleStatement', name: '@namespace', prelude: { type: 'Any', src: 'svg url("https://example.test/ns")' } }
     ]);
   });
@@ -1435,6 +1435,50 @@ describe('CSS canonical-AST grammar', () => {
       expect(cst.errors).toHaveLength(0);
       expect(cst.unconsumedFrom).toBeNull();
       expect(parseAst(source).rules[0]).toMatchObject(expected);
+    }
+  });
+
+  /*
+   * css-syntax-3 §3.2 gives `@charset` a `<string>` prelude and nothing else, so
+   * `@charset url(utf-8);` is not valid CSS — it used to parse here through the
+   * permissive generic statement prelude, and did so in EVERY position, which is
+   * why the body-position and nested cases are pinned alongside the prologue.
+   *
+   * The refusal is deliberately a recorded error rather than an unconsumed span:
+   * a plain failure is out-competed by the sibling opaque-block arm, which scans
+   * further before it fails, so the expectation never reaches the author.
+   */
+  it('refuses an @charset prelude that is not a quoted string, and says so', () => {
+    for (const source of [
+      '@charset url(utf-8);',
+      '@charset utf-8;',
+      '@charset;',
+      '@charset "utf-8" trailing;',
+      '.a { color: red }\n@charset url(utf-8);',
+      '.a { @charset url(utf-8); }'
+    ]) {
+      /* The public entry, not `parseAst`: a RECORDED refusal is what the
+       * grammar produces here, and only `parse()` reads `result.errors`. */
+      expect(() => parse(source), source).toThrow(
+        'An @charset prelude must be a quoted string, as in @charset "utf-8";.'
+      );
+    }
+  });
+
+  it('still reads every well-formed @charset prelude, in each position', () => {
+    for (const [source, index] of [
+      ['@charset "utf-8";', 0],
+      ['@charset /* keep */ "utf-8";', 0],
+      ['@charset \'utf-8\'  ;', 0],
+      ['.a { color: red }\n@CHARSET "utf-8";', 1]
+    ] as const) {
+      const cst = parseCssCst(source);
+      expect(cst.errors, source).toHaveLength(0);
+      expect(cst.unconsumedFrom, source).toBeNull();
+      expect(parseAst(source).rules[index], source).toMatchObject({
+        type: 'AtRuleStatement',
+        prelude: { type: 'Any' }
+      });
     }
   });
 
