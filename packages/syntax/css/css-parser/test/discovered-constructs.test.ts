@@ -266,3 +266,130 @@ describe('top-level nesting selector (P30)', () => {
     expect(failure.message).toBe('Unexpected CSS syntax.');
   });
 });
+
+/*
+ * The value slash is a SEPARATOR with its own rung in the value hierarchy —
+ * comma is loosest, then slash, then whitespace (DESIGN-DECISIONS P33, owner
+ * 2026-09-23: "it's a separator. That means it has a similar hierarchy to
+ * space-separated items and comma-separated items").
+ *
+ * The point of these cases is that the leading-slash rejection is EMERGENT, not
+ * checked. There is no first-position guard anywhere: a leading `/` fails for
+ * the same reason a leading `,` fails, and the `,` case below is the control
+ * proving the two are the same failure, at the same offset, with the same
+ * message. If a future change reaches this rejection by adding a
+ * "may not begin with" predicate, these tests still pass but the model is
+ * wrong — the paired `,` assertion is what pins the mechanism.
+ */
+describe('the value slash is a separator rung (P33)', () => {
+  it.each([
+    ['bare ident', 'a { p: /img }'],
+    ['bare number', 'a { p: /1 }'],
+    ['spaced from its operand', 'a { p: / 1 }']
+  ])('rejects a value with no left operand for the slash (%s)', (_label, source) => {
+    const failure = failureOf(source);
+    expect(failure.message).toBe('Unexpected CSS syntax. Expected valid CSS syntax here.');
+    expect(failure.offset).toBe(4);
+  });
+
+  /*
+   * The control. A leading `,` already failed this way before the slash rung
+   * existed, and a leading `/` now fails identically — same offset, same
+   * message — because both are separators with nothing on their left.
+   */
+  it.each([
+    ['comma', 'a { p: ,img }'],
+    ['slash', 'a { p: /img }']
+  ])('fails a leading separator the same way (%s)', (_label, source) => {
+    const failure = failureOf(source);
+    expect(failure.message).toBe('Unexpected CSS syntax. Expected valid CSS syntax here.');
+    expect(failure.offset).toBe(4);
+  });
+
+  it('separates two space groups, keeping each group whole', () => {
+    expect(parse('a { border-radius: 1px 2px / 3px 4px }').rules[0]).toMatchObject({
+      rules: [{
+        type: 'Declaration',
+        name: 'border-radius',
+        value: {
+          type: 'List',
+          sep: '/',
+          value: [
+            [{ type: 'Dimension', src: '1px' }, { type: 'Dimension', src: '2px' }],
+            [{ type: 'Dimension', src: '3px' }, { type: 'Dimension', src: '4px' }]
+          ]
+        }
+      }]
+    });
+  });
+
+  it('puts the comma ABOVE the slash, not below it', () => {
+    expect(parse('a { background: a, 1px / 2px }').rules[0]).toMatchObject({
+      rules: [{
+        type: 'Declaration',
+        name: 'background',
+        value: {
+          type: 'List',
+          sep: ',',
+          value: [
+            { type: 'Keyword', src: 'a' },
+            { type: 'List', sep: '/', value: [{ type: 'Dimension', src: '1px' }, { type: 'Dimension', src: '2px' }] }
+          ]
+        }
+      }]
+    });
+  });
+
+  it.each([
+    ['unspaced', 'a { aspect-ratio: 16/9 }'],
+    ['spaced', 'a { aspect-ratio: 16 / 9 }']
+  ])('reads the same structure whether or not the slash is spaced (%s)', (_label, source) => {
+    expect(parse(source).rules[0]).toMatchObject({
+      rules: [{
+        type: 'Declaration',
+        name: 'aspect-ratio',
+        value: { type: 'List', sep: '/', value: [{ type: 'Dimension', src: '16' }, { type: 'Dimension', src: '9' }] }
+      }]
+    });
+  });
+
+  it('chains more than two groups at one slash rung', () => {
+    expect(parse('a { grid-area: 1 / 2 / 3 / 4 }').rules[0]).toMatchObject({
+      rules: [{
+        type: 'Declaration',
+        name: 'grid-area',
+        value: { type: 'List', sep: '/', value: [{ src: '1' }, { src: '2' }, { src: '3' }, { src: '4' }] }
+      }]
+    });
+  });
+
+  /*
+   * A custom property and a `var()` fallback are `<declaration-value>`
+   * (css-variables-1 §2): any token sequence, so a leading slash is VALID CSS
+   * there and must stay valid. These run through `CustomPropertyValue` and
+   * `VarFallbackPunctuation`, which keep their own permissive punctuation run —
+   * the slash rung does not reach them.
+   */
+  it.each([
+    ['custom property', 'a { --v: /img }'],
+    ['var() fallback', 'a { p: var(--x, /img) }']
+  ])('keeps a leading slash valid where <declaration-value> allows it (%s)', (_label, source) => {
+    expect(() => parse(source), source).not.toThrow();
+  });
+
+  /*
+   * Controls: constructs that contain a `/` but are not the value separator, and
+   * must be untouched by the rung.
+   */
+  it.each([
+    ['absolute url path', 'a { background: url(/a.png) no-repeat }'],
+    ['protocol-relative url', 'a { p: url(//cdn/x.png) }'],
+    ['modern colour alpha component', 'a { p: rgb(15 23 42 / .22) }'],
+    ['calc division stays arithmetic', 'a { p: calc(4/2) }'],
+    ['An+B is not a value', 'a:nth-child(2n+1) { c: d }'],
+    ['font shorthand', 'a { font: 12px/1.5 Arial }'],
+    ['leading-dot number', 'a { p: .5px }']
+  ])('leaves a non-separator slash alone (%s)', (_label, source) => {
+    expect(() => parse(source), source).not.toThrow();
+  });
+});

@@ -654,6 +654,50 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
     group: 'value',
     source: 'a { font: 12px/1.5 serif } b { grid-area: 1 / 2 / 3 / 4 }'
   },
+
+  /*
+   * The slash is a separator level BELOW the comma and ABOVE whitespace
+   * (DESIGN-DECISIONS P33). `border-radius` is what fixes that order — the
+   * slash separates two space groups — and the comma case fixes comma above it.
+   */
+  {
+    id: 'slash separating two space groups',
+    group: 'value',
+    source: 'a { border-radius: 1px 2px / 3px 4px }'
+  },
+  {
+    id: 'slash nested inside a comma list',
+    group: 'value',
+    source: 'a { background: a, 1px / 2px }'
+  },
+  {
+    id: 'modern colour alpha slash component',
+    group: 'value',
+    source: 'a { color: rgb(15 23 42 / .22) }'
+  },
+
+  /*
+   * css-variables-1 §2 makes `<declaration-value>` any token sequence, so a
+   * punctuation-led value is VALID CSS in a custom property and in a `var()`
+   * fallback even though it is rejected in an ordinary declaration (P33).
+   */
+  {
+    id: 'punctuation-led custom property value',
+    group: 'value',
+    source: 'a { --v: /img }'
+  },
+  {
+    id: 'punctuation-led var() fallback',
+    group: 'value',
+    source: 'a { color: var(--x, /img) }',
+    brokenIn: ['less', 'scss', 'jess'],
+    defect:
+      'css-variables-1 §2 defines a `var()` fallback as `<declaration-value>` — '
+      + 'any token sequence — so a leading slash is valid there, and css accepts '
+      + 'it. The three supersets reject it at the slash offset: their fallback '
+      + 'component does not admit a punctuation-led run. P33 requires all four '
+      + 'to accept it, so this is a superset defect, not a dialect difference.'
+  },
   {
     id: '!important with interior whitespace',
     group: 'value',
