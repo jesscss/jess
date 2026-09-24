@@ -1786,7 +1786,8 @@ const cssFactory = (g: GrammarSelf) => {
    * than referencing it — a mutually recursive, AST-reducing family cannot be
    * shared through `@jesscss/parser-shared`, whose artifacts are `g.`-free by
    * contract. A change to the shape or accept set here must be mirrored there.
-   * Less and SCSS express the same ladder as `MathProduct`/`MathSum`.
+   * SCSS expresses the same ladder as `MathProduct`/`MathSum`; Less as one
+   * flat `MathSum` run its consumer folds.
    */
   /*
    * `UnicodeRange` is here so this rung is a SUPERSET of the ordinary typed

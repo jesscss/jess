@@ -20,7 +20,7 @@
  */
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
-import { any, callArg, condition, dimension, expression, funcCall, ifNode, ifValue, important, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, quoted, reference, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, semanticGapText, simpleSelector, sourceSpanOf, spaced, valueLayoutOf, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { any, callArg, condition, dimension, expression, funcCall, ifNode, ifValue, important, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, quoted, reference, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, semanticGapText, simpleSelector, sourceSpanOf, spaced, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorCapture, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { requireLessParseState } from './parse-state.js';
 import { LessUnsupportedVariableNameError } from './parse-error.js';
@@ -93,7 +93,6 @@ type FunctionConditionFact = {
   readonly bare?: ValueNode;
 };
 type UnsupportedVariableNameFact = { readonly unsupportedVariableName: string };
-type SlashBoundaryFact = { readonly before: string; readonly after: string };
 function requireToken(value: unknown): Token {
   if (typeof value !== 'object' || value === null || !('value' in value) || typeof value.value !== 'string') {
     throw new TypeError('Less grammar produced a non-token child.');
@@ -257,13 +256,9 @@ function staticText(value: unknown): string {
   }
   // Parseman may retain a terminal capture as its token object when a
   // boundary is wrapped in `field(...)`.  It is still grammar-owned static
-  // text; accepting it here avoids treating authored whitespace around a
-  // preserved Less slash as a dynamic import fragment.
+  // text, not a dynamic import fragment.
   if (typeof value === 'object' && value !== null && 'value' in value && typeof value.value === 'string') {
     return value.value;
-  }
-  if (isSlashBoundaryFact(value)) {
-    return value.before + '/' + value.after;
   }
   if (Array.isArray(value)) {
     return value.map(staticText).join('');
@@ -595,12 +590,6 @@ function isInterpolationFact(value: unknown): value is InterpolationFact {
     && 'src' in value && typeof value.src === 'string';
 }
 
-function isSlashBoundaryFact(value: unknown): value is SlashBoundaryFact {
-  return typeof value === 'object' && value !== null
-    && 'before' in value && typeof value.before === 'string'
-    && 'after' in value && typeof value.after === 'string';
-}
-
 function requireInterpolationFact(value: unknown): InterpolationFact {
   if (!isInterpolationFact(value)) {
     throw new TypeError('Less grammar produced an invalid interpolation fact.');
@@ -657,36 +646,6 @@ function sourceFromState(state: unknown): string | undefined {
  * reads the node. It is deliberately NOT handed to eval as a mode: a dialect
  * difference is carried by what the lowered node says.
  */
-/**
- * Restate one operand of a PRESERVED slash group as arithmetic that does not
- * happen on its own.
- *
- * When the math policy keeps an authored top-level `/` as a slash rather than a
- * division, the whole group is authored bytes — so a neighbouring `+` inside it
- * must not fold either, or `4 / 2 + 5em` prints `4 / 7em`. That suppression
- * used to live at eval, where `serialize.ts` re-entered the slot with
- * `mathMode` forced to `'strict'`; it belongs here, because the shape that
- * causes it is one the GRAMMAR recognised (§12.6b).
- *
- * Only the operation spine is restated. A parenthesized operand is a `Block`,
- * not an `Operation`, and keeps its own math context — which is exactly why
- * `(4px / 2) + 1px` still folds inside the parens.
- */
-function withoutBareMath(node: ValueNode): ValueNode {
-  if (node.type !== 'Operation' || !node.mathOutsideParens) {
-    return node;
-  }
-  const restated = operation(
-    node.operator,
-    withoutBareMath(node.left),
-    withoutBareMath(node.right),
-    node.inMathFunction,
-    false
-  );
-  const span = sourceSpanOf(node);
-  return span === undefined ? restated : withSourceSpan(restated, span);
-}
-
 function lessMathOutsideParens(state: unknown, operator: string): boolean {
   const { mathMode } = requireLessParseState(state);
   if (mathMode === 'always') {
@@ -903,8 +862,8 @@ function valuePieceReducerWithTrivia(
   state: unknown
 ): ValueSlot {
   const values = children
-    .filter(child => isValueNode(child) || isLessTerminalText(child, '/') || isLessTerminalText(child, '-') || isLessTerminalText(child, '%'))
-    .map(child => isLessTerminalText(child, '/') || isLessTerminalText(child, '-') || isLessTerminalText(child, '%')
+    .filter(child => isValueNode(child) || isLessTerminalText(child, '-') || isLessTerminalText(child, '%'))
+    .map(child => isLessTerminalText(child, '-') || isLessTerminalText(child, '%')
       ? keyword(requireTerminalText(child))
       : requireValueNode(child));
   if (values.length === 1) {
@@ -915,7 +874,7 @@ function valuePieceReducerWithTrivia(
   let previousValue = -1;
   for (let index = 0; index < children.length; index += 1) {
     const child = children[index];
-    if (!(isValueNode(child) || isLessTerminalText(child, '/') || isLessTerminalText(child, '-') || isLessTerminalText(child, '%'))) {
+    if (!(isValueNode(child) || isLessTerminalText(child, '-') || isLessTerminalText(child, '%'))) {
       continue;
     }
     if (previousValue >= 0) {
@@ -1132,10 +1091,7 @@ function isValueNode(value: unknown): value is ValueNode {
 }
 
 function lessValueSlot(value: ValueSlot): ValueSlot {
-  // Ordinary adjacent terms are raw recursive ValueSlot arrays.  The
-  // variable-declaration reducer uses `variableValueSlot` below for the one
-  // Less-specific boundary where a preserved slash must remain available to
-  // later math-mode evaluation; declaration/value positions stay raw arrays.
+  // Ordinary adjacent terms are raw recursive ValueSlot arrays.
   if (Array.isArray(value)) {
     return value;
   }
@@ -1153,40 +1109,7 @@ function isSequence(value: ValueSlot): value is Extract<ValueNode, { type: 'Sequ
 }
 
 function variableValueSlot(value: unknown): ValueSlot {
-  const slot: ValueSlot = Array.isArray(value) ? value as ValueSlot : requireValueNode(value);
-  if (Array.isArray(slot)) {
-    // A variable-held slash with authored whitespace is one preserved Less
-    // arithmetic value.  Keep ordinary adjacent values as the raw recursive
-    // array, but retain this semantic boundary so a later operation does not
-    // mistake `10px / 2` for a numeric operand and invent `calc(...)`.  Glued
-    // slash values remain raw arrays for the existing Less structural shape.
-    const layout = valueLayoutOf(slot);
-    const hasSlash = slot.some(part =>
-      isValueNode(part) && (part.type === 'Keyword' || part.type === 'Any') && part.src.trim() === '/');
-    if (hasSlash && layout?.some(separator => separator.length > 0)) {
-      const parts: ValueNode[] = [];
-      for (const part of slot) {
-        if (!isValueNode(part)) {
-          return slot;
-        }
-        parts.push(part);
-      }
-      return withValueLayout(spaced(parts), layout);
-    }
-    return slot;
-  }
-  if (isSequence(slot)) {
-    const preservedDivision = slot.parts.some(part =>
-      (part.type === 'Keyword' || part.type === 'Any') && part.src.trim() === '/');
-    const authoredBoundary = valueLayoutOf(slot)?.some(separator => separator.length > 0) === true;
-    return preservedDivision && authoredBoundary ? slot : slot.parts;
-  }
-  if (isValueNode(slot) && slot.type === 'Block' && isSequence(slot.value)) {
-    const preservedDivision = slot.value.parts.some(part =>
-      (part.type === 'Keyword' || part.type === 'Any') && part.src.trim() === '/');
-    return preservedDivision ? slot : { ...slot, value: slot.value.parts };
-  }
-  return slot;
+  return lessValueSlot(Array.isArray(value) ? value as ValueSlot : requireValueNode(value));
 }
 
 function isLessValueSlotValue(value: unknown): value is ValueSlot {
@@ -2012,47 +1935,152 @@ function requireValueBlockBody(children: readonly unknown[]): Statement[] {
   return requireCallbackStatements(children.slice(bodyStart + 1, bodyEnd));
 }
 
-/** Fold a grammar-produced flat binary chain left-to-right.  Precedence is
- * represented by which production supplies each operand; no source text is
- * recovered or re-parsed here.  Each folded pair records whether Less's
- * configured `math:` policy computes it with no enclosing math context, so the
- * evaluator never reads that policy from ambient config (§12.6b). */
-function lessFoldOperation(
+/**
+ * One Less arithmetic run exactly as `MathSum` recognised it — its operands and
+ * the operators between them, not yet folded. `MathSum` is the ONE rule that
+ * parses every Less math operator, the division slash included (ledger P34);
+ * what it does not know is the context it sits in, and the context decides the
+ * shape: inside a math group or `calc(…)` a slash divides at product
+ * precedence, while in a plain value the configured `math:` policy decides
+ * whether it divides at all (P1). So the run is handed to its consumer, which
+ * folds it ONCE with the rule for its own position — never folded and then
+ * re-associated.
+ */
+interface LessMathRun {
+  readonly kind: 'less-math-run';
+  readonly operands: readonly ValueNode[];
+  readonly operators: readonly string[];
+  readonly spans: ReadonlyArray<SourceSpan | undefined>;
+}
+
+function isLessMathRun(value: unknown): value is LessMathRun {
+  return typeof value === 'object' && value !== null && 'kind' in value && value.kind === 'less-math-run';
+}
+
+/** `MathSum`'s reduction: its only operand, or the unfolded run. */
+function lessMathRun(
   children: readonly unknown[],
   _fields: FieldMap | undefined,
   _span: Span,
-  rawChildren: readonly unknown[],
-  _triviaLog: readonly number[],
-  state: unknown
-): ValueNode {
-  const first = children.find(isValueNode);
-  if (first === undefined) {
-    throw new TypeError('Less arithmetic grammar produced no operand.');
+  rawChildren: readonly unknown[]
+): ValueNode | LessMathRun {
+  if (children.length === 1) {
+    return requireValueNode(children[0]);
   }
-  const firstIndex = children.indexOf(first);
-  const firstRaw = rawChildren[firstIndex];
-  // In AST mode Parseman supplies the original spanned children here. That
-  // gives each folded operation its authored range without retaining one span
-  // per standalone dimension. A synthetic child can still contribute an
-  // existing provenance fact when it has one.
-  const firstSpan = isSpannedToken(firstRaw) ? firstRaw.span : sourceSpanOf(first);
-  let result = first;
-  const start = firstSpan?.start;
-  for (let index = children.indexOf(first) + 1; index < children.length; index += 2) {
-    const operatorToken = children[index];
-    const right = children[index + 1];
-    if (operatorToken === undefined || !isValueNode(right)) {
-      throw new TypeError('Less arithmetic grammar lost an operator operand.');
+  const operands: ValueNode[] = [];
+  const operators: string[] = [];
+  const spans: Array<SourceSpan | undefined> = [];
+  for (let index = 0; index < children.length; index += 1) {
+    const child = children[index];
+    if (index % 2 === 1) {
+      operators.push(requireTerminalText(child).trim());
+      continue;
     }
-    const rightRaw = rawChildren[index + 1];
-    const rightSpan = isSpannedToken(rightRaw) ? rightRaw.span : sourceSpanOf(right);
-    const operator = requireTerminalText(operatorToken).trim();
-    const folded = operation(operator, result, right, false, lessMathOutsideParens(state, operator));
-    result = start === undefined || rightSpan === undefined
-      ? folded
-      : withSourceSpan(folded, { start, end: rightSpan.end });
+    const operand = requireValueNode(child);
+    const raw = rawChildren[index];
+    // In AST mode Parseman supplies the original spanned children here, which
+    // gives each folded operation its authored range without retaining one span
+    // per standalone dimension.
+    operands.push(operand);
+    spans.push(isSpannedToken(raw) ? raw.span : sourceSpanOf(operand));
   }
-  return result;
+  return { kind: 'less-math-run', operands, operators, spans };
+}
+
+/** The `MathSum` child of a production that wraps one math run. */
+function requireMathSum(children: readonly unknown[]): ValueNode | LessMathRun {
+  for (const child of children) {
+    if (isValueNode(child) || isLessMathRun(child)) {
+      return child;
+    }
+  }
+  throw new TypeError('Less math production lost its operand.');
+}
+
+const LESS_PRODUCT_OPERATORS: ReadonlySet<string> = new Set(['*', '/', '%']);
+const LESS_SUM_OPERATORS: ReadonlySet<string> = new Set(['+', '-']);
+
+/**
+ * Fold `operands[from..to]` left-associatively, product before sum. Each folded
+ * pair records whether Less's configured `math:` policy computes it with no
+ * enclosing math context, so the evaluator never reads that policy from ambient
+ * config (§12.6b).
+ */
+function foldLessMath(run: LessMathRun, from: number, to: number, state: unknown): ValueNode {
+  let operands: ValueNode[] = run.operands.slice(from, to + 1);
+  let spans: Array<SourceSpan | undefined> = run.spans.slice(from, to + 1);
+  let operators: string[] = run.operators.slice(from, to);
+  for (const tier of [LESS_PRODUCT_OPERATORS, LESS_SUM_OPERATORS]) {
+    const nextOperands: ValueNode[] = [operands[0]!];
+    const nextSpans: Array<SourceSpan | undefined> = [spans[0]];
+    const nextOperators: string[] = [];
+    for (let index = 0; index < operators.length; index += 1) {
+      const operator = operators[index]!;
+      if (!tier.has(operator)) {
+        nextOperators.push(operator);
+        nextOperands.push(operands[index + 1]!);
+        nextSpans.push(spans[index + 1]);
+        continue;
+      }
+      const left = nextOperands.pop()!;
+      const leftSpan = nextSpans.pop();
+      const rightSpan = spans[index + 1];
+      const folded = operation(operator, left, operands[index + 1]!, false, lessMathOutsideParens(state, operator));
+      const span = leftSpan === undefined || rightSpan === undefined
+        ? undefined
+        : { start: leftSpan.start, end: rightSpan.end };
+      nextOperands.push(span === undefined ? folded : withSourceSpan(folded, span));
+      nextSpans.push(span);
+    }
+    operands = nextOperands;
+    spans = nextSpans;
+    operators = nextOperators;
+  }
+  return operands[0]!;
+}
+
+/**
+ * A run inside a math context — a parenthesized group or `calc(…)`. Every
+ * operator is arithmetic there, the slash included, so the run folds with plain
+ * product-before-sum precedence.
+ */
+function lessMathInGroup(value: ValueNode | LessMathRun, state: unknown): ValueNode {
+  return isLessMathRun(value) ? foldLessMath(value, 0, value.operands.length - 1, state) : value;
+}
+
+/**
+ * A run in a plain value position. The math policy picks the SHAPE of the slash
+ * the run already parsed (P1/P34), without re-parsing anything:
+ *
+ * - where the policy divides a bare slash (`math: always`), the slash is a
+ *   division at product precedence like every other operator;
+ * - where it does not, the slash is the value's separator and binds LOOSEST —
+ *   everything on each side of it is that side's own math (P35), so
+ *   `4 / 2 + 5em` is `4` and `2 + 5em`, and the result is the slash-separated
+ *   `List` css/scss/jess build for the same bytes.
+ */
+function lessMathInValue(value: ValueNode | LessMathRun, state: unknown): ValueNode {
+  if (!isLessMathRun(value)) {
+    return value;
+  }
+  const last = value.operands.length - 1;
+  if (lessMathOutsideParens(state, '/')) {
+    return foldLessMath(value, 0, last, state);
+  }
+  let sides: ValueNode[] | undefined;
+  let from = 0;
+  for (let index = 0; index < value.operators.length; index += 1) {
+    if (value.operators[index] === '/') {
+      (sides ??= []).push(foldLessMath(value, from, index, state));
+      from = index + 1;
+    }
+  }
+  const tail = foldLessMath(value, from, last, state);
+  if (sides === undefined) {
+    return tail;
+  }
+  sides.push(tail);
+  return list(sides, '/');
 }
 
 export {
@@ -2072,7 +2100,11 @@ export {
   enclosedInterpolationFromChildren,
   foldFunctionCondition,
   foldMixinGuards,
-  lessFoldOperation,
+  isLessMathRun,
+  lessMathInGroup,
+  lessMathInValue,
+  lessMathRun,
+  requireMathSum,
   functionCallFromChildren,
   functionConditionSource,
   functionNameFromOpener,
@@ -2131,7 +2163,6 @@ export {
   isSequence,
   isSimpleSelector,
   isLessSimpleToken,
-  isSlashBoundaryFact,
   isStatement,
   isStyleImport,
   isLessTerminalText,
@@ -2212,8 +2243,7 @@ export {
   lessValueSlot,
   variableNameTerminalText,
   variableNameText,
-  variableValueSlot,
-  withoutBareMath
+  variableValueSlot
 };
 
 export type {
@@ -2247,7 +2277,7 @@ export type {
   RulesetTailFact,
   SelectorBranchFact,
   SelectorListWithExtendsFact,
-  SlashBoundaryFact,
+  LessMathRun,
   UnsupportedVariableNameFact,
   VarRef
 };

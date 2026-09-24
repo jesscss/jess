@@ -2350,11 +2350,14 @@ describe('public Less parse()', () => {
             {
               type: 'Declaration',
               name: 'ratio',
-              value: [
-                { type: 'Dimension', src: '12px' },
-                { type: 'Keyword', src: '/' },
-                { type: 'Dimension', src: '1.5' }
-              ]
+              value: {
+                type: 'List',
+                sep: '/',
+                value: [
+                  { type: 'Dimension', src: '12px' },
+                  { type: 'Dimension', src: '1.5' }
+                ]
+              }
             },
             {
               type: 'Declaration',

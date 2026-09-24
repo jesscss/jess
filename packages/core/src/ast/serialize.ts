@@ -3793,29 +3793,6 @@ function evalValueSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybeP
     return evalValue(slot, frame, e);
   }
 
-  /*
-   * Less `math: 0` treats an authored top-level slash as arithmetic even when
-   * the parser retained it as an adjacent ValueSlot array.  Promote only the
-   * narrow, grammar-owned arithmetic shape here; ordinary space/slash values
-   * (font shorthands, lists, nested groups) continue through the layout join
-   * below.  The authored AST is immutable and no source bytes are inspected.
-   */
-  const promoted = promoteBareSlashValue(slot, e);
-  if (promoted !== null) {
-    return evalValue(promoted, frame, e);
-  }
-
-  /*
-   * A slash at this authored boundary keeps the whole scalar expression
-   * authored — a neighbouring `+`/`-` must not eagerly reduce before the
-   * preserved slash is emitted, or `4 / 2 + 5em` prints `4 / 7em`.
-   *
-   * That used to be done HERE, by re-entering the slot with `mathMode` forced
-   * to `'strict'`. It is now a parse fact: the Less grammar recognised the
-   * preserved slash group (`PreservedDivision`) and restated its operands as
-   * arithmetic that does not happen on its own (§12.6b). The operands say so
-   * themselves, so this walk needs no context of its own.
-   */
   const values = slot.map(value => evalValueSlot(value, frame, e));
   return combineAll(values, (resolved) => {
     const separators = valueLayoutOf(slot);
@@ -3849,175 +3826,6 @@ function evalValueSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybeP
   });
 }
 
-type BareSlashToken =
-  | { readonly kind: 'operand'; readonly node: ValueNode }
-  | { readonly kind: 'operator'; readonly operator: '+' | '-' | '*' | '/' | '%' };
-
-type BareSlashOperator = '+' | '-' | '*' | '/' | '%';
-
-const BARE_SLASH_OPERATORS = new Set(['+', '-', '*', '/', '%']);
-const BARE_SLASH_MULTIPLICATIVE = new Set<BareSlashOperator>(['*', '/', '%']);
-const BARE_SLASH_ADDITIVE = new Set<BareSlashOperator>(['+', '-']);
-
-function isBareSlashOperator(operator: string): operator is BareSlashOperator {
-  switch (operator) {
-    case '+':
-    case '-':
-    case '*':
-    case '/':
-    case '%':
-      return true;
-    default:
-      return false;
-  }
-}
-
-function isBareSlash(node: ValueNode): boolean {
-  return (node.type === 'Any' || node.type === 'Keyword') && node.src === '/';
-}
-
-function hasTopLevelBareSlash(slot: readonly ValueSlot[]): boolean {
-  for (const part of slot) {
-    if (!isValueSlotArray(part) && isBareSlash(part)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Flatten one existing arithmetic spine into infix tokens.  This deliberately
- * accepts only numeric/color leaves: variable references, calls, blocks, lists,
- * and authored space groups must retain their existing value semantics instead
- * of being guessed at by a broad declaration-value walk.
- *
- * A named-color `Keyword` (`red`) is a colour operand here too (NamedColor→Keyword
- * convergence): it is the same math operand a hex `Color` is, so `red / 2` folds
- * under `math: always` exactly like `#ff0000 / 2` (lessc 4.x). The fold itself is
- * performed downstream by `operate()` when the promoted `Operation` is evaluated —
- * this gate only lets the leaf through; `foo` (not a colour) is rejected here and
- * the slot stays an authored slash list.
- */
-function appendBareSlashTokens(node: ValueNode, tokens: BareSlashToken[]): boolean {
-  if (
-    node.type === 'Dimension'
-    || node.type === 'Color'
-    || (node.type === 'Keyword' && namedColor(node.src) !== undefined)
-  ) {
-    tokens.push({ kind: 'operand', node });
-    return true;
-  }
-  if (node.type !== 'Operation' || !isBareSlashOperator(node.operator)) {
-    return false;
-  }
-  if (!appendBareSlashTokens(node.left, tokens)) {
-    return false;
-  }
-  tokens.push({ kind: 'operator', operator: node.operator });
-  return appendBareSlashTokens(node.right, tokens);
-}
-
-/** Reduce one precedence tier over an already validated infix token stream. */
-function reduceBareSlashTier(
-  values: ValueNode[],
-  operators: Array<'+' | '-' | '*' | '/' | '%'>,
-  tier: ReadonlySet<string>
-): { values: ValueNode[]; operators: Array<'+' | '-' | '*' | '/' | '%'> } {
-  const nextValues: ValueNode[] = [values[0]!];
-  const nextOperators: Array<'+' | '-' | '*' | '/' | '%'> = [];
-  for (let i = 0; i < operators.length; i++) {
-    const operator = operators[i]!;
-    const right = values[i + 1]!;
-    if (tier.has(operator)) {
-      const left = nextValues.pop()!;
-
-      /*
-       * `mathOutsideParens: true` on every rung, `/` included. This tree is
-       * only ever built because the math policy is `always` (see
-       * `promoteBareSlashValue`, the sole caller), and `always` is exactly the
-       * answer "every operator computes with no enclosing math context". The
-       * factory's CSS-base default would say `false` for `/` and strand the
-       * division this promotion exists to perform.
-       *
-       * [TODO §12.6b step 1, remainder] Building an Operation HERE, at eval,
-       * from a slot the grammar left as a flat slash list, is the same defect
-       * §12.6b names: the Less grammar hardcodes `parens-division`
-       * (`TopProduct`/`TopSum` exclude `/`, and `PreservedDivision` exists) and
-       * so never builds this node even when the policy is `always`. Now that
-       * the grammar receives `mathMode`, the fix is to gate those productions
-       * on it and delete this promotion together with the last two
-       * `e.modes.mathMode` reads.
-       */
-      nextValues.push(operation(operator, left, right, false, true));
-    } else {
-      nextOperators.push(operator);
-      nextValues.push(right);
-    }
-  }
-  return { values: nextValues, operators: nextOperators };
-}
-
-/**
- * Promote a direct Less value array containing an authored slash to one
- * arithmetic operation tree in eager math mode.  Returns `null` for any shape
- * that is not an unambiguous scalar arithmetic expression, preserving the
- * existing authored join path for lists and CSS shorthand values.
- */
-function promoteBareSlashValue(slot: readonly ValueSlot[], e: EvalCtx): ValueNode | null {
-  if (!e.ev || e.modes.mathMode !== 'always' || slot.length < 3) {
-    return null;
-  }
-
-  /*
-   * Stay off the common adjacent-value path unless the grammar has already
-   * exposed a top-level slash leaf.  Nested groups are deliberately ignored:
-   * they have their own typed/list semantics and are not bare-slash facts.
-   */
-  if (!hasTopLevelBareSlash(slot)) {
-    return null;
-  }
-  const tokens: BareSlashToken[] = [];
-  for (const part of slot) {
-    if (isValueSlotArray(part)) {
-      return null;
-    }
-    if (isBareSlash(part)) {
-      tokens.push({ kind: 'operator', operator: '/' });
-      continue;
-    }
-    if (!appendBareSlashTokens(part, tokens)) {
-      return null;
-    }
-  }
-  if (!tokens.some(token => token.kind === 'operator' && token.operator === '/')) {
-    return null;
-  }
-  if (tokens.length < 3 || tokens.length % 2 === 0) {
-    return null;
-  }
-  const values: ValueNode[] = [];
-  const operators: Array<'+' | '-' | '*' | '/' | '%'> = [];
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i]!;
-    if (i % 2 === 0) {
-      if (token.kind !== 'operand') {
-        return null;
-      }
-      values.push(token.node);
-    } else {
-      if (token.kind !== 'operator') {
-        return null;
-      }
-      operators.push(token.operator);
-    }
-  }
-  let reduced = reduceBareSlashTier(values, operators, BARE_SLASH_MULTIPLICATIVE);
-  reduced = reduceBareSlashTier(reduced.values, reduced.operators, BARE_SLASH_ADDITIVE);
-  return reduced.values.length === 1 && reduced.operators.length === 0
-    ? reduced.values[0]!
-    : null;
-}
-
 function evalTypedSlot(
   slot: ValueSlot,
   frame: Frame | null,
@@ -4026,12 +3834,6 @@ function evalTypedSlot(
 ): MaybePromise<ValueGroup> {
   if (!isValueSlotArray(slot)) {
     return evalTyped(slot, frame, e, projectMixinValues);
-  }
-  if ((e.calcDepth ?? 0) > 0) {
-    const slash = slashGroupOfSlot(slot);
-    if (slash !== null) {
-      return evalTyped(slash, frame, e, projectMixinValues);
-    }
   }
   const values = slot.map(value => evalTypedSlot(value, frame, e, projectMixinValues));
   return combineAll(values, resolved => resolved);
@@ -4398,16 +4200,9 @@ function evalTyped(
        * its structure directly (each part resolved) instead of re-splitting a joined
        * string. Typed consumption only — the emit path (`evalValue`) still joins the
        * parts to bytes, so an un-consumed space value serializes exactly as before.
-       * EXCEPT a preserved-division slash group (`10px / 2`, built as a `Sequence`
-       * `[left, '/', right]` by value-expr) is NOT a list — it is one arithmetic
-       * value that must fold to bytes so an outer operation keeps it verbatim (guard
-       * 3). Fall through to the joined-bytes path for it.
        */
-      if (!isSlashGroup(node)) {
-        const parts = node.parts.map(p => evalTyped(p, frame, e, projectMixinValues));
-        return combineAll(parts, vals => vals);
-      }
-      return mapMaybe(evalValue(node, frame, e), v => force(e, v));
+      const parts = node.parts.map(p => evalTyped(p, frame, e, projectMixinValues));
+      return combineAll(parts, vals => vals);
     }
     case 'FunctionCall':
       /*
@@ -4438,101 +4233,6 @@ function evalTyped(
        */
       return mapMaybe(evalValue(node, frame, e), v => force(e, v));
   }
-}
-
-/**
- * A preserved-division slash group — the `Sequence` `[left, '/', right]` that
- * value-expr builds for `a / b` when the division is kept verbatim (parens-division
- * math mode). It is ONE arithmetic value, not a space list, so it must NOT
- * materialize to a value-domain `List` (that would break an outer operation and
- * misreport `length`/`extract`). Detected by a top-level `/` literal part.
- */
-function isSlashGroup(node: Sequence): boolean {
-  /*
-   * The direct Less grammar owns separator tokens as `Keyword` leaves; older
-   * hand-built AST tests may still use opaque `Any`. Both are the same typed
-   * slash fact here—never rediscover it from joined source bytes.
-   */
-  return node.parts.some(p => (p.type === 'Any' || p.type === 'Keyword') && p.src.trim() === '/');
-}
-
-/**
- * A Less variable may retain a glued top-level slash as the ordinary raw
- * `ValueSlot[]` shape (`50vh/2`).  That remains the public parser fact, but a
- * calc consumer still needs the same preserved-division interpretation as the
- * explicit spaced group.  Materialize only this temporary evaluator view; do
- * not change the authored AST or wrap ordinary arrays outside calc.
- */
-function slashGroupOfSlot(slot: ValueSlot): Sequence | null {
-  if (!isValueSlotArray(slot)) {
-    return null;
-  }
-  let hasSlash = false;
-  for (const part of slot) {
-    if (isValueSlotArray(part)) {
-      return null;
-    }
-    hasSlash ||= (part.type === 'Any' || part.type === 'Keyword') && part.src.trim() === '/';
-  }
-  if (!hasSlash) {
-    return null;
-  }
-  const parts: ValueNode[] = [];
-  for (const part of slot) {
-    if (!isValueSlotArray(part)) {
-      parts.push(part);
-    }
-  }
-  const node: Sequence = { type: 'Sequence', parts };
-  const separators = valueLayoutOf(slot);
-  return separators === undefined ? node : withValueLayout(node, separators);
-}
-
-/**
- * [calc] Reinterpret a preserved-division slash group (`[left, '/', right]`, and
- * left-associative chains `a / b / c`) as a left-nested division `Operation` so it
- * COMPUTES in a `calc(…)` math context. Returns `null` for a shape that is not a
- * clean `operand ('/' operand)+` chain (e.g. an interleaved space list carrying a
- * `/`), leaving it to fold verbatim. Each operand is a single part, or the run of
- * parts between two slashes wrapped back into a `Sequence`.
- */
-function slashGroupToOperation(node: Sequence): Operation | null {
-  const operands: ValueNode[] = [];
-  let run: ValueNode[] = [];
-  let sawSlash = false;
-  const flush = (): boolean => {
-    if (run.length === 0) {
-      return false;
-    }
-    operands.push(run.length === 1 ? run[0]! : spaced(run));
-    run = [];
-    return true;
-  };
-  for (const p of node.parts) {
-    if ((p.type === 'Any' || p.type === 'Keyword') && p.src.trim() === '/') {
-      if (!flush()) {
-        return null;
-      } // leading / empty operand
-      sawSlash = true;
-    } else {
-      run.push(p);
-    }
-  }
-  if (!flush() || !sawSlash || operands.length < 2) {
-    return null;
-  }
-
-  /*
-   * `mathOutsideParens: false` — this division computes because the enclosing
-   * `calc(…)` is a math context (`calcDepth`), never on its own. Saying `true`
-   * here would make the reinterpreted group compute outside calc too, which is
-   * the opposite of why it was preserved.
-   */
-  let op = operation('/', operands[0]!, operands[1]!, false, false);
-  for (let i = 2; i < operands.length; i++) {
-    op = operation('/', op, operands[i]!, false, false);
-  }
-  return op;
 }
 
 /**
@@ -4748,21 +4448,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         e.mergeImportant = true;
       }
       return evalValueSlot(node.value, frame, e);
-    case 'Sequence': {
-      /*
-       * Inside `calc(…)`, `/` is DIVISION (math), not a preserved slash separator:
-       * a variable holding a preserved-division slash group (`@var: 50vh/2`) spliced
-       * into calc must COMPUTE (`50vh / 2` → `25vh`) so an outer calc op keeps its
-       * parens around the simplified operand (`calc(50% + (25vh - 20px))`). An inline
-       * `50vh/2` written directly in calc already parses as an `Operation`; this makes
-       * the variable-reference form fold identically.
-       */
-      const div = (e.calcDepth ?? 0) > 0 ? slashGroupToOperation(node) : null;
-      if (div) {
-        return evalValue(div, frame, e);
-      }
+    case 'Sequence':
       return joinSpacedBytes(node, frame, e);
-    }
     case 'List': {
       /*
        * Emit each item's bytes joined by the canonical List separator fact. Source
@@ -15639,7 +15326,7 @@ function expandSpreadArgs(
   return step(0);
 }
 
-/** Evaluate a structural spread while keeping preserved slash terms structural. */
+/** Evaluate a structural spread, keeping its positional items typed. */
 function evalTypedSpread(
   value: ValueSlot,
   frame: Frame,
@@ -15657,9 +15344,6 @@ function evalTypedSpread(
     if (hit && hitValue !== undefined && isValueSlot(hitValue)) {
       return withExcluded(e, hitValue, () => evalTypedSpread(hitValue, hit.frame, e));
     }
-  }
-  if (value.type === 'Sequence' && isSlashGroup(value)) {
-    return combineAll(value.parts.map(part => evalTyped(part, frame, e, true)), parts => parts);
   }
   return evalTypedSlot(value, frame, e, true);
 }

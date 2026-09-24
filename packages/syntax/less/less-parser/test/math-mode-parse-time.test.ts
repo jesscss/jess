@@ -41,8 +41,16 @@ function findOperation(value: unknown): Operation | null {
   if (value.type === 'Operation') {
     return value as Operation;
   }
-  if (value.type === 'Block' && 'value' in value) {
+  if ((value.type === 'Block' || value.type === 'Expression') && 'value' in value) {
     return findOperation(value.value);
+  }
+  if (value.type === 'List' && 'value' in value && Array.isArray(value.value)) {
+    for (const item of value.value) {
+      const found = findOperation(item);
+      if (found !== null) {
+        return found;
+      }
+    }
   }
   return null;
 }
@@ -85,14 +93,22 @@ describe('Less `math:` resolves at PARSE time onto Operation.mathOutsideParens',
   });
 
   /*
-   * A preserved slash group is authored bytes, so a neighbouring `+` inside it
-   * must not fold either — `4 / 2 + 5em` is `4 / 2 + 5em`, never `4 / 7em`.
-   * Under `always` the group is not preserved and the `+` keeps its arithmetic.
+   * One division rule reads every slash; the mode picks its shape (P34/P35).
+   * Where the mode does not divide, the slash is the value's loosest separator
+   * and each side keeps its own arithmetic — `4 / 2 + 5em` is `4` and `2 + 5em`,
+   * and that `+` computes like any bare `+` under the mode. Under `always` the
+   * slash is a division at product precedence.
    */
-  it('a preserved slash group restates its operands as arithmetic that does not happen bare', () => {
-    expect(parseOperation('.a { k: 4 / 2 + 5em; }', 'parens-division').mathOutsideParens).toBe(false);
-    expect(parseOperation('.a { k: 4 / 2 + 5em; }', 'strict').mathOutsideParens).toBe(false);
-    expect(parseOperation('.a { k: 4 / 2 + 5em; }', 'always').mathOutsideParens).toBe(true);
+  it('a non-dividing slash separates two sides that keep their own math', () => {
+    const slash = parseValue('.a { k: 4 / 2 + 5em; }', 'parens-division');
+    expect(slash).toMatchObject({ type: 'List', sep: '/' });
+    expect(requireOperation(slash).mathOutsideParens).toBe(true);
+    expect(parseValue('.a { k: 4 / 2 + 5em; }', 'strict')).toMatchObject({ type: 'List', sep: '/' });
+    expect(parseOperation('.a { k: 4 / 2 + 5em; }', 'always')).toMatchObject({
+      operator: '+',
+      left: { type: 'Operation', operator: '/', mathOutsideParens: true },
+      mathOutsideParens: true
+    });
   });
 
   /*
@@ -109,6 +125,10 @@ describe('Less `math:` resolves at PARSE time onto Operation.mathOutsideParens',
 });
 
 function parseOperation(source: string, mathMode: typeof MODES[number]): Operation {
+  return requireOperation(parseValue(source, mathMode));
+}
+
+function parseValue(source: string, mathMode: typeof MODES[number]): ValueSlot {
   const rules = parse(source, { mathMode }).rules as Statement[];
   const ruleset = rules.find(rule => rule.type === 'Ruleset');
   if (ruleset === undefined || ruleset.type !== 'Ruleset') {
@@ -118,7 +138,7 @@ function parseOperation(source: string, mathMode: typeof MODES[number]): Operati
   if (decl === undefined || decl.type !== 'Declaration') {
     throw new TypeError('expected a declaration');
   }
-  return requireOperation(decl.value);
+  return decl.value;
 }
 
 function deepOperation(source: string, mathMode: typeof MODES[number]): Operation {

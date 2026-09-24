@@ -16,8 +16,9 @@
  *   (`CalcValue`/`CalcParen`/`CalcProduct`/`CalcSum`/`CalcFunction`), which is
  *   PORTED from the CSS base rather than referenced, because parseman cannot
  *   share a mutually recursive, AST-reducing family across packages. See the
- *   comment on those consts. Less and SCSS model the same ladder as
- *   `MathProduct`/`MathSum`; converging the four is an open decision.
+ *   comment on those consts. SCSS models the same ladder as
+ *   `MathProduct`/`MathSum` and Less as one flat `MathSum` run; converging the
+ *   four is an open decision.
  *   Shared preprocessor constructs belong in parser-shared only after they
  *   prove real reuse.
  *
