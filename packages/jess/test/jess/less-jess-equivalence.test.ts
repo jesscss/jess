@@ -997,6 +997,10 @@ describe('equivalence ratchet', () => {
         drift.push(`${key}: listed in KNOWN but not in the corpus`);
       }
     }
+    if (drift.length > 0) {
+      // The package ratchet reports only test NAMES; the drift itself goes to stderr.
+      console.error(`equivalence ratchet drift:\n${drift.join('\n')}`);
+    }
     expect(drift.join('\n'), drift.join('\n')).toBe('');
   });
 
