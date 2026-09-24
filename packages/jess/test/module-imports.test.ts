@@ -91,6 +91,22 @@ describe('public module imports', () => {
     )).resolves.toBe('.entry {\n  a: #800080;\n  b: #3333ff;\n}\n');
   });
 
+  it('binds a named-colour argument through the trusted Sass colour module', async () => {
+    // `sass:color` loads `#sass/color` through the same CommonJS build as `#less`.
+    const compiler = new Compiler();
+    compiler['createJsPluginProxy'] = () => undefined;
+
+    const render = (a: string, b: string) => compiler.renderString(
+      `@use "sass:color"; .entry { a: color.mix(${a}, ${b}, 50%); b: color.lighten(${b}, 10%); }`,
+      { filePath: 'entry.scss', extension: '.scss' }
+    );
+
+    // A colour NAME binds exactly as its hex spelling does; unbound, the call printed verbatim.
+    const byName = await render('red', 'blue');
+    expect(byName).not.toContain('color.');
+    expect(byName).toBe(await render('#ff0000', '#0000ff'));
+  });
+
   it('reports the optional script runtime when a local script module needs it', async () => {
     const directory = tempProject();
     write(directory, 'functions.js', 'export const identity = (value) => value;');

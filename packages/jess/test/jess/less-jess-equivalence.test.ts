@@ -586,16 +586,6 @@ const KNOWN = new Map<string, Known>([
     outcome: 'p35',
     reason: 'bare Less math (an `Operation` or `/` atom outside an `Expression`) — P35 not landed'
   }],
-  ['all-less:tests-unit/color-functions/basic.less', {
-    cause: 'cannot-express',
-    outcome: 'css-mismatch',
-    reason: 'a CSS colour NAME passed to a Less built-in (`lighten(blue, 10%)`): the `#less` module loads through @jesscss/core\'s CommonJS build, which resolves no colour names, so the call prints verbatim (jess#271)'
-  }],
-  ['all-less:tests-unit/color-functions/comprehensive.less', {
-    cause: 'cannot-express',
-    outcome: 'css-mismatch',
-    reason: 'a CSS colour NAME passed to a Less built-in (`lighten(blue, 10%)`): the `#less` module loads through @jesscss/core\'s CommonJS build, which resolves no colour names, so the call prints verbatim (jess#271)'
-  }],
   ['all-less:tests-unit/color-functions/modern-syntax.less', {
     cause: 'p35',
     outcome: 'p35',
