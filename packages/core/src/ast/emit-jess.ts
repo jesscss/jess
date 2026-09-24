@@ -56,6 +56,20 @@ export interface EmitJessOptions {
    * with the authored path after the `./` rewrite; absent, the path is kept.
    */
   readonly importPath?: (path: string) => string;
+
+  /**
+   * The function module a converted file's calls resolved against, and the
+   * names it exports: lowercase call name → export name. `.jess` has no ambient
+   * function namespace (ledger P17), so a call to one of these names needs a
+   * `@-from "<from>" import (…)` of its own; the printer writes one line per
+   * file naming exactly the functions the file calls. Which module and which
+   * names are the CONVERTER's facts (the source dialect's registry), not the
+   * printer's.
+   */
+  readonly functions?: {
+    readonly from: string;
+    readonly names: ReadonlyMap<string, string>;
+  };
 }
 
 /** One construct `.jess` cannot spell yet: the node type and why. */
@@ -158,10 +172,15 @@ class JessPrinter {
   readonly gaps: JessSpellingGap[] = [];
   readonly #comments: readonly Trivia[];
   readonly #importPath: (path: string) => string;
+  readonly #functions: EmitJessOptions['functions'];
+
+  /** Call name → export name of every module function this file calls. */
+  readonly calledFunctions = new Map<string, string>();
 
   constructor(root: Stylesheet, options: EmitJessOptions) {
     this.#comments = triviaMapOf(root)?.commentRuns() ?? [];
     this.#importPath = options.importPath ?? (path => path);
+    this.#functions = options.functions;
   }
 
   /* ------------------------------------------------------------ statements */
@@ -817,6 +836,11 @@ class JessPrinter {
     if (!IDENT.test(node.name)) {
       return gap('FunctionCall', 'a function name that is not an identifier (Less `%()`)');
     }
+    const lower = node.name.toLowerCase();
+    const exported = this.#functions?.names.get(lower);
+    if (exported !== undefined) {
+      this.calledFunctions.set(lower, exported);
+    }
     const inner = at === At.Prelude ? At.Prelude : At.Math;
     const args = node.args.map((arg) => {
       if (arg.spread || arg.name !== undefined) {
@@ -1017,5 +1041,19 @@ export function emitJess(root: Stylesheet, options: EmitJessOptions = {}): strin
     error.gaps = printer.gaps;
     throw error;
   }
-  return out;
+  if (options.functions === undefined || printer.calledFunctions.size === 0) {
+    return out;
+  }
+
+  // `ModuleImport` `@-from "…" import (a, b as c);` — a `Stylesheet` prologue statement, after any `@charset`.
+  const names = [...printer.calledFunctions]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([call, exported]) => (call === exported ? call : `${exported} as ${call}`));
+  const line = `@-from "${options.functions.from}" import (${names.join(', ')});\n`;
+  const [head] = root.rules;
+  if (head?.type === 'AtRuleStatement' && head.name.toLowerCase() === '@charset') {
+    const cut = out.indexOf('\n', out.indexOf('@charset')) + 1;
+    return out.slice(0, cut) + line + out.slice(cut);
+  }
+  return line + out;
 }

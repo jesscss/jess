@@ -42,6 +42,9 @@ import { createRequire } from 'node:module';
 import { emitJess, NoJessSpelling } from '@jesscss/core';
 import { importTargetSpelling } from '@jesscss/core/ast';
 import { parse as parseJess } from '@jesscss/jess-parser';
+import { parse as parseLess } from '@jesscss/less-parser';
+import * as lessFunctionModule from '@jesscss/fns/less';
+import { lessFns } from '@jesscss/fns/less/registry';
 import jessPlugin from '@jesscss/plugin-jess';
 import lessPlugin from '@jesscss/plugin-less';
 import jsPlugin from '@jesscss/plugin-js';
@@ -227,6 +230,18 @@ const importPath = (spelling: string): string => {
 };
 
 /**
+ * The Less built-ins, as `.jess` reaches them: the trusted `#less` module
+ * (ledger C13), imported per file with `@-from … import (…)` — the named-binding
+ * projection `DIALECT-TO-JESS-COMPILED-CONVERSION.md` records. Derived from the
+ * Less registry itself: call name → the module's export name.
+ */
+const LESS_FUNCTIONS = {
+  from: '#less',
+  names: new Map(Object.entries(lessFunctionModule).flatMap(([exported, fn]) =>
+    (lessFns as readonly unknown[]).includes(fn) && typeof fn === 'function' ? [[fn.name.toLowerCase(), exported] as const] : []))
+};
+
+/**
  * Per converted file: its `NoJessSpelling` gaps (`null` when it converted) and
  * the corpus files its top-level imports load, so a fixture is charged with the
  * gaps of every partial it pulls in.
@@ -273,7 +288,7 @@ async function convertCorpus(corpus: Corpus): Promise<Map<string, Conversion>> {
         return fs.existsSync(target) ? [path.relative(corpus.copy, target)] : [];
       });
       try {
-        const jess = emitJess(document, { importPath });
+        const jess = emitJess(document, { importPath, functions: LESS_FUNCTIONS });
         fs.writeFileSync(full.replace(/\.less$/u, '.jess'), jess);
 
         /*
@@ -286,7 +301,9 @@ async function convertCorpus(corpus: Corpus): Promise<Map<string, Conversion>> {
         let reprint: string | undefined;
         try {
           const tree = parseJess(jess, { allowExtendSelectors: [...ALL_EXTEND_KINDS] });
-          const again = parseJess(emitJess(tree, { importPath }), { allowExtendSelectors: [...ALL_EXTEND_KINDS] });
+
+          // A `.jess` tree already carries its `@-from` imports; only the Less source needs them added.
+          const again = parseJess(emitJess(tree), { allowExtendSelectors: [...ALL_EXTEND_KINDS] });
           reprint = shape(again) === shape(tree) ? undefined : 'tree changed';
         } catch (error) {
           reprint = String(error);
@@ -413,16 +430,6 @@ const KNOWN = new Map<string, Known>([
     cause: 'p35',
     outcome: 'p35',
     reason: 'bare Less math (an `Operation` or `/` atom outside an `Expression`) — P35 not landed'
-  }],
-  ['all-less:tests-config/include-path-string/include-path-string.less', {
-    cause: 'cannot-express',
-    outcome: 'css-mismatch',
-    reason: 'Less built-in function calls: `.jess` has no ambient function namespace, and no `@-from` module exports the Less built-ins, so the call prints verbatim'
-  }],
-  ['all-less:tests-config/include-path/include-path.less', {
-    cause: 'cannot-express',
-    outcome: 'css-mismatch',
-    reason: 'Less built-in function calls: `.jess` has no ambient function namespace, and no `@-from` module exports the Less built-ins, so the call prints verbatim'
   }],
   ['all-less:tests-config/modifyVars/extended.less', {
     cause: 'p35',
@@ -579,25 +586,15 @@ const KNOWN = new Map<string, Known>([
     outcome: 'p35',
     reason: 'bare Less math (an `Operation` or `/` atom outside an `Expression`) — P35 not landed'
   }],
-  ['all-less:tests-unit/color-functions/alpha.less', {
-    cause: 'cannot-express',
-    outcome: 'css-mismatch',
-    reason: 'Less built-in function calls: `.jess` has no ambient function namespace, and no `@-from` module exports the Less built-ins, so the call prints verbatim'
-  }],
   ['all-less:tests-unit/color-functions/basic.less', {
     cause: 'cannot-express',
     outcome: 'css-mismatch',
-    reason: 'Less built-in function calls: `.jess` has no ambient function namespace, and no `@-from` module exports the Less built-ins, so the call prints verbatim'
+    reason: 'a CSS colour NAME passed to a Less built-in (`lighten(blue, 10%)`): the `#less` module loads through @jesscss/core\'s CommonJS build, which resolves no colour names, so the call prints verbatim (jess#271)'
   }],
   ['all-less:tests-unit/color-functions/comprehensive.less', {
     cause: 'cannot-express',
     outcome: 'css-mismatch',
-    reason: 'Less built-in function calls: `.jess` has no ambient function namespace, and no `@-from` module exports the Less built-ins, so the call prints verbatim'
-  }],
-  ['all-less:tests-unit/color-functions/formats.less', {
-    cause: 'cannot-express',
-    outcome: 'css-mismatch',
-    reason: 'Less built-in function calls: `.jess` has no ambient function namespace, and no `@-from` module exports the Less built-ins, so the call prints verbatim'
+    reason: 'a CSS colour NAME passed to a Less built-in (`lighten(blue, 10%)`): the `#less` module loads through @jesscss/core\'s CommonJS build, which resolves no colour names, so the call prints verbatim (jess#271)'
   }],
   ['all-less:tests-unit/color-functions/modern-syntax.less', {
     cause: 'p35',
@@ -613,11 +610,6 @@ const KNOWN = new Map<string, Known>([
     cause: 'p35',
     outcome: 'p35',
     reason: 'bare Less math (an `Operation` or `/` atom outside an `Expression`) — P35 not landed'
-  }],
-  ['all-less:tests-unit/color-functions/rgba.less', {
-    cause: 'cannot-express',
-    outcome: 'css-mismatch',
-    reason: 'Less built-in function calls: `.jess` has no ambient function namespace, and no `@-from` module exports the Less built-ins, so the call prints verbatim'
   }],
   ['all-less:tests-unit/comments/comments.less', {
     cause: 'cannot-express',
@@ -996,6 +988,16 @@ for (const corpus of CORPORA) {
     }
   });
 }
+
+describe('converted function imports', () => {
+  it('imports exactly the Less built-ins a file calls, under their call names', () => {
+    const printed = emitJess(parseLess('@charset "utf-8";\n.a { b: lighten(#00f, 10%); c: data-uri("x.png"); d: rgba(1, 2, 3, 0.5); e: unknown(1); }'), { functions: LESS_FUNCTIONS });
+    expect(printed.split('\n').slice(0, 2)).toEqual([
+      '@charset "utf-8";',
+      '@-from "#less" import (dataUri as data-uri, lighten, rgba);'
+    ]);
+  });
+});
 
 describe('equivalence ratchet', () => {
   it('every fixture matches its KNOWN entry (or passes when unlisted)', () => {
