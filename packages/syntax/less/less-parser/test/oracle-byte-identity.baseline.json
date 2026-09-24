@@ -5,12 +5,12 @@
   "surfaces": [
     {
       "name": "ast",
-      "aggregate": "f4fc7a1363300eb7dd7f8948db0b39aa848906470e241b14245f9c8698b5394b",
+      "aggregate": "23f237bbc91c520af7968062a5ad419e24e2b5c8b6107f35365eda022ae55d5d",
       "threw": 113
     },
     {
       "name": "cst",
-      "aggregate": "ccd8604729a7d470ae1e08684a41a44f9d3e82df00e92ed735d4bb2d235ac680",
+      "aggregate": "23e544dc5a3f81e822728cf8db9a2ed12e16e5f44ce2bbaf933346a08f2d3e9c",
       "threw": 0
     }
   ],
@@ -297,11 +297,11 @@
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-8.css": {
       "ast": "2be8b614c3819b4b",
-      "cst": "380f7b90c983b299"
+      "cst": "46b74e319950f76c"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-8.less": {
       "ast": "e5e67866c93eb28a",
-      "cst": "3c2801e4b9b62fdd"
+      "cst": "45c608cefde2bfa0"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-functions.css": {
       "ast": "7dc22db5571de737",
@@ -477,7 +477,7 @@
     },
     "node_modules/@less/test-data/tests-config/sourcemaps/custom-props.less": {
       "ast": "2b1442b99355a8e7",
-      "cst": "840dbe567b9f4af0"
+      "cst": "8e6445a834dee1bb"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps/imported.css": {
       "ast": "cafc73633f661dfc",
@@ -572,8 +572,8 @@
       "cst": "1213a40850a43dd5"
     },
     "node_modules/@less/test-data/tests-error/eval/color-func-invalid-color-2.less": {
-      "ast": "ccfffd2ea41357e3",
-      "cst": "a1c0ab5a1f544a79"
+      "ast": "84d06eb7cf94d158",
+      "cst": "00a1d135b76dd132"
     },
     "node_modules/@less/test-data/tests-error/eval/color-func-invalid-color.less": {
       "ast": "55ce40d594b3c1e7",
@@ -757,7 +757,7 @@
     },
     "node_modules/@less/test-data/tests-error/eval/percentage-css-var.less": {
       "ast": "914c85caaaec4638",
-      "cst": "9cb807852b508123"
+      "cst": "935def655b0d5473"
     },
     "node_modules/@less/test-data/tests-error/eval/percentage-non-number-argument.less": {
       "ast": "493e1dda0a61aedb",
@@ -1008,16 +1008,16 @@
       "cst": "1a4688745c607553"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-keyword-comments/at-rules-keyword-comments.css": {
-      "ast": "40c91f83eb97814b",
-      "cst": "5fae65c5293a2507"
+      "ast": "e9c4728caafe8882",
+      "cst": "b756db2818e32612"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-keyword-comments/at-rules-keyword-comments.less": {
-      "ast": "feba1cee5ef82492",
-      "cst": "080e721eb157e9f1"
+      "ast": "3c0eb88a57c72ef1",
+      "cst": "37c2bc4cacc48ae8"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-keyword-comments/legacy/at-rules-keyword-comments.css": {
-      "ast": "30f9da3e6f15c88f",
-      "cst": "01214aded7c0258f"
+      "ast": "a46055bee2c06eba",
+      "cst": "e1cbf4e561021a2b"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-targeted/at-rules-targeted.css": {
       "ast": "ec2d70196e5e978d",
@@ -1117,7 +1117,7 @@
     },
     "node_modules/@less/test-data/tests-unit/color-functions/legacy/rgba.css": {
       "ast": "469cf1cd4981172d",
-      "cst": "0250cc7eab524483"
+      "cst": "5395d3302d56ebca"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/modern-syntax.css": {
       "ast": "6e1e558926f1115b",
@@ -1145,11 +1145,11 @@
     },
     "node_modules/@less/test-data/tests-unit/color-functions/rgba.css": {
       "ast": "2a479f21183e9878",
-      "cst": "6e1f5fff4f4ab28b"
+      "cst": "aa94b4ca95d3a119"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/rgba.less": {
       "ast": "2e78dfa6ba07ea6c",
-      "cst": "03dd3bc488729386"
+      "cst": "89b380bff36a2894"
     },
     "node_modules/@less/test-data/tests-unit/comments/comments.css": {
       "ast": "8a55c453c0134c35",
@@ -1176,12 +1176,12 @@
       "cst": "1e17129b48bde262"
     },
     "node_modules/@less/test-data/tests-unit/container/container.css": {
-      "ast": "472ddf4204513c2d",
-      "cst": "f439ebd62bb97ccb"
+      "ast": "11a1cb27f520728e",
+      "cst": "09527ef419535749"
     },
     "node_modules/@less/test-data/tests-unit/container/container.less": {
-      "ast": "715a2bfe1df2fc21",
-      "cst": "6fb1f6a64fed6f5b"
+      "ast": "427d2a1ef4f17c38",
+      "cst": "5e209c2c2e4fbb64"
     },
     "node_modules/@less/test-data/tests-unit/container/legacy/container.css": {
       "ast": "05875765c152f691",
@@ -1365,7 +1365,7 @@
     },
     "node_modules/@less/test-data/tests-unit/functions/functions.less": {
       "ast": "1f1e5714dd93b972",
-      "cst": "82e9b0b167b8077f"
+      "cst": "31edaf81b379840c"
     },
     "node_modules/@less/test-data/tests-unit/functions/legacy/functions.css": {
       "ast": "05ff841cacec261a",
@@ -1373,7 +1373,7 @@
     },
     "node_modules/@less/test-data/tests-unit/functions/legacy/functions.less": {
       "ast": "733703c285609637",
-      "cst": "15459e5bd7b909c0"
+      "cst": "504cf8cfc30c8b59"
     },
     "node_modules/@less/test-data/tests-unit/ie-filters-REMOVED/legacy/ie-filters.css": {
       "ast": "05ff841cacec261a",
@@ -1396,8 +1396,8 @@
       "cst": "5982b5b3751e309d"
     },
     "node_modules/@less/test-data/tests-unit/import/import-inline.less": {
-      "ast": "ad449b3eb0cb28ca",
-      "cst": "04ef6c4e1ff04fe8"
+      "ast": "eb69bc74ee6beca5",
+      "cst": "3458e980c1a2f97b"
     },
     "node_modules/@less/test-data/tests-unit/import/import-interpolation.css": {
       "ast": "0d66f1b3ee707f09",
@@ -1484,12 +1484,12 @@
       "cst": "5341a3b8a7852500"
     },
     "node_modules/@less/test-data/tests-unit/import/import.css": {
-      "ast": "982e3e1fd177940d",
-      "cst": "b15068445936240e"
+      "ast": "a703472361f3a8a6",
+      "cst": "9dc8f7ce5a7a4bba"
     },
     "node_modules/@less/test-data/tests-unit/import/import.less": {
-      "ast": "6749ee83f3f789b5",
-      "cst": "8c19d43222434072"
+      "ast": "c588049d2ed49b8e",
+      "cst": "ed2c1929a5760f92"
     },
     "node_modules/@less/test-data/tests-unit/import/import/css-import.less": {
       "ast": "a000d02e7b071ce5",
@@ -1653,11 +1653,11 @@
     },
     "node_modules/@less/test-data/tests-unit/math-css-vars/math-css-vars.css": {
       "ast": "9b0eed61af39fb76",
-      "cst": "bbddee81b873b1cc"
+      "cst": "d8e9eac03811a68d"
     },
     "node_modules/@less/test-data/tests-unit/math-css-vars/math-css-vars.less": {
       "ast": "95bebea68742a443",
-      "cst": "74aaf27ed2bb8e8f"
+      "cst": "3a9f97dbc3e4a3b6"
     },
     "node_modules/@less/test-data/tests-unit/media/legacy/media.css": {
       "ast": "6ae5f23c12d4a0ba",
@@ -2548,16 +2548,16 @@
       "cst": "ed05462ec418e32c"
     },
     "packages/jess/test/less/fixtures/import-media-query/css-postlude.less": {
-      "ast": "70040c6bc501e6b9",
-      "cst": "b7c55bcbb02de4bf"
+      "ast": "e20b242ff20ce026",
+      "cst": "2466bf688d3a21a7"
     },
     "packages/jess/test/less/fixtures/import-media-query/imported.less": {
       "ast": "e3463fac769e0a5d",
       "cst": "c0422992a142908e"
     },
     "packages/jess/test/less/fixtures/import-media-query/inline-main.less": {
-      "ast": "6b5b941df6883fd6",
-      "cst": "a7beba687cecc23d"
+      "ast": "d253aa9b79e29425",
+      "cst": "11b65ab1ef7dc128"
     },
     "packages/jess/test/less/fixtures/import-media-query/interpolated-main.less": {
       "ast": "1e9fa59938039389",
@@ -2568,8 +2568,8 @@
       "cst": "e7b424e648ec1607"
     },
     "packages/jess/test/less/fixtures/import-media-query/main.less": {
-      "ast": "ab80acf6d433efbc",
-      "cst": "806067ed53f01149"
+      "ast": "6463b3cab6535971",
+      "cst": "3f0d31dcd377cabe"
     },
     "packages/jess/test/less/fixtures/import-media-query/supports-main.less": {
       "ast": "acccdd281513f865",
@@ -2628,12 +2628,12 @@
       "cst": "2ba8a828b78e0515"
     },
     "packages/syntax/css/css-parser/test/byte-identity/fixtures/at-rules-conditional.css": {
-      "ast": "bfe624c3ab2dcedf",
-      "cst": "74e719d2eeeb7db1"
+      "ast": "55a5e27e9b14c7a3",
+      "cst": "37ab3d8a11a265ed"
     },
     "packages/syntax/css/css-parser/test/byte-identity/fixtures/at-rules-import-namespace.css": {
-      "ast": "4fc54d7ca1c3e0f9",
-      "cst": "f6b6605f93140293"
+      "ast": "f3425053b02f4fa1",
+      "cst": "2f19f50d88464712"
     },
     "packages/syntax/css/css-parser/test/byte-identity/fixtures/at-rules-keyframes-fontface.css": {
       "ast": "46e9fbd82f022dfb",
@@ -2648,8 +2648,8 @@
       "cst": "be07eb1ee4d1ea2f"
     },
     "packages/syntax/css/css-parser/test/byte-identity/fixtures/custom-properties.css": {
-      "ast": "947cb471acb7135a",
-      "cst": "85fd4453fc3ad2c9"
+      "ast": "c7fad788aadde78a",
+      "cst": "c0858cb59102cf99"
     },
     "packages/syntax/css/css-parser/test/byte-identity/fixtures/declarations-edges.css": {
       "ast": "7de5496d71104d7f",
@@ -3052,8 +3052,8 @@
       "cst": "6dd3f1293c538397"
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-custom-property.css": {
-      "ast": "fd1adfeeb6a648e7",
-      "cst": "7ee1501fd74180b5"
+      "ast": "16397e797a9a802b",
+      "cst": "e91632f80c0a46a2"
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-math-functions.css": {
       "ast": "06adec27d3d75259",
@@ -3065,7 +3065,7 @@
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-operand-kinds.css": {
       "ast": "4ebfd623e14d96e7",
-      "cst": "cf431fc377dc143e"
+      "cst": "f34c667c6487d7b6"
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-parens-depth.css": {
       "ast": "c6a31758d7d0e58d",
@@ -3077,7 +3077,7 @@
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-real-world.css": {
       "ast": "ed4ff70b49b20512",
-      "cst": "a355cdcdac17e5bc"
+      "cst": "8cf44c392971240b"
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-rejects.css": {
       "ast": "05875765c152f691",
