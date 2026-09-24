@@ -66,15 +66,17 @@ Measured on the commit that added the harness (identical in both modes):
 
 | Corpus | Fixtures | Pass | P35 (bare math) | Cannot express | Lost info | Less arm does not render |
 | --- | --: | --: | --: | --: | --: | --: |
-| `all-less` test-data | 138 | 29 | 14 | 82 | 1 | 12 |
+| `all-less` test-data | 138 | 29 | 14 | 82 | 2 | 11 |
 | `bootstrap-less-port@2.5.1` (3 entry points) | 3 | 0 | 0 | 3 | 0 | 0 |
 
 "Cannot express" is 70 fixtures where the emitter threw `NoJessSpelling` (in the
 file or in a partial it imports) plus 12 that convert and render but differ: Less
-built-in function calls (`.jess` has no ambient function namespace and no
-`@-from` module exports the Less built-ins) and Less-plugin URL rewriting. The
-one "lost info" fixture imports a bare package specifier that the `./` rewrite
-turns file-relative. Math is its own cause because ledger P35 rules that Less
+built-in function calls (`.jess` has no ambient function namespace, and the
+converter does not yet emit the `@-from "#less" import (…)` that reaches them —
+jess#271) and Less-plugin URL rewriting. The two "lost info" fixtures import a
+bare package specifier that the `./` rewrite turns file-relative. The corpus is
+copied with its own `node_modules` holding only the packages it names, so no
+outcome depends on the machine's module layout. Math is its own cause because ledger P35 rules that Less
 math lowers into an `Expression`; those 14 entries flip when it lands. The Sass
 arm is not built.
 

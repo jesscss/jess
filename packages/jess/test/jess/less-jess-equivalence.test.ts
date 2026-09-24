@@ -113,6 +113,16 @@ interface Corpus {
 
   /** Directory (relative to the copy) whose `.less` files are converted. */
   readonly convertRoot: string;
+
+  /**
+   * Where the copy sits under the temp root, and the packages a bare import in
+   * the corpus names, each mapped to a directory under the temp root. The copy
+   * gets its OWN `node_modules` with exactly these links, so package resolution
+   * never walks up into whatever `node_modules` the machine happens to have —
+   * that walk found `@less/test-data` locally and a dangling link in CI.
+   */
+  readonly layout: string;
+  readonly packages: ReadonlyArray<readonly [name: string, dir: string]>;
   readonly fixtures: readonly Fixture[];
   readonly plugins: (copy: string) => unknown[];
 }
@@ -146,6 +156,14 @@ const CORPORA: Corpus[] = [
     source: testData,
     copy: '',
     convertRoot: '.',
+
+    /*
+     * The upstream checkout layout: the Less plugin maps `@less/test-import-module`
+     * to the `packages/` sibling of `packages/test-data`, and remote jsDelivr
+     * imports name `@less/test-data` itself.
+     */
+    layout: 'packages/test-data',
+    packages: [['@less/test-data', 'packages/test-data'], ['@less/test-import-module', 'packages/test-import-module']],
     fixtures: allLessFixtures(),
     plugins: () => [
       lessPlugin({ plugins: [lessHarnessFunctionsPlugin] }),
@@ -159,6 +177,8 @@ const CORPORA: Corpus[] = [
     source: bootstrapRoot,
     copy: '',
     convertRoot: 'less',
+    layout: 'bootstrap-less-port',
+    packages: [],
     fixtures: ['bootstrap.less', 'bootstrap-grid.less', 'bootstrap-reboot.less']
       .map(file => ({ corpus: 'bootstrap-less-port@2.5.1', file: `less/${file}`, config: {} })),
     plugins: copy => [
@@ -685,9 +705,9 @@ const KNOWN = new Map<string, Known>([
     reason: 'StyleImport: an interpolated or escaped import target: `.jess` imports take a plain quoted path (+1 more)'
   }],
   ['all-less:tests-unit/import/import-module.less', {
-    cause: 'no-arm-a',
-    outcome: 'arm-a-error',
-    reason: 'the Less arm cannot resolve `@less/test-import-module` from the temp copy (it resolves through the less.js checkout layout)'
+    cause: 'lost-info',
+    outcome: 'arm-b-error',
+    reason: 'bare package imports (`@less/test-import-module/…`) became file-relative (`./…`, the migration guide\'s rewrite); the converter does not observe that Less resolved them as a package'
   }],
   ['all-less:tests-unit/import/import-once.less', {
     cause: 'cannot-express',
@@ -917,19 +937,22 @@ const observed = new Map<string, Partial<Record<Mode, Observation>>>();
 
 beforeAll(async () => {
   for (const corpus of CORPORA) {
-    corpus.copy = fs.mkdtempSync(path.join(os.tmpdir(), `jess-equivalence-${corpus.name.replace(/[^a-z0-9]+/giu, '-')}-`));
-    fs.cpSync(corpus.source, corpus.copy, {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), `jess-equivalence-${corpus.name.replace(/[^a-z0-9]+/giu, '-')}-`));
+    corpus.copy = path.join(root, corpus.layout);
+    const copy = (from: string, to: string): void => fs.cpSync(from, to, {
       recursive: true,
       dereference: true,
-      filter: source => source !== path.join(corpus.source, 'node_modules')
+      filter: source => source !== path.join(from, 'node_modules')
     });
-
-    // Bare package imports resolve through the source's nearest `node_modules`.
-    for (let dir = corpus.source; dir !== path.dirname(dir); dir = path.dirname(dir)) {
-      if (fs.existsSync(path.join(dir, 'node_modules'))) {
-        fs.symlinkSync(path.join(dir, 'node_modules'), path.join(corpus.copy, 'node_modules'), 'dir');
-        break;
+    copy(corpus.source, corpus.copy);
+    for (const [name, dir] of corpus.packages) {
+      const target = path.join(root, dir);
+      const from = path.resolve(corpus.source, path.relative(corpus.layout, dir));
+      if (!fs.existsSync(target) && fs.existsSync(from)) {
+        copy(from, target);
       }
+      fs.mkdirSync(path.dirname(path.join(root, 'node_modules', name)), { recursive: true });
+      fs.symlinkSync(target, path.join(root, 'node_modules', name), 'dir');
     }
   }
 }, 120_000);
@@ -940,7 +963,7 @@ afterAll(() => {
   }
   for (const corpus of CORPORA) {
     if (corpus.copy && !process.env.JESS_EQUIVALENCE_REPORT) {
-      fs.rmSync(corpus.copy, { recursive: true, force: true });
+      fs.rmSync(path.resolve(corpus.copy, path.relative(corpus.layout, '.')), { recursive: true, force: true });
     }
   }
 });
