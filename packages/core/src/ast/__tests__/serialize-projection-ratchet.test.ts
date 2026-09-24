@@ -112,12 +112,13 @@ describe('V19 one-evaluator projection ratchet', () => {
     // `frameStatementIndex`'s positions, both written and read at publication.
     // Ordered LOOKUP paths carry a parallel int site array instead, so namespace
     // descent merges integers with no array, no sort, no cache and no Map.
-    // -9 functions (ledger P34): the eval-time bare-slash promotion and the
-    // calc() slash-group reinterpretation are gone. The Less grammar now builds
-    // the division, or the slash-separated list, itself.
+    // -9 functions and -3 `new Set` (ledger P34): the eval-time bare-slash
+    // promotion (with its three operator Sets) and the calc() slash-group
+    // reinterpretation are gone. The Less grammar now builds the division, or
+    // the slash-separated list, itself.
     expect(occurrences(/^function |^async function /gmu)).toBe(462);
     expect(occurrences(/new Map/gu)).toBe(68);
-    expect(occurrences(/new Set/gu)).toBe(42);
+    expect(occurrences(/new Set/gu)).toBe(39);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);
