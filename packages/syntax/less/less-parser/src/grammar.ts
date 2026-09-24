@@ -43,6 +43,7 @@ import {
   complexSegmentsFrom,
   customPartsFromChildren,
   customValueFromParts,
+  trimCustomValueEnd,
   enclosedInterpolationFromChildren,
   foldFunctionCondition,
   foldMixinGuards,
@@ -237,6 +238,8 @@ type LessRules = {
   CustomGroup: Combinator<readonly CustomValuePart[]>;
   CustomValue: Combinator<ValueNode>;
   CustomPropertyValue: Combinator<Keyword>;
+  VarFallback: Combinator<ValueNode>;
+  VarFunction: Combinator<ValueNode>;
   CustomDeclaration: Combinator<Declaration>;
   Declaration: Combinator<Declaration>;
   ClassIdStatement: Combinator<Statement>;
@@ -354,6 +357,7 @@ type LessRules = {
   ImportTail: Combinator<unknown>;
   ImportTailText: Combinator<unknown>;
   ImportTailGroup: Combinator<unknown>;
+  MediaQueryPrelude: Combinator<ValueSlot>;
   ImportTailParen: Combinator<unknown>;
   whitespace: Combinator<unknown>;
   blockBody: Combinator<unknown>;
@@ -563,6 +567,10 @@ const staticDataUrlText = regex(/data:(?:[^"'()\\\x00-\x08\x0B\x0E-\x1F\x7F]|\\(
 const urlBoundaryWhitespace = regex(/[ \t\n\r\f]+/);
 const urlFunctionOpen = token(noTrivia(regex(/url\(/i)));
 const staticTailText = regex(/[^()\[\]{};@'"]+/);
+const importLayerOrSupports = keywords(
+  ['layer', 'supports'],
+  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
+);
 const importOption = keywords(
   ['reference', 'optional', 'once', 'multiple', 'inline', 'css', 'less'],
   { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
@@ -1044,17 +1052,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.Quoted,
     g.ImportTailGroup
   )));
-  // An import postlude's variable-bearing media feature has an exact typed
-  // shape. Keep this small prelude production here because the generic query
-  // family is defined after `ImportStatement`; no forward grammar reference
-  // may poison the document's direct start rule.
-  const ImportQueryTail = node(
-    'ImportQueryTail',
-    sequence(literal('('), g.Identifier, regex(/:[ \t\n\r\f]*/), g.VariableReference, literal(')')),
-    (children, _fields, _span, _rawChildren, _triviaLog, state) =>
-      block(operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3]), false,
-        lessMathOutsideParens(state, ':')))
-  );
   const quotedOrUrlTarget = choice(g.EscapedQuoted, g.Quoted, UrlTarget);
   /**
    * Keep the import target as the original typed grammar child. The enclosing
@@ -1072,10 +1069,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return target;
     }
   );
+  /*
+   * A CSS import postlude is `[ layer | layer(…) ]? [ supports(…) ]?
+   * <media-query-list>`. A postlude that is only a media-query list goes through
+   * the same query grammar as `@media`, so `@import url(x) (min-width: 2*3px)`
+   * and `@media (min-width: 2*3px)` are one value (ledger P35: no media-query
+   * exception to the division rule). A `layer`/`supports` postlude stays
+   * authored text; the list must run to the terminating `;`.
+   */
   const ImportTail = node(
     'ImportTail',
     choice(
-      ImportQueryTail,
+      sequence(not(importLayerOrSupports), g.MediaQueryPrelude, peek(literal(';'))),
       g.AtRuleInterpolation,
       g.ImportTailText
     ),
@@ -1221,7 +1226,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           // list has a `@media` desugaring. A pure media-query-list never spells
           // the `supports`/`layer` keyword, so a text tail carrying either is a
           // supports/layer condition (or a malformed mix) and is rejected. A
-          // parenthesized `(feature: value)` media feature (typed `ImportQueryTail`
+          // media-query list (typed through `MediaQueryPrelude`
           // Block) or `@{…}` interpolation is a media query and carries neither.
           // `@-import` rejected every tail above, so this is always a bare
           // `@import`; the `!isLegacyImport` guard is defensive against a future
@@ -1697,6 +1702,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     identOrFunction,
     caseOf('url(', choice(RoutedVariableUrl, RoutedPlainUrl)),
     caseOf('calc(', g.CalcFunction),
+    caseOf('var(', g.VarFunction),
     /*
      * A trailing escaped paren is a value ident, not a function opener: `\(` and
      * `a\(` are escaped code points (css-syntax-3 4.3.7). This more-specific
@@ -2094,6 +2100,34 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // It reduces to the same Keyword the css/scss/jess grammars produce, and the
   // same one the at-rule prelude custom-property branch produces for the
   // identical token in an at-rule header.
+  /*
+   * Overrides the CSS base's `var()` fallback slot, and only that slot. A
+   * fallback is a `<declaration-value>` (css-variables-1 §3), so in Less it is
+   * the custom-property value a `--x:` declaration takes (ledger P2): variable
+   * reads and `@{}` interpolation resolve, and nothing computes.
+   *
+   * BLOCKED from overriding only the slot: routing `var(` to the inherited css
+   * `VarFunction` makes the macro compose fall back to the interpreter ("ref()
+   * used before .define()"), so `VarFunction` is restated here with the css
+   * shape — opener, custom property, optional `, <fallback>` — and Less trivia.
+   */
+  const VarFallback = node(
+    'VarFallback',
+    g.CustomValue,
+    children => trimCustomValueEnd(requireValueNode(children[0]))
+  );
+  const VarFunction = node(
+    'VarCall',
+    sequence(
+      routed(),
+      optional(whitespace),
+      g.CustomPropertyValue,
+      optional(whitespace),
+      optional(sequence(literal(','), g.VarFallback)),
+      literal(')')
+    ),
+    (children, _fields, span) => withSourceSpan(funcCall(functionNameFromOpener(children[0]), children.filter(isValueNode)), span)
+  );
   const CustomPropertyValue = node(
     'CustomPropertyValue',
     g.CustomPropertyToken,
@@ -3440,7 +3474,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   ), literal('('))));
   const ContainerStyleQuery = node(
     'ContainerStyleQuery',
-    sequence(styleFunctionOpener, g.CustomPropertyToken, literal(':'), g.QueryValue, literal(')')),
+    // A style() payload is a `<declaration-value>` (css-conditional-5), the same
+    // permissive custom-property value a `--x:` declaration takes (ledger P2): it
+    // is never computed.
+    sequence(styleFunctionOpener, g.CustomPropertyToken, literal(':'), g.CustomValue, literal(')')),
     (children, _fields, _span, _rawChildren, _triviaLog, state) =>
       funcCall(functionNameFromOpener(children[0]), [operation(':', keyword(requireToken(children[1]).value),
         requireValueNode(children[3]), false, lessMathOutsideParens(state, ':'))])
@@ -4975,6 +5012,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     CustomInnerPart,
     CustomGroup,
     CustomValue,
+    VarFallback,
+    VarFunction,
     CustomPropertyValue,
     CustomDeclaration,
     Declaration,
@@ -5089,6 +5128,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ImportTail,
     ImportTailText,
     ImportTailGroup,
+    MediaQueryPrelude,
     ImportTailParen,
     blockBody,
     BareVariableInterpolation,

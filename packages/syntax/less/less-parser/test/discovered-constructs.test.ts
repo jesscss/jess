@@ -65,14 +65,16 @@ describe('Less constructs discovered outside the parser suites', () => {
   it('drops a comment out of var() arguments rather than emitting its bytes', () => {
     /*
      * The CSS parser leaks the comment bytes into the argument list as Any
-     * nodes; that defect is pinned in the CSS suite. Less is correct.
+     * nodes; that defect is pinned in the CSS suite. Less is correct. The
+     * fallback is a `<declaration-value>` — the custom-property value (ledger
+     * P2) — so it is literal `Any` text, never a typed keyword.
      */
     expect(firstRule('a { b: var(--x, /* c */ e) }')).toMatchObject({
       rules: [{
         value: {
           type: 'FunctionCall',
           name: 'var',
-          args: [{ value: { type: 'Keyword', src: '--x' } }, { value: { type: 'Keyword', src: 'e' } }]
+          args: [{ value: { type: 'Keyword', src: '--x' } }, { value: { type: 'Any', src: 'e' } }]
         }
       }]
     });

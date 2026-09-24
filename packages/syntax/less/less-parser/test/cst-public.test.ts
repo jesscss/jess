@@ -178,7 +178,10 @@ describe('Less import CST facts', () => {
     expect(findNode(imp!, 'ImportTarget')).toBeDefined();
     expect(findNode(imp!, 'Quoted')).toBeDefined();
     expect(leafValues(findNode(imp!, 'VariableInterpolation')!)).toEqual(['@{', 'name', '}']);
-    expect(leafValues(findNode(imp!, 'ImportTail')!)).toContain('screen and ');
+
+    /* The media-query postlude goes through the `@media` query grammar (P35). */
+    expect(findNode(imp!, 'MediaQueryPrelude')).toBeDefined();
+    expect(leafValues(findNode(imp!, 'ImportTail')!)).toEqual(expect.arrayContaining(['screen', 'and', '600']));
   });
 
   it('keeps a url target and the @-import keyword', () => {
@@ -486,7 +489,7 @@ describe('Less direct-AST closure CST contract', () => {
   it('keeps Less function-like openers glued in public CST owners', () => {
     const cases: readonly [source: string, grammarType: string, leaves: readonly string[]][] = [
       ['e("x");', 'Call', ['e(', '"', 'x', '"', ')']],
-      ['.x { color: var(--accent); }', 'Call', ['var(', '--accent', ')']],
+      ['.x { color: var(--accent); }', 'VarCall', ['var(', '--accent', ')']],
       ['.x { color: feature(1px, 2px); }', 'Call', ['feature(', '1', 'px', ', ', '2', 'px', ')']],
       ['.x { color: calc(1px + 2px); }', 'CalcCall', ['calc(', '1', 'px', '+', '2', 'px', ')']],
       ['.x { color: url(foo); }', 'Url', ['url(', 'foo', ')']],

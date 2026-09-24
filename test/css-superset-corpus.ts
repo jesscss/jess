@@ -690,13 +690,14 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
     id: 'punctuation-led var() fallback',
     group: 'value',
     source: 'a { color: var(--x, /img) }',
-    brokenIn: ['less', 'scss', 'jess'],
+    brokenIn: ['scss', 'jess'],
     defect:
       'css-variables-1 §2 defines a `var()` fallback as `<declaration-value>` — '
       + 'any token sequence — so a leading slash is valid there, and css accepts '
-      + 'it. The three supersets reject it at the slash offset: their fallback '
+      + 'it. scss and jess reject it at the slash offset: their fallback '
       + 'component does not admit a punctuation-led run. P33 requires all four '
-      + 'to accept it, so this is a superset defect, not a dialect difference.'
+      + 'to accept it, so this is a superset defect, not a dialect difference. '
+      + '(Less accepts it: its fallback is the custom-property value, ledger P2.)'
   },
   {
     id: '!important with interior whitespace',

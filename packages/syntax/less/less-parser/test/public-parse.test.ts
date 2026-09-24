@@ -1290,7 +1290,7 @@ describe('public Less parse()', () => {
         {
           type: 'AtRuleBlock',
           name: '@media',
-          prelude: { type: 'Any', src: 'screen' },
+          prelude: { type: 'Keyword', src: 'screen' },
           rules: [{ type: 'StyleImport', name: '@import', mode: 'import' }]
         }
       ]
@@ -1490,7 +1490,8 @@ describe('public Less parse()', () => {
   it('desugars a legacy compile-time @import with a media query into a @media wrapper', () => {
     /*
      * `(inline)` makes this compile-time; `(min-width:600px)` is a parenthesized
-     * media feature (Any text tail). Owner 2026-09-02: the legacy `@import` form
+     * media feature, parsed by the `@media` query grammar (ledger P35). Owner
+     * 2026-09-02: the legacy `@import` form
      * wraps the postlude-free StyleImport in `@media <query>`, matching Less 4.x.
      */
     expect(parse('@import (inline) url("x.css") (min-width:600px);')).toMatchObject({
@@ -1499,7 +1500,11 @@ describe('public Less parse()', () => {
         {
           type: 'AtRuleBlock',
           name: '@media',
-          prelude: { type: 'Any', src: '(min-width:600px)' },
+          prelude: {
+            type: 'Block',
+            delimiter: 'paren',
+            value: { type: 'Operation', operator: ':', left: { src: 'min-width' }, right: { src: '600px' } }
+          },
           rules: [
             {
               type: 'StyleImport',

@@ -3404,7 +3404,7 @@ describe('Less AST grammar facts', () => {
         {
           type: 'AtRuleBlock',
           name: '@media',
-          prelude: { type: 'Any', src: 'screen' },
+          prelude: { type: 'Keyword', src: 'screen' },
           rules: [{ type: 'StyleImport', name: '@import', mode: 'import' }]
         }
       ]
@@ -3581,9 +3581,20 @@ describe('Less AST grammar facts', () => {
       '@import "theme.less" screen and (min-width: 600px)};',
       '@import (unknown) "theme.less";'
     ]) {
-      const result = run(lessGrammar.Document, source, {
-        trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
-      });
+      /*
+       * A media-query postlude goes through the `@media` query grammar, so a bare
+       * `@media` there raises the same targeted interpolation error it raises in
+       * an `@media` header. A thrown targeted error is a rejection too.
+       */
+      let result: ReturnType<typeof run>;
+      try {
+        result = run(lessGrammar.Document, source, {
+          trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+        });
+      } catch (error) {
+        expect(error, source).toBeInstanceOf(Error);
+        continue;
+      }
       expect(
         result.ok
         && result.unconsumedFrom === null
@@ -5486,7 +5497,10 @@ describe('Less AST grammar facts', () => {
       '@media (16 / 9 < aspect-ratio < 2 / 1) {\n  .card {\n    color: red;\n  }\n}\n'
     );
 
-    /* `style()` carries a declaration; its slash is the same division rule. */
+    /*
+     * `style()` carries a `<declaration-value>` — the permissive custom-property
+     * value (ledger P2) — so its payload is literal text and never computes.
+     */
     const styleQuery = run(
       lessGrammar.Document,
       '@container style(--ratio: 16/9) { .card { color: red; } }',
@@ -5503,7 +5517,7 @@ describe('Less AST grammar facts', () => {
               { value: {
                 type: 'Operation',
                 operator: ':',
-                right: ratio
+                right: { type: 'Any', src: '16/9' }
               } }
             ]
           }
@@ -5739,7 +5753,7 @@ describe('Less AST grammar facts', () => {
                     type: 'Operation',
                     operator: ':',
                     left: { type: 'Keyword', src: '--responsive' },
-                    right: { type: 'Keyword', src: 'true' }
+                    right: { type: 'Any', src: 'true' }
                   } }
                 ]
               }
