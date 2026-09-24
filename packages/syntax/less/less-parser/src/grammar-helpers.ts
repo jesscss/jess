@@ -21,7 +21,7 @@
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { any, callArg, condition, dimension, expression, funcCall, ifNode, ifValue, important, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, quoted, reference, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, semanticGapText, simpleSelector, sourceSpanOf, spaced, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorCapture, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, Operation, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorCapture, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { requireLessParseState } from './parse-state.js';
 import { LessUnsupportedVariableNameError } from './parse-error.js';
 
@@ -2061,26 +2061,77 @@ function lessMathInGroup(value: ValueNode | LessMathRun, state: unknown): ValueN
  */
 function lessMathInValue(value: ValueNode | LessMathRun, state: unknown): ValueNode {
   if (!isLessMathRun(value)) {
-    return value;
+    return lessComputation(value);
   }
   const last = value.operands.length - 1;
   if (lessMathOutsideParens(state, '/')) {
-    return foldLessMath(value, 0, last, state);
+    return lessComputation(foldLessMath(value, 0, last, state));
   }
   let sides: ValueNode[] | undefined;
   let from = 0;
   for (let index = 0; index < value.operators.length; index += 1) {
     if (value.operators[index] === '/') {
-      (sides ??= []).push(foldLessMath(value, from, index, state));
+      (sides ??= []).push(lessComputation(foldLessMath(value, from, index, state)));
       from = index + 1;
     }
   }
-  const tail = foldLessMath(value, from, last, state);
+  const tail = lessComputation(foldLessMath(value, from, last, state));
   if (sides === undefined) {
     return tail;
   }
   sides.push(tail);
   return list(sides, '/');
+}
+
+/**
+ * Lower one value-position operand that the math policy COMPUTES into an
+ * `Expression` — jess's `$( … )` computation boundary, the one place `.jess`
+ * does math (ledger P35) — so `.less` and its `.jess` spelling are one shape.
+ *
+ * - An operation the policy computes with no enclosing context is the whole
+ *   computation: ONE `Expression` around the tree, not one per operator.
+ * - A parenthesized group whose content is math exists only to open a math
+ *   context, so the group IS the computation boundary: `(@a * 2)` is
+ *   `$(@a * 2)`. A group around a non-math value (`(foo)`) stays a `Block`,
+ *   because there its parens are part of the emitted value.
+ * - Anything else is left as it is: a plain operand is not math, and an
+ *   operation the policy does not compute (`math: strict`) is not a
+ *   computation. Nested groups inside a computation stay `Block`s, exactly as
+ *   `.jess` `$( a * (b + c) )` spells them.
+ */
+function lessComputation(node: ValueNode): ValueNode {
+  let inner: ValueNode;
+  if (isArithmetic(node) && node.mathOutsideParens) {
+    inner = node;
+  } else if (isMathGroup(node)) {
+    inner = requireMathGroupValue(node);
+  } else {
+    return node;
+  }
+  const computation = expression(inner);
+  const span = sourceSpanOf(node);
+  return span === undefined ? computation : withSourceSpan(computation, span);
+}
+
+function isMathGroup(node: ValueNode): node is Block {
+  return node.type === 'Block'
+    && node.delimiter === 'paren'
+    && node.escaped !== true
+    && isValueNode(node.value)
+    && (isArithmetic(node.value) || isMathGroup(node.value));
+}
+
+/** An arithmetic `Operation` — not a query feature's `:` or comparison. */
+function isArithmetic(node: ValueNode): node is Operation {
+  return node.type === 'Operation'
+    && (LESS_PRODUCT_OPERATORS.has(node.operator) || LESS_SUM_OPERATORS.has(node.operator));
+}
+
+function requireMathGroupValue(node: Block): ValueNode {
+  if (!isValueNode(node.value)) {
+    throw new TypeError('Less math group lost its operation.');
+  }
+  return node.value;
 }
 
 export {

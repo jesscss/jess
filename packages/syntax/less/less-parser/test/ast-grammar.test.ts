@@ -1616,7 +1616,7 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: 'sum',
-              value: {
+              value: { type: 'Expression', value: {
                 type: 'Operation',
                 operator: '+',
                 left: { type: 'Dimension', src: '1' },
@@ -1626,12 +1626,12 @@ describe('Less AST grammar facts', () => {
                   left: { type: 'Dimension', src: '2' },
                   right: { type: 'Dimension', src: '3' }
                 }
-              }
+              } }
             },
             {
               type: 'Declaration',
               name: 'grouped',
-              value: {
+              value: { type: 'Expression', value: {
                 type: 'Operation',
                 operator: '*',
                 left: {
@@ -1640,12 +1640,12 @@ describe('Less AST grammar facts', () => {
                   value: { type: 'Operation', operator: '+' }
                 },
                 right: { type: 'Dimension', src: '3' }
-              }
+              } }
             },
             {
               type: 'Declaration',
               name: 'neg',
-              value: {
+              value: { type: 'Expression', value: {
                 type: 'Operation',
                 operator: '*',
                 left: { type: 'Dimension', src: '-1' },
@@ -1654,17 +1654,17 @@ describe('Less AST grammar facts', () => {
                   delimiter: 'paren',
                   value: { type: 'Operation', operator: '+' }
                 }
-              }
+              } }
             },
             {
               type: 'Declaration',
               name: 'signed',
-              value: {
+              value: { type: 'Expression', value: {
                 type: 'Operation',
                 operator: '+',
                 left: { type: 'Dimension', src: '-2px' },
                 right: { type: 'Dimension', src: '3px' }
-              }
+              } }
             },
             {
               type: 'Declaration',
@@ -1870,22 +1870,22 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: 'product',
-              value: {
+              value: { type: 'Expression', value: {
                 type: 'Operation',
                 operator: '*',
                 left: { type: 'Dimension', src: '2' },
                 right: { type: 'Dimension', src: '3' }
-              }
+              } }
             },
             {
               type: 'Declaration',
               name: 'modulo',
-              value: {
+              value: { type: 'Expression', value: {
                 type: 'Operation',
                 operator: '%',
                 left: { type: 'Dimension', src: '7' },
                 right: { type: 'Dimension', src: '3' }
-              }
+              } }
             }
           ]
         }
@@ -1926,22 +1926,22 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: 'star',
-              value: {
+              value: { type: 'Expression', value: {
                 type: 'Operation',
                 operator: '*',
                 left: { type: 'Dimension', src: '1' },
                 right: { type: 'Dimension', src: '2' }
-              }
+              } }
             },
             {
               type: 'Declaration',
               name: 'mod',
-              value: {
+              value: { type: 'Expression', value: {
                 type: 'Operation',
                 operator: '%',
                 left: { type: 'Dimension', src: '7' },
                 right: { type: 'Dimension', src: '3' }
-              }
+              } }
             }
           ]
         }
@@ -1969,7 +1969,7 @@ describe('Less AST grammar facts', () => {
     );
     expect(commentSum.value).toMatchObject({
       rules: [
-        { rules: [{ name: 'x', value: { type: 'Operation', operator: '-' } }] }
+        { rules: [{ name: 'x', value: { type: 'Expression', value: { type: 'Operation', operator: '-' } } }] }
       ]
     });
 
@@ -1979,7 +1979,7 @@ describe('Less AST grammar facts', () => {
     });
     expect(spacedSum.value).toMatchObject({
       rules: [
-        { rules: [{ name: 'x', value: { type: 'Operation', operator: '-' } }] }
+        { rules: [{ name: 'x', value: { type: 'Expression', value: { type: 'Operation', operator: '-' } } }] }
       ]
     });
 
@@ -1989,7 +1989,7 @@ describe('Less AST grammar facts', () => {
     });
     expect(paddedSum.value).toMatchObject({
       rules: [
-        { rules: [{ name: 'x', value: { type: 'Operation', operator: '-' } }] }
+        { rules: [{ name: 'x', value: { type: 'Expression', value: { type: 'Operation', operator: '-' } } }] }
       ]
     });
 
@@ -2050,7 +2050,7 @@ describe('Less AST grammar facts', () => {
           && child.name === 'gridsystem-width'
       )
     ).toMatchObject({
-      value: { type: 'Operation', operator: '+' }
+      value: { type: 'Expression', value: { type: 'Operation', operator: '+' } }
     });
   });
 
@@ -2254,7 +2254,7 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: 'modulo',
-              value: { type: 'Operation', operator: '%' }
+              value: { type: 'Expression', value: { type: 'Operation', operator: '%' } }
             }
           ]
         }
@@ -7031,7 +7031,7 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: 'val',
-              value: {
+              value: { type: 'Expression', value: {
                 type: 'Operation',
                 operator: '+',
                 left: {
@@ -7077,7 +7077,7 @@ describe('Less AST grammar facts', () => {
                   }
                 },
                 right: { type: 'Dimension', src: '5px' }
-              }
+              } }
             }
           ]
         }

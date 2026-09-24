@@ -72,13 +72,19 @@ describe('public Less parse()', () => {
     if (plain?.type !== 'Declaration' || math?.type !== 'Declaration') {
       throw new Error('expected two declarations');
     }
+
+    /* A paren group that only opens a math context IS the `$( … )` boundary (P35). */
     if (
-      math.value.type !== 'Block'
+      math.value.type !== 'Expression'
       || Array.isArray(math.value.value)
       || math.value.value.type !== 'Operation'
     ) {
       throw new Error('expected parenthesized arithmetic');
     }
+    expect(sourceSpanOf(math.value)).toEqual({
+      start: source.indexOf('('),
+      end: source.indexOf(')') + 1
+    });
 
     expect(sourceSpanOf(plain.value)).toBeUndefined();
     const outer = math.value.value;
@@ -2322,22 +2328,22 @@ describe('public Less parse()', () => {
             {
               type: 'Declaration',
               name: 'sum',
-              value: { type: 'Operation', operator: '+' }
+              value: { type: 'Expression', value: { type: 'Operation', operator: '+' } }
             },
             {
               type: 'Declaration',
               name: 'grouped',
-              value: { type: 'Operation', operator: '*' }
+              value: { type: 'Expression', value: { type: 'Operation', operator: '*' } }
             },
             {
               type: 'Declaration',
               name: 'neg',
-              value: { type: 'Operation', operator: '*' }
+              value: { type: 'Expression', value: { type: 'Operation', operator: '*' } }
             },
             {
               type: 'Declaration',
               name: 'signed',
-              value: { type: 'Operation', operator: '+' }
+              value: { type: 'Expression', value: { type: 'Operation', operator: '+' } }
             },
             {
               type: 'Declaration',
@@ -2388,12 +2394,12 @@ describe('public Less parse()', () => {
             {
               type: 'Declaration',
               name: 'product',
-              value: { type: 'Operation', operator: '*' }
+              value: { type: 'Expression', value: { type: 'Operation', operator: '*' } }
             },
             {
               type: 'Declaration',
               name: 'modulo',
-              value: { type: 'Operation', operator: '%' }
+              value: { type: 'Expression', value: { type: 'Operation', operator: '%' } }
             }
           ]
         }
@@ -3221,12 +3227,12 @@ describe('public Less parse()', () => {
               type: 'MixinCall',
               name: '.join',
               args: [{
-                value: {
+                value: { type: 'Expression', value: {
                   type: 'Operation',
                   operator: '-',
                   left: { type: 'Lookup', kind: 'var', name: 'first', raw: '@first' },
                   right: { type: 'Dimension', number: 1 }
-                }
+                } }
               }]
             }
           ]
