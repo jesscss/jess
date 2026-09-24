@@ -20,7 +20,7 @@
  */
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
-import { any, callArg, condition, dimension, expression, funcCall, ifNode, ifValue, important, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, quoted, reference, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, semanticGapText, simpleSelector, sourceSpanOf, spaced, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, callArg, condition, dimension, expression, funcCall, ifNode, ifValue, important, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, quoted, reference, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, Operation, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorCapture, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { requireLessParseState } from './parse-state.js';
 import { LessUnsupportedVariableNameError } from './parse-error.js';
@@ -2007,6 +2007,9 @@ const LESS_SUM_OPERATORS: ReadonlySet<string> = new Set(['+', '-']);
  * config (§12.6b).
  */
 function foldLessMath(run: LessMathRun, from: number, to: number, state: unknown): ValueNode {
+  if (from === to) {
+    return run.operands[from]!;
+  }
   let operands: ValueNode[] = run.operands.slice(from, to + 1);
   let spans: Array<SourceSpan | undefined> = run.spans.slice(from, to + 1);
   let operators: string[] = run.operators.slice(from, to);
@@ -2109,8 +2112,8 @@ function lessComputation(node: ValueNode): ValueNode {
     return node;
   }
   const computation = expression(inner);
-  const span = sourceSpanOf(node);
-  return span === undefined ? computation : withSourceSpan(computation, span);
+  const start = sourceStartOf(node);
+  return start === NO_SPAN ? computation : withSourceSpan(computation, { start, end: sourceEndOf(node) });
 }
 
 function isMathGroup(node: ValueNode): node is Block {
