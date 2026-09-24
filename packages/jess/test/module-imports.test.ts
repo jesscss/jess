@@ -76,6 +76,21 @@ describe('public module imports', () => {
     )).resolves.toBe('.entry {\n  color: #800080;\n}\n');
   });
 
+  it('binds a named-colour argument through the trusted Less functions', async () => {
+    /*
+     * `#less` loads the package's CommonJS build, so this is the one route that
+     * exercises @jesscss/core's CJS named-colour table: `red` binds a `Color`
+     * parameter only if that table resolves it (jess#271).
+     */
+    const compiler = new Compiler();
+    compiler['createJsPluginProxy'] = () => undefined;
+
+    await expect(compiler.renderString(
+      '@-from "#less" import (mix, lighten); .entry { a: mix(red, blue, 50%); b: lighten(blue, 10%); }',
+      { filePath: 'entry.jess', extension: '.jess' }
+    )).resolves.toBe('.entry {\n  a: #800080;\n  b: #3333ff;\n}\n');
+  });
+
   it('reports the optional script runtime when a local script module needs it', async () => {
     const directory = tempProject();
     write(directory, 'functions.js', 'export const identity = (value) => value;');
