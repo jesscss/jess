@@ -85,12 +85,16 @@ const idOf = (file, assertion) => `${path.relative(packageDir, file).split(path.
 
 const failing = new Set();
 const present = new Set();
+
+/* The JSON reporter swallows assertion output; keep it so a new failure says WHY. */
+const messages = new Map();
 for (const file of report.testResults ?? []) {
   for (const assertion of file.assertionResults ?? []) {
     const id = idOf(file.name, assertion);
     present.add(id);
     if (assertion.status === 'failed') {
       failing.add(id);
+      messages.set(id, (assertion.failureMessages ?? []).join('\n'));
     }
   }
 }
@@ -128,6 +132,10 @@ if (newFailures.length > 0) {
   console.error(`NEW FAILURES (${newFailures.length}) — not in the baseline. Fix them; do not add them here to go green:`);
   for (const id of newFailures) {
     console.error(`  + ${id}`);
+    const message = messages.get(id)?.split('\n').slice(0, 40).map(line => `      ${line}`).join('\n');
+    if (message) {
+      console.error(message);
+    }
   }
 }
 
