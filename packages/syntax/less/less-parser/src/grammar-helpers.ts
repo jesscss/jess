@@ -1799,12 +1799,21 @@ function functionConditionSource(value: ValueSlot): string {
     case 'Operation': return `${functionConditionSource(node.left)} ${node.operator} ${functionConditionSource(node.right)}`;
     case 'Block': return `${node.delimiter === 'square' ? '[' : '('}${functionConditionSource(node.value)}${node.delimiter === 'square' ? ']' : ')'}`;
     /*
-     * A nested `boolean(…)`/`if(…)` already lowered to a computation boundary
-     * (`Expression`). It owns no delimiters of its own, so its replay source is
-     * the enclosing group's — the same `(inner)` the boundary `Block` spelled
-     * before the boundary flag became its own node kind.
+     * An `Expression` owns no delimiters of its own. A nested `boolean(…)`/
+     * `if(…)` condition is replayed with the enclosing group's `(inner)`, as
+     * the boundary `Block` spelled it before the boundary became its own node
+     * kind. A math computation (ledger P35) is replayed with parens only when
+     * the author wrote them: a paren group that became the boundary starts
+     * before its value does; bare math starts where its value starts.
      */
-    case 'Expression': return `(${functionConditionSource(node.value)})`;
+    case 'Expression': {
+      const inner = functionConditionSource(node.value);
+      return isValueNode(node.value) && node.value.type !== 'Condition'
+        && sourceStartOf(node) === sourceStartOf(node.value)
+        ? inner
+        : `(${inner})`;
+    }
+    case 'List': return node.value.map(functionConditionSource).join(node.sep === ',' ? ', ' : ` ${node.sep} `);
     case 'Sequence': return node.parts.map(functionConditionSource).join(' ');
     case 'Condition': return node.src;
     default: throw new TypeError(`Less function condition cannot preserve ${node.type}.`);
@@ -2057,10 +2066,13 @@ function lessMathInGroup(value: ValueNode | LessMathRun, state: unknown): ValueN
  *
  * - where the policy divides a bare slash (`math: always`), the slash is a
  *   division at product precedence like every other operator;
- * - where it does not, the slash is the value's separator and binds LOOSEST —
+ * - where it does not, the slash binds LOOSEST of the math operators —
  *   everything on each side of it is that side's own math (P35), so
- *   `4 / 2 + 5em` is `4` and `2 + 5em`, and the result is the slash-separated
- *   `List` css/scss/jess build for the same bytes.
+ *   `4 / 2 + 5em` is `4` and `2 + 5em`, and the result is a slash-separated
+ *   `List` of the two sides. That list sits INSIDE a space-separated value
+ *   (`font: 12px/1.5 Arial` is `[12px / 1.5, Arial]`), where the css slash
+ *   rung sits above the space level (`12px / [1.5 Arial]`); which level is
+ *   right for Less is an open question for the owner, not decided here.
  */
 function lessMathInValue(value: ValueNode | LessMathRun, state: unknown): ValueNode {
   if (!isLessMathRun(value)) {

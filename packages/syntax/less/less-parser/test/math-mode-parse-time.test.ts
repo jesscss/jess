@@ -112,6 +112,25 @@ describe('Less `math:` resolves at PARSE time onto Operation.mathOutsideParens',
   });
 
   /*
+   * A function-condition operand is a plain value, so its math takes the same
+   * shapes — a slash list, an `Expression` — and the condition's verbatim
+   * source must still spell exactly what was written.
+   */
+  it('a function-condition operand keeps its authored spelling through the new shapes', () => {
+    const conditionSrc = (source: string): string => {
+      const found = deepFind(parse(source).rules, 'Condition');
+      if (found === null || !('src' in found) || typeof found.src !== 'string') {
+        throw new TypeError('no Condition in the parsed tree');
+      }
+      return found.src;
+    };
+    expect(conditionSrc('a { b: foo(@w / 2 > 1); }')).toBe('@w / 2 > 1');
+    expect(conditionSrc('a { b: foo(@w > 4 / 2); }')).toBe('@w > 4 / 2');
+    expect(conditionSrc('a { b: foo(@w * 2 > 1); }')).toBe('@w * 2 > 1');
+    expect(() => parse('a { b: if(@w / 2 > 1, x, y); }')).not.toThrow();
+  });
+
+  /*
    * Media-query features build an `Operation` for their `:` and comparison
    * pairs. They are not arithmetic, but they took the same eval-time mode read
    * before this landed, so they are pinned to the mode as well — a change there
@@ -148,6 +167,31 @@ function deepOperation(source: string, mathMode: typeof MODES[number]): Operatio
     throw new TypeError('no Operation anywhere in the parsed tree');
   }
   return found;
+}
+
+function deepFind(value: unknown, type: string): object | null {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = deepFind(item, type);
+      if (found !== null) {
+        return found;
+      }
+    }
+    return null;
+  }
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  if ('type' in value && value.type === type) {
+    return value;
+  }
+  for (const item of Object.values(value)) {
+    const found = deepFind(item, type);
+    if (found !== null) {
+      return found;
+    }
+  }
+  return null;
 }
 
 function deepFindOperation(value: unknown): Operation | null {

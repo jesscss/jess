@@ -1852,7 +1852,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // there is no second production that reads a slash (ledger P34). The run is
   // flat because its precedence is not fixed: a slash is a product operator in
   // a math group or `calc(…)`, and in a plain value it is either that or the
-  // value's loosest separator depending on the math policy (P1/P35). So the
+  // loosest math operator, a separator between two sides, depending on the
+  // math policy (P1/P35). So the
   // run's consumer folds it once, by the rule for its own position
   // (`lessMathInGroup` / `lessMathInValue`), instead of the grammar folding it
   // one way and a later step re-reading the result.
