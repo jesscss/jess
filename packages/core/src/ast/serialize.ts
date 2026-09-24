@@ -74,6 +74,7 @@ import type {
   ComplexSelector,
   CompoundSelector,
   Declaration,
+  Expression,
   AnonymousMixin,
   ValueBlock,
   Dimension,
@@ -4236,6 +4237,16 @@ function evalTyped(
 }
 
 /**
+ * An `Expression` the author spelled as a paren group — its span opens at the
+ * `(` before its value does. A `.jess` `$( … )` carries no span of its own and a
+ * bare Less computation starts where its value starts, so neither prints parens.
+ */
+function isAuthoredGroupExpression(node: Expression): boolean {
+  const start = sourceStartOf(node);
+  return start !== NO_SPAN && !isValueSlotArray(node.value) && start < sourceStartOf(node.value);
+}
+
+/**
  * `and` / `or` in VALUE position (§4.5.5). They are NATIVE operators, not `fns/`
  * entries and not an `if(…)` rewrite: each returns one of its OPERANDS and
  * SHORT-CIRCUITS, so `$a or $default` is `$a` when truthy and the right operand
@@ -4462,6 +4473,22 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       const items = node.value.map(it => evalValueSlot(it, frame, e));
       return combineAll(items, (vals) => {
         /*
+         * §4.7 — a list item is a final typed value too. The declaration boundary
+         * (`evalBytes`) validates the value it is handed, but a list emits its
+         * items to bytes HERE, so without this an item carrying an
+         * unexpressible unit (`$(2px * 3px) / 1px`) would skip the `unitMode`
+         * ladder that the same operation meets on its own.
+         */
+        if (e.ev) {
+          for (let index = 0; index < vals.length; index += 1) {
+            const item = vals[index]!;
+            if (!isLiteral(item)) {
+              const source = node.value[index];
+              validateValueGroupUnits(item, e.modes, source === undefined || isValueSlotArray(source) ? node : source, e, false);
+            }
+          }
+        }
+        /*
          * [compress] tighten the comma separator (`, `→`,`); the `/` separator stays
          * spaced and a space list keeps its single space.
          */
@@ -4528,6 +4555,15 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        * not (`$(foo)` -> `foo`, but `$((foo))` -> `(foo)`). `exprBoundary` marks the
        * position for a value-position `Condition` (§7.1).
        */
+      if (!e.ev && isAuthoredGroupExpression(node)) {
+        /*
+         * Not evaluated here (a preserved call re-emits its arguments), so the
+         * boundary does not compute — and a boundary the author spelled as a
+         * paren group (Less `(a + b)`, ledger P35) keeps its parens, or
+         * `percentage((20 / 20))` and `(a + b) * c` would change meaning.
+         */
+        return mapMaybe(evalValueSlot(node.value, frame, e), v => literal(`(${emitValue(v)})`));
+      }
       return evalValueSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true });
     case 'Condition':
       /*
@@ -6043,6 +6079,16 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
   return mapMaybe(evalTypedSlot(node.args[0]!.value, frame, ce), (v) => {
     if (!isValueGroupArray(v) && v.type === 'Keyword') {
       return calcInner(v.bytes) !== null ? v : makeKeyword(`calc(${v.bytes})`);
+    }
+
+    /*
+     * `calc(x)` drops its wrapper only when `x` resolved to ONE value. A list
+     * (`calc(@v)` with `@v: 50vh/2`, a slash list under the default math mode)
+     * or a space run is not a `<calc-sum>` result, so unwrapping it would emit
+     * `50vh / 2` as the property value — no longer a calculation at all.
+     */
+    if (isValueGroupArray(v) || v.type === 'List') {
+      return makeKeyword(`calc(${emitValueC(v, e)})`);
     }
     return v;
   });

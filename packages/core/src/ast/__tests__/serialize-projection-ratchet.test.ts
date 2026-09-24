@@ -116,7 +116,9 @@ describe('V19 one-evaluator projection ratchet', () => {
     // promotion (with its three operator Sets) and the calc() slash-group
     // reinterpretation are gone. The Less grammar now builds the division, or
     // the slash-separated list, itself.
-    expect(occurrences(/^function |^async function /gmu)).toBe(462);
+    // +1 function: `isAuthoredGroupExpression`, so an `Expression` the author
+    // spelled as a Less paren group keeps its parens when it is not evaluated.
+    expect(occurrences(/^function |^async function /gmu)).toBe(463);
     expect(occurrences(/new Map/gu)).toBe(68);
     expect(occurrences(/new Set/gu)).toBe(39);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
