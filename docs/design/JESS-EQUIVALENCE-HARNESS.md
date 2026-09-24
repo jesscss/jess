@@ -66,18 +66,15 @@ Measured 2026-09-24 (identical in both modes):
 
 | Corpus | Fixtures | Pass | P35 (bare math) | Cannot express | Lost info | Less arm does not render |
 | --- | --: | --: | --: | --: | --: | --: |
-| `all-less` test-data | 138 | 34 | 14 | 77 | 2 | 11 |
+| `all-less` test-data | 138 | 36 | 14 | 75 | 2 | 11 |
 | `bootstrap-less-port@2.5.1` (3 entry points) | 3 | 0 | 0 | 3 | 0 | 0 |
 
 "Cannot express" is 70 fixtures where the emitter threw `NoJessSpelling` (in the
-file or in a partial it imports) plus 7 that convert and render but differ:
-Less-plugin URL rewriting (4), a function registered by a Less `plugins` entry
-(1), and a CSS colour name passed to a Less built-in (2; see below). `.jess` has
-no ambient function namespace (ledger P17), so the converter adds one
-`@-from "#less" import (…)` per file naming exactly the Less built-ins that file
-calls (`emitJess`'s `functions` option, fed from the Less registry); the two
-colour-name fixtures fail because `#less` loads through @jesscss/core's
-CommonJS build, which resolved no colour names (jess#271). The two "lost info" fixtures import a
+file or in a partial it imports) plus 5 that convert and render but differ:
+Less-plugin URL rewriting (4) and a function registered by a Less `plugins` entry
+(1). `.jess` has no ambient function namespace (ledger P17), so the converter
+adds one `@-from "#less" import (…)` per file naming exactly the Less built-ins
+that file calls (`emitJess`'s `functions` option, fed from the Less registry). The two "lost info" fixtures import a
 bare package specifier that the `./` rewrite turns file-relative. The corpus is
 copied with its own `node_modules` holding only the packages it names, so no
 outcome depends on the machine's module layout. Math is its own cause because ledger P35 rules that Less
