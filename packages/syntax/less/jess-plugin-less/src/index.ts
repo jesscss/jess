@@ -8,6 +8,7 @@ import {
   type PluginInterface,
   type SafeParseOptions,
   buildEvaluator,
+  ProvidedModules,
   logger, type PluginHost } from '@jesscss/core';
 import { makeLessRegistry } from '@jesscss/fns/less/registry';
 import { LessApiBridge, type NativeLessPlugin } from '@jesscss/plugin-less-compat';
@@ -41,6 +42,14 @@ export const lessPluginDefaults = {
 } as const;
 
 const lessValueEvaluator = buildEvaluator(makeLessRegistry());
+
+/**
+ * `#less` is this plugin's private path to the Less built-in module
+ * `@jesscss/fns/less`, resolved from THIS package's location so it works
+ * whatever the importing project installs. The plugin loads and trusts it (no
+ * script runtime); the package spelling reaching the same file is the same module.
+ */
+const providedModules = new ProvidedModules([['#less', '@jesscss/fns/less']], createRequire(import.meta.url));
 type LessPluginInput = LessPluginOptions & { plugins?: readonly unknown[] };
 type LessPluginCacheKey = string;
 
@@ -451,9 +460,21 @@ export class LessPlugin extends AbstractPlugin {
     };
   }
 
+  canImportModule(absoluteFilePath: string): boolean {
+    return providedModules.owns(absoluteFilePath);
+  }
+
+  import(absoluteFilePath: string): Promise<Record<string, unknown>> {
+    return providedModules.import(absoluteFilePath);
+  }
+
   override resolve(filePath: string | string[], currentDir: string, searchPaths: string[]) {
     const paths = Array.isArray(filePath) ? filePath : [filePath];
     const mapped = paths.map((candidate) => {
+      const provided = providedModules.resolve(candidate);
+      if (provided !== null) {
+        return provided;
+      }
       if (candidate.startsWith('@less/test-import-module/')) {
         const after = candidate.slice('@less/test-import-module/'.length);
         const marker = `${path.sep}packages${path.sep}test-data${path.sep}`;
