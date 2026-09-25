@@ -4534,6 +4534,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
             }
           }
         }
+
         /*
          * [compress] tighten the comma separator (`, `→`,`); the `/` separator stays
          * spaced and a space list keeps its single space.
