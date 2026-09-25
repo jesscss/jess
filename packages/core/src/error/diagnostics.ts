@@ -714,6 +714,20 @@ export const ERR = {
       ...args
     });
   },
+  unresolvedCallStatement(args: Common & { meta: { name: string } }) {
+    return makeJessError({
+      code: 'eval/unresolved-call-statement',
+      phase: 'eval',
+      ...args
+    });
+  },
+  rulesetWithoutSpelling(args: Common & { meta: { name: string } }) {
+    return makeJessError({
+      code: 'eval/ruleset-without-spelling',
+      phase: 'eval',
+      ...args
+    });
+  },
   guardedSelectorList(args: Common & { meta: { count: number } }) {
     return makeJessError({
       code: 'eval/guarded-selector-list',

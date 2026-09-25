@@ -4,6 +4,7 @@ import {
   classifyValueBlock, collection, collectionEntry, collectionSpread, decl, dimension, funcCall, interpolation, keyword, nestedPropertyBlock,
   rule, stylesheet, variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
+import { withAuthoredText } from '../provenance.js';
 import { serialize } from '../serialize.js';
 import { makeLessRegistry } from '@jesscss/fns';
 
@@ -75,31 +76,41 @@ describe('Collection in a value/arg position', () => {
     expect(render(document)).toBe('.x {\n  y: foo({ a: 1 });\n}\n');
   });
 
+  /* [P37] A block passed to a call written out as-is is written as authored. */
   it('keeps Less variable-only value blocks executable', () => {
-    const block = classifyValueBlock([
+    const block = withAuthoredText(classifyValueBlock([
       variableDeclaration('a', dimension(1), { mode: 'declare' }),
       variableDeclaration('b', dimension(2), { mode: 'declare' })
-    ]);
+    ]), '{ @a: 1; @b: 2; }');
     expect(block.type).toBe('AnonymousMixin');
 
     const document = stylesheet([
       rule('.x', [decl('y', funcCall('foo', [block]))])
     ]);
 
-    expect(render(document)).toBe('.x {\n  y: foo();\n}\n');
+    expect(render(document)).toBe('.x {\n  y: foo({ @a: 1; @b: 2; });\n}\n');
   });
 
   it('keeps non-map Less detached rulesets as anonymous mixins', () => {
-    const block = classifyValueBlock([
+    const block = withAuthoredText(classifyValueBlock([
       decl('a', dimension(1))
-    ]);
+    ]), '{  a: 1; }');
     expect(block.type).toBe('AnonymousMixin');
 
     const document = stylesheet([
       rule('.x', [decl('y', funcCall('foo', [block]))])
     ]);
 
-    expect(render(document)).toBe('.x {\n  y: foo();\n}\n');
+    expect(render(document)).toBe('.x {\n  y: foo({  a: 1; });\n}\n');
+  });
+
+  /* [P37] With no authored spelling the block would vanish (`foo()`): an error instead. */
+  it('rejects a block with no authored spelling passed to an unknown call', () => {
+    const document = stylesheet([
+      rule('.x', [decl('y', funcCall('foo', [classifyValueBlock([decl('a', dimension(1))])]))])
+    ]);
+
+    expect(() => render(document)).toThrow(expect.objectContaining({ code: 'eval/ruleset-without-spelling' }));
   });
 
   it('serializes an empty collection as `{}`', () => {

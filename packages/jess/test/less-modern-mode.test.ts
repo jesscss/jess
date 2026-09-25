@@ -94,21 +94,16 @@ describe('Less modern mode (P36)', () => {
 
   describe('if(), boolean() and each()', () => {
     const VALUES = '@a: 2;\n@l: 1 2;\n';
-    const CALLS = [
-      'x { b: if(@a > 1, @a * 1px, 2px); c: boolean(@a > 1); d: if( (@a > 1) ,  1px,2px ); }',
-      '.y { each(@l, { v: @value; }); }'
-    ].join('\n');
+    const CALLS = 'x { b: if(@a > 1, @a * 1px, 2px); c: boolean(@a > 1); d: if( (@a > 1) ,  1px,2px ); e: each(@l, { v: @value; }); }';
 
     /*
      * The unknown-call path, not a copy of the source: variables substituted,
      * arithmetic computed, the comparison evaluated like any other argument
      * (ledger V11: a comparison in a call argument evaluates), and a
-     * detached-ruleset argument rendered as the ordinary call renders it.
-     * That last part is today's unknown-call behaviour, not the intent: ledger
-     * P37 rules a ruleset argument may not vanish and a bare call statement is
-     * an eval error (jess#290). When the ordinary path changes, this follows.
+     * detached-ruleset argument written exactly as authored (ledger P37,
+     * jess#290).
      */
-    const EVALUATED = 'x {\n  b: if(true, 2px, 2px);\n  c: boolean(true);\n  d: if(true, 1px, 2px);\n}\n.y {\n  each(1 2, )\n}\n';
+    const EVALUATED = 'x {\n  b: if(true, 2px, 2px);\n  c: boolean(true);\n  d: if(true, 1px, 2px);\n  e: each(1 2, { v: @value; });\n}\n';
 
     it('legacy: they are lowered into language structure and compute', async () => {
       await expect(less('@a: 2;\n@l: 1 2;\nx { b: if(@a > 1, 1px, 2px); c: boolean(@a > 1); }\n.y { each(@l, { v: @value; }); }'))
@@ -127,6 +122,16 @@ describe('Less modern mode (P36)', () => {
 
     it('modern: a directive after the calls still decides the document', async () => {
       await expect(less(`${VALUES}${CALLS}\n@use "#less";`)).resolves.toBe(EVALUATED);
+    });
+
+    /* Ledger P37: not lowered, a bare call statement is an eval error, not output. */
+    it.each([
+      ['each()', '.y { each(@l, { v: @value; }); }'],
+      ['if()', '.y { if((true), { color: red; }); }'],
+      ['if() at the root', 'if((true), { .y { color: red; } });']
+    ])('modern: a bare %s statement raises', async (_label, statement) => {
+      await expect(less(`@use "#less";\n${VALUES}${statement}`))
+        .rejects.toThrow(expect.objectContaining({ code: 'eval/unresolved-call-statement' }));
     });
 
     /*

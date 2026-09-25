@@ -145,7 +145,8 @@ import {
   valuePieceReducerWithTrivia,
   lessValueSlot,
   variableNameText,
-  variableValueSlot
+  variableValueSlot,
+  withValueBlockText
 } from './grammar-helpers.js';
 import type {
   AttributeMatchFact,
@@ -3082,7 +3083,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const ValueBlock = node(
     'ValueBlock',
     sequence(literal('{'), many(g.BodyStatement), optional(g.Call), literal('}')),
-    children => classifyValueBlock(requireValueBlockBody(children))
+    (children, _fields, span, _rawChildren, _triviaLog, state) =>
+      withValueBlockText(classifyValueBlock(requireValueBlockBody(children)), span, state)
   );
   const CallArgumentValue = node(
     'CallArgumentValue',

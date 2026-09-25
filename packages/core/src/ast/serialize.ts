@@ -4779,12 +4779,10 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     }
     case 'AnonymousMixin':
       /*
-       * An anonymous mixin reaching a value/arg position is not byte-serializable:
-       * it can only be *called* (`@dr()`). less.js drops such an argument to an
-       * ordinary function (`fn({…})` → `fn()`), so it folds to empty bytes here
-       * rather than throwing. (Full `if()`/`isruleset()`/`isdefined()` DR handling —
-       * which evaluates and can RETURN a detached ruleset — is the deferred
-       * condition-grammar / FnCtx capability wave, not this path.)
+       * An anonymous mixin reaching a value position is not byte-serializable:
+       * it can only be *called* (`@dr()`), so it folds to empty bytes here. The
+       * one position ruled otherwise is an argument to a call written out as-is
+       * (ledger P37), which `evalCall` writes from the block's authored text.
        */
       return literal('');
     case 'Collection':
@@ -7227,8 +7225,29 @@ function evalCall(
    */
   const ambient = hasAmbientFunctions(node);
 
+  /*
+   * [P37] A name that reaches no function is written out as-is, its arguments
+   * evaluated — and an anonymous-mixin argument written exactly as authored:
+   * `foo(@l, { v: 1; })` → `foo(1 2, { v: 1; })`. A block the parser kept no
+   * spelling for would vanish (`foo()`), which is an error, not lost content.
+   */
+  const writtenAsIs = selected === undefined && ev.paramNames(node.name, undefined, ambient) === undefined;
+
   // Args are materialized TYPED (each arg's tag sourced from its parse node).
-  const typed = node.args.map(a => evalTypedSlot(a.value, frame, e, true));
+  const typed = node.args.map((a) => {
+    const block = writtenAsIs ? resolveValueBlock(a.value, frame, e) : undefined;
+    if (block?.type !== 'AnonymousMixin') {
+      return evalTypedSlot(a.value, frame, e, true);
+    }
+    if (block._text === null) {
+      throw ERR.rulesetWithoutSpelling({
+        node,
+        ...callSiteLocation(node, e),
+        meta: { name: node.name }
+      });
+    }
+    return makeAny(block._text);
+  });
   return combineAll(typed, (vals) => {
     const ordered = orderKeywordArgs(node.args, vals, ev, node.name, selected, ambient);
     const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
@@ -16497,6 +16516,7 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
       e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
   } else if (node.type === 'FunctionCall') {
+    assertStatementCallResolves(node, frame, e);
     const bytes = evalBytesSync(node, frame, e);
     if (bytes.length === 0) {
       return;
@@ -17601,6 +17621,30 @@ function emitRawInline(text: string, e: Emit): void {
   put(e, nl(e));
 }
 
+/**
+ * [P37] A call standing alone in statement position whose name reaches no
+ * function — not a user function, not a scoped `@plugin`/`@use` function, not
+ * a built-in in scope where it was written (P36), not a core form such as
+ * `isdefined()` — would be written out as-is, and a bare call is not CSS.
+ * It raises instead. Constructs a dialect lowers (Less `each()`/`if()`, mixin
+ * calls) never arrive here as a `FunctionCall`.
+ */
+function assertStatementCallResolves(node: FunctionCall, frame: Frame, e: Emit): void {
+  if (e.lambdaFunctionNames?.has(node.name) || evalIntrospection(node, frame, e) !== undefined) {
+    return;
+  }
+  const lname = node.name.toLowerCase();
+  const scoped = e.scopedFunctionNames?.has(lname) ? lookupScopedFn(frame, lname, e) : undefined;
+  if (e.ev?.paramNames(node.name, scoped, hasAmbientFunctions(node)) !== undefined) {
+    return;
+  }
+  throw ERR.unresolvedCallStatement({
+    node,
+    ...callSiteLocation(node, e),
+    meta: { name: node.name }
+  });
+}
+
 function canEmitRootCallValue(value: EvalValue): boolean {
   return isLiteral(value) || (!isValueGroupArray(value) && value.type === 'Any');
 }
@@ -17612,6 +17656,7 @@ function canEmitRootCallValue(value: EvalValue): boolean {
  * text. Emitted at the current indent; an empty result contributes nothing.
  */
 function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precomputed?: string): MaybePromise<void> {
+  assertStatementCallResolves(node, frame, e);
   const start = e.off;
   const emitBytes = (bytes: string): void => {
     const isRoot = e.depth === 0;

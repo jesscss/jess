@@ -27,7 +27,7 @@
 
 import { Combinator, renderCombinator } from './node.js';
 import type { GuardNode } from './guard.js'; // [guards]
-import { NO_SPAN, valueLayoutOf, withValueLayout, type BodySpanSlots, type FunctionScopeSlot, type SpanSlots, type TriviaSlot } from './provenance.js';
+import { NO_SPAN, valueLayoutOf, withValueLayout, type AuthoredTextSlot, type BodySpanSlots, type FunctionScopeSlot, type SpanSlots, type TriviaSlot } from './provenance.js';
 
 /* ------------------------------------------------------------------ values */
 
@@ -421,8 +421,10 @@ export interface Interpolation extends SpanSlots {
  * user `@function f($n) { @return … }`. The field is OMITTED for the plain,
  * parameterless block so that shape stays monomorphic. A call binds args→params
  * (positional/named/default) and yields the value of the rules' `result:` entry.
+ *
+ * `_text` is the block as authored, for a call emitted as written (ledger P37).
  */
-export interface AnonymousMixin {
+export interface AnonymousMixin extends AuthoredTextSlot {
   readonly type: 'AnonymousMixin';
   readonly rules: Statement[];
   readonly params?: Param[];
@@ -1544,7 +1546,9 @@ export const pseudoSelector = (
 ): PseudoSelector => ({ type: 'PseudoSelector', text: args !== null ? null : text, interp, name, args, crossable: crossable(name), _s: NO_SPAN, _e: NO_SPAN });
 export const interpolation = (parts: InterpPart[]): Interpolation => ({ type: 'Interpolation', parts, _s: NO_SPAN, _e: NO_SPAN });
 export const anonymousMixin = (rules: Statement[], params?: Param[]): AnonymousMixin =>
-  params === undefined ? { type: 'AnonymousMixin', rules } : { type: 'AnonymousMixin', rules, params };
+  params === undefined
+    ? { type: 'AnonymousMixin', rules, _text: null }
+    : { type: 'AnonymousMixin', rules, params, _text: null };
 
 /** Less-style `{ … }` blocks are executable anonymous mixins. Jess and Sass
  * data collections are constructed by their dedicated collection grammars. */

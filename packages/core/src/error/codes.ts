@@ -36,6 +36,8 @@ export type JessErrorCode =
   | 'eval/module-config-rejected'
   | 'eval/property-in-root'
   | 'eval/root-call-without-root'
+  | 'eval/unresolved-call-statement'
+  | 'eval/ruleset-without-spelling'
   | 'eval/guarded-selector-list'
   | 'eval/ruleset-on-property'
   | 'eval/async-in-sync-position'
@@ -277,6 +279,24 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       reason:
         'The root-level function call "${name}" evaluated to a value or void result instead of a root-level statement.',
       fix: 'Call the function from a value position, or return a ruleset/declaration block that can be emitted at the root.'
+    }
+  ],
+  [
+    'eval/unresolved-call-statement',
+    {
+      summary: 'A function call cannot stand alone as a statement',
+      reason:
+        '"${name}()" is not a function this document defines or imports, so it would be written out as-is, and a bare call is not valid CSS at the stylesheet root or in a declaration list.',
+      fix: 'Import or define "${name}" (in a Less document that uses @use or @compose, Less built-ins must be imported), or use the call as a property value, e.g. `property: ${name}(…);`.'
+    }
+  ],
+  [
+    'eval/ruleset-without-spelling',
+    {
+      summary: 'A ruleset cannot be written as a value',
+      reason:
+        '"${name}()" is not a function this document defines or imports, so it is written out as-is, and its anonymous-mixin argument has no authored spelling to write.',
+      fix: 'Import or define "${name}", or pass a value instead of the block.'
     }
   ],
   [
