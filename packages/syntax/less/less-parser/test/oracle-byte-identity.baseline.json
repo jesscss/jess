@@ -5,12 +5,12 @@
   "surfaces": [
     {
       "name": "ast",
-      "aggregate": "60cb5d728482e9a052728b7ee69045d4658fa130c07b6dcdf054dabb7af7b414",
+      "aggregate": "67f4058243b21234555368e9d8fad3e1d749d1d10c5b32831c0a3c70137c24a1",
       "threw": 113
     },
     {
       "name": "cst",
-      "aggregate": "917affe273481d14e500b0a284a6d47ee6f590332eb0523c323ba32399358140",
+      "aggregate": "6376c84cac08c00ff553c39ba85819b0585700758b2f9f8dd6be035904c57ab0",
       "threw": 0
     }
   ],
@@ -204,8 +204,8 @@
       "cst": "0cfe567829df02e9"
     },
     "node_modules/@less/test-data/tests-config/math/strict/css.css": {
-      "ast": "02d8e67f647ce54d",
-      "cst": "6cd218ccbd868484"
+      "ast": "cb54e86a0e7618d8",
+      "cst": "f4575001555a9aba"
     },
     "node_modules/@less/test-data/tests-config/math/strict/media-math.css": {
       "ast": "aa38e2d45d5cf348",
@@ -508,24 +508,24 @@
       "cst": "d2293573cf77f41c"
     },
     "node_modules/@less/test-data/tests-config/units/loose/loose.css": {
-      "ast": "fcfd6ed69fc13e9f",
-      "cst": "92deeb1d96f27e21"
+      "ast": "99392f46f64081a4",
+      "cst": "cef4a1619a70157a"
     },
     "node_modules/@less/test-data/tests-config/units/loose/loose.less": {
-      "ast": "64ff7c9681b6a259",
-      "cst": "a0d15595cd19a11c"
+      "ast": "23624f09b7110c26",
+      "cst": "72cbc1c60f7d2a41"
     },
     "node_modules/@less/test-data/tests-config/units/no-strict/legacy/no-strict.css": {
       "ast": "9e41e3a1da44b3af",
       "cst": "fe2c841861fffd3e"
     },
     "node_modules/@less/test-data/tests-config/units/no-strict/no-strict.css": {
-      "ast": "86e060c77c9737fb",
-      "cst": "61749983244f8676"
+      "ast": "17984673f277c135",
+      "cst": "508cbd6e0af5a2df"
     },
     "node_modules/@less/test-data/tests-config/units/no-strict/no-strict.less": {
-      "ast": "64ff7c9681b6a259",
-      "cst": "a0d15595cd19a11c"
+      "ast": "23624f09b7110c26",
+      "cst": "72cbc1c60f7d2a41"
     },
     "node_modules/@less/test-data/tests-config/units/strict/strict-units.css": {
       "ast": "e5806b1d7460bd64",
@@ -1044,8 +1044,8 @@
       "cst": "5314c6b5c399c0b0"
     },
     "node_modules/@less/test-data/tests-unit/calc/calc.css": {
-      "ast": "83ea4bb239806e18",
-      "cst": "b384258a483add9f"
+      "ast": "255ecc30ba751235",
+      "cst": "996e9fa5652a5b06"
     },
     "node_modules/@less/test-data/tests-unit/calc/calc.less": {
       "ast": "0f723a6ab6d2348f",
@@ -1820,12 +1820,12 @@
       "cst": "8e96c2c7fd8facd5"
     },
     "node_modules/@less/test-data/tests-unit/nesting/nesting-uncollapsed.css": {
-      "ast": "7c2b9b2b2bee9c03",
-      "cst": "8801fcf8a6f77464"
+      "ast": "3cd4a4379e68fb0d",
+      "cst": "f2f22c2d54bb63fd"
     },
     "node_modules/@less/test-data/tests-unit/nesting/nesting.css": {
-      "ast": "ab18826658d08e50",
-      "cst": "858977523fe8e1ac"
+      "ast": "a03c1067cab0f5a4",
+      "cst": "44ffa3f3d6dd2c8c"
     },
     "node_modules/@less/test-data/tests-unit/nesting/nesting.less": {
       "ast": "5e7113df50a80c9d",
@@ -1844,8 +1844,8 @@
       "cst": "800a270927b0474e"
     },
     "node_modules/@less/test-data/tests-unit/operations/operations-advanced.css": {
-      "ast": "0908f31e6da84abe",
-      "cst": "2358686c17100f8a"
+      "ast": "bfce498299168f0f",
+      "cst": "10ac8346b37615fd"
     },
     "node_modules/@less/test-data/tests-unit/operations/operations-advanced.less": {
       "ast": "c6e0e581792e3a14",
