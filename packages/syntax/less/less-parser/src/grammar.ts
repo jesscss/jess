@@ -103,6 +103,7 @@ import {
   lessMathRun,
   requireMathSum,
   lessTruth,
+  authoredCall,
   lowerLogicalCallStatement,
   mixinArgumentSource,
   mixinArgumentsFromChildren,
@@ -1649,12 +1650,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const GenericFunctionStatement = node(
     'Call',
     sequence(g.CallArgumentFunction, literal(';')),
-    (children) => {
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => {
       const call = children.find(isFunctionCall);
       if (call === undefined) {
         throw new TypeError('Less function statement lost its call fact.');
       }
-      return lowerLogicalCallStatement(call);
+      return lowerLogicalCallStatement(call, state);
     }
   );
   const TerminalGenericFunction = transform(
@@ -3162,7 +3163,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal(')'),
       optional(literal(';'))
     ),
-    (children) => {
+    (children, _fields, span, rawChildren, _triviaLog, state) => {
       const callback = children.find(isLessEachCallback);
       if (callback === undefined) {
         throw new TypeError('Less each() reduction produced an invalid callback.');
@@ -3171,7 +3172,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       if (iterable === undefined) {
         throw new TypeError('Less each() reduction produced an invalid iterable.');
       }
-      return forNode(isMixinCall(iterable) ? iterable : requireValueSlot(iterable), callback.rules, callback.binding);
+      // The call ends at its own `)`, before the optional statement `;`.
+      const close = rawChildren.findLast(child => isSpannedToken(child) && child.value === ')');
+      const asCall = isSpannedToken(close)
+        ? authoredCall(functionNameFromOpener(children[0]), span.start, close.span.end, state)
+        : null;
+      return forNode(isMixinCall(iterable) ? iterable : requireValueSlot(iterable), callback.rules, callback.binding, asCall);
     }
   );
   const enclosedRaw = node(

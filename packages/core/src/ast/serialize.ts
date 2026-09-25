@@ -67,6 +67,7 @@ import {
 import type {
   Any,
   Apply,
+  AuthoredCallSlot,
   Collection,
   NestedPropertyBlock,
   Color,
@@ -4222,12 +4223,18 @@ function evalTyped(
       return mapMaybe(evalCall(node, frame, e, true), v => force(e, v));
     case 'Condition':
       return mapMaybe(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), makeBool);
-    case 'IfValue':
+    case 'IfValue': {
+      const unlowered = unloweredCall(node);
+      if (unlowered !== null) {
+        return mapMaybe(evalCall(unlowered, frame, e, true), v => force(e, v));
+      }
+
       /* The taken arm is consumed TYPED — `if(@c, 1px, 2px) * 2` operates on the
        * branch value, not on its bytes. An unmatched chain has no value. */
       return mapMaybe(pickIfValue(node, frame, e), taken => taken === undefined
         ? NULL
         : evalTypedSlot(taken, frame, e, projectMixinValues));
+    }
     case 'Range':
       /*
        * Ranges are consumed structurally by `forItems`; a value-position use
@@ -4594,7 +4601,12 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         return node.delimiter === 'square' ? makeBlock(v, 'square', node.escaped) : v;
       });
     }
-    case 'Expression':
+    case 'Expression': {
+      const unlowered = unloweredCall(node);
+      if (unlowered !== null) {
+        return evalCall(unlowered, frame, e, false);
+      }
+
       /*
        * A `$( … )` COMPUTATION BOUNDARY opens the math context but owns no output
        * delimiters — the `$(` and `)` are the marker, not a value's syntax. It stays
@@ -4612,6 +4624,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         return mapMaybe(evalValueSlot(node.value, frame, e), v => literal(`(${emitValue(v)})`));
       }
       return evalValueSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true });
+    }
     case 'Condition':
       /*
        * [condition-grammar] Every construct that CONSUMES a condition — Less
@@ -4741,12 +4754,18 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     }
     case 'FunctionCall':
       return evalCall(node, frame, e, false);
-    case 'IfValue':
+    case 'IfValue': {
+      const unlowered = unloweredCall(node);
+      if (unlowered !== null) {
+        return evalCall(unlowered, frame, e, false);
+      }
+
       /* An unmatched chain (`$if` with no `$else`, or Less `if(@c, a)`) is empty
        * bytes, exactly what an absent value emits. */
       return mapMaybe(pickIfValue(node, frame, e), taken => taken === undefined
         ? literal('')
         : evalValueSlot(taken, frame, e));
+    }
     case 'Interpolation':
       return evalInterp(node, frame, e);
     case 'Reference':
@@ -6208,6 +6227,17 @@ function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): Mayb
     }
     return literal(`${node.name}(${inner})`);
   });
+}
+
+/**
+ * [P36] The call a grammar lowered into `node`, when the document it was
+ * written in has no ambient built-ins — `null` when the lowered form stands.
+ * Less lowers `if()`/`boolean()`/`each()` into structure only in legacy mode;
+ * a later `@use` decides that, so the decision is read here, at evaluation.
+ */
+function unloweredCall(node: AuthoredCallSlot): FunctionCall | null {
+  const call = node._asCall;
+  return call !== null && !hasAmbientFunctions(call) ? call : null;
 }
 
 /** Evaluate a function call: materialize the modeled arg list, then `ev.call`. */
@@ -11491,7 +11521,9 @@ function runWhile(
 
 /** Select one `$if` branch and publish only that branch into this activation's scoped index. */
 function selectIfBody(node: If, frame: Frame, e: Emit): Statement[] | null {
-  const body = selectedIfBody(node, frame, e);
+  /* [P36] Not lowered where built-ins are not ambient: the body is the call as written. */
+  const unlowered = unloweredCall(node);
+  const body = unlowered === null ? selectedIfBody(node, frame, e) : [unlowered];
   if (!body) {
     return null;
   }
@@ -14346,6 +14378,9 @@ function resolveValueBlock(node: Binding, frame: Frame | null, e: EvalCtx): Valu
       continue;
     }
     if (cur.type === 'IfValue') {
+      if (unloweredCall(cur) !== null) {
+        return undefined;
+      }
       cur = pickIfBranch(cur, cursor, e);
       continue;
     }
@@ -15029,6 +15064,13 @@ function expandFor(
   source: NestedHeaderSource | null = null,
   sharedLeaves?: NestedLeafBuffer
 ): MaybePromise<void> {
+  /* [P36] Not lowered where built-ins are not ambient: emit the call as written, once. */
+  const unlowered = unloweredCall(node);
+  if (unlowered !== null) {
+    return sharedLeaves === undefined
+      ? walkBody([unlowered], composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion)
+      : nestedBody([unlowered], frame, e, undefined, imp, source, null, sharedLeaves, applyExpansion);
+  }
   return mapMaybe(forItems(node.iterable, frame, e), (items) => {
     const run = (start: number): MaybePromise<void> => {
       const collectionEntries = Array.isArray(items)

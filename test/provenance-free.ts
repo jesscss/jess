@@ -3,7 +3,8 @@
  *
  * Provenance rides on nodes as inline integer slots (`_s`/`_e` source span,
  * `_bs`/`_be` body span, `_trivia` document trivia, `_fnScope` a call's
- * document function scope — see `packages/core/src/ast/provenance.ts`). It is
+ * document function scope, `_asCall` the authored call a lowered node came from
+ * — see `packages/core/src/ast/provenance.ts` and `AuthoredCallSlot`). It is
  * deliberately ORTHOGONAL to the semantic AST: the same grammar fact means the same thing whatever byte offsets
  * produced it, and two sources differing only in whitespace produce identical
  * facts at different offsets.
@@ -13,7 +14,7 @@
  * that mean to assert a span read it directly through `sourceSpanOf` /
  * `bodySpanOf` (see `packages/core/src/ast/__tests__/provenance.test.ts`).
  */
-const PROVENANCE_SLOTS = new Set(['_s', '_e', '_bs', '_be', '_trivia', '_fnScope']);
+const PROVENANCE_SLOTS = new Set(['_s', '_e', '_bs', '_be', '_trivia', '_fnScope', '_asCall']);
 
 export function bare(value: unknown): unknown {
   return strip(value);

@@ -43,6 +43,22 @@ describe('Less module mode (P36)', () => {
     expect(call && hasAmbientFunctions(call)).toBe(false);
   });
 
+  it('keeps the authored call on a lowered if()/boolean(), sharing the document scope', () => {
+    const rule = parse('a { b: if( @x ,1px, 2px); c: boolean(@x); d: min(1px, 2px); }').rules[0];
+    if (rule?.type !== 'Ruleset') {
+      throw new TypeError('expected a ruleset');
+    }
+    const values = rule.rules.map(d => (d.type === 'Declaration' && !Array.isArray(d.value) ? d.value : undefined));
+    const [ifValue, booleanValue, minValue] = values;
+    expect(ifValue?.type).toBe('IfValue');
+    expect(booleanValue?.type).toBe('Expression');
+    const asCall = ifValue?.type === 'IfValue' ? ifValue._asCall : null;
+    expect(asCall?.name).toBe('if');
+    expect(asCall?.args.map(arg => arg.value)).toEqual([expect.objectContaining({ type: 'Any', src: ' @x ,1px, 2px' })]);
+    expect(booleanValue?.type === 'Expression' ? booleanValue._asCall?.name : undefined).toBe('boolean');
+    expect(minValue?.type === 'FunctionCall' ? minValue._fnScope : undefined).toBe(asCall?._fnScope);
+  });
+
   it('does not treat a legacy @import as a module directive', () => {
     const [call] = calls(parse('@import "x";\na { b: min(1px, 2px); }'));
     expect(call && hasAmbientFunctions(call)).toBe(true);

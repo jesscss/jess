@@ -1157,6 +1157,33 @@ function isLessCallArg(value: unknown): value is LessCallArg {
     && isLessValueSlotValue(value.value);
 }
 
+/**
+ * [P36] The call `name(…)` exactly as its author wrote it, for a grammar that
+ * lowers the call into structure (`if()`, `boolean()`, `each()`): one opaque
+ * argument holding the authored bytes between the call's own parentheses, and
+ * the document's function scope. The lowered node keeps it, and a document
+ * whose built-ins are not ambient emits it instead of the lowering (ledger P36).
+ *
+ * `start` is the opener's first byte and `end` sits just past the closing
+ * paren, both from grammar spans; `null` for a parse with no source text.
+ */
+function authoredCall(name: string, start: number, end: number, state: unknown): FunctionCall | null {
+  const source = sourceFromState(state);
+  if (source === undefined || start === NO_SPAN || end === NO_SPAN) {
+    return null;
+  }
+  const call = funcCall(name, [any(source.slice(start + name.length + 1, end - 1))]);
+  return withSourceSpan(withFunctionScope(call, functionScopeOf(state)), { start, end });
+}
+
+/** The authored form of a call that lowers to structure, or `null` for any other call. */
+function authoredLoweredCall(call: FunctionCall, state: unknown): FunctionCall | null {
+  const name = call.name.toLowerCase();
+  return name === 'if' || name === 'boolean'
+    ? authoredCall(call.name, sourceStartOf(call), sourceEndOf(call), state)
+    : null;
+}
+
 function callWithLayout(
   name: string,
   args: Array<ValueSlot | LessCallArg>,
@@ -1207,14 +1234,14 @@ function lessConditionGuard(arg: ValueSlot): MixinGuard {
  * `not` / `and` / `or` land on the native logical operators (§4.5.5) rather than
  * on `fns/` entries, which is the same ruling that puts them in this set at all.
  */
-function lowerLogicalCall(call: FunctionCall): ValueNode {
+function lowerLogicalCall(call: FunctionCall, asCall: FunctionCall | null): ValueNode {
   const args = call.args;
   const first = args[0]?.value;
   if (first === undefined) {
     return call;
   }
-  const boundaryCondition = (guard: MixinGuard): Expression =>
-    expression(condition(guard, functionConditionSource(call)));
+  const boundaryCondition = (guard: MixinGuard, authored: FunctionCall | null = null): Expression =>
+    expression(condition(guard, functionConditionSource(call)), authored);
 
   /* `and`/`or` are n-ary in Less and fold LEFT, so `and(a, b, c)` is
    * `(a and b) and c` — the same order the guard evaluator short-circuits in. */
@@ -1225,7 +1252,7 @@ function lowerLogicalCall(call: FunctionCall): ValueNode {
     );
   switch (call.name.toLowerCase()) {
     case 'boolean':
-      return args.length === 1 ? boundaryCondition(lessConditionGuard(first)) : call;
+      return args.length === 1 ? boundaryCondition(lessConditionGuard(first), asCall) : call;
     case 'not':
       return args.length === 1 ? boundaryCondition({ g: 'not', inner: lessConditionGuard(first) }) : call;
     case 'and':
@@ -1239,7 +1266,7 @@ function lowerLogicalCall(call: FunctionCall): ValueNode {
       const guard = lessConditionGuard(first);
       const taken: IfValueBranch = { guard, value: args[1]!.value };
       const otherwise = args[2]?.value;
-      return ifValue(otherwise === undefined ? [taken] : [taken, { guard: null, value: otherwise }]);
+      return ifValue(otherwise === undefined ? [taken] : [taken, { guard: null, value: otherwise }], asCall);
     }
     default:
       return call;
@@ -1256,7 +1283,7 @@ function lowerLogicalCall(call: FunctionCall): ValueNode {
  * valid here"); it stays an ordinary call statement rather than being forced
  * into a shape it does not have.
  */
-function lowerLogicalCallStatement(call: FunctionCall): FunctionCall | If {
+function lowerLogicalCallStatement(call: FunctionCall, state: unknown): FunctionCall | If {
   const args = call.args;
   const first = args[0]?.value;
   if (call.name.toLowerCase() !== 'if' || first === undefined || args.length < 2 || args.length > 3) {
@@ -1268,7 +1295,10 @@ function lowerLogicalCallStatement(call: FunctionCall): FunctionCall | If {
   }
   const taken: IfBranch = { guard: lessConditionGuard(first), rules: arms[0]!.rules };
   const otherwise = arms[1];
-  return ifNode(otherwise === undefined ? [taken] : [taken, { guard: null, rules: otherwise.rules }]);
+  return ifNode(
+    otherwise === undefined ? [taken] : [taken, { guard: null, rules: otherwise.rules }],
+    authoredLoweredCall(call, state)
+  );
 }
 
 function functionCallFromChildren(
@@ -1287,7 +1317,8 @@ function functionCallFromChildren(
     }
   }
   const separators = functionSeparatorsFromFields(fields, rawChildren, triviaLog, state);
-  return lowerLogicalCall(callWithLayout(name, args, separators, hasField(fields, 'trailingSeparator'), span, state));
+  const call = callWithLayout(name, args, separators, hasField(fields, 'trailingSeparator'), span, state);
+  return lowerLogicalCall(call, authoredLoweredCall(call, state));
 }
 
 /**
@@ -2288,6 +2319,7 @@ export {
   lessTriviaEntryText,
   lessTriviaKindLabels,
   lessTruth,
+  authoredCall,
   lowerLogicalCall,
   lowerLogicalCallStatement,
   mixinArgumentSource,

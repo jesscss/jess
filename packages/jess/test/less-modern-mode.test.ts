@@ -71,6 +71,30 @@ describe('Less modern mode (P36)', () => {
       .resolves.toBe('.x {\n  color: darken(red, 10%);\n}\n');
   });
 
+  describe('if(), boolean() and each()', () => {
+    const LOWERED = [
+      '@a: 2;',
+      '@l: 1 2;',
+      'x { b: if(@a > 1, 1px, 2px); c: boolean(@a > 1); d: if( (@a > 1) ,  1px,2px ); e: if(@x: 1, 2); }',
+      '.y { each(@l, { v: @value; }); }'
+    ].join('\n');
+    const AS_WRITTEN = 'x {\n  b: if(@a > 1, 1px, 2px);\n  c: boolean(@a > 1);\n  d: if( (@a > 1) ,  1px,2px );\n'
+      + '  e: if(@x: 1, 2);\n}\n.y {\n  each(@l, { v: @value; })\n}\n';
+
+    it('legacy: they are lowered into language structure and compute', async () => {
+      await expect(less('@a: 2;\n@l: 1 2;\nx { b: if(@a > 1, 1px, 2px); c: boolean(@a > 1); }\n.y { each(@l, { v: @value; }); }'))
+        .resolves.toBe('x {\n  b: 1px;\n  c: true;\n}\n.y {\n  v: 1;\n  v: 2;\n}\n');
+    });
+
+    it('modern: they are plain calls, emitted as written (spacing and keyword arguments kept)', async () => {
+      await expect(less(`@use "#less";\n${LOWERED}`)).resolves.toBe(AS_WRITTEN);
+    });
+
+    it('modern: a directive after the calls still decides the document', async () => {
+      await expect(less(`${LOWERED}\n@use "#less";`)).resolves.toBe(AS_WRITTEN);
+    });
+  });
+
   it('modern: a call in an at-rule prelude is emitted as written', async () => {
     await expect(less('@use "#less";\n@media screen and round(1.5) { a { b: c; } }'))
       .resolves.toBe('@media screen and round(1.5) {\n  a {\n    b: c;\n  }\n}\n');

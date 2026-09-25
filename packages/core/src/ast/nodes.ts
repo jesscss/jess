@@ -326,7 +326,22 @@ export interface Block extends SpanSlots {
  * (ledger P17), so `$( … )` is where a real comparison EVALUATES rather than
  * emitting its source text.
  */
-export interface Expression extends SpanSlots {
+/**
+ * The call a grammar LOWERED into this node, kept as written (ledger P36).
+ *
+ * Less `if()`, `boolean()` and `each()` are lowered into language structure
+ * only where Less built-ins are ambient. The grammar cannot know that while it
+ * parses (a later `@use` decides it), so the lowered node keeps the authored
+ * call: `name(<authored arguments>)`, one opaque argument, carrying its
+ * document's function scope. Where that scope is closed the evaluator emits
+ * this call instead of the lowered form. `null` for every node no dialect
+ * lowered from a call, and for a parse with no source text.
+ */
+export interface AuthoredCallSlot {
+  readonly _asCall: FunctionCall | null;
+}
+
+export interface Expression extends SpanSlots, AuthoredCallSlot {
   readonly type: 'Expression';
   readonly value: ValueSlot;
 }
@@ -364,7 +379,7 @@ export interface IfValueBranch {
  * into `guard` before the node is built. Core therefore evaluates a condition
  * that is ALREADY dialect-specific and carries no dialect knowledge itself.
  */
-export interface IfValue {
+export interface IfValue extends AuthoredCallSlot {
   readonly type: 'IfValue';
   readonly branches: readonly [IfValueBranch, ...IfValueBranch[]];
 }
@@ -1250,7 +1265,7 @@ export type ForBinding =
   | { readonly kind: 'bracket'; readonly names: readonly [string, string] }
   | { readonly kind: 'tuple'; readonly names: readonly [string, string, ...string[]] };
 
-export interface For {
+export interface For extends AuthoredCallSlot {
   readonly type: 'For';
   readonly iterable: ValueSlot | MixinCall;
   readonly rules: Statement[];
@@ -1268,7 +1283,7 @@ export interface IfBranch {
  * as authored; rendering evaluates guards left-to-right and walks only the
  * selected body in its containing frame. A control block is not a scope.
  */
-export interface If {
+export interface If extends AuthoredCallSlot {
   readonly type: 'If';
   readonly branches: readonly [IfBranch, ...IfBranch[]];
 }
@@ -1539,9 +1554,11 @@ export const classifyValueBlock = (rules: Statement[]): AnonymousMixin => {
 export const forNode = (
   iterable: ValueSlot | MixinCall,
   rules: Statement[],
-  binding: ForBinding
-): For => ({ type: 'For', iterable, rules, binding });
-export const ifNode = (branches: readonly [IfBranch, ...IfBranch[]]): If => ({ type: 'If', branches });
+  binding: ForBinding,
+  asCall: FunctionCall | null = null
+): For => ({ type: 'For', iterable, rules, binding, _asCall: asCall });
+export const ifNode = (branches: readonly [IfBranch, ...IfBranch[]], asCall: FunctionCall | null = null): If =>
+  ({ type: 'If', branches, _asCall: asCall });
 export const whileNode = (guard: GuardNode, rules: Statement[]): While => ({ type: 'While', guard, rules });
 export const range = (
   start: ValueNode,
@@ -1744,11 +1761,11 @@ export const block = (value: ValueSlot, delimiter: Block['delimiter'] = 'paren',
   escaped ? { type: 'Block', value, delimiter, escaped: true, _s: NO_SPAN, _e: NO_SPAN } : { type: 'Block', value, delimiter, _s: NO_SPAN, _e: NO_SPAN };
 
 /** The `$( … )` computation boundary — see {@link Expression}. */
-export const expression = (value: ValueSlot): Expression =>
-  ({ type: 'Expression', value, _s: NO_SPAN, _e: NO_SPAN });
+export const expression = (value: ValueSlot, asCall: FunctionCall | null = null): Expression =>
+  ({ type: 'Expression', value, _s: NO_SPAN, _e: NO_SPAN, _asCall: asCall });
 export const condition = (guard: GuardNode, src: string): Condition => ({ type: 'Condition', guard, src });
-export const ifValue = (branches: readonly [IfValueBranch, ...IfValueBranch[]]): IfValue =>
-  ({ type: 'IfValue', branches });
+export const ifValue = (branches: readonly [IfValueBranch, ...IfValueBranch[]], asCall: FunctionCall | null = null): IfValue =>
+  ({ type: 'IfValue', branches, _asCall: asCall });
 export const variableDeclaration = (
   name: string,
   value: ValueSlot | MixinCall,
