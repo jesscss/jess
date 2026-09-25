@@ -118,9 +118,13 @@ describe('V19 one-evaluator projection ratchet', () => {
     // the slash-separated list, itself.
     // +1 function: `isAuthoredGroupExpression`, so an `Expression` the author
     // spelled as a Less paren group keeps its parens when it is not evaluated.
-    expect(occurrences(/^function |^async function /gmu)).toBe(463);
+    // +2 functions and +2 `new Set` (`arithmeticTier`, `preservedOperand` and
+    // the two operator tiers): an operation kept as written inside a math
+    // function re-spells an authored group whose parens carry precedence —
+    // `calc(100% - (a + b))` is not `calc(100% - a + b)`.
+    expect(occurrences(/^function |^async function /gmu)).toBe(465);
     expect(occurrences(/new Map/gu)).toBe(68);
-    expect(occurrences(/new Set/gu)).toBe(39);
+    expect(occurrences(/new Set/gu)).toBe(41);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

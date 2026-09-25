@@ -71,19 +71,14 @@ describe('Less `math:` resolves at PARSE time onto Operation.mathOutsideParens',
   });
 
   /*
-   * A `/` inside `calc(…)` is division in CSS itself, not by Less policy. The
-   * node records that this operation does not compute on its OWN under
-   * `parens-division`; what makes it fold is the enclosing math context.
-   *
-   * `inMathFunction` is deliberately NOT asserted here. The Less grammar does
-   * not set it yet — routing its math names needs a per-dialect argument
-   * grammar, because in `.less` a `/` inside a call is a list boundary — so the
-   * calc interior is still carried by the evaluator's ambient depth. That gap is
-   * a different lane's; this file pins the mode mapping only.
+   * An operation inside `calc(…)` is authored inside a math function: it is
+   * `inMathFunction`, exactly as css and `.jess` mark it, and is kept as written
+   * whatever the mode — owner 2026-09-24 (DESIGN-DECISIONS P35).
    */
-  it('a `calc(…)` operand records the mode, and does not compute bare under parens-division', () => {
-    expect(deepOperation('.a { k: calc(4px / 2); }', 'parens-division').mathOutsideParens).toBe(false);
-    expect(deepOperation('.a { k: calc(4px / 2); }', 'always').mathOutsideParens).toBe(true);
+  it('a `calc(…)` operand is inMathFunction in every mode', () => {
+    for (const mathMode of MODES) {
+      expect(deepOperation('.a { k: calc(4px / 2); }', mathMode).inMathFunction, mathMode).toBe(true);
+    }
   });
 
   it('unary minus answers to the mode too', () => {

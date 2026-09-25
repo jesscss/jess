@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar';
-import { NO_SPAN, any, atRuleBlock, atRuleStatement, block, bodySpanFromRaw, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, importOptionWords, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, atRuleBlock, foldOperation, atRuleStatement, block, bodySpanFromRaw, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, importOptionWords, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessSourceImportSyntaxError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -221,6 +221,9 @@ type LessRules = {
   Value: Combinator<ValueNode>;
   SelectorCapture: Combinator<SelectorCapture>;
   MathAtom: Combinator<ValueNode>;
+  calcValueAtom: Combinator<unknown>;
+  CalcProduct: Combinator<ValueNode>;
+  CalcSum: Combinator<ValueNode>;
   MathUnary: Combinator<ValueNode>;
   MathSum: Combinator<ValueNode | LessMathRun>;
   MathValue: Combinator<ValueNode>;
@@ -385,6 +388,10 @@ type SharedSyntax = {
   // Converged to the CSS base (inherited via compose): same named
   // UnicodeRangeToken; reducer differs only requireToken().value vs tokenText().
   UnicodeRange: Combinator<Any>;
+  // Inherited from the CSS base: the math-function ladder `calc()` uses. Less
+  // overrides its operand slot (`calcValueAtom`) and its operator rungs.
+  CalcParen: Combinator<ValueNode>;
+  CalcValue: Combinator<ValueNode>;
   // Converged to the CSS base (inherited via compose): same node type
   // SimpleSelector, byte-identical keyframeEndpoint, g.Percentage resolves to
   // the CSS base; reducer differs only requireToken().value vs sourceText().
@@ -1675,18 +1682,23 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     ([, statement]) => statement
   );
-  // `calc(` owns its boundary gaps for the same reason `Paren` below does: the
-  // math ladder runs under `noTrivia`, so an interior that admits authored
-  // padding has to spell it. Without these terms `calc( 1px + 2px )` was
-  // rejected as hard as `calc(/* c */1px + 2px)` was, and `Paren`'s own padding
-  // was unreachable from inside a calc — `calc( (1px + 2px) )` failed too.
+  /*
+   * `calc(` owns its boundary gaps: the math ladder runs under `noTrivia`, so an
+   * interior that admits authored padding has to spell it (`calc( 1px + 2px )`,
+   * `calc( (1px + 2px) )`).
+   *
+   * Its interior is the css base's math-function ladder (`CalcSum` /
+   * `CalcProduct` / `CalcParen`), so every operation authored inside it is marked
+   * `inMathFunction` exactly as css and `.jess` mark it, and is kept as written
+   * with variables substituted — owner 2026-09-24 (DESIGN-DECISIONS P35): a math
+   * function's result is clamped to what the property allows (css-values-4
+   * §10.12), so `calc(1px - 5px)` folded to `-4px` would be a different value.
+   * Less overrides only the ladder's operand slot (`calcValueAtom`, below).
+   */
   const CalcFunction = node(
     'CalcCall',
-    noTrivia(sequence(routed(), optional(whitespace), g.MathSum, optional(whitespace), literal(')'))),
-    (children, _fields, _span, _rawChildren, _triviaLog, state) => funcCall(
-      functionNameFromOpener(children[0]),
-      [lessMathInGroup(requireMathSum(children), state)]
-    )
+    noTrivia(sequence(routed(), optional(whitespace), g.CalcSum, optional(whitespace), literal(')'))),
+    children => funcCall(functionNameFromOpener(children[0]), [requireValueNode(children.find(isValueNode))])
   );
   const Identifier = node(
     'Identifier',
@@ -1800,6 +1812,46 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         `${numberText}${unit}`
       );
     }
+  );
+  /*
+   * Overrides the css base's math-function operand slot with the Less value
+   * atoms (variables, escapes, Less calls), keeping the css `CalcParen` as the
+   * group: a paren inside a math function is part of the math-function ladder,
+   * so its operations are `inMathFunction` too.
+   */
+  /*
+   * Override the css math-function ladder's two operator rungs, and only their
+   * operators: Less's `productOperator` / `sumOperator` admit its comment
+   * padding (G25) and its glued-sum spelling (`calc(1rem+1vw)`, emitted spaced),
+   * where the css terminals require real whitespace. The reduction is the css
+   * base's `foldOperation`, so every operation is `inMathFunction`.
+   */
+  const CalcProduct = node(
+    'CalcProduct',
+    noTrivia(sequence(g.CalcValue, many(sequence(productOperator, g.CalcValue)))),
+    children => foldOperation(children)
+  );
+  const CalcSum = node(
+    'CalcSum',
+    noTrivia(sequence(g.CalcProduct, many(sequence(sumOperator, g.CalcProduct)))),
+    children => foldOperation(children)
+  );
+  const calcValueAtom = choice(
+    g.MixinReference,
+    g.InterpolatedValue,
+    g.EscapedQuoted,
+    g.Quoted,
+    g.IndirectVariableReference,
+    g.VariableReferenceChain,
+    g.PropertyReference,
+    g.CustomPropertyValue,
+    g.Dimension,
+    g.Color,
+    g.FormatFunction,
+    IdentifierOrFunction,
+    g.CalcParen,
+    g.EscapeValue,
+    PercentEscape
   );
   const Value = node(
     'Value',
@@ -4996,6 +5048,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     Value,
     SelectorCapture,
     MathAtom,
+    calcValueAtom,
+    CalcProduct,
+    CalcSum,
     MathUnary,
     MathSum,
     MathValue,

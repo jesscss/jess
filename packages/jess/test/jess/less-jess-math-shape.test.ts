@@ -58,22 +58,7 @@ const ROWS: Row[] = [
   { less: '@w: @a * 2 / @b;', jess: '$w: $($a * 2) / $b;', gap: { reason: INTERPOLATED_EXPRESSION, normalize: unwrapInterpolatedExpression } },
   { less: '@w: (@a * 2 / @b);', jess: '$w: $($a * 2 / $b);', gap: { reason: INTERPOLATED_EXPRESSION, normalize: unwrapInterpolatedExpression } },
   { less: 'a { font: 12px/1.5 Arial; }', jess: 'a { font: 12px/1.5 Arial; }' },
-  {
-    less: '@a: 1px; a { width: calc(100% - @a); }',
-    jess: '$a: 1px; a { width: calc(100% - $a); }',
-
-    /*
-     * `.jess` marks an operation authored inside `calc()` with
-     * `inMathFunction: true` and preserves it; the Less grammar does not set the
-     * flag and folds calc() math through the evaluator's calc depth
-     * (`calc(@px * 2 / 4)` emits `5px`). Setting it would move that output, which
-     * is outside P35's expected moves.
-     */
-    gap: {
-      reason: 'Less does not set `Operation.inMathFunction` inside calc()',
-      normalize: value => withoutField(value, 'inMathFunction')
-    }
-  },
+  { less: '@a: 1px; a { width: calc(100% - @a); }', jess: '$a: 1px; a { width: calc(100% - $a); }' },
   { less: '@w: 4 / 2;', jess: '$w: 4 / 2;' }
 ];
 
@@ -103,10 +88,6 @@ function canonical(value: unknown): unknown {
     }
     return item;
   }));
-}
-
-function withoutField(value: unknown, field: string): unknown {
-  return JSON.parse(JSON.stringify(value, (key, item: unknown) => (key === field ? undefined : item)));
 }
 
 describe('Less math and its .jess spelling lower to one shape (P35 shape proxy)', () => {

@@ -250,14 +250,28 @@ export function isUnknownAtRuleBlock(value: unknown): value is UnknownAtRuleBloc
   );
 }
 
+/*
+ * Every value node a dialect can hand a css-owned reducer. The superset
+ * dialects reuse css ladders with their own operand slots — Less's `calc()`
+ * takes the css math-function ladder with Less atoms (DESIGN-DECISIONS P35) —
+ * so a variable read, a reference chain, an interpolation or a computation
+ * boundary is an operand here too. The css grammar itself never builds those
+ * kinds, so for css this is the same set it always was.
+ */
 export function isValue(value: unknown): value is ValueNode {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && (value.type === 'Keyword' || value.type === 'Color' || value.type === 'Dimension'
-      || value.type === 'Quoted' || value.type === 'Url' || value.type === 'FunctionCall'
-      || value.type === 'Block' || value.type === 'Operation' || value.type === 'Sequence'
-      || value.type === 'List' || value.type === 'Any');
+  if (typeof value !== 'object' || value === null || !('type' in value)) {
+    return false;
+  }
+  switch (value.type) {
+    case 'Keyword': case 'Color': case 'Dimension': case 'Quoted': case 'Url':
+    case 'FunctionCall': case 'Block': case 'Operation': case 'Sequence': case 'List':
+    case 'Any': case 'Null': case 'Lookup': case 'Reference': case 'Interpolation':
+    case 'Expression': case 'Condition': case 'IfValue': case 'Important':
+    case 'SelectorCapture':
+      return true;
+    default:
+      return false;
+  }
 }
 
 export function isValueSlotArray(value: unknown): value is readonly ValueSlot[] {

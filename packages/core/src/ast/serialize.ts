@@ -4236,6 +4236,44 @@ function evalTyped(
   }
 }
 
+const PRODUCT_TIER: ReadonlySet<string> = new Set(['*', '/', '%']);
+const SUM_TIER: ReadonlySet<string> = new Set(['+', '-']);
+
+function arithmeticTier(operator: string): number {
+  return PRODUCT_TIER.has(operator) ? 2 : SUM_TIER.has(operator) ? 1 : 0;
+}
+
+/**
+ * The bytes of one operand of an operation that is kept as written. A paren
+ * group that is not evaluated drops its parens when its inner value is not a
+ * literal (a kept math-function operation is a `Keyword`), which is right for a
+ * redundant group (`calc(((10vh)) + …)`) but changes the value when the group
+ * carried precedence: `calc(100% - (a + b))` is not `calc(100% - a + b)`. So the
+ * group is re-spelled exactly when the tree needs it — a lower-tier operation
+ * under a higher-tier one, or an equal-tier one on the right of `-`, `/` or `%`.
+ */
+function preservedOperand(parent: Operation, child: ValueNode, value: EvalValue, onRight: boolean): string {
+  const bytes = emitValue(value);
+  if (isLiteral(value) || child.type !== 'Block' || child.delimiter !== 'paren') {
+    return bytes;
+  }
+  let inner: ValueSlot = child.value;
+  while (!isValueSlotArray(inner) && inner.type === 'Block' && inner.delimiter === 'paren') {
+    inner = inner.value;
+  }
+  if (isValueSlotArray(inner) || inner.type !== 'Operation') {
+    return bytes;
+  }
+  const outerTier = arithmeticTier(parent.operator);
+  const innerTier = arithmeticTier(inner.operator);
+  if (outerTier === 0 || innerTier === 0) {
+    return bytes;
+  }
+  const needed = innerTier < outerTier
+    || (onRight && innerTier === outerTier && parent.operator !== '+' && parent.operator !== '*');
+  return needed ? `(${bytes})` : bytes;
+}
+
 /**
  * An `Expression` the author spelled as a paren group — its span opens at the
  * `(` before its value does. A `.jess` `$( … )` carries no span of its own and a
@@ -4658,7 +4696,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         const l = evalValue(node.left, frame, e);
         const r = evalValue(node.right, frame, e);
         return combineAll([l, r], (values) => {
-          const bytes = `${emitValue(values[0]!)} ${node.operator} ${emitValue(values[1]!)}`;
+          const left = preservedOperand(node, node.left, values[0]!, false);
+          const right = preservedOperand(node, node.right, values[1]!, true);
+          const bytes = `${left} ${node.operator} ${right}`;
 
           /*
            * An operation preserved because it was authored inside a math

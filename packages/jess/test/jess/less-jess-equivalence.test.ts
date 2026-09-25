@@ -566,16 +566,6 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'AtRuleStatement: `@charset` after another statement: `Charset` is only the first statement (+1 more)'
   }],
-  ['all-less:tests-unit/calc/calc.less', {
-    cause: 'p35',
-    outcome: 'p35',
-    reason: 'math inside `calc()` without `Operation.inMathFunction`: the Less grammar does not set it, so the emitter sees bare math (P35 leaves calc() math unwrapped)'
-  }],
-  ['all-less:tests-unit/color-functions/modern.less', {
-    cause: 'p35',
-    outcome: 'p35',
-    reason: 'math inside `calc()` without `Operation.inMathFunction`: the Less grammar does not set it, so the emitter sees bare math (P35 leaves calc() math unwrapped)'
-  }],
   ['all-less:tests-unit/color-functions/operations.less', {
     cause: 'cannot-express',
     outcome: 'css-mismatch',
@@ -705,11 +695,6 @@ const KNOWN = new Map<string, Known>([
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'StyleImport: an import inside a block: `.jess` imports are `Stylesheet`-level statements (+2 more)'
-  }],
-  ['all-less:tests-unit/math-css-vars/math-css-vars.less', {
-    cause: 'p35',
-    outcome: 'p35',
-    reason: 'math inside `calc()` without `Operation.inMathFunction`: the Less grammar does not set it, so the emitter sees bare math (P35 leaves calc() math unwrapped)'
   }],
   ['all-less:tests-unit/media/media.less', {
     cause: 'cannot-express',
