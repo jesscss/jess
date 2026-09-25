@@ -1841,6 +1841,7 @@ function functionConditionSource(value: ValueSlot): string {
     case 'FunctionCall': return `${node.name}(${node.args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${functionConditionSource(argument.value)}`).join(', ')})`;
     case 'Operation': return `${functionConditionSource(node.left)} ${node.operator} ${functionConditionSource(node.right)}`;
     case 'Block': return `${delimiterOpen(node.delimiter)}${functionConditionSource(node.value)}${delimiterClose(node.delimiter)}`;
+    case 'Branch': return `${functionConditionSource(node.condition)}:${Array.isArray(node.value) && node.value.length === 0 ? '' : ` ${functionConditionSource(node.value)}`}`;
     /*
      * An `Expression` owns no delimiters of its own. A nested `boolean(…)`/
      * `if(…)` condition is replayed with the enclosing group's `(inner)`, as
@@ -1856,7 +1857,7 @@ function functionConditionSource(value: ValueSlot): string {
         ? inner
         : `(${inner})`;
     }
-    case 'List': return node.value.map(functionConditionSource).join(node.sep === ',' ? ', ' : ` ${node.sep} `);
+    case 'List': return node.value.map(functionConditionSource).join(sepGlue(node.sep));
     case 'Sequence': return node.parts.map(functionConditionSource).join(' ');
     case 'Condition': return node.src;
     default: throw new TypeError(`Less function condition cannot preserve ${node.type}.`);
