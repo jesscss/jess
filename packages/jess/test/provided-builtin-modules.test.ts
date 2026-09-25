@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Context, type PluginInterface } from '@jesscss/core';
 import { LessPlugin } from '@jesscss/plugin-less';
@@ -42,5 +43,15 @@ describe.each([
     expect(aliased.module).toBe(direct.module);
     expect(aliased.module).toMatchObject({ [member]: expect.any(Function) });
     expect(loader(context, aliased.resolvedPath)).toBe(plugin);
+  });
+
+  it('recovers the package spelling a dialect joined onto the importing directory', async () => {
+    const plugin = provider();
+    const context = new Context({}, [nodeModules(), plugin]);
+    const { resolvedPath } = await context.resolveImportPath(alias);
+
+    // `.jess` joins a bare specifier onto its directory before any other resolver sees it.
+    const joined = path.join(process.cwd(), pkg);
+    await expect(Promise.resolve(plugin.resolve(joined, process.cwd(), []))).resolves.toContain(resolvedPath);
   });
 });

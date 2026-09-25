@@ -60,6 +60,21 @@ describe('Less modern mode (P36)', () => {
       .resolves.toBe('a {\n  color: #cc0000;\n  padding: -5px;\n}\n');
   });
 
+  it.each(['#less', '@jesscss/fns/less'])('modern: `@use "%s"` binds `less` and computes', async (specifier) => {
+    await expect(less(`@use "${specifier}";\na { color: @less.darken(red, 10%); padding: min(-5px, 1px); }`))
+      .resolves.toBe('a {\n  color: #cc0000;\n  padding: min(-5px, 1px);\n}\n');
+  });
+
+  it.each(['#less', '@jesscss/fns/less'])('.jess: `@-use "%s"` binds `$less` and computes', async (specifier) => {
+    await expect(compiler().renderString(`@-use "${specifier}";\na { color: $less.darken(red, 10%); }`, { extension: '.jess' }))
+      .resolves.toBe('a {\n  color: #cc0000;\n}\n');
+  });
+
+  it.each(['#less', '@jesscss/fns/less'])('.jess: `@-from "%s"` binds its import and computes', async (specifier) => {
+    await expect(compiler().renderString(`@-from "${specifier}" import (darken);\na { color: darken(red, 10%); }`, { extension: '.jess' }))
+      .resolves.toBe('a {\n  color: #cc0000;\n}\n');
+  });
+
   it('modern: a directive after the call still decides the document', async () => {
     await expect(less(`${BODY}\n@use "#less";`)).resolves.toBe(
       'a {\n  padding: min(-5px, 1px);\n  color: darken(red, 10%);\n}\n'
