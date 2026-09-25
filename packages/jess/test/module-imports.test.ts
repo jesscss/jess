@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { Context } from '@jesscss/core';
+import jsPlugin, { type JsPlugin } from '@jesscss/plugin-js';
+import { NodeModulesPlugin } from '@jesscss/plugin-node-modules';
 import { Compiler } from '../src/index.js';
 
 const tempDirs: string[] = [];
@@ -64,6 +67,17 @@ describe('public module imports', () => {
       '@use "sass:math"; .entry { value: math.abs(-2); }',
       { filePath: 'entry.scss', extension: '.scss' }
     )).resolves.toBe('.entry {\n  value: 2;\n}\n');
+  });
+
+  it('runs the @jesscss/fns package specifier in-process through plugin-js without Deno', async () => {
+    const js = jsPlugin({ denoCommand: '__definitely_missing_deno__' }) as JsPlugin;
+    const context = new Context({}, [new NodeModulesPlugin({ basePath: process.cwd() }), js]);
+    try {
+      const loaded = await context.getModule('@jesscss/fns/less');
+      expect(loaded.module).toMatchObject({ lighten: expect.any(Function) });
+    } finally {
+      js.dispose();
+    }
   });
 
   it('loads trusted Less functions without plugin-js', async () => {

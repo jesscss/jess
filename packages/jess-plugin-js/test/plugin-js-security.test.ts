@@ -103,10 +103,12 @@ describe('@jesscss/plugin-js security', () => {
     await expect(mod.plus(2, 3)).resolves.toBe(5);
   });
 
-  it('allows @jesscss/fns paths even when deno command is unavailable', async () => {
+  it('runs an installed @jesscss/fns package in-process when deno command is unavailable', async () => {
     const root = makeTmpDir('jess-js-root-');
-    const modulePath = path.join(root, 'packages', 'fns', 'index.js');
+    const packageDir = path.join(root, 'node_modules', '@jesscss', 'fns');
+    const modulePath = path.join(packageDir, 'lib', 'index.js');
     fs.mkdirSync(path.dirname(modulePath), { recursive: true });
+    fs.writeFileSync(path.join(packageDir, 'package.json'), JSON.stringify({ name: '@jesscss/fns', type: 'module' }), 'utf8');
     fs.writeFileSync(modulePath, 'export const fnValue = 7;', 'utf8');
     const plugin = jsPlugin({
       jsReadRoot: root,
@@ -115,6 +117,42 @@ describe('@jesscss/plugin-js security', () => {
     plugins.push(plugin);
     const mod = await plugin.import(modulePath);
     expect(mod.fnValue).toBe(7);
+  });
+
+  it('runs the workspace @jesscss/fns package in-process when deno command is unavailable', async () => {
+    const modulePath = fileURLToPath(new URL('../../fns/src/util/mime.ts', import.meta.url));
+    const plugin = jsPlugin({ denoCommand: '__definitely_missing_deno__' }) as JsPlugin;
+    plugins.push(plugin);
+    const mod = await plugin.import(modulePath);
+    expect(mod.lookupMime).toEqual(expect.any(Function));
+  });
+
+  it('sandboxes a packages/fns directory whose package is not @jesscss/fns', async () => {
+    const root = makeTmpDir('jess-js-root-');
+    const packageDir = path.join(root, 'packages', 'fns');
+    const modulePath = path.join(packageDir, 'evil.js');
+    fs.mkdirSync(packageDir, { recursive: true });
+    fs.writeFileSync(path.join(packageDir, 'package.json'), JSON.stringify({ name: 'app-fns', type: 'module' }), 'utf8');
+    fs.writeFileSync(modulePath, 'export const stolen = 1;', 'utf8');
+    const plugin = jsPlugin({
+      jsReadRoot: root,
+      denoCommand: '__definitely_missing_deno__'
+    }) as JsPlugin;
+    plugins.push(plugin);
+    await expect(plugin.import(modulePath)).rejects.toThrow(/Deno runtime is required/);
+  });
+
+  it('sandboxes an @jesscss/fns path spelling with no @jesscss/fns package.json', async () => {
+    const root = makeTmpDir('jess-js-root-');
+    const modulePath = path.join(root, '@jesscss', 'fns', 'evil.js');
+    fs.mkdirSync(path.dirname(modulePath), { recursive: true });
+    fs.writeFileSync(modulePath, 'export const stolen = 1;', 'utf8');
+    const plugin = jsPlugin({
+      jsReadRoot: root,
+      denoCommand: '__definitely_missing_deno__'
+    }) as JsPlugin;
+    plugins.push(plugin);
+    await expect(plugin.import(modulePath)).rejects.toThrow(/Deno runtime is required/);
   });
 
   it('uses ESM module scope by default without Jess or Less compatibility globals', async () => {
