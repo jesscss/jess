@@ -27,7 +27,7 @@
 
 import { Combinator, renderCombinator } from './node.js';
 import type { GuardNode } from './guard.js'; // [guards]
-import { NO_SPAN, valueLayoutOf, withValueLayout, type BodySpanSlots, type SpanSlots, type TriviaSlot } from './provenance.js';
+import { NO_SPAN, valueLayoutOf, withValueLayout, type BodySpanSlots, type FunctionScopeSlot, type SpanSlots, type TriviaSlot } from './provenance.js';
 
 /* ------------------------------------------------------------------ values */
 
@@ -291,7 +291,7 @@ export interface Operation extends SpanSlots {
  * separators — vs the legacy comma form, so the evaluator preserves the output
  * spelling.
  */
-export interface FunctionCall extends SpanSlots {
+export interface FunctionCall extends SpanSlots, FunctionScopeSlot {
   readonly type: 'FunctionCall';
   readonly name: string;
 
@@ -1738,7 +1738,7 @@ export const funcCall = (
   if (layout !== undefined) {
     withValueLayout(boxed, layout);
   }
-  return { type: 'FunctionCall', name, args: boxed, modern, _s: NO_SPAN, _e: NO_SPAN };
+  return { type: 'FunctionCall', name, args: boxed, modern, _s: NO_SPAN, _e: NO_SPAN, _fnScope: null };
 };
 export const block = (value: ValueSlot, delimiter: Block['delimiter'] = 'paren', escaped = false): Block =>
   escaped ? { type: 'Block', value, delimiter, escaped: true, _s: NO_SPAN, _e: NO_SPAN } : { type: 'Block', value, delimiter, _s: NO_SPAN, _e: NO_SPAN };

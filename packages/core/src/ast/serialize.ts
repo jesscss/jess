@@ -167,7 +167,7 @@ import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
-import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
+import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, hasAmbientFunctions, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
 import type { Trivia, TriviaMap } from '../types/index.js';
 
 /* ---------------------------------------------------- MaybePromise glue */
@@ -7187,13 +7187,21 @@ function evalCall(
     });
   }
 
+  /*
+   * [P36] A call written in a Less modern-mode document has no ambient
+   * built-ins: the registry is out of scope and an unimported name takes the
+   * evaluator's unknown-call path, the one `.jess` reaches through its empty
+   * registry (P17). The parser attached its document's scope to the node.
+   */
+  const ambient = hasAmbientFunctions(node);
+
   // Args are materialized TYPED (each arg's tag sourced from its parse node).
   const typed = node.args.map(a => evalTypedSlot(a.value, frame, e, true));
   return combineAll(typed, (vals) => {
-    const ordered = orderKeywordArgs(node.args, vals, ev, node.name, selected);
+    const ordered = orderKeywordArgs(node.args, vals, ev, node.name, selected, ambient);
     const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
     try {
-      const result = ev.call(node.name, args, e.modes, null, e.io, selected);
+      const result = ev.call(node.name, args, e.modes, null, e.io, selected, ambient);
       return isThenable(result)
         ? result.catch(error => invalidFunctionCall(node, error, e))
         : result;
@@ -7225,7 +7233,8 @@ function orderKeywordArgs<T>(
   vals: T[],
   ev: ValueEvaluator,
   name: string,
-  scopedFn: Fn | undefined
+  scopedFn: Fn | undefined,
+  ambient: boolean
 ): T[] {
   let hasName = false;
   for (let i = 0; i < args.length; i++) {
@@ -7238,7 +7247,7 @@ function orderKeywordArgs<T>(
     return vals;
   }
 
-  const params = ev.paramNames(name, scopedFn);
+  const params = ev.paramNames(name, scopedFn, ambient);
   if (params === undefined) {
     return vals;
   }
