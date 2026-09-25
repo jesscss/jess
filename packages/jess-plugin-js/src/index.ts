@@ -167,14 +167,76 @@ const normalizePermissionPath = (value: string | null): string | null => {
   return value;
 };
 
+const TRUSTED_PACKAGE_NAME = '@jesscss/fns';
+
+/**
+ * Directory → whether its nearest `package.json` names the trusted package.
+ * ponytail: process-lifetime cache; a manifest renamed mid-process is not re-read.
+ */
+const trustedPackageDirs = new Map<string, boolean>();
+
+const isMissingFileError = (error: unknown): boolean =>
+  typeof error === 'object'
+  && error !== null
+  && 'code' in error
+  && (error.code === 'ENOENT' || error.code === 'ENOTDIR');
+
+/**
+ * Whether `dir` lies in the trusted package: its nearest `package.json` names
+ * `@jesscss/fns`. Trust follows the package's NAME, never a path spelling, so a
+ * user's own `…/packages/fns/` or `…/@jesscss/fns/` directory is not trusted
+ * unless it really is that package. A `package.json` that exists but cannot be
+ * read or parsed ends the walk untrusted; no `package.json` at all is untrusted.
+ */
+const isInTrustedPackage = (dir: string): boolean => {
+  const visited: string[] = [];
+  let current = dir;
+  let trusted = false;
+  for (;;) {
+    const cached = trustedPackageDirs.get(current);
+    if (cached !== undefined) {
+      trusted = cached;
+      break;
+    }
+    visited.push(current);
+    let manifest: string | undefined;
+    try {
+      manifest = fs.readFileSync(path.join(current, 'package.json'), 'utf8');
+    } catch (error) {
+      if (!isMissingFileError(error)) {
+        break;
+      }
+    }
+    if (manifest !== undefined) {
+      try {
+        const parsed: unknown = JSON.parse(manifest);
+        trusted = typeof parsed === 'object'
+          && parsed !== null
+          && 'name' in parsed
+          && parsed.name === TRUSTED_PACKAGE_NAME;
+      } catch {
+        // Unparseable manifest: not trusted.
+      }
+      break;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    current = parent;
+  }
+  for (const visitedDir of visited) {
+    trustedPackageDirs.set(visitedDir, trusted);
+  }
+  return trusted;
+};
+
 const isFnsPath = (importPath: string): boolean => {
   const normalized = importPath.replace(/\\/g, '/');
-  const isFnsPackagePath = /(^|\/)(@jesscss\/fns|packages\/fns)(\/|$)/.test(normalized);
-  return (
-    normalized === '@jesscss/fns'
-    || normalized.startsWith('@jesscss/fns/')
-    || isFnsPackagePath
-  );
+  if (normalized === TRUSTED_PACKAGE_NAME || normalized.startsWith(`${TRUSTED_PACKAGE_NAME}/`)) {
+    return true;
+  }
+  return isInTrustedPackage(path.dirname(path.resolve(importPath)));
 };
 
 /** `EAGAIN` on a non-blocking FIFO means "no reply yet", not a failure. */
