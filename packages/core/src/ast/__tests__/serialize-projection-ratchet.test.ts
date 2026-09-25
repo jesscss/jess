@@ -112,9 +112,19 @@ describe('V19 one-evaluator projection ratchet', () => {
     // `frameStatementIndex`'s positions, both written and read at publication.
     // Ordered LOOKUP paths carry a parallel int site array instead, so namespace
     // descent merges integers with no array, no sort, no cache and no Map.
-    expect(occurrences(/^function |^async function /gmu)).toBe(471);
+    // -9 functions and -3 `new Set` (ledger P34): the eval-time bare-slash
+    // promotion (with its three operator Sets) and the calc() slash-group
+    // reinterpretation are gone. The Less grammar now builds the division, or
+    // the slash-separated list, itself.
+    // +1 function: `isAuthoredGroupExpression`, so an `Expression` the author
+    // spelled as a Less paren group keeps its parens when it is not evaluated.
+    // +2 functions and +2 `new Set` (`arithmeticTier`, `preservedOperand` and
+    // the two operator tiers): an operation kept as written inside a math
+    // function re-spells an authored group whose parens carry precedence —
+    // `calc(100% - (a + b))` is not `calc(100% - a + b)`.
+    expect(occurrences(/^function |^async function /gmu)).toBe(465);
     expect(occurrences(/new Map/gu)).toBe(68);
-    expect(occurrences(/new Set/gu)).toBe(42);
+    expect(occurrences(/new Set/gu)).toBe(41);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

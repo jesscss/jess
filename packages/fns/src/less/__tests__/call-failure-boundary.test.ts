@@ -49,6 +49,20 @@ describe('built-in call failures', () => {
     }
   });
 
+  it('does not spread a slash-separated argument into min/max candidates', () => {
+    /*
+     * `min(12px/1.5/3, 2px)`: a Less slash that does not divide is a separator,
+     * so the first argument is ONE slash list, not three candidates. It is not a
+     * number, so the call fails and is preserved whole.
+     */
+    const args = makeList([
+      makeList([makeDimension(12, 'px'), makeDimension(1.5), makeDimension(3)], '/'),
+      makeDimension(2, 'px')
+    ], ',');
+    const result = evaluator.call('min', args, { unitMode: 'preserve' });
+    expect(result).toMatchObject({ bytes: 'min(12px / 1.5 / 3, 2px)' });
+  });
+
   it('preserves the WHOLE unreducible min/max call, never a partial reduction', () => {
     /*
      * The old body reduced each unit group and emitted the survivors, giving

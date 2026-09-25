@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar';
-import { NO_SPAN, any, atRuleBlock, atRuleStatement, block, bodySpanFromRaw, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, importOptionWords, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, atRuleBlock, foldOperation, atRuleStatement, block, bodySpanFromRaw, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, importOptionWords, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessSourceImportSyntaxError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -43,10 +43,10 @@ import {
   complexSegmentsFrom,
   customPartsFromChildren,
   customValueFromParts,
+  trimCustomValueEnd,
   enclosedInterpolationFromChildren,
   foldFunctionCondition,
   foldMixinGuards,
-  lessFoldOperation,
   functionCallFromChildren,
   functionConditionSource,
   functionNameFromOpener,
@@ -88,7 +88,6 @@ import {
   isSequence,
   isSimpleSelector,
   isLessSimpleToken,
-  isSlashBoundaryFact,
   isStatement,
   isLessTerminalText,
   isUrl,
@@ -98,7 +97,11 @@ import {
   isVarRef,
   keywordOrValue,
   lessGuardTruth,
+  lessMathInGroup,
+  lessMathInValue,
   lessMathOutsideParens,
+  lessMathRun,
+  requireMathSum,
   lessTruth,
   lowerLogicalCallStatement,
   mixinArgumentSource,
@@ -142,8 +145,7 @@ import {
   valuePieceReducerWithTrivia,
   lessValueSlot,
   variableNameText,
-  variableValueSlot,
-  withoutBareMath
+  variableValueSlot
 } from './grammar-helpers.js';
 import type {
   AttributeMatchFact,
@@ -157,6 +159,7 @@ import type {
   InterpolationFact,
   LessCallArg,
   LessEachCallback,
+  LessMathRun,
   MixinCallArgument,
   MixinGuard,
   MixinInteriorFact,
@@ -218,12 +221,12 @@ type LessRules = {
   Value: Combinator<ValueNode>;
   SelectorCapture: Combinator<SelectorCapture>;
   MathAtom: Combinator<ValueNode>;
+  calcValueAtom: Combinator<unknown>;
+  CalcProduct: Combinator<ValueNode>;
+  CalcSum: Combinator<ValueNode>;
   MathUnary: Combinator<ValueNode>;
-  MathProduct: Combinator<ValueNode>;
-  MathSum: Combinator<ValueNode>;
-  TopProduct: Combinator<ValueNode>;
-  TopSum: Combinator<ValueNode>;
-  PreservedDivision: Combinator<ValueNode>;
+  MathSum: Combinator<ValueNode | LessMathRun>;
+  MathValue: Combinator<ValueNode>;
   EscapedParen: Combinator<ValueNode>;
   Paren: Combinator<ValueNode>;
   ValueSequence: Combinator<ValueSlot>;
@@ -238,6 +241,8 @@ type LessRules = {
   CustomGroup: Combinator<readonly CustomValuePart[]>;
   CustomValue: Combinator<ValueNode>;
   CustomPropertyValue: Combinator<Keyword>;
+  VarFallback: Combinator<ValueNode>;
+  VarFunction: Combinator<ValueNode>;
   CustomDeclaration: Combinator<Declaration>;
   Declaration: Combinator<Declaration>;
   ClassIdStatement: Combinator<Statement>;
@@ -278,8 +283,6 @@ type LessRules = {
   SupportsBlock: Combinator<AtRuleBlock>;
   QueryValue: Combinator<ValueNode>;
   QueryColonFeature: Combinator<ValueNode>;
-  /** A feature value, folding an authored `<ratio>` slash into one Operation. */
-  QueryFeatureValue: Combinator<ValueNode>;
   /** A query keyword that is not the `only` modifier. */
   QueryNonOnlyKeyword: Combinator<Keyword>;
   /** One term of a query clause. */
@@ -357,6 +360,7 @@ type LessRules = {
   ImportTail: Combinator<unknown>;
   ImportTailText: Combinator<unknown>;
   ImportTailGroup: Combinator<unknown>;
+  MediaQueryPrelude: Combinator<ValueSlot>;
   ImportTailParen: Combinator<unknown>;
   whitespace: Combinator<unknown>;
   blockBody: Combinator<unknown>;
@@ -384,6 +388,10 @@ type SharedSyntax = {
   // Converged to the CSS base (inherited via compose): same named
   // UnicodeRangeToken; reducer differs only requireToken().value vs tokenText().
   UnicodeRange: Combinator<Any>;
+  // Inherited from the CSS base: the math-function ladder `calc()` uses. Less
+  // overrides its operand slot (`calcValueAtom`) and its operator rungs.
+  CalcParen: Combinator<ValueNode>;
+  CalcValue: Combinator<ValueNode>;
   // Converged to the CSS base (inherited via compose): same node type
   // SimpleSelector, byte-identical keyframeEndpoint, g.Percentage resolves to
   // the CSS base; reducer differs only requireToken().value vs sourceText().
@@ -566,6 +574,10 @@ const staticDataUrlText = regex(/data:(?:[^"'()\\\x00-\x08\x0B\x0E-\x1F\x7F]|\\(
 const urlBoundaryWhitespace = regex(/[ \t\n\r\f]+/);
 const urlFunctionOpen = token(noTrivia(regex(/url\(/i)));
 const staticTailText = regex(/[^()\[\]{};@'"]+/);
+const importLayerOrSupports = keywords(
+  ['layer', 'supports'],
+  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
+);
 const importOption = keywords(
   ['reference', 'optional', 'once', 'multiple', 'inline', 'css', 'less'],
   { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
@@ -573,38 +585,16 @@ const importOption = keywords(
 const inlineJavaScriptBody = regex(/(?:[^`\\]|\\[\s\S])*/);
 // Math productions run under `noTrivia`, so their operators own precisely the
 // gap that distinguishes arithmetic from a Less space-list. `leaf()` keeps the
-// comment-aware structural gap hidden from `lessFoldOperation`: it receives the
-// same flat `*`/`/`/`%` terminal stream it did before, with no scanner or
-// post-parse text recovery. Keep the sum terminal below unchanged: its glued
-// numeric-sign lookahead is intentional Less syntax, not an operator gap.
+// comment-aware structural gap hidden from `lessMathRun`: it receives a flat
+// `*`/`/`/`%` terminal stream, with no scanner or post-parse text recovery.
+// This is the ONE terminal that reads a Less slash between values (ledger P34):
+// there is no separate slash production, only the division operator, and the
+// math policy decides what shape its result takes. Keep the sum terminal below
+// unchanged: its glued numeric-sign lookahead is intentional Less syntax, not
+// an operator gap.
 const productOperator = leaf(
   noTrivia(sequence(optional(mathTrivia), keywords(['*', '/', '%']), optional(mathTrivia))),
   children => children[1] as string
-);
-const topProductOperator = leaf(
-  noTrivia(sequence(optional(mathTrivia), keywords(['*', '%']), optional(mathTrivia))),
-  children => children[1] as string
-);
-// A preserved top-level Less slash is not arithmetic in parens-division mode,
-// but authored whitespace around `/` is still part of that opaque value. Keep
-// the boundary explicit so `10px / 2` does not flatten into a plain ValueSlot
-// array before the evaluator can apply the math-mode rule.
-const preservedSlashGap = regex(/[ \t\n\r\f]+/);
-const preservedSlashBoundary = leaf(
-  sequence(
-    optional(preservedSlashGap),
-    literal('/'),
-    optional(preservedSlashGap)
-  ),
-  (children) => {
-    if (!Array.isArray(children)) {
-      throw new TypeError('Less slash boundary produced a non-sequence value.');
-    }
-    return {
-      before: staticText(children[0]),
-      after: staticText(children[2])
-    };
-  }
 );
 /*
  * `+`/`-` are ambiguous between a binary operator and a leading sign. A sign is
@@ -643,8 +633,8 @@ const preservedSlashBoundary = leaf(
  * it (tracked as G34 in DESIGN-DECISIONS.md).
  *
  * `leaf()` keeps the operator a single flat child — its value is exactly the
- * sign — so `lessFoldOperation` still reads an alternating operand/operator
- * stream and no CST arity moves.
+ * sign — so `lessMathRun` still reads an alternating operand/operator stream
+ * and no CST arity moves.
  */
 const sumOperatorChar = noTrivia(regex(/[-+](?![0-9.@(])|(?<![ \t\n\r\f])[-+](?=[0-9.@(])/));
 const sumOperator = leaf(
@@ -1069,17 +1059,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.Quoted,
     g.ImportTailGroup
   )));
-  // An import postlude's variable-bearing media feature has an exact typed
-  // shape. Keep this small prelude production here because the generic query
-  // family is defined after `ImportStatement`; no forward grammar reference
-  // may poison the document's direct start rule.
-  const ImportQueryTail = node(
-    'ImportQueryTail',
-    sequence(literal('('), g.Identifier, regex(/:[ \t\n\r\f]*/), g.VariableReference, literal(')')),
-    (children, _fields, _span, _rawChildren, _triviaLog, state) =>
-      block(operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3]), false,
-        lessMathOutsideParens(state, ':')))
-  );
   const quotedOrUrlTarget = choice(g.EscapedQuoted, g.Quoted, UrlTarget);
   /**
    * Keep the import target as the original typed grammar child. The enclosing
@@ -1097,10 +1076,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return target;
     }
   );
+  /*
+   * A CSS import postlude is `[ layer | layer(…) ]? [ supports(…) ]?
+   * <media-query-list>`. A postlude that is only a media-query list goes through
+   * the same query grammar as `@media`, so `@import url(x) (min-width: 2*3px)`
+   * and `@media (min-width: 2*3px)` are one value (ledger P35: no media-query
+   * exception to the division rule). A `layer`/`supports` postlude stays
+   * authored text; the list must run to the terminating `;`.
+   */
   const ImportTail = node(
     'ImportTail',
     choice(
-      ImportQueryTail,
+      sequence(not(importLayerOrSupports), g.MediaQueryPrelude, peek(literal(';'))),
       g.AtRuleInterpolation,
       g.ImportTailText
     ),
@@ -1246,7 +1233,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           // list has a `@media` desugaring. A pure media-query-list never spells
           // the `supports`/`layer` keyword, so a text tail carrying either is a
           // supports/layer condition (or a malformed mix) and is rejected. A
-          // parenthesized `(feature: value)` media feature (typed `ImportQueryTail`
+          // media-query list (typed through `MediaQueryPrelude`
           // Block) or `@{…}` interpolation is a media query and carries neither.
           // `@-import` rejected every tail above, so this is always a bare
           // `@import`; the `!isLegacyImport` guard is defensive against a future
@@ -1399,7 +1386,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // only after those values have been recognized.
   const FunctionConditionOperand = node(
     'FunctionConditionOperand',
-    oneOrMore(sequence(not(functionConditionStop), g.TopSum)),
+    oneOrMore(sequence(not(functionConditionStop), g.MathValue)),
     (children) => {
       const values = children.filter(isValueNode);
       if (values.length === 0) {
@@ -1493,7 +1480,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const functionArgumentBoundaryAhead = not(regex(/[^,;)]|$/));
   const FunctionScalarArgument = node(
     'FunctionScalarArgument',
-    sequence(g.MathSum, functionArgumentBoundaryAhead),
+    sequence(g.MathValue, functionArgumentBoundaryAhead),
     children => requireValueNode(children[0])
   );
   // `not` is an explicit Less condition opener even without a comparison, in
@@ -1695,14 +1682,22 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     ([, statement]) => statement
   );
-  // `calc(` owns its boundary gaps for the same reason `Paren` below does: the
-  // math ladder runs under `noTrivia`, so an interior that admits authored
-  // padding has to spell it. Without these terms `calc( 1px + 2px )` was
-  // rejected as hard as `calc(/* c */1px + 2px)` was, and `Paren`'s own padding
-  // was unreachable from inside a calc — `calc( (1px + 2px) )` failed too.
+  /*
+   * `calc(` owns its boundary gaps: the math ladder runs under `noTrivia`, so an
+   * interior that admits authored padding has to spell it (`calc( 1px + 2px )`,
+   * `calc( (1px + 2px) )`).
+   *
+   * Its interior is the css base's math-function ladder (`CalcSum` /
+   * `CalcProduct` / `CalcParen`), so every operation authored inside it is marked
+   * `inMathFunction` exactly as css and `.jess` mark it, and is kept as written
+   * with variables substituted — owner 2026-09-24 (DESIGN-DECISIONS P35): a math
+   * function's result is clamped to what the property allows (css-values-4
+   * §10.12), so `calc(1px - 5px)` folded to `-4px` would be a different value.
+   * Less overrides only the ladder's operand slot (`calcValueAtom`, below).
+   */
   const CalcFunction = node(
     'CalcCall',
-    noTrivia(sequence(routed(), optional(whitespace), g.MathSum, optional(whitespace), literal(')'))),
+    noTrivia(sequence(routed(), optional(whitespace), g.CalcSum, optional(whitespace), literal(')'))),
     children => funcCall(functionNameFromOpener(children[0]), [requireValueNode(children.find(isValueNode))])
   );
   const Identifier = node(
@@ -1719,6 +1714,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     identOrFunction,
     caseOf('url(', choice(RoutedVariableUrl, RoutedPlainUrl)),
     caseOf('calc(', g.CalcFunction),
+    caseOf('var(', g.VarFunction),
     /*
      * A trailing escaped paren is a value ident, not a function opener: `\(` and
      * `a\(` are escaped code points (css-syntax-3 4.3.7). This more-specific
@@ -1763,13 +1759,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     // stay exact. Parentheses own their boundary gaps, including Less `//`
     // comments before the first or after the final operand.
     noTrivia(sequence(literal('('), optional(whitespace), g.MathSum, optional(whitespace), literal(')'))),
-    (children, _fields, span) => {
-      const inner = children.find(isValueNode);
-      if (inner === undefined) {
-        throw new TypeError('Less parenthesized math lost its inner value.');
-      }
-      return withSourceSpan(block(inner), span);
-    }
+    (children, _fields, span, _rawChildren, _triviaLog, state) =>
+      withSourceSpan(block(lessMathInGroup(requireMathSum(children), state)), span)
   );
   // CSS grid line names are a bracketed value piece, not a map accessor or an
   // opaque post-parse string. Keep the delimited grammar fact as one existing
@@ -1791,7 +1782,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // value and query grammars share it without a recursive query-value cycle.
   const QueryColonFeature = node(
     'QueryColonFeature',
-    sequence(literal('('), g.Identifier, regex(/:[ \t\n\r\f]*/), g.MathSum, literal(')')),
+    sequence(literal('('), g.Identifier, regex(/:[ \t\n\r\f]*/), g.MathValue, literal(')')),
     (children, _fields, span, _rawChildren, _triviaLog, state) => withSourceSpan(
       block(operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3]), false,
         lessMathOutsideParens(state, ':'))),
@@ -1821,6 +1812,46 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         `${numberText}${unit}`
       );
     }
+  );
+  /*
+   * Overrides the css base's math-function operand slot with the Less value
+   * atoms (variables, escapes, Less calls), keeping the css `CalcParen` as the
+   * group: a paren inside a math function is part of the math-function ladder,
+   * so its operations are `inMathFunction` too.
+   */
+  /*
+   * Override the css math-function ladder's two operator rungs, and only their
+   * operators: Less's `productOperator` / `sumOperator` admit its comment
+   * padding (G25) and its glued-sum spelling (`calc(1rem+1vw)`, emitted spaced),
+   * where the css terminals require real whitespace. The reduction is the css
+   * base's `foldOperation`, so every operation is `inMathFunction`.
+   */
+  const CalcProduct = node(
+    'CalcProduct',
+    noTrivia(sequence(g.CalcValue, many(sequence(productOperator, g.CalcValue)))),
+    children => foldOperation(children)
+  );
+  const CalcSum = node(
+    'CalcSum',
+    noTrivia(sequence(g.CalcProduct, many(sequence(sumOperator, g.CalcProduct)))),
+    children => foldOperation(children)
+  );
+  const calcValueAtom = choice(
+    g.MixinReference,
+    g.InterpolatedValue,
+    g.EscapedQuoted,
+    g.Quoted,
+    g.IndirectVariableReference,
+    g.VariableReferenceChain,
+    g.PropertyReference,
+    g.CustomPropertyValue,
+    g.Dimension,
+    g.Color,
+    g.FormatFunction,
+    IdentifierOrFunction,
+    g.CalcParen,
+    g.EscapeValue,
+    PercentEscape
   );
   const Value = node(
     'Value',
@@ -1875,130 +1906,37 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     children => requireValueNode(children[0]),
     { collapse: true }
   );
-  // Parenthesized and calc math follows Less precedence: product before sum,
-  // both left-associative.  Top-level declarations deliberately exclude `/`:
-  // with Less's default parens-division mode it is a preserved slash group, not
-  // an eager division Operation.  The existing serializer already recognizes
-  // that Sequence shape and reinterprets it only inside calc().
-  const MathProduct = node(
-    'MathProduct',
-    noTrivia(sequence(g.MathAtom, many(sequence(productOperator, g.MathAtom)))),
-    lessFoldOperation,
-    { collapse: true }
-  );
+  // Every Less math operator is parsed HERE, the division slash included —
+  // there is no second production that reads a slash (ledger P34). The run is
+  // flat because its precedence is not fixed: a slash is a product operator in
+  // a math group or `calc(…)`, and in a plain value it is either that or the
+  // loosest math operator, a separator between two sides, depending on the
+  // math policy (P1/P35). So the
+  // run's consumer folds it once, by the rule for its own position
+  // (`lessMathInGroup` / `lessMathInValue`), instead of the grammar folding it
+  // one way and a later step re-reading the result.
   const MathSum = node(
     'MathSum',
-    noTrivia(sequence(g.MathProduct, many(sequence(sumOperator, g.MathProduct)))),
-    lessFoldOperation,
+    noTrivia(sequence(g.MathAtom, many(sequence(choice(productOperator, sumOperator), g.MathAtom)))),
+    lessMathRun,
     { collapse: true }
   );
-  const TopProduct = node(
-    'TopProduct',
-    noTrivia(sequence(g.MathAtom, many(sequence(topProductOperator, g.MathAtom)))),
-    lessFoldOperation,
-    { collapse: true }
-  );
-  const TopSum = node(
-    'TopSum',
-    noTrivia(sequence(g.TopProduct, many(sequence(sumOperator, g.TopProduct)))),
-    lessFoldOperation,
-    { collapse: true }
-  );
-  // In Less's default `parens-division` mode a glued top-level `/` is not an
-  // eager Operation. It is one parser-owned slash group that becomes division
-  // only when a surrounding calc context consumes it.
-  const PreservedDivision = node(
-    'PreservedDivision',
-    noTrivia(sequence(g.TopSum, oneOrMore(sequence(field('separator', preservedSlashBoundary), g.TopSum)))),
-    (children, fields, _span, _rawChildren, _triviaLog, state): ValueNode => {
-      /*
-       * The group is preserved bytes exactly when the policy does NOT divide a
-       * bare `/`. Under `math: always` it is not preserved at all, so operands
-       * keep the arithmetic they were built with.
-       */
-      const preserved = !lessMathOutsideParens(state, '/');
-      const slashBoundaries = fields?.separator === undefined
-        ? []
-        : requireFields(fields, 'separator').map((separator) => {
-            if (!isSlashBoundaryFact(separator.value)) {
-              throw new TypeError('Less preserved division produced an invalid slash boundary.');
-            }
-            return separator.value;
-          });
-      const values = children.filter(isValueNode);
-      const parts: ValueNode[] = [];
-      for (let index = 0; index < values.length; index += 1) {
-        parts.push(preserved ? withoutBareMath(values[index]!) : values[index]!);
-        if (index < slashBoundaries.length) {
-          parts.push(keyword('/'));
-        }
-      }
-      const separators = slashBoundaries.flatMap(boundary => [boundary.before, boundary.after]);
-      return withValueLayout(
-        spaced(parts),
-        separators.length === parts.length - 1
-          ? separators
-          : Array.from({ length: parts.length - 1 }, () => '')
-      );
-    }
+  // A math run in a plain value position: the math policy picks what shape its
+  // slashes take (`lessMathInValue`).
+  const MathValue = node(
+    'MathValue',
+    g.MathSum,
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => lessMathInValue(requireMathSum(children), state)
   );
   // Value pieces are separated by grammar-owned whitespace. Keeping that token
   // here is what lets a canonical Sequence retain multiline CSS layout without
   // scanning/re-splitting a completed declaration value later.
-  // Left-factored `TopSum (/ TopSum)*`: the value-piece choice used to try
-  // `PreservedDivision` (a full `TopSum` + REQUIRED slash tail) and, on the
-  // no-slash majority, fail the tail, backtrack, and re-parse `TopSum` from the
-  // same position (the two arms share `TopSum`'s first-set, so the `choice` is
-  // not disjoint and cannot dispatch past the redundant descent). Parsing
-  // `TopSum` once and taking an OPTIONAL slash tail yields byte-identical values
-  // — a bare `TopSum` when no slash follows, the same `Sequence` when one
-  // does — without the second full value descent per non-slash piece.
-  const topSumMaybeDivision = node(
-    'TopSumMaybeDivision',
-    noTrivia(sequence(g.TopSum, many(sequence(field('separator', preservedSlashBoundary), g.TopSum)))),
-    (children, fields, _span, _rawChildren, _triviaLog, state) => {
-      if (fields?.separator === undefined) {
-        return requireValueNode(children[0]);
-      }
-      const slashBoundaries = requireFields(fields, 'separator').map((separator) => {
-        if (!isSlashBoundaryFact(separator.value)) {
-          throw new TypeError('Less value piece produced an invalid slash boundary.');
-        }
-        return separator.value;
-      });
-
-      /*
-       * The group is preserved bytes exactly when the policy does NOT divide a
-       * bare `/`; under `math: always` it is not preserved and its operands keep
-       * the arithmetic they were built with. See {@link withoutBareMath}.
-       */
-      const preserved = !lessMathOutsideParens(state, '/');
-      const values = children.filter(isValueNode);
-      const parts: ValueNode[] = [];
-      for (let index = 0; index < values.length; index += 1) {
-        parts.push(preserved ? withoutBareMath(values[index]!) : values[index]!);
-        if (index < slashBoundaries.length) {
-          parts.push(keyword('/'));
-        }
-      }
-      const separators = slashBoundaries.flatMap(boundary => [boundary.before, boundary.after]);
-      return withValueLayout(
-        spaced(parts),
-        separators.length === parts.length - 1
-          ? separators
-          : Array.from({ length: parts.length - 1 }, () => '')
-      );
-    }
-  );
   /*
-   * No bare `literal('/')` arm: a slash is a SEPARATOR, not a value piece, so
-   * it is only ever reachable BETWEEN two pieces — which is what
-   * `topSumMaybeDivision` already spells. The bare arm was the only thing that
-   * let a slash stand with no left operand, so `p: / 1` parsed here while css
-   * and the other supersets rejected it. Dropping it makes the rejection
-   * emergent, exactly as a leading `,` already fails (DESIGN-DECISIONS P33).
+   * No bare `literal('/')` arm: a slash is only ever reachable BETWEEN two
+   * operands, through the division operator in `MathSum`. So `p: / 1` fails for
+   * the same structural reason a leading `,` does (DESIGN-DECISIONS P33/P34).
    */
-  const valuePiece = choice(g.UnicodeRange, topSumMaybeDivision, literal('-'), literal('%'));
+  const valuePiece = choice(g.UnicodeRange, g.MathValue, literal('-'), literal('%'));
   const nestedAtRuleValueStart = regex(/@[^;{}()'"]*\{/);
   const valueTriviaBoundary = parser(
     { trivia: whitespace },
@@ -2077,7 +2015,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       // This transaction owns the WHOLE accessor-bearing value. Keeping it out
       // of Value means its typed mixin arguments do not recurse through the
       // same candidate before the required accessor fact has been established.
-      attempt(sequence(g.MixinReferenceChain, not(choice(topProductOperator, sumOperator)))),
+      attempt(sequence(g.MixinReferenceChain, not(choice(productOperator, sumOperator)))),
       oneOrMoreSep(
         g.ValueSequence,
         field('separator', regex(/,[ \t\n\r\f]*/))
@@ -2214,6 +2152,34 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // It reduces to the same Keyword the css/scss/jess grammars produce, and the
   // same one the at-rule prelude custom-property branch produces for the
   // identical token in an at-rule header.
+  /*
+   * Overrides the CSS base's `var()` fallback slot, and only that slot. A
+   * fallback is a `<declaration-value>` (css-variables-1 §3), so in Less it is
+   * the custom-property value a `--x:` declaration takes (ledger P2): variable
+   * reads and `@{}` interpolation resolve, and nothing computes.
+   *
+   * BLOCKED from overriding only the slot: routing `var(` to the inherited css
+   * `VarFunction` makes the macro compose fall back to the interpreter ("ref()
+   * used before .define()"), so `VarFunction` is restated here with the css
+   * shape — opener, custom property, optional `, <fallback>` — and Less trivia.
+   */
+  const VarFallback = node(
+    'VarFallback',
+    g.CustomValue,
+    children => trimCustomValueEnd(requireValueNode(children[0]))
+  );
+  const VarFunction = node(
+    'VarCall',
+    sequence(
+      routed(),
+      optional(whitespace),
+      g.CustomPropertyValue,
+      optional(whitespace),
+      optional(sequence(literal(','), g.VarFallback)),
+      literal(')')
+    ),
+    (children, _fields, span) => withSourceSpan(funcCall(functionNameFromOpener(children[0]), children.filter(isValueNode)), span)
+  );
   const CustomPropertyValue = node(
     'CustomPropertyValue',
     g.CustomPropertyToken,
@@ -3354,24 +3320,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // Media/container query syntax shares CSS's grammar-owned comparison terminal
   // and canonical `Block(paren, Operation)` shape. Less only supplies the additional
   // variable-bearing value leaves; it does not capture a query prelude as raw
-  // text or run a second scanner over it.
+  // text or run a second scanner over it. A slash here is the same division
+  // operator as in any Less value — a `<ratio>` (`16/9`) takes the shape the
+  // math policy gives it, and a computed single number is itself a valid
+  // `<ratio>` (css-values-4 §6.5).
   const QueryValue = node(
     'QueryValue',
-    choice(g.PreservedDivision, g.queryLeaf),
+    choice(g.MathValue, g.queryLeaf),
     children => requireValueNode(children[0])
-  );
-  // A media/container feature value may be a `<ratio>` — media-queries-4 §2.1,
-  // `<number> [ / <number> ]?` — as in `(aspect-ratio >= 16/9)`. The colon form
-  // already folds that slash into a typed `/` Operation through its math value;
-  // the comparison and range forms took the value-position leaf, where Less's
-  // `parens-division` slash group turned the same ratio into a Sequence. Fold
-  // it here so every feature form — and every dialect — carries one ratio shape.
-  // `style(--x: …)` keeps QueryValue above: that payload is a
-  // declaration, so its slash stays a value-position slash group.
-  const QueryFeatureValue = node(
-    'QueryFeatureValue',
-    sequence(g.queryLeaf, many(sequence(literal('/'), g.queryLeaf))),
-    lessFoldOperation
   );
   const QueryBareFeature = node(
     'QueryBareFeature',
@@ -3381,8 +3337,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const QueryComparisonFeature = node(
     'QueryComparisonFeature',
     sequence(
-      literal('('), g.Identifier, g.QueryComparisonOperator, g.QueryFeatureValue,
-      optional(sequence(g.QueryComparisonOperator, g.QueryFeatureValue)), literal(')')
+      literal('('), g.Identifier, g.QueryComparisonOperator, g.MathValue,
+      optional(sequence(g.QueryComparisonOperator, g.MathValue)), literal(')')
     ),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => {
       const values = children.filter(isValueNode);
@@ -3405,8 +3361,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const QueryRangeFeature = node(
     'QueryRangeFeature',
     sequence(
-      literal('('), g.QueryFeatureValue, g.QueryComparisonOperator, g.Identifier,
-      optional(sequence(g.QueryComparisonOperator, g.QueryFeatureValue)), literal(')')
+      literal('('), g.MathValue, g.QueryComparisonOperator, g.Identifier,
+      optional(sequence(g.QueryComparisonOperator, g.MathValue)), literal(')')
     ),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => {
       const values = children.filter(isValueNode);
@@ -3570,7 +3526,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   ), literal('('))));
   const ContainerStyleQuery = node(
     'ContainerStyleQuery',
-    sequence(styleFunctionOpener, g.CustomPropertyToken, literal(':'), g.QueryValue, literal(')')),
+    // A style() payload is a `<declaration-value>` (css-conditional-5), the same
+    // permissive custom-property value a `--x:` declaration takes (ledger P2): it
+    // is never computed.
+    sequence(styleFunctionOpener, g.CustomPropertyToken, literal(':'), g.CustomValue, literal(')')),
     (children, _fields, _span, _rawChildren, _triviaLog, state) =>
       funcCall(functionNameFromOpener(children[0]), [operation(':', keyword(requireToken(children[1]).value),
         requireValueNode(children[3]), false, lessMathOutsideParens(state, ':'))])
@@ -5089,12 +5048,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     Value,
     SelectorCapture,
     MathAtom,
+    calcValueAtom,
+    CalcProduct,
+    CalcSum,
     MathUnary,
-    MathProduct,
     MathSum,
-    TopProduct,
-    TopSum,
-    PreservedDivision,
+    MathValue,
     EscapedParen,
     Paren,
     ValueSequence,
@@ -5108,6 +5067,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     CustomInnerPart,
     CustomGroup,
     CustomValue,
+    VarFallback,
+    VarFunction,
     CustomPropertyValue,
     CustomDeclaration,
     Declaration,
@@ -5148,7 +5109,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     SupportsBlock,
     QueryValue,
     QueryColonFeature,
-    QueryFeatureValue,
     QueryNonOnlyKeyword,
     QueryTerm,
     MediaQueryTerm,
@@ -5223,6 +5183,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ImportTail,
     ImportTailText,
     ImportTailGroup,
+    MediaQueryPrelude,
     ImportTailParen,
     blockBody,
     BareVariableInterpolation,

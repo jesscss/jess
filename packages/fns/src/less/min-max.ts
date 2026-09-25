@@ -5,6 +5,9 @@ import { compatibleUnits, isUnitlessDimension } from '../shared/math/units.js';
 const isDimension = (value: ValueGroup): value is Dimension =>
   !isValueGroupArray(value) && value.type === 'Dimension';
 
+const isSlashList = (value: ValueGroup): boolean =>
+  !isValueGroupArray(value) && value.type === 'List' && value.sep === '/';
+
 /**
  * Less's `min()`/`max()`.
  *
@@ -39,7 +42,13 @@ const isDimension = (value: ValueGroup): value is Dimension =>
  */
 export function minMax(isMin: boolean, list: ValueGroup): Value {
   const name = isMin ? 'min' : 'max';
-  const args = groupItems(list).flatMap(groupItems);
+
+  /*
+   * A comma or space list argument spreads into candidates. A slash list does
+   * not: `min(12px / 1.5, 2px)` has two arguments, the first of which is not a
+   * number, so the call fails and is preserved like any other non-numeric one.
+   */
+  const args = groupItems(list).flatMap(arg => isSlashList(arg) ? [arg] : groupItems(arg));
   if (args.length === 0) {
     throw new TypeError(`${name}() requires at least one argument`);
   }

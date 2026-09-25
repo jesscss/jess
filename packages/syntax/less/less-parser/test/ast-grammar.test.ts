@@ -1616,7 +1616,7 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: 'sum',
-              value: {
+              value: { type: 'Expression', value: {
                 type: 'Operation',
                 operator: '+',
                 left: { type: 'Dimension', src: '1' },
@@ -1626,12 +1626,12 @@ describe('Less AST grammar facts', () => {
                   left: { type: 'Dimension', src: '2' },
                   right: { type: 'Dimension', src: '3' }
                 }
-              }
+              } }
             },
             {
               type: 'Declaration',
               name: 'grouped',
-              value: {
+              value: { type: 'Expression', value: {
                 type: 'Operation',
                 operator: '*',
                 left: {
@@ -1640,12 +1640,12 @@ describe('Less AST grammar facts', () => {
                   value: { type: 'Operation', operator: '+' }
                 },
                 right: { type: 'Dimension', src: '3' }
-              }
+              } }
             },
             {
               type: 'Declaration',
               name: 'neg',
-              value: {
+              value: { type: 'Expression', value: {
                 type: 'Operation',
                 operator: '*',
                 left: { type: 'Dimension', src: '-1' },
@@ -1654,26 +1654,29 @@ describe('Less AST grammar facts', () => {
                   delimiter: 'paren',
                   value: { type: 'Operation', operator: '+' }
                 }
-              }
+              } }
             },
             {
               type: 'Declaration',
               name: 'signed',
-              value: {
+              value: { type: 'Expression', value: {
                 type: 'Operation',
                 operator: '+',
                 left: { type: 'Dimension', src: '-2px' },
                 right: { type: 'Dimension', src: '3px' }
-              }
+              } }
             },
             {
               type: 'Declaration',
               name: 'ratio',
-              value: [
-                { type: 'Dimension', src: '12px' },
-                { type: 'Keyword', src: '/' },
-                { type: 'Dimension', src: '1.5' }
-              ]
+              value: {
+                type: 'List',
+                sep: '/',
+                value: [
+                  { type: 'Dimension', src: '12px' },
+                  { type: 'Dimension', src: '1.5' }
+                ]
+              }
             },
             {
               type: 'Declaration',
@@ -1867,22 +1870,22 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: 'product',
-              value: {
+              value: { type: 'Expression', value: {
                 type: 'Operation',
                 operator: '*',
                 left: { type: 'Dimension', src: '2' },
                 right: { type: 'Dimension', src: '3' }
-              }
+              } }
             },
             {
               type: 'Declaration',
               name: 'modulo',
-              value: {
+              value: { type: 'Expression', value: {
                 type: 'Operation',
                 operator: '%',
                 left: { type: 'Dimension', src: '7' },
                 right: { type: 'Dimension', src: '3' }
-              }
+              } }
             }
           ]
         }
@@ -1923,22 +1926,22 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: 'star',
-              value: {
+              value: { type: 'Expression', value: {
                 type: 'Operation',
                 operator: '*',
                 left: { type: 'Dimension', src: '1' },
                 right: { type: 'Dimension', src: '2' }
-              }
+              } }
             },
             {
               type: 'Declaration',
               name: 'mod',
-              value: {
+              value: { type: 'Expression', value: {
                 type: 'Operation',
                 operator: '%',
                 left: { type: 'Dimension', src: '7' },
                 right: { type: 'Dimension', src: '3' }
-              }
+              } }
             }
           ]
         }
@@ -1966,7 +1969,7 @@ describe('Less AST grammar facts', () => {
     );
     expect(commentSum.value).toMatchObject({
       rules: [
-        { rules: [{ name: 'x', value: { type: 'Operation', operator: '-' } }] }
+        { rules: [{ name: 'x', value: { type: 'Expression', value: { type: 'Operation', operator: '-' } } }] }
       ]
     });
 
@@ -1976,7 +1979,7 @@ describe('Less AST grammar facts', () => {
     });
     expect(spacedSum.value).toMatchObject({
       rules: [
-        { rules: [{ name: 'x', value: { type: 'Operation', operator: '-' } }] }
+        { rules: [{ name: 'x', value: { type: 'Expression', value: { type: 'Operation', operator: '-' } } }] }
       ]
     });
 
@@ -1986,7 +1989,7 @@ describe('Less AST grammar facts', () => {
     });
     expect(paddedSum.value).toMatchObject({
       rules: [
-        { rules: [{ name: 'x', value: { type: 'Operation', operator: '-' } }] }
+        { rules: [{ name: 'x', value: { type: 'Expression', value: { type: 'Operation', operator: '-' } } }] }
       ]
     });
 
@@ -2047,11 +2050,11 @@ describe('Less AST grammar facts', () => {
           && child.name === 'gridsystem-width'
       )
     ).toMatchObject({
-      value: { type: 'Operation', operator: '+' }
+      value: { type: 'Expression', value: { type: 'Operation', operator: '+' } }
     });
   });
 
-  it('keeps a glued top-level Less slash group structural for later calc evaluation', () => {
+  it('parses a glued top-level Less slash through the division rule as a slash list', () => {
     const source =
       '@ratio: 50vh/2; .card { direct: @ratio; calc: calc(100% - (@ratio - 20px)); }';
     const result = run(lessGrammar.Document, source, {
@@ -2067,18 +2070,21 @@ describe('Less AST grammar facts', () => {
     expect(result.value.rules[0]).toMatchObject({
       type: 'VariableDeclaration',
       name: 'ratio',
-      value: [
-        { type: 'Dimension', src: '50vh' },
-        { type: 'Keyword', src: '/' },
-        { type: 'Dimension', src: '2' }
-      ]
+      value: {
+        type: 'List',
+        sep: '/',
+        value: [
+          { type: 'Dimension', src: '50vh' },
+          { type: 'Dimension', src: '2' }
+        ]
+      }
     });
     expect(serialize(result.value).css).toBe(
       '.card {\n  direct: 50vh / 2;\n  calc: calc(100% - (50vh / 2 - 20px));\n}\n'
     );
   });
 
-  it('left-factors preserved slash value pieces without changing their grammar facts', () => {
+  it('parses every value slash through the one division rule, whatever its spacing', () => {
     const source = [
       '@trivia: 12px / 1.5 / 3;',
       '.case {',
@@ -2091,54 +2097,24 @@ describe('Less AST grammar facts', () => {
     const result = run(lessGrammar.Document, source, {
       trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
     });
+    const slashList = (...srcs: string[]) => ({
+      type: 'List',
+      sep: '/',
+      value: srcs.map(src => ({ type: 'Dimension', src }))
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
       rules: [
-        {
-          type: 'VariableDeclaration',
-          name: 'trivia',
-          value: {
-            type: 'Sequence',
-            parts: [
-              { type: 'Dimension', src: '12px' },
-              { type: 'Keyword', src: '/' },
-              { type: 'Dimension', src: '1.5' },
-              { type: 'Keyword', src: '/' },
-              { type: 'Dimension', src: '3' }
-            ]
-          }
-        },
+        { type: 'VariableDeclaration', name: 'trivia', value: slashList('12px', '1.5', '3') },
         {
           type: 'Ruleset',
           rules: [
-            {
-              type: 'Declaration',
-              name: 'bare',
-              value: { type: 'Dimension', src: '12px' }
-            },
-            {
-              type: 'Declaration',
-              name: 'slash',
-              value: [
-                { type: 'Dimension', src: '12px' },
-                { type: 'Keyword', src: '/' },
-                { type: 'Dimension', src: '1.5' }
-              ]
-            },
-            {
-              type: 'Declaration',
-              name: 'multi',
-              value: [
-                { type: 'Dimension', src: '12px' },
-                { type: 'Keyword', src: '/' },
-                { type: 'Dimension', src: '1.5' },
-                { type: 'Keyword', src: '/' },
-                { type: 'Dimension', src: '3' }
-              ]
-            },
+            { type: 'Declaration', name: 'bare', value: { type: 'Dimension', src: '12px' } },
+            { type: 'Declaration', name: 'slash', value: slashList('12px', '1.5') },
+            { type: 'Declaration', name: 'multi', value: slashList('12px', '1.5', '3') },
             {
               type: 'Declaration',
               name: 'function',
@@ -2146,7 +2122,7 @@ describe('Less AST grammar facts', () => {
                 type: 'FunctionCall',
                 name: 'min',
                 args: [
-                  { value: { type: 'Operation' } },
+                  { value: slashList('12px', '1.5', '3') },
                   { value: { type: 'Dimension', src: '2px' } }
                 ]
               }
@@ -2156,15 +2132,14 @@ describe('Less AST grammar facts', () => {
       ]
     });
 
-    /* Authored boundary runs live in the layout side table, NOT on the node: the
-     * `Sequence` shape is `{ type, parts }` and nothing else. */
+    /* The slash list carries no authored spacing: separators are spaced on output
+     * regardless of source spacing (ledger P33). */
     const trivia = (result.value as Stylesheet).rules[0];
     if (trivia?.type !== 'VariableDeclaration') {
       throw new TypeError('expected a VariableDeclaration');
     }
-    expect(trivia.value).not.toHaveProperty('separators');
     expect(valueLayoutOf(trivia)).toBeUndefined();
-    expect(valueLayoutOf(trivia.value)).toEqual([' ', ' ', ' ', ' ']);
+    expect(valueLayoutOf(trivia.value)).toBeUndefined();
 
     const malformed = run(
       lessGrammar.Document,
@@ -2279,7 +2254,7 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: 'modulo',
-              value: { type: 'Operation', operator: '%' }
+              value: { type: 'Expression', value: { type: 'Operation', operator: '%' } }
             }
           ]
         }
@@ -3429,7 +3404,7 @@ describe('Less AST grammar facts', () => {
         {
           type: 'AtRuleBlock',
           name: '@media',
-          prelude: { type: 'Any', src: 'screen' },
+          prelude: { type: 'Keyword', src: 'screen' },
           rules: [{ type: 'StyleImport', name: '@import', mode: 'import' }]
         }
       ]
@@ -3606,9 +3581,20 @@ describe('Less AST grammar facts', () => {
       '@import "theme.less" screen and (min-width: 600px)};',
       '@import (unknown) "theme.less";'
     ]) {
-      const result = run(lessGrammar.Document, source, {
-        trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
-      });
+      /*
+       * A media-query postlude goes through the `@media` query grammar, so a bare
+       * `@media` there raises the same targeted interpolation error it raises in
+       * an `@media` header. A thrown targeted error is a rejection too.
+       */
+      let result: ReturnType<typeof run>;
+      try {
+        result = run(lessGrammar.Document, source, {
+          trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+        });
+      } catch (error) {
+        expect(error, source).toBeInstanceOf(Error);
+        continue;
+      }
       expect(
         result.ok
         && result.unconsumedFrom === null
@@ -4093,7 +4079,7 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
   });
 
-  it('constructs arithmetic inside Less function arguments as an operation', () => {
+  it('parses a function-argument slash through the division rule, shaped by the math policy', () => {
     const result = run(lessGrammar.Document, 'x: round(32 / 3);', {
       trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
     });
@@ -4105,7 +4091,7 @@ describe('Less AST grammar facts', () => {
           value: {
             type: 'FunctionCall',
             name: 'round',
-            args: [{ value: { type: 'Operation', operator: '/' } }]
+            args: [{ value: { type: 'List', sep: '/', value: [{ src: '32' }, { src: '3' }] } }]
           }
         }
       ]
@@ -4124,7 +4110,7 @@ describe('Less AST grammar facts', () => {
         const result = run(lessGrammar.Document, source, {
           trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
         });
-        const expectedArgs: unknown[] = [{ value: { type: 'Operation', operator: '/' } }];
+        const expectedArgs: unknown[] = [{ value: { type: 'List', sep: '/', value: [{ src: '32' }, { src: '3' }] } }];
         if (delimiter !== ')') {
           expectedArgs.push({ value: { type: 'Keyword', src: 'blue' } });
         }
@@ -5439,12 +5425,16 @@ describe('Less AST grammar facts', () => {
     );
   });
 
-  it('folds a media feature <ratio> into one typed operation in every feature form', () => {
+  it('parses a media feature <ratio> through the division rule in every feature form', () => {
+    /*
+     * A query slash is the same Less division operator as a value slash
+     * (DESIGN-DECISIONS P34/P35): under the default math policy it does not
+     * divide, so every feature form carries the one slash-separated List.
+     */
     const ratio = {
-      type: 'Operation',
-      operator: '/',
-      left: { type: 'Dimension', src: '16' },
-      right: { type: 'Dimension', src: '9' }
+      type: 'List',
+      sep: '/',
+      value: [{ type: 'Dimension', src: '16' }, { type: 'Dimension', src: '9' }]
     };
 
     for (const [source, operator] of [
@@ -5453,10 +5443,6 @@ describe('Less AST grammar facts', () => {
       ['@media (min-aspect-ratio: 16/9) { .card { color: red; } }', ':'],
       ['@container (aspect-ratio: 16/9) { .card { color: red; } }', ':'],
 
-      /*
-       * The comparison form used to take the value-position slash group and
-       * reduce `16/9` to a Sequence instead of the ratio operation.
-       */
       ['@media (aspect-ratio >= 16/9) { .card { color: red; } }', '>=']
     ] as const) {
       const result = run(lessGrammar.Document, source, {
@@ -5498,10 +5484,9 @@ describe('Less AST grammar facts', () => {
                 right: { type: 'Keyword', src: 'aspect-ratio' }
               },
               right: {
-                type: 'Operation',
-                operator: '/',
-                left: { type: 'Dimension', src: '2' },
-                right: { type: 'Dimension', src: '1' }
+                type: 'List',
+                sep: '/',
+                value: [{ type: 'Dimension', src: '2' }, { type: 'Dimension', src: '1' }]
               }
             }
           }
@@ -5513,8 +5498,8 @@ describe('Less AST grammar facts', () => {
     );
 
     /*
-     * `style()` carries a declaration, so its slash stays a value-position
-     * slash group rather than becoming a ratio operation.
+     * `style()` carries a `<declaration-value>` — the permissive custom-property
+     * value (ledger P2) — so its payload is literal text and never computes.
      */
     const styleQuery = run(
       lessGrammar.Document,
@@ -5532,7 +5517,7 @@ describe('Less AST grammar facts', () => {
               { value: {
                 type: 'Operation',
                 operator: ':',
-                right: { type: 'Sequence' }
+                right: { type: 'Any', src: '16/9' }
               } }
             ]
           }
@@ -5768,7 +5753,7 @@ describe('Less AST grammar facts', () => {
                     type: 'Operation',
                     operator: ':',
                     left: { type: 'Keyword', src: '--responsive' },
-                    right: { type: 'Keyword', src: 'true' }
+                    right: { type: 'Any', src: 'true' }
                   } }
                 ]
               }
@@ -6575,7 +6560,7 @@ describe('Less AST grammar facts', () => {
                 {
                   value: [
                     { type: 'Url' },
-                    { type: 'Sequence' },
+                    { type: 'List', sep: '/' },
                     { type: 'Keyword', src: 'no-repeat' }
                   ]
                 }
@@ -6586,7 +6571,7 @@ describe('Less AST grammar facts', () => {
       ]
     });
     expect(serialize(stylesheet(result.value)).css).toBe(
-      '.hero {\n  background: linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)) url("/images/hero.jpg") center/cover no-repeat;\n}\n'
+      '.hero {\n  background: linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)) url("/images/hero.jpg") center / cover no-repeat;\n}\n'
     );
   });
 
@@ -7060,7 +7045,7 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: 'val',
-              value: {
+              value: { type: 'Expression', value: {
                 type: 'Operation',
                 operator: '+',
                 left: {
@@ -7106,7 +7091,7 @@ describe('Less AST grammar facts', () => {
                   }
                 },
                 right: { type: 'Dimension', src: '5px' }
-              }
+              } }
             }
           ]
         }

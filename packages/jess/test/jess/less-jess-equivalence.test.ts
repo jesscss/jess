@@ -426,16 +426,6 @@ const KNOWN = new Map<string, Known>([
     outcome: 'css-mismatch',
     reason: 'a function registered by a Less `plugins` entry is a Less-document global; `.jess` has no ambient function namespace'
   }],
-  ['all-less:tests-config/globalVars/extended.less', {
-    cause: 'p35',
-    outcome: 'p35',
-    reason: 'bare Less math (an `Operation` or `/` atom outside an `Expression`) — P35 not landed'
-  }],
-  ['all-less:tests-config/modifyVars/extended.less', {
-    cause: 'p35',
-    outcome: 'p35',
-    reason: 'bare Less math (an `Operation` or `/` atom outside an `Expression`) — P35 not landed'
-  }],
   ['all-less:tests-config/namespacing/namespacing-1.less', {
     cause: 'cannot-express',
     outcome: 'cannot-express',
@@ -487,9 +477,9 @@ const KNOWN = new Map<string, Known>([
     reason: 'Reference: a chain rooted at a mixin call: `.jess` accessors root at a `$` binding'
   }],
   ['all-less:tests-config/namespacing/namespacing-operations.less', {
-    cause: 'p35',
-    outcome: 'p35',
-    reason: 'bare Less math (an `Operation` or `/` atom outside an `Expression`) — P35 not landed'
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'Reference: a chain rooted at a mixin call: `.jess` accessors root at a `$` binding'
   }],
   ['all-less:tests-config/preProcessorPlugin/preProcessor.less', {
     cause: 'no-arm-a',
@@ -533,18 +523,13 @@ const KNOWN = new Map<string, Known>([
   }],
   ['all-less:tests-config/units/loose/loose.less', {
     cause: 'cannot-express',
-    outcome: 'cannot-express',
-    reason: 'Comment: a comment between value parts: `ValueSpaceGroup` separators are whitespace only'
+    outcome: 'arm-b-error',
+    reason: 'a `$( … )` computation demands an expressible unit (`eval/invalid-unit-arithmetic`), where the Less arm\'s `unitMode` ladder preserves or folds it'
   }],
   ['all-less:tests-config/units/no-strict/no-strict.less', {
     cause: 'cannot-express',
-    outcome: 'cannot-express',
-    reason: 'Comment: a comment between value parts: `ValueSpaceGroup` separators are whitespace only'
-  }],
-  ['all-less:tests-config/units/strict/strict-units.less', {
-    cause: 'p35',
-    outcome: 'p35',
-    reason: 'bare Less math (an `Operation` or `/` atom outside an `Expression`) — P35 not landed'
+    outcome: 'arm-b-error',
+    reason: 'a `$( … )` computation demands an expressible unit (`eval/invalid-unit-arithmetic`), where the Less arm\'s `unitMode` ladder preserves or folds it'
   }],
   ['all-less:tests-config/url-args/urls.less', {
     cause: 'cannot-express',
@@ -581,25 +566,10 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'AtRuleStatement: `@charset` after another statement: `Charset` is only the first statement (+1 more)'
   }],
-  ['all-less:tests-unit/calc/calc.less', {
-    cause: 'p35',
-    outcome: 'p35',
-    reason: 'bare Less math (an `Operation` or `/` atom outside an `Expression`) — P35 not landed'
-  }],
-  ['all-less:tests-unit/color-functions/modern-syntax.less', {
-    cause: 'p35',
-    outcome: 'p35',
-    reason: 'bare Less math (an `Operation` or `/` atom outside an `Expression`) — P35 not landed'
-  }],
-  ['all-less:tests-unit/color-functions/modern.less', {
-    cause: 'p35',
-    outcome: 'p35',
-    reason: 'bare Less math (an `Operation` or `/` atom outside an `Expression`) — P35 not landed'
-  }],
   ['all-less:tests-unit/color-functions/operations.less', {
-    cause: 'p35',
-    outcome: 'p35',
-    reason: 'bare Less math (an `Operation` or `/` atom outside an `Expression`) — P35 not landed'
+    cause: 'cannot-express',
+    outcome: 'css-mismatch',
+    reason: 'the `.jess` arm clamps rgba() channels the Less arm keeps out of range (`rgba(-99.9, 31.4159, 321, 0.42)` vs `rgba(0, 31, 255, 0.42)`)'
   }],
   ['all-less:tests-unit/comments/comments.less', {
     cause: 'cannot-express',
@@ -607,9 +577,9 @@ const KNOWN = new Map<string, Known>([
     reason: 'List: a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout (+1 more)'
   }],
   ['all-less:tests-unit/comments/comments2.less', {
-    cause: 'p35',
-    outcome: 'p35',
-    reason: 'bare Less math (an `Operation` or `/` atom outside an `Expression`) — P35 not landed'
+    cause: 'lost-info',
+    outcome: 'css-mismatch',
+    reason: 'a block comment inside a function argument is dropped (`linear-gradient(#333 /*{comment}*/, #111)` vs `linear-gradient(#333, #111)`)'
   }],
   ['all-less:tests-unit/container/container.less', {
     cause: 'cannot-express',
@@ -726,11 +696,6 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'StyleImport: an import inside a block: `.jess` imports are `Stylesheet`-level statements (+2 more)'
   }],
-  ['all-less:tests-unit/math-css-vars/math-css-vars.less', {
-    cause: 'p35',
-    outcome: 'p35',
-    reason: 'bare Less math (an `Operation` or `/` atom outside an `Expression`) — P35 not landed'
-  }],
   ['all-less:tests-unit/media/media.less', {
     cause: 'cannot-express',
     outcome: 'cannot-express',
@@ -760,16 +725,6 @@ const KNOWN = new Map<string, Known>([
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'Interpolation: a scoped (Less `@{name}`) read spliced into a selector: `.jess` `${name}` reads the live store only (+2 more)'
-  }],
-  ['all-less:tests-unit/mixins-named-args/mixins-named-args.less', {
-    cause: 'p35',
-    outcome: 'p35',
-    reason: 'bare Less math (an `Operation` or `/` atom outside an `Expression`) — P35 not landed'
-  }],
-  ['all-less:tests-unit/mixins-nested/mixins-nested.less', {
-    cause: 'p35',
-    outcome: 'p35',
-    reason: 'bare Less math (an `Operation` or `/` atom outside an `Expression`) — P35 not landed'
   }],
   ['all-less:tests-unit/mixins-pattern/mixins-pattern.less', {
     cause: 'cannot-express',
@@ -802,14 +757,14 @@ const KNOWN = new Map<string, Known>([
     reason: 'VariableDeclaration: bound to a mixin call: no `.jess` value spelling for a call\'s output (+1 more)'
   }],
   ['all-less:tests-unit/operations/operations-advanced.less', {
-    cause: 'p35',
-    outcome: 'p35',
-    reason: 'bare Less math (an `Operation` or `/` atom outside an `Expression`) — P35 not landed'
+    cause: 'cannot-express',
+    outcome: 'arm-b-error',
+    reason: 'a `$( … )` computation demands an expressible unit (`eval/invalid-unit-arithmetic`), where the Less arm\'s `unitMode` ladder preserves or folds it'
   }],
   ['all-less:tests-unit/operations/operations.less', {
-    cause: 'p35',
-    outcome: 'p35',
-    reason: 'bare Less math (an `Operation` or `/` atom outside an `Expression`) — P35 not landed'
+    cause: 'cannot-express',
+    outcome: 'cannot-express',
+    reason: 'FunctionCall: not an `ExpressionAtom`: `$( … )` and guard operands take references, numbers, colors, strings, keywords and `( … )` groups | Operation: an operand grouping the left-folding precedence ladder cannot reproduce without a `( … )` block'
   }],
   ['all-less:tests-unit/parse-interpolation/parse-interpolation.less', {
     cause: 'cannot-express',
@@ -985,6 +940,30 @@ describe('converted function imports', () => {
     expect(printed.split('\n').slice(0, 2)).toEqual([
       '@charset "utf-8";',
       '@-from "#less" import (dataUri as data-uri, lighten, rgba);'
+    ]);
+  });
+});
+
+/*
+ * `tests-config/math-strict/css.less` has no expected CSS, so it is converted as
+ * a corpus file rather than ratcheted as a fixture. Once its slashes stopped being
+ * bare math it converted, and the re-print gate caught two spellings `.jess`
+ * cannot read back. The emitter names them instead of printing them.
+ */
+describe('spellings the emitter names instead of printing', () => {
+  it('names an empty declaration value and an IE-style name=value argument', () => {
+    let gaps: string[] = [];
+    try {
+      emitJess(parseLess('.m { margin: ; filter: alpha(opacity=100); }'), { functions: LESS_FUNCTIONS });
+    } catch (error) {
+      if (!(error instanceof NoJessSpelling)) {
+        throw error;
+      }
+      gaps = error.gaps.map(g => `${g.nodeType}: ${g.reason}`);
+    }
+    expect(gaps).toEqual([
+      'Declaration: an empty declaration value (`margin: ;`): the `.jess` `Declaration` rule requires a value',
+      'FunctionCall: an IE-style `name=value` argument (`alpha(opacity=100)`): no `.jess` `CallArgument` spelling reads it back'
     ]);
   });
 });

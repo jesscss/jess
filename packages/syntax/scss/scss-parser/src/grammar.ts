@@ -26,7 +26,7 @@ import { cssBaseRules } from '@jesscss/css-parser/grammar';
 import { ScssImportPostludeError } from './parse-error.js';
 import { anonymousMixin, any, asDiagnostic, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, importIsCompileTime, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { COMPARISON_OPERATORS, appendLiteral, controlBlockStatements, scssBranchSegments, contentArgRaw, customValue, customValueFromParts, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isAnonymousMixin, isCollection, isCollectionEntry, isScssDeclaration, isExtendInstruction, isScssImportTarget, isScssInterpolation, isParamArray, isQuoted, isScriptModulePath, isScssValuePair, isScssValueTail, isScssSelectorBranch, isScssSelectorList, isSelectorTerm, isScssSimpleToken, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, keywordizeValues, mapKeyValue, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, scssSelectorTermFromTokens, scssSourceText, statementChildren, statements, staticQuoted, scssValueSlot } from './grammar-helpers.js';
+import { COMPARISON_OPERATORS, appendLiteral, controlBlockStatements, scssBranchSegments, contentArgRaw, customValue, customValueFromParts, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isAnonymousMixin, isCollection, isCollectionEntry, isScssDeclaration, isExtendInstruction, isScssImportTarget, isScssInterpolation, isParamArray, isQuoted, isScriptModulePath, isScssValuePair, isScssValueTail, isScssSelectorBranch, isScssSelectorList, isSelectorTerm, isScssSimpleToken, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, keywordizeValues, mapKeyValue, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, scssSelectorTermFromTokens, scssSourceText, statementChildren, statements, staticQuoted, scssValueSlot } from './grammar-helpers.js';
 import type { ScssArgumentPair, ScssCallArg, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
@@ -1243,34 +1243,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.ValueLogicalOr,
       many(ValueTail)
     )),
-    (children) => {
-      const groups: ValueNode[][] = [[requireValue(children[0])]];
-      const groupSeparators: string[][] = [[]];
-      for (const child of children.slice(1)) {
-        if (!isScssValueTail(child)) {
-          throw new TypeError('SCSS value term produced an invalid list boundary.');
-        }
-        if (child.kind === 'slash') {
-          groups.push([child.value]);
-          groupSeparators.push([]);
-        } else {
-          groups.at(-1)!.push(child.value);
-          groupSeparators.at(-1)!.push(child.separator);
-        }
-      }
-      const values = groups.map((group, index) => group.length === 1
-        ? group[0]!
-        : withValueLayout(
-            group,
-            groupSeparators[index]!
-          ));
-      return groups.length === 1
-        ? values[0]!
-        : list(
-            values,
-            '/'
-          );
-    }
+    scssSlashGroupedTerm
   );
 
   /*

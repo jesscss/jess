@@ -16,8 +16,9 @@
  *   (`CalcValue`/`CalcParen`/`CalcProduct`/`CalcSum`/`CalcFunction`), which is
  *   PORTED from the CSS base rather than referenced, because parseman cannot
  *   share a mutually recursive, AST-reducing family across packages. See the
- *   comment on those consts. Less and SCSS model the same ladder as
- *   `MathProduct`/`MathSum`; converging the four is an open decision.
+ *   comment on those consts. SCSS models the same ladder as
+ *   `MathProduct`/`MathSum` and Less as one flat `MathSum` run; converging the
+ *   four is an open decision.
  *   Shared preprocessor constructs belong in parser-shared only after they
  *   prove real reuse.
  *
@@ -1265,16 +1266,16 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       sequence(
         guardUnaryTypePredicate,
         literal('('),
-        g.ValueTerm,
+        g.ValueSpaceGroup,
         literal(')')
       ),
       sequence(
         guardIsUnitPredicate,
         literal('('),
-        g.ValueTerm,
+        g.ValueSpaceGroup,
         optional(sequence(
           literal(','),
-          g.ValueTerm
+          g.ValueSpaceGroup
         )),
         literal(')')
       )
@@ -2397,40 +2398,20 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * Modern CSS function components can carry one structural slash separator
-   * (`rgb(15 23 42 / .22)`). Keep that separator inside the call grammar: `/`
-   * remains unavailable as unwrapped Jess arithmetic, and a second or dangling
-   * separator cannot fall back to a generic function or raw value.
+   * A call component is one space group; a modern CSS component's slash
+   * (`rgb(15 23 42 / .22)`) is the same direct-neighbour slash group a value
+   * uses (P33): `[15, 23, 42 / .22]`. `/` stays unavailable as unwrapped Jess
+   * arithmetic, and a dangling separator still has no right operand.
    */
   const CallComponent = node<ValueSlot>(
     'CallComponent',
-    sequence(
-      g.ValueSpaceGroup,
-      optional(sequence(
-        optional(rawWhitespace),
-        literal('/'),
-        optional(rawWhitespace),
-        g.ValueSpaceGroup
-      ))
-    ),
+    g.ValueSpaceGroup,
     (children) => {
-      const values = children.filter((child): child is ValueSlot => Array.isArray(child) || isValueNode(child));
-      if (values.length === 1) {
-        return values[0]!;
+      const value = children.find((child): child is ValueSlot => Array.isArray(child) || isValueNode(child));
+      if (value === undefined) {
+        throw new TypeError('Jess call component produced unexpected children.');
       }
-      if (values.length === 2 && children.some(child => isToken(child) && child.value === '/')) {
-        /*
-         * Keep each side as one slash-list item.  The left side of modern
-         * `rgb(15 23 42 / .22)` is an authored space group, not three slash
-         * operands; flattening it changes the public AST and renders
-         * `rgb(15 / 23 / 42 / .22)`.
-         */
-        return list(
-          [values[0]!, values[1]!],
-          '/'
-        );
-      }
-      throw new TypeError('Jess call component produced unexpected children.');
+      return value;
     }
   );
 
@@ -3182,19 +3163,48 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * The authored space-adjacency run: the value atoms between two slash
-   * boundaries, or the whole term when the value carries no slash.
+   * The slash level. `/` is a structural component boundary in plain CSS
+   * (`grid-area: 1 / 2`, `font: 12px/1.5 sans-serif`), and it groups only its
+   * DIRECT neighbours (DESIGN-DECISIONS P33 as amended 2026-09-24, P35): comma
+   * is loosest, then whitespace, then slash, so `font: 12px/1.5 sans-serif` is
+   * `[12px / 1.5, sans-serif]`. `/` still never becomes unwrapped arithmetic.
+   */
+  const ValueTerm = node<ValueSlot>(
+    'ValueTerm',
+    noTrivia(sequence(
+      g.ValueAtom,
+      many(sequence(
+        valueSlashBoundary,
+        nonBlockValueAtom
+      ))
+    )),
+    (children) => {
+      const values = children.filter(isJessValueSlotValue);
+      return values.length === 1
+        ? values[0]!
+        : list(
+            values,
+            '/'
+          );
+    }
+  );
+
+  /*
+   * The authored space-adjacency run of slash groups. A brace block may only be
+   * a value's FIRST atom (see `nonBlockValueAtom`), so a continuation term may
+   * not open one.
    */
   const ValueSpaceGroup = node<ValueSlot>(
     'ValueSpaceGroup',
     noTrivia(sequence(
-      g.ValueAtom,
+      g.ValueTerm,
       many(sequence(
         field(
           'separator',
           regex(/[ \t\n\r\f]+/)
         ),
-        nonBlockValueAtom
+        not(literal('{')),
+        g.ValueTerm
       ))
     )),
     (children, fields) => {
@@ -3216,42 +3226,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       );
     }
   );
-
-  /*
-   * `/` is a structural component boundary in plain CSS (`grid-area: 1 / 2`,
-   * `font: 12px/1.5 sans-serif`), so it has to be recognized for every value,
-   * not only for a `$`-headed left side or a modern function component. This
-   * lifts the slash `List` those two already build to the whole value term:
-   * each side stays ONE authored space group (flattening it would render
-   * `1 / 2 / sans-serif`), and `/` still never becomes unwrapped arithmetic.
-   */
-  const ValueTerm = node<ValueSlot>(
-    'ValueTerm',
-    noTrivia(sequence(
-      g.ValueSpaceGroup,
-      many(sequence(
-        valueSlashBoundary,
-        g.ValueSpaceGroup
-      ))
-    )),
-    (children) => {
-      const groups = children.filter(isJessValueSlotValue);
-      return groups.length === 1
-        ? groups[0]!
-        : list(
-            groups,
-            '/'
-          );
-    }
-  );
   const Value = node<ValueSlot>(
     'Value',
     sequence(
-      g.ValueTerm,
+      g.ValueSpaceGroup,
       many(sequence(
         literal(','),
         optional(regex(/[ \t\n\r\f]+/)),
-        g.ValueTerm
+        g.ValueSpaceGroup
       ))
     ),
     (children) => {
@@ -4992,7 +4974,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       dollarName,
       optional(sequence(
         literal(':'),
-        g.ValueTerm
+        g.ValueSpaceGroup
       ))
     ),
     (children) => {
@@ -5021,9 +5003,9 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         literal('$'),
         dollarName,
         literal(':'),
-        g.ValueTerm
+        g.ValueSpaceGroup
       ),
-      g.ValueTerm
+      g.ValueSpaceGroup
     ),
     (children) => {
       const value = children.find(isValueNode);

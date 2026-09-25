@@ -83,13 +83,14 @@ describe('public API contract', () => {
     expect(css).toContain('computed: 5px;');
   });
 
-  it('keeps a preserved Less slash group opaque through a later operation', async () => {
+  it('preserves an operation on an undivided Less slash list as calc()', async () => {
     const css = await new Compiler().renderString(`
       @div-op: 10px / 2;
       .a { result: @div-op * 2; }
     `, { language: 'less', extension: '.less' });
 
-    expect(css).toContain('result: 10px / 2 * 2;');
+    /* The slash list has nothing to multiply (DESIGN-DECISIONS P35). */
+    expect(css).toContain('result: calc(10px / 2 * 2);');
   });
 
   it('honors explicit collapseNesting without an outputFile across config shapes', async () => {

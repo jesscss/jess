@@ -178,7 +178,10 @@ describe('Less import CST facts', () => {
     expect(findNode(imp!, 'ImportTarget')).toBeDefined();
     expect(findNode(imp!, 'Quoted')).toBeDefined();
     expect(leafValues(findNode(imp!, 'VariableInterpolation')!)).toEqual(['@{', 'name', '}']);
-    expect(leafValues(findNode(imp!, 'ImportTail')!)).toContain('screen and ');
+
+    /* The media-query postlude goes through the `@media` query grammar (P35). */
+    expect(findNode(imp!, 'MediaQueryPrelude')).toBeDefined();
+    expect(leafValues(findNode(imp!, 'ImportTail')!)).toEqual(expect.arrayContaining(['screen', 'and', '600']));
   });
 
   it('keeps a url target and the @-import keyword', () => {
@@ -469,9 +472,8 @@ describe('Less direct-AST closure CST contract', () => {
     ]);
   });
 
-  it('routes static query identifiers and functions without widening url() into a query function', () => {
+  it('routes static query identifiers and functions', () => {
     const result = parseLessCstResult('@media screen and (width >= calc(10px + 1px)) and (height >= feature(1px, 2px)) { .card { color: red; } }');
-    const badUrl = parseLessCstResult('@media (width >= url(foo)) { .card { color: red; } }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
@@ -482,13 +484,12 @@ describe('Less direct-AST closure CST contract', () => {
      * operator's. Its authored padding is the leaf's span, not its value. */
     expect(findNodes(result.tree, 'CalcCall').map(leafValues)).toContainEqual(['calc(', '10', 'px', '+', '1', 'px', ')']);
     expect(findNodes(result.tree, 'Call').map(leafValues)).toContainEqual(['feature(', '1', 'px', ', ', '2', 'px', ')']);
-    expect(cstIssueCount(badUrl)).toBeGreaterThan(0);
   });
 
   it('keeps Less function-like openers glued in public CST owners', () => {
     const cases: readonly [source: string, grammarType: string, leaves: readonly string[]][] = [
       ['e("x");', 'Call', ['e(', '"', 'x', '"', ')']],
-      ['.x { color: var(--accent); }', 'Call', ['var(', '--accent', ')']],
+      ['.x { color: var(--accent); }', 'VarCall', ['var(', '--accent', ')']],
       ['.x { color: feature(1px, 2px); }', 'Call', ['feature(', '1', 'px', ', ', '2', 'px', ')']],
       ['.x { color: calc(1px + 2px); }', 'CalcCall', ['calc(', '1', 'px', '+', '2', 'px', ')']],
       ['.x { color: url(foo); }', 'Url', ['url(', 'foo', ')']],

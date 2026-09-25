@@ -758,16 +758,16 @@ describe('Jess AST grammar facts', () => {
     });
 
     /*
-     * Each side stays ONE authored space group, exactly as a modern function
-     * component already does: flattening would render `12px / 1.5 / sans-serif`.
+     * The slash groups only its direct neighbours (P33 as amended 2026-09-24):
+     * `(12px/1.5)` is the group, and `sans-serif` is the next space-list item.
      */
     expect(parse('.x { font: 12px/1.5 sans-serif; }')).toMatchObject({
       rules: [{ type: 'Ruleset', rules: [{
         name: 'font',
-        value: { type: 'List', sep: '/', value: [
-          { type: 'Dimension', src: '12px' },
-          [{ type: 'Dimension', src: '1.5' }, { type: 'Keyword', src: 'sans-serif' }]
-        ] }
+        value: [
+          { type: 'List', sep: '/', value: [{ type: 'Dimension', src: '12px' }, { type: 'Dimension', src: '1.5' }] },
+          { type: 'Keyword', src: 'sans-serif' }
+        ]
       }] }]
     });
     const evaluator = buildEvaluator(makeLessRegistry());
@@ -777,12 +777,12 @@ describe('Jess AST grammar facts', () => {
 
     /*
      * A `$`-headed left side keeps its existing left-factored slash reduction,
-     * and a modern function component still admits exactly one separator.
+     * and a modern function component takes the same slash group a value does.
      */
     expect(serialize(parse('$w: 1; .x { slash: $w / 2; color: rgb(15 23 42 / 0.22); }'), { evaluator }).css).toBe(
       '.x {\n  slash: 1 / 2;\n  color: rgb(15 23 42 / 0.22);\n}\n'
     );
-    for (const invalid of ['.x { a: / 2; }', '.x { a: 1 /; }', '.x { color: rgb(15 23 42 / 0.22 / 1); }']) {
+    for (const invalid of ['.x { a: / 2; }', '.x { a: 1 /; }']) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
   });
@@ -2269,12 +2269,11 @@ describe('Jess AST grammar facts', () => {
       type: 'Stylesheet',
       rules: [{ type: 'Ruleset', rules: [{
         type: 'Declaration', name: 'box-shadow', value: {
-          type: 'FunctionCall', name: 'rgb', args: [{ value: {
-            type: 'List', sep: '/', value: [
-              [{ type: 'Dimension', src: '15' }, { type: 'Dimension', src: '23' }, { type: 'Dimension', src: '42' }],
-              { type: 'Dimension', src: '0.22' }
-            ]
-          } }]
+          type: 'FunctionCall', name: 'rgb', args: [{ value: [
+            { type: 'Dimension', src: '15' },
+            { type: 'Dimension', src: '23' },
+            { type: 'List', sep: '/', value: [{ type: 'Dimension', src: '42' }, { type: 'Dimension', src: '0.22' }] }
+          ] }]
         }
       }] }]
     });
@@ -2284,17 +2283,22 @@ describe('Jess AST grammar facts', () => {
     expect(variableCall.rules[1]).toMatchObject({
       type: 'Ruleset', rules: [{
         type: 'Declaration', value: {
-          type: 'FunctionCall', args: [{ value: {
-            type: 'List', sep: '/', value: [[{ type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Operation', operator: '+' } }, unquote: true }] }, { type: 'Dimension', src: '23' }, { type: 'Dimension', src: '42' }], { type: 'Dimension', src: '0.22' }]
-          } }]
+          type: 'FunctionCall', args: [{ value: [
+            { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Operation', operator: '+' } }, unquote: true }] },
+            { type: 'Dimension', src: '23' },
+            { type: 'List', sep: '/', value: [{ type: 'Dimension', src: '42' }, { type: 'Dimension', src: '0.22' }] }
+          ] }]
         }
       }]
     });
 
+    /*
+     * A dangling or leading separator has no operand. A second slash is the
+     * same direct-neighbour group the css base already accepts as a shape.
+     */
     for (const invalid of [
       '.card { color: rgb(/ 0.22); }',
-      '.card { color: rgb(15 23 42 /); }',
-      '.card { color: rgb(15 23 42 / 0.22 / 1); }'
+      '.card { color: rgb(15 23 42 /); }'
     ]) {
       const cst = parseJessCst(invalid);
       const rejected = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace });

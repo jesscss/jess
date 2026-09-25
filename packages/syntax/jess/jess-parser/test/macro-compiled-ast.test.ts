@@ -35,10 +35,10 @@ test('macro-compiled Jess call components retain modern CSS slash separators str
   expect(cst.unconsumedFrom).toBeNull();
   expect(direct.ok && direct.unconsumedFrom === null && direct.value?.type === 'Stylesheet').toBe(true);
 
+  /* A second slash is a direct-neighbour group the css base also accepts (P33). */
   for (const invalid of [
     '.card { color: rgb(/ 0.22); }',
-    '.card { color: rgb(15 23 42 /); }',
-    '.card { color: rgb(15 23 42 / 0.22 / 1); }'
+    '.card { color: rgb(15 23 42 /); }'
   ]) {
     const cst = parseJessCst(invalid);
     const result = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace });

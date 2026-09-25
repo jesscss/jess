@@ -72,13 +72,19 @@ describe('public Less parse()', () => {
     if (plain?.type !== 'Declaration' || math?.type !== 'Declaration') {
       throw new Error('expected two declarations');
     }
+
+    /* A paren group that only opens a math context IS the `$( … )` boundary (P35). */
     if (
-      math.value.type !== 'Block'
+      math.value.type !== 'Expression'
       || Array.isArray(math.value.value)
       || math.value.value.type !== 'Operation'
     ) {
       throw new Error('expected parenthesized arithmetic');
     }
+    expect(sourceSpanOf(math.value)).toEqual({
+      start: source.indexOf('('),
+      end: source.indexOf(')') + 1
+    });
 
     expect(sourceSpanOf(plain.value)).toBeUndefined();
     const outer = math.value.value;
@@ -1284,7 +1290,7 @@ describe('public Less parse()', () => {
         {
           type: 'AtRuleBlock',
           name: '@media',
-          prelude: { type: 'Any', src: 'screen' },
+          prelude: { type: 'Keyword', src: 'screen' },
           rules: [{ type: 'StyleImport', name: '@import', mode: 'import' }]
         }
       ]
@@ -1484,7 +1490,8 @@ describe('public Less parse()', () => {
   it('desugars a legacy compile-time @import with a media query into a @media wrapper', () => {
     /*
      * `(inline)` makes this compile-time; `(min-width:600px)` is a parenthesized
-     * media feature (Any text tail). Owner 2026-09-02: the legacy `@import` form
+     * media feature, parsed by the `@media` query grammar (ledger P35). Owner
+     * 2026-09-02: the legacy `@import` form
      * wraps the postlude-free StyleImport in `@media <query>`, matching Less 4.x.
      */
     expect(parse('@import (inline) url("x.css") (min-width:600px);')).toMatchObject({
@@ -1493,7 +1500,11 @@ describe('public Less parse()', () => {
         {
           type: 'AtRuleBlock',
           name: '@media',
-          prelude: { type: 'Any', src: '(min-width:600px)' },
+          prelude: {
+            type: 'Block',
+            delimiter: 'paren',
+            value: { type: 'Operation', operator: ':', left: { src: 'min-width' }, right: { src: '600px' } }
+          },
           rules: [
             {
               type: 'StyleImport',
@@ -2322,22 +2333,22 @@ describe('public Less parse()', () => {
             {
               type: 'Declaration',
               name: 'sum',
-              value: { type: 'Operation', operator: '+' }
+              value: { type: 'Expression', value: { type: 'Operation', operator: '+' } }
             },
             {
               type: 'Declaration',
               name: 'grouped',
-              value: { type: 'Operation', operator: '*' }
+              value: { type: 'Expression', value: { type: 'Operation', operator: '*' } }
             },
             {
               type: 'Declaration',
               name: 'neg',
-              value: { type: 'Operation', operator: '*' }
+              value: { type: 'Expression', value: { type: 'Operation', operator: '*' } }
             },
             {
               type: 'Declaration',
               name: 'signed',
-              value: { type: 'Operation', operator: '+' }
+              value: { type: 'Expression', value: { type: 'Operation', operator: '+' } }
             },
             {
               type: 'Declaration',
@@ -2350,11 +2361,14 @@ describe('public Less parse()', () => {
             {
               type: 'Declaration',
               name: 'ratio',
-              value: [
-                { type: 'Dimension', src: '12px' },
-                { type: 'Keyword', src: '/' },
-                { type: 'Dimension', src: '1.5' }
-              ]
+              value: {
+                type: 'List',
+                sep: '/',
+                value: [
+                  { type: 'Dimension', src: '12px' },
+                  { type: 'Dimension', src: '1.5' }
+                ]
+              }
             },
             {
               type: 'Declaration',
@@ -2368,7 +2382,7 @@ describe('public Less parse()', () => {
     expect(
       serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css
     ).toBe(
-      '.math {\n  sum: 7;\n  grouped: 9;\n  neg: -3;\n  signed: 1px;\n  unarySpace: - 2;\n  ratio: 12px / 1.5;\n  calc: calc(100% - 10px);\n}\n'
+      '.math {\n  sum: 7;\n  grouped: 9;\n  neg: -3;\n  signed: 1px;\n  unarySpace: - 2;\n  ratio: 12px / 1.5;\n  calc: calc(100% - 20px / 2);\n}\n'
     );
   });
 
@@ -2385,12 +2399,12 @@ describe('public Less parse()', () => {
             {
               type: 'Declaration',
               name: 'product',
-              value: { type: 'Operation', operator: '*' }
+              value: { type: 'Expression', value: { type: 'Operation', operator: '*' } }
             },
             {
               type: 'Declaration',
               name: 'modulo',
-              value: { type: 'Operation', operator: '%' }
+              value: { type: 'Expression', value: { type: 'Operation', operator: '%' } }
             }
           ]
         }
@@ -3218,12 +3232,12 @@ describe('public Less parse()', () => {
               type: 'MixinCall',
               name: '.join',
               args: [{
-                value: {
+                value: { type: 'Expression', value: {
                   type: 'Operation',
                   operator: '-',
                   left: { type: 'Lookup', kind: 'var', name: 'first', raw: '@first' },
                   right: { type: 'Dimension', number: 1 }
-                }
+                } }
               }]
             }
           ]

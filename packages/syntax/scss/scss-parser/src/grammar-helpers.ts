@@ -19,7 +19,7 @@
  * helper-closure is identical too).
  */
 
-import { any, cssBaseMathOutsideParens, funcCall, ifValue, interpolation, isComplexSelector, isForBinding, isModuleImport, isRelativeSelector, isToken, isValueSlotArray, keyword, operation, quoted, reference, selectorTermOf, selist, withValueLayout } from '@jesscss/core/ast';
+import { any, cssBaseMathOutsideParens, funcCall, ifValue, interpolation, isComplexSelector, isForBinding, isModuleImport, isRelativeSelector, isToken, isValueSlotArray, keyword, list, operation, quoted, reference, selectorTermOf, selist, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, AtRuleBlock, AtRuleStatement, CallArg, Collection, CollectionEntry, Color, Comment, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, UnknownAtRuleBlock, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 
 export type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
@@ -878,6 +878,38 @@ export function isScssValuePair(value: unknown): value is ScssValuePair {
     && typeof value.separator === 'string'
     && 'value' in value
     && isScssValueSlotValue(value.value);
+}
+
+/**
+ * `ValueTerm`'s reduction. A slash groups only its DIRECT neighbours
+ * (DESIGN-DECISIONS P33 as amended 2026-09-24, P35): comma, then whitespace,
+ * then slash. A slash tail joins the item before it — `12px/1.5 Arial` is
+ * `[12px / 1.5, Arial]` — and a space tail starts a new item.
+ */
+export function scssSlashGroupedTerm(children: readonly unknown[]): ValueSlot {
+  const items: ValueNode[] = [requireValue(children[0])];
+  const grouped: boolean[] = [false];
+  const separators: string[] = [];
+  for (const child of children.slice(1)) {
+    if (!isScssValueTail(child)) {
+      throw new TypeError('SCSS value term produced an invalid list boundary.');
+    }
+    const last = items.length - 1;
+    const previous = items[last]!;
+    if (child.kind === 'slash') {
+      items[last] = grouped[last] === true && previous.type === 'List'
+        ? list([...previous.value, child.value], '/')
+        : list([previous, child.value], '/');
+      grouped[last] = true;
+    } else {
+      items.push(child.value);
+      grouped.push(false);
+      separators.push(child.separator);
+    }
+  }
+  return items.length === 1
+    ? items[0]!
+    : withValueLayout(items, separators);
 }
 
 export function isScssValueTail(value: unknown): value is ScssValueTail {

@@ -395,6 +395,19 @@ export const DEFAULT_MODES: EvalModes = {
  * that admits the value domain, so a shared home here is what lets comparison
  * throw without importing the arithmetic module.
  */
+/**
+ * A computed division whose divisor is zero. Deliberately NOT a `TypeError`: the
+ * `preserve` rung catches `TypeError`s to spell an unexpressible result as
+ * `calc(…)`, and a division by zero has no result to spell (DESIGN-DECISIONS
+ * P35) — it is an error in every `unitMode`.
+ */
+export class DivisionByZeroError extends Error {
+  constructor(readonly expr: string) {
+    super(`${expr} divides by zero`);
+    this.name = 'DivisionByZeroError';
+  }
+}
+
 export class UnitArithmeticError extends TypeError {
   constructor(message: string) {
     super(message);

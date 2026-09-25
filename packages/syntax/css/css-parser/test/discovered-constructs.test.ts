@@ -306,19 +306,20 @@ describe('the value slash is a separator rung (P33)', () => {
     expect(failure.offset).toBe(4);
   });
 
-  it('separates two space groups, keeping each group whole', () => {
+  /*
+   * The slash groups only its DIRECT neighbours (P33 as amended 2026-09-24):
+   * whitespace sits ABOVE the slash, so the space list holds the slash group.
+   */
+  it('groups only the values directly beside the slash, inside the space list', () => {
     expect(parse('a { border-radius: 1px 2px / 3px 4px }').rules[0]).toMatchObject({
       rules: [{
         type: 'Declaration',
         name: 'border-radius',
-        value: {
-          type: 'List',
-          sep: '/',
-          value: [
-            [{ type: 'Dimension', src: '1px' }, { type: 'Dimension', src: '2px' }],
-            [{ type: 'Dimension', src: '3px' }, { type: 'Dimension', src: '4px' }]
-          ]
-        }
+        value: [
+          { type: 'Dimension', src: '1px' },
+          { type: 'List', sep: '/', value: [{ type: 'Dimension', src: '2px' }, { type: 'Dimension', src: '3px' }] },
+          { type: 'Dimension', src: '4px' }
+        ]
       }]
     });
   });
@@ -378,22 +379,18 @@ describe('the value slash is a separator rung (P33)', () => {
   });
 
   /*
-   * The right side of a slash stays ONE space group. If the rung flattened, this
-   * would be a three-item list and `font` would render as `12px / 1.5 / Arial`.
+   * `(12px/1.5)` is the group (P33 as amended 2026-09-24); `Arial` is the next
+   * item of the space list. Rendering is unchanged: `12px / 1.5 Arial`.
    */
-  it('keeps each side of the slash as one space group', () => {
+  it('groups the slash with its direct neighbours only', () => {
     expect(parse('a { font: 12px/1.5 Arial }').rules[0]).toMatchObject({
       rules: [{
         type: 'Declaration',
         name: 'font',
-        value: {
-          type: 'List',
-          sep: '/',
-          value: [
-            { type: 'Dimension', src: '12px' },
-            [{ type: 'Dimension', src: '1.5' }, { type: 'Keyword', src: 'Arial' }]
-          ]
-        }
+        value: [
+          { type: 'List', sep: '/', value: [{ type: 'Dimension', src: '12px' }, { type: 'Dimension', src: '1.5' }] },
+          { type: 'Keyword', src: 'Arial' }
+        ]
       }]
     });
   });
