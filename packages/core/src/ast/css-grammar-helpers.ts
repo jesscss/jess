@@ -19,6 +19,7 @@
  */
 import {
   any,
+  branch,
   block,
   cssBaseMathOutsideParens,
   funcCall,
@@ -33,6 +34,7 @@ import { semanticGapText } from './grammar-helpers.js';
 import type {
   CompoundSelector,
   Block,
+  Branch,
   Declaration,
   FunctionCall,
   Interpolation,
@@ -115,15 +117,15 @@ export function withAuthoredSeparators<T extends object>(value: T, fields: Reduc
  * authored run: the padding tokens beside it and the `;` itself. These are the
  * grammar's own tokens — a comment is one whole trivia token, so a `;` inside
  * one is never read as a separator, and a value is checked first, so a value
- * node is never read as punctuation. The first child (the opener) and the last
- * (`)`) are not part of the body.
+ * node is never read as punctuation. Only children in `[from, to)` are read,
+ * so a call can leave out its opener and `)`.
  */
-function splitAtSemicolons(children: readonly unknown[]): { segments: ValueSlot[][]; separators: string[] } {
+function splitAtSemicolons(children: readonly unknown[], from: number, to: number): { segments: ValueSlot[][]; separators: string[] } {
   const segments: ValueSlot[][] = [[]];
   const separators: string[] = [];
   let padding = '';
   let afterDelimiter = false;
-  for (let index = 1; index < children.length - 1; index++) {
+  for (let index = from; index < to; index++) {
     const child = children[index];
     if (isValueSlotValue(child)) {
       if (afterDelimiter) {
@@ -177,7 +179,7 @@ export function semicolonGroupedCall(children: readonly unknown[], fields: Reduc
     const args = children.filter(isValueSlotValue);
     return funcCall(name, withAuthoredSeparators(args, fields, Math.max(0, args.length - 1)));
   }
-  const { segments, separators } = splitAtSemicolons(children);
+  const { segments, separators } = splitAtSemicolons(children, 1, children.length - 1);
   const commas = authoredSeparators(fields);
   let comma = 0;
   const groups: ValueSlot[] = [];
@@ -195,16 +197,48 @@ export function semicolonGroupedCall(children: readonly unknown[], fields: Reduc
   return funcCall(name, [withLayoutWhenComplete(list(groups, ';'), separators, groups.length - 1)]);
 }
 
-/**
- * A css-values-5 §3.1.1 curly block: one value is itself, several are the comma
- * `List` they were written as, with their authored argument-comma layout.
- */
-export function curlyBlock(children: readonly unknown[], fields: ReducerFields | undefined): Block {
+/** A whitespace run: one value is itself, several keep their authored separators. */
+export function spaceRun(children: readonly unknown[], fields: ReducerFields | undefined): ValueSlot {
   const values = valueSlotChildren(children);
-  return block(
-    values.length === 1 ? values[0]! : withAuthoredSeparators(list(values, ','), fields, values.length - 1),
-    'curly'
-  );
+  return values.length === 1 ? values[0]! : withAuthoredSeparators(values, fields, values.length - 1);
+}
+
+/**
+ * One branch (ledger P38): the condition is the first value, and what follows
+ * the colon is the value — nothing is the empty slot, several arguments are the
+ * comma `List` they were written as.
+ */
+export function branchOf(children: readonly unknown[], fields: ReducerFields | undefined): Branch {
+  let condition: ValueSlot | undefined;
+  const values: ValueSlot[] = [];
+  for (const child of children) {
+    if (!isValueSlotValue(child)) {
+      continue;
+    }
+    if (condition === undefined) {
+      condition = child;
+    } else {
+      values.push(child);
+    }
+  }
+  if (condition === undefined) {
+    throw new Error('CSS AST branch lost its condition');
+  }
+  if (values.length === 0) {
+    return branch(condition, []);
+  }
+  return branch(condition, values.length === 1 ? values[0]! : withAuthoredSeparators(list(values, ','), fields, values.length - 1));
+}
+
+/**
+ * A branch list: one branch is itself; several (or one with the spec's trailing
+ * `;`, kept as an empty slot) are the `;` List they were written as, with each
+ * `;`'s authored run as layout.
+ */
+export function branchList(children: readonly unknown[]): ValueSlot {
+  const { segments, separators } = splitAtSemicolons(children, 0, children.length);
+  const parts = segments.map(segment => segment[0] ?? []);
+  return parts.length === 1 ? parts[0]! : withLayoutWhenComplete(list(parts, ';'), separators, parts.length - 1);
 }
 
 /**
@@ -216,7 +250,7 @@ export function parenGroupBlock(children: readonly unknown[]): Block {
   if (!hasSemicolon(children)) {
     return block(valueSlotChildren(children)[0] ?? any(''));
   }
-  const { segments, separators } = splitAtSemicolons(children);
+  const { segments, separators } = splitAtSemicolons(children, 1, children.length - 1);
   const parts = segments.map(segment => segment[0] ?? []);
   return block(withLayoutWhenComplete(list(parts, ';'), separators, parts.length - 1));
 }
@@ -381,7 +415,7 @@ export function isValue(value: unknown): value is ValueNode {
   }
   switch (value.type) {
     case 'Keyword': case 'Color': case 'Dimension': case 'Quoted': case 'Url':
-    case 'FunctionCall': case 'Block': case 'Operation': case 'Sequence': case 'List':
+    case 'FunctionCall': case 'Block': case 'Branch': case 'Operation': case 'Sequence': case 'List':
     case 'Any': case 'Null': case 'Lookup': case 'Reference': case 'Interpolation':
     case 'Expression': case 'Condition': case 'IfValue': case 'Important':
     case 'SelectorCapture':

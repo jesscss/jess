@@ -42,6 +42,7 @@ import type {
   Operation,
   FunctionCall,
   Block,
+  Branch,
   Expression,
   Interpolation,
   AnonymousMixin,
@@ -66,7 +67,7 @@ export type NodeType =
   | 'Stylesheet' | 'Ruleset' | 'Declaration' | 'Comment' | 'SelectorList'
   | 'ComplexSelector' | 'RelativeSelector' | 'CompoundSelector' | 'SimpleSelector' | 'Keyword' | 'Null' | 'Color' | 'Quoted' | 'Any' | 'Url' | 'SelectorCapture' | 'Dimension'
   | 'Sequence' | 'List' | 'Lookup' | 'MixinDefinition' | 'MixinCall' | 'VariableDeclaration'
-  | 'Important' | 'Operation' | 'FunctionCall' | 'Block' | 'Expression' | 'Condition' | 'IfValue'
+  | 'Important' | 'Operation' | 'FunctionCall' | 'Block' | 'Branch' | 'Expression' | 'Condition' | 'IfValue'
   | 'AtRuleBlock' | 'AtRuleStatement' | 'Plugin' | 'UnknownAtRuleBlock' | 'Interpolation'
   | 'AnonymousMixin' | 'Collection' | 'NestedPropertyBlock' | 'CollectionEntry' | 'CollectionSpread' | 'Reference' | 'Range' | 'For' | 'If' | 'While' | 'StyleImport' | 'ModuleImport';
 
@@ -89,7 +90,7 @@ export function renderCombinator(comb: Combinator): string {
 export type Node =
   | Stylesheet | Ruleset | Declaration | Comment | SelectorList | ComplexSelector | RelativeSelector | CompoundSelector
   | SimpleSelector | SelectorCapture | Keyword | Null | Color | Quoted | Any | Url | Dimension | Sequence | List | Lookup | MixinDefinition | MixinCall
-  | VariableDeclaration | Important | Operation | FunctionCall | Block | Expression | Condition | IfValue
+  | VariableDeclaration | Important | Operation | FunctionCall | Block | Branch | Expression | Condition | IfValue
   | AtRuleBlock | AtRuleStatement | Plugin | UnknownAtRuleBlock | Interpolation | AnonymousMixin | Collection | NestedPropertyBlock
   | CollectionEntry | CollectionSpread | Reference | Range | For | If | While | StyleImport | ModuleImport;
 

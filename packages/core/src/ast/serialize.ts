@@ -3092,6 +3092,9 @@ function callValueContainsVarRef(value: CallValue, name: string, lookup: 'live' 
       return value.parts.some(part => callValueContainsVarRef(part, name, lookup));
     case 'List':
       return value.value.some(part => callValueContainsVarRef(part, name, lookup));
+    case 'Branch':
+      return callValueContainsVarRef(value.condition, name, lookup)
+        || callValueContainsVarRef(value.value, name, lookup);
     case 'Important':
       return callValueContainsVarRef(value.value, name, lookup);
     case 'Operation':
@@ -4594,6 +4597,17 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         return empty && vals.length > 0 ? NULL : literal(out);
       });
     }
+    case 'Branch':
+      /*
+       * [P38] A branch argument (`style(--x: @v): @c`) keeps its shape: the
+       * condition and value are evaluated like any value, and the colon is the
+       * branch's own syntax. An omitted value keeps the bare colon (`cond:`).
+       */
+      return combineAll([evalValueSlot(node.condition, frame, e), evalValueSlot(node.value, frame, e)], (parts) => {
+        const condition = emitValueC(parts[0]!, e);
+        const value = emitValueC(parts[1]!, e);
+        return literal(value === '' ? `${condition}:` : `${condition}: ${value}`);
+      });
     case 'Block': {
       /*
        * Less `~(...)` retains its typed inner value for list operations but

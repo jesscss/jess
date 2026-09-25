@@ -16,7 +16,7 @@
  * - SCSS: ../../../scss/scss-parser/src/grammar.ts
  * - Jess: ../../../jess/jess-parser/src/grammar.ts
  */
-import { balanced, classifiedTrivia, choice, compose, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, startsWith, token, when } from 'parseman' with { type: 'macro' };
+import { balanced, classifiedTrivia, choice, compose, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, startsWith, token, transform, when } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -27,6 +27,8 @@ import {
   attributeSelector,
   authoredText,
   block,
+  branchList,
+  branchOf,
   blockStatements,
   branchSegments,
   chainedQueryComparison,
@@ -34,7 +36,6 @@ import {
   complexSegments,
   cssBaseMathOutsideParens,
   cssRelativeCombinator,
-  curlyBlock,
   decl,
   dimension,
   documentStatements,
@@ -78,6 +79,7 @@ import {
   semanticTextWithTriviaGaps,
   semicolonGroupedCall,
   simpleSelector,
+  spaceRun,
   sourceText,
   spaced,
   STRUCTURED_PSEUDOS,
@@ -235,6 +237,9 @@ type GrammarRuleName =
   | 'Url'
   | 'Value'
   | 'ValueList'
+  | 'BranchCondition'
+  | 'Branch'
+  | 'BranchList'
   | 'CurlyValue'
   | 'ValueSequence'
   | 'ValueTerm'
@@ -861,20 +866,123 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * The whole body: `;`-separated groups of comma-separated arguments. A body
-   * with no `;` is the plain comma argument vector.
+   * A body that is not a branch list: `;`-separated groups of comma-separated
+   * arguments (`foo(a; b)`). A body with no `;` is the plain comma argument
+   * vector.
    *
    * Spelled as a sequence rather than `oneOrMoreSep`: a separator-list helper
    * does not hand its separator terminals to the reducer, and the `;` has to be
-   * among the children to tell an empty group (`if(media(print): 1px;)`) from a
-   * full one.
+   * among the children to tell an empty group from a full one.
    */
-  const genericFunctionArguments = sequence(
+  const plainFunctionArguments = sequence(
     functionArgumentGroup,
     many(sequence(
       functionArgumentSemicolon,
       functionArgumentGroup
     ))
+  );
+
+  /*
+   * Is the body a BRANCH list (ledger P38)? css-values-5 §8.3 parses `if()` as
+   * `[ <if-args-branch> ; ]* <if-args-branch> ;?`, `<if-args-branch> =
+   * <declaration-value> : <declaration-value>?`, where the first
+   * `<declaration-value>` excludes top-level colons — so a body is a branch list
+   * exactly when its first argument ends at a top-level `:`. This zero-width
+   * scan reads to the first top-level `:`, `;`, `,` or `)` (skipping strings,
+   * comments and balanced groups) and requires the `:`. A `://` is a URL
+   * scheme, not a branch colon (`foo(http://x)` stays an argument), and an empty
+   * first argument has no condition (`foo(:x)`).
+   */
+  const branchListAhead = peek(sequence(
+    not(literal(':')),
+    scanTo(
+      choice(literal(':'), literal(';'), literal(','), literal(')')),
+      { skip: [balancedParens, balancedBrackets, balancedBraces] }
+    ),
+    literal(':'),
+    not(literal('/'))
+  ));
+  const functionArgumentShape = choice(
+    transform(branchListAhead, () => 'branches'),
+    transform(peek(optional(literal(')'))), () => 'arguments')
+  );
+
+  /*
+   * The whole body, dispatched on its shape once: a branch list, or the plain
+   * arguments. A classified branch list that fails is a committed failure, not
+   * a second reading as plain arguments.
+   */
+  const genericFunctionArguments = dispatch(
+    functionArgumentShape,
+    cssCase('branches', g.BranchList),
+    otherwise(plainFunctionArguments)
+  );
+
+  /*
+   * A branch's condition: css-values-5 §8.3's `<declaration-value>` with no
+   * top-level colon, read at substitution as `<if-condition>` (`else`, or a
+   * boolean expression over `media()`/`supports()`/`style()`). It is the
+   * whitespace run `ValueSequence` spells, stopping before a `:` — a run item
+   * never begins on one — because in a declaration value a `:` is punctuation
+   * and would be swallowed into the run.
+   */
+  const BranchCondition = node(
+    'BranchCondition',
+    noTrivia(sequence(
+      not(literal(':')),
+      g.ValueTerm,
+      many(choice(
+        sequence(
+          field('separator', cssValueTrivia),
+          not(literal(':')),
+          g.ValueTerm
+        ),
+        sequence(
+          not(literal(':')),
+          g.ValueTerm
+        )
+      ))
+    )),
+    (children, fields) => spaceRun(children, fields),
+    { collapse: true }
+  );
+  const branchColon = noTrivia(sequence(
+    optional(cssValueTrivia),
+    literal(':'),
+    optional(cssValueTrivia)
+  ));
+
+  /*
+   * One branch: a condition, the colon, and an optional value — the argument
+   * group a plain body carries, so a value may be a comma list or `{}`-wrapped.
+   * The colon is the branch's own syntax, so it re-emits as written
+   * (`else: 1px`) instead of as a spaced punctuation token.
+   */
+  const Branch = node(
+    'Branch',
+    noTrivia(sequence(
+      g.BranchCondition,
+      branchColon,
+      functionArgumentGroup
+    )),
+    (children, fields) => branchOf(children, fields)
+  );
+
+  /*
+   * The branch list: branches separated by `;`, with the optional trailing `;`
+   * the spec allows. The `;`s are preserved in every dialect (P38).
+   */
+  const BranchList = node(
+    'BranchList',
+    sequence(
+      g.Branch,
+      many(sequence(
+        functionArgumentSemicolon,
+        g.Branch
+      )),
+      optional(functionArgumentSemicolon)
+    ),
+    children => branchList(children)
   );
   const BasicSelector = node(
     'BasicSelector',
@@ -1684,7 +1792,16 @@ const cssFactory = (g: GrammarSelf) => {
       optional(g.VarFallback),
       many(sequence(
         functionArgumentSemicolon,
-        optional(g.VarFallback)
+
+        /*
+         * A part the author left empty before the `)` is the empty slot, like
+         * every other empty part — not the `var(--x,)` empty FALLBACK, which is
+         * what `VarFallback` reads at a `)`.
+         */
+        optional(sequence(
+          not(literal(')')),
+          g.VarFallback
+        ))
       )),
       optional(cssValueTrivia),
       literal(')')
@@ -2332,8 +2449,9 @@ const cssFactory = (g: GrammarSelf) => {
      * position as in a declaration (css-syntax-3 §5.4.9): a `calc()` operand
      * reaches the same `GenericFunction` tail, so `calc(if(media(print): 1px;
      * else: 0px) + 1px)` and `calc(foo(1px / 2) + 1px)` parse their function
-     * exactly as a declaration value does. (A `var()` fallback still carries its
-     * own `VarFallbackCall` body.)
+     * exactly as a declaration value does. (A `var()` fallback tries its own
+     * `VarFallbackCall` body first for an ordinary opener; a dashed opener and a
+     * body that one refuses reach this tail through `TypedValue`.)
      */
     when(
       endsWith('('),
@@ -2433,29 +2551,30 @@ const cssFactory = (g: GrammarSelf) => {
   /*
    * A `{}`-wrapped free-form argument (css-values-5 §3.1.1): "the production
    * matches just the {} block that the '{' token opens". CSS Syntax calls it a
-   * `{}-block`; the contents are one or more comma-separated values, and the
-   * result is the same `Block` fact the paren and square siblings produce, with
-   * the `curly` delimiter. The commas are argument commas, not `ValueList`'s:
-   * inside braces there is no top-level space run for a padded comma to be part
-   * of, so `{a , b}` is two values exactly as `foo(a , b)` is two arguments.
+   * `{}-block`; the contents are one or more comma-separated values — the
+   * `ValueList` a declaration value is — and the result is the same `Block`
+   * fact the paren and square siblings produce, with the `curly` delimiter. The
+   * interior runs with trivia cleared, as `ValueSequence` does, so the padding
+   * in `{a , b}` is spelled by the list's own comma rather than skipped
+   * ambiently.
    *
-   * It is reachable only as a whole function argument, never as a declaration
-   * value atom: a top-level `{` in a declaration is where a nested rule's body
-   * starts.
+   * It is reachable only as a whole function argument or a branch value, never
+   * as a declaration value atom: a top-level `{` in a declaration is where a
+   * nested rule's body starts.
    */
   const CurlyValue = node(
     'Block',
-    sequence(
+    noTrivia(sequence(
       literal('{'),
       optional(cssValueTrivia),
-      oneOrMoreSep(
-        g.ValueSequence,
-        authoredArgumentComma
-      ),
+      g.ValueList,
       optional(cssValueTrivia),
       literal('}')
-    ),
-    (children, fields) => curlyBlock(children, fields)
+    )),
+    children => block(
+      valueSlotChildren(children)[0]!,
+      'curly'
+    )
   );
   const ValueList = node(
     'ValueList',
@@ -4120,6 +4239,9 @@ const cssFactory = (g: GrammarSelf) => {
     ValueTerm,
     CurlyValue,
     ValueList,
+    BranchCondition,
+    Branch,
+    BranchList,
     calcValueAtom,
     CalcValue,
     CalcProduct,

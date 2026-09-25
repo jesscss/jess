@@ -395,6 +395,8 @@ type SharedSyntax = {
   // Inherited from the CSS base: the css-values-5 §3.1.1 curly block a function
   // argument may be (P37).
   CurlyValue: Combinator<ValueNode>;
+  // Inherited from the CSS base: the P38 branch argument list (`if()` branches).
+  BranchList: Combinator<ValueNode>;
   // Converged to the CSS base (inherited via compose): same node type
   // SimpleSelector, byte-identical keyframeEndpoint, g.Percentage resolves to
   // the CSS base; reducer differs only requireToken().value vs sourceText().
@@ -1602,14 +1604,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // do not stop it, so a nested rule with a selector list (`{ h1, h2 { … } }`)
   // is still a declaration list. Two block shapes are declaration lists before
   // the scan starts: `{}`, which has no value, and a block that opens on a
-  // statement a value cannot begin — a mixin call or `.class`/`#id` rule
-  // (`.m()`, `#ns.m()`, `#ns > .m()`) or a detached-ruleset call (`@r()`).
-  // `#fff, #000` is still a value: a hex colour is not followed by `(`, `.`,
-  // `>`, `;` or `{`.
+  // statement — a mixin call or `.class`/`#id` rule (`.m()`, `#ns.m()`,
+  // `#ns > .m()`) or a detached-ruleset call (`@r()`). `#fff, #000` is still a
+  // value: a hex colour is not followed by `(`, `.` or `>`. KNOWN LIMIT: a
+  // mixin LOOKUP is a Less value that opens like a mixin call, so
+  // `foo({ .m()[@x] })` is read as a declaration list and fails; it failed on
+  // origin/dev too, where every `{` was a detached ruleset.
   //
-  // `CurlyValue` is CSS's own rule, inherited, with `g.ValueSequence` resolving
-  // to Less's value run.
-  const braceStatementStart = regex(/\.[-_a-zA-Z\u0080-￿\\]|#[-\w\u0080-￿]+[ \t\n\r\f]*[(.>;{]|@[-\w\u0080-￿]+[ \t\n\r\f]*\(/);
+  // `CurlyValue` is CSS's own rule, inherited, with `g.ValueList` resolving to
+  // Less's value list.
+  const braceStatementStart = regex(/\.[-_a-zA-Z\u0080-\uFFFF\\]|#[-\w\u0080-\uFFFF]+[ \t\n\r\f]*[(.>]|@[-\w\u0080-\uFFFF]+[ \t\n\r\f]*\(/);
   const braceGroup = balanced('(', ')');
   const braceSquareGroup = balanced('[', ']');
   const curlyBlockAhead = peek(sequence(
@@ -1636,10 +1640,40 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     braceArgument,
     g.FunctionArgument
   );
-  const FunctionArguments = optional(sequence(
-    oneOrMoreSep(functionArgument, functionArgumentSeparator),
-    optional(trailingFunctionArgumentSeparator)
+  // BRANCH arguments (ledger P38): a call whose first argument is followed by a
+  // top-level `:` takes CSS's branch-list shape, `condition: value; …` —
+  // css-values-5 §8.3 `if()` is its first user — in legacy and modern mode
+  // alike, with the `;`s preserved. The one exception is Less's own keyword
+  // argument: a first argument that is an `@variable` followed by `:`
+  // (`darken(@color: red)`). Without the colon shape a call keeps Less's
+  // meaning, where `;` separates arguments like `,` (`foo(a; b)`), and a legacy
+  // `if(cond, a, b)` is still lowered. The zero-width scan mirrors CSS's
+  // `branchListAhead`: it stops at the first top-level `:`, `;`, `,` or `)`
+  // (skipping strings, comments and balanced groups — a detached-ruleset
+  // argument's `{ v: 1 }` included), and a `://` is a URL scheme, not a branch.
+  const lessKeywordArgumentStart = regex(/@[^ \t\n\r\f:;,(){}]+[ \t\n\r\f]*:(?!:)/);
+  const lessBranchListAhead = peek(sequence(
+    not(literal(':')),
+    not(lessKeywordArgumentStart),
+    scanTo(
+      choice(literal(':'), literal(';'), literal(','), literal(')')),
+      { skip: [braceGroup, braceSquareGroup, unknownAtRuleBrace, lineComment] }
+    ),
+    literal(':'),
+    not(literal('/'))
   ));
+  const functionArgumentShape = choice(
+    transform(lessBranchListAhead, () => 'branches'),
+    transform(peek(optional(literal(')'))), () => 'arguments')
+  );
+  const FunctionArguments = dispatch(
+    functionArgumentShape,
+    caseOf('branches', g.BranchList),
+    otherwise(optional(sequence(
+      oneOrMoreSep(functionArgument, functionArgumentSeparator),
+      optional(trailingFunctionArgumentSeparator)
+    )))
+  );
   // Value-position identifiers and glued function openers share one lexical
   // family. Parse that opener once, then route by the returned text. Branch
   // nodes own `routed()` so the consumed opener remains inside the selected CST

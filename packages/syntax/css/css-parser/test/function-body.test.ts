@@ -6,38 +6,38 @@ import type { Declaration, Ruleset, ValueSlot } from '@jesscss/core/ast';
 /**
  * An unknown function's contents are component values up to the matching `)`
  * (css-syntax-3 §5.4.9), so a nested `;` is an ordinary token there, not a
- * declaration terminator. Three CSS constructs depend on the function body:
+ * declaration terminator. The function body carries three CSS constructs:
  *
- * - css-values-5 §8.3 `if()`:
- *   `if( [ <if-branch> ; ]* <if-branch> ;? )`,
- *   `<if-branch> = <if-condition> : <declaration-value>?`,
- *   `<if-condition> = <boolean-expr[ <if-test> ]> | else`.
+ * - BRANCH arguments (ledger P38), css-values-5 §8.3's generic `if()` parse:
+ *   `[ <if-args-branch> ; ]* <if-args-branch> ;?`, `<if-args-branch> =
+ *   <declaration-value> : <declaration-value>?`, the first `<declaration-value>`
+ *   excluding top-level colons. A body whose first argument ends at a top-level
+ *   `:` is a branch list; each branch is a `Branch` node (condition, value), and
+ *   its colon re-emits as written.
  * - css-values-5 §3.1.1 `{}`-wrapped free-form arguments (`{a, b}`).
  * - css-mixins-1 `<dashed-function> = --*( <declaration-value>#? )`.
  *
- * The `;` is a structural separator (a `;` List of the branches). The `:` inside
- * a branch is the punctuation component it already is in a declaration value,
- * so it re-emits with the spacing every glued punctuation run gets
- * (`if(else : 1px)`); the condition and value either side of it stay structured
- * values.
+ * A body with no branch shape keeps its `;` groups as a `;` List (`foo(a; b)`).
  */
 const ROUND_TRIP: Array<[name: string, css: string, emitted?: string]> = [
-  ['a style() branch', 'if(style(--scheme: dark): white; else: black)', 'if(style(--scheme : dark) : white; else : black)'],
-  [
-    'media(), supports() and else branches',
-    'if(media(width > 600px): 10px; supports(display: grid): 5px; else: 0)',
-    'if(media(width > 600px) : 10px; supports(display : grid) : 5px; else : 0)'
-  ],
-  ['a lone else branch', 'if(else: 1px)', 'if(else : 1px)'],
-  ['a trailing semicolon', 'if(media(print): 1px;)', 'if(media(print) : 1px;)'],
-  ['an empty branch value', 'if(media(print):; else: 1px)', 'if(media(print) :; else : 1px)'],
-  ['if() inside calc()', 'calc(if(media(width > 600px): 10px; else: 0px) + 1px)', 'calc(if(media(width > 600px) : 10px; else : 0px) + 1px)'],
+  ['a style() branch', 'if(style(--scheme: dark): white; else: black)'],
+  ['media(), supports() and else branches', 'if(media(width > 600px): 10px; supports(display: grid): 5px; else: 0)'],
+  ['a lone else branch', 'if(else: 1px)'],
+  ['a trailing semicolon', 'if(media(print): 1px;)'],
+  ['an empty branch value', 'if(media(print):; else: 1px)'],
+  ['a boolean condition run', 'if(not media(print) and supports(display: grid): 1px 2px; else: 0)'],
+  ['a {}-wrapped branch value', 'if(media(print): { a, b }; else: c)'],
+  ['if() inside calc()', 'calc(if(media(width > 600px): 10px; else: 0px) + 1px)'],
+  ['a comment beside a branch `;`', 'if(media(print): a /* c */ ; else: b)'],
   ['an unknown function with a nested semicolon', 'foo(a; b)'],
   ['empty semicolon groups', 'foo(a;; b)'],
   ['comments beside a `;`', 'foo(a /* c */ ; /* d */ b)'],
+  ['a URL scheme colon, which is not a branch', 'foo(http://x)', 'foo(http :// x)'],
+  ['a leading colon, which has no condition', 'foo(:x)', 'foo(: x)'],
   ['a {}-wrapped argument', 'random-item(--x, { a, b }, c)'],
   ['a {}-wrapped argument with padding before a comma', 'foo({a , b})', 'foo({ a, b })'],
   ['a var() fallback group holding a nested `;`', 'var(--x, (a; b))'],
+  ['a var() fallback group ending on a `;`', 'var(--x, (a;))'],
   ['a dashed function with a {}-wrapped argument', '--max-plus-x({ 1px, 7px, 2px }, 3px)'],
   ['a dashed function', '--foo(1px, 2px)'],
   ['a dashed function inside calc()', 'calc(--foo(1px) + 1px)'],
@@ -56,14 +56,14 @@ async function emitted(css: string): Promise<string> {
   return /b: (.*);/.exec(out)?.[1] ?? out;
 }
 
-describe('CSS function bodies: `;` groups, `{}` arguments, dashed functions', () => {
+describe('CSS function bodies: branches, `;` groups, `{}` arguments, dashed functions', () => {
   for (const [name, css, expected] of ROUND_TRIP) {
     it(`parses and re-emits ${name}`, async () => {
       expect(await emitted(css)).toBe(expected ?? css);
     });
   }
 
-  it('reduces if() branches to one `;` List argument whose branches are structured values', () => {
+  it('reduces if() branches to one `;` List of Branch nodes over structured values', () => {
     expect(declarationValue('if(style(--scheme: dark): white; else: black)')).toMatchObject({
       type: 'FunctionCall',
       name: 'if',
@@ -72,21 +72,27 @@ describe('CSS function bodies: `;` groups, `{}` arguments, dashed functions', ()
           type: 'List',
           sep: ';',
           value: [
-            [
-              { type: 'FunctionCall', name: 'style' },
-              { type: 'Any', src: ':' },
-              { type: 'Keyword', src: 'white' }
-            ],
-            [{ type: 'Keyword', src: 'else' }, { type: 'Any', src: ':' }, { type: 'Keyword', src: 'black' }]
+            {
+              type: 'Branch',
+              condition: { type: 'FunctionCall', name: 'style', args: [{ value: { type: 'Branch' } }] },
+              value: { type: 'Keyword', src: 'white' }
+            },
+            { type: 'Branch', condition: { type: 'Keyword', src: 'else' }, value: { type: 'Keyword', src: 'black' } }
           ]
         }
       }]
     });
   });
 
-  it('records an empty group after a trailing `;` as the empty slot', () => {
-    expect(declarationValue('if(media(print): 1px;)')).toMatchObject({
-      args: [{ value: { type: 'List', sep: ';', value: [[{ name: 'media' }, { src: ':' }, { src: '1px' }], []] } }]
+  it('keeps a single branch as the one argument', () => {
+    expect(declarationValue('if(else: 1px)')).toMatchObject({
+      args: [{ value: { type: 'Branch', condition: { src: 'else' }, value: { src: '1px' } } }]
+    });
+  });
+
+  it('keeps the spec\'s trailing `;` as an empty slot and an omitted value as the empty slot', () => {
+    expect(declarationValue('if(media(print):;)')).toMatchObject({
+      args: [{ value: { type: 'List', sep: ';', value: [{ type: 'Branch', condition: { name: 'media' }, value: [] }, []] } }]
     });
   });
 
