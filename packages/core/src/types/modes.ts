@@ -39,8 +39,9 @@ export type FunctionMode = 'preserve' | 'error';
  * function namespace (ledger P36).
  *
  * - `auto`: decided per document. A document that writes `@use` or `@compose`
- *   (either spelling) is in modern mode; any other document is legacy, and the
- *   Less built-ins compute as the author asked.
+ *   (either spelling) is in modern mode (`@export` will join them when Less
+ *   implements it); any other document is legacy, and the Less built-ins compute
+ *   as the author asked.
  * - `modern`: every `.less` document is in modern mode. A Less built-in reaches
  *   it only by import; an unimported call is emitted as written.
  *

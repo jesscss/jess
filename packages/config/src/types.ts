@@ -174,7 +174,8 @@ export interface LessOptions {
   /**
    * Whether the Less built-in functions are ambient in a `.less` file
    * - 'auto': decided per file. A file that uses `@use` or `@compose` is in
-   *   modern mode; any other file is legacy, and the built-ins compute as written
+   *   modern mode (`@export` will join them when Less implements it); any other
+   *   file is legacy, and the built-ins compute as written
    * - 'modern': every `.less` file is in modern mode
    * In modern mode a Less built-in must be imported; a call to one that is not
    * imported is output as written, like an unknown CSS function.

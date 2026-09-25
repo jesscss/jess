@@ -337,10 +337,11 @@ of `@use`.
 
 ## Modern mode
 
-A Less file that uses `@use` or `@compose` anywhere is in modern mode. In
-modern mode the Less built-in functions are not available until you import
-them, the same as in Jess. Import them with `@use "#less";` and call them
-through the `less` namespace:
+A Less file that uses `@use` or `@compose` anywhere is in modern mode.
+(`@export` will join them when Less implements it.) In modern mode the Less
+built-in functions are not available until you import them, the same as in
+Jess. Import them with `@use "#less";` and call them through the `less`
+namespace:
 
 ```less
 @use "#less";
@@ -358,11 +359,19 @@ through the `less` namespace:
 }
 ```
 
+`#less` is a short name for the package module `@jesscss/fns/less`, so
+`@use "@jesscss/fns/less";` loads the same functions under the same `less`
+namespace.
+
 A call that is not imported is output as written, like any unknown CSS
 function. That is what keeps `min()`, `max()`, `round()` and the other CSS math
 functions correct in modern mode: the browser clamps their result to what the
 property allows, so `min(-5px, 1px)` gives a padding of `0`, where the computed
 `-5px` would be invalid.
+
+That includes `if()`, `boolean()` and `each()`. In legacy mode Less turns
+them into conditions and loops; in modern mode they are ordinary function calls
+and, unless imported, are output exactly as written.
 
 A file with none of these directives is in legacy mode, and its built-in calls
 compute as they did in Less 4. The mode belongs to each file: a legacy file

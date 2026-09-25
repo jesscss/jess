@@ -232,7 +232,7 @@ _Deprecated alias for `unitMode`: `on` / `true` sets `unitMode: 'strict'`; `off`
 
 `MODE` is `auto` (the default) or `modern`, and decides whether the Less built-in functions are available in a `.less` file without importing them.
 
-- `auto` — decided per file. A file that uses `@use` or `@compose` is in modern mode. Any other file is in legacy mode, and a call to a Less built-in such as `min()` or `darken()` computes as it did in Less 4.
+- `auto` — decided per file. A file that uses `@use` or `@compose` is in modern mode (`@export` will join them when Less implements it). Any other file is in legacy mode, and a call to a Less built-in such as `min()` or `darken()` computes as it did in Less 4.
 - `modern` — every `.less` file is in modern mode.
 
 In modern mode a Less built-in must be imported, for example `@use "#less";` and then `@less.darken(red, 10%)`. A call that is not imported is output as written, like an unknown CSS function, so `padding: min(-5px, 1px)` stays `min(-5px, 1px)`. See [Modules and Imports](../features/modules-and-imports.mdx#modern-mode).
