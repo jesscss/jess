@@ -296,7 +296,7 @@ type GrammarRuleName =
   | 'valueFunctionArguments'
   | 'calcFunctionArguments'
   | 'branchListAhead'
-  | 'plainFunctionArguments'
+  | 'functionArgumentShape'
   | 'genericFunctionArguments';
 
 /*
@@ -308,7 +308,11 @@ type GrammarRuleName =
 type GrammarSelf = {
   readonly [K in GrammarRuleName]: K extends keyof typeof cssSyntax
     ? (typeof cssSyntax)[K]
-    : Combinator<unknown>
+    : K extends 'functionArgumentShape'
+
+      /* A dispatch key: `dispatch(...)` needs the string its selector yields. */
+      ? Combinator<string>
+      : Combinator<unknown>
 };
 
 /*
@@ -933,15 +937,14 @@ const cssFactory = (g: GrammarSelf) => {
    * arguments. A classified branch list that fails is a committed failure, not
    * a second reading as plain arguments.
    *
-   * `branchListAhead` and `plainFunctionArguments` are named slots, so a
-   * dialect overrides only what differs — Less adds its keyword-argument
-   * exclusion to the scan and keeps its own flat argument vector — and
-   * inherits this dispatch.
+   * `branchListAhead` and `functionArgumentShape` are named slots, so a
+   * dialect reuses the classification and overrides only what differs — Less
+   * adds its keyword-argument exclusion to the scan.
    */
   const genericFunctionArguments = dispatch(
-    functionArgumentShape,
+    g.functionArgumentShape,
     cssCase('branches', g.BranchList),
-    otherwise(g.plainFunctionArguments)
+    otherwise(plainFunctionArguments)
   );
 
   /*
@@ -4536,7 +4539,7 @@ const cssFactory = (g: GrammarSelf) => {
     routedDeclarationListBody,
     valueFunctionArguments,
     branchListAhead,
-    plainFunctionArguments,
+    functionArgumentShape,
     genericFunctionArguments,
     whitespace,
     rw: whitespace
