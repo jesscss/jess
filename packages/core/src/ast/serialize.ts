@@ -126,6 +126,10 @@ import {
   EmptyOperandError,
   IncomparableOperandsError,
   emitValue,
+  delimiterClose,
+  delimiterOpen,
+  glueBefore,
+  sepGlue,
   isValueGroup,
   isValueGroupArray,
   isElided,
@@ -4168,10 +4172,10 @@ function evalTyped(
        * operations look like top-level parens-division math and left the whole
        * registered function call verbatim after its typed signature rejected it.
        */
-      if (node.delimiter === 'square') {
+      if (node.delimiter !== 'paren') {
         return mapMaybe(
           evalTypedSlot(node.value, frame, e, projectMixinValues),
-          value => makeBlock(value, 'square', node.escaped)
+          value => makeBlock(value, node.delimiter, node.escaped)
         );
       }
 
@@ -4567,7 +4571,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
          * [compress] tighten the comma separator (`, `→`,`); the `/` separator stays
          * spaced and a space list keeps its single space.
          */
-        const glue = node.sep === ',' ? (e.compress === true ? ',' : ', ') : node.sep === '/' ? ' / ' : ' ';
+        const glue = node.sep === ',' && e.compress === true ? ',' : sepGlue(node.sep);
         const authored = valueLayoutOf(node);
 
         /* [null] An elided item takes its separator with it (§4.3): dart-sass
@@ -4579,11 +4583,12 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
           if (!isLiteral(item) && isElided(item)) {
             continue;
           }
+          const bytes = emitValueC(item, e);
           if (!empty) {
             const separator = authored?.[index - 1];
-            out += e.compress !== true && separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue;
+            out += e.compress !== true && separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glueBefore(glue, bytes);
           }
-          out += emitValueC(item, e);
+          out += bytes;
           empty = false;
         }
         return empty && vals.length > 0 ? NULL : literal(out);
@@ -4615,11 +4620,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        */
       return mapMaybe(inner, (v) => {
         if (isLiteral(v)) {
-          const open = node.delimiter === 'square' ? '[' : '(';
-          const close = node.delimiter === 'square' ? ']' : ')';
-          return literal(`${open}${v}${close}`);
+          return literal(`${delimiterOpen(node.delimiter)}${v}${delimiterClose(node.delimiter)}`);
         }
-        return node.delimiter === 'square' ? makeBlock(v, 'square', node.escaped) : v;
+        return node.delimiter === 'paren' ? v : makeBlock(v, node.delimiter, node.escaped);
       });
     }
     case 'Expression': {
@@ -17042,12 +17045,12 @@ function putImportTail(node: ValueNode, frame: Frame, e: Emit): void {
     put(e, evalQueryPreludeSync(node, frame, e));
     return;
   }
-  put(e, node.delimiter === 'square' ? '[' : '(');
+  put(e, delimiterOpen(node.delimiter));
   put(e, evalQueryPreludeSync(node.value.left, frame, e));
   put(e, ': ');
   putValueBoundaryTrivia(e, boundary, '');
   put(e, evalQueryPreludeSync(node.value.right, frame, e));
-  put(e, node.delimiter === 'square' ? ']' : ')');
+  put(e, delimiterClose(node.delimiter));
 }
 
 /** Write one direct import target plus its typed, parser-laid-out tail. */
@@ -18086,8 +18089,8 @@ function evalSupportsPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): 
         [{ bytes: `${node.name}(${content})`, protected: true }]);
     }
     case 'Block': {
-      const open = node.delimiter === 'square' ? '[' : '(';
-      const close = node.delimiter === 'square' ? ']' : ')';
+      const open = delimiterOpen(node.delimiter);
+      const close = delimiterClose(node.delimiter);
       if (!isValueSlotArray(node.value) && node.value.type === 'Interpolation') {
         return mapMaybe(evalBytes(node.value, frame, e), content =>
           [{ bytes: `${open}${content}${close}`, protected: true }]);
@@ -18172,8 +18175,8 @@ function evalQueryPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): May
   }
   switch (node.type) {
     case 'Block': {
-      const open = node.delimiter === 'square' ? '[' : '(';
-      const close = node.delimiter === 'square' ? ']' : ')';
+      const open = delimiterOpen(node.delimiter);
+      const close = delimiterClose(node.delimiter);
       return mapMaybe(evalQueryPrelude(node.value, frame, e), inner => `${open}${inner}${close}`);
     }
     case 'Operation':
@@ -18193,7 +18196,7 @@ function evalQueryPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): May
       return joinPreludeParts(parts);
     }
     case 'List': {
-      const glue = node.sep === ',' ? ', ' : node.sep === '/' ? ' / ' : ' ';
+      const glue = sepGlue(node.sep);
       const authored = valueLayoutOf(node);
       const parts: Array<MaybePromise<string>> = [];
       for (let index = 0; index < node.value.length; index += 1) {

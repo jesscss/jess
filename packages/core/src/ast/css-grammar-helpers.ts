@@ -20,6 +20,8 @@
 import {
   any,
   cssBaseMathOutsideParens,
+  funcCall,
+  list,
   operation,
   selectorBranchCanonical,
   selectorTermOf,
@@ -30,6 +32,7 @@ import { semanticGapText } from './grammar-helpers.js';
 import type {
   CompoundSelector,
   Declaration,
+  FunctionCall,
   Interpolation,
   Keyword,
   Quoted,
@@ -102,6 +105,87 @@ export function withAuthoredSeparators<T extends object>(value: T, fields: Reduc
         separators
       )
     : value;
+}
+
+/*
+ * Split a call's children at each `;` terminal. Returns the values between
+ * them, one group per side (empty where the author wrote none), and each `;`'s
+ * authored run: the padding tokens beside it and the `;` itself. These are the
+ * grammar's own tokens — a comment is one whole trivia token, so a `;` inside
+ * one is never read as a separator, and a value is checked first, so a value
+ * node is never read as punctuation. The first child (the opener) and the last
+ * (`)`) are not part of the body.
+ */
+function splitAtSemicolons(children: readonly unknown[]): { segments: ValueSlot[][]; separators: string[] } {
+  const segments: ValueSlot[][] = [[]];
+  const separators: string[] = [];
+  let padding = '';
+  let afterDelimiter = false;
+  for (let index = 1; index < children.length - 1; index++) {
+    const child = children[index];
+    if (isValueSlotValue(child)) {
+      if (afterDelimiter) {
+        separators[separators.length - 1] += padding;
+        afterDelimiter = false;
+      }
+      padding = '';
+      segments[segments.length - 1]!.push(child);
+    } else if (isTerminalText(child)) {
+      const text = tokenText(child);
+      if (text === ';') {
+        separators.push(padding + text);
+        padding = '';
+        afterDelimiter = true;
+        segments.push([]);
+      } else {
+        padding += text;
+      }
+    }
+  }
+  if (afterDelimiter) {
+    separators[separators.length - 1] += padding;
+  }
+  return { segments, separators };
+}
+
+/** Record `separators` as `value`'s layout when there is one per boundary. */
+function withLayoutWhenComplete<T extends object>(value: T, separators: readonly string[], expected: number): T {
+  return separators.length === expected ? withValueLayout(value, separators) : value;
+}
+
+/**
+ * A generic call's reduction. Without a `;` the arguments are the comma run,
+ * with its authored separator layout, exactly as before. With one — css-values-5
+ * §8.3 `if( [ <if-branch> ; ]* <if-branch> ;? )` — the body is ONE argument, the
+ * `;` List of its groups, so the call carries the separator it was written with
+ * instead of a comma it was not. A group is the empty slot `[]` when it holds
+ * nothing (`if(media(print): 1px;)` ends on one), itself when it holds one
+ * argument, and the comma `List` it was written as when it holds several. The
+ * commas are handed out to their groups in order, one fewer than each group's
+ * arguments, so every rung keeps its own authored layout.
+ */
+export function semicolonGroupedCall(children: readonly unknown[], fields: ReducerFields | undefined): FunctionCall {
+  const name = functionOpenName(children[0]);
+  if (!children.some(child => !isValue(child) && isTerminalText(child) && tokenText(child) === ';')) {
+    const args = children.filter(isValueSlotValue);
+    return funcCall(name, withAuthoredSeparators(args, fields, Math.max(0, args.length - 1)));
+  }
+  const { segments, separators } = splitAtSemicolons(children);
+  const commas = authoredSeparators(fields);
+  let comma = 0;
+  const groups: ValueSlot[] = [];
+  for (const group of segments) {
+    if (group.length === 0) {
+      groups.push([]);
+    } else if (group.length === 1) {
+      groups.push(group[0]!);
+    } else {
+      const next = comma + group.length - 1;
+      groups.push(withLayoutWhenComplete(list(group, ','), commas.slice(comma, next), group.length - 1));
+      comma = next;
+    }
+  }
+  return funcCall(name, [withLayoutWhenComplete(list(groups, ';'), separators, groups.length - 1)]);
 }
 
 export function sourceText(child: unknown): string {

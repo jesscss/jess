@@ -700,6 +700,9 @@ class JessPrinter {
         if (valueLayoutOf(node)?.some(sep => !/^[ \t]*[,/][ \t]*$/u.test(sep)) === true) {
           return gap('List', 'a list laid out across lines or around comments: the `.jess` `Value` rule keeps no separator layout');
         }
+        if (node.sep === ';') {
+          return gap('List', 'a `;` list from a CSS function body (`if()`): `.jess` call arguments have no `;` separator');
+        }
         const glue = node.sep === ',' ? ', ' : ' / ';
         return node.value.map(item => this.value(item, at, indent)).join(glue);
       }
@@ -867,6 +870,9 @@ class JessPrinter {
     }
     if (node.delimiter === 'square') {
       return `[${this.value(node.value, at)}]`;
+    }
+    if (node.delimiter === 'curly') {
+      return gap('Block', 'a css-values-5 `{}`-wrapped argument: in `.jess` a `{` in a call argument is a Collection');
     }
     if (at === At.Prelude && !isSlotArray(node.value) && node.value.type === 'Operation' && node.value.operator === ':') {
       // `QueryFeature`: `(name: value)`.

@@ -16,7 +16,7 @@
  * - SCSS: ../../../scss/scss-parser/src/grammar.ts
  * - Jess: ../../../jess/jess-parser/src/grammar.ts
  */
-import { balanced, classifiedTrivia, choice, compose, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, token, when } from 'parseman' with { type: 'macro' };
+import { balanced, classifiedTrivia, choice, compose, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, startsWith, token, when } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -74,6 +74,7 @@ import {
   selectorTermFromTokens,
   selist,
   semanticTextWithTriviaGaps,
+  semicolonGroupedCall,
   simpleSelector,
   sourceText,
   spaced,
@@ -232,6 +233,7 @@ type GrammarRuleName =
   | 'Url'
   | 'Value'
   | 'ValueList'
+  | 'CurlyValue'
   | 'ValueSequence'
   | 'ValueTerm'
   | 'TypedValue'
@@ -810,15 +812,67 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * A function argument is a whole space group whose items may be slash groups:
+   * An unknown function's contents are component values up to the matching `)`
+   * (css-syntax-3 §5.4.9, "consume a function"), so its body is the value
+   * ladder plus the two delimiters a function body can carry that a declaration
+   * value cannot:
+   *
+   * - `;` groups arguments. css-values-5 §8.3 spells `if()` as
+   *   `if( [ <if-branch> ; ]* <if-branch> ;? )`, so a group may be empty after
+   *   the last `;`. Nested in a function, `;` is an ordinary token, not a
+   *   declaration terminator.
+   * - A `{}` block is a whole argument: css-values-5 §3.1.1 lets a free-form
+   *   argument be wrapped in braces so it can hold commas
+   *   (`random-item(--x, {a, b}, c)`, css-mixins-1 `--f({1px, 2px}, 3px)`).
+   *
+   * Any other argument is a whole space group whose items may be slash groups:
    * the modern colour syntaxes separate their alpha component with a slash
-   * (`rgb(15 23 42 / .22)`, css-color-4 §5), and `grid-template` tracks carry
-   * one too. That slash is the same separator rung a declaration value uses, so
-   * this points at `ValueSequence` rather than re-spelling a slash here.
+   * (`rgb(15 23 42 / .22)`, css-color-4 §5), and that slash is the same
+   * separator rung a declaration value uses, so this points at `ValueSequence`
+   * rather than re-spelling it here. A `:` inside an argument (an `if()`
+   * branch, `style(--x: y)`) stays the punctuation component it is in a
+   * declaration value.
    */
-  const genericFunctionArguments = sepBy(
-    g.ValueSequence,
+  const functionArgument = choice(
+    g.CurlyValue,
+    g.ValueSequence
+  );
+
+  /*
+   * One `;` with its authored padding. Not a field capture: the reducer needs
+   * the `;` among its children to tell an empty group from a full one, and it
+   * reads the padding tokens beside it as that boundary's layout.
+   */
+  const functionArgumentSemicolon = noTrivia(sequence(
+    optional(cssValueTrivia),
+    literal(';'),
+    optional(cssValueTrivia)
+  ));
+
+  /*
+   * The comma-separated arguments between two `;`s. It may be empty: `if()`
+   * allows a trailing `;`.
+   */
+  const functionArgumentGroup = sepBy(
+    functionArgument,
     authoredArgumentComma
+  );
+
+  /*
+   * The whole body: `;`-separated groups of comma-separated arguments. A body
+   * with no `;` is the plain comma argument vector.
+   *
+   * Spelled as a sequence rather than `oneOrMoreSep`: a separator-list helper
+   * does not hand its separator terminals to the reducer, and the `;` has to be
+   * among the children to tell an empty group (`if(media(print): 1px;)`) from a
+   * full one.
+   */
+  const genericFunctionArguments = sequence(
+    functionArgumentGroup,
+    many(sequence(
+      functionArgumentSemicolon,
+      functionArgumentGroup
+    ))
   );
   const BasicSelector = node(
     'BasicSelector',
@@ -1810,8 +1864,7 @@ const cssFactory = (g: GrammarSelf) => {
     g.UnicodeRange,
     g.CalcIdentOrFunction,
     g.CalcParen,
-    g.Quoted,
-    g.CustomPropertyValue
+    g.Quoted
   );
   const CalcValue = node(
     'CalcValue',
@@ -2027,9 +2080,20 @@ const cssFactory = (g: GrammarSelf) => {
       1
     )
   );
+
+  /*
+   * The opener is either an ordinary identifier or a dashed one: css-syntax-3
+   * §4.3.9 lets an ident start with `--`, and css-mixins-1 calls a dashed ident
+   * glued to `(` a `<dashed-function>` (`--*( <declaration-value>#? )`). Both
+   * dispatches route `--f(` to the generic call tail and a bare `--x` to its
+   * `CustomPropertyValue` node.
+   */
   const identOrFunction = token(noTrivia(
     sequence(
-      genericIdentifier,
+      choice(
+        genericIdentifier,
+        g.CustomPropertyName
+      ),
       optional(literal('('))
     )
   ));
@@ -2063,21 +2127,7 @@ const cssFactory = (g: GrammarSelf) => {
       optional(cssValueTrivia),
       literal(')')
     ),
-    (children, fields) => {
-      const name = functionOpenName(children[0]);
-      const args = children.filter(isValueSlotValue);
-      return funcCall(
-        name,
-        withAuthoredSeparators(
-          args,
-          fields,
-          Math.max(
-            0,
-            args.length - 1
-          )
-        )
-      );
-    }
+    (children, fields) => semicolonGroupedCall(children, fields)
   );
   const UrlFunction = node(
     'Url',
@@ -2171,6 +2221,17 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * The bare dashed ident routed by the identifier/function dispatch keeps its
+   * own node, so a stray `--x` in a value is still the `CustomPropertyValue`
+   * the language service flags as a missing `var()`.
+   */
+  const RoutedCustomPropertyValue = node(
+    'CustomPropertyValue',
+    routed(),
+    children => keyword(tokenText(children[0]))
+  );
+
+  /*
    * Declaration identifiers and glued function openers share one lexical shape.
    * Parse it once, then route the complete opener to the dedicated URL, calc(),
    * var(), generic-call, or keyword tail. `foo (` remains a keyword followed by
@@ -2216,32 +2277,8 @@ const cssFactory = (g: GrammarSelf) => {
       endsWith('('),
       GenericFunction
     ),
+    when(startsWith('--'), RoutedCustomPropertyValue),
     otherwise(IdentBlockOrKeyword)
-  );
-  const TypedGenericFunction = node(
-    'Call',
-    sequence(
-      routed(),
-      optional(cssValueTrivia),
-      g.valueFunctionArguments,
-      optional(cssValueTrivia),
-      literal(')')
-    ),
-    (children, fields) => {
-      const name = functionOpenName(children[0]);
-      const args = children.slice(1).filter(isValueSlotValue);
-      return funcCall(
-        name,
-        withAuthoredSeparators(
-          args,
-          fields,
-          Math.max(
-            0,
-            args.length - 1
-          )
-        )
-      );
-    }
   );
   const typedIdentOrFunction = dispatch(
     identOrFunction,
@@ -2276,10 +2313,20 @@ const cssFactory = (g: GrammarSelf) => {
      * Both css ladders carry this arm so the typed and non-typed routes agree.
      */
     when(endsWith('\\('), g.RoutedKeyword),
+
+    /*
+     * An unknown function's contents are the same component values in a typed
+     * position as in a declaration (css-syntax-3 §5.4.9): a `calc()` operand
+     * reaches the same `GenericFunction` tail, so `calc(if(media(print): 1px;
+     * else: 0px) + 1px)` and `calc(foo(1px / 2) + 1px)` parse their function
+     * exactly as a declaration value does. (A `var()` fallback still carries its
+     * own `VarFallbackCall` body.)
+     */
     when(
       endsWith('('),
-      TypedGenericFunction
+      GenericFunction
     ),
+    when(startsWith('--'), RoutedCustomPropertyValue),
     otherwise(g.RoutedKeyword)
   );
   const CalcIdentOrFunction = typedIdentOrFunction;
@@ -2288,8 +2335,8 @@ const cssFactory = (g: GrammarSelf) => {
   /*
    * Identifier-shaped atoms are routed by `IdentOrFunction`: known glued
    * functions keep their dedicated tails, other glued functions use the
-   * generic call tail, and an identifier with no glued `(` is either the
-   * spaced paren bridge (`foo (bar)`, which preserves its authored separator
+   * generic call tail, and an identifier with no glued `(` is a dashed ident,
+   * the spaced paren bridge (`foo (bar)`, which preserves its authored separator
    * as a value boundary) or a keyword. One route means the identifier is
    * scanned once. The final punctuation fallback needs no negative identifier
    * preflight: every identifier-shaped start has already been consumed by
@@ -2303,7 +2350,6 @@ const cssFactory = (g: GrammarSelf) => {
     g.ParenValue,
     g.SquareValue,
     g.Quoted,
-    g.CustomPropertyValue,
     g.PunctuationValue
   );
   const Value = node(
@@ -2370,6 +2416,32 @@ const cssFactory = (g: GrammarSelf) => {
       );
     }
   );
+
+  /*
+   * A `{}`-wrapped free-form argument (css-values-5 §3.1.1): "the production
+   * matches just the {} block that the '{' token opens". CSS Syntax calls it a
+   * `{}-block`; the contents are one or more comma-separated values, so the
+   * interior is `ValueList` and the result is the same `Block` fact the paren
+   * and square siblings produce, with the `curly` delimiter.
+   *
+   * It is reachable only as a whole function argument, never as a declaration
+   * value atom: a top-level `{` in a declaration is where a nested rule's body
+   * starts.
+   */
+  const CurlyValue = node(
+    'Block',
+    sequence(
+      literal('{'),
+      optional(cssValueTrivia),
+      g.ValueList,
+      optional(cssValueTrivia),
+      literal('}')
+    ),
+    children => block(
+      valueSlotChildren(children)[0]!,
+      'curly'
+    )
+  );
   const ValueList = node(
     'ValueList',
     oneOrMoreSep(
@@ -2397,7 +2469,6 @@ const cssFactory = (g: GrammarSelf) => {
       g.Dimension,
       g.Color,
       g.Quoted,
-      g.CustomPropertyValue,
       g.UnicodeRange,
       TypedIdentOrFunction
     ),
@@ -4032,6 +4103,7 @@ const cssFactory = (g: GrammarSelf) => {
     PunctuationValue,
     ValueSequence,
     ValueTerm,
+    CurlyValue,
     ValueList,
     calcValueAtom,
     CalcValue,

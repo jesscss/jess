@@ -90,6 +90,7 @@ export {
   selectorCombinator,
   selectorTermFromTokens,
   semanticTextWithTriviaGaps,
+  semicolonGroupedCall,
   sourceText,
   STRUCTURED_PSEUDOS,
   tokenText,
