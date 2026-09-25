@@ -287,7 +287,10 @@ type GrammarRuleName =
   | 'routedStylesheetBody'
   | 'routedDeclarationListBody'
   | 'valueFunctionArguments'
-  | 'calcFunctionArguments';
+  | 'calcFunctionArguments'
+  | 'branchListAhead'
+  | 'plainFunctionArguments'
+  | 'genericFunctionArguments';
 
 /*
  * Rules that the shared recognition library defines keep its concrete
@@ -894,6 +897,12 @@ const cssFactory = (g: GrammarSelf) => {
    * first argument has no condition (`foo(:x)`).
    */
   const branchListAhead = peek(sequence(
+
+    /*
+     * Fast reject: most first arguments reach their `,`/`;`/`)` with no colon,
+     * group, string, comment or escape on the way, and are plain arguments.
+     */
+    not(regex(/[^:;,()[\]{}"'/\\]*[;,)]/)),
     not(literal(':')),
     scanTo(
       choice(literal(':'), literal(';'), literal(','), literal(')')),
@@ -902,8 +911,13 @@ const cssFactory = (g: GrammarSelf) => {
     literal(':'),
     not(literal('/'))
   ));
+
+  /*
+   * The shape key the body dispatches on. The second arm is the always-true
+   * fallback key: a nullable lookahead succeeds at any position.
+   */
   const functionArgumentShape = choice(
-    transform(branchListAhead, () => 'branches'),
+    transform(g.branchListAhead, () => 'branches'),
     transform(peek(optional(literal(')'))), () => 'arguments')
   );
 
@@ -911,11 +925,16 @@ const cssFactory = (g: GrammarSelf) => {
    * The whole body, dispatched on its shape once: a branch list, or the plain
    * arguments. A classified branch list that fails is a committed failure, not
    * a second reading as plain arguments.
+   *
+   * `branchListAhead` and `plainFunctionArguments` are named slots, so a
+   * dialect overrides only what differs — Less adds its keyword-argument
+   * exclusion to the scan and keeps its own flat argument vector — and
+   * inherits this dispatch.
    */
   const genericFunctionArguments = dispatch(
     functionArgumentShape,
     cssCase('branches', g.BranchList),
-    otherwise(plainFunctionArguments)
+    otherwise(g.plainFunctionArguments)
   );
 
   /*
@@ -4329,6 +4348,9 @@ const cssFactory = (g: GrammarSelf) => {
     routedStylesheetBody,
     routedDeclarationListBody,
     valueFunctionArguments,
+    branchListAhead,
+    plainFunctionArguments,
+    genericFunctionArguments,
     whitespace,
     rw: whitespace
   };

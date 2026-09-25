@@ -372,6 +372,8 @@ type LessRules = {
   GenericFunction: Combinator<unknown>;
   CalcFunction: Combinator<unknown>;
   FunctionArguments: Combinator<unknown>;
+  branchListAhead: Combinator<unknown>;
+  plainFunctionArguments: Combinator<unknown>;
 };
 
 /** Macro-fused shared recognition plus this file's recursively defined outputs. */
@@ -397,6 +399,7 @@ type SharedSyntax = {
   CurlyValue: Combinator<ValueNode>;
   // Inherited from the CSS base: the P38 branch argument list (`if()` branches).
   BranchList: Combinator<ValueNode>;
+  genericFunctionArguments: Combinator<unknown>;
   // Converged to the CSS base (inherited via compose): same node type
   // SimpleSelector, byte-identical keyframeEndpoint, g.Percentage resolves to
   // the CSS base; reducer differs only requireToken().value vs sourceText().
@@ -1643,37 +1646,34 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // BRANCH arguments (ledger P38): a call whose first argument is followed by a
   // top-level `:` takes CSS's branch-list shape, `condition: value; …` —
   // css-values-5 §8.3 `if()` is its first user — in legacy and modern mode
-  // alike, with the `;`s preserved. The one exception is Less's own keyword
-  // argument: a first argument that is an `@variable` followed by `:`
-  // (`darken(@color: red)`). Without the colon shape a call keeps Less's
-  // meaning, where `;` separates arguments like `,` (`foo(a; b)`), and a legacy
-  // `if(cond, a, b)` is still lowered. The zero-width scan mirrors CSS's
-  // `branchListAhead`: it stops at the first top-level `:`, `;`, `,` or `)`
-  // (skipping strings, comments and balanced groups — a detached-ruleset
-  // argument's `{ v: 1 }` included), and a `://` is a URL scheme, not a branch.
-  const lessKeywordArgumentStart = regex(/@[^ \t\n\r\f:;,(){}]+[ \t\n\r\f]*:(?!:)/);
-  const lessBranchListAhead = peek(sequence(
+  // alike, with the `;`s preserved. The body dispatch is CSS's
+  // `genericFunctionArguments`, inherited; Less overrides two of its slots:
+  //
+  // - `branchListAhead`: CSS's scan plus Less's keyword argument, which is
+  //   not a branch — a first argument `@name:` (`darken(@color: red)`), the
+  //   `keywordArgumentKey` spelling. The skip set is CSS's balanced groups;
+  //   strings, comments and `//` line comments are the ambient scan holes.
+  // - `plainFunctionArguments`: Less's flat vector, where `;` separates
+  //   arguments like `,` (`foo(a; b)`) and a legacy `if(cond, a, b)` is still
+  //   lowered.
+  const branchListAhead = peek(sequence(
+    // Fast reject, as in CSS: a first argument that reaches `,`/`;`/`)` with no
+    // colon, group, string, comment or escape on the way is plain.
+    not(regex(/[^:;,()[\]{}"'/\\]*[;,)]/)),
     not(literal(':')),
-    not(lessKeywordArgumentStart),
+    not(keywordArgumentKey),
     scanTo(
       choice(literal(':'), literal(';'), literal(','), literal(')')),
-      { skip: [braceGroup, braceSquareGroup, unknownAtRuleBrace, lineComment] }
+      { skip: [braceGroup, braceSquareGroup, unknownAtRuleBrace] }
     ),
     literal(':'),
     not(literal('/'))
   ));
-  const functionArgumentShape = choice(
-    transform(lessBranchListAhead, () => 'branches'),
-    transform(peek(optional(literal(')'))), () => 'arguments')
-  );
-  const FunctionArguments = dispatch(
-    functionArgumentShape,
-    caseOf('branches', g.BranchList),
-    otherwise(optional(sequence(
-      oneOrMoreSep(functionArgument, functionArgumentSeparator),
-      optional(trailingFunctionArgumentSeparator)
-    )))
-  );
+  const plainFunctionArguments = optional(sequence(
+    oneOrMoreSep(functionArgument, functionArgumentSeparator),
+    optional(trailingFunctionArgumentSeparator)
+  ));
+  const FunctionArguments = g.genericFunctionArguments;
   // Value-position identifiers and glued function openers share one lexical
   // family. Parse that opener once, then route by the returned text. Branch
   // nodes own `routed()` so the consumed opener remains inside the selected CST
@@ -5304,6 +5304,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     GenericFunction,
     CalcFunction,
     FunctionArguments,
+    branchListAhead,
+    plainFunctionArguments,
     whitespace,
     rw: whitespace
   };
