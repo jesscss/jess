@@ -28,6 +28,7 @@ export {
   resolveErrorsConfig
 } from './warnings.js';
 export * from './plugin.js';
+export * from './provided-modules.js';
 export * from './jess-error.js';
 export * from './deprecation.js';
 export type { ApplySelectorKind, ExtendSelectorKind, SelectorPolicyKind } from './types/config.js';

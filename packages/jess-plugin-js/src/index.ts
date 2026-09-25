@@ -173,10 +173,6 @@ const isFnsPath = (importPath: string): boolean => {
   return (
     normalized === '@jesscss/fns'
     || normalized.startsWith('@jesscss/fns/')
-    || normalized === '#less'
-    || normalized.startsWith('#less/')
-    || normalized === '#sass'
-    || normalized.startsWith('#sass/')
     || isFnsPackagePath
   );
 };
