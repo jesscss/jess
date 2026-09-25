@@ -736,6 +736,8 @@ class JessPrinter {
         return this.call(node, at);
       case 'Block':
         return this.paren(node, at);
+      case 'Branch':
+        return gap('Branch', 'a `condition: value` branch argument (ledger P38): `.jess` call arguments have no branch form (jess#297)');
       case 'Expression':
         return this.expression(node, at);
       case 'Condition':

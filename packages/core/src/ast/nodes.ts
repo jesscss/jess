@@ -322,6 +322,20 @@ export interface Block extends SpanSlots {
   readonly escaped?: boolean;
 }
 
+/**
+ * One branch of a function argument list (ledger P38) — css-values-5 §8.3's
+ * "statement ... consisting of a condition followed by a colon followed by a
+ * value", parsed as `<if-args-branch> = <declaration-value> : <declaration-value>?`
+ * (`if(style(--scheme: dark): white; else: black)`). The colon is this node's
+ * own syntax. A call's branches are one `;` List argument, or the Branch itself
+ * when there is one. `value` is the empty slot `[]` when omitted.
+ */
+export interface Branch {
+  readonly type: 'Branch';
+  readonly condition: ValueSlot;
+  readonly value: ValueSlot;
+}
+
 /** The delimiter pairs a {@link Block} can carry. */
 export type BlockDelimiter = 'paren' | 'square' | 'curly';
 
@@ -579,6 +593,7 @@ export type ValueNode =
   | Operation
   | FunctionCall
   | Block
+  | Branch
   | Expression
   | Condition
   | IfValue
@@ -1772,6 +1787,7 @@ export const funcCall = (
 };
 export const block = (value: ValueSlot, delimiter: Block['delimiter'] = 'paren', escaped = false): Block =>
   escaped ? { type: 'Block', value, delimiter, escaped: true, _s: NO_SPAN, _e: NO_SPAN } : { type: 'Block', value, delimiter, _s: NO_SPAN, _e: NO_SPAN };
+export const branch = (condition: ValueSlot, value: ValueSlot): Branch => ({ type: 'Branch', condition, value });
 
 /** The `$( … )` computation boundary — see {@link Expression}. */
 export const expression = (value: ValueSlot, asCall: FunctionCall | null = null): Expression =>

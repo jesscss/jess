@@ -9,6 +9,7 @@ export * from './ast/nodes.js';
 export * from './ast/traversal.js';
 export * from './ast/at-rule.js';
 export * from './ast/math-functions.js';
+export { delimiterClose, delimiterOpen, sepGlue } from './ast/value-eval.js';
 export {
   NO_SPAN,
   bodySpanOf,
@@ -51,6 +52,8 @@ export {
   authoredSeparators,
   authoredText,
   blockStatements,
+  branchList,
+  branchOf,
   branchSegments,
   chainedQueryComparison,
   queryConditionChain,
@@ -59,7 +62,6 @@ export {
   queryFeatureContents,
   queryValueRatio,
   complexSegments,
-  curlyBlock,
   cssRelativeCombinator,
   documentStatements,
   firstValue,
@@ -103,6 +105,7 @@ export {
   semanticTextWithTriviaGaps,
   semicolonGroupedCall,
   sourceText,
+  spaceRun,
   STRUCTURED_PSEUDOS,
   tokenText,
   valueChildren,
