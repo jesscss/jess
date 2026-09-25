@@ -17087,18 +17087,19 @@ const MODULE_NAMESPACE_IDENT = /^-?[_a-zA-Z\u0080-\uFFFF][-_a-zA-Z0-9\u0080-\uFF
  * The auto-derived `@compose`/`@use` namespace: Sass's default-namespace rule
  * applied to the SPECIFIER STRING the author wrote (never the plugin-resolved
  * path). Take the last `/`-segment, strip a trailing file extension, strip a
- * leading `_` partial marker. `./foo.less` → `foo`, `#sass/map` → `map`,
- * `@co/design-tokens` → `design-tokens`, `./_theme.scss` → `theme`. Returns
+ * leading `_` partial marker or `#` package-import marker. `./foo.less` → `foo`,
+ * `#sass/map` → `map`, `#less` → `less`, `@co/design-tokens` → `design-tokens`,
+ * `./_theme.scss` → `theme`. Returns
  * `null` when the result is not a usable identifier — the author must then
  * spell an explicit `as <name>`.
  */
 function deriveModuleNamespace(specifier: string): string | null {
   /* Last `/`-segment, then strip a trailing `.ext` (only when a name precedes the
-     dot) and a leading `_` partial marker. Regex-based to keep `serialize.ts` free
+     dot) and a leading `_` or `#` marker. Regex-based to keep `serialize.ts` free
      of `lastIndexOf` (the diagnostic cold-path guard bans it). */
   const segment = /[^/]*$/.exec(specifier)?.[0] ?? specifier;
   const withoutExt = segment.replace(/^(.+)\.[^.]+$/, '$1');
-  const base = withoutExt.startsWith('_') ? withoutExt.slice(1) : withoutExt;
+  const base = withoutExt.startsWith('_') || withoutExt.startsWith('#') ? withoutExt.slice(1) : withoutExt;
   return MODULE_NAMESPACE_IDENT.test(base) ? base : null;
 }
 
