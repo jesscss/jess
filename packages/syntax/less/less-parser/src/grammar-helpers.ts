@@ -20,9 +20,9 @@
  */
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
-import { NO_SPAN, any, callArg, condition, dimension, expression, funcCall, ifNode, ifValue, important, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, quoted, reference, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, callArg, condition, dimension, expression, funcCall, ifNode, ifValue, important, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, quoted, reference, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, Operation, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorCapture, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
-import { requireLessParseState } from './parse-state.js';
+import { functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessUnsupportedVariableNameError } from './parse-error.js';
 
 type VarRef = Lookup & { readonly name: string };
@@ -1162,9 +1162,10 @@ function callWithLayout(
   args: Array<ValueSlot | LessCallArg>,
   separators: string[],
   hasTrailingSeparator: boolean,
-  span: SourceSpan
+  span: SourceSpan,
+  state: unknown
 ): FunctionCall {
-  const call = funcCall(name, args);
+  const call = withFunctionScope(funcCall(name, args), functionScopeOf(state));
   if (separators.length === args.length - 1 || hasTrailingSeparator) {
     withValueLayout(call.args, separators);
   }
@@ -1286,7 +1287,7 @@ function functionCallFromChildren(
     }
   }
   const separators = functionSeparatorsFromFields(fields, rawChildren, triviaLog, state);
-  return lowerLogicalCall(callWithLayout(name, args, separators, hasField(fields, 'trailingSeparator'), span));
+  return lowerLogicalCall(callWithLayout(name, args, separators, hasField(fields, 'trailingSeparator'), span, state));
 }
 
 /**
@@ -1299,13 +1300,16 @@ function functionCallFromChildren(
 function argumentFunctionFromChildren(
   children: readonly unknown[],
   fields: FieldMap | undefined,
-  span: SourceSpan
+  span: SourceSpan,
+  _rawChildren: readonly unknown[],
+  _triviaLog: readonly number[],
+  state: unknown
 ): FunctionCall {
   const name = functionNameFromOpener(children[0]);
   const args = children.slice(1, -1).filter(
     (child): child is ValueSlot | LessCallArg => isLessCallArg(child) || isLessValueSlotValue(child)
   );
-  return callWithLayout(name, args, separatorsFromFields(fields), hasField(fields, 'trailingSeparator'), span);
+  return callWithLayout(name, args, separatorsFromFields(fields), hasField(fields, 'trailingSeparator'), span, state);
 }
 
 function requireValueSlot(value: unknown): ValueSlot {

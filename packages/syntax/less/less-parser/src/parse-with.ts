@@ -8,7 +8,7 @@
  */
 import { buildLineIndex, offsetToLineCol, run } from 'parseman';
 import type { Span } from 'parseman';
-import type { ISafeParseResult, MathMode, TriviaMap } from '@jesscss/core';
+import type { ISafeParseResult, MathMode, ModuleMode, TriviaMap } from '@jesscss/core';
 import { DEFAULT_LESS_MATH_MODE, type LessParseState } from './parse-state.js';
 /*
  * `parserDiagnostic` comes from the narrow `./diagnostics` entry, not the root:
@@ -30,6 +30,7 @@ import {
   withTriviaMap,
   withValueBoundaryTrivia,
   type AtRuleStatement,
+  type FunctionScope,
   type Stylesheet
 } from '@jesscss/core/ast';
 import type { lessGrammar } from './grammar/ast.js';
@@ -50,6 +51,14 @@ export type LessAstGrammar = typeof lessGrammar;
  */
 export interface LessParseOptions {
   readonly mathMode?: MathMode;
+
+  /**
+   * Whether the document's Less built-ins are ambient (ledger P36). The grammar
+   * sees every `@use`/`@compose` it builds; under `auto` that is what puts a
+   * document in modern mode, and `modern` puts every document there. The
+   * answer is one object per document, shared by every call node.
+   */
+  readonly moduleMode?: ModuleMode;
 }
 
 const EMPTY_LAYOUT: readonly string[] = Object.freeze([]);
@@ -183,9 +192,11 @@ export function parseWith(
       'Less AST grammar is missing its public document entry.'
     );
   }
+  const functions: FunctionScope = { ambient: options.moduleMode !== 'modern' };
   const state: LessParseState = {
     source: input,
-    mathMode: options.mathMode ?? DEFAULT_LESS_MATH_MODE
+    mathMode: options.mathMode ?? DEFAULT_LESS_MATH_MODE,
+    functions
   };
   const result = run(entry, input, {
     trivia,
