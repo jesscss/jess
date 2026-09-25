@@ -133,14 +133,14 @@ a blanket optimization exemption or a new active architecture queue.
     "files": ["packages/core/src/ast/evaluator.ts"],
     "semanticBoundary": {
       "trigger": "a typed FunctionCall reaches evaluator dispatch with a registry miss or a selected callable result",
-      "scope": "Only the value evaluator owns this boundary. An unregistered plain FunctionCall is an optional CSS call and returns authored call bytes; a selected scoped or global callable either returns its typed result or sends its synchronous/asynchronous rejection through functionMode. MixinCall lookup, variable/property resolution, and mixin recursion are outside this seam.",
+      "scope": "Only the value evaluator owns this boundary. An unregistered plain FunctionCall is an optional CSS call and returns authored call bytes, and a call whose document has no ambient built-ins (ledger P36) skips the registry lookup and takes that same miss branch; a selected scoped or global callable either returns its typed result or sends its synchronous/asynchronous rejection through functionMode. MixinCall lookup, variable/property resolution, and mixin recursion are outside this seam.",
       "cases": ["unresolved-optional-function-call", "registered-sync-call-failure", "registered-async-call-failure"],
       "baseline": {"fixture": "benchmark.less", "phase": "render"}
     },
     "sourceCheck": {
       "file": "packages/core/src/ast/evaluator.ts",
       "caller": "const call = (",
-      "guard": "if (registry.has(name))",
+      "guard": "if (ambient && registry.has(name))",
       "call": "recoverAsyncCall("
     },
     "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/evaluator-call-boundary.test.ts"]}
