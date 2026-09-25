@@ -255,8 +255,16 @@ describe('Less constructs discovered outside the parser suites', () => {
 
   it('does not read a colon as a keyword argument when no variable precedes it', () => {
     /* The key regex carries the operator lookahead, so only `@name:` opens the
-     * keyword arm — `f(name: 1)` is no more accepted than it was before. */
-    expect(() => parse('a { b: f(name: 1) }')).toThrow();
+     * keyword arm. Without the `@`, `f(name: 1)` is a BRANCH argument (ledger
+     * P38, owner 2026-09-25: function arguments may be `condition: value`
+     * branches), not a keyword argument. */
+    const rule = parse('a { b: f(name: 1) }').rules[0];
+    const declaration = rule?.type === 'Ruleset' ? rule.rules[0] : undefined;
+    expect(declaration?.type === 'Declaration' ? declaration.value : null).toMatchObject({
+      type: 'FunctionCall',
+      name: 'f',
+      args: [{ name: undefined, value: { type: 'Branch', condition: { src: 'name' }, value: { src: '1' } } }]
+    });
   });
 });
 
