@@ -20,9 +20,9 @@
  */
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
-import { NO_SPAN, any, callArg, condition, dimension, expression, funcCall, ifNode, ifValue, important, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, quoted, reference, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, callArg, condition, dimension, expression, funcCall, ifNode, ifValue, important, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, quoted, reference, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, Operation, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorCapture, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
-import { requireLessParseState } from './parse-state.js';
+import { functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessUnsupportedVariableNameError } from './parse-error.js';
 
 type VarRef = Lookup & { readonly name: string };
@@ -1162,9 +1162,10 @@ function callWithLayout(
   args: Array<ValueSlot | LessCallArg>,
   separators: string[],
   hasTrailingSeparator: boolean,
-  span: SourceSpan
+  span: SourceSpan,
+  state: unknown
 ): FunctionCall {
-  const call = funcCall(name, args);
+  const call = withFunctionScope(funcCall(name, args), functionScopeOf(state));
   if (separators.length === args.length - 1 || hasTrailingSeparator) {
     withValueLayout(call.args, separators);
   }
@@ -1205,6 +1206,10 @@ function lessConditionGuard(arg: ValueSlot): MixinGuard {
  *
  * `not` / `and` / `or` land on the native logical operators (§4.5.5) rather than
  * on `fns/` entries, which is the same ruling that puts them in this set at all.
+ *
+ * The lowered `if()` / `boolean()` keeps the call it came from (ledger P36): a
+ * document whose built-ins are not ambient (Less modern mode) evaluates that
+ * call like any other unimported call instead of the lowering.
  */
 function lowerLogicalCall(call: FunctionCall): ValueNode {
   const args = call.args;
@@ -1212,8 +1217,8 @@ function lowerLogicalCall(call: FunctionCall): ValueNode {
   if (first === undefined) {
     return call;
   }
-  const boundaryCondition = (guard: MixinGuard): Expression =>
-    expression(condition(guard, functionConditionSource(call)));
+  const boundaryCondition = (guard: MixinGuard, asCall: FunctionCall | null = null): Expression =>
+    expression(condition(guard, functionConditionSource(call)), asCall);
 
   /* `and`/`or` are n-ary in Less and fold LEFT, so `and(a, b, c)` is
    * `(a and b) and c` — the same order the guard evaluator short-circuits in. */
@@ -1224,7 +1229,7 @@ function lowerLogicalCall(call: FunctionCall): ValueNode {
     );
   switch (call.name.toLowerCase()) {
     case 'boolean':
-      return args.length === 1 ? boundaryCondition(lessConditionGuard(first)) : call;
+      return args.length === 1 ? boundaryCondition(lessConditionGuard(first), call) : call;
     case 'not':
       return args.length === 1 ? boundaryCondition({ g: 'not', inner: lessConditionGuard(first) }) : call;
     case 'and':
@@ -1238,7 +1243,7 @@ function lowerLogicalCall(call: FunctionCall): ValueNode {
       const guard = lessConditionGuard(first);
       const taken: IfValueBranch = { guard, value: args[1]!.value };
       const otherwise = args[2]?.value;
-      return ifValue(otherwise === undefined ? [taken] : [taken, { guard: null, value: otherwise }]);
+      return ifValue(otherwise === undefined ? [taken] : [taken, { guard: null, value: otherwise }], call);
     }
     default:
       return call;
@@ -1267,7 +1272,10 @@ function lowerLogicalCallStatement(call: FunctionCall): FunctionCall | If {
   }
   const taken: IfBranch = { guard: lessConditionGuard(first), rules: arms[0]!.rules };
   const otherwise = arms[1];
-  return ifNode(otherwise === undefined ? [taken] : [taken, { guard: null, rules: otherwise.rules }]);
+  return ifNode(
+    otherwise === undefined ? [taken] : [taken, { guard: null, rules: otherwise.rules }],
+    call
+  );
 }
 
 function functionCallFromChildren(
@@ -1286,7 +1294,7 @@ function functionCallFromChildren(
     }
   }
   const separators = functionSeparatorsFromFields(fields, rawChildren, triviaLog, state);
-  return lowerLogicalCall(callWithLayout(name, args, separators, hasField(fields, 'trailingSeparator'), span));
+  return lowerLogicalCall(callWithLayout(name, args, separators, hasField(fields, 'trailingSeparator'), span, state));
 }
 
 /**
@@ -1299,13 +1307,16 @@ function functionCallFromChildren(
 function argumentFunctionFromChildren(
   children: readonly unknown[],
   fields: FieldMap | undefined,
-  span: SourceSpan
+  span: SourceSpan,
+  _rawChildren: readonly unknown[],
+  _triviaLog: readonly number[],
+  state: unknown
 ): FunctionCall {
   const name = functionNameFromOpener(children[0]);
   const args = children.slice(1, -1).filter(
     (child): child is ValueSlot | LessCallArg => isLessCallArg(child) || isLessValueSlotValue(child)
   );
-  return callWithLayout(name, args, separatorsFromFields(fields), hasField(fields, 'trailingSeparator'), span);
+  return callWithLayout(name, args, separatorsFromFields(fields), hasField(fields, 'trailingSeparator'), span, state);
 }
 
 function requireValueSlot(value: unknown): ValueSlot {

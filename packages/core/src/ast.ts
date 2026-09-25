@@ -15,6 +15,7 @@ export {
   createTriviaMapFromRanges,
   createTriviaMapFromParseman,
   createTriviaMapFromRootIndex,
+  hasAmbientFunctions,
   sourceEndOf,
   sourceStartOf,
   sourceSpanOf,
@@ -25,9 +26,10 @@ export {
   withSourceSpan,
   withTriviaMap,
   withValueBoundaryTrivia,
+  withFunctionScope,
   withValueLayout
 } from './ast/provenance.js';
-export type { AstSourceSpan, AstTriviaRange, ParserRootTriviaGap, ParserRootTriviaIndex, ParserTriviaEntriesView, ValueBoundaryTrivia, ValueLayout } from './ast/provenance.js';
+export type { AstSourceSpan, FunctionScope, AstTriviaRange, ParserRootTriviaGap, ParserRootTriviaIndex, ParserTriviaEntriesView, ValueBoundaryTrivia, ValueLayout } from './ast/provenance.js';
 export {
   bodySpanFromRaw,
   isComplexSelector,

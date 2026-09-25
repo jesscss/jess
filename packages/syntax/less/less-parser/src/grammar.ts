@@ -29,9 +29,9 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar';
-import { NO_SPAN, any, atRuleBlock, foldOperation, atRuleStatement, block, bodySpanFromRaw, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, importOptionWords, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, atRuleBlock, foldOperation, atRuleStatement, block, bodySpanFromRaw, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, importOptionWords, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
-import { requireLessParseState } from './parse-state.js';
+import { closeAmbientFunctions, functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessSourceImportSyntaxError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 import {
   appendInterpolationLiteral,
@@ -1162,11 +1162,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const ComposeStatement = node(
     'ComposeStatement',
     sequence(composeKeyword, g.ImportTarget, optional(g.ComposeStatementNamespace), optional(g.ComposeStatementConfig), optional(literal(';'))),
-    (children, _fields, span) => {
+    (children, _fields, span, _rawChildren, _triviaLog, state) => {
       const target = children.find((child): child is Quoted | Url | Interpolation => isQuoted(child) || isUrl(child) || isInterp(child));
       if (target === undefined) {
         throw new TypeError('Less grammar produced no @compose target.');
       }
+      closeAmbientFunctions(state);
       const namespace = children.find((child): child is string => typeof child === 'string') ?? null;
       const config = children.find(
         (child): child is StyleImportConfig =>
@@ -1188,11 +1189,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const UseStatement = node<ModuleImport>(
     'ModuleImport',
     sequence(useKeyword, g.Quoted, optional(literal(';'))),
-    (children) => {
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => {
       const path = children[1];
       if (!isQuoted(path)) {
         throw new TypeError('Less @use requires a quoted module path.');
       }
+      closeAmbientFunctions(state);
       return moduleImport(path, 'use', null);
     }
   );
@@ -1634,7 +1636,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const FormatFunction = node(
     'Call',
     sequence(noTrivia(literal('%(')), optional(sequence(not(literal('{')), g.ValueSequence)), many(noTrivia(sequence(regex(/,[ \t\n\r\f]*/), not(literal('{')), g.ValueSequence))), literal(')')),
-    children => funcCall('%', children.slice(1, -1).filter(isLessValueSlotValue))
+    (children, _fields, _span, _rawChildren, _triviaLog, state) =>
+      withFunctionScope(funcCall('%', children.slice(1, -1).filter(isLessValueSlotValue)), functionScopeOf(state))
   );
   // A bare call is a Less statement only with its terminator.  Keep this
   // distinct from Call, which is also a value piece and must not
@@ -3159,7 +3162,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal(')'),
       optional(literal(';'))
     ),
-    (children) => {
+    (children, _fields, span, rawChildren, _triviaLog, state) => {
       const callback = children.find(isLessEachCallback);
       if (callback === undefined) {
         throw new TypeError('Less each() reduction produced an invalid callback.');
@@ -3168,7 +3171,21 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       if (iterable === undefined) {
         throw new TypeError('Less each() reduction produced an invalid iterable.');
       }
-      return forNode(isMixinCall(iterable) ? iterable : requireValueSlot(iterable), callback.rules, callback.binding);
+      /*
+       * [P36] The call this lowers, as the ordinary call reducer would build it
+       * (the callback body as a detached-ruleset argument), so a modern-mode
+       * document evaluates it like any other unimported call. It ends at its
+       * own `)`, before the optional statement `;`.
+       */
+      const close = rawChildren.findLast(child => isSpannedToken(child) && child.value === ')');
+      const asCall = withSourceSpan(
+        withFunctionScope(
+          funcCall(functionNameFromOpener(children[0]), [iterable, classifyValueBlock(callback.rules)].filter(isLessValueSlotValue)),
+          functionScopeOf(state)
+        ),
+        { start: span.start, end: isSpannedToken(close) ? close.span.end : span.end }
+      );
+      return forNode(isMixinCall(iterable) ? iterable : requireValueSlot(iterable), callback.rules, callback.binding, asCall);
     }
   );
   const enclosedRaw = node(
@@ -3215,13 +3232,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       noTrivia(sequence(g.EnclosedFunctionName, g.EnclosedContent, literal(')'))),
       noTrivia(sequence(literal('('), g.EnclosedContent, literal(')')))
     ),
-    (children) => {
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => {
       const content = children.find((child): child is Interpolation => typeof child === 'object' && child !== null && 'type' in child && child.type === 'Interpolation');
       if (content === undefined) {
         throw new TypeError('Less general-enclosed lost its grammar-owned content.');
       }
       const name = children.find((child): child is EnclosedNameFact => typeof child === 'object' && child !== null && 'name' in child);
-      return name === undefined ? block(content) : funcCall(name.name, [content]);
+      return name === undefined ? block(content) : withFunctionScope(funcCall(name.name, [content]), functionScopeOf(state));
     }
   );
   // `@supports` has its own typed condition grammar. Keep this narrower than

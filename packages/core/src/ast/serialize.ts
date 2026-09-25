@@ -67,6 +67,7 @@ import {
 import type {
   Any,
   Apply,
+  AuthoredCallSlot,
   Collection,
   NestedPropertyBlock,
   Color,
@@ -167,7 +168,7 @@ import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
-import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
+import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, hasAmbientFunctions, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
 import type { Trivia, TriviaMap } from '../types/index.js';
 
 /* ---------------------------------------------------- MaybePromise glue */
@@ -4222,12 +4223,18 @@ function evalTyped(
       return mapMaybe(evalCall(node, frame, e, true), v => force(e, v));
     case 'Condition':
       return mapMaybe(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), makeBool);
-    case 'IfValue':
+    case 'IfValue': {
+      const unlowered = unloweredCall(node);
+      if (unlowered !== null) {
+        return mapMaybe(evalCall(unlowered, frame, e, true), v => force(e, v));
+      }
+
       /* The taken arm is consumed TYPED — `if(@c, 1px, 2px) * 2` operates on the
        * branch value, not on its bytes. An unmatched chain has no value. */
       return mapMaybe(pickIfValue(node, frame, e), taken => taken === undefined
         ? NULL
         : evalTypedSlot(taken, frame, e, projectMixinValues));
+    }
     case 'Range':
       /*
        * Ranges are consumed structurally by `forItems`; a value-position use
@@ -4594,7 +4601,12 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         return node.delimiter === 'square' ? makeBlock(v, 'square', node.escaped) : v;
       });
     }
-    case 'Expression':
+    case 'Expression': {
+      const unlowered = unloweredCall(node);
+      if (unlowered !== null) {
+        return evalCall(unlowered, frame, e, false);
+      }
+
       /*
        * A `$( … )` COMPUTATION BOUNDARY opens the math context but owns no output
        * delimiters — the `$(` and `)` are the marker, not a value's syntax. It stays
@@ -4612,6 +4624,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         return mapMaybe(evalValueSlot(node.value, frame, e), v => literal(`(${emitValue(v)})`));
       }
       return evalValueSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true });
+    }
     case 'Condition':
       /*
        * [condition-grammar] Every construct that CONSUMES a condition — Less
@@ -4741,12 +4754,18 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     }
     case 'FunctionCall':
       return evalCall(node, frame, e, false);
-    case 'IfValue':
+    case 'IfValue': {
+      const unlowered = unloweredCall(node);
+      if (unlowered !== null) {
+        return evalCall(unlowered, frame, e, false);
+      }
+
       /* An unmatched chain (`$if` with no `$else`, or Less `if(@c, a)`) is empty
        * bytes, exactly what an absent value emits. */
       return mapMaybe(pickIfValue(node, frame, e), taken => taken === undefined
         ? literal('')
         : evalValueSlot(taken, frame, e));
+    }
     case 'Interpolation':
       return evalInterp(node, frame, e);
     case 'Reference':
@@ -6210,6 +6229,19 @@ function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): Mayb
   });
 }
 
+/**
+ * [P36] The call a grammar lowered into `node`, when the document it was
+ * written in has no ambient built-ins — `null` when the lowered form stands.
+ * Less lowers `if()`/`boolean()`/`each()` into structure only in legacy mode;
+ * a later `@use` decides that, so the decision is read here, at evaluation.
+ * The call returned is evaluated like any other: `evalCall`, which finds no
+ * ambient built-in and takes the unknown-call path.
+ */
+function unloweredCall(node: AuthoredCallSlot): FunctionCall | null {
+  const call = node._asCall;
+  return call !== null && !hasAmbientFunctions(call) ? call : null;
+}
+
 /** Evaluate a function call: materialize the modeled arg list, then `ev.call`. */
 /** Guard-eval deps sourced from an evaluation context (a value-position condition,
  *  like a CSS ruleset guard, never depends on a mixin `default()` decision). */
@@ -7187,13 +7219,21 @@ function evalCall(
     });
   }
 
+  /*
+   * [P36] A call written in a Less modern-mode document has no ambient
+   * built-ins: the registry is out of scope and an unimported name takes the
+   * evaluator's unknown-call path, the one `.jess` reaches through its empty
+   * registry (P17). The parser attached its document's scope to the node.
+   */
+  const ambient = hasAmbientFunctions(node);
+
   // Args are materialized TYPED (each arg's tag sourced from its parse node).
   const typed = node.args.map(a => evalTypedSlot(a.value, frame, e, true));
   return combineAll(typed, (vals) => {
-    const ordered = orderKeywordArgs(node.args, vals, ev, node.name, selected);
+    const ordered = orderKeywordArgs(node.args, vals, ev, node.name, selected, ambient);
     const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
     try {
-      const result = ev.call(node.name, args, e.modes, null, e.io, selected);
+      const result = ev.call(node.name, args, e.modes, null, e.io, selected, ambient);
       return isThenable(result)
         ? result.catch(error => invalidFunctionCall(node, error, e))
         : result;
@@ -7225,7 +7265,8 @@ function orderKeywordArgs<T>(
   vals: T[],
   ev: ValueEvaluator,
   name: string,
-  scopedFn: Fn | undefined
+  scopedFn: Fn | undefined,
+  ambient: boolean
 ): T[] {
   let hasName = false;
   for (let i = 0; i < args.length; i++) {
@@ -7238,7 +7279,7 @@ function orderKeywordArgs<T>(
     return vals;
   }
 
-  const params = ev.paramNames(name, scopedFn);
+  const params = ev.paramNames(name, scopedFn, ambient);
   if (params === undefined) {
     return vals;
   }
@@ -11482,7 +11523,9 @@ function runWhile(
 
 /** Select one `$if` branch and publish only that branch into this activation's scoped index. */
 function selectIfBody(node: If, frame: Frame, e: Emit): Statement[] | null {
-  const body = selectedIfBody(node, frame, e);
+  /* [P36] Not lowered where built-ins are not ambient: the body is the ordinary call statement. */
+  const unlowered = unloweredCall(node);
+  const body = unlowered === null ? selectedIfBody(node, frame, e) : [unlowered];
   if (!body) {
     return null;
   }
@@ -14337,6 +14380,9 @@ function resolveValueBlock(node: Binding, frame: Frame | null, e: EvalCtx): Valu
       continue;
     }
     if (cur.type === 'IfValue') {
+      if (unloweredCall(cur) !== null) {
+        return undefined;
+      }
       cur = pickIfBranch(cur, cursor, e);
       continue;
     }
@@ -15020,6 +15066,13 @@ function expandFor(
   source: NestedHeaderSource | null = null,
   sharedLeaves?: NestedLeafBuffer
 ): MaybePromise<void> {
+  /* [P36] Not lowered where built-ins are not ambient: evaluate the ordinary call statement, once. */
+  const unlowered = unloweredCall(node);
+  if (unlowered !== null) {
+    return sharedLeaves === undefined
+      ? walkBody([unlowered], composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion)
+      : nestedBody([unlowered], frame, e, undefined, imp, source, null, sharedLeaves, applyExpansion);
+  }
   return mapMaybe(forItems(node.iterable, frame, e), (items) => {
     const run = (start: number): MaybePromise<void> => {
       const collectionEntries = Array.isArray(items)
@@ -17078,18 +17131,19 @@ const MODULE_NAMESPACE_IDENT = /^-?[_a-zA-Z\u0080-\uFFFF][-_a-zA-Z0-9\u0080-\uFF
  * The auto-derived `@compose`/`@use` namespace: Sass's default-namespace rule
  * applied to the SPECIFIER STRING the author wrote (never the plugin-resolved
  * path). Take the last `/`-segment, strip a trailing file extension, strip a
- * leading `_` partial marker. `./foo.less` → `foo`, `#sass/map` → `map`,
- * `@co/design-tokens` → `design-tokens`, `./_theme.scss` → `theme`. Returns
+ * leading `_` partial marker or `#` package-import marker. `./foo.less` → `foo`,
+ * `#sass/map` → `map`, `#less` → `less`, `@co/design-tokens` → `design-tokens`,
+ * `./_theme.scss` → `theme`. Returns
  * `null` when the result is not a usable identifier — the author must then
  * spell an explicit `as <name>`.
  */
 function deriveModuleNamespace(specifier: string): string | null {
   /* Last `/`-segment, then strip a trailing `.ext` (only when a name precedes the
-     dot) and a leading `_` partial marker. Regex-based to keep `serialize.ts` free
+     dot) and a leading `_` or `#` marker. Regex-based to keep `serialize.ts` free
      of `lastIndexOf` (the diagnostic cold-path guard bans it). */
   const segment = /[^/]*$/.exec(specifier)?.[0] ?? specifier;
   const withoutExt = segment.replace(/^(.+)\.[^.]+$/, '$1');
-  const base = withoutExt.startsWith('_') ? withoutExt.slice(1) : withoutExt;
+  const base = withoutExt.startsWith('_') || withoutExt.startsWith('#') ? withoutExt.slice(1) : withoutExt;
   return MODULE_NAMESPACE_IDENT.test(base) ? base : null;
 }
 
