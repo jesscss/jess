@@ -61,11 +61,13 @@ describe('Less: a `{` in a function argument (P37)', () => {
   });
 
   /*
-   * The one shape both readings accept: a lone call with no `;`. It is a value
-   * first, so it is a curly block — on origin/dev it was a detached ruleset
-   * holding one call statement. No corpus input has this shape.
+   * A lone function call with no `;` is a value first, so it is a curly block —
+   * on origin/dev it was a detached ruleset holding one call statement. No
+   * corpus input has this shape. A lone MIXIN or DETACHED-RULESET call is the
+   * opposite: it starts a statement, so the block is a declaration list (pinned
+   * in less-parser `brace-arguments.test.ts`).
    */
-  it('a lone value-shaped call with no `;` is a curly block', async () => {
+  it('a lone function call with no `;` is a curly block', async () => {
     await expect(render('a { b: foo({ f(x) }); }'))
       .resolves.toBe('a {\n  b: foo({ f(x) });\n}\n');
   });

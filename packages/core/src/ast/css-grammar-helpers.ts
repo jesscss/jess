@@ -19,6 +19,7 @@
  */
 import {
   any,
+  block,
   cssBaseMathOutsideParens,
   funcCall,
   list,
@@ -31,6 +32,7 @@ import { withValueLayout } from './provenance.js';
 import { semanticGapText } from './grammar-helpers.js';
 import type {
   CompoundSelector,
+  Block,
   Declaration,
   FunctionCall,
   Interpolation,
@@ -108,7 +110,7 @@ export function withAuthoredSeparators<T extends object>(value: T, fields: Reduc
 }
 
 /*
- * Split a call's children at each `;` terminal. Returns the values between
+ * Split a delimited group's children at each `;` terminal. Returns the values between
  * them, one group per side (empty where the author wrote none), and each `;`'s
  * authored run: the padding tokens beside it and the `;` itself. These are the
  * grammar's own tokens — a comment is one whole trivia token, so a `;` inside
@@ -148,6 +150,11 @@ function splitAtSemicolons(children: readonly unknown[]): { segments: ValueSlot[
   return { segments, separators };
 }
 
+/** Does this body carry a `;` terminal of its own (not one inside a value)? */
+function hasSemicolon(children: readonly unknown[]): boolean {
+  return children.some(child => !isValue(child) && isTerminalText(child) && tokenText(child) === ';');
+}
+
 /** Record `separators` as `value`'s layout when there is one per boundary. */
 function withLayoutWhenComplete<T extends object>(value: T, separators: readonly string[], expected: number): T {
   return separators.length === expected ? withValueLayout(value, separators) : value;
@@ -166,7 +173,7 @@ function withLayoutWhenComplete<T extends object>(value: T, separators: readonly
  */
 export function semicolonGroupedCall(children: readonly unknown[], fields: ReducerFields | undefined): FunctionCall {
   const name = functionOpenName(children[0]);
-  if (!children.some(child => !isValue(child) && isTerminalText(child) && tokenText(child) === ';')) {
+  if (!hasSemicolon(children)) {
     const args = children.filter(isValueSlotValue);
     return funcCall(name, withAuthoredSeparators(args, fields, Math.max(0, args.length - 1)));
   }
@@ -186,6 +193,32 @@ export function semicolonGroupedCall(children: readonly unknown[], fields: Reduc
     }
   }
   return funcCall(name, [withLayoutWhenComplete(list(groups, ';'), separators, groups.length - 1)]);
+}
+
+/**
+ * A css-values-5 §3.1.1 curly block: one value is itself, several are the comma
+ * `List` they were written as, with their authored argument-comma layout.
+ */
+export function curlyBlock(children: readonly unknown[], fields: ReducerFields | undefined): Block {
+  const values = valueSlotChildren(children);
+  return block(
+    values.length === 1 ? values[0]! : withAuthoredSeparators(list(values, ','), fields, values.length - 1),
+    'curly'
+  );
+}
+
+/**
+ * A parenthesized group that may hold `;`-separated parts (a `var()` fallback
+ * `(a; b)`). Without a `;` it is the one value it always was; with one it is the
+ * `;` List of its parts, an empty part as the empty slot `[]`.
+ */
+export function parenGroupBlock(children: readonly unknown[]): Block {
+  if (!hasSemicolon(children)) {
+    return block(valueSlotChildren(children)[0] ?? any(''));
+  }
+  const { segments, separators } = splitAtSemicolons(children);
+  const parts = segments.map(segment => segment[0] ?? []);
+  return block(withLayoutWhenComplete(list(parts, ';'), separators, parts.length - 1));
 }
 
 export function sourceText(child: unknown): string {

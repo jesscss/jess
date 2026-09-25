@@ -36,6 +36,8 @@ const ROUND_TRIP: Array<[name: string, css: string, emitted?: string]> = [
   ['empty semicolon groups', 'foo(a;; b)'],
   ['comments beside a `;`', 'foo(a /* c */ ; /* d */ b)'],
   ['a {}-wrapped argument', 'random-item(--x, { a, b }, c)'],
+  ['a {}-wrapped argument with padding before a comma', 'foo({a , b})', 'foo({ a, b })'],
+  ['a var() fallback group holding a nested `;`', 'var(--x, (a; b))'],
   ['a dashed function with a {}-wrapped argument', '--max-plus-x({ 1px, 7px, 2px }, 3px)'],
   ['a dashed function', '--foo(1px, 2px)'],
   ['a dashed function inside calc()', 'calc(--foo(1px) + 1px)'],

@@ -34,6 +34,7 @@ import {
   complexSegments,
   cssBaseMathOutsideParens,
   cssRelativeCombinator,
+  curlyBlock,
   decl,
   dimension,
   documentStatements,
@@ -62,6 +63,7 @@ import {
   unknownAtRuleBlock,
   operation,
   optionalValue,
+  parenGroupBlock,
   pseudoSelector,
   queryComparisonOperators,
   quoted,
@@ -1663,6 +1665,13 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     literal(')')
   );
+
+  /*
+   * A parenthesized fallback group. A `<declaration-value>` forbids only a
+   * TOP-LEVEL `;` (css-syntax-3 §5.4.7), so one nested in the group is an
+   * ordinary token: `var(--x, (a; b))` is `(` a `;` List `)`, with the same
+   * separator run the function body uses.
+   */
   const VarFallbackParen = node(
     'VarFallbackParen',
     sequence(
@@ -1673,10 +1682,14 @@ const cssFactory = (g: GrammarSelf) => {
       literal('('),
       optional(cssValueTrivia),
       optional(g.VarFallback),
+      many(sequence(
+        functionArgumentSemicolon,
+        optional(g.VarFallback)
+      )),
       optional(cssValueTrivia),
       literal(')')
     ),
-    children => block(valueSlotChildren(children)[0] ?? any(''))
+    children => parenGroupBlock(children)
   );
 
   /*
@@ -2420,9 +2433,11 @@ const cssFactory = (g: GrammarSelf) => {
   /*
    * A `{}`-wrapped free-form argument (css-values-5 §3.1.1): "the production
    * matches just the {} block that the '{' token opens". CSS Syntax calls it a
-   * `{}-block`; the contents are one or more comma-separated values, so the
-   * interior is `ValueList` and the result is the same `Block` fact the paren
-   * and square siblings produce, with the `curly` delimiter.
+   * `{}-block`; the contents are one or more comma-separated values, and the
+   * result is the same `Block` fact the paren and square siblings produce, with
+   * the `curly` delimiter. The commas are argument commas, not `ValueList`'s:
+   * inside braces there is no top-level space run for a padded comma to be part
+   * of, so `{a , b}` is two values exactly as `foo(a , b)` is two arguments.
    *
    * It is reachable only as a whole function argument, never as a declaration
    * value atom: a top-level `{` in a declaration is where a nested rule's body
@@ -2433,14 +2448,14 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       literal('{'),
       optional(cssValueTrivia),
-      g.ValueList,
+      oneOrMoreSep(
+        g.ValueSequence,
+        authoredArgumentComma
+      ),
       optional(cssValueTrivia),
       literal('}')
     ),
-    children => block(
-      valueSlotChildren(children)[0]!,
-      'curly'
-    )
+    (children, fields) => curlyBlock(children, fields)
   );
   const ValueList = node(
     'ValueList',

@@ -1589,28 +1589,51 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const functionArgumentSeparator = field('separator', regex(/[;,][ \t\n\r\f]*/));
   const trailingFunctionArgumentSeparator = field('trailingSeparator', noTrivia(regex(/[;,][ \t\n\r\f]*/)));
   // A `{` in a function argument is a CURLY BLOCK or a DECLARATION LIST (ledger
-  // P37). The block's first item decides: a value followed by `,` or the closing
-  // `}` makes it a curly block — css-values-5 §3.1.1's `{}`-wrapped value list,
-  // `{ a }`, `{ a, b }`, emitted as written — and a declaration (`name:`), a
-  // nested rule or a mixin call makes it a detached ruleset (`{ v: 1; }`).
+  // P37): a css-values-5 §3.1.1 `{}`-wrapped value list, `{ a }`, `{ a, b }`,
+  // emitted as written, or a detached ruleset, `{ v: 1; }`. It is DISPATCHED at
+  // the `{`: a zero-width scan classifies the block, then exactly one arm parses
+  // it, once. A dispatch branch that fails is a committed failure, so a block
+  // classified as one shape never falls back to being re-read as the other.
   //
-  // `CurlyValue` is CSS's own rule: `{`, one or more comma-separated values, `}`.
-  // A declaration list stops it at or after its first item — a `name:`, a nested
-  // rule's `{`, a `;`, or a mixin call, which is not a Less value unless it carries
-  // a lookup accessor (`#ns.m()[@r]`) — and `ValueBlock` then reads the block.
-  // `{}` has no first item and stays a detached ruleset. The shapes both arms
-  // accept are a lone value-shaped call with no `;` — `{ f(x) }`, `{ @r() }`,
-  // `{ #ns.m()[@r] }` — which are values first, so they are curly blocks.
+  // The scan skips strings and comments (the ambient scan holes), balanced
+  // `(…)`/`[…]` and `//` comments, and stops at the first top-level `:`, `;`,
+  // `{` or `}`. Reaching the closing `}` means no item was a declaration
+  // (`name:`), a statement (`;`) or a nested rule (`{`): a curly block. Commas
+  // do not stop it, so a nested rule with a selector list (`{ h1, h2 { … } }`)
+  // is still a declaration list. Two block shapes are declaration lists before
+  // the scan starts: `{}`, which has no value, and a block that opens on a
+  // statement a value cannot begin — a mixin call or `.class`/`#id` rule
+  // (`.m()`, `#ns.m()`, `#ns > .m()`) or a detached-ruleset call (`@r()`).
+  // `#fff, #000` is still a value: a hex colour is not followed by `(`, `.`,
+  // `>`, `;` or `{`.
   //
-  // This is an ordered choice, not a `dispatch`: the deciding token is the
-  // delimiter AFTER the first item, and the two arms read that item with
-  // different grammars, so no routed opener can hold it. The cost is that a
-  // declaration list's leading comma-run of values is read once by the curly
-  // arm before `ValueBlock` reads it (one identifier for `{ v: 1; }`).
+  // `CurlyValue` is CSS's own rule, inherited, with `g.ValueSequence` resolving
+  // to Less's value run.
+  const braceStatementStart = regex(/\.[-_a-zA-Z\u0080-￿\\]|#[-\w\u0080-￿]+[ \t\n\r\f]*[(.>;{]|@[-\w\u0080-￿]+[ \t\n\r\f]*\(/);
+  const braceGroup = balanced('(', ')');
+  const braceSquareGroup = balanced('[', ']');
+  const curlyBlockAhead = peek(sequence(
+    literal('{'),
+    not(literal('}')),
+    not(braceStatementStart),
+    scanTo(
+      choice(literal(':'), literal(';'), literal('{'), literal('}')),
+      { skip: [braceGroup, braceSquareGroup, lineComment] }
+    ),
+    literal('}')
+  ));
+  const braceArgumentShape = choice(
+    transform(curlyBlockAhead, () => 'curly'),
+    transform(peek(literal('{')), () => 'declarations')
+  );
+  const braceArgument = dispatch(
+    braceArgumentShape,
+    caseOf('curly', g.CurlyValue),
+    otherwise(g.ValueBlock)
+  );
   const functionArgument = choice(
     g.DoubledQuoteArgument,
-    g.CurlyValue,
-    g.ValueBlock,
+    braceArgument,
     g.FunctionArgument
   );
   const FunctionArguments = optional(sequence(
