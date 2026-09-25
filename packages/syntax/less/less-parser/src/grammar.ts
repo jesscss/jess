@@ -373,7 +373,6 @@ type LessRules = {
   CalcFunction: Combinator<unknown>;
   FunctionArguments: Combinator<unknown>;
   branchListAhead: Combinator<unknown>;
-  plainFunctionArguments: Combinator<unknown>;
 };
 
 /** Macro-fused shared recognition plus this file's recursively defined outputs. */
@@ -399,7 +398,7 @@ type SharedSyntax = {
   CurlyValue: Combinator<ValueNode>;
   // Inherited from the CSS base: the P38 branch argument list (`if()` branches).
   BranchList: Combinator<ValueNode>;
-  genericFunctionArguments: Combinator<unknown>;
+  functionArgumentShape: Combinator<string>;
   // Converged to the CSS base (inherited via compose): same node type
   // SimpleSelector, byte-identical keyframeEndpoint, g.Percentage resolves to
   // the CSS base; reducer differs only requireToken().value vs sourceText().
@@ -1646,16 +1645,20 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // BRANCH arguments (ledger P38): a call whose first argument is followed by a
   // top-level `:` takes CSS's branch-list shape, `condition: value; …` —
   // css-values-5 §8.3 `if()` is its first user — in legacy and modern mode
-  // alike, with the `;`s preserved. The body dispatch is CSS's
-  // `genericFunctionArguments`, inherited; Less overrides two of its slots:
+  // alike, with the `;`s preserved. The classification is CSS's
+  // `functionArgumentShape`, inherited, over Less's override of its
+  // `branchListAhead` slot: CSS's scan plus Less's keyword argument, which is
+  // not a branch — a first argument `@name:` (`darken(@color: red)`), the
+  // `keywordArgumentKey` spelling. The skip set is CSS's balanced groups;
+  // strings, comments and `//` line comments are the ambient scan holes.
   //
-  // - `branchListAhead`: CSS's scan plus Less's keyword argument, which is
-  //   not a branch — a first argument `@name:` (`darken(@color: red)`), the
-  //   `keywordArgumentKey` spelling. The skip set is CSS's balanced groups;
-  //   strings, comments and `//` line comments are the ambient scan holes.
-  // - `plainFunctionArguments`: Less's flat vector, where `;` separates
-  //   arguments like `,` (`foo(a; b)`) and a legacy `if(cond, a, b)` is still
-  //   lowered.
+  // The plain arm is Less's flat vector, where `;` separates arguments like
+  // `,` (`foo(a; b)`) and a legacy `if(cond, a, b)` is still lowered. The
+  // dispatch itself stays here rather than inheriting CSS's
+  // `genericFunctionArguments`: behind that inherited rule the argument
+  // separators' `field` captures no longer reach `GenericFunction`'s reducer,
+  // and every authored delimiter layout was lost (measured: 5 layout and
+  // comment-replay tests failed).
   const branchListAhead = peek(sequence(
     // Fast reject, as in CSS: a first argument that reaches `,`/`;`/`)` with no
     // colon, group, string, comment or escape on the way is plain.
@@ -1669,11 +1672,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     literal(':'),
     not(literal('/'))
   ));
-  const plainFunctionArguments = optional(sequence(
-    oneOrMoreSep(functionArgument, functionArgumentSeparator),
-    optional(trailingFunctionArgumentSeparator)
-  ));
-  const FunctionArguments = g.genericFunctionArguments;
+  const FunctionArguments = dispatch(
+    g.functionArgumentShape,
+    caseOf('branches', g.BranchList),
+    otherwise(optional(sequence(
+      oneOrMoreSep(functionArgument, functionArgumentSeparator),
+      optional(trailingFunctionArgumentSeparator)
+    )))
+  );
   // Value-position identifiers and glued function openers share one lexical
   // family. Parse that opener once, then route by the returned text. Branch
   // nodes own `routed()` so the consumed opener remains inside the selected CST
@@ -5305,7 +5311,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     CalcFunction,
     FunctionArguments,
     branchListAhead,
-    plainFunctionArguments,
     whitespace,
     rw: whitespace
   };
