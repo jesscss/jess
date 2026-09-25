@@ -707,23 +707,9 @@ export const ERR = {
       ...args
     });
   },
-  rootCallWithoutRoot(args: Common & { meta: { name: string } }) {
+  rulesetArgumentWithRules(args: Common & { meta: { name: string; what: string } }) {
     return makeJessError({
-      code: 'eval/root-call-without-root',
-      phase: 'eval',
-      ...args
-    });
-  },
-  unresolvedCallStatement(args: Common & { meta: { name: string } }) {
-    return makeJessError({
-      code: 'eval/unresolved-call-statement',
-      phase: 'eval',
-      ...args
-    });
-  },
-  rulesetWithoutSpelling(args: Common & { meta: { name: string } }) {
-    return makeJessError({
-      code: 'eval/ruleset-without-spelling',
+      code: 'eval/ruleset-argument-with-rules',
       phase: 'eval',
       ...args
     });

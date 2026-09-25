@@ -35,9 +35,7 @@ export type JessErrorCode =
   | 'eval/invalid-statement'
   | 'eval/module-config-rejected'
   | 'eval/property-in-root'
-  | 'eval/root-call-without-root'
-  | 'eval/unresolved-call-statement'
-  | 'eval/ruleset-without-spelling'
+  | 'eval/ruleset-argument-with-rules'
   | 'eval/guarded-selector-list'
   | 'eval/ruleset-on-property'
   | 'eval/async-in-sync-position'
@@ -250,8 +248,8 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     {
       summary: 'Value node is not valid as a statement',
       reason:
-        '${what} is a value; it cannot stand on its own in a rules body — it was likely returned by a function/mixin or leaked from a detached ruleset.',
-      fix: 'Wrap it in a declaration (property: value) or return a valid statement node (ruleset, declaration, at-rule).'
+        '${what} is a value; it cannot stand on its own at the stylesheet root or in a declaration list — it was likely returned by a function/mixin, or is a call left as a plain CSS function call because no function by that name is in scope or it could not evaluate its arguments.',
+      fix: 'Wrap it in a declaration (property: value), import or define the function so it evaluates, or return a valid statement node (ruleset, declaration, at-rule) or raw text.'
     }
   ],
   [
@@ -273,30 +271,12 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     }
   ],
   [
-    'eval/root-call-without-root',
+    'eval/ruleset-argument-with-rules',
     {
-      summary: 'Function did not return a root node',
+      summary: 'A ruleset argument can only be written out as declarations',
       reason:
-        'The root-level function call "${name}" evaluated to a value or void result instead of a root-level statement.',
-      fix: 'Call the function from a value position, or return a ruleset/declaration block that can be emitted at the root.'
-    }
-  ],
-  [
-    'eval/unresolved-call-statement',
-    {
-      summary: 'A function call cannot stand alone as a statement',
-      reason:
-        '"${name}()" is not a function this document defines or imports, so it would be written out as-is, and a bare call is not valid CSS at the stylesheet root or in a declaration list.',
-      fix: 'Import or define "${name}" (in a Less document that uses @use or @compose, Less built-ins must be imported), or use the call as a property value, e.g. `property: ${name}(…);`.'
-    }
-  ],
-  [
-    'eval/ruleset-without-spelling',
-    {
-      summary: 'A ruleset cannot be written as a value',
-      reason:
-        '"${name}()" is not a function this document defines or imports, so it is written out as-is, and its anonymous-mixin argument has no authored spelling to write.',
-      fix: 'Import or define "${name}", or pass a value instead of the block.'
+        '"${name}()" is written out as a plain CSS call, and its ruleset argument holds ${what}, which has no spelling inside a CSS value.',
+      fix: 'Import or define "${name}" so the call is evaluated, or pass a ruleset that holds only declarations.'
     }
   ],
   [

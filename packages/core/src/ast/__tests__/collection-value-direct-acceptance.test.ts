@@ -4,7 +4,6 @@ import {
   classifyValueBlock, collection, collectionEntry, collectionSpread, decl, dimension, funcCall, interpolation, keyword, nestedPropertyBlock,
   rule, stylesheet, variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
-import { withAuthoredText } from '../provenance.js';
 import { serialize } from '../serialize.js';
 import { makeLessRegistry } from '@jesscss/fns';
 
@@ -76,41 +75,41 @@ describe('Collection in a value/arg position', () => {
     expect(render(document)).toBe('.x {\n  y: foo({ a: 1 });\n}\n');
   });
 
-  /* [P37] A block passed to a call written out as-is is written as authored. */
+  /* [P37] A block passed to a call written out as-is is written from its evaluated body. */
   it('keeps Less variable-only value blocks executable', () => {
-    const block = withAuthoredText(classifyValueBlock([
+    const block = classifyValueBlock([
       variableDeclaration('a', dimension(1), { mode: 'declare' }),
       variableDeclaration('b', dimension(2), { mode: 'declare' })
-    ]), '{ @a: 1; @b: 2; }');
+    ]);
     expect(block.type).toBe('AnonymousMixin');
 
     const document = stylesheet([
       rule('.x', [decl('y', funcCall('foo', [block]))])
     ]);
 
-    expect(render(document)).toBe('.x {\n  y: foo({ @a: 1; @b: 2; });\n}\n');
+    expect(render(document)).toBe('.x {\n  y: foo({});\n}\n');
   });
 
   it('keeps non-map Less detached rulesets as anonymous mixins', () => {
-    const block = withAuthoredText(classifyValueBlock([
+    const block = classifyValueBlock([
       decl('a', dimension(1))
-    ]), '{  a: 1; }');
+    ]);
     expect(block.type).toBe('AnonymousMixin');
 
     const document = stylesheet([
       rule('.x', [decl('y', funcCall('foo', [block]))])
     ]);
 
-    expect(render(document)).toBe('.x {\n  y: foo({  a: 1; });\n}\n');
+    expect(render(document)).toBe('.x {\n  y: foo({ a: 1; });\n}\n');
   });
 
-  /* [P37] With no authored spelling the block would vanish (`foo()`): an error instead. */
-  it('rejects a block with no authored spelling passed to an unknown call', () => {
+  /* [P37] A nested rule has no spelling inside a value: an error, not lost content. */
+  it('rejects a block holding a nested rule passed to an unknown call', () => {
     const document = stylesheet([
-      rule('.x', [decl('y', funcCall('foo', [classifyValueBlock([decl('a', dimension(1))])]))])
+      rule('.x', [decl('y', funcCall('foo', [classifyValueBlock([rule('.z', [decl('a', dimension(1))])])]))])
     ]);
 
-    expect(() => render(document)).toThrow(expect.objectContaining({ code: 'eval/ruleset-without-spelling' }));
+    expect(() => render(document)).toThrow(expect.objectContaining({ code: 'eval/ruleset-argument-with-rules' }));
   });
 
   it('serializes an empty collection as `{}`', () => {

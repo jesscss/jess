@@ -20,7 +20,7 @@
  */
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
-import { NO_SPAN, any, callArg, condition, dimension, expression, funcCall, ifNode, ifValue, important, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, quoted, reference, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withAuthoredText, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, callArg, condition, dimension, expression, funcCall, ifNode, ifValue, important, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, quoted, reference, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, Operation, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorCapture, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessUnsupportedVariableNameError } from './parse-error.js';
@@ -1972,15 +1972,6 @@ function requireCallbackStatements(children: readonly unknown[]): Statement[] {
   return statements;
 }
 
-/**
- * Keep a detached ruleset's authored bytes (ledger P37): passed to a call that
- * is written out as-is, the block is written exactly as it was authored.
- */
-function withValueBlockText(block: AnonymousMixin, span: SourceSpan, state: unknown): AnonymousMixin {
-  const source = sourceFromState(state);
-  return source === undefined ? block : withAuthoredText(block, source.slice(span.start, span.end));
-}
-
 /** Read a grammar-owned `{ … }` body without silently dropping non-body facts. */
 function requireValueBlockBody(children: readonly unknown[]): Statement[] {
   const bodyStart = children.findIndex(child => isLessTerminalText(child, '{'));
@@ -2359,7 +2350,6 @@ export {
   triviaTextAtInsertIndex,
   unsupportedVariableNameFrom,
   valuePieceReducerWithTrivia,
-  withValueBlockText,
   lessValueSlot,
   variableNameTerminalText,
   variableNameText,

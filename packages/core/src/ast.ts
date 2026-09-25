@@ -22,7 +22,6 @@ export {
   triviaMapOf,
   valueBoundaryTriviaOf,
   valueLayoutOf,
-  withAuthoredText,
   withBodySpan,
   withSourceSpan,
   withTriviaMap,

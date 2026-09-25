@@ -93,16 +93,6 @@ export interface FunctionScopeSlot {
   _fnScope: FunctionScope | null;
 }
 
-/**
- * The authored bytes of a block the grammar may have to write back out as it
- * was written (ledger P37): a Less detached ruleset passed to a call that is
- * emitted as written keeps its source spelling. `null` (the factory default)
- * where the parser recorded none.
- */
-export interface AuthoredTextSlot {
-  _text: string | null;
-}
-
 /** The two inline body-span slots carried by every block-bearing node. */
 export interface BodySpanSlots {
   _bs: number;
@@ -454,12 +444,6 @@ export function withFunctionScope<T extends FunctionScopeSlot>(call: T, scope: F
 export function hasAmbientFunctions(call: FunctionScopeSlot): boolean {
   const scope = call._fnScope;
   return scope === null || scope.ambient;
-}
-
-/** Retain a block's authored bytes (see {@link AuthoredTextSlot}). */
-export function withAuthoredText<T extends AuthoredTextSlot>(node: T, text: string | null): T {
-  node._text = text;
-  return node;
 }
 
 /** Retain the exact source span inside a block's braces. */

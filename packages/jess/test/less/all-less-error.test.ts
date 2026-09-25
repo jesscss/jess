@@ -62,11 +62,11 @@ const acceptedDivergences = new Map<string, string>([
   // property value now throws eval/ruleset-on-property (declaration.ts).
   // multiple-guards-on-css-selectors2 GRADUATED — guarded selector lists now throw
   // eval/guarded-selector-list from the public AST serializer.
-  // root-func-undefined-1 GRADUATED — root-level value/void function statements now
-  // throw eval/root-call-without-root from emitCallStatement.
-  // The plugin tree-node scalar fixtures also throw eval/root-call-without-root:
-  // a top-level function statement may print anonymous bytes, but typed value
-  // results are not root stylesheet output.
+  // root-func-undefined-1 GRADUATED — a statement-position call whose result is a
+  // value (including a call left as a plain CSS call) throws eval/invalid-statement
+  // (ledger P37; Less 4.x `checkValidNodes`). The plugin tree-node scalar
+  // fixtures throw it too: a statement call may print raw text, but typed value
+  // results are not statements.
   // ampersand-merge-template-invalid GRADUATED — its parent `@{list-quoted}` is a
   // comma-list value in selector position, so it now throws selector/comma-list-interpolation
   // (interpolated.ts). `.foo-&` itself is a plain compound; the old merge-template throw
@@ -136,7 +136,7 @@ describe('Less error corpus (Jess must error where Less errors)', () => {
       }
       if (rootCallFunctionFixtures.has(file)) {
         expect(errors, `${file} should reject value results in root statement position`).toEqual(expect.arrayContaining([
-          expect.objectContaining({ phase: 'eval', code: 'eval/root-call-without-root' })
+          expect.objectContaining({ phase: 'eval', code: 'eval/invalid-statement' })
         ]));
         expect(errors.some(error => error.code === 'eval/async-in-sync-position'), `${file} must not leak the async render lane`).toBe(false);
       }

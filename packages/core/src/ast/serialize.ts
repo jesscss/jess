@@ -7226,27 +7226,19 @@ function evalCall(
   const ambient = hasAmbientFunctions(node);
 
   /*
-   * [P37] A name that reaches no function is written out as-is, its arguments
-   * evaluated — and an anonymous-mixin argument written exactly as authored:
-   * `foo(@l, { v: 1; })` → `foo(1 2, { v: 1; })`. A block the parser kept no
-   * spelling for would vanish (`foo()`), which is an error, not lost content.
+   * [P37] A name that reaches no function is written out as-is with its
+   * arguments evaluated, and a ruleset argument is no exception: its body is
+   * evaluated and written, `@c: red; foo(@l, { color: @c; })` →
+   * `foo(1 2, { color: red; })`. It never silently vanishes.
    */
   const writtenAsIs = selected === undefined && ev.paramNames(node.name, undefined, ambient) === undefined;
 
   // Args are materialized TYPED (each arg's tag sourced from its parse node).
   const typed = node.args.map((a) => {
     const block = writtenAsIs ? resolveValueBlock(a.value, frame, e) : undefined;
-    if (block?.type !== 'AnonymousMixin') {
-      return evalTypedSlot(a.value, frame, e, true);
-    }
-    if (block._text === null) {
-      throw ERR.rulesetWithoutSpelling({
-        node,
-        ...callSiteLocation(node, e),
-        meta: { name: node.name }
-      });
-    }
-    return makeAny(block._text);
+    return block?.type === 'AnonymousMixin'
+      ? writtenRulesetArgument(node, block, a.value, frame, e)
+      : evalTypedSlot(a.value, frame, e, true);
   });
   return combineAll(typed, (vals) => {
     const ordered = orderKeywordArgs(node.args, vals, ev, node.name, selected, ambient);
@@ -7260,6 +7252,54 @@ function evalCall(
       return invalidFunctionCall(node, error, e);
     }
   });
+}
+
+/**
+ * [P37] A ruleset argument of a call written out as-is, evaluated in the scope
+ * it was bound in and written as a one-line declaration list:
+ * `{ color: red; margin: 0; }`. Variable declarations bind silently, as in any
+ * ruleset body. Anything that is not a declaration (a nested rule, an at-rule, a
+ * mixin call) and a block with parameters have no spelling inside a CSS value,
+ * so they raise rather than being dropped.
+ */
+function writtenRulesetArgument(
+  call: FunctionCall,
+  block: AnonymousMixin,
+  slot: ValueSlot,
+  frame: Frame | null,
+  e: EvalCtx
+): MaybePromise<ValueGroup> {
+  const reject = (what: string): never => {
+    throw ERR.rulesetArgumentWithRules({
+      node: call,
+      ...callSiteLocation(call, e),
+      meta: { name: call.name, what }
+    });
+  };
+  if (block.params !== undefined) {
+    reject('parameters');
+  }
+  const bound = resolveForRuleset(slot, frame, e);
+  const rules = bound?.rules ?? block.rules;
+  const bodyFrame: Frame = {
+    parent: bound?.frame ?? frame,
+    mixins: collectMixins(rules),
+    declIndex: collectDeclIndex(rules), cells: null, reassign: null
+  };
+  const parts: Array<MaybePromise<string>> = [];
+  for (const rule of rules) {
+    if (rule.type === 'VariableDeclaration') {
+      continue;
+    }
+    if (rule.type !== 'Declaration') {
+      reject(`a ${rule.type}`);
+      continue;
+    }
+    const name = typeof rule.name === 'string' ? rule.name : evalBytes(rule.name, bodyFrame, e);
+    const value = evalBytes(rule.value, bodyFrame, e);
+    parts.push(combineAll([name, value], ([n, v]) => `${n}: ${v}${rule.important ? ' !important' : ''};`));
+  }
+  return combineAll(parts, written => makeAny(written.length === 0 ? '{}' : `{ ${written.join(' ')} }`));
 }
 
 /**
@@ -16516,8 +16556,15 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
       e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
   } else if (node.type === 'FunctionCall') {
-    assertStatementCallResolves(node, frame, e);
-    const bytes = evalBytesSync(node, frame, e);
+    const bytes = statementCallBytes(node, frame, e);
+    if (isThenable(bytes)) {
+      observeRejectedThenable(bytes);
+      throw ERR.asyncInSyncPosition({
+        node,
+        ...callSiteLocation(node, e),
+        meta: { where: 'declaration-list call statement' }
+      });
+    }
     if (bytes.length === 0) {
       return;
     }
@@ -17622,31 +17669,57 @@ function emitRawInline(text: string, e: Emit): void {
 }
 
 /**
- * [P37] A call standing alone in statement position whose name reaches no
- * function — not a user function, not a scoped `@plugin`/`@use` function, not
- * a built-in in scope where it was written (P36), not a core form such as
- * `isdefined()` — would be written out as-is, and a bare call is not CSS.
- * It raises instead. Constructs a dialect lowers (Less `each()`/`if()`, mixin
- * calls) never arrive here as a `FunctionCall`.
+ * [P37] Whether a value a call leaves in statement position may stand there,
+ * per value type, at the two statement positions: the stylesheet root and a
+ * declaration list (a ruleset body). Ported from AST v1, where each node type
+ * carried `allowRoot` / `allowRuleRoot` (2.0.0-alpha.1) — Less 4.x `allowRoot`.
+ *
+ * A call can only produce a value, never a statement node, and the only value
+ * that is statement text is `Any`: raw text or an escaped string, what `e()`
+ * returns (`e('…');`), and the empty result of a function that returns
+ * nothing. Every other value — a dimension, colour, keyword, and the call
+ * written back out as-is because it produced no result — is a value dumped
+ * into a statement position, which is invalid CSS.
  */
-function assertStatementCallResolves(node: FunctionCall, frame: Frame, e: Emit): void {
-  if (e.lambdaFunctionNames?.has(node.name) || evalIntrospection(node, frame, e) !== undefined) {
-    return;
-  }
-  const lname = node.name.toLowerCase();
-  const scoped = e.scopedFunctionNames?.has(lname) ? lookupScopedFn(frame, lname, e) : undefined;
-  if (e.ev?.paramNames(node.name, scoped, hasAmbientFunctions(node)) !== undefined) {
-    return;
-  }
-  throw ERR.unresolvedCallStatement({
-    node,
-    ...callSiteLocation(node, e),
-    meta: { name: node.name }
+const STATEMENT_RESULT_POSITIONS: Readonly<Record<Value['type'], readonly [root: boolean, declarationList: boolean]>> = {
+  Any: [true, true],
+  Block: [false, false],
+  Bool: [false, false],
+  Collection: [false, false],
+  Color: [false, false],
+  Dimension: [false, false],
+  Keyword: [false, false],
+  List: [false, false],
+  Null: [false, false],
+  Quoted: [false, false],
+  Url: [false, false]
+};
+
+/**
+ * [P37] Evaluate a call standing alone in statement position, once, and hold
+ * its result to {@link STATEMENT_RESULT_POSITIONS} for the position it lands in.
+ * The call is DEMANDED: a CSS colour or gradient call is dispatched rather than
+ * kept as authored bytes, so one left as a plain CSS call is caught too.
+ * Constructs a dialect lowers (Less `each()`/`if()`, mixin calls) never arrive
+ * here as a `FunctionCall`.
+ */
+function evalStatementCall(node: FunctionCall, frame: Frame, e: Emit): MaybePromise<ValueGroup> {
+  return mapMaybe(evalTyped(node, frame, e), (value) => {
+    const legal = !isValueGroupArray(value) && STATEMENT_RESULT_POSITIONS[value.type][e.depth === 0 ? 0 : 1];
+    if (!legal) {
+      throw ERR.invalidStatement({
+        node,
+        ...callSiteLocation(node, e),
+        meta: { what: `The result of "${node.name}()", ${isValueGroupArray(value) ? 'a value list' : `a ${value.type}`} \`${emitValue(value)}\`,` }
+      });
+    }
+    return value;
   });
 }
 
-function canEmitRootCallValue(value: EvalValue): boolean {
-  return isLiteral(value) || (!isValueGroupArray(value) && value.type === 'Any');
+/** The emitted bytes of a statement call's result (see {@link evalStatementCall}). */
+function statementCallBytes(node: FunctionCall, frame: Frame, e: Emit): MaybePromise<string> {
+  return mapMaybe(evalStatementCall(node, frame, e), value => emitValueC(value, e));
 }
 
 /**
@@ -17656,25 +17729,8 @@ function canEmitRootCallValue(value: EvalValue): boolean {
  * text. Emitted at the current indent; an empty result contributes nothing.
  */
 function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precomputed?: string): MaybePromise<void> {
-  assertStatementCallResolves(node, frame, e);
   const start = e.off;
   const emitBytes = (bytes: string): void => {
-    const isRoot = e.depth === 0;
-    const isAllowedVoid = node.name.toLowerCase() === 'if';
-    if (isRoot && bytes.length === 0 && !isAllowedVoid) {
-      throw ERR.rootCallWithoutRoot({
-        node,
-        ...callSiteLocation(node, e),
-        meta: { name: node.name }
-      });
-    }
-    if (isRoot && node.args.length === 0 && bytes.trim() === `${node.name}()`) {
-      throw ERR.rootCallWithoutRoot({
-        node,
-        ...callSiteLocation(node, e),
-        meta: { name: node.name }
-      });
-    }
     if (bytes.length === 0) {
       return;
     }
@@ -17687,46 +17743,9 @@ function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precompute
       e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
   };
-  const emitValueResult = (value: EvalValue): void => {
-    if (e.depth === 0 && !canEmitRootCallValue(value)) {
-      throw ERR.rootCallWithoutRoot({
-        node,
-        ...callSiteLocation(node, e),
-        meta: { name: node.name }
-      });
-    }
-    if (!isLiteral(value)) {
-      validateValueGroupUnits(value, e.modes, node, e, false);
-    }
-    emitBytes(emitValue(value));
-  };
-  const evalAndEmit = (): MaybePromise<void> =>
-    precomputed === undefined
-      ? e.depth === 0
-        ? mapMaybe(evalValue(node, frame, e), emitValueResult)
-        : mapMaybe(evalBytes(node, frame, e), emitBytes)
-      : emitBytes(precomputed);
-
-  /*
-   * A typed color is a value, not a statement surface.  Keep the normal
-   * byte-only fast path for ordinary/unknown calls, but retain this one fact
-   * while evaluating a known call so `rgba(0,0,0,0);` fails like Less instead
-   * of leaking a color token into the root output.
-   */
-  if (precomputed === undefined && e.ev && DEFERRED_COLOR_CALLS.has(node.name) && hasCssColorCallShape(node)) {
-    const value = evalTyped(node, frame, e);
-    return mapMaybe(value, (resolved) => {
-      if (!isValueGroupArray(resolved) && resolved.type === 'Color') {
-        throw ERR.invalidStatement({
-          node,
-          ...callSiteLocation(node, e),
-          meta: { what: 'Color' }
-        });
-      }
-      return evalAndEmit();
-    });
-  }
-  return evalAndEmit();
+  return precomputed === undefined
+    ? mapMaybe(statementCallBytes(node, frame, e), emitBytes)
+    : emitBytes(precomputed);
 }
 
 /**

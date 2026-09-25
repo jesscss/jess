@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
+import { emitJess } from '@jesscss/core';
+import { parse as parseLess } from '@jesscss/less-parser';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 import jessPlugin from '@jesscss/plugin-jess';
+import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
 /**
  * Ledger P37: a function call that is emitted as written may not lose content,
- * and one standing alone in statement position is an evaluation error.
+ * and a call standing alone in statement position may only leave a statement
+ * (raw text, or nothing) behind; a value dumped there is an evaluation error.
  */
 const compiler = new Compiler({
   output: { collapseNesting: true },
@@ -14,37 +18,42 @@ const compiler = new Compiler({
 
 const less = (source: string) => compiler.renderString(source, { language: 'less' });
 const jess = (source: string) => compiler.renderString(source, { language: 'jess' });
-const unresolvedStatement = expect.objectContaining({ code: 'eval/unresolved-call-statement' });
+const notAStatement = expect.objectContaining({ code: 'eval/invalid-statement' });
 
 describe('a ruleset argument to a call emitted as written (P37, jess#290)', () => {
-  it('is written as authored while the other arguments evaluate', async () => {
-    await expect(less('@l: 1 2; a { x: foo(@l, { v: 1; }); }'))
-      .resolves.toBe('a {\n  x: foo(1 2, { v: 1; });\n}\n');
+  it('is written from its evaluated body while the other arguments evaluate', async () => {
+    await expect(less('@c: red; @l: 1 2; a { x: foo(@l, { color: @c; }); }'))
+      .resolves.toBe('a {\n  x: foo(1 2, { color: red; });\n}\n');
   });
 
-  it('keeps the authored spacing of the block', async () => {
-    await expect(less('a { x: foo({  v: 1;  w: @nope; }, b); }'))
-      .resolves.toBe('a {\n  x: foo({  v: 1;  w: @nope; }, b);\n}\n');
+  it('binds its own variable declarations silently, as a ruleset body does', async () => {
+    await expect(less('a { x: foo({ @w: 2px; width: @w * 2; margin: 0 !important; }); }'))
+      .resolves.toBe('a {\n  x: foo({ width: 4px; margin: 0 !important; });\n}\n');
   });
 
-  it('modern: an unimported each() in a value writes its ruleset as authored', async () => {
-    await expect(less('@use "#less";\n@l: 1 2; a { x: each(@l, { v: 1; }); }'))
-      .resolves.toBe('a {\n  x: each(1 2, { v: 1; });\n}\n');
+  it('evaluates a variable bound to a ruleset in the scope it was bound in', async () => {
+    await expect(less('@c: red; @d: { color: @c; }; a { @c: blue; x: foo(@d); }'))
+      .resolves.toBe('a {\n  x: foo({ color: red; });\n}\n');
   });
 
-  it('writes a variable bound to a ruleset as that ruleset', async () => {
-    await expect(less('@d: { v: 1; }; a { x: foo(@d); }'))
-      .resolves.toBe('a {\n  x: foo({ v: 1; });\n}\n');
+  it('modern: an unimported each() in a value writes its evaluated ruleset', async () => {
+    await expect(less('@use "#less";\n@a: 2; @l: 1 2; a { x: each(@l, { v: @a; }); }'))
+      .resolves.toBe('a {\n  x: each(1 2, { v: 2; });\n}\n');
   });
 
-  it('.jess: a `@{ … }` block is written as its authored `{ … }`, without the sigil', async () => {
-    await expect(jess('$l: 1 2; $d: @{  v: 1; }; a { x: foo($l, $d); }'))
-      .resolves.toBe('a {\n  x: foo(1 2, {  v: 1; });\n}\n');
+  it('a ruleset holding a nested rule has no value spelling, so it raises rather than vanishing', async () => {
+    await expect(less('a { x: foo({ .b { c: d; } }); }'))
+      .rejects.toThrow(expect.objectContaining({ code: 'eval/ruleset-argument-with-rules' }));
+  });
+
+  it('.jess: a `@{ … }` block is written from its evaluated body, without the sigil', async () => {
+    await expect(jess('$c: red; $l: 1 2; $d: @{ color: $c; }; a { x: foo($l, $d); }'))
+      .resolves.toBe('a {\n  x: foo(1 2, { color: red; });\n}\n');
   });
 
   it('.jess: a block with params has no CSS spelling, so it raises rather than vanishing', async () => {
     await expect(jess('$f: @($x) { v: $x; }; a { x: foo($f); }'))
-      .rejects.toThrow(expect.objectContaining({ code: 'eval/ruleset-without-spelling' }));
+      .rejects.toThrow(expect.objectContaining({ code: 'eval/ruleset-argument-with-rules' }));
   });
 
   it('.jess: a `@{ … }` block anywhere else is unaffected', async () => {
@@ -56,36 +65,71 @@ describe('a ruleset argument to a call emitted as written (P37, jess#290)', () =
     await expect(less('@d: { v: 1; }; a { x: ~"@{d}"; y: 1 @d; z: e(@d); }'))
       .resolves.toBe('a {\n  x: ;\n  y: 1 ;\n  z: ;\n}\n');
   });
+
+  it('.less → .jess → .css equals .less → .css', async () => {
+    const source = '@c: red; @d: { color: @c; }; @l: 1 2; a { x: foo(@l, @d); }';
+    const direct = await less(source);
+    const converted = emitJess(await parseLess(source));
+    expect(direct).toBe('a {\n  x: foo(1 2, { color: red; });\n}\n');
+    await expect(jess(converted)).resolves.toBe(direct);
+  });
 });
 
-describe('a bare call in statement position (P37)', () => {
-  it('raises at the stylesheet root', async () => {
-    await expect(less('foo(1);\na { b: c; }')).rejects.toThrow(unresolvedStatement);
+describe('a call standing alone in statement position (P37)', () => {
+  it('emits raw text, at the root and in a declaration list', async () => {
+    await expect(less('e(\'/* x */\');\na { b: c; }')).resolves.toBe('/* x */\na {\n  b: c;\n}\n');
+    await expect(less('a { b: c; e(\'/* y */\'); }')).resolves.toBe('a {\n  b: c;\n  /* y */\n}\n');
   });
 
-  it('raises in a declaration list', async () => {
-    await expect(less('a { b: c; foo(1); }')).rejects.toThrow(unresolvedStatement);
+  it('emits nothing for a function that returns nothing', async () => {
+    await expect(less('a { b: c; e(\'\'); }')).resolves.toBe('a {\n  b: c;\n}\n');
+    await expect(less('e(\'\');\na { b: c; }')).resolves.toBe('a {\n  b: c;\n}\n');
   });
 
-  it('modern: raises at the root and in a declaration list', async () => {
-    await expect(less('@use "#less";\nfoo(1);\na { b: c; }')).rejects.toThrow(unresolvedStatement);
-    await expect(less('@use "#less";\na { b: c; foo(1); }')).rejects.toThrow(unresolvedStatement);
+  it.each([
+    ['a call to no function', 'foo(1);'],
+    ['a function that failed and was preserved as written', 'darken(foo);'],
+    ['a CSS colour call left as written', 'hsl(1 2% 3%);'],
+    ['a CSS gradient call left as written', 'linear-gradient(red, blue);'],
+    ['a keyword result', 'isdefined(@x);'],
+    ['a dimension result', 'unit(1px, em);'],
+    ['a colour result', 'rgba(0,0,0,0);']
+  ])('raises for %s, at the root and in a declaration list', async (_label, statement) => {
+    await expect(less(`${statement}\na { b: c; }`)).rejects.toThrow(notAStatement);
+    await expect(less(`a { b: c; ${statement} }`)).rejects.toThrow(notAStatement);
   });
 
   it('modern: an unimported Less built-in in statement position raises', async () => {
-    await expect(less('@use "#less";\n@l: 1 2; a { each(@l, { v: @value; }); }')).rejects.toThrow(unresolvedStatement);
-    await expect(less('@use "#less";\na { if((true), { color: red; }); }')).rejects.toThrow(unresolvedStatement);
+    await expect(less('@use "#less";\n@a: 2; @l: 1 2; a { each(@l, { v: @a; }); }')).rejects.toThrow(notAStatement);
+    await expect(less('@use "#less";\na { if((true), { color: red; }); }')).rejects.toThrow(notAStatement);
   });
 
-  it('names the call and says what to do', async () => {
+  it('names the call, what it produced, and what to do', async () => {
     await expect(less('a { foo(1); }')).rejects.toThrow(expect.objectContaining({
-      reason: expect.stringContaining('"foo()"'),
-      fix: expect.stringContaining('Import or define "foo"')
+      reason: expect.stringContaining('The result of "foo()", a Keyword `foo(1)`, is a value'),
+      fix: expect.stringContaining('import or define the function')
     }));
   });
 
-  it('still evaluates a call that reaches a function', async () => {
-    await expect(less('e(\'/* x */\');\na { b: c; }')).resolves.toBe('/* x */\na {\n  b: c;\n}\n');
+  /* Less 4.x `tree/call.js`: a legacy `@plugin` function's `false`/`true`/falsy result is empty. */
+  it('a legacy plugin function returning false or true emits nothing; one returning nothing raises', async () => {
+    const plugin = {
+      install(api: { functions: { functionRegistry: { addMultiple(fns: Record<string, () => unknown>): void } } }) {
+        api.functions.functionRegistry.addMultiple({
+          storeFalse: () => false,
+          storeTrue: () => true,
+          storeUndefined: () => undefined
+        });
+      }
+    };
+    const withPlugin = new Compiler({
+      output: { collapseNesting: true },
+      compile: { plugins: [lessPlugin(), lessCompatPlugin({ plugins: [plugin] })] }
+    });
+    const render = (source: string) => withPlugin.renderString(source, { language: 'less' });
+    await expect(render('a { b: c; storeFalse(); storeTrue(); }')).resolves.toBe('a {\n  b: c;\n}\n');
+    await expect(render('storeFalse();\na { b: c; }')).resolves.toBe('a {\n  b: c;\n}\n');
+    await expect(render('a { b: c; storeUndefined(); }')).rejects.toThrow(notAStatement);
   });
 
   it('.jess: a bare call does not parse in statement position', async () => {

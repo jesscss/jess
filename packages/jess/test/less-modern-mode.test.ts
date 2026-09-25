@@ -94,16 +94,16 @@ describe('Less modern mode (P36)', () => {
 
   describe('if(), boolean() and each()', () => {
     const VALUES = '@a: 2;\n@l: 1 2;\n';
-    const CALLS = 'x { b: if(@a > 1, @a * 1px, 2px); c: boolean(@a > 1); d: if( (@a > 1) ,  1px,2px ); e: each(@l, { v: @value; }); }';
+    const CALLS = 'x { b: if(@a > 1, @a * 1px, 2px); c: boolean(@a > 1); d: if( (@a > 1) ,  1px,2px ); e: each(@l, { v: @a; }); }';
 
     /*
      * The unknown-call path, not a copy of the source: variables substituted,
      * arithmetic computed, the comparison evaluated like any other argument
      * (ledger V11: a comparison in a call argument evaluates), and a
-     * detached-ruleset argument written exactly as authored (ledger P37,
+     * detached-ruleset argument written from its evaluated body (ledger P37,
      * jess#290).
      */
-    const EVALUATED = 'x {\n  b: if(true, 2px, 2px);\n  c: boolean(true);\n  d: if(true, 1px, 2px);\n  e: each(1 2, { v: @value; });\n}\n';
+    const EVALUATED = 'x {\n  b: if(true, 2px, 2px);\n  c: boolean(true);\n  d: if(true, 1px, 2px);\n  e: each(1 2, { v: 2; });\n}\n';
 
     it('legacy: they are lowered into language structure and compute', async () => {
       await expect(less('@a: 2;\n@l: 1 2;\nx { b: if(@a > 1, 1px, 2px); c: boolean(@a > 1); }\n.y { each(@l, { v: @value; }); }'))
@@ -126,12 +126,12 @@ describe('Less modern mode (P36)', () => {
 
     /* Ledger P37: not lowered, a bare call statement is an eval error, not output. */
     it.each([
-      ['each()', '.y { each(@l, { v: @value; }); }'],
+      ['each()', '.y { each(@l, { v: @a; }); }'],
       ['if()', '.y { if((true), { color: red; }); }'],
-      ['if() at the root', 'if((true), { .y { color: red; } });']
+      ['if() at the root', 'if((true), { color: red; });']
     ])('modern: a bare %s statement raises', async (_label, statement) => {
       await expect(less(`@use "#less";\n${VALUES}${statement}`))
-        .rejects.toThrow(expect.objectContaining({ code: 'eval/unresolved-call-statement' }));
+        .rejects.toThrow(expect.objectContaining({ code: 'eval/invalid-statement' }));
     });
 
     /*

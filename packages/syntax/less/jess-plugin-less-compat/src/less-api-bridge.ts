@@ -5,6 +5,7 @@ import {
   groupItems,
   HEX,
   makeColorRgb,
+  makeAny,
   makeDimension,
   makeKeyword,
   makeList,
@@ -271,6 +272,19 @@ function isNativeValue(value: unknown): value is Value {
     && typeof value.bytes === 'string';
 }
 
+/**
+ * A legacy `@plugin` function's RESULT, converted as Less 4.x converts it
+ * (`less/lib/less/tree/call.js`): `false`, `true` and any other falsy value
+ * are Less's documented "null functions" — an empty result with no output,
+ * which is also valid as a statement. Everything else converts as an ordinary
+ * value ({@link fromNativeLessValue}).
+ */
+export function fromNativeLessResult(result: unknown): ValueGroup {
+  return result === true || (result !== null && result !== undefined && !result)
+    ? makeAny('')
+    : fromNativeLessValue(result);
+}
+
 export function fromNativeLessValue(value: unknown): ValueGroup {
   if (isNativeValue(value)) {
     return value;
@@ -392,8 +406,8 @@ export class LessApiBridge {
   invokeNativeFunction(fn: NativeLessFunction, args: readonly PluginRawArgument[]): ValueGroup | Promise<ValueGroup> {
     const result = fn(...args.map(toNativeLessValue));
     return isThenable(result)
-      ? Promise.resolve(result).then(fromNativeLessValue)
-      : fromNativeLessValue(result);
+      ? Promise.resolve(result).then(fromNativeLessResult)
+      : fromNativeLessResult(result);
   }
 
   invokeContextualFunction(
@@ -416,8 +430,8 @@ export class LessApiBridge {
     });
 
     return isThenable(result)
-      ? Promise.resolve(result).then(fromNativeLessValue)
-      : fromNativeLessValue(result);
+      ? Promise.resolve(result).then(fromNativeLessResult)
+      : fromNativeLessResult(result);
   }
 
   invokeRawFunction(fn: Fn, args: readonly PluginRawArgument[], ctx: PluginCallCtx): MaybePromise<ValueGroup | undefined> {
