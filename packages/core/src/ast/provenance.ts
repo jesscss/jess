@@ -73,6 +73,26 @@ export interface TriviaSlot {
   _trivia?: TriviaMap;
 }
 
+/**
+ * Whether a document's built-in functions are ambient (ledger P36).
+ *
+ * ONE object per parsed document: the parser creates it, decides it (a Less
+ * document that writes `@use`/`@compose`, or any Less document under
+ * `moduleMode: 'modern'`, has none), and shares it with every call it builds.
+ * A call therefore answers for the document it was WRITTEN in, wherever it is
+ * evaluated — a variable from an imported partial, a mixin argument — and eval
+ * reads one field instead of asking which document is active.
+ */
+export interface FunctionScope {
+  ambient: boolean;
+}
+
+/** The inline function-scope slot carried by a call node. `null` (the factory
+ *  default) is a call from a parser that records no scope: ambient. */
+export interface FunctionScopeSlot {
+  _fnScope: FunctionScope | null;
+}
+
 /** The two inline body-span slots carried by every block-bearing node. */
 export interface BodySpanSlots {
   _bs: number;
@@ -412,6 +432,18 @@ export function withTriviaMap<T extends object>(node: T, trivia: TriviaMap): T {
 /** Read parser-owned document trivia attached to a canonical AST root. */
 export function triviaMapOf(node: object): TriviaMap | undefined {
   return (node as { _trivia?: TriviaMap })._trivia;
+}
+
+/** Attach the parsing document's function scope to a call it built (ledger P36). */
+export function withFunctionScope<T extends FunctionScopeSlot>(call: T, scope: FunctionScope | null): T {
+  call._fnScope = scope;
+  return call;
+}
+
+/** Whether built-in functions are ambient where this call was written. */
+export function hasAmbientFunctions(call: FunctionScopeSlot): boolean {
+  const scope = call._fnScope;
+  return scope === null || scope.ambient;
 }
 
 /** Retain the exact source span inside a block's braces. */

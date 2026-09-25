@@ -335,6 +335,62 @@ implement `@from`.
 Use `@plugin` only for legacy Less plugin modules. It is deprecated in favor
 of `@use`.
 
+## Modern mode
+
+A Less file that uses `@use` or `@compose` anywhere is in modern mode.
+(`@export` will join them when Less implements it.) In modern mode the Less
+built-in functions are not available until you import them, the same as in
+Jess. Import them with `@use "#less";` and call them through the `less`
+namespace:
+
+```less
+@use "#less";
+
+.button {
+  color: @less.darken(#3366ff, 10%);
+  padding: min(-5px, 1px);
+}
+```
+
+```css
+.button {
+  color: #0040ff;
+  padding: min(-5px, 1px);
+}
+```
+
+`#less` is a short name for the package module `@jesscss/fns/less`, so
+`@use "@jesscss/fns/less";` loads the same functions under the same `less`
+namespace.
+
+A call that is not imported is treated like any unknown CSS function: its
+name and call shape stay, and its arguments are evaluated like any other value,
+so with `@gap: 5px`, `min(-@gap, 1px)` outputs `min(-5px, 1px)`. That is what keeps `min()`, `max()`, `round()` and the other CSS math
+functions correct in modern mode: the browser clamps their result to what the
+property allows, so `min(-5px, 1px)` gives a padding of `0`, where the computed
+`-5px` would be invalid.
+
+That includes `if()`, `boolean()` and `each()`. In legacy mode Less turns
+them into conditions and loops; in modern mode they are ordinary function calls,
+and unless imported they keep their call shape with their arguments evaluated,
+like any other unknown function.
+
+A file with none of these directives is in legacy mode, and its built-in calls
+compute as they did in Less 4. The mode belongs to each file: a legacy file
+brought in with `@import` keeps its built-ins inside a modern file, and a
+modern file stays modern inside a legacy one.
+
+To put every `.less` file in modern mode, set the `moduleMode` option to
+`modern` (the default is `auto`):
+
+```js title="styles.config.js"
+export default {
+  language: {
+    less: { moduleMode: 'modern' }
+  }
+};
+```
+
 </AudienceGate>
 
 JSON modules are data-only and need no script runtime. Strings, numbers,

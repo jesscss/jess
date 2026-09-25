@@ -13,6 +13,7 @@
  */
 export class ProvidedModules {
   readonly #aliases: ReadonlyMap<string, string>;
+  readonly #packageModules: ReadonlySet<string>;
   #files: Set<string> | undefined;
 
   /** `aliases` pairs each private path with the package module it names. */
@@ -21,6 +22,7 @@ export class ProvidedModules {
     private readonly load: NodeJS.Require
   ) {
     this.#aliases = new Map(aliases);
+    this.#packageModules = new Set(this.#aliases.values());
   }
 
   /**
@@ -28,9 +30,16 @@ export class ProvidedModules {
    * `null`. The dialect that resolves first joins a bare specifier onto the
    * importing directory (`/dir/#less`), and may expand it into partial / index
    * spellings (`#sass/_math.scss`), so both are recovered here.
+   *
+   * The same holds for a package module's own spelling: once a dialect has
+   * joined `@jesscss/fns/less` onto the importing directory, node resolution
+   * can no longer reach it, so the provider recovers it as the module it
+   * provides. A package spelling left bare stays an ordinary package.
    */
   resolve(candidate: string): string | null {
-    const target = this.#aliases.get(aliasSpecifier(candidate));
+    const specifier = recoverSpecifier(candidate);
+    const target = this.#aliases.get(specifier)
+      ?? (specifier !== candidate && this.#packageModules.has(specifier) ? specifier : undefined);
     if (target === undefined) {
       return null;
     }
@@ -57,10 +66,10 @@ export class ProvidedModules {
   }
 }
 
-/** Recover a `#…` alias from a candidate a dialect joined or expanded. */
-function aliasSpecifier(candidate: string): string {
+/** Recover a `#…` alias or `@…` package spelling from a candidate a dialect joined or expanded. */
+function recoverSpecifier(candidate: string): string {
   const normalized = candidate.replace(/\\/g, '/');
-  const marker = normalized.lastIndexOf('/#');
+  const marker = Math.max(normalized.lastIndexOf('/#'), normalized.lastIndexOf('/@'));
   const expanded = marker >= 0 ? normalized.slice(marker + 1) : normalized;
   const segments = expanded.split('/');
   const last = segments.length - 1;

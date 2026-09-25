@@ -93,7 +93,8 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     modes: EvalModes,
     scope?: FnScope | null,
     io?: FnIo,
-    scopedFn?: Fn
+    scopedFn?: Fn,
+    ambient = true
   ): MaybePromise<ValueGroup> => {
     /*
      * [plugin/P1] Scoped `@plugin`/`@use` fns shadow built-ins and are consulted
@@ -109,7 +110,7 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
         return recoverCallFailure(err, name, args, modes);
       }
     }
-    if (registry.has(name)) {
+    if (ambient && registry.has(name)) {
       try {
         return recoverAsyncCall(registry.dispatch(name, args, { modes, stringify, io }), name, args, modes);
       } catch (err) {
@@ -134,8 +135,8 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
   /* The callee's declared parameter names — the binding surface a keyword
    * argument resolves against. Scoped fns shadow built-ins here exactly as they
    * do in `call`, so a call binds against the definition it will actually reach. */
-  const paramNames = (name: string, scopedFn?: Fn): readonly (string | undefined)[] | undefined => {
-    const fn = scopedFn ?? registry.get(name);
+  const paramNames = (name: string, scopedFn?: Fn, ambient = true): readonly (string | undefined)[] | undefined => {
+    const fn = scopedFn ?? (ambient ? registry.get(name) : undefined);
     return fn === undefined ? undefined : fn.params.map(p => p.name);
   };
 

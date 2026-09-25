@@ -577,7 +577,11 @@ export interface ValueEvaluator {
    * (`data-uri`/`image-*`) reaches through {@link FnCtx.io}; absent on renders
    * with no IO host wired. `scopedFn`, when supplied, is an already-resolved
    * lexical function. It avoids repeating the caller's scope lookup; `scope`
-   * remains for direct consumers that need the legacy lazy lookup seam. */
+   * remains for direct consumers that need the legacy lazy lookup seam.
+   * `ambient: false` says the calling document has no ambient built-in
+   * namespace (ledger P36): the registry is not consulted, so a name that is
+   * not scoped takes the unknown-function path, exactly as in a document whose
+   * registry is empty (ledger P17). */
   call(
     name: string,
     args: ValueGroup,
@@ -587,6 +591,9 @@ export interface ValueEvaluator {
 
     /** A caller-resolved scoped function; takes precedence over `scope`. */
     scopedFn?: Fn,
+
+    /** Whether the registry's built-ins are in scope; default `true`. */
+    ambient?: boolean,
   ): MaybePromise<ValueGroup>;
 
   /**
@@ -597,9 +604,10 @@ export interface ValueEvaluator {
    * `fade(@c, @amount: 50%)`) binds against these — the same names the function
    * was DEFINED with, which is the only place the mapping exists. An entry is
    * `undefined` for a parameter its definition left unnamed, so a keyword can
-   * never bind to a position that declared no name.
+   * never bind to a position that declared no name. `ambient` is as in
+   * {@link ValueEvaluator.call}.
    */
-  paramNames(name: string, scopedFn?: Fn): readonly (string | undefined)[] | undefined;
+  paramNames(name: string, scopedFn?: Fn, ambient?: boolean): readonly (string | undefined)[] | undefined;
 
   /** Comparison leaf in VALUE position (`if(@a > 0, …)`) on typed operands -> boolean. */
   compare(op: string, left: ValueGroup, right: ValueGroup, modes: EvalModes): boolean;

@@ -7,6 +7,7 @@
  * third module keeps that a straight line rather than a cycle.
  */
 import type { MathMode } from '@jesscss/core';
+import type { FunctionScope } from '@jesscss/core/ast';
 
 export interface LessParseState {
   /**
@@ -27,6 +28,15 @@ export interface LessParseState {
    * the evaluator never sees the mode.
    */
   readonly mathMode: MathMode;
+
+  /**
+   * The document's built-in function scope (ledger P36): created by `parseWith`
+   * from `moduleMode`, closed by the `@use`/`@compose` reducers, and attached to
+   * every call node. The one state member a reducer writes — a shared object,
+   * because parseman hands each reducer a shallow copy of the state, and only a
+   * reference carries a write back to the calls built before the directive.
+   */
+  readonly functions?: FunctionScope;
 }
 
 /** The public Less default, shared by wrapper and raw-grammar entry points. */
@@ -70,4 +80,22 @@ export function requireLessParseState(state: unknown): LessParseState {
   return source === undefined
     ? { mathMode }
     : { source, mathMode };
+}
+
+/**
+ * The document's function scope, or `null` for a state without one (a raw
+ * `run()` with no state). Read on every call node, so no re-validation of the
+ * state `parseWith` itself built.
+ */
+export function functionScopeOf(state: unknown): FunctionScope | null {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the state is parseWith's LessParseState or absent; parseman types it `unknown`.
+  return (state as LessParseState | undefined)?.functions ?? null;
+}
+
+/** A module directive (`@use`/`@compose`) puts the document in modern mode (ledger P36). */
+export function closeAmbientFunctions(state: unknown): void {
+  const scope = functionScopeOf(state);
+  if (scope !== null) {
+    scope.ambient = false;
+  }
 }
