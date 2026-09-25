@@ -2,6 +2,7 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   defineFunction,
   emitValue,
+  FunctionDeclined,
   groupItems,
   HEX,
   makeColorRgb,
@@ -274,15 +275,28 @@ function isNativeValue(value: unknown): value is Value {
 
 /**
  * A legacy `@plugin` function's RESULT, converted as Less 4.x converts it
- * (`less/lib/less/tree/call.js`): `false`, `true` and any other falsy value
- * are Less's documented "null functions" — an empty result with no output,
- * which is also valid as a statement. Everything else converts as an ordinary
- * value ({@link fromNativeLessValue}).
+ * (`less/lib/less/tree/call.js`):
+ * - `null` / `undefined`: the function declined, so the call is written out
+ *   as-is ({@link FunctionDeclined});
+ * - `false`, `true` and any other falsy value: Less's documented "null
+ *   functions", an empty result with no output (valid as a statement);
+ * - a string, and an `Anonymous` node: raw text;
+ * - a number stays a number, NOT raw text as in 4.x: the owner's v5 fixture
+ *   (`tests-unit/import/import.less`, a plugin `pi()`) expects it rounded
+ *   like any computed number;
+ * - any other node: that node's value ({@link fromNativeLessValue}).
  */
 export function fromNativeLessResult(result: unknown): ValueGroup {
-  return result === true || (result !== null && result !== undefined && !result)
-    ? makeAny('')
-    : fromNativeLessValue(result);
+  if (result === null || result === undefined) {
+    throw new FunctionDeclined();
+  }
+  if (result === true || !result) {
+    return makeAny('');
+  }
+  if (typeof result === 'string') {
+    return makeAny(result);
+  }
+  return result instanceof LessAnonymous ? makeAny(result.value) : fromNativeLessValue(result);
 }
 
 export function fromNativeLessValue(value: unknown): ValueGroup {

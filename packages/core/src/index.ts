@@ -134,6 +134,7 @@ export {
   coerceNamedColorKeyword,
   namedColor,
   createFnRegistry,
-  defineFunction
+  defineFunction,
+  FunctionDeclined
 } from './value.js';
 export * from './types/index.js';

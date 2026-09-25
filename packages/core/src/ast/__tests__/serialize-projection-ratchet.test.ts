@@ -128,7 +128,11 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +2 functions (`evalStatementCall`, `statementCallBytes`, ledger P37): a
     // call standing alone in statement position is evaluated once, and one that
     // came back as itself (a plain CSS call) raises instead of being written out.
-    expect(occurrences(/^function |^async function /gmu)).toBe(468);
+    // +2 functions (`writtenRulesetArgument`, `dispatchCall`, ledger P37): a ruleset
+    // argument of a call written out as-is is written from its evaluated body, and a
+    // legacy plugin that declines a call leaves it on the unknown-call path.
+    // -1 function (`canEmitRootCallValue`): the statement table replaces it.
+    expect(occurrences(/^function |^async function /gmu)).toBe(469);
     expect(occurrences(/new Map/gu)).toBe(68);
     expect(occurrences(/new Set/gu)).toBe(41);
     expect(occurrences(/new WeakMap/gu)).toBe(4);

@@ -41,6 +41,21 @@ describe('a ruleset argument to a call emitted as written (P37, jess#290)', () =
       .resolves.toBe('a {\n  x: each(1 2, { v: 2; });\n}\n');
   });
 
+  it('follows the ruleset-body rules for merge, null and ruleset values', async () => {
+    await expect(less('a { x: foo({ a+: 1; a+: 2; b+_: x; b+_: y; }); }'))
+      .resolves.toBe('a {\n  x: foo({ a: 1, 2; b: x y; });\n}\n');
+    await expect(jess('$d: @{ a: null; b: 1; }; a { x: foo($d); y: 2; }'))
+      .resolves.toBe('a {\n  x: foo({ b: 1; });\n  y: 2;\n}\n');
+    await expect(less('@r: { c: d; }; a { x: foo({ a: @r; }); }'))
+      .rejects.toThrow(expect.objectContaining({ code: 'eval/ruleset-on-property' }));
+  });
+
+  it('is compressed with the output', async () => {
+    const compressed = new Compiler({ output: { collapseNesting: true, compress: true }, compile: { plugins: [lessPlugin()] } });
+    await expect(compressed.renderString('a { x: foo({ a: 1px; b: 2 !important; }); }', { language: 'less' }))
+      .resolves.toBe('a{x:foo({a:1px;b:2!important})}');
+  });
+
   it('a ruleset holding a nested rule has no value spelling, so it raises rather than vanishing', async () => {
     await expect(less('a { x: foo({ .b { c: d; } }); }'))
       .rejects.toThrow(expect.objectContaining({ code: 'eval/ruleset-argument-with-rules' }));
@@ -111,14 +126,20 @@ describe('a call standing alone in statement position (P37)', () => {
     }));
   });
 
-  /* Less 4.x `tree/call.js`: a legacy `@plugin` function's `false`/`true`/falsy result is empty. */
-  it('a legacy plugin function returning false or true emits nothing; one returning nothing raises', async () => {
+  /*
+   * Less 4.x `tree/call.js`: a legacy `@plugin` function's `false`/`true`/falsy
+   * result is empty, another non-node result is raw text, and `null`/`undefined`
+   * declines, leaving the plain call.
+   */
+  it('converts a legacy plugin function result as Less 4.x does', async () => {
     const plugin = {
-      install(api: { functions: { functionRegistry: { addMultiple(fns: Record<string, () => unknown>): void } } }) {
+      install(api: { functions: { functionRegistry: { addMultiple(fns: Record<string, (...args: unknown[]) => unknown>): void } } }) {
         api.functions.functionRegistry.addMultiple({
           storeFalse: () => false,
           storeTrue: () => true,
-          storeUndefined: () => undefined
+          storeZero: () => 0,
+          rawText: () => '/* raw */',
+          declined: () => undefined
         });
       }
     };
@@ -127,9 +148,11 @@ describe('a call standing alone in statement position (P37)', () => {
       compile: { plugins: [lessPlugin(), lessCompatPlugin({ plugins: [plugin] })] }
     });
     const render = (source: string) => withPlugin.renderString(source, { language: 'less' });
-    await expect(render('a { b: c; storeFalse(); storeTrue(); }')).resolves.toBe('a {\n  b: c;\n}\n');
+    await expect(render('a { b: c; storeFalse(); storeTrue(); storeZero(); }')).resolves.toBe('a {\n  b: c;\n}\n');
     await expect(render('storeFalse();\na { b: c; }')).resolves.toBe('a {\n  b: c;\n}\n');
-    await expect(render('a { b: c; storeUndefined(); }')).rejects.toThrow(notAStatement);
+    await expect(render('a { b: c; rawText(); }')).resolves.toBe('a {\n  b: c;\n  /* raw */\n}\n');
+    await expect(render('a { x: declined(1); }')).resolves.toBe('a {\n  x: declined(1);\n}\n');
+    await expect(render('a { b: c; declined(1); }')).rejects.toThrow(notAStatement);
   });
 
   it('.jess: a bare call does not parse in statement position', async () => {

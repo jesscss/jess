@@ -144,7 +144,7 @@ import {
   type Value
 } from './value-eval.js';
 import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
-import { defineFunction } from './value-dispatch.js';
+import { defineFunction, FunctionDeclined } from './value-dispatch.js';
 import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
@@ -4782,7 +4782,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        * An anonymous mixin reaching a value position is not byte-serializable:
        * it can only be *called* (`@dr()`), so it folds to empty bytes here. The
        * one position ruled otherwise is an argument to a call written out as-is
-       * (ledger P37), which `evalCall` writes from the block's authored text.
+       * (ledger P37), which `evalCall` writes from the block's evaluated body
+       * ({@link writtenRulesetArgument}).
        */
       return literal('');
     case 'Collection':
@@ -7199,11 +7200,9 @@ function evalCall(
       try {
         const result = rawInvoker(selected, args, pluginFnContext(node, frame, e, sourceOwner));
         const settled = isThenable(result)
-          ? result.catch((error: unknown) => withSourceOwner(
-              e,
-              sourceOwner,
-              () => pluginCallFailure(node, error, frame, e)
-            ))
+          ? result.catch((error: unknown) => (error instanceof FunctionDeclined
+              ? dispatchCall(node, frame, e, ev, undefined, false)
+              : withSourceOwner(e, sourceOwner, () => pluginCallFailure(node, error, frame, e))))
           : result;
         if (isThenable(settled)) {
           observeRejectedThenable(settled);
@@ -7212,7 +7211,10 @@ function evalCall(
           ? evalCall(node, frame, { ...e, pluginHost: undefined }, demanded)
           : value);
       } catch (error) {
-        return withSourceOwner(e, sourceOwner, () => pluginCallFailure(node, error, frame, e));
+        /* A declined call is written out as-is, as a call to no function is. */
+        return error instanceof FunctionDeclined
+          ? dispatchCall(node, frame, e, ev, undefined, false)
+          : withSourceOwner(e, sourceOwner, () => pluginCallFailure(node, error, frame, e));
       }
     });
   }
@@ -7223,7 +7225,23 @@ function evalCall(
    * evaluator's unknown-call path, the one `.jess` reaches through its empty
    * registry (P17). The parser attached its document's scope to the node.
    */
-  const ambient = hasAmbientFunctions(node);
+  return dispatchCall(node, frame, e, ev, selected, hasAmbientFunctions(node));
+}
+
+/**
+ * Materialize a call's arguments TYPED and dispatch it through the evaluator:
+ * to `selected` when a scoped function was resolved, else to a built-in when
+ * `ambient`, else down the unknown-call path, which writes the call out as-is.
+ */
+function dispatchCall(
+  node: FunctionCall,
+  frame: Frame | null,
+  e: EvalCtx,
+  ev: ValueEvaluator,
+  selected: Fn | undefined,
+  ambient: boolean
+): MaybePromise<EvalValue> {
+  const sep = node.modern ? ' ' : ',';
 
   /*
    * [P37] A name that reaches no function is written out as-is with its
@@ -7257,10 +7275,13 @@ function evalCall(
 /**
  * [P37] A ruleset argument of a call written out as-is, evaluated in the scope
  * it was bound in and written as a one-line declaration list:
- * `{ color: red; margin: 0; }`. Variable declarations bind silently, as in any
- * ruleset body. Anything that is not a declaration (a nested rule, an at-rule, a
- * mixin call) and a block with parameters have no spelling inside a CSS value,
- * so they raise rather than being dropped.
+ * `{ color: red; margin: 0; }` (`{color:red;margin:0}` compressed). Each
+ * declaration follows the ruleset-body rules: variable declarations bind
+ * silently, `+:` / `+_:` merge into the first declaration of that name, a
+ * `null` value elides its own declaration, and a ruleset-valued declaration
+ * raises `eval/ruleset-on-property`. Anything that is not a declaration (a
+ * nested rule, an at-rule, a mixin call) and a block with parameters have no
+ * spelling inside a CSS value, so they raise rather than being dropped.
  */
 function writtenRulesetArgument(
   call: FunctionCall,
@@ -7286,7 +7307,10 @@ function writtenRulesetArgument(
     mixins: collectMixins(rules),
     declIndex: collectDeclIndex(rules), cells: null, reassign: null
   };
-  const parts: Array<MaybePromise<string>> = [];
+  const compress = e.compress === true;
+  type Part = { readonly separator: string; readonly value: MaybePromise<string>; readonly sink: { elided: boolean } };
+  type Entry = { readonly name: MaybePromise<string>; readonly mergeKey: string | null; readonly parts: Part[]; important: boolean };
+  const entries: Entry[] = [];
   for (const rule of rules) {
     if (rule.type === 'VariableDeclaration') {
       continue;
@@ -7295,11 +7319,42 @@ function writtenRulesetArgument(
       reject(`a ${rule.type}`);
       continue;
     }
-    const name = typeof rule.name === 'string' ? rule.name : evalBytes(rule.name, bodyFrame, e);
-    const value = evalBytes(rule.value, bodyFrame, e);
-    parts.push(combineAll([name, value], ([n, v]) => `${n}: ${v}${rule.important ? ' !important' : ''};`));
+    assertDeclarationValueIsNotRuleset(rule, bodyFrame, e);
+    const sink = { elided: false };
+    const value = evalBytes(rule.value, bodyFrame, { ...e, elideSink: sink });
+    const key = rule.merge !== null && typeof rule.name === 'string' ? rule.name : null;
+    const prior = key === null ? undefined : entries.find(entry => entry.mergeKey === key);
+    if (prior !== undefined) {
+      prior.parts.push({ separator: rule.merge === ',' ? (compress ? ',' : ', ') : ' ', value, sink });
+      prior.important ||= rule.important;
+      continue;
+    }
+    entries.push({
+      name: typeof rule.name === 'string' ? rule.name : evalBytes(rule.name, bodyFrame, e),
+      mergeKey: key,
+      parts: [{ separator: '', value, sink }],
+      important: rule.important
+    });
   }
-  return combineAll(parts, written => makeAny(written.length === 0 ? '{}' : `{ ${written.join(' ')} }`));
+  const written = entries.map(entry => combineAll([entry.name, ...entry.parts.map(part => part.value)], ([name, ...values]) => {
+    let value = '';
+    entry.parts.forEach((part, index) => {
+      if (!part.sink.elided) {
+        value += (value === '' ? '' : part.separator) + values[index]!;
+      }
+    });
+    if (entry.parts.every(part => part.sink.elided)) {
+      return '';
+    }
+    const important = entry.important ? (compress ? '!important' : ' !important') : '';
+    return `${name!}${compress ? ':' : ': '}${value}${important}`;
+  }));
+  return combineAll(written, (declarations) => {
+    const kept = declarations.filter(declaration => declaration !== '');
+    return makeAny(kept.length === 0
+      ? '{}'
+      : compress ? `{${kept.join(';')}}` : `{ ${kept.map(declaration => `${declaration};`).join(' ')} }`);
+  });
 }
 
 /**
@@ -17671,15 +17726,17 @@ function emitRawInline(text: string, e: Emit): void {
 /**
  * [P37] Whether a value a call leaves in statement position may stand there,
  * per value type, at the two statement positions: the stylesheet root and a
- * declaration list (a ruleset body). Ported from AST v1, where each node type
- * carried `allowRoot` / `allowRuleRoot` (2.0.0-alpha.1) — Less 4.x `allowRoot`.
+ * declaration list (a ruleset body). The two-position shape is AST v1's
+ * `allowRoot` / `allowRuleRoot` (2.0.0-alpha.1), where only statement node
+ * types were legal and every value node was not.
  *
- * A call can only produce a value, never a statement node, and the only value
- * that is statement text is `Any`: raw text or an escaped string, what `e()`
- * returns (`e('…');`), and the empty result of a function that returns
- * nothing. Every other value — a dimension, colour, keyword, and the call
- * written back out as-is because it produced no result — is a value dumped
- * into a statement position, which is invalid CSS.
+ * A call can only produce a value, never a statement node. The one value that
+ * is statement text is `Any` — raw text or an escaped string, what `e()`
+ * returns (`e('…');`), and the empty result of a function that returns nothing.
+ * That row is the owner's ruling (P37: "raw text or an escaped string"), not a
+ * v1 port: v1's `Anonymous` carried neither flag. Every other value — a
+ * dimension, colour, keyword, and the call written back out as-is because it
+ * produced no result — is a value dumped into a statement position.
  */
 const STATEMENT_RESULT_POSITIONS: Readonly<Record<Value['type'], readonly [root: boolean, declarationList: boolean]>> = {
   Any: [true, true],
