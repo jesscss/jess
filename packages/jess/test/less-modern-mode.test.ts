@@ -104,6 +104,9 @@ describe('Less modern mode (P36)', () => {
      * arithmetic computed, the comparison evaluated like any other argument
      * (ledger V11: a comparison in a call argument evaluates), and a
      * detached-ruleset argument rendered as the ordinary call renders it.
+     * That last part is today's unknown-call behaviour, not the intent: ledger
+     * P37 rules a ruleset argument may not vanish and a bare call statement is
+     * an eval error (jess#290). When the ordinary path changes, this follows.
      */
     const EVALUATED = 'x {\n  b: if(true, 2px, 2px);\n  c: boolean(true);\n  d: if(true, 1px, 2px);\n}\n.y {\n  each(1 2, )\n}\n';
 
