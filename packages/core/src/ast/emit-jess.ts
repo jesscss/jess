@@ -384,6 +384,9 @@ class JessPrinter {
       ? this.propertyName(node.name)
       : this.template(node.name, 'name');
     const custom = typeof node.name === 'string' && node.name.startsWith('--');
+    if (!custom && !isSlotArray(node.value) && node.value.type === 'Any' && node.value.src === '') {
+      gap('Declaration', 'an empty declaration value (`margin: ;`): the `.jess` `Declaration` rule requires a value');
+    }
     const value = custom ? this.customValue(node.value) : this.value(node.value, At.Value);
     return `${name}: ${value}${node.important ? ' !important' : ''}`;
   }
@@ -849,6 +852,9 @@ class JessPrinter {
       const value = arg.value;
       if (!isSlotArray(value) && value.type === 'List' && value.sep === ',') {
         return gap('FunctionCall', 'comma-list argument: `.jess` would read it as separate arguments');
+      }
+      if (!isSlotArray(value) && value.type === 'Any' && value.src.includes('=')) {
+        return gap('FunctionCall', 'an IE-style `name=value` argument (`alpha(opacity=100)`): no `.jess` `CallArgument` spelling reads it back');
       }
       return this.value(value, inner);
     });
