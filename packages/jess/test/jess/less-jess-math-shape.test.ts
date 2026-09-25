@@ -57,22 +57,7 @@ const ROWS: Row[] = [
   { less: '@w: @a * 2;', jess: '$w: $($a * 2);', gap: { reason: INTERPOLATED_EXPRESSION, normalize: unwrapInterpolatedExpression } },
   { less: '@w: @a * 2 / @b;', jess: '$w: $($a * 2) / $b;', gap: { reason: INTERPOLATED_EXPRESSION, normalize: unwrapInterpolatedExpression } },
   { less: '@w: (@a * 2 / @b);', jess: '$w: $($a * 2 / $b);', gap: { reason: INTERPOLATED_EXPRESSION, normalize: unwrapInterpolatedExpression } },
-  {
-    less: 'a { font: 12px/1.5 Arial; }',
-    jess: 'a { font: 12px/1.5 Arial; }',
-
-    /*
-     * The Less slash is the division operator, so it binds between two OPERANDS
-     * inside a space-separated value (`[12px / 1.5, Arial]`, ledger P34). The
-     * css/jess slash is a separator rung ABOVE the space level
-     * (`12px / [1.5 Arial]`, ledger P33). Same bytes out; an open question for
-     * the owner, not decided here.
-     */
-    gap: {
-      reason: 'the Less slash binds between operands; the css/jess slash separates space groups',
-      normalize: value => flattenSlashAndSpace(value)
-    }
-  },
+  { less: 'a { font: 12px/1.5 Arial; }', jess: 'a { font: 12px/1.5 Arial; }' },
   {
     less: '@a: 1px; a { width: calc(100% - @a); }',
     jess: '$a: 1px; a { width: calc(100% - $a); }',
@@ -122,28 +107,6 @@ function canonical(value: unknown): unknown {
 
 function withoutField(value: unknown, field: string): unknown {
   return JSON.parse(JSON.stringify(value, (key, item: unknown) => (key === field ? undefined : item)));
-}
-
-/** Collapse space runs and slash lists into one flat operand stream. */
-function flattenSlashAndSpace(value: unknown): unknown {
-  const out: unknown[] = [];
-  const walk = (item: unknown): void => {
-    if (Array.isArray(item)) {
-      item.forEach(walk);
-    } else if (typeof item === 'object' && item !== null && 'type' in item && item.type === 'List'
-      && 'sep' in item && item.sep === '/' && 'value' in item && Array.isArray(item.value)) {
-      item.value.forEach((part, index) => {
-        if (index > 0) {
-          out.push('/');
-        }
-        walk(part);
-      });
-    } else {
-      out.push(item);
-    }
-  };
-  walk(value);
-  return out;
 }
 
 describe('Less math and its .jess spelling lower to one shape (P35 shape proxy)', () => {

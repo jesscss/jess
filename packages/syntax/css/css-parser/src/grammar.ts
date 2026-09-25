@@ -810,14 +810,14 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * A function argument is a whole value TERM, not just a space group: the
-   * modern colour syntaxes separate their alpha component with a slash
+   * A function argument is a whole space group whose items may be slash groups:
+   * the modern colour syntaxes separate their alpha component with a slash
    * (`rgb(15 23 42 / .22)`, css-color-4 §5), and `grid-template` tracks carry
    * one too. That slash is the same separator rung a declaration value uses, so
-   * this points at `ValueTerm` rather than re-spelling a slash here.
+   * this points at `ValueSequence` rather than re-spelling a slash here.
    */
   const genericFunctionArguments = sepBy(
-    g.ValueTerm,
+    g.ValueSequence,
     authoredArgumentComma
   );
   const BasicSelector = node(
@@ -1853,7 +1853,7 @@ const cssFactory = (g: GrammarSelf) => {
    * rejecting it. Without this rung, routing the §10 names to the ladder was
    * measured at 17 regressions in a 25-case battery.
    *
-   * This is `ValueSequence`'s own shape with `CalcSum` in place of `Value`, so
+   * This is `ValueSequence`'s own shape with `CalcSum` in place of `ValueTerm`, so
    * a run whose items carry no operator reduces to exactly what the ordinary
    * sequence would have produced — with ONE deliberate difference: the
    * separator is REQUIRED between run items.
@@ -2038,7 +2038,7 @@ const cssFactory = (g: GrammarSelf) => {
 
     /*
      * `/` is NOT an arm here. A slash is a list separator, so it belongs to the
-     * `ValueTerm` rung above, not to the value ATOM — modelling it as an atom
+     * `ValueTerm` rung, not to the value ATOM — modelling it as an atom
      * was the category error that let a leading `/` parse as a value. The arm
      * that used to consume it (`literal('/')` + a comment guard + either a
      * boundary lookahead or a punctuation run) is deleted; `ValueTerm` now owns
@@ -2311,19 +2311,51 @@ const cssFactory = (g: GrammarSelf) => {
     g.valueAtom,
     { project: 0 }
   );
+
+  /*
+   * The slash level. `/` is a LIST SEPARATOR, not a value, and it groups only
+   * its DIRECT neighbours (DESIGN-DECISIONS P33 as amended 2026-09-24, P35):
+   * comma is loosest, then whitespace, then slash. `font: 12px/1.5 Arial` is
+   * `[12px / 1.5, Arial]` and `border-radius: 1px 2px / 3px 4px` is
+   * `[1px, 2px / 3px, 4px]` — properties are parsed individually, so grouping
+   * a whole space-separated side would be a guess about the property grammar.
+   *
+   * A leading `/` fails for exactly the reason a leading `,` fails: a separator
+   * has no left operand, and nothing below this rung can start on it. There is
+   * deliberately NO first-position guard anywhere — the rejection is emergent.
+   */
+  const ValueTerm = node(
+    'ValueTerm',
+    noTrivia(sequence(
+      g.Value,
+      many(sequence(
+        valueSlashBoundary,
+        g.Value
+      ))
+    )),
+    (children) => {
+      const values = valueSlotChildren(children);
+      return values.length === 1
+        ? values[0]!
+        : list(
+            values,
+            '/'
+          );
+    }
+  );
   const ValueSequence = node(
     'ValueSequence',
     noTrivia(sequence(
-      g.Value,
+      g.ValueTerm,
       many(choice(
         sequence(
           field(
             'separator',
             cssValueTrivia
           ),
-          g.Value
+          g.ValueTerm
         ),
-        g.Value
+        g.ValueTerm
       ))
     )),
     (children, fields) => {
@@ -2338,47 +2370,10 @@ const cssFactory = (g: GrammarSelf) => {
       );
     }
   );
-
-  /*
-   * The slash level. `/` is a LIST SEPARATOR, not a value, so it takes its own
-   * rung between the comma level (`ValueList`) and the space level
-   * (`ValueSequence`): comma is loosest, then slash, then whitespace.
-   * `border-radius: 1px 2px / 3px 4px` is what fixes the order — the slash
-   * separates two space groups — and `background: a, 1px / 2px` fixes comma
-   * above it. Each side stays ONE space group; flattening would render
-   * `font: 12px/1.5 Arial` as `12px / 1.5 / Arial`.
-   *
-   * A leading `/` then fails for exactly the reason a leading `,` fails: a
-   * separator has no left operand, and the rung below it cannot start on the
-   * separator. There is deliberately NO first-position guard anywhere — the
-   * rejection is emergent, and an added guard would be the wrong build.
-   *
-   * This is the same rung scss (`ValueTerm`) and jess (`ValueTerm`) already
-   * carry, moved into the base so all four dialects share one definition.
-   */
-  const ValueTerm = node(
-    'ValueTerm',
-    noTrivia(sequence(
-      g.ValueSequence,
-      many(sequence(
-        valueSlashBoundary,
-        g.ValueSequence
-      ))
-    )),
-    (children) => {
-      const groups = valueSlotChildren(children);
-      return groups.length === 1
-        ? groups[0]!
-        : list(
-            groups,
-            '/'
-          );
-    }
-  );
   const ValueList = node(
     'ValueList',
     oneOrMoreSep(
-      g.ValueTerm,
+      g.ValueSequence,
       authoredValueComma
     ),
     (children, fields) => {

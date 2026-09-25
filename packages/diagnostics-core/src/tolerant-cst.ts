@@ -1277,24 +1277,24 @@ function declarationPropertyValueCandidates(source: string, node: CssCstNode): r
   }
 
   /*
-   * A comma member is ONE `ValueTerm` — the slash rung (P33) — whose groups are
-   * the `ValueSequence`s the slashes separate. Only a member that is a single
-   * group can be a simple member; a slash-separated one (`1px / 2px`) is not,
-   * exactly as it was not when the slash sat among the values.
+   * A comma member is ONE `ValueSequence` — the space level — whose items are
+   * `ValueTerm` slash groups (P33 as amended 2026-09-24: the slash groups only
+   * its direct neighbours). Only a member that is one term holding one value
+   * can be a simple member; a slash-separated one (`1px / 2px`) is not.
    */
-  const members = childNodesOfType(value, 'ValueTerm');
+  const members = childNodesOfType(value, 'ValueSequence');
   if (members.length <= 1) {
     const single = declarationPropertyValue(source, node);
     return single === null ? [] : [single];
   }
   const candidates: PropertyValueDiagnosticFact[] = [];
   for (const member of members) {
-    const groups = childNodesOfType(member, 'ValueSequence');
-    if (groups.length !== 1) {
+    const terms = childNodesOfType(member, 'ValueTerm');
+    if (terms.length !== 1) {
       continue;
     }
-    const sequence = groups[0]!;
-    const values = childNodesOfType(sequence, 'Value');
+    const sequence = member;
+    const values = childNodesOfType(terms[0]!, 'Value');
     if (values.length !== 1) {
       continue;
     }
@@ -2115,11 +2115,10 @@ function nonstandardLinearGradientDirection(source: string, node: CssCstNode, fu
   }
 
   /*
-   * A function argument is one `ValueTerm` (P33). It spans exactly the bytes the
-   * per-argument `ValueSequence` did before the slash rung existed, so the span
-   * and text arithmetic below is unchanged.
+   * A function argument is one `ValueSequence` (the space level, whose items
+   * are `ValueTerm` slash groups — P33 as amended 2026-09-24).
    */
-  const firstArg = firstChildNodeOf(node, 'ValueTerm');
+  const firstArg = firstChildNodeOf(node, 'ValueSequence');
   if (firstArg === undefined || firstDescendantNodeMatching(firstArg, FUNCTION_TYPES) !== undefined) {
     return null;
   }
@@ -2179,8 +2178,8 @@ function colorChannelFact(source: string, node: CssCstNode): ColorChannelFact {
 }
 
 function colorFunctionChannels(source: string, node: CssCstNode): ColorNotationFacts | null {
-  /* Each comma-separated argument is one `ValueTerm` (P33). */
-  const argumentTerms = childNodesOfType(node, 'ValueTerm');
+  /* Each comma-separated argument is one `ValueSequence` (P33). */
+  const argumentTerms = childNodesOfType(node, 'ValueSequence');
   if (argumentTerms.length === 0) {
     return { channels: [], alphaIndex: null, legacyCommaSyntax: false };
   }
@@ -2193,23 +2192,21 @@ function colorFunctionChannels(source: string, node: CssCstNode): ColorNotationF
   }
 
   /*
-   * Modern syntax: the alpha is whatever follows the slash SEPARATOR, which is
-   * a group boundary inside the one argument term — not a `/` value among the
-   * channels. This used to find the alpha by scanning for a `Value` whose text
-   * was `/`, which only worked while the grammar modelled the separator as a
-   * value atom; P33 removed that category error, so the walk now reads the
-   * separator structurally. Each later group re-marks the boundary, so the LAST
-   * slash wins, exactly as the old scan's overwrite did.
+   * Modern syntax: the alpha is whatever follows the slash SEPARATOR. The slash
+   * groups its direct neighbours into one `ValueTerm` (P33 as amended
+   * 2026-09-24), so the boundary is read structurally — each value after the
+   * first in a term follows a slash. The LAST slash wins, as the old scan's
+   * overwrite did.
    */
   const channels: ColorChannelFact[] = [];
   let alphaIndex: number | null = null;
-  const groups = childNodesOfType(argumentTerms[0]!, 'ValueSequence');
-  for (let index = 0; index < groups.length; index++) {
-    if (index > 0) {
-      alphaIndex = channels.length;
-    }
-    for (const value of childNodesOfType(groups[index]!, 'Value')) {
-      channels.push(colorChannelFact(source, value));
+  for (const term of childNodesOfType(argumentTerms[0]!, 'ValueTerm')) {
+    const values = childNodesOfType(term, 'Value');
+    for (let index = 0; index < values.length; index++) {
+      if (index > 0) {
+        alphaIndex = channels.length;
+      }
+      channels.push(colorChannelFact(source, values[index]!));
     }
   }
   return { channels, alphaIndex, legacyCommaSyntax: false };
