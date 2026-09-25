@@ -43,6 +43,43 @@ const CASES: Array<[name: string, source: string, kind: string]> = [
   ['a namespaced mixin call', 'a { b: foo({ #ns.m() }); }', DECLARATIONS]
 ];
 
+function firstArgument(source: string): unknown {
+  const sheet = parse(source);
+  const rule = sheet.rules.at(-1) as Ruleset;
+  return ((rule.rules[0] as Declaration).value as FunctionCall).args;
+}
+
+/*
+ * Ledger P38: a first argument followed by a top-level `:` makes the call a
+ * BRANCH list, `;`s preserved as a `;` List; a Less keyword argument does not.
+ */
+describe('Less: branch arguments are dispatched on the first argument (P38)', () => {
+  it('a branch list is one `;` List of Branch nodes, the trailing `;` kept', () => {
+    expect(firstArgument('a { b: if(style(--x: y): a; else: b;); }')).toMatchObject([{
+      value: {
+        type: 'List',
+        sep: ';',
+        value: [
+          { type: 'Branch', condition: { type: 'FunctionCall', name: 'style' }, value: { src: 'a' } },
+          { type: 'Branch', condition: { src: 'else' }, value: { src: 'b' } },
+          []
+        ]
+      }
+    }]);
+  });
+
+  it('a Less keyword argument stays a keyword argument', () => {
+    expect(firstArgument('a { b: darken(@color: red, 10%); }')).toMatchObject([
+      { name: 'color', value: { src: 'red' } },
+      { value: { src: '10%' } }
+    ]);
+  });
+
+  it('a `;` without the colon shape still separates arguments', () => {
+    expect(firstArgument('a { b: foo(a; b); }')).toMatchObject([{ value: { src: 'a' } }, { value: { src: 'b' } }]);
+  });
+});
+
 describe('Less: a `{` in a function argument is dispatched on its shape (P37)', () => {
   for (const [name, source, kind] of CASES) {
     it(`${name} → ${kind === CURLY ? 'curly block' : 'declaration list'}`, () => {

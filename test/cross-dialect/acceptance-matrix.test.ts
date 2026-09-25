@@ -239,32 +239,33 @@ const DIRECTION_1_ALLOWLIST: readonly Allowed[] = [
    * functions). All eight inputs are valid CSS, so the refusing dialect is the
    * defect. None is a convergence of a CSS shape: scss and jess each parse call
    * arguments with their own grammar (Sass keyword arguments; Jess value slots
-   * that refuse bare `>`/`:`), and Less keeps a `;` in call arguments as a
-   * comma, which is Less's own reading (lessc 4.9.1: `foo(a; b)` → `foo(a, b)`).
-   * Carrying `if()` into those grammars is dialect work, and in legacy Less and
-   * in scss (dart-sass evaluates CSS `if()` itself) it needs an owner ruling.
+   * that refuse bare `>`/`:`); carrying branch arguments into them is jess#297
+   * (dart-sass evaluates CSS `if()` itself). Less parses `if()` through CSS's
+   * inherited branch list (ledger P38) but keeps a `;` WITHOUT the branch shape
+   * as a comma, which is Less's own reading (lessc 4.9.1: `foo(a; b)` →
+   * `foo(a, b)`).
    */
   {
     name: 'targeted:if() with style() and else branches',
-    accepted: ['css'],
+    accepted: ['css', 'less'],
     validCss: true,
-    reason: 'css-values-5 §8.3 `if()`. less/jess refuse the `:`-paired branches; scss raises a named-argument error.'
+    reason: 'css-values-5 §8.3 `if()` (P38 branch arguments). jess refuses the `:`-paired branches (jess#297); scss raises a named-argument error.'
   },
   {
     name: 'targeted:if() with media() and supports() branches',
-    accepted: ['css'],
+    accepted: ['css', 'less'],
     validCss: true,
-    reason: 'css-values-5 §8.3 `if()`. less/jess refuse the `:`-paired branches; scss raises a named-argument error.'
+    reason: 'css-values-5 §8.3 `if()` (P38 branch arguments). jess refuses the `:`-paired branches (jess#297); scss raises a named-argument error.'
   },
   {
     name: 'targeted:if() with a lone else branch',
-    accepted: ['css'],
+    accepted: ['css', 'less'],
     validCss: true,
-    reason: 'css-values-5 §8.3 `if()`. less/jess refuse the `:`-paired branch; scss raises a named-argument error.'
+    reason: 'css-values-5 §8.3 `if()` (P38 branch arguments). jess refuses the `:`-paired branch (jess#297); scss raises a named-argument error.'
   },
   {
     name: 'targeted:if() in calc()',
-    accepted: ['css'],
+    accepted: ['css', 'less'],
     validCss: true,
     reason: 'css-values-5 §8.3 `if()` as a calc() operand. Same refusals as the bare `if()` rows.'
   },
@@ -339,7 +340,7 @@ const CRASH_ALLOWLIST: readonly Allowed[] = [
     'targeted:if() in calc()'
   ].map((name): Allowed => ({
     name,
-    accepted: ['css'],
+    accepted: ['css', 'less'],
     validCss: true,
     reason:
       'scss THROWS "A named argument must be spelled `$name: value`." on the `:` of a css-values-5 §8.3 '
