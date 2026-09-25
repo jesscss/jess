@@ -16,6 +16,12 @@ export type UnitMode = 'loose' | 'preserve' | 'strict';
  */
 export type FunctionMode = 'preserve' | 'error';
 
+/**
+ * Less module modes — whether a `.less` document's built-in functions are
+ * ambient or must be imported.
+ */
+export type ModuleMode = 'auto' | 'modern';
+
 export type SelectorPolicyKind = 'class' | 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 export type ExtendSelectorKind = SelectorPolicyKind;
 export type ApplySelectorKind = SelectorPolicyKind;
@@ -164,6 +170,17 @@ export interface LessOptions {
    * @default 'preserve'
    */
   functionMode?: FunctionMode;
+
+  /**
+   * Whether the Less built-in functions are ambient in a `.less` file
+   * - 'auto': decided per file. A file that uses `@use` or `@compose` is in
+   *   modern mode; any other file is legacy, and the built-ins compute as written
+   * - 'modern': every `.less` file is in modern mode
+   * In modern mode a Less built-in must be imported; a call to one that is not
+   * imported is output as written, like an unknown CSS function.
+   * @default 'auto'
+   */
+  moduleMode?: ModuleMode;
 
   /**
    * @deprecated Use `mathMode` instead. This option maps to `mathMode` as follows:

@@ -12,7 +12,7 @@ import {
   logger, type PluginHost } from '@jesscss/core';
 import { makeLessRegistry } from '@jesscss/fns/less/registry';
 import { LessApiBridge, type NativeLessPlugin } from '@jesscss/plugin-less-compat';
-import type { MathMode, UnitMode, LessOptions } from 'styles-config';
+import type { MathMode, ModuleMode, UnitMode, LessOptions } from 'styles-config';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { expandLessImportCandidates } from '@jesscss/style-resolver';
@@ -38,7 +38,8 @@ export const lessPluginDefaults = {
   allowCallerScope: false,
   bubbleRootAtRules: true,
   processImports: true,
-  collapseNesting: false
+  collapseNesting: false,
+  moduleMode: 'auto' as ModuleMode
 } as const;
 
 const lessValueEvaluator = buildEvaluator(makeLessRegistry());
@@ -155,6 +156,7 @@ export class LessPluginResolver {
       mathMode: lessOptions.mathMode,
       strictUnits: lessOptions.strictUnits,
       unitMode: lessOptions.unitMode,
+      moduleMode: lessOptions.moduleMode,
       allowExtendSelectors: lessOptions.allowExtendSelectors,
       allowLeakyScope: lessOptions.allowLeakyScope,
       leakyScope: lessOptions.leakyScope,
@@ -300,6 +302,7 @@ export class LessPlugin extends AbstractPlugin {
   name = 'less';
   supportedExtensions = ['.less'];
   readonly #dialectDefaults: LessDialectDefaults;
+  readonly #moduleMode: ModuleMode;
   private readonly pluginHosts = new WeakMap<Context, PluginHost>();
 
   constructor(public opts: LessPluginOptions = {}) {
@@ -354,6 +357,7 @@ export class LessPlugin extends AbstractPlugin {
       bubbleRootAtRules: opts.bubbleRootAtRules ?? lessPluginDefaults.bubbleRootAtRules,
       processImports: opts.processImports ?? lessPluginDefaults.processImports
     });
+    this.#moduleMode = opts.moduleMode ?? lessPluginDefaults.moduleMode;
   }
 
   transformUrl({ value, quoted, kind, fromFilePath, entryFilePath }: UrlTransformRequest): string {
@@ -539,10 +543,15 @@ export class LessPlugin extends AbstractPlugin {
    * The grammar receives the same compile-over-document precedence that Context
    * installs after parsing, without depending on `documentContext`, which is
    * populated only after the parse returns.
+   *
+   * `moduleMode` reaches the grammar for the same reason: whether the Less
+   * built-ins are ambient is decided per document, where the grammar sees its
+   * `@use`/`@compose` directives, and recorded on the root (ledger P36).
    */
   safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
     const result = safeParseLess(filePath, source, {
-      mathMode: parseOptions?.compilerOptions?.mathMode ?? this.#dialectDefaults.mathMode
+      mathMode: parseOptions?.compilerOptions?.mathMode ?? this.#dialectDefaults.mathMode,
+      moduleMode: this.#moduleMode
     });
     if (result.document) {
       result.dialectDefaults = this.#dialectDefaults;
