@@ -5,7 +5,7 @@
   "surfaces": [
     {
       "name": "ast",
-      "aggregate": "67f4058243b21234555368e9d8fad3e1d749d1d10c5b32831c0a3c70137c24a1",
+      "aggregate": "86ca9dbd9743ba92306fa717ac99e538c771586f6761ef92cbc334679a0bd5f6",
       "threw": 113
     },
     {
@@ -16,7 +16,7 @@
   ],
   "perEntry": {
     "node_modules/@less/test-data/tests-config/3rd-party/bootstrap4.css": {
-      "ast": "87a190d3d2de42c8",
+      "ast": "22692d8d6bd885e7",
       "cst": "42e4f5359c8dbe6b"
     },
     "node_modules/@less/test-data/tests-config/3rd-party/bootstrap4.less": {
@@ -32,19 +32,19 @@
       "cst": "3aae93938ca3e04c"
     },
     "node_modules/@less/test-data/tests-config/at-rules-compressed/at-rules-compressed.css": {
-      "ast": "4f6edbd5fce8156b",
+      "ast": "ab8cd74241e6fe66",
       "cst": "09bc788607233e19"
     },
     "node_modules/@less/test-data/tests-config/at-rules-compressed/at-rules-compressed.less": {
-      "ast": "a3fa71e0e53b0018",
+      "ast": "b14d032071fc876c",
       "cst": "4d10654f90271d4b"
     },
     "node_modules/@less/test-data/tests-config/compression/compression.css": {
-      "ast": "6ddbf18a2092f1cb",
+      "ast": "0cba7b9d924dcfc7",
       "cst": "b46b3e6524a3a5c5"
     },
     "node_modules/@less/test-data/tests-config/compression/compression.less": {
-      "ast": "8a6fca903b678d7d",
+      "ast": "e8daf65baa39189a",
       "cst": "6911d253047a42ff"
     },
     "node_modules/@less/test-data/tests-config/debug/all/linenumbers-all.css": {
@@ -88,11 +88,11 @@
       "cst": "a03f08f2318994ac"
     },
     "node_modules/@less/test-data/tests-config/functions-harness/functions-harness.css": {
-      "ast": "a5e297fbaf1fc6c7",
+      "ast": "57ec7e01aa34a05b",
       "cst": "3b915ef1e5f11eb3"
     },
     "node_modules/@less/test-data/tests-config/functions-harness/functions-harness.less": {
-      "ast": "eac7b2e565088927",
+      "ast": "6f60071cd98e2747",
       "cst": "1f495ff681dc9940"
     },
     "node_modules/@less/test-data/tests-config/globalVars/extended.css": {
@@ -100,7 +100,7 @@
       "cst": "05034a531251be35"
     },
     "node_modules/@less/test-data/tests-config/globalVars/extended.less": {
-      "ast": "0a92ebfd7e2eb842",
+      "ast": "5e5e46a5909a515f",
       "cst": "d660c07dfc6f665d"
     },
     "node_modules/@less/test-data/tests-config/globalVars/simple.css": {
@@ -120,7 +120,7 @@
       "cst": "50ed01a8a20f25df"
     },
     "node_modules/@less/test-data/tests-config/include-path-string/include-path-string.less": {
-      "ast": "860ecbe507a4041a",
+      "ast": "595b313b7797e248",
       "cst": "be9808d1f8798d79"
     },
     "node_modules/@less/test-data/tests-config/include-path/import-test-e.less": {
@@ -132,7 +132,7 @@
       "cst": "59cdfa3afd5b00fe"
     },
     "node_modules/@less/test-data/tests-config/include-path/include-path.less": {
-      "ast": "ab62a99d96b6cfe2",
+      "ast": "6d1dd40fe46f11ce",
       "cst": "c3d192dd0d6fa42c"
     },
     "node_modules/@less/test-data/tests-config/js-type-errors/js-type-error.less": {
@@ -148,7 +148,7 @@
       "cst": "a7a0513480a9695e"
     },
     "node_modules/@less/test-data/tests-config/math-parens-division/media-math.less": {
-      "ast": "b6bec9b6e671da20",
+      "ast": "042a09d40f5ddbfa",
       "cst": "f175a9da109d8457"
     },
     "node_modules/@less/test-data/tests-config/math-parens-division/mixins-args.less": {
@@ -160,15 +160,15 @@
       "cst": "75a4d978e1287639"
     },
     "node_modules/@less/test-data/tests-config/math-parens-division/parens.less": {
-      "ast": "551bc1f193545ae5",
+      "ast": "99f6c1ce38b3a6f8",
       "cst": "3615600e35765683"
     },
     "node_modules/@less/test-data/tests-config/math-strict/css.less": {
-      "ast": "327de6e6de463418",
+      "ast": "fafa026b54fcc5df",
       "cst": "b179bc32a2ae88e0"
     },
     "node_modules/@less/test-data/tests-config/math-strict/media-math.less": {
-      "ast": "8181be88938ddc09",
+      "ast": "6f7c31406be13675",
       "cst": "9761d4d945150f1c"
     },
     "node_modules/@less/test-data/tests-config/math-strict/mixins-args.less": {
@@ -176,7 +176,7 @@
       "cst": "fb19da711fe765bb"
     },
     "node_modules/@less/test-data/tests-config/math-strict/parens.less": {
-      "ast": "551bc1f193545ae5",
+      "ast": "99f6c1ce38b3a6f8",
       "cst": "3615600e35765683"
     },
     "node_modules/@less/test-data/tests-config/math/always/mixins-guards.css": {
@@ -184,7 +184,7 @@
       "cst": "ef446e5304fce2bf"
     },
     "node_modules/@less/test-data/tests-config/math/always/no-sm-operations.css": {
-      "ast": "f288f35751b00960",
+      "ast": "cc0ead486fb0f82b",
       "cst": "0bbf44daa5dc8a04"
     },
     "node_modules/@less/test-data/tests-config/math/parens-division/media-math.css": {
@@ -192,7 +192,7 @@
       "cst": "6cd2a00787692083"
     },
     "node_modules/@less/test-data/tests-config/math/parens-division/mixins-args.css": {
-      "ast": "340a736a952e0a9e",
+      "ast": "42660d612343b1fb",
       "cst": "8f4a4bcd3ba1b345"
     },
     "node_modules/@less/test-data/tests-config/math/parens-division/new-division.css": {
@@ -204,15 +204,15 @@
       "cst": "0cfe567829df02e9"
     },
     "node_modules/@less/test-data/tests-config/math/strict/css.css": {
-      "ast": "cb54e86a0e7618d8",
+      "ast": "bbd8d79cb9fbc59c",
       "cst": "f4575001555a9aba"
     },
     "node_modules/@less/test-data/tests-config/math/strict/media-math.css": {
-      "ast": "aa38e2d45d5cf348",
+      "ast": "d2323517e91ee6e6",
       "cst": "95d8ddb679a1365b"
     },
     "node_modules/@less/test-data/tests-config/math/strict/mixins-args.css": {
-      "ast": "1b6f147043879e44",
+      "ast": "c55b955f45d70744",
       "cst": "c2e6af031700a359"
     },
     "node_modules/@less/test-data/tests-config/math/strict/parens.css": {
@@ -224,7 +224,7 @@
       "cst": "d39a25187adc56de"
     },
     "node_modules/@less/test-data/tests-config/modifyVars/extended.less": {
-      "ast": "d4f208b7e64119ce",
+      "ast": "e7140695a33dffec",
       "cst": "60ce8b789fa0551a"
     },
     "node_modules/@less/test-data/tests-config/namespacing/imports/a-better-bootstrap.less": {
@@ -232,7 +232,7 @@
       "cst": "8713e82fe4f0e5ae"
     },
     "node_modules/@less/test-data/tests-config/namespacing/imports/library.less": {
-      "ast": "ce24953049c805f6",
+      "ast": "b2fa3349264c026c",
       "cst": "8f2860c003abc184"
     },
     "node_modules/@less/test-data/tests-config/namespacing/legacy/namespacing-7.css": {
@@ -260,7 +260,7 @@
       "cst": "13a61a82ddcaff0b"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-3.less": {
-      "ast": "3d736c42c564f493",
+      "ast": "a76f1150f071cc20",
       "cst": "e7a64185ac7c5887"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-4.css": {
@@ -296,11 +296,11 @@
       "cst": "5173cc79ae8778aa"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-8.css": {
-      "ast": "2be8b614c3819b4b",
+      "ast": "e0431b0a829d5b2a",
       "cst": "46b74e319950f76c"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-8.less": {
-      "ast": "e5e67866c93eb28a",
+      "ast": "a85b8c903bc0bc2e",
       "cst": "45c608cefde2bfa0"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-functions.css": {
@@ -308,7 +308,7 @@
       "cst": "14e21be755cc23f7"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-functions.less": {
-      "ast": "11eb7486f53a5b22",
+      "ast": "12d1086ed24098bd",
       "cst": "ef0f1c64e4dc7f59"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-media.css": {
@@ -324,7 +324,7 @@
       "cst": "eda8ea50c6d5f9e8"
     },
     "node_modules/@less/test-data/tests-config/namespacing/namespacing-operations.less": {
-      "ast": "fbcbbe45acd316c2",
+      "ast": "14a1d1c41c659b7c",
       "cst": "e974a6c641c14167"
     },
     "node_modules/@less/test-data/tests-config/no-js-errors/no-js-errors.less": {
@@ -384,7 +384,7 @@
       "cst": "2738f68eac067bf2"
     },
     "node_modules/@less/test-data/tests-config/root-registry/root.less": {
-      "ast": "210b2a4b144a9cf1",
+      "ast": "c340f5a81f49e30a",
       "cst": "3fddc2faf111d628"
     },
     "node_modules/@less/test-data/tests-config/rootpath-rewrite-urls-all/folder/file.less": {
@@ -468,15 +468,15 @@
       "cst": "223ee4b68a0661c2"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps/comprehensive/comprehensive.css": {
-      "ast": "4ed6b2902c0550cb",
+      "ast": "c6c1c1b3bde0c9e4",
       "cst": "260ee3c40ece4b5d"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps/comprehensive/comprehensive.less": {
-      "ast": "4fadfac6486217cf",
+      "ast": "dc04f7154cef7362",
       "cst": "0220dcaf9b522f53"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps/custom-props.less": {
-      "ast": "e454bae11973e734",
+      "ast": "9739bcfb0047db4a",
       "cst": "06a8b6988d8832aa"
     },
     "node_modules/@less/test-data/tests-config/sourcemaps/imported.css": {
@@ -484,11 +484,11 @@
       "cst": "43ce471ffd656c2e"
     },
     "node_modules/@less/test-data/tests-config/static-urls/urls.css": {
-      "ast": "310f19f0c18c0f72",
+      "ast": "e0693ffe7a8ec742",
       "cst": "c7f3fdb3666a4f69"
     },
     "node_modules/@less/test-data/tests-config/static-urls/urls.less": {
-      "ast": "2ed929aef3aac2c6",
+      "ast": "921032b967be5402",
       "cst": "6dfe801bece1f8bb"
     },
     "node_modules/@less/test-data/tests-config/strict-imports/imported.less": {
@@ -512,7 +512,7 @@
       "cst": "cef4a1619a70157a"
     },
     "node_modules/@less/test-data/tests-config/units/loose/loose.less": {
-      "ast": "23624f09b7110c26",
+      "ast": "342bbd664c9ed4ec",
       "cst": "72cbc1c60f7d2a41"
     },
     "node_modules/@less/test-data/tests-config/units/no-strict/legacy/no-strict.css": {
@@ -520,11 +520,11 @@
       "cst": "fe2c841861fffd3e"
     },
     "node_modules/@less/test-data/tests-config/units/no-strict/no-strict.css": {
-      "ast": "17984673f277c135",
+      "ast": "fa1ad41df05b323f",
       "cst": "508cbd6e0af5a2df"
     },
     "node_modules/@less/test-data/tests-config/units/no-strict/no-strict.less": {
-      "ast": "23624f09b7110c26",
+      "ast": "342bbd664c9ed4ec",
       "cst": "72cbc1c60f7d2a41"
     },
     "node_modules/@less/test-data/tests-config/units/strict/strict-units.css": {
@@ -532,19 +532,19 @@
       "cst": "ddf5be6a65c14a31"
     },
     "node_modules/@less/test-data/tests-config/units/strict/strict-units.less": {
-      "ast": "3d48f87bb154e7d3",
+      "ast": "42cf49ca702ee69d",
       "cst": "e5d122dfd02d98a3"
     },
     "node_modules/@less/test-data/tests-config/url-args/legacy/urls.css": {
-      "ast": "d9bd2e5d6cd41761",
+      "ast": "4b009d1e63a839f0",
       "cst": "abd1a04c0d6064be"
     },
     "node_modules/@less/test-data/tests-config/url-args/urls.css": {
-      "ast": "0ff4146e85662858",
+      "ast": "4a405a4c6cb63bef",
       "cst": "985531c8e33ee555"
     },
     "node_modules/@less/test-data/tests-config/url-args/urls.less": {
-      "ast": "23c60fcf659126b8",
+      "ast": "512e172d89a9b6f2",
       "cst": "4cfb3ef82142ae44"
     },
     "node_modules/@less/test-data/tests-config/visitorPlugin/visitor.css": {
@@ -556,11 +556,11 @@
       "cst": "920ae1ad83351783"
     },
     "node_modules/@less/test-data/tests-error/eval/add-mixed-units.less": {
-      "ast": "0f4d1c764a5edfe3",
+      "ast": "8efc6c306d3ad978",
       "cst": "8cbde6c416325382"
     },
     "node_modules/@less/test-data/tests-error/eval/add-mixed-units2.less": {
-      "ast": "b8c7a5f23e914e5d",
+      "ast": "7d99d3ec69fb668a",
       "cst": "6a44017b6c2638a5"
     },
     "node_modules/@less/test-data/tests-error/eval/ampersand-merge-template-invalid.less": {
@@ -572,11 +572,11 @@
       "cst": "1213a40850a43dd5"
     },
     "node_modules/@less/test-data/tests-error/eval/color-func-invalid-color-2.less": {
-      "ast": "84d06eb7cf94d158",
+      "ast": "e6dc59aa8400da76",
       "cst": "00a1d135b76dd132"
     },
     "node_modules/@less/test-data/tests-error/eval/color-func-invalid-color.less": {
-      "ast": "55ce40d594b3c1e7",
+      "ast": "dab9e3aad2506e96",
       "cst": "b3b80bbcda333d85"
     },
     "node_modules/@less/test-data/tests-error/eval/css-guard-default-func.less": {
@@ -600,7 +600,7 @@
       "cst": "e8e5ed5142d1d772"
     },
     "node_modules/@less/test-data/tests-error/eval/divide-mixed-units.less": {
-      "ast": "d2648d56538eb670",
+      "ast": "f13cec18c4433cfb",
       "cst": "d7ca302fc2e6b1fd"
     },
     "node_modules/@less/test-data/tests-error/eval/extend-no-selector.less": {
@@ -608,63 +608,63 @@
       "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-1.less": {
-      "ast": "3b6dee65df7a640b",
+      "ast": "f8a1fdee2add498a",
       "cst": "662552f4dc54b72c"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-10-keyword.less": {
-      "ast": "edd519a2a3260bb6",
+      "ast": "6b2eb995ad055bd3",
       "cst": "29793fdcb6de7d86"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-11-operation.less": {
-      "ast": "db26cce6ab27a6b7",
+      "ast": "5ccb3353efaec88f",
       "cst": "a997d6f40880fdaf"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-12-quoted.less": {
-      "ast": "bc2ae7c7ab05fef1",
+      "ast": "4f13e88690e4d69c",
       "cst": "02373d0659bac26d"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-13-selector.less": {
-      "ast": "04cb3c8149af3dac",
+      "ast": "d9733aef2f848476",
       "cst": "98e06be450914a09"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-14-url.less": {
-      "ast": "6f0334cf52352057",
+      "ast": "49673c50a57ce4d6",
       "cst": "e59ff8f6c6f392fc"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-15-value.less": {
-      "ast": "178a0d1ad75cb3f3",
+      "ast": "f80975cc15d8ee57",
       "cst": "92aab9e527fae67c"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-3-assignment.less": {
-      "ast": "f9352a9ed23bb50f",
+      "ast": "628382adc5eafb2e",
       "cst": "996dca5a7626ccfa"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-4-call.less": {
-      "ast": "73c44dd917210b33",
+      "ast": "03af0af0e9425feb",
       "cst": "03063dfef32ec0a1"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-5-color-2.less": {
-      "ast": "3d2c542fbb3b0241",
+      "ast": "79be54916864a4f7",
       "cst": "eb733b4aafb68dfb"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-5-color.less": {
-      "ast": "f6e9b10ed28d440b",
+      "ast": "072fdcfc95f55cce",
       "cst": "4de62d0494763a9d"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-6-condition.less": {
-      "ast": "31409e428141dd94",
+      "ast": "19737701a59e35fb",
       "cst": "182734deefc76cc5"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-7-dimension.less": {
-      "ast": "c03878d5f1c17e12",
+      "ast": "691152b53ec237da",
       "cst": "7a536d1fde33bf87"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-8-element.less": {
-      "ast": "7bdb042d670d7128",
+      "ast": "1999b450685f410e",
       "cst": "8c9accf94cb00534"
     },
     "node_modules/@less/test-data/tests-error/eval/functions-9-expression.less": {
-      "ast": "067e13bc48c073f8",
+      "ast": "2585382055a6d2f6",
       "cst": "4f11e15dddb17dab"
     },
     "node_modules/@less/test-data/tests-error/eval/import-missing.less": {
@@ -732,7 +732,7 @@
       "cst": "e2ecfc7461f1ff08"
     },
     "node_modules/@less/test-data/tests-error/eval/multiply-mixed-units.less": {
-      "ast": "5f0360cdd99c980b",
+      "ast": "8d833a66b06fbbc4",
       "cst": "f7b0f5b3916eedab"
     },
     "node_modules/@less/test-data/tests-error/eval/namespace-property-not-found.less": {
@@ -756,11 +756,11 @@
       "cst": "113e35014adb37e7"
     },
     "node_modules/@less/test-data/tests-error/eval/percentage-css-var.less": {
-      "ast": "914c85caaaec4638",
+      "ast": "f7de6a6457bb44bf",
       "cst": "935def655b0d5473"
     },
     "node_modules/@less/test-data/tests-error/eval/percentage-non-number-argument.less": {
-      "ast": "493e1dda0a61aedb",
+      "ast": "75dbfa6bed8b1c69",
       "cst": "8b8742540559289b"
     },
     "node_modules/@less/test-data/tests-error/eval/plugin-1.less": {
@@ -796,47 +796,47 @@
       "cst": "75e2cf486d7791a5"
     },
     "node_modules/@less/test-data/tests-error/eval/recursive-property.less": {
-      "ast": "6d02e0ccd7e8b45f",
+      "ast": "c32aab8bb43d81eb",
       "cst": "c5c793817d53144d"
     },
     "node_modules/@less/test-data/tests-error/eval/recursive-variable.less": {
-      "ast": "8e7eb6bccc600029",
+      "ast": "bd2b636ae66e9779",
       "cst": "373f2b197578d34b"
     },
     "node_modules/@less/test-data/tests-error/eval/root-func-undefined-1.less": {
-      "ast": "bd0d8f867ca5a3a4",
+      "ast": "12ba16f284272db3",
       "cst": "ee595b895dcec4cf"
     },
     "node_modules/@less/test-data/tests-error/eval/root-func-undefined-2.less": {
-      "ast": "8ac4f9984c25e644",
+      "ast": "c3cd8877a1c357f6",
       "cst": "026a63de75eaddc2"
     },
     "node_modules/@less/test-data/tests-error/eval/svg-gradient1.less": {
-      "ast": "70520872c245c391",
+      "ast": "4020b2b168286e9e",
       "cst": "d0ea35145d03e4ff"
     },
     "node_modules/@less/test-data/tests-error/eval/svg-gradient2.less": {
-      "ast": "bd1dbe12473ad035",
+      "ast": "7fb4224dcbcc7d5b",
       "cst": "1c0d4b98d4605aff"
     },
     "node_modules/@less/test-data/tests-error/eval/svg-gradient3.less": {
-      "ast": "2713dcb9b220b0b6",
+      "ast": "eadf161d5a763fa6",
       "cst": "94896ba1453574ce"
     },
     "node_modules/@less/test-data/tests-error/eval/svg-gradient4.less": {
-      "ast": "cecbed639db83ed9",
+      "ast": "9ff1278fd841842c",
       "cst": "a40dc79a74f660bb"
     },
     "node_modules/@less/test-data/tests-error/eval/svg-gradient5.less": {
-      "ast": "30ad964a65b65e7c",
+      "ast": "ded8ba15cea3a418",
       "cst": "e8bed9398adaa1e4"
     },
     "node_modules/@less/test-data/tests-error/eval/svg-gradient6.less": {
-      "ast": "7b2d8425ba198dff",
+      "ast": "4b059c6a80a144e2",
       "cst": "748274c214499b60"
     },
     "node_modules/@less/test-data/tests-error/eval/unit-function.less": {
-      "ast": "96fd6da22f39e781",
+      "ast": "bae47bc1b341507b",
       "cst": "a12e16648d6c99ae"
     },
     "node_modules/@less/test-data/tests-error/parse/at-rules-unmatching-block.less": {
@@ -972,15 +972,15 @@
       "cst": "40e316062d0b52de"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-bubbling/at-rules-bubbling.css": {
-      "ast": "027433aed4dcfd03",
+      "ast": "45ba314936a21898",
       "cst": "2ff4f9fa61238436"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-bubbling/at-rules-bubbling.less": {
-      "ast": "c58eaeef5bdf0290",
+      "ast": "86db17c216c3695a",
       "cst": "a5d0829b97b7dfdd"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-bubbling/legacy/at-rules-bubbling.css": {
-      "ast": "fdb4c8c44fdfa514",
+      "ast": "f6fa35b8ee4c5b25",
       "cst": "1d79395890d6ff6a"
     },
     "node_modules/@less/test-data/tests-unit/at-rules-declarations/at-rules-declarations.css": {
@@ -1032,27 +1032,27 @@
       "cst": "0a2203ab3de3993e"
     },
     "node_modules/@less/test-data/tests-unit/at-rules/at-rules.css": {
-      "ast": "e8e1cfd4fe139bf9",
+      "ast": "5680765eb6b8c745",
       "cst": "b3182601cdb3caef"
     },
     "node_modules/@less/test-data/tests-unit/at-rules/at-rules.less": {
-      "ast": "96a667316ae5f5c5",
+      "ast": "6d86debe192ad628",
       "cst": "14c679c0393c7cb0"
     },
     "node_modules/@less/test-data/tests-unit/at-rules/legacy/at-rules.css": {
-      "ast": "5762c29ea7993e66",
+      "ast": "09889090e57e9324",
       "cst": "5314c6b5c399c0b0"
     },
     "node_modules/@less/test-data/tests-unit/calc/calc.css": {
-      "ast": "255ecc30ba751235",
+      "ast": "ccb5a4ecc08f90de",
       "cst": "996e9fa5652a5b06"
     },
     "node_modules/@less/test-data/tests-unit/calc/calc.less": {
-      "ast": "0f723a6ab6d2348f",
+      "ast": "0316a52e2ad17238",
       "cst": "ed2cb7ab9d6ef79c"
     },
     "node_modules/@less/test-data/tests-unit/calc/legacy/calc.css": {
-      "ast": "90734d82360f0401",
+      "ast": "19b4a0b9fc2e76ba",
       "cst": "55b664ae941160fb"
     },
     "node_modules/@less/test-data/tests-unit/charsets/charsets.css": {
@@ -1072,83 +1072,83 @@
       "cst": "0b6f1516b6991c76"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/alpha.less": {
-      "ast": "e5441dccb6c765b9",
+      "ast": "458962b6f30f8df3",
       "cst": "eede8244def03dc4"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/basic.css": {
-      "ast": "c3eb918a17105679",
+      "ast": "1645764dfbeded8b",
       "cst": "163ca3d0b9facffd"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/basic.less": {
-      "ast": "6562c67421491c1f",
+      "ast": "6dadb58ae75c11a4",
       "cst": "80a361efae78ecba"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/comprehensive.css": {
-      "ast": "3d325d45f36c13af",
+      "ast": "939590e5fef76d94",
       "cst": "11bea3496faad90f"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/comprehensive.less": {
-      "ast": "eb21c892db072b42",
+      "ast": "668e2129a9e6bc42",
       "cst": "6966ce32a73da6a5"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/formats.css": {
-      "ast": "05947530ddb1b6bd",
+      "ast": "670d328f4c3da95b",
       "cst": "5bb19038881667c7"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/formats.less": {
-      "ast": "1ec0dc4687f665be",
+      "ast": "fdbf1f71aaac73f2",
       "cst": "ea51e3189f7233aa"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/legacy/basic.css": {
-      "ast": "0bbd38b89763a6ac",
+      "ast": "3417265f90ef0181",
       "cst": "e133a8812ee373f0"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/legacy/comprehensive.css": {
-      "ast": "69507b8cc962a0a4",
+      "ast": "9abf7bd5a83b4455",
       "cst": "4eaf78d30174a6aa"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/legacy/modern-syntax.css": {
-      "ast": "908cac403f52c00c",
+      "ast": "5b88c1deeb6d3485",
       "cst": "16bbf2ad34dc7ad4"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/legacy/operations.css": {
-      "ast": "cbc2efd006eb6830",
+      "ast": "db9f1b5f655a4fb1",
       "cst": "090b8a1c25356a6b"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/legacy/rgba.css": {
-      "ast": "469cf1cd4981172d",
+      "ast": "2bccab7391d1158f",
       "cst": "5395d3302d56ebca"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/modern-syntax.css": {
-      "ast": "6e1e558926f1115b",
+      "ast": "0f24e35400776bf6",
       "cst": "5460efa62fc53ce7"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/modern-syntax.less": {
-      "ast": "7da030f49eac5596",
+      "ast": "b5d3e1a0ea23a8aa",
       "cst": "260a25971fcb2979"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/modern.css": {
-      "ast": "f0da3fcaa9aa4740",
+      "ast": "4ec0e02504ff0fb0",
       "cst": "b3c1f8a259da618d"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/modern.less": {
-      "ast": "aa5dac19e86a5d4e",
+      "ast": "314c43c1cf20268a",
       "cst": "76b12e9e3ec2a176"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/operations.css": {
-      "ast": "e73dffbae9175183",
+      "ast": "4b7731d2331f1a63",
       "cst": "f6faca67a81d9d54"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/operations.less": {
-      "ast": "18c2a79a63f1e1d2",
+      "ast": "69383d02a8a51ef0",
       "cst": "d7b735c840d2658f"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/rgba.css": {
-      "ast": "2a479f21183e9878",
+      "ast": "e02a0becad80a20f",
       "cst": "aa94b4ca95d3a119"
     },
     "node_modules/@less/test-data/tests-unit/color-functions/rgba.less": {
-      "ast": "2e78dfa6ba07ea6c",
+      "ast": "b2ebad8625cfed04",
       "cst": "89b380bff36a2894"
     },
     "node_modules/@less/test-data/tests-unit/comments/comments.css": {
@@ -1156,15 +1156,15 @@
       "cst": "d3ecccb02aecbe2a"
     },
     "node_modules/@less/test-data/tests-unit/comments/comments.less": {
-      "ast": "0c5ad79b3edcb726",
+      "ast": "4ed79fefb74c0ce4",
       "cst": "f0b988827176bbc7"
     },
     "node_modules/@less/test-data/tests-unit/comments/comments2.css": {
-      "ast": "de56ad9d39407c50",
+      "ast": "06dfff702cd59545",
       "cst": "b067c219667905ef"
     },
     "node_modules/@less/test-data/tests-unit/comments/comments2.less": {
-      "ast": "7c79ed1278537944",
+      "ast": "221070609b26135f",
       "cst": "763a957d3c832258"
     },
     "node_modules/@less/test-data/tests-unit/comments/legacy/comments.css": {
@@ -1172,15 +1172,15 @@
       "cst": "5e94a4d26733140b"
     },
     "node_modules/@less/test-data/tests-unit/comments/legacy/comments2.css": {
-      "ast": "78d13f8191918163",
+      "ast": "7f94a48933c5910b",
       "cst": "1e17129b48bde262"
     },
     "node_modules/@less/test-data/tests-unit/container/container.css": {
-      "ast": "11a1cb27f520728e",
+      "ast": "3f20e1ad33f154c5",
       "cst": "09527ef419535749"
     },
     "node_modules/@less/test-data/tests-unit/container/container.less": {
-      "ast": "427d2a1ef4f17c38",
+      "ast": "32e68f414b88f31a",
       "cst": "5e209c2c2e4fbb64"
     },
     "node_modules/@less/test-data/tests-unit/container/legacy/container.css": {
@@ -1188,15 +1188,15 @@
       "cst": "16968e8c9fd720c0"
     },
     "node_modules/@less/test-data/tests-unit/css-3/css-3.css": {
-      "ast": "b1706770e3f7a092",
+      "ast": "f53c1477e5e5d26f",
       "cst": "664cf0eca550fbfe"
     },
     "node_modules/@less/test-data/tests-unit/css-3/css-3.less": {
-      "ast": "9122bd0a08226ec3",
+      "ast": "349fde432620bd2f",
       "cst": "b0200b8e56f40ed6"
     },
     "node_modules/@less/test-data/tests-unit/css-3/legacy/css-3.css": {
-      "ast": "d5d71b3d559a62a7",
+      "ast": "02f5871df2989ecd",
       "cst": "fe68a8677aa9c99b"
     },
     "node_modules/@less/test-data/tests-unit/css-escapes/css-escapes.css": {
@@ -1204,7 +1204,7 @@
       "cst": "9fdc895fbdf41b1b"
     },
     "node_modules/@less/test-data/tests-unit/css-escapes/css-escapes.less": {
-      "ast": "e62d88a9fb4a12c7",
+      "ast": "1cfb9fce378bff71",
       "cst": "28b8ad1a33398ca1"
     },
     "node_modules/@less/test-data/tests-unit/css-escapes/legacy/css-escapes.css": {
@@ -1212,15 +1212,15 @@
       "cst": "867e1d7f0ff4d384"
     },
     "node_modules/@less/test-data/tests-unit/css-grid/css-grid.css": {
-      "ast": "32e15b4ac952653c",
+      "ast": "d319a4cc224bb889",
       "cst": "08aa7b1ba62f9136"
     },
     "node_modules/@less/test-data/tests-unit/css-grid/css-grid.less": {
-      "ast": "d7ccdce69f503ab7",
+      "ast": "df3f29b6e1a07c4d",
       "cst": "df64b791d1791265"
     },
     "node_modules/@less/test-data/tests-unit/css-grid/legacy/css-grid.css": {
-      "ast": "e484ecda9d6c4e08",
+      "ast": "5ca88475b8091f8f",
       "cst": "8421f38ee3e4a4fb"
     },
     "node_modules/@less/test-data/tests-unit/css-guards/css-guards.css": {
@@ -1228,7 +1228,7 @@
       "cst": "cc872e3d8c48f269"
     },
     "node_modules/@less/test-data/tests-unit/css-guards/css-guards.less": {
-      "ast": "418c67bf16631b67",
+      "ast": "b594c604d2388a50",
       "cst": "0a6bed1888996c52"
     },
     "node_modules/@less/test-data/tests-unit/detached-rulesets/detached-rulesets.css": {
@@ -1236,7 +1236,7 @@
       "cst": "f1b4e4515e278f80"
     },
     "node_modules/@less/test-data/tests-unit/detached-rulesets/detached-rulesets.less": {
-      "ast": "f036cb03e4ca5469",
+      "ast": "fe83fc4575a9a986",
       "cst": "e6f4a0c10130d191"
     },
     "node_modules/@less/test-data/tests-unit/detached-rulesets/legacy/detached-rulesets.css": {
@@ -1244,7 +1244,7 @@
       "cst": "c8be124c722e64cb"
     },
     "node_modules/@less/test-data/tests-unit/directives-bubbling/directives-bubbling.css": {
-      "ast": "027433aed4dcfd03",
+      "ast": "45ba314936a21898",
       "cst": "2ff4f9fa61238436"
     },
     "node_modules/@less/test-data/tests-unit/empty/empty.css": {
@@ -1344,7 +1344,7 @@
       "cst": "fda4d2180f8d7dd5"
     },
     "node_modules/@less/test-data/tests-unit/extract-and-length/extract-and-length.less": {
-      "ast": "bc6e8cf0d0b26704",
+      "ast": "5365b4d45973eee0",
       "cst": "093dff8f688d89bb"
     },
     "node_modules/@less/test-data/tests-unit/extract-and-length/legacy/extract-and-length.css": {
@@ -1356,7 +1356,7 @@
       "cst": "f8dd1b66d1e72c49"
     },
     "node_modules/@less/test-data/tests-unit/functions-each/functions-each.less": {
-      "ast": "adc5e60e2b23699f",
+      "ast": "c27f4e53cf9af689",
       "cst": "f7d4f4073c10b814"
     },
     "node_modules/@less/test-data/tests-unit/functions/functions.css": {
@@ -1364,7 +1364,7 @@
       "cst": "39f5d31244bddce6"
     },
     "node_modules/@less/test-data/tests-unit/functions/functions.less": {
-      "ast": "ea447aafe6ab7104",
+      "ast": "f4d73bcfb886d3b2",
       "cst": "391d51b16395000e"
     },
     "node_modules/@less/test-data/tests-unit/functions/legacy/functions.css": {
@@ -1488,7 +1488,7 @@
       "cst": "9dc8f7ce5a7a4bba"
     },
     "node_modules/@less/test-data/tests-unit/import/import.less": {
-      "ast": "c588049d2ed49b8e",
+      "ast": "627908aaf20c1c83",
       "cst": "ed2c1929a5760f92"
     },
     "node_modules/@less/test-data/tests-unit/import/import/css-import.less": {
@@ -1652,31 +1652,31 @@
       "cst": "e41339b8a67a9fa2"
     },
     "node_modules/@less/test-data/tests-unit/math-css-vars/math-css-vars.css": {
-      "ast": "5dba9bc56194e42b",
+      "ast": "22183d5154506be5",
       "cst": "487d6afa6522e8dc"
     },
     "node_modules/@less/test-data/tests-unit/math-css-vars/math-css-vars.less": {
-      "ast": "21ebf1bcf6dd45dd",
+      "ast": "428a607c20c87a62",
       "cst": "a1ae18f76c9b6070"
     },
     "node_modules/@less/test-data/tests-unit/media/legacy/media.css": {
-      "ast": "6ae5f23c12d4a0ba",
+      "ast": "169392d757981363",
       "cst": "bb8a62395e5e7381"
     },
     "node_modules/@less/test-data/tests-unit/media/media.css": {
-      "ast": "f483f9b7fe4dfd29",
+      "ast": "d5541bad0a315eae",
       "cst": "f0495f9d1ac0ad96"
     },
     "node_modules/@less/test-data/tests-unit/media/media.less": {
-      "ast": "32f5fd88c57b8baa",
+      "ast": "b1652a8e3678644a",
       "cst": "0205b671e79851ce"
     },
     "node_modules/@less/test-data/tests-unit/merge/merge.css": {
-      "ast": "5abaa1952e580a4e",
+      "ast": "8ffb57260b206acc",
       "cst": "fc7f8f943aa5e1a8"
     },
     "node_modules/@less/test-data/tests-unit/merge/merge.less": {
-      "ast": "17a2e0f31b481ea8",
+      "ast": "7e547194abb04e29",
       "cst": "ccb93e16e1464e40"
     },
     "node_modules/@less/test-data/tests-unit/mixin-noparens/legacy/mixin-noparens.css": {
@@ -1704,15 +1704,15 @@
       "cst": "ba67990abda9be24"
     },
     "node_modules/@less/test-data/tests-unit/mixins-guards-default-func/legacy/mixins-guards-default-func.css": {
-      "ast": "e502ec62f9ab6a87",
+      "ast": "4ac262ebe3d1378b",
       "cst": "9488113fd071c40a"
     },
     "node_modules/@less/test-data/tests-unit/mixins-guards-default-func/mixins-guards-default-func.css": {
-      "ast": "1f41aec20dc70fd1",
+      "ast": "c8bfb1e8258203b2",
       "cst": "281ae11f5d67d6c1"
     },
     "node_modules/@less/test-data/tests-unit/mixins-guards-default-func/mixins-guards-default-func.less": {
-      "ast": "b0f3fcb5e405d7cd",
+      "ast": "596aa2d1ffdd2987",
       "cst": "b7bef3e3181c1359"
     },
     "node_modules/@less/test-data/tests-unit/mixins-guards/legacy/mixins-guards.css": {
@@ -1724,7 +1724,7 @@
       "cst": "7a33c2387f5752bd"
     },
     "node_modules/@less/test-data/tests-unit/mixins-guards/mixins-guards.less": {
-      "ast": "d10d57093d3887d8",
+      "ast": "a1f5cec171fc29a9",
       "cst": "1e34f8156f36afda"
     },
     "node_modules/@less/test-data/tests-unit/mixins-important/mixins-important.css": {
@@ -1752,7 +1752,7 @@
       "cst": "fca8289f867480b4"
     },
     "node_modules/@less/test-data/tests-unit/mixins-named-args/mixins-named-args.less": {
-      "ast": "1874f0e3145e89cf",
+      "ast": "967c1b244491e329",
       "cst": "ed0b356b0be1509f"
     },
     "node_modules/@less/test-data/tests-unit/mixins-nested/legacy/mixins-nested.css": {
@@ -1764,7 +1764,7 @@
       "cst": "eca91918ed6ee671"
     },
     "node_modules/@less/test-data/tests-unit/mixins-nested/mixins-nested.less": {
-      "ast": "564cf33a66fb63b8",
+      "ast": "1ebcf9c2bb4384dd",
       "cst": "bdd59327c73d094c"
     },
     "node_modules/@less/test-data/tests-unit/mixins-pattern/mixins-pattern.css": {
@@ -1772,7 +1772,7 @@
       "cst": "b5fc22dfe9174e42"
     },
     "node_modules/@less/test-data/tests-unit/mixins-pattern/mixins-pattern.less": {
-      "ast": "cdd81382dba53930",
+      "ast": "6e32b669bafa41d1",
       "cst": "6b3f94f2f6aa16d8"
     },
     "node_modules/@less/test-data/tests-unit/mixins/legacy/maps.css": {
@@ -1788,7 +1788,7 @@
       "cst": "9c6032f24f4f3d13"
     },
     "node_modules/@less/test-data/tests-unit/mixins/maps.less": {
-      "ast": "4de0441c829850db",
+      "ast": "de66af0d4eadf119",
       "cst": "2687959126e2892b"
     },
     "node_modules/@less/test-data/tests-unit/mixins/mixins-advanced.css": {
@@ -1796,7 +1796,7 @@
       "cst": "443eccb88f8fb8ec"
     },
     "node_modules/@less/test-data/tests-unit/mixins/mixins-advanced.less": {
-      "ast": "fe82363606003e36",
+      "ast": "ade4cc456c446e4d",
       "cst": "a35c91bf2241e299"
     },
     "node_modules/@less/test-data/tests-unit/mixins/mixins.css": {
@@ -1804,7 +1804,7 @@
       "cst": "fe8311d5ec449975"
     },
     "node_modules/@less/test-data/tests-unit/mixins/mixins.less": {
-      "ast": "6f75955e8c7d0082",
+      "ast": "d98b62c0d23bd39b",
       "cst": "36ba5920d3bb231e"
     },
     "node_modules/@less/test-data/tests-unit/namespace-targeted/namespace-targeted.css": {
@@ -1816,19 +1816,19 @@
       "cst": "835a912d32fd3f40"
     },
     "node_modules/@less/test-data/tests-unit/nesting/legacy/nesting.css": {
-      "ast": "506ec4dc49ff983d",
+      "ast": "1a31ff320eaac5ad",
       "cst": "8e96c2c7fd8facd5"
     },
     "node_modules/@less/test-data/tests-unit/nesting/nesting-uncollapsed.css": {
-      "ast": "3cd4a4379e68fb0d",
+      "ast": "7dc7e57090bd926d",
       "cst": "f2f22c2d54bb63fd"
     },
     "node_modules/@less/test-data/tests-unit/nesting/nesting.css": {
-      "ast": "a03c1067cab0f5a4",
+      "ast": "e91c8b29d61609e1",
       "cst": "44ffa3f3d6dd2c8c"
     },
     "node_modules/@less/test-data/tests-unit/nesting/nesting.less": {
-      "ast": "5e7113df50a80c9d",
+      "ast": "ff633ec3cf7bec08",
       "cst": "6c4160beddb346f8"
     },
     "node_modules/@less/test-data/tests-unit/no-output/no-output.css": {
@@ -1840,15 +1840,15 @@
       "cst": "bb3eb1bd4a28b853"
     },
     "node_modules/@less/test-data/tests-unit/operations/legacy/operations-advanced.css": {
-      "ast": "859d24a8a5eba50b",
+      "ast": "609b43f18573a4fe",
       "cst": "800a270927b0474e"
     },
     "node_modules/@less/test-data/tests-unit/operations/operations-advanced.css": {
-      "ast": "bfce498299168f0f",
+      "ast": "407f736e33614d4b",
       "cst": "10ac8346b37615fd"
     },
     "node_modules/@less/test-data/tests-unit/operations/operations-advanced.less": {
-      "ast": "c6e0e581792e3a14",
+      "ast": "1a2ca0f78d7df74b",
       "cst": "9f9c8543bed36eb1"
     },
     "node_modules/@less/test-data/tests-unit/operations/operations.css": {
@@ -1856,7 +1856,7 @@
       "cst": "e7c050b8fba7d36c"
     },
     "node_modules/@less/test-data/tests-unit/operations/operations.less": {
-      "ast": "a7bbaf3ee04b2626",
+      "ast": "54a75b2d08505a1a",
       "cst": "86889c4895bf37ae"
     },
     "node_modules/@less/test-data/tests-unit/parse-interpolation/legacy/parse-interpolation.css": {
@@ -1888,7 +1888,7 @@
       "cst": "4362dd27f6a93041"
     },
     "node_modules/@less/test-data/tests-unit/permissive-parse/permissive-parse.css": {
-      "ast": "e21cd0fe14246391",
+      "ast": "4fd7162de302d025",
       "cst": "3bd850f2939a5c37"
     },
     "node_modules/@less/test-data/tests-unit/permissive-parse/permissive-parse.less": {
@@ -1920,11 +1920,11 @@
       "cst": "5f6ae5c96dba906e"
     },
     "node_modules/@less/test-data/tests-unit/plugin/plugin.css": {
-      "ast": "5a2c43c71343689b",
+      "ast": "d76de027ea6b5246",
       "cst": "8598bdcbc0f3abb0"
     },
     "node_modules/@less/test-data/tests-unit/plugin/plugin.less": {
-      "ast": "c11dc787e108020d",
+      "ast": "30281f0098d47c28",
       "cst": "7557bbce0cd5c38e"
     },
     "node_modules/@less/test-data/tests-unit/property-accessors/legacy/property-accessors.css": {
@@ -1936,7 +1936,7 @@
       "cst": "ee91ca356cc67047"
     },
     "node_modules/@less/test-data/tests-unit/property-accessors/property-accessors.less": {
-      "ast": "ca5956059dae1dbd",
+      "ast": "b15aa1aa75b535a6",
       "cst": "7833852d54b17048"
     },
     "node_modules/@less/test-data/tests-unit/property-name-interp/legacy/property-name-interp.css": {
@@ -1948,7 +1948,7 @@
       "cst": "f98bfe52ca327a62"
     },
     "node_modules/@less/test-data/tests-unit/property-name-interp/property-name-interp.less": {
-      "ast": "911611a3b4e20b1f",
+      "ast": "ca73a2176a244343",
       "cst": "09b47cae4ea90e0d"
     },
     "node_modules/@less/test-data/tests-unit/property-targeted/legacy/property-targeted.css": {
@@ -1996,11 +1996,11 @@
       "cst": "74ec31177e6ff532"
     },
     "node_modules/@less/test-data/tests-unit/starting-style/starting-style.css": {
-      "ast": "3d630d259ee6962c",
+      "ast": "077ef44805fd92bf",
       "cst": "c973fb4c47e5757a"
     },
     "node_modules/@less/test-data/tests-unit/starting-style/starting-style.less": {
-      "ast": "8fa9f8c51cad081d",
+      "ast": "302117e090feabd9",
       "cst": "bb22bd66e6efdfae"
     },
     "node_modules/@less/test-data/tests-unit/strings/strings.css": {
@@ -2028,7 +2028,7 @@
       "cst": "07d23e2a6122339f"
     },
     "node_modules/@less/test-data/tests-unit/urls/assets/nested-gradient-with-svg-gradient/svg-gradient-mixin.less": {
-      "ast": "a5ebd802be1e51e0",
+      "ast": "27e33fe09a62c44b",
       "cst": "437a7a8942338178"
     },
     "node_modules/@less/test-data/tests-unit/urls/css/background.css": {
@@ -2056,15 +2056,15 @@
       "cst": "1de4bfab7b13ec5d"
     },
     "node_modules/@less/test-data/tests-unit/urls/nested-gradient-with-svg-gradient/svg-gradient-mixin.less": {
-      "ast": "a5ebd802be1e51e0",
+      "ast": "27e33fe09a62c44b",
       "cst": "437a7a8942338178"
     },
     "node_modules/@less/test-data/tests-unit/urls/urls.css": {
-      "ast": "ff0d0a5cfeb43d5b",
+      "ast": "d4659ff3229a5d1e",
       "cst": "14ad47e23e0221d3"
     },
     "node_modules/@less/test-data/tests-unit/urls/urls.less": {
-      "ast": "bcdc94922cabb4a8",
+      "ast": "21ca7b074e5e9bc5",
       "cst": "41338cbb0768f997"
     },
     "node_modules/@less/test-data/tests-unit/variables-in-at-rules/variables-in-at-rules.css": {
@@ -2080,11 +2080,11 @@
       "cst": "81effd17f702fcbe"
     },
     "node_modules/@less/test-data/tests-unit/variables/variable-advanced.css": {
-      "ast": "67b949d5b7e164e3",
+      "ast": "a4ce39ec3f494cdd",
       "cst": "54e683551f38ee53"
     },
     "node_modules/@less/test-data/tests-unit/variables/variable-advanced.less": {
-      "ast": "65e76708adf26f6d",
+      "ast": "482bf284274e5d60",
       "cst": "c42427cb2ae83edc"
     },
     "node_modules/@less/test-data/tests-unit/variables/variables.css": {
@@ -2092,7 +2092,7 @@
       "cst": "fe16c3f119694d4f"
     },
     "node_modules/@less/test-data/tests-unit/variables/variables.less": {
-      "ast": "a0b8c60cce90d652",
+      "ast": "8a5d7e6576be5971",
       "cst": "9c676441b07adee0"
     },
     "node_modules/@less/test-data/tests-unit/whitespace/legacy/whitespace.css": {
@@ -2108,31 +2108,31 @@
       "cst": "5de89baa6c310e57"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_alert.less": {
-      "ast": "3b761bc95a7cb13a",
+      "ast": "13cba60daec21484",
       "cst": "e622305767972bd2"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_badge.less": {
-      "ast": "0cf8bcbdaed37f47",
+      "ast": "0ec444c4921ccce8",
       "cst": "9dd5cc1e845def2f"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_breadcrumb.less": {
-      "ast": "3270f296f0fcc050",
+      "ast": "0d41a879ae8d1d1b",
       "cst": "fa3a186b6abcb583"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_button-group.less": {
-      "ast": "c6b9bc4fd3a9fc67",
+      "ast": "dc08e7d77143aa4f",
       "cst": "cbb38c5752351ab3"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_buttons.less": {
-      "ast": "f72727cf833c4a36",
+      "ast": "4bd12abfb096c0fb",
       "cst": "1ed124ec1f0f6c22"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_card.less": {
-      "ast": "6b5a52c863b4f9f5",
+      "ast": "a927e3c43a30a65f",
       "cst": "9cb7b3d80b2fc96b"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_carousel.less": {
-      "ast": "72a8ecec8665f123",
+      "ast": "24421f75de95a86d",
       "cst": "73d7e1fcc8a9d980"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_close.less": {
@@ -2144,15 +2144,15 @@
       "cst": "dfae4ea7aa1674b5"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_custom-forms.less": {
-      "ast": "93ce08cb792a71c5",
+      "ast": "9dc19b09ae59b9b0",
       "cst": "8f377bb3fb712632"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_dropdown.less": {
-      "ast": "8f039957101430fb",
+      "ast": "81441f47574fc109",
       "cst": "46b2df77c43e280c"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_forms.less": {
-      "ast": "57315bf5f551632f",
+      "ast": "3bb9420984387f8d",
       "cst": "6eb94e5ae95cc730"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_functions.less": {
@@ -2160,23 +2160,23 @@
       "cst": "392b9ae1229ed748"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_grid.less": {
-      "ast": "9674d1d8162c55dc",
+      "ast": "507e3ccbb67169c6",
       "cst": "e4a52d5529336d19"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_images.less": {
-      "ast": "98bdedd91a6eb9d0",
+      "ast": "21354f1d0429c24f",
       "cst": "01c1a9cbdf891e73"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_input-group.less": {
-      "ast": "b6bb550a74a346c1",
+      "ast": "2623736130370642",
       "cst": "4c30a198438a3890"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_jumbotron.less": {
-      "ast": "8f0e4b043ed30d01",
+      "ast": "e64644fbf2bd0eee",
       "cst": "40eb9d0f52a22a9e"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_list-group.less": {
-      "ast": "b9e7a88e2db6de40",
+      "ast": "5f82dbe963efc389",
       "cst": "4e4b453d4d4b75b0"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_media.less": {
@@ -2188,27 +2188,27 @@
       "cst": "708652823c200e7c"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_modal.less": {
-      "ast": "ac23c366cdb0026f",
+      "ast": "8860e1d07c0f7407",
       "cst": "a45c9903fa719d5b"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_nav.less": {
-      "ast": "96bbd4891a2bc7d1",
+      "ast": "488b053ccd87b293",
       "cst": "0b4b336b2163f415"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_navbar.less": {
-      "ast": "5dcec0a32b6bd04a",
+      "ast": "d169ee3e74483e15",
       "cst": "bc8647d065b28157"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_pagination.less": {
-      "ast": "0eb43faecbdf720c",
+      "ast": "60d0f398bd3d766a",
       "cst": "441cfcfa43ee2147"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_popover.less": {
-      "ast": "39c283edbd5127da",
+      "ast": "c5b6a2e0b084a8f9",
       "cst": "159b1dd5cd3a1745"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_print.less": {
-      "ast": "321185482c73392b",
+      "ast": "a36b5b2f47b19d26",
       "cst": "2c20a7be67c91945"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_progress.less": {
@@ -2220,23 +2220,23 @@
       "cst": "615bfb48325993d4"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_root.less": {
-      "ast": "9daff20a17abc803",
+      "ast": "4f37892ed71341b0",
       "cst": "2996d53ab8df713c"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_spinners.less": {
-      "ast": "f418ac3c2245240a",
+      "ast": "14f2abdea9747ef9",
       "cst": "c10c67c72915693a"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_tables.less": {
-      "ast": "22f3304c1bcdbd11",
+      "ast": "715d5b45b2851cf6",
       "cst": "ab4441ffa2f027c9"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_toasts.less": {
-      "ast": "6843040254eb9d32",
+      "ast": "b8c486743616d5bc",
       "cst": "454a3d0b5370c206"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_tooltip.less": {
-      "ast": "dbb3e156f7024419",
+      "ast": "55e3a23338ab3a31",
       "cst": "acbdb24047f3bf0b"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_transitions.less": {
@@ -2252,7 +2252,7 @@
       "cst": "1bf68199014628ee"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/_variables.less": {
-      "ast": "13639ac97a95ff7a",
+      "ast": "ca9e7c192cefc66c",
       "cst": "dcb33a85d459407b"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/bootstrap-grid.less": {
@@ -2268,31 +2268,31 @@
       "cst": "72757dfca4076478"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_alert.less": {
-      "ast": "d9e066926d1a15ef",
+      "ast": "3f36bb78f21b86ad",
       "cst": "ffd087c53d745425"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_background-variant.less": {
-      "ast": "de47593b52087ea4",
+      "ast": "8a7234ac08006efd",
       "cst": "0b24b04ca57925ad"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_badge.less": {
-      "ast": "4c398d8350dc04cf",
+      "ast": "1156a4ebd347a433",
       "cst": "46eca7afa8042644"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_border-radius.less": {
-      "ast": "63b56b4a260262f5",
+      "ast": "94c1d541c738dadc",
       "cst": "75ec4117cceca1ee"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_box-shadow.less": {
-      "ast": "3c3717ce8c646f3f",
+      "ast": "52f9778ac17b8b25",
       "cst": "484c97cc43107629"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_breakpoints.less": {
-      "ast": "b4eb82c63af02320",
+      "ast": "ce6195e7d10115d9",
       "cst": "138811c254df9f91"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_buttons.less": {
-      "ast": "9b49bdb0fefd12ee",
+      "ast": "5b2499b6bc02f509",
       "cst": "f3ca8e758fa3b3b3"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_caret.less": {
@@ -2304,7 +2304,7 @@
       "cst": "182648ce28c85f6c"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_deprecate.less": {
-      "ast": "2afec66ffbd072c4",
+      "ast": "76a0c9e20b4075e8",
       "cst": "0b2b53dd15e084f0"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_float.less": {
@@ -2312,19 +2312,19 @@
       "cst": "5c9f00458e9ac9be"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_forms.less": {
-      "ast": "a1888f2be98023f0",
+      "ast": "a9cdac57610eaeda",
       "cst": "eb790686ed6c741a"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_gradients.less": {
-      "ast": "0b491f996503ed53",
+      "ast": "61dcab5f5ca693a7",
       "cst": "c120e42e01758e4e"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_grid-framework.less": {
-      "ast": "f985b12e47cfc2fa",
+      "ast": "41adab1c8788553e",
       "cst": "9705fe1ee4dcb8e6"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_grid.less": {
-      "ast": "e489085831d5523b",
+      "ast": "f95c15b6b560c8f0",
       "cst": "b06ee9fb22bcd630"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_hover.less": {
@@ -2336,7 +2336,7 @@
       "cst": "da973e8d77f5ef6c"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_list-group.less": {
-      "ast": "61067bbbefaaa8f9",
+      "ast": "511ab2ab9b9ae884",
       "cst": "23977f92ccd8e9e2"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_lists.less": {
@@ -2360,7 +2360,7 @@
       "cst": "7b2814489f551674"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_screen-reader.less": {
-      "ast": "30442bb8c48aa8d0",
+      "ast": "a1956b6b8b482304",
       "cst": "2a281d1ef7cfaad3"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_size.less": {
@@ -2368,11 +2368,11 @@
       "cst": "face6cd9e90b6b95"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_table-row.less": {
-      "ast": "d9c2f29a48f40c38",
+      "ast": "0ac115d15203c0a3",
       "cst": "d05885d2aaa74443"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_text-emphasis.less": {
-      "ast": "bea28f8252c8ec7e",
+      "ast": "577e923b80fd55ce",
       "cst": "001e27b706cd6047"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_text-hide.less": {
@@ -2384,7 +2384,7 @@
       "cst": "fab9bc872000c540"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_transition.less": {
-      "ast": "d05bb381c981ad58",
+      "ast": "2e8cff865803c439",
       "cst": "5bc66e64a21d5d70"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/mixins/_visibility.less": {
@@ -2396,11 +2396,11 @@
       "cst": "71d74c81fa913700"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_background.less": {
-      "ast": "8fa64022997adeb4",
+      "ast": "c63eff67bb7738dd",
       "cst": "ca498b5509cdc0ab"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_borders.less": {
-      "ast": "988ca94e1d861d46",
+      "ast": "70d65903c8b031db",
       "cst": "52ec3e6f4e98d845"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_clearfix.less": {
@@ -2408,31 +2408,31 @@
       "cst": "92a43e41f66ae396"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_display.less": {
-      "ast": "9efe13fa61257b32",
+      "ast": "385469dfdb50f253",
       "cst": "1ca871130ad54b14"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_embed.less": {
-      "ast": "54c8e7c43f9fe54e",
+      "ast": "dc194093ce4ab6b7",
       "cst": "62528675dcf42aac"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_flex.less": {
-      "ast": "e6a3cefd3ebec0c0",
+      "ast": "fd5acdbf98f2103e",
       "cst": "a15e5bed3ff4ec12"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_float.less": {
-      "ast": "01542b0c303807ec",
+      "ast": "fe29aa2601cf7fcb",
       "cst": "a92efc3cd950a8fe"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_interactions.less": {
-      "ast": "d24e26f6875adec3",
+      "ast": "b5c9ab477611882e",
       "cst": "1ad97220002bf0c6"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_overflow.less": {
-      "ast": "4c73d7ed5d60f459",
+      "ast": "33bcf79114605a80",
       "cst": "10acdf8e2e36edd1"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_position.less": {
-      "ast": "fd3d6624803f73cb",
+      "ast": "18c3b218777ffee3",
       "cst": "2aee3871c6762fe4"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_screenreaders.less": {
@@ -2444,19 +2444,19 @@
       "cst": "7e07794c33946d8d"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_sizing.less": {
-      "ast": "e5bd6033dd4d2c2a",
+      "ast": "afd12e923104990f",
       "cst": "52df70687083b480"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_spacing.less": {
-      "ast": "5f209ab50dcec3e3",
+      "ast": "e17ffe8bb305573c",
       "cst": "950f6bc0593b9631"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_stretched-link.less": {
-      "ast": "486142cbd7de28d7",
+      "ast": "fdfb8d97bc482492",
       "cst": "f90e2371bc88297c"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_text.less": {
-      "ast": "bcc528635a446da0",
+      "ast": "0b6079cfe85ba9db",
       "cst": "3174822629f1c537"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/utilities/_visibility.less": {
@@ -2464,11 +2464,11 @@
       "cst": "36c1ce17c2d11929"
     },
     "packages/jess/node_modules/bootstrap-less-port/less/vendor/_rfs.less": {
-      "ast": "e6ffcb20f9abc599",
+      "ast": "cafc85c3cc9a7099",
       "cst": "0cb58065b2cd8beb"
     },
     "packages/jess/test/files/import-func.css": {
-      "ast": "a380ecb3259d3229",
+      "ast": "249bbccf8a2e5e7b",
       "cst": "e55e828177a6c0a8"
     },
     "packages/jess/test/files/include.css": {
@@ -2504,7 +2504,7 @@
       "cst": "c12a236a3bfd527b"
     },
     "packages/jess/test/less/fixtures/compat-color/main.less": {
-      "ast": "b825c6377ea989fe",
+      "ast": "d259b42c07f1e8fb",
       "cst": "ea56150d906ee1b5"
     },
     "packages/jess/test/less/fixtures/compose-isolation/child-compose.less": {
@@ -2528,7 +2528,7 @@
       "cst": "0392da6372ab5a4a"
     },
     "packages/jess/test/less/fixtures/extend-cross-import/imported-mixin-extend.less": {
-      "ast": "d6c1a2efa8bdd28f",
+      "ast": "1d7f1563474cdadd",
       "cst": "f3edea504d465ec2"
     },
     "packages/jess/test/less/fixtures/extend-cross-import/main-mixin-extend.less": {
@@ -2576,11 +2576,11 @@
       "cst": "313845cde2862aa7"
     },
     "packages/jess/test/less/fixtures/merge-fallback-important.css": {
-      "ast": "3451e8f142f403b9",
+      "ast": "39c14f185fe46786",
       "cst": "ff6103eb4a55ada0"
     },
     "packages/jess/test/less/fixtures/merge-fallback-important.less": {
-      "ast": "d48fc8b7ba7f08ae",
+      "ast": "c03e199ec05e56ea",
       "cst": "085567ba149a1d5f"
     },
     "packages/jess/test/less/fixtures/reference-mixin-trivia/async-main.less": {
@@ -2596,7 +2596,7 @@
       "cst": "4d7a9599c51b5f0b"
     },
     "packages/jess/test/less/fixtures/reference-mixin-trivia/nested/async-library.less": {
-      "ast": "8217c3ce7f858709",
+      "ast": "3d6a9b46647886a1",
       "cst": "abb1aafe7eb4dd01"
     },
     "packages/jess/test/less/fixtures/reference-mixin-trivia/nested/merge-library.less": {
@@ -2628,7 +2628,7 @@
       "cst": "2ba8a828b78e0515"
     },
     "packages/syntax/css/css-parser/test/byte-identity/fixtures/at-rules-conditional.css": {
-      "ast": "55a5e27e9b14c7a3",
+      "ast": "4302b2c0be4b5003",
       "cst": "37ab3d8a11a265ed"
     },
     "packages/syntax/css/css-parser/test/byte-identity/fixtures/at-rules-import-namespace.css": {
@@ -2636,7 +2636,7 @@
       "cst": "2f19f50d88464712"
     },
     "packages/syntax/css/css-parser/test/byte-identity/fixtures/at-rules-keyframes-fontface.css": {
-      "ast": "46e9fbd82f022dfb",
+      "ast": "6847566dcd9bd60e",
       "cst": "0cd156c57304decb"
     },
     "packages/syntax/css/css-parser/test/byte-identity/fixtures/at-rules-statement.css": {
@@ -2648,7 +2648,7 @@
       "cst": "be07eb1ee4d1ea2f"
     },
     "packages/syntax/css/css-parser/test/byte-identity/fixtures/custom-properties.css": {
-      "ast": "c7fad788aadde78a",
+      "ast": "70bf7f1798c130c0",
       "cst": "c0858cb59102cf99"
     },
     "packages/syntax/css/css-parser/test/byte-identity/fixtures/declarations-edges.css": {
@@ -2692,7 +2692,7 @@
       "cst": "1c803290a4e76416"
     },
     "packages/syntax/css/css-parser/test/byte-identity/fixtures/values-full.css": {
-      "ast": "d7ecf59401b8afac",
+      "ast": "b253990bd0d19286",
       "cst": "0521c23a7886c608"
     },
     "packages/syntax/css/css-parser/test/css/apply.css": {
@@ -2972,7 +2972,7 @@
       "cst": "70827c70ac56b8ad"
     },
     "packages/syntax/css/css-parser/test/css/expressions.css": {
-      "ast": "583d20c5a78ddb36",
+      "ast": "a9120d42900ed722",
       "cst": "a49e601fc517dd62"
     },
     "packages/syntax/css/css-parser/test/css/font-face.css": {
@@ -3044,39 +3044,39 @@
       "cst": "c0fd60fd32dddc1a"
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-associativity.css": {
-      "ast": "66b2fdbf32626c44",
+      "ast": "0fb9c46744d43d09",
       "cst": "61dd97ea15406a9a"
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-at-rule-prelude.css": {
-      "ast": "98ea7d0f044e8f5f",
+      "ast": "591c5865be1ac2db",
       "cst": "f894da7ea1ddfeab"
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-custom-property.css": {
-      "ast": "585f144e6e6766fc",
+      "ast": "f46c35cdd9c27081",
       "cst": "93c7e528ff21b39c"
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-math-functions.css": {
-      "ast": "06adec27d3d75259",
+      "ast": "71e346420ecb35c7",
       "cst": "624c497bc1b4f4c9"
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-nested-calc.css": {
-      "ast": "d8aaec82191bc17f",
+      "ast": "ea1b1f4c2565fa7c",
       "cst": "aca5b7b092c8e284"
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-operand-kinds.css": {
-      "ast": "f7907ac56cd32e0b",
+      "ast": "537a572b706083fe",
       "cst": "3561361f50f24421"
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-parens-depth.css": {
-      "ast": "b9b94906ed74b03b",
+      "ast": "a05285ba096423cd",
       "cst": "3858923d496a04b4"
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-precedence.css": {
-      "ast": "10078ee2412609eb",
+      "ast": "a2072e745ce55c62",
       "cst": "f8cbcf30677cd220"
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-real-world.css": {
-      "ast": "57f2f9b7416d3d62",
+      "ast": "09f3e757193659af",
       "cst": "081e0b2c132ec984"
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-rejects.css": {
@@ -3084,15 +3084,15 @@
       "cst": "b46daf3c35bf8396"
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-sequence.css": {
-      "ast": "6bb7eae8fd9a7304",
+      "ast": "8a24d1bddb5ec241",
       "cst": "99309bcdae5df2e3"
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-signs-whitespace.css": {
-      "ast": "45252f683be228ba",
+      "ast": "92476dc9a670f765",
       "cst": "144487d7e7baa98c"
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-units.css": {
-      "ast": "98f4790069650cac",
+      "ast": "bf9ae9c1dfce05c1",
       "cst": "c88edd2d896691fe"
     }
   }
