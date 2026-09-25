@@ -335,6 +335,51 @@ implement `@from`.
 Use `@plugin` only for legacy Less plugin modules. It is deprecated in favor
 of `@use`.
 
+## Modern mode
+
+A Less file that uses `@use` or `@compose` anywhere is in modern mode. In
+modern mode the Less built-in functions are not available until you import
+them, the same as in Jess. Import them with `@use "#less";` and call them
+through the `less` namespace:
+
+```less
+@use "#less";
+
+.button {
+  color: @less.darken(#3366ff, 10%);
+  padding: min(-5px, 1px);
+}
+```
+
+```css
+.button {
+  color: #0040ff;
+  padding: min(-5px, 1px);
+}
+```
+
+A call that is not imported is output as written, like any unknown CSS
+function. That is what keeps `min()`, `max()`, `round()` and the other CSS math
+functions correct in modern mode: the browser clamps their result to what the
+property allows, so `min(-5px, 1px)` gives a padding of `0`, where the computed
+`-5px` would be invalid.
+
+A file with none of these directives is in legacy mode, and its built-in calls
+compute as they did in Less 4. The mode belongs to each file: a legacy file
+brought in with `@import` keeps its built-ins inside a modern file, and a
+modern file stays modern inside a legacy one.
+
+To put every `.less` file in modern mode, set the `moduleMode` option to
+`modern` (the default is `auto`):
+
+```js title="styles.config.js"
+export default {
+  language: {
+    less: { moduleMode: 'modern' }
+  }
+};
+```
+
 </AudienceGate>
 
 JSON modules are data-only and need no script runtime. Strings, numbers,
