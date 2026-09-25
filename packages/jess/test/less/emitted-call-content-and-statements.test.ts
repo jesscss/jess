@@ -37,9 +37,24 @@ describe('a ruleset argument to a call emitted as written (P37, jess#290)', () =
       .resolves.toBe('a {\n  x: foo({ v: 1; });\n}\n');
   });
 
-  it('.jess: an anonymous mixin with no authored spelling raises rather than vanishing', async () => {
-    await expect(jess('$d: @{ color: red; }; a { x: foo($d); }'))
+  it('.jess: a `@{ … }` block is written as its authored `{ … }`, without the sigil', async () => {
+    await expect(jess('$l: 1 2; $d: @{  v: 1; }; a { x: foo($l, $d); }'))
+      .resolves.toBe('a {\n  x: foo(1 2, {  v: 1; });\n}\n');
+  });
+
+  it('.jess: a block with params has no CSS spelling, so it raises rather than vanishing', async () => {
+    await expect(jess('$f: @($x) { v: $x; }; a { x: foo($f); }'))
       .rejects.toThrow(expect.objectContaining({ code: 'eval/ruleset-without-spelling' }));
+  });
+
+  it('.jess: a `@{ … }` block anywhere else is unaffected', async () => {
+    await expect(jess('$d: @{ color: red; }; a { $d(); }')).resolves.toBe('a {\n  color: red;\n}\n');
+    await expect(jess('$d: @{ color: red; }; a { x: 1 $d; }')).resolves.toBe('a {\n  x: 1 ;\n}\n');
+  });
+
+  it('a Less ruleset anywhere else is unaffected', async () => {
+    await expect(less('@d: { v: 1; }; a { x: ~"@{d}"; y: 1 @d; z: e(@d); }'))
+      .resolves.toBe('a {\n  x: ;\n  y: 1 ;\n  z: ;\n}\n');
   });
 });
 

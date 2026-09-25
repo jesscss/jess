@@ -26,7 +26,7 @@
 
 import {  } from 'parseman';
 import type { FieldCapture, FieldMap } from 'parseman';
-import { any, anonymousMixin, block, selectorBranchCanonical, declarationReference, interpolation, isComplexSelector, isForBinding, isModuleImport, isRelativeSelector, isToken, keyword, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, selectorTermOf, selist, url, variableDeclaration, variableReference, withSourceSpan } from '@jesscss/core/ast';
+import { any, anonymousMixin, block, selectorBranchCanonical, declarationReference, interpolation, isComplexSelector, isForBinding, isModuleImport, isRelativeSelector, isSpannedToken, isToken, keyword, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, selectorTermOf, selist, url, variableDeclaration, variableReference, withAuthoredText, withSourceSpan } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Combinator as AstCombinator, Declaration, CollectionItem, ExtendInstruction, For, ForBinding, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDefinition, UnknownAtRuleBlock, Param, Quoted, PseudoSelector, Reference, SelectorBranch, SelectorTerm, Ruleset, SelectorList, SimpleSelector, SimpleToken, Sequence, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
@@ -1091,20 +1091,38 @@ function reduceVarDeclaration(children: readonly unknown[]): VariableDeclaration
  * over the body statements, carrying the declared params. The `params` field is
  * OMITTED for an empty list so the plain `@{ … }` block keeps the monomorphic
  * shape core's value paths already expect.
+ *
+ * A parameterless block also keeps the authored bytes of its `{ … }` part
+ * (ledger P37): passed to a call written out as-is it is written as authored,
+ * without the `@` sigil, exactly as the Less detached ruleset it may have been
+ * converted from. A block with params has no such spelling and keeps none.
  */
-function reduceLambda(children: readonly unknown[]): AnonymousMixin {
+function reduceLambda(
+  children: readonly unknown[],
+  _fields?: unknown,
+  _span?: unknown,
+  rawChildren?: readonly unknown[],
+  _triviaLog?: unknown,
+  state?: unknown
+): AnonymousMixin {
   const bodyOpen = children.findIndex(child => isToken(child) && child.value === '{');
   if (bodyOpen < 0) {
     throw new TypeError('Jess grammar produced a lambda without a body.');
   }
   const params = children.find(isParamList) ?? [];
-  return anonymousMixin(
+  const lambda = anonymousMixin(
     collectBodyStatements(
       children,
       bodyOpen + 1
     ),
     params.length > 0 ? params : undefined
   );
+  const source = sourceFromState(state);
+  const open = rawChildren?.find(child => isSpannedToken(child) && child.value === '{');
+  const close = rawChildren?.findLast(child => isSpannedToken(child) && child.value === '}');
+  return params.length === 0 && source !== undefined && isSpannedToken(open) && isSpannedToken(close)
+    ? withAuthoredText(lambda, source.slice(open.span.start, close.span.end))
+    : lambda;
 }
 
 /*

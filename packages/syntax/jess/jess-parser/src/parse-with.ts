@@ -227,7 +227,9 @@ export function parseWith(grammar: JessAstGrammar, input: string, options: JessP
   const result = run(
     entry,
     input,
-    { trivia, rootTrivia: { select: commentTriviaLabels } }
+
+    /* `source` lets a reducer keep authored bytes (a `@{ … }` block, ledger P37). */
+    { trivia, state: { source: input }, rootTrivia: { select: commentTriviaLabels } }
   );
   if (!result.ok) {
     throw new JessParseError(result.span.start, result.expected, lineOptions(input, result.span));
