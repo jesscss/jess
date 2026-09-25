@@ -11,7 +11,7 @@
  * units table.
  */
 import Big from 'big.js';
-import { UnitArithmeticError, isValueGroupArray, type Color, type Dimension, type EvalModes, type ValueGroup, type Value } from './value-eval.js';
+import { DivisionByZeroError, UnitArithmeticError, isValueGroupArray, type Color, type Dimension, type EvalModes, type ValueGroup, type Value } from './value-eval.js';
 import { HEX } from './color.js';
 import { colorRawRgb, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword } from './value-factory.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
@@ -279,7 +279,7 @@ export function validateFinalUnits(value: ValueGroup, modes: EvalModes, demandEx
 function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalModes): Dimension {
   const isStrict = modes.unitMode === 'strict';
   if (b.number === 0 && op === '/') {
-    throw new TypeError('Cannot divide by zero');
+    throw new DivisionByZeroError(`${a.bytes} / ${b.bytes}`);
   }
 
   const u = unitsOf(a);

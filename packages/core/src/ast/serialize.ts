@@ -121,6 +121,7 @@ import { isDiagnosticStatement } from './at-rule.js';
 // typed synchronous value evaluator seam + boundary-clean value domain.
 import {
   DEFAULT_MODES,
+  DivisionByZeroError,
   IncomparableOperandsError,
   emitValue,
   isValueGroup,
@@ -3954,6 +3955,13 @@ function warnUnexpressibleUnit(value: Value, owner: object, e: EvalCtx): void {
 }
 
 function throwUnitArithmetic(error: unknown, node: object, e: EvalCtx): never {
+  if (error instanceof DivisionByZeroError) {
+    throw ERR.divisionByZero({
+      node,
+      ...arithmeticSiteLocation(node, e),
+      meta: { expr: error.expr }
+    });
+  }
   if (error instanceof UnitArithmeticError) {
     throw ERR.invalidUnitArithmetic({
       node,

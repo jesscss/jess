@@ -750,6 +750,20 @@ export const ERR = {
       ...args
     });
   },
+
+  /**
+   * A division the author asked for — `math: always`, a paren group, `$( … )` —
+   * whose divisor is zero. There is no quotient to print, and printing the
+   * operation verbatim would hide the mistake, so it is an error in every
+   * `unitMode` (DESIGN-DECISIONS P35).
+   */
+  divisionByZero(args: Common & { meta: { expr: string } }) {
+    return makeJessError({
+      code: 'eval/division-by-zero',
+      phase: 'eval',
+      ...args
+    });
+  },
   invalidUnitArithmetic(args: Common & { meta: { reason: string } }) {
     return makeJessError({
       code: 'eval/invalid-unit-arithmetic',

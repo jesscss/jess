@@ -11,7 +11,49 @@ async function render(source: string, compile: { mathMode?: 'always' | 'parens-d
   return css.replace(/\s+/g, ' ').trim();
 }
 
+async function renderJess(source: string): Promise<string> {
+  const css = await new Compiler().renderString(source, { language: 'jess', extension: '.jess' });
+  return css.replace(/\s+/g, ' ').trim();
+}
+
 describe('Less math boundaries', () => {
+  /*
+   * Math inside a math function is kept as written, in every dialect — owner
+   * 2026-09-24 (DESIGN-DECISIONS P35): its result is clamped to what the
+   * property allows (css-values-4 §10.12), so folding changes the value.
+   */
+  it('keeps calc() math as written, substituting variables', async () => {
+    expect(await render('@a: 10px; .x { w: calc(@a * 2); p: calc(1px - 5px); }'))
+      .toBe('.x { w: calc(10px * 2); p: calc(1px - 5px); }');
+    expect(await render('@v: 50vh/2; .x { w: calc(50% + (@v - 20px)); }', { unitMode: 'strict' }))
+      .toBe('.x { w: calc(50% + 50vh / 2 - 20px); }');
+  });
+
+  it('keeps the parens that carry precedence inside calc(), in .less and .jess', async () => {
+    expect(await render('@v: 10px; .x { w: calc(100% - ((@v * 3) + (@v * 2))); }'))
+      .toBe('.x { w: calc(100% - (10px * 3 + 10px * 2)); }');
+    expect(await renderJess('$v: 10px; .x { w: calc(100% - (($v * 3) + ($v * 2))); }'))
+      .toBe('.x { w: calc(100% - (10px * 3 + 10px * 2)); }');
+    expect(await renderJess('.x { w: calc(10px / (2 * 5)); v: calc(((10vh)) + calc((5vh))); }'))
+      .toBe('.x { w: calc(10px / (2 * 5)); v: calc(10vh + 5vh); }');
+  });
+
+  /*
+   * Division by zero is an evaluation error in every unit mode (owner
+   * 2026-09-24, DESIGN-DECISIONS P35): the author opted into division and there
+   * is no quotient to print. This is the case the `units/loose` and
+   * `units/no-strict` fixtures used to carry as `ignores 0/0 rules`.
+   */
+  it('raises on division by zero under math: always, in every unit mode', async () => {
+    for (const unitMode of ['strict', 'loose', 'preserve'] as const) {
+      await expect(render('.x { font: ignores 0/0 rules; }', { mathMode: 'always', unitMode }), unitMode)
+        .rejects.toMatchObject({ code: 'eval/division-by-zero' });
+      await expect(render('.x { w: (1px / 0); }', { unitMode }), unitMode)
+        .rejects.toMatchObject({ code: 'eval/division-by-zero' });
+    }
+    expect(await render('.x { font: ignores 0/0 rules; }')).toBe('.x { font: ignores 0 / 0 rules; }');
+  });
+
   it('keeps calc() around a value that is not one number', async () => {
     expect(await render('@v: 50vh/2; .x { w: calc(@v); }')).toBe('.x { w: calc(50vh / 2); }');
   });

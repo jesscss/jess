@@ -45,6 +45,7 @@ export type JessErrorCode =
   | 'eval/scss-warn'
   | 'eval/scss-error'
   | 'eval/invalid-unit-arithmetic'
+  | 'eval/division-by-zero'
   | 'eval/unexpressible-unit'
   | 'eval/incomparable-operands'
   | 'eval/unit-conversion'
@@ -350,6 +351,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: '${message}',
       reason: 'Raised by a Sass @error directive.',
       fix: 'Satisfy the condition the @error guards, or remove the directive.'
+    }
+  ],
+  [
+    'eval/division-by-zero',
+    {
+      summary: 'Division by zero',
+      reason: '${expr} divides by zero, so there is no quotient to emit.',
+      fix: 'Divide by a non-zero value, or keep the slash as a separator by not dividing it (math: parens-division).'
     }
   ],
   [
