@@ -6234,6 +6234,8 @@ function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): Mayb
  * written in has no ambient built-ins — `null` when the lowered form stands.
  * Less lowers `if()`/`boolean()`/`each()` into structure only in legacy mode;
  * a later `@use` decides that, so the decision is read here, at evaluation.
+ * The call returned is evaluated like any other: `evalCall`, which finds no
+ * ambient built-in and takes the unknown-call path.
  */
 function unloweredCall(node: AuthoredCallSlot): FunctionCall | null {
   const call = node._asCall;
@@ -11521,7 +11523,7 @@ function runWhile(
 
 /** Select one `$if` branch and publish only that branch into this activation's scoped index. */
 function selectIfBody(node: If, frame: Frame, e: Emit): Statement[] | null {
-  /* [P36] Not lowered where built-ins are not ambient: the body is the call as written. */
+  /* [P36] Not lowered where built-ins are not ambient: the body is the ordinary call statement. */
   const unlowered = unloweredCall(node);
   const body = unlowered === null ? selectedIfBody(node, frame, e) : [unlowered];
   if (!body) {
@@ -15064,7 +15066,7 @@ function expandFor(
   source: NestedHeaderSource | null = null,
   sharedLeaves?: NestedLeafBuffer
 ): MaybePromise<void> {
-  /* [P36] Not lowered where built-ins are not ambient: emit the call as written, once. */
+  /* [P36] Not lowered where built-ins are not ambient: evaluate the ordinary call statement, once. */
   const unlowered = unloweredCall(node);
   if (unlowered !== null) {
     return sharedLeaves === undefined

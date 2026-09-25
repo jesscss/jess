@@ -7,8 +7,9 @@ import { Compiler } from '../src/index.js';
 /**
  * Ledger P36: a `.less` document that writes `@use` or `@compose` is in MODERN
  * MODE. Its Less built-ins are not ambient — a built-in reaches it only by
- * import, and an unimported call is emitted as written, the way `.jess` emits
- * an unimported name (P17). A document with neither is LEGACY and its built-ins
+ * import, and an unimported call takes the unknown-call path, the way `.jess`
+ * treats an unimported name (P17): its name and call shape stay, and its
+ * arguments are evaluated like any other value. A document with neither is LEGACY and its built-ins
  * compute as the author asked. The mode is decided per document, and
  * `moduleMode: 'modern'` puts every `.less` document in modern mode.
  */
@@ -49,10 +50,15 @@ describe('Less modern mode (P36)', () => {
     await expect(less(BODY)).resolves.toBe('a {\n  padding: -5px;\n  color: #cc0000;\n}\n');
   });
 
-  it('modern: an unimported built-in is emitted as written', async () => {
+  it('modern: an unimported built-in keeps its name and call shape', async () => {
     await expect(less(`@use "#less";\n${BODY}`)).resolves.toBe(
       'a {\n  padding: min(-5px, 1px);\n  color: darken(red, 10%);\n}\n'
     );
+  });
+
+  it('modern: an unimported call still evaluates its arguments', async () => {
+    await expect(less('@use "#less";\n@c: red;\n@n: 10%;\na { color: darken(@c, @n * 2); }'))
+      .resolves.toBe('a {\n  color: darken(red, 20%);\n}\n');
   });
 
   it('modern: an imported built-in computes', async () => {
@@ -81,36 +87,57 @@ describe('Less modern mode (P36)', () => {
     );
   });
 
-  it('modern: a call inside a mixin argument is emitted as written', async () => {
+  it('modern: a call inside a mixin argument keeps its call shape', async () => {
     await expect(less('@use "#less";\n.m(@c) { color: @c; }\n.x { .m(darken(red, 10%)); }'))
       .resolves.toBe('.x {\n  color: darken(red, 10%);\n}\n');
   });
 
   describe('if(), boolean() and each()', () => {
-    const LOWERED = [
-      '@a: 2;',
-      '@l: 1 2;',
-      'x { b: if(@a > 1, 1px, 2px); c: boolean(@a > 1); d: if( (@a > 1) ,  1px,2px ); e: if(@x: 1, 2); }',
+    const VALUES = '@a: 2;\n@l: 1 2;\n';
+    const CALLS = [
+      'x { b: if(@a > 1, @a * 1px, 2px); c: boolean(@a > 1); d: if( (@a > 1) ,  1px,2px ); }',
       '.y { each(@l, { v: @value; }); }'
     ].join('\n');
-    const AS_WRITTEN = 'x {\n  b: if(@a > 1, 1px, 2px);\n  c: boolean(@a > 1);\n  d: if( (@a > 1) ,  1px,2px );\n'
-      + '  e: if(@x: 1, 2);\n}\n.y {\n  each(@l, { v: @value; })\n}\n';
+
+    /*
+     * The unknown-call path, not a copy of the source: variables substituted,
+     * arithmetic computed, the comparison evaluated like any other argument
+     * (ledger V11: a comparison in a call argument evaluates), and a
+     * detached-ruleset argument rendered as the ordinary call renders it.
+     */
+    const EVALUATED = 'x {\n  b: if(true, 2px, 2px);\n  c: boolean(true);\n  d: if(true, 1px, 2px);\n}\n.y {\n  each(1 2, )\n}\n';
 
     it('legacy: they are lowered into language structure and compute', async () => {
       await expect(less('@a: 2;\n@l: 1 2;\nx { b: if(@a > 1, 1px, 2px); c: boolean(@a > 1); }\n.y { each(@l, { v: @value; }); }'))
         .resolves.toBe('x {\n  b: 1px;\n  c: true;\n}\n.y {\n  v: 1;\n  v: 2;\n}\n');
     });
 
-    it('modern: they are plain calls, emitted as written (spacing and keyword arguments kept)', async () => {
-      await expect(less(`@use "#less";\n${LOWERED}`)).resolves.toBe(AS_WRITTEN);
+    it('modern: they are ordinary unimported calls, their arguments evaluated', async () => {
+      await expect(less(`@use "#less";\n${VALUES}${CALLS}`)).resolves.toBe(EVALUATED);
+    });
+
+    it('modern: they take exactly the path any unknown call takes', async () => {
+      const renamed = CALLS.replace(/\b(if|boolean|each)\(/g, 'unknown_$1(');
+      const unknown = await less(`@use "#less";\n${VALUES}${renamed}`);
+      expect(unknown.replace(/unknown_/g, '')).toBe(EVALUATED);
     });
 
     it('modern: a directive after the calls still decides the document', async () => {
-      await expect(less(`${LOWERED}\n@use "#less";`)).resolves.toBe(AS_WRITTEN);
+      await expect(less(`${VALUES}${CALLS}\n@use "#less";`)).resolves.toBe(EVALUATED);
+    });
+
+    /*
+     * The unknown-call path drops a keyword argument's name (#279). Until that
+     * is fixed these calls lose it exactly as `darken(@color: …)` does, no
+     * better and no worse. `each()` has no keyword spelling to compare.
+     */
+    it('modern: a keyword argument fares exactly as it does on darken() (#279)', async () => {
+      await expect(less('@use "#less";\n@a: 2;\n@c: red;\nx { a: darken(@color: @c, 10%); b: if(@k: @a, 2px); c: boolean(@k: @a); }'))
+        .resolves.toBe('x {\n  a: darken(red, 10%);\n  b: if(2, 2px);\n  c: boolean(2);\n}\n');
     });
   });
 
-  it('modern: a call in an at-rule prelude is emitted as written', async () => {
+  it('modern: a call in an at-rule prelude keeps its call shape', async () => {
     await expect(less('@use "#less";\n@media screen and round(1.5) { a { b: c; } }'))
       .resolves.toBe('@media screen and round(1.5) {\n  a {\n    b: c;\n  }\n}\n');
   });

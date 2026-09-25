@@ -123,8 +123,8 @@ describe('V19 one-evaluator projection ratchet', () => {
     // function re-spells an authored group whose parens carry precedence —
     // `calc(100% - (a + b))` is not `calc(100% - a + b)`.
     // +1 function (`unloweredCall`, ledger P36): the one reader of a lowered
-    // node's authored call, so a Less modern-mode `if()`/`boolean()`/`each()`
-    // is emitted as written; no Map/Set.
+    // node's retained call, so a Less modern-mode `if()`/`boolean()`/`each()`
+    // is evaluated through `evalCall` like any unimported call; no Map/Set.
     expect(occurrences(/^function |^async function /gmu)).toBe(466);
     expect(occurrences(/new Map/gu)).toBe(68);
     expect(occurrences(/new Set/gu)).toBe(41);

@@ -103,7 +103,6 @@ import {
   lessMathRun,
   requireMathSum,
   lessTruth,
-  authoredCall,
   lowerLogicalCallStatement,
   mixinArgumentSource,
   mixinArgumentsFromChildren,
@@ -1650,12 +1649,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const GenericFunctionStatement = node(
     'Call',
     sequence(g.CallArgumentFunction, literal(';')),
-    (children, _fields, _span, _rawChildren, _triviaLog, state) => {
+    (children) => {
       const call = children.find(isFunctionCall);
       if (call === undefined) {
         throw new TypeError('Less function statement lost its call fact.');
       }
-      return lowerLogicalCallStatement(call, state);
+      return lowerLogicalCallStatement(call);
     }
   );
   const TerminalGenericFunction = transform(
@@ -3172,11 +3171,20 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       if (iterable === undefined) {
         throw new TypeError('Less each() reduction produced an invalid iterable.');
       }
-      // The call ends at its own `)`, before the optional statement `;`.
+      /*
+       * [P36] The call this lowers, as the ordinary call reducer would build it
+       * (the callback body as a detached-ruleset argument), so a modern-mode
+       * document evaluates it like any other unimported call. It ends at its
+       * own `)`, before the optional statement `;`.
+       */
       const close = rawChildren.findLast(child => isSpannedToken(child) && child.value === ')');
-      const asCall = isSpannedToken(close)
-        ? authoredCall(functionNameFromOpener(children[0]), span.start, close.span.end, state)
-        : null;
+      const asCall = withSourceSpan(
+        withFunctionScope(
+          funcCall(functionNameFromOpener(children[0]), [iterable, classifyValueBlock(callback.rules)].filter(isLessValueSlotValue)),
+          functionScopeOf(state)
+        ),
+        { start: span.start, end: isSpannedToken(close) ? close.span.end : span.end }
+      );
       return forNode(isMixinCall(iterable) ? iterable : requireValueSlot(iterable), callback.rules, callback.binding, asCall);
     }
   );

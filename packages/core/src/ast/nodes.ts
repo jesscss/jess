@@ -327,15 +327,15 @@ export interface Block extends SpanSlots {
  * emitting its source text.
  */
 /**
- * The call a grammar LOWERED into this node, kept as written (ledger P36).
+ * The call a grammar LOWERED into this node (ledger P36).
  *
  * Less `if()`, `boolean()` and `each()` are lowered into language structure
  * only where Less built-ins are ambient. The grammar cannot know that while it
- * parses (a later `@use` decides it), so the lowered node keeps the authored
- * call: `name(<authored arguments>)`, one opaque argument, carrying its
- * document's function scope. Where that scope is closed the evaluator emits
- * this call instead of the lowered form. `null` for every node no dialect
- * lowered from a call, and for a parse with no source text.
+ * parses (a later `@use` decides it), so the lowered node keeps the call it was
+ * built from, carrying its document's function scope. Where that scope is
+ * closed the evaluator evaluates this call instead of the lowered form, as an
+ * ordinary call with no ambient built-ins. `null` for every node no dialect
+ * lowered from a call.
  */
 export interface AuthoredCallSlot {
   readonly _asCall: FunctionCall | null;

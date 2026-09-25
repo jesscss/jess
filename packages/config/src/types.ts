@@ -178,7 +178,8 @@ export interface LessOptions {
    *   file is legacy, and the built-ins compute as written
    * - 'modern': every `.less` file is in modern mode
    * In modern mode a Less built-in must be imported; a call to one that is not
-   * imported is output as written, like an unknown CSS function.
+   * imported is treated like an unknown CSS function: its name and call shape
+   * stay, and its arguments are evaluated.
    * @default 'auto'
    */
   moduleMode?: ModuleMode;

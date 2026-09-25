@@ -43,7 +43,7 @@ describe('Less module mode (P36)', () => {
     expect(call && hasAmbientFunctions(call)).toBe(false);
   });
 
-  it('keeps the authored call on a lowered if()/boolean(), sharing the document scope', () => {
+  it('keeps the parsed call on a lowered if()/boolean(), sharing the document scope', () => {
     const rule = parse('a { b: if( @x ,1px, 2px); c: boolean(@x); d: min(1px, 2px); }').rules[0];
     if (rule?.type !== 'Ruleset') {
       throw new TypeError('expected a ruleset');
@@ -54,7 +54,10 @@ describe('Less module mode (P36)', () => {
     expect(booleanValue?.type).toBe('Expression');
     const asCall = ifValue?.type === 'IfValue' ? ifValue._asCall : null;
     expect(asCall?.name).toBe('if');
-    expect(asCall?.args.map(arg => arg.value)).toEqual([expect.objectContaining({ type: 'Any', src: ' @x ,1px, 2px' })]);
+
+    // The ordinary parsed call, not a copy of its bytes: its arguments are the lowered branches' own nodes.
+    expect(asCall?.args).toHaveLength(3);
+    expect(ifValue?.type === 'IfValue' ? ifValue.branches[0].value : undefined).toBe(asCall?.args[1]?.value);
     expect(booleanValue?.type === 'Expression' ? booleanValue._asCall?.name : undefined).toBe('boolean');
     expect(minValue?.type === 'FunctionCall' ? minValue._fnScope : undefined).toBe(asCall?._fnScope);
   });

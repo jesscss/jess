@@ -43,7 +43,8 @@ export type FunctionMode = 'preserve' | 'error';
  *   implements it); any other document is legacy, and the Less built-ins compute
  *   as the author asked.
  * - `modern`: every `.less` document is in modern mode. A Less built-in reaches
- *   it only by import; an unimported call is emitted as written.
+ *   it only by import; an unimported call keeps its name and call shape, and
+ *   its arguments are evaluated like any other value.
  *
  * Kept in `@jesscss/core` to avoid cyclic workspace dependencies with `styles-config`.
  */
