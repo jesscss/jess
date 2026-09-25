@@ -392,6 +392,9 @@ type SharedSyntax = {
   // overrides its operand slot (`calcValueAtom`) and its operator rungs.
   CalcParen: Combinator<ValueNode>;
   CalcValue: Combinator<ValueNode>;
+  // Inherited from the CSS base: the css-values-5 §3.1.1 curly block a function
+  // argument may be (P37).
+  CurlyValue: Combinator<ValueNode>;
   // Converged to the CSS base (inherited via compose): same node type
   // SimpleSelector, byte-identical keyframeEndpoint, g.Percentage resolves to
   // the CSS base; reducer differs only requireToken().value vs sourceText().
@@ -1585,8 +1588,28 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // still reach ArgumentValueSequence.
   const functionArgumentSeparator = field('separator', regex(/[;,][ \t\n\r\f]*/));
   const trailingFunctionArgumentSeparator = field('trailingSeparator', noTrivia(regex(/[;,][ \t\n\r\f]*/)));
+  // A `{` in a function argument is a CURLY BLOCK or a DECLARATION LIST (ledger
+  // P37). The block's first item decides: a value followed by `,` or the closing
+  // `}` makes it a curly block — css-values-5 §3.1.1's `{}`-wrapped value list,
+  // `{ a }`, `{ a, b }`, emitted as written — and a declaration (`name:`), a
+  // nested rule or a mixin call makes it a detached ruleset (`{ v: 1; }`).
+  //
+  // `CurlyValue` is CSS's own rule: `{`, one or more comma-separated values, `}`.
+  // A declaration list stops it at or after its first item — a `name:`, a nested
+  // rule's `{`, a `;`, or a mixin call, which is not a Less value unless it carries
+  // a lookup accessor (`#ns.m()[@r]`) — and `ValueBlock` then reads the block.
+  // `{}` has no first item and stays a detached ruleset. The shapes both arms
+  // accept are a lone value-shaped call with no `;` — `{ f(x) }`, `{ @r() }`,
+  // `{ #ns.m()[@r] }` — which are values first, so they are curly blocks.
+  //
+  // This is an ordered choice, not a `dispatch`: the deciding token is the
+  // delimiter AFTER the first item, and the two arms read that item with
+  // different grammars, so no routed opener can hold it. The cost is that a
+  // declaration list's leading comma-run of values is read once by the curly
+  // arm before `ValueBlock` reads it (one identifier for `{ v: 1; }`).
   const functionArgument = choice(
     g.DoubledQuoteArgument,
+    g.CurlyValue,
     g.ValueBlock,
     g.FunctionArgument
   );
@@ -1713,8 +1736,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return keyword(children.map(child => requireToken(child).value).join(''));
     }
   );
+  // The value-position opener also admits a dashed FUNCTION opener: `--f(` is a
+  // css-mixins-1 `<dashed-function>` and takes the generic call tail. Only the
+  // glued `--name(` form enters, so a bare `--x` never reaches this dispatch and
+  // stays the `CustomPropertyValue` arm's. `FunctionStatement` keeps the plain
+  // `identOrFunction`: widening it would scan every `--x: …` custom-property
+  // declaration through its dispatch and turn `--f(…);` into a statement call.
+  const valueIdentOrFunction = token(noTrivia(choice(
+    sequence(g.InterpolatedValueStart, optional(literal('('))),
+    sequence(g.CustomPropertyToken, literal('('))
+  )));
   const IdentifierOrFunction = dispatch(
-    identOrFunction,
+    valueIdentOrFunction,
     caseOf('url(', choice(RoutedVariableUrl, RoutedPlainUrl)),
     caseOf('calc(', g.CalcFunction),
     caseOf('var(', g.VarFunction),
@@ -2183,9 +2216,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     (children, _fields, span) => withSourceSpan(funcCall(functionNameFromOpener(children[0]), children.filter(isValueNode)), span)
   );
+  // A dashed ident glued to `(` is a css-mixins-1 dashed function, which the
+  // identifier/function dispatch owns; this value arm sits before it, so it
+  // declines that glued form rather than stranding the `(`.
   const CustomPropertyValue = node(
     'CustomPropertyValue',
-    g.CustomPropertyToken,
+    noTrivia(sequence(g.CustomPropertyToken, not(literal('(')))),
     children => keyword(requireToken(children[0]).value)
   );
   const CustomDeclaration = node(

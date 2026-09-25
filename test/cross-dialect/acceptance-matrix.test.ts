@@ -231,6 +231,68 @@ const DIRECTION_1_ALLOWLIST: readonly Allowed[] = [
     accepted: ['css', 'less', 'jess'],
     validCss: 'n/a — whole file',
     reason: 'Whole-file breadth row; construct not isolated by this channel.'
+  },
+
+  /* ------------------------------------------------------------- function body
+   * FINDINGS, recorded when the CSS base learned the css-syntax-3 §5.4.9
+   * function body (`;` groups, `:` pairs, `{}`-wrapped arguments, dashed
+   * functions). All eight inputs are valid CSS, so the refusing dialect is the
+   * defect. None is a convergence of a CSS shape: scss and jess each parse call
+   * arguments with their own grammar (Sass keyword arguments; Jess value slots
+   * that refuse bare `>`/`:`), and Less keeps a `;` in call arguments as a
+   * comma, which is Less's own reading (lessc 4.9.1: `foo(a; b)` → `foo(a, b)`).
+   * Carrying `if()` into those grammars is dialect work, and in legacy Less and
+   * in scss (dart-sass evaluates CSS `if()` itself) it needs an owner ruling.
+   */
+  {
+    name: 'targeted:if() with style() and else branches',
+    accepted: ['css'],
+    validCss: true,
+    reason: 'css-values-5 §8.3 `if()`. less/jess refuse the `:`-paired branches; scss raises a named-argument error.'
+  },
+  {
+    name: 'targeted:if() with media() and supports() branches',
+    accepted: ['css'],
+    validCss: true,
+    reason: 'css-values-5 §8.3 `if()`. less/jess refuse the `:`-paired branches; scss raises a named-argument error.'
+  },
+  {
+    name: 'targeted:if() with a lone else branch',
+    accepted: ['css'],
+    validCss: true,
+    reason: 'css-values-5 §8.3 `if()`. less/jess refuse the `:`-paired branch; scss raises a named-argument error.'
+  },
+  {
+    name: 'targeted:if() in calc()',
+    accepted: ['css'],
+    validCss: true,
+    reason: 'css-values-5 §8.3 `if()` as a calc() operand. Same refusals as the bare `if()` rows.'
+  },
+  {
+    name: 'targeted:unknown function with a nested ;',
+    accepted: ['css', 'less'],
+    validCss: true,
+    reason: 'css-syntax-3 §5.4.9: a `;` inside a function is an ordinary token. scss and jess call arguments have no `;`.'
+  },
+  {
+    name: 'targeted:{}-wrapped function argument',
+    accepted: ['css', 'less'],
+    validCss: true,
+    reason:
+      'css-values-5 §3.1.1. less reads it as a curly block (P37). In jess a `{` in a call argument is a '
+      + 'Collection, the same collision Less had; scss has no `{` argument.'
+  },
+  {
+    name: 'targeted:dashed function',
+    accepted: ['css', 'less'],
+    validCss: true,
+    reason: 'css-mixins-1 `<dashed-function>`. scss and jess have no `--name(` opener.'
+  },
+  {
+    name: 'targeted:dashed function with a {}-wrapped argument',
+    accepted: ['css', 'less'],
+    validCss: true,
+    reason: 'css-mixins-1 `<dashed-function>` with a css-values-5 §3.1.1 argument. scss and jess refuse both halves.'
   }
 ];
 
@@ -269,7 +331,21 @@ const CRASH_ALLOWLIST: readonly Allowed[] = [
       + 'so no direction is violated and the file does not appear in either allowlist above — which '
       + 'is exactly why the crash needs its own channel to be visible at all. Related to the open '
       + 'question of whether the less parser should accept a leading-digit variable name.'
-  }
+  },
+  ...[
+    'targeted:if() with style() and else branches',
+    'targeted:if() with media() and supports() branches',
+    'targeted:if() with a lone else branch',
+    'targeted:if() in calc()'
+  ].map((name): Allowed => ({
+    name,
+    accepted: ['css'],
+    validCss: true,
+    reason:
+      'scss THROWS "A named argument must be spelled `$name: value`." on the `:` of a css-values-5 §8.3 '
+      + '`if()` branch instead of declining it: the scss call-argument grammar reads `cond: value` as a '
+      + 'malformed Sass keyword argument. dart-sass 1.101.7 parses and evaluates CSS `if()` natively.'
+  }))
 ];
 
 /** Build every row of the matrix once. */
