@@ -546,7 +546,8 @@ export class LessPlugin extends AbstractPlugin {
    *
    * `moduleMode` reaches the grammar for the same reason: whether the Less
    * built-ins are ambient is decided per document, where the grammar sees its
-   * `@use`/`@compose` directives, and recorded on the root (ledger P36).
+   * `@use`/`@compose` directives, and every call node carries the answer
+   * (ledger P36).
    */
   safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
     const result = safeParseLess(filePath, source, {

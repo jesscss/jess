@@ -90,7 +90,7 @@ export interface FunctionScope {
 /** The inline function-scope slot carried by a call node. `null` (the factory
  *  default) is a call from a parser that records no scope: ambient. */
 export interface FunctionScopeSlot {
-  _fnScope?: FunctionScope | null;
+  _fnScope: FunctionScope | null;
 }
 
 /** The two inline body-span slots carried by every block-bearing node. */
@@ -443,7 +443,7 @@ export function withFunctionScope<T extends FunctionScopeSlot>(call: T, scope: F
 /** Whether built-in functions are ambient where this call was written. */
 export function hasAmbientFunctions(call: FunctionScopeSlot): boolean {
   const scope = call._fnScope;
-  return scope === null || scope === undefined || scope.ambient;
+  return scope === null || scope.ambient;
 }
 
 /** Retain the exact source span inside a block's braces. */

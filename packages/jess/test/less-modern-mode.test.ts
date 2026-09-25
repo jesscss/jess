@@ -71,6 +71,11 @@ describe('Less modern mode (P36)', () => {
       .resolves.toBe('.x {\n  color: darken(red, 10%);\n}\n');
   });
 
+  it('modern: a call in an at-rule prelude is emitted as written', async () => {
+    await expect(less('@use "#less";\n@media screen and round(1.5) { a { b: c; } }'))
+      .resolves.toBe('@media screen and round(1.5) {\n  a {\n    b: c;\n  }\n}\n');
+  });
+
   it.each([
     ['@use', '@use "#less";'],
     ['@-use', '@-use "#less";'],

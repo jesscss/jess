@@ -82,18 +82,14 @@ export function requireLessParseState(state: unknown): LessParseState {
     : { source, mathMode };
 }
 
-function isFunctionScope(value: unknown): value is FunctionScope {
-  return typeof value === 'object' && value !== null && 'ambient' in value && typeof value.ambient === 'boolean';
-}
-
 /**
  * The document's function scope, or `null` for a state without one (a raw
- * `run()` with no state). Reducers receive the state as `unknown`.
+ * `run()` with no state). Read on every call node, so no re-validation of the
+ * state `parseWith` itself built.
  */
 export function functionScopeOf(state: unknown): FunctionScope | null {
-  return typeof state === 'object' && state !== null && 'functions' in state && isFunctionScope(state.functions)
-    ? state.functions
-    : null;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the state is parseWith's LessParseState or absent; parseman types it `unknown`.
+  return (state as LessParseState | undefined)?.functions ?? null;
 }
 
 /** A module directive (`@use`/`@compose`) puts the document in modern mode (ledger P36). */
