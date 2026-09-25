@@ -1038,16 +1038,20 @@ function customValueFromParts(parts: readonly CustomValuePart[]): ValueNode {
  * A `var()` fallback's trailing whitespace belongs to the call's `)` boundary,
  * not to the fallback (css-variables-1 §3 trims a `<declaration-value>`'s edge
  * whitespace). Comments are kept.
+ *
+ * ponytail: `trimEnd()` also drops a trailing non-CSS space (U+00A0, U+FEFF)
+ * before `)`; exact css-syntax-3 §4.2 whitespace needs the grammar to stop the
+ * custom value before its edge whitespace.
  */
 function trimCustomValueEnd(value: ValueNode): ValueNode {
   if (value.type === 'Any') {
-    const trimmed = trimTrailingWhitespace(value.src);
+    const trimmed = value.src.trimEnd();
     return trimmed === value.src ? value : any(trimmed);
   }
   if (value.type === 'Interpolation') {
     const last = value.parts.at(-1);
     if (last !== undefined && 'lit' in last) {
-      const trimmed = trimTrailingWhitespace(last.lit);
+      const trimmed = last.lit.trimEnd();
       if (trimmed !== last.lit) {
         const parts = value.parts.slice(0, -1);
         if (trimmed !== '') {
@@ -1058,19 +1062,6 @@ function trimCustomValueEnd(value: ValueNode): ValueNode {
     }
   }
   return value;
-}
-
-/** Drop trailing CSS whitespace (css-syntax-3 §4.2: space, tab, LF, CR, FF). */
-function trimTrailingWhitespace(text: string): string {
-  let end = text.length;
-  while (end > 0) {
-    const code = text.charCodeAt(end - 1);
-    if (code !== 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d && code !== 0x0c) {
-      break;
-    }
-    end -= 1;
-  }
-  return end === text.length ? text : text.slice(0, end);
 }
 
 function customPartsFromChildren(children: readonly unknown[]): CustomValuePart[] {
