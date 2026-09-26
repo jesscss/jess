@@ -23,6 +23,7 @@ import {
   keyword,
   operation,
   selectorBranchCanonical,
+  spaced,
   selectorTermOf,
   selist
 } from './nodes.js';
@@ -375,10 +376,35 @@ export function queryFeatureContents(children: readonly unknown[]): ValueNode {
   if (children.length === 1) {
     return name;
   }
+
+  /* `not <media-in-parens>`: the routed `not` and its parenthesized operand. */
+  if (isValue(children[1])) {
+    return spaced([name, children[1]]);
+  }
   if (tokenText(children[1]) === ':') {
     return operation(':', name, firstValue(children), false, cssBaseMathOutsideParens(':'));
   }
   return chainedQueryComparison(name, children);
+}
+
+/**
+ * A `not`/`and`/`or` chain of parenthesized query operands (media-queries-4
+ * `<media-condition>`, css-contain-3 `<container-condition>`): the operands,
+ * with each combinator word kept as a keyword. One operand is itself.
+ */
+export function queryConditionChain(children: readonly unknown[]): ValueNode {
+  const values: ValueNode[] = [];
+  for (const child of children) {
+    if (isValue(child)) {
+      values.push(child);
+    } else {
+      const normalized = tokenText(child).toLowerCase();
+      if (normalized === 'not' || normalized === 'and' || normalized === 'or') {
+        values.push(keyword(tokenText(child)));
+      }
+    }
+  }
+  return values.length === 1 ? values[0]! : spaced(values);
 }
 
 export function isImportTarget(value: unknown): value is Quoted | { readonly type: 'Url'; readonly value: ValueNode } {

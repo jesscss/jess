@@ -49,6 +49,7 @@ export {
   blockStatements,
   branchSegments,
   chainedQueryComparison,
+  queryConditionChain,
   queryFeatureContents,
   queryValueRatio,
   complexSegments,

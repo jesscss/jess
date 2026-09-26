@@ -923,6 +923,35 @@ describe('CSS canonical-AST grammar', () => {
     });
   });
 
+  /*
+   * media-queries-4 §3: `<media-in-parens> = ( <media-condition> ) | <media-feature> | <general-enclosed>`,
+   * and `<media-condition> = <media-not> | <media-in-parens> [ <media-and>* | <media-or>* ]`.
+   */
+  it('parses a parenthesized media condition inside a media query', () => {
+    const preludeOf = (source: string): unknown => {
+      const rule = parseAst(source).rules[0];
+      return rule?.type === 'AtRuleBlock' ? rule.prelude : rule;
+    };
+    const paren = (value: unknown) => ({ type: 'Block', delimiter: 'paren', value });
+    const kw = (src: string) => ({ type: 'Keyword', src });
+    const feature = (name: string, src: string) => paren({ type: 'Operation', operator: ':', left: kw(name), right: { type: 'Dimension', src } });
+
+    expect(preludeOf('@media ((min-width: 1px) and (max-width: 2px)) { a { b: c } }')).toMatchObject(
+      paren({ type: 'Sequence', parts: [feature('min-width', '1px'), kw('and'), feature('max-width', '2px')] })
+    );
+    expect(preludeOf('@media screen and ((color) or (hover)) { a { b: c } }')).toMatchObject({
+      type: 'Sequence',
+      parts: [kw('screen'), kw('and'), paren({ type: 'Sequence', parts: [paren(kw('color')), kw('or'), paren(kw('hover'))] })]
+    });
+    expect(preludeOf('@media (not (color)) { a { b: c } }')).toMatchObject(
+      paren({ type: 'Sequence', parts: [kw('not'), paren(kw('color'))] })
+    );
+    expect(preludeOf('@media (((color))) { a { b: c } }')).toMatchObject(paren(paren(paren(kw('color')))));
+
+    /* `not` is still a feature name where no parenthesized condition follows it. */
+    expect(preludeOf('@media (not) { a { b: c } }')).toMatchObject(paren(kw('not')));
+  });
+
   it('keeps public supports-condition comments local to the typed condition grammar', () => {
     const source = '@supports/* keyword */ (display/* property */:/* value */grid/* close */)/* before-and */ and/* after-and */ (color: red)/* before-comma */,/* after-comma */ not/* after-not */ (width: 1px)/* before-brace */ { /* body */ .grid { display: grid; } }';
     const nested = '.card { @supports/* keyword */ (display/* property */: grid)/* before-brace */ { color: red; } }';

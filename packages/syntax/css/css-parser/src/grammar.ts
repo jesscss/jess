@@ -29,6 +29,7 @@ import {
   block,
   blockStatements,
   branchSegments,
+  queryConditionChain,
   queryFeatureContents,
   queryValueRatio,
   color,
@@ -258,6 +259,7 @@ type GrammarRuleName =
   | 'AtRulePreludeGroup'
   | 'AtRulePreludeQuoted'
   | 'AtRulePreludeText'
+  | 'QueryCondition'
   | 'QueryFeatureContents'
   | 'keyframeSelector'
   | 'stylesheetBodyBlock'
@@ -2969,6 +2971,17 @@ const cssFactory = (g: GrammarSelf) => {
   const queryFeatureOpener = dispatch(
     identOrFunction,
     when(
+      'not',
+      sequence(
+        RoutedProperty,
+        choice(
+          g.QueryFeature,
+          queryFeatureNameTail
+        )
+      ),
+      { caseInsensitive: true }
+    ),
+    when(
       matches(/(?:\\\(|[^(])$/),
       queryFeatureName
     )
@@ -3017,11 +3030,33 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     children => queryFeatureContents(children)
   );
+
+  /*
+   * A parenthesized condition inside a query feature's parentheses:
+   * media-queries-4 `<media-in-parens> = ( <media-condition> ) | …`. It opens
+   * on the inner `(`, which no feature's contents can start with, so the
+   * choice in `QueryFeature` decides on that one character. The `not` form is
+   * routed by the feature-name dispatch above.
+   */
+  const QueryCondition = node(
+    'QueryCondition',
+    sequence(
+      g.QueryFeature,
+      many(sequence(
+        g.QueryAndOr,
+        g.QueryFeature
+      ))
+    ),
+    children => queryConditionChain(children)
+  );
   const QueryFeature = node(
     'QueryFeature',
     sequence(
       literal('('),
-      g.QueryFeatureContents,
+      choice(
+        g.QueryCondition,
+        g.QueryFeatureContents
+      ),
       literal(')')
     ),
     children => block(firstValue(children))
@@ -3221,20 +3256,7 @@ const cssFactory = (g: GrammarSelf) => {
         ))
       )
     ),
-    (children) => {
-      const values: ValueNode[] = [];
-      for (const child of children) {
-        if (isValue(child)) {
-          values.push(child);
-        } else {
-          const normalized = tokenText(child).toLowerCase();
-          if (normalized === 'not' || normalized === 'and' || normalized === 'or') {
-            values.push(keyword(tokenText(child)));
-          }
-        }
-      }
-      return values.length === 1 ? values[0]! : spaced(values);
-    }
+    children => queryConditionChain(children)
   );
   const ContainerQueryInParens = node(
     'ContainerQueryInParens',
@@ -3451,21 +3473,7 @@ const cssFactory = (g: GrammarSelf) => {
         ))
       )
     ),
-    (children) => {
-      const values: ValueNode[] = [];
-      for (const child of children) {
-        if (isValue(child)) {
-          values.push(child);
-        } else {
-          const text = tokenText(child);
-          const normalized = text.toLowerCase();
-          if (normalized === 'not' || normalized === 'and' || normalized === 'or') {
-            values.push(keyword(text));
-          }
-        }
-      }
-      return values.length === 1 ? values[0]! : spaced(values);
-    }
+    children => queryConditionChain(children)
   );
 
   /*
@@ -4087,6 +4095,7 @@ const cssFactory = (g: GrammarSelf) => {
     StylesheetAtRule,
     DeclarationListAtRule,
     ConditionalGroupAtRule,
+    QueryCondition,
     QueryFeatureContents,
     QueryFeature,
     QueryClause,
