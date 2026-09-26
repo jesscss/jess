@@ -273,7 +273,6 @@ type LessRules = {
   EachFunctionStatement: Combinator<For>;
   SupportsValue: Combinator<ValueNode>;
   SupportsFeature: Combinator<ValueNode>;
-  SupportsInParens: Combinator<ValueNode>;
   EnclosedContent: Combinator<Interpolation>;
   EnclosedGroup: Combinator<Interpolation>;
   EnclosedQuoted: Combinator<Interpolation>;
@@ -377,6 +376,8 @@ type LessRules = {
 type LessInputRules = LessRules & typeof lessSyntax;
 
 type SharedSyntax = {
+  // Inherited from the CSS base: a nested condition, the SupportsFeature leaf Less overrides, or Enclosed.
+  SupportsInParens: Combinator<ValueNode>;
   // Inherited from the CSS base: the same not/and/or chain over SupportsInParens.
   SupportsCondition: Combinator<ValueNode>;
   AttributeModifier: Combinator<unknown>;
@@ -3273,17 +3274,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         : block(operation(':', property, value, false, lessMathOutsideParens(state, ':')));
     }
   );
-  const SupportsInParens = node(
-    'SupportsInParens',
-    choice(
-      sequence(literal('('), g.SupportsCondition, literal(')')),
-      g.SupportsFeature,
-      g.Enclosed
-    ),
-    children => children.length === 1
-      ? requireValueNode(children[0])
-      : block(requireValueNode(children[1]))
-  );
   const SupportsBlock = node(
     'SupportsBlock',
     sequence(
@@ -5104,7 +5094,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     EachFunctionStatement,
     SupportsValue,
     SupportsFeature,
-    SupportsInParens,
     EnclosedContent,
     EnclosedGroup,
     EnclosedQuoted,
