@@ -292,7 +292,6 @@ type LessRules = {
   ContainerStyleQuery: Combinator<FunctionCall>;
   ContainerScrollStateQuery: Combinator<FunctionCall>;
   ContainerName: Combinator<Keyword>;
-  ContainerQueryAtom: Combinator<ValueNode>;
   ContainerQueryInParens: Combinator<ValueNode>;
   ContainerCondition: Combinator<ValueNode>;
   MediaContainerBody: Combinator<readonly Statement[]>;
@@ -376,6 +375,8 @@ type LessRules = {
 type LessInputRules = LessRules & typeof lessSyntax;
 
 type SharedSyntax = {
+  // Inherited from the CSS base: a nested group, a feature, or the ContainerStyleQuery leaf Less binds.
+  ContainerQueryAtom: Combinator<ValueNode>;
   // Inherited from the CSS base: a nested condition, the SupportsFeature leaf Less overrides, or Enclosed.
   SupportsInParens: Combinator<ValueNode>;
   // Inherited from the CSS base: the same not/and/or chain over SupportsInParens.
@@ -3574,15 +3575,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ), literal(')')),
     children => block(requireValueNode(children[1]))
   );
-  const ContainerQueryAtom = node(
-    'ContainerQueryAtom',
-    choice(
-      g.ContainerQueryInParens,
-      g.ContainerStyleQuery,
-      g.QueryFeature
-    ),
-    children => requireValueNode(children[0])
-  );
   const ContainerCondition = node(
     'ContainerCondition',
     choice(
@@ -5114,7 +5106,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ContainerStyleQuery,
     ContainerScrollStateQuery,
     ContainerName,
-    ContainerQueryAtom,
     ContainerQueryInParens,
     ContainerCondition,
     MediaContainerBody,
