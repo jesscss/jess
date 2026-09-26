@@ -66,6 +66,7 @@ const ROUND_TRIP: Array<[name: string, css: string, emitted?: string]> = [
   ['padding before a comma inside a var() fallback function', 'var(--x, color-mix(in srgb, red , blue))', 'var(--x, color-mix(in srgb, red, blue))'],
   ['a group left empty before a `;` in a var() fallback function', 'var(--x, foo(;a))', 'var(--x, foo(; a))'],
   ['a {}-wrapped condition', 'if({a}: 1)', 'if({ a }: 1)'],
+  ['a trailing `;` in a var() fallback function', 'var(--x, foo(a;))'],
   ['a bare `--` identifier', '--'],
   ['a dashed identifier holding an escape', '--a\\:b']
 ];
