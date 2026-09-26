@@ -2901,36 +2901,20 @@ const cssFactory = (g: GrammarSelf) => {
    * shape now fails to MATCH, so the caller gets a positioned CssParseError,
    * and `@supports` falls through to its general-enclosed arm as intended.
    */
+  const queryRatioTail = optional(sequence(
+    literal('/'),
+    g.TypedValue
+  ));
   const QueryValue = node(
     'QueryValue',
     sequence(
       g.TypedValue,
-      optional(sequence(
-        literal('/'),
-        g.TypedValue
-      ))
+      queryRatioTail
     ),
     children => queryValueRatio(children)
   );
 
-  /*
-   * A query feature's CONTENTS, the part inside its parentheses (media-queries-4
-   * §3; the same feature a `@container` or `@supports` condition holds). A
-   * caller that has already read the `(` uses it directly; `QueryFeature` is
-   * `(` + contents + `)`. LEFT-FACTORED on the first token, so no form is read
-   * and then read again as another:
-   *
-   * - an identifier-shaped start is read once as the identifier-or-opener token
-   *   and routed by it. A name (`width`) is followed by `)` (a boolean
-   *   feature), `:` and a value (`width: 600px`), or a comparison and one or
-   *   two values (`width > 600px`); a function opener is a function-valued
-   *   first bound of a range (`var(--w) < width`), read by the same tails the
-   *   typed value dispatch routes a function to;
-   * - any other value first (`100px < width`, `100em < width < 200em`) is a
-   *   range with the name second.
-   *
-   * `<mf-value>` is one component value or a `<ratio>` (`QueryValue`).
-   */
+  /* After a feature name: nothing (a boolean feature), `: value`, or a comparison with one or two values. */
   const queryFeatureNameTail = optional(choice(
     sequence(
       literal(':'),
@@ -2945,6 +2929,8 @@ const cssFactory = (g: GrammarSelf) => {
       ))
     )
   ));
+
+  /* After a value-first bound: a comparison, the name, and an optional second comparison and value. */
   const queryFeatureRangeTail = sequence(
     g.QueryComparisonOperator,
     g.Property,
@@ -2954,7 +2940,12 @@ const cssFactory = (g: GrammarSelf) => {
     ))
   );
 
-  /* The feature name the opener dispatch already read, kept a `Property` node as it always was. */
+  /*
+   * The feature name the opener dispatch already read, kept a `Property` node
+   * as it always was. It is a routed twin of `Property` rather than
+   * `routed(g.Identifier)`, whose any-character first set would take first-set
+   * gating from every rule that starts with `Property`.
+   */
   const RoutedProperty = node(
     'Property',
     routed(),
@@ -2967,45 +2958,49 @@ const cssFactory = (g: GrammarSelf) => {
 
   /*
    * A feature name is read once, as the identifier-or-opener token, and routed
-   * to its tail. A function opener has no arm here: it is a value-first bound
-   * (`var(--w) < width`), which the value arm below reads, so the dispatch
-   * refuses it without committing. (ponytail: that re-reads the opener token
-   * for a function-first feature only — the rare shape — and keeps css's
-   * `<general-enclosed>` fallback for `(foo(x) bar)`; removing it needs the
-   * atom-level `(` factoring, blocked on the general-enclosed fallback.)
+   * to its tail; an escaped `\(` ends a name, not a function. A function
+   * opener has no arm, so the dispatch refuses it without committing and the
+   * value arm reads it as a value-first bound (`var(--w) < width`). That
+   * re-reads the opener token for a function-first feature. It is kept because
+   * a committed function arm would turn `@supports (foo(x) bar)` into a parse
+   * failure instead of `<general-enclosed>`: a failed dispatch arm always
+   * commits.
    */
   const queryFeatureOpener = dispatch(
     identOrFunction,
     when(
-      endsWith('\\('),
-      queryFeatureName
-    ),
-    when(
-      matches(/[^(]$/),
+      matches(/(?:\\\(|[^(])$/),
       queryFeatureName
     )
   );
 
   /*
    * A unicode range first bound is its own token, read before the identifier
-   * it starts like; it is the `QueryValue` it always was.
+   * it starts like; it keeps the `QueryValue > TypedValue` nodes it had. When
+   * no comparison follows (`(U+0-7F)`), the name arm re-reads the `U`.
    */
   const UnicodeRangeQueryValue = node(
     'QueryValue',
     sequence(
       node('TypedValue', g.UnicodeRange, { project: 0 }),
-      optional(sequence(
-        literal('/'),
-        g.TypedValue
-      ))
+      queryRatioTail
     ),
     children => queryValueRatio(children)
   );
 
   /*
-   * A query feature's CONTENTS, the part inside its parentheses: a unicode
-   * range bound, a name (read once and routed), or any other value-first
-   * range bound. `QueryFeature` is `(` + contents + `)`.
+   * A query feature's CONTENTS, the part inside its parentheses
+   * (media-queries-4 §3; the same feature a `@container` or `@supports`
+   * condition holds). `QueryFeature` is `(` + contents + `)`. Left-factored
+   * on the first token:
+   *
+   * - a unicode range first bound (above);
+   * - an identifier-shaped start, read once and routed: a name (`width`) is
+   *   followed by nothing, `: value`, or a comparison and one or two values;
+   * - any other value first (`100px < width`, `var(--w) < width`) is a range
+   *   with the name second.
+   *
+   * `<mf-value>` is one component value or a `<ratio>` (`QueryValue`).
    */
   const QueryFeatureContents = node(
     'QueryFeatureContents',
@@ -3171,6 +3166,13 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * The container atom's function leaf: a `style()` query (css-contain-3 §6.1)
+   * or any other `<general-enclosed>`, which is how css reads it. Named so a
+   * dialect can bind its own style query.
+   */
+  const ContainerStyleQuery = g.Enclosed;
+
+  /*
    * A `<query-in-parens>` group: `( <container-query> )` (css-contain-3 §3,
    * media-queries-5 §3.1). It carries the parenthesised boolean form the size
    * and style features nest inside — `((width > 1px) and (height > 1px))` and
@@ -3195,12 +3197,6 @@ const cssFactory = (g: GrammarSelf) => {
    * with the group also keeps `QueryFeature`'s value arm from speculatively
    * reading a nested `fn(a: b)` as a component value and recording a stray error.
    */
-  /*
-   * The container atom's function leaf: a `style()` query (css-contain-3 §6.1)
-   * or any other `<general-enclosed>`. Named so a dialect with a structured
-   * style query binds its own; css reads it as general-enclosed.
-   */
-  const ContainerStyleQuery = g.Enclosed;
   const ContainerQueryAtom = node(
     'ContainerQueryAtom',
     choice(
@@ -3417,9 +3413,11 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * The `@supports` feature leaf, `( <declaration> )` (css-conditional-3
-   * §6.1). Named apart from the media `QueryFeature` it is in css so a
-   * dialect can bind its own `@supports` feature without changing `@media`.
+   * The `@supports` feature leaf (`<supports-feature>`, css-conditional-3
+   * §6.1). css binds the media `QueryFeature`, as it always read here, so a
+   * `( name: value )` that is not one `<mf-value>` falls to `Enclosed`. It is
+   * named apart so a dialect can bind its own `@supports` feature without
+   * changing `@media`.
    */
   const SupportsFeature = g.QueryFeature;
   const SupportsInParens = node(

@@ -900,6 +900,29 @@ describe('CSS canonical-AST grammar', () => {
     }
   });
 
+  it('reads each first-token arm of a query feature, keeping the general-enclosed fallback', () => {
+    const preludeOf = (source: string): unknown => {
+      const rule = parseAst(source).rules[0];
+      return rule?.type === 'AtRuleBlock' ? rule.prelude : rule;
+    };
+    const enclosed = (lit: string) => ({ type: 'Block', delimiter: 'paren', value: { type: 'Interpolation', parts: [{ lit }] } });
+
+    /* A function first bound that is not a range, and a unicode range that is not one, are `<general-enclosed>`. */
+    expect(preludeOf('@supports (foo(x) bar) { a { b: c } }')).toMatchObject(enclosed('foo(x) bar'));
+    expect(preludeOf('@supports (U+0-7F) { a { b: c } }')).toMatchObject(enclosed('U+0-7F'));
+
+    expect(preludeOf('@media (U+0-7F < width) { a { b: c } }')).toMatchObject({
+      type: 'Block', delimiter: 'paren',
+      value: { type: 'Operation', operator: '<', left: { type: 'Any', src: 'U+0-7F' }, right: { type: 'Keyword', src: 'width' } }
+    });
+
+    /* An escaped `\(` ends a name, not a function opener. */
+    expect(preludeOf('@media (a\\(: 1) { a { b: c } }')).toMatchObject({
+      type: 'Block', delimiter: 'paren',
+      value: { type: 'Operation', operator: ':', left: { type: 'Keyword', src: 'a\\(' }, right: { type: 'Dimension', src: '1' } }
+    });
+  });
+
   it('keeps public supports-condition comments local to the typed condition grammar', () => {
     const source = '@supports/* keyword */ (display/* property */:/* value */grid/* close */)/* before-and */ and/* after-and */ (color: red)/* before-comma */,/* after-comma */ not/* after-not */ (width: 1px)/* before-brace */ { /* body */ .grid { display: grid; } }';
     const nested = '.card { @supports/* keyword */ (display/* property */: grid)/* before-brace */ { color: red; } }';
