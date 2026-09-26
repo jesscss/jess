@@ -163,15 +163,11 @@ function withLayoutWhenComplete<T extends object>(value: T, separators: readonly
 }
 
 /**
- * A generic call's reduction. Without a `;` the arguments are the comma run,
- * with its authored separator layout, exactly as before. With one — css-values-5
- * §8.3 `if( [ <if-branch> ; ]* <if-branch> ;? )` — the body is ONE argument, the
- * `;` List of its groups, so the call carries the separator it was written with
- * instead of a comma it was not. A group is the empty slot `[]` when it holds
- * nothing (`if(media(print): 1px;)` ends on one), itself when it holds one
- * argument, and the comma `List` it was written as when it holds several. The
- * commas are handed out to their groups in order, one fewer than each group's
- * arguments, so every rung keeps its own authored layout.
+ * A generic call's reduction when its body is not a branch list. Without a `;`
+ * the arguments are the comma run, with its authored separator layout, exactly
+ * as before. With one (`foo(a; b)`) the body is ONE argument, the `;` List of
+ * its groups, so the call carries the separator it was written with instead of
+ * a comma it was not.
  */
 export function semicolonGroupedCall(children: readonly unknown[], fields: ReducerFields | undefined): FunctionCall {
   const name = functionOpenName(children[0]);
@@ -180,20 +176,7 @@ export function semicolonGroupedCall(children: readonly unknown[], fields: Reduc
     return funcCall(name, withAuthoredSeparators(args, fields, Math.max(0, args.length - 1)));
   }
   const { segments, separators } = splitAtSemicolons(children, 1, children.length - 1);
-  const commas = authoredSeparators(fields);
-  let comma = 0;
-  const groups: ValueSlot[] = [];
-  for (const group of segments) {
-    if (group.length === 0) {
-      groups.push([]);
-    } else if (group.length === 1) {
-      groups.push(group[0]!);
-    } else {
-      const next = comma + group.length - 1;
-      groups.push(withLayoutWhenComplete(list(group, ','), commas.slice(comma, next), group.length - 1));
-      comma = next;
-    }
-  }
+  const groups = semicolonGroups(segments, fields);
   return funcCall(name, [withLayoutWhenComplete(list(groups, ';'), separators, groups.length - 1)]);
 }
 
@@ -231,14 +214,41 @@ export function branchOf(children: readonly unknown[], fields: ReducerFields | u
 }
 
 /**
- * A branch list: one branch is itself; several (or one with the spec's trailing
- * `;`, kept as an empty slot) are the `;` List they were written as, with each
- * `;`'s authored run as layout.
+ * A branch list: one branch is itself; several groups (or one with the spec's
+ * trailing `;`, kept as an empty slot) are the `;` List they were written as,
+ * with each `;`'s authored run as layout. A group after a `;` that is not a
+ * branch is grouped as a call body's is.
  */
-export function branchList(children: readonly unknown[]): ValueSlot {
+export function branchList(children: readonly unknown[], fields: ReducerFields | undefined): ValueSlot {
   const { segments, separators } = splitAtSemicolons(children, 0, children.length);
-  const parts = segments.map(segment => segment[0] ?? []);
-  return parts.length === 1 ? parts[0]! : withLayoutWhenComplete(list(parts, ';'), separators, parts.length - 1);
+  if (segments.length === 1) {
+    return segments[0]![0]!;
+  }
+  return withLayoutWhenComplete(list(semicolonGroups(segments, fields), ';'), separators, segments.length - 1);
+}
+
+/*
+ * The value each `;` group reduces to: nothing is the empty slot `[]`, one
+ * argument is itself, and several are the comma `List` they were written as.
+ * The node's commas are handed out to its groups in order, one fewer than each
+ * group's arguments, so every rung keeps its own authored layout.
+ */
+function semicolonGroups(segments: readonly ValueSlot[][], fields: ReducerFields | undefined): ValueSlot[] {
+  const commas = authoredSeparators(fields);
+  let comma = 0;
+  const groups: ValueSlot[] = [];
+  for (const group of segments) {
+    if (group.length === 0) {
+      groups.push([]);
+    } else if (group.length === 1) {
+      groups.push(group[0]!);
+    } else {
+      const next = comma + group.length - 1;
+      groups.push(withLayoutWhenComplete(list(group, ','), commas.slice(comma, next), group.length - 1));
+      comma = next;
+    }
+  }
+  return groups;
 }
 
 /**

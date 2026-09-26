@@ -372,7 +372,7 @@ type LessRules = {
   GenericFunction: Combinator<unknown>;
   CalcFunction: Combinator<unknown>;
   FunctionArguments: Combinator<unknown>;
-  branchListAhead: Combinator<unknown>;
+  branchArgumentExclusion: Combinator<unknown>;
 };
 
 /** Macro-fused shared recognition plus this file's recursively defined outputs. */
@@ -1600,31 +1600,45 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // classified as one shape never falls back to being re-read as the other.
   //
   // The scan skips strings and comments (the ambient scan holes), balanced
-  // `(…)`/`[…]` and `//` comments, and stops at the first top-level `:`, `;`,
-  // `{` or `}`. Reaching the closing `}` means no item was a declaration
-  // (`name:`), a statement (`;`) or a nested rule (`{`): a curly block. Commas
-  // do not stop it, so a nested rule with a selector list (`{ h1, h2 { … } }`)
-  // is still a declaration list. Two block shapes are declaration lists before
-  // the scan starts: `{}`, which has no value, and a block that opens on a
-  // statement — a mixin call or `.class`/`#id` rule (`.m()`, `#ns.m()`,
-  // `#ns > .m()`) or a detached-ruleset call (`@r()`). `#fff, #000` is still a
-  // value: a hex colour is not followed by `(`, `.` or `>`. KNOWN LIMIT: a
-  // mixin LOOKUP is a Less value that opens like a mixin call, so
-  // `foo({ .m()[@x] })` is read as a declaration list and fails; it failed on
-  // origin/dev too, where every `{` was a detached ruleset.
+  // `(…)`/`[…]` and `//` comments, and decides at the FIRST top-level `:`, `;`,
+  // `{` or `}`: stopping at the closing `}` means no item was a declaration
+  // (`name:`), a statement (`;`) or a nested rule (`{`) — a curly block —
+  // and stopping anywhere else means a declaration list. Commas do not stop
+  // it, so a nested rule with a selector list (`{ h1, h2 { … } }`) is still a
+  // declaration list; `{ a, b: c }`, which is neither a value list nor a
+  // declaration list, fails either way.
+  //
+  // Two block shapes are declaration lists before the scan starts: `{}`, which
+  // has no value, and a block that opens on a statement (`statementStart`).
+  // KNOWN LIMIT: a mixin LOOKUP is a Less value that opens like a mixin call,
+  // so `foo({ .m()[@x] })` is read as a declaration list and fails; it failed
+  // on origin/dev too, where every `{` was a detached ruleset.
   //
   // `CurlyValue` is CSS's own rule, inherited, with `g.ValueList` resolving to
   // Less's value list.
-  const braceStatementStart = regex(/\.[-_a-zA-Z\u0080-\uFFFF\\]|#[-\w\u0080-\uFFFF]+[ \t\n\r\f]*[(.>]|@[-\w\u0080-\uFFFF]+[ \t\n\r\f]*\(/);
-  const braceGroup = balanced('(', ')');
-  const braceSquareGroup = balanced('[', ']');
+  const statementStart = choice(
+
+    /* A mixin call or nested rule on a class: `.m()`, `.a { }`. */
+    regex(/\.[-_a-zA-Z\u0080-\uFFFF\\]/),
+
+    /*
+     * A namespaced mixin call or `#id` rule: `#ns.m()`, `#ns > .m()`. A hex
+     * colour (`#fff, #000`) is not followed by `(`, `.` or `>`.
+     */
+    regex(/#[-\w\u0080-\uFFFF]+[ \t\n\r\f]*[(.>]/),
+
+    /* A detached-ruleset call, glued: `@r()`. `@a (b)` is a value. */
+    regex(/@[-\w\u0080-\uFFFF]+\(/)
+  );
+  const parenGroup = balanced('(', ')');
+  const squareGroup = balanced('[', ']');
   const curlyBlockAhead = peek(sequence(
     literal('{'),
     not(literal('}')),
-    not(braceStatementStart),
+    not(statementStart),
     scanTo(
       choice(literal(':'), literal(';'), literal('{'), literal('}')),
-      { skip: [braceGroup, braceSquareGroup, lineComment] }
+      { skip: [parenGroup, squareGroup, lineComment] }
     ),
     literal('}')
   ));
@@ -1646,32 +1660,23 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // top-level `:` takes CSS's branch-list shape, `condition: value; …` —
   // css-values-5 §8.3 `if()` is its first user — in legacy and modern mode
   // alike, with the `;`s preserved. The classification is CSS's
-  // `functionArgumentShape`, inherited, over Less's override of its
-  // `branchListAhead` slot: CSS's scan plus Less's keyword argument, which is
-  // not a branch — a first argument `@name:` (`darken(@color: red)`), the
-  // `keywordArgumentKey` spelling. The skip set is CSS's balanced groups;
-  // strings, comments and `//` line comments are the ambient scan holes.
+  // `functionArgumentShape` over its `branchListAhead` scan, both inherited;
+  // Less overrides only the scan's `branchArgumentExclusion` slot with its own
+  // keyword argument, which is not a branch: a first argument `@name:`
+  // (`darken(@color: red)`), `keywordArgumentKey`.
   //
   // The plain arm is Less's flat vector, where `;` separates arguments like
-  // `,` (`foo(a; b)`) and a legacy `if(cond, a, b)` is still lowered. The
-  // dispatch itself stays here rather than inheriting CSS's
-  // `genericFunctionArguments`: behind that inherited rule the argument
-  // separators' `field` captures no longer reach `GenericFunction`'s reducer,
-  // and every authored delimiter layout was lost (measured: 5 layout and
-  // comment-replay tests failed).
-  const branchListAhead = peek(sequence(
-    // Fast reject, as in CSS: a first argument that reaches `,`/`;`/`)` with no
-    // colon, group, string, comment or escape on the way is plain.
-    not(regex(/[^:;,()[\]{}"'/\\]*[;,)]/)),
-    not(literal(':')),
-    not(keywordArgumentKey),
-    scanTo(
-      choice(literal(':'), literal(';'), literal(','), literal(')')),
-      { skip: [braceGroup, braceSquareGroup, unknownAtRuleBrace] }
-    ),
-    literal(':'),
-    not(literal('/'))
-  ));
+  // `,` (`foo(a; b)`) and a legacy `if(cond, a, b)` is still lowered.
+  //
+  // BLOCKED: the dispatch itself is spelled here instead of inheriting CSS's
+  // `genericFunctionArguments` with a plain-arguments slot. Measured at
+  // `04ad81429`: behind a second non-node rule hop (Less's `FunctionArguments`
+  // → CSS's composed `genericFunctionArguments` → the slot), the argument
+  // separators' `field('separator')` captures did not reach
+  // `GenericFunction`'s reducer, and 5 delimiter-layout tests failed. One hop
+  // (`g.FunctionArguments`) propagates them. That is a parseman field-capture
+  // propagation limit, and needs a red-to-green test in parseman.
+  const branchArgumentExclusion = keywordArgumentKey;
   const FunctionArguments = dispatch(
     g.functionArgumentShape,
     caseOf('branches', g.BranchList),
@@ -1806,7 +1811,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // `identOrFunction`: widening it would scan every `--x: …` custom-property
   // declaration through its dispatch and turn `--f(…);` into a statement call.
   const valueIdentOrFunction = token(noTrivia(choice(
-    sequence(g.InterpolatedValueStart, optional(literal('('))),
+    identOrFunction,
     sequence(g.CustomPropertyToken, literal('('))
   )));
   const IdentifierOrFunction = dispatch(
@@ -5310,7 +5315,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     GenericFunction,
     CalcFunction,
     FunctionArguments,
-    branchListAhead,
+    branchArgumentExclusion,
     whitespace,
     rw: whitespace
   };

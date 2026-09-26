@@ -289,6 +289,7 @@ type GrammarRuleName =
   | 'valueFunctionArguments'
   | 'calcFunctionArguments'
   | 'branchListAhead'
+  | 'branchArgumentExclusion'
   | 'functionArgumentShape'
   | 'genericFunctionArguments';
 
@@ -908,13 +909,33 @@ const cssFactory = (g: GrammarSelf) => {
      */
     not(regex(/[^:;,()[\]{}"'/\\]*[;,)]/)),
     not(literal(':')),
+    not(g.branchArgumentExclusion),
+
+    /*
+     * A punctuation character glued to the colon (`a +: 1`) stops the scan
+     * short of the colon: `BranchCondition` cannot end there — a punctuation
+     * run takes the `:` with it — so the body is plain arguments.
+     */
     scanTo(
-      choice(literal(':'), literal(';'), literal(','), literal(')')),
-      { skip: [balancedParens, balancedBrackets, balancedBraces] }
+      choice(
+        regex(/[-+*=<>|~^?$@%&.]:/),
+        literal(':'),
+        literal(';'),
+        literal(','),
+        literal(')')
+      ),
+      { skip: [balancedParens, balancedBrackets, balancedBraces, customEscape] }
     ),
     literal(':'),
     not(literal('/'))
   ));
+
+  /*
+   * A first argument that a dialect reads as something other than a branch
+   * condition even though a `:` follows it — Less's keyword argument
+   * `@name:` (`darken(@color: red)`). CSS has none, so this never matches.
+   */
+  const branchArgumentExclusion = regex(/(?!)/);
 
   /*
    * The shape key the body dispatches on. The second arm is the always-true
@@ -991,8 +1012,21 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * The branch list: branches separated by `;`, with the optional trailing `;`
-   * the spec allows. The `;`s are preserved in every dialect (P38).
+   * A `;` group after the first branch, classified the same way as the first
+   * argument: a branch when it ends at a top-level `:`, else the plain argument
+   * group — possibly empty, which is the spec's trailing `;`. A malformed
+   * `if(a: 1; b)` is invalid at computed-value time, not a parse error
+   * (css-values-5 §8.3), so a group without a colon still parses.
+   */
+  const branchListGroup = dispatch(
+    g.functionArgumentShape,
+    cssCase('branches', g.Branch),
+    otherwise(functionArgumentGroup)
+  );
+
+  /*
+   * The branch list: `;`-separated groups led by a branch. The `;`s are
+   * preserved in every dialect (P38).
    */
   const BranchList = node(
     'BranchList',
@@ -1000,11 +1034,10 @@ const cssFactory = (g: GrammarSelf) => {
       g.Branch,
       many(sequence(
         functionArgumentSemicolon,
-        g.Branch
-      )),
-      optional(functionArgumentSemicolon)
+        branchListGroup
+      ))
     ),
-    children => branchList(children)
+    (children, fields) => branchList(children, fields)
   );
   const BasicSelector = node(
     'BasicSelector',
@@ -4352,6 +4385,7 @@ const cssFactory = (g: GrammarSelf) => {
     routedDeclarationListBody,
     valueFunctionArguments,
     branchListAhead,
+    branchArgumentExclusion,
     functionArgumentShape,
     genericFunctionArguments,
     whitespace,
