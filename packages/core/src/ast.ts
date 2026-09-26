@@ -50,6 +50,7 @@ export {
   branchSegments,
   chainedQueryComparison,
   queryFeatureContents,
+  queryValueRatio,
   complexSegments,
   cssRelativeCombinator,
   documentStatements,

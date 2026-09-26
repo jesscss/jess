@@ -340,6 +340,16 @@ export function chainedQueryComparison(left: ValueNode, children: readonly unkno
   return result;
 }
 
+/** A `<mf-value>`: one value, or a `<ratio>` (`16/9`) as the `/` Operation. */
+export function queryValueRatio(children: readonly unknown[]): ValueNode {
+  const values = valueChildren(children);
+  const numerator = values[0]!;
+  const denominator = values[1];
+  return denominator === undefined
+    ? numerator
+    : operation('/', numerator, denominator, false, cssBaseMathOutsideParens('/'));
+}
+
 /**
  * A query feature's contents (`QueryFeatureContents`): a name alone, a name
  * with `:` and a value, a name compared with one or two values, or a value
@@ -348,22 +358,12 @@ export function chainedQueryComparison(left: ValueNode, children: readonly unkno
 export function queryFeatureContents(children: readonly unknown[]): ValueNode {
   const head = children[0];
   if (isValue(head)) {
-    /* A value-first range; a function-valued first bound may carry a `<ratio>` denominator. */
-    let first: ValueNode = head;
-    let at = 1;
-    if (tokenText(children[1]) === '/') {
-      const denominator = children[2];
-      if (!isValue(denominator)) {
-        throw new Error('CSS AST query ratio lost its denominator');
-      }
-      first = operation('/', head, denominator, false, cssBaseMathOutsideParens('/'));
-      at = 3;
-    }
-    const property = keyword(tokenText(children[at + 1]));
-    const operators = queryComparisonOperators(children.slice(at));
-    let result: ValueNode = operation(operators[0]!, first, property, false, cssBaseMathOutsideParens(operators[0]!));
+    /* A value-first range: `value op name [op value]`. */
+    const property = keyword(tokenText(children[2]));
+    const operators = queryComparisonOperators(children);
+    let result: ValueNode = operation(operators[0]!, head, property, false, cssBaseMathOutsideParens(operators[0]!));
     if (operators.length > 1) {
-      const right = children[at + 3];
+      const right = children[4];
       if (!isValue(right)) {
         throw new Error('CSS AST query range lost its trailing value');
       }

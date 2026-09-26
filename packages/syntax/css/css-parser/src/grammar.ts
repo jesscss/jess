@@ -16,7 +16,7 @@
  * - SCSS: ../../../scss/scss-parser/src/grammar.ts
  * - Jess: ../../../jess/jess-parser/src/grammar.ts
  */
-import { balanced, classifiedTrivia, choice, compose, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, token, when } from 'parseman' with { type: 'macro' };
+import { balanced, classifiedTrivia, choice, compose, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, token, when } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -29,11 +29,10 @@ import {
   block,
   blockStatements,
   branchSegments,
-  chainedQueryComparison,
   queryFeatureContents,
+  queryValueRatio,
   color,
   complexSegments,
-  cssBaseMathOutsideParens,
   cssRelativeCombinator,
   decl,
   dimension,
@@ -61,10 +60,8 @@ import {
   keyword,
   list,
   unknownAtRuleBlock,
-  operation,
   optionalValue,
   pseudoSelector,
-  queryComparisonOperators,
   quoted,
   relativeSelector,
   rule,
@@ -2911,21 +2908,7 @@ const cssFactory = (g: GrammarSelf) => {
         g.TypedValue
       ))
     ),
-    (children) => {
-      const values = valueChildren(children);
-      const numerator = values[0]!;
-      const denominator = values[1];
-      if (denominator === undefined) {
-        return numerator;
-      }
-      return operation(
-        '/',
-        numerator,
-        denominator,
-        false,
-        cssBaseMathOutsideParens('/')
-      );
-    }
+    children => queryValueRatio(children)
   );
 
   /*
@@ -2969,71 +2952,65 @@ const cssFactory = (g: GrammarSelf) => {
     ))
   );
 
-  /* After a function-valued first bound: its optional `<ratio>` denominator, then the range. */
-  const queryFeatureBoundTail = sequence(
-    optional(sequence(
-      literal('/'),
-      g.TypedValue
-    )),
-    queryFeatureRangeTail
-  );
-
   /* The feature name the opener dispatch already read, kept a `Property` node as it always was. */
   const RoutedProperty = node(
     'Property',
     routed(),
     children => tokenText(children[0])
   );
+  const queryFeatureName = sequence(
+    RoutedProperty,
+    queryFeatureNameTail
+  );
+
+  /*
+   * A feature name is read once, as the identifier-or-opener token, and routed
+   * to its tail. A function opener has no arm here: it is a value-first bound
+   * (`var(--w) < width`), which the value arm below reads, so the dispatch
+   * refuses it without committing. (ponytail: that re-reads the opener token
+   * for a function-first feature only — the rare shape — and keeps css's
+   * `<general-enclosed>` fallback for `(foo(x) bar)`; removing it needs the
+   * atom-level `(` factoring, blocked on the general-enclosed fallback.)
+   */
   const queryFeatureOpener = dispatch(
     identOrFunction,
-    cssCase(
-      'url(',
-      sequence(
-        UrlFunction,
-        queryFeatureBoundTail
-      )
-    ),
-    cssCase(
-      CSS_MATH_FUNCTION_OPENERS,
-      sequence(
-        g.MathFunction,
-        queryFeatureBoundTail
-      )
-    ),
-    cssCase(
-      'var(',
-      sequence(
-        VarFunction,
-        queryFeatureBoundTail
-      )
-    ),
     when(
       endsWith('\\('),
-      sequence(
-        RoutedProperty,
-        queryFeatureNameTail
-      )
+      queryFeatureName
     ),
     when(
-      endsWith('('),
-      sequence(
-        TypedGenericFunction,
-        queryFeatureBoundTail
-      )
-    ),
-    otherwise(sequence(
-      RoutedProperty,
-      queryFeatureNameTail
-    ))
+      matches(/[^(]$/),
+      queryFeatureName
+    )
   );
+
+  /*
+   * A unicode range first bound is its own token, read before the identifier
+   * it starts like; it is the `QueryValue` it always was.
+   */
+  const UnicodeRangeQueryValue = node(
+    'QueryValue',
+    sequence(
+      node('TypedValue', g.UnicodeRange, { project: 0 }),
+      optional(sequence(
+        literal('/'),
+        g.TypedValue
+      ))
+    ),
+    children => queryValueRatio(children)
+  );
+
+  /*
+   * A query feature's CONTENTS, the part inside its parentheses: a unicode
+   * range bound, a name (read once and routed), or any other value-first
+   * range bound. `QueryFeature` is `(` + contents + `)`.
+   */
   const QueryFeatureContents = node(
     'QueryFeatureContents',
     choice(
-
-      /* A unicode range is its own token, read before the identifier it starts like. */
       sequence(
-        g.UnicodeRange,
-        queryFeatureBoundTail
+        UnicodeRangeQueryValue,
+        queryFeatureRangeTail
       ),
       queryFeatureOpener,
       sequence(
