@@ -84,6 +84,28 @@ describe('Less: branch arguments are dispatched on the first argument (P38)', ()
     }]);
   });
 
+  it('a later condition is read like the first: an if-test, or a Less condition', () => {
+    expect(firstArgument('a { b: if(@a > 1: x; supports(display: grid): y; @b > 2: z); }')).toMatchObject([{
+      value: {
+        type: 'List',
+        sep: ';',
+        value: [
+          { type: 'Branch', condition: { type: 'Condition' }, value: { src: 'x' } },
+          {
+            type: 'Branch',
+            condition: { type: 'FunctionCall', name: 'supports', args: [{ value: { type: 'Operation', operator: ':' } }] },
+            value: { src: 'y' }
+          },
+          { type: 'Branch', condition: { type: 'Condition' }, value: { src: 'z' } }
+        ]
+      }
+    }]);
+  });
+
+  it('a call opening on a keyword argument is never a branch list', () => {
+    expect(() => parse('a { b: foo(@k: v: x); }')).toThrow();
+  });
+
   it('a Less keyword argument stays a keyword argument', () => {
     expect(firstArgument('a { b: darken(@color: red, 10%); }')).toMatchObject([
       { name: 'color', value: { src: 'red' } },

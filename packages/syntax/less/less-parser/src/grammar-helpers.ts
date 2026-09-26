@@ -1296,10 +1296,12 @@ function functionCallFromChildren(
     }
   }
   /* [P38] `[condition, BranchRest]` is one branch-list argument. */
-  const values = args.filter((arg): arg is ValueSlot => !isLessCallArg(arg));
-  const branches = values.length === args.length ? withFirstBranchCondition(values) : undefined;
-  if (branches !== undefined) {
-    return callWithLayout(name, [branches], [], false, span, state);
+  const [condition, rest] = args;
+  if (args.length === 2 && condition !== undefined && rest !== undefined && !isLessCallArg(condition) && !isLessCallArg(rest)) {
+    const branches = withFirstBranchCondition([condition, rest]);
+    if (branches !== undefined) {
+      return callWithLayout(name, [branches], [], false, span, state);
+    }
   }
   const separators = functionSeparatorsFromFields(fields, rawChildren, triviaLog, state);
   return lowerLogicalCall(callWithLayout(name, args, separators, hasField(fields, 'trailingSeparator'), span, state));
