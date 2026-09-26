@@ -385,6 +385,8 @@ type SharedSyntax = {
   SupportsInParens: Combinator<ValueNode>;
   // Inherited from the CSS base: the same not/and/or chain over SupportsInParens.
   SupportsCondition: Combinator<ValueNode>;
+  // Inherited from the CSS base's recognition: the css-syntax-3 §4.3.9 identifier token.
+  IdentToken: Combinator<string>;
   AttributeModifier: Combinator<unknown>;
   AttributeOperator: Combinator<unknown>;
   HexColor: Combinator<string>;
