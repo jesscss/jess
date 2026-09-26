@@ -29,7 +29,7 @@ import {
   selectorTermOf,
   selist
 } from './nodes.js';
-import { withValueLayout } from './provenance.js';
+import { valueLayoutOf, withValueLayout } from './provenance.js';
 import { semanticGapText } from './grammar-helpers.js';
 import type {
   CompoundSelector,
@@ -173,6 +173,10 @@ export function semicolonGroupedCall(children: readonly unknown[], fields: Reduc
   const name = functionOpenName(children[0]);
   if (!hasSemicolon(children)) {
     const args = children.filter(isValueSlotValue);
+    const branches = withFirstBranchCondition(args);
+    if (branches !== undefined) {
+      return funcCall(name, [branches]);
+    }
     return funcCall(name, withAuthoredSeparators(args, fields, Math.max(0, args.length - 1)));
   }
   const { segments, separators } = splitAtSemicolons(children, 1, children.length - 1);
@@ -214,17 +218,69 @@ export function branchOf(children: readonly unknown[], fields: ReducerFields | u
 }
 
 /**
- * A branch list: one branch is itself; several groups (or one with the spec's
- * trailing `;`, kept as an empty slot) are the `;` List they were written as,
- * with each `;`'s authored run as layout. A group after a `;` that is not a
- * branch is grouped as a call body's is.
+ * The rest of a branch list after its first condition (ledger P38): the first
+ * branch — still waiting for that condition, which the call's reducer supplies
+ * through {@link withFirstBranchCondition} — then each later `;` group, a
+ * `Branch` or a plain group. One group is the branch itself; several (or one
+ * with the spec's trailing `;`, kept as an empty slot) are the `;` List they
+ * were written as, with each `;`'s authored run as layout.
  */
-export function branchList(children: readonly unknown[], fields: ReducerFields | undefined): ValueSlot {
-  const { segments, separators } = splitAtSemicolons(children, 0, children.length);
-  if (segments.length === 1) {
-    return segments[0]![0]!;
+export function branchRest(children: readonly unknown[], fields: ReducerFields | undefined): ValueSlot {
+  const colon = children.findIndex(child => !isValue(child) && isTerminalText(child) && tokenText(child) === ':');
+  const { segments, separators } = splitAtSemicolons(children, colon + 1, children.length);
+  const groups = semicolonGroups(segments, fields);
+  const first = branch([], groups[0]!);
+  if (groups.length === 1) {
+    return first;
   }
-  return withLayoutWhenComplete(list(semicolonGroups(segments, fields), ';'), separators, segments.length - 1);
+  groups[0] = first;
+  return withLayoutWhenComplete(list(groups, ';'), separators, groups.length - 1);
+}
+
+/* Is this the first branch of a `BranchRest`, still without its condition? */
+function isOpenBranch(value: ValueSlot | undefined): value is Branch {
+  return value !== undefined && !isValueSlotArray(value) && value.type === 'Branch'
+    && isValueSlotArray(value.condition) && value.condition.length === 0;
+}
+
+/**
+ * Give a branch list its first condition. A call body left-factored on its
+ * first argument reduces to `[condition, rest]`, where `rest` is a
+ * {@link branchRest} result; this returns the one branch-list argument, or
+ * `undefined` when the arguments are not that shape. A parsed condition is never
+ * empty, so an empty one only ever marks the branch awaiting it.
+ */
+export function withFirstBranchCondition(args: readonly ValueSlot[]): ValueSlot | undefined {
+  const [condition, rest] = args;
+  if (args.length !== 2 || condition === undefined || rest === undefined) {
+    return undefined;
+  }
+  if (isOpenBranch(rest)) {
+    return branch(condition, rest.value);
+  }
+  if (!isValueSlotArray(rest) && rest.type === 'List' && rest.sep === ';' && isOpenBranch(rest.value[0])) {
+    const groups = [branch(condition, rest.value[0].value), ...rest.value.slice(1)];
+    const layout = valueLayoutOf(rest);
+    return layout === undefined ? list(groups, ';') : withValueLayout(list(groups, ';'), layout);
+  }
+  return undefined;
+}
+
+/**
+ * An `<if-test>` call (`media(…)`, `supports(…)`, `style(…)`): the query the
+ * grammar parsed inside the call's parentheses is the call's one argument. A
+ * query feature or group is a paren `Block`, and those parentheses are the
+ * call's own, so the argument is the block's contents. A dialect's style-query
+ * rule reduces the whole `style(…)` call itself, and passes through.
+ */
+export function ifTestCall(children: readonly unknown[]): FunctionCall {
+  const name = children.find(isTerminalText);
+  const query = firstValue(children);
+  if (name === undefined && query.type === 'FunctionCall') {
+    return query;
+  }
+  const argument = query.type === 'Block' && query.delimiter === 'paren' ? query.value : query;
+  return funcCall(tokenText(name), [argument]);
 }
 
 /*

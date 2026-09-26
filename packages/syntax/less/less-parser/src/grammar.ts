@@ -372,7 +372,6 @@ type LessRules = {
   GenericFunction: Combinator<unknown>;
   CalcFunction: Combinator<unknown>;
   FunctionArguments: Combinator<unknown>;
-  branchArgumentExclusion: Combinator<unknown>;
 };
 
 /** Macro-fused shared recognition plus this file's recursively defined outputs. */
@@ -396,9 +395,11 @@ type SharedSyntax = {
   // Inherited from the CSS base: the css-values-5 §3.1.1 curly block a function
   // argument may be (P37).
   CurlyValue: Combinator<ValueNode>;
-  // Inherited from the CSS base: the P38 branch argument list (`if()` branches).
-  BranchList: Combinator<ValueNode>;
-  functionArgumentShape: Combinator<string>;
+  // Inherited from the CSS base: the rest of a P38 branch argument list after
+  // its first condition, and the css-values-5 §8.3 `<if-test>` calls
+  // (`media()`/`supports()`/`style()`), parsed with the query grammar.
+  BranchRest: Combinator<ValueNode>;
+  IfTest: Combinator<ValueNode>;
   // Converged to the CSS base (inherited via compose): same node type
   // SimpleSelector, byte-identical keyframeEndpoint, g.Percentage resolves to
   // the CSS base; reducer differs only requireToken().value vs sourceText().
@@ -1659,32 +1660,23 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // BRANCH arguments (ledger P38): a call whose first argument is followed by a
   // top-level `:` takes CSS's branch-list shape, `condition: value; …` —
   // css-values-5 §8.3 `if()` is its first user — in legacy and modern mode
-  // alike, with the `;`s preserved. The classification is CSS's
-  // `functionArgumentShape` over its `branchListAhead` scan, both inherited;
-  // Less overrides only the scan's `branchArgumentExclusion` slot with its own
-  // keyword argument, which is not a branch: a first argument `@name:`
-  // (`darken(@color: red)`), `keywordArgumentKey`.
-  //
-  // The plain arm is Less's flat vector, where `;` separates arguments like
-  // `,` (`foo(a; b)`) and a legacy `if(cond, a, b)` is still lowered.
-  //
-  // BLOCKED: the dispatch itself is spelled here instead of inheriting CSS's
-  // `genericFunctionArguments` with a plain-arguments slot. Measured at
-  // `04ad81429`: behind a second non-node rule hop (Less's `FunctionArguments`
-  // → CSS's composed `genericFunctionArguments` → the slot), the argument
-  // separators' `field('separator')` captures did not reach
-  // `GenericFunction`'s reducer, and 5 delimiter-layout tests failed. One hop
-  // (`g.FunctionArguments`) propagates them. That is a parseman field-capture
-  // propagation limit, and needs a red-to-green test in parseman.
-  const branchArgumentExclusion = keywordArgumentKey;
-  const FunctionArguments = dispatch(
-    g.functionArgumentShape,
-    caseOf('branches', g.BranchList),
-    otherwise(optional(sequence(
-      oneOrMoreSep(functionArgument, functionArgumentSeparator),
-      optional(trailingFunctionArgumentSeparator)
-    )))
-  );
+  // alike, with the `;`s preserved. The arguments are LEFT-FACTORED on the
+  // first one, read once as a Less argument: a `:` after it continues as
+  // CSS's `BranchRest`, inherited; anything else continues Less's flat vector,
+  // where `;` separates arguments like `,` (`foo(a; b)`) and a legacy
+  // `if(cond, a, b)` is still lowered. A Less keyword argument
+  // (`darken(@color: red)`) is not a branch: `FunctionKeywordArgument` reads
+  // `@name:` and its value as the first argument, so no `:` follows it.
+  const FunctionArguments = optional(sequence(
+    functionArgument,
+    choice(
+      g.BranchRest,
+      sequence(
+        many(sequence(functionArgumentSeparator, functionArgument)),
+        optional(trailingFunctionArgumentSeparator)
+      )
+    )
+  ));
   // Value-position identifiers and glued function openers share one lexical
   // family. Parse that opener once, then route by the returned text. Branch
   // nodes own `routed()` so the consumed opener remains inside the selected CST
@@ -1972,6 +1964,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.Dimension,
       g.Color,
       g.FormatFunction,
+      g.IfTest,
       IdentifierOrFunction,
       g.SelectorCapture,
       g.EscapedParen,
@@ -5315,7 +5308,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     GenericFunction,
     CalcFunction,
     FunctionArguments,
-    branchArgumentExclusion,
     whitespace,
     rw: whitespace
   };

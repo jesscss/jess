@@ -70,6 +70,20 @@ describe('Less: branch arguments are dispatched on the first argument (P38)', ()
     }]);
   });
 
+  it('a media() test is parsed with the query grammar, its variable kept', () => {
+    expect(firstArgument('a { b: if(media(width > @w): 1); }')).toMatchObject([{
+      value: {
+        type: 'Branch',
+        condition: {
+          type: 'FunctionCall',
+          name: 'media',
+          args: [{ value: { type: 'Operation', operator: '>', left: { src: 'width' } } }]
+        },
+        value: { src: '1' }
+      }
+    }]);
+  });
+
   it('a Less keyword argument stays a keyword argument', () => {
     expect(firstArgument('a { b: darken(@color: red, 10%); }')).toMatchObject([
       { name: 'color', value: { src: 'red' } },

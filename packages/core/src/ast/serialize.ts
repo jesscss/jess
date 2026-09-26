@@ -4327,6 +4327,10 @@ function isAuthoredGroupExpression(node: Expression): boolean {
   return start !== NO_SPAN && !isValueSlotArray(node.value) && start < sourceStartOf(node.value);
 }
 
+/** The relations a query grammar builds as `Operation`s: a feature `name: value` and a range comparison. */
+const isQueryRelation = (operator: string): boolean =>
+  operator === ':' || operator === '<' || operator === '>' || operator === '<=' || operator === '>=' || operator === '=';
+
 /**
  * `and` / `or` in VALUE position (§4.5.5). They are NATIVE operators, not `fns/`
  * entries and not an `if(…)` rewrite: each returns one of its OPERANDS and
@@ -4685,6 +4689,22 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'Operation': {
       if (node.operator === 'and' || node.operator === 'or') {
         return evalLogicalOperation(node, frame, e);
+      }
+
+      /*
+       * [P38] A query RELATION — `width > 600px`, `display: grid` — reaches a
+       * value position only inside an `<if-test>` call (`media()`,
+       * `supports()`, `style()`), where the query grammar built it. It is a
+       * condition the browser evaluates, never math or a comparison to fold:
+       * its operands are evaluated (a Less variable substitutes) and the
+       * relation is emitted as written, spelled as a query prelude spells it.
+       * A value comparison is a `Condition`, never an `Operation`.
+       */
+      if (isQueryRelation(node.operator)) {
+        const l = evalValue(node.left, frame, e);
+        const r = evalValue(node.right, frame, e);
+        return combineAll([l, r], values =>
+          literal(`${emitValue(values[0]!)}${node.operator === ':' ? ': ' : ` ${node.operator} `}${emitValue(values[1]!)}`));
       }
 
       /*

@@ -16,7 +16,7 @@
  * - SCSS: ../../../scss/scss-parser/src/grammar.ts
  * - Jess: ../../../jess/jess-parser/src/grammar.ts
  */
-import { balanced, classifiedTrivia, choice, compose, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, startsWith, token, transform, when } from 'parseman' with { type: 'macro' };
+import { balanced, classifiedTrivia, choice, compose, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, startsWith, token, when } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -27,7 +27,8 @@ import {
   attributeSelector,
   authoredText,
   block,
-  branchList,
+  branchRest,
+  ifTestCall,
   branchOf,
   blockStatements,
   branchSegments,
@@ -117,7 +118,6 @@ type GrammarRuleName =
   | 'CalcSum'
   | 'CalcValue'
   | 'MathFunction'
-  | 'Call'
   | 'CharsetPrelude'
   | 'CharsetStatement'
   | 'Color'
@@ -127,6 +127,7 @@ type GrammarRuleName =
   | 'ConditionalGroupAtRule'
   | 'ContainerPrelude'
   | 'ContainerQueryAtom'
+  | 'ContainerStyleQuery'
   | 'ContainerQueryClause'
   | 'ContainerQueryCondition'
   | 'ContainerQueryInParens'
@@ -237,15 +238,13 @@ type GrammarRuleName =
   | 'Url'
   | 'Value'
   | 'ValueList'
-  | 'BranchCondition'
+  | 'ValueSequenceBeforeColon'
   | 'Branch'
-  | 'BranchList'
+  | 'BranchRest'
   | 'CurlyValue'
   | 'ValueSequence'
   | 'ValueTerm'
   | 'TypedValue'
-  | 'TypedValueList'
-  | 'TypedValueSequence'
   | 'VarCall'
   | 'VarFallback'
   | 'VarFallbackBrace'
@@ -286,12 +285,8 @@ type GrammarRuleName =
   | 'stylesheetBodyItem'
   | 'routedStylesheetBody'
   | 'routedDeclarationListBody'
-  | 'valueFunctionArguments'
   | 'calcFunctionArguments'
-  | 'branchListAhead'
-  | 'branchArgumentExclusion'
-  | 'functionArgumentShape'
-  | 'genericFunctionArguments';
+  | 'IfTest';
 
 /*
  * Rules that the shared recognition library defines keep its concrete
@@ -302,11 +297,7 @@ type GrammarRuleName =
 type GrammarSelf = {
   readonly [K in GrammarRuleName]: K extends keyof typeof cssSyntax
     ? (typeof cssSyntax)[K]
-    : K extends 'functionArgumentShape'
-
-      /* A dispatch key: `dispatch(...)` needs the string its selector yields. */
-      ? Combinator<string>
-      : Combinator<unknown>
+    : Combinator<unknown>
 };
 
 /*
@@ -821,10 +812,6 @@ const cssFactory = (g: GrammarSelf) => {
       optional(cssValueTrivia)
     ))
   );
-  const valueFunctionArguments = sepBy(
-    g.TypedValueSequence,
-    authoredArgumentComma
-  );
 
   /*
    * An unknown function's contents are component values up to the matching `)`
@@ -874,13 +861,12 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * A body that is not a branch list: `;`-separated groups of comma-separated
+   * A body with no branch shape: `;`-separated groups of comma-separated
    * arguments (`foo(a; b)`). A body with no `;` is the plain comma argument
    * vector.
    *
-   * Spelled as a sequence rather than `oneOrMoreSep`: a separator-list helper
-   * does not hand its separator terminals to the reducer, and the `;` has to be
-   * among the children to tell an empty group from a full one.
+   * Spelled as a sequence rather than `oneOrMoreSep`: the `;` has to stay among
+   * the reducer's children to tell an empty group from a full one.
    */
   const plainFunctionArguments = sequence(
     functionArgumentGroup,
@@ -891,103 +877,77 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * Is the body a BRANCH list (ledger P38)? css-values-5 §8.3 parses `if()` as
-   * `[ <if-args-branch> ; ]* <if-args-branch> ;?`, `<if-args-branch> =
-   * <declaration-value> : <declaration-value>?`, where the first
-   * `<declaration-value>` excludes top-level colons — so a body is a branch list
-   * exactly when its first argument ends at a top-level `:`. This zero-width
-   * scan reads to the first top-level `:`, `;`, `,` or `)` (skipping strings,
-   * comments and balanced groups) and requires the `:`. A `://` is a URL
-   * scheme, not a branch colon (`foo(http://x)` stays an argument), and an empty
-   * first argument has no condition (`foo(:x)`).
+   * Everything after a plain first argument: the rest of its comma group, then
+   * any further `;` groups.
    */
-  const branchListAhead = peek(sequence(
+  const plainArgumentsAfterFirst = sequence(
+    many(sequence(
+      authoredArgumentComma,
+      functionArgument
+    )),
+    many(sequence(
+      functionArgumentSemicolon,
+      functionArgumentGroup
+    ))
+  );
 
-    /*
-     * Fast reject: most first arguments reach their `,`/`;`/`)` with no colon,
-     * group, string, comment or escape on the way, and are plain arguments.
-     */
-    not(regex(/[^:;,()[\]{}"'/\\]*[;,)]/)),
-    not(literal(':')),
-    not(g.branchArgumentExclusion),
-
-    /*
-     * A punctuation character glued to the colon (`a +: 1`) stops the scan
-     * short of the colon: `BranchCondition` cannot end there — a punctuation
-     * run takes the `:` with it — so the body is plain arguments.
-     */
-    scanTo(
+  /*
+   * The body, LEFT-FACTORED on its first argument (ledger P38). css-values-5
+   * §8.3 parses `if()` as `[ <if-args-branch> ; ]* <if-args-branch> ;?`,
+   * `<if-args-branch> = <declaration-value> : <declaration-value>?`, the first
+   * `<declaration-value>` excluding top-level colons. So the first argument is
+   * read once, as a value run that stops before a top-level `:`
+   * (`ValueSequenceBeforeColon`), and the token after it decides: a `:` makes
+   * the body a branch list (`BranchRest`), anything else continues the plain
+   * arguments. There is no lookahead and no second read.
+   *
+   * A first argument the run cannot start — a `{}` block, or a leading `:` or
+   * `;` (`foo(:x)`, `foo(; a)`) — is plain.
+   */
+  const genericFunctionArguments = optional(choice(
+    sequence(
+      g.ValueSequenceBeforeColon,
       choice(
-        regex(/[-+*=<>|~^?$@%&.]:/),
-        literal(':'),
-        literal(';'),
-        literal(','),
-        literal(')')
-      ),
-      { skip: [balancedParens, balancedBrackets, balancedBraces, customEscape] }
+        g.BranchRest,
+        plainArgumentsAfterFirst
+      )
     ),
-    literal(':'),
-    not(literal('/'))
+    sequence(
+      g.CurlyValue,
+      plainArgumentsAfterFirst
+    ),
+    plainFunctionArguments
   ));
 
   /*
-   * A first argument that a dialect reads as something other than a branch
-   * condition even though a `:` follows it — Less's keyword argument
-   * `@name:` (`darken(@color: red)`). CSS has none, so this never matches.
+   * css-values-5 §8.3's `<declaration-value>` with no top-level colon: a
+   * branch's condition, and — since the body is left-factored on it — every
+   * generic call's first argument. It is `ValueSequence` with one guard: a run
+   * item never begins on a `:` (in a declaration value a `:` is punctuation and
+   * would be swallowed into the run). A `://` is exempt, a URL scheme rather
+   * than a branch colon, so `foo(http://x)` stays one argument. It keeps the
+   * `ValueSequence` node label and reducer, so a plain first argument's tree is
+   * the one it always was.
    */
-  const branchArgumentExclusion = regex(/(?!)/);
-
-  /*
-   * The shape key the body dispatches on. The second arm is the always-true
-   * fallback key: a nullable lookahead succeeds at any position.
-   */
-  const functionArgumentShape = choice(
-    transform(g.branchListAhead, () => 'branches'),
-    transform(peek(optional(literal(')'))), () => 'arguments')
-  );
-
-  /*
-   * The whole body, dispatched on its shape once: a branch list, or the plain
-   * arguments. A classified branch list that fails is a committed failure, not
-   * a second reading as plain arguments.
-   *
-   * `branchListAhead` and `functionArgumentShape` are named slots, so a
-   * dialect reuses the classification and overrides only what differs — Less
-   * adds its keyword-argument exclusion to the scan.
-   */
-  const genericFunctionArguments = dispatch(
-    g.functionArgumentShape,
-    cssCase('branches', g.BranchList),
-    otherwise(plainFunctionArguments)
-  );
-
-  /*
-   * A branch's condition: css-values-5 §8.3's `<declaration-value>` with no
-   * top-level colon, read at substitution as `<if-condition>` (`else`, or a
-   * boolean expression over `media()`/`supports()`/`style()`). It is the
-   * whitespace run `ValueSequence` spells, stopping before a `:` — a run item
-   * never begins on one — because in a declaration value a `:` is punctuation
-   * and would be swallowed into the run.
-   */
-  const BranchCondition = node(
-    'BranchCondition',
+  const colonStart = sequence(literal(':'), not(literal('/')));
+  const ValueSequenceBeforeColon = node(
+    'ValueSequence',
     noTrivia(sequence(
-      not(literal(':')),
+      not(colonStart),
       g.ValueTerm,
       many(choice(
         sequence(
           field('separator', cssValueTrivia),
-          not(literal(':')),
+          not(colonStart),
           g.ValueTerm
         ),
         sequence(
-          not(literal(':')),
+          not(colonStart),
           g.ValueTerm
         )
       ))
     )),
-    (children, fields) => spaceRun(children, fields),
-    { collapse: true }
+    (children, fields) => spaceRun(children, fields)
   );
   const branchColon = noTrivia(sequence(
     optional(cssValueTrivia),
@@ -996,15 +956,14 @@ const cssFactory = (g: GrammarSelf) => {
   ));
 
   /*
-   * One branch: a condition, the colon, and an optional value — the argument
-   * group a plain body carries, so a value may be a comma list or `{}`-wrapped.
-   * The colon is the branch's own syntax, so it re-emits as written
-   * (`else: 1px`) instead of as a spaced punctuation token.
+   * One branch after the first: a condition, the colon, and an optional value —
+   * the argument group a plain body carries, so a value may be a comma list or
+   * `{}`-wrapped. The colon is the branch's own syntax (canonical `cond: value`).
    */
   const Branch = node(
     'Branch',
     noTrivia(sequence(
-      g.BranchCondition,
+      g.ValueSequenceBeforeColon,
       branchColon,
       functionArgumentGroup
     )),
@@ -1012,32 +971,28 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * A `;` group after the first branch, classified the same way as the first
-   * argument: a branch when it ends at a top-level `:`, else the plain argument
-   * group — possibly empty, which is the spec's trailing `;`. A malformed
-   * `if(a: 1; b)` is invalid at computed-value time, not a parse error
-   * (css-values-5 §8.3), so a group without a colon still parses.
+   * The rest of a branch list once its first condition has been read: the
+   * colon, the first value, then `;` groups. A later group is a branch when it
+   * has one; a malformed `if(a: 1; b)` is invalid at computed-value time, not a
+   * parse error (css-values-5 §8.3), so a group without a colon still parses —
+   * that rare group is the only place a condition is read twice. The `;`s and
+   * the spec's trailing `;` are preserved in every dialect (P38). The call's
+   * reducer puts the first condition into the first branch.
    */
-  const branchListGroup = dispatch(
-    g.functionArgumentShape,
-    cssCase('branches', g.Branch),
-    otherwise(functionArgumentGroup)
-  );
-
-  /*
-   * The branch list: `;`-separated groups led by a branch. The `;`s are
-   * preserved in every dialect (P38).
-   */
-  const BranchList = node(
-    'BranchList',
+  const BranchRest = node(
+    'BranchRest',
     sequence(
-      g.Branch,
+      branchColon,
+      functionArgumentGroup,
       many(sequence(
         functionArgumentSemicolon,
-        branchListGroup
+        choice(
+          g.Branch,
+          functionArgumentGroup
+        )
       ))
     ),
-    (children, fields) => branchList(children, fields)
+    (children, fields) => branchRest(children, fields)
   );
   const BasicSelector = node(
     'BasicSelector',
@@ -1663,31 +1618,6 @@ const cssFactory = (g: GrammarSelf) => {
     (children) => {
       const body = children.find(isValue);
       return url(body ?? any(''));
-    }
-  );
-  const Call = node(
-    'Call',
-    sequence(
-      genericFunctionOpen,
-      optional(cssValueTrivia),
-      g.valueFunctionArguments,
-      optional(cssValueTrivia),
-      literal(')')
-    ),
-    (children, fields) => {
-      const name = functionOpenName(children[0]);
-      const args = children.slice(1).filter(isValueSlotValue);
-      return funcCall(
-        name,
-        withAuthoredSeparators(
-          args,
-          fields,
-          Math.max(
-            0,
-            args.length - 1
-          )
-        )
-      );
     }
   );
 
@@ -2532,6 +2462,7 @@ const cssFactory = (g: GrammarSelf) => {
     g.Dimension,
     g.Color,
     g.UnicodeRange,
+    g.IfTest,
     IdentOrFunction,
     g.ParenValue,
     g.SquareValue,
@@ -2662,54 +2593,6 @@ const cssFactory = (g: GrammarSelf) => {
       TypedIdentOrFunction
     ),
     { project: 0 }
-  );
-  const TypedValueSequence = node(
-    'TypedValueSequence',
-    noTrivia(sequence(
-      g.TypedValue,
-      many(choice(
-        sequence(
-          field(
-            'separator',
-            cssValueTrivia
-          ),
-          g.TypedValue
-        ),
-        g.TypedValue
-      ))
-    )),
-    (children, fields) => {
-      const values = valueSlotChildren(children);
-      if (values.length === 1) {
-        return values[0]!;
-      }
-      return withAuthoredSeparators(
-        values,
-        fields,
-        values.length - 1
-      );
-    }
-  );
-  const TypedValueList = node(
-    'TypedValueList',
-    oneOrMoreSep(
-      g.TypedValueSequence,
-      authoredValueComma
-    ),
-    (children, fields) => {
-      const terms = valueSlotChildren(children);
-      if (terms.length === 1) {
-        return terms[0]!;
-      }
-      return withAuthoredSeparators(
-        list(
-          terms,
-          ','
-        ),
-        fields,
-        terms.length - 1
-      );
-    }
   );
 
   /*
@@ -3721,6 +3604,58 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * An `<if-test>` (css-values-5 §8.3): `media( <media-feature> |
+   * <media-condition> )`, `supports( [ <ident> : <declaration-value> ] |
+   * <supports-condition> )`, `style( <style-query> )`. Their contents are CSS
+   * QUERY syntax, not values — `>` in `media(width > 600px)` is a range
+   * comparison, never math — so they are parsed with the query grammar
+   * `@media`, `@supports` and `@container` use. The call's own parentheses are
+   * the query's: `media(width > 600px)` is `media` + the feature
+   * `(width > 600px)`, `supports(display: grid)` is `supports` + the supports
+   * condition `(display: grid)`. The reducer lifts the parenthesised query into
+   * the call's one argument, so a dialect's query overrides (Less variables in
+   * a feature value) apply here too. `style()` is the `ContainerStyleQuery`
+   * slot, which Less and Jess already override with their own style-query rule
+   * (a custom-property value that may hold variables); the base reads it as
+   * `style` + a container query in parens.
+   *
+   * An if-test only exists as an operand of a branch condition, so it is tried
+   * only where the call is followed by the branch's `:` or a boolean `and`/`or`
+   * (a bounded look past the call's own parentheses). Anywhere else
+   * `media(…)`, `supports(…)` and `style(…)` are ordinary calls — in Less a
+   * `supports(@a)` value keeps its variable instead of meeting the `@supports`
+   * prelude's bare-variable rule.
+   */
+  const ifTestAhead = peek(noTrivia(sequence(
+    keywords(['media', 'supports', 'style'], { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }),
+    balanced('(', ')', { strict: true, skip: [blockComment, customDoubleQuoted, customSingleQuoted, customSlash] }),
+    optional(cssValueTrivia),
+    choice(literal(':'), keywords(['and', 'or'], { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }))
+  )));
+  const styleTestName = token(keywords(['style'], { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }));
+  const ContainerStyleQuery = node(
+    'ContainerStyleQuery',
+    sequence(styleTestName, g.ContainerQueryAtom),
+    children => ifTestCall(children)
+  );
+  const mediaTestName = token(keywords(['media'], { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }));
+  const supportsTestName = token(keywords(['supports'], { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }));
+
+  /*
+   * A plain choice, not a dispatch on the name: a call whose contents are not a
+   * query (`media(a, b)`) is not an if-test and falls back to a generic call.
+   */
+  const IfTest = node(
+    'Call',
+    sequence(ifTestAhead, choice(
+      sequence(mediaTestName, g.ContainerQueryAtom),
+      sequence(supportsTestName, g.SupportsInParens),
+      g.ContainerStyleQuery
+    )),
+    children => ifTestCall(children)
+  );
+
+  /*
    * The existing public grammar currently admits a comma-separated condition
    * list for all conditional groups, including @supports. Keep the direct path
    * parity-compatible until that public grammar is intentionally tightened.
@@ -4272,7 +4207,6 @@ const cssFactory = (g: GrammarSelf) => {
     Dimension,
     Quoted,
     Url,
-    Call,
     CalcCall,
     VarFallbackPunctuation,
     VarFallbackParen,
@@ -4294,9 +4228,9 @@ const cssFactory = (g: GrammarSelf) => {
     ValueTerm,
     CurlyValue,
     ValueList,
-    BranchCondition,
+    ValueSequenceBeforeColon,
     Branch,
-    BranchList,
+    BranchRest,
     calcValueAtom,
     CalcValue,
     CalcProduct,
@@ -4307,8 +4241,6 @@ const cssFactory = (g: GrammarSelf) => {
     valueAtom,
     Value,
     TypedValue,
-    TypedValueSequence,
-    TypedValueList,
     Important,
     Declaration,
     ImportStatement,
@@ -4350,6 +4282,7 @@ const cssFactory = (g: GrammarSelf) => {
     QueryPrelude,
     ContainerQueryClause,
     ContainerQueryAtom,
+    ContainerStyleQuery,
     ContainerQueryCondition,
     ContainerQueryInParens,
     ContainerQueryPrelude,
@@ -4383,11 +4316,7 @@ const cssFactory = (g: GrammarSelf) => {
     stylesheetBodyItem,
     routedStylesheetBody,
     routedDeclarationListBody,
-    valueFunctionArguments,
-    branchListAhead,
-    branchArgumentExclusion,
-    functionArgumentShape,
-    genericFunctionArguments,
+    IfTest,
     whitespace,
     rw: whitespace
   };
