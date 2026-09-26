@@ -325,7 +325,9 @@ const EXTEND_TARGET_TYPES = new Set(['ComplexSelector', 'PseudoSelectorComplex']
 const EXTERNAL_SOURCE_TYPES = new Set(['ImportStatement', 'UseRule', 'ForwardRule', 'ModuleImport', 'StyleImport', 'Plugin']);
 const FUNCTION_TYPES = new Set(['Call', 'VarCall', 'FunctionCall', 'ImportTailFunction']);
 const MAP_LIKE_VALUE_TYPES = new Set(['Collection', 'ValueBlock']);
-const MEDIA_FEATURE_NAME_TYPES = new Set(['QueryBareFeature', 'QueryColonFeature', 'QueryComparisonFeature', 'QueryRangeFeature']);
+
+/* The css CST node holding a query feature's name (`Property`) and value (`QueryValue`) children. */
+const MEDIA_FEATURE_NAME_TYPES = new Set(['QueryFeatureContents']);
 const PSEUDO_SELECTOR_TYPES = new Set(['PseudoSelector']);
 const ANB_PSEUDO_CLASSES = new Set([
   'nth-child',

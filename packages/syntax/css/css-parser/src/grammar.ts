@@ -30,6 +30,7 @@ import {
   blockStatements,
   branchSegments,
   chainedQueryComparison,
+  queryFeatureContents,
   color,
   complexSegments,
   cssBaseMathOutsideParens,
@@ -258,8 +259,7 @@ type GrammarRuleName =
   | 'AtRulePreludeGroup'
   | 'AtRulePreludeQuoted'
   | 'AtRulePreludeText'
-  | 'QueryBareFeature'
-  | 'QueryRangeFeature'
+  | 'QueryFeatureContents'
   | 'keyframeSelector'
   | 'stylesheetBodyBlock'
   | 'declarationListBlock'
@@ -2927,112 +2927,130 @@ const cssFactory = (g: GrammarSelf) => {
       );
     }
   );
-  const QueryBareFeature = node(
-    'QueryBareFeature',
+
+  /*
+   * A query feature's CONTENTS, the part inside its parentheses (media-queries-4
+   * §3; the same feature a `@container` or `@supports` condition holds). A
+   * caller that has already read the `(` uses it directly; `QueryFeature` is
+   * `(` + contents + `)`. LEFT-FACTORED on the first token, so no form is read
+   * and then read again as another:
+   *
+   * - an identifier-shaped start is read once as the identifier-or-opener token
+   *   and routed by it. A name (`width`) is followed by `)` (a boolean
+   *   feature), `:` and a value (`width: 600px`), or a comparison and one or
+   *   two values (`width > 600px`); a function opener is a function-valued
+   *   first bound of a range (`var(--w) < width`), read by the same tails the
+   *   typed value dispatch routes a function to;
+   * - any other value first (`100px < width`, `100em < width < 200em`) is a
+   *   range with the name second.
+   *
+   * `<mf-value>` is one component value or a `<ratio>` (`QueryValue`).
+   */
+  const queryFeatureNameTail = optional(choice(
     sequence(
-      literal('('),
-      g.Property,
-      literal(')')
-    ),
-    children => block(keyword(tokenText(children[1]!)))
-  );
-  const QueryColonFeature = node(
-    'QueryColonFeature',
-    sequence(
-      literal('('),
-      g.Property,
       literal(':'),
-      g.QueryValue,
-      literal(')')
+      g.QueryValue
     ),
-    children => block(operation(
-      ':',
-      keyword(tokenText(children[1]!)),
-      firstValue(children),
-      false,
-      cssBaseMathOutsideParens(':')
-    ))
-  );
-  const QueryComparisonFeature = node(
-    'QueryComparisonFeature',
     sequence(
-      literal('('),
-      g.Property,
       g.QueryComparisonOperator,
       g.QueryValue,
       optional(sequence(
         g.QueryComparisonOperator,
         g.QueryValue
-      )),
-      literal(')')
-    ),
-    children => block(chainedQueryComparison(
-      keyword(tokenText(children[1]!)),
-      children
+      ))
+    )
+  ));
+  const queryFeatureRangeTail = sequence(
+    g.QueryComparisonOperator,
+    g.Property,
+    optional(sequence(
+      g.QueryComparisonOperator,
+      g.QueryValue
     ))
   );
 
-  /*
-   * Media/container ranges can put the feature name between two values:
-   * `(100em < width < 200em)`. Keep both comparisons as typed Operations;
-   * the outer operation preserves their authored order without raw-prelude
-   * fallback or a secondary query parser.
-   */
-  const QueryRangeFeature = node(
-    'QueryRangeFeature',
-    sequence(
-      literal('('),
-      g.QueryValue,
-      g.QueryComparisonOperator,
-      g.Property,
-      optional(sequence(
-        g.QueryComparisonOperator,
-        g.QueryValue
-      )),
-      literal(')')
+  /* After a function-valued first bound: its optional `<ratio>` denominator, then the range. */
+  const queryFeatureBoundTail = sequence(
+    optional(sequence(
+      literal('/'),
+      g.TypedValue
+    )),
+    queryFeatureRangeTail
+  );
+
+  /* The feature name the opener dispatch already read, kept a `Property` node as it always was. */
+  const RoutedProperty = node(
+    'Property',
+    routed(),
+    children => tokenText(children[0])
+  );
+  const queryFeatureOpener = dispatch(
+    identOrFunction,
+    cssCase(
+      'url(',
+      sequence(
+        UrlFunction,
+        queryFeatureBoundTail
+      )
     ),
-    (children) => {
-      const values = valueChildren(children);
-      const property = keyword(tokenText(children[3]!));
-      if (values.length === 0) {
-        throw new Error('CSS AST query range requires its leading value');
-      }
-      const operators = queryComparisonOperators(children);
-      if (operators.length === 0) {
-        throw new Error('CSS AST query range requires a comparison operator');
-      }
-      let result = operation(
-        operators[0]!,
-        values[0]!,
-        property,
-        false,
-        cssBaseMathOutsideParens(operators[0]!)
-      );
-      if (operators.length > 1) {
-        const right = values[1];
-        if (right === undefined) {
-          throw new Error('CSS AST query range lost its trailing value');
-        }
-        result = operation(
-          operators[1]!,
-          result,
-          right,
-          false,
-          cssBaseMathOutsideParens(operators[1]!)
-        );
-      }
-      return block(result);
-    }
+    cssCase(
+      CSS_MATH_FUNCTION_OPENERS,
+      sequence(
+        g.MathFunction,
+        queryFeatureBoundTail
+      )
+    ),
+    cssCase(
+      'var(',
+      sequence(
+        VarFunction,
+        queryFeatureBoundTail
+      )
+    ),
+    when(
+      endsWith('\\('),
+      sequence(
+        RoutedProperty,
+        queryFeatureNameTail
+      )
+    ),
+    when(
+      endsWith('('),
+      sequence(
+        TypedGenericFunction,
+        queryFeatureBoundTail
+      )
+    ),
+    otherwise(sequence(
+      RoutedProperty,
+      queryFeatureNameTail
+    ))
+  );
+  const QueryFeatureContents = node(
+    'QueryFeatureContents',
+    choice(
+
+      /* A unicode range is its own token, read before the identifier it starts like. */
+      sequence(
+        g.UnicodeRange,
+        queryFeatureBoundTail
+      ),
+      queryFeatureOpener,
+      sequence(
+        g.QueryValue,
+        queryFeatureRangeTail
+      )
+    ),
+    children => queryFeatureContents(children)
   );
   const QueryFeature = node(
     'QueryFeature',
-    choice(
-      g.QueryBareFeature,
-      QueryColonFeature,
-      QueryComparisonFeature,
-      g.QueryRangeFeature
+    sequence(
+      literal('('),
+      g.QueryFeatureContents,
+      literal(')')
     ),
-    { project: 0 }
+    children => block(firstValue(children))
   );
   const mediaTypeKeywordReserved = keywords(
     ['only', 'layer'],
@@ -4079,8 +4097,7 @@ const cssFactory = (g: GrammarSelf) => {
     StylesheetAtRule,
     DeclarationListAtRule,
     ConditionalGroupAtRule,
-    QueryBareFeature,
-    QueryRangeFeature,
+    QueryFeatureContents,
     QueryFeature,
     QueryClause,
     QueryPrelude,

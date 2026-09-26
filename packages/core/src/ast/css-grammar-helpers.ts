@@ -20,6 +20,7 @@
 import {
   any,
   cssBaseMathOutsideParens,
+  keyword,
   operation,
   selectorBranchCanonical,
   selectorTermOf,
@@ -337,6 +338,47 @@ export function chainedQueryComparison(left: ValueNode, children: readonly unkno
     );
   }
   return result;
+}
+
+/**
+ * A query feature's contents (`QueryFeatureContents`): a name alone, a name
+ * with `:` and a value, a name compared with one or two values, or a value
+ * compared with the name — the same Operations the four feature forms built.
+ */
+export function queryFeatureContents(children: readonly unknown[]): ValueNode {
+  const head = children[0];
+  if (isValue(head)) {
+    /* A value-first range; a function-valued first bound may carry a `<ratio>` denominator. */
+    let first: ValueNode = head;
+    let at = 1;
+    if (tokenText(children[1]) === '/') {
+      const denominator = children[2];
+      if (!isValue(denominator)) {
+        throw new Error('CSS AST query ratio lost its denominator');
+      }
+      first = operation('/', head, denominator, false, cssBaseMathOutsideParens('/'));
+      at = 3;
+    }
+    const property = keyword(tokenText(children[at + 1]));
+    const operators = queryComparisonOperators(children.slice(at));
+    let result: ValueNode = operation(operators[0]!, first, property, false, cssBaseMathOutsideParens(operators[0]!));
+    if (operators.length > 1) {
+      const right = children[at + 3];
+      if (!isValue(right)) {
+        throw new Error('CSS AST query range lost its trailing value');
+      }
+      result = operation(operators[1]!, result, right, false, cssBaseMathOutsideParens(operators[1]!));
+    }
+    return result;
+  }
+  const name = keyword(tokenText(head));
+  if (children.length === 1) {
+    return name;
+  }
+  if (tokenText(children[1]) === ':') {
+    return operation(':', name, firstValue(children), false, cssBaseMathOutsideParens(':'));
+  }
+  return chainedQueryComparison(name, children);
 }
 
 export function isImportTarget(value: unknown): value is Quoted | { readonly type: 'Url'; readonly value: ValueNode } {

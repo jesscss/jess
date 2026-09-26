@@ -49,6 +49,7 @@ export {
   blockStatements,
   branchSegments,
   chainedQueryComparison,
+  queryFeatureContents,
   complexSegments,
   cssRelativeCombinator,
   documentStatements,
