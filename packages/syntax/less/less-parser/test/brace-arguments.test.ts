@@ -137,6 +137,14 @@ describe('Less: a `{` in a function argument is a declaration list (P37)', () =>
     expect(() => parse('a { b: foo({ a, b: c }); }')).toThrow();
   });
 
+  it('a `{` leading a later branch group is a detached ruleset, never a curly block', () => {
+    expect(() => parse('a { b: if(a: 1; {b}); }')).toThrow();
+  });
+
+  it('a keyword argument in a branch list is rejected, not dropped', () => {
+    expect(() => parse('a { b: if(c: @k: v); }')).toThrow(/keyword argument/);
+  });
+
   it('a branch value may be a detached ruleset', () => {
     expect(firstArgument('a { b: if(c: { v: 1; }); }')).toMatchObject([{
       value: { type: 'Branch', condition: { src: 'c' }, value: { type: 'AnonymousMixin' } }
