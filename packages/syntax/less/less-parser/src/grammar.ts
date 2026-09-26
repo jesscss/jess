@@ -3429,15 +3429,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     children => requireValueNode(children[0])
   );
-  const QueryPrelude = node(
-    'QueryPrelude',
-    oneOrMoreSep(
-      g.QueryClause,
-      field('separator', regex(/,[ \t\n\r\f]*/))
-    ),
-    (children, fields, _span, rawChildren, triviaLog, state) =>
-      commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueNode, rawChildren)
-  );
   // Less permits a variable interpolation as an ordinary `@media` query term:
   // `@media @{all} and @{tv}`. That is not a container-query form, so retain
   // the stricter shared query prelude used by `@container` and construct this
