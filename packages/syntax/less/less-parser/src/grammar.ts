@@ -374,6 +374,7 @@ type LessRules = {
   FunctionArguments: Combinator<unknown>;
   ValueSequenceBeforeColon: Combinator<unknown>;
   StyleTest: Combinator<unknown>;
+  functionArgument: Combinator<unknown>;
 };
 
 /** Macro-fused shared recognition plus this file's recursively defined outputs. */
@@ -396,9 +397,6 @@ type SharedSyntax = {
   // overrides its operand slot (`calcValueAtom`) and its operator rungs.
   CalcParen: Combinator<ValueNode>;
   CalcValue: Combinator<ValueNode>;
-  // Inherited from the CSS base: the css-values-5 §3.1.1 curly block a function
-  // argument may be (P37).
-  CurlyValue: Combinator<ValueNode>;
   // Inherited from the CSS base: the rest of a P38 branch argument list after
   // its first condition, and the css-values-5 §8.3 `<if-test>` calls
   // (`media()`/`supports()`/`style()`), parsed with the query grammar.
@@ -1599,68 +1597,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // still reach ArgumentValueSequence.
   const functionArgumentSeparator = field('separator', regex(/[;,][ \t\n\r\f]*/));
   const trailingFunctionArgumentSeparator = field('trailingSeparator', noTrivia(regex(/[;,][ \t\n\r\f]*/)));
-  // A `{` in a function argument is a CURLY BLOCK or a DECLARATION LIST (ledger
-  // P37): a css-values-5 §3.1.1 `{}`-wrapped value list, `{ a }`, `{ a, b }`,
-  // emitted as written, or a detached ruleset, `{ v: 1; }`. It is DISPATCHED at
-  // the `{`: a zero-width scan classifies the block, then exactly one arm parses
-  // it, once. A dispatch branch that fails is a committed failure, so a block
-  // classified as one shape never falls back to being re-read as the other.
-  //
-  // The scan skips strings and comments (the ambient scan holes), balanced
-  // `(…)`/`[…]` and `//` comments, and decides at the FIRST top-level `:`, `;`,
-  // `{` or `}`: stopping at the closing `}` means no item was a declaration
-  // (`name:`), a statement (`;`) or a nested rule (`{`) — a curly block —
-  // and stopping anywhere else means a declaration list. Commas do not stop
-  // it, so a nested rule with a selector list (`{ h1, h2 { … } }`) is still a
-  // declaration list; `{ a, b: c }`, which is neither a value list nor a
-  // declaration list, fails either way.
-  //
-  // Two block shapes are declaration lists before the scan starts: `{}`, which
-  // has no value, and a block that opens on a statement (`statementStart`).
-  // KNOWN LIMIT: a mixin LOOKUP is a Less value that opens like a mixin call,
-  // so `foo({ .m()[@x] })` is read as a declaration list and fails; it failed
-  // on origin/dev too, where every `{` was a detached ruleset.
-  //
-  // `CurlyValue` is CSS's own rule, inherited, with `g.ValueList` resolving to
-  // Less's value list.
-  const statementStart = choice(
-
-    /* A mixin call or nested rule on a class: `.m()`, `.a { }`. */
-    regex(/\.[-_a-zA-Z\u0080-\uFFFF\\]/),
-
-    /*
-     * A namespaced mixin call or `#id` rule: `#ns.m()`, `#ns > .m()`. A hex
-     * colour (`#fff, #000`) is not followed by `(`, `.` or `>`.
-     */
-    regex(/#[-\w\u0080-\uFFFF]+[ \t\n\r\f]*[(.>]/),
-
-    /* A detached-ruleset call, glued: `@r()`. `@a (b)` is a value. */
-    regex(/@[-\w\u0080-\uFFFF]+\(/)
-  );
-  const parenGroup = balanced('(', ')');
-  const squareGroup = balanced('[', ']');
-  const curlyBlockAhead = peek(sequence(
-    literal('{'),
-    not(literal('}')),
-    not(statementStart),
-    scanTo(
-      choice(literal(':'), literal(';'), literal('{'), literal('}')),
-      { skip: [parenGroup, squareGroup, lineComment] }
-    ),
-    literal('}')
-  ));
-  const braceArgumentShape = choice(
-    transform(curlyBlockAhead, () => 'curly'),
-    transform(peek(literal('{')), () => 'declarations')
-  );
-  const braceArgument = dispatch(
-    braceArgumentShape,
-    caseOf('curly', g.CurlyValue),
-    otherwise(g.ValueBlock)
-  );
+  // A Less function argument: a quoted argument, a detached ruleset (a `{`
+  // is always a declaration list here — ledger P37, "LATER" for `{}`-wrapped
+  // values), or a Less value/condition/keyword argument. It is also CSS's
+  // `functionArgument` slot, so the values of a branch list (`if(c: …)`) are
+  // read by this same Less reader.
   const functionArgument = choice(
     g.DoubledQuoteArgument,
-    braceArgument,
+    g.ValueBlock,
     g.FunctionArgument
   );
   // BRANCH arguments (ledger P38): a call whose first argument is followed by a
@@ -5330,6 +5274,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     CalcFunction,
     FunctionArguments,
     ValueSequenceBeforeColon: functionArgument,
+    functionArgument,
     StyleTest,
     whitespace,
     rw: whitespace

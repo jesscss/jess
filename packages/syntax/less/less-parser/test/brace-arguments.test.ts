@@ -3,14 +3,13 @@ import type { Declaration, FunctionCall, Ruleset } from '@jesscss/core/ast';
 import { parse } from '@jesscss/less-parser';
 
 /**
- * Ledger P37: a `{` in a Less function argument is a CURLY BLOCK (a
- * css-values-5 §3.1.1 `{}`-wrapped value list, emitted as written) or a
- * DECLARATION LIST (a detached ruleset). The grammar dispatches at the `{` on
- * the block's shape and parses the chosen arm once.
- *
- * A mixin call and a detached-ruleset call START A STATEMENT, so a block that
- * opens on one is a declaration list even when nothing follows it: reading
- * `{ @r() }` as a curly block emitted `foo({ })`, losing the ruleset.
+ * Ledger P37: a `{` in a Less function argument is a DECLARATION LIST (a
+ * detached ruleset), as it always was. A css-values-5 §3.1.1 `{}`-wrapped
+ * value list there is "LATER": telling it from a declaration list needs the
+ * block's first item read once and shared by both readings, which the grammar
+ * does not do yet. Those cases are pending below, not deleted. A `var()`
+ * fallback keeps its literal `{ a, b }` (pinned in jess's
+ * `less-curly-block-arguments.test.ts`).
  */
 function argumentKind(source: string): string {
   const sheet = parse(source);
@@ -122,19 +121,25 @@ describe('Less: branch arguments are dispatched on the first argument (P38)', ()
   });
 });
 
-describe('Less: a `{` in a function argument is dispatched on its shape (P37)', () => {
+describe('Less: a `{` in a function argument is a declaration list (P37)', () => {
   for (const [name, source, kind] of CASES) {
-    it(`${name} → ${kind === CURLY ? 'curly block' : 'declaration list'}`, () => {
+    if (kind === CURLY) {
+      /* P37 "LATER": a `{}`-wrapped value list in a Less function argument. */
+      it.todo(`${name} → curly block (P37 LATER)`);
+      continue;
+    }
+    it(`${name} → declaration list`, () => {
       expect(argumentKind(source)).toBe(kind);
     });
   }
 
-  /*
-   * The scan decides at the first top-level `:`, `;`, `{` or `}`. `{ a, b: c }`
-   * is neither a list of values nor a declaration list, so it fails whichever
-   * way it is read.
-   */
   it('`{ a, b: c }` is an error', () => {
     expect(() => parse('a { b: foo({ a, b: c }); }')).toThrow();
+  });
+
+  it('a branch value may be a detached ruleset', () => {
+    expect(firstArgument('a { b: if(c: { v: 1; }); }')).toMatchObject([{
+      value: { type: 'Branch', condition: { src: 'c' }, value: { type: 'AnonymousMixin' } }
+    }]);
   });
 });

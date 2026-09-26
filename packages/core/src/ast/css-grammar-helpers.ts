@@ -195,6 +195,22 @@ export function semicolonGroupedCall(children: readonly unknown[]): FunctionCall
   return funcCall(name, [withLayoutWhenComplete(list(groups, ';'), separators, groups.length - 1)]);
 }
 
+/**
+ * A var() fallback's function call (the permissive fallback reading). Without a
+ * `;` its items are the call's arguments as they always were, an empty item
+ * kept as the empty `Any`. With one (`foo(a; b)`) the body is ONE argument, the
+ * `;` List of its comma groups, as a generic call's is.
+ */
+export function fallbackCall(children: readonly unknown[]): FunctionCall {
+  const name = functionOpenName(children[0]);
+  const { segments, separators } = splitArguments(children, 1, children.length - 1);
+  if (segments.length === 1) {
+    return funcCall(name, segments[0]!);
+  }
+  const groups = segments.map(group => (group.length === 0 ? [] : group.length === 1 ? group[0]! : list(group, ',')));
+  return funcCall(name, [withLayoutWhenComplete(list(groups, ';'), separators, groups.length - 1)]);
+}
+
 /** A whitespace run: one value is itself, several keep their authored separators. */
 export function spaceRun(children: readonly unknown[], fields: ReducerFields | undefined): ValueSlot {
   const values = valueSlotChildren(children);
@@ -462,7 +478,7 @@ export function isValue(value: unknown): value is ValueNode {
     case 'FunctionCall': case 'Block': case 'Branch': case 'Operation': case 'Sequence': case 'List':
     case 'Any': case 'Null': case 'Lookup': case 'Reference': case 'Interpolation':
     case 'Expression': case 'Condition': case 'IfValue': case 'Important':
-    case 'SelectorCapture':
+    case 'SelectorCapture': case 'AnonymousMixin':
       return true;
     default:
       return false;

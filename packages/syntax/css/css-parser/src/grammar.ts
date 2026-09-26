@@ -28,6 +28,7 @@ import {
   authoredText,
   block,
   branchRest,
+  fallbackCall,
   ifTestCall,
   blockStatements,
   branchSegments,
@@ -285,6 +286,8 @@ type GrammarRuleName =
   | 'routedStylesheetBody'
   | 'routedDeclarationListBody'
   | 'calcFunctionArguments'
+  | 'functionArgument'
+  | 'VarFallbackOpener'
   | 'IfTest'
   | 'StyleTest';
 
@@ -832,7 +835,8 @@ const cssFactory = (g: GrammarSelf) => {
    * (`rgb(15 23 42 / .22)`, css-color-4 §5), and that slash is the same
    * separator rung a declaration value uses, so this points at `ValueSequence`
    * rather than re-spelling it here. `{` is the block's own first token, so the
-   * two arms are decided there.
+   * two arms are decided there. A named slot: Less reads its own argument here
+   * (a `{` is a detached ruleset in Less).
    */
   const functionArgument = choice(
     g.CurlyValue,
@@ -866,7 +870,7 @@ const cssFactory = (g: GrammarSelf) => {
   /* The rest of a comma group once its first argument has been read. */
   const functionArgumentCommaRest = many(sequence(
     functionArgumentComma,
-    functionArgument,
+    g.functionArgument,
     functionArgumentGap
   ));
 
@@ -875,7 +879,7 @@ const cssFactory = (g: GrammarSelf) => {
    * allows a trailing `;`.
    */
   const functionArgumentGroup = optional(sequence(
-    functionArgument,
+    g.functionArgument,
     functionArgumentGap,
     functionArgumentCommaRest
   ));
@@ -1853,18 +1857,13 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * A nested var() needs its own first separator and trailing fallback commas
-   * preserved exactly as the outer var does. It must therefore win before the
-   * generic function-call component arm in every fallback component position.
-   * This is a dispatch-adjacent hotspot, but not a blind rewrite target:
-   * fallback generic functions use fallback comma semantics, while ordinary
-   * typed values use CSS value-list separators. A future routed shape must keep
-   * that fallback-specific function body instead of merely reusing
-   * TypedIdentOrFunction.
+   * A fallback component. An identifier-shaped one is read once by
+   * `VarFallbackOpener` and routed by what it read; every other one is decided by
+   * its own first character (a `TypedValue` atom, a group, a bracket or brace
+   * leaf, punctuation).
    */
   const varFallbackComponent = choice(
-    g.VarCall,
-    g.VarFallbackCall,
+    g.VarFallbackOpener,
     g.TypedValue,
     g.VarFallbackParen,
     g.VarFallbackBracket,
@@ -1890,12 +1889,25 @@ const cssFactory = (g: GrammarSelf) => {
     'VarFallbackEmpty',
     choice(
       peek(literal(',')),
+      peek(literal(';')),
       peek(literal(')'))
     ),
     () => any('')
   );
   const varFallbackComma = sequence(
     literal(','),
+    optional(cssValueTrivia)
+  );
+
+  /*
+   * Inside a fallback's function, a `;` separates argument groups as it does
+   * in any function body (`var(--x, foo(a; b))`, a branch list's `;`). The
+   * fallback's permissive reading takes it itself, so such a body is never
+   * refused here and read again as a generic call. At the fallback's top level a
+   * `;` still ends the declaration.
+   */
+  const varFallbackSemicolon = sequence(
+    literal(';'),
     optional(cssValueTrivia)
   );
   const VarFallbackItem = node(
@@ -1925,20 +1937,26 @@ const cssFactory = (g: GrammarSelf) => {
   const VarFallbackCall = node(
     'VarFallbackCall',
     sequence(
-      genericFunctionOpen,
+      routed(),
       optional(sequence(
         not(literal(')')),
-        oneOrMoreSep(
-          g.VarFallbackItem,
-          varFallbackComma
-        )
+
+        /*
+         * Spelled as a sequence, not a separator list, so each `,` and `;`
+         * stays among the reducer's children.
+         */
+        g.VarFallbackItem,
+        many(sequence(
+          choice(
+            varFallbackComma,
+            varFallbackSemicolon
+          ),
+          g.VarFallbackItem
+        ))
       )),
       literal(')')
     ),
-    children => funcCall(
-      functionOpenName(children[0]),
-      children.filter(isValueSlotValue)
-    )
+    children => fallbackCall(children)
   );
   const VarCall = node(
     'VarCall',
@@ -2457,6 +2475,38 @@ const cssFactory = (g: GrammarSelf) => {
     otherwise(g.RoutedKeyword)
   );
   const CalcIdentOrFunction = typedIdentOrFunction;
+
+  /*
+   * The identifier-or-opener token of a var() fallback component, read once and
+   * routed by its text. A nested var() keeps its own first separator and
+   * trailing fallback commas, as the outer var does. A generic function takes
+   * the fallback's own permissive body (`VarFallbackCall`: fallback comma
+   * semantics, empty items, raw bracket and brace leaves — ledger P2), not the
+   * generic call tail an ordinary typed value takes; the other keys route as
+   * the typed dispatch routes them.
+   */
+  const VarFallbackOpener = dispatch(
+    identOrFunction,
+    cssCase(
+      'url(',
+      UrlFunction
+    ),
+    cssCase(
+      CSS_MATH_FUNCTION_OPENERS,
+      g.MathFunction
+    ),
+    cssCase(
+      'var(',
+      VarFunction
+    ),
+    when(endsWith('\\('), g.RoutedKeyword),
+    when(
+      endsWith('('),
+      g.VarFallbackCall
+    ),
+    when(startsWith('--'), RoutedCustomPropertyValue),
+    otherwise(g.RoutedKeyword)
+  );
   const TypedIdentOrFunction = typedIdentOrFunction;
 
   /*
@@ -4347,6 +4397,8 @@ const cssFactory = (g: GrammarSelf) => {
     routedDeclarationListBody,
     IfTest,
     StyleTest,
+    functionArgument,
+    VarFallbackOpener,
     whitespace,
     rw: whitespace
   };
