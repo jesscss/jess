@@ -482,6 +482,14 @@ const hyphen = literal('-');
 const lessInterpolatedValueStart = cssIdentifier;
 
 /*
+ * A css-syntax-3 §4.3.9 identifier as ONE token: `--` followed by name code
+ * points (a dashed ident, possibly bare `--`), or an optional `-` followed by a
+ * name-start code point, then name code points; escapes anywhere. A value
+ * opener reads it once and routes the dashed form by its `--` prefix.
+ */
+const identToken = regex(/(?:--|-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+
+/*
  * Custom-property values remain CSS declaration-value text in Less, except for
  * Less variable references that Less evaluates inside those values. These leaves
  * deliberately exclude balanced delimiters, strings, comments, strict `@{…}`
@@ -567,6 +575,7 @@ export const cssSyntax = rules(_g => ({
   InterpolatedPropertyTail: interpolatedPropertyTail,
   CustomPropertyName: customPropertyName,
   CustomPropertyToken: customPropertyName,
+  IdentToken: identToken,
   CustomOuterContent: customOuterContent,
   CustomInnerContent: customInnerContent,
   CustomSingleQuoted: customSingleQuoted,
@@ -601,6 +610,7 @@ export const lessSyntax = rules(_g => ({
   InterpolatedValueDash: hyphen,
   InterpolatedValueTail: interpolatedPropertyTail,
   CustomPropertyToken: lessCustomProperty,
+  IdentToken: identToken,
   CustomValueOuterContent: lessCustomOuterContent,
   CustomValueInnerContent: lessCustomInnerContent,
   CustomValueSingleQuoted: customSingleQuoted,

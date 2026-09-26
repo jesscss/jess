@@ -15,7 +15,7 @@
     "emitError": 0
   },
   "emittedBytes": 606465,
-  "aggregate": "3a920ded0a68a82ed4a54721f7b045b9e3d0c5fb4e958b7e1c915d603f54372d",
+  "aggregate": "9bde333c8938cf505709b211416a7cf3aaafb6268f9f7cc5afc96b4ad1654ca6",
   "entries": {
     "bootstrap/bootstrap-grid.css": {
       "bucket": "bootstrap",
@@ -315,13 +315,13 @@
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "150c970b96b84dd9"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/calc-lone-operator.css": {
       "bucket": "repo",
       "status": "reject",
       "bytes": null,
-      "fingerprint": "150c970b96b84dd9"
+      "fingerprint": "ceb7099105050501"
     },
     "repo/packages/syntax/css/css-parser/test/css/errors/charset.css": {
       "bucket": "repo",
