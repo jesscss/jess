@@ -846,8 +846,9 @@ const cssFactory = (g: GrammarSelf) => {
    * it. So the token after an argument is decided on one character, and no
    * delimiter re-reads the padding before it. The padding is still read twice
    * before the gap keeps it: the value ladder's slash boundary and the argument
-   * run's own loop (`ValueSequence`, `ValueSequenceBeforeColon`) each try it
-   * and give it back, because a run does not own its trailing padding. None of
+   * run's own loop (`ValueSequence`, `ValueSequenceBeforeColon`, and a var()
+   * fallback's `VarFallbackTerm`) each try it and give it back, because a run
+   * does not own its trailing padding. None of
    * these is a field capture: the call's reducer
    * reads the terminals between two arguments (gap, delimiter, padding) as that
    * boundary's authored layout, and needs the `;` among its children to tell an
@@ -897,8 +898,8 @@ const cssFactory = (g: GrammarSelf) => {
    * §8.3 parses `if()` as `[ <if-args-branch> ; ]* <if-args-branch> ;?`,
    * `<if-args-branch> = <declaration-value> : <declaration-value>?`, the first
    * `<declaration-value>` excluding top-level colons. So the first argument is
-   * read once, as a value run that stops at a top-level `:`
-   * (`ValueSequenceBeforeColon`), and the token after it decides: `:` makes
+   * read once, by `branchLead` (a value run that stops at a top-level `:`, or
+   * a `{}`-wrapped argument), and the token after it decides: `:` makes
    * the body a branch list (`BranchRest`), anything else continues the plain
    * arguments. Every other opening is decided by its own first token: `;` an
    * empty first group (`foo(; a)`), `)` no arguments.
@@ -953,9 +954,9 @@ const cssFactory = (g: GrammarSelf) => {
   /*
    * The argument that may lead a branch: a body's first argument, and the first
    * argument of each later `;` group. A css-values-5 §8.3 condition is a
-   * `<declaration-value>` with no top-level colon, and a `{}` block is one
-   * component of it, so the lead is the colon-free value run or a
-   * `{}`-wrapped argument, decided at the `{`. A named slot: Less leads with
+   * `<declaration-value>` with no top-level colon, of which a `{}` block is a
+   * component; the lead is the colon-free value run or, as a whole argument, a
+   * `{}`-wrapped one, decided at the `{`. A named slot: Less leads with
    * its own argument (where a `{` is a detached ruleset).
    */
   const branchLead = choice(
@@ -1938,13 +1939,26 @@ const cssFactory = (g: GrammarSelf) => {
         not(literal(')')),
         optional(g.VarFallbackItem),
         functionArgumentGap,
-        many(sequence(
-          choice(
+        many(choice(
+          sequence(
             varFallbackComma,
-            functionArgumentSemicolon
+            optional(g.VarFallbackItem),
+            functionArgumentGap
           ),
-          optional(g.VarFallbackItem),
-          functionArgumentGap
+
+          /*
+           * A group left empty after a `;` — before another `;` or the `)` —
+           * is the empty slot, as in `VarFallbackParen`; the empty `Any` is the
+           * comma's fallback semantics only.
+           */
+          sequence(
+            functionArgumentSemicolon,
+            optional(sequence(
+              not(literal(')')),
+              g.VarFallbackItem
+            )),
+            functionArgumentGap
+          )
         ))
       )),
       literal(')')
@@ -2113,11 +2127,6 @@ const cssFactory = (g: GrammarSelf) => {
     )
   );
 
-  /*
-   * Preserve the public declaration component-value language without letting
-   * its permissive forms leak into query preludes or dedicated function
-   * productions. url()/var()/calc() stay owned by their strict branches.
-   */
   /*
    * The padding is spelled for the same reason `GenericFunction` spells it: this
    * interior runs with trivia cleared, so without these terms `( c )` — and every
@@ -2490,7 +2499,7 @@ const cssFactory = (g: GrammarSelf) => {
       VarFunction
     ),
     when(endsWith('\\('), g.RoutedKeyword),
-    when(matches(/^--.*\($/), GenericFunction),
+    when(matches(/^--[\s\S]*\($/), GenericFunction),
     when(
       endsWith('('),
       g.VarFallbackCall
