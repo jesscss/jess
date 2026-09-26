@@ -589,7 +589,6 @@ export const lessSyntax = rules(_g => ({
   InterpolatedValueDash: lessInterpolatedValueDash,
   InterpolatedValueTail: lessInterpolatedValueTail,
   CustomPropertyToken: lessCustomProperty,
-  IdentToken: identToken,
   CustomValueOuterContent: lessCustomOuterContent,
   CustomValueInnerContent: lessCustomInnerContent,
   CustomValueSingleQuoted: lessCustomSingleQuoted,

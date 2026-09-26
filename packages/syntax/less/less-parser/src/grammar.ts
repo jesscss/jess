@@ -380,6 +380,8 @@ type LessRules = {
 type LessInputRules = LessRules & typeof lessSyntax;
 
 type SharedSyntax = {
+  // Inherited from the CSS base's recognition: the css-syntax-3 §4.3.9 identifier token.
+  IdentToken: Combinator<string>;
   AttributeModifier: Combinator<unknown>;
   AttributeOperator: Combinator<unknown>;
   HexColor: Combinator<string>;

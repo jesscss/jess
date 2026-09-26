@@ -797,12 +797,12 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * An argument comma also admits padding BEFORE it, which the value-list comma
-   * must not: at the top level `a , b` is a space-separated run whose middle
-   * component is the punctuation `,`, and widening `authoredValueComma` would
-   * re-cut every such value that parses today. Inside an argument list there is
-   * no competing punctuation reading, so `f(c , d)` and `f(c /* z *\/, d)` are
-   * plain padded separators.
+   * A `calc()` argument comma also admits padding BEFORE it, which the
+   * value-list comma must not: at the top level `a , b` is a space-separated
+   * run whose middle component is the punctuation `,`, and widening
+   * `authoredValueComma` would re-cut every such value that parses today. (A
+   * generic function's arguments own their padding instead; see
+   * `functionArgumentGap`.)
    */
   const authoredArgumentComma = field(
     'separator',
@@ -843,8 +843,12 @@ const cssFactory = (g: GrammarSelf) => {
    * TRIVIA OWNERSHIP. Each argument owns the padding after it, read once by
    * `functionArgumentGap`, and each delimiter — `,`, `;`, a branch `:`, the
    * closing `)` — starts at its own character and owns only the padding after
-   * it. So the token after an argument is decided on one character and no
-   * padding is read twice. None of these is a field capture: the call's reducer
+   * it. So the token after an argument is decided on one character, and no
+   * delimiter re-reads the padding before it. The padding is still read twice
+   * before the gap keeps it: the value ladder's slash boundary and the argument
+   * run's own loop (`ValueSequence`, `ValueSequenceBeforeColon`) each try it
+   * and give it back, because a run does not own its trailing padding. None of
+   * these is a field capture: the call's reducer
    * reads the terminals between two arguments (gap, delimiter, padding) as that
    * boundary's authored layout, and needs the `;` among its children to tell an
    * empty group from a full one.
