@@ -4073,104 +4073,102 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: 2026-09-20 script/data module execution and Less `@use`. The
-  compiler dependency plan loads `ModuleImport` facts once; render activates
-  their values and functions in the authored lexical frame and emits no CSS.
-- Architecture surface: canonical AST serializer/evaluator module binding,
-  `Context` module dispatch, trusted node-module resolution, Less grammar,
-  public integration tests, and the shared Jess/Less module documentation.
-- Separation/duplication: `Context.getModule` remains the sole resolver/cache/
-  loader owner. `prepareStaticImports` carries resolved exports in its opaque
-  reusable plan. The serializer owns only typed value conversion and lexical
-  binding; it neither resolves paths nor reparses source. Legacy `@plugin`
-  remains on its existing activation lane.
-- Cumulative node weight: no node kind or node field is added. JSON-compatible
-  exports become existing `Keyword`, `Dimension`, `List`, `Collection`, and
-  `Null` nodes at the module-binding boundary. Namespaced Jess calls now consume
-  the existing typed `Reference` chain directly; the reviewed version removed a
-  temporary replacement `Reference` node and `steps.slice()` from evaluation.
-- New traversal: the compiler's existing import-plan source-order pass loads
-  direct module facts. Script/data directives are stylesheet-top-level grammar
-  facts in Jess, SCSS, and Less; Less now pins that boundary explicitly. Render
-  scans the root body only while caller-planned module bindings remain, or scans
-  another body when the legacy plugin/direct-serialize fallback is armed. A plan
-  with zero modules returns before touching the body, and the pending count
-  reaches zero after root activation, so ordinary nested bodies do not acquire a
-  dependency walk. Reference evaluation advances one monotonic index through its
-  existing chain.
-- New node/materialization: the opaque plan owns one document-scoped strong
-  module `Map`; render owns sparse function/namespace identity `Set`s only after
-  a module binds. JSON arrays/objects and call arguments materialize the exact
-  canonical values consumed downstream. There is no AST copy, output wrapper,
-  per-node weak table, source-byte materialization, or tree rewalk.
-- Render path: `@use`/`@-use` and Jess `@-use`/`@-from` bind before the body walk
-  and emit nothing. Prepared exports are read without IO; direct low-level
-  `serialize({ context })` retains a cached Context fallback. Module call results
-  enter the existing typed evaluator and canonical output buffer.
-- Helper/API surface: private conversion/binding helpers isolate the module
-  boundary. `PluginInterface.canImportModule` is one optional capability for
-  trusted package-owned modules whose extension overlaps sandboxed scripts;
-  `PreparedImports` remains opaque. No parser host, construction host, alias, or
-  second module registry is introduced.
-- Metadata mutations: only render-local evaluator facts are added: imported
-  function identities, namespace-value identities, the module plan reference,
-  and a scalar pending count. They do not mutate canonical AST nodes and die with
-  the render. The reusable compiler plan itself is not consumed or mutated.
-- Review-flagged diff tokens: [loop/traversal] every module export/specifier,
-  reference step, and call argument is visited once at binding/call time;
-  [array helper] JSON array/object conversion creates the canonical `List` or
-  `Collection` payload once; [array spread/materialization] the callable rest
-  signature and spread invoke the selected external JS function without an
-  intermediate stylesheet serialization; [node construction] typed value nodes
-  are the owned module boundary and `TypeError`s cover exceptional cyclic,
-  missing, or unsupported exports only; [generic defensive read]
-  `hasOwnProperty` distinguishes a missing named export from an own export whose
-  value is `undefined`; [side map/set] module facts use a document-scoped strong
-  map and identity sets are sparse render-local gates, with no ephemeron table;
-  [materialized array/object] prepared state, namespace value bags, and call
-  arguments are the exact typed records consumed downstream, not predicate-only
-  allocations. No routine Error control, source scan, restart scan, or generic
-  object crawl is introduced.
-- Behavior evidence: focused core module and projection tests pass 13/13,
-  including one-load/two-render plan reuse, namespace calls, JSON nesting,
-  shadowing, and missing exports. Public Jess/SCSS/Less compiler routes pass 5/5;
-  node-module resolution passes 6/6; the full Less parser passes 762/762 and
-  pins nested `@use` rejection; the Less render corpus passes 114/114; the AST-v2
-  production ratchet passes 4/4.
-- Build evidence: strict core TypeScript, the core package build, and the
-  dependency-ordered release build pass. `check:macro` reports zero interpreter
-  fallbacks in all five grammar packages; `verify:compose-integrity`,
-  `verify:aggressive-cutting-review`, `check:guardrails`,
-  `verify:parser-runtime-boundary`, `verify:package-exports`, `verify:jess-api`,
-  `verify:shape-stability`, and docs-content validation are green.
-- Parse-performance evidence: same-directory interleaved B/A on built artifacts,
-  4 rounds × 3 processes × 25 timed samples after 8 warmups, measured
-  `benchmark.less/ast` 29.892ms → 31.018ms (+3.8%; B spread 28.94–30.75,
-  A 29.10–33.87, A wins 3/12) and its CST control 32.324ms → 32.951ms
-  (+1.9%; A wins 2/12). CSS controls moved +1.7% to +3.2%. The AST movement is
-  inside the harness's documented noise and tracks the controls, so the result
-  is `UNRESOLVABLE-NOISE`, not a slowdown claim. Common marker `const atStatement`
-  is 1/1 and one-sided marker `const useKeyword` is 1/0. Node v25.9.0;
-  `parseman@0.50.7` resolves to this worktree's pnpm store path. The absolute
-  drift reporter graded zero cases because its committed baseline/null
-  calibration and optional comparators remain absent; that report is not used as
-  evidence.
-- Boundary evidence: ledger A1/A2/N7/P17 owns the directive spellings, module
-  classification, and non-ambient Jess function model. A8 remains owner-open;
-  this pass records only the explicitly implemented namespace data/function
-  slice. The shared module page is the Jess/Less public source of truth.
-- Evidence: performance invariants 1-11 and incidents R1-R8 were checked. The
-  change adds no polymorphic AST shape, re-derivation, full-tree render walk,
-  nonlinear search, per-node weak state, output path, source rediscovery, or
-  grammar fallback. Semantic invariants 1-8 were checked against A1/A2/N7/P17:
-  module directives are construct-level compile dependencies, typed values use
-  existing emit policy, Context/plugin/parser ownership is singular, valid CSS
-  is untouched, dialect syntax is recorded, parsing remains structural,
-  unsupported values fail during evaluation, and no behavior is justified by a
-  reference implementation. This is a semantic feature; no speed claim is made.
-- Verdict: accepted as the bounded module-execution slice for issue #182, with
-  `performanceClaim: none`; the code review rejected weak per-node state and
-  temporary reference-node materialization before this record was written.
+- Latest pass: 2026-09-25 ledger P37 — a call emitted as written keeps its
+  ruleset argument, and a call standing alone in statement position may leave
+  only a statement. A ruleset argument of a call that reaches no function is
+  written from its evaluated body; a statement-position call's result is held
+  to one two-position table keyed by value type; the Less parser keeps a
+  statement `if()` (jess#285); legacy `@plugin` results convert as Less 4.x
+  converts them.
+- Architecture surface: `packages/core/src/ast/serialize.ts` (`evalCall` split
+  into `dispatchCall`, `writtenRulesetArgument`, `STATEMENT_RESULT_POSITIONS`,
+  `evalStatementCall`/`statementCallBytes`), `ast/value-dispatch.ts`
+  (`FunctionDeclined`), `ast/evaluator.ts` (a decline is never a
+  functionMode error), error codes, the Less `isStatement` guard, and the
+  less-compat bridge result conversion.
+- Separation/duplication: the statement check replaces the root-only
+  `canEmitRootCallValue`, the `bytes.trim() === name()` byte test and the
+  Colour special case with one table read at the one statement emission
+  helper both statement sites share. `dispatchCall` is the former tail of
+  `evalCall`, reused by a declined plugin call rather than copied. The block
+  writer is a second declaration writer by necessity (one line, inside a
+  value); it reuses `evalBytes`, `assertDeclarationValueIsNotRuleset`, the
+  elision sink and the compress switch, and pins merge/null/ruleset-value/
+  compress parity with the ruleset-body writer in tests. Any function
+  argument that is a ruleset is written this way (a `writeRulesets` flag on
+  the typed lane, set only by call dispatch), so a built-in that fails and is
+  preserved keeps its block too.
+- Cumulative node weight: no node kind or node field is added; the table is a
+  module-level constant keyed by value type. An earlier revision's
+  `AnonymousMixin._text` slot was removed before landing, so AST shapes equal
+  `origin/dev` (`verify:shape-stability` green; SCSS and `.jess` oracles do not
+  move).
+- New traversal: `writtenRulesetArgument` walks one argument block's direct
+  statements once, only for a call that reaches no function and only for an
+  argument that resolves to an anonymous mixin. The statement check reads one
+  table entry per statement call. No tree walk is added.
+- New node/materialization: one `Any` per written ruleset argument, one
+  per-declaration elision sink, and the per-entry part records the one-line
+  writer joins. The statement path evaluates the call once (typed), as before.
+- Render path: statement calls at the root and in a declaration list both go
+  through `statementCallBytes`; the declaration-list leaf keeps its
+  synchronous lane and reports an async result as before.
+- Helper/API surface: `FunctionDeclined` is exported from `@jesscss/core` for a
+  plugin bridge to decline a call; `EmptyOperandError` (value domain) raises
+  the new `eval/empty-operand` for arithmetic on an empty result; Less
+  `escape()` returns raw text (`Any`) as 4.x returns an `Anonymous`;
+  `eval/ruleset-argument-with-rules` is added, now raised only for a block
+  with parameters, a mixin call that would emit nested rules, and statement
+  kinds the one-line writer has no form for;
+  `eval/root-call-without-root` is removed (no remaining raiser) and its cases
+  report `eval/invalid-statement`, the code Less 4.x's "X node returned by a
+  function is not valid here" corresponds to.
+- Metadata mutations: none. No canonical AST node is mutated; the only new
+  state is the call-local sink and part records.
+- Review-flagged diff tokens: [array helper] the one-line block writer maps,
+  filters and joins its own declaration parts once per written argument;
+  [array spread/materialization] one `EvalCtx` spread per block declaration to
+  install its own elision sink (so a `null` cannot elide the enclosing
+  declaration), and the part list handed to `combineAll`; [materialized
+  array/object] the part/entry records and the sink are exactly what the
+  writer joins; [loop/traversal] the writer visits one ruleset argument's
+  direct statements once per body (nested rules and at-rules recurse into
+  their own bodies once), and a mixin call's collected declarations once;
+  [node construction] `EmptyOperandError` is constructed only when an
+  arithmetic operand is an empty result, which then raises
+  `eval/empty-operand`; [routine error control] `FunctionDeclined` is caught only on
+  the legacy-plugin raw-invocation path and in the evaluator's existing call
+  recovery, to write a declined call as-is — it is the plugin ABI's decline
+  signal, not control flow on an ordinary path. All of these run only for a
+  call that reaches no function or a legacy plugin call.
+- Behavior evidence: `packages/jess/test/less/emitted-call-content-and-statements.test.ts`
+  pins the evaluated ruleset argument (scope, merge, `null`, ruleset-valued
+  declaration, compress), every statement-table row at the root and in a
+  declaration list, raw-text and empty results, the Less 4.x plugin result
+  conversion (falsy empty, string raw text, `undefined` declined), legacy
+  `each()`/`if()` statements, and the `.less → .jess → .css` round trip for a
+  ruleset bound to a variable; `less-modern-mode.test.ts` and the Less error
+  corpus pass with the new codes.
+- Build evidence: the serial release build, `verify:types` (24 strict
+  production configs) and `check:macro` (zero interpreter fallbacks) pass.
+- Boundary evidence: `@jesscss/core` gains one export, `FunctionDeclined`
+  (`src/value.ts` → `src/index.ts`), the decline signal the legacy-plugin
+  bridge (`@jesscss/plugin-less-compat`) throws for a `null`/`undefined`
+  result. `JessErrorCode` gains `eval/ruleset-argument-with-rules` and drops
+  `eval/root-call-without-root`, which nothing raises any more. Owner rulings:
+  ledger P37 (PR #295), P36, P17.
+- Evidence: the four parser suites, core (3341), fns, every plugin package,
+  diagnostics-core, language-service and lint pass; the jess ratchet (1923
+  tests) matches its baseline; `check:macro`, `check:guardrails`,
+  `check:record-map`, `verify:baseline`, `verify:shape-stability` and
+  `verify:types` are green. Less byte-identity oracle: one entry moves against
+  the exact parent build (`functions.less`, a statement `if()` now kept as
+  `If`); SCSS and `.jess` oracles do not move. Semantic invariants were
+  reviewed per item by the semantics reviewer; its blocking findings on the
+  block writer and the plugin conversion are fixed and pinned.
+- Verdict: accepted as the P37 semantic slice with `performanceClaim: none`;
+  every added cost is confined to calls that reach no function, statement
+  calls, and legacy plugin calls.
 - Hot-path cost contracts:
 ```json
 [
@@ -4194,10 +4192,10 @@ involved.
       "recursive-ValueGroup-final-unit-validation",
       "async-declaration-dedup-output-order"
     ],
-    "why": "ModuleImport execution is canonical AST semantic work: compile-owned exports become typed lexical bindings and module calls enter the existing evaluator. This record makes no neutrality, byte-identity, or speed claim.",
-    "dangerTokensJustification": "The compiler plan owns one strong module map; sparse render-local sets gate imported function and namespace identity. Linear export/reference/argument loops consume already-typed facts once. JSON conversion constructs the canonical values it must bind. No source scan, parser replay, AST copy, temporary Reference node, per-node weak table, output path, or routine Error control is added.",
-    "behaviorEvidence": "Focused module and serializer projection tests pass 13/13; public compiler module tests pass 5/5; node-module resolution passes 6/6; the full Less parser passes 762/762; the Less render corpus passes 114/114; the AST-v2 production ratchet passes 4/4.",
-    "buildEvidence": "Strict core TypeScript, the core package build, and the dependency-ordered release build pass; macro compilation reports zero interpreter fallbacks in all five grammar packages; compose-integrity and the aggressive-cutting review pass.",
+    "why": "Ledger P37 is canonical AST semantic work: a ruleset argument of a call written out as-is is written from its evaluated body, a statement-position call result is held to one two-position table keyed by value type, and a legacy plugin may decline a call. This record makes no neutrality, byte-identity, or speed claim.",
+    "dangerTokensJustification": "The one-line block writer maps/joins its own parts and installs a per-declaration elision sink through one EvalCtx spread, only for a call that reaches no function; FunctionDeclined is caught only on the legacy-plugin raw path and in the existing call recovery. No source scan, AST copy, node field, weak table, or tree walk is added.",
+    "behaviorEvidence": "Core passes 3341; the P37 public tests pin the evaluated block, merge/null/ruleset-value/compress parity, every statement-table row, raw text and empty results, and Less 4.x plugin result conversion; the jess ratchet matches its baseline (1923 tests).",
+    "buildEvidence": "Strict production types (24 configs), the serial release build, macro compilation with zero interpreter fallbacks, shape stability, and the Less, SCSS and .jess byte-identity oracles (one attributed Less move) pass.",
     "baseline": {
       "fixture": "benchmark.less",
       "phase": "render",
@@ -4231,6 +4229,27 @@ involved.
       "currentMedianMs": 43.94891699999971,
       "outputSha256": "2b8d9abf3c103a6de7a0a5d66b3a448bcaef8c1818eff753de52d25a23b98f7d",
       "outputBytes": 122568
+    }
+  },
+  {
+    "id": "ast-value-operate-preserve-calc",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "cases": [
+      "preserve-percentage-product",
+      "loose-percentage-product",
+      "explicit-calc-composition"
+    ],
+    "why": "Ledger P37: an EMPTY arithmetic operand (the result of a function that returns nothing, a Less \"null function\") raises EmptyOperandError in every unit mode instead of being spliced into a preserved calc() as a hole (`calc( + 1px)`). The preserve-mode calc policy for every other operand is unchanged.",
+    "dangerTokensJustification": "One guard of two type/length reads after the Null guard; the error is constructed only when an operand is empty. No traversal, allocation on the ordinary path, parser replay, or materialization is added.",
+    "behaviorEvidence": "Core passes 3341; `emitted-call-content-and-statements.test.ts` pins `storeFalse() + 1px` raising `eval/empty-operand`; the jess ratchet matches its baseline (1928 tests).",
+    "buildEvidence": "The serial release build, `verify:types` (24 strict production configs) and `check:macro` pass.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
     }
   }
 ]

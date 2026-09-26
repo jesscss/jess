@@ -7,7 +7,7 @@ const cases = [
   ['undefined detached ruleset argument call', '.mixin-definition(@b) { @a(); } .mixin-definition({ color: red; });', 'resolve/name-not-found'],
   ['direct root property', 'prop: 1;', 'eval/property-in-root'],
   ['root mixin property output', '.m() { prop: 1; } .m();', 'eval/property-in-root'],
-  ['root function call without root output', 'func();', 'eval/root-call-without-root'],
+  ['root function call without root output', 'func();', 'eval/invalid-statement'],
   ['guarded selector list', '@ie8: true; .a, .b when (@ie8 = true) {}', 'eval/guarded-selector-list'],
   ['default() in a CSS rule guard', 'entry when (default()) { color: red; }', 'eval/invalid-function'],
   ['ambiguous mixin default() guards', '.m(@x, 2) when (default()) {} .m(@x, 2) when (default()) {} .entry { .m(1, 2); }', 'eval/ambiguous-default'],

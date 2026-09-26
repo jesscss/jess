@@ -19,7 +19,7 @@ import { operate } from './value-operate.js';
 import { compare as compareValues, compareMatch as compareMatchValues, typeCheck as typeCheckValues } from './value-guards.js';
 import { sniffLiteral } from './literal-tag.js';
 import type { FnRegistry } from './value-dispatch.js';
-import { dispatchFn } from './value-dispatch.js';
+import { dispatchFn, FunctionDeclined } from './value-dispatch.js';
 import { makeKeyword } from './value-factory.js';
 
 /** Join an unknown-fn's arg bytes verbatim (per separator). Under compress the
@@ -49,7 +49,7 @@ function recoverCallFailure(
   args: ValueGroup,
   modes: EvalModes
 ): Value {
-  if (modes.functionMode === 'error') {
+  if (modes.functionMode === 'error' && !(error instanceof FunctionDeclined)) {
     throw error;
   }
   return fallbackCall(name, args, modes);

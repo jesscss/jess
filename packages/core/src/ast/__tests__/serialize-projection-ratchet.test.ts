@@ -125,7 +125,17 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +1 function (`unloweredCall`, ledger P36): the one reader of a lowered
     // node's retained call, so a Less modern-mode `if()`/`boolean()`/`each()`
     // is evaluated through `evalCall` like any unimported call; no Map/Set.
-    expect(occurrences(/^function |^async function /gmu)).toBe(466);
+    // +2 functions (`evalStatementCall`, `statementCallBytes`, ledger P37): a
+    // call standing alone in statement position is evaluated once, and one that
+    // came back as itself (a plain CSS call) raises instead of being written out.
+    // +2 functions (`writtenRulesetArgument`, `dispatchCall`, ledger P37): a ruleset
+    // argument of a call written out as-is is written from its evaluated body, and a
+    // legacy plugin that declines a call leaves it on the unknown-call path.
+    // -1 function (`canEmitRootCallValue`): the statement table replaces it.
+    // +2 functions (`writtenBlockBody`, `rejectRulesetArgument`, ledger P37): a
+    // ruleset argument's nested rules, at-rules and mixin calls are evaluated and
+    // written inside its braces, one body at a time.
+    expect(occurrences(/^function |^async function /gmu)).toBe(471);
     expect(occurrences(/new Map/gu)).toBe(68);
     expect(occurrences(/new Set/gu)).toBe(41);
     expect(occurrences(/new WeakMap/gu)).toBe(4);

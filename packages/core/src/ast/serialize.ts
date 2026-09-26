@@ -123,6 +123,7 @@ import { isDiagnosticStatement } from './at-rule.js';
 import {
   DEFAULT_MODES,
   DivisionByZeroError,
+  EmptyOperandError,
   IncomparableOperandsError,
   emitValue,
   isValueGroup,
@@ -144,7 +145,7 @@ import {
   type Value
 } from './value-eval.js';
 import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
-import { defineFunction } from './value-dispatch.js';
+import { defineFunction, FunctionDeclined } from './value-dispatch.js';
 import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
@@ -3833,12 +3834,13 @@ function evalTypedSlot(
   slot: ValueSlot,
   frame: Frame | null,
   e: EvalCtx,
-  projectMixinValues = false
+  projectMixinValues = false,
+  writeRulesets = false
 ): MaybePromise<ValueGroup> {
   if (!isValueSlotArray(slot)) {
-    return evalTyped(slot, frame, e, projectMixinValues);
+    return evalTyped(slot, frame, e, projectMixinValues, writeRulesets);
   }
-  const values = slot.map(value => evalTypedSlot(value, frame, e, projectMixinValues));
+  const values = slot.map(value => evalTypedSlot(value, frame, e, projectMixinValues, writeRulesets));
   return combineAll(values, resolved => resolved);
 }
 
@@ -3977,6 +3979,13 @@ function throwUnitArithmetic(error: unknown, node: object, e: EvalCtx): never {
    * author gets the same structured error and location rather than a bare
    * TypeError out of the public API.
    */
+  if (error instanceof EmptyOperandError) {
+    throw ERR.emptyOperand({
+      node,
+      ...arithmeticSiteLocation(node, e),
+      meta: { reason: error.message }
+    });
+  }
   if (error instanceof IncomparableOperandsError) {
     throw ERR.incomparableOperands({
       node,
@@ -4045,9 +4054,21 @@ function evalTyped(
   node: ValueNode,
   frame: Frame | null,
   e: EvalCtx,
-  projectMixinValues = false
+  projectMixinValues = false,
+  writeRulesets = false
 ): MaybePromise<ValueGroup> {
   switch (node.type) {
+    case 'AnonymousMixin':
+      /*
+       * [P37] A ruleset passed to a function is evaluated and kept: the function
+       * receives it as the raw text of its evaluated block, so a call written out
+       * as-is (unknown, not in scope, or failed and preserved) never loses it.
+       * Anywhere else it has no value, exactly as before.
+       */
+      return writeRulesets
+        ? writtenRulesetArgument(node, frame, e)
+        : mapMaybe(evalValue(node, frame, e), v => force(e, v));
+
     /* An AUTHORED `null` — provenance explicit, so `null` and an unbound value
      * stay distinguishable downstream while remaining the same value. */
     case 'Null':
@@ -4117,7 +4138,7 @@ function evalTyped(
         return hit.evaluated ?? withExcluded(e, bound, () =>
           isMixinCallValue(bound)
             ? force(e, literal(''))
-            : evalTypedSlot(bound, hit.frame, e, projectMixinValues));
+            : evalTypedSlot(bound, hit.frame, e, projectMixinValues, writeRulesets));
       });
     case 'Reference': {
       const moduleCall = evalModuleReferenceCall(node, frame, e);
@@ -4779,12 +4800,11 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     }
     case 'AnonymousMixin':
       /*
-       * An anonymous mixin reaching a value/arg position is not byte-serializable:
-       * it can only be *called* (`@dr()`). less.js drops such an argument to an
-       * ordinary function (`fn({…})` → `fn()`), so it folds to empty bytes here
-       * rather than throwing. (Full `if()`/`isruleset()`/`isdefined()` DR handling —
-       * which evaluates and can RETURN a detached ruleset — is the deferred
-       * condition-grammar / FnCtx capability wave, not this path.)
+       * An anonymous mixin reaching a value position is not byte-serializable:
+       * it can only be *called* (`@dr()`), so it folds to empty bytes here. The
+       * one position ruled otherwise is a function argument (ledger P37), which
+       * the typed lane writes from the block's evaluated body
+       * ({@link writtenRulesetArgument}).
        */
       return literal('');
     case 'Collection':
@@ -7201,11 +7221,9 @@ function evalCall(
       try {
         const result = rawInvoker(selected, args, pluginFnContext(node, frame, e, sourceOwner));
         const settled = isThenable(result)
-          ? result.catch((error: unknown) => withSourceOwner(
-              e,
-              sourceOwner,
-              () => pluginCallFailure(node, error, frame, e)
-            ))
+          ? result.catch((error: unknown) => (error instanceof FunctionDeclined
+              ? dispatchCall(node, frame, e, ev, undefined, false)
+              : withSourceOwner(e, sourceOwner, () => pluginCallFailure(node, error, frame, e))))
           : result;
         if (isThenable(settled)) {
           observeRejectedThenable(settled);
@@ -7214,7 +7232,10 @@ function evalCall(
           ? evalCall(node, frame, { ...e, pluginHost: undefined }, demanded)
           : value);
       } catch (error) {
-        return withSourceOwner(e, sourceOwner, () => pluginCallFailure(node, error, frame, e));
+        /* A declined call is written out as-is, as a call to no function is. */
+        return error instanceof FunctionDeclined
+          ? dispatchCall(node, frame, e, ev, undefined, false)
+          : withSourceOwner(e, sourceOwner, () => pluginCallFailure(node, error, frame, e));
       }
     });
   }
@@ -7225,10 +7246,26 @@ function evalCall(
    * evaluator's unknown-call path, the one `.jess` reaches through its empty
    * registry (P17). The parser attached its document's scope to the node.
    */
-  const ambient = hasAmbientFunctions(node);
+  return dispatchCall(node, frame, e, ev, selected, hasAmbientFunctions(node));
+}
+
+/**
+ * Materialize a call's arguments TYPED and dispatch it through the evaluator:
+ * to `selected` when a scoped function was resolved, else to a built-in when
+ * `ambient`, else down the unknown-call path, which writes the call out as-is.
+ */
+function dispatchCall(
+  node: FunctionCall,
+  frame: Frame | null,
+  e: EvalCtx,
+  ev: ValueEvaluator,
+  selected: Fn | undefined,
+  ambient: boolean
+): MaybePromise<EvalValue> {
+  const sep = node.modern ? ' ' : ',';
 
   // Args are materialized TYPED (each arg's tag sourced from its parse node).
-  const typed = node.args.map(a => evalTypedSlot(a.value, frame, e, true));
+  const typed = node.args.map(a => evalTypedSlot(a.value, frame, e, true, true));
   return combineAll(typed, (vals) => {
     const ordered = orderKeywordArgs(node.args, vals, ev, node.name, selected, ambient);
     const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
@@ -7240,6 +7277,162 @@ function evalCall(
     } catch (error) {
       return invalidFunctionCall(node, error, e);
     }
+  });
+}
+
+/**
+ * [P37] A ruleset passed to a function, evaluated in the scope it was bound in
+ * and written as one line: `{ color: red; .a { x: red; } }`
+ * (`{color:red;.a{x:red}}` compressed). The body follows the ruleset-body rules:
+ * variable and mixin definitions bind silently, `+:` / `+_:` merge into the
+ * first declaration of that name, a `null` value elides its own declaration, a
+ * ruleset-valued declaration raises `eval/ruleset-on-property`, `$prop` reads
+ * the body's earlier declarations, a guarded nested rule emits only when its
+ * guard holds, and a mixin call expands in place. A block with parameters, and
+ * a statement this writer has no one-line form for, raise
+ * `eval/ruleset-argument-with-rules` rather than being dropped.
+ */
+function writtenRulesetArgument(block: AnonymousMixin, frame: Frame | null, e: EvalCtx): MaybePromise<ValueGroup> {
+  if (block.params !== undefined) {
+    rejectRulesetArgument(block, 'parameters', e);
+  }
+  const lexical = frame === null ? null : detachedBinding(frame, block)?.lexicalFrame ?? frame;
+  return mapMaybe(writtenBlockBody(block, block.rules, lexical, e), makeAny);
+}
+
+function rejectRulesetArgument(block: AnonymousMixin, what: string, e: EvalCtx): never {
+  throw ERR.rulesetArgumentWithRules({
+    node: block,
+    ...callSiteLocation(block, e),
+    meta: { what }
+  });
+}
+
+/** One block body of a ruleset argument, braces included (see {@link writtenRulesetArgument}). */
+function writtenBlockBody(
+  block: AnonymousMixin,
+  rules: Statement[],
+  parent: Frame | null,
+  e: EvalCtx
+): MaybePromise<string> {
+  const bodyFrame: Frame = {
+    parent,
+    mixins: collectMixins(rules),
+    declIndex: collectDeclIndex(rules), cells: null, reassign: null
+  };
+  const compress = e.compress === true;
+  type Part = { readonly separator: string; readonly value: MaybePromise<string>; readonly sink: { elided: boolean } };
+  type Entry = { readonly name: MaybePromise<string>; readonly mergeKey: string | null; readonly parts: Part[]; important: boolean };
+
+  /* In source order: a declaration entry, or the finished bytes of a nested rule, at-rule or comment. */
+  const items: Array<Entry | MaybePromise<string>> = [];
+  const addDeclaration = (rule: Declaration, frame: Frame, important: boolean): void => {
+    recordPropertyDeclaration(bodyFrame, rule, frame);
+    assertDeclarationValueIsNotRuleset(rule, frame, e);
+    const sink = { elided: false };
+    const value = evalBytes(rule.value, frame, { ...e, elideSink: sink });
+    const key = rule.merge !== null && typeof rule.name === 'string' ? rule.name : null;
+    const prior = key === null
+      ? undefined
+      : items.find((item): item is Entry => typeof item === 'object' && 'mergeKey' in item && item.mergeKey === key);
+    if (prior !== undefined) {
+      prior.parts.push({ separator: rule.merge === ',' ? (compress ? ',' : ', ') : ' ', value, sink });
+      prior.important ||= important;
+      return;
+    }
+    items.push({
+      name: typeof rule.name === 'string' ? rule.name : evalBytes(rule.name, frame, e),
+      mergeKey: key,
+      parts: [{ separator: '', value, sink }],
+      important
+    });
+  };
+  for (const rule of rules) {
+    switch (rule.type) {
+      case 'VariableDeclaration':
+      case 'MixinDefinition':
+        break;
+      case 'Declaration':
+        addDeclaration(rule, bodyFrame, rule.important);
+        break;
+      case 'Comment':
+        items.push(rule.text);
+        break;
+      case 'Ruleset': {
+        const selector = combineAll(
+          rule.selector.selectors.map(branch => resolveSelectorBranch(branch, bodyFrame, e)),
+          branches => branches.join(compress ? ',' : ', ')
+        );
+        const guard = rule.guard;
+        const holds = guard === undefined
+          ? true
+          : withUnitErrors(rule, e, () => evalGuard(guard, guardDeps(bodyFrame, e)));
+        items.push(mapMaybe(holds, guarded => guarded
+          ? mapMaybe(selector, header => mapMaybe(
+              writtenBlockBody(block, rule.rules, bodyFrame, e),
+              body => `${header}${compress ? '' : ' '}${body}`
+            ))
+          : ''));
+        break;
+      }
+      case 'AtRuleBlock':
+        items.push(mapMaybe(atRulePreludeBytes(rule, bodyFrame, scratchEmit(e)), prelude =>
+          mapMaybe(writtenBlockBody(block, rule.rules, bodyFrame, e), body =>
+            `${rule.name}${prelude === '' ? '' : ` ${prelude}`}${compress ? '' : ' '}${body}`)));
+        break;
+      case 'MixinCall': {
+        /*
+         * The mixin expands in place; its declarations join this body. Rules it
+         * would emit have no place in the collected declaration run.
+         */
+        const em = scratchEmit(e);
+        const collected: Leaf[] = [];
+        const noop = (): void => {};
+        const nested: Partition = { encounteredContainer: false, trailing: [], pending: [], emitBlock: noop };
+        settledExpansion(expandCall(rule, null, null, bodyFrame, collected, noop, nested, em, false, true), rule, em);
+        if (nested.trailing.length > 0 || nested.pending.length > 0) {
+          rejectRulesetArgument(block, 'a mixin call that emits nested rules', e);
+        }
+        for (const leaf of collected) {
+          if (leaf.node.type === 'Declaration') {
+            addDeclaration(leaf.node, leaf.frame, leaf.important || leaf.node.important);
+          }
+        }
+        break;
+      }
+      default:
+        rejectRulesetArgument(block, `a ${rule.type}`, e);
+    }
+  }
+  const written = items.map((item) => {
+    if (typeof item !== 'object' || !('mergeKey' in item)) {
+      return mapMaybe(item, bytes => ({ bytes, declaration: false }));
+    }
+    return combineAll([item.name, ...item.parts.map(part => part.value)], ([name, ...values]) => {
+      let value = '';
+      item.parts.forEach((part, index) => {
+        if (!part.sink.elided) {
+          value += (value === '' ? '' : part.separator) + values[index]!;
+        }
+      });
+      if (item.parts.every(part => part.sink.elided)) {
+        return { bytes: '', declaration: true };
+      }
+      const important = item.important ? (compress ? '!important' : ' !important') : '';
+      return { bytes: `${name!}${compress ? ':' : ': '}${value}${important};`, declaration: true };
+    });
+  });
+  return combineAll(written, (pieces) => {
+    const kept = pieces.filter(piece => piece.bytes !== '');
+    if (kept.length === 0) {
+      return '{}';
+    }
+    if (!compress) {
+      return `{ ${kept.map(piece => piece.bytes).join(' ')} }`;
+    }
+    const last = kept[kept.length - 1]!;
+    const body = kept.map(piece => piece.bytes).join('');
+    return `{${last.declaration ? body.slice(0, -1) : body}}`;
   });
 }
 
@@ -16497,7 +16690,15 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
       e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
   } else if (node.type === 'FunctionCall') {
-    const bytes = evalBytesSync(node, frame, e);
+    const bytes = statementCallBytes(node, frame, e);
+    if (isThenable(bytes)) {
+      observeRejectedThenable(bytes);
+      throw ERR.asyncInSyncPosition({
+        node,
+        ...callSiteLocation(node, e),
+        meta: { where: 'declaration-list call statement' }
+      });
+    }
     if (bytes.length === 0) {
       return;
     }
@@ -17601,8 +17802,68 @@ function emitRawInline(text: string, e: Emit): void {
   put(e, nl(e));
 }
 
-function canEmitRootCallValue(value: EvalValue): boolean {
-  return isLiteral(value) || (!isValueGroupArray(value) && value.type === 'Any');
+/**
+ * [P37] Whether a value a call leaves in statement position may stand there,
+ * per value type, at the two statement positions: the stylesheet root and a
+ * declaration list (a ruleset body). The two-position shape is AST v1's
+ * `allowRoot` / `allowRuleRoot` (2.0.0-alpha.1), where only statement node
+ * types were legal and every value node was not.
+ *
+ * A call can only produce a value, never a statement node. The one value that
+ * is statement text is `Any` — raw text or an escaped string, what `e()`
+ * returns (`e('…');`), and the empty result of a function that returns nothing.
+ * That row is the owner's ruling (P37: "raw text or an escaped string"), not a
+ * v1 port: v1's `Anonymous` carried neither flag. Every other value — a
+ * dimension, colour, keyword, and the call written back out as-is because it
+ * produced no result — is a value dumped into a statement position.
+ *
+ * Only value rows are checked, because a call cannot return a statement node.
+ * For the statement node types alpha.1 answered: a declaration is legal only
+ * in a declaration list, an at-rule only at the stylesheet root, and a
+ * ruleset, comment, variable declaration, extend or control statement in
+ * both. The at-rule "no" for a declaration list conflicts with nested `@media`
+ * being legal inside a ruleset; it is recorded here, not acted on, since no
+ * statement node reaches this check.
+ */
+const STATEMENT_RESULT_POSITIONS: Readonly<Record<Value['type'], readonly [root: boolean, declarationList: boolean]>> = {
+  Any: [true, true],
+  Block: [false, false],
+  Bool: [false, false],
+  Collection: [false, false],
+  Color: [false, false],
+  Dimension: [false, false],
+  Keyword: [false, false],
+  List: [false, false],
+  Null: [false, false],
+  Quoted: [false, false],
+  Url: [false, false]
+};
+
+/**
+ * [P37] Evaluate a call standing alone in statement position, once, and hold
+ * its result to {@link STATEMENT_RESULT_POSITIONS} for the position it lands in.
+ * The call is DEMANDED: a CSS colour or gradient call is dispatched rather than
+ * kept as authored bytes, so one left as a plain CSS call is caught too.
+ * Constructs a dialect lowers (Less `each()`/`if()`, mixin calls) never arrive
+ * here as a `FunctionCall`.
+ */
+function evalStatementCall(node: FunctionCall, frame: Frame, e: Emit): MaybePromise<ValueGroup> {
+  return mapMaybe(evalTyped(node, frame, e), (value) => {
+    const legal = !isValueGroupArray(value) && STATEMENT_RESULT_POSITIONS[value.type][e.depth === 0 ? 0 : 1];
+    if (!legal) {
+      throw ERR.invalidStatement({
+        node,
+        ...callSiteLocation(node, e),
+        meta: { what: `The result of "${node.name}()", ${isValueGroupArray(value) ? 'a value list' : `a ${value.type}`} \`${emitValue(value)}\`,` }
+      });
+    }
+    return value;
+  });
+}
+
+/** The emitted bytes of a statement call's result (see {@link evalStatementCall}). */
+function statementCallBytes(node: FunctionCall, frame: Frame, e: Emit): MaybePromise<string> {
+  return mapMaybe(evalStatementCall(node, frame, e), value => emitValueC(value, e));
 }
 
 /**
@@ -17614,22 +17875,6 @@ function canEmitRootCallValue(value: EvalValue): boolean {
 function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precomputed?: string): MaybePromise<void> {
   const start = e.off;
   const emitBytes = (bytes: string): void => {
-    const isRoot = e.depth === 0;
-    const isAllowedVoid = node.name.toLowerCase() === 'if';
-    if (isRoot && bytes.length === 0 && !isAllowedVoid) {
-      throw ERR.rootCallWithoutRoot({
-        node,
-        ...callSiteLocation(node, e),
-        meta: { name: node.name }
-      });
-    }
-    if (isRoot && node.args.length === 0 && bytes.trim() === `${node.name}()`) {
-      throw ERR.rootCallWithoutRoot({
-        node,
-        ...callSiteLocation(node, e),
-        meta: { name: node.name }
-      });
-    }
     if (bytes.length === 0) {
       return;
     }
@@ -17642,46 +17887,9 @@ function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precompute
       e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
   };
-  const emitValueResult = (value: EvalValue): void => {
-    if (e.depth === 0 && !canEmitRootCallValue(value)) {
-      throw ERR.rootCallWithoutRoot({
-        node,
-        ...callSiteLocation(node, e),
-        meta: { name: node.name }
-      });
-    }
-    if (!isLiteral(value)) {
-      validateValueGroupUnits(value, e.modes, node, e, false);
-    }
-    emitBytes(emitValue(value));
-  };
-  const evalAndEmit = (): MaybePromise<void> =>
-    precomputed === undefined
-      ? e.depth === 0
-        ? mapMaybe(evalValue(node, frame, e), emitValueResult)
-        : mapMaybe(evalBytes(node, frame, e), emitBytes)
-      : emitBytes(precomputed);
-
-  /*
-   * A typed color is a value, not a statement surface.  Keep the normal
-   * byte-only fast path for ordinary/unknown calls, but retain this one fact
-   * while evaluating a known call so `rgba(0,0,0,0);` fails like Less instead
-   * of leaking a color token into the root output.
-   */
-  if (precomputed === undefined && e.ev && DEFERRED_COLOR_CALLS.has(node.name) && hasCssColorCallShape(node)) {
-    const value = evalTyped(node, frame, e);
-    return mapMaybe(value, (resolved) => {
-      if (!isValueGroupArray(resolved) && resolved.type === 'Color') {
-        throw ERR.invalidStatement({
-          node,
-          ...callSiteLocation(node, e),
-          meta: { what: 'Color' }
-        });
-      }
-      return evalAndEmit();
-    });
-  }
-  return evalAndEmit();
+  return precomputed === undefined
+    ? mapMaybe(statementCallBytes(node, frame, e), emitBytes)
+    : emitBytes(precomputed);
 }
 
 /**

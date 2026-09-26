@@ -11,7 +11,7 @@
  * units table.
  */
 import Big from 'big.js';
-import { DivisionByZeroError, UnitArithmeticError, isValueGroupArray, type Color, type Dimension, type EvalModes, type ValueGroup, type Value } from './value-eval.js';
+import { DivisionByZeroError, EmptyOperandError, UnitArithmeticError, isValueGroupArray, type Color, type Dimension, type EvalModes, type ValueGroup, type Value } from './value-eval.js';
 import { HEX } from './color.js';
 import { colorRawRgb, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword } from './value-factory.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
@@ -501,6 +501,9 @@ export function operate(op: string, left: Value, right: Value, modes: EvalModes)
   }
   if (right.type === 'Null') {
     return left;
+  }
+  if ((left.type === 'Any' && left.bytes === '') || (right.type === 'Any' && right.bytes === '')) {
+    throw new EmptyOperandError(`An operand of "${op}" is empty — a function returned nothing — so there is nothing to operate on.`);
   }
 
   /*

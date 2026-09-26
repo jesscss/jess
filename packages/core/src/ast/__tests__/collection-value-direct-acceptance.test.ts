@@ -75,6 +75,7 @@ describe('Collection in a value/arg position', () => {
     expect(render(document)).toBe('.x {\n  y: foo({ a: 1 });\n}\n');
   });
 
+  /* [P37] A block passed to a call written out as-is is written from its evaluated body. */
   it('keeps Less variable-only value blocks executable', () => {
     const block = classifyValueBlock([
       variableDeclaration('a', dimension(1), { mode: 'declare' }),
@@ -86,7 +87,7 @@ describe('Collection in a value/arg position', () => {
       rule('.x', [decl('y', funcCall('foo', [block]))])
     ]);
 
-    expect(render(document)).toBe('.x {\n  y: foo();\n}\n');
+    expect(render(document)).toBe('.x {\n  y: foo({});\n}\n');
   });
 
   it('keeps non-map Less detached rulesets as anonymous mixins', () => {
@@ -99,7 +100,16 @@ describe('Collection in a value/arg position', () => {
       rule('.x', [decl('y', funcCall('foo', [block]))])
     ]);
 
-    expect(render(document)).toBe('.x {\n  y: foo();\n}\n');
+    expect(render(document)).toBe('.x {\n  y: foo({ a: 1; });\n}\n');
+  });
+
+  /* [P37] A nested rule inside a ruleset argument is evaluated and kept. */
+  it('writes a block holding a nested rule passed to an unknown call', () => {
+    const document = stylesheet([
+      rule('.x', [decl('y', funcCall('foo', [classifyValueBlock([rule('.z', [decl('a', dimension(1))])])]))])
+    ]);
+
+    expect(render(document)).toBe('.x {\n  y: foo({ .z { a: 1; } });\n}\n');
   });
 
   it('serializes an empty collection as `{}`', () => {

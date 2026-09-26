@@ -1915,6 +1915,8 @@ function isStatement(value: unknown): value is Statement {
       return isReferenceCall(value);
     case 'For':
       return isFor(value);
+    case 'If':
+      return true;
     case 'FunctionCall':
       return isFunctionCall(value);
     default:
