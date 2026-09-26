@@ -57,7 +57,6 @@ export {
   branchRest,
   ifTestCall,
   withFirstBranchCondition,
-  branchOf,
   branchSegments,
   chainedQueryComparison,
   queryConditionChain,
