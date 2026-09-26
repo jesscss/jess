@@ -120,6 +120,7 @@ type GrammarRuleName =
   | 'ConditionalGroupAtRule'
   | 'ContainerPrelude'
   | 'ContainerQueryAtom'
+  | 'ContainerStyleQuery'
   | 'ContainerQueryClause'
   | 'ContainerQueryCondition'
   | 'ContainerQueryInParens'
@@ -220,6 +221,7 @@ type GrammarRuleName =
   | 'StylesheetAtRule'
   | 'StatementPrelude'
   | 'SupportsCondition'
+  | 'SupportsFeature'
   | 'SupportsInParens'
   | 'SupportsPrelude'
   | 'TopLevelRuleset'
@@ -3193,12 +3195,18 @@ const cssFactory = (g: GrammarSelf) => {
    * with the group also keeps `QueryFeature`'s value arm from speculatively
    * reading a nested `fn(a: b)` as a component value and recording a stray error.
    */
+  /*
+   * The container atom's function leaf: a `style()` query (css-contain-3 §6.1)
+   * or any other `<general-enclosed>`. Named so a dialect with a structured
+   * style query binds its own; css reads it as general-enclosed.
+   */
+  const ContainerStyleQuery = g.Enclosed;
   const ContainerQueryAtom = node(
     'ContainerQueryAtom',
     choice(
       g.ContainerQueryInParens,
       g.QueryFeature,
-      g.Enclosed
+      g.ContainerStyleQuery
     ),
     children => firstValue(children)
   );
@@ -3407,6 +3415,13 @@ const cssFactory = (g: GrammarSelf) => {
       [any(children.length > 2 ? tokenText(children[1]!) : '')]
     )
   );
+
+  /*
+   * The `@supports` feature leaf, `( <declaration> )` (css-conditional-3
+   * §6.1). Named apart from the media `QueryFeature` it is in css so a
+   * dialect can bind its own `@supports` feature without changing `@media`.
+   */
+  const SupportsFeature = g.QueryFeature;
   const SupportsInParens = node(
     'SupportsInParens',
     choice(
@@ -3415,7 +3430,7 @@ const cssFactory = (g: GrammarSelf) => {
         g.SupportsCondition,
         literal(')')
       ),
-      g.QueryFeature,
+      g.SupportsFeature,
       g.Enclosed
     ),
     (children) => {
@@ -4080,6 +4095,7 @@ const cssFactory = (g: GrammarSelf) => {
     QueryPrelude,
     ContainerQueryClause,
     ContainerQueryAtom,
+    ContainerStyleQuery,
     ContainerQueryCondition,
     ContainerQueryInParens,
     ContainerQueryPrelude,
@@ -4089,6 +4105,7 @@ const cssFactory = (g: GrammarSelf) => {
     EnclosedContent,
     EnclosedGroup,
     EnclosedQuoted,
+    SupportsFeature,
     SupportsInParens,
     SupportsCondition,
     SupportsPrelude,
