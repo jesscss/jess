@@ -3519,7 +3519,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     '-_a-zA-Z0-9\\u0080-\\uFFFF',
     { caseInsensitive: true }
   ), literal('('))));
-  const ContainerStyleQuery = node(
+  const styleQuery = node(
     'ContainerStyleQuery',
     // A style() payload is a `<declaration-value>` (css-conditional-5), the same
     // permissive custom-property value a `--x:` declaration takes (ledger P2): it
@@ -3536,6 +3536,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       funcCall(functionNameFromOpener(children[0]), [operation(':', keyword(requireToken(children[1]).value),
         requireValueNode(children[3]), false, lessMathOutsideParens(state, ':'))])
   );
+
+  /*
+   * The container style-query leaf the css base names: Less reads `style()` and
+   * `scroll-state()` as structured queries where css reads general-enclosed.
+   */
+  const ContainerStyleQuery = choice(styleQuery, g.ContainerScrollStateQuery);
   const ContainerName = node(
     'ContainerName',
     sequence(
@@ -3563,7 +3569,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'ContainerQueryInParens',
     sequence(literal('('), choice(
       g.ContainerStyleQuery,
-      g.ContainerScrollStateQuery,
       g.QueryFeature,
       g.ContainerQueryInParens
     ), literal(')')),
@@ -3574,7 +3579,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     choice(
       g.ContainerQueryInParens,
       g.ContainerStyleQuery,
-      g.ContainerScrollStateQuery,
       g.QueryFeature
     ),
     children => requireValueNode(children[0])
