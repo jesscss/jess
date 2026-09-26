@@ -1811,10 +1811,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // `identOrFunction`: widening it would scan every `--x: …` custom-property
   // declaration through its dispatch and turn `--f(…);` into a statement call.
   const valueIdentOrFunction = token(noTrivia(sequence(
-    choice(
-      g.InterpolatedValueStart,
-      g.CustomPropertyToken
-    ),
+    g.IdentToken,
     optional(literal('('))
   )));
   const RoutedCustomPropertyValue = node(

@@ -16,7 +16,7 @@
  * - SCSS: ../../../scss/scss-parser/src/grammar.ts
  * - Jess: ../../../jess/jess-parser/src/grammar.ts
  */
-import { balanced, classifiedTrivia, choice, compose, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, startsWith, token, when } from 'parseman' with { type: 'macro' };
+import { balanced, classifiedTrivia, choice, compose, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, startsWith, token, when } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -133,6 +133,7 @@ type GrammarRuleName =
   | 'ConditionalAtKeyword'
   | 'ContainerAtKeyword'
   | 'CustomPropertyName'
+  | 'IdentToken'
   | 'DescriptorAtKeyword'
   | 'DocumentAtKeyword'
   | 'DoubleQuotedText'
@@ -839,29 +840,40 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * One `;` with its authored padding. Not a field capture: the reducer needs
-   * the `;` among its children to tell an empty group from a full one, and it
-   * reads the padding tokens beside it as that boundary's layout.
+   * TRIVIA OWNERSHIP. Each argument owns the padding after it, read once by
+   * `functionArgumentGap`, and each delimiter — `,`, `;`, a branch `:`, the
+   * closing `)` — starts at its own character and owns only the padding after
+   * it. So the token after an argument is decided on one character and no
+   * padding is read twice. None of these is a field capture: the call's reducer
+   * reads the terminals between two arguments (gap, delimiter, padding) as that
+   * boundary's authored layout, and needs the `;` among its children to tell an
+   * empty group from a full one.
    */
+  const functionArgumentGap = optional(cssValueTrivia);
+  const functionArgumentComma = noTrivia(sequence(
+    literal(','),
+    optional(cssValueTrivia)
+  ));
   const functionArgumentSemicolon = noTrivia(sequence(
-    optional(cssValueTrivia),
     literal(';'),
     optional(cssValueTrivia)
+  ));
+
+  /* The rest of a comma group once its first argument has been read. */
+  const functionArgumentCommaRest = many(sequence(
+    functionArgumentComma,
+    functionArgument,
+    functionArgumentGap
   ));
 
   /*
    * The comma-separated arguments between two `;`s. It may be empty: `if()`
    * allows a trailing `;`.
    */
-  const functionArgumentGroup = sepBy(
+  const functionArgumentGroup = optional(sequence(
     functionArgument,
-    authoredArgumentComma
-  );
-
-  /* The rest of a comma group once its first argument has been read. */
-  const functionArgumentCommaRest = many(sequence(
-    authoredArgumentComma,
-    functionArgument
+    functionArgumentGap,
+    functionArgumentCommaRest
   ));
 
   /*
@@ -891,6 +903,7 @@ const cssFactory = (g: GrammarSelf) => {
   const genericFunctionArguments = optional(choice(
     sequence(
       g.ValueSequenceBeforeColon,
+      functionArgumentGap,
       choice(
         g.BranchRest,
         plainArgumentsAfterFirst
@@ -898,6 +911,7 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     sequence(
       g.CurlyValue,
+      functionArgumentGap,
       plainArgumentsAfterFirst
     ),
     oneOrMore(sequence(
@@ -934,7 +948,6 @@ const cssFactory = (g: GrammarSelf) => {
     (children, fields) => spaceRun(children, fields)
   );
   const branchColon = noTrivia(sequence(
-    optional(cssValueTrivia),
     literal(':'),
     optional(cssValueTrivia)
   ));
@@ -959,6 +972,7 @@ const cssFactory = (g: GrammarSelf) => {
   const branchListGroup = optional(choice(
     sequence(
       g.ValueSequenceBeforeColon,
+      functionArgumentGap,
       choice(
         sequence(
           branchColon,
@@ -969,6 +983,7 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     sequence(
       g.CurlyValue,
+      functionArgumentGap,
       functionArgumentCommaRest
     )
   ));
@@ -987,7 +1002,7 @@ const cssFactory = (g: GrammarSelf) => {
         branchListGroup
       ))
     ),
-    (children, fields) => branchRest(children, fields)
+    children => branchRest(children)
   );
   const BasicSelector = node(
     'BasicSelector',
@@ -1770,6 +1785,7 @@ const cssFactory = (g: GrammarSelf) => {
       literal('('),
       optional(cssValueTrivia),
       optional(g.VarFallback),
+      functionArgumentGap,
       many(sequence(
         functionArgumentSemicolon,
 
@@ -1780,10 +1796,10 @@ const cssFactory = (g: GrammarSelf) => {
          */
         optional(sequence(
           not(literal(')')),
-          g.VarFallback
+          g.VarFallback,
+          functionArgumentGap
         ))
       )),
-      optional(cssValueTrivia),
       literal(')')
     ),
     children => parenGroupBlock(children)
@@ -2192,18 +2208,15 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * The opener is either an ordinary identifier or a dashed one: css-syntax-3
-   * §4.3.9 lets an ident start with `--`, and css-mixins-1 calls a dashed ident
-   * glued to `(` a `<dashed-function>` (`--*( <declaration-value>#? )`). Both
-   * dispatches route `--f(` to the generic call tail and a bare `--x` to its
+   * The opener is one css-syntax-3 §4.3.9 identifier token, which may start
+   * with `--`; css-mixins-1 calls a dashed ident glued to `(` a
+   * `<dashed-function>` (`--*( <declaration-value>#? )`). Both dispatches route
+   * `--f(` to the generic call tail and a bare `--x` (by its `--` prefix) to its
    * `CustomPropertyValue` node.
    */
   const identOrFunction = token(noTrivia(
     sequence(
-      choice(
-        genericIdentifier,
-        g.CustomPropertyName
-      ),
+      g.IdentToken,
       optional(literal('('))
     )
   ));
@@ -2234,10 +2247,9 @@ const cssFactory = (g: GrammarSelf) => {
       routed(),
       optional(cssValueTrivia),
       genericFunctionArguments,
-      optional(cssValueTrivia),
       literal(')')
     ),
-    (children, fields) => semicolonGroupedCall(children, fields)
+    children => semicolonGroupedCall(children)
   );
   const UrlFunction = node(
     'Url',

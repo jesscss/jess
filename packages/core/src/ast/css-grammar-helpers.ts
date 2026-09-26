@@ -112,30 +112,39 @@ export function withAuthoredSeparators<T extends object>(value: T, fields: Reduc
 }
 
 /*
- * Split a delimited group's children at each `;` terminal. Returns the values between
- * them, one group per side (empty where the author wrote none), and each `;`'s
- * authored run: the padding tokens beside it and the `;` itself. These are the
- * grammar's own tokens — a comment is one whole trivia token, so a `;` inside
+ * Split an argument list's children into its `;` groups, in one walk over the
+ * grammar's own tokens. A comment is one whole trivia token, so a `;` inside
  * one is never read as a separator, and a value is checked first, so a value
  * node is never read as punctuation. Only children in `[from, to)` are read,
- * so a call can leave out its opener and `)`. A group whose first value is
- * followed by a `:` terminal is a BRANCH (ledger P38); `branches` marks it.
+ * so a call can leave out its opener and `)`.
+ *
+ * - `segments`: the values of each group (empty where the author wrote none).
+ * - `separators`: each `;`'s authored run — the padding before it (its left
+ *   argument's gap), the `;`, and the padding after it.
+ * - `commas`: per group, the authored run between each two comma-separated
+ *   values — the left argument's gap, the `,`, and the padding after it.
+ * - `branches`: a group whose first value is followed by a `:` terminal is a
+ *   BRANCH (ledger P38); the run across its `:` is not a comma boundary.
  */
-function splitAtSemicolons(children: readonly unknown[], from: number, to: number): { segments: ValueSlot[][]; separators: string[]; branches: boolean[] } {
+function splitArguments(children: readonly unknown[], from: number, to: number): { segments: ValueSlot[][]; separators: string[]; commas: string[][]; branches: boolean[] } {
   const segments: ValueSlot[][] = [[]];
   const separators: string[] = [];
+  const commas: string[][] = [[]];
   const branches: boolean[] = [false];
   let padding = '';
   let afterDelimiter = false;
   for (let index = from; index < to; index++) {
     const child = children[index];
     if (isValueSlotValue(child)) {
+      const segment = segments[segments.length - 1]!;
       if (afterDelimiter) {
         separators[separators.length - 1] += padding;
         afterDelimiter = false;
+      } else if (segment.length > 0 && !(branches[branches.length - 1] === true && segment.length === 1)) {
+        commas[commas.length - 1]!.push(padding);
       }
       padding = '';
-      segments[segments.length - 1]!.push(child);
+      segment.push(child);
     } else if (isTerminalText(child)) {
       const text = tokenText(child);
       if (text === ';') {
@@ -143,6 +152,7 @@ function splitAtSemicolons(children: readonly unknown[], from: number, to: numbe
         padding = '';
         afterDelimiter = true;
         segments.push([]);
+        commas.push([]);
         branches.push(false);
       } else {
         if (text === ':' && segments[segments.length - 1]!.length === 1) {
@@ -155,21 +165,7 @@ function splitAtSemicolons(children: readonly unknown[], from: number, to: numbe
   if (afterDelimiter) {
     separators[separators.length - 1] += padding;
   }
-  return { segments, separators, branches };
-}
-
-/*
- * Does this body carry a `;` terminal of its own (not one inside a value)? The
- * text is compared first; only a `;` pays the value-type check (a `Quoted`
- * value's `value` may be `;` too). It runs on every generic call.
- */
-function hasSemicolon(children: readonly unknown[]): boolean {
-  for (const child of children) {
-    if ((child === ';' || (typeof child === 'object' && child !== null && 'value' in child && child.value === ';')) && !isValue(child)) {
-      return true;
-    }
-  }
-  return false;
+  return { segments, separators, commas, branches };
 }
 
 /** Record `separators` as `value`'s layout when there is one per boundary. */
@@ -178,24 +174,24 @@ function withLayoutWhenComplete<T extends object>(value: T, separators: readonly
 }
 
 /**
- * A generic call's reduction when its body is not a branch list. Without a `;`
- * the arguments are the comma run, with its authored separator layout, exactly
- * as before. With one (`foo(a; b)`) the body is ONE argument, the `;` List of
- * its groups, so the call carries the separator it was written with instead of
- * a comma it was not.
+ * A generic call's reduction. Without a `;` the arguments are the comma run,
+ * with its authored separator layout — or, left-factored on a first condition
+ * followed by a `:`, one branch-list argument. With a `;` (`foo(a; b)`) the
+ * body is ONE argument, the `;` List of its groups, so the call carries the
+ * separator it was written with instead of a comma it was not.
  */
-export function semicolonGroupedCall(children: readonly unknown[], fields: ReducerFields | undefined): FunctionCall {
+export function semicolonGroupedCall(children: readonly unknown[]): FunctionCall {
   const name = functionOpenName(children[0]);
-  if (!hasSemicolon(children)) {
-    const args = children.filter(isValueSlotValue);
-    const branches = withFirstBranchCondition(args);
-    if (branches !== undefined) {
-      return funcCall(name, [branches]);
+  const { segments, separators, commas, branches } = splitArguments(children, 1, children.length - 1);
+  if (segments.length === 1) {
+    const args = segments[0]!;
+    const branchList = withFirstBranchCondition(args);
+    if (branchList !== undefined) {
+      return funcCall(name, [branchList]);
     }
-    return funcCall(name, withAuthoredSeparators(args, fields, Math.max(0, args.length - 1)));
+    return funcCall(name, withLayoutWhenComplete([...args], commas[0]!, Math.max(0, args.length - 1)));
   }
-  const { segments, separators, branches } = splitAtSemicolons(children, 1, children.length - 1);
-  const groups = semicolonGroups(segments, branches, fields);
+  const groups = semicolonGroups(segments, commas, branches);
   return funcCall(name, [withLayoutWhenComplete(list(groups, ';'), separators, groups.length - 1)]);
 }
 
@@ -214,9 +210,9 @@ export function spaceRun(children: readonly unknown[], fields: ReducerFields | u
  * spec's trailing `;`, kept as an empty slot) are the `;` List they were
  * written as, with each `;`'s authored run as layout.
  */
-export function branchRest(children: readonly unknown[], fields: ReducerFields | undefined): ValueSlot {
-  const { segments, separators, branches } = splitAtSemicolons(children, 0, children.length);
-  const groups = semicolonGroups(segments, branches, fields);
+export function branchRest(children: readonly unknown[]): ValueSlot {
+  const { segments, separators, commas, branches } = splitArguments(children, 0, children.length);
+  const groups = semicolonGroups(segments, commas, branches);
   const first = branch([], groups[0]!);
   if (groups.length === 1) {
     return first;
@@ -269,30 +265,24 @@ export function ifTestCall(children: readonly unknown[]): FunctionCall {
 
 /*
  * The value each `;` group reduces to: nothing is the empty slot `[]`, one
- * argument is itself, and several are the comma `List` they were written as. A
- * branch group is a `Branch` of its first value (the condition) and the rest
- * (the value, reduced the same way). The node's commas are handed out in order,
- * one fewer than each comma run's arguments, so every rung keeps its own
- * authored layout.
+ * argument is itself, and several are the comma `List` they were written as,
+ * carrying that group's authored comma runs. A branch group is a `Branch` of
+ * its first value (the condition) and the rest (the value, reduced the same
+ * way).
  */
-function semicolonGroups(segments: readonly ValueSlot[][], branches: readonly boolean[], fields: ReducerFields | undefined): ValueSlot[] {
-  const commas = authoredSeparators(fields);
-  let comma = 0;
-  const commaRun = (values: readonly ValueSlot[]): ValueSlot => {
+function semicolonGroups(segments: readonly ValueSlot[][], commas: readonly string[][], branches: readonly boolean[]): ValueSlot[] {
+  const commaRun = (values: readonly ValueSlot[], layout: readonly string[]): ValueSlot => {
     if (values.length === 0) {
       return [];
     }
     if (values.length === 1) {
       return values[0]!;
     }
-    const next = comma + values.length - 1;
-    const run = withLayoutWhenComplete(list([...values], ','), commas.slice(comma, next), values.length - 1);
-    comma = next;
-    return run;
+    return withLayoutWhenComplete(list([...values], ','), layout, values.length - 1);
   };
   return segments.map((group, index) => (branches[index] === true
-    ? branch(group[0]!, commaRun(group.slice(1)))
-    : commaRun(group)));
+    ? branch(group[0]!, commaRun(group.slice(1), commas[index]!))
+    : commaRun(group, commas[index]!)));
 }
 
 /**
@@ -301,10 +291,10 @@ function semicolonGroups(segments: readonly ValueSlot[][], branches: readonly bo
  * `;` List of its parts, an empty part as the empty slot `[]`.
  */
 export function parenGroupBlock(children: readonly unknown[]): Block {
-  if (!hasSemicolon(children)) {
-    return block(valueSlotChildren(children)[0] ?? any(''));
+  const { segments, separators } = splitArguments(children, 1, children.length - 1);
+  if (segments.length === 1) {
+    return block(segments[0]![0] ?? any(''));
   }
-  const { segments, separators } = splitAtSemicolons(children, 1, children.length - 1);
   const parts = segments.map(segment => segment[0] ?? []);
   return block(withLayoutWhenComplete(list(parts, ';'), separators, parts.length - 1));
 }
