@@ -40,7 +40,9 @@ const CASES: Array<[name: string, source: string, kind: string]> = [
   ['a nested rule with a selector list', 'a { b: foo({ h1, h2 { c: d } }); }', DECLARATIONS],
   ['a detached-ruleset call', '@r: { c: d };\na { b: foo({ @r() }); }', DECLARATIONS],
   ['a mixin call', '.m() { c: d }\na { b: foo({ .m() }); }', DECLARATIONS],
-  ['a namespaced mixin call', 'a { b: foo({ #ns.m() }); }', DECLARATIONS]
+  ['a namespaced mixin call', 'a { b: foo({ #ns.m() }); }', DECLARATIONS],
+  ['a child-combinator mixin call', 'a { b: foo({ #ns > .m(); }); }', DECLARATIONS],
+  ['a variable then a spaced paren group', '@a: 1;\na { b: foo({ @a (b) }); }', CURLY]
 ];
 
 function firstArgument(source: string): unknown {
@@ -75,6 +77,10 @@ describe('Less: branch arguments are dispatched on the first argument (P38)', ()
     ]);
   });
 
+  it('an escaped colon in a first argument is not a branch colon', () => {
+    expect(firstArgument('a { b: foo(a\\:b); }')).toMatchObject([{ value: { src: 'a\\:b' } }]);
+  });
+
   it('a `;` without the colon shape still separates arguments', () => {
     expect(firstArgument('a { b: foo(a; b); }')).toMatchObject([{ value: { src: 'a' } }, { value: { src: 'b' } }]);
   });
@@ -86,4 +92,13 @@ describe('Less: a `{` in a function argument is dispatched on its shape (P37)', 
       expect(argumentKind(source)).toBe(kind);
     });
   }
+
+  /*
+   * The scan decides at the first top-level `:`, `;`, `{` or `}`. `{ a, b: c }`
+   * is neither a list of values nor a declaration list, so it fails whichever
+   * way it is read.
+   */
+  it('`{ a, b: c }` is an error', () => {
+    expect(() => parse('a { b: foo({ a, b: c }); }')).toThrow();
+  });
 });
