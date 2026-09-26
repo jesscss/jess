@@ -274,7 +274,6 @@ type LessRules = {
   SupportsValue: Combinator<ValueNode>;
   SupportsFeature: Combinator<ValueNode>;
   SupportsInParens: Combinator<ValueNode>;
-  SupportsCondition: Combinator<ValueNode>;
   EnclosedContent: Combinator<Interpolation>;
   EnclosedGroup: Combinator<Interpolation>;
   EnclosedQuoted: Combinator<Interpolation>;
@@ -378,6 +377,8 @@ type LessRules = {
 type LessInputRules = LessRules & typeof lessSyntax;
 
 type SharedSyntax = {
+  // Inherited from the CSS base: the same not/and/or chain over SupportsInParens.
+  SupportsCondition: Combinator<ValueNode>;
   AttributeModifier: Combinator<unknown>;
   AttributeOperator: Combinator<unknown>;
   HexColor: Combinator<string>;
@@ -3283,19 +3284,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       ? requireValueNode(children[0])
       : block(requireValueNode(children[1]))
   );
-  const SupportsCondition = node(
-    'SupportsCondition',
-    choice(
-      sequence(g.QueryNot, g.SupportsInParens),
-      sequence(g.SupportsInParens, many(sequence(g.QueryAndOr, g.SupportsInParens)))
-    ),
-    (children) => {
-      const values = children.map(child => isValueNode(child)
-        ? child
-        : keyword(requireToken(child).value));
-      return values.length === 1 ? values[0]! : spaced(values);
-    }
-  );
   const SupportsBlock = node(
     'SupportsBlock',
     sequence(
@@ -5117,7 +5105,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     SupportsValue,
     SupportsFeature,
     SupportsInParens,
-    SupportsCondition,
     EnclosedContent,
     EnclosedGroup,
     EnclosedQuoted,
