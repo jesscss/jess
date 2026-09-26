@@ -60,7 +60,8 @@ const ROUND_TRIP: Array<[name: string, css: string, emitted?: string]> = [
   ['a comment after a `;` before a comma group', 'foo(a; /* c */ b , c)', 'foo(a; /* c */ b, c)'],
   ['a comment before a `;` in a var() fallback group', 'var(--x, (a /* c */ ; b))'],
   ['a var() fallback function with `;` groups and empty groups', 'var(--x, foo(a;; b))'],
-  ['a var() fallback function whose body is a branch list, read by the permissive fallback path (P2)', 'var(--x, if(media(print): a; else: b))', 'var(--x, if(media(print) : a; else : b))'],
+  ['a var() fallback function whose body is a branch list', 'var(--x, if(media(print): a; else: b))'],
+  ['a var() fallback function whose first argument is followed by a `:`, a branch (P38)', 'var(--x, foo(a: b))'],
   ['a unicode range in a var() fallback', 'var(--x, U+0-7F)'],
   ['padding inside a var() fallback function', 'var(--c, rgb( 0 0 0 ))', 'var(--c, rgb(0 0 0))'],
   ['padding before a comma inside a var() fallback function', 'var(--x, color-mix(in srgb, red , blue))', 'var(--x, color-mix(in srgb, red, blue))'],
@@ -158,6 +159,24 @@ describe('CSS function bodies: branches, `;` groups, `{}` arguments, dashed func
    */
   it('rejects an unquoted URL as a first argument', () => {
     expect(() => parse('a { b: foo(http://x); }')).toThrow();
+  });
+
+  it('builds the same Branch node in a var() fallback as in a generic call', () => {
+    const inFallback = declarationValue('var(--x, if(media(print): a; else: b))') as { args: Array<{ value: unknown }> };
+    expect(inFallback.args[1]!.value).toMatchObject({
+      type: 'FunctionCall',
+      name: 'if',
+      args: [{
+        value: {
+          type: 'List',
+          sep: ';',
+          value: [
+            { type: 'Branch', condition: { type: 'FunctionCall', name: 'media' }, value: { src: 'a' } },
+            { type: 'Branch', condition: { src: 'else' }, value: { src: 'b' } }
+          ]
+        }
+      }]
+    });
   });
 
   it('keeps a single branch as the one argument', () => {

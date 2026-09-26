@@ -208,18 +208,20 @@ export function semicolonGroupedCall(children: readonly unknown[]): FunctionCall
 
 /**
  * A var() fallback's function call (the permissive fallback reading). Without a
- * `;` its items are the call's arguments as they always were, an empty item
- * kept as the empty `Any`. With one (`foo(a; b)`) the body is ONE argument, the
- * `;` List of its comma groups, as a generic call's is.
+ * `;` or a branch its items are the call's arguments as they always were, an
+ * empty item kept as the empty `Any`. A branch (ledger P38) is the same
+ * `Branch` a generic call builds — one branch is the call's one argument — and
+ * with a `;` (`foo(a; b)`) the body is ONE argument, the `;` List of its
+ * groups, as a generic call's is.
  */
 export function fallbackCall(children: readonly unknown[]): FunctionCall {
   const name = functionOpenName(children[0]);
-  const { segments, separators } = splitArguments(children, 1, children.length - 1);
-  if (segments.length === 1) {
+  const { segments, separators, commas, branches } = splitArguments(children, 1, children.length - 1);
+  if (segments.length === 1 && branches[0] !== true) {
     return funcCall(name, segments[0]!);
   }
-  const groups = segments.map(group => (group.length === 0 ? [] : group.length === 1 ? group[0]! : list(group, ',')));
-  return funcCall(name, [withLayoutWhenComplete(list(groups, ';'), separators, groups.length - 1)]);
+  const groups = semicolonGroups(segments, commas, branches);
+  return funcCall(name, [groups.length === 1 ? groups[0]! : withLayoutWhenComplete(list(groups, ';'), separators, groups.length - 1)]);
 }
 
 /** A whitespace run: one value is itself, several keep their authored separators. */

@@ -289,6 +289,7 @@ type GrammarRuleName =
   | 'functionArgument'
   | 'branchLead'
   | 'VarFallbackOpener'
+  | 'VarFallbackLead'
   | 'IfTest'
   | 'StyleTest';
 
@@ -1884,6 +1885,30 @@ const cssFactory = (g: GrammarSelf) => {
       return values.length === 1 ? values[0]! : values;
     }
   );
+
+  /*
+   * The first item of a group in a fallback's function: `VarFallbackTerm` with
+   * one guard, as `ValueSequenceBeforeColon` is `ValueSequence` with one — a
+   * component after the first never begins on a `:`, so a top-level `:` after
+   * the item is left for the branch colon (ledger P38). The guard is the one
+   * character the parser is on. It keeps the `VarFallbackTerm` label and
+   * reducer.
+   */
+  const VarFallbackLead = node(
+    'VarFallbackTerm',
+    sequence(
+      varFallbackComponent,
+      many(sequence(
+        optional(cssValueTrivia),
+        not(literal(':')),
+        varFallbackComponent
+      ))
+    ),
+    (children) => {
+      const values = valueSlotChildren(children);
+      return values.length === 1 ? values[0]! : values;
+    }
+  );
   const VarFallbackEmpty = node(
     'VarFallbackEmpty',
     choice(
@@ -1930,6 +1955,38 @@ const cssFactory = (g: GrammarSelf) => {
    * group left empty before a `;` is the empty slot. The padding is owned as a
    * generic body owns it: after the opener, then a gap after each item.
    */
+  const fallbackItemCommaRest = many(sequence(
+    varFallbackComma,
+    optional(g.VarFallbackItem),
+    functionArgumentGap
+  ));
+
+  /*
+   * One `;` group of a fallback's function, left-factored on its first item as
+   * a generic body's group is: the item is read once, and a `:` after it makes
+   * the group a branch whose value is the comma items after the colon — the
+   * same `Branch` a generic call builds. A group opening on a comma starts with
+   * the empty item (`foo(,a)`).
+   */
+  const fallbackGroup = choice(
+    sequence(
+      g.VarFallbackLead,
+      functionArgumentGap,
+      choice(
+        sequence(
+          branchColon,
+          optional(g.VarFallbackItem),
+          functionArgumentGap,
+          fallbackItemCommaRest
+        ),
+        fallbackItemCommaRest
+      )
+    ),
+    sequence(
+      g.VarFallbackEmpty,
+      fallbackItemCommaRest
+    )
+  );
   const VarFallbackCall = node(
     'VarFallbackCall',
     sequence(
@@ -1937,28 +1994,19 @@ const cssFactory = (g: GrammarSelf) => {
       optional(cssValueTrivia),
       optional(sequence(
         not(literal(')')),
-        optional(g.VarFallbackItem),
-        functionArgumentGap,
-        many(choice(
-          sequence(
-            varFallbackComma,
-            optional(g.VarFallbackItem),
-            functionArgumentGap
-          ),
+        optional(fallbackGroup),
+        many(sequence(
+          functionArgumentSemicolon,
 
           /*
            * A group left empty after a `;` — before another `;` or the `)` —
            * is the empty slot, as in `VarFallbackParen`; the empty `Any` is the
            * comma's fallback semantics only.
            */
-          sequence(
-            functionArgumentSemicolon,
-            optional(sequence(
-              not(literal(')')),
-              g.VarFallbackItem
-            )),
-            functionArgumentGap
-          )
+          optional(sequence(
+            not(literal(')')),
+            fallbackGroup
+          ))
         ))
       )),
       literal(')')
@@ -4400,6 +4448,7 @@ const cssFactory = (g: GrammarSelf) => {
     functionArgument,
     branchLead,
     VarFallbackOpener,
+    VarFallbackLead,
     whitespace,
     rw: whitespace
   };
