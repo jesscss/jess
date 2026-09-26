@@ -13,7 +13,8 @@ import type { Declaration, Ruleset, ValueSlot } from '@jesscss/core/ast';
  *   <declaration-value> : <declaration-value>?`, the first `<declaration-value>`
  *   excluding top-level colons. A body whose first argument ends at a top-level
  *   `:` is a branch list; each branch is a `Branch` node (condition, value), and
- *   its colon re-emits as written.
+ *   its colon re-emits as written. A condition's `media()`, `supports()` and
+ *   `style()` if-tests hold query syntax and are parsed with the query grammar.
  * - css-values-5 §3.1.1 `{}`-wrapped free-form arguments (`{a, b}`).
  * - css-mixins-1 `<dashed-function> = --*( <declaration-value>#? )`.
  *
@@ -48,7 +49,10 @@ const ROUND_TRIP: Array<[name: string, css: string, emitted?: string]> = [
   ['a dashed function inside calc()', 'calc(--foo(1px) + 1px)'],
   ['an unknown function with a slash inside calc()', 'calc(foo(1px / 2) + 1px)'],
   ['a var() fallback holding a semicolon inside a function', 'var(--x, foo(a; b))'],
-  ['a var() fallback holding a {}-block', 'var(--x, { a, b })']
+  ['a var() fallback holding a {}-block', 'var(--x, { a, b })'],
+  ['if-tests joined by `or`', 'if(media(width > 600px) or media(print): 1px; else: 0)'],
+  ['a supports() test holding a condition group', 'if(supports(not (display: grid)): 1px; else: 0)'],
+  ['media(), supports() and style() outside a branch condition', 'media(a, b) supports(a b c) style(a, b)']
 ];
 
 function declarationValue(css: string): ValueSlot {
@@ -79,13 +83,50 @@ describe('CSS function bodies: branches, `;` groups, `{}` arguments, dashed func
           value: [
             {
               type: 'Branch',
-              condition: { type: 'FunctionCall', name: 'style', args: [{ value: { type: 'Branch' } }] },
+              condition: { type: 'FunctionCall', name: 'style', args: [{ value: { type: 'Interpolation' } }] },
               value: { type: 'Keyword', src: 'white' }
             },
             { type: 'Branch', condition: { type: 'Keyword', src: 'else' }, value: { type: 'Keyword', src: 'black' } }
           ]
         }
       }]
+    });
+  });
+
+  it('parses media() and supports() tests with the query grammar', () => {
+    expect(declarationValue('if(media(width > 600px): 1; supports(display: grid): 2)')).toMatchObject({
+      args: [{
+        value: {
+          type: 'List',
+          sep: ';',
+          value: [
+            {
+              type: 'Branch',
+              condition: {
+                type: 'FunctionCall',
+                name: 'media',
+                args: [{ value: { type: 'Operation', operator: '>', left: { src: 'width' }, right: { src: '600px' } } }]
+              }
+            },
+            {
+              type: 'Branch',
+              condition: {
+                type: 'FunctionCall',
+                name: 'supports',
+                args: [{ value: { type: 'Operation', operator: ':', left: { src: 'display' }, right: { src: 'grid' } } }]
+              }
+            }
+          ]
+        }
+      }]
+    });
+  });
+
+  it('keeps media() outside a branch condition an ordinary call', () => {
+    expect(declarationValue('media(a, b)')).toMatchObject({
+      type: 'FunctionCall',
+      name: 'media',
+      args: [{ value: { type: 'Keyword', src: 'a' } }, { value: { type: 'Keyword', src: 'b' } }]
     });
   });
 

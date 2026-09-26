@@ -20,7 +20,7 @@
  */
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
-import { NO_SPAN, any, callArg, condition, delimiterClose, delimiterOpen, sepGlue, dimension, expression, funcCall, ifNode, ifValue, important, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, quoted, reference, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, callArg, condition, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, dimension, expression, funcCall, ifNode, ifValue, important, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, quoted, reference, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, Operation, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorCapture, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessUnsupportedVariableNameError } from './parse-error.js';
@@ -1294,6 +1294,12 @@ function functionCallFromChildren(
     if (isLessCallArg(child) || isLessValueSlotValue(child)) {
       args.push(child);
     }
+  }
+  /* [P38] `[condition, BranchRest]` is one branch-list argument. */
+  const values = args.filter((arg): arg is ValueSlot => !isLessCallArg(arg));
+  const branches = values.length === args.length ? withFirstBranchCondition(values) : undefined;
+  if (branches !== undefined) {
+    return callWithLayout(name, [branches], [], false, span, state);
   }
   const separators = functionSeparatorsFromFields(fields, rawChildren, triviaLog, state);
   return lowerLogicalCall(callWithLayout(name, args, separators, hasField(fields, 'trailingSeparator'), span, state));
