@@ -372,7 +372,7 @@ type LessRules = {
   GenericFunction: Combinator<unknown>;
   CalcFunction: Combinator<unknown>;
   FunctionArguments: Combinator<unknown>;
-  ValueSequenceBeforeColon: Combinator<unknown>;
+  branchLead: Combinator<unknown>;
   StyleTest: Combinator<unknown>;
   functionArgument: Combinator<unknown>;
 };
@@ -1618,8 +1618,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // (`darken(@color: red)`) is read whole, colon and value, as the first
   // argument; one followed by a further `:` (`foo(@k: v: x)`) is not a
   // condition, and the call's reducer rejects it. CSS's later branch
-  // conditions read through `ValueSequenceBeforeColon`, which is this same
-  // Less argument.
+  // conditions read through `branchLead`, which is this same Less argument.
   const plainArgumentsAfterFirst = sequence(
     many(sequence(functionArgumentSeparator, functionArgument)),
     optional(trailingFunctionArgumentSeparator)
@@ -5273,7 +5272,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     GenericFunction,
     CalcFunction,
     FunctionArguments,
-    ValueSequenceBeforeColon: functionArgument,
+    branchLead: functionArgument,
     functionArgument,
     StyleTest,
     whitespace,

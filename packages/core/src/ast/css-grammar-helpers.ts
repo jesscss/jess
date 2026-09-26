@@ -112,6 +112,15 @@ export function withAuthoredSeparators<T extends object>(value: T, fields: Reduc
 }
 
 /*
+ * A dialect's keyword argument (Less `@name: value`), reduced to a call
+ * argument: an object carrying a value node but no node type of its own.
+ */
+function isKeywordArgument(value: unknown): boolean {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    && !('type' in value) && 'value' in value && typeof value.value === 'object';
+}
+
+/*
  * Split an argument list's children into its `;` groups, in one walk over the
  * grammar's own tokens. A comment is one whole trivia token, so a `;` inside
  * one is never read as a separator, and a value is checked first, so a value
@@ -145,6 +154,8 @@ function splitArguments(children: readonly unknown[], from: number, to: number):
       }
       padding = '';
       segment.push(child);
+    } else if (isKeywordArgument(child)) {
+      throw new SyntaxError('A keyword argument cannot be part of a branch list or a `;` group.');
     } else if (isTerminalText(child)) {
       const text = tokenText(child);
       if (text === ';') {

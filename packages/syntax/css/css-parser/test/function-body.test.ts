@@ -61,6 +61,11 @@ const ROUND_TRIP: Array<[name: string, css: string, emitted?: string]> = [
   ['a comment before a `;` in a var() fallback group', 'var(--x, (a /* c */ ; b))'],
   ['a var() fallback function with `;` groups and empty groups', 'var(--x, foo(a;; b))'],
   ['a var() fallback function whose body is a branch list, read by the permissive fallback path (P2)', 'var(--x, if(media(print): a; else: b))', 'var(--x, if(media(print) : a; else : b))'],
+  ['a unicode range in a var() fallback', 'var(--x, U+0-7F)'],
+  ['padding inside a var() fallback function', 'var(--c, rgb( 0 0 0 ))', 'var(--c, rgb(0 0 0))'],
+  ['padding before a comma inside a var() fallback function', 'var(--x, color-mix(in srgb, red , blue))', 'var(--x, color-mix(in srgb, red, blue))'],
+  ['a group left empty before a `;` in a var() fallback function', 'var(--x, foo(;a))', 'var(--x, foo(; a))'],
+  ['a {}-wrapped condition', 'if({a}: 1)', 'if({ a }: 1)'],
   ['a bare `--` identifier', '--'],
   ['a dashed identifier holding an escape', '--a\\:b']
 ];
