@@ -53,6 +53,7 @@ export {
   authoredText,
   blockStatements,
   branchRest,
+  fallbackCall,
   ifTestCall,
   withFirstBranchCondition,
   branchSegments,

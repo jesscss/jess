@@ -4228,9 +4228,23 @@ function evalTyped(
        * `extract`, counted by `length`, or compared). The structure the parser owns
        * is handed to the value layer directly — no re-splitting a joined string.
        */
-      const typed = node.value.map(it => evalTypedSlot(it, frame, e, projectMixinValues));
+      const typed = node.value.map(it => evalTypedSlot(it, frame, e, projectMixinValues, writeRulesets));
       return combineAll(typed, vals => makeList(vals, node.sep));
     }
+    case 'Branch':
+      /*
+       * [P38] A branch argument, typed: its condition and value are materialized
+       * like any argument — a ruleset value (`if(c: { v: 1; })`) written out as
+       * a ruleset argument is — and the branch is its authored `cond: value`.
+       */
+      return combineAll([
+        evalTypedSlot(node.condition, frame, e, projectMixinValues, writeRulesets),
+        evalTypedSlot(node.value, frame, e, projectMixinValues, writeRulesets)
+      ], (parts) => {
+        const condition = emitValueC(parts[0]!, e);
+        const value = emitValueC(parts[1]!, e);
+        return makeAny(value === '' ? `${condition}:` : `${condition}: ${value}`);
+      });
     case 'Sequence': {
       /*
        * A structured SPACE-list (`@v: a b c` / `1px solid @c`) materializes to the
