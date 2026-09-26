@@ -277,11 +277,11 @@ const DIRECTION_1_ALLOWLIST: readonly Allowed[] = [
   },
   {
     name: 'targeted:{}-wrapped function argument',
-    accepted: ['css', 'less'],
+    accepted: ['css'],
     validCss: true,
     reason:
-      'css-values-5 §3.1.1. less reads it as a curly block (P37). In jess a `{` in a call argument is a '
-      + 'Collection, the same collision Less had; scss has no `{` argument.'
+      'css-values-5 §3.1.1. In a less function argument a `{` is a detached ruleset; the `{}`-wrapped value '
+      + 'list is P37 "LATER". In jess a `{` in a call argument is a Collection; scss has no `{` argument.'
   },
   {
     name: 'targeted:dashed function',
@@ -291,9 +291,11 @@ const DIRECTION_1_ALLOWLIST: readonly Allowed[] = [
   },
   {
     name: 'targeted:dashed function with a {}-wrapped argument',
-    accepted: ['css', 'less'],
+    accepted: ['css'],
     validCss: true,
-    reason: 'css-mixins-1 `<dashed-function>` with a css-values-5 §3.1.1 argument. scss and jess refuse both halves.'
+    reason:
+      'css-mixins-1 `<dashed-function>` with a css-values-5 §3.1.1 argument. less reads the `{` as a detached '
+      + 'ruleset (P37 "LATER" for the `{}`-wrapped value list); scss and jess refuse both halves.'
   }
 ];
 
