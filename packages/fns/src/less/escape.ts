@@ -1,11 +1,13 @@
-import { groupItems, makeKeyword, defineFunction } from '@jesscss/core';
+import { groupItems, makeAny, defineFunction } from '@jesscss/core';
 import type { Fn } from '@jesscss/core';
 
 /**
  * `escape(value)` — URL-encode the string form of `value` (`ctx.stringify` = legacy
  * `serializeNodeValue`): `encodeURI` then the extra chars less.js escapes
- * (`=`,`:`,`#`,`;`,`(`,`)`). Emits a bare keyword. Validated against Less 4.x (the
- * adapter mishandles the reconstructed Quoted and encodes its quotes).
+ * (`=`,`:`,`#`,`;`,`(`,`)`). Returns raw text (`Any`), as Less 4.x returns an
+ * `Anonymous`, so it is also valid standing alone as a statement, like `e()`.
+ * Validated against Less 4.x (the adapter mishandles the reconstructed Quoted
+ * and encodes its quotes).
  */
 export const escape: Fn = defineFunction('escape', {
   params: [{ type: 'any' }],
@@ -19,6 +21,6 @@ export const escape: Fn = defineFunction('escape', {
       .replace(/;/g, '%3B')
       .replace(/\(/g, '%28')
       .replace(/\)/g, '%29');
-    return makeKeyword(encoded);
+    return makeAny(encoded);
   }
 });

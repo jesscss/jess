@@ -4094,7 +4094,10 @@ involved.
   writer is a second declaration writer by necessity (one line, inside a
   value); it reuses `evalBytes`, `assertDeclarationValueIsNotRuleset`, the
   elision sink and the compress switch, and pins merge/null/ruleset-value/
-  compress parity with the ruleset-body writer in tests.
+  compress parity with the ruleset-body writer in tests. Any function
+  argument that is a ruleset is written this way (a `writeRulesets` flag on
+  the typed lane, set only by call dispatch), so a built-in that fails and is
+  preserved keeps its block too.
 - Cumulative node weight: no node kind or node field is added; the table is a
   module-level constant keyed by value type. An earlier revision's
   `AnonymousMixin._text` slot was removed before landing, so AST shapes equal
@@ -4111,7 +4114,12 @@ involved.
   through `statementCallBytes`; the declaration-list leaf keeps its
   synchronous lane and reports an async result as before.
 - Helper/API surface: `FunctionDeclined` is exported from `@jesscss/core` for a
-  plugin bridge to decline a call; `eval/ruleset-argument-with-rules` is added;
+  plugin bridge to decline a call; `EmptyOperandError` (value domain) raises
+  the new `eval/empty-operand` for arithmetic on an empty result; Less
+  `escape()` returns raw text (`Any`) as 4.x returns an `Anonymous`;
+  `eval/ruleset-argument-with-rules` is added, now raised only for a block
+  with parameters, a mixin call that would emit nested rules, and statement
+  kinds the one-line writer has no form for;
   `eval/root-call-without-root` is removed (no remaining raiser) and its cases
   report `eval/invalid-statement`, the code Less 4.x's "X node returned by a
   function is not valid here" corresponds to.
@@ -4123,7 +4131,12 @@ involved.
   install its own elision sink (so a `null` cannot elide the enclosing
   declaration), and the part list handed to `combineAll`; [materialized
   array/object] the part/entry records and the sink are exactly what the
-  writer joins; [routine error control] `FunctionDeclined` is caught only on
+  writer joins; [loop/traversal] the writer visits one ruleset argument's
+  direct statements once per body (nested rules and at-rules recurse into
+  their own bodies once), and a mixin call's collected declarations once;
+  [node construction] `EmptyOperandError` is constructed only when an
+  arithmetic operand is an empty result, which then raises
+  `eval/empty-operand`; [routine error control] `FunctionDeclined` is caught only on
   the legacy-plugin raw-invocation path and in the evaluator's existing call
   recovery, to write a declined call as-is — it is the plugin ABI's decline
   signal, not control flow on an ordinary path. All of these run only for a
@@ -4216,6 +4229,27 @@ involved.
       "currentMedianMs": 43.94891699999971,
       "outputSha256": "2b8d9abf3c103a6de7a0a5d66b3a448bcaef8c1818eff753de52d25a23b98f7d",
       "outputBytes": 122568
+    }
+  },
+  {
+    "id": "ast-value-operate-preserve-calc",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "cases": [
+      "preserve-percentage-product",
+      "loose-percentage-product",
+      "explicit-calc-composition"
+    ],
+    "why": "Ledger P37: an EMPTY arithmetic operand (the result of a function that returns nothing, a Less \"null function\") raises EmptyOperandError in every unit mode instead of being spliced into a preserved calc() as a hole (`calc( + 1px)`). The preserve-mode calc policy for every other operand is unchanged.",
+    "dangerTokensJustification": "One guard of two type/length reads after the Null guard; the error is constructed only when an operand is empty. No traversal, allocation on the ordinary path, parser replay, or materialization is added.",
+    "behaviorEvidence": "Core passes 3341; `emitted-call-content-and-statements.test.ts` pins `storeFalse() + 1px` raising `eval/empty-operand`; the jess ratchet matches its baseline (1928 tests).",
+    "buildEvidence": "The serial release build, `verify:types` (24 strict production configs) and `check:macro` pass.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
     }
   }
 ]

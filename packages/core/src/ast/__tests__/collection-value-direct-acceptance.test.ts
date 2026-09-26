@@ -103,13 +103,13 @@ describe('Collection in a value/arg position', () => {
     expect(render(document)).toBe('.x {\n  y: foo({ a: 1; });\n}\n');
   });
 
-  /* [P37] A nested rule has no spelling inside a value: an error, not lost content. */
-  it('rejects a block holding a nested rule passed to an unknown call', () => {
+  /* [P37] A nested rule inside a ruleset argument is evaluated and kept. */
+  it('writes a block holding a nested rule passed to an unknown call', () => {
     const document = stylesheet([
       rule('.x', [decl('y', funcCall('foo', [classifyValueBlock([rule('.z', [decl('a', dimension(1))])])]))])
     ]);
 
-    expect(() => render(document)).toThrow(expect.objectContaining({ code: 'eval/ruleset-argument-with-rules' }));
+    expect(render(document)).toBe('.x {\n  y: foo({ .z { a: 1; } });\n}\n');
   });
 
   it('serializes an empty collection as `{}`', () => {

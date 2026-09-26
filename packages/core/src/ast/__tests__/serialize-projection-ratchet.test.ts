@@ -132,7 +132,10 @@ describe('V19 one-evaluator projection ratchet', () => {
     // argument of a call written out as-is is written from its evaluated body, and a
     // legacy plugin that declines a call leaves it on the unknown-call path.
     // -1 function (`canEmitRootCallValue`): the statement table replaces it.
-    expect(occurrences(/^function |^async function /gmu)).toBe(469);
+    // +2 functions (`writtenBlockBody`, `rejectRulesetArgument`, ledger P37): a
+    // ruleset argument's nested rules, at-rules and mixin calls are evaluated and
+    // written inside its braces, one body at a time.
+    expect(occurrences(/^function |^async function /gmu)).toBe(471);
     expect(occurrences(/new Map/gu)).toBe(68);
     expect(occurrences(/new Set/gu)).toBe(41);
     expect(occurrences(/new WeakMap/gu)).toBe(4);

@@ -48,6 +48,7 @@ export type JessErrorCode =
   | 'eval/division-by-zero'
   | 'eval/unexpressible-unit'
   | 'eval/incomparable-operands'
+  | 'eval/empty-operand'
   | 'eval/unit-conversion'
   | 'extend/protected-boundary'
   | 'extend/not-found'
@@ -273,10 +274,10 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
   [
     'eval/ruleset-argument-with-rules',
     {
-      summary: 'A ruleset argument can only be written out as declarations',
+      summary: 'A ruleset argument cannot be written out',
       reason:
-        '"${name}()" is written out as a plain CSS call, and its ruleset argument holds ${what}, which has no spelling inside a CSS value.',
-      fix: 'Import or define "${name}" so the call is evaluated, or pass a ruleset that holds only declarations.'
+        'A ruleset passed to a function is written out as its evaluated block, but this one holds ${what}, which has no one-line form inside a CSS value.',
+      fix: 'Pass a ruleset of declarations, nested rules and at-rules, or call the ruleset in statement position (`@ruleset();`).'
     }
   ],
   [
@@ -368,6 +369,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       reason:
         '${expr} composes a unit CSS cannot express, so no result can carry it honestly.',
       fix: 'Cancel the units, drop one side\'s unit, or wrap the expression in calc() to keep it as authored.'
+    }
+  ],
+  [
+    'eval/empty-operand',
+    {
+      summary: 'Operation on an empty value',
+      reason: '${reason}',
+      fix: 'Operate on a value: a function that returns nothing (false, true or an empty result) can only stand as a statement.'
     }
   ],
   [

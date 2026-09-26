@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { emitJess } from '@jesscss/core';
 import { parse as parseLess } from '@jesscss/less-parser';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 import jessPlugin from '@jesscss/plugin-jess';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
+import jsPlugin from '@jesscss/plugin-js';
 
 /**
  * Ledger P37: a function call that is emitted as written may not lose content,
@@ -56,8 +60,26 @@ describe('a ruleset argument to a call emitted as written (P37, jess#290)', () =
       .resolves.toBe('a{x:foo({a:1px;b:2!important})}');
   });
 
-  it('a ruleset holding a nested rule has no value spelling, so it raises rather than vanishing', async () => {
-    await expect(less('a { x: foo({ .b { c: d; } }); }'))
+  it('evaluates and keeps nested rules, at-rules, mixin calls and $prop reads', async () => {
+    await expect(less('@c: red; a { x: foo({ .a { x: @c; } }); }'))
+      .resolves.toBe('a {\n  x: foo({ .a { x: red; } });\n}\n');
+    await expect(less('a { x: foo({ b: 1; @media (min-width: 1px) { c: 2; } }); }'))
+      .resolves.toBe('a {\n  x: foo({ b: 1; @media (min-width: 1px) { c: 2; } });\n}\n');
+    await expect(less('.m(@v) { a: @v; } a { x: foo({ .m(1); b: 2; }); }'))
+      .resolves.toBe('a {\n  x: foo({ a: 1; b: 2; });\n}\n');
+    await expect(less('a { x: foo({ a: 1; b: $a; }); }'))
+      .resolves.toBe('a {\n  x: foo({ a: 1; b: 1; });\n}\n');
+    await expect(less('@on: false; a { x: foo({ .a when (@on) { b: 1; } c: 2; }); }'))
+      .resolves.toBe('a {\n  x: foo({ c: 2; });\n}\n');
+  });
+
+  it('keeps its block when a built-in fails and is written out as-is', async () => {
+    await expect(less('@c: red; a { x: darken({ a: @c; }, 10%); }'))
+      .resolves.toBe('a {\n  x: darken({ a: red; }, 10%);\n}\n');
+  });
+
+  it('a mixin call that would emit nested rules has no one-line form, so it raises rather than vanishing', async () => {
+    await expect(less('.m() { .n { a: 1; } } a { x: foo({ .m(); }); }'))
       .rejects.toThrow(expect.objectContaining({ code: 'eval/ruleset-argument-with-rules' }));
   });
 
@@ -76,9 +98,13 @@ describe('a ruleset argument to a call emitted as written (P37, jess#290)', () =
     await expect(jess('$d: @{ color: red; }; a { x: 1 $d; }')).resolves.toBe('a {\n  x: 1 ;\n}\n');
   });
 
-  it('a Less ruleset anywhere else is unaffected', async () => {
-    await expect(less('@d: { v: 1; }; a { x: ~"@{d}"; y: 1 @d; z: e(@d); }'))
-      .resolves.toBe('a {\n  x: ;\n  y: 1 ;\n  z: ;\n}\n');
+  it('a Less ruleset outside a function argument is unaffected', async () => {
+    await expect(less('@d: { v: 1; }; a { x: ~"@{d}"; y: 1 @d; }'))
+      .resolves.toBe('a {\n  x: ;\n  y: 1 ;\n}\n');
+  });
+
+  it('any function receives a ruleset argument as its evaluated block', async () => {
+    await expect(less('@d: { v: 1; }; a { z: e(@d); }')).resolves.toBe('a {\n  z: { v: 1; };\n}\n');
   });
 
   it('.less → .jess → .css equals .less → .css', async () => {
@@ -94,6 +120,10 @@ describe('a call standing alone in statement position (P37)', () => {
   it('emits raw text, at the root and in a declaration list', async () => {
     await expect(less('e(\'/* x */\');\na { b: c; }')).resolves.toBe('/* x */\na {\n  b: c;\n}\n');
     await expect(less('a { b: c; e(\'/* y */\'); }')).resolves.toBe('a {\n  b: c;\n  /* y */\n}\n');
+  });
+
+  it('emits raw text from escape(), which returns raw text as e() does', async () => {
+    await expect(less('a { b: c; escape(\'a b\'); }')).resolves.toBe('a {\n  b: c;\n  a%20b\n}\n');
   });
 
   it('emits nothing for a function that returns nothing', async () => {
@@ -153,7 +183,30 @@ describe('a call standing alone in statement position (P37)', () => {
     await expect(render('a { b: c; rawText(); }')).resolves.toBe('a {\n  b: c;\n  /* raw */\n}\n');
     await expect(render('a { x: declined(1); }')).resolves.toBe('a {\n  x: declined(1);\n}\n');
     await expect(render('a { b: c; declined(1); }')).rejects.toThrow(notAStatement);
+    await expect(render('a { x: storeFalse() + 1px; }')).rejects.toThrow(expect.objectContaining({ code: 'eval/empty-operand' }));
   });
+
+  /* The file-based (sandboxed) `@plugin` path takes the same Less 4.x conversion. */
+  it('converts a file-based legacy plugin result as Less 4.x does', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-p37-plugin-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'p.js'), [
+        'functions.add(\'raw\', function () { return new tree.Anonymous(\'/* raw */\'); });',
+        'functions.add(\'word\', function () { return new tree.Keyword(\'word\'); });',
+        'functions.add(\'nothing\', function () { return false; });'
+      ].join('\n'), 'utf8');
+      const entry = path.join(dir, 'main.less');
+      fs.writeFileSync(entry, '@plugin "./p.js";\nraw();\nnothing();\na { b: word(); }\n', 'utf8');
+      const withFilePlugin = new Compiler({
+        compile: { plugins: [lessPlugin(), jsPlugin({ jsReadRoot: dir, runtimeApi: 'less' }), lessCompatPlugin()] }
+      });
+      await expect(withFilePlugin.render(entry)).resolves.toBe('/* raw */\na {\n  b: word;\n}\n');
+      fs.writeFileSync(entry, '@plugin "./p.js";\nword();\n', 'utf8');
+      await expect(withFilePlugin.render(entry)).rejects.toThrow(notAStatement);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30000);
 
   it('.jess: a bare call does not parse in statement position', async () => {
     await expect(jess('foo(1);\na { b: c; }')).rejects.toThrow(expect.objectContaining({ code: 'parse/syntax-error' }));

@@ -8,7 +8,7 @@ import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { decodeBridgeValue, encodeBridgeArgs, encodeBridgeValue } from './bridge.js';
+import { decodeBridgeResult, decodeBridgeValue, encodeBridgeArgs, encodeBridgeValue } from './bridge.js';
 
 /**
  * A failure raised BY a `@plugin` script (its own `throw`, or a shim member it
@@ -961,7 +961,7 @@ export class JsPlugin extends AbstractPlugin {
         if (result.important) {
           capabilities.markImportant?.();
         }
-        return { value: decodeBridgeValue(result.value) };
+        return { value: decodeBridgeResult(result.value) };
       }
       if (!result.need) {
         throw new PluginFunctionError(

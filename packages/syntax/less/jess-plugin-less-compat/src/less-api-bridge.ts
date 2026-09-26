@@ -280,10 +280,12 @@ function isNativeValue(value: unknown): value is Value {
  *   as-is ({@link FunctionDeclined});
  * - `false`, `true` and any other falsy value: Less's documented "null
  *   functions", an empty result with no output (valid as a statement);
- * - a string, and an `Anonymous` node: raw text;
- * - a number stays a number, NOT raw text as in 4.x: the owner's v5 fixture
- *   (`tests-unit/import/import.less`, a plugin `pi()`) expects it rounded
- *   like any computed number;
+ * - a string, and an `Anonymous` node (from the in-process facade or the
+ *   file-plugin bridge, the one conversion both share): raw text;
+ * - a number stays a number, NOT raw text as 4.x's `Anonymous(String(n))`:
+ *   the owner's v5 fixture `tests-unit/import/import.less` (a plugin `pi()`)
+ *   expects it rounded like any computed number, and the owner-maintained
+ *   fixtures are the v5 spec;
  * - any other node: that node's value ({@link fromNativeLessValue}).
  */
 export function fromNativeLessResult(result: unknown): ValueGroup {
@@ -296,7 +298,15 @@ export function fromNativeLessResult(result: unknown): ValueGroup {
   if (typeof result === 'string') {
     return makeAny(result);
   }
-  return result instanceof LessAnonymous ? makeAny(result.value) : fromNativeLessValue(result);
+  return isAnonymousResult(result) ? makeAny(result.value) : fromNativeLessValue(result);
+}
+
+function isAnonymousResult(value: unknown): value is { readonly type: 'Anonymous'; readonly value: string } {
+  return typeof value === 'object'
+    && value !== null
+    && !isNativeValue(value)
+    && 'type' in value && value.type === 'Anonymous'
+    && 'value' in value && typeof value.value === 'string';
 }
 
 export function fromNativeLessValue(value: unknown): ValueGroup {

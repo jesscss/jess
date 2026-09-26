@@ -437,6 +437,21 @@ export class IncomparableOperandsError extends TypeError {
   }
 }
 
+/**
+ * An arithmetic operand that is EMPTY: the result of a function that returns
+ * nothing (a Less "null function", such as a legacy `@plugin` returning
+ * `false`). There is nothing to operate on, and no spelling of the operation
+ * that is not a hole (`calc( + 1px)`), so it raises in every unit mode — Less
+ * 4.x rejects it too ("Operation on an invalid type"). Not a `TypeError`, so the
+ * preserve-mode fallback in `operate` cannot swallow it.
+ */
+export class EmptyOperandError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'EmptyOperandError';
+  }
+}
+
 /* --------------------------------------------------------------- seam */
 
 /**

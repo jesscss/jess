@@ -123,6 +123,7 @@ import { isDiagnosticStatement } from './at-rule.js';
 import {
   DEFAULT_MODES,
   DivisionByZeroError,
+  EmptyOperandError,
   IncomparableOperandsError,
   emitValue,
   isValueGroup,
@@ -3833,12 +3834,13 @@ function evalTypedSlot(
   slot: ValueSlot,
   frame: Frame | null,
   e: EvalCtx,
-  projectMixinValues = false
+  projectMixinValues = false,
+  writeRulesets = false
 ): MaybePromise<ValueGroup> {
   if (!isValueSlotArray(slot)) {
-    return evalTyped(slot, frame, e, projectMixinValues);
+    return evalTyped(slot, frame, e, projectMixinValues, writeRulesets);
   }
-  const values = slot.map(value => evalTypedSlot(value, frame, e, projectMixinValues));
+  const values = slot.map(value => evalTypedSlot(value, frame, e, projectMixinValues, writeRulesets));
   return combineAll(values, resolved => resolved);
 }
 
@@ -3977,6 +3979,13 @@ function throwUnitArithmetic(error: unknown, node: object, e: EvalCtx): never {
    * author gets the same structured error and location rather than a bare
    * TypeError out of the public API.
    */
+  if (error instanceof EmptyOperandError) {
+    throw ERR.emptyOperand({
+      node,
+      ...arithmeticSiteLocation(node, e),
+      meta: { reason: error.message }
+    });
+  }
   if (error instanceof IncomparableOperandsError) {
     throw ERR.incomparableOperands({
       node,
@@ -4045,9 +4054,21 @@ function evalTyped(
   node: ValueNode,
   frame: Frame | null,
   e: EvalCtx,
-  projectMixinValues = false
+  projectMixinValues = false,
+  writeRulesets = false
 ): MaybePromise<ValueGroup> {
   switch (node.type) {
+    case 'AnonymousMixin':
+      /*
+       * [P37] A ruleset passed to a function is evaluated and kept: the function
+       * receives it as the raw text of its evaluated block, so a call written out
+       * as-is (unknown, not in scope, or failed and preserved) never loses it.
+       * Anywhere else it has no value, exactly as before.
+       */
+      return writeRulesets
+        ? writtenRulesetArgument(node, frame, e)
+        : mapMaybe(evalValue(node, frame, e), v => force(e, v));
+
     /* An AUTHORED `null` — provenance explicit, so `null` and an unbound value
      * stay distinguishable downstream while remaining the same value. */
     case 'Null':
@@ -4117,7 +4138,7 @@ function evalTyped(
         return hit.evaluated ?? withExcluded(e, bound, () =>
           isMixinCallValue(bound)
             ? force(e, literal(''))
-            : evalTypedSlot(bound, hit.frame, e, projectMixinValues));
+            : evalTypedSlot(bound, hit.frame, e, projectMixinValues, writeRulesets));
       });
     case 'Reference': {
       const moduleCall = evalModuleReferenceCall(node, frame, e);
@@ -4781,8 +4802,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       /*
        * An anonymous mixin reaching a value position is not byte-serializable:
        * it can only be *called* (`@dr()`), so it folds to empty bytes here. The
-       * one position ruled otherwise is an argument to a call written out as-is
-       * (ledger P37), which `evalCall` writes from the block's evaluated body
+       * one position ruled otherwise is a function argument (ledger P37), which
+       * the typed lane writes from the block's evaluated body
        * ({@link writtenRulesetArgument}).
        */
       return literal('');
@@ -7243,21 +7264,8 @@ function dispatchCall(
 ): MaybePromise<EvalValue> {
   const sep = node.modern ? ' ' : ',';
 
-  /*
-   * [P37] A name that reaches no function is written out as-is with its
-   * arguments evaluated, and a ruleset argument is no exception: its body is
-   * evaluated and written, `@c: red; foo(@l, { color: @c; })` →
-   * `foo(1 2, { color: red; })`. It never silently vanishes.
-   */
-  const writtenAsIs = selected === undefined && ev.paramNames(node.name, undefined, ambient) === undefined;
-
   // Args are materialized TYPED (each arg's tag sourced from its parse node).
-  const typed = node.args.map((a) => {
-    const block = writtenAsIs ? resolveValueBlock(a.value, frame, e) : undefined;
-    return block?.type === 'AnonymousMixin'
-      ? writtenRulesetArgument(node, block, a.value, frame, e)
-      : evalTypedSlot(a.value, frame, e, true);
-  });
+  const typed = node.args.map(a => evalTypedSlot(a.value, frame, e, true, true));
   return combineAll(typed, (vals) => {
     const ordered = orderKeywordArgs(node.args, vals, ev, node.name, selected, ambient);
     const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
@@ -7273,87 +7281,158 @@ function dispatchCall(
 }
 
 /**
- * [P37] A ruleset argument of a call written out as-is, evaluated in the scope
- * it was bound in and written as a one-line declaration list:
- * `{ color: red; margin: 0; }` (`{color:red;margin:0}` compressed). Each
- * declaration follows the ruleset-body rules: variable declarations bind
- * silently, `+:` / `+_:` merge into the first declaration of that name, a
- * `null` value elides its own declaration, and a ruleset-valued declaration
- * raises `eval/ruleset-on-property`. Anything that is not a declaration (a
- * nested rule, an at-rule, a mixin call) and a block with parameters have no
- * spelling inside a CSS value, so they raise rather than being dropped.
+ * [P37] A ruleset passed to a function, evaluated in the scope it was bound in
+ * and written as one line: `{ color: red; .a { x: red; } }`
+ * (`{color:red;.a{x:red}}` compressed). The body follows the ruleset-body rules:
+ * variable and mixin definitions bind silently, `+:` / `+_:` merge into the
+ * first declaration of that name, a `null` value elides its own declaration, a
+ * ruleset-valued declaration raises `eval/ruleset-on-property`, `$prop` reads
+ * the body's earlier declarations, a guarded nested rule emits only when its
+ * guard holds, and a mixin call expands in place. A block with parameters, and
+ * a statement this writer has no one-line form for, raise
+ * `eval/ruleset-argument-with-rules` rather than being dropped.
  */
-function writtenRulesetArgument(
-  call: FunctionCall,
-  block: AnonymousMixin,
-  slot: ValueSlot,
-  frame: Frame | null,
-  e: EvalCtx
-): MaybePromise<ValueGroup> {
-  const reject = (what: string): never => {
-    throw ERR.rulesetArgumentWithRules({
-      node: call,
-      ...callSiteLocation(call, e),
-      meta: { name: call.name, what }
-    });
-  };
+function writtenRulesetArgument(block: AnonymousMixin, frame: Frame | null, e: EvalCtx): MaybePromise<ValueGroup> {
   if (block.params !== undefined) {
-    reject('parameters');
+    rejectRulesetArgument(block, 'parameters', e);
   }
-  const bound = resolveForRuleset(slot, frame, e);
-  const rules = bound?.rules ?? block.rules;
+  const lexical = frame === null ? null : detachedBinding(frame, block)?.lexicalFrame ?? frame;
+  return mapMaybe(writtenBlockBody(block, block.rules, lexical, e), makeAny);
+}
+
+function rejectRulesetArgument(block: AnonymousMixin, what: string, e: EvalCtx): never {
+  throw ERR.rulesetArgumentWithRules({
+    node: block,
+    ...callSiteLocation(block, e),
+    meta: { what }
+  });
+}
+
+/** One block body of a ruleset argument, braces included (see {@link writtenRulesetArgument}). */
+function writtenBlockBody(
+  block: AnonymousMixin,
+  rules: Statement[],
+  parent: Frame | null,
+  e: EvalCtx
+): MaybePromise<string> {
   const bodyFrame: Frame = {
-    parent: bound?.frame ?? frame,
+    parent,
     mixins: collectMixins(rules),
     declIndex: collectDeclIndex(rules), cells: null, reassign: null
   };
   const compress = e.compress === true;
   type Part = { readonly separator: string; readonly value: MaybePromise<string>; readonly sink: { elided: boolean } };
   type Entry = { readonly name: MaybePromise<string>; readonly mergeKey: string | null; readonly parts: Part[]; important: boolean };
-  const entries: Entry[] = [];
-  for (const rule of rules) {
-    if (rule.type === 'VariableDeclaration') {
-      continue;
-    }
-    if (rule.type !== 'Declaration') {
-      reject(`a ${rule.type}`);
-      continue;
-    }
-    assertDeclarationValueIsNotRuleset(rule, bodyFrame, e);
+
+  /* In source order: a declaration entry, or the finished bytes of a nested rule, at-rule or comment. */
+  const items: Array<Entry | MaybePromise<string>> = [];
+  const addDeclaration = (rule: Declaration, frame: Frame, important: boolean): void => {
+    recordPropertyDeclaration(bodyFrame, rule, frame);
+    assertDeclarationValueIsNotRuleset(rule, frame, e);
     const sink = { elided: false };
-    const value = evalBytes(rule.value, bodyFrame, { ...e, elideSink: sink });
+    const value = evalBytes(rule.value, frame, { ...e, elideSink: sink });
     const key = rule.merge !== null && typeof rule.name === 'string' ? rule.name : null;
-    const prior = key === null ? undefined : entries.find(entry => entry.mergeKey === key);
+    const prior = key === null
+      ? undefined
+      : items.find((item): item is Entry => typeof item === 'object' && 'mergeKey' in item && item.mergeKey === key);
     if (prior !== undefined) {
       prior.parts.push({ separator: rule.merge === ',' ? (compress ? ',' : ', ') : ' ', value, sink });
-      prior.important ||= rule.important;
-      continue;
+      prior.important ||= important;
+      return;
     }
-    entries.push({
-      name: typeof rule.name === 'string' ? rule.name : evalBytes(rule.name, bodyFrame, e),
+    items.push({
+      name: typeof rule.name === 'string' ? rule.name : evalBytes(rule.name, frame, e),
       mergeKey: key,
       parts: [{ separator: '', value, sink }],
-      important: rule.important
+      important
     });
-  }
-  const written = entries.map(entry => combineAll([entry.name, ...entry.parts.map(part => part.value)], ([name, ...values]) => {
-    let value = '';
-    entry.parts.forEach((part, index) => {
-      if (!part.sink.elided) {
-        value += (value === '' ? '' : part.separator) + values[index]!;
+  };
+  for (const rule of rules) {
+    switch (rule.type) {
+      case 'VariableDeclaration':
+      case 'MixinDefinition':
+        break;
+      case 'Declaration':
+        addDeclaration(rule, bodyFrame, rule.important);
+        break;
+      case 'Comment':
+        items.push(rule.text);
+        break;
+      case 'Ruleset': {
+        const selector = combineAll(
+          rule.selector.selectors.map(branch => resolveSelectorBranch(branch, bodyFrame, e)),
+          branches => branches.join(compress ? ',' : ', ')
+        );
+        const guard = rule.guard;
+        const holds = guard === undefined
+          ? true
+          : withUnitErrors(rule, e, () => evalGuard(guard, guardDeps(bodyFrame, e)));
+        items.push(mapMaybe(holds, guarded => guarded
+          ? mapMaybe(selector, header => mapMaybe(
+              writtenBlockBody(block, rule.rules, bodyFrame, e),
+              body => `${header}${compress ? '' : ' '}${body}`
+            ))
+          : ''));
+        break;
       }
-    });
-    if (entry.parts.every(part => part.sink.elided)) {
-      return '';
+      case 'AtRuleBlock':
+        items.push(mapMaybe(atRulePreludeBytes(rule, bodyFrame, scratchEmit(e)), prelude =>
+          mapMaybe(writtenBlockBody(block, rule.rules, bodyFrame, e), body =>
+            `${rule.name}${prelude === '' ? '' : ` ${prelude}`}${compress ? '' : ' '}${body}`)));
+        break;
+      case 'MixinCall': {
+        /*
+         * The mixin expands in place; its declarations join this body. Rules it
+         * would emit have no place in the collected declaration run.
+         */
+        const em = scratchEmit(e);
+        const collected: Leaf[] = [];
+        const noop = (): void => {};
+        const nested: Partition = { encounteredContainer: false, trailing: [], pending: [], emitBlock: noop };
+        settledExpansion(expandCall(rule, null, null, bodyFrame, collected, noop, nested, em, false, true), rule, em);
+        if (nested.trailing.length > 0 || nested.pending.length > 0) {
+          rejectRulesetArgument(block, 'a mixin call that emits nested rules', e);
+        }
+        for (const leaf of collected) {
+          if (leaf.node.type === 'Declaration') {
+            addDeclaration(leaf.node, leaf.frame, leaf.important || leaf.node.important);
+          }
+        }
+        break;
+      }
+      default:
+        rejectRulesetArgument(block, `a ${rule.type}`, e);
     }
-    const important = entry.important ? (compress ? '!important' : ' !important') : '';
-    return `${name!}${compress ? ':' : ': '}${value}${important}`;
-  }));
-  return combineAll(written, (declarations) => {
-    const kept = declarations.filter(declaration => declaration !== '');
-    return makeAny(kept.length === 0
-      ? '{}'
-      : compress ? `{${kept.join(';')}}` : `{ ${kept.map(declaration => `${declaration};`).join(' ')} }`);
+  }
+  const written = items.map((item) => {
+    if (typeof item !== 'object' || !('mergeKey' in item)) {
+      return mapMaybe(item, bytes => ({ bytes, declaration: false }));
+    }
+    return combineAll([item.name, ...item.parts.map(part => part.value)], ([name, ...values]) => {
+      let value = '';
+      item.parts.forEach((part, index) => {
+        if (!part.sink.elided) {
+          value += (value === '' ? '' : part.separator) + values[index]!;
+        }
+      });
+      if (item.parts.every(part => part.sink.elided)) {
+        return { bytes: '', declaration: true };
+      }
+      const important = item.important ? (compress ? '!important' : ' !important') : '';
+      return { bytes: `${name!}${compress ? ':' : ': '}${value}${important};`, declaration: true };
+    });
+  });
+  return combineAll(written, (pieces) => {
+    const kept = pieces.filter(piece => piece.bytes !== '');
+    if (kept.length === 0) {
+      return '{}';
+    }
+    if (!compress) {
+      return `{ ${kept.map(piece => piece.bytes).join(' ')} }`;
+    }
+    const last = kept[kept.length - 1]!;
+    const body = kept.map(piece => piece.bytes).join('');
+    return `{${last.declaration ? body.slice(0, -1) : body}}`;
   });
 }
 
@@ -17737,6 +17816,14 @@ function emitRawInline(text: string, e: Emit): void {
  * v1 port: v1's `Anonymous` carried neither flag. Every other value — a
  * dimension, colour, keyword, and the call written back out as-is because it
  * produced no result — is a value dumped into a statement position.
+ *
+ * Only value rows are checked, because a call cannot return a statement node.
+ * For the statement node types alpha.1 answered: a declaration is legal only
+ * in a declaration list, an at-rule only at the stylesheet root, and a
+ * ruleset, comment, variable declaration, extend or control statement in
+ * both. The at-rule "no" for a declaration list conflicts with nested `@media`
+ * being legal inside a ruleset; it is recorded here, not acted on, since no
+ * statement node reaches this check.
  */
 const STATEMENT_RESULT_POSITIONS: Readonly<Record<Value['type'], readonly [root: boolean, declarationList: boolean]>> = {
   Any: [true, true],
