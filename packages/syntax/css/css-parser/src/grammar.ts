@@ -294,6 +294,7 @@ type GrammarRuleName =
   | 'routedDeclarationListBody'
   | 'calcFunctionArguments'
   | 'functionArgument'
+  | 'branchLead'
   | 'VarFallbackOpener'
   | 'IfTest'
   | 'StyleTest';
@@ -422,11 +423,6 @@ const CSS_MATH_FUNCTION_OPENERS = [
  * identifier (`-webkit-foo`) is not this shape and stays a run item.
  */
 const signedNumericStart = regex(/[-+](?=[.0-9])/);
-const genericFunctionIdentifier = regex(/(?!(?:calc|url|var)(?=\())-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
-const genericFunctionOpen = noTrivia(sequence(
-  genericFunctionIdentifier,
-  literal('(')
-));
 const customEscape = regex(/\\[^\n\r\f]/);
 
 /*
@@ -911,23 +907,17 @@ const cssFactory = (g: GrammarSelf) => {
    * read once, as a value run that stops at a top-level `:`
    * (`ValueSequenceBeforeColon`), and the token after it decides: `:` makes
    * the body a branch list (`BranchRest`), anything else continues the plain
-   * arguments. Every other opening is decided by its own first token: `{` is a
-   * `{}`-wrapped argument, `;` an empty first group (`foo(; a)`), `)` no
-   * arguments.
+   * arguments. Every other opening is decided by its own first token: `;` an
+   * empty first group (`foo(; a)`), `)` no arguments.
    */
   const genericFunctionArguments = optional(choice(
     sequence(
-      g.ValueSequenceBeforeColon,
+      g.branchLead,
       functionArgumentGap,
       choice(
         g.BranchRest,
         plainArgumentsAfterFirst
       )
-    ),
-    sequence(
-      g.CurlyValue,
-      functionArgumentGap,
-      plainArgumentsAfterFirst
     ),
     oneOrMore(sequence(
       functionArgumentSemicolon,
@@ -968,6 +958,19 @@ const cssFactory = (g: GrammarSelf) => {
   ));
 
   /*
+   * The argument that may lead a branch: a body's first argument, and the first
+   * argument of each later `;` group. A css-values-5 §8.3 condition is a
+   * `<declaration-value>` with no top-level colon, and a `{}` block is one
+   * component of it, so the lead is the colon-free value run or a
+   * `{}`-wrapped argument, decided at the `{`. A named slot: Less leads with
+   * its own argument (where a `{` is a detached ruleset).
+   */
+  const branchLead = choice(
+    g.ValueSequenceBeforeColon,
+    g.CurlyValue
+  );
+
+  /*
    * The rest of a branch list once its first condition has been read: the
    * colon, then `BranchValues`. The colon stands outside the node so a call
    * with no branch fails on the one character instead of entering a node.
@@ -984,21 +987,14 @@ const cssFactory = (g: GrammarSelf) => {
    * comma group. A malformed `if(a: 1; b)` is invalid at computed-value time,
    * not a parse error (css-values-5 §8.3), so a group with no colon parses.
    */
-  const branchListGroup = optional(choice(
-    sequence(
-      g.ValueSequenceBeforeColon,
-      functionArgumentGap,
-      choice(
-        sequence(
-          branchColon,
-          functionArgumentGroup
-        ),
-        functionArgumentCommaRest
-      )
-    ),
-    sequence(
-      g.CurlyValue,
-      functionArgumentGap,
+  const branchListGroup = optional(sequence(
+    g.branchLead,
+    functionArgumentGap,
+    choice(
+      sequence(
+        branchColon,
+        functionArgumentGroup
+      ),
       functionArgumentCommaRest
     )
   ));
@@ -1864,12 +1860,14 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * A fallback component. An identifier-shaped one is read once by
-   * `VarFallbackOpener` and routed by what it read; every other one is decided by
-   * its own first character (a `TypedValue` atom, a group, a bracket or brace
-   * leaf, punctuation).
+   * A fallback component. A unicode range (`U+0-7F`) is its own token, read
+   * before the identifier it starts like. An identifier-shaped component is read
+   * once by `VarFallbackOpener` and routed by what it read; every other one is
+   * decided by its own first character (a `TypedValue` atom, a group, a bracket
+   * or brace leaf, punctuation).
    */
   const varFallbackComponent = choice(
+    g.UnicodeRange,
     g.VarFallbackOpener,
     g.TypedValue,
     g.VarFallbackParen,
@@ -1896,25 +1894,12 @@ const cssFactory = (g: GrammarSelf) => {
     'VarFallbackEmpty',
     choice(
       peek(literal(',')),
-      peek(literal(';')),
       peek(literal(')'))
     ),
     () => any('')
   );
   const varFallbackComma = sequence(
     literal(','),
-    optional(cssValueTrivia)
-  );
-
-  /*
-   * Inside a fallback's function, a `;` separates argument groups as it does
-   * in any function body (`var(--x, foo(a; b))`, a branch list's `;`). The
-   * fallback's permissive reading takes it itself, so such a body is never
-   * refused here and read again as a generic call. At the fallback's top level a
-   * `;` still ends the declaration.
-   */
-  const varFallbackSemicolon = sequence(
-    literal(';'),
     optional(cssValueTrivia)
   );
   const VarFallbackItem = node(
@@ -1941,24 +1926,32 @@ const cssFactory = (g: GrammarSelf) => {
           );
     }
   );
+
+  /*
+   * A fallback's function body, read by the fallback's own permissive items
+   * (ledger P2: fallback comma semantics — an empty item between commas is the
+   * empty `Any` — and raw bracket and brace leaves). A `;` separates groups as
+   * in any function body (`var(--x, foo(a; b))`, a branch list's `;`), so such
+   * a body is read here, never refused and read again as a generic call; a
+   * group left empty before a `;` is the empty slot. The padding is owned as a
+   * generic body owns it: after the opener, then a gap after each item.
+   */
   const VarFallbackCall = node(
     'VarFallbackCall',
     sequence(
       routed(),
+      optional(cssValueTrivia),
       optional(sequence(
         not(literal(')')),
-
-        /*
-         * Spelled as a sequence, not a separator list, so each `,` and `;`
-         * stays among the reducer's children.
-         */
-        g.VarFallbackItem,
+        optional(g.VarFallbackItem),
+        functionArgumentGap,
         many(sequence(
           choice(
             varFallbackComma,
-            varFallbackSemicolon
+            functionArgumentSemicolon
           ),
-          g.VarFallbackItem
+          optional(g.VarFallbackItem),
+          functionArgumentGap
         ))
       )),
       literal(')')
@@ -2130,8 +2123,7 @@ const cssFactory = (g: GrammarSelf) => {
   /*
    * Preserve the public declaration component-value language without letting
    * its permissive forms leak into query preludes or dedicated function
-   * productions. url()/var()/calc() stay owned by their strict branches;
-   * genericFunctionOpen excludes those glued openers.
+   * productions. url()/var()/calc() stay owned by their strict branches.
    */
   /*
    * The padding is spelled for the same reason `GenericFunction` spells it: this
@@ -2472,9 +2464,8 @@ const cssFactory = (g: GrammarSelf) => {
      * position as in a declaration (css-syntax-3 §5.4.9): a `calc()` operand
      * reaches the same `GenericFunction` tail, so `calc(if(media(print): 1px;
      * else: 0px) + 1px)` and `calc(foo(1px / 2) + 1px)` parse their function
-     * exactly as a declaration value does. (A `var()` fallback tries its own
-     * `VarFallbackCall` body first for an ordinary opener; a dashed opener and a
-     * body that one refuses reach this tail through `TypedValue`.)
+     * exactly as a declaration value does. (A `var()` fallback routes its own
+     * openers through `VarFallbackOpener`.)
      */
     when(
       endsWith('('),
@@ -2487,12 +2478,11 @@ const cssFactory = (g: GrammarSelf) => {
 
   /*
    * The identifier-or-opener token of a var() fallback component, read once and
-   * routed by its text. A nested var() keeps its own first separator and
-   * trailing fallback commas, as the outer var does. A generic function takes
-   * the fallback's own permissive body (`VarFallbackCall`: fallback comma
-   * semantics, empty items, raw bracket and brace leaves — ledger P2), not the
-   * generic call tail an ordinary typed value takes; the other keys route as
-   * the typed dispatch routes them.
+   * routed by its text, as a fallback has always routed it: a nested var()
+   * keeps its own first separator and trailing fallback commas, as the outer var
+   * does; `url(` and `calc(` keep their strict tails; a dashed function
+   * (css-mixins-1) takes the generic call tail; any other function takes the
+   * fallback's own permissive body (`VarFallbackCall`, ledger P2).
    */
   const VarFallbackOpener = dispatch(
     identOrFunction,
@@ -2501,7 +2491,7 @@ const cssFactory = (g: GrammarSelf) => {
       UrlFunction
     ),
     cssCase(
-      CSS_MATH_FUNCTION_OPENERS,
+      'calc(',
       g.MathFunction
     ),
     cssCase(
@@ -2509,6 +2499,7 @@ const cssFactory = (g: GrammarSelf) => {
       VarFunction
     ),
     when(endsWith('\\('), g.RoutedKeyword),
+    when(matches(/^--.*\($/), GenericFunction),
     when(
       endsWith('('),
       g.VarFallbackCall
@@ -4585,6 +4576,7 @@ const cssFactory = (g: GrammarSelf) => {
     IfTest,
     StyleTest,
     functionArgument,
+    branchLead,
     VarFallbackOpener,
     whitespace,
     rw: whitespace
