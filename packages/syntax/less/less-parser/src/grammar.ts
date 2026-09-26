@@ -288,7 +288,6 @@ type LessRules = {
   /** One term of a media query clause, admitting Less interpolation. */
   MediaQueryTerm: Combinator<ValueNode>;
   QueryFeature: Combinator<ValueNode>;
-  QueryClause: Combinator<ValueNode>;
   ContainerStyleQuery: Combinator<FunctionCall>;
   ContainerScrollStateQuery: Combinator<FunctionCall>;
   ContainerName: Combinator<Keyword>;
@@ -374,6 +373,8 @@ type LessRules = {
 type LessInputRules = LessRules & typeof lessSyntax;
 
 type SharedSyntax = {
+  // Inherited from the CSS base: an only-clause or a chain of QueryTerm (Less's).
+  QueryClause: Combinator<ValueNode>;
   // Inherited from the CSS base: ( <container-condition> ), whose atoms reach Less's QueryFeature and ContainerStyleQuery leaves.
   ContainerQueryInParens: Combinator<ValueNode>;
   // Inherited from the CSS base: a nested group, a feature, or the ContainerStyleQuery leaf Less binds.
@@ -3428,30 +3429,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     children => requireValueNode(children[0])
   );
-  const QueryOnlyClause = node(
-    'QueryOnlyClause',
-    sequence(
-      g.QueryOnly,
-      g.QueryNonOnlyKeyword,
-      many(sequence(g.QueryAndOr, g.QueryTerm))
-    ),
-    (children, _fields, _span, _rawChildren, triviaLog, state) => spacedFromValueChildren(children, triviaLog, state)
-  );
-  // Gating note: `only` and ordinary query terms share the keyword first set.
-  // `QueryNonOnlyKeyword` already rejects `only` in the generic branch; a
-  // dispatch wrapper would mostly restate that negative guard without removing
-  // the media/container semantic split.
-  const QueryClause = node(
-    'QueryClause',
-    choice(
-      QueryOnlyClause,
-      sequence(
-        g.QueryTerm,
-        many(sequence(g.QueryAndOr, g.QueryTerm))
-      )
-    ),
-    (children, _fields, _span, _rawChildren, triviaLog, state) => queryClauseReducer(children, triviaLog, state)
-  );
   const QueryPrelude = node(
     'QueryPrelude',
     oneOrMoreSep(
@@ -5085,7 +5062,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     QueryTerm,
     MediaQueryTerm,
     QueryFeature,
-    QueryClause,
     ContainerStyleQuery,
     ContainerScrollStateQuery,
     ContainerName,
