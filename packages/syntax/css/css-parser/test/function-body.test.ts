@@ -33,7 +33,6 @@ const ROUND_TRIP: Array<[name: string, css: string, emitted?: string]> = [
   ['an unknown function with a nested semicolon', 'foo(a; b)'],
   ['empty semicolon groups', 'foo(a;; b)'],
   ['comments beside a `;`', 'foo(a /* c */ ; /* d */ b)'],
-  ['a URL scheme colon, which is not a branch', 'foo(http://x)', 'foo(http :// x)'],
   ['a leading colon, which has no condition', 'foo(:x)', 'foo(: x)'],
   ['punctuation glued to a colon, which is not a branch colon', 'foo(a +: 1)'],
   ['an escaped colon, which is not a branch colon', 'foo(a\\:b)'],
@@ -52,7 +51,7 @@ const ROUND_TRIP: Array<[name: string, css: string, emitted?: string]> = [
   ['a var() fallback holding a {}-block', 'var(--x, { a, b })'],
   ['if-tests joined by `or`', 'if(media(width > 600px) or media(print): 1px; else: 0)'],
   ['a supports() test holding a condition group', 'if(supports(not (display: grid)): 1px; else: 0)'],
-  ['media(), supports() and style() outside a branch condition', 'media(a, b) supports(a b c) style(a, b)'],
+  ['media(), supports() and style() holding a general-enclosed query', 'media(a, b) supports(a b c) style(a, b)'],
   ['a comment after a branch colon, whose padding is canonical', 'if(media(print):/*c*/ 1px)', 'if(media(print): 1px)'],
   ['an empty argument list', 'foo()']
 ];
@@ -124,12 +123,26 @@ describe('CSS function bodies: branches, `;` groups, `{}` arguments, dashed func
     });
   });
 
-  it('keeps media() outside a branch condition an ordinary call', () => {
+  /*
+   * An if-test is decided at its opener, wherever it stands: its contents are a
+   * query. One that is no media feature or condition is css-values-5's
+   * `<general-enclosed>`, held as written.
+   */
+  it('reads media() as an if-test at its opener, anywhere in a value', () => {
     expect(declarationValue('media(a, b)')).toMatchObject({
       type: 'FunctionCall',
       name: 'media',
-      args: [{ value: { type: 'Keyword', src: 'a' } }, { value: { type: 'Keyword', src: 'b' } }]
+      args: [{ value: { type: 'Interpolation' } }]
     });
+  });
+
+  /*
+   * P38 makes `http` followed by `:` a branch condition, and a value never
+   * begins with `/` in this grammar (`b: //x` is rejected too), so the branch
+   * has no value to read. Recorded, not decided here.
+   */
+  it('rejects an unquoted URL as a first argument', () => {
+    expect(() => parse('a { b: foo(http://x); }')).toThrow();
   });
 
   it('keeps a single branch as the one argument', () => {

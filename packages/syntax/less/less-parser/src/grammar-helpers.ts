@@ -1297,9 +1297,12 @@ function functionCallFromChildren(
   }
   /* [P38] `[condition, BranchRest]` is one branch-list argument. */
   const [condition, rest] = args;
-  if (args.length === 2 && condition !== undefined && rest !== undefined && !isLessCallArg(condition) && !isLessCallArg(rest)) {
-    const branches = withFirstBranchCondition([condition, rest]);
+  if (args.length === 2 && condition !== undefined && rest !== undefined && !isLessCallArg(rest)) {
+    const branches = withFirstBranchCondition([isLessCallArg(condition) ? [] : condition, rest]);
     if (branches !== undefined) {
+      if (isLessCallArg(condition)) {
+        throw new SyntaxError('A keyword argument cannot be a branch condition.');
+      }
       return callWithLayout(name, [branches], [], false, span, state);
     }
   }
@@ -1847,7 +1850,8 @@ function functionConditionSource(value: ValueSlot): string {
       ? `@${typeof node.name === 'string' ? node.name : functionConditionSource(node.name)}`
       : node.raw;
     case 'FunctionCall': return `${node.name}(${node.args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${functionConditionSource(argument.value)}`).join(', ')})`;
-    case 'Operation': return `${functionConditionSource(node.left)} ${node.operator} ${functionConditionSource(node.right)}`;
+    /* A query's `name: value` (an if-test's `supports(x: y)`) is spelled as a query spells it. */
+    case 'Operation': return `${functionConditionSource(node.left)}${node.operator === ':' ? '' : ' '}${node.operator} ${functionConditionSource(node.right)}`;
     case 'Block': return `${delimiterOpen(node.delimiter)}${functionConditionSource(node.value)}${delimiterClose(node.delimiter)}`;
     case 'Branch': return `${functionConditionSource(node.condition)}:${Array.isArray(node.value) && node.value.length === 0 ? '' : ` ${functionConditionSource(node.value)}`}`;
     /*

@@ -59,9 +59,13 @@ describe('Less: branch arguments (P38)', () => {
         .resolves.toBe('a {\n  width: if(media(width > 600px): 10px; else: 0);\n}\n');
     });
 
-    it(`${mode}: media()/supports()/style() outside a branch condition are ordinary calls`, async () => {
-      await expect(render(`${prefix}@a: x;\na { b: supports(@a) media(@a, 1) style(@a); }`))
-        .resolves.toBe('a {\n  b: supports(x) media(x, 1) style(x);\n}\n');
+    /*
+     * An if-test is decided at its opener, so a `supports()` anywhere in a value
+     * is a supports condition, and the `@supports` prelude's rule applies:
+     * a variable is interpolated as `@{a}`, never bare.
+     */
+    it(`${mode}: supports() is an if-test wherever it stands`, async () => {
+      await expect(render(`${prefix}@a: x;\na { b: supports(@a); }`)).rejects.toThrow(/Bare @variable/);
     });
 
     it(`${mode}: \`foo(a; b)\` keeps Less's meaning, two arguments`, async () => {

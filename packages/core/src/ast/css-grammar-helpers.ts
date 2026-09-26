@@ -118,11 +118,13 @@ export function withAuthoredSeparators<T extends object>(value: T, fields: Reduc
  * grammar's own tokens — a comment is one whole trivia token, so a `;` inside
  * one is never read as a separator, and a value is checked first, so a value
  * node is never read as punctuation. Only children in `[from, to)` are read,
- * so a call can leave out its opener and `)`.
+ * so a call can leave out its opener and `)`. A group whose first value is
+ * followed by a `:` terminal is a BRANCH (ledger P38); `branches` marks it.
  */
-function splitAtSemicolons(children: readonly unknown[], from: number, to: number): { segments: ValueSlot[][]; separators: string[] } {
+function splitAtSemicolons(children: readonly unknown[], from: number, to: number): { segments: ValueSlot[][]; separators: string[]; branches: boolean[] } {
   const segments: ValueSlot[][] = [[]];
   const separators: string[] = [];
+  const branches: boolean[] = [false];
   let padding = '';
   let afterDelimiter = false;
   for (let index = from; index < to; index++) {
@@ -141,7 +143,11 @@ function splitAtSemicolons(children: readonly unknown[], from: number, to: numbe
         padding = '';
         afterDelimiter = true;
         segments.push([]);
+        branches.push(false);
       } else {
+        if (text === ':' && segments[segments.length - 1]!.length === 1) {
+          branches[branches.length - 1] = true;
+        }
         padding += text;
       }
     }
@@ -149,7 +155,7 @@ function splitAtSemicolons(children: readonly unknown[], from: number, to: numbe
   if (afterDelimiter) {
     separators[separators.length - 1] += padding;
   }
-  return { segments, separators };
+  return { segments, separators, branches };
 }
 
 /*
@@ -188,8 +194,8 @@ export function semicolonGroupedCall(children: readonly unknown[], fields: Reduc
     }
     return funcCall(name, withAuthoredSeparators(args, fields, Math.max(0, args.length - 1)));
   }
-  const { segments, separators } = splitAtSemicolons(children, 1, children.length - 1);
-  const groups = semicolonGroups(segments, fields);
+  const { segments, separators, branches } = splitAtSemicolons(children, 1, children.length - 1);
+  const groups = semicolonGroups(segments, branches, fields);
   return funcCall(name, [withLayoutWhenComplete(list(groups, ';'), separators, groups.length - 1)]);
 }
 
@@ -200,43 +206,17 @@ export function spaceRun(children: readonly unknown[], fields: ReducerFields | u
 }
 
 /**
- * One branch (ledger P38): the condition is the first value, and what follows
- * the colon is the value — nothing is the empty slot, several arguments are the
- * comma `List` they were written as.
- */
-export function branchOf(children: readonly unknown[], fields: ReducerFields | undefined): Branch {
-  let condition: ValueSlot | undefined;
-  const values: ValueSlot[] = [];
-  for (const child of children) {
-    if (!isValueSlotValue(child)) {
-      continue;
-    }
-    if (condition === undefined) {
-      condition = child;
-    } else {
-      values.push(child);
-    }
-  }
-  if (condition === undefined) {
-    throw new Error('CSS AST branch lost its condition');
-  }
-  if (values.length === 0) {
-    return branch(condition, []);
-  }
-  return branch(condition, values.length === 1 ? values[0]! : withAuthoredSeparators(list(values, ','), fields, values.length - 1));
-}
-
-/**
  * A branch list after its first condition and colon (ledger P38): the first
  * branch's value — the branch still waiting for that condition, which the
  * call's reducer supplies through {@link withFirstBranchCondition} — then each
- * later `;` group, a `Branch` or a plain group. One group is the branch itself;
- * several (or one with the spec's trailing `;`, kept as an empty slot) are the
- * `;` List they were written as, with each `;`'s authored run as layout.
+ * later `;` group, a `Branch` when its first value is followed by a `:`,
+ * else a plain group. One group is the branch itself; several (or one with the
+ * spec's trailing `;`, kept as an empty slot) are the `;` List they were
+ * written as, with each `;`'s authored run as layout.
  */
 export function branchRest(children: readonly unknown[], fields: ReducerFields | undefined): ValueSlot {
-  const { segments, separators } = splitAtSemicolons(children, 0, children.length);
-  const groups = semicolonGroups(segments, fields);
+  const { segments, separators, branches } = splitAtSemicolons(children, 0, children.length);
+  const groups = semicolonGroups(segments, branches, fields);
   const first = branch([], groups[0]!);
   if (groups.length === 1) {
     return first;
@@ -278,41 +258,41 @@ export function withFirstBranchCondition(args: readonly ValueSlot[]): ValueSlot 
  * An `<if-test>` call (`media(…)`, `supports(…)`, `style(…)`): the query the
  * grammar parsed inside the call's parentheses is the call's one argument. A
  * query feature or group is a paren `Block`, and those parentheses are the
- * call's own, so the argument is the block's contents. A dialect's style-query
- * rule reduces the whole `style(…)` call itself, and passes through.
+ * call's own, so the argument is the block's contents.
  */
 export function ifTestCall(children: readonly unknown[]): FunctionCall {
   const name = children.find(isTerminalText);
   const query = firstValue(children);
-  if (name === undefined && query.type === 'FunctionCall') {
-    return query;
-  }
   const argument = query.type === 'Block' && query.delimiter === 'paren' ? query.value : query;
   return funcCall(tokenText(name), [argument]);
 }
 
 /*
  * The value each `;` group reduces to: nothing is the empty slot `[]`, one
- * argument is itself, and several are the comma `List` they were written as.
- * The node's commas are handed out to its groups in order, one fewer than each
- * group's arguments, so every rung keeps its own authored layout.
+ * argument is itself, and several are the comma `List` they were written as. A
+ * branch group is a `Branch` of its first value (the condition) and the rest
+ * (the value, reduced the same way). The node's commas are handed out in order,
+ * one fewer than each comma run's arguments, so every rung keeps its own
+ * authored layout.
  */
-function semicolonGroups(segments: readonly ValueSlot[][], fields: ReducerFields | undefined): ValueSlot[] {
+function semicolonGroups(segments: readonly ValueSlot[][], branches: readonly boolean[], fields: ReducerFields | undefined): ValueSlot[] {
   const commas = authoredSeparators(fields);
   let comma = 0;
-  const groups: ValueSlot[] = [];
-  for (const group of segments) {
-    if (group.length === 0) {
-      groups.push([]);
-    } else if (group.length === 1) {
-      groups.push(group[0]!);
-    } else {
-      const next = comma + group.length - 1;
-      groups.push(withLayoutWhenComplete(list(group, ','), commas.slice(comma, next), group.length - 1));
-      comma = next;
+  const commaRun = (values: readonly ValueSlot[]): ValueSlot => {
+    if (values.length === 0) {
+      return [];
     }
-  }
-  return groups;
+    if (values.length === 1) {
+      return values[0]!;
+    }
+    const next = comma + values.length - 1;
+    const run = withLayoutWhenComplete(list([...values], ','), commas.slice(comma, next), values.length - 1);
+    comma = next;
+    return run;
+  };
+  return segments.map((group, index) => (branches[index] === true
+    ? branch(group[0]!, commaRun(group.slice(1)))
+    : commaRun(group)));
 }
 
 /**
