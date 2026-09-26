@@ -152,9 +152,18 @@ function splitAtSemicolons(children: readonly unknown[], from: number, to: numbe
   return { segments, separators };
 }
 
-/** Does this body carry a `;` terminal of its own (not one inside a value)? */
+/*
+ * Does this body carry a `;` terminal of its own (not one inside a value)? The
+ * text is compared first; only a `;` pays the value-type check (a `Quoted`
+ * value's `value` may be `;` too). It runs on every generic call.
+ */
 function hasSemicolon(children: readonly unknown[]): boolean {
-  return children.some(child => !isValue(child) && isTerminalText(child) && tokenText(child) === ';');
+  for (const child of children) {
+    if ((child === ';' || (typeof child === 'object' && child !== null && 'value' in child && child.value === ';')) && !isValue(child)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Record `separators` as `value`'s layout when there is one per boundary. */
@@ -218,16 +227,15 @@ export function branchOf(children: readonly unknown[], fields: ReducerFields | u
 }
 
 /**
- * The rest of a branch list after its first condition (ledger P38): the first
- * branch — still waiting for that condition, which the call's reducer supplies
- * through {@link withFirstBranchCondition} — then each later `;` group, a
- * `Branch` or a plain group. One group is the branch itself; several (or one
- * with the spec's trailing `;`, kept as an empty slot) are the `;` List they
- * were written as, with each `;`'s authored run as layout.
+ * A branch list after its first condition and colon (ledger P38): the first
+ * branch's value — the branch still waiting for that condition, which the
+ * call's reducer supplies through {@link withFirstBranchCondition} — then each
+ * later `;` group, a `Branch` or a plain group. One group is the branch itself;
+ * several (or one with the spec's trailing `;`, kept as an empty slot) are the
+ * `;` List they were written as, with each `;`'s authored run as layout.
  */
 export function branchRest(children: readonly unknown[], fields: ReducerFields | undefined): ValueSlot {
-  const colon = children.findIndex(child => !isValue(child) && isTerminalText(child) && tokenText(child) === ':');
-  const { segments, separators } = splitAtSemicolons(children, colon + 1, children.length);
+  const { segments, separators } = splitAtSemicolons(children, 0, children.length);
   const groups = semicolonGroups(segments, fields);
   const first = branch([], groups[0]!);
   if (groups.length === 1) {

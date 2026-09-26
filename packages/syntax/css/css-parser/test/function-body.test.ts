@@ -52,7 +52,9 @@ const ROUND_TRIP: Array<[name: string, css: string, emitted?: string]> = [
   ['a var() fallback holding a {}-block', 'var(--x, { a, b })'],
   ['if-tests joined by `or`', 'if(media(width > 600px) or media(print): 1px; else: 0)'],
   ['a supports() test holding a condition group', 'if(supports(not (display: grid)): 1px; else: 0)'],
-  ['media(), supports() and style() outside a branch condition', 'media(a, b) supports(a b c) style(a, b)']
+  ['media(), supports() and style() outside a branch condition', 'media(a, b) supports(a b c) style(a, b)'],
+  ['a comment after a branch colon, whose padding is canonical', 'if(media(print):/*c*/ 1px)', 'if(media(print): 1px)'],
+  ['an empty argument list', 'foo()']
 ];
 
 function declarationValue(css: string): ValueSlot {

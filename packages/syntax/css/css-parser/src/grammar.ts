@@ -241,6 +241,7 @@ type GrammarRuleName =
   | 'ValueSequenceBeforeColon'
   | 'Branch'
   | 'BranchRest'
+  | 'BranchValues'
   | 'CurlyValue'
   | 'ValueSequence'
   | 'ValueTerm'
@@ -286,7 +287,8 @@ type GrammarRuleName =
   | 'routedStylesheetBody'
   | 'routedDeclarationListBody'
   | 'calcFunctionArguments'
-  | 'IfTest';
+  | 'IfTest'
+  | 'IfTestCall';
 
 /*
  * Rules that the shared recognition library defines keep its concrete
@@ -831,13 +833,12 @@ const cssFactory = (g: GrammarSelf) => {
    * the modern colour syntaxes separate their alpha component with a slash
    * (`rgb(15 23 42 / .22)`, css-color-4 §5), and that slash is the same
    * separator rung a declaration value uses, so this points at `ValueSequence`
-   * rather than re-spelling it here. A `:` inside an argument (an `if()`
-   * branch, `style(--x: y)`) stays the punctuation component it is in a
-   * declaration value.
+   * rather than re-spelling it here. A value run cannot start on a `{`, so it
+   * is tried first and the common argument never enters the block rule.
    */
   const functionArgument = choice(
-    g.CurlyValue,
-    g.ValueSequence
+    g.ValueSequence,
+    g.CurlyValue
   );
 
   /*
@@ -901,10 +902,10 @@ const cssFactory = (g: GrammarSelf) => {
    * the body a branch list (`BranchRest`), anything else continues the plain
    * arguments. There is no lookahead and no second read.
    *
-   * A first argument the run cannot start — a `{}` block, or a leading `:` or
-   * `;` (`foo(:x)`, `foo(; a)`) — is plain.
+   * A first argument the run cannot start — a `{}` block, a leading `:` or
+   * `;` (`foo(:x)`, `foo(; a)`), or nothing — is plain.
    */
-  const genericFunctionArguments = optional(choice(
+  const genericFunctionArguments = choice(
     sequence(
       g.ValueSequenceBeforeColon,
       choice(
@@ -912,12 +913,8 @@ const cssFactory = (g: GrammarSelf) => {
         plainArgumentsAfterFirst
       )
     ),
-    sequence(
-      g.CurlyValue,
-      plainArgumentsAfterFirst
-    ),
     plainFunctionArguments
-  ));
+  );
 
   /*
    * css-values-5 §8.3's `<declaration-value>` with no top-level colon: a
@@ -928,22 +925,30 @@ const cssFactory = (g: GrammarSelf) => {
    * than a branch colon, so `foo(http://x)` stays one argument. It keeps the
    * `ValueSequence` node label and reducer, so a plain first argument's tree is
    * the one it always was.
+   *
+   * A condition is also the one place an `<if-test>` can stand, so a run item
+   * tries `IfTest` before an ordinary value term — here, not in every value
+   * atom, which would cost every declaration value the probe.
    */
-  const colonStart = sequence(literal(':'), not(literal('/')));
+  const colonStart = sequence(literal(':'), not(literal('//')));
+  const conditionTerm = choice(
+    g.IfTest,
+    g.ValueTerm
+  );
   const ValueSequenceBeforeColon = node(
     'ValueSequence',
     noTrivia(sequence(
       not(colonStart),
-      g.ValueTerm,
+      conditionTerm,
       many(choice(
         sequence(
           field('separator', cssValueTrivia),
           not(colonStart),
-          g.ValueTerm
+          conditionTerm
         ),
         sequence(
           not(colonStart),
-          g.ValueTerm
+          conditionTerm
         )
       ))
     )),
@@ -972,17 +977,26 @@ const cssFactory = (g: GrammarSelf) => {
 
   /*
    * The rest of a branch list once its first condition has been read: the
-   * colon, the first value, then `;` groups. A later group is a branch when it
-   * has one; a malformed `if(a: 1; b)` is invalid at computed-value time, not a
-   * parse error (css-values-5 §8.3), so a group without a colon still parses —
-   * that rare group is the only place a condition is read twice. The `;`s and
-   * the spec's trailing `;` are preserved in every dialect (P38). The call's
-   * reducer puts the first condition into the first branch.
+   * colon, then `BranchValues`. The colon stands outside the node so a call
+   * with no branch fails on one character instead of entering a node.
    */
-  const BranchRest = node(
-    'BranchRest',
+  const BranchRest = sequence(
+    branchColon,
+    g.BranchValues
+  );
+
+  /*
+   * A branch list after its first colon: the first value, then `;` groups. A
+   * later group is a branch when it has one; a malformed `if(a: 1; b)` is
+   * invalid at computed-value time, not a parse error (css-values-5 §8.3), so a
+   * group without a colon still parses — that rare group is the only place a
+   * condition is read twice. The `;`s and the spec's trailing `;` are preserved
+   * in every dialect (P38). The call's reducer puts the first condition into
+   * the first branch.
+   */
+  const BranchValues = node(
+    'BranchValues',
     sequence(
-      branchColon,
       functionArgumentGroup,
       many(sequence(
         functionArgumentSemicolon,
@@ -2462,7 +2476,6 @@ const cssFactory = (g: GrammarSelf) => {
     g.Dimension,
     g.Color,
     g.UnicodeRange,
-    g.IfTest,
     IdentOrFunction,
     g.ParenValue,
     g.SquareValue,
@@ -3621,37 +3634,50 @@ const cssFactory = (g: GrammarSelf) => {
    *
    * An if-test only exists as an operand of a branch condition, so it is tried
    * only where the call is followed by the branch's `:` or a boolean `and`/`or`
-   * (a bounded look past the call's own parentheses). Anywhere else
+   * (a look past the call's own parentheses). Anywhere else
    * `media(…)`, `supports(…)` and `style(…)` are ordinary calls — in Less a
    * `supports(@a)` value keeps its variable instead of meeting the `@supports`
    * prelude's bare-variable rule.
    */
+  const mediaTestName = identWord('media');
+  const supportsTestName = identWord('supports');
+  const styleTestName = identWord('style');
   const ifTestAhead = peek(noTrivia(sequence(
-    keywords(['media', 'supports', 'style'], { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }),
-    balanced('(', ')', { strict: true, skip: [blockComment, customDoubleQuoted, customSingleQuoted, customSlash] }),
+    choice(
+      mediaTestName,
+      supportsTestName,
+      styleTestName
+    ),
+    balancedParens,
     optional(cssValueTrivia),
-    choice(literal(':'), keywords(['and', 'or'], { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }))
+    choice(
+      literal(':'),
+      g.QueryAndOr
+    )
   )));
-  const styleTestName = token(keywords(['style'], { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }));
   const ContainerStyleQuery = node(
     'ContainerStyleQuery',
     sequence(styleTestName, g.ContainerQueryAtom),
     children => ifTestCall(children)
   );
-  const mediaTestName = token(keywords(['media'], { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }));
-  const supportsTestName = token(keywords(['supports'], { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }));
 
   /*
-   * A plain choice, not a dispatch on the name: a call whose contents are not a
-   * query (`media(a, b)`) is not an if-test and falls back to a generic call.
+   * The gate stands outside the node, so a term that is not an if-test fails
+   * the lookahead without entering one. A plain choice, not a dispatch on the
+   * name: a call whose contents are not a query (`media(a, b)`) is not an
+   * if-test and falls back to a generic call.
    */
-  const IfTest = node(
+  const IfTest = sequence(
+    ifTestAhead,
+    g.IfTestCall
+  );
+  const IfTestCall = node(
     'Call',
-    sequence(ifTestAhead, choice(
+    choice(
       sequence(mediaTestName, g.ContainerQueryAtom),
       sequence(supportsTestName, g.SupportsInParens),
       g.ContainerStyleQuery
-    )),
+    ),
     children => ifTestCall(children)
   );
 
@@ -4231,6 +4257,7 @@ const cssFactory = (g: GrammarSelf) => {
     ValueSequenceBeforeColon,
     Branch,
     BranchRest,
+    BranchValues,
     calcValueAtom,
     CalcValue,
     CalcProduct,
@@ -4317,6 +4344,7 @@ const cssFactory = (g: GrammarSelf) => {
     routedStylesheetBody,
     routedDeclarationListBody,
     IfTest,
+    IfTestCall,
     whitespace,
     rw: whitespace
   };

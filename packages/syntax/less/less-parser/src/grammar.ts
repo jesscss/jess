@@ -372,6 +372,7 @@ type LessRules = {
   GenericFunction: Combinator<unknown>;
   CalcFunction: Combinator<unknown>;
   FunctionArguments: Combinator<unknown>;
+  ValueSequenceBeforeColon: Combinator<unknown>;
 };
 
 /** Macro-fused shared recognition plus this file's recursively defined outputs. */
@@ -1664,17 +1665,41 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // first one, read once as a Less argument: a `:` after it continues as
   // CSS's `BranchRest`, inherited; anything else continues Less's flat vector,
   // where `;` separates arguments like `,` (`foo(a; b)`) and a legacy
-  // `if(cond, a, b)` is still lowered. A Less keyword argument
-  // (`darken(@color: red)`) is not a branch: `FunctionKeywordArgument` reads
-  // `@name:` and its value as the first argument, so no `:` follows it.
-  const FunctionArguments = optional(sequence(
-    functionArgument,
-    choice(
-      g.BranchRest,
-      sequence(
-        many(sequence(functionArgumentSeparator, functionArgument)),
-        optional(trailingFunctionArgumentSeparator)
+  // `if(cond, a, b)` is still lowered. A call opening on a Less keyword
+  // argument (`darken(@color: red)`) is never a branch list: its `@name:` is
+  // the keyword's own colon, so it takes the flat vector only.
+  //
+  // A first argument that is a lone css-values-5 §8.3 `<if-test>` followed by
+  // the branch `:` (`if(media(width > @w): …)`) is CSS's `IfTest`, parsed with
+  // the query grammar; a condition joining tests with `and`/`or` stays Less's
+  // own condition argument.
+  const firstFunctionArgument = choice(
+    sequence(g.IfTest, peek(literal(':'))),
+    functionArgument
+  );
+  // Every branch condition reads like the first one: CSS's `Branch` reads its
+  // condition through this slot, so a later `@b > 2:` is the same Less
+  // condition argument the first branch's is. A keyword argument is not a
+  // condition.
+  const ValueSequenceBeforeColon = sequence(
+    not(keywordArgumentKey),
+    firstFunctionArgument
+  );
+  const plainArgumentsAfterFirst = sequence(
+    many(sequence(functionArgumentSeparator, functionArgument)),
+    optional(trailingFunctionArgumentSeparator)
+  );
+  const FunctionArguments = optional(choice(
+    sequence(
+      ValueSequenceBeforeColon,
+      choice(
+        g.BranchRest,
+        plainArgumentsAfterFirst
       )
+    ),
+    sequence(
+      g.FunctionKeywordArgument,
+      plainArgumentsAfterFirst
     )
   ));
   // Value-position identifiers and glued function openers share one lexical
@@ -1803,7 +1828,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // `identOrFunction`: widening it would scan every `--x: …` custom-property
   // declaration through its dispatch and turn `--f(…);` into a statement call.
   const valueIdentOrFunction = token(noTrivia(choice(
-    identOrFunction,
+    sequence(g.InterpolatedValueStart, optional(literal('('))),
     sequence(g.CustomPropertyToken, literal('('))
   )));
   const IdentifierOrFunction = dispatch(
@@ -1964,7 +1989,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.Dimension,
       g.Color,
       g.FormatFunction,
-      g.IfTest,
       IdentifierOrFunction,
       g.SelectorCapture,
       g.EscapedParen,
@@ -5308,6 +5332,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     GenericFunction,
     CalcFunction,
     FunctionArguments,
+    ValueSequenceBeforeColon,
     whitespace,
     rw: whitespace
   };
