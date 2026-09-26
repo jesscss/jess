@@ -53,7 +53,14 @@ const ROUND_TRIP: Array<[name: string, css: string, emitted?: string]> = [
   ['a supports() test holding a condition group', 'if(supports(not (display: grid)): 1px; else: 0)'],
   ['media(), supports() and style() holding a general-enclosed query', 'media(a, b) supports(a b c) style(a, b)'],
   ['a comment after a branch colon, whose padding is canonical', 'if(media(print):/*c*/ 1px)', 'if(media(print): 1px)'],
-  ['an empty argument list', 'foo()']
+  ['an empty argument list', 'foo()'],
+  ['a comment before a comma', 'foo(c /* z */, d)'],
+  ['a comment and padding before a comma', 'foo(a /* z */ , b)'],
+  ['a comment before a comma inside a branch value', 'if(a: 1 /* c */, 2; else: 3)'],
+  ['a comment after a `;` before a comma group', 'foo(a; /* c */ b , c)', 'foo(a; /* c */ b, c)'],
+  ['a comment before a `;` in a var() fallback group', 'var(--x, (a /* c */ ; b))'],
+  ['a bare `--` identifier', '--'],
+  ['a dashed identifier holding an escape', '--a\\:b']
 ];
 
 function declarationValue(css: string): ValueSlot {
