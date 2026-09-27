@@ -198,7 +198,50 @@ function requireSupportedVariableName(value: unknown, start: number, end: number
   if (unsupported !== undefined) {
     throw new LessUnsupportedVariableNameError(start, end, unsupported);
   }
-  return variableNameTerminalText(value) ?? requireTerminalText(value);
+  const name = variableNameTerminalText(value) ?? requireTerminalText(value);
+  if (!name.includes('\\')) {
+    return name;
+  }
+  // A decoded name obeys the plain-name rules: `@\31 x` is `@1x`, and `@\2d` is `@-`.
+  const decoded = decodeCssEscapes(name);
+  if (decoded === '-' || '0123456789'.includes(decoded[0]!)) {
+    throw new LessUnsupportedVariableNameError(start, end, decoded);
+  }
+  return decoded;
+}
+
+/**
+ * Consume each escaped code point of a css ident (css-syntax-3 §4.3.7), so an
+ * escaped spelling names the same thing as its plain one. The grammar has
+ * already recognised every backslash here as a valid escape.
+ * @see https://drafts.csswg.org/css-syntax-3/#consume-escaped-code-point
+ */
+function decodeCssEscapes(text: string): string {
+  let decoded = '';
+  let i = 0;
+  while (i < text.length) {
+    const char = text[i++]!;
+    if (char !== '\\') {
+      decoded += char;
+      continue;
+    }
+    const hexStart = i;
+    while (i < text.length && i - hexStart < 6 && '0123456789abcdefABCDEF'.includes(text[i]!)) {
+      i++;
+    }
+    if (i === hexStart) {
+      decoded += text[i++]!;
+      continue;
+    }
+    const codePoint = parseInt(text.slice(hexStart, i), 16);
+    if (i < text.length && ' \t\n\r\f'.includes(text[i]!)) {
+      i++;
+    }
+    decoded += codePoint === 0 || (codePoint >= 0xD800 && codePoint <= 0xDFFF) || codePoint > 0x10FFFF
+      ? '\uFFFD'
+      : String.fromCodePoint(codePoint);
+  }
+  return decoded;
 }
 
 function requireString(value: unknown): string {
