@@ -39,5 +39,9 @@ export default defineConfig([
     external: PARSER_SHARED_EXTERNAL,
     plugins: [parseman.rolldown()]
   }),
-  ...grammarVariantBuilds({ external: PARSER_SHARED_EXTERNAL, plugins: [parseman.rolldown()] })
+  ...grammarVariantBuilds({
+    extraEntries: ['base'],
+    external: PARSER_SHARED_EXTERNAL,
+    plugins: [parseman.rolldown()]
+  })
 ]);
