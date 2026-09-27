@@ -2916,6 +2916,14 @@ describe('public Less parse()', () => {
     expect(parse('@var\\61 {}')).toMatchObject({
       rules: [{ type: 'AtRuleBlock', name: '@var\\61 ' }]
     });
+
+    /* A decoded name obeys the plain-name rules: `@\31 x` is `@1x`, `@\2d` is `@-`. */
+    for (const source of ['@\\31 x: 1;', '@\\2d: 1;', 'a { b: @\\31 x; }']) {
+      expect(() => parse(source), source).toThrow(LessUnsupportedVariableNameError);
+    }
+    expect(parse('@\\2d foo: 1;')).toMatchObject({
+      rules: [{ type: 'VariableDeclaration', name: '-foo' }]
+    });
   });
 
   it('keeps interpolated Less media-query terms structural in a multi-term header', () => {
