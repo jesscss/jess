@@ -16,7 +16,7 @@
  * - SCSS: ../../../scss/scss-parser/src/grammar.ts
  * - Jess: ../../../jess/jess-parser/src/grammar.ts
  */
-import { balanced, choice, classifiedTrivia, compose, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, matches, node, not, noTrivia, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, startsWith, token, transform, when, withCtx } from 'parseman' with { type: 'macro' };
+import { balanced, classifiedTrivia, choice, compose, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, startsWith, token, when } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -36,6 +36,8 @@ import {
   queryFeatureBlock,
   generalEnclosedGroup,
   queryFeatureContents,
+  enclosedCall,
+  styleFeature,
   queryValueRatio,
   color,
   complexSegments,
@@ -59,7 +61,6 @@ import {
   isSelectorBranch,
   isSelectorList,
   isSimpleToken,
-  isTerminalText,
   isValue,
   isValueSlotValue,
   keyframeSelectorList,
@@ -98,7 +99,6 @@ import {
 import type {
   AtRuleBlock,
   Declaration,
-  Interpolation,
   ValueNode
 } from '@jesscss/core/ast';
 
@@ -297,8 +297,17 @@ type GrammarRuleName =
   | 'branchLead'
   | 'VarFallbackOpener'
   | 'VarFallbackLead'
-  | 'IfTest'
-  | 'StyleTest';
+  | 'MediaTest'
+  | 'MediaTestBody'
+  | 'StyleTestBody'
+  | 'StyleFeature'
+  | 'StyleInParens'
+  | 'StyleCondition'
+  | 'RoutedCustomPropertyValue'
+  | 'SupportsTestBody'
+  | 'SupportsTest'
+  | 'StyleTest'
+  | 'SupportsDeclaration';
 
 /*
  * Rules that the shared recognition library defines keep its concrete
@@ -2465,6 +2474,18 @@ const cssFactory = (g: GrammarSelf) => {
       'var(',
       VarFunction
     ),
+    cssCase(
+      'media(',
+      g.MediaTest
+    ),
+    cssCase(
+      'supports(',
+      g.SupportsTest
+    ),
+    cssCase(
+      'style(',
+      g.StyleTest
+    ),
 
     /*
      * A trailing escaped paren is a value ident, not a function opener: `\(` and
@@ -2580,7 +2601,6 @@ const cssFactory = (g: GrammarSelf) => {
     g.Dimension,
     g.Color,
     g.UnicodeRange,
-    g.IfTest,
     IdentOrFunction,
     g.ParenValue,
     g.SquareValue,
@@ -3316,10 +3336,19 @@ const cssFactory = (g: GrammarSelf) => {
    * A function arm fails after its head only when the function's own
    * arguments do, as a function-valued bound always has.
    */
+  /*
+   * A feature's head is a CSS identifier or function opener, not a dashed
+   * ident: `(--x: 1)` is no media feature, so it reaches the value arm and, in
+   * `@supports`, the general-enclosed fallback, as it always has.
+   */
+  const queryFeatureHead = token(noTrivia(sequence(
+    genericIdentifier,
+    optional(literal('('))
+  )));
   const queryFeatureOpener = dispatch(
     choice(
       g.UnicodeRangeToken,
-      identOrFunction
+      queryFeatureHead
     ),
     cssCase(
       'url(',
@@ -3814,26 +3843,7 @@ const cssFactory = (g: GrammarSelf) => {
         literal(')')
       ))
     ),
-    (children, _fields, span, _rawChildren, _triviaLog, state) => {
-      const content = children.find((child): child is Interpolation => isNodeType(
-        child,
-        'Interpolation'
-      ));
-      if (content === undefined) {
-        throw new TypeError('CSS general-enclosed lost its grammar-owned content.');
-      }
-      const head = children[0];
-      return generalEnclosedGroup(
-        isTerminalText(head) && tokenText(head) !== '('
-          ? funcCall(
-              tokenText(head),
-              [content]
-            )
-          : block(content),
-        span,
-        state
-      );
-    }
+    (children, _fields, span, _rawChildren, _triviaLog, state) => generalEnclosedGroup(enclosedCall(children), span, state)
   );
   const QueryFunction = node(
     'QueryFunction',
@@ -3898,70 +3908,240 @@ const cssFactory = (g: GrammarSelf) => {
    * <media-condition> )`, `supports( [ <ident> : <declaration-value> ] |
    * <supports-condition> )`, `style( <style-query> )`. Their contents are CSS
    * QUERY syntax, not values — `>` in `media(width > 600px)` is a range
-   * comparison, never math — so they are parsed with the query grammar
-   * `@media`, `@supports` and `@container` use. The call's own parentheses are
-   * the query's: `media(width > 600px)` is `media` + the feature
-   * `(width > 600px)`, `supports(display: grid)` is `supports` + the supports
-   * condition `(display: grid)`. The reducer lifts the parenthesised query into
-   * the call's one argument, so a dialect's query overrides (Less variables in
-   * a feature value) apply here too.
+   * comparison, never math — so they are read with the query grammar
+   * `@media`, `@supports` and `@container` use.
    *
-   * The test is decided at its opening token, a function name glued to its
-   * `(` — the one-character look at the `(` is the function-token boundary
-   * css-syntax-3 draws, nothing past it. Once the name is read the query is
-   * committed: its contents are parsed as a query or the parse fails, with no
-   * second reading as an ordinary call. Each arm re-uses the name the dispatch
-   * already read (`routed()`). `style()` is the `StyleTest` slot, because
-   * Less reads a style query's value with its own custom-property value; the
-   * base reads it as `style` + a container query in parens. A value runs with
-   * trivia cleared, so each query runs under the padding a query prelude
-   * takes, as `@supports`' does.
+   * Each is an arm of the value identifier/function dispatch: the opener
+   * (`media(`, `supports(`, `style(`) is read once there and owned here
+   * through `routed()`, so the call's `(` is already consumed and its contents
+   * are the paren-less query contents the `@`-rule features hold inside their
+   * own parentheses. A value runs with trivia cleared, so the contents run
+   * under the padding a query prelude takes.
+   *
+   * An `if()` condition is `<declaration-value>` when it is parsed and is
+   * only read as an `<if-condition>` at substitution (css-values-5 §8.3,
+   * `<if-args-branch> = <declaration-value> : <declaration-value>?`), so a test
+   * whose contents are no query is still valid: `media(a, b)`,
+   * `supports(a b c)`. After the query, `ifTestRest` reads the rest of the
+   * contents as the declaration-value list, a leading comma included, and the
+   * call's argument is the same structured `<general-enclosed>` sequence a
+   * query feature builds (a comma makes it a comma `List`).
+   *
+   * `media()` holds what a media query's `<media-in-parens>` holds inside its
+   * parentheses: a `MediaCondition`, a `MediaNot`, or a feature's contents.
    */
-  const ifTestName = token(noTrivia(sequence(
-    keywords(
-      ['media', 'supports', 'style'],
-      { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\' }
+  const ifTestRest = optional(choice(
+    sequence(
+      literal(','),
+      g.ValueList
     ),
-    peek(literal('('))
-  )));
+    g.ValueList
+  ));
+  const MediaTestBody = parser(
+    { trivia: interstitialTrivia },
+    sequence(
+      choice(
+        g.MediaCondition,
+        g.MediaNot,
+        g.QueryFeatureContents
+      ),
+      ifTestRest,
+      literal(')')
+    )
+  );
   const MediaTest = node(
     'Call',
     sequence(
       routed(),
-      parser(
-        { trivia: interstitialTrivia },
-        g.ContainerQueryAtom
-      )
+      g.MediaTestBody
     ),
     children => ifTestCall(children)
   );
-  const SupportsTest = node(
-    'Call',
-    sequence(
-      routed(),
-      parser(
-        { trivia: interstitialTrivia },
-        g.SupportsInParens
+
+  /*
+   * A style query's `<style-feature>` (css-conditional-5 §3): a custom property
+   * name, alone or with `:` and its `<declaration-value>`. The value is the custom
+   * property's value, read to the style query's own `)` over balanced groups
+   * and strings and never computed, as a `--x:` declaration's value is. A
+   * dialect with its own custom-property value binds its own.
+   */
+  const StyleFeatureValue = node(
+    'CustomValue',
+    parser(
+      { trivia: whitespace, rootCapture: 'opaque' },
+      scanTo(
+        literal(')'),
+        { skip: [balancedParens, balancedBrackets, balancedBraces] }
       )
     ),
-    children => ifTestCall(children)
+    children => any(children.length === 0 ? '' : tokenText(children[0]))
+  );
+  const StyleFeature = node(
+    'StyleFeature',
+    sequence(
+      g.RoutedCustomPropertyValue,
+      optional(sequence(
+        literal(':'),
+        StyleFeatureValue
+      ))
+    ),
+    children => styleFeature(children)
+  );
+
+  /*
+   * A `style()` query's contents (css-conditional-5 §3): a `(` opens a
+   * `<style-condition>` of parenthesized queries; otherwise the first
+   * identifier is read once and routed — a custom property is a
+   * `<style-feature>`, `not` negates the parenthesized query after it, and
+   * any other identifier or function starts a feature's contents.
+   */
+  const styleQueryContents = choice(
+    dispatch(
+      identOrFunction,
+      when(
+        startsWith('--'),
+        g.StyleFeature
+      ),
+      cssCase(
+        'not',
+        sequence(
+          g.RoutedKeyword,
+          g.StyleInParens
+        )
+      ),
+      when(
+        matches(/(?:\\\(|[^(])$/),
+        node(
+          'QueryFeatureContents',
+          queryFeatureName,
+          (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureContents(children, span, state)
+        )
+      ),
+      when(
+        endsWith('('),
+        node(
+          'QueryFeatureContents',
+          sequence(
+            RoutedFunctionQueryValue,
+            g.queryBoundTail
+          ),
+          (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureContents(children, span, state)
+        )
+      )
+    ),
+    g.StyleCondition
+  );
+  const StyleInParens = node(
+    'StyleInParens',
+    sequence(
+      literal('('),
+      styleQueryContents,
+      literal(')')
+    ),
+    children => block(queryConditionChain(children))
+  );
+  const StyleCondition = node(
+    'StyleCondition',
+    sequence(
+      g.StyleInParens,
+      many(sequence(
+        g.QueryAndOr,
+        g.StyleInParens
+      ))
+    ),
+    children => queryConditionChain(children)
+  );
+  const StyleTestBody = parser(
+    { trivia: interstitialTrivia },
+    sequence(
+      styleQueryContents,
+      ifTestRest,
+      literal(')')
+    )
   );
   const StyleTest = node(
     'Call',
     sequence(
       routed(),
-      parser(
-        { trivia: interstitialTrivia },
-        g.ContainerQueryAtom
-      )
+      g.StyleTestBody
     ),
     children => ifTestCall(children)
   );
-  const IfTest = dispatch(
-    ifTestName,
-    cssCase('supports', SupportsTest),
-    cssCase('style', g.StyleTest),
-    otherwise(MediaTest)
+
+  /*
+   * The `<ident> : <declaration-value>` of `supports()`, after the name the
+   * contents dispatch read. css reads it as the feature a `@supports` feature
+   * holds (`SupportsFeature`); a dialect binds its own.
+   */
+  const SupportsDeclaration = node(
+    'SupportsDeclaration',
+    sequence(
+      RoutedProperty,
+      queryFeatureNameTail
+    ),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureContents(children, span, state)
+  );
+
+  /* A function-form `<general-enclosed>`, owning the opener the dispatch read. */
+  const RoutedEnclosed = node(
+    'Enclosed',
+    noTrivia(sequence(
+      routed(),
+      g.EnclosedContent,
+      literal(')')
+    )),
+    children => enclosedCall(children)
+  );
+
+  /*
+   * `supports()` contents: the first identifier or opener is read once and
+   * routed — `not` negates the parenthesized condition after it, a function
+   * is a `<general-enclosed>` that may start an `and`/`or` chain, and any
+   * other identifier is the declaration's name. Anything else (a `(`) opens a
+   * `<supports-condition>`; the identifier head cannot start on it.
+   */
+  const SupportsTestBody = parser(
+    { trivia: interstitialTrivia },
+    sequence(
+      choice(
+        dispatch(
+          identOrFunction,
+          when(
+            'not',
+            sequence(
+              g.RoutedKeyword,
+              g.SupportsInParens
+            ),
+            { caseInsensitive: true }
+          ),
+          when(
+            matches(/(?:\\\(|[^(])$/),
+            g.SupportsDeclaration
+          ),
+          when(
+            endsWith('('),
+            sequence(
+              RoutedEnclosed,
+              many(sequence(
+                g.QueryAndOr,
+                g.SupportsInParens
+              ))
+            )
+          )
+        ),
+        g.SupportsCondition
+      ),
+      ifTestRest,
+      literal(')')
+    )
+  );
+  const SupportsTest = node(
+    'Call',
+    sequence(
+      routed(),
+      g.SupportsTestBody
+    ),
+    children => ifTestCall(children)
   );
 
   /*
@@ -4630,8 +4810,17 @@ const cssFactory = (g: GrammarSelf) => {
     stylesheetBodyItem,
     routedStylesheetBody,
     routedDeclarationListBody,
-    IfTest,
+    MediaTest,
+    MediaTestBody,
+    StyleTestBody,
+    StyleFeature,
+    StyleInParens,
+    StyleCondition,
+    RoutedCustomPropertyValue,
+    SupportsTest,
+    SupportsTestBody,
     StyleTest,
+    SupportsDeclaration,
     functionArgument,
     branchLead,
     VarFallbackOpener,

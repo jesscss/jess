@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar';
-import { NO_SPAN, any, atRuleBlock, foldOperation, atRuleStatement, block, bodySpanFromRaw, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, importOptionWords, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, generalEnclosedGroup, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, propertyReference, pseudoSelector, quoted, reference, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorCapture, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessSourceImportSyntaxError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -369,6 +369,11 @@ type LessRules = {
   FunctionArguments: Combinator<unknown>;
   branchLead: Combinator<unknown>;
   StyleTest: Combinator<unknown>;
+  StyleFeature: Combinator<ValueNode>;
+  MediaTest: Combinator<ValueNode>;
+  SupportsTest: Combinator<ValueNode>;
+  MediaInParens: Combinator<ValueNode>;
+  SupportsDeclaration: Combinator<ValueNode>;
   functionArgument: Combinator<unknown>;
 };
 
@@ -406,7 +411,10 @@ type SharedSyntax = {
   // its first condition, and the css-values-5 §8.3 `<if-test>` calls
   // (`media()`/`supports()`/`style()`), parsed with the query grammar.
   BranchRest: Combinator<ValueNode>;
-  IfTest: Combinator<ValueNode>;
+  // Inherited from the CSS base: the bodies of the media() and supports() if-tests.
+  MediaTestBody: Combinator<unknown>;
+  StyleTestBody: Combinator<unknown>;
+  SupportsTestBody: Combinator<unknown>;
   // Converged to the CSS base (inherited via compose): same node type
   // SimpleSelector, byte-identical keyframeEndpoint, g.Percentage resolves to
   // the CSS base; reducer differs only requireToken().value vs sourceText().
@@ -1774,6 +1782,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     caseOf('url(', choice(RoutedVariableUrl, RoutedPlainUrl)),
     caseOf('calc(', g.CalcFunction),
     caseOf('var(', g.VarFunction),
+    caseOf('media(', g.MediaTest),
+    caseOf('supports(', g.SupportsTest),
+    caseOf('style(', g.StyleTest),
     /*
      * A trailing escaped paren is a value ident, not a function opener: `\(` and
      * `a\(` are escaped code points (css-syntax-3 4.3.7). This more-specific
@@ -1926,7 +1937,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.Dimension,
       g.Color,
       g.FormatFunction,
-      g.IfTest,
       IdentifierOrFunction,
       g.SelectorCapture,
       g.EscapedParen,
@@ -3556,14 +3566,64 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       funcCall(functionNameFromOpener(children[0]), [operation(':', keyword(requireToken(children[1]).value),
         requireValueNode(children[3]), false, lessMathOutsideParens(state, ':'))])
   );
-  // The css-values-5 §8.3 `style()` if-test (CSS's `StyleTest` slot): the
-  // name the if-test dispatch already read, then the same style query.
+  // A style query's `<style-feature>` (CSS's `StyleFeature` slot): the custom
+  // property the style contents dispatch read, `:`, and Less's own
+  // custom-property value — the same Operation a container style query builds.
+  const StyleFeature = node(
+    'StyleFeature',
+    sequence(routed(), optional(sequence(literal(':'), g.CustomValue))),
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => {
+      const name = keyword(requireToken(children[0]).value);
+      const value = children.find(isValueNode);
+      return value === undefined
+        ? name
+        : operation(':', name, value, false, lessMathOutsideParens(state, ':'));
+    }
+  );
+  /*
+   * The media(), supports() and style() if-tests are the css base's: its
+   * `MediaTest` / `SupportsTest` / `StyleTest` node over its body rule. They
+   * are restated here ONLY as the routed shell, because Less's value dispatch
+   * (`IdentifierOrFunction`) routes to them and parseman does not see a
+   * `routed()` through a rule this grammar inherits by compose: routed to the
+   * inherited node, the head is never handed over (`media(print)` fails with
+   * expected `routed()` after `media(`). The bodies stay the base's.
+   * TODO(jess#298): delete the three shells once parseman detects routed()
+   * through a composed rule.
+   */
+  // A media condition's `<media-in-parens>` is Less's own parenthesized
+  // feature, which already reads Less's logical groups and `(not …)`.
+  const MediaInParens = g.QueryFeature;
+  const MediaTest = node(
+    'Call',
+    sequence(routed(), g.MediaTestBody),
+    children => ifTestCall(children)
+  );
+  // As in an `@supports` prelude, a bare `@variable` is a diagnostic here: a
+  // supports condition interpolates as `@{a}`.
+  const SupportsTest = node(
+    'Call',
+    sequence(routed(), choice(g.BareVariableInterpolation, g.SupportsTestBody)),
+    children => ifTestCall(children)
+  );
   const StyleTest = node(
     'Call',
-    sequence(routed(), literal('('), styleQueryDeclaration, literal(')')),
-    (children, _fields, _span, _rawChildren, _triviaLog, state) =>
-      funcCall(requireToken(children[0]).value, [operation(':', keyword(requireToken(children[2]).value),
-        requireValueNode(children[4]), false, lessMathOutsideParens(state, ':'))])
+    sequence(routed(), g.StyleTestBody),
+    children => ifTestCall(children)
+  );
+  // The `<ident> : <declaration-value>` of a supports() if-test (CSS's
+  // `SupportsDeclaration` slot), after the name the contents dispatch read: the
+  // same feature as Less's `@supports` `SupportsFeature`, without its parentheses.
+  const SupportsDeclaration = node(
+    'SupportsDeclaration',
+    sequence(routed(), optional(sequence(literal(':'), g.SupportsValue))),
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => {
+      const property = keyword(requireToken(children[0]).value);
+      const value = children.find(isValueNode);
+      return value === undefined
+        ? property
+        : operation(':', property, value, false, lessMathOutsideParens(state, ':'));
+    }
   );
   const ContainerScrollStateQuery = node(
     'ContainerScrollStateQuery',
@@ -5200,6 +5260,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     branchLead: functionArgument,
     functionArgument,
     StyleTest,
+    StyleFeature,
+    MediaInParens,
+    MediaTest,
+    SupportsTest,
+    SupportsDeclaration,
     whitespace,
     rw: whitespace
   };
