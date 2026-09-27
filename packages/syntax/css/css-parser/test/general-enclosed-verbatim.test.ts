@@ -68,6 +68,17 @@ describe('general-enclosed is emitted as written and never evaluated', () => {
     expect(await prelude('@container (style(--x:1))')).toBe('@container (style(--x: 1))');
   });
 
+  /*
+   * Ledger N14: `@supports` still protects a function-form template by its
+   * payload shape, as on dev, so a defined `selector()` keeps its spacing
+   * there while the query lane normalizes it. A switch of the supports lane to
+   * the parser's mark must change this pin deliberately.
+   */
+  it('keeps a defined selector() as written in @supports and normalizes it in @media', async () => {
+    expect(await prelude('@supports selector(a  >  b)')).toBe('@supports selector(a  >  b)');
+    expect(await prelude('@media selector(a  >  b)')).toBe('@media selector(a > b)');
+  });
+
   /* Ledger N14, owner-pending: the defined-name exemption is by name in every query prelude. */
   it('exempts a defined condition function by name outside its own at-rule too', async () => {
     expect(await prelude('@media style(--x:1)')).toBe('@media style(--x: 1)');
