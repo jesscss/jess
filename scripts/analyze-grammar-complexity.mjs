@@ -109,7 +109,7 @@ const strip = (context) => {
 export async function resolve(specifier, context, nextResolve) {
   const ctx = strip(context)
   // A source dialect must compose the source CSS base, not its macro-built table.
-  if (specifier === '@jesscss/css-parser/grammar') {
+  if (specifier === '@jesscss/css-parser/grammar/base') {
     return {
       url: ${JSON.stringify(pathToFileURL(join(ROOT, 'packages/syntax/css/css-parser/src/grammar.ts')).href)},
       shortCircuit: true

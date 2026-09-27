@@ -13,7 +13,7 @@ const SHARED = ['parse-error'];
 /*
  * Keep the compose base and its provenance sources EXTERNAL in every emitted
  * artifact instead of inlining them as locals. `cssBaseRules` (from
- * `@jesscss/css-parser/grammar`) carries css's recognition + reducer rules by
+ * `@jesscss/css-parser/grammar/base`) carries css's recognition + reducer rules by
  * spreading `@jesscss/parser-shared` recognition and `@jesscss/core/ast`
  * helpers via its runtime `parseman.composedPieces` — and the downstream
  * compose analyzer can only follow that spread statically when those grammars

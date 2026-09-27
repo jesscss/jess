@@ -15,6 +15,7 @@ explicit CST parsing:
 - `@jesscss/css-parser/cst` — CST parsing entry.
 - `@jesscss/css-parser/cst/positions` — the same CST parsers with line/column facts.
 - `@jesscss/css-parser/grammar` — compiled CSS grammar (alias for `/grammar/ast`).
+- `@jesscss/css-parser/grammar/base` — `cssBaseRules`, the compose base a dialect grammar composes onto.
 
 ### Line-aware entries
 
@@ -51,13 +52,18 @@ only, so importing it cannot pull the other three in. The main entry no longer
 re-exports compiled grammars — that would have made every `parse()` consumer
 load all four builds.
 
+`@jesscss/css-parser/grammar/base` exports `cssBaseRules`, the whole CSS grammar
+as a hole-free rule map for `compose([cssBaseRules, rules(delta)])`. It is its
+own build, so a dialect that composes onto it does not load css's own compiled
+parse grammar, which is most of `/grammar/ast`'s size.
+
 The positions variants set `startLine`/`startColumn` on every span. There is no
 `trackLines` option: an option would force one module to name both tables, and
 Node executes every module it statically imports, so the choice is which entry
 you import. Error tolerance is not a property of a build — the CST runner
 collects `result.errors` on either CST variant.
 
-Each variant also ships uncompiled under `@jesscss/css-parser/grammar/interpreter/…`
+Each variant, and the compose base, also ships uncompiled under `@jesscss/css-parser/grammar/interpreter/…`
 (`/grammar/interpreter` aliases `/grammar/interpreter/ast`): the same grammar
 source and export, built without the parseman macro, so the combinator graph
 runs on parseman's interpreter instead of a compiled table. It exists to compare

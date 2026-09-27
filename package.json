@@ -67,6 +67,7 @@
     "check:guardrails": "node scripts/check-guardrails.mjs",
     "check:record-map": "node scripts/check-record-map.mjs",
     "test:fallback-detector": "node --test scripts/__tests__/parseman-fallback-detector.test.mjs",
+    "test:grammar-variant-graph": "node --test scripts/__tests__/grammar-variant-graph.test.mjs",
     "oracle:prebuild": "pnpm --filter @jesscss/awaitable-pipe build && pnpm --filter @jesscss/core build",
     "oracle:css:render-differential": "pnpm run oracle:prebuild && pnpm --filter @jesscss/css-parser build && node packages/syntax/css/css-parser/test/render-differential.mjs",
     "oracle:css:render-differential:write": "pnpm run oracle:prebuild && pnpm --filter @jesscss/css-parser build && node packages/syntax/css/css-parser/test/render-differential.mjs --write",

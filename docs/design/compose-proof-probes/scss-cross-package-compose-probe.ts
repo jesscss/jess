@@ -18,7 +18,7 @@
  */
 import { choice, classifiedTrivia, compose, node, regex, rules } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
-import { cssBaseRules } from '@jesscss/css-parser/grammar';
+import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { simpleSelector, tokenText } from '@jesscss/core/ast';
 import type { SimpleSelector } from '@jesscss/core/ast';
 
