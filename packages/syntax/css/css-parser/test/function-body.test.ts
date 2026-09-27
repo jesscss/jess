@@ -66,6 +66,11 @@ const ROUND_TRIP: Array<[name: string, css: string, emitted?: string]> = [
   ['an and/or with no operand', 'media((a) and) style((--x: 1) or) supports(foo(x) and)'],
   ['tokens a value run cannot start with, in the rest', 'media(a !) media((a !)) media(a; b)', 'media(a !) media((a !)) media(a ; b)'],
   ['a trailing comma after a value run', 'media(1px a,) supports(a: b,)', 'media(1px a, ) supports(a: b, )'],
+  ['a function after a range comparison, which stays one function', 'media(1px < foo(x)) media(foo(x) < bar(y))'],
+  ['url(), math and var() functions after a range comparison', 'media(1px < url(a)) media(1px < calc(1px + 2px)) media(1px < var(--x))'],
+  ['a unicode range in media()', 'media(u+0025-00ff) media(1px < u+0025)'],
+  ['escaped parentheses, which end a name and open no function', 'media(a\\(b) style(a\\(b) supports(a\\(b) supports(a\\(: b) supports(not a\\(b) supports(foo(x) and a\\(b)'],
+  ['a non-parenthesized operand after not, and or or, which is the rest', 'media((a) and 1px) style(not 1px) style((--x: 1) or 2px) supports(not 1px) supports(a and 1px)'],
   ['supports() with a function chain, a negated operand and a declaration value list', 'supports(selector(a) and (display: grid)) supports(foo(x) and b) supports(not a) supports(transition: opacity 1s)'],
   ['a comment after a branch colon, whose padding is canonical', 'if(media(print):/*c*/ 1px)', 'if(media(print): 1px)'],
   ['an empty argument list', 'foo()'],
@@ -103,6 +108,23 @@ describe('CSS function bodies: branches, `;` groups, `{}` arguments, dashed func
       expect(await emitted(css)).toBe(expected ?? css);
     });
   }
+
+  it('keeps a function after a range comparison one FunctionCall', () => {
+    expect(declarationValue('media(1px < foo(x))')).toMatchObject({
+      type: 'FunctionCall',
+      name: 'media',
+      args: [{
+        value: {
+          type: 'Sequence',
+          parts: [
+            { type: 'Dimension' },
+            { type: 'Any', src: '<' },
+            { type: 'FunctionCall', name: 'foo' }
+          ]
+        }
+      }]
+    });
+  });
 
   it('reduces if() branches to one `;` List of Branch nodes over structured values', () => {
     expect(declarationValue('if(style(--scheme: dark): white; else: black)')).toMatchObject({
