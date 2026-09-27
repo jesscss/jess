@@ -782,6 +782,16 @@ const scopeAtRuleName = word('@scope', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsen
 const nullWord = word('null', '-_a-zA-Z0-9\\u0080-\\uFFFF');
 
 /*
+ * The logical operators of the `$if` and `when` guard ladders and the `$(…)`
+ * value ladder, stated once for all three and matched ASCII
+ * case-insensitively, as SCSS's are. `not` is the shared query keyword
+ * `g.QueryNot`; the shared artifact only has `and` and `or` as one terminal,
+ * and these ladders need them apart.
+ */
+const logicalAnd = word('and', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
+const logicalOr = word('or', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
+
+/*
  * NOT exported, and must never be. The body is written entirely in parseman's
  * macro vocabulary (`makeWord`, `sequence`, `node`, ...), which exists only at
  * build time -- the macro plugin lowers each call site into inline JS and the
@@ -1169,7 +1179,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const ExpressionNot = node<ExpressionFact>(
     'ExpressionNot',
     sequence(
-      regex(/not(?![-_a-zA-Z0-9\u0080-\uffff])/),
+      g.QueryNot,
       literal('('),
       g.ExpressionLogical,
       literal(')')
@@ -1193,7 +1203,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     sequence(
       g.ExpressionLogicalOperand,
       oneOrMore(sequence(
-        regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        logicalAnd,
         g.ExpressionLogicalOperand
       ))
     ),
@@ -1204,7 +1214,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     sequence(
       g.ExpressionLogicalOperand,
       oneOrMore(sequence(
-        regex(/or(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        logicalOr,
         g.ExpressionLogicalOperand
       ))
     ),
@@ -1279,7 +1289,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'GuardPrimary',
     choice(
       sequence(
-        regex(/not(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        g.QueryNot,
         literal('('),
         g.MixinGuard,
         literal(')')
@@ -1301,7 +1311,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       if (children.length === 1) {
         return requireGuardNode(children[0]);
       }
-      if (requireToken(children[0]).value === 'not') {
+      if (requireToken(children[0]).value.toLowerCase() === 'not') {
         return { g: 'not', inner: requireGuardNode(children[2]) };
       }
       if (requireToken(children[0]).value === '(') {
@@ -1315,7 +1325,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     sequence(
       g.GuardPrimary,
       oneOrMore(sequence(
-        regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        logicalAnd,
         g.GuardPrimary
       ))
     ),
@@ -1326,7 +1336,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     sequence(
       g.GuardPrimary,
       oneOrMore(sequence(
-        regex(/or(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        logicalOr,
         g.GuardPrimary
       ))
     ),
@@ -5392,7 +5402,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     'IfGuardPrimary',
     choice(
       sequence(
-        regex(/not(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        g.QueryNot,
         literal('('),
         g.IfGuard,
         literal(')')
@@ -5408,7 +5418,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       if (children.length === 1) {
         return requireGuardNode(children[0]);
       }
-      return requireToken(children[0]).value === 'not'
+      return requireToken(children[0]).value.toLowerCase() === 'not'
         ? { g: 'not', inner: requireGuardNode(children[2]) }
         : requireGuardNode(children[1]);
     }
@@ -5418,7 +5428,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     sequence(
       g.IfGuardPrimary,
       oneOrMore(sequence(
-        regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        logicalAnd,
         g.IfGuardPrimary
       ))
     ),
@@ -5429,7 +5439,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     sequence(
       g.IfGuardPrimary,
       oneOrMore(sequence(
-        regex(/or(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        logicalOr,
         g.IfGuardPrimary
       ))
     ),
