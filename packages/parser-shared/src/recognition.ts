@@ -55,12 +55,21 @@ const lineComment = regex(/\/\/[^\n\r]*/);
 const mediaModifier = regex(/(?:[^${}()\[\];"'#]|#(?!\{))+/);
 
 /*
+ * Where a keyword ends. css-syntax-3 §4.3.11 consumes a valid escape (§4.3.8)
+ * into the identifier it follows, so `not\61` is the one identifier `nota`,
+ * not the keyword `not`: a backslash continues the word as an identifier code
+ * point does.
+ * @see https://drafts.csswg.org/css-syntax-3/#consume-name
+ */
+const IDENT_BOUNDARY = '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\';
+
+/*
  * CSS and SCSS priority matching is ASCII-case-insensitive. Direct dialect
  * grammars own the surrounding `!` and AST reduction.
  */
 const important = word(
   'important',
-  '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\',
+  IDENT_BOUNDARY,
   { caseInsensitive: true }
 );
 const hexColor = regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F])/);
@@ -161,17 +170,17 @@ const marginAtKeyword = keywords(
 );
 const queryNot = word(
   'not',
-  '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\',
+  IDENT_BOUNDARY,
   { caseInsensitive: true }
 );
 const queryOnly = word(
   'only',
-  '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\',
+  IDENT_BOUNDARY,
   { caseInsensitive: true }
 );
 const queryAndOr = keywords(
   ['and', 'or'],
-  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\' }
+  { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
 
 /*
@@ -330,7 +339,7 @@ const fontFeatureValueAtKeyword = keywords(
     '@annotation',
     '@historical-forms'
   ],
-  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\' }
+  { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
 
 /*
