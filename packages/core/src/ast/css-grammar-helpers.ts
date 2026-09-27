@@ -283,26 +283,32 @@ export function withFirstBranchCondition(args: readonly ValueSlot[]): ValueSlot 
   return undefined;
 }
 
-/**
- * An `<if-test>` call (`media(…)`, `supports(…)`, `style(…)`): the query the
- * grammar parsed inside the call's parentheses is the call's one argument. A
- * query feature or group is a paren `Block`, and those parentheses are the
- * call's own, so the argument is the block's contents.
- */
 /*
- * An if-test call: the opener the value dispatch read (`media(`) and the one
- * query its contents reduce to, with any `not`/`and`/`or` kept as keywords.
+ * An `<if-test>` call (`media(…)`, `supports(…)`, `style(…)`): the opener the
+ * value dispatch read and its one argument, the contents between the call's
+ * parentheses. Empty contents are no argument.
  */
 export function ifTestCall(children: readonly unknown[]): FunctionCall {
-  const items: ValueNode[] = [];
+  const argument = generalEnclosedArgument(children.slice(1));
+  return funcCall(functionOpenName(children[0]), argument === undefined ? [] : [argument]);
+}
+
+/*
+ * The contents of a parenthesized query or `<general-enclosed>`, in order: a
+ * query value, the words `not`/`and`/`or`, and component values, as one
+ * sequence; a top-level comma makes it a comma `List` of such sequences, and
+ * an empty item between commas is the empty slot. Parenthesis tokens are the
+ * group's own and are not contents.
+ */
+export function generalEnclosedArgument(children: readonly unknown[]): ValueNode | undefined {
+  const items: ValueSlot[] = [];
   let parts: ValueNode[] = [];
+  let commas = 0;
   const flush = (): void => {
-    if (parts.length > 0) {
-      items.push(parts.length === 1 ? parts[0]! : spaced(parts));
-    }
+    items.push(parts.length === 1 ? parts[0]! : parts.length === 0 ? [] : spaced(parts));
     parts = [];
   };
-  for (const child of children.slice(1)) {
+  for (const child of children) {
     if (isCommaList(child)) {
       child.value.forEach((item, index) => {
         if (index > 0) {
@@ -312,17 +318,40 @@ export function ifTestCall(children: readonly unknown[]): FunctionCall {
       });
     } else if (isValueSlotValue(child)) {
       parts.push(...slotParts(child));
-    } else {
+    } else if (isTerminalText(child)) {
       const text = tokenText(child);
       if (text === ',') {
+        commas++;
         flush();
       } else if (/^(?:not|and|or)$/i.test(text)) {
         parts.push(keyword(text));
       }
     }
   }
+  if (commas === 0) {
+    return parts.length === 0 ? undefined : parts.length === 1 ? parts[0]! : spaced(parts);
+  }
   flush();
-  return funcCall(functionOpenName(children[0]), [items.length === 1 ? items[0]! : list(items, ',')]);
+  return list(items, ',');
+}
+
+/*
+ * The `<ident> : <declaration-value>` of `supports()`: the name alone, or the
+ * `:` Operation over its value list (a multi-part value is one sequence), as
+ * Less's supports declaration builds it. A colon with no value is
+ * `<general-enclosed>`.
+ */
+export function supportsDeclaration(children: readonly unknown[]): ValueNode {
+  const name = keyword(tokenText(children[0]));
+  if (children.length === 1) {
+    return name;
+  }
+  const value = children.find(isValueSlotValue);
+  if (value === undefined) {
+    return generalEnclosedSequence(children);
+  }
+  const parts = slotParts(value);
+  return operation(':', name, parts.length === 1 ? parts[0]! : spaced(parts), false, cssBaseMathOutsideParens(':'));
 }
 
 function isCommaList(value: unknown): value is List {
@@ -654,11 +683,13 @@ export function queryFeatureContents(children: readonly unknown[], span: AstSour
     if (children.length === 1) {
       return withAuthoredGeneralEnclosed(head, span, state);
     }
-    if (children.length < 3 || isValueSlotValue(children[2])) {
+
+    /* A value-first range is exactly `value op name [op value]`; anything else read is general-enclosed. */
+    const isRange = (children.length === 3 || (children.length === 5 && isValue(children[4])))
+      && typeof children[2] === 'string';
+    if (!isRange) {
       return withAuthoredGeneralEnclosed(generalEnclosedSequence(children), span, state);
     }
-
-    /* A value-first range: `value op name [op value]`. */
     const property = keyword(tokenText(children[2]));
     const operators = queryComparisonOperators(children);
     let result: ValueNode = operation(operators[0]!, head, property, false, cssBaseMathOutsideParens(operators[0]!));
@@ -677,13 +708,19 @@ export function queryFeatureContents(children: readonly unknown[], span: AstSour
   }
 
   /* `not <media-in-parens>`: the routed `not` and its parenthesized operand. */
-  if (isValue(children[1])) {
+  if (children.length === 2 && isValue(children[1])) {
     return spaced([name, children[1]]);
   }
   if (tokenText(children[1]) === ':') {
-    return operation(':', name, firstValue(children), false, cssBaseMathOutsideParens(':'));
+    return children.length === 3 && isValue(children[2])
+      ? operation(':', name, children[2], false, cssBaseMathOutsideParens(':'))
+      : generalEnclosedSequence(children);
   }
-  return chainedQueryComparison(name, children);
+
+  /* A comparison is exactly `name op value [op value]`; anything else read is general-enclosed. */
+  const isComparison = (children.length === 3 && isValue(children[2]))
+    || (children.length === 5 && isValue(children[2]) && isValue(children[4]));
+  return isComparison ? chainedQueryComparison(name, children) : generalEnclosedSequence(children);
 }
 
 /*
@@ -745,13 +782,19 @@ function withAuthoredGeneralEnclosed<T extends object>(value: T, span: AstSource
 }
 
 /*
- * `<general-enclosed>` after a routed bound (media-queries-4 §3.1): the bound,
- * then whatever followed it, in order, as one sequence; a comparison token
- * stays the authored delimiter. The query-prelude emitter joins it with single
- * spaces, as it does every structured query feature.
+ * `<general-enclosed>` read as a query's contents (media-queries-4 §3.1): what
+ * was read, in order, as one sequence. A feature name (the string a `Property`
+ * reduces to) stays a keyword and a comparison or colon token the authored
+ * delimiter. The query-prelude emitter joins it with single spaces, as it does
+ * every structured query feature.
  */
 function generalEnclosedSequence(children: readonly unknown[]): ValueNode {
-  return spaced(children.flatMap(child => isValueSlotValue(child) ? slotParts(child) : [any(tokenText(child))]));
+  return spaced(children.flatMap((child) => {
+    if (isValueSlotValue(child)) {
+      return slotParts(child);
+    }
+    return [typeof child === 'string' ? keyword(child) : any(tokenText(child))];
+  }));
 }
 
 /** The values of a component-value slot, in order: a multi-part slot is its parts. */
@@ -762,13 +805,14 @@ function slotParts(slot: ValueSlot): ValueNode[] {
 /**
  * A `not`/`and`/`or` chain of parenthesized query operands (media-queries-4
  * `<media-condition>`, css-contain-3 `<container-condition>`): the operands,
- * with each combinator word kept as a keyword. One operand is itself.
+ * with each combinator word kept as a keyword. One operand is itself; an
+ * operand read as component values contributes its parts.
  */
 export function queryConditionChain(children: readonly unknown[]): ValueNode {
   const values: ValueNode[] = [];
   for (const child of children) {
-    if (isValue(child)) {
-      values.push(child);
+    if (isValueSlotValue(child)) {
+      values.push(...slotParts(child));
     } else {
       const normalized = tokenText(child).toLowerCase();
       if (normalized === 'not' || normalized === 'and' || normalized === 'or') {
