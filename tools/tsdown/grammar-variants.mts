@@ -14,7 +14,9 @@
  */
 
 /** Variant subpath -> source module, relative to a package's grammar directory. */
-import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
 import { nestSharedChunks } from './chunk-names.mts';
 
 export const GRAMMAR_VARIANTS = ['ast', 'ast/positions', 'cst', 'cst/positions'] as const;
@@ -152,15 +154,31 @@ const MACRO_ATTRIBUTE = /\s+with\s*\{\s*type:\s*['"]macro['"]\s*\}/g;
  * package's source instead, so no compiled table reaches the interpreter graph.
  */
 const PARSER_SHARED = /^@jesscss\/parser-shared\/([\w-]+)$/;
-const PARSER_SHARED_SRC = new URL('../../packages/parser-shared/src/', import.meta.url);
+
+/*
+ * The package directory, found the way Node would find it from the importing
+ * module. Not relative to this file: on Node < 22.18 tsdown bundles the config
+ * before loading it, which rewrites `import.meta.url` to the package's config.
+ * The exports map exposes only `lib/`, so `require.resolve` cannot name `src/`.
+ */
+function parserSharedDir(importer: string): string {
+  const lookup = createRequire(importer).resolve.paths('@jesscss/parser-shared') ?? [];
+  const found = lookup.map(dir => join(dir, '@jesscss/parser-shared')).find(dir => existsSync(dir));
+  if (found === undefined) {
+    throw new Error(`@jesscss/parser-shared is not resolvable from ${importer}`);
+  }
+  return found;
+}
 
 const interpreterPlugin = {
   name: 'jess:grammar-interpreter',
   resolveId: {
     order: 'pre' as const,
-    handler(source: string) {
+    handler(source: string, importer: string | undefined) {
       const match = PARSER_SHARED.exec(source);
-      return match ? fileURLToPath(new URL(`${match[1]}.ts`, PARSER_SHARED_SRC)) : null;
+      return match && importer !== undefined
+        ? join(parserSharedDir(importer), 'src', `${match[1]}.ts`)
+        : null;
     }
   },
   transform(code: string) {
