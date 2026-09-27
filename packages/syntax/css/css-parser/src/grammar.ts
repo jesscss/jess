@@ -3259,8 +3259,8 @@ const cssFactory = (g: GrammarSelf) => {
   const generalRest = many(generalValue);
 
   /*
-   * The rest of a query group or an if-test after its query part, through its
-   * `)`: every group reads this one rule.
+   * The rest of a media or style group, or of an if-test, after its query part,
+   * through its `)`: each of those reads this one rule.
    */
   const queryGroupRest = sequence(
     generalRest,
@@ -3268,11 +3268,10 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * The component values after a value-first bound: comma-separated value runs.
-   * The tokens a value run cannot start with stay out, so after a bound in a
-   * `@container` or `@supports` feature they leave its `)` unmatched and the
-   * feature fails softly to its owner's `Enclosed` fallback (jess#306 item 5);
-   * a media feature and an if-test read them as their general rest.
+   * The component values after a value-first bound in a media feature or an
+   * if-test (`queryBoundTail`): comma-separated value runs, a leading comma
+   * included. The tokens a value run cannot start with stay out; the group's
+   * general rest reads them.
    */
   const boundValues = oneOrMore(choice(
     literal(','),
@@ -3295,10 +3294,13 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * After a value-first bound in a `@container` or `@supports` feature: a
-   * comparison, the name, and an optional second comparison and value. It
-   * reads the name with `Property`, which fails at its start, so a feature
-   * that is not a range fails softly to its owner's `Enclosed` fallback.
+   * After a value first in a `@container` or `@supports` feature: a
+   * comparison, the name, and an optional second comparison and value. The
+   * name is a `Property`, which reads an identifier (the name part of `foo(`
+   * too), so a feature that is not a range leaves its `)` unmatched and the
+   * feature fails without committing: `@supports` and a nested `@container` group fall back to `Enclosed`; a
+   * top-level `@container` feature has no fallback and fails the prelude
+   * (jess#306 item 5).
    */
   const queryFeatureRangeTail = sequence(
     g.QueryComparisonOperator,
@@ -3358,15 +3360,15 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * What follows a value-first bound: a range (`< width`, `< width < 2px`), or
-   * other component values, which make the feature `<general-enclosed>`
-   * (media-queries-4 §3.1). Every part is optional and the comparison is read
-   * once before either the range name or the rest, so this tail never fails
-   * after its head; the contents reducer builds the range or the enclosed
-   * sequence from what was read. The rest is the ordinary declaration-value
-   * values, so only more values after a range name leave a `@container` or
-   * `@supports` feature's `)` unmatched (jess#306); a media feature and an
-   * if-test read those as their rest.
+   * What follows a value-first bound in a media feature or an if-test: a range
+   * (`< width`, `< width < 2px`), or other component values, which make the
+   * feature `<general-enclosed>` (media-queries-4 §3.1). The comparison is
+   * read once before either the range's other side or the rest; the contents
+   * reducer builds the range or the enclosed sequence from what was read. After
+   * the comparison a function is routed and owned, so `1px < foo(x)` keeps
+   * `foo(x)` one function, and a function whose arguments fail commits that
+   * failure: a media group never falls back. `@container` and `@supports`
+   * features read `queryFeatureBoundTail` instead.
    */
   const queryBoundTail = optional(choice(
     sequence(
@@ -3439,8 +3441,9 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * Each value-first bound the feature-contents dispatches route to, with the
-   * tail that follows it. Named so the feature and media dispatches share them.
+   * Each value-first bound with the media tail that follows it. Named so the
+   * media feature dispatch, the compared head and the `style()` function
+   * feature share them.
    */
   const queryUrlBound = sequence(
     RoutedUrlQueryValue,
@@ -3464,6 +3467,36 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * What follows a value-first bound in a `@container` or `@supports`
+   * feature, as on dev: a range (`< width`, `< width < 2px`) or one value
+   * list. The range name is a `Property` and the values a `ValueList`, which
+   * starts with a value, so a feature that is neither (a comma, a function
+   * split at its `(`) leaves its `)` unmatched and fails without committing:
+   * `@supports` and a nested `@container` group fall back to `Enclosed`; a
+   * top-level `@container` feature has no fallback and fails the prelude
+   * (jess#306 item 5). A function inside the value list commits its own failure, as
+   * it does on dev. The media tail, `queryBoundTail`, differs: it routes a
+   * function after the comparison and reads a leading comma (see
+   * `MediaFeatureContents`).
+   */
+  const queryFeatureBoundTail = optional(choice(
+    sequence(
+      g.QueryComparisonOperator,
+      optional(choice(
+        sequence(
+          g.Property,
+          optional(sequence(
+            g.QueryComparisonOperator,
+            optional(g.QueryValue)
+          ))
+        ),
+        g.ValueList
+      ))
+    ),
+    g.ValueList
+  ));
+
+  /*
    * The first token of a `@container` or `@supports` feature's contents is
    * read once and routed: a unicode range or a function is a value-first
    * bound, owned by its arm through `routed()`; any other identifier is the
@@ -3475,19 +3508,31 @@ const cssFactory = (g: GrammarSelf) => {
     queryFeatureOpenerHead,
     cssCase(
       'url(',
-      g.queryUrlBound
+      sequence(
+        RoutedUrlQueryValue,
+        queryFeatureBoundTail
+      )
     ),
     cssCase(
       CSS_MATH_FUNCTION_OPENERS,
-      g.queryMathBound
+      sequence(
+        RoutedMathQueryValue,
+        queryFeatureBoundTail
+      )
     ),
     cssCase(
       'var(',
-      g.queryVarBound
+      sequence(
+        RoutedVarQueryValue,
+        queryFeatureBoundTail
+      )
     ),
     when(
       startsWith('u+'),
-      g.queryUnicodeBound,
+      sequence(
+        RoutedUnicodeRangeQueryValue,
+        queryFeatureBoundTail
+      ),
       { caseInsensitive: true }
     ),
     when(
@@ -3496,7 +3541,10 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     when(
       endsWith('('),
-      g.queryFunctionBound
+      sequence(
+        RoutedFunctionQueryValue,
+        queryFeatureBoundTail
+      )
     )
   );
 
@@ -3506,9 +3554,11 @@ const cssFactory = (g: GrammarSelf) => {
    * condition holds). `QueryFeature` is `(` + contents + `)`. Left-factored
    * on the first token: an identifier, function or unicode range is routed by
    * `queryFeatureOpener`; any other value first (`100px < width`) is a range
-   * with the name second. `@container` and `@supports` read it; a feature
-   * that is not one of these fails softly, so its owner's `Enclosed` fallback
-   * reads it as `<general-enclosed>` text (jess#306 item 5).
+   * with the name second. `@container` and `@supports` read it. A feature
+   * that is not one of these fails without committing: `@supports` and a
+   * nested `@container` group read it as `<general-enclosed>` text through
+   * their `Enclosed` fallback; a top-level `@container` feature has none and
+   * fails the prelude (jess#306 item 5).
    *
    * `<mf-value>` is one component value or a `<ratio>` (`QueryValue`).
    */
@@ -3536,16 +3586,16 @@ const cssFactory = (g: GrammarSelf) => {
 
   /*
    * A media feature's contents, read by the media group and the `media()` test.
-   * DELIBERATE EXCEPTION to one feature-contents rule: media
-   * reads `<general-enclosed>` as structure, so its opener routes `not` to
+   * DELIBERATE EXCEPTION to one feature-contents rule: media reads
+   * `<general-enclosed>` as structure, so its opener routes `not` to
    * `not <media-in-parens>` (otherwise the feature named `not`; a glued
-   * `not(` is a function token, css-syntax-3 §4.3.4) and its value-first
-   * bound takes the loose `queryBoundTail`. Both commit a failure, which is
-   * right for media, whose group never falls back. `@container` and
-   * `@supports` features must fail softly to reach their `Enclosed`
-   * fallback until those at-rules read `<general-enclosed>` as structure too
-   * (jess#306 item 5), so they keep `queryFeatureOpener` and the strict range
-   * tail.
+   * `not(` is a function token, css-syntax-3 §4.3.4) and its bounds take
+   * `queryBoundTail`. Both commit a failure, which is right for media, whose
+   * group never falls back. An `@container` or `@supports` feature must fail
+   * without committing, so `@supports` and a nested `@container` group reach
+   * their `Enclosed` fallback, until those at-rules read `<general-enclosed>`
+   * as structure too (jess#306 item 5); it keeps `queryFeatureOpener`, the
+   * strict range tail and `queryFeatureBoundTail`.
    */
   const mediaFeatureOpener = dispatch(
     queryFeatureOpenerHead,
@@ -3598,6 +3648,18 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * What a media group holds between its parentheses, and what `media()` holds
+   * after its opener: a condition or a media feature's contents, then the rest.
+   */
+  const mediaGroupContents = sequence(
+    optional(choice(
+      g.MediaCondition,
+      g.MediaFeatureContents
+    )),
+    g.queryGroupRest
+  );
+
+  /*
    * A media query's `<media-in-parens>` (media-queries-4 §3): `( <media-condition> )`
    * or a `<media-feature>`. It opens its `(` once and decides on the next
    * token: an inner `(` starts a `MediaCondition`, anything else is a media
@@ -3616,13 +3678,6 @@ const cssFactory = (g: GrammarSelf) => {
    * `routed()`, so a group that fails after its `(` fails the parse: no
    * enclosing value run reads the same `(` again.
    */
-  const mediaGroupContents = sequence(
-    optional(choice(
-      g.MediaCondition,
-      g.MediaFeatureContents
-    )),
-    g.queryGroupRest
-  );
   const RoutedMediaInParens = node(
     'QueryFeature',
     sequence(
@@ -4198,13 +4253,18 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * `( <style-query> )`, or a parenthesized `<general-enclosed>`; its `(` is
-   * read once and owned through `routed()`, as `MediaInParens`'s is.
+   * What a style group holds between its parentheses, and what `style()` holds
+   * after its opener: a style query, then the rest.
    */
   const styleGroupContents = sequence(
     optional(styleQueryContents),
     g.queryGroupRest
   );
+
+  /*
+   * `( <style-query> )`, or a parenthesized `<general-enclosed>`; its `(` is
+   * read once and owned through `routed()`, as `MediaInParens`'s is.
+   */
   const RoutedStyleInParens = node(
     'StyleInParens',
     sequence(
