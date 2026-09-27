@@ -61,6 +61,31 @@
       "import": "./lib/grammar/cst/positions.js",
       "require": "./lib/grammar/cst/positions.cjs"
     },
+    "./grammar/interpreter": {
+      "types": "./lib/grammar/ast.d.ts",
+      "import": "./lib/grammar/interpreter/ast.js",
+      "require": "./lib/grammar/interpreter/ast.cjs"
+    },
+    "./grammar/interpreter/ast": {
+      "types": "./lib/grammar/ast.d.ts",
+      "import": "./lib/grammar/interpreter/ast.js",
+      "require": "./lib/grammar/interpreter/ast.cjs"
+    },
+    "./grammar/interpreter/ast/positions": {
+      "types": "./lib/grammar/ast/positions.d.ts",
+      "import": "./lib/grammar/interpreter/ast/positions.js",
+      "require": "./lib/grammar/interpreter/ast/positions.cjs"
+    },
+    "./grammar/interpreter/cst": {
+      "types": "./lib/grammar/cst.d.ts",
+      "import": "./lib/grammar/interpreter/cst.js",
+      "require": "./lib/grammar/interpreter/cst.cjs"
+    },
+    "./grammar/interpreter/cst/positions": {
+      "types": "./lib/grammar/cst/positions.d.ts",
+      "import": "./lib/grammar/interpreter/cst/positions.js",
+      "require": "./lib/grammar/interpreter/cst/positions.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
