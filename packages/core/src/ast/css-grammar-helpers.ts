@@ -359,6 +359,13 @@ export function queryValueRatio(children: readonly unknown[]): ValueNode {
 export function queryFeatureContents(children: readonly unknown[]): ValueNode {
   const head = children[0];
   if (isValue(head)) {
+    if (children.length === 1) {
+      return head;
+    }
+    if (children.length < 3 || isValueSlotValue(children[2])) {
+      return generalEnclosedSequence(children);
+    }
+
     /* A value-first range: `value op name [op value]`. */
     const property = keyword(tokenText(children[2]));
     const operators = queryComparisonOperators(children);
@@ -385,6 +392,21 @@ export function queryFeatureContents(children: readonly unknown[]): ValueNode {
     return operation(':', name, firstValue(children), false, cssBaseMathOutsideParens(':'));
   }
   return chainedQueryComparison(name, children);
+}
+
+/*
+ * `<general-enclosed>` after a routed bound (media-queries-4 §3.1): the bound,
+ * then whatever followed it, in order, as one sequence; a comparison token
+ * stays the authored delimiter. The query-prelude emitter joins it with single
+ * spaces, as it does every structured query feature.
+ */
+function generalEnclosedSequence(children: readonly unknown[]): ValueNode {
+  return spaced(children.flatMap(child => isValueSlotValue(child) ? slotParts(child) : [any(tokenText(child))]));
+}
+
+/** The values of a component-value slot, in order: a multi-part slot is its parts. */
+function slotParts(slot: ValueSlot): ValueNode[] {
+  return isValueSlotArray(slot) ? slot.flatMap(slotParts) : [slot];
 }
 
 /**

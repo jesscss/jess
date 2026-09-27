@@ -270,6 +270,7 @@ type GrammarRuleName =
   | 'simpleSelectorAtom'
   | 'calcValueAtom'
   | 'valueAtom'
+  | 'queryBoundTail'
   | 'RoutedAtRuleStatement'
   | 'pseudoArgumentContent'
   | 'CustomPropertyValue'
@@ -2959,17 +2960,101 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * A feature name is read once, as the identifier-or-opener token, and routed
-   * to its tail; an escaped `\(` ends a name, not a function. A function
-   * opener has no arm, so the dispatch refuses it without committing and the
-   * value arm reads it as a value-first bound (`var(--w) < width`). That
-   * re-reads the opener token for a function-first feature. It is kept because
-   * a committed function arm would turn `@supports (foo(x) bar)` into a parse
-   * failure instead of `<general-enclosed>`: a failed dispatch arm always
-   * commits.
+   * What follows a value-first bound: a range (`< width`, `< width < 2px`), or
+   * anything else, which makes the feature `<general-enclosed>`
+   * (media-queries-4 §3.1). The comparison is read once and then either the
+   * range name or the rest of the contents follows it, so no arm here can fail
+   * after reading: the bound alone, a partial range, and any component values
+   * are all accepted, and the contents reducer builds the range or the
+   * enclosed sequence from what was read. The rest is the ordinary
+   * declaration-value list.
+   */
+  const queryBoundTail = optional(choice(
+    sequence(
+      g.QueryComparisonOperator,
+      optional(choice(
+        sequence(
+          g.Property,
+          optional(sequence(
+            g.QueryComparisonOperator,
+            g.QueryValue
+          ))
+        ),
+        g.ValueList
+      ))
+    ),
+    g.ValueList
+  ));
+
+  /*
+   * A unicode-range first bound, owning the token the dispatch below read. It
+   * keeps the `QueryValue > TypedValue > UnicodeRange` nodes a bound always had.
+   */
+  const RoutedUnicodeRangeQueryValue = node(
+    'QueryValue',
+    sequence(
+      node('TypedValue', node('UnicodeRange', routed(), children => any(tokenText(children[0]))), { project: 0 }),
+      queryRatioTail
+    ),
+    children => queryValueRatio(children)
+  );
+
+  /*
+   * A function first bound, owning the opener the dispatch below read, routed
+   * to the same function nodes the typed value dispatch uses. Each keeps the
+   * `QueryValue > TypedValue` nodes a bound always had.
+   */
+  const RoutedUrlQueryValue = node(
+    'QueryValue',
+    sequence(
+      node('TypedValue', UrlFunction, { project: 0 }),
+      queryRatioTail
+    ),
+    children => queryValueRatio(children)
+  );
+  const RoutedMathQueryValue = node(
+    'QueryValue',
+    sequence(
+      node('TypedValue', g.MathFunction, { project: 0 }),
+      queryRatioTail
+    ),
+    children => queryValueRatio(children)
+  );
+  const RoutedVarQueryValue = node(
+    'QueryValue',
+    sequence(
+      node('TypedValue', VarFunction, { project: 0 }),
+      queryRatioTail
+    ),
+    children => queryValueRatio(children)
+  );
+  const RoutedFunctionQueryValue = node(
+    'QueryValue',
+    sequence(
+      node('TypedValue', TypedGenericFunction, { project: 0 }),
+      queryRatioTail
+    ),
+    children => queryValueRatio(children)
+  );
+
+  /*
+   * The first token of a feature's contents is read once and routed:
+   *
+   * - a unicode range or a function is a value-first bound, owned by its arm
+   *   through `routed()`, followed by `queryBoundTail`;
+   * - `not` is `not <media-in-parens>` when a `(` follows it, and otherwise
+   *   the feature name it always was;
+   * - any other identifier is the feature name (an escaped `\(` ends a name,
+   *   not a function), followed by nothing, `: value`, or a comparison and one
+   *   or two values.
+   *
+   * No arm can fail after the head, so no choice is re-read.
    */
   const queryFeatureOpener = dispatch(
-    identOrFunction,
+    choice(
+      g.UnicodeRangeToken,
+      identOrFunction
+    ),
     when(
       'not',
       sequence(
@@ -2981,47 +3066,60 @@ const cssFactory = (g: GrammarSelf) => {
       ),
       { caseInsensitive: true }
     ),
+    cssCase(
+      'url(',
+      sequence(
+        RoutedUrlQueryValue,
+        g.queryBoundTail
+      )
+    ),
+    cssCase(
+      CSS_MATH_FUNCTION_OPENERS,
+      sequence(
+        RoutedMathQueryValue,
+        g.queryBoundTail
+      )
+    ),
+    cssCase(
+      'var(',
+      sequence(
+        RoutedVarQueryValue,
+        g.queryBoundTail
+      )
+    ),
+    when(
+      matches(/^[uU]\+/),
+      sequence(
+        RoutedUnicodeRangeQueryValue,
+        g.queryBoundTail
+      )
+    ),
     when(
       matches(/(?:\\\(|[^(])$/),
       queryFeatureName
-    )
-  );
-
-  /*
-   * A unicode range first bound is its own token, read before the identifier
-   * it starts like; it keeps the `QueryValue > TypedValue` nodes it had. When
-   * no comparison follows (`(U+0-7F)`), the name arm re-reads the `U`.
-   */
-  const UnicodeRangeQueryValue = node(
-    'QueryValue',
-    sequence(
-      node('TypedValue', g.UnicodeRange, { project: 0 }),
-      queryRatioTail
     ),
-    children => queryValueRatio(children)
+    when(
+      endsWith('('),
+      sequence(
+        RoutedFunctionQueryValue,
+        g.queryBoundTail
+      )
+    )
   );
 
   /*
    * A query feature's CONTENTS, the part inside its parentheses
    * (media-queries-4 §3; the same feature a `@container` or `@supports`
    * condition holds). `QueryFeature` is `(` + contents + `)`. Left-factored
-   * on the first token:
-   *
-   * - a unicode range first bound (above);
-   * - an identifier-shaped start, read once and routed: a name (`width`) is
-   *   followed by nothing, `: value`, or a comparison and one or two values;
-   * - any other value first (`100px < width`, `var(--w) < width`) is a range
-   *   with the name second.
+   * on the first token: an identifier, function or unicode range is routed by
+   * `queryFeatureOpener`; any other value first (`100px < width`) is a range
+   * with the name second.
    *
    * `<mf-value>` is one component value or a `<ratio>` (`QueryValue`).
    */
   const QueryFeatureContents = node(
     'QueryFeatureContents',
     choice(
-      sequence(
-        UnicodeRangeQueryValue,
-        queryFeatureRangeTail
-      ),
       queryFeatureOpener,
       sequence(
         g.QueryValue,
@@ -4097,6 +4195,7 @@ const cssFactory = (g: GrammarSelf) => {
     ConditionalGroupAtRule,
     QueryCondition,
     QueryFeatureContents,
+    queryBoundTail,
     QueryFeature,
     QueryClause,
     QueryPrelude,
