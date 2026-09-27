@@ -39,7 +39,6 @@ import {
   enclosedCall,
   styleFeature,
   supportsDeclaration,
-  generalEnclosedArgument,
   queryValueRatio,
   color,
   complexSegments,
@@ -3301,6 +3300,69 @@ const cssFactory = (g: GrammarSelf) => {
   ));
 
   /*
+   * A feature's head is a unicode range, or a CSS identifier or function
+   * opener — not a dashed ident: `(--x: 1)` is no media feature, so it reaches
+   * the value arm and, in `@supports`, the general-enclosed fallback, as it
+   * always has.
+   */
+  const queryFeatureHead = token(noTrivia(sequence(
+    genericIdentifier,
+    optional(literal('('))
+  )));
+  const queryFeatureOpenerHead = choice(
+    g.UnicodeRangeToken,
+    queryFeatureHead
+  );
+
+  /*
+   * The range name after a value-first bound's comparison, owning the
+   * identifier the dispatch below read, and an optional second comparison.
+   */
+  const queryRangeName = sequence(
+    RoutedProperty,
+    optional(sequence(
+      g.QueryComparisonOperator,
+      optional(g.QueryValue)
+    ))
+  );
+
+  /*
+   * The head after a value-first bound's comparison, read once with the
+   * feature head and routed as `queryFeatureOpener` routes it: an identifier
+   * is the range name, and a function or unicode range is another bound with
+   * its own tail, so `1px < foo(x)` keeps `foo(x)` one function. Any other
+   * value fails the head at its start and is read as the bound's values.
+   */
+  const queryComparedHead = dispatch(
+    queryFeatureOpenerHead,
+    cssCase(
+      'url(',
+      g.queryUrlBound
+    ),
+    cssCase(
+      CSS_MATH_FUNCTION_OPENERS,
+      g.queryMathBound
+    ),
+    cssCase(
+      'var(',
+      g.queryVarBound
+    ),
+    when(
+      startsWith('u+'),
+      g.queryUnicodeBound,
+      { caseInsensitive: true }
+    ),
+    when(
+      matches(/(?:\\\(|[^(])$/),
+      queryRangeName
+    ),
+    when(
+      endsWith('('),
+      g.queryFunctionBound
+    )
+  );
+
+  /*
    * What follows a value-first bound: a range (`< width`, `< width < 2px`), or
    * other component values, which make the feature `<general-enclosed>`
    * (media-queries-4 §3.1). Every part is optional and the comparison is read
@@ -3315,13 +3377,7 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       g.QueryComparisonOperator,
       optional(choice(
-        sequence(
-          g.Property,
-          optional(sequence(
-            g.QueryComparisonOperator,
-            optional(g.QueryValue)
-          ))
-        ),
+        queryComparedHead,
         boundValues
       ))
     ),
@@ -3410,21 +3466,6 @@ const cssFactory = (g: GrammarSelf) => {
   const queryFunctionBound = sequence(
     RoutedFunctionQueryValue,
     g.queryBoundTail
-  );
-
-  /*
-   * A feature's head is a unicode range, or a CSS identifier or function
-   * opener — not a dashed ident: `(--x: 1)` is no media feature, so it reaches
-   * the value arm and, in `@supports`, the general-enclosed fallback, as it
-   * always has.
-   */
-  const queryFeatureHead = token(noTrivia(sequence(
-    genericIdentifier,
-    optional(literal('('))
-  )));
-  const queryFeatureOpenerHead = choice(
-    g.UnicodeRangeToken,
-    queryFeatureHead
   );
 
   /*
@@ -3567,11 +3608,15 @@ const cssFactory = (g: GrammarSelf) => {
    * `QueryFeature` from their own conditions, whose `( <condition> )` is
    * owned by `ContainerQueryInParens` / `SupportsInParens`, so a nested group
    * there has one owner, as it always had.
+   *
+   * The `(` is read once by a dispatch and owned by the group through
+   * `routed()`, so a group that fails after its `(` fails the parse: no
+   * enclosing value run reads the same `(` again.
    */
-  const MediaInParens = node(
+  const RoutedMediaInParens = node(
     'QueryFeature',
     sequence(
-      literal('('),
+      routed(),
       optional(choice(
         g.MediaCondition,
         g.MediaFeatureContents
@@ -3581,12 +3626,16 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureBlock(children, span, state)
   );
+  const MediaInParens = dispatch(
+    literal('('),
+    otherwise(RoutedMediaInParens)
+  );
 
   /*
    * `<media-in-parens> [ and | or <media-in-parens> ]*`, opening on a `(`. The
-   * operand after `and`/`or` is optional and a `(` or anything else decides it
-   * at its first character, so the word is never given back: a missing or
-   * non-parenthesized operand leaves `<general-enclosed>`.
+   * operand after `and`/`or` is optional, so the word is never given back: a
+   * missing or non-parenthesized operand ends the condition, and what follows
+   * is the enclosing group's `<general-enclosed>` rest.
    */
   const MediaCondition = node(
     'MediaCondition',
@@ -3594,10 +3643,7 @@ const cssFactory = (g: GrammarSelf) => {
       g.MediaInParens,
       many(sequence(
         g.QueryAndOr,
-        optional(choice(
-          g.MediaInParens,
-          g.ValueSequence
-        ))
+        optional(g.MediaInParens)
       ))
     ),
     children => queryConditionChain(children)
@@ -4110,12 +4156,19 @@ const cssFactory = (g: GrammarSelf) => {
     (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureContents(children, span, state)
   );
 
+  /* A function a style query's dispatch read: a value-first bound, as in any feature. */
+  const styleFunctionFeature = node(
+    'QueryFeatureContents',
+    g.queryFunctionBound,
+    (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureContents(children, span, state)
+  );
+
   /*
    * A `style()` query's contents (css-conditional-5 §3): a `(` opens a
    * `<style-condition>`; otherwise the first identifier or opener is read once
    * and routed — a function is a value-first bound, a custom property a
-   * `<style-feature>`, `not` negates the query after it, and any other
-   * identifier is a feature name. Anything else is the general rest that
+   * `<style-feature>`, `not` negates the `<style-in-parens>` after it, and any
+   * other identifier is a feature name. Anything else is the general rest that
    * follows it.
    */
   const styleQueryContents = choice(
@@ -4125,10 +4178,7 @@ const cssFactory = (g: GrammarSelf) => {
         'not',
         sequence(
           g.RoutedKeyword,
-          optional(choice(
-            g.StyleInParens,
-            g.ValueSequence
-          ))
+          optional(g.StyleInParens)
         )
       ),
       when(
@@ -4137,11 +4187,7 @@ const cssFactory = (g: GrammarSelf) => {
       ),
       when(
         endsWith('('),
-        node(
-          'QueryFeatureContents',
-          g.queryFunctionBound,
-          (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureContents(children, span, state)
-        )
+        styleFunctionFeature
       ),
       when(
         startsWith('--'),
@@ -4152,16 +4198,23 @@ const cssFactory = (g: GrammarSelf) => {
     g.StyleCondition
   );
 
-  /* `( <style-query> )`, or a parenthesized `<general-enclosed>`. */
-  const StyleInParens = node(
+  /*
+   * `( <style-query> )`, or a parenthesized `<general-enclosed>`; its `(` is
+   * read once and owned through `routed()`, as `MediaInParens`'s is.
+   */
+  const RoutedStyleInParens = node(
     'StyleInParens',
     sequence(
-      literal('('),
+      routed(),
       optional(styleQueryContents),
       generalRest,
       literal(')')
     ),
     (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureBlock(children, span, state)
+  );
+  const StyleInParens = dispatch(
+    literal('('),
+    otherwise(RoutedStyleInParens)
   );
 
   /* `<style-in-parens> [ and | or <style-in-parens> ]*`, as `MediaCondition`. */
@@ -4171,10 +4224,7 @@ const cssFactory = (g: GrammarSelf) => {
       g.StyleInParens,
       many(sequence(
         g.QueryAndOr,
-        optional(choice(
-          g.StyleInParens,
-          g.ValueSequence
-        ))
+        optional(g.StyleInParens)
       ))
     ),
     children => queryConditionChain(children)
@@ -4231,9 +4281,9 @@ const cssFactory = (g: GrammarSelf) => {
 
   /*
    * An operand after `not`, `and` or `or` in `supports()`: a function is a
-   * `<general-enclosed>` call, a `(` a `<supports-in-parens>`, and anything
-   * else component values — decided at the first token, so the `and` is never
-   * given back.
+   * `<general-enclosed>` call, an identifier a keyword, and a `(` a
+   * `<supports-in-parens>` — decided at the first token, so the `and` is never
+   * given back. Anything else ends the condition and is the test's rest.
    */
   const supportsTestOperand = choice(
     dispatch(
@@ -4248,8 +4298,7 @@ const cssFactory = (g: GrammarSelf) => {
       ),
       otherwise(g.RoutedKeyword)
     ),
-    g.SupportsInParens,
-    g.ValueSequence
+    g.SupportsInParens
   );
   const supportsTestChain = many(sequence(
     g.QueryAndOr,
@@ -4263,37 +4312,40 @@ const cssFactory = (g: GrammarSelf) => {
    * identifier is the declaration's name. A `(` opens a `<supports-in-parens>`
    * chain, and anything else is the general rest that follows.
    */
+  const supportsTestContents = choice(
+    dispatch(
+      identOrFunction,
+      cssCase(
+        'not',
+        sequence(
+          g.RoutedKeyword,
+          optional(supportsTestOperand)
+        )
+      ),
+      when(
+        endsWith('\\('),
+        g.SupportsDeclaration
+      ),
+      when(
+        endsWith('('),
+        sequence(
+          RoutedEnclosed,
+          supportsTestChain
+        )
+      ),
+      otherwise(g.SupportsDeclaration)
+    ),
+    sequence(
+      g.SupportsInParens,
+      supportsTestChain
+    )
+  );
+
+  /* The body of `supports()`: its contents, then the rest of its component values. */
   const SupportsTestBody = parser(
     { trivia: interstitialTrivia },
     sequence(
-      optional(choice(
-        dispatch(
-          identOrFunction,
-          cssCase(
-            'not',
-            sequence(
-              g.RoutedKeyword,
-              optional(supportsTestOperand)
-            )
-          ),
-          when(
-            endsWith('\\('),
-            g.SupportsDeclaration
-          ),
-          when(
-            endsWith('('),
-            sequence(
-              RoutedEnclosed,
-              supportsTestChain
-            )
-          ),
-          otherwise(g.SupportsDeclaration)
-        ),
-        sequence(
-          g.SupportsInParens,
-          supportsTestChain
-        )
-      )),
+      optional(supportsTestContents),
       generalRest,
       literal(')')
     )
