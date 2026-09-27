@@ -177,9 +177,11 @@ export interface ValueBoundaryTrivia {
 
 const valueBoundaryTriviaKey = Symbol.for('jess.ast.value-boundary-trivia');
 const generalEnclosedSourceKey = Symbol.for('jess.ast.general-enclosed-source');
+const generalEnclosedTemplateKey = Symbol.for('jess.ast.general-enclosed-template');
 interface StoredValueLayout extends ReadonlyArray<string> {
   readonly [valueBoundaryTriviaKey]?: ValueBoundaryTrivia;
   readonly [generalEnclosedSourceKey]?: string;
+  readonly [generalEnclosedTemplateKey]?: true;
 }
 
 /*
@@ -581,6 +583,28 @@ export function withGeneralEnclosedSource<T extends object>(value: T, source: st
   Object.defineProperty(stored, generalEnclosedSourceKey, { value: source });
   layouts.set(value, stored);
   return value;
+}
+
+/**
+ * Mark a `<general-enclosed>` template that carries the dialect's
+ * interpolation (P16): it records no source bytes, because the interpolation is
+ * evaluated, but the emitter prints the substituted template as written.
+ */
+export function withGeneralEnclosedTemplate<T extends object>(value: T): T {
+  const previous = layouts.get(value);
+  const stored: string[] = [...(previous ?? [])];
+  const boundary = previous?.[valueBoundaryTriviaKey];
+  if (boundary !== undefined) {
+    Object.defineProperty(stored, valueBoundaryTriviaKey, { value: boundary });
+  }
+  Object.defineProperty(stored, generalEnclosedTemplateKey, { value: true });
+  layouts.set(value, stored);
+  return value;
+}
+
+/** Whether the parser marked this value a `<general-enclosed>` interpolated template. */
+export function isGeneralEnclosedTemplate(value: object): boolean {
+  return layouts.get(value)?.[generalEnclosedTemplateKey] === true;
 }
 
 /** The recorded source bytes of a structured `<general-enclosed>` group, if any. */

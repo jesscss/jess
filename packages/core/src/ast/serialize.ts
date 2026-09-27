@@ -169,7 +169,7 @@ import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
-import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, generalEnclosedSourceOf, hasAmbientFunctions, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
+import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, generalEnclosedSourceOf, hasAmbientFunctions, isGeneralEnclosedTemplate, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
 import type { Trivia, TriviaMap } from '../types/index.js';
 
 /* ---------------------------------------------------- MaybePromise glue */
@@ -18203,13 +18203,15 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
   }
   switch (node.type) {
     /*
-     * [general-enclosed] A template carrying the dialect's interpolation (P16)
-     * records no source bytes; it is substituted and then protected, as in
-     * `evalSupportsPrelude`, so the call is never evaluated or re-spaced.
+     * [general-enclosed] A template the parser marked because it carries the
+     * dialect's interpolation (P16) records no source bytes; it is substituted
+     * and then protected, so the call is never evaluated or re-spaced. Only the
+     * mark decides: an ordinary call with an interpolated argument
+     * (`e("@{w}")` in a feature value) is evaluated as any value is.
      */
     case 'FunctionCall': {
-      const payload = generalEnclosedPayload(node.args);
-      if (payload === null || !payload.parts.some(part => 'ref' in part)) {
+      const payload = isGeneralEnclosedTemplate(node) ? generalEnclosedPayload(node.args) : null;
+      if (payload === null) {
         return mapMaybe(evalBytes(node, frame, e), plain);
       }
       return mapMaybe(evalBytes(payload, frame, e), content =>
@@ -18218,10 +18220,6 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
     case 'Block': {
       const open = node.delimiter === 'square' ? '[' : '(';
       const close = node.delimiter === 'square' ? ']' : ')';
-      if (!isValueSlotArray(node.value) && node.value.type === 'Interpolation' && node.value.parts.some(part => 'ref' in part)) {
-        return mapMaybe(evalBytes(node.value, frame, e), content =>
-          [{ bytes: `${open}${content}${close}`, protected: true }]);
-      }
       return concatPreludeParts([plain(open), evalQueryPreludeParts(node.value, frame, e), plain(close)]);
     }
     case 'Operation':

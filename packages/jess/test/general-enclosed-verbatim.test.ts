@@ -33,6 +33,20 @@ describe('Less: general-enclosed is emitted as written and never evaluated', () 
     expect(await lessPrelude('@w: x;\n@media foo(@{w}:y)')).toBe('@media foo(x:y)');
   });
 
+  /* The boundary: an ordinary call with an interpolated argument in a feature value is evaluated, as on dev. */
+  it('still evaluates an ordinary call with an interpolated argument in a feature value', async () => {
+    expect(await lessPrelude('@w: 768px;\n@media (min-width: e("@{w}"))')).toBe('@media (min-width: 768px)');
+  });
+
+  it('still evaluates an ordinary call with an interpolated argument in an SCSS feature value', async () => {
+    const css = String(await new Compiler().renderString('$w: 768;\n@media (min-width: unquote("#{$w}px")) { a { b: c } }', { extension: '.scss' }));
+    expect(css.slice(0, css.indexOf('{')).trimEnd()).toBe('@media (min-width: 768px)');
+  });
+
+  it('keeps the name exemption for a defined condition function with an interpolated payload', async () => {
+    expect(await lessPrelude('@v: 1;\n@media style(--x:@{v})')).toBe('@media style(--x: 1)');
+  });
+
   it('does not call a Less function named by an interpolated general-enclosed group', async () => {
     expect(await lessPrelude('@w: 50;\n@media percentage(@{w})')).toBe('@media percentage(50)');
   });

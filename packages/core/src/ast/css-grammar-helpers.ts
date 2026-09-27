@@ -28,7 +28,7 @@ import {
   selectorTermOf,
   selist
 } from './nodes.js';
-import { generalEnclosedSourceOf, withGeneralEnclosedSource, withValueLayout } from './provenance.js';
+import { generalEnclosedSourceOf, withGeneralEnclosedSource, withGeneralEnclosedTemplate, withValueLayout } from './provenance.js';
 import { semanticGapText } from './grammar-helpers.js';
 import type {
   CompoundSelector,
@@ -428,8 +428,8 @@ const DEFINED_CONDITION_FUNCTIONS = new Set(['style', 'scroll-state', 'selector'
  * A function-form or parenthesized `<general-enclosed>` read as a template
  * (`Enclosed`, a query function's scanned payload): it records its source
  * bytes so the emitter prints it as written — unless it is a defined condition
- * function, or its template carries the dialect's interpolation, which P16
- * evaluates.
+ * function. A template carrying the dialect's interpolation, which P16
+ * evaluates, is marked a template instead: substituted, then printed as written.
  */
 export function generalEnclosedGroup<T extends ValueNode>(value: T, span: AstSourceSpan, state: unknown): T {
   if (value.type === 'FunctionCall' && DEFINED_CONDITION_FUNCTIONS.has(value.name.toLowerCase())) {
@@ -437,7 +437,7 @@ export function generalEnclosedGroup<T extends ValueNode>(value: T, span: AstSou
   }
   const payload = value.type === 'FunctionCall' ? value.args[0]?.value : value.type === 'Block' ? value.value : undefined;
   if (isInterpolation(payload) && payload.parts.some(part => 'ref' in part)) {
-    return value;
+    return withGeneralEnclosedTemplate(value);
   }
   return withAuthoredGeneralEnclosed(value, span, state);
 }
