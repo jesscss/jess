@@ -1,0 +1,43 @@
+/*
+ * Query features that are not a feature: `<general-enclosed>` (media-queries-4
+ * §3.1). A media group reads them as structure; an @container or @supports
+ * feature fails softly to its owner's Enclosed fallback. Both print them as
+ * written. The if-tests read their contents with the query rules.
+ */
+@supports (not (@x) b) { a { b: c; } }
+@supports (not (#) b) { a { b: c; } }
+@supports (not (@media) or (x)) { a { b: c; } }
+@supports (a: b) and (not (@x) b) { a { b: c; } }
+@supports ((not (@x) b)) { a { b: c; } }
+@container ((not (@x) b)) { a { b: c; } }
+@supports (1px < foo(@x)) { a { b: c; } }
+@supports (1px < calc(@x)) { a { b: c; } }
+@supports (1px < var(@x)) { a { b: c; } }
+@supports (1px foo(@x)) { a { b: c; } }
+@supports (1px < foo(a !important)) { a { b: c; } }
+@supports (1px < foo(#)) { a { b: c; } }
+@supports (1px < foo(a {b})) { a { b: c; } }
+@supports (1px < calc(1px+2px)) { a { b: c; } }
+@container ((1px < foo(@x))) { a { b: c; } }
+@container ((1px foo(@x))) { a { b: c; } }
+@supports (foo(x) < bar(@x)) { a { b: c; } }
+@supports (foo(x) < calc(1px+2px)) { a { b: c; } }
+@supports (url(a) < foo(@x)) { a { b: c; } }
+@container ((foo(x) < bar(@x))) { a { b: c; } }
+@supports (foo(x), bar(@x)) { a { b: c; } }
+@supports (url(a), bar(@x)) { a { b: c; } }
+@supports (u+0-7f, bar(@x)) { a { b: c; } }
+@supports (calc(1px), foo(@x)) { a { b: c; } }
+@supports (foo(x) < bar(y)) { a { b: c; } }
+@supports (foo(x), bar) { a { b: c; } }
+@supports (foo: ) { a { b: c; } }
+@container (foo:) { a { b: c; } }
+@media (not (a)) { a { b: c; } }
+@media ((a) and (b c)) { a { b: c; } }
+@media (1px < foo(x)) { a { b: c; } }
+@media (foo(x) < bar(y)) { a { b: c; } }
+a {
+  b: if(supports((not (@x) b)): 1; else: 0);
+  c: media(u+0025) supports(u+0025) style(u+0025) supports(not U+00-ff);
+  d: media(1px < foo(x)) style(--x: 1) supports(display: grid);
+}

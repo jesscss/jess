@@ -158,6 +158,13 @@ const DIRECTION_1_ALLOWLIST: readonly Allowed[] = [
     reason: 'Whole-file breadth row; construct not isolated by this channel.'
   },
   {
+    name: 'breadth:fixture/query-general-enclosed.css',
+    accepted: ['css'],
+    validCss: 'n/a — whole file',
+    reason: 'Whole-file breadth row; construct not isolated by this channel. The file pins css query '
+      + 'general-enclosed and if-test forms for the render differential (jess#315).'
+  },
+  {
     name: 'breadth:repo/packages/fns/test/files/alias.css',
     accepted: ['css', 'less', 'jess'],
     validCss: 'n/a — whole file',
@@ -324,6 +331,16 @@ const DIRECTION_2_ALLOWLIST: readonly Allowed[] = [];
  * too. Found by this gate, recorded rather than fixed.
  */
 const CRASH_ALLOWLIST: readonly Allowed[] = [
+  {
+    name: 'breadth:fixture/query-general-enclosed.css',
+    accepted: ['css'],
+    validCss: 'n/a — whole file',
+    reason:
+      'The less grammar THROWS its bare-variable diagnostic on `@supports (not (@x) b)`: in Less a '
+      + 'bare `@x` in a supports condition is a variable written without interpolation, a Less '
+      + 'language rule, not a css-base gap. The file is the css render-differential fixture for '
+      + 'query general-enclosed forms.'
+  },
   {
     name: 'breadth:repo/packages/syntax/css/css-parser/test/css/errors/atrule-numeric-name.css',
     accepted: [],
