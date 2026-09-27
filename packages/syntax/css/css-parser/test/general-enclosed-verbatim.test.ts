@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parse } from '@jesscss/css-parser';
 import { serialize } from '@jesscss/core';
 import type { ValueEvaluator } from '@jesscss/core';
+import { dimension, queryFeatureContents } from '@jesscss/core/ast';
 
 /**
  * `<general-enclosed>` (media-queries-4 §3.1) is syntax a future spec may
@@ -20,7 +21,21 @@ const VERBATIM = [
   '@media (foo(x): y)',
   '@media (width > 1px) and (foo(x)  bar)',
   '@container (calc(1px + 1px) foo)',
-  '@container card (U+0-7F  bar)'
+  '@container card (U+0-7F  bar)',
+
+  /* A lone function or unicode-range bound, wherever the feature stands. */
+  '@media (foo( x ))',
+  '@media (url(a/b.png))',
+  '@supports (foo(x)/2)',
+  '@container (a) and (foo( x ))',
+
+  /* A query function's scanned payload, bare or parenthesized, agrees. */
+  '@container style(--x:1)',
+  '@container (style(--x:1))',
+  '@media foo(x:y)',
+
+  /* Only the group whose own contents are general-enclosed; the condition around it is normalized. */
+  '@media ((foo(x)  bar))'
 ];
 
 async function prelude(source: string, evaluator?: ValueEvaluator): Promise<string> {
@@ -45,6 +60,15 @@ describe('general-enclosed is emitted as written and never evaluated', () => {
       expect(await prelude(source, refusingEvaluator)).toBe(source);
     });
   }
+
+  it('keeps general-enclosed as written in compressed output', async () => {
+    const css = (await serialize(parse('@media (foo(x)   or(color)) and (min-width : 1px) { a { b: c } }'), { compress: true })).css;
+    expect(css.slice(0, css.indexOf('{'))).toBe('@media(foo(x)   or(color)) and (min-width:1px)');
+  });
+
+  it('refuses a general-enclosed group whose parse state has no input to record', () => {
+    expect(() => queryFeatureContents([dimension(1, 'px')], { start: 0, end: 3 }, {})).toThrow(TypeError);
+  });
 
   it('still evaluates a query feature value, so the refusing evaluator is live', async () => {
     await expect(prelude('@media (min-width: foo(1px))', refusingEvaluator)).rejects.toThrow();

@@ -25,8 +25,8 @@ describe('Less: general-enclosed is emitted as written and never evaluated', () 
     });
   }
 
-  it('still evaluates a function outside general-enclosed, so the evaluator is live', async () => {
-    const css = String(await new Compiler().renderString('a { b: darken(red, 10%); }', { extension: '.less' }));
-    expect(css).toContain('#cc0000');
+  it('still evaluates math in a @supports feature beside it, so the evaluator is live in the prelude', async () => {
+    expect(await lessPrelude('@supports (width: (1px + 1px)) and (foo(x) calc(1px + 1px))'))
+      .toBe('@supports (width: 2px) and (foo(x) calc(1px + 1px))');
   });
 });

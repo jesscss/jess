@@ -85,7 +85,7 @@ async function loadGrammar(dialect) {
 function parses(grammar, source) {
   let result;
   try {
-    result = run(grammar.Stylesheet, source, { trivia: grammar.whitespace });
+    result = run(grammar.Stylesheet, source, { trivia: grammar.whitespace, state: { source } });
   } catch (error) {
     /* A reducer invariant that blew up rather than declining the input. */
     return { ok: false, crashed: String(error && error.message).slice(0, 160), expected: [] };

@@ -17970,17 +17970,18 @@ function staysNested(name: string): boolean {
 type SupportsPreludePart = { bytes: string; protected: boolean };
 
 /**
- * The grammar-owned template of a general-enclosed function form, or `null` when
- * the call is an ordinary one. A single `Interpolation` argument is the shape no
- * structured call can have: every structured argument path yields a typed value
- * node, so the template is the discriminator, not a flag.
+ * The grammar-owned text of a general-enclosed function form, or `null` when
+ * the call is an ordinary one. A single `Interpolation` (`Enclosed`) or `Any`
+ * (a query function's scanned payload, `style(--x:1)`) argument is the shape no
+ * structured call in a prelude has: every structured argument path yields a
+ * typed value node, so the payload is the discriminator, not a flag.
  */
-function generalEnclosedPayload(args: readonly CallArg<ValueSlot>[]): Interpolation | null {
+function generalEnclosedPayload(args: readonly CallArg<ValueSlot>[]): Interpolation | Any | null {
   if (args.length !== 1) {
     return null;
   }
   const only = args[0]!.value;
-  return !isValueSlotArray(only) && only.type === 'Interpolation' ? only : null;
+  return !isValueSlotArray(only) && (only.type === 'Interpolation' || only.type === 'Any') ? only : null;
 }
 
 function normalizeSupportsBytes(p: string, compress = false): string {

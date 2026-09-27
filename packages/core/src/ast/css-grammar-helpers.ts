@@ -358,11 +358,12 @@ export function queryValueRatio(children: readonly unknown[]): ValueNode {
  * with `:` and a value, a name compared with one or two values, or a value
  * compared with the name — the same Operations the four feature forms built.
  */
-export function queryFeatureContents(children: readonly unknown[], span?: AstSourceSpan, state?: unknown): ValueNode {
+export function queryFeatureContents(children: readonly unknown[], span: AstSourceSpan, state: unknown): ValueNode {
   const head = children[0];
   if (isValue(head)) {
+    /* A lone value is no `<mf-plain>`/`<mf-range>`: the feature is general-enclosed. */
     if (children.length === 1) {
-      return head;
+      return withAuthoredGeneralEnclosed(head, span, state);
     }
     if (children.length < 3 || isValueSlotValue(children[2])) {
       return withAuthoredGeneralEnclosed(generalEnclosedSequence(children), span, state);
@@ -404,21 +405,24 @@ export function queryFeatureContents(children: readonly unknown[], span?: AstSou
 export function queryFeatureBlock(children: readonly unknown[], span: AstSourceSpan, state: unknown): ValueNode {
   const value = firstValue(children);
   const group = block(value);
-  return generalEnclosedSourceOf(value) === undefined ? group : withAuthoredGeneralEnclosed(group, span, state);
+
+  /* Only the group whose own contents are general-enclosed; a group around a marked group is a condition. */
+  return generalEnclosedSourceOf(value) === undefined || value.type === 'Block'
+    ? group
+    : withAuthoredGeneralEnclosed(group, span, state);
 }
 
 /*
  * Record a structured `<general-enclosed>` value's source bytes: the slice of
- * the parse input its span covers. The parse state carries the input; without
- * it (a grammar run with no state) the value keeps only its structure.
+ * the parse input its span covers. The parse state carries the input; a run
+ * without it is a grammar wiring defect, so it throws rather than falling back
+ * to normalized, evaluated output.
  */
-function withAuthoredGeneralEnclosed<T extends object>(value: T, span: AstSourceSpan | undefined, state: unknown): T {
-  const source = typeof state === 'object' && state !== null && 'source' in state && typeof state.source === 'string'
-    ? state.source
-    : undefined;
-  return source === undefined || span === undefined
-    ? value
-    : withGeneralEnclosedSource(value, source.slice(span.start, span.end));
+function withAuthoredGeneralEnclosed<T extends object>(value: T, span: AstSourceSpan, state: unknown): T {
+  if (typeof state !== 'object' || state === null || !('source' in state) || typeof state.source !== 'string') {
+    throw new TypeError('A general-enclosed query group needs the parse input in its parse state to be emitted as written.');
+  }
+  return withGeneralEnclosedSource(value, state.source.slice(span.start, span.end));
 }
 
 /*

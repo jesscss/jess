@@ -192,7 +192,10 @@ recorded as unimplemented. There is no cross-dialect harness in the repo today:
 of the three test files importing more than one parser, none feeds one input to
 all four, and `test/ast-shape/shape-stability.test.ts` — the closest thing —
 imports only three parsers and uses **per-dialect disjoint corpora**.
-**STATUS: BUILDABLE.** Known violations: 2 (S3, S4).
+**STATUS: BUILDABLE.** Known violations: 3 (S3, S4, and jess#315: css reads a
+`@media`/`@container`/`@supports` `<general-enclosed>` group as structure
+and accepts general-enclosed `@media` features, while SCSS, `.jess` and
+non-converged Less read or reject them as text — ledger N14, P39).
 
 ## 5. Divergence is licensed by the dialect's own definition, and recorded where it is introduced
 

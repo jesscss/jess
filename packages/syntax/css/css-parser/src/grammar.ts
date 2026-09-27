@@ -3200,7 +3200,7 @@ const cssFactory = (g: GrammarSelf) => {
         queryFeatureNameTail
       )
     ),
-    children => queryFeatureContents(children)
+    (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureContents(children, span, state)
   );
 
   const mediaTypeKeywordReserved = keywords(

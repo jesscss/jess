@@ -21,6 +21,7 @@ function isStylesheet(value: unknown): value is Stylesheet {
 function parseAst(input: string): Stylesheet {
   const result = run(cssGrammar.Stylesheet, input, {
     trivia: cssGrammar.whitespace,
+    state: { source: input },
     rootTrivia: { select: commentTriviaLabels }
   });
   if (!result.ok || result.unconsumedFrom !== null || !isStylesheet(result.value)) {
