@@ -1564,6 +1564,13 @@ const cssFactory = (g: GrammarSelf) => {
     children => any(tokenText(children[0]))
   );
 
+  /* The same `<urange>` node, owning the token a dispatch read. */
+  const RoutedUnicodeRange = node(
+    'UnicodeRange',
+    routed(),
+    children => any(tokenText(children[0]))
+  );
+
   /*
    * `<percentage>` — css-values-4 §8.2: "a `<number>` immediately followed by a
    * percent sign `%`", i.e. `<percentage> = <number> %`. It is a NAMED CSS value
@@ -3390,11 +3397,7 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       node(
         'TypedValue',
-        node(
-          'UnicodeRange',
-          routed(),
-          children => any(tokenText(children[0]))
-        ),
+        RoutedUnicodeRange,
         { project: 0 }
       ),
       queryRatioTail
@@ -4218,6 +4221,16 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * The first token of a `style()` or `supports()` test's contents, and of a
+   * `supports()` operand: a unicode range (`U+0-7F`, one `<urange>` token, never
+   * `U` then `+0-7F`) or an identifier or function opener.
+   */
+  const ifTestHead = choice(
+    g.UnicodeRangeToken,
+    identOrFunction
+  );
+
+  /*
    * A `style()` query's contents (css-conditional-5 §3): a `(` opens a
    * `<style-condition>`; otherwise the first identifier or opener is read once
    * and routed — a function is a value-first bound, a custom property a
@@ -4227,13 +4240,18 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const styleQueryContents = choice(
     dispatch(
-      identOrFunction,
+      ifTestHead,
       cssCase(
         'not',
         sequence(
           g.RoutedKeyword,
           optional(g.StyleInParens)
         )
+      ),
+      when(
+        startsWith('u+'),
+        RoutedUnicodeRange,
+        { caseInsensitive: true }
       ),
       when(
         endsWith('\\('),
@@ -4344,7 +4362,12 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const supportsTestOperand = choice(
     dispatch(
-      identOrFunction,
+      ifTestHead,
+      when(
+        startsWith('u+'),
+        RoutedUnicodeRange,
+        { caseInsensitive: true }
+      ),
       when(
         endsWith('\\('),
         g.RoutedKeyword
@@ -4371,13 +4394,18 @@ const cssFactory = (g: GrammarSelf) => {
    */
   const supportsTestContents = choice(
     dispatch(
-      identOrFunction,
+      ifTestHead,
       cssCase(
         'not',
         sequence(
           g.RoutedKeyword,
           optional(supportsTestOperand)
         )
+      ),
+      when(
+        startsWith('u+'),
+        RoutedUnicodeRange,
+        { caseInsensitive: true }
       ),
       when(
         endsWith('\\('),
