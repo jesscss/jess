@@ -350,12 +350,14 @@ const dimensionUnit = regex(/-?[_a-zA-Z\u0080-\uFFFF](?:[_a-zA-Z0-9\u0080-\uFFFF
 const lessBareIdentifier = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 
 /*
- * Keep legacy Less variable names (`@1`, `@{3}`, `@-`) recognizable here so
- * dialect parsers can reject retired syntax with precise diagnostics. This
- * stays separate from the general identifier leaf so that permissive recovery
- * does not leak into declaration names, selectors, or ordinary value keywords.
+ * A run of ident code points with no escapes and no start-position rule. Less
+ * uses it for legacy variable names (`@1`, `@{3}`, `@-`), kept recognizable so
+ * dialect parsers can reject retired syntax with precise diagnostics, and for
+ * the tail of an interpolated custom-property name. It stays separate from the
+ * general identifier leaf so that permissive recovery does not leak into
+ * declaration names, selectors, or ordinary value keywords.
  */
-const lessVariableName = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
+const identCodePointRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
 
 const lessDeclarationProperty = token(noTrivia(sequence(
   optional(literal('*')),
@@ -363,10 +365,11 @@ const lessDeclarationProperty = token(noTrivia(sequence(
 )));
 
 /*
- * Less detached-ruleset maps admit numeric member names (`@grays: { 100: ... }`).
- * Keep this distinct from ordinary CSS declaration properties and value numbers.
+ * Less detached-ruleset maps admit numeric member names (`@grays: { 100: ... }`),
+ * and a Less interpolation indexes with the same digit run. Keep this distinct
+ * from ordinary CSS declaration properties and value numbers.
  */
-const lessNumericMapKey = regex(/[0-9]+/);
+const digitRun = regex(/[0-9]+/);
 
 /*
  * Detached-ruleset maps also use punctuation members for escaped CSS text
@@ -387,7 +390,6 @@ const lessPercentEscape = regex(/%[0-9a-fA-F]{2}/);
  */
 const lessInterpHead = regex(/-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 const lessInterpBareKey = regex(/[-_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-const lessInterpIndexKey = regex(/[0-9]+/);
 
 /*
  * A quoted chunk leaves only a complete strict Less `@{name}` or `${name}`
@@ -400,7 +402,8 @@ const lessQuotedSingleChunk = regex(/(?:[^'\\@$]|\\[\s\S]|@(?!\{-?[_a-zA-Z0-9\u0
 
 /*
  * These are CSS identifier segments, shared by every dialect that permits a
- * structural interpolation inside a declaration name. Dialects own their
+ * structural interpolation inside a declaration name; Less reuses the tail for
+ * the static bytes after an interpolated value. Dialects own their
  * interpolation delimiters and AST reductions; this artifact only recognizes
  * the static CSS-name bytes around those typed segments.
  */
@@ -444,9 +447,9 @@ const customOuterContent = regex(/(?:(?![ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[^*]|
 const customInnerContent = regex(/(?:\\[^\n\r\f]|[^(){}[\]'"\\/#$]|\/(?!\*)|#(?!\{)|\$(?![[({]))+/);
 const customSingleQuoted = regex(/'(?:[^'\n\\]|\\.)*'/);
 const customDoubleQuoted = regex(/"(?:[^"\n\\]|\\.)*"/);
-const lessInterpolatedCustomPropertyStart = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-const lessInterpolatedCustomPropertyDash = regex(/-/);
-const lessInterpolatedCustomPropertyTail = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
+
+/* The bare `-` between an interpolation and the static name bytes that follow it. */
+const hyphen = regex(/-/);
 
 /*
  * Less value identifiers REUSE the CSS ident, which already consumes CSS escapes
@@ -457,8 +460,6 @@ const lessInterpolatedCustomPropertyTail = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
  * rule and split escaped delimiters into adjacent atoms that then failed to join.
  */
 const lessInterpolatedValueStart = cssIdentifier;
-const lessInterpolatedValueDash = regex(/-/);
-const lessInterpolatedValueTail = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 
 /*
  * Custom-property values remain CSS declaration-value text in Less, except for
@@ -487,8 +488,6 @@ const lessCustomProperty = regex(/--[-_a-zA-Z0-9\u0080-\uffff]+/);
  */
 const lessCustomOuterContent = regex(/(?:(?![ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*important(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*[;}])(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})(?!@[-_a-zA-Z0-9\u0080-\uffff]+)[^(){}[\];'"\/\\]))+|\/(?!\*)/i);
 const lessCustomInnerContent = regex(/(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})(?!@[-_a-zA-Z0-9\u0080-\uffff]+)[^(){}[\]'"\/\\])+|\/(?!\*)/i);
-const lessCustomSingleQuoted = regex(/'(?:[^'\n\\]|\\.)*'/);
-const lessCustomDoubleQuoted = regex(/"(?:[^"\n\\]|\\.)*"/);
 export const cssSyntax = rules(_g => ({
   Identifier: keywordValue,
   AttributeOperator: attributeOperator,
@@ -562,26 +561,26 @@ export const lessSyntax = rules(_g => ({
   AtIdentifier: atIdentifier,
   AtIdentifierUnescaped: atIdentifierUnescaped,
   LessIdentifier: lessBareIdentifier,
-  VariableNameToken: lessVariableName,
+  VariableNameToken: identCodePointRun,
   DeclarationPropertyToken: lessDeclarationProperty,
-  NumericMapKeyToken: lessNumericMapKey,
+  NumericMapKeyToken: digitRun,
   PunctuationMapKeyToken: lessPunctuationMapKey,
   PercentEscapeToken: lessPercentEscape,
   ValueIdentifier: lessBareIdentifier,
   InterpolationHead: lessInterpHead,
   InterpolationKey: lessInterpBareKey,
-  InterpolationIndex: lessInterpIndexKey,
+  InterpolationIndex: digitRun,
   QuotedDoubleText: lessQuotedDoubleChunk,
   QuotedSingleText: lessQuotedSingleChunk,
-  InterpolatedCustomPropertyStart: lessInterpolatedCustomPropertyStart,
-  InterpolatedCustomPropertyDash: lessInterpolatedCustomPropertyDash,
-  InterpolatedCustomPropertyTail: lessInterpolatedCustomPropertyTail,
+  InterpolatedCustomPropertyStart: lessBareIdentifier,
+  InterpolatedCustomPropertyDash: hyphen,
+  InterpolatedCustomPropertyTail: identCodePointRun,
   InterpolatedValueStart: lessInterpolatedValueStart,
-  InterpolatedValueDash: lessInterpolatedValueDash,
-  InterpolatedValueTail: lessInterpolatedValueTail,
+  InterpolatedValueDash: hyphen,
+  InterpolatedValueTail: interpolatedPropertyTail,
   CustomPropertyToken: lessCustomProperty,
   CustomValueOuterContent: lessCustomOuterContent,
   CustomValueInnerContent: lessCustomInnerContent,
-  CustomValueSingleQuoted: lessCustomSingleQuoted,
-  CustomValueDoubleQuoted: lessCustomDoubleQuoted
+  CustomValueSingleQuoted: customSingleQuoted,
+  CustomValueDoubleQuoted: customDoubleQuoted
 }));
