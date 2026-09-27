@@ -16,7 +16,7 @@
  * - SCSS: ../../../scss/scss-parser/src/grammar.ts
  * - Jess: ../../../jess/jess-parser/src/grammar.ts
  */
-import { balanced, classifiedTrivia, choice, compose, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, startsWith, token, when, withCtx } from 'parseman' with { type: 'macro' };
+import { balanced, classifiedTrivia, choice, compose, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, startsWith, token, when } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -259,7 +259,10 @@ type GrammarRuleName =
   | 'AtRulePreludeGroup'
   | 'AtRulePreludeQuoted'
   | 'AtRulePreludeText'
-  | 'QueryCondition'
+  | 'MediaInParens'
+  | 'MediaCondition'
+  | 'MediaNot'
+  | 'MediaTerm'
   | 'QueryFeatureContents'
   | 'keyframeSelector'
   | 'stylesheetBodyBlock'
@@ -3052,9 +3055,6 @@ const cssFactory = (g: GrammarSelf) => {
    *
    * - a unicode range or a function is a value-first bound, owned by its arm
    *   through `routed()`, followed by `queryBoundTail`;
-   * - in a media condition, `not` is `not <media-in-parens>` when a `(`
-   *   follows it; otherwise (and everywhere else) it is the feature name it
-   *   always was;
    * - any other identifier is the feature name (an escaped `\(` ends a name,
    *   not a function), followed by nothing, `: value`, or a comparison and one
    *   or two values.
@@ -3066,19 +3066,6 @@ const cssFactory = (g: GrammarSelf) => {
     choice(
       g.UnicodeRangeToken,
       identOrFunction
-    ),
-    cssCase(
-      'not',
-      sequence(
-        RoutedProperty,
-        choice(
-          {
-            gate: state => typeof state === 'object' && state !== null && 'mediaCondition' in state,
-            combinator: g.QueryFeature
-          },
-          queryFeatureNameTail
-        )
-      )
     ),
     cssCase(
       'url(',
@@ -3144,47 +3131,77 @@ const cssFactory = (g: GrammarSelf) => {
     children => queryFeatureContents(children)
   );
 
-  /*
-   * A parenthesized condition inside a query feature's parentheses:
-   * media-queries-4 `<media-in-parens> = ( <media-condition> ) | …`. It opens
-   * on the inner `(`, which no feature's contents can start with, so the
-   * choice in `QueryFeature` decides on that one character. The `not` form is
-   * routed by the feature-name dispatch above.
-   *
-   * Only a MEDIA condition reads it: `QueryPrelude` sets `mediaCondition` in
-   * the parse context and both arms are gated on it. `@container` and
-   * `@supports` reach the same `QueryFeature` from their own conditions, whose
-   * `( <condition> )` is owned by `ContainerQueryInParens` /
-   * `SupportsInParens`; with the gate closed there, a nested group is theirs
-   * alone, as it always was. (context.md, "Which tool": the same rule, told
-   * apart only by the at-rule above it.)
-   */
-  const QueryCondition = node(
-    'QueryCondition',
-    sequence(
-      g.QueryFeature,
-      many(sequence(
-        g.QueryAndOr,
-        g.QueryFeature
-      ))
-    ),
-    children => queryConditionChain(children)
-  );
   const QueryFeature = node(
     'QueryFeature',
     sequence(
       literal('('),
+      g.QueryFeatureContents,
+      literal(')')
+    ),
+    children => block(firstValue(children))
+  );
+
+  /*
+   * A media query's `<media-in-parens>` (media-queries-4 §3): `( <media-condition> )`
+   * or a `<media-feature>`. It opens its `(` once and decides on the next
+   * token: an inner `(` starts a `MediaCondition`, `not` a `MediaNot`, and
+   * anything else is a feature's contents, so a plain feature is the
+   * `QueryFeature > QueryFeatureContents` it always was.
+   *
+   * These are MEDIA rules, reached only from a media query's terms and the
+   * `media()` if-test. `@container` and `@supports` read the shared
+   * `QueryFeature` from their own conditions, whose `( <condition> )` is
+   * owned by `ContainerQueryInParens` / `SupportsInParens`, so a nested group
+   * there has one owner, as it always had.
+   */
+  const MediaInParens = node(
+    'QueryFeature',
+    sequence(
+      literal('('),
       choice(
-        {
-          gate: state => typeof state === 'object' && state !== null && 'mediaCondition' in state,
-          combinator: g.QueryCondition
-        },
+        g.MediaCondition,
+        g.MediaNot,
         g.QueryFeatureContents
       ),
       literal(')')
     ),
     children => block(firstValue(children))
   );
+
+  /* `<media-in-parens> [ and | or <media-in-parens> ]*`, opening on a `(`. */
+  const MediaCondition = node(
+    'MediaCondition',
+    sequence(
+      g.MediaInParens,
+      many(sequence(
+        g.QueryAndOr,
+        g.MediaInParens
+      ))
+    ),
+    children => queryConditionChain(children)
+  );
+
+  /*
+   * `not <media-in-parens>`, or — with no `(` after it — a feature named
+   * `not`, read by the same name tail any feature name takes. The `not` word
+   * is read once either way. A `(` glued to it makes `not(` a function token
+   * (css-syntax-3 §4.3.4), which is a feature's contents, not a negation.
+   */
+  const MediaNot = node(
+    'MediaNot',
+    sequence(
+      noTrivia(sequence(
+        g.QueryNot,
+        not(literal('('))
+      )),
+      choice(
+        g.MediaInParens,
+        queryFeatureNameTail
+      )
+    ),
+    children => queryFeatureContents(children)
+  );
+
   const mediaTypeKeywordReserved = keywords(
     ['only', 'layer'],
     { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
@@ -3268,6 +3285,16 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     { project: 0 }
   );
+
+  /* A media query's term: a `<media-in-parens>`, or a media type / keyword / function. */
+  const MediaTerm = node(
+    'QueryTerm',
+    choice(
+      g.MediaInParens,
+      queryIdentOrFunctionTerm
+    ),
+    { project: 0 }
+  );
   const QueryOnlyClause = node(
     'QueryOnlyClause',
     sequence(
@@ -3275,7 +3302,7 @@ const cssFactory = (g: GrammarSelf) => {
       QueryNonOnlyKeyword,
       many(sequence(
         g.QueryAndOr,
-        g.QueryTerm
+        g.MediaTerm
       ))
     ),
     children => spaced(children.map(child => isValue(child) ? child : keyword(tokenText(child))))
@@ -3293,8 +3320,8 @@ const cssFactory = (g: GrammarSelf) => {
     choice(
       QueryOnlyClause,
       sequence(
-        g.QueryTerm,
-        many(g.QueryTerm)
+        g.MediaTerm,
+        many(g.MediaTerm)
       )
     ),
     (children) => {
@@ -3304,12 +3331,9 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const QueryPrelude = node(
     'QueryPrelude',
-    withCtx(
-      { mediaCondition: true },
-      oneOrMoreSep(
-        g.QueryClause,
-        literal(',')
-      )
+    oneOrMoreSep(
+      g.QueryClause,
+      literal(',')
     ),
     (children) => {
       const values = valueChildren(children);
@@ -4222,7 +4246,10 @@ const cssFactory = (g: GrammarSelf) => {
     StylesheetAtRule,
     DeclarationListAtRule,
     ConditionalGroupAtRule,
-    QueryCondition,
+    MediaInParens,
+    MediaCondition,
+    MediaNot,
+    MediaTerm,
     QueryFeatureContents,
     queryBoundTail,
     QueryFeature,

@@ -969,6 +969,9 @@ describe('CSS canonical-AST grammar', () => {
     /* `not` is still a feature name where no parenthesized condition follows it. */
     expect(preludeOf('@media (not) { a { b: c } }')).toMatchObject(paren(kw('not')));
 
+    /* `not(` glued is a function token (css-syntax-3 §4.3.4), not a negation. */
+    expect(preludeOf('@media (not(a)) { a { b: c } }')).toMatchObject(paren({ type: 'FunctionCall', name: 'not' }));
+
     /*
      * A container or supports condition keeps its own owner for a nested group:
      * the media condition does not take `(not (style(…)))` from
