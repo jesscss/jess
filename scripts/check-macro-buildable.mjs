@@ -147,14 +147,21 @@ const noBuild = process.argv.includes('--no-build');
  * `.cjs` is skipped: it is the same macro lowering emitted in the other module
  * format (marker counts are byte-for-byte identical), so scanning it would only
  * double every number.
+ *
+ * `grammar/interpreter/` is skipped: it is the same grammar deliberately built
+ * WITHOUT the macro (the `./grammar/interpreter/*` exports), so every module in
+ * it is a combinator import by design, not a fallback.
  */
 function builtEsmModules(libDir) {
   const files = [];
+  const interpreterDir = join(libDir, 'grammar', 'interpreter');
   const walk = (dir) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const full = join(dir, entry.name);
       if (entry.isDirectory()) {
-        walk(full);
+        if (full !== interpreterDir) {
+          walk(full);
+        }
       } else if (entry.name.endsWith('.js')) {
         files.push(full);
       }

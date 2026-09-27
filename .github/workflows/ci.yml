@@ -232,7 +232,8 @@ jobs:
   #     built libs must exist. Both are fast tsdown bundles; the whole prime is ~3s.
   #
   # `pnpm --filter '@jesscss/core...' --filter '@jesscss/fns...'` pulls their shared
-  # `awaitable-pipe` dep in too. NO parser, jess, editor, or docs build runs here.
+  # `awaitable-pipe` dep in too. The parser libs are built only for the
+  # interpreter parity tests (see that step). NO jess, editor, or docs build runs here.
   test-source:
     name: Source tests (build-free)
     runs-on: ubuntu-latest
@@ -259,6 +260,12 @@ jobs:
       # less/scss/jess W-phase compose flips all rely on this same prime.
       - name: Prime — build parser-shared + css-parser + core + fns
         run: pnpm --filter '@jesscss/parser-shared' --filter '@jesscss/css-parser' --filter '@jesscss/core...' --filter '@jesscss/fns...' build
+
+      # Each parser's `interpreter-parity.test.ts` compares its two SHIPPED bundles
+      # (`lib/grammar/*` vs `lib/grammar/interpreter/*`), so the remaining three
+      # parser libs must exist too. Serial: concurrent parser builds race.
+      - name: Prime — build less/scss/jess parsers (interpreter parity tests)
+        run: pnpm --workspace-concurrency=1 --filter '@jesscss/less-parser' --filter '@jesscss/scss-parser' --filter '@jesscss/jess-parser' run compile
 
       # Opt-out coverage: `-r test` runs EVERY workspace package by default, so a
       # newly added package is gated the moment it exists. `jess` is excluded — it
