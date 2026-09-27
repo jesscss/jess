@@ -372,7 +372,6 @@ type LessRules = {
   StyleFeature: Combinator<ValueNode>;
   MediaTest: Combinator<ValueNode>;
   SupportsTest: Combinator<ValueNode>;
-  MediaInParens: Combinator<ValueNode>;
   SupportsDeclaration: Combinator<ValueNode>;
   functionArgument: Combinator<unknown>;
 };
@@ -3858,9 +3857,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * through a composed rule. `SupportsTest` also carries Less's bare-`@variable`
    * diagnostic; give that its own slot in the css body before deleting it.
    */
-  // A media condition's `<media-in-parens>` is Less's own parenthesized
-  // feature, which already reads Less's logical groups and `(not …)`.
-  const MediaInParens = g.QueryFeature;
   const MediaTest = node(
     'Call',
     sequence(routed(), g.MediaTestBody),
@@ -3884,10 +3880,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const SupportsDeclaration = node(
     'SupportsDeclaration',
     // A colon with no value is `<general-enclosed>`, the same sequence css builds.
-    sequence(routed(), optional(sequence(literal(':'), optional(g.SupportsValue)))),
+    // Its value is one value run, as css's; a comma after it belongs to the test's rest.
+    sequence(routed(), optional(sequence(literal(':'), optional(g.ValueSequence)))),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => {
       const property = keyword(requireToken(children[0]).value);
-      const value = children.find(isValueNode);
+      const slot = children.find(isLessValueSlotValue);
+      const value = slot === undefined || isValueNode(slot) ? slot : spaced(slot.map(requireValueNode));
       if (value !== undefined) {
         return operation(':', property, value, false, lessMathOutsideParens(state, ':'));
       }
@@ -5535,7 +5533,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     functionArgument,
     StyleTest,
     StyleFeature,
-    MediaInParens,
     MediaTest,
     SupportsTest,
     SupportsDeclaration,
