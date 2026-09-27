@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { parse } from '@jesscss/css-parser';
 import { serialize } from '@jesscss/core';
-import type { ValueEvaluator } from '@jesscss/core';
+import type { SerializeOptions } from '@jesscss/core';
 import { dimension, queryFeatureContents } from '@jesscss/core/ast';
+
+type ValueEvaluator = NonNullable<SerializeOptions['evaluator']>;
 
 /**
  * `<general-enclosed>` (media-queries-4 §3.1) is syntax a future spec may

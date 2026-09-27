@@ -186,7 +186,7 @@ class LazyValueList {
     return this.#value ??= this.source.value.map(toNativeLessValue);
   }
 
-  get separator(): ',' | '/' {
+  get separator(): Extract<Value, { type: 'List' }>['sep'] {
     return this.source.sep;
   }
 
