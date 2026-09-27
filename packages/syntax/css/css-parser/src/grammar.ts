@@ -16,7 +16,7 @@
  * - SCSS: ../../../scss/scss-parser/src/grammar.ts
  * - Jess: ../../../jess/jess-parser/src/grammar.ts
  */
-import { balanced, classifiedTrivia, choice, compose, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, token, when } from 'parseman' with { type: 'macro' };
+import { balanced, classifiedTrivia, choice, compose, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, startsWith, token, when, withCtx } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -2193,9 +2193,10 @@ const cssFactory = (g: GrammarSelf) => {
      * 70 KB for the multi-key form. The tail is a `g.`-rule reference for the
      * same reason.
      *
-     * Both css dispatch tables carry this arm. Changing only one would leave
-     * the typed and non-typed ladders reaching different argument grammars for
-     * the same function name — which is the divergence §6 exists to close.
+     * Every css dispatch table that routes a function opener (the value, typed
+     * and query-feature ones) carries this arm. Changing only one would leave
+     * them reaching different argument grammars for the same function name —
+     * which is the divergence §6 exists to close.
      */
     cssCase(
       CSS_MATH_FUNCTION_OPENERS,
@@ -2260,9 +2261,10 @@ const cssFactory = (g: GrammarSelf) => {
      * 70 KB for the multi-key form. The tail is a `g.`-rule reference for the
      * same reason.
      *
-     * Both css dispatch tables carry this arm. Changing only one would leave
-     * the typed and non-typed ladders reaching different argument grammars for
-     * the same function name — which is the divergence §6 exists to close.
+     * Every css dispatch table that routes a function opener (the value, typed
+     * and query-feature ones) carries this arm. Changing only one would leave
+     * them reaching different argument grammars for the same function name —
+     * which is the divergence §6 exists to close.
      */
     cssCase(
       CSS_MATH_FUNCTION_OPENERS,
@@ -2961,13 +2963,13 @@ const cssFactory = (g: GrammarSelf) => {
 
   /*
    * What follows a value-first bound: a range (`< width`, `< width < 2px`), or
-   * anything else, which makes the feature `<general-enclosed>`
-   * (media-queries-4 §3.1). The comparison is read once and then either the
-   * range name or the rest of the contents follows it, so no arm here can fail
-   * after reading: the bound alone, a partial range, and any component values
-   * are all accepted, and the contents reducer builds the range or the
-   * enclosed sequence from what was read. The rest is the ordinary
-   * declaration-value list.
+   * other component values, which make the feature `<general-enclosed>`
+   * (media-queries-4 §3.1). Every part is optional and the comparison is read
+   * once before either the range name or the rest, so this tail never fails
+   * after its head; the contents reducer builds the range or the enclosed
+   * sequence from what was read. The rest is the ordinary declaration-value
+   * list, so contents it does not read (`{…}`, `!`, a leading comma, or more
+   * values after a range name) leave the feature's `)` unmatched.
    */
   const queryBoundTail = optional(choice(
     sequence(
@@ -2993,7 +2995,15 @@ const cssFactory = (g: GrammarSelf) => {
   const RoutedUnicodeRangeQueryValue = node(
     'QueryValue',
     sequence(
-      node('TypedValue', node('UnicodeRange', routed(), children => any(tokenText(children[0]))), { project: 0 }),
+      node(
+        'TypedValue',
+        node(
+          'UnicodeRange',
+          routed(),
+          children => any(tokenText(children[0]))
+        ),
+        { project: 0 }
+      ),
       queryRatioTail
     ),
     children => queryValueRatio(children)
@@ -3042,29 +3052,33 @@ const cssFactory = (g: GrammarSelf) => {
    *
    * - a unicode range or a function is a value-first bound, owned by its arm
    *   through `routed()`, followed by `queryBoundTail`;
-   * - `not` is `not <media-in-parens>` when a `(` follows it, and otherwise
-   *   the feature name it always was;
+   * - in a media condition, `not` is `not <media-in-parens>` when a `(`
+   *   follows it; otherwise (and everywhere else) it is the feature name it
+   *   always was;
    * - any other identifier is the feature name (an escaped `\(` ends a name,
    *   not a function), followed by nothing, `: value`, or a comparison and one
    *   or two values.
    *
-   * No arm can fail after the head, so no choice is re-read.
+   * A function arm fails after its head only when the function's own
+   * arguments do, as a function-valued bound always has.
    */
   const queryFeatureOpener = dispatch(
     choice(
       g.UnicodeRangeToken,
       identOrFunction
     ),
-    when(
+    cssCase(
       'not',
       sequence(
         RoutedProperty,
         choice(
-          g.QueryFeature,
+          {
+            gate: state => typeof state === 'object' && state !== null && 'mediaCondition' in state,
+            combinator: g.QueryFeature
+          },
           queryFeatureNameTail
         )
-      ),
-      { caseInsensitive: true }
+      )
     ),
     cssCase(
       'url(',
@@ -3088,11 +3102,12 @@ const cssFactory = (g: GrammarSelf) => {
       )
     ),
     when(
-      matches(/^[uU]\+/),
+      startsWith('u+'),
       sequence(
         RoutedUnicodeRangeQueryValue,
         g.queryBoundTail
-      )
+      ),
+      { caseInsensitive: true }
     ),
     when(
       matches(/(?:\\\(|[^(])$/),
@@ -3135,6 +3150,14 @@ const cssFactory = (g: GrammarSelf) => {
    * on the inner `(`, which no feature's contents can start with, so the
    * choice in `QueryFeature` decides on that one character. The `not` form is
    * routed by the feature-name dispatch above.
+   *
+   * Only a MEDIA condition reads it: `QueryPrelude` sets `mediaCondition` in
+   * the parse context and both arms are gated on it. `@container` and
+   * `@supports` reach the same `QueryFeature` from their own conditions, whose
+   * `( <condition> )` is owned by `ContainerQueryInParens` /
+   * `SupportsInParens`; with the gate closed there, a nested group is theirs
+   * alone, as it always was. (context.md, "Which tool": the same rule, told
+   * apart only by the at-rule above it.)
    */
   const QueryCondition = node(
     'QueryCondition',
@@ -3152,7 +3175,10 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       literal('('),
       choice(
-        g.QueryCondition,
+        {
+          gate: state => typeof state === 'object' && state !== null && 'mediaCondition' in state,
+          combinator: g.QueryCondition
+        },
         g.QueryFeatureContents
       ),
       literal(')')
@@ -3278,9 +3304,12 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const QueryPrelude = node(
     'QueryPrelude',
-    oneOrMoreSep(
-      g.QueryClause,
-      literal(',')
+    withCtx(
+      { mediaCondition: true },
+      oneOrMoreSep(
+        g.QueryClause,
+        literal(',')
+      )
     ),
     (children) => {
       const values = valueChildren(children);

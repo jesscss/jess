@@ -968,6 +968,21 @@ describe('CSS canonical-AST grammar', () => {
 
     /* `not` is still a feature name where no parenthesized condition follows it. */
     expect(preludeOf('@media (not) { a { b: c } }')).toMatchObject(paren(kw('not')));
+
+    /*
+     * A container or supports condition keeps its own owner for a nested group:
+     * the media condition does not take `(not (style(…)))` from
+     * `ContainerQueryInParens`, whose atoms read `style()` as general-enclosed.
+     */
+    const styleQuery = paren({ type: 'FunctionCall', name: 'style', args: [{ value: { type: 'Interpolation', parts: [{ lit: '--x: 1' }] } }] });
+    expect(preludeOf('@container (width > 1px) and (not (style(--x: 1))) { a { b: c } }')).toMatchObject({
+      type: 'Sequence',
+      parts: [{ type: 'Block' }, kw('and'), paren({ type: 'Sequence', parts: [kw('not'), styleQuery] })]
+    });
+    expect(preludeOf('@container (a) and ((style(--x: 1)) or (b)) { a { b: c } }')).toMatchObject({
+      type: 'Sequence',
+      parts: [{ type: 'Block' }, kw('and'), paren({ type: 'Sequence', parts: [styleQuery, kw('or'), paren(kw('b'))] })]
+    });
   });
 
   it('keeps public supports-condition comments local to the typed condition grammar', () => {
