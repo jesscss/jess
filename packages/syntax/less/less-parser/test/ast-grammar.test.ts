@@ -7911,16 +7911,16 @@ describe('Less AST grammar facts', () => {
     }
 
     /*
-     * `@\63 olor: red;` is not a variable: Less variable names admit no escapes.
-     * It is the escaped at-keyword `@color` with prelude `:red`, read as css
-     * reads it (DESIGN-DECISIONS P40).
+     * `@\63 olor: red;` is a variable declaration: a variable name is a css
+     * ident, so its escapes decode (css-syntax-3 §4.3.11) and it declares the
+     * variable `color` (P40).
      */
-    const escapedAtKeyword = run(lessGrammar.Document, '@\\63 olor: red;', {
+    const escapedVariable = run(lessGrammar.Document, '@\\63 olor: red;', {
       trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
     });
-    expect(escapedAtKeyword.ok && escapedAtKeyword.unconsumedFrom === null).toBe(true);
-    expect(escapedAtKeyword.value).toMatchObject({
-      rules: [{ type: 'AtRuleStatement', name: '@\\63 olor' }]
+    expect(escapedVariable.ok && escapedVariable.unconsumedFrom === null).toBe(true);
+    expect(escapedVariable.value).toMatchObject({
+      rules: [{ type: 'VariableDeclaration', name: 'color' }]
     });
 
     for (const source of [
