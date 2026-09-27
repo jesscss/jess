@@ -64,6 +64,8 @@ export {
   queryFeatureBlock,
   generalEnclosedGroup,
   queryFeatureContents,
+  enclosedCall,
+  styleFeature,
   queryValueRatio,
   complexSegments,
   cssRelativeCombinator,

@@ -47,6 +47,7 @@ import type {
   If,
   Interpolation,
   Keyword,
+  List,
   MixinCall,
   MixinDefinition,
   Param,
@@ -302,11 +303,76 @@ export function withFirstBranchCondition(args: readonly ValueSlot[]): ValueSlot 
  * query feature or group is a paren `Block`, and those parentheses are the
  * call's own, so the argument is the block's contents.
  */
+/*
+ * An if-test call: the opener the value dispatch read (`media(`) and the one
+ * query its contents reduce to, with any `not`/`and`/`or` kept as keywords.
+ */
 export function ifTestCall(children: readonly unknown[]): FunctionCall {
-  const name = children.find(isTerminalText);
-  const query = firstValue(children);
-  const argument = query.type === 'Block' && query.delimiter === 'paren' ? query.value : query;
-  return funcCall(tokenText(name), [argument]);
+  const items: ValueNode[] = [];
+  let parts: ValueNode[] = [];
+  const flush = (): void => {
+    if (parts.length > 0) {
+      items.push(parts.length === 1 ? parts[0]! : spaced(parts));
+    }
+    parts = [];
+  };
+  for (const child of children.slice(1)) {
+    if (isCommaList(child)) {
+      child.value.forEach((item, index) => {
+        if (index > 0) {
+          flush();
+        }
+        parts.push(...slotParts(item));
+      });
+    } else if (isValueSlotValue(child)) {
+      parts.push(...slotParts(child));
+    } else {
+      const text = tokenText(child);
+      if (text === ',') {
+        flush();
+      } else if (/^(?:not|and|or)$/i.test(text)) {
+        parts.push(keyword(text));
+      }
+    }
+  }
+  flush();
+  return funcCall(functionOpenName(children[0]), [items.length === 1 ? items[0]! : list(items, ',')]);
+}
+
+function isCommaList(value: unknown): value is List {
+  return isNodeType(value, 'List') && 'sep' in value && value.sep === ',';
+}
+
+/*
+ * A style query's `<style-feature>`: the custom property alone, or it, `:`,
+ * and its uncomputed value — the same Operation a Less style query builds.
+ */
+export function styleFeature(children: readonly unknown[]): ValueNode {
+  const [name, value] = children.filter(isValue);
+  return value === undefined
+    ? name!
+    : operation(':', name!, value, false, cssBaseMathOutsideParens(':'));
+}
+
+/*
+ * A function-form or parenthesized `<general-enclosed>`: its grammar-owned
+ * content is one `Interpolation`; a leading opener makes it a call.
+ */
+export function enclosedCall(children: readonly unknown[]): ValueNode {
+  const content = children.find((child): child is Interpolation => isNodeType(
+    child,
+    'Interpolation'
+  ));
+  if (content === undefined) {
+    throw new TypeError('CSS general-enclosed lost its grammar-owned content.');
+  }
+  const head = children[0];
+  return isTerminalText(head) && tokenText(head) !== '('
+    ? funcCall(
+        functionOpenName(head),
+        [content]
+      )
+    : block(content);
 }
 
 /*

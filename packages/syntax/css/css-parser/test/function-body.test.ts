@@ -100,7 +100,18 @@ describe('CSS function bodies: branches, `;` groups, `{}` arguments, dashed func
           value: [
             {
               type: 'Branch',
-              condition: { type: 'FunctionCall', name: 'style', args: [{ value: { type: 'Interpolation' } }] },
+              condition: {
+                type: 'FunctionCall',
+                name: 'style',
+                args: [{
+                  value: {
+                    type: 'Operation',
+                    operator: ':',
+                    left: { type: 'Keyword', src: '--scheme' },
+                    right: { type: 'Any', src: 'dark' }
+                  }
+                }]
+              },
               value: { type: 'Keyword', src: 'white' }
             },
             { type: 'Branch', condition: { type: 'Keyword', src: 'else' }, value: { type: 'Keyword', src: 'black' } }
@@ -144,11 +155,22 @@ describe('CSS function bodies: branches, `;` groups, `{}` arguments, dashed func
    * query. One that is no media feature or condition is css-values-5's
    * `<general-enclosed>`, held as written.
    */
+  /*
+   * An if() condition is `<declaration-value>` when parsed (css-values-5 §8.3),
+   * so a test that holds no query is still read: after the query, the rest of
+   * its contents is the structured `<general-enclosed>` sequence, and a comma
+   * makes it a comma List.
+   */
   it('reads media() as an if-test at its opener, anywhere in a value', () => {
     expect(declarationValue('media(a, b)')).toMatchObject({
       type: 'FunctionCall',
       name: 'media',
-      args: [{ value: { type: 'Interpolation' } }]
+      args: [{ value: { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'a' }, { type: 'Keyword', src: 'b' }] } }]
+    });
+    expect(declarationValue('supports(a b c)')).toMatchObject({
+      type: 'FunctionCall',
+      name: 'supports',
+      args: [{ value: { type: 'Sequence', parts: [{ src: 'a' }, { src: 'b' }, { src: 'c' }] } }]
     });
   });
 
