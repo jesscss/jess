@@ -101,6 +101,12 @@ describe('Less: branch arguments are dispatched on the first argument (P38)', ()
     }]);
   });
 
+  it('a supports() declaration with a colon and no value is general-enclosed', () => {
+    expect(firstArgument('a { b: supports(display:); }')).toMatchObject([{
+      value: { type: 'Sequence', parts: [{ type: 'Keyword', src: 'display' }, { type: 'Any', src: ':' }] }
+    }]);
+  });
+
   it('a call opening on a keyword argument is never a branch list', () => {
     expect(() => parse('a { b: foo(@k: v: x); }')).toThrow();
   });

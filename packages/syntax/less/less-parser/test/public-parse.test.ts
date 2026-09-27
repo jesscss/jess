@@ -2835,7 +2835,8 @@ describe('public Less parse()', () => {
       '@supports (@cond) { .card { color: red; } }',
       '@container @name (inline-size > 30em) { .card { color: red; } }',
       '@layer @name;',
-      '@keyframes @name { from { opacity: 0; } }'
+      '@keyframes @name { from { opacity: 0; } }',
+      '.card { color: supports(@cond); }'
     ]) {
       expect(() => parse(source), source).toThrow(
         LessBareVariableInterpolationError

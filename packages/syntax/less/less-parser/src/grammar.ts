@@ -779,9 +779,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       span
     )
   );
+  /*
+   * A bare `@name` where only `@{name}` interpolates: a diagnostic. Its `@`
+   * is read only when a variable name follows, so on `@{`, `@(` or a lone `@`
+   * the rule fails at its start and the alternative after it reads the `@`
+   * once; after the `@`, `lessVariableName` has an arm for every character
+   * the `@` admitted, so the rule never fails past it.
+   */
   const BareVariableInterpolation = node(
     'BareVariableInterpolation',
-    noTrivia(sequence(literal('@'), lessVariableName)),
+    noTrivia(sequence(regex(/@(?=[-_a-zA-Z0-9\u0080-\uffff])/), lessVariableName)),
     (children, _fields, span) => {
       const name = requireSupportedVariableName(children[1], span.start, span.end);
       throw new LessBareVariableInterpolationError(span.start, span.end, name);
@@ -3565,9 +3572,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       funcCall(functionNameFromOpener(children[0]), [operation(':', keyword(requireToken(children[1]).value),
         requireValueNode(children[3]), false, lessMathOutsideParens(state, ':'))])
   );
-  // A style query's `<style-feature>` (CSS's `StyleFeature` slot): the custom
-  // property the style contents dispatch read, `:`, and Less's own
-  // custom-property value — the same Operation a container style query builds.
+  /*
+   * A style query's `<style-feature>` (CSS's `StyleFeature` slot): the custom
+   * property the style contents dispatch read, `:`, and Less's own
+   * custom-property value — the same Operation a container style query builds.
+   */
   const StyleFeature = node(
     'StyleFeature',
     sequence(routed(), optional(sequence(literal(':'), g.CustomValue))),
@@ -3596,8 +3605,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(routed(), g.MediaTestBody),
     children => ifTestCall(children)
   );
-  // As in an `@supports` prelude, a bare `@variable` is a diagnostic here: a
-  // supports condition interpolates as `@{a}`.
+  /*
+   * As in an `@supports` prelude, a bare `@variable` is a diagnostic here: a
+   * supports condition interpolates as `@{a}`.
+   */
   const SupportsTest = node(
     'Call',
     sequence(routed(), choice(g.BareVariableInterpolation, g.SupportsTestBody)),
@@ -3608,13 +3619,17 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(routed(), g.StyleTestBody),
     children => ifTestCall(children)
   );
-  // The `<ident> : <declaration-value>` of a supports() if-test (CSS's
-  // `SupportsDeclaration` slot), after the name the contents dispatch read: the
-  // same feature as Less's `@supports` `SupportsFeature`, without its parentheses.
+  /*
+   * The `<ident> : <declaration-value>` of a supports() if-test (CSS's
+   * `SupportsDeclaration` slot), after the name the contents dispatch read. Its
+   * grammar is css's: the name, then an optional `:` and one optional value run
+   * (a colon with no value is `<general-enclosed>`; a comma after the run
+   * belongs to the test's rest). Less restates it for its reducer: the `:`
+   * Operation carries Less's `lessMathOutsideParens(state, ':')` flag, where
+   * css's carries the css base flag.
+   */
   const SupportsDeclaration = node(
     'SupportsDeclaration',
-    // A colon with no value is `<general-enclosed>`, the same sequence css builds.
-    // Its value is one value run, as css's; a comma after it belongs to the test's rest.
     sequence(routed(), optional(sequence(literal(':'), optional(g.ValueSequence)))),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => {
       const property = keyword(requireToken(children[0]).value);
