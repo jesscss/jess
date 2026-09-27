@@ -355,17 +355,6 @@ const IDENT_BOUNDARY = '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\';
 const caseInsensitiveWord = makeWord(IDENT_BOUNDARY, { caseInsensitive: true });
 
 /*
- * Sass's logical operators are SYNTAX, not functions (§4.5.5), and the same
- * three spellings serve both the guard ladder (`@if`) and the VALUE ladder
- * below, so they are stated once here rather than twice. The identifier
- * boundary is what keeps `not-a-var`, `android` and `origin` ordinary
- * identifiers.
- */
-const scssNotKeyword = caseInsensitiveWord('not');
-const scssAndKeyword = caseInsensitiveWord('and');
-const scssOrKeyword = caseInsensitiveWord('or');
-
-/*
  * A CSS-namespaces prefix: `<ident>|`, `*|`, or bare `|`, glued (no whitespace
  * around `|` \u2014 CSS Namespaces \u00a72, selectors-4 \u00a75.1). It prefixes a type/universal
  * selector (`svg|circle`, `*|a`, `|a`) and an attribute name (`[svg|attr]`), so
@@ -1081,7 +1070,7 @@ const scssFactory = (g: ScssInputRules) => {
        * `not not 0`.
        */
       noTrivia(sequence(
-        scssNotKeyword,
+        g.QueryNot,
         optional(valueTrivia),
         g.MathUnary
       )),
@@ -1203,7 +1192,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.MathTopSum,
       many(sequence(
         valueTrivia,
-        scssAndKeyword,
+        g.LogicalAnd,
         valueTrivia,
         g.MathTopSum
       ))
@@ -1216,7 +1205,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.ValueLogicalAnd,
       many(sequence(
         valueTrivia,
-        scssOrKeyword,
+        g.LogicalOr,
         valueTrivia,
         g.ValueLogicalAnd
       ))
@@ -2802,7 +2791,7 @@ const scssFactory = (g: ScssInputRules) => {
   const IfTerm = node<GuardNode>(
     'IfTerm',
     sequence(
-      optional(scssNotKeyword),
+      optional(g.QueryNot),
       g.IfAtom
     ),
     (children) => {
@@ -2820,7 +2809,7 @@ const scssFactory = (g: ScssInputRules) => {
     sequence(
       g.IfTerm,
       many(sequence(
-        scssAndKeyword,
+        g.LogicalAnd,
         g.IfTerm
       ))
     ),
@@ -2837,7 +2826,7 @@ const scssFactory = (g: ScssInputRules) => {
     sequence(
       g.IfAnd,
       many(sequence(
-        scssOrKeyword,
+        g.LogicalOr,
         g.IfAnd
       ))
     ),

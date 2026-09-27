@@ -350,6 +350,8 @@ type SharedSyntax = {
   CustomDoubleQuoted: Combinator<string>;
   QueryAndOr: Combinator<string>;
   QueryNot: Combinator<string>;
+  LogicalAnd: Combinator<string>;
+  LogicalOr: Combinator<string>;
   QueryOnly: Combinator<string>;
   QueryComparisonOperator: Combinator<string>;
   ContainerAtKeyword: Combinator<string>;
@@ -796,16 +798,6 @@ const scopeAtRuleName = word('@scope', IDENT_BOUNDARY, { caseInsensitive: true }
 const nullWord = word('null', IDENT_BOUNDARY);
 
 /*
- * The logical operators of the `$if` and `when` guard ladders and the `$(…)`
- * value ladder, stated once for all three and matched ASCII
- * case-insensitively, as SCSS's are. `not` is the shared query keyword
- * `g.QueryNot`; the shared artifact only has `and` and `or` as one terminal,
- * and these ladders need them apart.
- */
-const logicalAnd = word('and', IDENT_BOUNDARY, { caseInsensitive: true });
-const logicalOr = word('or', IDENT_BOUNDARY, { caseInsensitive: true });
-
-/*
  * NOT exported, and must never be. The body is written entirely in parseman's
  * macro vocabulary (`makeWord`, `sequence`, `node`, ...), which exists only at
  * build time -- the macro plugin lowers each call site into inline JS and the
@@ -1217,7 +1209,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     sequence(
       g.ExpressionLogicalOperand,
       oneOrMore(sequence(
-        logicalAnd,
+        g.LogicalAnd,
         g.ExpressionLogicalOperand
       ))
     ),
@@ -1228,7 +1220,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     sequence(
       g.ExpressionLogicalOperand,
       oneOrMore(sequence(
-        logicalOr,
+        g.LogicalOr,
         g.ExpressionLogicalOperand
       ))
     ),
@@ -1339,7 +1331,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     sequence(
       g.GuardPrimary,
       oneOrMore(sequence(
-        logicalAnd,
+        g.LogicalAnd,
         g.GuardPrimary
       ))
     ),
@@ -1350,7 +1342,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     sequence(
       g.GuardPrimary,
       oneOrMore(sequence(
-        logicalOr,
+        g.LogicalOr,
         g.GuardPrimary
       ))
     ),
@@ -5442,7 +5434,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     sequence(
       g.IfGuardPrimary,
       oneOrMore(sequence(
-        logicalAnd,
+        g.LogicalAnd,
         g.IfGuardPrimary
       ))
     ),
@@ -5453,7 +5445,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     sequence(
       g.IfGuardPrimary,
       oneOrMore(sequence(
-        logicalOr,
+        g.LogicalOr,
         g.IfGuardPrimary
       ))
     ),
