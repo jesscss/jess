@@ -126,7 +126,10 @@ divergences. This is roughly one fixture and one test file. Today the repo has
 **no test asserting anything about value-vs-position byte behavior** — the only
 one that ever existed asserted the divergence and was deleted.
 **STATUS: BUILDABLE.** Known violations: 1 documented (S1) + 2 undocumented
-riders on it + 1 cross-dialect (S3).
+riders on it + 1 cross-dialect (S3), plus one at-rule split that predates
+ledger N14: a lone general-enclosed bound keeps its padding in `@media ( foo(x) )`
+(the whole `<media-in-parens>` is the group) but is normalized to `(foo(x))` in
+`@container`, whose `ContainerQueryInParens` wraps it in an unmarked block.
 
 ## 3. A policy has one owner
 

@@ -416,6 +416,11 @@ export function queryFeatureBlock(children: readonly unknown[], span: AstSourceS
  * Condition functions a spec defines, which are therefore not
  * `<general-enclosed>`: css-contain-3/5 `style()` and `scroll-state()`,
  * css-conditional-4/5 `selector()`, `font-tech()` and `font-format()`.
+ * Each is defined for one at-rule only (`style()` in `@container`,
+ * `selector()` in `@supports`), but the exemption is by name in every
+ * query prelude: the reducers are shared across at-rules, so `@media
+ * style(--x:1)` is normalized too. Ledger N14 records this as an owner-pending
+ * scope choice.
  */
 const DEFINED_CONDITION_FUNCTIONS = new Set(['style', 'scroll-state', 'selector', 'font-tech', 'font-format']);
 

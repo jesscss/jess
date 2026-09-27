@@ -68,6 +68,11 @@ describe('general-enclosed is emitted as written and never evaluated', () => {
     expect(await prelude('@container (style(--x:1))')).toBe('@container (style(--x: 1))');
   });
 
+  /* Ledger N14, owner-pending: the defined-name exemption is by name in every query prelude. */
+  it('exempts a defined condition function by name outside its own at-rule too', async () => {
+    expect(await prelude('@media style(--x:1)')).toBe('@media style(--x: 1)');
+  });
+
   it('keeps general-enclosed as written in compressed output', async () => {
     const css = (await serialize(parse('@media (foo(x)   or(color)) and (min-width : 1px) { a { b: c } }'), { compress: true })).css;
     expect(css.slice(0, css.indexOf('{'))).toBe('@media(foo(x)   or(color)) and (min-width:1px)');

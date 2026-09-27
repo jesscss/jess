@@ -18202,9 +18202,26 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
     return concatPreludeParts(parts);
   }
   switch (node.type) {
+    /*
+     * [general-enclosed] A template carrying the dialect's interpolation (P16)
+     * records no source bytes; it is substituted and then protected, as in
+     * `evalSupportsPrelude`, so the call is never evaluated or re-spaced.
+     */
+    case 'FunctionCall': {
+      const payload = generalEnclosedPayload(node.args);
+      if (payload === null || !payload.parts.some(part => 'ref' in part)) {
+        return mapMaybe(evalBytes(node, frame, e), plain);
+      }
+      return mapMaybe(evalBytes(payload, frame, e), content =>
+        [{ bytes: `${node.name}(${content})`, protected: true }]);
+    }
     case 'Block': {
       const open = node.delimiter === 'square' ? '[' : '(';
       const close = node.delimiter === 'square' ? ']' : ')';
+      if (!isValueSlotArray(node.value) && node.value.type === 'Interpolation' && node.value.parts.some(part => 'ref' in part)) {
+        return mapMaybe(evalBytes(node.value, frame, e), content =>
+          [{ bytes: `${open}${content}${close}`, protected: true }]);
+      }
       return concatPreludeParts([plain(open), evalQueryPreludeParts(node.value, frame, e), plain(close)]);
     }
     case 'Operation':

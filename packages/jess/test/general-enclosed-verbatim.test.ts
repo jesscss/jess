@@ -30,6 +30,11 @@ describe('Less: general-enclosed is emitted as written and never evaluated', () 
   /* P16: the dialect's own interpolation inside general-enclosed is still evaluated. */
   it('evaluates @{…} interpolation inside general-enclosed and keeps the rest as written', async () => {
     expect(await lessPrelude('@w: x;\n@supports (foo(@{w})   bar)')).toBe('@supports (foo(x)   bar)');
+    expect(await lessPrelude('@w: x;\n@media foo(@{w}:y)')).toBe('@media foo(x:y)');
+  });
+
+  it('does not call a Less function named by an interpolated general-enclosed group', async () => {
+    expect(await lessPrelude('@w: 50;\n@media percentage(@{w})')).toBe('@media percentage(50)');
   });
 
   it('does not rewrite a url() inside general-enclosed while rewriting one outside it (ledger N8, N14)', async () => {
