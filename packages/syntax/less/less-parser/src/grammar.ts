@@ -454,9 +454,16 @@ const whitespace = classifiedTrivia({
   blockComment
 });
 const selectorAttributeModifierSpace = regex(/[ \t\n\r\f]+/);
+/*
+ * Where every keyword ends. css-syntax-3 §4.3.11 consumes a valid escape into
+ * the identifier it follows, so `@import\61` is the one at-keyword `@importa`:
+ * the backslash continues the word. The same boundary as parser-shared's.
+ * @see https://drafts.csswg.org/css-syntax-3/#consume-name
+ */
+const IDENT_BOUNDARY = '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\';
 const importKeyword = keywords(
   ['@-import', '@import'],
-  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
+  { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
 /* `customValueAtKeyword` is now the composed `g.CustomValueAtKeyword` rule. */
 // Quoted-string skippers for the grammar-level ambient `scanSkip`.
@@ -581,11 +588,11 @@ const urlFunctionOpen = token(noTrivia(regex(/url\(/i)));
 const staticTailText = regex(/[^()\[\]{};@'"]+/);
 const importLayerOrSupports = keywords(
   ['layer', 'supports'],
-  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
+  { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
 const importOption = keywords(
   ['reference', 'optional', 'once', 'multiple', 'inline', 'css', 'less'],
-  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
+  { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
 const inlineJavaScriptBody = regex(/(?:[^`\\]|\\[\s\S])*/);
 // Math productions run under `noTrivia`, so their operators own precisely the
@@ -668,12 +675,12 @@ const lessDimensionUnit = regex(/-?[_a-zA-Z\u0080-\uFFFF](?:[_a-zA-Z0-9\u0080-\u
 // here prevents a malformed import from falling through as a generic at-rule.
 const charsetAtRuleName = word(
   '@charset',
-  '-_a-zA-Z0-9\\u0080-\\uFFFF',
+  IDENT_BOUNDARY,
   { caseInsensitive: true }
 );
 const layerAtRuleName = word(
   '@layer',
-  '-_a-zA-Z0-9\\u0080-\\uFFFF',
+  IDENT_BOUNDARY,
   { caseInsensitive: true }
 );
 /**
@@ -685,19 +692,19 @@ const layerAtRuleName = word(
  */
 const lessOwnAtKeyword = keywords(
   ['@-import', '@-compose', '@compose', '@-use', '@use', '@-export'],
-  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
+  { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
 /* `staticAtRuleStatementName` is now the composed `g.StaticAtRuleStatementName` rule. */
 const mixinName = regex(/[.#]-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const mixinPathCombinator = regex(/>/);
 const mixinGuardOperator = regex(/>=|<=|=>|=<|=~|[<>=]/);
-const functionConditionStop = regex(/[ \t\n\r\f]*(?:>=|<=|=>|=<|=~|[<>=]|(?:and|or)(?![-_a-zA-Z0-9\u0080-\uffff]))/i);
+const functionConditionStop = regex(/[ \t\n\r\f]*(?:>=|<=|=>|=<|=~|[<>=]|(?:and|or)(?![-_a-zA-Z0-9\u0080-\uffff\\]))/i);
 const functionConditionOperator = regex(/[ \t\n\r\f]*(?:>=|<=|=>|=<|=~|[<>=])[ \t\n\r\f]*/);
-const functionConditionAnd = regex(/[ \t\n\r\f]*and(?![-_a-zA-Z0-9\u0080-\uffff])[ \t\n\r\f]*/i);
-const functionConditionOr = regex(/[ \t\n\r\f]*or(?![-_a-zA-Z0-9\u0080-\uffff])[ \t\n\r\f]*/i);
+const functionConditionAnd = regex(/[ \t\n\r\f]*and(?![-_a-zA-Z0-9\u0080-\uffff\\])[ \t\n\r\f]*/i);
+const functionConditionOr = regex(/[ \t\n\r\f]*or(?![-_a-zA-Z0-9\u0080-\uffff\\])[ \t\n\r\f]*/i);
 const functionConditionNot = word(
   'not',
-  '-_a-zA-Z0-9\\u0080-\\uFFFF',
+  IDENT_BOUNDARY,
   { caseInsensitive: true }
 );
 // A non-selector functional pseudo is still one canonical SimpleSelector leaf.
@@ -735,10 +742,10 @@ const lessVariableName = choice(lessUnsupportedNumericVariableName, lessSupporte
 
 const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const caseOf = makeWhen({ caseInsensitive: true });
-  const lessWord = makeWord('-_a-zA-Z0-9\\u0080-\\uFFFF');
-  const lessCaseWord = makeWord('-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
+  const lessWord = makeWord(IDENT_BOUNDARY);
+  const lessCaseWord = makeWord(IDENT_BOUNDARY, { caseInsensitive: true });
   const whenGuardAhead = sequence(optional(regex(/[ \t\n\r\f]+/)), lessCaseWord('when'));
-  const mixinGuardDefaultCall = regex(/default[ \t\n\r\f]*\([ \t\n\r\f]*\)(?![-_a-zA-Z0-9\u0080-\uffff])/);
+  const mixinGuardDefaultCall = regex(/default[ \t\n\r\f]*\([ \t\n\r\f]*\)(?![-_a-zA-Z0-9\u0080-\uffff\\])/);
   // `@@name` is a variable reference whose lookup name is the resolved value
   // of `@name`; retain that two-step lookup as a typed AST edge.  The doubled
   // sigil is glued just like the production `nestedRef`, so trivia cannot turn
@@ -1134,7 +1141,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    */
   const composeKeyword = keywords(
     ['@-compose', '@compose'],
-    { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
+    { caseInsensitive: true, boundary: IDENT_BOUNDARY }
   );
   /** The typed `with`/`set` configuration block attached to one compose edge. */
   const ComposeStatementConfig = node<StyleImportConfig>(
@@ -1184,7 +1191,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   /** The two Less spellings share one case-insensitive, identifier-bounded terminal. */
   const useKeyword = keywords(['@-use', '@use'], {
     caseInsensitive: true,
-    boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF'
+    boundary: IDENT_BOUNDARY
   });
   /**
    * Less script/data modules accept only a quoted static target and optional
@@ -1286,7 +1293,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(
       keywords(
         ['@-plugin', '@plugin'],
-        { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
+        { caseInsensitive: true, boundary: IDENT_BOUNDARY }
       ),
       optional(sequence(literal('('), field('options', g.EnclosedContent), literal(')'))),
       field('target', quotedOrUrlTarget),
@@ -2764,7 +2771,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(
       literal('@'), not(word(
         'supports',
-        '-_a-zA-Z0-9\\u0080-\\uFFFF',
+        IDENT_BOUNDARY,
         { caseInsensitive: true }
       )), lessVariableName, literal('('),
       optional(g.MixinArguments),
@@ -3486,12 +3493,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // structural custom-property comparison rather than an opaque header slice.
   const styleFunctionOpener = token(noTrivia(sequence(word(
     'style',
-    '-_a-zA-Z0-9\\u0080-\\uFFFF',
+    IDENT_BOUNDARY,
     { caseInsensitive: true }
   ), literal('('))));
   const scrollStateFunctionOpener = token(noTrivia(sequence(word(
     'scroll-state',
-    '-_a-zA-Z0-9\\u0080-\\uFFFF',
+    IDENT_BOUNDARY,
     { caseInsensitive: true }
   ), literal('('))));
   const styleQuery = node(
@@ -3921,16 +3928,20 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * prelude that route refused (`@charset url(utf-8);` used to parse for exactly
    * that reason), while `@charset {…}` has no charset reading at all and stays
    * an ordinary opaque at-rule block via `AtRuleName`.
+   *
+   * A generic at-rule name is the full css-syntax-3 at-keyword, escapes
+   * included, so `@media\61 x {…}` is the unknown at-rule `@media\61 x`, as css
+   * reads it (P39, P40).
    */
   const StaticAtRuleStatementName = token(noTrivia(sequence(
     not(NonStatementAtKeyword),
     not(charsetAtRuleName),
-    g.AtIdentifierUnescaped
+    g.AtIdentifier
   )));
   const AtRuleName = token(noTrivia(sequence(
     not(CustomValueAtKeyword),
     not(g.LayerAtKeyword),
-    g.AtIdentifierUnescaped
+    g.AtIdentifier
   )));
   const UnknownAtRuleBlock = node(
     'UnknownAtRuleBlock',
@@ -4598,7 +4609,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     parser({ trivia: outerSelectorTrivia }, oneOrMoreSep(g.ComplexSelector, literal(','))),
     (children, _fields, span) => withSourceSpan(selist(...selectorBranchesFrom(children)), span)
   );
-  const extendAllFlag = regex(/!?all(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+  const extendAllFlag = regex(/!?all(?![-_a-zA-Z0-9\u0080-\uffff\\])/i);
   const InlineExtendSubjectCompound = node(
     'InlineExtendSubjectCompound',
     parser(
