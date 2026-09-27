@@ -332,7 +332,7 @@ type GrammarSelf = {
  * The expected-set atom a refused `@charset` prelude reports, and the one public
  * spelling of it. `CharsetStatement` below is what emits it; the three
  * dialects' `expectedMessage` helpers recognize it by this exact string, the way
- * they already recognize `'")"'` and `'CustomPropertyName'` — those helpers
+ * they already recognize `'")"'` and `'IdentToken'` — those helpers
  * deliberately hold no grammar import, and the parseman macro cannot read a
  * cross-module constant inside a combinator argument (it needs a literal), so
  * the less grammar spells the same string rather than importing this one. Each
@@ -4226,7 +4226,7 @@ const cssFactory = (g: GrammarSelf) => {
       g.EnclosedContent,
       literal(')')
     )),
-    children => enclosedCall(children)
+    (children, _fields, span, _rawChildren, _triviaLog, state) => generalEnclosedGroup(enclosedCall(children), span, state)
   );
 
   /*
