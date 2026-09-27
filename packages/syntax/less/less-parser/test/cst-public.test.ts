@@ -522,8 +522,12 @@ describe('Less direct-AST closure CST contract', () => {
       ['@media (min-width: 1px) { .card { color: red; } }', 'QueryColonFeature'],
       ['@media (width >= 1px) { .card { color: red; } }', 'QueryComparisonFeature'],
       ['@media (1px <= width) { .card { color: red; } }', 'QueryRangeFeature'],
-      ['@container ((width < 500px) or (height < 500px)) { .card { color: red; } }', 'QueryLogicalGroup'],
-      ['@container (not (height > 670px)) { .card { color: red; } }', 'QueryNegatedFeature']
+      ['@media ((width < 500px) or (height < 500px)) { .card { color: red; } }', 'QueryLogicalGroup'],
+      ['@media (not (height > 670px)) { .card { color: red; } }', 'QueryNegatedFeature'],
+
+      /* A container group is the css base's `( <container-condition> )`. */
+      ['@container ((width < 500px) or (height < 500px)) { .card { color: red; } }', 'ContainerQueryCondition'],
+      ['@container (not (height > 670px)) { .card { color: red; } }', 'ContainerQueryInParens']
     ];
 
     for (const [source, grammarType] of cases) {

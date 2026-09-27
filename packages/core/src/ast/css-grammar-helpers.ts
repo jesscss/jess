@@ -19,13 +19,16 @@
  */
 import {
   any,
+  block,
   cssBaseMathOutsideParens,
+  keyword,
   operation,
   selectorBranchCanonical,
+  spaced,
   selectorTermOf,
   selist
 } from './nodes.js';
-import { withValueLayout } from './provenance.js';
+import { generalEnclosedSourceOf, withGeneralEnclosedSource, withGeneralEnclosedTemplate, withValueLayout } from './provenance.js';
 import { semanticGapText } from './grammar-helpers.js';
 import type {
   CompoundSelector,
@@ -44,6 +47,7 @@ import type {
   ValueSlot
 } from './nodes.js';
 import type { AtRuleBlock, UnknownAtRuleBlock } from './at-rule.js';
+import type { AstSourceSpan } from './provenance.js';
 
 /** The reducer field bag parseman hands a `build(children, fields, span)`. */
 type ReducerFields = Record<string, { readonly value: unknown } | ReadonlyArray<{ readonly value: unknown }>>;
@@ -337,6 +341,153 @@ export function chainedQueryComparison(left: ValueNode, children: readonly unkno
     );
   }
   return result;
+}
+
+/** A `<mf-value>`: one value, or a `<ratio>` (`16/9`) as the `/` Operation. */
+export function queryValueRatio(children: readonly unknown[]): ValueNode {
+  const values = valueChildren(children);
+  const numerator = values[0]!;
+  const denominator = values[1];
+  return denominator === undefined
+    ? numerator
+    : operation('/', numerator, denominator, false, cssBaseMathOutsideParens('/'));
+}
+
+/**
+ * A query feature's contents (`QueryFeatureContents`): a name alone, a name
+ * with `:` and a value, a name compared with one or two values, or a value
+ * compared with the name — the same Operations the four feature forms built.
+ */
+export function queryFeatureContents(children: readonly unknown[], span: AstSourceSpan, state: unknown): ValueNode {
+  const head = children[0];
+  if (isValue(head)) {
+    /* A lone value is no `<mf-plain>`/`<mf-range>`: the feature is general-enclosed. */
+    if (children.length === 1) {
+      return withAuthoredGeneralEnclosed(head, span, state);
+    }
+    if (children.length < 3 || isValueSlotValue(children[2])) {
+      return withAuthoredGeneralEnclosed(generalEnclosedSequence(children), span, state);
+    }
+
+    /* A value-first range: `value op name [op value]`. */
+    const property = keyword(tokenText(children[2]));
+    const operators = queryComparisonOperators(children);
+    let result: ValueNode = operation(operators[0]!, head, property, false, cssBaseMathOutsideParens(operators[0]!));
+    if (operators.length > 1) {
+      const right = children[4];
+      if (!isValue(right)) {
+        throw new Error('CSS AST query range lost its trailing value');
+      }
+      result = operation(operators[1]!, result, right, false, cssBaseMathOutsideParens(operators[1]!));
+    }
+    return result;
+  }
+  const name = keyword(tokenText(head));
+  if (children.length === 1) {
+    return name;
+  }
+
+  /* `not <media-in-parens>`: the routed `not` and its parenthesized operand. */
+  if (isValue(children[1])) {
+    return spaced([name, children[1]]);
+  }
+  if (tokenText(children[1]) === ':') {
+    return operation(':', name, firstValue(children), false, cssBaseMathOutsideParens(':'));
+  }
+  return chainedQueryComparison(name, children);
+}
+
+/*
+ * A query feature's parenthesized group. When its contents are a structured
+ * `<general-enclosed>`, the whole group — parentheses and padding included —
+ * records its source bytes, so the emitter prints it as written.
+ */
+export function queryFeatureBlock(children: readonly unknown[], span: AstSourceSpan, state: unknown): ValueNode {
+  const value = firstValue(children);
+  const group = block(value);
+
+  /* Only the group whose own contents are general-enclosed; a group around a marked group is a condition. */
+  return generalEnclosedSourceOf(value) === undefined || value.type === 'Block'
+    ? group
+    : withAuthoredGeneralEnclosed(group, span, state);
+}
+
+/*
+ * Condition functions a spec defines, which are therefore not
+ * `<general-enclosed>`: css-contain-3/5 `style()` and `scroll-state()`,
+ * css-conditional-4/5 `selector()`, `font-tech()` and `font-format()`.
+ * Each is defined for one at-rule only (`style()` in `@container`,
+ * `selector()` in `@supports`), but the exemption is by name in every
+ * query prelude: the reducers are shared across at-rules, so `@media
+ * style(--x:1)` is normalized too. Ledger N14 records this as an owner-pending
+ * scope choice.
+ */
+const DEFINED_CONDITION_FUNCTIONS = new Set(['style', 'scroll-state', 'selector', 'font-tech', 'font-format']);
+
+/*
+ * A function-form or parenthesized `<general-enclosed>` read as a template
+ * (`Enclosed`, a query function's scanned payload): it records its source
+ * bytes so the emitter prints it as written — unless it is a defined condition
+ * function. A template carrying the dialect's interpolation, which P16
+ * evaluates, is marked a template instead: substituted, then printed as written.
+ */
+export function generalEnclosedGroup<T extends ValueNode>(value: T, span: AstSourceSpan, state: unknown): T {
+  if (value.type === 'FunctionCall' && DEFINED_CONDITION_FUNCTIONS.has(value.name.toLowerCase())) {
+    return value;
+  }
+  const payload = value.type === 'FunctionCall' ? value.args[0]?.value : value.type === 'Block' ? value.value : undefined;
+  if (isInterpolation(payload) && payload.parts.some(part => 'ref' in part)) {
+    return withGeneralEnclosedTemplate(value);
+  }
+  return withAuthoredGeneralEnclosed(value, span, state);
+}
+
+/*
+ * Record a structured `<general-enclosed>` value's source bytes: the slice of
+ * the parse input its span covers. The parse state carries the input; a run
+ * without it is a grammar wiring defect, so it throws rather than falling back
+ * to normalized, evaluated output.
+ */
+function withAuthoredGeneralEnclosed<T extends object>(value: T, span: AstSourceSpan, state: unknown): T {
+  if (typeof state !== 'object' || state === null || !('source' in state) || typeof state.source !== 'string') {
+    throw new TypeError('A general-enclosed query group needs the parse input in its parse state to be emitted as written.');
+  }
+  return withGeneralEnclosedSource(value, state.source.slice(span.start, span.end));
+}
+
+/*
+ * `<general-enclosed>` after a routed bound (media-queries-4 §3.1): the bound,
+ * then whatever followed it, in order, as one sequence; a comparison token
+ * stays the authored delimiter. The query-prelude emitter joins it with single
+ * spaces, as it does every structured query feature.
+ */
+function generalEnclosedSequence(children: readonly unknown[]): ValueNode {
+  return spaced(children.flatMap(child => isValueSlotValue(child) ? slotParts(child) : [any(tokenText(child))]));
+}
+
+/** The values of a component-value slot, in order: a multi-part slot is its parts. */
+function slotParts(slot: ValueSlot): ValueNode[] {
+  return isValueSlotArray(slot) ? slot.flatMap(slotParts) : [slot];
+}
+
+/**
+ * A `not`/`and`/`or` chain of parenthesized query operands (media-queries-4
+ * `<media-condition>`, css-contain-3 `<container-condition>`): the operands,
+ * with each combinator word kept as a keyword. One operand is itself.
+ */
+export function queryConditionChain(children: readonly unknown[]): ValueNode {
+  const values: ValueNode[] = [];
+  for (const child of children) {
+    if (isValue(child)) {
+      values.push(child);
+    } else {
+      const normalized = tokenText(child).toLowerCase();
+      if (normalized === 'not' || normalized === 'and' || normalized === 'or') {
+        values.push(keyword(tokenText(child)));
+      }
+    }
+  }
+  return values.length === 1 ? values[0]! : spaced(values);
 }
 
 export function isImportTarget(value: unknown): value is Quoted | { readonly type: 'Url'; readonly value: ValueNode } {

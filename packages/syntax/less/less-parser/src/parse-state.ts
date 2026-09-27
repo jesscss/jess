@@ -13,10 +13,11 @@ export interface LessParseState {
   /**
    * The input text, the trivia machinery's back-reference for slicing.
    *
-   * OPTIONAL, because the grammar already treats it so — `sourceFromState`
-   * returns `undefined` when it is absent and the trivia helpers fall back to
-   * structural layout. A caller that only wants grammar facts (the AST-grammar
-   * tests drive `run()` directly) may omit it. `mathMode` remains required on
+   * OPTIONAL for most of the grammar — `sourceFromState` returns `undefined`
+   * when it is absent and the trivia helpers fall back to structural layout — so
+   * a caller that only wants grammar facts (the AST-grammar tests drive `run()`
+   * directly) may omit it. A `<general-enclosed>` query group is the exception:
+   * it records its source bytes (ledger N14), so an input holding one needs it. `mathMode` remains required on
    * this resolved internal shape; raw callers are normalized by
    * `requireLessParseState` below.
    */

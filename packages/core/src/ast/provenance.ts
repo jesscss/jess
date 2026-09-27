@@ -176,8 +176,12 @@ export interface ValueBoundaryTrivia {
 }
 
 const valueBoundaryTriviaKey = Symbol.for('jess.ast.value-boundary-trivia');
+const generalEnclosedSourceKey = Symbol.for('jess.ast.general-enclosed-source');
+const generalEnclosedTemplateKey = Symbol.for('jess.ast.general-enclosed-template');
 interface StoredValueLayout extends ReadonlyArray<string> {
   readonly [valueBoundaryTriviaKey]?: ValueBoundaryTrivia;
+  readonly [generalEnclosedSourceKey]?: string;
+  readonly [generalEnclosedTemplateKey]?: true;
 }
 
 /*
@@ -560,6 +564,52 @@ function hasTopLevelSlash(value: object): boolean {
 /** Read parser-authored separators for a raw ValueSlot array, List, or Sequence. */
 export function valueLayoutOf(value: object): ValueLayout | undefined {
   return layouts.get(value);
+}
+
+/**
+ * Record the source bytes of a structured `<general-enclosed>` group
+ * (media-queries-4 §3.1). The parser keeps its structure for tooling; the
+ * emitter prints these bytes instead, because a browser treats the group as
+ * unknown syntax that jess must neither normalize nor evaluate. Rare, so it
+ * rides the same side table as value layout, under a non-enumerable key.
+ */
+export function withGeneralEnclosedSource<T extends object>(value: T, source: string): T {
+  const previous = layouts.get(value);
+  const stored: string[] = [...(previous ?? [])];
+  const boundary = previous?.[valueBoundaryTriviaKey];
+  if (boundary !== undefined) {
+    Object.defineProperty(stored, valueBoundaryTriviaKey, { value: boundary });
+  }
+  Object.defineProperty(stored, generalEnclosedSourceKey, { value: source });
+  layouts.set(value, stored);
+  return value;
+}
+
+/**
+ * Mark a `<general-enclosed>` template that carries the dialect's
+ * interpolation (P16): it records no source bytes, because the interpolation is
+ * evaluated, but the emitter prints the substituted template as written.
+ */
+export function withGeneralEnclosedTemplate<T extends object>(value: T): T {
+  const previous = layouts.get(value);
+  const stored: string[] = [...(previous ?? [])];
+  const boundary = previous?.[valueBoundaryTriviaKey];
+  if (boundary !== undefined) {
+    Object.defineProperty(stored, valueBoundaryTriviaKey, { value: boundary });
+  }
+  Object.defineProperty(stored, generalEnclosedTemplateKey, { value: true });
+  layouts.set(value, stored);
+  return value;
+}
+
+/** Whether the parser marked this value a `<general-enclosed>` interpolated template. */
+export function isGeneralEnclosedTemplate(value: object): boolean {
+  return layouts.get(value)?.[generalEnclosedTemplateKey] === true;
+}
+
+/** The recorded source bytes of a structured `<general-enclosed>` group, if any. */
+export function generalEnclosedSourceOf(value: object): string | undefined {
+  return layouts.get(value)?.[generalEnclosedSourceKey];
 }
 
 /** Read rare parser-owned trivia at the outside edges of a typed value. */

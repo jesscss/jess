@@ -169,7 +169,7 @@ import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
-import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, hasAmbientFunctions, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
+import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, generalEnclosedSourceOf, hasAmbientFunctions, isGeneralEnclosedTemplate, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
 import type { Trivia, TriviaMap } from '../types/index.js';
 
 /* ---------------------------------------------------- MaybePromise glue */
@@ -18026,12 +18026,20 @@ function normalizeSupportsBytes(p: string, compress = false): string {
   return out;
 }
 
-function normalizeSupportsPrelude(parts: readonly SupportsPreludePart[], compress = false): string {
+/**
+ * Normalize a prelude's plain fragments with the at-rule's byte normalizer; a
+ * protected fragment (a [general-enclosed] group) passes through as written.
+ */
+function normalizePreludeParts(
+  parts: readonly SupportsPreludePart[],
+  normalize: (bytes: string, compress: boolean) => string,
+  compress = false
+): string {
   let out = '';
   let plain = '';
   const flushPlain = (): void => {
     if (plain.length > 0) {
-      out += normalizeSupportsBytes(plain, compress);
+      out += normalize(plain, compress);
     }
     plain = '';
   };
@@ -18057,6 +18065,12 @@ function normalizeSupportsPrelude(parts: readonly SupportsPreludePart[], compres
  */
 function evalSupportsPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<SupportsPreludePart[]> {
   const plain = (bytes: string): SupportsPreludePart[] => [{ bytes, protected: false }];
+
+  /* A structured [general-enclosed] group is emitted as written, as below. */
+  const verbatim = generalEnclosedSourceOf(node);
+  if (verbatim !== undefined) {
+    return [{ bytes: verbatim, protected: true }];
+  }
   if (isValueSlotArray(node)) {
     const authored = valueLayoutOf(node);
     const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
@@ -18158,83 +18172,115 @@ function joinPreludeParts(parts: Array<MaybePromise<string>>): MaybePromise<stri
  * delegating all leaf evaluation to the normal value path.
  */
 function evalQueryPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
+  return mapMaybe(evalQueryPreludeParts(node, frame, e), parts => parts.map(part => part.bytes).join(''));
+}
+
+/**
+ * The fragments of a media/container query prelude, in source order. A
+ * [general-enclosed] group (media-queries-4 §3.1) is emitted as written — the
+ * source bytes the parser recorded for it — and marked protected: it is syntax
+ * a future spec may define, so jess neither normalizes nor evaluates it (no
+ * `url()` transform, no function or math evaluation, ledger N8). Its
+ * structured AST stays for tooling.
+ */
+function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<SupportsPreludePart[]> {
+  const plain = (bytes: string): SupportsPreludePart[] => [{ bytes, protected: false }];
+  const verbatim = generalEnclosedSourceOf(node);
+  if (verbatim !== undefined) {
+    return [{ bytes: verbatim, protected: true }];
+  }
   if (isValueSlotArray(node)) {
     const authored = valueLayoutOf(node);
-    const parts: Array<MaybePromise<string>> = [];
+    const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
     for (let index = 0; index < node.length; index += 1) {
       if (index > 0) {
         const separator = authored?.[index - 1];
-        parts.push(separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : ' ');
+        parts.push(plain(separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : ' '));
       }
-      parts.push(evalQueryPrelude(node[index]!, frame, e));
+      parts.push(evalQueryPreludeParts(node[index]!, frame, e));
     }
-    return joinPreludeParts(parts);
+    return concatPreludeParts(parts);
   }
   switch (node.type) {
+    /*
+     * [general-enclosed] A template the parser marked because it carries the
+     * dialect's interpolation (P16) records no source bytes; it is substituted
+     * and then protected, so the call is never evaluated or re-spaced. Only the
+     * mark decides: an ordinary call with an interpolated argument
+     * (`e("@{w}")` in a feature value) is evaluated as any value is.
+     */
+    case 'FunctionCall': {
+      const payload = isGeneralEnclosedTemplate(node) ? generalEnclosedPayload(node.args) : null;
+      if (payload === null) {
+        return mapMaybe(evalBytes(node, frame, e), plain);
+      }
+      return mapMaybe(evalBytes(payload, frame, e), content =>
+        [{ bytes: `${node.name}(${content})`, protected: true }]);
+    }
     case 'Block': {
       const open = node.delimiter === 'square' ? '[' : '(';
       const close = node.delimiter === 'square' ? ']' : ')';
-      return mapMaybe(evalQueryPrelude(node.value, frame, e), inner => `${open}${inner}${close}`);
+      return concatPreludeParts([plain(open), evalQueryPreludeParts(node.value, frame, e), plain(close)]);
     }
     case 'Operation':
-      return joinPreludeParts([
-        evalQueryPrelude(node.left, frame, e),
-        node.operator === ':' ? ': ' : ` ${node.operator} `,
-        evalQueryPrelude(node.right, frame, e)
+      return concatPreludeParts([
+        evalQueryPreludeParts(node.left, frame, e),
+        plain(node.operator === ':' ? ': ' : ` ${node.operator} `),
+        evalQueryPreludeParts(node.right, frame, e)
       ]);
     case 'Sequence': {
-      const parts: Array<MaybePromise<string>> = [];
+      const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
       for (let index = 0; index < node.parts.length; index += 1) {
         if (index > 0) {
-          parts.push(' ');
+          parts.push(plain(' '));
         }
-        parts.push(evalQueryPrelude(node.parts[index]!, frame, e));
+        parts.push(evalQueryPreludeParts(node.parts[index]!, frame, e));
       }
-      return joinPreludeParts(parts);
+      return concatPreludeParts(parts);
     }
     case 'List': {
       const glue = node.sep === ',' ? ', ' : node.sep === '/' ? ' / ' : ' ';
       const authored = valueLayoutOf(node);
-      const parts: Array<MaybePromise<string>> = [];
+      const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
       for (let index = 0; index < node.value.length; index += 1) {
         if (index > 0) {
           const separator = authored?.[index - 1];
-          parts.push(separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue);
+          parts.push(plain(separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue));
         }
-        parts.push(evalQueryPrelude(node.value[index]!, frame, e));
+        parts.push(evalQueryPreludeParts(node.value[index]!, frame, e));
       }
-      return joinPreludeParts(parts);
+      return concatPreludeParts(parts);
     }
     case 'Lookup':
       /* Var only — see the typed lane above. */
       if (node.kind !== 'var') {
-        return evalBytes(node, frame, e);
+        return mapMaybe(evalBytes(node, frame, e), plain);
       }
-      return mapMaybe(lookupName(node, frame, e), (nm) => {
+      return mapMaybe(lookupName(node, frame, e), (nm): MaybePromise<SupportsPreludePart[]> => {
         const hit = resolveVarRef(frame, nm, node.scope, e);
         if (!hit) {
           if (hasExcludedVarRef(frame, nm, node.scope, e)) {
             recursiveReference(node, `@${nm}`, 'Variable', e);
           }
-          return evalBytes(node, frame, e);
+          return mapMaybe(evalBytes(node, frame, e), plain);
         }
         const value = hit.value;
         if (isMixinCallValue(value)) {
-          return evalBytes(node, frame, e);
+          return mapMaybe(evalBytes(node, frame, e), plain);
         }
         if (hit.evaluated !== null) {
-          return emitValue(hit.evaluated);
+          return plain(emitValue(hit.evaluated));
         }
-        return withExcluded(e, value, () => evalQueryPrelude(value, hit.frame, e));
+        return withExcluded(e, value, () => evalQueryPreludeParts(value, hit.frame, e));
       });
     case 'Reference': {
       const resolved = resolveReferenceResult(node, frame, e);
       if (resolved === null || isMixinCallValue(resolved.value)) {
-        return evalBytes(node, frame, e);
+        return mapMaybe(evalBytes(node, frame, e), plain);
       }
       return resolved.evaluated !== null
-        ? emitValue(resolved.evaluated)
-        : evalQueryPrelude(resolved.value, resolved.frame, e);
+        ? plain(emitValue(resolved.evaluated))
+        : evalQueryPreludeParts(resolved.value, resolved.frame, e);
     }
     case 'Quoted':
       /*
@@ -18246,9 +18292,9 @@ function evalQueryPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): May
        * keeps its quotes through `evalBytes` (`node.src`), so only the escaped
        * form needs re-wrapping here.
        */
-      return node.escaped ? `~${node.quote}${node.value}${node.quote}` : evalBytes(node, frame, e);
+      return node.escaped ? plain(`~${node.quote}${node.value}${node.quote}`) : mapMaybe(evalBytes(node, frame, e), plain);
     default:
-      return evalBytes(node, frame, e);
+      return mapMaybe(evalBytes(node, frame, e), plain);
   }
 }
 
@@ -18383,10 +18429,10 @@ function atRulePreludeBytes(node: AtRuleBlock, frame: Frame, e: Emit): MaybeProm
   }
   const lname = node.name.toLowerCase();
   if (lname === '@supports') {
-    return mapMaybe(evalSupportsPrelude(node.prelude, frame, e), parts => normalizeSupportsPrelude(parts, e.compress === true));
+    return mapMaybe(evalSupportsPrelude(node.prelude, frame, e), parts => normalizePreludeParts(parts, normalizeSupportsBytes, e.compress === true));
   }
   if (lname === '@media' || lname === '@container') {
-    return mapMaybe(evalQueryPrelude(node.prelude, frame, e), p => normalizeQueryPrelude(p, e.compress === true));
+    return mapMaybe(evalQueryPreludeParts(node.prelude, frame, e), parts => normalizePreludeParts(parts, normalizeQueryPrelude, e.compress === true));
   }
   return evalBytes(node.prelude, frame, e);
 }

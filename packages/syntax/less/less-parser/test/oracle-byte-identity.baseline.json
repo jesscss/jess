@@ -10,7 +10,7 @@
     },
     {
       "name": "cst",
-      "aggregate": "6376c84cac08c00ff553c39ba85819b0585700758b2f9f8dd6be035904c57ab0",
+      "aggregate": "4f88f2910fac16e17ca1d30381a6e280b818af8e166f132a869862e98970600e",
       "threw": 0
     }
   ],
@@ -1177,11 +1177,11 @@
     },
     "node_modules/@less/test-data/tests-unit/container/container.css": {
       "ast": "3f20e1ad33f154c5",
-      "cst": "09527ef419535749"
+      "cst": "9bd383506722bed6"
     },
     "node_modules/@less/test-data/tests-unit/container/container.less": {
       "ast": "32e68f414b88f31a",
-      "cst": "5e209c2c2e4fbb64"
+      "cst": "8c6ba33138dc5194"
     },
     "node_modules/@less/test-data/tests-unit/container/legacy/container.css": {
       "ast": "05875765c152f691",
@@ -2629,7 +2629,7 @@
     },
     "packages/syntax/css/css-parser/test/byte-identity/fixtures/at-rules-conditional.css": {
       "ast": "4302b2c0be4b5003",
-      "cst": "37ab3d8a11a265ed"
+      "cst": "4e5c9edbe78d0fae"
     },
     "packages/syntax/css/css-parser/test/byte-identity/fixtures/at-rules-import-namespace.css": {
       "ast": "f3425053b02f4fa1",

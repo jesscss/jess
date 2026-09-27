@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar';
-import { NO_SPAN, any, atRuleBlock, foldOperation, atRuleStatement, block, bodySpanFromRaw, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, importOptionWords, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, atRuleBlock, foldOperation, atRuleStatement, block, bodySpanFromRaw, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, classifyValueBlock, dimension, expression, forNode, funcCall, important, importIsCompileTime, importOptionWords, interpolation, interpolatedSimpleSelector, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, generalEnclosedGroup, ifNode, ifValue, propertyReference, pseudoSelector, quoted, reference, relativeSelector, selectorCapture, selectorTermOf, semanticGapText, styleImport, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, variableReference, valueLayoutOf, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessSourceImportSyntaxError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -273,8 +273,6 @@ type LessRules = {
   EachFunctionStatement: Combinator<For>;
   SupportsValue: Combinator<ValueNode>;
   SupportsFeature: Combinator<ValueNode>;
-  SupportsInParens: Combinator<ValueNode>;
-  SupportsCondition: Combinator<ValueNode>;
   EnclosedContent: Combinator<Interpolation>;
   EnclosedGroup: Combinator<Interpolation>;
   EnclosedQuoted: Combinator<Interpolation>;
@@ -290,12 +288,9 @@ type LessRules = {
   /** One term of a media query clause, admitting Less interpolation. */
   MediaQueryTerm: Combinator<ValueNode>;
   QueryFeature: Combinator<ValueNode>;
-  QueryClause: Combinator<ValueNode>;
   ContainerStyleQuery: Combinator<FunctionCall>;
   ContainerScrollStateQuery: Combinator<FunctionCall>;
   ContainerName: Combinator<Keyword>;
-  ContainerQueryAtom: Combinator<ValueNode>;
-  ContainerQueryInParens: Combinator<ValueNode>;
   ContainerCondition: Combinator<ValueNode>;
   MediaContainerBody: Combinator<readonly Statement[]>;
   MediaContainerBlock: Combinator<AtRuleBlock>;
@@ -378,6 +373,16 @@ type LessRules = {
 type LessInputRules = LessRules & typeof lessSyntax;
 
 type SharedSyntax = {
+  // Inherited from the CSS base: an only-clause or a chain of QueryTerm (Less's).
+  QueryClause: Combinator<ValueNode>;
+  // Inherited from the CSS base: ( <container-condition> ), whose atoms reach Less's QueryFeature and ContainerStyleQuery leaves.
+  ContainerQueryInParens: Combinator<ValueNode>;
+  // Inherited from the CSS base: a nested group, a feature, or the ContainerStyleQuery leaf Less binds.
+  ContainerQueryAtom: Combinator<ValueNode>;
+  // Inherited from the CSS base: a nested condition, the SupportsFeature leaf Less overrides, or Enclosed.
+  SupportsInParens: Combinator<ValueNode>;
+  // Inherited from the CSS base: the same not/and/or chain over SupportsInParens.
+  SupportsCondition: Combinator<ValueNode>;
   AttributeModifier: Combinator<unknown>;
   AttributeOperator: Combinator<unknown>;
   HexColor: Combinator<string>;
@@ -3232,13 +3237,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       noTrivia(sequence(g.EnclosedFunctionName, g.EnclosedContent, literal(')'))),
       noTrivia(sequence(literal('('), g.EnclosedContent, literal(')')))
     ),
-    (children, _fields, _span, _rawChildren, _triviaLog, state) => {
+    (children, _fields, span, _rawChildren, _triviaLog, state) => {
       const content = children.find((child): child is Interpolation => typeof child === 'object' && child !== null && 'type' in child && child.type === 'Interpolation');
       if (content === undefined) {
         throw new TypeError('Less general-enclosed lost its grammar-owned content.');
       }
       const name = children.find((child): child is EnclosedNameFact => typeof child === 'object' && child !== null && 'name' in child);
-      return name === undefined ? block(content) : withFunctionScope(funcCall(name.name, [content]), functionScopeOf(state));
+      // Records its source bytes, as the css base's does, unless it carries @{…}.
+      return generalEnclosedGroup(
+        name === undefined ? block(content) : withFunctionScope(funcCall(name.name, [content]), functionScopeOf(state)),
+        span,
+        state
+      );
     }
   );
   // `@supports` has its own typed condition grammar. Keep this narrower than
@@ -3270,30 +3280,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return value === undefined
         ? block(property)
         : block(operation(':', property, value, false, lessMathOutsideParens(state, ':')));
-    }
-  );
-  const SupportsInParens = node(
-    'SupportsInParens',
-    choice(
-      sequence(literal('('), g.SupportsCondition, literal(')')),
-      g.SupportsFeature,
-      g.Enclosed
-    ),
-    children => children.length === 1
-      ? requireValueNode(children[0])
-      : block(requireValueNode(children[1]))
-  );
-  const SupportsCondition = node(
-    'SupportsCondition',
-    choice(
-      sequence(g.QueryNot, g.SupportsInParens),
-      sequence(g.SupportsInParens, many(sequence(g.QueryAndOr, g.SupportsInParens)))
-    ),
-    (children) => {
-      const values = children.map(child => isValueNode(child)
-        ? child
-        : keyword(requireToken(child).value));
-      return values.length === 1 ? values[0]! : spaced(values);
     }
   );
   const SupportsBlock = node(
@@ -3448,39 +3434,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     children => requireValueNode(children[0])
   );
-  const QueryOnlyClause = node(
-    'QueryOnlyClause',
-    sequence(
-      g.QueryOnly,
-      g.QueryNonOnlyKeyword,
-      many(sequence(g.QueryAndOr, g.QueryTerm))
-    ),
-    (children, _fields, _span, _rawChildren, triviaLog, state) => spacedFromValueChildren(children, triviaLog, state)
-  );
-  // Gating note: `only` and ordinary query terms share the keyword first set.
-  // `QueryNonOnlyKeyword` already rejects `only` in the generic branch; a
-  // dispatch wrapper would mostly restate that negative guard without removing
-  // the media/container semantic split.
-  const QueryClause = node(
-    'QueryClause',
-    choice(
-      QueryOnlyClause,
-      sequence(
-        g.QueryTerm,
-        many(sequence(g.QueryAndOr, g.QueryTerm))
-      )
-    ),
-    (children, _fields, _span, _rawChildren, triviaLog, state) => queryClauseReducer(children, triviaLog, state)
-  );
-  const QueryPrelude = node(
-    'QueryPrelude',
-    oneOrMoreSep(
-      g.QueryClause,
-      field('separator', regex(/,[ \t\n\r\f]*/))
-    ),
-    (children, fields, _span, rawChildren, triviaLog, state) =>
-      commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueNode, rawChildren)
-  );
   // Less permits a variable interpolation as an ordinary `@media` query term:
   // `@media @{all} and @{tv}`. That is not a container-query form, so retain
   // the stricter shared query prelude used by `@container` and construct this
@@ -3541,7 +3494,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     '-_a-zA-Z0-9\\u0080-\\uFFFF',
     { caseInsensitive: true }
   ), literal('('))));
-  const ContainerStyleQuery = node(
+  const styleQuery = node(
     'ContainerStyleQuery',
     // A style() payload is a `<declaration-value>` (css-conditional-5), the same
     // permissive custom-property value a `--x:` declaration takes (ledger P2): it
@@ -3558,6 +3511,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       funcCall(functionNameFromOpener(children[0]), [operation(':', keyword(requireToken(children[1]).value),
         requireValueNode(children[3]), false, lessMathOutsideParens(state, ':'))])
   );
+
+  /*
+   * The container style-query leaf the css base names: Less reads `style()` and
+   * `scroll-state()` as structured queries where css reads general-enclosed.
+   */
+  const ContainerStyleQuery = choice(styleQuery, g.ContainerScrollStateQuery);
   const ContainerName = node(
     'ContainerName',
     sequence(
@@ -3571,35 +3530,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.Keyword
     ),
     children => requireKeyword(children.at(-1))
-  );
-  // A `<query-in-parens>` wrapping a single `<container-query>` operand —
-  // `(style(--x: 1))`, `((width > 1px))`, `(scroll-state(--x: 1))`
-  // (css-contain-3 §3, media-queries-5 §3.1). The inner is ONE atom, never an
-  // `and`/`or` chain, so the boolean group `((a) and (b))` and the negated form
-  // `(not (a))` still fall through to QueryFeature's QueryLogicalGroup /
-  // QueryNegatedFeature owners below (after the leading `(` there `and`/`or`/`not`
-  // is what the chain needs and this single-atom arm cannot supply). Tried FIRST
-  // in ContainerQueryAtom so QueryFeature's value-first range arm never
-  // speculatively reads the nested `style(--x: 1)` as a component value.
-  const ContainerQueryInParens = node(
-    'ContainerQueryInParens',
-    sequence(literal('('), choice(
-      g.ContainerStyleQuery,
-      g.ContainerScrollStateQuery,
-      g.QueryFeature,
-      g.ContainerQueryInParens
-    ), literal(')')),
-    children => block(requireValueNode(children[1]))
-  );
-  const ContainerQueryAtom = node(
-    'ContainerQueryAtom',
-    choice(
-      g.ContainerQueryInParens,
-      g.ContainerStyleQuery,
-      g.ContainerScrollStateQuery,
-      g.QueryFeature
-    ),
-    children => requireValueNode(children[0])
   );
   const ContainerCondition = node(
     'ContainerCondition',
@@ -5116,8 +5046,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     EachFunctionStatement,
     SupportsValue,
     SupportsFeature,
-    SupportsInParens,
-    SupportsCondition,
     EnclosedContent,
     EnclosedGroup,
     EnclosedQuoted,
@@ -5130,12 +5058,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     QueryTerm,
     MediaQueryTerm,
     QueryFeature,
-    QueryClause,
     ContainerStyleQuery,
     ContainerScrollStateQuery,
     ContainerName,
-    ContainerQueryAtom,
-    ContainerQueryInParens,
     ContainerCondition,
     MediaContainerBody,
     MediaContainerBlock,

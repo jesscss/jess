@@ -76,7 +76,7 @@ function bind(
 
 const RUNNERS: Record<Dialect, (source: string) => ReturnType<typeof run>> = {
   css: bind('css', cssGrammar, source =>
-    run(cssGrammar.Stylesheet!, source, { trivia: cssGrammar.whitespace })),
+    run(cssGrammar.Stylesheet!, source, { trivia: cssGrammar.whitespace, state: { source } })),
   less: bind('less', lessGrammar, source =>
     run(lessGrammar.Stylesheet!, source, { trivia: lessGrammar.whitespace })),
   scss: bind('scss', scssGrammar, source =>

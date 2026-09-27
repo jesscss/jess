@@ -15,6 +15,8 @@ export {
   createTriviaMapFromRanges,
   createTriviaMapFromParseman,
   createTriviaMapFromRootIndex,
+  generalEnclosedSourceOf,
+  isGeneralEnclosedTemplate,
   hasAmbientFunctions,
   sourceEndOf,
   sourceStartOf,
@@ -27,6 +29,8 @@ export {
   withTriviaMap,
   withValueBoundaryTrivia,
   withFunctionScope,
+  withGeneralEnclosedSource,
+  withGeneralEnclosedTemplate,
   withValueLayout
 } from './ast/provenance.js';
 export type { AstSourceSpan, FunctionScope, AstTriviaRange, ParserRootTriviaGap, ParserRootTriviaIndex, ParserTriviaEntriesView, ValueBoundaryTrivia, ValueLayout } from './ast/provenance.js';
@@ -49,6 +53,11 @@ export {
   blockStatements,
   branchSegments,
   chainedQueryComparison,
+  queryConditionChain,
+  queryFeatureBlock,
+  generalEnclosedGroup,
+  queryFeatureContents,
+  queryValueRatio,
   complexSegments,
   cssRelativeCombinator,
   documentStatements,
