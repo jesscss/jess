@@ -1240,12 +1240,17 @@ describe('public Less parse()', () => {
       ]
     });
 
+    /*
+     * Less variable names admit no escapes, so `@\63 olor: red;` is not a
+     * variable. It is the escaped at-keyword `@color`, read as css reads it
+     * (DESIGN-DECISIONS P40).
+     */
+    expect(parse('@\\63 olor: red;')).toMatchObject({
+      rules: [{ type: 'AtRuleStatement', name: '@\\63 olor' }]
+    });
+
     for (const invalid of [
-      /*
-       * Less variable names do not admit escapes; a backslash before a newline
-       * is not a valid escape.
-       */
-      '@\\63 olor: red;',
+      /* A backslash before a newline is not a valid escape. */
       '\\\ncolor: red;',
       '*\\\ncolor: red;'
     ]) {
