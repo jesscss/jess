@@ -21,6 +21,7 @@ import {
   any,
   block,
   cssBaseMathOutsideParens,
+  interpolation,
   keyword,
   operation,
   selectorBranchCanonical,
@@ -29,13 +30,22 @@ import {
   selist
 } from './nodes.js';
 import { generalEnclosedSourceOf, withGeneralEnclosedSource, withGeneralEnclosedTemplate, withValueLayout } from './provenance.js';
-import { semanticGapText } from './grammar-helpers.js';
+import { isForBinding, isToken, semanticGapText } from './grammar-helpers.js';
 import type {
+  AnonymousMixin,
   CompoundSelector,
   Declaration,
+  ExtendInstruction,
+  For,
+  ForBinding,
+  If,
   Interpolation,
   Keyword,
+  MixinCall,
+  MixinDefinition,
+  Param,
   Quoted,
+  Reference,
   Ruleset,
   SelectorBranch,
   SelectorList,
@@ -43,11 +53,15 @@ import type {
   SimpleSelector,
   SimpleToken,
   Statement,
+  StyleImport,
   ValueNode,
-  ValueSlot
+  ValueSlot,
+  While
 } from './nodes.js';
-import type { AtRuleBlock, UnknownAtRuleBlock } from './at-rule.js';
+import type { AtRuleBlock, AtRuleStatement, UnknownAtRuleBlock } from './at-rule.js';
 import type { AstSourceSpan } from './provenance.js';
+import type { Token } from './grammar-helpers.js';
+import type { GuardNode } from './guard.js';
 
 /** The reducer field bag parseman hands a `build(children, fields, span)`. */
 type ReducerFields = Record<string, { readonly value: unknown } | ReadonlyArray<{ readonly value: unknown }>>;
@@ -727,4 +741,308 @@ export function blockStatements(children: readonly unknown[]): Statement[] {
 export function keyframeSelectorList(children: readonly unknown[]): SelectorList {
   const selectors = children.filter(isSimple);
   return selist(...selectors);
+}
+
+/*
+ * Reducer helpers the preprocessor dialects share. Each was written once per
+ * dialect in that dialect's own `grammar-helpers.ts`.
+ *
+ * - A helper that differed only in the dialect name inside its error message
+ *   takes that name as `dialect`, so the message an author sees is unchanged.
+ * - A helper that differed only in the value predicate it recurses into takes
+ *   that predicate as `isOperand`: the dialects' value sets genuinely differ,
+ *   so the predicate stays theirs and only the structure is shared.
+ * - A type guard checks the node's tag. The dialect copies also re-checked
+ *   fields that every core constructor always sets; on the scss and jess
+ *   corpora and suites the two checks never disagreed.
+ */
+
+export function isAtRuleStatement(value: unknown): value is AtRuleStatement {
+  return isNodeType(
+    value,
+    'AtRuleStatement'
+  );
+}
+
+export function isMixinDefinition(value: unknown): value is MixinDefinition {
+  return isNodeType(
+    value,
+    'MixinDefinition'
+  );
+}
+
+export function isMixinCall(value: unknown): value is MixinCall {
+  return isNodeType(
+    value,
+    'MixinCall'
+  );
+}
+
+export function isStyleImport(value: unknown): value is StyleImport {
+  return isNodeType(
+    value,
+    'StyleImport'
+  );
+}
+
+export function isAnonymousMixin(value: unknown): value is AnonymousMixin {
+  return isNodeType(
+    value,
+    'AnonymousMixin'
+  );
+}
+
+export function isReference(value: unknown): value is Reference {
+  return isNodeType(
+    value,
+    'Reference'
+  );
+}
+
+export function isQuoted(value: unknown): value is Quoted {
+  return isNodeType(
+    value,
+    'Quoted'
+  );
+}
+
+export function isFor(value: unknown): value is For {
+  return isNodeType(
+    value,
+    'For'
+  );
+}
+
+export function isIf(value: unknown): value is If {
+  return isNodeType(
+    value,
+    'If'
+  );
+}
+
+export function isWhile(value: unknown): value is While {
+  return isNodeType(
+    value,
+    'While'
+  );
+}
+
+/*
+ * A mixin parameter is the one param-shaped reduction a grammar produces: it
+ * carries no `type` tag, which is what tells it apart from every AST node, and
+ * it has at least one of the three fields a `Param` is made of.
+ */
+export function isParam(value: unknown): value is Param {
+  return typeof value === 'object'
+    && value !== null
+    && !('type' in value)
+    && ('name' in value || 'pattern' in value || 'rest' in value);
+}
+
+/** A parameter list; an empty list is still one. */
+export function isParamArray(value: unknown): value is Param[] {
+  return Array.isArray(value) && value.every(isParam);
+}
+
+export function isExtendInstruction(value: unknown): value is ExtendInstruction {
+  return typeof value === 'object'
+    && value !== null
+    && 'target' in value
+    && isSelectorList(value.target)
+    && 'partial' in value
+    && typeof value.partial === 'boolean';
+}
+
+export function requireToken(value: unknown, dialect: string): Token {
+  if (!isToken(value)) {
+    throw new TypeError(`${dialect} grammar produced a non-token child.`);
+  }
+  return { value: value.value };
+}
+
+export function requireString(value: unknown, dialect: string): string {
+  if (typeof value !== 'string') {
+    throw new TypeError(`${dialect} grammar produced a non-string child.`);
+  }
+  return value;
+}
+
+export function requireForBinding(value: unknown, dialect: string): ForBinding {
+  if (!isForBinding(value)) {
+    throw new TypeError(`${dialect} grammar produced an invalid for binding.`);
+  }
+  return value;
+}
+
+export function requireInterpolation(value: unknown, dialect: string): Interpolation {
+  if (!isInterpolation(value)) {
+    throw new TypeError(`${dialect} grammar produced a non-interpolation child.`);
+  }
+  return value;
+}
+
+export function requireSelectorList(value: unknown, dialect: string): SelectorList {
+  if (!isSelectorList(value)) {
+    throw new TypeError(`${dialect} grammar produced a non-selector-list child.`);
+  }
+  return value;
+}
+
+/** A value slot: one value, or an authored array of slots, each accepted by `isOperand`. */
+export function isValueSlotOf(value: unknown, isOperand: (value: unknown) => value is ValueNode): value is ValueSlot {
+  if (!Array.isArray(value)) {
+    return isOperand(value);
+  }
+  for (const item of value) {
+    if (!isValueSlotOf(
+      item,
+      isOperand
+    )) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** A guard tree whose operands `isOperand` accepts. */
+export function isGuardNodeOf(value: unknown, isOperand: (value: unknown) => value is ValueNode): value is GuardNode {
+  if (typeof value !== 'object' || value === null || !('g' in value)) {
+    return false;
+  }
+  switch (value.g) {
+    case 'default':
+      return true;
+    case 'truth':
+      return 'value' in value && isOperand(value.value);
+    case 'cmp':
+    case 'match':
+      return 'op' in value && typeof value.op === 'string'
+        && 'left' in value && isOperand(value.left)
+        && 'right' in value && isOperand(value.right);
+    case 'call':
+      return 'name' in value && typeof value.name === 'string'
+        && 'args' in value && Array.isArray(value.args) && value.args.every(isOperand);
+    case 'not':
+      return 'inner' in value && isGuardNodeOf(
+        value.inner,
+        isOperand
+      );
+    case 'and':
+    case 'or':
+      return 'left' in value && isGuardNodeOf(
+        value.left,
+        isOperand
+      )
+      && 'right' in value && isGuardNodeOf(
+        value.right,
+        isOperand
+      );
+    default:
+      return false;
+  }
+}
+
+export function requireGuardNodeOf(value: unknown, isOperand: (value: unknown) => value is ValueNode, dialect: string): GuardNode {
+  if (!isGuardNodeOf(
+    value,
+    isOperand
+  )) {
+    throw new TypeError(`${dialect} grammar produced a non-guard child.`);
+  }
+  return value;
+}
+
+/** Append literal text, merging it into a trailing literal part. */
+export function appendInterpolationLiteral(parts: Interpolation['parts'], text: string): void {
+  const previous = parts[parts.length - 1];
+  if (previous !== undefined && 'lit' in previous) {
+    parts[parts.length - 1] = { lit: previous.lit + text };
+  } else {
+    parts.push({ lit: text });
+  }
+}
+
+/** Flatten a grammar-owned raw template without ever reparsing its bytes. */
+export function interpolationFromTemplateChildren(children: readonly unknown[], dialect: string): Interpolation {
+  const parts: Interpolation['parts'] = [];
+  for (const child of children) {
+    if (isInterpolation(child)) {
+      for (const part of child.parts) {
+        if ('lit' in part) {
+          appendInterpolationLiteral(
+            parts,
+            part.lit
+          );
+        } else {
+          parts.push(part);
+        }
+      }
+    } else {
+      appendInterpolationLiteral(
+        parts,
+        requireToken(
+          child,
+          dialect
+        ).value
+      );
+    }
+  }
+  return interpolation(parts);
+}
+
+/**
+ * Flatten the grammar-owned parts of a custom-property value. Custom-property
+ * values are never evaluated, so every byte outside a typed interpolation stays
+ * literal `<declaration-value>` text and the reduction only joins grammar
+ * children — it never rescans source. Nested balanced groups arrive as nested
+ * arrays from the paren/square/curly productions.
+ */
+export function appendCustomValueParts(children: readonly unknown[], parts: Interpolation['parts'], seen: { interpolated: boolean }, dialect: string): void {
+  for (const child of children) {
+    if (Array.isArray(child)) {
+      appendCustomValueParts(
+        child,
+        parts,
+        seen,
+        dialect
+      );
+    } else if (isInterpolation(child)) {
+      seen.interpolated = true;
+      for (const part of child.parts) {
+        if ('lit' in part) {
+          appendInterpolationLiteral(
+            parts,
+            part.lit
+          );
+        } else {
+          parts.push(part);
+        }
+      }
+    } else {
+      appendInterpolationLiteral(
+        parts,
+        requireToken(
+          child,
+          dialect
+        ).value
+      );
+    }
+  }
+}
+
+/** Reduce a whole custom-property value to `Interpolation` (when it carries an
+ * interpolation) or to verbatim `Any` text. */
+export function customValueFromChildren(children: readonly unknown[], dialect: string): ValueNode {
+  const parts: Interpolation['parts'] = [];
+  const seen = { interpolated: false };
+  appendCustomValueParts(
+    children,
+    parts,
+    seen,
+    dialect
+  );
+  if (seen.interpolated) {
+    return interpolation(parts);
+  }
+  return any(parts.map(part => 'lit' in part ? part.lit : '').join(''));
 }

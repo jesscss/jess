@@ -24,9 +24,9 @@ import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar';
 import { ScssImportPostludeError } from './parse-error.js';
-import { anonymousMixin, any, asDiagnostic, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, importIsCompileTime, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { anonymousMixin, any, asDiagnostic, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, importIsCompileTime, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { COMPARISON_OPERATORS, appendLiteral, controlBlockStatements, scssBranchSegments, contentArgRaw, customValue, customValueFromParts, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isAnonymousMixin, isCollection, isCollectionEntry, isScssDeclaration, isExtendInstruction, isScssImportTarget, isScssInterpolation, isParamArray, isQuoted, isScriptModulePath, isScssValuePair, isScssValueTail, isScssSelectorBranch, isScssSelectorList, isSelectorTerm, isScssSimpleToken, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, keywordizeValues, mapKeyValue, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, scssSelectorTermFromTokens, scssSourceText, statementChildren, statements, staticQuoted, scssValueSlot } from './grammar-helpers.js';
+import { COMPARISON_OPERATORS, controlBlockStatements, contentArgRaw, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScssImportTarget, isScriptModulePath, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, keywordizeValues, mapKeyValue, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, scssSourceText, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
 import type { ScssArgumentPair, ScssCallArg, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
@@ -218,7 +218,7 @@ type ScssSharedSyntax = {
    * Converged to the CSS base (inherited via compose): same recognizer
    * oneOrMoreSep(g.ComplexSelector, literal(',')) — `g.ComplexSelector` still
    * resolves to SCSS's override — and the same spanned `selist()` reducer;
-   * SCSS's `children.filter(isScssSelectorBranch)` is css's
+   * SCSS's `children.filter(isSelectorBranch)` is css's
    * `selectorBranches(children)` with deeper shape checks over the same node
    * set.
    */
@@ -600,7 +600,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children) => {
       const quote = requireToken(children[0]).value;
-      if (children.length === 3 && !isScssInterpolation(children[1])) {
+      if (children.length === 3 && !isInterpolation(children[1])) {
         return staticQuoted(children);
       }
       const parts: Interpolation['parts'] = [{ lit: quote }];
@@ -608,16 +608,16 @@ const scssFactory = (g: ScssInputRules) => {
         1,
         -1
       )) {
-        if (isScssInterpolation(child)) {
+        if (isInterpolation(child)) {
           parts.push(...child.parts);
         } else {
-          appendLiteral(
+          appendInterpolationLiteral(
             parts,
             requireToken(child).value
           );
         }
       }
-      appendLiteral(
+      appendInterpolationLiteral(
         parts,
         quote
       );
@@ -689,7 +689,7 @@ const scssFactory = (g: ScssInputRules) => {
         g.SassInterpolation
       ))
     ),
-    children => interpolation(children.flatMap(child => isScssInterpolation(child)
+    children => interpolation(children.flatMap(child => isInterpolation(child)
       ? child.parts
       : [{ lit: requireToken(child).value }]))
   );
@@ -713,7 +713,7 @@ const scssFactory = (g: ScssInputRules) => {
         g.SassInterpolation
       ))
     ),
-    children => interpolation(children.flatMap(child => isScssInterpolation(child)
+    children => interpolation(children.flatMap(child => isInterpolation(child)
       ? child.parts
       : [{ lit: requireToken(child).value }]))
   );
@@ -914,8 +914,8 @@ const scssFactory = (g: ScssInputRules) => {
       ))
     ),
     (children) => {
-      if (children.some(isScssInterpolation)) {
-        return interpolation(children.flatMap(child => isScssInterpolation(child)
+      if (children.some(isInterpolation)) {
+        return interpolation(children.flatMap(child => isInterpolation(child)
           ? child.parts
           : [{ lit: requireToken(child).value }]));
       }
@@ -1460,10 +1460,10 @@ const scssFactory = (g: ScssInputRules) => {
     (children) => {
       const parts: Interpolation['parts'] = [];
       for (const child of children) {
-        if (isScssInterpolation(child)) {
+        if (isInterpolation(child)) {
           parts.push(...child.parts);
         } else {
-          appendLiteral(
+          appendInterpolationLiteral(
             parts,
             requireToken(child).value
           );
@@ -1495,11 +1495,11 @@ const scssFactory = (g: ScssInputRules) => {
       g.CustomPropertyToken
     ),
     (children) => {
-      if (!children.some(isScssInterpolation)) {
+      if (!children.some(isInterpolation)) {
         return requireToken(children[0]).value;
       }
       const parts: Interpolation['parts'] = [];
-      customValueFromParts(
+      appendCustomValueParts(
         children,
         parts,
         { interpolated: false }
@@ -1544,7 +1544,7 @@ const scssFactory = (g: ScssInputRules) => {
   const CustomValue = node<ValueNode>(
     'CustomValue',
     parser({ trivia: customValueCommentTrivia }, many(g.CustomPart)),
-    (children, _fields, span) => withSourceSpan(customValue(children), span)
+    (children, _fields, span) => withSourceSpan(customValueFromChildren(children), span)
   );
   const CustomDeclaration = node<Declaration>(
     'CustomDeclaration',
@@ -1565,7 +1565,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children) => {
       const name = children[0];
-      if (typeof name !== 'string' && !isScssInterpolation(name)) {
+      if (typeof name !== 'string' && !isInterpolation(name)) {
         throw new TypeError('SCSS grammar produced a custom declaration without a name.');
       }
 
@@ -1579,7 +1579,7 @@ const scssFactory = (g: ScssInputRules) => {
       }
       return decl(
         name,
-        scssValueSlot(value),
+        valueSlot(value),
         null,
         children.includes(true)
       );
@@ -1668,7 +1668,7 @@ const scssFactory = (g: ScssInputRules) => {
       if (value === undefined) {
         throw new TypeError('SCSS declaration requires a value.');
       }
-      const name = isScssInterpolation(children[0]) ? children[0] : requireToken(children[0]).value;
+      const name = isInterpolation(children[0]) ? children[0] : requireToken(children[0]).value;
       const node = decl(
         name,
         requireValueSlot(value),
@@ -1707,7 +1707,7 @@ const scssFactory = (g: ScssInputRules) => {
       optional(literal(';'))
     ),
     children => collectionEntry(
-      isScssInterpolation(children[0]) ? children[0] : keyword(requireToken(children[0]).value),
+      isInterpolation(children[0]) ? children[0] : keyword(requireToken(children[0]).value),
       requireValueSlot(children[2]),
       null,
       false
@@ -1791,7 +1791,7 @@ const scssFactory = (g: ScssInputRules) => {
       optional(literal(';'))
     ),
     (children, fields) => {
-      const prefix = isScssInterpolation(children[0]) ? children[0] : requireToken(children[0]).value;
+      const prefix = isInterpolation(children[0]) ? children[0] : requireToken(children[0]).value;
       const open = children.findIndex(child => isToken(child) && child.value === '{');
       const close = children.findIndex((child, index) => index > open && isToken(child) && child.value === '}');
       if (open < 0 || close < 0) {
@@ -1856,7 +1856,7 @@ const scssFactory = (g: ScssInputRules) => {
         return url(any(''));
       }
       const body = children[1];
-      return url(isQuoted(body) || isScssInterpolation(body) ? body : any(requireToken(body).value));
+      return url(isQuoted(body) || isInterpolation(body) ? body : any(requireToken(body).value));
     }
   );
 
@@ -4247,10 +4247,10 @@ const scssFactory = (g: ScssInputRules) => {
     (children) => {
       const parts: Interpolation['parts'] = [];
       for (const child of children) {
-        if (isScssInterpolation(child)) {
+        if (isInterpolation(child)) {
           parts.push(...child.parts);
         } else {
-          appendLiteral(
+          appendInterpolationLiteral(
             parts,
             requireToken(child).value
           );
@@ -4330,7 +4330,7 @@ const scssFactory = (g: ScssInputRules) => {
       )),
       literal(']')
     ),
-    children => children.some(isScssInterpolation)
+    children => children.some(isInterpolation)
       ? interpolatedSimpleSelector(interpolationFromTemplateChildren(children))
       : attributeSelector(children.map(scssSourceText))
   );
@@ -4399,12 +4399,12 @@ const scssFactory = (g: ScssInputRules) => {
       )
     ),
     (children) => {
-      const branch = children.find(isScssSelectorBranch)!;
+      const branch = children.find(isSelectorBranch)!;
       if (children.length === 1) {
         return branch;
       }
       const lead = scssRelativeCombinator(children[0]);
-      return relativeSelector(lead, scssBranchSegments(branch));
+      return relativeSelector(lead, branchSegments(branch));
     }
   );
 
@@ -4437,7 +4437,7 @@ const scssFactory = (g: ScssInputRules) => {
         ))
       )
     ),
-    children => selist(...children.filter(isScssSelectorBranch))
+    children => selist(...children.filter(isSelectorBranch))
   );
   const NthPseudo = node<SimpleSelector>(
     'NthPseudo',
@@ -4516,7 +4516,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     children => pseudoSelector(
       scssPseudoName(requireToken(children[0]).value),
-      requireSelectorList(children.find(isScssSelectorList))
+      requireSelectorList(children.find(isSelectorList))
     )
   );
   const GlobalLocalPseudo = node<SimpleSelector>(
@@ -4576,7 +4576,7 @@ const scssFactory = (g: ScssInputRules) => {
   const PseudoSelector = node<SimpleToken>(
     'PseudoSelector',
     PseudoSelectorDispatch,
-    children => children.find(isScssSimpleToken)!
+    children => children.find(isSimpleToken)!
   );
   const CompoundSelector = node<SelectorTerm>(
     'CompoundSelector',
@@ -4595,7 +4595,7 @@ const scssFactory = (g: ScssInputRules) => {
       )),
       not(pseudoColon)
     )),
-    children => scssSelectorTermFromTokens(children.filter(isScssSimpleToken))
+    children => selectorTermFromTokens(children.filter(isSimpleToken))
   );
   const scssCombinator = choice(
     literal('||'),
@@ -4662,7 +4662,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.RelativeSelector,
       literal(',')
     ),
-    (children, _fields, span) => withSourceSpan(selist(...children.filter(isScssSelectorBranch)), span)
+    (children, _fields, span) => withSourceSpan(selist(...children.filter(isSelectorBranch)), span)
   );
 
   /*
