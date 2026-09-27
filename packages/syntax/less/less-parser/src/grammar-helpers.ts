@@ -199,7 +199,15 @@ function requireSupportedVariableName(value: unknown, start: number, end: number
     throw new LessUnsupportedVariableNameError(start, end, unsupported);
   }
   const name = variableNameTerminalText(value) ?? requireTerminalText(value);
-  return name.includes('\\') ? decodeCssEscapes(name) : name;
+  if (!name.includes('\\')) {
+    return name;
+  }
+  // A decoded name obeys the plain-name rules: `@\31 x` is `@1x`, and `@\2d` is `@-`.
+  const decoded = decodeCssEscapes(name);
+  if (decoded === '-' || '0123456789'.includes(decoded[0]!)) {
+    throw new LessUnsupportedVariableNameError(start, end, decoded);
+  }
+  return decoded;
 }
 
 /**
