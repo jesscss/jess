@@ -7910,12 +7910,24 @@ describe('Less AST grammar facts', () => {
       ).toBe(true);
     }
 
+    /*
+     * `@\63 olor: red;` is not a variable: Less variable names admit no escapes.
+     * It is the escaped at-keyword `@color` with prelude `:red`, read as css
+     * reads it (DESIGN-DECISIONS P40).
+     */
+    const escapedAtKeyword = run(lessGrammar.Document, '@\\63 olor: red;', {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    });
+    expect(escapedAtKeyword.ok && escapedAtKeyword.unconsumedFrom === null).toBe(true);
+    expect(escapedAtKeyword.value).toMatchObject({
+      rules: [{ type: 'AtRuleStatement', name: '@\\63 olor' }]
+    });
+
     for (const source of [
       /*
-       * Less variable names do NOT admit escapes, and malformed declaration
-       * escapes (a backslash before a newline is not a valid escape) stay out.
+       * Malformed declaration escapes (a backslash before a newline is not a
+       * valid escape) stay out.
        */
-      '@\\63 olor: red;',
       '\\\ncolor: red;',
       '*\\\ncolor: red;'
     ]) {
