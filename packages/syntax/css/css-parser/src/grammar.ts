@@ -3234,7 +3234,10 @@ const cssFactory = (g: GrammarSelf) => {
    * an if-test): each part after its token is optional, so the tail never
    * gives a token back, and a colon or comparison with no value leaves a shape
    * the contents reducer builds as `<general-enclosed>`. `@container` and
-   * `@supports` features keep the strict tail above.
+   * `@supports` features keep the strict tail above: their general-enclosed
+   * input still takes the `Enclosed` text fallback, so loosening their tail
+   * would move their trees. TODO(jess#306): one tail (and one feature dispatch)
+   * once those features read general-enclosed as structure.
    */
   const generalFeatureNameTail = optional(choice(
     sequence(
@@ -3272,15 +3275,41 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * The component values of a `<general-enclosed>` or an if-test's contents
+   * after its query part: comma-separated value runs, and the tokens a value
+   * run cannot start with (`/`, `!`, `;`, a `{}` block), each read once.
+   */
+  const generalValue = choice(
+    literal(','),
+    g.ValueSequence,
+    literal('/'),
+    literal('!'),
+    literal(';'),
+    g.CurlyValue
+  );
+  const generalRest = many(generalValue);
+
+  /*
+   * The component values after a value-first bound: comma-separated value runs.
+   * The tokens a value run cannot start with stay out, so a `@container` or
+   * `@supports` feature holding them keeps its `Enclosed` fallback (jess#306);
+   * a media feature and an if-test read them as their general rest.
+   */
+  const boundValues = oneOrMore(choice(
+    literal(','),
+    g.ValueSequence
+  ));
+
+  /*
    * What follows a value-first bound: a range (`< width`, `< width < 2px`), or
    * other component values, which make the feature `<general-enclosed>`
    * (media-queries-4 §3.1). Every part is optional and the comparison is read
    * once before either the range name or the rest, so this tail never fails
    * after its head; the contents reducer builds the range or the enclosed
    * sequence from what was read. The rest is the ordinary declaration-value
-   * list, so contents it does not read (`{…}`, `!`, a leading comma, or more
-   * values after a range name) leave the feature's `)` unmatched (jess#306).
-   * It follows every value-first bound, routed or not.
+   * values, so only more values after a range name leave a `@container` or
+   * `@supports` feature's `)` unmatched (jess#306); a media feature and an
+   * if-test read those as their rest.
    */
   const queryBoundTail = optional(choice(
     sequence(
@@ -3293,10 +3322,10 @@ const cssFactory = (g: GrammarSelf) => {
             optional(g.QueryValue)
           ))
         ),
-        g.ValueList
+        boundValues
       ))
     ),
-    g.ValueList
+    boundValues
   ));
 
   /*
@@ -3529,7 +3558,9 @@ const cssFactory = (g: GrammarSelf) => {
    * or a `<media-feature>`. It opens its `(` once and decides on the next
    * token: an inner `(` starts a `MediaCondition`, anything else is a media
    * feature's contents, so a plain feature is the `QueryFeature >
-   * QueryFeatureContents` it always was.
+   * QueryFeatureContents` it always was. Whatever follows the query inside
+   * the parentheses is `<general-enclosed>` component values (`(a b)`,
+   * `((a) and (b c))`), so the group never fails after its `(`.
    *
    * These are MEDIA rules, reached only from a media query's terms and the
    * `media()` if-test. `@container` and `@supports` read the shared
@@ -3541,19 +3572,21 @@ const cssFactory = (g: GrammarSelf) => {
     'QueryFeature',
     sequence(
       literal('('),
-      choice(
+      optional(choice(
         g.MediaCondition,
         g.MediaFeatureContents
-      ),
+      )),
+      generalRest,
       literal(')')
     ),
     (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureBlock(children, span, state)
   );
 
   /*
-   * `<media-in-parens> [ and | or <media-in-parens> ]*`, opening on a `(`. An
-   * operand that is not parenthesized is read as component values, so the
-   * condition is `<general-enclosed>` rather than a give-back of the `and`.
+   * `<media-in-parens> [ and | or <media-in-parens> ]*`, opening on a `(`. The
+   * operand after `and`/`or` is optional and a `(` or anything else decides it
+   * at its first character, so the word is never given back: a missing or
+   * non-parenthesized operand leaves `<general-enclosed>`.
    */
   const MediaCondition = node(
     'MediaCondition',
@@ -3561,10 +3594,10 @@ const cssFactory = (g: GrammarSelf) => {
       g.MediaInParens,
       many(sequence(
         g.QueryAndOr,
-        choice(
+        optional(choice(
           g.MediaInParens,
           g.ValueSequence
-        )
+        ))
       ))
     ),
     children => queryConditionChain(children)
@@ -4007,16 +4040,11 @@ const cssFactory = (g: GrammarSelf) => {
    * only read as an `<if-condition>` at substitution (css-values-5 §8.3,
    * `<if-args-branch> = <declaration-value> : <declaration-value>?`), so a test
    * whose contents are no query is still valid: `media(a, b)`, `media(1px)`,
-   * `supports()`. Each body decides on its first token between a query and
-   * component values, every query arm accepts whatever follows it, and
-   * `ifTestRest` reads the rest as comma-separated component values. The
+   * `supports()`. Each body reads an optional query part, decided on its first
+   * token, and then its general rest of component values. The
    * call's argument is the same structured `<general-enclosed>` sequence a
    * query feature builds (a comma makes it a comma `List`).
    */
-  const ifTestRest = many(choice(
-    literal(','),
-    g.ValueSequence
-  ));
 
   /*
    * `media()` holds what a media query's `<media-in-parens>` holds inside its
@@ -4027,10 +4055,9 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       optional(choice(
         g.MediaCondition,
-        g.MediaFeatureContents,
-        g.ValueSequence
+        g.MediaFeatureContents
       )),
-      ifTestRest,
+      generalRest,
       literal(')')
     )
   );
@@ -4088,7 +4115,8 @@ const cssFactory = (g: GrammarSelf) => {
    * `<style-condition>`; otherwise the first identifier or opener is read once
    * and routed — a function is a value-first bound, a custom property a
    * `<style-feature>`, `not` negates the query after it, and any other
-   * identifier is a feature name. Anything else is component values.
+   * identifier is a feature name. Anything else is the general rest that
+   * follows it.
    */
   const styleQueryContents = choice(
     dispatch(
@@ -4121,8 +4149,7 @@ const cssFactory = (g: GrammarSelf) => {
       ),
       otherwise(styleNamedFeature)
     ),
-    g.StyleCondition,
-    g.ValueSequence
+    g.StyleCondition
   );
 
   /* `( <style-query> )`, or a parenthesized `<general-enclosed>`. */
@@ -4131,10 +4158,10 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       literal('('),
       optional(styleQueryContents),
-      ifTestRest,
+      generalRest,
       literal(')')
     ),
-    children => block(generalEnclosedArgument(children) ?? [])
+    (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureBlock(children, span, state)
   );
 
   /* `<style-in-parens> [ and | or <style-in-parens> ]*`, as `MediaCondition`. */
@@ -4144,10 +4171,10 @@ const cssFactory = (g: GrammarSelf) => {
       g.StyleInParens,
       many(sequence(
         g.QueryAndOr,
-        choice(
+        optional(choice(
           g.StyleInParens,
           g.ValueSequence
-        )
+        ))
       ))
     ),
     children => queryConditionChain(children)
@@ -4158,7 +4185,7 @@ const cssFactory = (g: GrammarSelf) => {
     { trivia: interstitialTrivia },
     sequence(
       optional(styleQueryContents),
-      ifTestRest,
+      generalRest,
       literal(')')
     )
   );
@@ -4176,8 +4203,8 @@ const cssFactory = (g: GrammarSelf) => {
   /*
    * The `<ident> : <declaration-value>` of `supports()`, after the name the
    * contents dispatch read: the name alone, or `:` and the declaration's value
-   * list — the Operation Less's supports declaration builds. A dialect binds
-   * its own.
+   * run — the Operation Less's supports declaration builds; a comma after it
+   * belongs to the test's rest. A dialect binds its own.
    */
   const SupportsDeclaration = node(
     'SupportsDeclaration',
@@ -4185,7 +4212,7 @@ const cssFactory = (g: GrammarSelf) => {
       RoutedProperty,
       optional(sequence(
         literal(':'),
-        optional(g.ValueList)
+        optional(g.ValueSequence)
       ))
     ),
     children => supportsDeclaration(children)
@@ -4226,7 +4253,7 @@ const cssFactory = (g: GrammarSelf) => {
   );
   const supportsTestChain = many(sequence(
     g.QueryAndOr,
-    supportsTestOperand
+    optional(supportsTestOperand)
   ));
 
   /*
@@ -4234,7 +4261,7 @@ const cssFactory = (g: GrammarSelf) => {
    * routed — `not` negates the operand after it, a function is a
    * `<general-enclosed>` that may start an `and`/`or` chain, and any other
    * identifier is the declaration's name. A `(` opens a `<supports-in-parens>`
-   * chain, and anything else is component values.
+   * chain, and anything else is the general rest that follows.
    */
   const SupportsTestBody = parser(
     { trivia: interstitialTrivia },
@@ -4265,10 +4292,9 @@ const cssFactory = (g: GrammarSelf) => {
         sequence(
           g.SupportsInParens,
           supportsTestChain
-        ),
-        g.ValueSequence
+        )
       )),
-      ifTestRest,
+      generalRest,
       literal(')')
     )
   );

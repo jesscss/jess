@@ -294,11 +294,12 @@ export function ifTestCall(children: readonly unknown[]): FunctionCall {
 }
 
 /*
- * The contents of a parenthesized query or `<general-enclosed>`, in order: a
- * query value, the words `not`/`and`/`or`, and component values, as one
- * sequence; a top-level comma makes it a comma `List` of such sequences, and
- * an empty item between commas is the empty slot. Parenthesis tokens are the
- * group's own and are not contents.
+ * The contents of a parenthesized query or `<general-enclosed>`, in order, as
+ * one sequence: values; a feature name (the string a `Property` reduces to)
+ * as a keyword; the words `not`/`and`/`or` as keywords; and any other token
+ * (a comparison, `:`, `/`, `!`, `;`) as its authored delimiter. A top-level
+ * comma makes it a comma `List` of such sequences, and an empty item between
+ * commas is the empty slot. The group's own parentheses are not contents.
  */
 export function generalEnclosedArgument(children: readonly unknown[]): ValueNode | undefined {
   const items: ValueSlot[] = [];
@@ -312,12 +313,15 @@ export function generalEnclosedArgument(children: readonly unknown[]): ValueNode
     if (isCommaList(child)) {
       child.value.forEach((item, index) => {
         if (index > 0) {
+          commas++;
           flush();
         }
         parts.push(...slotParts(item));
       });
     } else if (isValueSlotValue(child)) {
       parts.push(...slotParts(child));
+    } else if (typeof child === 'string') {
+      parts.push(keyword(child));
     } else if (isTerminalText(child)) {
       const text = tokenText(child);
       if (text === ',') {
@@ -325,6 +329,8 @@ export function generalEnclosedArgument(children: readonly unknown[]): ValueNode
         flush();
       } else if (/^(?:not|and|or)$/i.test(text)) {
         parts.push(keyword(text));
+      } else if (text !== '(' && text !== ')') {
+        parts.push(any(text));
       }
     }
   }
@@ -714,28 +720,30 @@ export function queryFeatureContents(children: readonly unknown[], span: AstSour
   if (tokenText(children[1]) === ':') {
     return children.length === 3 && isValue(children[2])
       ? operation(':', name, children[2], false, cssBaseMathOutsideParens(':'))
-      : generalEnclosedSequence(children);
+      : withAuthoredGeneralEnclosed(generalEnclosedSequence(children), span, state);
   }
 
   /* A comparison is exactly `name op value [op value]`; anything else read is general-enclosed. */
   const isComparison = (children.length === 3 && isValue(children[2]))
     || (children.length === 5 && isValue(children[2]) && isValue(children[4]));
-  return isComparison ? chainedQueryComparison(name, children) : generalEnclosedSequence(children);
+  return isComparison ? chainedQueryComparison(name, children) : withAuthoredGeneralEnclosed(generalEnclosedSequence(children), span, state);
 }
 
 /*
- * A query feature's parenthesized group. When its contents are a structured
- * `<general-enclosed>`, the whole group — parentheses and padding included —
- * records its source bytes, so the emitter prints it as written.
+ * A parenthesized query group: its contents between the parentheses (one query,
+ * or what `generalEnclosedArgument` builds from more). Unless the contents are
+ * exactly one query that is not itself `<general-enclosed>`, the group is
+ * `<general-enclosed>`, and the whole group — parentheses and padding included
+ * — records its source bytes, so the emitter prints it as written.
  */
 export function queryFeatureBlock(children: readonly unknown[], span: AstSourceSpan, state: unknown): ValueNode {
-  const value = firstValue(children);
-  const group = block(value);
+  const contents = children.filter(child => !isTerminalText(child) || (tokenText(child) !== '(' && tokenText(child) !== ')'));
+  const group = block(generalEnclosedArgument(children) ?? []);
+  const only = contents[0];
 
   /* Only the group whose own contents are general-enclosed; a group around a marked group is a condition. */
-  return generalEnclosedSourceOf(value) === undefined || value.type === 'Block'
-    ? group
-    : withAuthoredGeneralEnclosed(group, span, state);
+  const isQuery = contents.length === 1 && isValue(only) && (generalEnclosedSourceOf(only) === undefined || only.type === 'Block');
+  return isQuery ? group : withAuthoredGeneralEnclosed(group, span, state);
 }
 
 /*
@@ -789,12 +797,7 @@ function withAuthoredGeneralEnclosed<T extends object>(value: T, span: AstSource
  * every structured query feature.
  */
 function generalEnclosedSequence(children: readonly unknown[]): ValueNode {
-  return spaced(children.flatMap((child) => {
-    if (isValueSlotValue(child)) {
-      return slotParts(child);
-    }
-    return [typeof child === 'string' ? keyword(child) : any(tokenText(child))];
-  }));
+  return generalEnclosedArgument(children) ?? spaced([]);
 }
 
 /** The values of a component-value slot, in order: a multi-part slot is its parts. */
