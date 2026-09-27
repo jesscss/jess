@@ -408,10 +408,10 @@ type SharedSyntax = {
   CalcParen: Combinator<ValueNode>;
   CalcValue: Combinator<ValueNode>;
   // Inherited from the CSS base: the rest of a P38 branch argument list after
-  // its first condition, and the css-values-5 §8.3 `<if-test>` calls
-  // (`media()`/`supports()`/`style()`), parsed with the query grammar.
+  // its first condition.
   BranchRest: Combinator<ValueNode>;
-  // Inherited from the CSS base: the bodies of the media() and supports() if-tests.
+  // Inherited from the CSS base: the bodies of the media(), style() and
+  // supports() if-tests, read with the query grammar.
   MediaTestBody: Combinator<unknown>;
   StyleTestBody: Combinator<unknown>;
   SupportsTestBody: Combinator<unknown>;
@@ -3855,7 +3855,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * inherited node, the head is never handed over (`media(print)` fails with
    * expected `routed()` after `media(`). The bodies stay the base's.
    * TODO(jess#298): delete the three shells once parseman detects routed()
-   * through a composed rule.
+   * through a composed rule. `SupportsTest` also carries Less's bare-`@variable`
+   * diagnostic; give that its own slot in the css body before deleting it.
    */
   // A media condition's `<media-in-parens>` is Less's own parenthesized
   // feature, which already reads Less's logical groups and `(not …)`.
@@ -3882,13 +3883,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // same feature as Less's `@supports` `SupportsFeature`, without its parentheses.
   const SupportsDeclaration = node(
     'SupportsDeclaration',
-    sequence(routed(), optional(sequence(literal(':'), g.SupportsValue))),
+    // A colon with no value is `<general-enclosed>`, the same sequence css builds.
+    sequence(routed(), optional(sequence(literal(':'), optional(g.SupportsValue)))),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => {
       const property = keyword(requireToken(children[0]).value);
       const value = children.find(isValueNode);
-      return value === undefined
-        ? property
-        : operation(':', property, value, false, lessMathOutsideParens(state, ':'));
+      if (value !== undefined) {
+        return operation(':', property, value, false, lessMathOutsideParens(state, ':'));
+      }
+      return children.length === 1 ? property : spaced([property, any(':')]);
     }
   );
   const ContainerScrollStateQuery = node(

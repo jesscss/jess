@@ -38,6 +38,8 @@ import {
   queryFeatureContents,
   enclosedCall,
   styleFeature,
+  supportsDeclaration,
+  generalEnclosedArgument,
   queryValueRatio,
   color,
   complexSegments,
@@ -271,7 +273,12 @@ type GrammarRuleName =
   | 'AtRulePreludeText'
   | 'MediaInParens'
   | 'MediaCondition'
-  | 'MediaNot'
+  | 'MediaFeatureContents'
+  | 'queryUrlBound'
+  | 'queryMathBound'
+  | 'queryVarBound'
+  | 'queryUnicodeBound'
+  | 'queryFunctionBound'
   | 'MediaTerm'
   | 'QueryFeatureContents'
   | 'keyframeSelector'
@@ -3223,6 +3230,28 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * The same name tail where `<general-enclosed>` may follow (a media feature,
+   * an if-test): each part after its token is optional, so the tail never
+   * gives a token back, and a colon or comparison with no value leaves a shape
+   * the contents reducer builds as `<general-enclosed>`. `@container` and
+   * `@supports` features keep the strict tail above.
+   */
+  const generalFeatureNameTail = optional(choice(
+    sequence(
+      literal(':'),
+      optional(g.QueryValue)
+    ),
+    sequence(
+      g.QueryComparisonOperator,
+      optional(g.QueryValue),
+      optional(sequence(
+        g.QueryComparisonOperator,
+        optional(g.QueryValue)
+      ))
+    )
+  ));
+
+  /*
    * The feature name the opener dispatch already read, kept a `Property` node
    * as it always was. It is a routed twin of `Property` rather than
    * `routed(g.Identifier)`, whose any-character first set would take first-set
@@ -3237,6 +3266,10 @@ const cssFactory = (g: GrammarSelf) => {
     RoutedProperty,
     queryFeatureNameTail
   );
+  const generalFeatureName = sequence(
+    RoutedProperty,
+    generalFeatureNameTail
+  );
 
   /*
    * What follows a value-first bound: a range (`< width`, `< width < 2px`), or
@@ -3246,7 +3279,8 @@ const cssFactory = (g: GrammarSelf) => {
    * after its head; the contents reducer builds the range or the enclosed
    * sequence from what was read. The rest is the ordinary declaration-value
    * list, so contents it does not read (`{…}`, `!`, a leading comma, or more
-   * values after a range name) leave the feature's `)` unmatched.
+   * values after a range name) leave the feature's `)` unmatched (jess#306).
+   * It follows every value-first bound, routed or not.
    */
   const queryBoundTail = optional(choice(
     sequence(
@@ -3256,7 +3290,7 @@ const cssFactory = (g: GrammarSelf) => {
           g.Property,
           optional(sequence(
             g.QueryComparisonOperator,
-            g.QueryValue
+            optional(g.QueryValue)
           ))
         ),
         g.ValueList
@@ -3325,58 +3359,69 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * The first token of a feature's contents is read once and routed:
-   *
-   * - a unicode range or a function is a value-first bound, owned by its arm
-   *   through `routed()`, followed by `queryBoundTail`;
-   * - any other identifier is the feature name (an escaped `\(` ends a name,
-   *   not a function), followed by nothing, `: value`, or a comparison and one
-   *   or two values.
-   *
-   * A function arm fails after its head only when the function's own
-   * arguments do, as a function-valued bound always has.
+   * Each value-first bound the feature-contents dispatches route to, with the
+   * tail that follows it. Named so the feature and media dispatches share them.
    */
+  const queryUrlBound = sequence(
+    RoutedUrlQueryValue,
+    g.queryBoundTail
+  );
+  const queryMathBound = sequence(
+    RoutedMathQueryValue,
+    g.queryBoundTail
+  );
+  const queryVarBound = sequence(
+    RoutedVarQueryValue,
+    g.queryBoundTail
+  );
+  const queryUnicodeBound = sequence(
+    RoutedUnicodeRangeQueryValue,
+    g.queryBoundTail
+  );
+  const queryFunctionBound = sequence(
+    RoutedFunctionQueryValue,
+    g.queryBoundTail
+  );
+
   /*
-   * A feature's head is a CSS identifier or function opener, not a dashed
-   * ident: `(--x: 1)` is no media feature, so it reaches the value arm and, in
-   * `@supports`, the general-enclosed fallback, as it always has.
+   * A feature's head is a unicode range, or a CSS identifier or function
+   * opener — not a dashed ident: `(--x: 1)` is no media feature, so it reaches
+   * the value arm and, in `@supports`, the general-enclosed fallback, as it
+   * always has.
    */
   const queryFeatureHead = token(noTrivia(sequence(
     genericIdentifier,
     optional(literal('('))
   )));
+  const queryFeatureOpenerHead = choice(
+    g.UnicodeRangeToken,
+    queryFeatureHead
+  );
+
+  /*
+   * The first token of a feature's contents is read once and routed: a unicode
+   * range or a function is a value-first bound, owned by its arm through
+   * `routed()`; any other identifier is the feature name (an escaped `\(` ends
+   * a name, not a function). A function arm fails after its head only when the
+   * function's own arguments do, as a function-valued bound always has.
+   */
   const queryFeatureOpener = dispatch(
-    choice(
-      g.UnicodeRangeToken,
-      queryFeatureHead
-    ),
+    queryFeatureOpenerHead,
     cssCase(
       'url(',
-      sequence(
-        RoutedUrlQueryValue,
-        g.queryBoundTail
-      )
+      g.queryUrlBound
     ),
     cssCase(
       CSS_MATH_FUNCTION_OPENERS,
-      sequence(
-        RoutedMathQueryValue,
-        g.queryBoundTail
-      )
+      g.queryMathBound
     ),
     cssCase(
       'var(',
-      sequence(
-        RoutedVarQueryValue,
-        g.queryBoundTail
-      )
+      g.queryVarBound
     ),
     when(
       startsWith('u+'),
-      sequence(
-        RoutedUnicodeRangeQueryValue,
-        g.queryBoundTail
-      ),
+      g.queryUnicodeBound,
       { caseInsensitive: true }
     ),
     when(
@@ -3385,10 +3430,7 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     when(
       endsWith('('),
-      sequence(
-        RoutedFunctionQueryValue,
-        g.queryBoundTail
-      )
+      g.queryFunctionBound
     )
   );
 
@@ -3425,11 +3467,69 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * A media feature's contents: the feature contents, where `<general-enclosed>`
+   * may follow any head (media-queries-4 §3.1), with `not` routed by the
+   * same head read — `not <media-in-parens>` when a `(` follows it, otherwise
+   * the feature named `not`. A glued `not(` is a function token (css-syntax-3
+   * §4.3.4) and takes the function arm. Only media reads it, so `@container`
+   * and `@supports` keep `(not …)` for their own `( <condition> )` owners.
+   */
+  const mediaFeatureOpener = dispatch(
+    queryFeatureOpenerHead,
+    cssCase(
+      'not',
+      sequence(
+        RoutedProperty,
+        choice(
+          g.MediaInParens,
+          generalFeatureNameTail
+        )
+      )
+    ),
+    cssCase(
+      'url(',
+      g.queryUrlBound
+    ),
+    cssCase(
+      CSS_MATH_FUNCTION_OPENERS,
+      g.queryMathBound
+    ),
+    cssCase(
+      'var(',
+      g.queryVarBound
+    ),
+    when(
+      startsWith('u+'),
+      g.queryUnicodeBound,
+      { caseInsensitive: true }
+    ),
+    when(
+      matches(/(?:\\\(|[^(])$/),
+      generalFeatureName
+    ),
+    when(
+      endsWith('('),
+      g.queryFunctionBound
+    )
+  );
+  const MediaFeatureContents = node(
+    'QueryFeatureContents',
+    choice(
+      mediaFeatureOpener,
+      sequence(
+        g.QueryValue,
+        g.queryBoundTail
+      )
+    ),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureContents(children, span, state)
+  );
+
+  /*
    * A media query's `<media-in-parens>` (media-queries-4 §3): `( <media-condition> )`
    * or a `<media-feature>`. It opens its `(` once and decides on the next
-   * token: an inner `(` starts a `MediaCondition`, `not` a `MediaNot`, and
-   * anything else is a feature's contents, so a plain feature is the
-   * `QueryFeature > QueryFeatureContents` it always was.
+   * token: an inner `(` starts a `MediaCondition`, anything else is a media
+   * feature's contents, so a plain feature is the `QueryFeature >
+   * QueryFeatureContents` it always was.
    *
    * These are MEDIA rules, reached only from a media query's terms and the
    * `media()` if-test. `@container` and `@supports` read the shared
@@ -3443,46 +3543,31 @@ const cssFactory = (g: GrammarSelf) => {
       literal('('),
       choice(
         g.MediaCondition,
-        g.MediaNot,
-        g.QueryFeatureContents
+        g.MediaFeatureContents
       ),
       literal(')')
     ),
     (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureBlock(children, span, state)
   );
 
-  /* `<media-in-parens> [ and | or <media-in-parens> ]*`, opening on a `(`. */
+  /*
+   * `<media-in-parens> [ and | or <media-in-parens> ]*`, opening on a `(`. An
+   * operand that is not parenthesized is read as component values, so the
+   * condition is `<general-enclosed>` rather than a give-back of the `and`.
+   */
   const MediaCondition = node(
     'MediaCondition',
     sequence(
       g.MediaInParens,
       many(sequence(
         g.QueryAndOr,
-        g.MediaInParens
+        choice(
+          g.MediaInParens,
+          g.ValueSequence
+        )
       ))
     ),
     children => queryConditionChain(children)
-  );
-
-  /*
-   * `not <media-in-parens>`, or — with no `(` after it — a feature named
-   * `not`, read by the same name tail any feature name takes. The `not` word
-   * is read once either way. A `(` glued to it makes `not(` a function token
-   * (css-syntax-3 §4.3.4), which is a feature's contents, not a negation.
-   */
-  const MediaNot = node(
-    'MediaNot',
-    sequence(
-      noTrivia(sequence(
-        g.QueryNot,
-        not(literal('('))
-      )),
-      choice(
-        g.MediaInParens,
-        queryFeatureNameTail
-      )
-    ),
-    (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureContents(children, span, state)
   );
 
   const mediaTypeKeywordReserved = keywords(
@@ -3921,34 +4006,36 @@ const cssFactory = (g: GrammarSelf) => {
    * An `if()` condition is `<declaration-value>` when it is parsed and is
    * only read as an `<if-condition>` at substitution (css-values-5 §8.3,
    * `<if-args-branch> = <declaration-value> : <declaration-value>?`), so a test
-   * whose contents are no query is still valid: `media(a, b)`,
-   * `supports(a b c)`. After the query, `ifTestRest` reads the rest of the
-   * contents as the declaration-value list, a leading comma included, and the
+   * whose contents are no query is still valid: `media(a, b)`, `media(1px)`,
+   * `supports()`. Each body decides on its first token between a query and
+   * component values, every query arm accepts whatever follows it, and
+   * `ifTestRest` reads the rest as comma-separated component values. The
    * call's argument is the same structured `<general-enclosed>` sequence a
    * query feature builds (a comma makes it a comma `List`).
-   *
-   * `media()` holds what a media query's `<media-in-parens>` holds inside its
-   * parentheses: a `MediaCondition`, a `MediaNot`, or a feature's contents.
    */
-  const ifTestRest = optional(choice(
-    sequence(
-      literal(','),
-      g.ValueList
-    ),
-    g.ValueList
+  const ifTestRest = many(choice(
+    literal(','),
+    g.ValueSequence
   ));
+
+  /*
+   * `media()` holds what a media query's `<media-in-parens>` holds inside its
+   * parentheses: a `MediaCondition` or a media feature's contents.
+   */
   const MediaTestBody = parser(
     { trivia: interstitialTrivia },
     sequence(
-      choice(
+      optional(choice(
         g.MediaCondition,
-        g.MediaNot,
-        g.QueryFeatureContents
-      ),
+        g.MediaFeatureContents,
+        g.ValueSequence
+      )),
       ifTestRest,
       literal(')')
     )
   );
+
+  /* `media(` and its body, the opener owned through `routed()`. */
   const MediaTest = node(
     'Call',
     sequence(
@@ -3959,11 +4046,10 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * A style query's `<style-feature>` (css-conditional-5 §3): a custom property
-   * name, alone or with `:` and its `<declaration-value>`. The value is the custom
+   * A style query's `<style-feature>` value (css-conditional-5 §3): the custom
    * property's value, read to the style query's own `)` over balanced groups
    * and strings and never computed, as a `--x:` declaration's value is. A
-   * dialect with its own custom-property value binds its own.
+   * dialect with its own custom-property value binds its own `StyleFeature`.
    */
   const StyleFeatureValue = node(
     'CustomValue',
@@ -3976,6 +4062,8 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     children => any(children.length === 0 ? '' : tokenText(children[0]))
   );
+
+  /* A `<style-feature>`: a custom property, alone or with `:` and its value. */
   const StyleFeature = node(
     'StyleFeature',
     sequence(
@@ -3988,77 +4076,94 @@ const cssFactory = (g: GrammarSelf) => {
     children => styleFeature(children)
   );
 
+  /* A feature name a style query's dispatch read, as any feature's contents. */
+  const styleNamedFeature = node(
+    'QueryFeatureContents',
+    generalFeatureName,
+    (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureContents(children, span, state)
+  );
+
   /*
    * A `style()` query's contents (css-conditional-5 §3): a `(` opens a
-   * `<style-condition>` of parenthesized queries; otherwise the first
-   * identifier is read once and routed — a custom property is a
-   * `<style-feature>`, `not` negates the parenthesized query after it, and
-   * any other identifier or function starts a feature's contents.
+   * `<style-condition>`; otherwise the first identifier or opener is read once
+   * and routed — a function is a value-first bound, a custom property a
+   * `<style-feature>`, `not` negates the query after it, and any other
+   * identifier is a feature name. Anything else is component values.
    */
   const styleQueryContents = choice(
     dispatch(
       identOrFunction,
-      when(
-        startsWith('--'),
-        g.StyleFeature
-      ),
       cssCase(
         'not',
         sequence(
           g.RoutedKeyword,
-          g.StyleInParens
+          optional(choice(
+            g.StyleInParens,
+            g.ValueSequence
+          ))
         )
       ),
       when(
-        matches(/(?:\\\(|[^(])$/),
-        node(
-          'QueryFeatureContents',
-          queryFeatureName,
-          (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureContents(children, span, state)
-        )
+        endsWith('\\('),
+        styleNamedFeature
       ),
       when(
         endsWith('('),
         node(
           'QueryFeatureContents',
-          sequence(
-            RoutedFunctionQueryValue,
-            g.queryBoundTail
-          ),
+          g.queryFunctionBound,
           (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureContents(children, span, state)
         )
-      )
+      ),
+      when(
+        startsWith('--'),
+        g.StyleFeature
+      ),
+      otherwise(styleNamedFeature)
     ),
-    g.StyleCondition
+    g.StyleCondition,
+    g.ValueSequence
   );
+
+  /* `( <style-query> )`, or a parenthesized `<general-enclosed>`. */
   const StyleInParens = node(
     'StyleInParens',
     sequence(
       literal('('),
-      styleQueryContents,
+      optional(styleQueryContents),
+      ifTestRest,
       literal(')')
     ),
-    children => block(queryConditionChain(children))
+    children => block(generalEnclosedArgument(children) ?? [])
   );
+
+  /* `<style-in-parens> [ and | or <style-in-parens> ]*`, as `MediaCondition`. */
   const StyleCondition = node(
     'StyleCondition',
     sequence(
       g.StyleInParens,
       many(sequence(
         g.QueryAndOr,
-        g.StyleInParens
+        choice(
+          g.StyleInParens,
+          g.ValueSequence
+        )
       ))
     ),
     children => queryConditionChain(children)
   );
+
+  /* The body of `style()`: a style query, then the rest of its contents. */
   const StyleTestBody = parser(
     { trivia: interstitialTrivia },
     sequence(
-      styleQueryContents,
+      optional(styleQueryContents),
       ifTestRest,
       literal(')')
     )
   );
+
+  /* `style(` and its body, the opener owned through `routed()`. */
   const StyleTest = node(
     'Call',
     sequence(
@@ -4070,16 +4175,20 @@ const cssFactory = (g: GrammarSelf) => {
 
   /*
    * The `<ident> : <declaration-value>` of `supports()`, after the name the
-   * contents dispatch read. css reads it as the feature a `@supports` feature
-   * holds (`SupportsFeature`); a dialect binds its own.
+   * contents dispatch read: the name alone, or `:` and the declaration's value
+   * list — the Operation Less's supports declaration builds. A dialect binds
+   * its own.
    */
   const SupportsDeclaration = node(
     'SupportsDeclaration',
     sequence(
       RoutedProperty,
-      queryFeatureNameTail
+      optional(sequence(
+        literal(':'),
+        optional(g.ValueList)
+      ))
     ),
-    (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureContents(children, span, state)
+    children => supportsDeclaration(children)
   );
 
   /* A function-form `<general-enclosed>`, owning the opener the dispatch read. */
@@ -4094,47 +4203,77 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * An operand after `not`, `and` or `or` in `supports()`: a function is a
+   * `<general-enclosed>` call, a `(` a `<supports-in-parens>`, and anything
+   * else component values — decided at the first token, so the `and` is never
+   * given back.
+   */
+  const supportsTestOperand = choice(
+    dispatch(
+      identOrFunction,
+      when(
+        endsWith('\\('),
+        g.RoutedKeyword
+      ),
+      when(
+        endsWith('('),
+        RoutedEnclosed
+      ),
+      otherwise(g.RoutedKeyword)
+    ),
+    g.SupportsInParens,
+    g.ValueSequence
+  );
+  const supportsTestChain = many(sequence(
+    g.QueryAndOr,
+    supportsTestOperand
+  ));
+
+  /*
    * `supports()` contents: the first identifier or opener is read once and
-   * routed — `not` negates the parenthesized condition after it, a function
-   * is a `<general-enclosed>` that may start an `and`/`or` chain, and any
-   * other identifier is the declaration's name. Anything else (a `(`) opens a
-   * `<supports-condition>`; the identifier head cannot start on it.
+   * routed — `not` negates the operand after it, a function is a
+   * `<general-enclosed>` that may start an `and`/`or` chain, and any other
+   * identifier is the declaration's name. A `(` opens a `<supports-in-parens>`
+   * chain, and anything else is component values.
    */
   const SupportsTestBody = parser(
     { trivia: interstitialTrivia },
     sequence(
-      choice(
+      optional(choice(
         dispatch(
           identOrFunction,
-          when(
+          cssCase(
             'not',
             sequence(
               g.RoutedKeyword,
-              g.SupportsInParens
-            ),
-            { caseInsensitive: true }
+              optional(supportsTestOperand)
+            )
           ),
           when(
-            matches(/(?:\\\(|[^(])$/),
+            endsWith('\\('),
             g.SupportsDeclaration
           ),
           when(
             endsWith('('),
             sequence(
               RoutedEnclosed,
-              many(sequence(
-                g.QueryAndOr,
-                g.SupportsInParens
-              ))
+              supportsTestChain
             )
-          )
+          ),
+          otherwise(g.SupportsDeclaration)
         ),
-        g.SupportsCondition
-      ),
+        sequence(
+          g.SupportsInParens,
+          supportsTestChain
+        ),
+        g.ValueSequence
+      )),
       ifTestRest,
       literal(')')
     )
   );
+
+  /* `supports(` and its body, the opener owned through `routed()`. */
   const SupportsTest = node(
     'Call',
     sequence(
@@ -4766,7 +4905,12 @@ const cssFactory = (g: GrammarSelf) => {
     ConditionalGroupAtRule,
     MediaInParens,
     MediaCondition,
-    MediaNot,
+    MediaFeatureContents,
+    queryUrlBound,
+    queryMathBound,
+    queryVarBound,
+    queryUnicodeBound,
+    queryFunctionBound,
     MediaTerm,
     QueryFeatureContents,
     queryBoundTail,
