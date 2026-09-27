@@ -14,6 +14,7 @@
  */
 
 /** Variant subpath -> source module, relative to a package's grammar directory. */
+import { fileURLToPath } from 'node:url';
 import { nestSharedChunks } from './chunk-names.mts';
 
 export const GRAMMAR_VARIANTS = ['ast', 'ast/positions', 'cst', 'cst/positions'] as const;
@@ -115,7 +116,70 @@ export function parserEntryBuild(options: {
   };
 }
 
-/** One single-entry build per grammar variant, so no variant can pull another. */
+/*
+ * The interpreter twin of every variant lives under `grammar/interpreter/`, so
+ * `./grammar/<variant>` and `./grammar/interpreter/<variant>` name the same
+ * grammar run by the two engines.
+ */
+const INTERPRETER_DIR = 'grammar/interpreter';
+
+/*
+ * A dialect grammar composes over a sibling parser's grammar export
+ * (`@jesscss/css-parser/grammar`). The interpreter twin must compose over the
+ * sibling's interpreter twin too, or half of it would run as a compiled table.
+ */
+const SIBLING_GRAMMAR = /^(@jesscss\/[\w-]+-parser\/grammar)(\/[\w/-]+)?$/;
+
+function interpreterPaths(shared: readonly string[], extension: '.js' | '.cjs') {
+  const sharedPath = sharedPaths(shared, extension);
+  return (id: string): string => {
+    const match = SIBLING_GRAMMAR.exec(id);
+    return match ? `${match[1]}/interpreter${match[2] ?? ''}` : sharedPath(id);
+  };
+}
+
+/*
+ * Grammar sources import their combinators `with { type: 'macro' }`. Without the
+ * parseman plugin nothing consumes that attribute, and Node rejects an import
+ * whose `type` it does not know, so the interpreter build strips it and the
+ * import stays an ordinary runtime import of `parseman`.
+ */
+const MACRO_ATTRIBUTE = /\s+with\s*\{\s*type:\s*['"]macro['"]\s*\}/g;
+
+/*
+ * `@jesscss/parser-shared` publishes only macro-compiled recognition grammars,
+ * which every parser composes into its own. The interpreter twin bundles that
+ * package's source instead, so no compiled table reaches the interpreter graph.
+ */
+const PARSER_SHARED = /^@jesscss\/parser-shared\/([\w-]+)$/;
+const PARSER_SHARED_SRC = new URL('../../packages/parser-shared/src/', import.meta.url);
+
+const interpreterPlugin = {
+  name: 'jess:grammar-interpreter',
+  resolveId: {
+    order: 'pre' as const,
+    handler(source: string) {
+      const match = PARSER_SHARED.exec(source);
+      return match ? fileURLToPath(new URL(`${match[1]}.ts`, PARSER_SHARED_SRC)) : null;
+    }
+  },
+  transform(code: string) {
+    const stripped = code.replace(MACRO_ATTRIBUTE, '');
+    return stripped === code ? null : stripped;
+  }
+};
+
+function interpreterExternal(patterns: readonly (string | RegExp)[]) {
+  return (id: string): boolean => !PARSER_SHARED.test(id)
+    && patterns.some(pattern => typeof pattern === 'string' ? pattern === id : pattern.test(id));
+}
+
+/**
+ * One single-entry build per grammar variant, so no variant can pull another,
+ * plus the same entry built again without `plugins` (the parseman macro) as
+ * its interpreter twin: the combinator graph ships as-is and runs on
+ * parseman's interpreter.
+ */
 export function grammarVariantBuilds(options: {
   dir?: string;
   shared?: readonly string[];
@@ -125,14 +189,14 @@ export function grammarVariantBuilds(options: {
   const dir = options.dir ?? './src/grammar';
   const shared = options.shared ?? [];
   const extraExternal = options.external ?? [];
-  return GRAMMAR_VARIANTS.map(variant => {
+  const externalPatterns = [...shared.length > 0 ? [sharedSpecifier(shared)] : [], ...extraExternal];
+  const external = externalPatterns.length > 0 ? { external: externalPatterns } : {};
+  const compiled = GRAMMAR_VARIANTS.map(variant => {
     return {
       ...BASE,
       entry: { [`grammar/${variant}`]: `${dir}/${variant}.ts` },
       clean: false,
-      ...shared.length > 0 || extraExternal.length > 0
-        ? { external: [...shared.length > 0 ? [sharedSpecifier(shared)] : [], ...extraExternal] }
-        : {},
+      ...external,
       plugins: options.plugins ?? [],
       outputOptions(outputOptions: Record<string, unknown>, format: string) {
         const next = {
@@ -146,4 +210,22 @@ export function grammarVariantBuilds(options: {
       }
     };
   });
+  const interpreter = GRAMMAR_VARIANTS.map(variant => {
+    return {
+      ...BASE,
+      entry: { [`${INTERPRETER_DIR}/${variant}`]: `${dir}/${variant}.ts` },
+      clean: false,
+      external: interpreterExternal(externalPatterns),
+      plugins: [interpreterPlugin],
+      outputOptions(outputOptions: Record<string, unknown>, format: string) {
+        const next = {
+          ...outputOptions,
+          chunkFileNames: nestSharedChunks(outputOptions.chunkFileNames as never),
+          paths: interpreterPaths(shared, format === 'cjs' ? '.cjs' : '.js')
+        };
+        return format === 'cjs' ? { ...next, exports: 'named' } : next;
+      }
+    };
+  });
+  return [...compiled, ...interpreter];
 }

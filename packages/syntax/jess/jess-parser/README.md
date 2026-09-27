@@ -105,6 +105,13 @@ Node executes every module it statically imports, so the choice is which entry
 you import. Error tolerance is not a property of a build — the CST runner
 collects `result.errors` on either CST variant.
 
+Each variant also ships uncompiled under `@jesscss/jess-parser/grammar/interpreter/…`
+(`/grammar/interpreter` aliases `/grammar/interpreter/ast`): the same grammar
+source and export, built without the parseman macro, so the combinator graph
+runs on parseman's interpreter instead of a compiled table. It exists to compare
+the two engines; `test/interpreter-parity.test.ts` parses the fixtures with
+both and requires identical AST and CST results.
+
 ## Default CST shape
 
 The CST is parseman's, produced by the shared `cssCstBuildHost` (from `@jesscss/css-parser`). Three kinds of node:
