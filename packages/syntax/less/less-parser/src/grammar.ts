@@ -720,7 +720,9 @@ const staticPseudoChunk = regex(/(?:[^()\[\]'"@/]|@(?![@{_a-zA-Z\u0080-\uffff-])
 const enclosedText = regex(/(?:\\[\s\S]|\/(?!\*)|@(?!\{)|[^\\/'"@()[\]{}]+)+/);
 const enclosedDoubleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^"\\@])+/);
 const enclosedSingleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^'\\@])+/);
-const lessSupportedVariableName = regex(/[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+// A Less variable name is a css ident (css-syntax-3 §4.3.11), escapes included,
+// so `@\63 olor` and `@color` name one variable; the reducer decodes it.
+const lessSupportedVariableName = regex(/(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const lessUnsupportedNumericVariableName = node(
   'UnsupportedVariableName',
   regex(/[0-9][-_a-zA-Z0-9\u0080-\uffff]*/),
