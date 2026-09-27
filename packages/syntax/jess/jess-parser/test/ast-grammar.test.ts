@@ -177,6 +177,25 @@ describe('Jess AST grammar facts', () => {
     expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe('.card {\n  color: green;\n}\n');
   });
 
+  it('reads the logical operators case-insensitively in every ladder, as SCSS does', () => {
+    for (const lower of [
+      '$if ((($a=true) and not($b)) or false) { .c { d: e; } }',
+      'm($v) when (($v = true) and not(false)) { color: red; } n() when (false or true) { color: red; }',
+      'a { b: $(not(true)); c: $(true and false); d: $(true or false); }'
+    ]) {
+      const upper = lower.replace(/\b(and|or|not)\b/g, word => word.toUpperCase());
+      expect(bare(parse(upper))).toEqual(bare(parse(lower)));
+    }
+  });
+
+  it('ends a keyword only where the identifier ends: an escape continues it', () => {
+    /* css-syntax-3 §4.3.11: `and\61` is the one identifier `anda`, not `and` then `\61`. */
+    expect(() => parse('a { b: $(true and\\61 false); }')).toThrow(JessParseError);
+    expect(bare(parse('a { b: $(true and false); }'))).toMatchObject({
+      rules: [{ rules: [{ value: { parts: [{ ref: { value: { type: 'Operation', operator: 'and' } } }] } }] }]
+    });
+  });
+
   it('retains CST-admitted adjacent $if comparison operators through public parse and render', () => {
     const source = '$size: 6; $if ($size>5) { .card { color: green; } } $else { .card { color: red; } }';
     const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
