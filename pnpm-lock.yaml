@@ -759,6 +759,9 @@ importers:
       '@jesscss/css-parser':
         specifier: workspace:*
         version: link:../../css/css-parser
+      '@jesscss/parser-shared':
+        specifier: workspace:*
+        version: link:../../../parser-shared
       color-name:
         specifier: ~2.0.0
         version: 2.0.2
@@ -769,9 +772,6 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../../../core
-      '@jesscss/parser-shared':
-        specifier: workspace:*
-        version: link:../../../parser-shared
       '@types/color-name':
         specifier: ^1.1.1
         version: 1.1.5
@@ -836,6 +836,9 @@ importers:
       '@jesscss/css-parser':
         specifier: workspace:*
         version: link:../../css/css-parser
+      '@jesscss/parser-shared':
+        specifier: workspace:*
+        version: link:../../../parser-shared
       known-css-properties:
         specifier: ~0.37.0
         version: 0.37.0
@@ -846,9 +849,6 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../../../core
-      '@jesscss/parser-shared':
-        specifier: workspace:*
-        version: link:../../../parser-shared
       '@jesscss/shared':
         specifier: workspace:*
         version: link:../../../_shared
@@ -885,6 +885,9 @@ importers:
       '@jesscss/css-parser':
         specifier: workspace:*
         version: link:../../css/css-parser
+      '@jesscss/parser-shared':
+        specifier: workspace:*
+        version: link:../../../parser-shared
       parseman:
         specifier: ^0.50.7
         version: 0.50.7
@@ -892,9 +895,6 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../../../core
-      '@jesscss/parser-shared':
-        specifier: workspace:*
-        version: link:../../../parser-shared
       sass-spec:
         specifier: github:sass/sass-spec#67c3b83a26fd3f9772dd0d3e318fe32aefb38eef
         version: https://codeload.github.com/sass/sass-spec/tar.gz/67c3b83a26fd3f9772dd0d3e318fe32aefb38eef(@babel/core@7.29.7)(@jest/transform@29.7.0)(babel-jest@29.7.0(@babel/core@7.29.7))(eslint@9.39.5(jiti@1.21.7))(jest-util@29.7.0)(jiti@1.21.7)
