@@ -188,6 +188,14 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
+  it('ends a keyword only where the identifier ends: an escape continues it', () => {
+    /* css-syntax-3 §4.3.11: `and\61` is the one identifier `anda`, not `and` then `\61`. */
+    expect(() => parse('a { b: $(true and\\61 false); }')).toThrow(JessParseError);
+    expect(bare(parse('a { b: $(true and false); }'))).toMatchObject({
+      rules: [{ rules: [{ value: { parts: [{ ref: { value: { type: 'Operation', operator: 'and' } } }] } }] }]
+    });
+  });
+
   it('retains CST-admitted adjacent $if comparison operators through public parse and render', () => {
     const source = '$size: 6; $if ($size>5) { .card { color: green; } } $else { .card { color: red; } }';
     const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });

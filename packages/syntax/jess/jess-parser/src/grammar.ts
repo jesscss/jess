@@ -584,12 +584,26 @@ const expressionCompareSymbol = regex(/>=|<=|==|>|<|=/);
 const ifGuardCompareOperator = regex(/[ \t\n\r\f]*(?:>=|<=|==|>|<|=)[ \t\n\r\f]*/);
 
 /*
+ * Where every Jess keyword ends. A keyword is an identifier, and css-syntax-3
+ * §4.3.11 consumes a valid escape (§4.3.8) into the identifier it follows, so
+ * `and\61` is the one identifier `anda`, not the keyword `and` followed by
+ * `\61`: a backslash continues the word exactly as an identifier code point
+ * does. (A backslash before a newline is not an escape; it still ends no
+ * keyword here, and is a parse error in every position these keywords take.)
+ * @see https://drafts.csswg.org/css-syntax-3/#consume-name
+ */
+const IDENT_BOUNDARY = '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\';
+
+/*
  * This is intentionally the type-predicate namespace, not general function
  * syntax in a guard. The existing GuardNode evaluator accepts these names;
  * recognition retains a typed argument list and never routes through source.
  */
-const guardUnaryTypePredicate = regex(/\$type\.(?:iscolor|isnumber|isstring|iskeyword|ispixel|ispercentage|isem)(?![-_a-zA-Z0-9\u0080-\uffff])/);
-const guardIsUnitPredicate = regex(/\$type\.isunit(?![-_a-zA-Z0-9\u0080-\uffff])/);
+const guardUnaryTypePredicate = keywords(
+  ['$type.iscolor', '$type.isnumber', '$type.isstring', '$type.iskeyword', '$type.ispixel', '$type.ispercentage', '$type.isem'],
+  { boundary: IDENT_BOUNDARY }
+);
+const guardIsUnitPredicate = word('$type.isunit', IDENT_BOUNDARY);
 
 /*
  * The reserved guard-predicate namespace. An expression atom uses this as a
@@ -770,16 +784,16 @@ const unquotedUrlText = regex(/(?:[^"'()\\$ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|
  */
 const compilerAtRuleName = keywords(
   ['@-use', '@-compose', '@-export', '@-import', '@-from'],
-  { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF', caseInsensitive: true }
+  { boundary: IDENT_BOUNDARY, caseInsensitive: true }
 );
 
-const charsetAtRuleName = word('@charset', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
-const importAtRuleName = word('@import', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
-const propertyAtRuleName = word('@property', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
-const scopeAtRuleName = word('@scope', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
+const charsetAtRuleName = word('@charset', IDENT_BOUNDARY, { caseInsensitive: true });
+const importAtRuleName = word('@import', IDENT_BOUNDARY, { caseInsensitive: true });
+const propertyAtRuleName = word('@property', IDENT_BOUNDARY, { caseInsensitive: true });
+const scopeAtRuleName = word('@scope', IDENT_BOUNDARY, { caseInsensitive: true });
 
 /** The `null` LITERAL's word (§4.3). Boundary-guarded, so `nullish` stays an ordinary identifier. */
-const nullWord = word('null', '-_a-zA-Z0-9\\u0080-\\uFFFF');
+const nullWord = word('null', IDENT_BOUNDARY);
 
 /*
  * The logical operators of the `$if` and `when` guard ladders and the `$(…)`
@@ -788,8 +802,8 @@ const nullWord = word('null', '-_a-zA-Z0-9\\u0080-\\uFFFF');
  * `g.QueryNot`; the shared artifact only has `and` and `or` as one terminal,
  * and these ladders need them apart.
  */
-const logicalAnd = word('and', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
-const logicalOr = word('or', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: true });
+const logicalAnd = word('and', IDENT_BOUNDARY, { caseInsensitive: true });
+const logicalOr = word('or', IDENT_BOUNDARY, { caseInsensitive: true });
 
 /*
  * NOT exported, and must never be. The body is written entirely in parseman's
@@ -805,7 +819,7 @@ const logicalOr = word('or', '-_a-zA-Z0-9\\u0080-\\uFFFF', { caseInsensitive: tr
  */
 const jessFactory = (g: JessRules & SharedSyntax) => {
   const caseInsensitiveWhen = makeWhen({ caseInsensitive: true });
-  const syntaxWord = makeWord('-_a-zA-Z0-9\\u0080-\\uFFFF');
+  const syntaxWord = makeWord(IDENT_BOUNDARY);
 
   /*
    * CSS identifier-or-function positions consume the adjacent `(` as one
@@ -1300,7 +1314,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         literal(')')
       ),
       sequence(
-        regex(/default(?![-_a-zA-Z0-9\u0080-\uffff])/),
+        syntaxWord('default'),
         literal('('),
         literal(')')
       ),
@@ -1571,7 +1585,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     }
   );
   const styleImportDirective = keywords(['@-compose', '@-export', '@-import'], {
-    boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF'
+    boundary: IDENT_BOUNDARY
   });
   const StyleImport = node<StyleImport>(
     'StyleImport',
@@ -1645,7 +1659,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     literal(',')
   );
   const moduleImportDirective = keywords(['@-use', '@-from'], {
-    boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF'
+    boundary: IDENT_BOUNDARY
   });
   const ModuleImport = node<ModuleImport>(
     'ModuleImport',
@@ -3684,7 +3698,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
 
   const containerNameReserved = keywords(
     ['none'],
-    { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF', caseInsensitive: true }
+    { boundary: IDENT_BOUNDARY, caseInsensitive: true }
   );
 
   /*
@@ -3713,7 +3727,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const jessStyleFunctionOpener = token(noTrivia(sequence(
     word(
       'style',
-      '-_a-zA-Z0-9\\u0080-\\uFFFF',
+      IDENT_BOUNDARY,
       { caseInsensitive: true }
     ),
     literal('(')
@@ -4508,7 +4522,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    */
   const reservedVarName = keywords(
     ['content', 'for', 'if', 'else', 'each', 'while'],
-    { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
+    { boundary: IDENT_BOUNDARY }
   );
 
   /*
@@ -5355,10 +5369,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const For = node<For>(
     'For',
     sequence(
-      regex(/\$for(?![-_a-zA-Z0-9\u0080-\uffff])/),
+      syntaxWord('$for'),
       literal('('),
       g.ForBinding,
-      regex(/of(?![-_a-zA-Z0-9\u0080-\uffff])/),
+      syntaxWord('of'),
       choice(
         g.ForRange,
         g.ForSource
@@ -5492,8 +5506,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const ElseIfBranch = node<IfBranch>(
     'ElseIfBranch',
     sequence(
-      regex(/\$else(?![-_a-zA-Z0-9\u0080-\uffff])/),
-      regex(/if(?![-_a-zA-Z0-9\u0080-\uffff])/),
+      syntaxWord('$else'),
+      syntaxWord('if'),
       g.IfCondition,
       g.IfBody
     ),
@@ -5502,7 +5516,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const ElseBranch = node<IfBranch>(
     'ElseBranch',
     sequence(
-      regex(/\$else(?![-_a-zA-Z0-9\u0080-\uffff])/),
+      syntaxWord('$else'),
       g.IfBody
     ),
     children => ({ guard: null, rules: requireStatementList(children[1]) })
@@ -5510,7 +5524,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const If = node<If>(
     'If',
     sequence(
-      regex(/\$if(?![-_a-zA-Z0-9\u0080-\uffff])/),
+      syntaxWord('$if'),
       g.IfCondition,
       g.IfBody,
       many(g.ElseIfBranch),
@@ -5542,7 +5556,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const While = node<While>(
     'While',
     sequence(
-      regex(/\$while(?![-_a-zA-Z0-9\u0080-\uffff])/),
+      syntaxWord('$while'),
       g.IfCondition,
       g.IfBody
     ),
@@ -5652,7 +5666,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const Apply = node<Apply>(
     'Apply',
     sequence(
-      regex(/\$apply(?![-_a-zA-Z0-9\u0080-\uffff])/),
+      syntaxWord('$apply'),
       g.PseudoSelectorCompound,
       many(sequence(
         literal(','),
@@ -5665,13 +5679,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   const Extend = node<ExtendInstruction[]>(
     'Extend',
     sequence(
-      regex(/\$extend(?![-_a-zA-Z0-9\u0080-\uffff])/),
+      syntaxWord('$extend'),
       g.PseudoSelectorComplex,
       many(sequence(
         literal(','),
         g.PseudoSelectorComplex
       )),
-      optional(regex(/!exact(?![-_a-zA-Z0-9\u0080-\uffff])/)),
+      optional(syntaxWord('!exact')),
       optional(literal(';'))
     ),
     children => children.filter(isSelectorBranch)

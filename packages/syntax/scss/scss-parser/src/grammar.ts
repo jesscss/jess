@@ -17,7 +17,7 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { balanced, classifiedTrivia, choice, compose, dispatch, endsWith, expect, field, keywords, label, literal, makeWhen, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, token, when } from 'parseman' with { type: 'macro' };
+import { balanced, classifiedTrivia, choice, compose, dispatch, endsWith, expect, field, keywords, label, literal, makeWhen, makeWord, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, token, when } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -343,15 +343,27 @@ const space = regex(/[ \t\n\r\f]+/);
 const valueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
 
 /*
+ * Where every SCSS keyword ends. A keyword is an identifier, and css-syntax-3
+ * §4.3.11 consumes a valid escape (§4.3.8) into the identifier it follows, so
+ * `not\61` is the one identifier `nota`, not the keyword `not` followed by
+ * `\61`: a backslash continues the word exactly as an identifier code point
+ * does. (A backslash before a newline is not an escape; it still ends no
+ * keyword here, and is a parse error in every position these keywords take.)
+ * @see https://drafts.csswg.org/css-syntax-3/#consume-name
+ */
+const IDENT_BOUNDARY = '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\';
+const caseInsensitiveWord = makeWord(IDENT_BOUNDARY, { caseInsensitive: true });
+
+/*
  * Sass's logical operators are SYNTAX, not functions (§4.5.5), and the same
  * three spellings serve both the guard ladder (`@if`) and the VALUE ladder
- * below, so they are stated once here rather than twice. The trailing
- * non-identifier lookahead is what keeps `not-a-var`, `android` and `origin`
- * ordinary identifiers.
+ * below, so they are stated once here rather than twice. The identifier
+ * boundary is what keeps `not-a-var`, `android` and `origin` ordinary
+ * identifiers.
  */
-const scssNotKeyword = regex(/not(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const scssAndKeyword = regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const scssOrKeyword = regex(/or(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+const scssNotKeyword = caseInsensitiveWord('not');
+const scssAndKeyword = caseInsensitiveWord('and');
+const scssOrKeyword = caseInsensitiveWord('or');
 
 /*
  * A CSS-namespaces prefix: `<ident>|`, `*|`, or bare `|`, glued (no whitespace
@@ -456,7 +468,7 @@ const sassDirectiveAtKeyword = keywords(
     '@content', '@debug', '@warn', '@error',
     '@-use', '@-compose', '@-export', '@-import', '@-from'
   ],
-  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
+  { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
 
 /*
@@ -469,7 +481,7 @@ const sassDirectiveAtKeyword = keywords(
  */
 const statementOnlyAtKeyword = keywords(
   ['@charset', '@namespace'],
-  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
+  { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
 
 /*
@@ -537,7 +549,7 @@ const scssFactory = (g: ScssInputRules) => {
    */
   const reservedVarName = keywords(
     ['content', 'for', 'if', 'else', 'each', 'while'],
-    { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
+    { boundary: IDENT_BOUNDARY }
   );
   const reservedVarHead = noTrivia(sequence(
     literal('$'),
@@ -1872,12 +1884,12 @@ const scssFactory = (g: ScssInputRules) => {
     'ImportLayer',
     choice(
       noTrivia(sequence(
-        regex(/layer(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        caseInsensitiveWord('layer'),
         literal('('),
         g.Keyword,
         literal(')')
       )),
-      noTrivia(regex(/layer(?![-_a-zA-Z0-9\u0080-\uffff])/i))
+      noTrivia(caseInsensitiveWord('layer'))
     ),
     children => children.length === 1
       ? keyword(requireToken(children[0]).value)
@@ -1911,7 +1923,7 @@ const scssFactory = (g: ScssInputRules) => {
     'ImportSupports',
     sequence(
       noTrivia(sequence(
-        regex(/supports(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        caseInsensitiveWord('supports'),
         literal('(')
       )),
       choice(
@@ -1985,7 +1997,7 @@ const scssFactory = (g: ScssInputRules) => {
    * each call site.
    */
   const importSupportsOpen = noTrivia(sequence(
-    regex(/supports(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+    caseInsensitiveWord('supports'),
     literal('(')
   ));
   const ImportTail = node<ValueNode>(
@@ -2020,7 +2032,7 @@ const scssFactory = (g: ScssInputRules) => {
   const ImportStatement = node<StyleImport | AtRuleStatement>(
     'ImportStatement',
     sequence(
-      regex(/@import(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      caseInsensitiveWord('@import'),
       choice(
         g.Quoted,
         g.ImportUrl
@@ -2048,7 +2060,7 @@ const scssFactory = (g: ScssInputRules) => {
   const UseNamespace = node<string>(
     'UseNamespace',
     sequence(
-      regex(/as(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      caseInsensitiveWord('as'),
       choice(
         literal('*'),
         moduleNamespaceName
@@ -2081,7 +2093,7 @@ const scssFactory = (g: ScssInputRules) => {
   const WithClause = node<Collection>(
     'WithClause',
     sequence(
-      regex(/with(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      caseInsensitiveWord('with'),
       g.Map
     ),
     (children) => {
@@ -2284,7 +2296,7 @@ const scssFactory = (g: ScssInputRules) => {
     'MixinContentBlock',
     sequence(
       optional(sequence(
-        regex(/using(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        caseInsensitiveWord('using'),
         g.MixinParameters
       )),
       literal('{'),
@@ -2550,7 +2562,7 @@ const scssFactory = (g: ScssInputRules) => {
 
       /* Statement span, terminator excluded — see `Declaration`. */
       field('statement', sequence(
-        regex(/@return(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        caseInsensitiveWord('@return'),
         g.Value
       )),
       optional(literal(';'))
@@ -2679,11 +2691,11 @@ const scssFactory = (g: ScssInputRules) => {
        * legacy CST (`topSum`). Keep them as ValueNode facts for Range; the
        * evaluator already evaluates both bounds before iterating.
        */
-      regex(/from(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      caseInsensitiveWord('from'),
       g.MathTopSum,
       choice(
-        regex(/through(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-        regex(/to(?![-_a-zA-Z0-9\u0080-\uffff])/i)
+        caseInsensitiveWord('through'),
+        caseInsensitiveWord('to')
       ),
       g.MathTopSum,
       literal('{'),
@@ -2715,8 +2727,8 @@ const scssFactory = (g: ScssInputRules) => {
    * semantics, never before it, because widening the grammar alone would not
    * fail, it would silently take the wrong branch.
    */
-  const scssTrueKeyword = regex(/true(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-  const scssFalseKeyword = regex(/false(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+  const scssTrueKeyword = caseInsensitiveWord('true');
+  const scssFalseKeyword = caseInsensitiveWord('false');
   const IfComparison = node<GuardNode>(
     'IfComparison',
     sequence(
@@ -2960,10 +2972,10 @@ const scssFactory = (g: ScssInputRules) => {
       g.IfCondition,
       g.IfBody,
       many(sequence(
-        regex(/@else(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        caseInsensitiveWord('@else'),
         choice(
           sequence(
-            regex(/if(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+            caseInsensitiveWord('if'),
             g.IfCondition,
             g.IfBody
           ),
@@ -4058,7 +4070,7 @@ const scssFactory = (g: ScssInputRules) => {
   const FontFace = node<AtRuleBlock>(
     'FontFace',
     sequence(
-      regex(/@font-face(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      caseInsensitiveWord('@font-face'),
       literal('{'),
       many(choice(
         g.Comment,
@@ -4081,7 +4093,7 @@ const scssFactory = (g: ScssInputRules) => {
   const CounterStyle = node<AtRuleBlock>(
     'CounterStyle',
     sequence(
-      regex(/@counter-style(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      caseInsensitiveWord('@counter-style'),
       g.Keyword,
       literal('{'),
       many(choice(
@@ -4120,7 +4132,7 @@ const scssFactory = (g: ScssInputRules) => {
   const PropertyAtRule = node<AtRuleBlock>(
     'PropertyAtRule',
     sequence(
-      regex(/@property(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      caseInsensitiveWord('@property'),
       g.PropertyName,
       literal('{'),
       many(choice(
@@ -4682,9 +4694,9 @@ const scssFactory = (g: ScssInputRules) => {
   const Extend = node<ExtendInstruction>(
     'Extend',
     sequence(
-      regex(/@extend(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      caseInsensitiveWord('@extend'),
       g.SelectorList,
-      optional(regex(/!optional(?![-_a-zA-Z0-9\u0080-\uffff])/i)),
+      optional(caseInsensitiveWord('!optional')),
       optional(literal(';'))
     ),
     children => ({
