@@ -135,7 +135,10 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +2 functions (`writtenBlockBody`, `rejectRulesetArgument`, ledger P37): a
     // ruleset argument's nested rules, at-rules and mixin calls are evaluated and
     // written inside its braces, one body at a time.
-    expect(occurrences(/^function |^async function /gmu)).toBe(471);
+    // +1 function (`evalQueryPreludeParts`): a media/container prelude is built as
+    // fragments so a [general-enclosed] group passes the normalizer as written;
+    // the supports normalizer became the shared `normalizePreludeParts`.
+    expect(occurrences(/^function |^async function /gmu)).toBe(472);
     expect(occurrences(/new Map/gu)).toBe(68);
     expect(occurrences(/new Set/gu)).toBe(41);
     expect(occurrences(/new WeakMap/gu)).toBe(4);

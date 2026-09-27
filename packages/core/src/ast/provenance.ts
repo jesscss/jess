@@ -176,8 +176,10 @@ export interface ValueBoundaryTrivia {
 }
 
 const valueBoundaryTriviaKey = Symbol.for('jess.ast.value-boundary-trivia');
+const generalEnclosedSourceKey = Symbol.for('jess.ast.general-enclosed-source');
 interface StoredValueLayout extends ReadonlyArray<string> {
   readonly [valueBoundaryTriviaKey]?: ValueBoundaryTrivia;
+  readonly [generalEnclosedSourceKey]?: string;
 }
 
 /*
@@ -560,6 +562,30 @@ function hasTopLevelSlash(value: object): boolean {
 /** Read parser-authored separators for a raw ValueSlot array, List, or Sequence. */
 export function valueLayoutOf(value: object): ValueLayout | undefined {
   return layouts.get(value);
+}
+
+/**
+ * Record the source bytes of a structured `<general-enclosed>` group
+ * (media-queries-4 §3.1). The parser keeps its structure for tooling; the
+ * emitter prints these bytes instead, because a browser treats the group as
+ * unknown syntax that jess must neither normalize nor evaluate. Rare, so it
+ * rides the same side table as value layout, under a non-enumerable key.
+ */
+export function withGeneralEnclosedSource<T extends object>(value: T, source: string): T {
+  const previous = layouts.get(value);
+  const stored: string[] = [...(previous ?? [])];
+  const boundary = previous?.[valueBoundaryTriviaKey];
+  if (boundary !== undefined) {
+    Object.defineProperty(stored, valueBoundaryTriviaKey, { value: boundary });
+  }
+  Object.defineProperty(stored, generalEnclosedSourceKey, { value: source });
+  layouts.set(value, stored);
+  return value;
+}
+
+/** The recorded source bytes of a structured `<general-enclosed>` group, if any. */
+export function generalEnclosedSourceOf(value: object): string | undefined {
+  return layouts.get(value)?.[generalEnclosedSourceKey];
 }
 
 /** Read rare parser-owned trivia at the outside edges of a typed value. */

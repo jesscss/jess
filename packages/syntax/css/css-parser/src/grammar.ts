@@ -30,6 +30,7 @@ import {
   blockStatements,
   branchSegments,
   queryConditionChain,
+  queryFeatureBlock,
   queryFeatureContents,
   queryValueRatio,
   color,
@@ -3128,7 +3129,7 @@ const cssFactory = (g: GrammarSelf) => {
         queryFeatureRangeTail
       )
     ),
-    children => queryFeatureContents(children)
+    (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureContents(children, span, state)
   );
 
   const QueryFeature = node(
@@ -3138,7 +3139,7 @@ const cssFactory = (g: GrammarSelf) => {
       g.QueryFeatureContents,
       literal(')')
     ),
-    children => block(firstValue(children))
+    (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureBlock(children, span, state)
   );
 
   /*
@@ -3165,7 +3166,7 @@ const cssFactory = (g: GrammarSelf) => {
       ),
       literal(')')
     ),
-    children => block(firstValue(children))
+    (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureBlock(children, span, state)
   );
 
   /* `<media-in-parens> [ and | or <media-in-parens> ]*`, opening on a `(`. */

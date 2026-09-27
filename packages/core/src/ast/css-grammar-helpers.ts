@@ -19,6 +19,7 @@
  */
 import {
   any,
+  block,
   cssBaseMathOutsideParens,
   keyword,
   operation,
@@ -27,7 +28,7 @@ import {
   selectorTermOf,
   selist
 } from './nodes.js';
-import { withValueLayout } from './provenance.js';
+import { generalEnclosedSourceOf, withGeneralEnclosedSource, withValueLayout } from './provenance.js';
 import { semanticGapText } from './grammar-helpers.js';
 import type {
   CompoundSelector,
@@ -46,6 +47,7 @@ import type {
   ValueSlot
 } from './nodes.js';
 import type { AtRuleBlock, UnknownAtRuleBlock } from './at-rule.js';
+import type { AstSourceSpan } from './provenance.js';
 
 /** The reducer field bag parseman hands a `build(children, fields, span)`. */
 type ReducerFields = Record<string, { readonly value: unknown } | ReadonlyArray<{ readonly value: unknown }>>;
@@ -356,14 +358,14 @@ export function queryValueRatio(children: readonly unknown[]): ValueNode {
  * with `:` and a value, a name compared with one or two values, or a value
  * compared with the name — the same Operations the four feature forms built.
  */
-export function queryFeatureContents(children: readonly unknown[]): ValueNode {
+export function queryFeatureContents(children: readonly unknown[], span?: AstSourceSpan, state?: unknown): ValueNode {
   const head = children[0];
   if (isValue(head)) {
     if (children.length === 1) {
       return head;
     }
     if (children.length < 3 || isValueSlotValue(children[2])) {
-      return generalEnclosedSequence(children);
+      return withAuthoredGeneralEnclosed(generalEnclosedSequence(children), span, state);
     }
 
     /* A value-first range: `value op name [op value]`. */
@@ -392,6 +394,31 @@ export function queryFeatureContents(children: readonly unknown[]): ValueNode {
     return operation(':', name, firstValue(children), false, cssBaseMathOutsideParens(':'));
   }
   return chainedQueryComparison(name, children);
+}
+
+/*
+ * A query feature's parenthesized group. When its contents are a structured
+ * `<general-enclosed>`, the whole group — parentheses and padding included —
+ * records its source bytes, so the emitter prints it as written.
+ */
+export function queryFeatureBlock(children: readonly unknown[], span: AstSourceSpan, state: unknown): ValueNode {
+  const value = firstValue(children);
+  const group = block(value);
+  return generalEnclosedSourceOf(value) === undefined ? group : withAuthoredGeneralEnclosed(group, span, state);
+}
+
+/*
+ * Record a structured `<general-enclosed>` value's source bytes: the slice of
+ * the parse input its span covers. The parse state carries the input; without
+ * it (a grammar run with no state) the value keeps only its structure.
+ */
+function withAuthoredGeneralEnclosed<T extends object>(value: T, span: AstSourceSpan | undefined, state: unknown): T {
+  const source = typeof state === 'object' && state !== null && 'source' in state && typeof state.source === 'string'
+    ? state.source
+    : undefined;
+  return source === undefined || span === undefined
+    ? value
+    : withGeneralEnclosedSource(value, source.slice(span.start, span.end));
 }
 
 /*
