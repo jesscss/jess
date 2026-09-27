@@ -16,6 +16,16 @@
   "description": "Jess LESS parser",
   "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
+  "browser": {
+    "./lib/grammar/ast.js": "./lib/grammar/interpreter/ast.js",
+    "./lib/grammar/ast.cjs": "./lib/grammar/interpreter/ast.cjs",
+    "./lib/grammar/ast/positions.js": "./lib/grammar/interpreter/ast/positions.js",
+    "./lib/grammar/ast/positions.cjs": "./lib/grammar/interpreter/ast/positions.cjs",
+    "./lib/grammar/cst.js": "./lib/grammar/interpreter/cst.js",
+    "./lib/grammar/cst.cjs": "./lib/grammar/interpreter/cst.cjs",
+    "./lib/grammar/cst/positions.js": "./lib/grammar/interpreter/cst/positions.js",
+    "./lib/grammar/cst/positions.cjs": "./lib/grammar/interpreter/cst/positions.cjs"
+  },
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
