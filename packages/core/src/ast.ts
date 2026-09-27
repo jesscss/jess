@@ -53,6 +53,7 @@ export {
   chainedQueryComparison,
   queryConditionChain,
   queryFeatureBlock,
+  generalEnclosedGroup,
   queryFeatureContents,
   queryValueRatio,
   complexSegments,

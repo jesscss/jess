@@ -29,13 +29,10 @@ const VERBATIM = [
   '@supports (foo(x)/2)',
   '@container (a) and (foo( x ))',
 
-  /* A query function's scanned payload, bare or parenthesized, agrees. */
-  '@container style(--x:1)',
-  '@container (style(--x:1))',
+  /* A function-form general-enclosed read as a template. */
   '@media foo(x:y)',
-
-  /* Only the group whose own contents are general-enclosed; the condition around it is normalized. */
-  '@media ((foo(x)  bar))'
+  '@container ((a) and (foo  bar))',
+  '@supports (foo  bar)'
 ];
 
 async function prelude(source: string, evaluator?: ValueEvaluator): Promise<string> {
@@ -60,6 +57,16 @@ describe('general-enclosed is emitted as written and never evaluated', () => {
       expect(await prelude(source, refusingEvaluator)).toBe(source);
     });
   }
+
+  it('marks only the group whose own contents are general-enclosed; the condition around it is normalized', async () => {
+    expect(await prelude('@media ( (foo(x)  bar) )')).toBe('@media ((foo(x)  bar))');
+  });
+
+  /* A defined query function is not general-enclosed: bare and parenthesized agree, normalized. */
+  it('normalizes a defined style() query the same bare or parenthesized', async () => {
+    expect(await prelude('@container style(--x:1)')).toBe('@container style(--x: 1)');
+    expect(await prelude('@container (style(--x:1))')).toBe('@container (style(--x: 1))');
+  });
 
   it('keeps general-enclosed as written in compressed output', async () => {
     const css = (await serialize(parse('@media (foo(x)   or(color)) and (min-width : 1px) { a { b: c } }'), { compress: true })).css;

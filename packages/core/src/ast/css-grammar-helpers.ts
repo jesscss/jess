@@ -413,6 +413,31 @@ export function queryFeatureBlock(children: readonly unknown[], span: AstSourceS
 }
 
 /*
+ * Condition functions a spec defines, which are therefore not
+ * `<general-enclosed>`: css-contain-3/5 `style()` and `scroll-state()`,
+ * css-conditional-4/5 `selector()`, `font-tech()` and `font-format()`.
+ */
+const DEFINED_CONDITION_FUNCTIONS = new Set(['style', 'scroll-state', 'selector', 'font-tech', 'font-format']);
+
+/*
+ * A function-form or parenthesized `<general-enclosed>` read as a template
+ * (`Enclosed`, a query function's scanned payload): it records its source
+ * bytes so the emitter prints it as written — unless it is a defined condition
+ * function, or its template carries the dialect's interpolation, which P16
+ * evaluates.
+ */
+export function generalEnclosedGroup<T extends ValueNode>(value: T, span: AstSourceSpan, state: unknown): T {
+  if (value.type === 'FunctionCall' && DEFINED_CONDITION_FUNCTIONS.has(value.name.toLowerCase())) {
+    return value;
+  }
+  const payload = value.type === 'FunctionCall' ? value.args[0]?.value : value.type === 'Block' ? value.value : undefined;
+  if (isInterpolation(payload) && payload.parts.some(part => 'ref' in part)) {
+    return value;
+  }
+  return withAuthoredGeneralEnclosed(value, span, state);
+}
+
+/*
  * Record a structured `<general-enclosed>` value's source bytes: the slice of
  * the parse input its span covers. The parse state carries the input; a run
  * without it is a grammar wiring defect, so it throws rather than falling back

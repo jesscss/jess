@@ -31,6 +31,7 @@ import {
   branchSegments,
   queryConditionChain,
   queryFeatureBlock,
+  generalEnclosedGroup,
   queryFeatureContents,
   queryValueRatio,
   color,
@@ -3260,9 +3261,13 @@ const cssFactory = (g: GrammarSelf) => {
       routed(),
       queryFunctionTail
     ),
-    children => funcCall(
-      functionOpenName(children[0]!),
-      [any(children.length > 2 ? tokenText(children[1]!) : '')]
+    (children, _fields, span, _rawChildren, _triviaLog, state) => generalEnclosedGroup(
+      funcCall(
+        functionOpenName(children[0]!),
+        [any(children.length > 2 ? tokenText(children[1]!) : '')]
+      ),
+      span,
+      state
     )
   );
   const RoutedQueryNonOnlyKeyword = node(
@@ -3557,7 +3562,7 @@ const cssFactory = (g: GrammarSelf) => {
         literal(')')
       ))
     ),
-    (children) => {
+    (children, _fields, span, _rawChildren, _triviaLog, state) => {
       const content = children.find((child): child is Interpolation => isNodeType(
         child,
         'Interpolation'
@@ -3566,12 +3571,16 @@ const cssFactory = (g: GrammarSelf) => {
         throw new TypeError('CSS general-enclosed lost its grammar-owned content.');
       }
       const head = children[0];
-      return isTerminalText(head) && tokenText(head) !== '('
-        ? funcCall(
-            tokenText(head),
-            [content]
-          )
-        : block(content);
+      return generalEnclosedGroup(
+        isTerminalText(head) && tokenText(head) !== '('
+          ? funcCall(
+              tokenText(head),
+              [content]
+            )
+          : block(content),
+        span,
+        state
+      );
     }
   );
   const QueryFunction = node(
@@ -3580,9 +3589,13 @@ const cssFactory = (g: GrammarSelf) => {
       queryFunctionOpen,
       queryFunctionTail
     ),
-    children => funcCall(
-      functionOpenName(children[0]!),
-      [any(children.length > 2 ? tokenText(children[1]!) : '')]
+    (children, _fields, span, _rawChildren, _triviaLog, state) => generalEnclosedGroup(
+      funcCall(
+        functionOpenName(children[0]!),
+        [any(children.length > 2 ? tokenText(children[1]!) : '')]
+      ),
+      span,
+      state
     )
   );
 

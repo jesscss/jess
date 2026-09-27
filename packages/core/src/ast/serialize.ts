@@ -17970,18 +17970,17 @@ function staysNested(name: string): boolean {
 type SupportsPreludePart = { bytes: string; protected: boolean };
 
 /**
- * The grammar-owned text of a general-enclosed function form, or `null` when
- * the call is an ordinary one. A single `Interpolation` (`Enclosed`) or `Any`
- * (a query function's scanned payload, `style(--x:1)`) argument is the shape no
- * structured call in a prelude has: every structured argument path yields a
- * typed value node, so the payload is the discriminator, not a flag.
+ * The grammar-owned template of a general-enclosed function form, or `null` when
+ * the call is an ordinary one. A single `Interpolation` argument is the shape no
+ * structured call can have: every structured argument path yields a typed value
+ * node, so the template is the discriminator, not a flag.
  */
-function generalEnclosedPayload(args: readonly CallArg<ValueSlot>[]): Interpolation | Any | null {
+function generalEnclosedPayload(args: readonly CallArg<ValueSlot>[]): Interpolation | null {
   if (args.length !== 1) {
     return null;
   }
   const only = args[0]!.value;
-  return !isValueSlotArray(only) && (only.type === 'Interpolation' || only.type === 'Any') ? only : null;
+  return !isValueSlotArray(only) && only.type === 'Interpolation' ? only : null;
 }
 
 function normalizeSupportsBytes(p: string, compress = false): string {
@@ -18203,22 +18202,9 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
     return concatPreludeParts(parts);
   }
   switch (node.type) {
-    /* [general-enclosed] the text-template spellings, protected as in `evalSupportsPrelude`. */
-    case 'FunctionCall': {
-      const payload = generalEnclosedPayload(node.args);
-      if (payload === null) {
-        return mapMaybe(evalBytes(node, frame, e), plain);
-      }
-      return mapMaybe(evalBytes(payload, frame, e), content =>
-        [{ bytes: `${node.name}(${content})`, protected: true }]);
-    }
     case 'Block': {
       const open = node.delimiter === 'square' ? '[' : '(';
       const close = node.delimiter === 'square' ? ']' : ')';
-      if (!isValueSlotArray(node.value) && node.value.type === 'Interpolation') {
-        return mapMaybe(evalBytes(node.value, frame, e), content =>
-          [{ bytes: `${open}${content}${close}`, protected: true }]);
-      }
       return concatPreludeParts([plain(open), evalQueryPreludeParts(node.value, frame, e), plain(close)]);
     }
     case 'Operation':

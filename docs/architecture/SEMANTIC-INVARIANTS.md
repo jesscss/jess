@@ -193,9 +193,10 @@ of the three test files importing more than one parser, none feeds one input to
 all four, and `test/ast-shape/shape-stability.test.ts` — the closest thing —
 imports only three parsers and uses **per-dialect disjoint corpora**.
 **STATUS: BUILDABLE.** Known violations: 3 (S3, S4, and jess#315: css reads a
-`@media`/`@container`/`@supports` `<general-enclosed>` group as structure
-and accepts general-enclosed `@media` features, while SCSS, `.jess` and
-non-converged Less read or reject them as text — ledger N14, P39).
+`@media`/`@container`/`@supports` `<general-enclosed>` group as structure,
+accepts general-enclosed `@media` features and prints a function-form one as
+written (`@media foo(x:y)`), while SCSS, `.jess` and non-converged Less read
+or reject them as text and SCSS still spaces `foo(x: y)` — ledger N14, P39).
 
 ## 5. Divergence is licensed by the dialect's own definition, and recorded where it is introduced
 
