@@ -900,16 +900,34 @@ describe('CSS canonical-AST grammar', () => {
     }
   });
 
-  it('reads each first-token arm of a query feature, keeping the general-enclosed fallback', () => {
+  it('reads each first-token arm of a query feature once, with a structured general-enclosed after a routed bound', () => {
     const preludeOf = (source: string): unknown => {
       const rule = parseAst(source).rules[0];
       return rule?.type === 'AtRuleBlock' ? rule.prelude : rule;
     };
-    const enclosed = (lit: string) => ({ type: 'Block', delimiter: 'paren', value: { type: 'Interpolation', parts: [{ lit }] } });
+    const paren = (value: unknown) => ({ type: 'Block', delimiter: 'paren', value });
+    const call = (name: string, arg: unknown) => ({ type: 'FunctionCall', name, args: [{ value: arg }] });
+    const kw = (src: string) => ({ type: 'Keyword', src });
 
-    /* A function first bound that is not a range, and a unicode range that is not one, are `<general-enclosed>`. */
-    expect(preludeOf('@supports (foo(x) bar) { a { b: c } }')).toMatchObject(enclosed('foo(x) bar'));
-    expect(preludeOf('@supports (U+0-7F) { a { b: c } }')).toMatchObject(enclosed('U+0-7F'));
+    /*
+     * A function or unicode-range first bound that is not a range is
+     * `<general-enclosed>` (media-queries-4 §3.1): the bound as parsed, then
+     * the rest of the contents as values.
+     */
+    for (const prelude of ['@supports', '@container', '@media']) {
+      expect(preludeOf(`${prelude} (foo(x) bar) { a { b: c } }`), prelude).toMatchObject(
+        paren({ type: 'Sequence', parts: [call('foo', kw('x')), kw('bar')] })
+      );
+    }
+    expect(preludeOf('@supports (U+0-7F) { a { b: c } }')).toMatchObject(paren({ type: 'Any', src: 'U+0-7F' }));
+    expect(preludeOf('@supports (foo(x) < 5px) { a { b: c } }')).toMatchObject(
+      paren({ type: 'Sequence', parts: [call('foo', kw('x')), { type: 'Any', src: '<' }, { type: 'Dimension', src: '5px' }] })
+    );
+
+    /* Contents the value grammar does not read stay the raw general-enclosed text. */
+    expect(preludeOf('@supports (foo(x) {a}) { a { b: c } }')).toMatchObject(
+      paren({ type: 'Interpolation', parts: [{ lit: 'foo(x) {a}' }] })
+    );
 
     expect(preludeOf('@media (U+0-7F < width) { a { b: c } }')).toMatchObject({
       type: 'Block', delimiter: 'paren',
