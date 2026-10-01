@@ -547,6 +547,7 @@ describe('collectTolerantDiagnostics', () => {
       '@a: `@{b}`;',
       '.legacy {',
       '  escaped: `1 + \\`tick\\``;',
+      '  statements: `let x = 1; x`;',
       '  object: `{a: 1, b: 2}`;',
       '  comma: `a, b`;',
       '  regex: `/[;})]/.test(value)`;',
@@ -557,6 +558,7 @@ describe('collectTolerantDiagnostics', () => {
       '    return 1; })()`;',
       '  unfinished-group: `fn(;',
       '}',
+      '@legacy `{a: 1}` { color: red; }',
       '.after {}'
     ].join('\n');
     const result = collectTolerantDiagnostics({ source, language: 'less' });
@@ -567,13 +569,40 @@ describe('collectTolerantDiagnostics', () => {
     expect(backticks.map(diagnostic => source.slice(diagnostic.start, diagnostic.end))).toEqual([
       '`@{b}`',
       '`1 + \\`tick\\``',
+      '`let x = 1; x`',
       '`{a: 1, b: 2}`',
       '`a, b`',
       '`/[;})]/.test(value)`',
       '`a / b`',
       '`"a\\\nb"`',
       '`(function(){ // ) ] }\n    return 1; })()`',
-      '`fn('
+      '`fn(',
+      '`{a: 1}`'
+    ]);
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === 'parse/syntax-error')).toBe(false);
+    expect(result.diagnostics.some(diagnostic =>
+      diagnostic.code === LINT_CODES.emptyRules
+      && diagnostic.start >= source.indexOf('.after')
+    )).toBe(true);
+  });
+
+  it('does not pair an unfinished backtick with the next declaration', () => {
+    const source = [
+      '.legacy {',
+      '  first: `bad;',
+      '  second: `good`;',
+      '  color: red;',
+      '}',
+      '.after {}'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({ source, language: 'less' });
+    const backticks = result.diagnostics.filter(
+      diagnostic => diagnostic.code === 'parse/unsupported-inline-javascript'
+    );
+
+    expect(backticks.map(diagnostic => source.slice(diagnostic.start, diagnostic.end))).toEqual([
+      '`bad',
+      '`good`'
     ]);
     expect(result.diagnostics.some(diagnostic => diagnostic.code === 'parse/syntax-error')).toBe(false);
     expect(result.diagnostics.some(diagnostic =>

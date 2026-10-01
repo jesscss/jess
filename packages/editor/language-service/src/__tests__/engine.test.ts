@@ -439,6 +439,7 @@ describe('JessLanguageServiceEngine', () => {
       const input = [
         '.legacy {',
         '  escaped: `1 + \\`tick\\``;',
+        '  statements: `let x = 1; x`;',
         '  object: `{a: 1, b: 2}`;',
         '  comma: `a, b`;',
         '  regex: `/[;})]/.test(value)`;',
@@ -446,6 +447,7 @@ describe('JessLanguageServiceEngine', () => {
         '  continued-string: `"a\\',
         'b"`;',
         '}',
+        '@legacy `{a: 1}` { color: red; }',
         '.after { color: red; }'
       ].join('\n');
       const doc = createDocument('less', input);
@@ -461,12 +463,40 @@ describe('JessLanguageServiceEngine', () => {
         doc.offsetAt(diagnostic.range.end)
       ))).toEqual([
         '`1 + \\`tick\\``',
+        '`let x = 1; x`',
         '`{a: 1, b: 2}`',
         '`a, b`',
         '`/[;})]/.test(value)`',
         '`a / b`',
-        '`"a\\\nb"`'
+        '`"a\\\nb"`',
+        '`{a: 1}`'
       ]);
+      expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
+      expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
+    });
+
+    it('keeps an unfinished backtick separate from the next declaration', () => {
+      const engine = createEngine();
+      const input = [
+        '.legacy {',
+        '  first: `bad;',
+        '  second: `good`;',
+        '  color: red;',
+        '}',
+        '.after { color: red; }'
+      ].join('\n');
+      const doc = createDocument('less', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const backticks = diagnostics.filter(
+        item => item.code === 'parse/unsupported-inline-javascript'
+      );
+
+      expect(backticks.map(diagnostic => input.slice(
+        doc.offsetAt(diagnostic.range.start),
+        doc.offsetAt(diagnostic.range.end)
+      ))).toEqual(['`bad', '`good`']);
       expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
       expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
     });

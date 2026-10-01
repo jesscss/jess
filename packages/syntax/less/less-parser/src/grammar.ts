@@ -23,7 +23,7 @@ import {
   attempt, rules, classifiedTrivia, compose,
   node, regex, literal, sequence, choice, many, oneOrMore, oneOrMoreSep, optional,
   not, scanTo, balanced, expect, parser, noTrivia, label, word, keywords, field, leaf, peek,
-  dispatch, endsWith, makeWhen, makeWord, matches, otherwise, routed, token, transform, when, withCtx
+  dispatch, endsWith, makeWhen, makeWord, matches, otherwise, routed, token, transform, when
 } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
@@ -639,25 +639,41 @@ const inlineJavaScriptEscapedLineEnd = sequence(
   literal('\\'),
   choice(literal('\r\n'), literal('\n'), literal('\r'))
 );
+// Once removed inline JavaScript is unfinished, a later backtick is ambiguous:
+// it may close this expression or open one in the next declaration. A Less
+// declaration head after `;` settles that ambiguity without treating ordinary
+// JavaScript statement separators (for example `let x = 1; x`) as recovery.
+// This is grammar recognition rather than a post-parse source scan: scanTo
+// probes the same typed combinators while walking the value once.
+const inlineJavaScriptFollowingDeclaration = noTrivia(sequence(
+  literal(';'),
+  regex(/[ \t\n\r\f]*/),
+  peek(choice(
+    literal('}'),
+    sequence(
+      regex(/(?:--|\*?-?[_a-zA-Z\u0080-\uffff])[-_a-zA-Z0-9\u0080-\uffff]*/),
+      optional(choice(literal('+_'), literal('+'))),
+      regex(/[ \t\n\r\f]*/),
+      literal(':')
+    )
+  ))
+));
 const inlineJavaScriptRecoveryBoundary = choice(
   literal(';'),
   literal('}'),
   literal(')'),
-  literal(']')
-);
-const atRuleInlineJavaScriptRecoveryBoundary = choice(
-  inlineJavaScriptRecoveryBoundary,
+  literal(']'),
   literal('{')
 );
-// Scan the removed expression once. Complete strings, parentheses, brackets,
-// comments, interpolation, and regex literals protect their inner delimiters.
-// An unfinished construct stops at the boundary owned by the surrounding Less
-// value so tolerant parsing can continue. The gated at-rule context adds `{`
-// because it can begin that header's block; ordinary values retain object and
-// function bodies through the same BacktickJavaScript production.
+// Scan the removed expression once. The enclosing Less boundary is retained as
+// a recovery checkpoint while Parseman continues toward the real closing tick.
+// Its paired-sentinel parity keeps complete statements and object literals
+// intact without joining an unfinished value to a later declaration's ticks.
 const inlineJavaScriptBody = scanTo(
-  choice(literal('`'), inlineJavaScriptEscapedLineEnd, inlineJavaScriptRecoveryBoundary),
+  literal('`'),
   {
+    recoverAt: inlineJavaScriptRecoveryBoundary,
+    stopAt: choice(inlineJavaScriptEscapedLineEnd, inlineJavaScriptFollowingDeclaration),
     skip: [
       inlineJavaScriptDoubleQuoted,
       inlineJavaScriptSingleQuoted,
@@ -672,21 +688,30 @@ const inlineJavaScriptBody = scanTo(
     ]
   }
 );
-const atRuleInlineJavaScriptBody = scanTo(
-  choice(literal('`'), inlineJavaScriptEscapedLineEnd, atRuleInlineJavaScriptRecoveryBoundary),
-  {
-    skip: [
-      inlineJavaScriptDoubleQuoted,
-      inlineJavaScriptSingleQuoted,
-      lineComment,
-      blockComment,
-      sequence(literal('\\'), regex(/[^\n\r]/)),
-      inlineJavaScriptInterpolation,
-      inlineJavaScriptParen,
-      inlineJavaScriptBracket,
-      inlineJavaScriptRegexLiteral
-    ]
-  }
+// In a generic at-rule header, an unmatched `{` belongs to the surrounding
+// CSS block. Keep that boundary visible to recovery. A leading object literal
+// is still unambiguous and is consumed structurally before the recovery scan,
+// which preserves the common complete ``@legacy `{...}` { ... }`` form.
+const atRuleInlineJavaScriptBody = sequence(
+  optional(inlineJavaScriptBrace),
+  scanTo(
+    literal('`'),
+    {
+      recoverAt: inlineJavaScriptRecoveryBoundary,
+      stopAt: choice(inlineJavaScriptEscapedLineEnd, inlineJavaScriptFollowingDeclaration),
+      skip: [
+        inlineJavaScriptDoubleQuoted,
+        inlineJavaScriptSingleQuoted,
+        lineComment,
+        blockComment,
+        sequence(literal('\\'), regex(/[^\n\r]/)),
+        inlineJavaScriptInterpolation,
+        inlineJavaScriptParen,
+        inlineJavaScriptBracket,
+        inlineJavaScriptRegexLiteral
+      ]
+    }
+  )
 );
 // Math productions run under `noTrivia`, so their operators own precisely the
 // gap that distinguishes arithmetic from a Less space-list. `leaf()` keeps the
@@ -1844,13 +1869,19 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'BacktickJavaScript',
     noTrivia(sequence(
       literal('`'),
-      choice(
-        {
-          gate: state => state === 'less-at-rule-inline-javascript',
-          combinator: atRuleInlineJavaScriptBody
-        },
-        inlineJavaScriptBody
-      ),
+      inlineJavaScriptBody,
+      optional(literal('\\')),
+      optional(literal('`'))
+    )),
+    (_children, _fields, span) => {
+      throw new LessInlineJavaScriptError(span.start, span.end);
+    }
+  );
+  const AtRuleBacktickJavaScript = node(
+    'BacktickJavaScript',
+    noTrivia(sequence(
+      literal('`'),
+      atRuleInlineJavaScriptBody,
       optional(literal('\\')),
       optional(literal('`'))
     )),
@@ -3854,7 +3885,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     choice(
       g.EscapedQuoted,
       g.LiteralQuoted,
-      withCtx('less-at-rule-inline-javascript', BacktickJavaScript),
+      AtRuleBacktickJavaScript,
       g.Color,
       g.Dimension,
       g.PagePseudo,
