@@ -595,6 +595,10 @@ const importOption = keywords(
   { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
 const inlineJavaScriptBody = regex(/(?:[^`\\]|\\[\s\S])*/);
+// Editor recovery for an unfinished legacy expression stops at the enclosing
+// declaration/block boundary. A complete expression still takes the first arm
+// below, including when its JavaScript body contains these bytes.
+const unterminatedInlineJavaScriptBody = regex(/(?:[^`\\;}\n\r]|\\[\s\S])*/);
 // Math productions run under `noTrivia`, so their operators own precisely the
 // gap that distinguishes arithmetic from a Less space-list. `leaf()` keeps the
 // comment-aware structural gap hidden from `lessMathRun`: it receives a flat
@@ -1749,7 +1753,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // of reporting a generic value-position expected-token failure.
   const BacktickJavaScript = node(
     'BacktickJavaScript',
-    noTrivia(sequence(literal('`'), inlineJavaScriptBody, literal('`'))),
+    noTrivia(sequence(
+      literal('`'),
+      choice(
+        sequence(inlineJavaScriptBody, literal('`')),
+        unterminatedInlineJavaScriptBody
+      )
+    )),
     (_children, _fields, span) => {
       throw new LessInlineJavaScriptError(span.start, span.end);
     }
@@ -1854,6 +1864,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     children => foldOperation(children)
   );
   const calcValueAtom = choice(
+    BacktickJavaScript,
     g.MixinReference,
     g.InterpolatedValue,
     g.EscapedQuoted,
@@ -1967,7 +1978,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     leaf(peek(literal('@')), () => ({ kind: 'glued-value-boundary' })),
     g.valuePiece
   );
-  const valueContinuation = choice(valueTriviaBoundary, gluedVariableValueBoundary);
+  const gluedBacktickValueBoundary = noTrivia(sequence(
+    BacktickJavaScript,
+    optional(g.valuePiece)
+  ));
+  const valueContinuation = choice(
+    valueTriviaBoundary,
+    gluedVariableValueBoundary,
+    gluedBacktickValueBoundary
+  );
   // Function arguments are the one value context where top-level Less
   // comparison/logical syntax has a separate continuation. Stop before that
   // marker so the FunctionArgument family can route it through FunctionCondition;
@@ -1979,7 +1998,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const functionArgumentValueContinuation = choice(
     functionArgumentValueTriviaBoundary,
-    gluedVariableValueBoundary
+    gluedVariableValueBoundary,
+    gluedBacktickValueBoundary
   );
   // Adjacent value pieces are normally separated by authored whitespace, but a
   // Less variable reference may also be glued straight onto the previous piece
@@ -3729,6 +3749,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     choice(
       g.EscapedQuoted,
       g.LiteralQuoted,
+      BacktickJavaScript,
       g.Color,
       g.Dimension,
       g.PagePseudo,

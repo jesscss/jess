@@ -428,7 +428,12 @@ describe('collectTolerantDiagnostics', () => {
 
   it('reports every removed Less backtick value and keeps parsing later rules', () => {
     const source = [
-      '.legacy { first: `1 + 1`; --second: `Math.random()`; }',
+      '.legacy {',
+      '  first: foo`1 + 1`bar;',
+      '  second: calc(`2 + 2`);',
+      '  --third: before`Math.random()`after;',
+      '  fourth: `unfinished;',
+      '}',
       '.after { color: red; }'
     ].join('\n');
     const result = collectTolerantDiagnostics({ source, language: 'less' });
@@ -454,10 +459,25 @@ describe('collectTolerantDiagnostics', () => {
         reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
         fix:
           'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
+        source: '`2 + 2`'
+      },
+      {
+        message: 'Inline JavaScript was removed in Less v5.',
+        reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
+        fix:
+          'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
         source: '`Math.random()`'
+      },
+      {
+        message: 'Inline JavaScript was removed in Less v5.',
+        reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
+        fix:
+          'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
+        source: '`unfinished'
       }
     ]);
     expect(result.diagnostics.some(diagnostic => diagnostic.code === 'parse/syntax-error')).toBe(false);
+    expect(result.tree).not.toBeNull();
   });
 
   it('reports duplicate custom properties in one declaration block', () => {

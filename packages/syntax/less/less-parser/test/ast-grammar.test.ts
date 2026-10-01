@@ -4899,8 +4899,14 @@ describe('Less AST grammar facts', () => {
     for (const source of [
       '.entry { value: `1 + 1`; }',
       '.entry { value: fn(`1 + 1`); }',
+      '.entry { value: foo`1 + 1`bar; }',
+      '.entry { value: calc(`1 + 1`); }',
       '.entry { --value: `1 + 1`; }',
-      '.entry { --value: fn(`1 + 1`); }'
+      '.entry { --value: fn(`1 + 1`); }',
+      '.entry { --value: foo`1 + 1`bar; }',
+      '.entry { --value: fn(foo`1 + 1`bar); }',
+      '@legacy foo`1 + 1`bar;',
+      '.entry { value: `1 + 1; }\n.after { color: red; }'
     ]) {
       expect(
         () => run(lessGrammar.Document, source, {

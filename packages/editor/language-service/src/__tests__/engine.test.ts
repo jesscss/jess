@@ -343,6 +343,26 @@ describe('JessLanguageServiceEngine', () => {
       expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
     });
 
+    it('recovers an unfinished Less backtick value at the declaration boundary', () => {
+      const engine = createEngine();
+      const input = '.legacy { value: `1 + 1; }\n.after { color: red; }';
+      const doc = createDocument('less', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const diagnostic = diagnostics.find(
+        item => item.code === 'parse/unsupported-inline-javascript'
+      );
+
+      expect(diagnostic).toBeDefined();
+      expect(input.slice(
+        doc.offsetAt(diagnostic!.range.start),
+        doc.offsetAt(diagnostic!.range.end)
+      )).toBe('`1 + 1');
+      expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
+      expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
+    });
+
     it('uses the full saved span for unsupported SCSS @forward diagnostics', () => {
       const engine = createEngine();
       const input = '@forward "foo" as bar-*;';
