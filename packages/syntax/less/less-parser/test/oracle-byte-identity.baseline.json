@@ -5,7 +5,7 @@
   "surfaces": [
     {
       "name": "ast",
-      "aggregate": "352868040284423bafa306fa0ea50e2c4f54b059aa2583d46f4638f060137509",
+      "aggregate": "2b7ab640427e763bb96b3f7c69edf148d879a7743164117dcc592538b8d838e5",
       "threw": 113
     },
     {
@@ -136,7 +136,7 @@
       "cst": "c3d192dd0d6fa42c"
     },
     "node_modules/@less/test-data/tests-config/js-type-errors/js-type-error.less": {
-      "ast": "3b23bd8d8134d736",
+      "ast": "9e977619bbe582cf",
       "cst": "a195f777908da8a0"
     },
     "node_modules/@less/test-data/tests-config/math-always/mixins-guards.less": {
@@ -328,7 +328,7 @@
       "cst": "e974a6c641c14167"
     },
     "node_modules/@less/test-data/tests-config/no-js-errors/no-js-errors.less": {
-      "ast": "3b23bd8d8134d736",
+      "ast": "9e977619bbe582cf",
       "cst": "bb921af021b72349"
     },
     "node_modules/@less/test-data/tests-config/postProcessorPlugin/postProcessor.css": {
@@ -688,7 +688,7 @@
       "cst": "93f684e06d811fd4"
     },
     "node_modules/@less/test-data/tests-error/eval/javascript-undefined-var.less": {
-      "ast": "3b23bd8d8134d736",
+      "ast": "9e977619bbe582cf",
       "cst": "250640e3501f50d5"
     },
     "node_modules/@less/test-data/tests-error/eval/mixin-not-defined-2.less": {
@@ -1620,7 +1620,7 @@
       "cst": "a2d65fb335873f3a"
     },
     "node_modules/@less/test-data/tests-unit/javascript-REMOVED/legacy/javascript.less": {
-      "ast": "3b23bd8d8134d736",
+      "ast": "9e977619bbe582cf",
       "cst": "ab5fe5a7ba62dd2e"
     },
     "node_modules/@less/test-data/tests-unit/layer/assets/import/layer-import.less": {
