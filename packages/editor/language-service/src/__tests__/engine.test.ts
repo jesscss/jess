@@ -434,6 +434,43 @@ describe('JessLanguageServiceEngine', () => {
       expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
     });
 
+    it('underlines complete Less JavaScript units without losing later symbols', () => {
+      const engine = createEngine();
+      const input = [
+        '.legacy {',
+        '  escaped: `1 + \\`tick\\``;',
+        '  object: `{a: 1, b: 2}`;',
+        '  comma: `a, b`;',
+        '  regex: `/[;})]/.test(value)`;',
+        '  division: `a / b`;',
+        '  continued-string: `"a\\',
+        'b"`;',
+        '}',
+        '.after { color: red; }'
+      ].join('\n');
+      const doc = createDocument('less', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const backticks = diagnostics.filter(
+        item => item.code === 'parse/unsupported-inline-javascript'
+      );
+
+      expect(backticks.map(diagnostic => input.slice(
+        doc.offsetAt(diagnostic.range.start),
+        doc.offsetAt(diagnostic.range.end)
+      ))).toEqual([
+        '`1 + \\`tick\\``',
+        '`{a: 1, b: 2}`',
+        '`a, b`',
+        '`/[;})]/.test(value)`',
+        '`a / b`',
+        '`"a\\\nb"`'
+      ]);
+      expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
+      expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
+    });
+
     it('keeps an escaped unfinished line separate from a later backtick', () => {
       const engine = createEngine();
       const input = [

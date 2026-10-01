@@ -23,7 +23,7 @@ import {
   attempt, rules, classifiedTrivia, compose,
   node, regex, literal, sequence, choice, many, oneOrMore, oneOrMoreSep, optional,
   not, scanTo, balanced, expect, parser, noTrivia, label, word, keywords, field, leaf, peek,
-  dispatch, endsWith, makeWhen, makeWord, matches, otherwise, routed, token, transform, when
+  dispatch, endsWith, makeWhen, makeWord, matches, otherwise, routed, token, transform, when, withCtx
 } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
@@ -594,36 +594,97 @@ const importOption = keywords(
   ['reference', 'optional', 'once', 'multiple', 'inline', 'css', 'less'],
   { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
-const inlineJavaScriptRecoveryBoundary = choice(
-  literal(';'),
-  literal('}'),
-  literal(')'),
-  literal(']'),
-  literal(','),
-  literal('{')
+const inlineJavaScriptDoubleQuoted = noTrivia(sequence(
+  literal('"'),
+  regex(/(?:[^"\\]|\\[\s\S])*/),
+  literal('"')
+));
+const inlineJavaScriptSingleQuoted = noTrivia(sequence(
+  literal('\''),
+  regex(/(?:[^'\\]|\\[\s\S])*/),
+  literal('\'')
+));
+const inlineJavaScriptRegexLiteral = noTrivia(sequence(
+  literal('/'),
+  regex(/(?:[^/\\`\n\r]|\\[^\n\r])*/),
+  literal('/'),
+  regex(/[a-z]*/i)
+));
+const inlineJavaScriptInterpolation = sequence(
+  literal('@'),
+  balanced('{', '}', {
+    skip: [inlineJavaScriptDoubleQuoted, inlineJavaScriptSingleQuoted, lineComment, blockComment, inlineJavaScriptRegexLiteral],
+    strict: true
+  })
+);
+const inlineJavaScriptParen = balanced(
+  '(', ')', {
+    skip: [inlineJavaScriptDoubleQuoted, inlineJavaScriptSingleQuoted, lineComment, blockComment, inlineJavaScriptRegexLiteral],
+    strict: true
+  }
+);
+const inlineJavaScriptBracket = balanced(
+  '[', ']', {
+    skip: [inlineJavaScriptDoubleQuoted, inlineJavaScriptSingleQuoted, lineComment, blockComment, inlineJavaScriptRegexLiteral],
+    strict: true
+  }
+);
+const inlineJavaScriptBrace = balanced(
+  '{', '}', {
+    skip: [inlineJavaScriptDoubleQuoted, inlineJavaScriptSingleQuoted, lineComment, blockComment, inlineJavaScriptRegexLiteral],
+    strict: true
+  }
 );
 const inlineJavaScriptEscapedLineEnd = sequence(
   literal('\\'),
   choice(literal('\r\n'), literal('\n'), literal('\r'))
 );
-// Scan removed JavaScript once, preserving complete multiline expressions and
-// skipping their balanced groups. An unmatched expression stops before a
-// delimiter owned by the surrounding Less value so the CST can continue.
+const inlineJavaScriptRecoveryBoundary = choice(
+  literal(';'),
+  literal('}'),
+  literal(')'),
+  literal(']')
+);
+const atRuleInlineJavaScriptRecoveryBoundary = choice(
+  inlineJavaScriptRecoveryBoundary,
+  literal('{')
+);
+// Scan the removed expression once. Complete strings, parentheses, brackets,
+// comments, interpolation, and regex literals protect their inner delimiters.
+// An unfinished construct stops at the boundary owned by the surrounding Less
+// value so tolerant parsing can continue. The gated at-rule context adds `{`
+// because it can begin that header's block; ordinary values retain object and
+// function bodies through the same BacktickJavaScript production.
 const inlineJavaScriptBody = scanTo(
   choice(literal('`'), inlineJavaScriptEscapedLineEnd, inlineJavaScriptRecoveryBoundary),
   {
     skip: [
-      scanSkipDoubleString,
-      scanSkipSingleString,
+      inlineJavaScriptDoubleQuoted,
+      inlineJavaScriptSingleQuoted,
       lineComment,
       blockComment,
-      sequence(
-        literal('@'),
-        balanced('{', '}', { skip: [lineComment], strict: true })
-      ),
-      balanced('(', ')', { skip: [lineComment], strict: true }),
-      balanced('[', ']', { skip: [lineComment], strict: true }),
-      balanced('{', '}', { skip: [lineComment], strict: true })
+      sequence(literal('\\'), regex(/[^\n\r]/)),
+      inlineJavaScriptInterpolation,
+      inlineJavaScriptParen,
+      inlineJavaScriptBracket,
+      inlineJavaScriptBrace,
+      inlineJavaScriptRegexLiteral
+    ]
+  }
+);
+const atRuleInlineJavaScriptBody = scanTo(
+  choice(literal('`'), inlineJavaScriptEscapedLineEnd, atRuleInlineJavaScriptRecoveryBoundary),
+  {
+    skip: [
+      inlineJavaScriptDoubleQuoted,
+      inlineJavaScriptSingleQuoted,
+      lineComment,
+      blockComment,
+      sequence(literal('\\'), regex(/[^\n\r]/)),
+      inlineJavaScriptInterpolation,
+      inlineJavaScriptParen,
+      inlineJavaScriptBracket,
+      inlineJavaScriptRegexLiteral
     ]
   }
 );
@@ -1783,7 +1844,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'BacktickJavaScript',
     noTrivia(sequence(
       literal('`'),
-      inlineJavaScriptBody,
+      choice(
+        {
+          gate: state => state === 'less-at-rule-inline-javascript',
+          combinator: atRuleInlineJavaScriptBody
+        },
+        inlineJavaScriptBody
+      ),
       optional(literal('\\')),
       optional(literal('`'))
     )),
@@ -3787,7 +3854,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     choice(
       g.EscapedQuoted,
       g.LiteralQuoted,
-      BacktickJavaScript,
+      withCtx('less-at-rule-inline-javascript', BacktickJavaScript),
       g.Color,
       g.Dimension,
       g.PagePseudo,

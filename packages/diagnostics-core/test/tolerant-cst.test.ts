@@ -546,6 +546,13 @@ describe('collectTolerantDiagnostics', () => {
     const source = [
       '@a: `@{b}`;',
       '.legacy {',
+      '  escaped: `1 + \\`tick\\``;',
+      '  object: `{a: 1, b: 2}`;',
+      '  comma: `a, b`;',
+      '  regex: `/[;})]/.test(value)`;',
+      '  division: `a / b`;',
+      '  continued-string: `"a\\',
+      'b"`;',
       '  commented: `(function(){ // ) ] }',
       '    return 1; })()`;',
       '  unfinished-group: `fn(;',
@@ -559,6 +566,12 @@ describe('collectTolerantDiagnostics', () => {
 
     expect(backticks.map(diagnostic => source.slice(diagnostic.start, diagnostic.end))).toEqual([
       '`@{b}`',
+      '`1 + \\`tick\\``',
+      '`{a: 1, b: 2}`',
+      '`a, b`',
+      '`/[;})]/.test(value)`',
+      '`a / b`',
+      '`"a\\\nb"`',
       '`(function(){ // ) ] }\n    return 1; })()`',
       '`fn('
     ]);
