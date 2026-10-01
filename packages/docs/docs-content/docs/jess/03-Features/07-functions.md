@@ -16,20 +16,18 @@ contract.
 
 :::
 
-You import functions and call them like any other function:
+Import a function, then call its explicit `$` binding:
 
 ```less
 @-from './functions.js' import (double);
 
 .box {
-  width: double(10px);
+  width: $double(10px);
 }
 ```
 
-Like Less, Jess will attempt to evaluate a CSS-shaped function call as a JS
-function call when that name was imported in scope. The reason you might want
-that is to have the function receive and return typed values — for example a
-dimension, so units are preserved:
+The function receives and returns typed values. A dimension keeps its unit, so
+the example emits:
 
 ```css
 .box {
@@ -39,9 +37,9 @@ dimension, so units are preserved:
 
 :::note
 
-The `$myFunction()` spelling is a **different** thing: it calls a function that was
-defined in a stylesheet and bound to a variable, which is a value, not an imported
-name. See [stylesheet-defined functions](/docs/Language/functions). Call *imported*
-functions by their bare name, as above.
+Bare `double(10px)` is always a CSS-shaped call and remains available to the
+browser. An import never changes its meaning. Both imported functions and
+[stylesheet-defined functions](/docs/Language/functions) use explicit `$name(…)`
+calls; their definitions come from different places.
 
 :::

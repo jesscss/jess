@@ -941,6 +941,7 @@ describe('converted function imports', () => {
       '@charset "utf-8";',
       '@-from "#less" import (dataUri as data-uri, lighten, rgba);'
     ]);
+    expect(printed).toContain('.a {\n  b: $lighten(#00f, 10%);\n  c: $data-uri("x.png");\n  d: $rgba(1, 2, 3, 0.5);\n  e: unknown(1);\n}');
   });
 });
 

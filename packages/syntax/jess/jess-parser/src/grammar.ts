@@ -990,7 +990,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       if (fact === undefined) {
         throw new TypeError('Jess expression call argument lost its value.');
       }
-      const name = children.find((child): child is Token => isToken(child) && child.value !== '$' && child.value !== ':');
+      const named = children.some(child => isToken(child) && child.value === ':');
+      const name = named
+        ? children.find((child): child is Token => isToken(child) && child.value !== '$' && child.value !== ':')
+        : undefined;
       return callArg(fact.value, name?.value);
     }
   );
@@ -5013,11 +5016,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       g.ValueSpaceGroup
     ),
     (children) => {
-      const value = children.find(isValueNode);
+      const value = children.find(isJessValueSlotValue);
       if (value === undefined) {
         throw new TypeError('Jess grammar produced a mixin argument without a value.');
       }
-      const name = children.find((child): child is Token => isToken(child) && child.value !== '$' && child.value !== ':');
+      const named = children.some(child => isToken(child) && child.value === ':');
+      const name = named
+        ? children.find((child): child is Token => isToken(child) && child.value !== '$' && child.value !== ':')
+        : undefined;
       return callArg(value, name?.value);
     }
   );

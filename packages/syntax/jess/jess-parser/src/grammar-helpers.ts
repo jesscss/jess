@@ -250,6 +250,7 @@ function expressionSource(value: ValueNode): string {
       : value.raw;
     case 'Reference': return value.raw;
     case 'Operation': return `${expressionSource(value.left)} ${value.operator} ${expressionSource(value.right)}`;
+    case 'Expression': return `$(${referenceArgSource(value.value)})`;
     case 'Condition': return value.src;
     case 'Interpolation': return value.parts.map(part => 'lit' in part ? part.lit : expressionSource(part.ref)).join('');
     default: throw new TypeError(`Jess expression cannot preserve source for ${value.type}.`);
@@ -424,7 +425,14 @@ function referenceArgSource(value: JessMixinCallArgument['value']): string {
       ? `${value.scope === 'scoped' ? '$^' : '$'}${lookupNameSource(value.name)}`
       : value.raw;
     case 'Reference': return value.raw;
+    case 'FunctionCall': return `${value.name}(${value.args.map(arg => referenceArgSource(arg.value)).join(value.modern ? ' ' : ', ')})`;
     case 'Operation': case 'Condition': case 'Interpolation': return expressionSource(value);
+    case 'Expression': return `$(${referenceArgSource(value.value)})`;
+    case 'Block': return `${value.escaped === true ? '~' : ''}${value.delimiter === 'square' ? '[' : '('}${referenceArgSource(value.value)}${value.delimiter === 'square' ? ']' : ')'}`;
+    case 'Sequence': return value.parts.map(referenceArgSource).join(' ');
+    case 'List': return value.value.map(referenceArgSource).join(value.sep === ',' ? ', ' : ' / ');
+    case 'Url': return `url(${referenceArgSource(value.value)})`;
+    case 'SelectorCapture': return value.src;
     default: return '';
   }
 }
