@@ -20,7 +20,15 @@ pnpm --filter jess-docs build
 
 The Pages site publishes the generated Docusaurus site from the root of the
 `master` branch in `jesscss/jesscss.github.io`. The source content comes from
-the `alpha` branch of this repository. Deploy it with:
+the `dev` branch of this repository.
+
+Every push to `dev` runs `.github/workflows/deploy-docs.yml`. The workflow
+validates the canonical content, builds the Jess facing, commits the generated
+site to `jesscss/jesscss.github.io`, and waits until the public revision marker
+matches the merged Jess commit. The required CI job also builds the production
+facing before a pull request can merge.
+
+For manual recovery, deploy the current `dev` source with:
 
 ```bash
 pnpm --filter jess-docs run deploy:matthew
