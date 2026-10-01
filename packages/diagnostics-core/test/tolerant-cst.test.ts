@@ -520,14 +520,20 @@ describe('collectTolerantDiagnostics', () => {
   });
 
   it('keeps a complete multiline Less backtick as one diagnostic construct', () => {
-    const source = '.legacy { value: `1 +\n2`; }\n.after {}';
+    const source = [
+      '.legacy {',
+      '  value: `(function(){var x = 1 + 1;',
+      '    return x})()`;',
+      '}',
+      '.after {}'
+    ].join('\n');
     const result = collectTolerantDiagnostics({ source, language: 'less' });
     const backticks = result.diagnostics.filter(
       diagnostic => diagnostic.code === 'parse/unsupported-inline-javascript'
     );
 
     expect(backticks.map(diagnostic => source.slice(diagnostic.start, diagnostic.end))).toEqual([
-      '`1 +\n2`'
+      '`(function(){var x = 1 + 1;\n    return x})()`'
     ]);
     expect(result.diagnostics.some(diagnostic => diagnostic.code === 'parse/syntax-error')).toBe(false);
     expect(result.diagnostics.some(diagnostic =>

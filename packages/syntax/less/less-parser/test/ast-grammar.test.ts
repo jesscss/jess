@@ -4913,6 +4913,7 @@ describe('Less AST grammar facts', () => {
       '.entry { value: fn(`1 + 1); }\n.after { color: red; }',
       '.entry { value: calc(`1 + 1); }\n.after { color: red; }',
       '.entry { --value: fn(`1 + 1); }\n.after { color: red; }',
+      '.entry { value: `(function(){var x = 1 + 1;\nreturn x})()`; }',
       '@legacy foo`1 + 1 { color: red; }\n.after { color: blue; }'
     ]) {
       expect(

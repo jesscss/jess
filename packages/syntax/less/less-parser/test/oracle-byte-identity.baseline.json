@@ -10,7 +10,7 @@
     },
     {
       "name": "cst",
-      "aggregate": "5ea591c94868aa9fb58824509300c400e1e00351b98a1bc8f15c21497a870a19",
+      "aggregate": "c7215bba459d5124954a962658d984f6c493be04fc411246e8854cbc8997b2de",
       "threw": 0
     }
   ],
@@ -689,7 +689,7 @@
     },
     "node_modules/@less/test-data/tests-error/eval/javascript-undefined-var.less": {
       "ast": "9e977619bbe582cf",
-      "cst": "250640e3501f50d5"
+      "cst": "869b59a10b55e01c"
     },
     "node_modules/@less/test-data/tests-error/eval/mixin-not-defined-2.less": {
       "ast": "5de44c637e3b28c0",
@@ -1621,7 +1621,7 @@
     },
     "node_modules/@less/test-data/tests-unit/javascript-REMOVED/legacy/javascript.less": {
       "ast": "9e977619bbe582cf",
-      "cst": "928100f69e9b7216"
+      "cst": "ab5fe5a7ba62dd2e"
     },
     "node_modules/@less/test-data/tests-unit/layer/assets/import/layer-import.less": {
       "ast": "97288bc59bf64140",

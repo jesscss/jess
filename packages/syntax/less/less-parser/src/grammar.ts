@@ -594,19 +594,34 @@ const importOption = keywords(
   ['reference', 'optional', 'once', 'multiple', 'inline', 'css', 'less'],
   { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
-const inlineJavaScriptSingleLineBody = regex(/(?:[^`\\\n\r]|\\[^\n\r])*/);
-// A complete legacy expression may span lines. The multiline route stops at a
-// declaration/block terminator so an unfinished expression cannot pair with an
-// unrelated backtick in a later rule. Single-line expressions retain the full
-// historical byte range, including JavaScript semicolons and object literals.
-const inlineJavaScriptMultilineBody = regex(/(?:[^`\\;}]|\\[\s\S])*/);
-// Editor recovery for an unfinished legacy expression stops before delimiters
-// owned by its declaration, function argument, custom-value group, or at-rule.
-// A complete expression still takes the first arm below, including when its
-// JavaScript body contains these bytes.
-const unterminatedInlineJavaScriptBody = sequence(
-  regex(/(?:[^`\\;}\n\r),\]{]|\\[^\n\r])*/),
-  optional(literal('\\'))
+const inlineJavaScriptRecoveryBoundary = choice(
+  literal(';'),
+  literal('}'),
+  literal(')'),
+  literal(']'),
+  literal(','),
+  literal('{')
+);
+const inlineJavaScriptEscapedLineEnd = sequence(
+  literal('\\'),
+  choice(literal('\r\n'), literal('\n'), literal('\r'))
+);
+// Scan removed JavaScript once, preserving complete multiline expressions and
+// skipping their balanced groups. An unmatched expression stops before a
+// delimiter owned by the surrounding Less value so the CST can continue.
+const inlineJavaScriptBody = scanTo(
+  choice(literal('`'), inlineJavaScriptEscapedLineEnd, inlineJavaScriptRecoveryBoundary),
+  {
+    skip: [
+      scanSkipDoubleString,
+      scanSkipSingleString,
+      lineComment,
+      blockComment,
+      balanced('(', ')'),
+      balanced('[', ']'),
+      balanced('{', '}')
+    ]
+  }
 );
 // Math productions run under `noTrivia`, so their operators own precisely the
 // gap that distinguishes arithmetic from a Less space-list. `leaf()` keeps the
@@ -1764,11 +1779,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'BacktickJavaScript',
     noTrivia(sequence(
       literal('`'),
-      choice(
-        sequence(inlineJavaScriptSingleLineBody, literal('`')),
-        sequence(inlineJavaScriptMultilineBody, literal('`')),
-        unterminatedInlineJavaScriptBody
-      )
+      inlineJavaScriptBody,
+      optional(literal('\\')),
+      optional(literal('`'))
     )),
     (_children, _fields, span) => {
       throw new LessInlineJavaScriptError(span.start, span.end);

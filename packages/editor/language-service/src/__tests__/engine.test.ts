@@ -392,7 +392,13 @@ describe('JessLanguageServiceEngine', () => {
 
     it('underlines a complete multiline Less backtick as one construct', () => {
       const engine = createEngine();
-      const input = '.legacy { value: `1 +\n2`; }\n.after { color: red; }';
+      const input = [
+        '.legacy {',
+        '  value: `(function(){var x = 1 + 1;',
+        '    return x})()`;',
+        '}',
+        '.after { color: red; }'
+      ].join('\n');
       const doc = createDocument('less', input);
       engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
 
@@ -404,7 +410,7 @@ describe('JessLanguageServiceEngine', () => {
       expect(backticks.map(diagnostic => input.slice(
         doc.offsetAt(diagnostic.range.start),
         doc.offsetAt(diagnostic.range.end)
-      ))).toEqual(['`1 +\n2`']);
+      ))).toEqual(['`(function(){var x = 1 + 1;\n    return x})()`']);
       expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
       expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
     });
