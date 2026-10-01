@@ -860,6 +860,17 @@ describe('Jess AST grammar facts', () => {
     expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.a {\n  width: 8px;\n}\n'
     );
+
+    const truthyMember = '$flags: { enableShadow: true; }; $if ($flags.enableShadow) { .a { color: blue; } }';
+    expect(parse(truthyMember)).toMatchObject({
+      rules: [
+        { type: 'VariableDeclaration', name: 'flags' },
+        { type: 'If', branches: [{ guard: { g: 'truth', value: { type: 'Reference', raw: '$flags.enableShadow' } } }] }
+      ]
+    });
+    expect(serialize(parse(truthyMember), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
+      '.a {\n  color: blue;\n}\n'
+    );
   });
 
   it('constructs parenthesized sub-groups and comments inside $( … )', () => {
@@ -3436,7 +3447,8 @@ describe('Jess AST grammar facts', () => {
       '.box { width: $($d(2) * 2); }',
       '.box { width: $(2 * $d(2)); }',
       '.box { width: $($d(1) + $d(3)); }',
-      '.box { width: $($map.entry($n)); }'
+      '.box { width: $($map.entry($n)); }',
+      '.box { width: $($e(\'100%\')); }'
     ]) {
       expect(() => parse(source), source).not.toThrow();
     }
@@ -3447,6 +3459,32 @@ describe('Jess AST grammar facts', () => {
      * `default()`. Dispatch is spelled `$fn(…)`.
      */
     expect(() => parse('.box { width: $(max(1, 2)); }')).toThrow(SyntaxError);
+
+    /*
+     * An explicit imported or value-held call accepts the same complete value
+     * slots as an ordinary call. Nested expression boundaries retain their raw
+     * spelling, and a space-list argument stays one positional argument.
+     */
+    expect(parse('$a: 1px; $b: 2px; .box { width: $min($($^a + $^b)); }')).toMatchObject({
+      rules: [{ name: 'a' }, { name: 'b' }, { rules: [{
+        value: { type: 'Reference', raw: '$min($(^a + ^b))', steps: [{
+          type: 'Call', args: [{ value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression' } }] } }]
+        }] }
+      }] }]
+    });
+    expect(parse('.box { color: $hsl(from #0000ff calc(h - 1) s l); }')).toMatchObject({
+      rules: [{ rules: [{
+        value: { type: 'Reference', raw: '$hsl(from #0000ff calc(h - 1) s l)', steps: [{
+          type: 'Call', args: [{ value: [
+            { type: 'Keyword', src: 'from' },
+            { type: 'Color' },
+            { type: 'FunctionCall', name: 'calc' },
+            { type: 'Keyword', src: 's' },
+            { type: 'Keyword', src: 'l' }
+          ] }]
+        }] }
+      }] }]
+    });
 
     /*
      * The call reduces to the same typed fact `$d(2)` already produces in value
