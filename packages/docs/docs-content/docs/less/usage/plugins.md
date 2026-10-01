@@ -12,9 +12,10 @@ Load plugins before parsing begins in Less.js so plugin features are available d
 :::warning 5.x+ status
 In the 5.x+ track, `@plugin` is **deprecated** and currently **experimental**.
 
-`@use` / `@from` script modules are the planned replacement, but Less 5 does
-not recognize or execute them as modules yet. For current options and the live
-support status, see [Modules and Imports](../features/modules-and-imports.mdx).
+`@use` script modules are the replacement for imported functions and data.
+Less derives their namespace from the file name; it does not implement `@from`.
+For the canonical syntax and support status, see
+[Modules and Imports](../features/modules-and-imports.mdx).
 :::
 
 ### Less 5.x script runtime policy

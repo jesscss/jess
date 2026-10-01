@@ -4896,11 +4896,19 @@ describe('Less AST grammar facts', () => {
   });
 
   it('recognizes inline backtick JavaScript as removed Less syntax', () => {
-    expect(() =>
-      run(lessGrammar.Document, '.entry { value: `1 + 1`; }', {
-        trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
-      })
-    ).toThrow(LessInlineJavaScriptError);
+    for (const source of [
+      '.entry { value: `1 + 1`; }',
+      '.entry { value: fn(`1 + 1`); }',
+      '.entry { --value: `1 + 1`; }',
+      '.entry { --value: fn(`1 + 1`); }'
+    ]) {
+      expect(
+        () => run(lessGrammar.Document, source, {
+          trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+        }),
+        source
+      ).toThrow(LessInlineJavaScriptError);
+    }
   });
 
   it('recognizes bare at-variable prelude interpolation as removed Less syntax', () => {

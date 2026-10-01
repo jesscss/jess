@@ -3,7 +3,12 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { CompletionItemKind, Position, SymbolKind } from 'vscode-languageserver-types';
+import {
+  CompletionItemKind,
+  DiagnosticSeverity,
+  Position,
+  SymbolKind
+} from 'vscode-languageserver-types';
 import { LINT_RULE_NAMES } from '@jesscss/diagnostics-core';
 import { createEngine } from '../engine.js';
 
@@ -310,6 +315,32 @@ describe('JessLanguageServiceEngine', () => {
 
       const diagnostics = engine.getDiagnostics(doc.uri);
       expect(diagnostics.length).toBeGreaterThan(0);
+    });
+
+    it('underlines removed Less backtick values without losing the remaining document', () => {
+      const engine = createEngine();
+      const input = '.legacy { value: `1 + 1`; }\n.after { color: red; }';
+      const doc = createDocument('less', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const diagnostic = diagnostics.find(
+        item => item.code === 'parse/unsupported-inline-javascript'
+      );
+
+      expect(diagnostic).toMatchObject({
+        source: 'jess',
+        message:
+          'Inline JavaScript was removed in Less v5. Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
+        severity: DiagnosticSeverity.Error
+      });
+      expect(diagnostic).toBeDefined();
+      expect(input.slice(
+        doc.offsetAt(diagnostic!.range.start),
+        doc.offsetAt(diagnostic!.range.end)
+      )).toBe('`1 + 1`');
+      expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
+      expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
     });
 
     it('uses the full saved span for unsupported SCSS @forward diagnostics', () => {

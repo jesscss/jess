@@ -2137,6 +2137,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const CustomInnerPart: Combinator<CustomValuePart> = choice(
     g.Interpolation,
+    BacktickJavaScript,
     g.CustomValueInnerContent,
     g.CustomValueSingleQuoted,
     g.CustomValueDoubleQuoted,
@@ -2146,6 +2147,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const CustomPart: Combinator<CustomValuePart> = choice(
     g.Interpolation,
+    BacktickJavaScript,
     g.CustomValueOuterContent,
     g.CustomValueSingleQuoted,
     g.CustomValueDoubleQuoted,

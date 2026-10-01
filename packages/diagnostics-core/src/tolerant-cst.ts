@@ -5114,7 +5114,9 @@ function diagnostic(
   span: DiagnosticSpan,
   filePath?: string,
   qualifiers?: readonly string[],
-  phase?: Phase
+  phase?: Phase,
+  reason = '',
+  fix = ''
 ): SourceDiagnostic {
   const start = Number(span.start);
   const end = Number(span.end);
@@ -5123,8 +5125,8 @@ function diagnostic(
     phase: phase ?? (code.startsWith('parse/') ? 'parse' : 'lint'),
     source: 'jess',
     message,
-    reason: '',
-    fix: '',
+    reason,
+    fix,
     defaultSeverity,
     filePath,
     start,
@@ -5409,7 +5411,9 @@ export function cstLintDiagnostics(
     message: string,
     span: DiagnosticSpan,
     qualifiers?: readonly string[],
-    phase?: Phase
+    phase?: Phase,
+    reason?: string,
+    fix?: string
   ) => {
     const start = Number(span.start);
     const end = Number(span.end);
@@ -5418,7 +5422,7 @@ export function cstLintDiagnostics(
       return;
     }
     emitted.add(key);
-    out.push(diagnostic(code, severity, message, span, filePath, qualifiers, phase));
+    out.push(diagnostic(code, severity, message, span, filePath, qualifiers, phase, reason, fix));
   };
   const push = (
     code: string,
@@ -5443,6 +5447,26 @@ export function cstLintDiagnostics(
       : null;
     const functionName = FUNCTION_TYPES.has(gt) ? functionNameOf(source, start, end) : null;
     const isUrlFunction = gt === 'Url' || functionName === 'url';
+
+    /*
+     * Less v5 removes executable backtick values, but the tolerant CST keeps the
+     * complete legacy construct as one node. Report from that node so editors
+     * underline exactly the removed expression and retain the rest of the tree.
+     * The compiler's strict AST entry throws the matching parser error before
+     * evaluation; this path is the non-halting editor/diagnostic twin.
+     */
+    if (language === 'less' && gt === 'BacktickJavaScript') {
+      pushDiagnostic(
+        'parse/unsupported-inline-javascript',
+        'error',
+        'Inline JavaScript was removed in Less v5.',
+        node.span,
+        undefined,
+        'parse',
+        'Backtick JavaScript expressions cannot be enabled or evaluated.',
+        'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.'
+      );
+    }
     const isImageSetFunction = functionName !== null && unprefixedName(functionName) === 'image-set';
     const descriptorAtRuleName = gt === 'DescriptorBlock' ? atRuleNameOf(source, start, end) : null;
     const pageDescriptorContext = gt === 'MarginAtRule' && context.pageDescriptorContext === 'page'

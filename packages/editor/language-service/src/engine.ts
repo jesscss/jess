@@ -2723,14 +2723,18 @@ export function createEngine(): JessLanguageServiceEngine {
         if (suppressByDiagnosticOptions(diagnostic, text)) {
           continue;
         }
-        const configured = semanticDiagnosticSeverities[diagnostic.code];
+        const configured = diagnostic.phase === 'parse'
+          ? DiagnosticSeverity.Error
+          : semanticDiagnosticSeverities[diagnostic.code];
         if (typeof configured !== 'number') {
           continue;
         }
         diagnostics.push({
           code: diagnostic.code,
           source: diagnostic.source,
-          message: diagnostic.message,
+          message: diagnostic.code === 'parse/unsupported-inline-javascript'
+            ? `${diagnostic.message} ${diagnostic.fix}`
+            : diagnostic.message,
           severity: configured,
           range: diagnosticRange(diagnostic.start, diagnostic.end)
         });
