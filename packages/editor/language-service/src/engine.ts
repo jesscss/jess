@@ -2724,7 +2724,7 @@ export function createEngine(): JessLanguageServiceEngine {
           continue;
         }
         const configured = diagnostic.phase === 'parse'
-          ? DiagnosticSeverity.Error
+          ? parseSeverity(diagnostic.defaultSeverity)
           : semanticDiagnosticSeverities[diagnostic.code];
         if (typeof configured !== 'number') {
           continue;
@@ -2732,7 +2732,7 @@ export function createEngine(): JessLanguageServiceEngine {
         diagnostics.push({
           code: diagnostic.code,
           source: diagnostic.source,
-          message: diagnostic.code === 'parse/unsupported-inline-javascript'
+          message: diagnostic.phase === 'parse' && diagnostic.fix !== ''
             ? `${diagnostic.message} ${diagnostic.fix}`
             : diagnostic.message,
           severity: configured,
