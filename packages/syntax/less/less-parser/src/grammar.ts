@@ -594,15 +594,20 @@ const importOption = keywords(
   ['reference', 'optional', 'once', 'multiple', 'inline', 'css', 'less'],
   { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
-// Keep complete expressions on one source line. The syntax is removed, so this
-// boundary lets an unfinished expression recover before a later rule's opening
-// backtick instead of pairing unrelated editor errors across the document.
-const inlineJavaScriptBody = regex(/(?:[^`\\\n\r]|\\[\s\S])*/);
+const inlineJavaScriptSingleLineBody = regex(/(?:[^`\\\n\r]|\\[^\n\r])*/);
+// A complete legacy expression may span lines. The multiline route stops at a
+// declaration/block terminator so an unfinished expression cannot pair with an
+// unrelated backtick in a later rule. Single-line expressions retain the full
+// historical byte range, including JavaScript semicolons and object literals.
+const inlineJavaScriptMultilineBody = regex(/(?:[^`\\;}]|\\[\s\S])*/);
 // Editor recovery for an unfinished legacy expression stops before delimiters
 // owned by its declaration, function argument, custom-value group, or at-rule.
 // A complete expression still takes the first arm below, including when its
 // JavaScript body contains these bytes.
-const unterminatedInlineJavaScriptBody = regex(/(?:[^`\\;}\n\r),\]{]|\\[\s\S])*/);
+const unterminatedInlineJavaScriptBody = sequence(
+  regex(/(?:[^`\\;}\n\r),\]{]|\\[^\n\r])*/),
+  optional(literal('\\'))
+);
 // Math productions run under `noTrivia`, so their operators own precisely the
 // gap that distinguishes arithmetic from a Less space-list. `leaf()` keeps the
 // comment-aware structural gap hidden from `lessMathRun`: it receives a flat
@@ -1760,7 +1765,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     noTrivia(sequence(
       literal('`'),
       choice(
-        sequence(inlineJavaScriptBody, literal('`')),
+        sequence(inlineJavaScriptSingleLineBody, literal('`')),
+        sequence(inlineJavaScriptMultilineBody, literal('`')),
         unterminatedInlineJavaScriptBody
       )
     )),
@@ -1888,14 +1894,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // for example `calc(foo`x`bar)`. Keep the whole legacy shape reachable so
   // both strict parsing and tolerant diagnostics encounter the typed removed
   // construct instead of failing later on calc's closing delimiter.
-  const calcBacktickValue = noTrivia(sequence(
-    optional(calcValueWithoutBacktick),
+  const calcBacktickTail = noTrivia(sequence(
     BacktickJavaScript,
     many(choice(BacktickJavaScript, calcValueWithoutBacktick))
   ));
   const calcValueAtom = choice(
-    calcBacktickValue,
-    calcValueWithoutBacktick
+    calcBacktickTail,
+    noTrivia(sequence(calcValueWithoutBacktick, optional(calcBacktickTail)))
   );
   const Value = node(
     'Value',

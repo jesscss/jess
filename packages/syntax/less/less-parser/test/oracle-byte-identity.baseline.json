@@ -10,7 +10,7 @@
     },
     {
       "name": "cst",
-      "aggregate": "34c01d9126785b6b3b2317c3585080b49c0685e7ddc5bc73058f8ce787923af9",
+      "aggregate": "5ea591c94868aa9fb58824509300c400e1e00351b98a1bc8f15c21497a870a19",
       "threw": 0
     }
   ],
@@ -1621,7 +1621,7 @@
     },
     "node_modules/@less/test-data/tests-unit/javascript-REMOVED/legacy/javascript.less": {
       "ast": "9e977619bbe582cf",
-      "cst": "ab5fe5a7ba62dd2e"
+      "cst": "928100f69e9b7216"
     },
     "node_modules/@less/test-data/tests-unit/layer/assets/import/layer-import.less": {
       "ast": "97288bc59bf64140",
@@ -2765,11 +2765,11 @@
     },
     "packages/syntax/css/css-parser/test/css/errors/calc-empty.css": {
       "ast": "05875765c152f691",
-      "cst": "857cbd9e6c99d5b6"
+      "cst": "c16c71959d0e8f2c"
     },
     "packages/syntax/css/css-parser/test/css/errors/calc-lone-operator.css": {
       "ast": "05875765c152f691",
-      "cst": "62af2673e3a051a4"
+      "cst": "c4f50b36527154f9"
     },
     "packages/syntax/css/css-parser/test/css/errors/charset.css": {
       "ast": "733703c285609637",
@@ -3081,7 +3081,7 @@
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-rejects.css": {
       "ast": "05875765c152f691",
-      "cst": "60329dc3b6f4e678"
+      "cst": "b46daf3c35bf8396"
     },
     "packages/syntax/css/css-parser/test/render-differential/fixtures/calc-sequence.css": {
       "ast": "8a24d1bddb5ec241",
