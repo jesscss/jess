@@ -594,11 +594,15 @@ const importOption = keywords(
   ['reference', 'optional', 'once', 'multiple', 'inline', 'css', 'less'],
   { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
-const inlineJavaScriptBody = regex(/(?:[^`\\]|\\[\s\S])*/);
-// Editor recovery for an unfinished legacy expression stops at the enclosing
-// declaration/block boundary. A complete expression still takes the first arm
-// below, including when its JavaScript body contains these bytes.
-const unterminatedInlineJavaScriptBody = regex(/(?:[^`\\;}\n\r]|\\[\s\S])*/);
+// Keep complete expressions on one source line. The syntax is removed, so this
+// boundary lets an unfinished expression recover before a later rule's opening
+// backtick instead of pairing unrelated editor errors across the document.
+const inlineJavaScriptBody = regex(/(?:[^`\\\n\r]|\\[\s\S])*/);
+// Editor recovery for an unfinished legacy expression stops before delimiters
+// owned by its declaration, function argument, custom-value group, or at-rule.
+// A complete expression still takes the first arm below, including when its
+// JavaScript body contains these bytes.
+const unterminatedInlineJavaScriptBody = regex(/(?:[^`\\;}\n\r),\]{]|\\[\s\S])*/);
 // Math productions run under `noTrivia`, so their operators own precisely the
 // gap that distinguishes arithmetic from a Less space-list. `leaf()` keeps the
 // comment-aware structural gap hidden from `lessMathRun`: it receives a flat
@@ -1863,8 +1867,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     noTrivia(sequence(g.CalcProduct, many(sequence(sumOperator, g.CalcProduct)))),
     children => foldOperation(children)
   );
-  const calcValueAtom = choice(
-    BacktickJavaScript,
+  const calcValueWithoutBacktick = choice(
     g.MixinReference,
     g.InterpolatedValue,
     g.EscapedQuoted,
@@ -1880,6 +1883,19 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.CalcParen,
     g.EscapeValue,
     PercentEscape
+  );
+  // Less 4 admitted inline JavaScript as a glued fragment inside calc values,
+  // for example `calc(foo`x`bar)`. Keep the whole legacy shape reachable so
+  // both strict parsing and tolerant diagnostics encounter the typed removed
+  // construct instead of failing later on calc's closing delimiter.
+  const calcBacktickValue = noTrivia(sequence(
+    optional(calcValueWithoutBacktick),
+    BacktickJavaScript,
+    many(choice(BacktickJavaScript, calcValueWithoutBacktick))
+  ));
+  const calcValueAtom = choice(
+    calcBacktickValue,
+    calcValueWithoutBacktick
   );
   const Value = node(
     'Value',

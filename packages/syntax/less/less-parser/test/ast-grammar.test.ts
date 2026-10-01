@@ -4901,12 +4901,19 @@ describe('Less AST grammar facts', () => {
       '.entry { value: fn(`1 + 1`); }',
       '.entry { value: foo`1 + 1`bar; }',
       '.entry { value: calc(`1 + 1`); }',
+      '.entry { value: calc(foo`1 + 1`); }',
+      '.entry { value: calc(`1 + 1`bar); }',
+      '.entry { value: calc(foo`1 + 1`bar); }',
       '.entry { --value: `1 + 1`; }',
       '.entry { --value: fn(`1 + 1`); }',
       '.entry { --value: foo`1 + 1`bar; }',
       '.entry { --value: fn(foo`1 + 1`bar); }',
       '@legacy foo`1 + 1`bar;',
-      '.entry { value: `1 + 1; }\n.after { color: red; }'
+      '.entry { value: `1 + 1; }\n.after { color: red; }',
+      '.entry { value: fn(`1 + 1); }\n.after { color: red; }',
+      '.entry { value: calc(`1 + 1); }\n.after { color: red; }',
+      '.entry { --value: fn(`1 + 1); }\n.after { color: red; }',
+      '@legacy foo`1 + 1 { color: red; }\n.after { color: blue; }'
     ]) {
       expect(
         () => run(lessGrammar.Document, source, {

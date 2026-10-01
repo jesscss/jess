@@ -431,10 +431,11 @@ describe('collectTolerantDiagnostics', () => {
       '.legacy {',
       '  first: foo`1 + 1`bar;',
       '  second: calc(`2 + 2`);',
+      '  calc-adjacent: calc(before`3 + 3`after);',
       '  --third: before`Math.random()`after;',
       '  fourth: `unfinished;',
       '}',
-      '.after { color: red; }'
+      '.after {}'
     ].join('\n');
     const result = collectTolerantDiagnostics({ source, language: 'less' });
     const diagnostics = result.diagnostics.filter(
@@ -466,6 +467,13 @@ describe('collectTolerantDiagnostics', () => {
         reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
         fix:
           'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
+        source: '`3 + 3`'
+      },
+      {
+        message: 'Inline JavaScript was removed in Less v5.',
+        reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
+        fix:
+          'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
         source: '`Math.random()`'
       },
       {
@@ -477,7 +485,38 @@ describe('collectTolerantDiagnostics', () => {
       }
     ]);
     expect(result.diagnostics.some(diagnostic => diagnostic.code === 'parse/syntax-error')).toBe(false);
-    expect(result.tree).not.toBeNull();
+    expect(result.diagnostics.some(diagnostic =>
+      diagnostic.code === LINT_CODES.emptyRules
+      && diagnostic.start >= source.indexOf('.after')
+    )).toBe(true);
+  });
+
+  it('recovers unfinished Less backticks before parent-owned delimiters', () => {
+    const source = [
+      '.legacy {',
+      '  function-value: fn(`function);',
+      '  calc-value: calc(`calc);',
+      '  --custom-group: fn(`custom);',
+      '}',
+      '@legacy foo`header { color: red; }',
+      '.after {}'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({ source, language: 'less' });
+    const backticks = result.diagnostics.filter(
+      diagnostic => diagnostic.code === 'parse/unsupported-inline-javascript'
+    );
+
+    expect(backticks.map(diagnostic => source.slice(diagnostic.start, diagnostic.end))).toEqual([
+      '`function',
+      '`calc',
+      '`custom',
+      '`header '
+    ]);
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === 'parse/syntax-error')).toBe(false);
+    expect(result.diagnostics.some(diagnostic =>
+      diagnostic.code === LINT_CODES.emptyRules
+      && diagnostic.start >= source.indexOf('.after')
+    )).toBe(true);
   });
 
   it('reports duplicate custom properties in one declaration block', () => {
