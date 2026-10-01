@@ -542,6 +542,33 @@ describe('collectTolerantDiagnostics', () => {
     )).toBe(true);
   });
 
+  it('keeps interpolation and line-comment delimiters inside complete Less backticks', () => {
+    const source = [
+      '@a: `@{b}`;',
+      '.legacy {',
+      '  commented: `(function(){ // ) ] }',
+      '    return 1; })()`;',
+      '  unfinished-group: `fn(;',
+      '}',
+      '.after {}'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({ source, language: 'less' });
+    const backticks = result.diagnostics.filter(
+      diagnostic => diagnostic.code === 'parse/unsupported-inline-javascript'
+    );
+
+    expect(backticks.map(diagnostic => source.slice(diagnostic.start, diagnostic.end))).toEqual([
+      '`@{b}`',
+      '`(function(){ // ) ] }\n    return 1; })()`',
+      '`fn('
+    ]);
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === 'parse/syntax-error')).toBe(false);
+    expect(result.diagnostics.some(diagnostic =>
+      diagnostic.code === LINT_CODES.emptyRules
+      && diagnostic.start >= source.indexOf('.after')
+    )).toBe(true);
+  });
+
   it('does not pair an escaped unfinished line with a later backtick', () => {
     const source = [
       '.legacy {',

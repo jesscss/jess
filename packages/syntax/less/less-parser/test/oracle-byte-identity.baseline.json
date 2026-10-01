@@ -10,7 +10,7 @@
     },
     {
       "name": "cst",
-      "aggregate": "c7215bba459d5124954a962658d984f6c493be04fc411246e8854cbc8997b2de",
+      "aggregate": "1d119005e257140a6e54671be4e84cf7fb863e6105abf9be54191189bed95097",
       "threw": 0
     }
   ],
@@ -689,7 +689,7 @@
     },
     "node_modules/@less/test-data/tests-error/eval/javascript-undefined-var.less": {
       "ast": "9e977619bbe582cf",
-      "cst": "869b59a10b55e01c"
+      "cst": "250640e3501f50d5"
     },
     "node_modules/@less/test-data/tests-error/eval/mixin-not-defined-2.less": {
       "ast": "5de44c637e3b28c0",

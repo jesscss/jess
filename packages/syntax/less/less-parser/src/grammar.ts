@@ -617,9 +617,13 @@ const inlineJavaScriptBody = scanTo(
       scanSkipSingleString,
       lineComment,
       blockComment,
-      balanced('(', ')'),
-      balanced('[', ']'),
-      balanced('{', '}')
+      sequence(
+        literal('@'),
+        balanced('{', '}', { skip: [lineComment], strict: true })
+      ),
+      balanced('(', ')', { skip: [lineComment], strict: true }),
+      balanced('[', ']', { skip: [lineComment], strict: true }),
+      balanced('{', '}', { skip: [lineComment], strict: true })
     ]
   }
 );

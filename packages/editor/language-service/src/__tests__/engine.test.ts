@@ -415,6 +415,25 @@ describe('JessLanguageServiceEngine', () => {
       expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
     });
 
+    it('underlines an interpolation-bearing Less backtick without losing later symbols', () => {
+      const engine = createEngine();
+      const input = '@a: `@{b}`;\n.after { color: red; }';
+      const doc = createDocument('less', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const backticks = diagnostics.filter(
+        item => item.code === 'parse/unsupported-inline-javascript'
+      );
+
+      expect(backticks.map(diagnostic => input.slice(
+        doc.offsetAt(diagnostic.range.start),
+        doc.offsetAt(diagnostic.range.end)
+      ))).toEqual(['`@{b}`']);
+      expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
+      expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
+    });
+
     it('keeps an escaped unfinished line separate from a later backtick', () => {
       const engine = createEngine();
       const input = [

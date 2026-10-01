@@ -4925,6 +4925,25 @@ describe('Less AST grammar facts', () => {
     }
   });
 
+  it('reports the complete span of interpolation-bearing backtick JavaScript', () => {
+    const source = '@a: `@{b}`;\n.after {}';
+    let error: unknown;
+
+    try {
+      run(lessGrammar.Document, source, {
+        trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+      });
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toMatchObject({
+      name: 'LessInlineJavaScriptError',
+      offset: source.indexOf('`'),
+      endOffset: source.lastIndexOf('`') + 1
+    });
+  });
+
   it('recognizes bare at-variable prelude interpolation as removed Less syntax', () => {
     for (const source of [
       '@media @q { .card { color: red; } }',
