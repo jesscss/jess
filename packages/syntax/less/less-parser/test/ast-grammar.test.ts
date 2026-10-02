@@ -4915,12 +4915,18 @@ describe('Less AST grammar facts', () => {
       '.entry { --value: fn(`1 + 1); }\n.after { color: red; }',
       '.entry { value: `(function(){var x = 1 + 1;\nreturn x})()`; }',
       '.entry { value: `let x = 1; x`; }',
+      '.entry { value: `let x = 1; label: x`; }',
+      '.entry { value: `let x = 1; obj: {a: 1}`; }',
+      '.entry { value: fn(`let x = 1; label: x`); }',
+      '.entry { value: calc(`let x = 1; label: x`); }',
+      '.entry { --value: `let x = 1; label: x`; }',
       '.entry { value: `{a: 1, b: 2}`; }',
       '.entry { value: `a, b`; }',
       '.entry { value: `/[;})]/.test(value)`; }',
       '.entry { value: `a / b`; }',
       '.entry { value: `"a\\\nb"`; }',
       '@legacy `{a: 1}` { color: red; }',
+      '@legacy-label `let x = 1; label: x` { color: red; }',
       '@legacy foo`1 + 1 { color: red; }\n.after { color: blue; }'
     ]) {
       expect(
@@ -4936,6 +4942,12 @@ describe('Less AST grammar facts', () => {
     for (const source of [
       '@a: `@{b}`;\n.after {}',
       '.entry { value: `let x = 1; x`; }',
+      '.entry { value: `let x = 1; label: x`; }',
+      '.entry { value: `let x = 1; obj: {a: 1}`; }',
+      '.entry { value: fn(`let x = 1; label: x`); }',
+      '.entry { value: calc(`let x = 1; label: x`); }',
+      '.entry { --value: `let x = 1; label: x`; }',
+      '@legacy-label `let x = 1; label: x` { color: red; }',
       '@legacy `{a: 1}` { color: red; }'
     ]) {
       let error: unknown;

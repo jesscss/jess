@@ -440,6 +440,11 @@ describe('JessLanguageServiceEngine', () => {
         '.legacy {',
         '  escaped: `1 + \\`tick\\``;',
         '  statements: `let x = 1; x`;',
+        '  label: `let x = 1; label: x`;',
+        '  object-label: `let x = 1; obj: {a: 1}`;',
+        '  function-label: fn(`let x = 1; label: x`);',
+        '  calc-label: calc(`let x = 1; label: x`);',
+        '  --custom-label: `let x = 1; label: x`;',
         '  object: `{a: 1, b: 2}`;',
         '  comma: `a, b`;',
         '  regex: `/[;})]/.test(value)`;',
@@ -448,6 +453,7 @@ describe('JessLanguageServiceEngine', () => {
         'b"`;',
         '}',
         '@legacy `{a: 1}` { color: red; }',
+        '@legacy-label `let x = 1; label: x` { color: blue; }',
         '.after { color: red; }'
       ].join('\n');
       const doc = createDocument('less', input);
@@ -464,12 +470,18 @@ describe('JessLanguageServiceEngine', () => {
       ))).toEqual([
         '`1 + \\`tick\\``',
         '`let x = 1; x`',
+        '`let x = 1; label: x`',
+        '`let x = 1; obj: {a: 1}`',
+        '`let x = 1; label: x`',
+        '`let x = 1; label: x`',
+        '`let x = 1; label: x`',
         '`{a: 1, b: 2}`',
         '`a, b`',
         '`/[;})]/.test(value)`',
         '`a / b`',
         '`"a\\\nb"`',
-        '`{a: 1}`'
+        '`{a: 1}`',
+        '`let x = 1; label: x`'
       ]);
       expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
       expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
@@ -497,6 +509,50 @@ describe('JessLanguageServiceEngine', () => {
         doc.offsetAt(diagnostic.range.start),
         doc.offsetAt(diagnostic.range.end)
       ))).toEqual(['`bad', '`good`']);
+      expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
+      expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
+    });
+
+    it('keeps unfinished backticks separate across Less declaration heads', () => {
+      const engine = createEngine();
+      const input = [
+        '@first: `bad;',
+        '@second: /* comment */ `also bad;',
+        '@{third}: `dynamic bad;',
+        '@map: {',
+        '  first: `map bad;',
+        '  <: `punctuation bad;',
+        '};',
+        '.legacy {',
+        '  first: `nested bad;',
+        '  1: `numeric bad;',
+        '  \\63 olor: `escaped bad;',
+        '  foo-@{third}: `interpolated bad;',
+        '}',
+        '.after { color: red; }'
+      ].join('\n');
+      const doc = createDocument('less', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const backticks = diagnostics.filter(
+        item => item.code === 'parse/unsupported-inline-javascript'
+      );
+
+      expect(backticks.map(diagnostic => input.slice(
+        doc.offsetAt(diagnostic.range.start),
+        doc.offsetAt(diagnostic.range.end)
+      ))).toEqual([
+        '`bad',
+        '`also bad',
+        '`dynamic bad',
+        '`map bad',
+        '`punctuation bad',
+        '`nested bad',
+        '`numeric bad',
+        '`escaped bad',
+        '`interpolated bad'
+      ]);
       expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
       expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
     });

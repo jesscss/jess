@@ -548,6 +548,11 @@ describe('collectTolerantDiagnostics', () => {
       '.legacy {',
       '  escaped: `1 + \\`tick\\``;',
       '  statements: `let x = 1; x`;',
+      '  label: `let x = 1; label: x`;',
+      '  object-label: `let x = 1; obj: {a: 1}`;',
+      '  function-label: fn(`let x = 1; label: x`);',
+      '  calc-label: calc(`let x = 1; label: x`);',
+      '  --custom-label: `let x = 1; label: x`;',
       '  object: `{a: 1, b: 2}`;',
       '  comma: `a, b`;',
       '  regex: `/[;})]/.test(value)`;',
@@ -559,6 +564,7 @@ describe('collectTolerantDiagnostics', () => {
       '  unfinished-group: `fn(;',
       '}',
       '@legacy `{a: 1}` { color: red; }',
+      '@legacy-label `let x = 1; label: x` { color: blue; }',
       '.after {}'
     ].join('\n');
     const result = collectTolerantDiagnostics({ source, language: 'less' });
@@ -570,6 +576,11 @@ describe('collectTolerantDiagnostics', () => {
       '`@{b}`',
       '`1 + \\`tick\\``',
       '`let x = 1; x`',
+      '`let x = 1; label: x`',
+      '`let x = 1; obj: {a: 1}`',
+      '`let x = 1; label: x`',
+      '`let x = 1; label: x`',
+      '`let x = 1; label: x`',
       '`{a: 1, b: 2}`',
       '`a, b`',
       '`/[;})]/.test(value)`',
@@ -577,7 +588,8 @@ describe('collectTolerantDiagnostics', () => {
       '`"a\\\nb"`',
       '`(function(){ // ) ] }\n    return 1; })()`',
       '`fn(',
-      '`{a: 1}`'
+      '`{a: 1}`',
+      '`let x = 1; label: x`'
     ]);
     expect(result.diagnostics.some(diagnostic => diagnostic.code === 'parse/syntax-error')).toBe(false);
     expect(result.diagnostics.some(diagnostic =>
@@ -603,6 +615,46 @@ describe('collectTolerantDiagnostics', () => {
     expect(backticks.map(diagnostic => source.slice(diagnostic.start, diagnostic.end))).toEqual([
       '`bad',
       '`good`'
+    ]);
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === 'parse/syntax-error')).toBe(false);
+    expect(result.diagnostics.some(diagnostic =>
+      diagnostic.code === LINT_CODES.emptyRules
+      && diagnostic.start >= source.indexOf('.after')
+    )).toBe(true);
+  });
+
+  it('does not pair unfinished backticks across Less declaration heads', () => {
+    const source = [
+      '@first: `bad;',
+      '@second: /* comment */ `also bad;',
+      '@{third}: `dynamic bad;',
+      '@map: {',
+      '  first: `map bad;',
+      '  <: `punctuation bad;',
+      '};',
+      '.legacy {',
+      '  first: `nested bad;',
+      '  1: `numeric bad;',
+      '  \\63 olor: `escaped bad;',
+      '  foo-@{third}: `interpolated bad;',
+      '}',
+      '.after {}'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({ source, language: 'less' });
+    const backticks = result.diagnostics.filter(
+      diagnostic => diagnostic.code === 'parse/unsupported-inline-javascript'
+    );
+
+    expect(backticks.map(diagnostic => source.slice(diagnostic.start, diagnostic.end))).toEqual([
+      '`bad',
+      '`also bad',
+      '`dynamic bad',
+      '`map bad',
+      '`punctuation bad',
+      '`nested bad',
+      '`numeric bad',
+      '`escaped bad',
+      '`interpolated bad'
     ]);
     expect(result.diagnostics.some(diagnostic => diagnostic.code === 'parse/syntax-error')).toBe(false);
     expect(result.diagnostics.some(diagnostic =>
