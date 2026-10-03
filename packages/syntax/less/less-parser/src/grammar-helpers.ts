@@ -168,11 +168,21 @@ function variableNameTerminalText(value: unknown): string | undefined {
     }
     return found ? text : undefined;
   }
-  if (typeof value === 'object' && value !== null && 'value' in value && typeof value.value === 'string') {
-    return value.value;
+  if (typeof value === 'object' && value !== null && 'value' in value) {
+    return variableNameTerminalText(value.value);
   }
   if (hasChildren(value)) {
     return variableNameTerminalText(value.rules);
+  }
+  return undefined;
+}
+
+function supportedVariableNameFrom(value: unknown): string | undefined {
+  if (isVariableNameFact(value)) {
+    return value.variableName;
+  }
+  if (typeof value === 'object' && value !== null && 'value' in value) {
+    return supportedVariableNameFrom(value.value);
   }
   return undefined;
 }
@@ -206,6 +216,9 @@ function unsupportedVariableNameFrom(value: unknown): string | undefined {
 }
 
 function variableNameText(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
   if (typeof value === 'object' && value !== null && 'variableNameSource' in value && typeof value.variableNameSource === 'string') {
     return value.variableNameSource;
   }
@@ -213,13 +226,16 @@ function variableNameText(value: unknown): string {
 }
 
 function requireSupportedVariableName(value: unknown, start: number, end: number): string {
+  if (typeof value === 'string') {
+    return value;
+  }
   const unsupported = unsupportedVariableNameFrom(value);
   if (unsupported !== undefined) {
     throw new LessUnsupportedVariableNameError(start, end, unsupported);
   }
-  return isVariableNameFact(value)
-    ? value.variableName
-    : variableNameTerminalText(value) ?? requireTerminalText(value);
+  return supportedVariableNameFrom(value)
+    ?? variableNameTerminalText(value)
+    ?? requireTerminalText(value);
 }
 
 function requireString(value: unknown): string {
@@ -1454,9 +1470,7 @@ function mixinPrefixFromSelectorBranch(branch: SelectorBranch): readonly MixinPr
       ? segment.term.value
       : [segment.term];
     for (const token of tokens) {
-      const sigil = token.text?.slice(0, 1);
-      const isMixinName = sigil === '.' || sigil === '#';
-      if (!isSimpleSelector(token) || token.interp !== null || token.text === null || !isMixinName) {
+      if (!isSimpleSelector(token) || token.text === null || (!token.text.startsWith('.') && !token.text.startsWith('#'))) {
         return null;
       }
       prefix.push({

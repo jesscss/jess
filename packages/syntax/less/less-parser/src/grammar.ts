@@ -22,7 +22,7 @@
 import {
   attempt, rules, classifiedTrivia, compose,
   node, regex, literal, sequence, choice, many, oneOrMore, oneOrMoreSep, optional,
-  not, scanTo, balanced, expect, parser, noTrivia, label, word, keywords, field, leaf, peek,
+  not, scanTo, balanced, expect, parser, noTrivia, label, word, keywords, field, leaf, sourceLeaf, peek,
   dispatch, endsWith, makeWhen, makeWord, matches, otherwise, routed, token, transform, when, withCtx
 } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
@@ -594,92 +594,119 @@ const importOption = keywords(
   ['reference', 'optional', 'once', 'multiple', 'inline', 'css', 'less'],
   { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
-const variableNameHexEscape = node(
-  'VariableNameEscape',
-  regex(/\\[0-9a-fA-F]{1,6}[ \t\n\r\f]?/),
+type VariableNameEscapeFact = {
+  readonly variableNamePart: string;
+  readonly variableNameSource: string;
+  readonly supportedStart: boolean;
+};
+function isVariableNameEscapeFact(value: unknown): value is VariableNameEscapeFact {
+  return typeof value === 'object'
+    && value !== null
+    && 'variableNamePart' in value
+    && typeof value.variableNamePart === 'string'
+    && 'variableNameSource' in value
+    && typeof value.variableNameSource === 'string'
+    && 'supportedStart' in value
+    && typeof value.supportedStart === 'boolean';
+}
+function requireVariableNameEscapeFact(value: unknown): VariableNameEscapeFact {
+  if (!isVariableNameEscapeFact(value)) {
+    throw new TypeError('Less variable escape lost its grammar facts.');
+  }
+  return value;
+}
+/** A hexadecimal CSS escape tail, decoded once and retaining its authored slash. */
+const variableNameHexEscapeTail = transform(
+  sequence(regex(/[0-9a-fA-F]{1,6}/), optional(regex(/[ \t\n\r\f]/))),
   (children) => {
-    const source = requireTerminalText(children[0]);
-    const codePoint = parseInt(source.slice(1).trim(), 16);
+    const digits = requireTerminalText(children[0]);
+    const whitespace = children[1] === null ? '' : requireTerminalText(children[1]);
+    const codePoint = parseInt(digits, 16);
     return {
       variableNamePart: codePoint === 0 || (codePoint >= 0xD800 && codePoint <= 0xDFFF) || codePoint > 0x10FFFF
         ? '\uFFFD'
         : String.fromCodePoint(codePoint),
-      variableNameSource: source,
+      variableNameSource: `\\${digits}${whitespace}`,
       supportedStart: codePoint < 48 || codePoint > 57
     };
   }
 );
-const variableNameSimpleEscape = node(
-  'VariableNameEscape',
-  sequence(literal('\\'), regex(/[^\n\r\f]/)),
-  (children) => {
-    const decoded = requireTerminalText(children.at(-1));
+/** A one-character CSS escape tail, decoded once and retaining its authored slash. */
+const variableNameSimpleEscapeTail = transform(
+  regex(/[^0-9a-fA-F\n\r\f]/),
+  (value) => {
+    const decoded = requireTerminalText(value);
     return {
       variableNamePart: decoded,
       variableNameSource: `\\${decoded}`,
-      supportedStart: decoded < '0' || decoded > '9'
+      supportedStart: true
     };
   }
 );
-const variableNameEscape = choice(variableNameHexEscape, variableNameSimpleEscape);
-// A Less variable name is a css ident (css-syntax-3 §4.3.11), escapes included.
-// Escapes are grammar facts, so the reducer decodes already-recognized segments
-// without scanning the captured source a second time.
-const lessSupportedVariableName = node(
-  'VariableName',
+/** One complete CSS escape, left-factored on its shared backslash. */
+const variableNameEscape = transform(
+  sequence(literal('\\'), choice(variableNameHexEscapeTail, variableNameSimpleEscapeTail)),
+  children => children[1]
+);
+/**
+ * The allocation-free common path for an unescaped Less variable name. A dash
+ * start requires a following name byte, leaving lone `-` to its diagnostic
+ * route. The final boundary keeps an authored escape on the structural route.
+ */
+const plainSupportedVariableName = regex(/(?:[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|[-][-_a-zA-Z0-9\u0080-\uffff]+)(?![-_a-zA-Z0-9\u0080-\uffff\\])/);
+/**
+ * Plain bytes before the first variable-name escape. The dash arm preserves
+ * Less's existing dash-leading name spellings, including `-1` and `--name`.
+ */
+const escapedVariableNamePrefix = regex(/(?:[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|[-][-_a-zA-Z0-9\u0080-\uffff]*)/);
+/**
+ * The rare escaped-name route. Parseman returns decoded grammar facts to AST
+ * reducers while exposing the whole authored name as one CST leaf.
+ */
+const escapedVariableName = sourceLeaf(
   noTrivia(sequence(
-    choice(regex(/[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/), variableNameEscape),
+    optional(escapedVariableNamePrefix),
+    variableNameEscape,
     many(choice(regex(/[-_a-zA-Z0-9\u0080-\uffff]+/), variableNameEscape))
   )),
-  (children) => {
-    let variableName = '';
-    let variableNameSource = '';
-    let supportedStart = true;
-    let first = true;
-    for (const child of children) {
-      if (
-        typeof child === 'object'
-        && child !== null
-        && 'variableNamePart' in child
-        && typeof child.variableNamePart === 'string'
-        && 'variableNameSource' in child
-        && typeof child.variableNameSource === 'string'
-        && 'supportedStart' in child
-        && typeof child.supportedStart === 'boolean'
-      ) {
-        variableName += child.variableNamePart;
-        variableNameSource += child.variableNameSource;
-        if (first) {
-          supportedStart = child.supportedStart;
-        }
-      } else {
-        const text = requireTerminalText(child);
-        variableName += text;
-        variableNameSource += text;
-      }
-      first = false;
+  (parts: unknown) => {
+    if (!Array.isArray(parts) || !Array.isArray(parts[2])) {
+      throw new TypeError('Less escaped variable name lost its grammar facts.');
     }
-    return supportedStart && variableName !== '-'
-      ? { variableName, variableNameSource }
-      : { unsupportedVariableName: variableName, variableNameSource };
+    const prefix = parts[0] === null ? '' : requireTerminalText(parts[0]);
+    const firstEscape = requireVariableNameEscapeFact(parts[1]);
+    let variableName = `${prefix}${firstEscape.variableNamePart}`;
+    let variableNameSource = `${prefix}${firstEscape.variableNameSource}`;
+    for (const part of parts[2]) {
+      if (typeof part === 'string') {
+        variableName += part;
+        variableNameSource += part;
+      } else {
+        const escape = requireVariableNameEscapeFact(part);
+        variableName += escape.variableNamePart;
+        variableNameSource += escape.variableNameSource;
+      }
+    }
+    return {
+      variableName,
+      variableNameSource,
+      unsupportedVariableName: (prefix !== '' || firstEscape.supportedStart) && variableName !== '-'
+        ? null
+        : variableName
+    };
   }
 );
+/** A Less variable name using either the raw-string fast path or decoded escapes. */
+const lessSupportedVariableName = choice(plainSupportedVariableName, escapedVariableName);
 const lessUnsupportedNumericVariableName = node(
   'UnsupportedVariableName',
   regex(/[0-9][-_a-zA-Z0-9\u0080-\uffff]*/),
   children => ({ unsupportedVariableName: requireToken(children[0]).value })
 );
+/** The unsupported lone-dash diagnostic route. */
 const lessDashVariableName = leaf(
-  noTrivia(sequence(literal('-'), optional(regex(/[-_a-zA-Z0-9\u0080-\uffff]+/)))),
-  (children) => {
-    if (!Array.isArray(children)) {
-      throw new TypeError('Less dash variable name lost its grammar facts.');
-    }
-    const tail = children[1];
-    return tail === undefined || tail === null
-      ? { unsupportedVariableName: '-' }
-      : `-${requireTerminalText(tail)}`;
-  }
+  noTrivia(literal('-')),
+  () => ({ unsupportedVariableName: '-' })
 );
 const lessVariableName = choice(lessUnsupportedNumericVariableName, lessSupportedVariableName, lessDashVariableName);
 const inlineJavaScriptDoubleQuoted = noTrivia(sequence(

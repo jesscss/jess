@@ -2924,6 +2924,26 @@ describe('public Less parse()', () => {
     expect(parse('@\\2d foo: 1;')).toMatchObject({
       rules: [{ type: 'VariableDeclaration', name: '-foo' }]
     });
+    for (const [source, name] of [
+      ['@-f\\6fo: 1;', '-foo'],
+      ['@-\\61: 1;', '-a'],
+      ['@--\\61: 1;', '--a']
+    ] as const) {
+      expect(parse(source), source).toMatchObject({
+        rules: [{ type: 'VariableDeclaration', name }]
+      });
+    }
+    expect(parse('@-\\66 oo: red; .entry { color: @-\\66 oo; }')).toMatchObject({
+      rules: [
+        { type: 'VariableDeclaration', name: '-foo' },
+        { type: 'Ruleset', rules: [{ type: 'Declaration', value: { type: 'Lookup', name: '-foo' } }] }
+      ]
+    });
+    expect(
+      serialize(parse('@-foo: red; .entry { color: @-\\66 oo; }'), {
+        evaluator: buildEvaluator(makeLessRegistry())
+      }).css
+    ).toBe('.entry {\n  color: red;\n}\n');
   });
 
   it('keeps interpolated Less media-query terms structural in a multi-term header', () => {
