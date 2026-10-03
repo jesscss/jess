@@ -24,6 +24,17 @@ function expectedMessage(expected: readonly string[]): string {
     return 'Unexpected CSS syntax.';
   }
   const expectedSet = new Set(expected);
+
+  /*
+   * The one at-rule-specific atom in this file. The `@charset` prelude is a
+   * `<string>` and nothing else (css-syntax-3 §3.2), so a refusal there has a
+   * real answer to give and must not read as the generic fallback. Emitted by
+   * the css grammar's `CHARSET_PRELUDE_EXPECTED`; the spelling is duplicated
+   * here for the same reason `'")"'` is — this module holds no grammar import.
+   */
+  if (expectedIncludes(expectedSet, '@charset quoted string')) {
+    return 'An @charset prelude must be a quoted string, as in @charset "utf-8";.';
+  }
   if (expectedIncludes(expectedSet, '")"')) {
     return 'Missing closing parenthesis.';
   }

@@ -46,7 +46,7 @@ describe('Less strict-unit final validation', () => {
     expect(result.css).toBe(readFileSync(expected, 'utf8'));
   });
 
-  it('folds scalar bare slashes while preserving lists and parens-division', async () => {
+  it('divides every slash under always; under parens-division each side of the slash computes', async () => {
     const source = `
       .a {
         first: 4 / 2 + 5em;
@@ -82,8 +82,13 @@ describe('Less strict-unit final validation', () => {
       language: 'less',
       extension: '.less'
     });
-    expect(parensDivision).toContain('first: 4 / 2 + 5em;');
-    expect(parensDivision).toContain('second: 4 + 2 / 5em;');
+
+    /*
+     * A non-dividing slash is the value's loosest separator and each side keeps
+     * its own math (DESIGN-DECISIONS P35): `4 / $(2 + 5em)`, `$(4 + 2) / 5em`.
+     */
+    expect(parensDivision).toContain('first: 4 / 7em;');
+    expect(parensDivision).toContain('second: 6 / 5em;');
     expect(parensDivision).toContain('same-unit: 2em / 1em;');
     expect(parensDivision).toContain('shorthand: normal small / 20px;');
     expect(parensDivision).toContain('bare-parens-mode: 10px / 2;');

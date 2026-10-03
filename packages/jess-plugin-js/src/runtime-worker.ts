@@ -706,11 +706,13 @@ const encodeBridgeValue = (value) => {
         };
   }
   if (value instanceof Keyword || value instanceof Anonymous) {
-    return {
-      __jessBridge: true,
-      kind: 'anonymous',
-      value: String(value.value)
-    };
+    /*
+     * `raw` marks a true `Anonymous` (not a `Keyword`, `Comment`, …): Less 4.x
+     * treats that result as raw text, which is also valid as a statement.
+     */
+    return value.constructor === Anonymous
+      ? { __jessBridge: true, kind: 'anonymous', value: String(value.value), raw: true }
+      : { __jessBridge: true, kind: 'anonymous', value: String(value.value) };
   }
   if (value instanceof Expression) {
     return {

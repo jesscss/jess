@@ -107,5 +107,5 @@ export type {
 } from './ast/functions/types.js';
 
 // --- registry seam ---
-export { createFnRegistry, defineFunction } from './ast/value-dispatch.js';
+export { createFnRegistry, defineFunction, FunctionDeclined } from './ast/value-dispatch.js';
 export type { FnRegistry } from './ast/value-dispatch.js';

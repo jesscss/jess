@@ -38,7 +38,6 @@ export class NodeModulesPlugin extends AbstractPlugin {
   name = 'node-modules';
 
   private _require: NodeRequire;
-  private readonly builtinModulePaths = new Set<string>();
 
   constructor(public opts: NodeModulesPluginOptions = {}) {
     super();
@@ -126,26 +125,19 @@ export class NodeModulesPlugin extends AbstractPlugin {
     const resolved: string[] = [];
 
     for (const candidate of paths) {
-      const builtinSpecifier = builtinModuleSpecifier(candidate);
-      if (builtinSpecifier === null && !isBareModuleSpecifier(candidate)) {
+      if (!isBareModuleSpecifier(candidate)) {
         resolved.push(candidate);
         continue;
       }
 
-      const specifier = builtinSpecifier ?? candidate;
       let modulePath: string | null = null;
       for (const base of bases) {
-        modulePath = this.resolvePackage(specifier, base)
-          ?? (builtinSpecifier === null ? this.resolvePackage(`${specifier}.less`, base) : null);
+        modulePath = this.resolvePackage(candidate, base) ?? this.resolvePackage(`${candidate}.less`, base);
         if (modulePath) {
           break;
         }
       }
-      modulePath ??= this.resolvePackage(specifier)
-        ?? (builtinSpecifier === null ? this.resolvePackage(`${specifier}.less`) : null);
-      if (modulePath && builtinSpecifier !== null) {
-        this.builtinModulePaths.add(modulePath);
-      }
+      modulePath ??= this.resolvePackage(candidate) ?? this.resolvePackage(`${candidate}.less`);
       resolved.push(modulePath ?? candidate);
     }
 
@@ -209,7 +201,7 @@ export class NodeModulesPlugin extends AbstractPlugin {
      * Check if this looks like a node_modules path
      * We can't directly resolve from absolute paths, but we can try to require it
      */
-    if (this.canImportModule(absoluteFilePath) || absoluteFilePath.includes('node_modules')) {
+    if (absoluteFilePath.includes('node_modules')) {
       try {
         const module: unknown = this._require(absoluteFilePath);
         if (!isRecord(module)) {
@@ -225,42 +217,6 @@ export class NodeModulesPlugin extends AbstractPlugin {
     // For non-node_modules paths, throw to let other plugins handle it
     throw new Error(`Plugin "${this.name}" cannot import "${absoluteFilePath}" (not a node_modules path)`);
   }
-
-  canImportModule(absoluteFilePath: string): boolean {
-    return this.builtinModulePaths.has(absoluteFilePath);
-  }
-}
-
-function builtinModuleSpecifier(candidate: string): string | null {
-  const normalized = candidate.replace(/\\/g, '/');
-  const sassMarker = normalized.lastIndexOf('/#sass');
-  const lessMarker = normalized.lastIndexOf('/#less');
-  const expanded = sassMarker >= 0
-    ? normalized.slice(sassMarker + 1)
-    : lessMarker >= 0
-      ? normalized.slice(lessMarker + 1)
-      : normalized;
-  const slash = expanded.indexOf('/');
-  const head = slash < 0 ? expanded : expanded.slice(0, slash);
-  const segments = slash < 0 ? [] : expanded.slice(slash + 1).split('/');
-  if (segments.length > 0) {
-    const last = segments.length - 1;
-    segments[last] = segments[last]!.replace(/\.(?:s[ac]ss|less)$/i, '').replace(/^_/, '');
-    if (segments[last] === 'index') {
-      segments.pop();
-    }
-  }
-  const specifier = segments.length === 0 ? head : `${head}/${segments.join('/')}`;
-  if (specifier === '#sass') {
-    return '@jesscss/fns/sass';
-  }
-  if (specifier.startsWith('#sass/')) {
-    return `@jesscss/fns/sass/${specifier.slice('#sass/'.length)}`;
-  }
-  if (specifier === '#less') {
-    return '@jesscss/fns/less';
-  }
-  return null;
 }
 
 function isBareModuleSpecifier(candidate: string): boolean {

@@ -7,6 +7,16 @@ function expectedMessage(expected: readonly string[]): string {
     return 'Unexpected Less syntax.';
   }
   const expectedSet = new Set(expected);
+  /*
+   * The one at-rule-specific atom in this file. The `@charset` prelude is a
+   * `<string>` and nothing else (css-syntax-3 §3.2), so a refusal there has a
+   * real answer to give and must not read as the generic fallback. Emitted by
+   * the css grammar's `CHARSET_PRELUDE_EXPECTED`; the spelling is duplicated
+   * here for the same reason `'")"'` is — this module holds no grammar import.
+   */
+  if (expectedIncludes(expectedSet, '@charset quoted string')) {
+    return 'An @charset prelude must be a quoted string, as in @charset "utf-8";.';
+  }
   if (expectedIncludes(expectedSet, '")"')) {
     return 'Missing closing parenthesis.';
   }
@@ -96,12 +106,12 @@ export class LessInlineJavaScriptError extends SyntaxError {
   readonly code = 'parse/unsupported-inline-javascript' as const;
   readonly offset: number;
   readonly endOffset: number;
-  readonly reason = 'Backtick JavaScript expressions are not evaluated.';
+  readonly reason = 'Backtick JavaScript expressions cannot be enabled or evaluated.';
   readonly fix =
-    'Move the expression into an explicit @from/@-from script import or a plugin function.';
+    'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.';
 
   constructor(offset: number, endOffset: number) {
-    super('Inline backtick JavaScript is not supported.');
+    super('Inline JavaScript was removed in Less v5.');
     this.name = 'LessInlineJavaScriptError';
     this.offset = offset;
     this.endOffset = endOffset;

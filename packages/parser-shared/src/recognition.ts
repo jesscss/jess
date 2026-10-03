@@ -55,12 +55,27 @@ const lineComment = regex(/\/\/[^\n\r]*/);
 const mediaModifier = regex(/(?:[^${}()\[\];"'#]|#(?!\{))+/);
 
 /*
+ * The one keyword boundary, for keywords and at-keywords alike: a keyword only
+ * ends where its identifier ends. css-syntax-3 §4.3.11 consumes every code
+ * point >= U+0080 and every valid escape (§4.3.8) into the identifier, so
+ * `not\61` is the one identifier `nota` and `@page\61` the one at-keyword
+ * `@pagea`, never `not`/`@page` followed by `\61`. Spelling this ASCII-only
+ * (`-_0-9A-Za-z`, or `\w`) drops U+0080-U+FFFF and cuts keywords in half
+ * mid-ident; leaving out the backslash cuts them at an escape. Every recognizer
+ * below shares this const: the set of at-rule names is declared once per name,
+ * and both polarities come from `not()`, so a name the generic at-rule branch
+ * excludes is exactly a name its typed branch accepts.
+ * @see https://drafts.csswg.org/css-syntax-3/#consume-name
+ */
+const IDENT_BOUNDARY = '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\';
+
+/*
  * CSS and SCSS priority matching is ASCII-case-insensitive. Direct dialect
  * grammars own the surrounding `!` and AST reduction.
  */
 const important = word(
   'important',
-  '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\',
+  IDENT_BOUNDARY,
   { caseInsensitive: true }
 );
 const hexColor = regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F])/);
@@ -77,23 +92,12 @@ const hexColor = regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-f
 const unicodeRange = regex(/[Uu]\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/);
 
 /*
- * The one at-keyword boundary. An at-keyword is `@` followed by an
- * ident-sequence, and CSS Syntax L3 §4.3.11 makes every code point >= U+0080 an
- * ident code point, so a keyword only ends where a NON-ident code point starts.
- * Spelling this ASCII-only (`-_0-9A-Za-z`, or the `\w` that means the same
- * thing) drops U+0080-U+FFFF -- 65,408 code points -- and cuts at-keywords in
- * half mid-ident. Every recognizer below shares this const: the set of at-rule
- * names is declared once per name, and both polarities come from `not()`.
- */
-const AT_KEYWORD_BOUNDARY = '-_a-zA-Z0-9\\u0080-\\uFFFF';
-
-/*
  * CSS at-keywords are ASCII-case-insensitive. Dialect reductions own the
  * header/body shape; these leaves only establish the keyword boundary.
  */
 const conditionalAtKeyword = keywords(
   ['@media', '@container', '@supports'],
-  { caseInsensitive: true, boundary: AT_KEYWORD_BOUNDARY }
+  { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
 
 /*
@@ -104,26 +108,26 @@ const conditionalAtKeyword = keywords(
  */
 const mediaContainerAtKeyword = keywords(
   ['@media', '@container'],
-  { caseInsensitive: true, boundary: AT_KEYWORD_BOUNDARY }
+  { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
 const mediaAtKeyword = word(
   '@media',
-  AT_KEYWORD_BOUNDARY,
+  IDENT_BOUNDARY,
   { caseInsensitive: true }
 );
 const containerAtKeyword = word(
   '@container',
-  AT_KEYWORD_BOUNDARY,
+  IDENT_BOUNDARY,
   { caseInsensitive: true }
 );
 const supportsAtKeyword = word(
   '@supports',
-  AT_KEYWORD_BOUNDARY,
+  IDENT_BOUNDARY,
   { caseInsensitive: true }
 );
 const startingStyleAtKeyword = word(
   '@starting-style',
-  AT_KEYWORD_BOUNDARY,
+  IDENT_BOUNDARY,
   { caseInsensitive: true }
 );
 
@@ -135,7 +139,7 @@ const startingStyleAtKeyword = word(
  */
 const pageAtKeyword = word(
   '@page',
-  AT_KEYWORD_BOUNDARY,
+  IDENT_BOUNDARY,
   { caseInsensitive: true }
 );
 const marginAtKeyword = keywords(
@@ -157,21 +161,37 @@ const marginAtKeyword = keywords(
     '@right-middle',
     '@right-bottom'
   ],
-  { caseInsensitive: true, boundary: AT_KEYWORD_BOUNDARY }
+  { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
 const queryNot = word(
   'not',
-  '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\',
+  IDENT_BOUNDARY,
   { caseInsensitive: true }
 );
 const queryOnly = word(
   'only',
-  '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\',
+  IDENT_BOUNDARY,
   { caseInsensitive: true }
 );
 const queryAndOr = keywords(
   ['and', 'or'],
-  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\' }
+  { caseInsensitive: true, boundary: IDENT_BOUNDARY }
+);
+
+/*
+ * `and` and `or` apart, for a dialect ladder that folds each at its own
+ * precedence (SCSS's and Jess's logical operators). The query ladder keeps
+ * `queryAndOr`, which takes either at one level.
+ */
+const logicalAnd = word(
+  'and',
+  IDENT_BOUNDARY,
+  { caseInsensitive: true }
+);
+const logicalOr = word(
+  'or',
+  IDENT_BOUNDARY,
+  { caseInsensitive: true }
 );
 
 /*
@@ -187,7 +207,7 @@ const queryFunctionOpen = noTrivia(sequence(
 ));
 const scopeAtKeyword = word(
   '@scope',
-  AT_KEYWORD_BOUNDARY,
+  IDENT_BOUNDARY,
   { caseInsensitive: true }
 );
 
@@ -196,7 +216,7 @@ const scopeAtKeyword = word(
  */
 const descriptorAtKeywordTyped = keywords(
   ['@font-face', '@counter-style', '@property'],
-  { caseInsensitive: true, boundary: AT_KEYWORD_BOUNDARY }
+  { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
 
 /*
@@ -210,19 +230,19 @@ const descriptorAtKeywordTyped = keywords(
  */
 const descriptorAtKeywordCssOnly = keywords(
   ['@color-profile', '@font-palette-values', '@position-try', '@view-transition'],
-  { caseInsensitive: true, boundary: AT_KEYWORD_BOUNDARY }
+  { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
 const descriptorAtKeyword = choice(descriptorAtKeywordTyped, descriptorAtKeywordCssOnly);
 const documentAtKeyword = keywords(
   ['@-moz-document', '@document'],
-  { caseInsensitive: true, boundary: AT_KEYWORD_BOUNDARY }
+  { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
 const layerAtKeyword = word(
   '@layer',
-  AT_KEYWORD_BOUNDARY,
+  IDENT_BOUNDARY,
   { caseInsensitive: true }
 );
-const keyframesAtKeyword = regex(/@(?:-[a-z]+-)?keyframes(?![-_a-zA-Z0-9\u0080-\uFFFF])/i);
+const keyframesAtKeyword = regex(/@(?:-[a-z]+-)?keyframes(?![-_a-zA-Z0-9\u0080-\uFFFF\\])/i);
 
 /*
  * `@font-feature-valuesé` is ONE at-keyword. The older ASCII boundary read it
@@ -231,12 +251,12 @@ const keyframesAtKeyword = regex(/@(?:-[a-z]+-)?keyframes(?![-_a-zA-Z0-9\u0080-\
  */
 const fontFeatureValuesAtKeyword = word(
   '@font-feature-values',
-  AT_KEYWORD_BOUNDARY,
+  IDENT_BOUNDARY,
   { caseInsensitive: true }
 );
 const importAtKeyword = word(
   '@import',
-  AT_KEYWORD_BOUNDARY,
+  IDENT_BOUNDARY,
   { caseInsensitive: true }
 );
 
@@ -330,7 +350,7 @@ const fontFeatureValueAtKeyword = keywords(
     '@annotation',
     '@historical-forms'
   ],
-  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\' }
+  { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
 
 /*
@@ -350,12 +370,14 @@ const dimensionUnit = regex(/-?[_a-zA-Z\u0080-\uFFFF](?:[_a-zA-Z0-9\u0080-\uFFFF
 const lessBareIdentifier = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 
 /*
- * Keep legacy Less variable names (`@1`, `@{3}`, `@-`) recognizable here so
- * dialect parsers can reject retired syntax with precise diagnostics. This
- * stays separate from the general identifier leaf so that permissive recovery
- * does not leak into declaration names, selectors, or ordinary value keywords.
+ * A run of ident code points with no escapes and no start-position rule. Less
+ * uses it for legacy variable names (`@1`, `@{3}`, `@-`), kept recognizable so
+ * dialect parsers can reject retired syntax with precise diagnostics, and for
+ * the tail of an interpolated custom-property name. It stays separate from the
+ * general identifier leaf so that permissive recovery does not leak into
+ * declaration names, selectors, or ordinary value keywords.
  */
-const lessVariableName = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
+const identCodePointRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
 
 const lessDeclarationProperty = token(noTrivia(sequence(
   optional(literal('*')),
@@ -363,10 +385,11 @@ const lessDeclarationProperty = token(noTrivia(sequence(
 )));
 
 /*
- * Less detached-ruleset maps admit numeric member names (`@grays: { 100: ... }`).
- * Keep this distinct from ordinary CSS declaration properties and value numbers.
+ * Less detached-ruleset maps admit numeric member names (`@grays: { 100: ... }`),
+ * and a Less interpolation indexes with the same digit run. Keep this distinct
+ * from ordinary CSS declaration properties and value numbers.
  */
-const lessNumericMapKey = regex(/[0-9]+/);
+const digitRun = regex(/[0-9]+/);
 
 /*
  * Detached-ruleset maps also use punctuation members for escaped CSS text
@@ -387,7 +410,6 @@ const lessPercentEscape = regex(/%[0-9a-fA-F]{2}/);
  */
 const lessInterpHead = regex(/-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 const lessInterpBareKey = regex(/[-_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-const lessInterpIndexKey = regex(/[0-9]+/);
 
 /*
  * A quoted chunk leaves only a complete strict Less `@{name}` or `${name}`
@@ -400,7 +422,8 @@ const lessQuotedSingleChunk = regex(/(?:[^'\\@$]|\\[\s\S]|@(?!\{-?[_a-zA-Z0-9\u0
 
 /*
  * These are CSS identifier segments, shared by every dialect that permits a
- * structural interpolation inside a declaration name. Dialects own their
+ * structural interpolation inside a declaration name; Less reuses the tail for
+ * the static bytes after an interpolated value. Dialects own their
  * interpolation delimiters and AST reductions; this artifact only recognizes
  * the static CSS-name bytes around those typed segments.
  */
@@ -444,9 +467,9 @@ const customOuterContent = regex(/(?:(?![ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[^*]|
 const customInnerContent = regex(/(?:\\[^\n\r\f]|[^(){}[\]'"\\/#$]|\/(?!\*)|#(?!\{)|\$(?![[({]))+/);
 const customSingleQuoted = regex(/'(?:[^'\n\\]|\\.)*'/);
 const customDoubleQuoted = regex(/"(?:[^"\n\\]|\\.)*"/);
-const lessInterpolatedCustomPropertyStart = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-const lessInterpolatedCustomPropertyDash = regex(/-/);
-const lessInterpolatedCustomPropertyTail = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
+
+/* The bare `-` between an interpolation and the static name bytes that follow it. */
+const hyphen = literal('-');
 
 /*
  * Less value identifiers REUSE the CSS ident, which already consumes CSS escapes
@@ -457,16 +480,14 @@ const lessInterpolatedCustomPropertyTail = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
  * rule and split escaped delimiters into adjacent atoms that then failed to join.
  */
 const lessInterpolatedValueStart = cssIdentifier;
-const lessInterpolatedValueDash = regex(/-/);
-const lessInterpolatedValueTail = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 
 /*
  * Custom-property values remain CSS declaration-value text in Less, except for
  * Less variable references that Less evaluates inside those values. These leaves
  * deliberately exclude balanced delimiters, strings, comments, strict `@{…}`
- * interpolation, and raw `@name`-shaped tokens so the direct Less grammar can
- * decide whether the token is a literal at-keyword or a structural variable
- * reference instead of scanning a completed value span.
+ * interpolation, raw `@name`-shaped tokens, and legacy backtick JavaScript so
+ * the direct Less grammar can decide whether each is literal content or a
+ * structural language construct instead of scanning a completed value span.
  * Less's own custom-property leaf. It differs from the shared CSS one only by
  * leaving escapes to the Less custom-property content leaves below. The `+`
  * (not `*`) keeps the reserved bare `--` out, matching css-variables-1 §2 and
@@ -485,10 +506,8 @@ const lessCustomProperty = regex(/--[-_a-zA-Z0-9\u0080-\uffff]+/);
  * The `i` flag is inert for the rest of the pattern — its remaining classes are
  * punctuation or already span both cases.
  */
-const lessCustomOuterContent = regex(/(?:(?![ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*important(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*[;}])(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})(?!@[-_a-zA-Z0-9\u0080-\uffff]+)[^(){}[\];'"\/\\]))+|\/(?!\*)/i);
-const lessCustomInnerContent = regex(/(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})(?!@[-_a-zA-Z0-9\u0080-\uffff]+)[^(){}[\]'"\/\\])+|\/(?!\*)/i);
-const lessCustomSingleQuoted = regex(/'(?:[^'\n\\]|\\.)*'/);
-const lessCustomDoubleQuoted = regex(/"(?:[^"\n\\]|\\.)*"/);
+const lessCustomOuterContent = regex(/(?:(?![ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*important(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*[;}])(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})(?!@[-_a-zA-Z0-9\u0080-\uffff]+)[^(){}[\];'"`\/\\]))+|\/(?!\*)/i);
+const lessCustomInnerContent = regex(/(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})(?!@[-_a-zA-Z0-9\u0080-\uffff]+)[^(){}[\]'"`\/\\])+|\/(?!\*)/i);
 export const cssSyntax = rules(_g => ({
   Identifier: keywordValue,
   AttributeOperator: attributeOperator,
@@ -518,6 +537,8 @@ export const cssSyntax = rules(_g => ({
   QueryNot: queryNot,
   QueryOnly: queryOnly,
   QueryAndOr: queryAndOr,
+  LogicalAnd: logicalAnd,
+  LogicalOr: logicalOr,
   QueryComparisonOperator: queryComparisonOperator,
   QueryFunctionName: queryFunctionName,
   QueryFunctionOpen: queryFunctionOpen,
@@ -562,26 +583,26 @@ export const lessSyntax = rules(_g => ({
   AtIdentifier: atIdentifier,
   AtIdentifierUnescaped: atIdentifierUnescaped,
   LessIdentifier: lessBareIdentifier,
-  VariableNameToken: lessVariableName,
+  VariableNameToken: identCodePointRun,
   DeclarationPropertyToken: lessDeclarationProperty,
-  NumericMapKeyToken: lessNumericMapKey,
+  NumericMapKeyToken: digitRun,
   PunctuationMapKeyToken: lessPunctuationMapKey,
   PercentEscapeToken: lessPercentEscape,
   ValueIdentifier: lessBareIdentifier,
   InterpolationHead: lessInterpHead,
   InterpolationKey: lessInterpBareKey,
-  InterpolationIndex: lessInterpIndexKey,
+  InterpolationIndex: digitRun,
   QuotedDoubleText: lessQuotedDoubleChunk,
   QuotedSingleText: lessQuotedSingleChunk,
-  InterpolatedCustomPropertyStart: lessInterpolatedCustomPropertyStart,
-  InterpolatedCustomPropertyDash: lessInterpolatedCustomPropertyDash,
-  InterpolatedCustomPropertyTail: lessInterpolatedCustomPropertyTail,
+  InterpolatedCustomPropertyStart: lessBareIdentifier,
+  InterpolatedCustomPropertyDash: hyphen,
+  InterpolatedCustomPropertyTail: identCodePointRun,
   InterpolatedValueStart: lessInterpolatedValueStart,
-  InterpolatedValueDash: lessInterpolatedValueDash,
-  InterpolatedValueTail: lessInterpolatedValueTail,
+  InterpolatedValueDash: hyphen,
+  InterpolatedValueTail: interpolatedPropertyTail,
   CustomPropertyToken: lessCustomProperty,
   CustomValueOuterContent: lessCustomOuterContent,
   CustomValueInnerContent: lessCustomInnerContent,
-  CustomValueSingleQuoted: lessCustomSingleQuoted,
-  CustomValueDoubleQuoted: lessCustomDoubleQuoted
+  CustomValueSingleQuoted: customSingleQuoted,
+  CustomValueDoubleQuoted: customDoubleQuoted
 }));

@@ -2,9 +2,11 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   defineFunction,
   emitValue,
+  FunctionDeclined,
   groupItems,
   HEX,
   makeColorRgb,
+  makeAny,
   makeDimension,
   makeKeyword,
   makeList,
@@ -271,6 +273,42 @@ function isNativeValue(value: unknown): value is Value {
     && typeof value.bytes === 'string';
 }
 
+/**
+ * A legacy `@plugin` function's RESULT, converted as Less 4.x converts it
+ * (`less/lib/less/tree/call.js`):
+ * - `null` / `undefined`: the function declined, so the call is written out
+ *   as-is ({@link FunctionDeclined});
+ * - `false`, `true` and any other falsy value: Less's documented "null
+ *   functions", an empty result with no output (valid as a statement);
+ * - a string, and an `Anonymous` node (from the in-process facade or the
+ *   file-plugin bridge, the one conversion both share): raw text;
+ * - a number stays a number, NOT raw text as 4.x's `Anonymous(String(n))`:
+ *   the owner's v5 fixture `tests-unit/import/import.less` (a plugin `pi()`)
+ *   expects it rounded like any computed number, and the owner-maintained
+ *   fixtures are the v5 spec;
+ * - any other node: that node's value ({@link fromNativeLessValue}).
+ */
+export function fromNativeLessResult(result: unknown): ValueGroup {
+  if (result === null || result === undefined) {
+    throw new FunctionDeclined();
+  }
+  if (result === true || !result) {
+    return makeAny('');
+  }
+  if (typeof result === 'string') {
+    return makeAny(result);
+  }
+  return isAnonymousResult(result) ? makeAny(result.value) : fromNativeLessValue(result);
+}
+
+function isAnonymousResult(value: unknown): value is { readonly type: 'Anonymous'; readonly value: string } {
+  return typeof value === 'object'
+    && value !== null
+    && !isNativeValue(value)
+    && 'type' in value && value.type === 'Anonymous'
+    && 'value' in value && typeof value.value === 'string';
+}
+
 export function fromNativeLessValue(value: unknown): ValueGroup {
   if (isNativeValue(value)) {
     return value;
@@ -392,8 +430,8 @@ export class LessApiBridge {
   invokeNativeFunction(fn: NativeLessFunction, args: readonly PluginRawArgument[]): ValueGroup | Promise<ValueGroup> {
     const result = fn(...args.map(toNativeLessValue));
     return isThenable(result)
-      ? Promise.resolve(result).then(fromNativeLessValue)
-      : fromNativeLessValue(result);
+      ? Promise.resolve(result).then(fromNativeLessResult)
+      : fromNativeLessResult(result);
   }
 
   invokeContextualFunction(
@@ -416,8 +454,8 @@ export class LessApiBridge {
     });
 
     return isThenable(result)
-      ? Promise.resolve(result).then(fromNativeLessValue)
-      : fromNativeLessValue(result);
+      ? Promise.resolve(result).then(fromNativeLessResult)
+      : fromNativeLessResult(result);
   }
 
   invokeRawFunction(fn: Fn, args: readonly PluginRawArgument[], ctx: PluginCallCtx): MaybePromise<ValueGroup | undefined> {

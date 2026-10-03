@@ -19,7 +19,7 @@ export type JsBridgeValue =
   | { __jessBridge: true; kind: 'dimension'; value: number; unit?: string }
   | { __jessBridge: true; kind: 'color'; rgb: [number, number, number]; alpha?: number; bytes?: string }
   | { __jessBridge: true; kind: 'quoted'; value: string; quote?: '"' | '\''; escaped?: boolean }
-  | { __jessBridge: true; kind: 'anonymous'; value: string }
+  | { __jessBridge: true; kind: 'anonymous'; value: string; raw?: true }
   | { __jessBridge: true; kind: 'list'; items: JsBridgeValue[]; separator: ',' | '/' | ';' }
   | { __jessBridge: true; kind: 'expression'; items: JsBridgeValue[] }
   | { __jessBridge: true; kind: 'mixin'; rules: JsBridgeDeclaration[] };
@@ -203,6 +203,19 @@ function decodeMixin(value: Extract<JsBridgeValue, { kind: 'mixin' }>): LegacyMi
     }
   };
   return mixin;
+}
+
+/**
+ * A legacy `@plugin` function's RESULT. A true `Anonymous` result (the worker
+ * marks it `raw`) stays the Less facade shape so the one Less 4.x result
+ * conversion (`fromNativeLessResult` in `@jesscss/plugin-less-compat`) makes it
+ * raw text, as it does for an in-process plugin; everything else decodes as a
+ * value.
+ */
+export function decodeBridgeResult(value: unknown): unknown {
+  return isBridgeValue(value) && value.kind === 'anonymous' && value.raw === true
+    ? { type: 'Anonymous', value: value.value }
+    : decodeBridgeValue(value);
 }
 
 export function decodeBridgeValue(value: unknown): unknown {

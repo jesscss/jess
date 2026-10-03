@@ -395,6 +395,19 @@ export const DEFAULT_MODES: EvalModes = {
  * that admits the value domain, so a shared home here is what lets comparison
  * throw without importing the arithmetic module.
  */
+/**
+ * A computed division whose divisor is zero. Deliberately NOT a `TypeError`: the
+ * `preserve` rung catches `TypeError`s to spell an unexpressible result as
+ * `calc(…)`, and a division by zero has no result to spell (DESIGN-DECISIONS
+ * P35) — it is an error in every `unitMode`.
+ */
+export class DivisionByZeroError extends Error {
+  constructor(readonly expr: string) {
+    super(`${expr} divides by zero`);
+    this.name = 'DivisionByZeroError';
+  }
+}
+
 export class UnitArithmeticError extends TypeError {
   constructor(message: string) {
     super(message);
@@ -421,6 +434,21 @@ export class IncomparableOperandsError extends TypeError {
   constructor(message: string) {
     super(message);
     this.name = 'IncomparableOperandsError';
+  }
+}
+
+/**
+ * An arithmetic operand that is EMPTY: the result of a function that returns
+ * nothing (a Less "null function", such as a legacy `@plugin` returning
+ * `false`). There is nothing to operate on, and no spelling of the operation
+ * that is not a hole (`calc( + 1px)`), so it raises in every unit mode — Less
+ * 4.x rejects it too ("Operation on an invalid type"). Not a `TypeError`, so the
+ * preserve-mode fallback in `operate` cannot swallow it.
+ */
+export class EmptyOperandError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'EmptyOperandError';
   }
 }
 
@@ -564,7 +592,11 @@ export interface ValueEvaluator {
    * (`data-uri`/`image-*`) reaches through {@link FnCtx.io}; absent on renders
    * with no IO host wired. `scopedFn`, when supplied, is an already-resolved
    * lexical function. It avoids repeating the caller's scope lookup; `scope`
-   * remains for direct consumers that need the legacy lazy lookup seam. */
+   * remains for direct consumers that need the legacy lazy lookup seam.
+   * `ambient: false` says the calling document has no ambient built-in
+   * namespace (ledger P36): the registry is not consulted, so a name that is
+   * not scoped takes the unknown-function path, exactly as in a document whose
+   * registry is empty (ledger P17). */
   call(
     name: string,
     args: ValueGroup,
@@ -574,6 +606,9 @@ export interface ValueEvaluator {
 
     /** A caller-resolved scoped function; takes precedence over `scope`. */
     scopedFn?: Fn,
+
+    /** Whether the registry's built-ins are in scope; default `true`. */
+    ambient?: boolean,
   ): MaybePromise<ValueGroup>;
 
   /**
@@ -584,9 +619,10 @@ export interface ValueEvaluator {
    * `fade(@c, @amount: 50%)`) binds against these — the same names the function
    * was DEFINED with, which is the only place the mapping exists. An entry is
    * `undefined` for a parameter its definition left unnamed, so a keyword can
-   * never bind to a position that declared no name.
+   * never bind to a position that declared no name. `ambient` is as in
+   * {@link ValueEvaluator.call}.
    */
-  paramNames(name: string, scopedFn?: Fn): readonly (string | undefined)[] | undefined;
+  paramNames(name: string, scopedFn?: Fn, ambient?: boolean): readonly (string | undefined)[] | undefined;
 
   /** Comparison leaf in VALUE position (`if(@a > 0, …)`) on typed operands -> boolean. */
   compare(op: string, left: ValueGroup, right: ValueGroup, modes: EvalModes): boolean;

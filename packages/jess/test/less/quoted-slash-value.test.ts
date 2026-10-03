@@ -28,7 +28,7 @@ describe('quoted lone-operator strings keep their quotes', () => {
   it('single-quoted and other operator chars survive', async () => {
     expect(await compile(`.a { x: '/'; y: "-"; z: "%"; }`)).toBe(`.a {\n  x: '/';\n  y: "-";\n  z: "%";\n}`);
   });
-  it('bare slash still forms the font shorthand', async () => {
-    expect(await compile('.a { font: 12px/1.5 sans-serif; }')).toBe('.a {\n  font: 12px/1.5 sans-serif;\n}');
+  it('bare slash still forms the font shorthand, spaced like every separator', async () => {
+    expect(await compile('.a { font: 12px/1.5 sans-serif; }')).toBe('.a {\n  font: 12px / 1.5 sans-serif;\n}');
   });
 });

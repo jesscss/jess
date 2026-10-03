@@ -177,6 +177,25 @@ describe('Jess AST grammar facts', () => {
     expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe('.card {\n  color: green;\n}\n');
   });
 
+  it('reads the logical operators case-insensitively in every ladder, as SCSS does', () => {
+    for (const lower of [
+      '$if ((($a=true) and not($b)) or false) { .c { d: e; } }',
+      'm($v) when (($v = true) and not(false)) { color: red; } n() when (false or true) { color: red; }',
+      'a { b: $(not(true)); c: $(true and false); d: $(true or false); }'
+    ]) {
+      const upper = lower.replace(/\b(and|or|not)\b/g, word => word.toUpperCase());
+      expect(bare(parse(upper))).toEqual(bare(parse(lower)));
+    }
+  });
+
+  it('ends a keyword only where the identifier ends: an escape continues it', () => {
+    /* css-syntax-3 §4.3.11: `and\61` is the one identifier `anda`, not `and` then `\61`. */
+    expect(() => parse('a { b: $(true and\\61 false); }')).toThrow(JessParseError);
+    expect(bare(parse('a { b: $(true and false); }'))).toMatchObject({
+      rules: [{ rules: [{ value: { parts: [{ ref: { value: { type: 'Operation', operator: 'and' } } }] } }] }]
+    });
+  });
+
   it('retains CST-admitted adjacent $if comparison operators through public parse and render', () => {
     const source = '$size: 6; $if ($size>5) { .card { color: green; } } $else { .card { color: red; } }';
     const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
@@ -758,16 +777,16 @@ describe('Jess AST grammar facts', () => {
     });
 
     /*
-     * Each side stays ONE authored space group, exactly as a modern function
-     * component already does: flattening would render `12px / 1.5 / sans-serif`.
+     * The slash groups only its direct neighbours (P33 as amended 2026-09-24):
+     * `(12px/1.5)` is the group, and `sans-serif` is the next space-list item.
      */
     expect(parse('.x { font: 12px/1.5 sans-serif; }')).toMatchObject({
       rules: [{ type: 'Ruleset', rules: [{
         name: 'font',
-        value: { type: 'List', sep: '/', value: [
-          { type: 'Dimension', src: '12px' },
-          [{ type: 'Dimension', src: '1.5' }, { type: 'Keyword', src: 'sans-serif' }]
-        ] }
+        value: [
+          { type: 'List', sep: '/', value: [{ type: 'Dimension', src: '12px' }, { type: 'Dimension', src: '1.5' }] },
+          { type: 'Keyword', src: 'sans-serif' }
+        ]
       }] }]
     });
     const evaluator = buildEvaluator(makeLessRegistry());
@@ -777,12 +796,12 @@ describe('Jess AST grammar facts', () => {
 
     /*
      * A `$`-headed left side keeps its existing left-factored slash reduction,
-     * and a modern function component still admits exactly one separator.
+     * and a modern function component takes the same slash group a value does.
      */
     expect(serialize(parse('$w: 1; .x { slash: $w / 2; color: rgb(15 23 42 / 0.22); }'), { evaluator }).css).toBe(
       '.x {\n  slash: 1 / 2;\n  color: rgb(15 23 42 / 0.22);\n}\n'
     );
-    for (const invalid of ['.x { a: / 2; }', '.x { a: 1 /; }', '.x { color: rgb(15 23 42 / 0.22 / 1); }']) {
+    for (const invalid of ['.x { a: / 2; }', '.x { a: 1 /; }']) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
   });
@@ -840,6 +859,17 @@ describe('Jess AST grammar facts', () => {
     });
     expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.a {\n  width: 8px;\n}\n'
+    );
+
+    const truthyMember = '$flags: { enableShadow: true; }; $if ($flags.enableShadow) { .a { color: blue; } }';
+    expect(parse(truthyMember)).toMatchObject({
+      rules: [
+        { type: 'VariableDeclaration', name: 'flags' },
+        { type: 'If', branches: [{ guard: { g: 'truth', value: { type: 'Reference', raw: '$flags.enableShadow' } } }] }
+      ]
+    });
+    expect(serialize(parse(truthyMember), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
+      '.a {\n  color: blue;\n}\n'
     );
   });
 
@@ -2269,12 +2299,11 @@ describe('Jess AST grammar facts', () => {
       type: 'Stylesheet',
       rules: [{ type: 'Ruleset', rules: [{
         type: 'Declaration', name: 'box-shadow', value: {
-          type: 'FunctionCall', name: 'rgb', args: [{ value: {
-            type: 'List', sep: '/', value: [
-              [{ type: 'Dimension', src: '15' }, { type: 'Dimension', src: '23' }, { type: 'Dimension', src: '42' }],
-              { type: 'Dimension', src: '0.22' }
-            ]
-          } }]
+          type: 'FunctionCall', name: 'rgb', args: [{ value: [
+            { type: 'Dimension', src: '15' },
+            { type: 'Dimension', src: '23' },
+            { type: 'List', sep: '/', value: [{ type: 'Dimension', src: '42' }, { type: 'Dimension', src: '0.22' }] }
+          ] }]
         }
       }] }]
     });
@@ -2284,17 +2313,22 @@ describe('Jess AST grammar facts', () => {
     expect(variableCall.rules[1]).toMatchObject({
       type: 'Ruleset', rules: [{
         type: 'Declaration', value: {
-          type: 'FunctionCall', args: [{ value: {
-            type: 'List', sep: '/', value: [[{ type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Operation', operator: '+' } }, unquote: true }] }, { type: 'Dimension', src: '23' }, { type: 'Dimension', src: '42' }], { type: 'Dimension', src: '0.22' }]
-          } }]
+          type: 'FunctionCall', args: [{ value: [
+            { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Operation', operator: '+' } }, unquote: true }] },
+            { type: 'Dimension', src: '23' },
+            { type: 'List', sep: '/', value: [{ type: 'Dimension', src: '42' }, { type: 'Dimension', src: '0.22' }] }
+          ] }]
         }
       }]
     });
 
+    /*
+     * A dangling or leading separator has no operand. A second slash is the
+     * same direct-neighbour group the css base already accepts as a shape.
+     */
     for (const invalid of [
       '.card { color: rgb(/ 0.22); }',
-      '.card { color: rgb(15 23 42 /); }',
-      '.card { color: rgb(15 23 42 / 0.22 / 1); }'
+      '.card { color: rgb(15 23 42 /); }'
     ]) {
       const cst = parseJessCst(invalid);
       const rejected = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace });
@@ -3413,7 +3447,8 @@ describe('Jess AST grammar facts', () => {
       '.box { width: $($d(2) * 2); }',
       '.box { width: $(2 * $d(2)); }',
       '.box { width: $($d(1) + $d(3)); }',
-      '.box { width: $($map.entry($n)); }'
+      '.box { width: $($map.entry($n)); }',
+      '.box { width: $($e(\'100%\')); }'
     ]) {
       expect(() => parse(source), source).not.toThrow();
     }
@@ -3424,6 +3459,32 @@ describe('Jess AST grammar facts', () => {
      * `default()`. Dispatch is spelled `$fn(…)`.
      */
     expect(() => parse('.box { width: $(max(1, 2)); }')).toThrow(SyntaxError);
+
+    /*
+     * An explicit imported or value-held call accepts the same complete value
+     * slots as an ordinary call. Nested expression boundaries retain their raw
+     * spelling, and a space-list argument stays one positional argument.
+     */
+    expect(parse('$a: 1px; $b: 2px; .box { width: $min($($^a + $^b)); }')).toMatchObject({
+      rules: [{ name: 'a' }, { name: 'b' }, { rules: [{
+        value: { type: 'Reference', raw: '$min($(^a + ^b))', steps: [{
+          type: 'Call', args: [{ value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression' } }] } }]
+        }] }
+      }] }]
+    });
+    expect(parse('.box { color: $hsl(from #0000ff calc(h - 1) s l); }')).toMatchObject({
+      rules: [{ rules: [{
+        value: { type: 'Reference', raw: '$hsl(from #0000ff calc(h - 1) s l)', steps: [{
+          type: 'Call', args: [{ value: [
+            { type: 'Keyword', src: 'from' },
+            { type: 'Color' },
+            { type: 'FunctionCall', name: 'calc' },
+            { type: 'Keyword', src: 's' },
+            { type: 'Keyword', src: 'l' }
+          ] }]
+        }] }
+      }] }]
+    });
 
     /*
      * The call reduces to the same typed fact `$d(2)` already produces in value
@@ -3708,5 +3769,93 @@ describe('@layer dotted sub-layer names', () => {
     });
     expect(serialize(parse('@layer a.b { c { color: red } }')).css)
       .toBe('@layer a.b {\n  c {\n    color: red;\n  }\n}\n');
+  });
+});
+
+/*
+ * An at-rule with a typed BLOCK production also has a statement spelling, and
+ * CSS pairs the two inside ONE dispatch case
+ * (`choice(g.RoutedAtRuleStatement, g.Keyframes)`). Jess instead rejected those
+ * names inside `AtRuleHeader`'s dispatch, and a parseman dispatch branch failure
+ * is COMMITTED — it aborts the whole statement list, so `AtRuleStatement` (the
+ * last arm) was never reached and `@keyframes a;` / `@property --x;` failed the
+ * document outright. The exclusion is now a declining `not()` on `AtRuleBlock`.
+ */
+describe('statement spelling of the typed at-rules', () => {
+  it.each([
+    ['@keyframes a;', '@keyframes'],
+    ['@-webkit-keyframes a;', '@-webkit-keyframes'],
+    ['@property --x;', '@property'],
+    ['@scope (.a);', '@scope']
+  ])('reads %s as the canonical AtRuleStatement fact', (source, name) => {
+    expect(parse(source)).toMatchObject({
+      rules: [{ type: 'AtRuleStatement', name }]
+    });
+  });
+
+  it('still routes the BLOCK spelling of those names to its typed production', () => {
+    expect(parse('@keyframes a { 0% { opacity: 0 } }')).toMatchObject({
+      rules: [{ type: 'AtRuleBlock', name: '@keyframes', rules: [{ type: 'Ruleset' }] }]
+    });
+    expect(parse('@property --x { syntax: "*"; inherits: false; }')).toMatchObject({
+      rules: [{ type: 'AtRuleBlock', name: '@property', prelude: { src: '--x' } }]
+    });
+    expect(parse('@scope (.a) { b { color: red } }')).toMatchObject({
+      rules: [{ type: 'AtRuleBlock', name: '@scope', prelude: { src: '(.a)' } }]
+    });
+  });
+
+  it('still keeps a malformed typed block out of the generic at-rule block', () => {
+    expect(() => parse('@keyframes { }')).toThrow(JessParseError);
+    expect(() => parse('@property { }')).toThrow(JessParseError);
+  });
+
+  it('keeps a typed block header that is NOT a generic statement prelude working', () => {
+    /* `style(--x: 1)` is not a value the typed `AtRulePrelude` can hold. The
+     * statement arm must therefore stay AFTER `AtRuleBlock`, or its committed
+     * dispatch failure takes the whole container rule with it. */
+    expect(parse('@container style(--x: 1) { a { color: red } }')).toMatchObject({
+      rules: [{ type: 'AtRuleBlock', name: '@container' }]
+    });
+  });
+});
+
+/*
+ * css-cascade-5 §3 admits a layer statement in the document prologue, BEFORE
+ * `@import`. Jess had no spelling for that position, so `@layer base;` matched
+ * as an ordinary body item, which ends the prologue and left the following
+ * `@import` unparseable. This is the one entry of the nine that is valid CSS.
+ */
+describe('@layer statement in the document prologue', () => {
+  it('admits a CSS @import after a layer statement', () => {
+    expect(parse('@layer base;\n@import "a.css";')).toMatchObject({
+      rules: [
+        { type: 'AtRuleStatement', name: '@layer', prelude: { type: 'Keyword', src: 'base' } },
+        { type: 'AtRuleStatement', name: '@import' }
+      ]
+    });
+    expect(serialize(parse('@layer base;\n@import "a.css";')).css)
+      .toBe('@layer base;\n@import "a.css";\n');
+  });
+
+  it('keeps the prologue layer statement on the same typed prelude as the body one', () => {
+    expect(parse('@layer a, b.c;\n@import "a.css";')).toMatchObject({
+      rules: [
+        {
+          type: 'AtRuleStatement',
+          name: '@layer',
+          prelude: {
+            type: 'List',
+            sep: ',',
+            value: [{ type: 'Keyword', src: 'a' }, { type: 'Keyword', src: 'b.c' }]
+          }
+        },
+        { type: 'AtRuleStatement', name: '@import' }
+      ]
+    });
+  });
+
+  it('still refuses a CSS @import after an ordinary rule', () => {
+    expect(() => parse('a { color: red }\n@import "a.css";')).toThrow(JessParseError);
   });
 });

@@ -707,9 +707,9 @@ export const ERR = {
       ...args
     });
   },
-  rootCallWithoutRoot(args: Common & { meta: { name: string } }) {
+  rulesetArgumentWithRules(args: Common & { meta: { what: string } }) {
     return makeJessError({
-      code: 'eval/root-call-without-root',
+      code: 'eval/ruleset-argument-with-rules',
       phase: 'eval',
       ...args
     });
@@ -750,6 +750,20 @@ export const ERR = {
       ...args
     });
   },
+
+  /**
+   * A division the author asked for — `math: always`, a paren group, `$( … )` —
+   * whose divisor is zero. There is no quotient to print, and printing the
+   * operation verbatim would hide the mistake, so it is an error in every
+   * `unitMode` (DESIGN-DECISIONS P35).
+   */
+  divisionByZero(args: Common & { meta: { expr: string } }) {
+    return makeJessError({
+      code: 'eval/division-by-zero',
+      phase: 'eval',
+      ...args
+    });
+  },
   invalidUnitArithmetic(args: Common & { meta: { reason: string } }) {
     return makeJessError({
       code: 'eval/invalid-unit-arithmetic',
@@ -776,6 +790,13 @@ export const ERR = {
    * answering `false` to both `a > b` and `b > a` — which is what the author
    * cannot distinguish from a genuine "not greater".
    */
+  emptyOperand(args: Common & { meta: { reason: string } }) {
+    return makeJessError({
+      code: 'eval/empty-operand',
+      phase: 'eval',
+      ...args
+    });
+  },
   incomparableOperands(args: Common & { meta: { reason: string } }) {
     return makeJessError({
       code: 'eval/incomparable-operands',

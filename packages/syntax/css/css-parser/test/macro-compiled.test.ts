@@ -123,20 +123,20 @@ test('coverage-enabled macro CSS reports structural grammar coverage across publ
 test('macro-compiled declaration extension keeps calc on the strict route', () => {
   for (const source of ['.a { x: (foo); }', '.a { x: 1 / 2; }', '.a { filter: alpha(opacity=50); }', '.a { x: foo|bar; }', '.a { x: 1e3px; y: calc(.5E1px + 2px); }', '.a { remainder: calc(5px % 2); }', '.a { offset: 0 calc(-1 * var(--x)); }']) {
     const cst = parseCssCst(source);
-    const direct = run(cssGrammar.Stylesheet, source, { trivia: cssGrammar.whitespace });
+    const direct = run(cssGrammar.Stylesheet, source, { trivia: cssGrammar.whitespace, state: { source } });
     expect(cst.errors, source).toHaveLength(0);
     expect(cst.unconsumedFrom, source).toBeNull();
     expect(direct.ok && direct.unconsumedFrom === null && direct.value?.type === 'Stylesheet', source).toBe(true);
   }
   for (const source of ['.a { width: calc(); }', '.a { width: calc(+); }', '.a { width: 0 calc(); }', '.a { width: 0 calc(+); }']) {
-    const direct = run(cssGrammar.Stylesheet, source, { trivia: cssGrammar.whitespace });
+    const direct = run(cssGrammar.Stylesheet, source, { trivia: cssGrammar.whitespace, state: { source } });
     expect(direct.ok && direct.unconsumedFrom === null, source).toBe(false);
   }
 });
 
 test('macro-compiled calc keeps balanced var fallback components structured', () => {
   const source = '.a { x: calc(var(--x, (foo) [foo]) + 2px); y: calc(var(--x, foo, bar) + 2px); z: calc(var(--x, foo([bar])) + 2px); w: calc(var(--x, {foo}) + 2px); nested: calc(var(--x, var(--y, a, b)) + 2px); empty: calc(var(--x,) + 2px); trailing: calc(var(--x, foo,) + 2px); genericTrailing: calc(var(--x, foo(a,)) + 2px); genericLeading: calc(var(--x, foo(,a)) + 2px); interior: calc(var(--x, a,,b) + 2px); validBracket: calc(var(--x, [a(b)c]) + 2px); validBrace: calc(var(--x, {a[b]c}) + 2px); }';
-  const direct = run(cssGrammar.Stylesheet, source, { trivia: cssGrammar.whitespace });
+  const direct = run(cssGrammar.Stylesheet, source, { trivia: cssGrammar.whitespace, state: { source } });
   expect(direct.ok && direct.unconsumedFrom === null && direct.value?.type === 'Stylesheet').toBe(true);
 });
 
@@ -147,7 +147,7 @@ test('macro-compiled calc rejects crossing fallback block delimiters', () => {
     '.a { x: calc(var(--x, [a(b]) + 2px); }',
     '.a { x: calc(var(--x, {a[b}) + 2px); }'
   ]) {
-    const direct = run(cssGrammar.Stylesheet, source, { trivia: cssGrammar.whitespace });
+    const direct = run(cssGrammar.Stylesheet, source, { trivia: cssGrammar.whitespace, state: { source } });
     expect(direct.ok && direct.unconsumedFrom === null, source).toBe(false);
   }
 });
@@ -155,12 +155,12 @@ test('macro-compiled calc rejects crossing fallback block delimiters', () => {
 test('macro-compiled calc accepts every adjacent fallback-block pair and rejects every crossed pair', () => {
   for (const fallback of ['([a])', '({a})', '[(a)]', '[{a}]', '{(a)}', '{[a]}', '[a(b)]', '{a[b]}']) {
     const source = `.a { x: calc(var(--x, ${fallback}) + 2px); }`;
-    const direct = run(cssGrammar.Stylesheet, source, { trivia: cssGrammar.whitespace });
+    const direct = run(cssGrammar.Stylesheet, source, { trivia: cssGrammar.whitespace, state: { source } });
     expect(direct.ok && direct.unconsumedFrom === null && direct.value?.type === 'Stylesheet', fallback).toBe(true);
   }
   for (const fallback of ['([a)]', '({a)}', '[(a])', '[{a]}', '{(a})', '{[a}]', '([a]', '[(a)', '{[a]']) {
     const source = `.a { x: calc(var(--x, ${fallback}) + 2px); }`;
-    const direct = run(cssGrammar.Stylesheet, source, { trivia: cssGrammar.whitespace });
+    const direct = run(cssGrammar.Stylesheet, source, { trivia: cssGrammar.whitespace, state: { source } });
     expect(direct.ok && direct.unconsumedFrom === null, fallback).toBe(false);
   }
 });
@@ -173,7 +173,7 @@ test('macro-compiled direct selector closure matches public CST acceptance', () 
     '50% { color: red; }'
   ]) {
     const cst = parseCssCst(source);
-    const direct = run(cssGrammar.Stylesheet, source, { trivia: cssGrammar.whitespace });
+    const direct = run(cssGrammar.Stylesheet, source, { trivia: cssGrammar.whitespace, state: { source } });
     expect(cst.errors, source).toHaveLength(0);
     expect(cst.unconsumedFrom, source).toBeNull();
     expect(direct.ok && direct.unconsumedFrom === null && direct.value?.type === 'Stylesheet', source).toBe(true);
@@ -183,7 +183,7 @@ test('macro-compiled direct selector closure matches public CST acceptance', () 
 test('macro-compiled comment-delimited url identifiers are not url or function tokens', () => {
   const source = '.asset { background: url/* name-open */(icon.svg); }';
   const cst = parseCssCst(source);
-  const direct = run(cssGrammar.Stylesheet, source, { trivia: cssGrammar.whitespace });
+  const direct = run(cssGrammar.Stylesheet, source, { trivia: cssGrammar.whitespace, state: { source } });
   expect(cst.errors).toHaveLength(0);
   expect(cst.unconsumedFrom).toBeNull();
   expect(direct.ok && direct.unconsumedFrom === null && direct.value?.type === 'Stylesheet').toBe(true);
@@ -201,7 +201,7 @@ test('macro-compiled comment-delimited url identifiers are not url or function t
 test('macro-compiled direct query functions match public CST acceptance', () => {
   const source = '@container sidebar style(--theme: dark) and scroll-state(stuck: block-start) { .card { color: red; } }';
   const cst = parseCssCst(source);
-  const direct = run(cssGrammar.Stylesheet, source, { trivia: cssGrammar.whitespace });
+  const direct = run(cssGrammar.Stylesheet, source, { trivia: cssGrammar.whitespace, state: { source } });
   expect(cst.errors).toHaveLength(0);
   expect(cst.unconsumedFrom).toBeNull();
   expect(direct.ok && direct.unconsumedFrom === null && direct.value?.type === 'Stylesheet').toBe(true);

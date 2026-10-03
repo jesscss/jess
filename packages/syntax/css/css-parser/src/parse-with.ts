@@ -70,10 +70,15 @@ export function parseWith(grammar: CssAstGrammar, input: string): Stylesheet {
   if (entry === undefined || trivia === undefined) {
     throw new TypeError('CSS AST grammar is missing its public Stylesheet entry.');
   }
+
+  /*
+   * The input rides the parse state so a reducer can record the source bytes of
+   * a structured `<general-enclosed>` group, which the emitter prints as written.
+   */
   const result = run(
     entry,
     input,
-    { trivia, rootTrivia: { select: commentTriviaLabels } }
+    { trivia, state: { source: input }, rootTrivia: { select: commentTriviaLabels } }
   );
 
   /*

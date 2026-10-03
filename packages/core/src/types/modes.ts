@@ -33,3 +33,19 @@ export type UnitMode = 'loose' | 'preserve' | 'strict';
  * imported functions are non-optional references and always error.
  */
 export type FunctionMode = 'preserve' | 'error';
+
+/**
+ * Less module modes — whether a `.less` document has an ambient built-in
+ * function namespace (ledger P36).
+ *
+ * - `auto`: decided per document. A document that writes `@use` or `@compose`
+ *   (either spelling) is in modern mode (`@export` will join them when Less
+ *   implements it); any other document is legacy, and the Less built-ins compute
+ *   as the author asked.
+ * - `modern`: every `.less` document is in modern mode. A Less built-in reaches
+ *   it only by import; an unimported call keeps its name and call shape, and
+ *   its arguments are evaluated like any other value.
+ *
+ * Kept in `@jesscss/core` to avoid cyclic workspace dependencies with `styles-config`.
+ */
+export type ModuleMode = 'auto' | 'modern';

@@ -23,14 +23,13 @@ describe('SCSS AST-v2 separator and delimiter facts', () => {
       ],
       sep: '/'
     });
-    expect(grid.value).toMatchObject({
-      type: 'List',
-      sep: '/',
-      value: [
-        [{ src: '1' }, { src: '2' }],
-        [{ src: '3' }, { src: '4' }]
-      ]
-    });
+
+    /* The slash groups only its direct neighbours (P33 as amended 2026-09-24). */
+    expect(grid.value).toMatchObject([
+      { src: '1' },
+      { type: 'List', sep: '/', value: [{ src: '2' }, { src: '3' }] },
+      { src: '4' }
+    ]);
     expect(JSON.stringify(ratio.value)).not.toContain('"src":"/"');
   });
 

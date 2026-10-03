@@ -5,6 +5,21 @@
  * re-exported by a sibling entry without dragging that entry's imports along.
  */
 
+/*
+ * The one at-rule-specific message this module gives. The `@charset` prelude is
+ * a `<string>` and nothing else (css-syntax-3 §3.2), so a refusal there has a
+ * real answer to give and must not read as `Expected: <atom>`. The atom is
+ * emitted by the css grammar's `CHARSET_PRELUDE_EXPECTED` and spelled here
+ * rather than imported: this module deliberately holds no grammar import.
+ */
+function expectedMessage(expected: readonly string[]): string {
+  if (expected.includes('@charset quoted string')) {
+    return 'An @charset prelude must be a quoted string, as in @charset "utf-8";.';
+  }
+  const detail = expected.length > 0 ? ` Expected: ${expected.join(', ')}.` : '';
+  return `SCSS parser error.${detail}`;
+}
+
 /** Structured failure from the public direct SCSS parser. */
 export class ScssParseError extends SyntaxError {
   readonly code = 'parse/syntax-error' as const;
@@ -30,8 +45,7 @@ export class ScssParseError extends SyntaxError {
       endColumn?: number;
     } = {}
   ) {
-    const detail = expected.length > 0 ? ` Expected: ${expected.join(', ')}.` : '';
-    super(options.message ?? `SCSS parser error.${detail}`);
+    super(options.message ?? expectedMessage(expected));
     this.name = 'ScssParseError';
     this.offset = offset;
     this.expected = expected;

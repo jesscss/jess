@@ -177,7 +177,7 @@ describe('@jesscss/scss-parser/cst', () => {
   });
 
   it('uses CSS-aligned CST labels for generic at-rule preludes', () => {
-    const result = parseScssCst('@layer base.utilities { .card { color: red; } } @charset "UTF-8";');
+    const result = parseScssCst('@layer base.utilities { .card { color: red; } } @layer theme;');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
@@ -185,6 +185,24 @@ describe('@jesscss/scss-parser/cst', () => {
     expect(grammarTypes.get('AtRulePrelude')).toBe(1);
     expect(grammarTypes.get('AtRulePreludeAtom')).toBeGreaterThan(0);
     expect(grammarTypes.get('StatementPrelude')).toBe(1);
+    expectNoModeLabels(result.tree);
+  });
+
+  /*
+   * `@charset` is the one statement at-rule that is NOT on `StatementPrelude`.
+   * Its prelude is a `<string>` and nothing else (css-syntax-3 §3.2), so it
+   * reaches the CSS base's `CharsetStatement`/`CharsetPrelude` pair — the label
+   * this asserts is the CSS one, which is the point of inheriting the rule.
+   */
+  it('labels an @charset prelude with the CSS charset rule, not the generic one', () => {
+    const result = parseScssCst('@charset "UTF-8";');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    const { grammarTypes } = stats(result.tree);
+    expect(grammarTypes.get('CharsetStatement')).toBe(1);
+    expect(grammarTypes.get('CharsetPrelude')).toBe(1);
+    expect(grammarTypes.has('StatementPrelude')).toBe(false);
     expectNoModeLabels(result.tree);
   });
 

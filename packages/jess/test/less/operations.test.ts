@@ -149,8 +149,14 @@ describe('Operations', () => {
         }
       `;
 
+      /*
+       * `@div-op` is a slash list (the slash does not divide under
+       * parens-division), so the `*` has nothing it can multiply and the
+       * operation is preserved as `calc(…)` — owner-approved fixture change
+       * (DESIGN-DECISIONS P35).
+       */
       const css = await compiler.renderString(lessCode, { language: 'less' });
-      expect(css).toContain('result: 10px / 2 * 2');
+      expect(css).toContain('result: calc(10px / 2 * 2)');
     });
 
     it('should preserve spacing', async () => {
@@ -160,8 +166,9 @@ describe('Operations', () => {
         }
       `;
 
+      /* Math inside calc() is kept as written (owner 2026-09-24, P35). */
       const css = await compiler.renderString(lessCode, { language: 'less' });
-      expect(css).toContain('foo: 3 7 11');
+      expect(css).toContain('foo: 3 calc(3 + 4) 11');
     });
 
     it('should reduce calc operations and expressions', async () => {
@@ -198,26 +205,33 @@ describe('Operations', () => {
         }
       `;
 
+      /*
+       * Math inside calc() is kept as written with variables substituted (owner
+       * 2026-09-24, DESIGN-DECISIONS P35): a math function's result is clamped
+       * to what the property allows, so folding it changes the value. Parens that
+       * carry precedence survive; redundant ones do not. A variable's own math
+       * (`@c`, `@calc`) still computes, and `min()` is a Less built-in.
+       */
       const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContainString(`
         .no-math {
           root: calc(100% - 30px);
           root2: calc(100% - 40px);
-          width: calc(50% + (25vh - 20px));
-          height: calc(50% + (25vh - 20px));
-          min-height: 15vh;
-          foo: 3 7 11;
+          width: calc(50% + 50vh / 2 - 20px);
+          height: calc(50% + 50vh / 2 - 20px);
+          min-height: calc(10vh + 5vh);
+          foo: 3 calc(3 + 4) 11;
           bar: calc(1 + 20%);
         }
         .b {
           one: calc(100% - 20px);
-          two: calc(100% - 20px);
-          three: calc(100% - 3);
-          four: calc(100% - 3);
-          nested: calc((2.25rem + 2px) - 2px);
+          two: calc(100% - (10px + 10px));
+          three: calc(100% - 3 * 1);
+          four: calc(100% - 3 * 1);
+          nested: calc(calc(2.25rem + 2px) - 1px * 2);
         }
         .c {
-          height: calc(100% - 50px);
+          height: calc(100% - (10px * 3 + 10px * 2));
         }
       `);
     });

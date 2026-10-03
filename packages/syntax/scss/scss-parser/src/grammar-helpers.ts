@@ -10,17 +10,14 @@
  * Hoisting them into this importable module gives each one a resolvable import,
  * and the analyzer re-emits those imports into the composing module.
  *
- * This is a pure code motion (B0-scss): every body is byte-identical to its
- * former in-grammar definition and the helpers keep calling each other exactly
- * as before. These are SCSS's OWN helpers — promoting the ones that turn out
- * byte-identical to the css/less/jess helpers into the shared
- * `@jesscss/core/ast` module is a separate, deferred dedup pass (guarded by the
- * open-recursion rule: a helper is only shareable when its whole transitive
- * helper-closure is identical too).
+ * These are SCSS's OWN helpers. A helper SCSS shares with another dialect lives
+ * in `@jesscss/core/ast` (`css-grammar-helpers.ts`) and is imported from there;
+ * the bindings below only supply the SCSS name and value set it is
+ * parameterised by.
  */
 
-import { any, cssBaseMathOutsideParens, funcCall, ifValue, interpolation, isComplexSelector, isForBinding, isModuleImport, isRelativeSelector, isToken, isValueSlotArray, keyword, operation, quoted, reference, selectorTermOf, selist, withValueLayout } from '@jesscss/core/ast';
-import type { AnonymousMixin, AtRuleBlock, AtRuleStatement, CallArg, Collection, CollectionEntry, Color, Comment, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, UnknownAtRuleBlock, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
+import { appendCustomValueParts as appendCustomValuePartsIn, cssBaseMathOutsideParens, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, keyword, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueSlot, withValueLayout } from '@jesscss/core/ast';
+import type { CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, Statement, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 
 export type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
 export type ScssValueTail = { readonly kind: 'space' | 'slash'; readonly value: ValueNode; readonly separator: string };
@@ -35,17 +32,28 @@ export type ScssCallArg = CallArg<ValueSlot>;
 export type ScssArgumentPair = { readonly separator: string; readonly value: ScssCallArg };
 export type ScssSegmentCombinator = ' ' | '>' | '+' | '~' | '|' | '||';
 
+/*
+ * Core's shared reducer helpers, bound to this grammar: its name is the only
+ * part of their error messages that differs between dialects, and
+ * `isScssValue` is the value set its guards and value slots accept.
+ */
+const DIALECT = 'SCSS';
+export const requireToken = (value: unknown): Token => requireTokenIn(value, DIALECT);
+export const requireString = (value: unknown): string => requireStringIn(value, DIALECT);
+export const requireInterpolation = (value: unknown): Interpolation => requireInterpolationIn(value, DIALECT);
+export const requireSelectorList = (value: unknown): SelectorList => requireSelectorListIn(value, DIALECT);
+export const requireForBinding = (value: unknown): ForBinding => requireForBindingIn(value, DIALECT);
+export const requireGuardNode = (value: unknown): GuardNode => requireGuardNodeOf(value, isScssValue, DIALECT);
+export const isScssValueSlotValue = (value: unknown): value is ValueSlot => isValueSlotOf(value, isScssValue);
+export const interpolationFromTemplateChildren = (children: readonly unknown[]): Interpolation => interpolationFromTemplateChildrenIn(children, DIALECT);
+export const customValueFromChildren = (children: readonly unknown[]): ValueNode => customValueFromChildrenIn(children, DIALECT);
+export const appendCustomValueParts = (children: readonly unknown[], parts: Interpolation['parts'], seen: { interpolated: boolean }): void => appendCustomValuePartsIn(children, parts, seen, DIALECT);
+
 export const scriptModuleExtensions = ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts', '.json'] as const;
 
 export function isScriptModulePath(path: string): boolean {
   const normalized = path.toLowerCase();
   return scriptModuleExtensions.some(extension => normalized.slice(-extension.length) === extension);
-}
-export function requireToken(value: unknown): Token {
-  if (typeof value !== 'object' || value === null || !('value' in value) || typeof value.value !== 'string') {
-    throw new TypeError('SCSS grammar produced a non-token child.');
-  }
-  return { value: value.value };
 }
 
 export function scssSourceText(value: unknown): string {
@@ -92,76 +100,11 @@ export function staticQuoted(children: readonly unknown[]): Quoted {
   );
 }
 
-export function isQuoted(value: unknown): value is Quoted {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'Quoted'
-    && 'src' in value
-    && typeof value.src === 'string'
-    && 'value' in value
-    && typeof value.value === 'string'
-    && 'quote' in value
-    && typeof value.quote === 'string'
-    && 'escaped' in value
-    && typeof value.escaped === 'boolean';
-}
-
 export function isUrl(value: unknown): value is Url {
   return typeof value === 'object'
     && value !== null
     && 'type' in value && value.type === 'Url'
     && 'value' in value && isScssValue(value.value);
-}
-
-export function isSimpleSelector(value: unknown): value is SimpleSelector {
-  return typeof value === 'object' && value !== null
-    && 'type' in value && value.type === 'SimpleSelector'
-    && 'text' in value && (typeof value.text === 'string' || value.text === null)
-    && 'interp' in value && (isScssInterpolation(value.interp) || value.interp === null);
-}
-
-export function isCompoundSelector(value: unknown): value is CompoundSelector {
-  return typeof value === 'object' && value !== null
-    && 'type' in value && value.type === 'CompoundSelector'
-    && 'value' in value && Array.isArray(value.value)
-    && value.value.every(isScssSimpleToken);
-}
-
-export function isSelectorTerm(value: unknown): value is SelectorTerm {
-  return isScssSimpleToken(value) || isCompoundSelector(value);
-}
-
-export function isScssSelectorBranch(value: unknown): value is SelectorBranch {
-  return isSelectorTerm(value) || isComplexSelector(value) || isRelativeSelector(value);
-}
-
-export function isScssSelectorList(value: unknown): value is SelectorList {
-  return typeof value === 'object' && value !== null
-    && 'type' in value && value.type === 'SelectorList'
-    && 'selectors' in value && Array.isArray(value.selectors)
-    && value.selectors.every(isScssSelectorBranch);
-}
-
-export function requireSelectorList(value: unknown): SelectorList {
-  if (!isScssSelectorList(value)) {
-    throw new TypeError('SCSS grammar produced a non-selector-list child.');
-  }
-  return value;
-}
-
-export const scssSelectorTermFromTokens = (tokens: readonly SimpleToken[]): SelectorTerm =>
-  selectorTermOf([tokens[0]!, ...tokens.slice(1)]);
-
-/*
- * A compound token is either a plain `SimpleSelector` or a structured
- * `PseudoSelector` (`:is(.a, .b)` etc.). The structured pseudo carries its
- * argument as a `SelectorList` in `args` and leaves `text` null; core
- * serialization owns the inline join.
- */
-export function isScssSimpleToken(value: unknown): value is SimpleToken {
-  return isSimpleSelector(value)
-    || (typeof value === 'object' && value !== null && 'type' in value && value.type === 'PseudoSelector');
 }
 
 export function scssCombinatorText(value: unknown): ' ' | '>' | '+' | '~' | '||' {
@@ -179,65 +122,8 @@ export function scssRelativeCombinator(value: unknown): '>' | '+' | '~' {
   return '~';
 }
 
-export function scssBranchSegments(branch: SelectorBranch): [{ combinator?: ScssSegmentCombinator; term: SelectorTerm }, ...Array<{ combinator?: ScssSegmentCombinator; term: SelectorTerm }>] {
-  if (branch.type !== 'ComplexSelector' && branch.type !== 'RelativeSelector') {
-    return [{ term: branch }];
-  }
-  const segments: Array<{ combinator?: ScssSegmentCombinator; term: SelectorTerm }> = [];
-  let combinator: ScssSegmentCombinator = ' ';
-  const start = branch.type === 'RelativeSelector' ? 1 : 0;
-  for (let index = start; index < branch.value.length; index++) {
-    const part = branch.value[index]!;
-    if (typeof part === 'string') {
-      combinator = part;
-    } else {
-      segments.push(segments.length === 0 ? { term: part } : { combinator, term: part });
-      combinator = ' ';
-    }
-  }
-  return [segments[0]!, ...segments.slice(1)];
-}
-
 export function isScssImportTarget(value: unknown): value is Quoted | Url | Interpolation {
-  return isQuoted(value) || isUrl(value) || isScssInterpolation(value);
-}
-
-export function isParam(value: unknown): value is Param {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-  if ('name' in value && typeof value.name !== 'string') {
-    return false;
-  }
-  if ('default' in value && !isScssValueSlotValue(value.default)) {
-    return false;
-  }
-  if ('pattern' in value && !isScssValueSlotValue(value.pattern)) {
-    return false;
-  }
-  return !('rest' in value) || typeof value.rest === 'boolean';
-}
-
-export function isParamArray(value: unknown): value is Param[] {
-  return Array.isArray(value) && value.every(isParam);
-}
-
-export function isAnonymousMixin(value: unknown): value is AnonymousMixin {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'AnonymousMixin';
-}
-
-export function requireForBinding(value: unknown): ForBinding {
-  if (!isForBinding(value)) {
-    throw new TypeError('SCSS grammar produced an invalid for binding.');
-  }
-  return value;
-}
-
-export function requireString(value: unknown): string {
-  if (typeof value !== 'string') {
-    throw new TypeError('SCSS grammar produced a non-string child.');
-  }
-  return value;
+  return isQuoted(value) || isUrl(value) || isInterpolation(value);
 }
 
 export function isVarRef(value: unknown): value is Lookup {
@@ -284,112 +170,6 @@ export function isFunctionCall(value: unknown): value is FunctionCall {
     && Array.isArray(value.args);
 }
 
-export function isScssInterpolation(value: unknown): value is Interpolation {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'Interpolation'
-    && 'parts' in value
-    && Array.isArray(value.parts);
-}
-
-export function requireInterpolation(value: unknown): Interpolation {
-  if (!isScssInterpolation(value)) {
-    throw new TypeError('SCSS grammar produced a non-interpolation child.');
-  }
-  return value;
-}
-
-export function appendLiteral(parts: Interpolation['parts'], text: string): void {
-  const previous = parts[parts.length - 1];
-  if (previous !== undefined && 'lit' in previous) {
-    parts[parts.length - 1] = { lit: previous.lit + text };
-  } else {
-    parts.push({ lit: text });
-  }
-}
-
-/** Flatten a grammar-owned raw template without ever reparsing its bytes. */
-export function interpolationFromTemplateChildren(children: readonly unknown[]): Interpolation {
-  const parts: Interpolation['parts'] = [];
-  for (const child of children) {
-    if (isScssInterpolation(child)) {
-      for (const part of child.parts) {
-        if ('lit' in part) {
-          appendLiteral(
-            parts,
-            part.lit
-          );
-        } else {
-          parts.push(part);
-        }
-      }
-    } else {
-      appendLiteral(
-        parts,
-        requireToken(child).value
-      );
-    }
-  }
-  return interpolation(parts);
-}
-
-/**
- * Turn the grammar-owned parts of a custom-property value into one canonical
- * value. Custom-property values are not evaluated: everything outside a typed
- * `#{…}` stays literal `<declaration-value>` text, so the reduction only joins
- * grammar children — it never rescans source. Nested balanced groups arrive as
- * nested arrays from the paren/square/curly productions.
- */
-export function customValueFromParts(children: readonly unknown[], parts: Interpolation['parts'], seen: { interpolated: boolean }): void {
-  for (const child of children) {
-    if (Array.isArray(child)) {
-      customValueFromParts(
-        child,
-        parts,
-        seen
-      );
-    } else if (isScssInterpolation(child)) {
-      seen.interpolated = true;
-      for (const part of child.parts) {
-        if ('lit' in part) {
-          appendLiteral(
-            parts,
-            part.lit
-          );
-        } else {
-          parts.push(part);
-        }
-      }
-    } else {
-      appendLiteral(
-        parts,
-        requireToken(child).value
-      );
-    }
-  }
-}
-
-/** Reduce a whole custom-property value to `Interpolation` (when it carries a
- * `#{…}`) or to verbatim `Any` text. */
-export function customValue(children: readonly unknown[]): ValueNode {
-  const parts: Interpolation['parts'] = [];
-  const seen = { interpolated: false };
-  customValueFromParts(
-    children,
-    parts,
-    seen
-  );
-  if (seen.interpolated) {
-    return interpolation(parts);
-  }
-  return any(parts.map(part => 'lit' in part ? part.lit : '').join(''));
-}
-
-export function isArithmeticOperator(text: string): boolean {
-  return text === '+' || text === '-' || text === '*' || text === '/' || text === '%';
-}
-
 /** Fold a grammar-produced left-associative operator chain. Precedence belongs
  * to the caller's product/sum production, never to a source-text recovery.
  *
@@ -425,7 +205,7 @@ export function scssFoldOperation(children: readonly unknown[]): ValueNode {
       continue;
     }
     const text = requireToken(child).value;
-    if (isArithmeticOperator(text)) {
+    if (isMathOperator(text)) {
       operator = text;
     }
   }
@@ -457,7 +237,7 @@ export function isScssValue(value: unknown): value is ValueNode {
     case 'FunctionCall':
       return isFunctionCall(value);
     case 'Interpolation':
-      return isScssInterpolation(value);
+      return isInterpolation(value);
     case 'Any':
       return 'src' in value && typeof value.src === 'string';
     case 'Url':
@@ -484,32 +264,14 @@ export function isScssValue(value: unknown): value is ValueNode {
     case 'IfValue':
       return 'branches' in value && Array.isArray(value.branches) && value.branches.length > 0;
     case 'Condition':
-      return 'guard' in value && isGuardNode(value.guard) && 'src' in value && typeof value.src === 'string';
+      return 'guard' in value && isGuardNodeOf(value.guard, isScssValue) && 'src' in value && typeof value.src === 'string';
     default:
       return false;
   }
 }
 
-export function scssValueSlot(value: ValueNode): ValueSlot {
-  if (value.type === 'Sequence') {
-    return value.parts;
-  }
-  if (value.type === 'Block' && isSequence(value.value)) {
-    return { ...value, value: value.value.parts };
-  }
-  return value;
-}
-
-export function isSequence(value: ValueSlot): value is Extract<ValueNode, { type: 'Sequence' }> {
-  return isScssValue(value) && value.type === 'Sequence';
-}
-
-export function isScssValueSlotValue(value: unknown): value is ValueSlot {
-  return Array.isArray(value) ? value.every(isScssValueSlotValue) : isScssValue(value);
-}
-
 export function requireValueSlot(value: unknown): ValueSlot {
-  return Array.isArray(value) ? value as ValueSlot : scssValueSlot(requireValue(value));
+  return Array.isArray(value) ? value as ValueSlot : valueSlot(requireValue(value));
 }
 
 export function isScssDeclaration(value: unknown): value is Declaration {
@@ -518,7 +280,7 @@ export function isScssDeclaration(value: unknown): value is Declaration {
     && 'type' in value
     && value.type === 'Declaration'
     && 'name' in value
-    && (typeof value.name === 'string' || isScssInterpolation(value.name))
+    && (typeof value.name === 'string' || isInterpolation(value.name))
     && 'value' in value
     && isScssValueSlotValue(value.value);
 }
@@ -537,50 +299,8 @@ export function isCollectionEntry(value: unknown): value is CollectionEntry {
     && isScssValueSlotValue(value.value);
 }
 
-export function isRuleset(value: unknown): value is Ruleset {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Ruleset';
-}
-
-export function isMixinDefinition(value: unknown): value is MixinDefinition {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'MixinDefinition';
-}
-
-export function isMixinCall(value: unknown): value is MixinCall {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'MixinCall';
-}
-
-export function isFor(value: unknown): value is For {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'For';
-}
-
-export function isIf(value: unknown): value is If {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'If';
-}
-
-export function isWhile(value: unknown): value is While {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'While';
-}
-
-export function isAtRuleBlock(value: unknown): value is AtRuleBlock {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'AtRuleBlock';
-}
-
-export function isAtRuleStatement(value: unknown): value is AtRuleStatement {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'AtRuleStatement';
-}
-
 export function isComment(value: unknown): value is Comment {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Comment';
-}
-export function isStyleImport(value: unknown): value is StyleImport {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'StyleImport';
-}
-
-export function isExtendInstruction(value: unknown): value is ExtendInstruction {
-  return typeof value === 'object' && value !== null
-    && 'target' in value && value.target !== null && typeof value.target === 'object'
-    && 'type' in value.target && value.target.type === 'SelectorList'
-    && 'partial' in value && typeof value.partial === 'boolean';
 }
 
 export function requireValue(value: unknown): ValueNode {
@@ -719,7 +439,7 @@ export function reduceScssCall(name: string, children: readonly unknown[], minAr
 /** A Sass map key stays an authored value node; equality belongs to value-domain
  * map comparison, not to declaration-name stringification. */
 export function mapKeyValue(node: ValueNode): ValueSlot {
-  return scssValueSlot(node);
+  return valueSlot(node);
 }
 
 /**
@@ -806,41 +526,6 @@ export function foldLogicalOperation(children: readonly unknown[]): ValueNode {
   return result;
 }
 
-export function isGuardNode(value: unknown): value is GuardNode {
-  if (typeof value !== 'object' || value === null || !('g' in value)) {
-    return false;
-  }
-  switch (value.g) {
-    case 'default':
-      return true;
-    case 'truth':
-      return 'value' in value && isScssValue(value.value);
-    case 'cmp':
-    case 'match':
-      return 'op' in value && typeof value.op === 'string'
-        && 'left' in value && isScssValue(value.left)
-        && 'right' in value && isScssValue(value.right);
-    case 'call':
-      return 'name' in value && typeof value.name === 'string'
-        && 'args' in value && Array.isArray(value.args) && value.args.every(isScssValue);
-    case 'not':
-      return 'inner' in value && isGuardNode(value.inner);
-    case 'and':
-    case 'or':
-      return 'left' in value && isGuardNode(value.left)
-        && 'right' in value && isGuardNode(value.right);
-    default:
-      return false;
-  }
-}
-
-export function requireGuardNode(value: unknown): GuardNode {
-  if (!isGuardNode(value)) {
-    throw new TypeError('SCSS grammar produced a non-guard child.');
-  }
-  return value;
-}
-
 export function scssOptionalValue(value: unknown): ValueNode | null {
   return value === null || value === undefined ? null : requireValue(value);
 }
@@ -878,6 +563,38 @@ export function isScssValuePair(value: unknown): value is ScssValuePair {
     && typeof value.separator === 'string'
     && 'value' in value
     && isScssValueSlotValue(value.value);
+}
+
+/**
+ * `ValueTerm`'s reduction. A slash groups only its DIRECT neighbours
+ * (DESIGN-DECISIONS P33 as amended 2026-09-24, P35): comma, then whitespace,
+ * then slash. A slash tail joins the item before it — `12px/1.5 Arial` is
+ * `[12px / 1.5, Arial]` — and a space tail starts a new item.
+ */
+export function scssSlashGroupedTerm(children: readonly unknown[]): ValueSlot {
+  const items: ValueNode[] = [requireValue(children[0])];
+  const grouped: boolean[] = [false];
+  const separators: string[] = [];
+  for (const child of children.slice(1)) {
+    if (!isScssValueTail(child)) {
+      throw new TypeError('SCSS value term produced an invalid list boundary.');
+    }
+    const last = items.length - 1;
+    const previous = items[last]!;
+    if (child.kind === 'slash') {
+      items[last] = grouped[last] === true && previous.type === 'List'
+        ? list([...previous.value, child.value], '/')
+        : list([previous, child.value], '/');
+      grouped[last] = true;
+    } else {
+      items.push(child.value);
+      grouped.push(false);
+      separators.push(child.separator);
+    }
+  }
+  return items.length === 1
+    ? items[0]!
+    : withValueLayout(items, separators);
 }
 
 export function isScssValueTail(value: unknown): value is ScssValueTail {
@@ -925,16 +642,8 @@ export function isStatementChild(child: unknown, allowDeclarations: boolean): ch
 
     /* `$content()` — a statement-position Reference; core's `Statement` already
      * admits one, and this is the only production that puts one here. */
-    || isReferenceStatement(child)
+    || isReference(child)
     || (allowDeclarations && isScssDeclaration(child));
-}
-
-export function isReferenceStatement(value: unknown): value is Reference {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Reference';
-}
-
-export function isUnknownAtRuleBlock(value: unknown): value is UnknownAtRuleBlock {
-  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'UnknownAtRuleBlock';
 }
 
 export function statements(children: readonly unknown[], allowDeclarations = false): Statement[] {

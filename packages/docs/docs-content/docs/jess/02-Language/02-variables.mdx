@@ -86,11 +86,40 @@ In hand-written `.jess`, prefer the explicit operators — `:` when you mean
 
 ### Scope
 
-A declaration's scope is the nearest enclosing **ruleset, mixin, or function
-body** — those are the `{ }` blocks that open a scope. Control-flow blocks
-(`$if` / `$for` / `$while`) do **not** open a scope: a `:` declaration inside one
-stays visible in the surrounding block after it, which is what lets a loop build
-up a value (see [Conditionals and iteration](./conditionals-iteration)).
+A declaration's scope is the nearest enclosing `{ }` block. Rulesets, mixin
+bodies and function bodies open a scope — and so do control-flow blocks
+(`$if` / `$for` / `$while`). Braces mean the same thing everywhere: a variable
+declared with `:` inside a block is local to it and is gone after the closing
+brace.
+
+To update a variable that lives outside the block, reassign it with `:=`:
+
+```less
+.box {
+  $my-color: red;
+  $if (true) {
+    $my-color := blue;   // updates the outer binding
+  }
+  color: $my-color;      // blue
+}
+```
+
+Writing `$my-color: blue` inside the `$if` would declare a block-local variable
+instead, and `color` would be `red`.
+
+The same applies to a loop that builds up a value — `$total := $($total + $i)`
+reassigns, while `$total: …` would start a fresh binding each pass. See
+[Conditionals and iteration](./conditionals-iteration).
+
+:::caution[Not enforced yet for `$if` and `$while`]
+
+Today only `$for` enforces this. A `:` declaration inside `$if` or `$while`
+still leaks into the surrounding block, and `:=` inside `$for` fails to find an
+outer binding — [jess#232](https://github.com/jesscss/jess/issues/232). Write
+`:=` when you mean "update the outer variable" and your code will be correct
+either way.
+
+:::
 
 ### Live and scoped forms
 

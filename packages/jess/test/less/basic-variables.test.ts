@@ -43,4 +43,49 @@ describe('Less variable references through the public AST route', () => {
 
     await expect(parseAndRender(lessCode)).resolves.toBe('.test {\n  color: blue;\n  background: green;\n}\n');
   });
+
+  /*
+   * A variable name is a css ident, so its escapes decode (css-syntax-3
+   * §4.3.11): an escaped and a plain spelling name one variable (P40).
+   */
+  it('treats an escaped variable name as its plain spelling', async () => {
+    const lessCode = [
+      '@\\63 olor: red;',
+      '@var\\61: box;',
+      '@name: color;',
+      '@r: { d: e; };',
+      '.@{var\\61} {',
+      '  a: @color;',
+      '  b: @\\63 olor;',
+      '  c: @vara @@\\6e ame;',
+      '  @\\72();',
+      '}'
+    ].join('\n');
+
+    await expect(parseAndRender(lessCode)).resolves.toBe(
+      '.box {\n  a: red;\n  b: red;\n  c: box red;\n  d: e;\n}\n'
+    );
+  });
+
+  /*
+   * PINNED DEFECT (jess#236). A variable holding a bare mixin reference is only
+   * a problem when it is CALLED: lessc 4.9.1 compiles `@foo: .a;` and only
+   * raises on `@foo()`. Less 5 rejects the DECLARATION at parse time, and the
+   * caret lands on the value's `.` with a selector/mixin-call/block message, so
+   * the diagnostic does not name the real cause either.
+   *
+   * This asserts the current, wrong behaviour; fixing the defect fails the pin.
+   * Kept here because it is an absence-of-diagnostics case that no render
+   * fixture can express — the corpus only covers the lookup and with-parens
+   * forms.
+   */
+  it('PINNED DEFECT — rejects an uncalled variable holding a mixin reference', async () => {
+    const result = await new Compiler().renderToResult(
+      { source: '@foo: .a;\n.bar { color: red; }', filePath: 'entry.less', extension: '.less' },
+      { breakOnError: false }
+    );
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({ code: 'parse/syntax-error', line: 1, column: 5 });
+  });
 });

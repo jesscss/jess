@@ -17,16 +17,16 @@
  * The same factory builds the package AST route and the public positioned CST
  * route via Parseman's `hostMode`.
  */
-import { balanced, classifiedTrivia, choice, compose, dispatch, endsWith, expect, field, keywords, label, literal, makeWhen, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, token, when } from 'parseman' with { type: 'macro' };
+import { balanced, classifiedTrivia, choice, compose, dispatch, endsWith, expect, field, keywords, label, literal, makeWhen, makeWord, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, token, when } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
-import { cssBaseRules } from '@jesscss/css-parser/grammar';
+import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { ScssImportPostludeError } from './parse-error.js';
-import { anonymousMixin, any, asDiagnostic, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, importIsCompileTime, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { anonymousMixin, any, asDiagnostic, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, importIsCompileTime, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { COMPARISON_OPERATORS, appendLiteral, controlBlockStatements, scssBranchSegments, contentArgRaw, customValue, customValueFromParts, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isAnonymousMixin, isCollection, isCollectionEntry, isScssDeclaration, isExtendInstruction, isScssImportTarget, isScssInterpolation, isParamArray, isQuoted, isScriptModulePath, isScssValuePair, isScssValueTail, isScssSelectorBranch, isScssSelectorList, isSelectorTerm, isScssSimpleToken, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, keywordizeValues, mapKeyValue, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, scssSelectorTermFromTokens, scssSourceText, statementChildren, statements, staticQuoted, scssValueSlot } from './grammar-helpers.js';
+import { COMPARISON_OPERATORS, controlBlockStatements, contentArgRaw, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScssImportTarget, isScriptModulePath, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, keywordizeValues, mapKeyValue, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, scssSourceText, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
 import type { ScssArgumentPair, ScssCallArg, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
@@ -125,7 +125,8 @@ type ScssRules = {
   AtRulePreludeAtom: Combinator<Token>;
   AtRulePreludeGroup: Combinator<Token>;
   AtRulePreludeQuoted: Combinator<Token>;
-  AtRuleStatement: Combinator<AtRuleStatement>;
+  StatementAtRuleName: Combinator<string>;
+  StatementPrelude: Combinator<ValueNode | null>;
   AtRootFilterPrelude: Combinator<ValueNode>;
   SassDirective: Combinator<[string, unknown]>;
   SassNestedDirective: Combinator<[string, unknown]>;
@@ -146,16 +147,13 @@ type ScssRules = {
   CounterStyle: Combinator<AtRuleBlock>;
   PropertyName: Combinator<Keyword>;
   PropertyAtRule: Combinator<AtRuleBlock>;
-  KeyframeSelector: Combinator<SimpleSelector>;
   KeyframeBlock: Combinator<Ruleset>;
   Keyframes: Combinator<AtRuleBlock>;
   NestedConditionalBlock: Combinator<AtRuleBlock>;
   NestedStartingStyleBlock: Combinator<AtRuleBlock>;
   NestedLayerBlock: Combinator<AtRuleBlock>;
-  BasicSelector: Combinator<SimpleSelector>;
   InterpolatedSimple: Combinator<SimpleSelector>;
   Placeholder: Combinator<SimpleSelector>;
-  NamespaceTypeSelector: Combinator<SimpleSelector>;
   AttributeSelector: Combinator<SimpleSelector>;
   PseudoArgument: Combinator<string>;
   PseudoArgumentGroup: Combinator<string>;
@@ -163,12 +161,10 @@ type ScssRules = {
   CompoundSelector: Combinator<SelectorTerm>;
   ComplexSelector: Combinator<SelectorBranch>;
   RelativeSelector: Combinator<SelectorBranch>;
-  SelectorList: Combinator<SelectorList>;
   NestedSelector: Combinator<SelectorList>;
   Extend: Combinator<ExtendInstruction>;
   ScssGenericAtRuleName: Combinator<string>;
   UnknownAtRuleBlock: Combinator<UnknownAtRuleBlock>;
-  GenericAtRuleStatement: Combinator<AtRuleStatement>;
   Ruleset: Combinator<Ruleset>;
   NestedRuleset: Combinator<Ruleset>;
   rw: Combinator<unknown>;
@@ -194,6 +190,41 @@ type ScssSharedSyntax = {
   Percentage: Combinator<string>;
 
   /*
+   * Converged to the CSS base (inherited via compose): same node type
+   * SimpleSelector over a byte-identical `keyframeEndpoint` recognizer and
+   * `g.Percentage`; the reducer differed only requireToken().value vs
+   * tokenText(). SCSS's copy was additionally misnamed `KeyframeSelector`.
+   */
+  keyframeSelector: Combinator<SimpleSelector>;
+
+  /*
+   * Converged to the CSS base (inherited via compose): the same simple-selector
+   * recognizer. SCSS spelled it `g.SimpleSelectorToken` (parser-shared
+   * `recognition.ts`) and css spells it as a grammar-local regex so the choice
+   * arm's first-set resolves; the two patterns differ only in the hex case of
+   * their `\u0080-\uffff` escapes.
+   */
+  BasicSelector: Combinator<SimpleSelector>;
+
+  /*
+   * Converged to the CSS base (inherited via compose): byte-identical body
+   * noTrivia(sequence(attributeNamespace, choice(g.Identifier, literal('*'))));
+   * the reducer differed only scssSourceText vs tokenText, which agree on the
+   * token children this rule produces.
+   */
+  NamespaceTypeSelector: Combinator<SimpleSelector>;
+
+  /*
+   * Converged to the CSS base (inherited via compose): same recognizer
+   * oneOrMoreSep(g.ComplexSelector, literal(',')) — `g.ComplexSelector` still
+   * resolves to SCSS's override — and the same spanned `selist()` reducer;
+   * SCSS's `children.filter(isSelectorBranch)` is css's
+   * `selectorBranches(children)` with deeper shape checks over the same node
+   * set.
+   */
+  SelectorList: Combinator<SelectorList>;
+
+  /*
    * Converged to the CSS base (inherited via compose): same recognizer
    * (number + optional unit, `%` admitted as a unit) and same `dimension()`
    * reducer; differs only requireToken().value vs tokenText().
@@ -204,6 +235,32 @@ type ScssSharedSyntax = {
   Keyword: Combinator<Keyword>;
   Important: Combinator<true>;
   NestingSelector: Combinator<SimpleSelector>;
+
+  /*
+   * Converged to the CSS base (inherited via compose): CSS already spells
+   * `<at-keyword> <statement prelude> ;`, and SCSS's delta is entirely in the
+   * two children it overrides by name (`StatementAtRuleName`,
+   * `StatementPrelude`). SCSS previously carried two forks of this rule — one
+   * hard-coding `@charset|@namespace|@layer`, one for names with no typed block
+   * — and between them no typed at-rule name could ever take its statement
+   * spelling, which is why `@font-face;` parsed in CSS and not here.
+   */
+  AtRuleStatement: Combinator<AtRuleStatement>;
+
+  /*
+   * Inherited verbatim from the CSS base, with no local override at all.
+   * css-syntax-3 §3.2 fixes the `@charset` prelude to a single `<string>` and
+   * SCSS has no delta on that shape: the CSS rule reads the string through
+   * `AtRulePreludeQuoted`, which SCSS already overrides, and that override
+   * reserves `#{` — so `@charset "#{$x}";` stays refused here exactly as it was,
+   * under the same rule that holds every dynamic header back.
+   *
+   * Before the two forks above were deleted, SCSS folded `@charset` into the
+   * `@(?:charset|namespace|layer)` arm of its own `AtRuleStatement`, whose
+   * prelude is arbitrary bytes — so `@charset url(utf-8);` parsed here and not
+   * in a parser that implements the spec.
+   */
+  CharsetStatement: Combinator<AtRuleStatement>;
 };
 
 type ScssInputRules =
@@ -286,16 +343,16 @@ const space = regex(/[ \t\n\r\f]+/);
 const valueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
 
 /*
- * Sass's logical operators are SYNTAX, not functions (§4.5.5), and the same
- * three spellings serve both the guard ladder (`@if`) and the VALUE ladder
- * below, so they are stated once here rather than twice. The trailing
- * non-identifier lookahead is what keeps `not-a-var`, `android` and `origin`
- * ordinary identifiers.
+ * Where every SCSS keyword ends. A keyword is an identifier, and css-syntax-3
+ * §4.3.11 consumes a valid escape (§4.3.8) into the identifier it follows, so
+ * `not\61` is the one identifier `nota`, not the keyword `not` followed by
+ * `\61`: a backslash continues the word exactly as an identifier code point
+ * does. (A backslash before a newline is not an escape; it still ends no
+ * keyword here, and is a parse error in every position these keywords take.)
+ * @see https://drafts.csswg.org/css-syntax-3/#consume-name
  */
-const scssNotKeyword = regex(/not(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const scssAndKeyword = regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const scssOrKeyword = regex(/or(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const keyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+const IDENT_BOUNDARY = '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\';
+const caseInsensitiveWord = makeWord(IDENT_BOUNDARY, { caseInsensitive: true });
 
 /*
  * A CSS-namespaces prefix: `<ident>|`, `*|`, or bare `|`, glued (no whitespace
@@ -386,21 +443,34 @@ const scssScanSkipSingleString = noTrivia(sequence(
  * vendor prefix (`@-webkit-anything`) stays ordinary unknown CSS.
  */
 /*
- * The SCSS-only at-rule names, declared ONCE. The CSS at-rule names are NOT
- * re-spelled here: `ScssGenericAtRuleName` below excludes them by composing
+ * The Sass-evaluated directive names, declared ONCE. The CSS at-rule names are
+ * NOT re-spelled here: `ScssGenericAtRuleName` below excludes them by composing
  * `not()` over cssSyntax's own `TypedAtKeyword`/`ConditionalAtKeyword`/
  * `ImportAtKeyword` leaves, so this list cannot drift from the CSS set the way
  * a hand-copied one did (it was missing @color-profile, @font-palette-values,
  * @position-try and @view-transition).
  */
-const scssOwnAtKeyword = keywords(
+const sassDirectiveAtKeyword = keywords(
   [
     '@use', '@forward', '@mixin', '@include', '@function', '@return',
     '@if', '@else', '@each', '@for', '@while', '@extend', '@at-root',
-    '@content', '@debug', '@warn', '@error', '@charset', '@namespace',
+    '@content', '@debug', '@warn', '@error',
     '@-use', '@-compose', '@-export', '@-import', '@-from'
   ],
-  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
+  { caseInsensitive: true, boundary: IDENT_BOUNDARY }
+);
+
+/*
+ * `@charset` and `@namespace` are CSS names, not SCSS-only ones: they reach the
+ * inherited `AtRuleStatement` and must NOT be excluded from it, but they have no
+ * block spelling and so must stay out of the opaque-block branch. Split out for
+ * exactly the reason `descriptorAtKeywordTyped`/`descriptorAtKeywordCssOnly` are
+ * split in the shared recognition artifact -- one declaration per name, the
+ * union below unchanged, and each negative form excludes only what it means to.
+ */
+const statementOnlyAtKeyword = keywords(
+  ['@charset', '@namespace'],
+  { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
 
 /*
@@ -468,7 +538,7 @@ const scssFactory = (g: ScssInputRules) => {
    */
   const reservedVarName = keywords(
     ['content', 'for', 'if', 'else', 'each', 'while'],
-    { boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
+    { boundary: IDENT_BOUNDARY }
   );
   const reservedVarHead = noTrivia(sequence(
     literal('$'),
@@ -531,7 +601,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children) => {
       const quote = requireToken(children[0]).value;
-      if (children.length === 3 && !isScssInterpolation(children[1])) {
+      if (children.length === 3 && !isInterpolation(children[1])) {
         return staticQuoted(children);
       }
       const parts: Interpolation['parts'] = [{ lit: quote }];
@@ -539,16 +609,16 @@ const scssFactory = (g: ScssInputRules) => {
         1,
         -1
       )) {
-        if (isScssInterpolation(child)) {
+        if (isInterpolation(child)) {
           parts.push(...child.parts);
         } else {
-          appendLiteral(
+          appendInterpolationLiteral(
             parts,
             requireToken(child).value
           );
         }
       }
-      appendLiteral(
+      appendInterpolationLiteral(
         parts,
         quote
       );
@@ -620,7 +690,7 @@ const scssFactory = (g: ScssInputRules) => {
         g.SassInterpolation
       ))
     ),
-    children => interpolation(children.flatMap(child => isScssInterpolation(child)
+    children => interpolation(children.flatMap(child => isInterpolation(child)
       ? child.parts
       : [{ lit: requireToken(child).value }]))
   );
@@ -644,7 +714,7 @@ const scssFactory = (g: ScssInputRules) => {
         g.SassInterpolation
       ))
     ),
-    children => interpolation(children.flatMap(child => isScssInterpolation(child)
+    children => interpolation(children.flatMap(child => isInterpolation(child)
       ? child.parts
       : [{ lit: requireToken(child).value }]))
   );
@@ -845,8 +915,8 @@ const scssFactory = (g: ScssInputRules) => {
       ))
     ),
     (children) => {
-      if (children.some(isScssInterpolation)) {
-        return interpolation(children.flatMap(child => isScssInterpolation(child)
+      if (children.some(isInterpolation)) {
+        return interpolation(children.flatMap(child => isInterpolation(child)
           ? child.parts
           : [{ lit: requireToken(child).value }]));
       }
@@ -1000,7 +1070,7 @@ const scssFactory = (g: ScssInputRules) => {
        * `not not 0`.
        */
       noTrivia(sequence(
-        scssNotKeyword,
+        g.QueryNot,
         optional(valueTrivia),
         g.MathUnary
       )),
@@ -1122,7 +1192,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.MathTopSum,
       many(sequence(
         valueTrivia,
-        scssAndKeyword,
+        g.LogicalAnd,
         valueTrivia,
         g.MathTopSum
       ))
@@ -1135,7 +1205,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.ValueLogicalAnd,
       many(sequence(
         valueTrivia,
-        scssOrKeyword,
+        g.LogicalOr,
         valueTrivia,
         g.ValueLogicalAnd
       ))
@@ -1174,34 +1244,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.ValueLogicalOr,
       many(ValueTail)
     )),
-    (children) => {
-      const groups: ValueNode[][] = [[requireValue(children[0])]];
-      const groupSeparators: string[][] = [[]];
-      for (const child of children.slice(1)) {
-        if (!isScssValueTail(child)) {
-          throw new TypeError('SCSS value term produced an invalid list boundary.');
-        }
-        if (child.kind === 'slash') {
-          groups.push([child.value]);
-          groupSeparators.push([]);
-        } else {
-          groups.at(-1)!.push(child.value);
-          groupSeparators.at(-1)!.push(child.separator);
-        }
-      }
-      const values = groups.map((group, index) => group.length === 1
-        ? group[0]!
-        : withValueLayout(
-            group,
-            groupSeparators[index]!
-          ));
-      return groups.length === 1
-        ? values[0]!
-        : list(
-            values,
-            '/'
-          );
-    }
+    scssSlashGroupedTerm
   );
 
   /*
@@ -1418,10 +1461,10 @@ const scssFactory = (g: ScssInputRules) => {
     (children) => {
       const parts: Interpolation['parts'] = [];
       for (const child of children) {
-        if (isScssInterpolation(child)) {
+        if (isInterpolation(child)) {
           parts.push(...child.parts);
         } else {
-          appendLiteral(
+          appendInterpolationLiteral(
             parts,
             requireToken(child).value
           );
@@ -1453,11 +1496,11 @@ const scssFactory = (g: ScssInputRules) => {
       g.CustomPropertyToken
     ),
     (children) => {
-      if (!children.some(isScssInterpolation)) {
+      if (!children.some(isInterpolation)) {
         return requireToken(children[0]).value;
       }
       const parts: Interpolation['parts'] = [];
-      customValueFromParts(
+      appendCustomValueParts(
         children,
         parts,
         { interpolated: false }
@@ -1502,7 +1545,7 @@ const scssFactory = (g: ScssInputRules) => {
   const CustomValue = node<ValueNode>(
     'CustomValue',
     parser({ trivia: customValueCommentTrivia }, many(g.CustomPart)),
-    (children, _fields, span) => withSourceSpan(customValue(children), span)
+    (children, _fields, span) => withSourceSpan(customValueFromChildren(children), span)
   );
   const CustomDeclaration = node<Declaration>(
     'CustomDeclaration',
@@ -1523,7 +1566,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children) => {
       const name = children[0];
-      if (typeof name !== 'string' && !isScssInterpolation(name)) {
+      if (typeof name !== 'string' && !isInterpolation(name)) {
         throw new TypeError('SCSS grammar produced a custom declaration without a name.');
       }
 
@@ -1537,7 +1580,7 @@ const scssFactory = (g: ScssInputRules) => {
       }
       return decl(
         name,
-        scssValueSlot(value),
+        valueSlot(value),
         null,
         children.includes(true)
       );
@@ -1626,7 +1669,7 @@ const scssFactory = (g: ScssInputRules) => {
       if (value === undefined) {
         throw new TypeError('SCSS declaration requires a value.');
       }
-      const name = isScssInterpolation(children[0]) ? children[0] : requireToken(children[0]).value;
+      const name = isInterpolation(children[0]) ? children[0] : requireToken(children[0]).value;
       const node = decl(
         name,
         requireValueSlot(value),
@@ -1665,7 +1708,7 @@ const scssFactory = (g: ScssInputRules) => {
       optional(literal(';'))
     ),
     children => collectionEntry(
-      isScssInterpolation(children[0]) ? children[0] : keyword(requireToken(children[0]).value),
+      isInterpolation(children[0]) ? children[0] : keyword(requireToken(children[0]).value),
       requireValueSlot(children[2]),
       null,
       false
@@ -1749,7 +1792,7 @@ const scssFactory = (g: ScssInputRules) => {
       optional(literal(';'))
     ),
     (children, fields) => {
-      const prefix = isScssInterpolation(children[0]) ? children[0] : requireToken(children[0]).value;
+      const prefix = isInterpolation(children[0]) ? children[0] : requireToken(children[0]).value;
       const open = children.findIndex(child => isToken(child) && child.value === '{');
       const close = children.findIndex((child, index) => index > open && isToken(child) && child.value === '}');
       if (open < 0 || close < 0) {
@@ -1814,7 +1857,7 @@ const scssFactory = (g: ScssInputRules) => {
         return url(any(''));
       }
       const body = children[1];
-      return url(isQuoted(body) || isScssInterpolation(body) ? body : any(requireToken(body).value));
+      return url(isQuoted(body) || isInterpolation(body) ? body : any(requireToken(body).value));
     }
   );
 
@@ -1830,12 +1873,12 @@ const scssFactory = (g: ScssInputRules) => {
     'ImportLayer',
     choice(
       noTrivia(sequence(
-        regex(/layer(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        caseInsensitiveWord('layer'),
         literal('('),
         g.Keyword,
         literal(')')
       )),
-      noTrivia(regex(/layer(?![-_a-zA-Z0-9\u0080-\uffff])/i))
+      noTrivia(caseInsensitiveWord('layer'))
     ),
     children => children.length === 1
       ? keyword(requireToken(children[0]).value)
@@ -1869,7 +1912,7 @@ const scssFactory = (g: ScssInputRules) => {
     'ImportSupports',
     sequence(
       noTrivia(sequence(
-        regex(/supports(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        caseInsensitiveWord('supports'),
         literal('(')
       )),
       choice(
@@ -1943,7 +1986,7 @@ const scssFactory = (g: ScssInputRules) => {
    * each call site.
    */
   const importSupportsOpen = noTrivia(sequence(
-    regex(/supports(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+    caseInsensitiveWord('supports'),
     literal('(')
   ));
   const ImportTail = node<ValueNode>(
@@ -1978,7 +2021,7 @@ const scssFactory = (g: ScssInputRules) => {
   const ImportStatement = node<StyleImport | AtRuleStatement>(
     'ImportStatement',
     sequence(
-      regex(/@import(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      caseInsensitiveWord('@import'),
       choice(
         g.Quoted,
         g.ImportUrl
@@ -2006,7 +2049,7 @@ const scssFactory = (g: ScssInputRules) => {
   const UseNamespace = node<string>(
     'UseNamespace',
     sequence(
-      regex(/as(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      caseInsensitiveWord('as'),
       choice(
         literal('*'),
         moduleNamespaceName
@@ -2039,7 +2082,7 @@ const scssFactory = (g: ScssInputRules) => {
   const WithClause = node<Collection>(
     'WithClause',
     sequence(
-      regex(/with(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      caseInsensitiveWord('with'),
       g.Map
     ),
     (children) => {
@@ -2242,7 +2285,7 @@ const scssFactory = (g: ScssInputRules) => {
     'MixinContentBlock',
     sequence(
       optional(sequence(
-        regex(/using(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        caseInsensitiveWord('using'),
         g.MixinParameters
       )),
       literal('{'),
@@ -2359,7 +2402,7 @@ const scssFactory = (g: ScssInputRules) => {
     g.PageBlock,
     g.FontFeatureValuesBlock,
     g.UnknownAtRuleBlock,
-    g.GenericAtRuleStatement
+    g.AtRuleStatement
   );
 
   /*
@@ -2459,7 +2502,7 @@ const scssFactory = (g: ScssInputRules) => {
     g.FontFeatureValuesBlock,
     g.Keyframes,
     g.UnknownAtRuleBlock,
-    g.GenericAtRuleStatement,
+    g.AtRuleStatement,
     g.NestedRuleset
   ));
   const startingLayerBlockBody = many(choice(
@@ -2474,7 +2517,7 @@ const scssFactory = (g: ScssInputRules) => {
     g.FontFeatureValuesBlock,
     g.Keyframes,
     g.UnknownAtRuleBlock,
-    g.GenericAtRuleStatement,
+    g.AtRuleStatement,
     g.NestedRuleset
   ));
   const MixinDefinitionRule = node<MixinDefinition>(
@@ -2508,7 +2551,7 @@ const scssFactory = (g: ScssInputRules) => {
 
       /* Statement span, terminator excluded — see `Declaration`. */
       field('statement', sequence(
-        regex(/@return(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        caseInsensitiveWord('@return'),
         g.Value
       )),
       optional(literal(';'))
@@ -2637,11 +2680,11 @@ const scssFactory = (g: ScssInputRules) => {
        * legacy CST (`topSum`). Keep them as ValueNode facts for Range; the
        * evaluator already evaluates both bounds before iterating.
        */
-      regex(/from(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      caseInsensitiveWord('from'),
       g.MathTopSum,
       choice(
-        regex(/through(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-        regex(/to(?![-_a-zA-Z0-9\u0080-\uffff])/i)
+        caseInsensitiveWord('through'),
+        caseInsensitiveWord('to')
       ),
       g.MathTopSum,
       literal('{'),
@@ -2673,8 +2716,8 @@ const scssFactory = (g: ScssInputRules) => {
    * semantics, never before it, because widening the grammar alone would not
    * fail, it would silently take the wrong branch.
    */
-  const scssTrueKeyword = regex(/true(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-  const scssFalseKeyword = regex(/false(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+  const scssTrueKeyword = caseInsensitiveWord('true');
+  const scssFalseKeyword = caseInsensitiveWord('false');
   const IfComparison = node<GuardNode>(
     'IfComparison',
     sequence(
@@ -2748,7 +2791,7 @@ const scssFactory = (g: ScssInputRules) => {
   const IfTerm = node<GuardNode>(
     'IfTerm',
     sequence(
-      optional(scssNotKeyword),
+      optional(g.QueryNot),
       g.IfAtom
     ),
     (children) => {
@@ -2766,7 +2809,7 @@ const scssFactory = (g: ScssInputRules) => {
     sequence(
       g.IfTerm,
       many(sequence(
-        scssAndKeyword,
+        g.LogicalAnd,
         g.IfTerm
       ))
     ),
@@ -2783,7 +2826,7 @@ const scssFactory = (g: ScssInputRules) => {
     sequence(
       g.IfAnd,
       many(sequence(
-        scssOrKeyword,
+        g.LogicalOr,
         g.IfAnd
       ))
     ),
@@ -2918,10 +2961,10 @@ const scssFactory = (g: ScssInputRules) => {
       g.IfCondition,
       g.IfBody,
       many(sequence(
-        regex(/@else(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        caseInsensitiveWord('@else'),
         choice(
           sequence(
-            regex(/if(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+            caseInsensitiveWord('if'),
             g.IfCondition,
             g.IfBody
           ),
@@ -3485,8 +3528,14 @@ const scssFactory = (g: ScssInputRules) => {
   /*
    * Statement headers need the same nested syntax as block headers but
    * must leave their top-level semicolon to the statement production.
+   *
+   * A top-level `$` is a sentinel, exactly as it is in the opaque at-rule
+   * prelude capture: a dynamic header cannot truthfully lower to verbatim CSS
+   * output, so `@view-transition $x;` must be rejected rather than emitted. `$`
+   * inside a quoted string or a balanced group belongs to the arm that owns
+   * those bytes and is unaffected.
    */
-  const statementPreludeText = regex(/(?:[^#;()\[\]{}'"\\/]|\\[\s\S]|#(?!\{)|\/(?![/*]))+/);
+  const statementPreludeText = regex(/(?:[^#$;()\[\]{}'"\\/]|\\[\s\S]|#(?!\{)|\/(?![/*]))+/);
   const StatementPrelude = node<ValueNode | null>(
     'StatementPrelude',
     noTrivia(many(choice(
@@ -3504,24 +3553,6 @@ const scssFactory = (g: ScssInputRules) => {
       const text = children.map(requireToken).filter(token => !token.value.startsWith('//')).map(token => token.value).join('').trim();
       return text.length === 0 ? null : any(text);
     }
-  );
-
-  /*
-   * CSS statement at-rules retain the existing canonical statement fact. This
-   * deliberately excludes Sass diagnostics (`@debug`, `@warn`, `@error`) and
-   * all dynamic headers: neither can truthfully lower to CSS output here.
-   */
-  const AtRuleStatement = node<AtRuleStatement>(
-    'AtRuleStatement',
-    sequence(
-      regex(/@(?:charset|namespace|layer)(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-      StatementPrelude,
-      literal(';')
-    ),
-    children => atRuleStatement(
-      requireToken(children[0]).value,
-      scssOptionalValue(children[1])
-    )
   );
 
   /*
@@ -4028,7 +4059,7 @@ const scssFactory = (g: ScssInputRules) => {
   const FontFace = node<AtRuleBlock>(
     'FontFace',
     sequence(
-      regex(/@font-face(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      caseInsensitiveWord('@font-face'),
       literal('{'),
       many(choice(
         g.Comment,
@@ -4051,7 +4082,7 @@ const scssFactory = (g: ScssInputRules) => {
   const CounterStyle = node<AtRuleBlock>(
     'CounterStyle',
     sequence(
-      regex(/@counter-style(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      caseInsensitiveWord('@counter-style'),
       g.Keyword,
       literal('{'),
       many(choice(
@@ -4090,7 +4121,7 @@ const scssFactory = (g: ScssInputRules) => {
   const PropertyAtRule = node<AtRuleBlock>(
     'PropertyAtRule',
     sequence(
-      regex(/@property(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      caseInsensitiveWord('@property'),
       g.PropertyName,
       literal('{'),
       many(choice(
@@ -4119,18 +4150,10 @@ const scssFactory = (g: ScssInputRules) => {
    * keyframe names/selectors need typed selector interpolation rather than raw
    * text capture.
    */
-  const KeyframeSelector = node<SimpleSelector>(
-    'SimpleSelector',
-    choice(
-      keyframeEndpoint,
-      g.Percentage
-    ),
-    children => simpleSelector(requireToken(children[0]).value)
-  );
   const KeyframeBlock = node<Ruleset>(
     'KeyframeBlock',
     sequence(
-      g.KeyframeSelector,
+      g.keyframeSelector,
 
       /*
        * Comments are valid selector-list delimiters.  Keep them as grammar
@@ -4141,7 +4164,7 @@ const scssFactory = (g: ScssInputRules) => {
         many(g.Comment),
         literal(','),
         many(g.Comment),
-        g.KeyframeSelector
+        g.keyframeSelector
       )),
       many(g.Comment),
       literal('{'),
@@ -4200,11 +4223,6 @@ const scssFactory = (g: ScssInputRules) => {
    * attribute selectors and pseudo arguments remain explicit
    * follow-up families rather than being flattened into a string fallback.
    */
-  const BasicSelector = node<SimpleSelector>(
-    'BasicSelector',
-    g.SimpleSelectorToken,
-    children => simpleSelector(requireToken(children[0]).value)
-  );
 
   /*
    * The leading `.`/`#` is a class/id sigil, and it must not claim the `#` that
@@ -4230,10 +4248,10 @@ const scssFactory = (g: ScssInputRules) => {
     (children) => {
       const parts: Interpolation['parts'] = [];
       for (const child of children) {
-        if (isScssInterpolation(child)) {
+        if (isInterpolation(child)) {
           parts.push(...child.parts);
         } else {
-          appendLiteral(
+          appendInterpolationLiteral(
             parts,
             requireToken(child).value
           );
@@ -4289,14 +4307,6 @@ const scssFactory = (g: ScssInputRules) => {
    * text, matching the CSS base and the other dialects (one representation per
    * construct).
    */
-  const NamespaceTypeSelector = node<SimpleSelector>(
-    'NamespaceTypeSelector',
-    noTrivia(sequence(
-      attributeNamespace,
-      choice(g.Identifier, literal('*'))
-    )),
-    children => simpleSelector(children.map(scssSourceText).join(''))
-  );
 
   /*
    * CSS owns the attribute frame. SCSS overrides only its universal `Quoted`
@@ -4321,7 +4331,7 @@ const scssFactory = (g: ScssInputRules) => {
       )),
       literal(']')
     ),
-    children => children.some(isScssInterpolation)
+    children => children.some(isInterpolation)
       ? interpolatedSimpleSelector(interpolationFromTemplateChildren(children))
       : attributeSelector(children.map(scssSourceText))
   );
@@ -4390,12 +4400,12 @@ const scssFactory = (g: ScssInputRules) => {
       )
     ),
     (children) => {
-      const branch = children.find(isScssSelectorBranch)!;
+      const branch = children.find(isSelectorBranch)!;
       if (children.length === 1) {
         return branch;
       }
       const lead = scssRelativeCombinator(children[0]);
-      return relativeSelector(lead, scssBranchSegments(branch));
+      return relativeSelector(lead, branchSegments(branch));
     }
   );
 
@@ -4428,7 +4438,7 @@ const scssFactory = (g: ScssInputRules) => {
         ))
       )
     ),
-    children => selist(...children.filter(isScssSelectorBranch))
+    children => selist(...children.filter(isSelectorBranch))
   );
   const NthPseudo = node<SimpleSelector>(
     'NthPseudo',
@@ -4507,7 +4517,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     children => pseudoSelector(
       scssPseudoName(requireToken(children[0]).value),
-      requireSelectorList(children.find(isScssSelectorList))
+      requireSelectorList(children.find(isSelectorList))
     )
   );
   const GlobalLocalPseudo = node<SimpleSelector>(
@@ -4567,7 +4577,7 @@ const scssFactory = (g: ScssInputRules) => {
   const PseudoSelector = node<SimpleToken>(
     'PseudoSelector',
     PseudoSelectorDispatch,
-    children => children.find(isScssSimpleToken)!
+    children => children.find(isSimpleToken)!
   );
   const CompoundSelector = node<SelectorTerm>(
     'CompoundSelector',
@@ -4586,7 +4596,7 @@ const scssFactory = (g: ScssInputRules) => {
       )),
       not(pseudoColon)
     )),
-    children => scssSelectorTermFromTokens(children.filter(isScssSimpleToken))
+    children => selectorTermFromTokens(children.filter(isSimpleToken))
   );
   const scssCombinator = choice(
     literal('||'),
@@ -4636,14 +4646,6 @@ const scssFactory = (g: ScssInputRules) => {
    * pseudo-argument list here is left alone for the same reason — it is never a
    * `Ruleset`'s selector, so a span there would move the tree for nothing.
    */
-  const SelectorList = node<SelectorList>(
-    'SelectorList',
-    oneOrMoreSep(
-      g.ComplexSelector,
-      literal(',')
-    ),
-    (children, _fields, span) => withSourceSpan(selist(...children.filter(isScssSelectorBranch)), span)
-  );
 
   /*
    * The NESTED ruleset's selector list carries the ORDINARY selector item shapes
@@ -4661,7 +4663,7 @@ const scssFactory = (g: ScssInputRules) => {
       g.RelativeSelector,
       literal(',')
     ),
-    (children, _fields, span) => withSourceSpan(selist(...children.filter(isScssSelectorBranch)), span)
+    (children, _fields, span) => withSourceSpan(selist(...children.filter(isSelectorBranch)), span)
   );
 
   /*
@@ -4681,9 +4683,9 @@ const scssFactory = (g: ScssInputRules) => {
   const Extend = node<ExtendInstruction>(
     'Extend',
     sequence(
-      regex(/@extend(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+      caseInsensitiveWord('@extend'),
       g.SelectorList,
-      optional(regex(/!optional(?![-_a-zA-Z0-9\u0080-\uffff])/i)),
+      optional(caseInsensitiveWord('!optional')),
       optional(literal(';'))
     ),
     children => ({
@@ -4702,10 +4704,27 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
+   * CSS's statement at-rule name, narrowed by the two things SCSS adds: its own
+   * evaluated directives, which are never verbatim CSS output, and the
+   * conditional group at-keywords, whose statement spelling CSS itself rejects.
+   * Everything else CSS admits here stays admitted -- including every name with
+   * a typed BLOCK production, because a block production never matches a
+   * statement and CSS's own dispatch pairs each typed block with exactly this
+   * statement arm (`choice(RoutedAtRuleStatement, <block>)`).
+   */
+  const StatementAtRuleName = token(noTrivia(sequence(
+    not(sassDirectiveAtKeyword),
+    not(g.ConditionalAtKeyword),
+    not(g.ImportAtKeyword),
+    g.AtIdentifier
+  )));
+
   /*
-   * Excludes the SCSS-only names AND the CSS at-rule set, the latter by
-   * inverting the very leaves that define it positively -- one source, both
-   * polarities. css-syntax-3 §4.3.11 boundary throughout.
+   * The opaque BLOCK's name. It is the statement name minus the names that have
+   * a typed block production, so the two polarities cannot drift: a name with a
+   * typed header/body must report that production's own error rather than
+   * silently degrading to opaque bytes, and `@charset`/`@namespace` have no
+   * block spelling at all.
    *
    * `TypedAtKeywordSharedRoutes`, not `TypedAtKeyword`: SCSS has typed routes
    * for `@font-face`, `@counter-style` and `@property` but NOT for
@@ -4715,11 +4734,9 @@ const scssFactory = (g: ScssInputRules) => {
    * four must reach the opaque branch below.
    */
   const ScssGenericAtRuleName = token(noTrivia(sequence(
-    not(scssOwnAtKeyword),
+    not(statementOnlyAtKeyword),
     not(g.TypedAtKeywordSharedRoutes),
-    not(g.ConditionalAtKeyword),
-    not(g.ImportAtKeyword),
-    g.AtIdentifier
+    g.StatementAtRuleName
   )));
   const UnknownAtRuleBlock = node<UnknownAtRuleBlock>(
     'UnknownAtRuleBlock',
@@ -4745,29 +4762,6 @@ const scssFactory = (g: ScssInputRules) => {
     }
   );
 
-  /*
-   * The statement spelling of the same fact (`@view-transition;`). It shares the
-   * block's name recognizer, so the two are disjoint from every typed arm and
-   * from each other — this one requires `;` where the block requires `{`.
-   */
-  const GenericAtRuleStatement = node<AtRuleStatement>(
-    'AtRuleStatement',
-    sequence(
-      g.ScssGenericAtRuleName,
-      noTrivia(sequence(
-        g.PreprocessorUnknownAtRulePreludeCapture,
-        literal(';')
-      ))
-    ),
-    (children) => {
-      const preludeText = requireToken(children[1]).value === ';' ? '' : requireToken(children[1]).value.trim();
-      const prelude = preludeText === '' ? null : preludeText;
-      return atRuleStatement(
-        requireToken(children[0]).value,
-        prelude === null ? null : any(prelude)
-      );
-    }
-  );
   const Ruleset = node<Ruleset>(
     'Ruleset',
     sequence(
@@ -4838,6 +4832,7 @@ const scssFactory = (g: ScssInputRules) => {
       many(choice(
         g.Comment,
         g.ImportStatement,
+        g.CharsetStatement,
         g.AtRuleStatement,
         g.VariableDeclaration,
         g.SassDirective,
@@ -4853,7 +4848,6 @@ const scssFactory = (g: ScssInputRules) => {
         g.PropertyAtRule,
         g.Keyframes,
         g.UnknownAtRuleBlock,
-        g.GenericAtRuleStatement,
         g.Ruleset
       ))
     ),
@@ -4954,7 +4948,8 @@ const scssFactory = (g: ScssInputRules) => {
     AtRulePreludeAtom,
     AtRulePreludeGroup,
     AtRulePreludeQuoted,
-    AtRuleStatement,
+    StatementAtRuleName,
+    StatementPrelude,
     AtRootFilterPrelude,
     SassDirective,
     SassNestedDirective,
@@ -4976,16 +4971,12 @@ const scssFactory = (g: ScssInputRules) => {
     CounterStyle,
     PropertyName,
     PropertyAtRule,
-    KeyframeSelector,
     KeyframeBlock,
     Keyframes,
     ScssGenericAtRuleName,
     UnknownAtRuleBlock,
-    GenericAtRuleStatement,
-    BasicSelector,
     InterpolatedSimple,
     Placeholder,
-    NamespaceTypeSelector,
     AttributeSelector,
     PseudoArgument,
     PseudoArgumentGroup,
@@ -4993,7 +4984,6 @@ const scssFactory = (g: ScssInputRules) => {
     CompoundSelector,
     ComplexSelector,
     RelativeSelector,
-    SelectorList,
     NestedSelector,
     Extend,
     Ruleset,

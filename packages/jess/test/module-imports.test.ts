@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { Context } from '@jesscss/core';
+import jsPlugin, { type JsPlugin } from '@jesscss/plugin-js';
+import { NodeModulesPlugin } from '@jesscss/plugin-node-modules';
 import { Compiler } from '../src/index.js';
 
 const tempDirs: string[] = [];
@@ -38,12 +41,12 @@ describe('public module imports', () => {
     );
   });
 
-  it('executes Jess @-from and Less @use script functions through plugin-js', async () => {
+  it('calls Jess @-from functions through explicit references and preserves CSS-shaped calls', async () => {
     const directory = tempProject();
     write(directory, 'functions.js', 'export const inc = (value) => value + 1;');
     const jessEntry = write(directory, 'entry.jess', [
       '@-from "./functions.js" import (inc as next);',
-      '.jess { value: next(2); }'
+      '.jess { explicit: $next(2); css: next(2); }'
     ].join('\n'));
     const lessEntry = write(directory, 'entry.less', [
       '@use "./functions.js";',
@@ -51,7 +54,9 @@ describe('public module imports', () => {
     ].join('\n'));
 
     const compiler = new Compiler();
-    await expect(compiler.render(jessEntry)).resolves.toBe('.jess {\n  value: 3;\n}\n');
+    await expect(compiler.render(jessEntry)).resolves.toBe(
+      '.jess {\n  explicit: 3;\n  css: next(2);\n}\n'
+    );
     await expect(compiler.render(lessEntry)).resolves.toBe('.less {\n  value: 5;\n}\n');
     compiler.dispose();
   });
@@ -66,14 +71,56 @@ describe('public module imports', () => {
     )).resolves.toBe('.entry {\n  value: 2;\n}\n');
   });
 
+  it('runs the @jesscss/fns package specifier in-process through plugin-js without Deno', async () => {
+    const js = jsPlugin({ denoCommand: '__definitely_missing_deno__' }) as JsPlugin;
+    const context = new Context({}, [new NodeModulesPlugin({ basePath: process.cwd() }), js]);
+    try {
+      const loaded = await context.getModule('@jesscss/fns/less');
+      expect(loaded.module).toMatchObject({ lighten: expect.any(Function) });
+    } finally {
+      js.dispose();
+    }
+  });
+
   it('loads trusted Less functions without plugin-js', async () => {
     const compiler = new Compiler();
     compiler['createJsPluginProxy'] = () => undefined;
 
     await expect(compiler.renderString(
-      '@-from "#less" import (mix); .entry { color: mix(#ff0000, #0000ff, 50%); }',
+      '@-from "#less" import (mix); .entry { color: $mix(#ff0000, #0000ff, 50%); }',
       { filePath: 'entry.jess', extension: '.jess' }
     )).resolves.toBe('.entry {\n  color: #800080;\n}\n');
+  });
+
+  it('binds a named-colour argument through the trusted Less functions', async () => {
+    /*
+     * `#less` loads the package's CommonJS build, so this is the one route that
+     * exercises @jesscss/core's CJS named-colour table: `red` binds a `Color`
+     * parameter only if that table resolves it (jess#271).
+     */
+    const compiler = new Compiler();
+    compiler['createJsPluginProxy'] = () => undefined;
+
+    await expect(compiler.renderString(
+      '@-from "#less" import (mix, lighten); .entry { a: $mix(red, blue, 50%); b: $lighten(blue, 10%); }',
+      { filePath: 'entry.jess', extension: '.jess' }
+    )).resolves.toBe('.entry {\n  a: #800080;\n  b: #3333ff;\n}\n');
+  });
+
+  it('binds a named-colour argument through the trusted Sass colour module', async () => {
+    // `sass:color` loads `#sass/color` through the same CommonJS build as `#less`.
+    const compiler = new Compiler();
+    compiler['createJsPluginProxy'] = () => undefined;
+
+    const render = (a: string, b: string) => compiler.renderString(
+      `@use "sass:color"; .entry { a: color.mix(${a}, ${b}, 50%); b: color.lighten(${b}, 10%); }`,
+      { filePath: 'entry.scss', extension: '.scss' }
+    );
+
+    // A colour NAME binds exactly as its hex spelling does; unbound, the call printed verbatim.
+    const byName = await render('red', 'blue');
+    expect(byName).not.toContain('color.');
+    expect(byName).toBe(await render('#ff0000', '#0000ff'));
   });
 
   it('reports the optional script runtime when a local script module needs it', async () => {
@@ -81,7 +128,7 @@ describe('public module imports', () => {
     write(directory, 'functions.js', 'export const identity = (value) => value;');
     const entry = write(directory, 'entry.jess', [
       '@-from "./functions.js" import (identity);',
-      '.entry { value: identity(2); }'
+      '.entry { value: $identity(2); }'
     ].join('\n'));
     const compiler = new Compiler();
     compiler['createJsPluginProxy'] = () => undefined;

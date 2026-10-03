@@ -72,13 +72,19 @@ describe('public Less parse()', () => {
     if (plain?.type !== 'Declaration' || math?.type !== 'Declaration') {
       throw new Error('expected two declarations');
     }
+
+    /* A paren group that only opens a math context IS the `$( … )` boundary (P35). */
     if (
-      math.value.type !== 'Block'
+      math.value.type !== 'Expression'
       || Array.isArray(math.value.value)
       || math.value.value.type !== 'Operation'
     ) {
       throw new Error('expected parenthesized arithmetic');
     }
+    expect(sourceSpanOf(math.value)).toEqual({
+      start: source.indexOf('('),
+      end: source.indexOf(')') + 1
+    });
 
     expect(sourceSpanOf(plain.value)).toBeUndefined();
     const outer = math.value.value;
@@ -1234,12 +1240,17 @@ describe('public Less parse()', () => {
       ]
     });
 
+    /*
+     * `@name: value;` is a variable declaration, and a variable name is a css
+     * ident, so its escapes decode (css-syntax-3 §4.3.11): `@\63 olor` is the
+     * variable `color` (P40).
+     */
+    expect(parse('@\\63 olor: red;')).toMatchObject({
+      rules: [{ type: 'VariableDeclaration', name: 'color' }]
+    });
+
     for (const invalid of [
-      /*
-       * Less variable names do not admit escapes; a backslash before a newline
-       * is not a valid escape.
-       */
-      '@\\63 olor: red;',
+      /* A backslash before a newline is not a valid escape. */
       '\\\ncolor: red;',
       '*\\\ncolor: red;'
     ]) {
@@ -1284,7 +1295,7 @@ describe('public Less parse()', () => {
         {
           type: 'AtRuleBlock',
           name: '@media',
-          prelude: { type: 'Any', src: 'screen' },
+          prelude: { type: 'Keyword', src: 'screen' },
           rules: [{ type: 'StyleImport', name: '@import', mode: 'import' }]
         }
       ]
@@ -1484,7 +1495,8 @@ describe('public Less parse()', () => {
   it('desugars a legacy compile-time @import with a media query into a @media wrapper', () => {
     /*
      * `(inline)` makes this compile-time; `(min-width:600px)` is a parenthesized
-     * media feature (Any text tail). Owner 2026-09-02: the legacy `@import` form
+     * media feature, parsed by the `@media` query grammar (ledger P35). Owner
+     * 2026-09-02: the legacy `@import` form
      * wraps the postlude-free StyleImport in `@media <query>`, matching Less 4.x.
      */
     expect(parse('@import (inline) url("x.css") (min-width:600px);')).toMatchObject({
@@ -1493,7 +1505,11 @@ describe('public Less parse()', () => {
         {
           type: 'AtRuleBlock',
           name: '@media',
-          prelude: { type: 'Any', src: '(min-width:600px)' },
+          prelude: {
+            type: 'Block',
+            delimiter: 'paren',
+            value: { type: 'Operation', operator: ':', left: { src: 'min-width' }, right: { src: '600px' } }
+          },
           rules: [
             {
               type: 'StyleImport',
@@ -2322,22 +2338,22 @@ describe('public Less parse()', () => {
             {
               type: 'Declaration',
               name: 'sum',
-              value: { type: 'Operation', operator: '+' }
+              value: { type: 'Expression', value: { type: 'Operation', operator: '+' } }
             },
             {
               type: 'Declaration',
               name: 'grouped',
-              value: { type: 'Operation', operator: '*' }
+              value: { type: 'Expression', value: { type: 'Operation', operator: '*' } }
             },
             {
               type: 'Declaration',
               name: 'neg',
-              value: { type: 'Operation', operator: '*' }
+              value: { type: 'Expression', value: { type: 'Operation', operator: '*' } }
             },
             {
               type: 'Declaration',
               name: 'signed',
-              value: { type: 'Operation', operator: '+' }
+              value: { type: 'Expression', value: { type: 'Operation', operator: '+' } }
             },
             {
               type: 'Declaration',
@@ -2350,11 +2366,14 @@ describe('public Less parse()', () => {
             {
               type: 'Declaration',
               name: 'ratio',
-              value: [
-                { type: 'Dimension', src: '12px' },
-                { type: 'Keyword', src: '/' },
-                { type: 'Dimension', src: '1.5' }
-              ]
+              value: {
+                type: 'List',
+                sep: '/',
+                value: [
+                  { type: 'Dimension', src: '12px' },
+                  { type: 'Dimension', src: '1.5' }
+                ]
+              }
             },
             {
               type: 'Declaration',
@@ -2368,7 +2387,7 @@ describe('public Less parse()', () => {
     expect(
       serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css
     ).toBe(
-      '.math {\n  sum: 7;\n  grouped: 9;\n  neg: -3;\n  signed: 1px;\n  unarySpace: - 2;\n  ratio: 12px / 1.5;\n  calc: calc(100% - 10px);\n}\n'
+      '.math {\n  sum: 7;\n  grouped: 9;\n  neg: -3;\n  signed: 1px;\n  unarySpace: - 2;\n  ratio: 12px / 1.5;\n  calc: calc(100% - 20px / 2);\n}\n'
     );
   });
 
@@ -2385,12 +2404,12 @@ describe('public Less parse()', () => {
             {
               type: 'Declaration',
               name: 'product',
-              value: { type: 'Operation', operator: '*' }
+              value: { type: 'Expression', value: { type: 'Operation', operator: '*' } }
             },
             {
               type: 'Declaration',
               name: 'modulo',
-              value: { type: 'Operation', operator: '%' }
+              value: { type: 'Expression', value: { type: 'Operation', operator: '%' } }
             }
           ]
         }
@@ -2860,6 +2879,53 @@ describe('public Less parse()', () => {
     }
   });
 
+  /*
+   * A Less variable name is a css ident, so every variable-name position
+   * decodes its escapes (css-syntax-3 §4.3.11) to the plain name (P40). An
+   * escaped at-keyword that is not in a variable shape stays the css at-rule.
+   */
+  it('decodes escaped Less variable names in every variable-name position', () => {
+    const lookup = { type: 'Lookup', kind: 'var', name: 'vara' };
+    expect(parse('@var\\61: 1;')).toMatchObject({
+      rules: [{ type: 'VariableDeclaration', name: 'vara', value: { type: 'Dimension' } }]
+    });
+
+    /* A literal escape is its character; a zero code point is U+FFFD (§4.3.7). */
+    expect(parse('@a\\.b\\0 c: 1;')).toMatchObject({
+      rules: [{ type: 'VariableDeclaration', name: 'a.b\uFFFDc' }]
+    });
+    expect(parse('a { @var\\61: red; }')).toMatchObject({
+      rules: [{ type: 'Ruleset', rules: [{ type: 'VariableDeclaration', name: 'vara' }] }]
+    });
+    expect(parse('a { b: @var\\61; }')).toMatchObject({
+      rules: [{ rules: [{ type: 'Declaration', value: lookup }] }]
+    });
+    expect(parse('a { b: @@var\\61; }')).toMatchObject({
+      rules: [{ rules: [{ type: 'Declaration', value: { type: 'Lookup', name: lookup } }] }]
+    });
+    expect(parse('.@{var\\61} { b: c; }')).toMatchObject({
+      rules: [{ selector: { selectors: [{ interp: { parts: [{ lit: '.' }, { ref: lookup }] } }] } }]
+    });
+    expect(parse('@var\\61();')).toMatchObject({
+      rules: [{ type: 'Reference', base: lookup, steps: [{ type: 'Call' }] }]
+    });
+
+    expect(parse('@\\63 olor x;')).toMatchObject({
+      rules: [{ type: 'AtRuleStatement', name: '@\\63 olor' }]
+    });
+    expect(parse('@var\\61 {}')).toMatchObject({
+      rules: [{ type: 'AtRuleBlock', name: '@var\\61 ' }]
+    });
+
+    /* A decoded name obeys the plain-name rules: `@\31 x` is `@1x`, `@\2d` is `@-`. */
+    for (const source of ['@\\31 x: 1;', '@\\2d: 1;', 'a { b: @\\31 x; }']) {
+      expect(() => parse(source), source).toThrow(LessUnsupportedVariableNameError);
+    }
+    expect(parse('@\\2d foo: 1;')).toMatchObject({
+      rules: [{ type: 'VariableDeclaration', name: '-foo' }]
+    });
+  });
+
   it('keeps interpolated Less media-query terms structural in a multi-term header', () => {
     const document = parse(
       '@all: ~"all"; @tv: ~"(tv)"; @media @{all} and @{tv} { .card { color: red; } }'
@@ -3218,12 +3284,12 @@ describe('public Less parse()', () => {
               type: 'MixinCall',
               name: '.join',
               args: [{
-                value: {
+                value: { type: 'Expression', value: {
                   type: 'Operation',
                   operator: '-',
                   left: { type: 'Lookup', kind: 'var', name: 'first', raw: '@first' },
                   right: { type: 'Dimension', number: 1 }
-                }
+                } }
               }]
             }
           ]

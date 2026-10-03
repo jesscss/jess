@@ -4073,104 +4073,89 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: 2026-09-20 script/data module execution and Less `@use`. The
-  compiler dependency plan loads `ModuleImport` facts once; render activates
-  their values and functions in the authored lexical frame and emits no CSS.
-- Architecture surface: canonical AST serializer/evaluator module binding,
-  `Context` module dispatch, trusted node-module resolution, Less grammar,
-  public integration tests, and the shared Jess/Less module documentation.
-- Separation/duplication: `Context.getModule` remains the sole resolver/cache/
-  loader owner. `prepareStaticImports` carries resolved exports in its opaque
-  reusable plan. The serializer owns only typed value conversion and lexical
-  binding; it neither resolves paths nor reparses source. Legacy `@plugin`
-  remains on its existing activation lane.
-- Cumulative node weight: no node kind or node field is added. JSON-compatible
-  exports become existing `Keyword`, `Dimension`, `List`, `Collection`, and
-  `Null` nodes at the module-binding boundary. Namespaced Jess calls now consume
-  the existing typed `Reference` chain directly; the reviewed version removed a
-  temporary replacement `Reference` node and `steps.slice()` from evaluation.
-- New traversal: the compiler's existing import-plan source-order pass loads
-  direct module facts. Script/data directives are stylesheet-top-level grammar
-  facts in Jess, SCSS, and Less; Less now pins that boundary explicitly. Render
-  scans the root body only while caller-planned module bindings remain, or scans
-  another body when the legacy plugin/direct-serialize fallback is armed. A plan
-  with zero modules returns before touching the body, and the pending count
-  reaches zero after root activation, so ordinary nested bodies do not acquire a
-  dependency walk. Reference evaluation advances one monotonic index through its
-  existing chain.
-- New node/materialization: the opaque plan owns one document-scoped strong
-  module `Map`; render owns sparse function/namespace identity `Set`s only after
-  a module binds. JSON arrays/objects and call arguments materialize the exact
-  canonical values consumed downstream. There is no AST copy, output wrapper,
-  per-node weak table, source-byte materialization, or tree rewalk.
-- Render path: `@use`/`@-use` and Jess `@-use`/`@-from` bind before the body walk
-  and emit nothing. Prepared exports are read without IO; direct low-level
-  `serialize({ context })` retains a cached Context fallback. Module call results
-  enter the existing typed evaluator and canonical output buffer.
-- Helper/API surface: private conversion/binding helpers isolate the module
-  boundary. `PluginInterface.canImportModule` is one optional capability for
-  trusted package-owned modules whose extension overlaps sandboxed scripts;
-  `PreparedImports` remains opaque. No parser host, construction host, alias, or
-  second module registry is introduced.
-- Metadata mutations: only render-local evaluator facts are added: imported
-  function identities, namespace-value identities, the module plan reference,
-  and a scalar pending count. They do not mutate canonical AST nodes and die with
-  the render. The reusable compiler plan itself is not consumed or mutated.
-- Review-flagged diff tokens: [loop/traversal] every module export/specifier,
-  reference step, and call argument is visited once at binding/call time;
-  [array helper] JSON array/object conversion creates the canonical `List` or
-  `Collection` payload once; [array spread/materialization] the callable rest
-  signature and spread invoke the selected external JS function without an
-  intermediate stylesheet serialization; [node construction] typed value nodes
-  are the owned module boundary and `TypeError`s cover exceptional cyclic,
-  missing, or unsupported exports only; [generic defensive read]
-  `hasOwnProperty` distinguishes a missing named export from an own export whose
-  value is `undefined`; [side map/set] module facts use a document-scoped strong
-  map and identity sets are sparse render-local gates, with no ephemeron table;
-  [materialized array/object] prepared state, namespace value bags, and call
-  arguments are the exact typed records consumed downstream, not predicate-only
-  allocations. No routine Error control, source scan, restart scan, or generic
-  object crawl is introduced.
-- Behavior evidence: focused core module and projection tests pass 13/13,
-  including one-load/two-render plan reuse, namespace calls, JSON nesting,
-  shadowing, and missing exports. Public Jess/SCSS/Less compiler routes pass 5/5;
-  node-module resolution passes 6/6; the full Less parser passes 762/762 and
-  pins nested `@use` rejection; the Less render corpus passes 114/114; the AST-v2
-  production ratchet passes 4/4.
-- Build evidence: strict core TypeScript, the core package build, and the
-  dependency-ordered release build pass. `check:macro` reports zero interpreter
-  fallbacks in all five grammar packages; `verify:compose-integrity`,
-  `verify:aggressive-cutting-review`, `check:guardrails`,
-  `verify:parser-runtime-boundary`, `verify:package-exports`, `verify:jess-api`,
-  `verify:shape-stability`, and docs-content validation are green.
-- Parse-performance evidence: same-directory interleaved B/A on built artifacts,
-  4 rounds × 3 processes × 25 timed samples after 8 warmups, measured
-  `benchmark.less/ast` 29.892ms → 31.018ms (+3.8%; B spread 28.94–30.75,
-  A 29.10–33.87, A wins 3/12) and its CST control 32.324ms → 32.951ms
-  (+1.9%; A wins 2/12). CSS controls moved +1.7% to +3.2%. The AST movement is
-  inside the harness's documented noise and tracks the controls, so the result
-  is `UNRESOLVABLE-NOISE`, not a slowdown claim. Common marker `const atStatement`
-  is 1/1 and one-sided marker `const useKeyword` is 1/0. Node v25.9.0;
-  `parseman@0.50.7` resolves to this worktree's pnpm store path. The absolute
-  drift reporter graded zero cases because its committed baseline/null
-  calibration and optional comparators remain absent; that report is not used as
-  evidence.
-- Boundary evidence: ledger A1/A2/N7/P17 owns the directive spellings, module
-  classification, and non-ambient Jess function model. A8 remains owner-open;
-  this pass records only the explicitly implemented namespace data/function
-  slice. The shared module page is the Jess/Less public source of truth.
-- Evidence: performance invariants 1-11 and incidents R1-R8 were checked. The
-  change adds no polymorphic AST shape, re-derivation, full-tree render walk,
-  nonlinear search, per-node weak state, output path, source rediscovery, or
-  grammar fallback. Semantic invariants 1-8 were checked against A1/A2/N7/P17:
-  module directives are construct-level compile dependencies, typed values use
-  existing emit policy, Context/plugin/parser ownership is singular, valid CSS
-  is untouched, dialect syntax is recorded, parsing remains structural,
-  unsupported values fail during evaluation, and no behavior is justified by a
-  reference implementation. This is a semantic feature; no speed claim is made.
-- Verdict: accepted as the bounded module-execution slice for issue #182, with
-  `performanceClaim: none`; the code review rejected weak per-node state and
-  temporary reference-node materialization before this record was written.
+- Latest pass: 2026-10-01 explicit imported-callable references. Jess selected,
+  default, flat, and namespace function imports now dispatch only through
+  `$name(…)` or `$namespace.name(…)`; importing a name cannot change a bare
+  CSS-shaped `name(…)` call. The Less-to-Jess source printer emits that same
+  explicit form. Less keeps `@namespace.name(…)`, and SCSS keeps its qualified
+  module-call syntax.
+- Architecture surface: `packages/core/src/ast/serialize.ts` module binding,
+  Reference-call selection, and function dispatch; `emit-jess.ts` imported-call
+  source spelling; the Jess parser's two existing reference-call argument
+  reductions and raw-source helper; focused module-evaluation, public compiler,
+  equivalence, projection-ratchet, and Jess parser tests.
+- Separation/duplication: imported callables have their own per-frame table.
+  The existing legacy plugin `fns` table still owns bare calls; only SCSS also
+  registers its qualified module names there because that is SCSS syntax.
+  Explicit flat imports publish one lexical marker through the existing
+  variable-declaration machinery, so ordinary shadowing remains authoritative.
+  The source printer rewrites only names present in its supplied function-module
+  map; unknown CSS calls remain bare.
+- Cumulative node weight: no AST kind or field was added. Callable imports
+  create one existing `Keyword` marker and one existing `VariableDeclaration`
+  per imported flat/default/selected function; namespace imports reuse their
+  existing collection binding.
+- New traversal: `lookupModuleFunction` is one parent-frame walk reached only
+  after an explicit imported-callable marker or namespace identity matched.
+  Ordinary stylesheets and bare CSS calls never enter it. The parser recognition
+  graph is unchanged: both grammar edits are reductions on already-recognized
+  call arguments.
+- New node/materialization: module-bearing renders lazily allocate one module
+  function Map per binding frame and one render-local identity Map. Ordinary
+  renders allocate neither. The SCSS module-function Set already existed and
+  remains limited to SCSS qualified calls so the raw plugin ABI cannot
+  intercept them.
+- Render path: every Reference keeps the existing absent-module-state fast
+  check. An explicit imported call resolves its lexical marker, performs one
+  module-function frame walk, and dispatches the selected typed function
+  directly. Bare Jess calls take the ordinary CSS call path without a module
+  name in `scopedFunctionNames`.
+- Helper/API surface: two private helpers were added for binding and looking up
+  imported functions. The existing parser raw-source helper now spells the
+  ValueSlot shapes its existing call grammar already accepts. No public export,
+  node contract, parser host, fallback evaluator, source scan, or reparse was
+  added.
+- Metadata mutations: only render-local Frame/EvalCtx state is written. No
+  canonical AST node, parent link, provenance, or source fact is mutated.
+- Review-flagged diff tokens: [loop/traversal] the parent-frame lookup is
+  bounded by lexical depth and runs only after an imported marker match;
+  [array helper] the Jess source printer still joins the one argument array it
+  already built and changes only the selected call's head to `$name`;
+  [node construction] existing markers/declarations are created once per flat
+  callable import, while both Maps and the SCSS Set are lazy and absent from
+  ordinary renders; [side map/set] `frame.moduleFns` owns functions by lexical
+  frame, `moduleReferenceValues` owns marker/namespace identity for one render,
+  and `moduleFns` remains the SCSS raw-ABI exclusion Set. No per-call Map/Set,
+  WeakMap, source walk, object graph, or Error control path is introduced.
+- Behavior evidence: core module and projection tests pass; the public module
+  suite pins `$next(2)` → `3` beside bare `next(2)` kept as CSS, plus Less and
+  SCSS controls; the exact `$if ($flags.enableShadow)` parser/render regression
+  passes. The 326-test conversion slice passes and the complete all-Less slice
+  passes 140 tests with 44 skips. Explicit calls with a nested `$(…)` argument
+  and a CSS space-list argument are pinned as typed Reference/Call AST facts.
+- Build evidence: the dependency-ordered release build and strict core compile
+  pass. Macro and compose-integrity gates report zero interpreter fallbacks.
+  Jess docs validation passes 134 canonical files and the Jess Docusaurus
+  production build succeeds.
+- Boundary evidence: ledger A8 records the owner decision. Jess uses explicit
+  `$` references, Less uses explicit `@` namespace references, and SCSS keeps
+  qualified module calls. Tests cover selected, aliased, flat, namespace,
+  trusted Less/Sass, local JS, JSON, and missing-runtime paths.
+- Evidence: the Jess parser bench resolves workspace `@jesscss/jess-parser`
+  2.0.0-alpha.5 and registry Parseman 0.50.7. An adjacent three-run comparison
+  against exact parent `66ea214ac` produced mixed, order-varying medians: the
+  three-file AST case was 0.7104/0.5405/0.7621 ms at the parent and
+  0.6225/0.5391/0.7342 ms with this pass; CST was 0.5384/0.6096/0.5765 ms at
+  the parent and 0.5577/0.6339/0.5096 ms with this pass. The parser recognition
+  graph is unchanged, and the samples show no systematic regression. The current usable
+  `benchmark.less` render baseline on Node v25.9.0 is 52.98 ms median (3 warmups,
+  30 samples), output SHA-256
+  `29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8`,
+  123,223 bytes. A later contended rerun was explicitly noisy (115.54 ms,
+  38.3% RSD) and is not used as evidence. These are current baselines only; no
+  performance, neutrality, or byte-identity claim is made.
+- Verdict: accepted as a semantic runtime correction with
+  `performanceClaim: none`; all added state is sparse and module-only.
 - Hot-path cost contracts:
 ```json
 [
@@ -4186,6 +4171,7 @@ involved.
       "Collection-spread-computed-key-overlay-and-iteration",
       "Less-lazy-color-call-demand-boundary",
       "defineFunction-typed-positional-named-and-lazy-binding",
+      "module-callable-explicit-reference-and-css-call-separation",
       "mixin-dispatch-ValueSlot-argument-resolution",
       "ValueLayout-provenance-side-table",
       "preserve-mode-calc-result-composition",
@@ -4194,43 +4180,16 @@ involved.
       "recursive-ValueGroup-final-unit-validation",
       "async-declaration-dedup-output-order"
     ],
-    "why": "ModuleImport execution is canonical AST semantic work: compile-owned exports become typed lexical bindings and module calls enter the existing evaluator. This record makes no neutrality, byte-identity, or speed claim.",
-    "dangerTokensJustification": "The compiler plan owns one strong module map; sparse render-local sets gate imported function and namespace identity. Linear export/reference/argument loops consume already-typed facts once. JSON conversion constructs the canonical values it must bind. No source scan, parser replay, AST copy, temporary Reference node, per-node weak table, output path, or routine Error control is added.",
-    "behaviorEvidence": "Focused module and serializer projection tests pass 13/13; public compiler module tests pass 5/5; node-module resolution passes 6/6; the full Less parser passes 762/762; the Less render corpus passes 114/114; the AST-v2 production ratchet passes 4/4.",
-    "buildEvidence": "Strict core TypeScript, the core package build, and the dependency-ordered release build pass; macro compilation reports zero interpreter fallbacks in all five grammar packages; compose-integrity and the aggressive-cutting review pass.",
+    "why": "Imported Jess and Less callables now occupy a separate lexical table and dispatch only after an explicit sigilled Reference resolves to an import-owned marker or namespace. The source printer emits that explicit form for mapped imported calls, and the existing reference-call argument reductions now retain complete ValueSlot arguments. SCSS preserves its qualified module-call syntax. This is a semantic correction and makes no speed, neutrality, or byte-identity claim.",
+    "dangerTokensJustification": "The new parent-frame walk runs only after a sparse imported marker match. The per-frame function Map and render-local identity Map allocate only for module-bearing documents; ordinary renders and bare CSS calls allocate no new state and perform no new traversal. Parser recognition is unchanged; existing reductions retain already-built values and reconstruct only the Reference raw fallback. The source printer joins the same argument array it already built.",
+    "behaviorEvidence": "Focused core module/projection and public module-import tests pass with Jess explicit-vs-CSS behavior and Less/SCSS controls; the 326-test conversion slice and the 140-test all-Less slice pass; parser AST tests pin nested-expression and space-list explicit-call arguments.",
+    "buildEvidence": "The dependency-ordered release build, strict core compile, macro compilation with zero interpreter fallbacks, compose integrity, canonical docs validation, and Jess docs production build pass.",
     "baseline": {
       "fixture": "benchmark.less",
       "phase": "render",
-      "currentMedianMs": 43.94891699999971,
-      "outputSha256": "2b8d9abf3c103a6de7a0a5d66b3a448bcaef8c1818eff753de52d25a23b98f7d",
-      "outputBytes": 122568
-    }
-  },
-  {
-    "id": "core-context-emit-selector-contract",
-    "verdict": "accepted",
-    "performanceClaim": "none",
-    "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
-    "cases": [
-      "Context-plugin-source-parser-dispatch",
-      "emit-walk-context-output-option",
-      "Ruleset-interpolated-selector-boundary",
-      "selector-match-string-and-node-combinators",
-      "extend-index-tagged-graft-atoms",
-      "Sequence-subclass-preserving-evaluation",
-      "callable-output-root-property-guard",
-      "serializer-at-rule-and-selector-surface"
-    ],
-    "why": "Context remains the one module resolver/cache/loader while the serializer consumes its typed result. The explicit LoadedModuleResult return and trusted-module capability clarify that existing dispatch boundary without adding a resolver, output policy, parser host, or alternate evaluator.",
-    "dangerTokensJustification": "The cache read and plugin capability selection are one-time compile dependency work. They add no source scan, tree traversal, AST materialization, hot-path Error result, or render output branch.",
-    "behaviorEvidence": "Core module evaluation, public compiler module routes, and node-module resolution pass, including trusted builtins without plugin-js and the expected unavailable-runtime error for local JS.",
-    "buildEvidence": "Strict core TypeScript and the core and node-module package builds pass.",
-    "baseline": {
-      "fixture": "benchmark.less",
-      "phase": "render",
-      "currentMedianMs": 43.94891699999971,
-      "outputSha256": "2b8d9abf3c103a6de7a0a5d66b3a448bcaef8c1818eff753de52d25a23b98f7d",
-      "outputBytes": 122568
+      "currentMedianMs": 52.98,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
     }
   }
 ]

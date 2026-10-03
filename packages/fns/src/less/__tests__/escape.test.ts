@@ -13,7 +13,7 @@ describe('escape()', () => {
     const result = escape(makeList([makeQuoted('a b=x:y#z;()')], ','), context);
 
     expect(result).toMatchObject({
-      type: 'Keyword',
+      type: 'Any',
       bytes: 'a%20b%3Dx%3Ay%23z%3B%28%29'
     });
   });

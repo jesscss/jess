@@ -73,6 +73,26 @@ export interface TriviaSlot {
   _trivia?: TriviaMap;
 }
 
+/**
+ * Whether a document's built-in functions are ambient (ledger P36).
+ *
+ * ONE object per parsed document: the parser creates it, decides it (a Less
+ * document that writes `@use`/`@compose`, or any Less document under
+ * `moduleMode: 'modern'`, has none), and shares it with every call it builds.
+ * A call therefore answers for the document it was WRITTEN in, wherever it is
+ * evaluated — a variable from an imported partial, a mixin argument — and eval
+ * reads one field instead of asking which document is active.
+ */
+export interface FunctionScope {
+  ambient: boolean;
+}
+
+/** The inline function-scope slot carried by a call node. `null` (the factory
+ *  default) is a call from a parser that records no scope: ambient. */
+export interface FunctionScopeSlot {
+  _fnScope: FunctionScope | null;
+}
+
 /** The two inline body-span slots carried by every block-bearing node. */
 export interface BodySpanSlots {
   _bs: number;
@@ -156,8 +176,12 @@ export interface ValueBoundaryTrivia {
 }
 
 const valueBoundaryTriviaKey = Symbol.for('jess.ast.value-boundary-trivia');
+const generalEnclosedSourceKey = Symbol.for('jess.ast.general-enclosed-source');
+const generalEnclosedTemplateKey = Symbol.for('jess.ast.general-enclosed-template');
 interface StoredValueLayout extends ReadonlyArray<string> {
   readonly [valueBoundaryTriviaKey]?: ValueBoundaryTrivia;
+  readonly [generalEnclosedSourceKey]?: string;
+  readonly [generalEnclosedTemplateKey]?: true;
 }
 
 /*
@@ -414,6 +438,18 @@ export function triviaMapOf(node: object): TriviaMap | undefined {
   return (node as { _trivia?: TriviaMap })._trivia;
 }
 
+/** Attach the parsing document's function scope to a call it built (ledger P36). */
+export function withFunctionScope<T extends FunctionScopeSlot>(call: T, scope: FunctionScope | null): T {
+  call._fnScope = scope;
+  return call;
+}
+
+/** Whether built-in functions are ambient where this call was written. */
+export function hasAmbientFunctions(call: FunctionScopeSlot): boolean {
+  const scope = call._fnScope;
+  return scope === null || scope.ambient;
+}
+
 /** Retain the exact source span inside a block's braces. */
 export function withBodySpan<T extends object>(node: T, span: AstSourceSpan): T {
   const slots = node as Partial<BodySpanSlots>;
@@ -528,6 +564,52 @@ function hasTopLevelSlash(value: object): boolean {
 /** Read parser-authored separators for a raw ValueSlot array, List, or Sequence. */
 export function valueLayoutOf(value: object): ValueLayout | undefined {
   return layouts.get(value);
+}
+
+/**
+ * Record the source bytes of a structured `<general-enclosed>` group
+ * (media-queries-4 §3.1). The parser keeps its structure for tooling; the
+ * emitter prints these bytes instead, because a browser treats the group as
+ * unknown syntax that jess must neither normalize nor evaluate. Rare, so it
+ * rides the same side table as value layout, under a non-enumerable key.
+ */
+export function withGeneralEnclosedSource<T extends object>(value: T, source: string): T {
+  const previous = layouts.get(value);
+  const stored: string[] = [...(previous ?? [])];
+  const boundary = previous?.[valueBoundaryTriviaKey];
+  if (boundary !== undefined) {
+    Object.defineProperty(stored, valueBoundaryTriviaKey, { value: boundary });
+  }
+  Object.defineProperty(stored, generalEnclosedSourceKey, { value: source });
+  layouts.set(value, stored);
+  return value;
+}
+
+/**
+ * Mark a `<general-enclosed>` template that carries the dialect's
+ * interpolation (P16): it records no source bytes, because the interpolation is
+ * evaluated, but the emitter prints the substituted template as written.
+ */
+export function withGeneralEnclosedTemplate<T extends object>(value: T): T {
+  const previous = layouts.get(value);
+  const stored: string[] = [...(previous ?? [])];
+  const boundary = previous?.[valueBoundaryTriviaKey];
+  if (boundary !== undefined) {
+    Object.defineProperty(stored, valueBoundaryTriviaKey, { value: boundary });
+  }
+  Object.defineProperty(stored, generalEnclosedTemplateKey, { value: true });
+  layouts.set(value, stored);
+  return value;
+}
+
+/** Whether the parser marked this value a `<general-enclosed>` interpolated template. */
+export function isGeneralEnclosedTemplate(value: object): boolean {
+  return layouts.get(value)?.[generalEnclosedTemplateKey] === true;
+}
+
+/** The recorded source bytes of a structured `<general-enclosed>` group, if any. */
+export function generalEnclosedSourceOf(value: object): string | undefined {
+  return layouts.get(value)?.[generalEnclosedSourceKey];
 }
 
 /** Read rare parser-owned trivia at the outside edges of a typed value. */

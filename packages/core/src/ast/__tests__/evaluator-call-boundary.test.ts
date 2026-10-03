@@ -21,6 +21,30 @@ describe('ValueEvaluator function-call boundary', () => {
       .toMatchObject({ bytes: 'css-fn(one, two)' });
   });
 
+  /*
+   * Ledger P36: `ambient: false` (a Less modern-mode document) takes the
+   * registry-miss branch without consulting the registry at all; the ordinary
+   * ambient call still costs exactly one registry lookup.
+   */
+  it('treats a registered name as an unresolved optional call when built-ins are not ambient', () => {
+    const registry = createFnRegistry();
+    const body = vi.fn(() => makeKeyword('computed'));
+    registry.register(defineFunction('builtin', { params: twoSlots, body }));
+    const has = vi.spyOn(registry, 'has');
+    const evaluator = buildEvaluator(registry);
+
+    expect(evaluator.call('builtin', args, { unitMode: 'preserve' }))
+      .toMatchObject({ bytes: 'computed' });
+    expect(has).toHaveBeenCalledTimes(1);
+
+    has.mockClear();
+    body.mockClear();
+    expect(evaluator.call('builtin', args, { unitMode: 'preserve' }, null, undefined, undefined, false))
+      .toMatchObject({ bytes: 'builtin(one, two)' });
+    expect(has).not.toHaveBeenCalled();
+    expect(body).not.toHaveBeenCalled();
+  });
+
   it('applies functionMode only after a registered callable rejects synchronously', () => {
     const registry = createFnRegistry();
     registry.register(defineFunction('fails', {

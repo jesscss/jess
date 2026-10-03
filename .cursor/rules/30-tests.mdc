@@ -23,6 +23,27 @@ alwaysApply: true
 - **Before claiming completion or suggesting commit:** Run `pnpm run verify:baseline`. Do not claim success without running it and confirming exit 0.
 - **Automation:** Pre-push runs `verify:baseline` when any of `packages/core`, `packages/syntax/less/less-parser`, `packages/syntax/css/css-parser`, or `packages/jess` have changes, and **blocks push** if it fails.
 
+## Less fixture exclusions (one list, and it re-measures itself)
+
+`packages/jess/test/less/all-less.test.ts` is the Less corpus lane. A fixture can
+fail to run in exactly three ways, all declared in that file:
+
+1. **`skippedFixtures`** — not run. Every entry states a reason, and every entry
+   is reported as a skipped test, so `pnpm --filter jess test` lists it.
+2. **`expectedFailureFixtures`** — RUN, and asserted to fail. Fixing the cause
+   fails the entry; that is how the fix gets noticed.
+3. **no `.css` golden** beside the `.less` — a helper or partial, not a fixture.
+
+**Never add a fourth.** A `invalidLess` array in `@jesscss/shared` used to filter
+fixtures out of the glob with no trace in a run; six of its entries had gone
+stale and were passing unnoticed for months. It is deleted.
+
+The **stale-skip gate** in the same file re-measures every skip that has a golden
+and fails when one starts matching — that is the signal to delete the skip and
+let the fixture gate. Exempting an entry requires writing `gateExempt` with the
+reason matching is not evidence (the one current case: the harness maps remote
+CDN URLs onto the local corpus, so it matches offline).
+
 ## Move the bar up (never down)
 - As we increase stability, **always move the baseline up**: fix failing tests and keep them in the gate; add new suites to `verify:baseline` when they become required for stability.
 - **Do not** relax expectations, remove tests from the baseline, or change assertions to “pass” instead of fixing the cause. The bar is “all previous passes plus what we just fixed or added.”

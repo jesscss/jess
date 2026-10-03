@@ -90,16 +90,60 @@ describe('V19 one-evaluator projection ratchet', () => {
     // `@<ns>` — or merges them unqualified for `as *` — instead of flat-splicing them, which
     // is what `@import` still does). No new Map/Set: the namespace binding reuses the
     // existing declIndex/detached-binding records.
-    // +13 functions (`ModuleImport` load/bind/eval, #182): module export
+    // +15 functions (`ModuleImport` load/bind/eval, #182): module export
     // conversion, namespace/selected binding, and the two existing Reference
     // shapes that dispatch namespaced module functions directly, without a
-    // temporary Reference node. +3 `new Set`: render-local imported-function
-    // and namespace-value identity plus one lazy JSON cycle guard. +2 `new Map`:
-    // document-scoped module facts in the compile plan and direct-serialize
-    // fallback; strong ownership avoids per-node ephemeron tables.
-    expect(occurrences(/^function |^async function /gmu)).toBe(462);
-    expect(occurrences(/new Map/gu)).toBe(66);
-    expect(occurrences(/new Set/gu)).toBe(42);
+    // temporary Reference node. The two added helpers keep imported callables
+    // out of CSS-call lookup and bind explicit `$name(…)` references. +2
+    // `new Set`: the SCSS qualified-call raw-ABI guard and one lazy JSON cycle
+    // guard. +5 `new Map`: document-scoped module facts in the compile plan and
+    // direct-serialize fallback, the per-frame module-function table, and the
+    // two lazy allocation sites for one render-local reference-identity map.
+    // Strong ownership avoids per-node ephemeron tables.
+    // +9 functions and +2 `new Map` (`@import` is a SOURCE FOLD, jess#229): an
+    // imported fact used to be APPENDED to whichever index it landed in, so it
+    // outranked every local fact however early its `@import` was written. A
+    // published fact is now given a `SourceRank` AT PUBLICATION TIME — the
+    // `@import`'s own statement index (`importSiteRank`, `importedFactRank`,
+    // `factSite`) extended by the fact's index in the imported document — and
+    // `publishRankedMixinEvent` / `insertRankedFact` / `factsInSourceOrder` /
+    // `publishImportedRuleMixins` file each fact at it. `compareSourceRankToIndex`
+    // compares a rank against an authored statement's position WITHOUT
+    // materializing `[index]`, which is why no authored statement gets a tuple.
+    // The two Maps are `factRanks` (published declarations only — the ordered
+    // declaration stack is the one consumer that compares two published facts) and
+    // `frameStatementIndex`'s positions, both written and read at publication.
+    // Ordered LOOKUP paths carry a parallel int site array instead, so namespace
+    // descent merges integers with no array, no sort, no cache and no Map.
+    // -9 functions and -3 `new Set` (ledger P34): the eval-time bare-slash
+    // promotion (with its three operator Sets) and the calc() slash-group
+    // reinterpretation are gone. The Less grammar now builds the division, or
+    // the slash-separated list, itself.
+    // +1 function: `isAuthoredGroupExpression`, so an `Expression` the author
+    // spelled as a Less paren group keeps its parens when it is not evaluated.
+    // +2 functions and +2 `new Set` (`arithmeticTier`, `preservedOperand` and
+    // the two operator tiers): an operation kept as written inside a math
+    // function re-spells an authored group whose parens carry precedence —
+    // `calc(100% - (a + b))` is not `calc(100% - a + b)`.
+    // +1 function (`unloweredCall`, ledger P36): the one reader of a lowered
+    // node's retained call, so a Less modern-mode `if()`/`boolean()`/`each()`
+    // is evaluated through `evalCall` like any unimported call; no Map/Set.
+    // +2 functions (`evalStatementCall`, `statementCallBytes`, ledger P37): a
+    // call standing alone in statement position is evaluated once, and one that
+    // came back as itself (a plain CSS call) raises instead of being written out.
+    // +2 functions (`writtenRulesetArgument`, `dispatchCall`, ledger P37): a ruleset
+    // argument of a call written out as-is is written from its evaluated body, and a
+    // legacy plugin that declines a call leaves it on the unknown-call path.
+    // -1 function (`canEmitRootCallValue`): the statement table replaces it.
+    // +2 functions (`writtenBlockBody`, `rejectRulesetArgument`, ledger P37): a
+    // ruleset argument's nested rules, at-rules and mixin calls are evaluated and
+    // written inside its braces, one body at a time.
+    // +1 function (`evalQueryPreludeParts`): a media/container prelude is built as
+    // fragments so a [general-enclosed] group passes the normalizer as written;
+    // the supports normalizer became the shared `normalizePreludeParts`.
+    expect(occurrences(/^function |^async function /gmu)).toBe(474);
+    expect(occurrences(/new Map/gu)).toBe(71);
+    expect(occurrences(/new Set/gu)).toBe(40);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

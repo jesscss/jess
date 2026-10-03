@@ -7,8 +7,10 @@ import {
   parserDiagnostic,
   type UnitMode,
   type Context,
+  ProvidedModules,
   buildEvaluator
 } from '@jesscss/core';
+import { createRequire } from 'node:module';
 import { makeSassRegistry } from '@jesscss/fns/sass/registry';
 import { parse } from '@jesscss/scss-parser';
 import { expandScssImportCandidates } from '@jesscss/style-resolver';
@@ -33,6 +35,18 @@ export type ScssPluginOptions = {
 type ExtendSelectorKind = 'class' | 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 
 const sassValueEvaluator = buildEvaluator(makeSassRegistry());
+
+/**
+ * `#sass` and `#sass/<module>` are this plugin's private paths to the Sass
+ * built-in modules in `@jesscss/fns` (the grammar spells `@use "sass:math"` as
+ * `#sass/math`), resolved from THIS package's location. The plugin loads and
+ * trusts them (no script runtime); the package spelling reaching the same file
+ * is the same module.
+ */
+const providedModules = new ProvidedModules([
+  ['#sass', '@jesscss/fns/sass'],
+  ...['color', 'list', 'map', 'math', 'string'].map(name => [`#sass/${name}`, `@jesscss/fns/sass/${name}`] as const)
+], createRequire(import.meta.url));
 type ScssDialectDefaults = Required<Pick<
   NonNullable<ISafeParseResult['dialectDefaults']>,
   'unitMode'
@@ -51,6 +65,19 @@ export class ScssPlugin extends AbstractPlugin {
   expandImport(importPath: string) {
     // Keep import expansion in sync with the language service.
     return expandScssImportCandidates(importPath);
+  }
+
+  override resolve(filePath: string | string[], currentDir: string, searchPaths: string[]) {
+    const paths = Array.isArray(filePath) ? filePath : [filePath];
+    return super.resolve(paths.map(candidate => providedModules.resolve(candidate) ?? candidate), currentDir, searchPaths);
+  }
+
+  canImportModule(absoluteFilePath: string): boolean {
+    return providedModules.owns(absoluteFilePath);
+  }
+
+  import(absoluteFilePath: string): Promise<Record<string, unknown>> {
+    return providedModules.import(absoluteFilePath);
   }
 
   setContext(context: Context): void {

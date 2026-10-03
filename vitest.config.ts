@@ -96,7 +96,7 @@ function workspaceSrcAliases() {
    */
   const cssGrammar = resolve(root, 'packages/syntax/css/css-parser/src/grammar.ts');
   if (existsSync(cssGrammar)) {
-    alias.push({ find: /^@jesscss\/css-parser\/grammar$/, replacement: cssGrammar });
+    alias.push({ find: /^@jesscss\/css-parser\/grammar\/base$/, replacement: cssGrammar });
   }
 
   /*

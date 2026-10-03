@@ -186,7 +186,9 @@ its reason attached, because a prohibition without one gets optimised away.
 - **`.css` fixtures are Less v5 alpha expected output and are owner-maintained.**
   A top-level diff against one is **a jess bug by default**, not a fixture to
   update.
-- **Agents never merge or release parseman PRs.** That is the owner's, always.
+- **Agents may merge or release parseman only when the owner explicitly authorizes
+  that action in the active task.** A general request to fix, review, or green a
+  Parseman change does not itself authorize merging or publishing it.
 
 Tests are imperfect encodings of the documented design, and the design is the
 source of truth — but the less-compat bridge is a real external contract.

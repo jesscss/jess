@@ -41,8 +41,16 @@ function findOperation(value: unknown): Operation | null {
   if (value.type === 'Operation') {
     return value as Operation;
   }
-  if (value.type === 'Block' && 'value' in value) {
+  if ((value.type === 'Block' || value.type === 'Expression') && 'value' in value) {
     return findOperation(value.value);
+  }
+  if (value.type === 'List' && 'value' in value && Array.isArray(value.value)) {
+    for (const item of value.value) {
+      const found = findOperation(item);
+      if (found !== null) {
+        return found;
+      }
+    }
   }
   return null;
 }
@@ -63,19 +71,14 @@ describe('Less `math:` resolves at PARSE time onto Operation.mathOutsideParens',
   });
 
   /*
-   * A `/` inside `calc(…)` is division in CSS itself, not by Less policy. The
-   * node records that this operation does not compute on its OWN under
-   * `parens-division`; what makes it fold is the enclosing math context.
-   *
-   * `inMathFunction` is deliberately NOT asserted here. The Less grammar does
-   * not set it yet — routing its math names needs a per-dialect argument
-   * grammar, because in `.less` a `/` inside a call is a list boundary — so the
-   * calc interior is still carried by the evaluator's ambient depth. That gap is
-   * a different lane's; this file pins the mode mapping only.
+   * An operation inside `calc(…)` is authored inside a math function: it is
+   * `inMathFunction`, exactly as css and `.jess` mark it, and is kept as written
+   * whatever the mode — owner 2026-09-24 (DESIGN-DECISIONS P35).
    */
-  it('a `calc(…)` operand records the mode, and does not compute bare under parens-division', () => {
-    expect(deepOperation('.a { k: calc(4px / 2); }', 'parens-division').mathOutsideParens).toBe(false);
-    expect(deepOperation('.a { k: calc(4px / 2); }', 'always').mathOutsideParens).toBe(true);
+  it('a `calc(…)` operand is inMathFunction in every mode', () => {
+    for (const mathMode of MODES) {
+      expect(deepOperation('.a { k: calc(4px / 2); }', mathMode).inMathFunction, mathMode).toBe(true);
+    }
   });
 
   it('unary minus answers to the mode too', () => {
@@ -85,14 +88,41 @@ describe('Less `math:` resolves at PARSE time onto Operation.mathOutsideParens',
   });
 
   /*
-   * A preserved slash group is authored bytes, so a neighbouring `+` inside it
-   * must not fold either — `4 / 2 + 5em` is `4 / 2 + 5em`, never `4 / 7em`.
-   * Under `always` the group is not preserved and the `+` keeps its arithmetic.
+   * One division rule reads every slash; the mode picks its shape (P34/P35).
+   * Where the mode does not divide, the slash is the value's loosest separator
+   * and each side keeps its own arithmetic — `4 / 2 + 5em` is `4` and `2 + 5em`,
+   * and that `+` computes like any bare `+` under the mode. Under `always` the
+   * slash is a division at product precedence.
    */
-  it('a preserved slash group restates its operands as arithmetic that does not happen bare', () => {
-    expect(parseOperation('.a { k: 4 / 2 + 5em; }', 'parens-division').mathOutsideParens).toBe(false);
-    expect(parseOperation('.a { k: 4 / 2 + 5em; }', 'strict').mathOutsideParens).toBe(false);
-    expect(parseOperation('.a { k: 4 / 2 + 5em; }', 'always').mathOutsideParens).toBe(true);
+  it('a non-dividing slash separates two sides that keep their own math', () => {
+    const slash = parseValue('.a { k: 4 / 2 + 5em; }', 'parens-division');
+    expect(slash).toMatchObject({ type: 'List', sep: '/' });
+    expect(requireOperation(slash).mathOutsideParens).toBe(true);
+    expect(parseValue('.a { k: 4 / 2 + 5em; }', 'strict')).toMatchObject({ type: 'List', sep: '/' });
+    expect(parseOperation('.a { k: 4 / 2 + 5em; }', 'always')).toMatchObject({
+      operator: '+',
+      left: { type: 'Operation', operator: '/', mathOutsideParens: true },
+      mathOutsideParens: true
+    });
+  });
+
+  /*
+   * A function-condition operand is a plain value, so its math takes the same
+   * shapes — a slash list, an `Expression` — and the condition's verbatim
+   * source must still spell exactly what was written.
+   */
+  it('a function-condition operand keeps its authored spelling through the new shapes', () => {
+    const conditionSrc = (source: string): string => {
+      const found = deepFind(parse(source).rules, 'Condition');
+      if (found === null || !('src' in found) || typeof found.src !== 'string') {
+        throw new TypeError('no Condition in the parsed tree');
+      }
+      return found.src;
+    };
+    expect(conditionSrc('a { b: foo(@w / 2 > 1); }')).toBe('@w / 2 > 1');
+    expect(conditionSrc('a { b: foo(@w > 4 / 2); }')).toBe('@w > 4 / 2');
+    expect(conditionSrc('a { b: foo(@w * 2 > 1); }')).toBe('@w * 2 > 1');
+    expect(() => parse('a { b: if(@w / 2 > 1, x, y); }')).not.toThrow();
   });
 
   /*
@@ -109,6 +139,10 @@ describe('Less `math:` resolves at PARSE time onto Operation.mathOutsideParens',
 });
 
 function parseOperation(source: string, mathMode: typeof MODES[number]): Operation {
+  return requireOperation(parseValue(source, mathMode));
+}
+
+function parseValue(source: string, mathMode: typeof MODES[number]): ValueSlot {
   const rules = parse(source, { mathMode }).rules as Statement[];
   const ruleset = rules.find(rule => rule.type === 'Ruleset');
   if (ruleset === undefined || ruleset.type !== 'Ruleset') {
@@ -118,7 +152,7 @@ function parseOperation(source: string, mathMode: typeof MODES[number]): Operati
   if (decl === undefined || decl.type !== 'Declaration') {
     throw new TypeError('expected a declaration');
   }
-  return requireOperation(decl.value);
+  return decl.value;
 }
 
 function deepOperation(source: string, mathMode: typeof MODES[number]): Operation {
@@ -128,6 +162,31 @@ function deepOperation(source: string, mathMode: typeof MODES[number]): Operatio
     throw new TypeError('no Operation anywhere in the parsed tree');
   }
   return found;
+}
+
+function deepFind(value: unknown, type: string): object | null {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = deepFind(item, type);
+      if (found !== null) {
+        return found;
+      }
+    }
+    return null;
+  }
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  if ('type' in value && value.type === type) {
+    return value;
+  }
+  for (const item of Object.values(value)) {
+    const found = deepFind(item, type);
+    if (found !== null) {
+      return found;
+    }
+  }
+  return null;
 }
 
 function deepFindOperation(value: unknown): Operation | null {

@@ -7,15 +7,17 @@
  * third module keeps that a straight line rather than a cycle.
  */
 import type { MathMode } from '@jesscss/core';
+import type { FunctionScope } from '@jesscss/core/ast';
 
 export interface LessParseState {
   /**
    * The input text, the trivia machinery's back-reference for slicing.
    *
-   * OPTIONAL, because the grammar already treats it so — `sourceFromState`
-   * returns `undefined` when it is absent and the trivia helpers fall back to
-   * structural layout. A caller that only wants grammar facts (the AST-grammar
-   * tests drive `run()` directly) may omit it. `mathMode` remains required on
+   * OPTIONAL for most of the grammar — `sourceFromState` returns `undefined`
+   * when it is absent and the trivia helpers fall back to structural layout — so
+   * a caller that only wants grammar facts (the AST-grammar tests drive `run()`
+   * directly) may omit it. A `<general-enclosed>` query group is the exception:
+   * it records its source bytes (ledger N14), so an input holding one needs it. `mathMode` remains required on
    * this resolved internal shape; raw callers are normalized by
    * `requireLessParseState` below.
    */
@@ -27,6 +29,15 @@ export interface LessParseState {
    * the evaluator never sees the mode.
    */
   readonly mathMode: MathMode;
+
+  /**
+   * The document's built-in function scope (ledger P36): created by `parseWith`
+   * from `moduleMode`, closed by the `@use`/`@compose` reducers, and attached to
+   * every call node. The one state member a reducer writes — a shared object,
+   * because parseman hands each reducer a shallow copy of the state, and only a
+   * reference carries a write back to the calls built before the directive.
+   */
+  readonly functions?: FunctionScope;
 }
 
 /** The public Less default, shared by wrapper and raw-grammar entry points. */
@@ -70,4 +81,22 @@ export function requireLessParseState(state: unknown): LessParseState {
   return source === undefined
     ? { mathMode }
     : { source, mathMode };
+}
+
+/**
+ * The document's function scope, or `null` for a state without one (a raw
+ * `run()` with no state). Read on every call node, so no re-validation of the
+ * state `parseWith` itself built.
+ */
+export function functionScopeOf(state: unknown): FunctionScope | null {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the state is parseWith's LessParseState or absent; parseman types it `unknown`.
+  return (state as LessParseState | undefined)?.functions ?? null;
+}
+
+/** A module directive (`@use`/`@compose`) puts the document in modern mode (ledger P36). */
+export function closeAmbientFunctions(state: unknown): void {
+  const scope = functionScopeOf(state);
+  if (scope !== null) {
+    scope.ambient = false;
+  }
 }

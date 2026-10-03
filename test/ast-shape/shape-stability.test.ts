@@ -137,6 +137,9 @@ const DISCOVER = process.env.SHAPE_DISCOVER === 'true';
  * is not an AST node type at all; comments ride out-of-band as trivia, so the
  * `leading-comment` source contributes no `Comment` node. That entry had been
  * asserting a type the AST never produced.
+ *
+ * `Expression` added: Less math has lowered into it since #277 (ledger P35), so
+ * the less corpus constructs it.
  */
 const CORPUS_NODE_TYPES: readonly string[] = [
   'AnonymousMixin',
@@ -154,6 +157,7 @@ const CORPUS_NODE_TYPES: readonly string[] = [
   'CompoundSelector',
   'Declaration',
   'Dimension',
+  'Expression',
   'For',
   'FunctionCall',
   'If',

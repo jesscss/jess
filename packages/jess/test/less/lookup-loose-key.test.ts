@@ -40,4 +40,10 @@ describe('bracket lookup keys compare by value', () => {
     await expect(render('@k: "one";\n@foo: { one: bar; }\n.a { k: @foo[@k]; }'))
       .rejects.toThrow();
   });
+
+  /* A lookup into an EMPTY member map misses like any other, not silently. */
+  it('raises on a lookup into an empty member map', async () => {
+    await expect(render('.empty() { }\n@m: .empty();\n.a { k: @m[anything]; }'))
+      .rejects.toThrow();
+  });
 });

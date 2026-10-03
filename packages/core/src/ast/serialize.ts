@@ -67,6 +67,7 @@ import {
 import type {
   Any,
   Apply,
+  AuthoredCallSlot,
   Collection,
   NestedPropertyBlock,
   Color,
@@ -74,6 +75,7 @@ import type {
   ComplexSelector,
   CompoundSelector,
   Declaration,
+  Expression,
   AnonymousMixin,
   ValueBlock,
   Dimension,
@@ -120,6 +122,8 @@ import { isDiagnosticStatement } from './at-rule.js';
 // typed synchronous value evaluator seam + boundary-clean value domain.
 import {
   DEFAULT_MODES,
+  DivisionByZeroError,
+  EmptyOperandError,
   IncomparableOperandsError,
   emitValue,
   isValueGroup,
@@ -141,7 +145,7 @@ import {
   type Value
 } from './value-eval.js';
 import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
-import { defineFunction } from './value-dispatch.js';
+import { defineFunction, FunctionDeclined } from './value-dispatch.js';
 import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
@@ -165,7 +169,7 @@ import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
-import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
+import { NO_SPAN, bodyEndOf, bodySpanOf, bodyStartOf, generalEnclosedSourceOf, hasAmbientFunctions, isGeneralEnclosedTemplate, sourceEndOf, sourceSpanOf, sourceStartOf, triviaMapOf, valueBoundaryTriviaOf, valueLayoutOf, withValueLayout, type AstSourceSpan } from './provenance.js';
 import type { Trivia, TriviaMap } from '../types/index.js';
 
 /* ---------------------------------------------------- MaybePromise glue */
@@ -529,11 +533,59 @@ type Binding = CallValue;
  * existing binding/declaration shape without allocating one wrapper per item. */
 const EVALUATED_BINDING: ValueNode = any('');
 
-type MixinRank = readonly number[];
+/**
+ * The source-fold position of one fact inside a frame's body: the path of
+ * statement indexes that reaches it. An authored top-level statement is `[i]`; a
+ * statement inside a selected `$if` arm is `[i, j]`; a fact published by the
+ * `@import` at `[i]` is `[i, j]` where `j` is its index in the imported
+ * document, so an imported fact sorts AT its import's lexical position — Less
+ * folds an `@import`'s statements in where the `@import` is written, so a local
+ * fact after it overrides the imported one and a local fact before it does not.
+ *
+ * **An AUTHORED statement's rank is always SINGLE-ELEMENT**, and the whole
+ * byte-unchanged argument rests on it: against `[i]` the comparator decides on
+ * the first element alone unless the first elements are equal, and they are equal
+ * only for the facts of the `@import` that IS statement `i`. So no ordering
+ * between two authored statements, and none between an authored statement and the
+ * facts of a different `@import`, can change. Authored ranks are never
+ * materialized as arrays — {@link compareSourceRankToIndex} compares against the
+ * index directly (multi-element ranks belong to published facts and to `$if`-arm
+ * definitions, which carry their own rank).
+ */
+type SourceRank = readonly number[];
+
+/**
+ * The rank of a fact whose import site this frame never learned (the A10
+ * `@media`-wrapped `@import` desugar): it keeps the position publication order
+ * gave it. In the ordered merges that is AHEAD of every ranked fact (the
+ * historical import-first prefix); in the last-wins declaration stack
+ * ({@link publishImportedVariableDeclaration}) the unranked path appends, which
+ * is the LAST slot. Opposite directions, same effect — the import wins, exactly
+ * as it did before ranks existed.
+ */
+const UNRANKED_FACT: SourceRank = [];
+
+/** {@link UNRANKED_FACT}'s site: before authored statement `0`. */
+const UNRANKED_SITE = -1;
+
+/**
+ * Compare a rank against the single-element rank `[index]` of an authored
+ * top-level statement, WITHOUT materializing that array. `[index, …]` — the facts
+ * of the `@import` that is statement `index` — sorts after it; any other rank is
+ * decided by its first element, and an absent one ({@link UNRANKED_FACT}) sorts
+ * first.
+ */
+function compareSourceRankToIndex(rank: SourceRank, index: number): number {
+  const head = rank[0];
+  if (head === undefined) {
+    return -1;
+  }
+  return head !== index ? head - index : rank.length - 1;
+}
 
 interface OrderedMixinCandidate {
   readonly definition: MixinDefinition;
-  readonly rank: MixinRank;
+  readonly rank: SourceRank;
 }
 
 interface OrderedMixinIndex {
@@ -546,7 +598,7 @@ interface SelectedMixinPath {
 }
 
 interface MixinDefinitionMeta {
-  readonly rank: MixinRank;
+  readonly rank: SourceRank;
   readonly selectedPath: readonly SelectedMixinPath[];
 }
 
@@ -706,19 +758,62 @@ export interface Frame {
   /*
    * rulesets visible at this level, keyed by their own-local selector
    * string (namespace path descent). Lazily built only when a namespaced call or
-   * map/namespace accessor needs it.
+   * map/namespace accessor needs it, and dropped by the next import publication —
+   * so this is memoized PER PUBLICATION EPOCH, not once per frame, and publication
+   * interleaves with emission. That is why its builder must stay linear.
    */
   rulesets?: Map<string, Ruleset[]> | null;
 
-  /** Root rulesets published from the static import graph, in import/source order. */
+  /**
+   * Root rulesets published from the static import graph, kept SITE-ASCENDING by
+   * {@link insertRankedFact} so the source-fold merge can two-cursor them.
+   */
   importedRules?: Ruleset[] | null;
 
   /**
-   * Imported callable statements in import/source order. Static planning makes
-   * document-root import facts visible before output evaluation; namespaced
-   * descent must see imported definitions as well as rulesets.
+   * [import-fold] The source-fold SITE of `importedRules[i]` — the statement index
+   * of the `@import` that folded it in, or `-1` for a fact whose site is unknown
+   * ({@link UNRANKED_FACT}). A parallel INT array, not a rank per entry and not a
+   * node-keyed map: the merges need only this first element (`site < index` IS the
+   * whole comparison, see {@link compareSourceRankToIndex}), so the one reader on a
+   * lookup path compares integers and touches nothing else.
+   */
+  importedRuleSites?: number[] | null;
+
+  /**
+   * Imported callable statements, kept SITE-ASCENDING by
+   * {@link insertRankedFact} (which for ordinary ascending publication is one
+   * integer comparison and a push). Static planning makes document-root import facts
+   * visible before output evaluation; namespaced descent must see imported
+   * definitions as well as rulesets, and two-cursors this list against
+   * {@link statements} with no merged array to cache or invalidate.
    */
   importedCallables?: Array<MixinDefinition | Ruleset> | null;
+
+  /** [import-fold] Source-fold site of `importedCallables[i]`; see
+   *  {@link importedRuleSites}. */
+  importedCallableSites?: number[] | null;
+
+  /**
+   * [import-fold] {@link SourceRank} of each published import DECLARATION — the
+   * `@import`'s own position extended by the declaration's index in the imported
+   * document. Declarations only, because the ordered declaration stack is the only
+   * consumer that must compare two published facts to each other; the ordered
+   * merges carry a site int per entry instead, and dispatch candidates carry their
+   * rank on the candidate. Authored statements are deliberately absent: their rank
+   * IS their index in {@link statements}. Written and read at PUBLICATION time —
+   * no lookup path reaches it.
+   */
+  factRanks?: Map<VariableDeclaration, SourceRank>;
+
+  /**
+   * [import-fold] Authored position of each top-level statement, built ONCE and
+   * only on the two paths that must resolve a position from the statement itself
+   * rather than from a loop cursor: a published declaration colliding with an
+   * existing stack entry, and an import that reaches publication without its
+   * index in hand. Integer values — never a tuple per statement.
+   */
+  statementIndex?: Map<Statement, number>;
 
   /**
    * Source-ordered direct ruleset placements unlocked by executed explicit
@@ -746,8 +841,15 @@ export interface Frame {
   /** Lexical rank/path facts; indexing does not publish any selected-arm definition. */
   mixinDefinitionMeta?: Map<MixinDefinition, MixinDefinitionMeta>;
 
-  /** Definitions reached while walking selected arms in this activation. */
-  selectedMixinEvents?: Map<string, OrderedMixinCandidate[]>;
+  /**
+   * Rank-bearing definitions PUBLISHED into this frame rather than authored
+   * directly in its body: definitions reached while walking selected `$if` arms
+   * in this activation, and definitions an `@import` folded in.
+   * {@link frameCandidatesInOrder} merges them into the authored candidate list
+   * BY RANK, so a published definition dispatches at its source position instead
+   * of after every authored one.
+   */
+  publishedMixinEvents?: Map<string, OrderedMixinCandidate[]>;
 
   /*
    * [closure/publish] a mixin def UNLOCKED into this frame by a body expansion
@@ -791,6 +893,11 @@ export interface Frame {
    * no parallel scope structure.
    */
   fns?: Map<string, Fn> | null;
+
+  /** Functions imported by `@-use` / `@-from`, keyed by their explicit
+   * reference path. They are deliberately separate from `fns`: importing a
+   * module must never change the meaning of a CSS-shaped `name(...)` call. */
+  moduleFns?: Map<string, Fn>;
 
   /*
    * [plugin/P1] nearest frame at-or-above this one that owns any local function
@@ -998,8 +1105,21 @@ function moduleAstValue(value: unknown, name: string, seen: Set<object> | null =
 }
 
 function addModuleFunction(frame: Frame, fn: Fn, e: EvalCtx): void {
-  addScopedFns(frame, [fn], e);
-  (e.moduleFns ??= new Set()).add(fn);
+  (frame.moduleFns ??= new Map()).set(fn.name.toLowerCase(), fn);
+  if (e.context?.sourceContext?.plugin?.supportedExtensions?.includes('.scss') === true) {
+    addScopedFns(frame, [fn], e);
+    (e.moduleFns ??= new Set()).add(fn);
+  }
+}
+
+function lookupModuleFunction(frame: Frame | null, lowerName: string): Fn | undefined {
+  for (let current = frame; current; current = current.parent) {
+    const fn = current.moduleFns?.get(lowerName);
+    if (fn !== undefined) {
+      return fn;
+    }
+  }
+  return undefined;
 }
 
 function bindModuleValue(frame: Frame, name: string, value: unknown, e: EvalCtx): ValueSlot {
@@ -1008,6 +1128,28 @@ function bindModuleValue(frame: Frame, name: string, value: unknown, e: EvalCtx)
   publishImportedVariableDeclaration(frame, declaration);
   activateVariableDeclaration(declaration, frame, e);
   return binding;
+}
+
+function bindModuleCallable(
+  frame: Frame,
+  name: string,
+  value: ModuleCallable | Fn,
+  e: EvalCtx
+): void {
+  const fn = bindModuleFunction(value, name);
+  addModuleFunction(frame, fn, e);
+
+  /*
+   * A callable import is also a real lexical `$name` binding, so ordinary
+   * shadowing decides whether `$name(...)` still reaches this function. The
+   * value is an inert marker whose identity is meaningful only to the sparse
+   * render-local module-reference map.
+   */
+  const marker = keyword(`$${name}`);
+  const declaration = variableDeclaration(name, marker, { mode: 'declare' });
+  publishImportedVariableDeclaration(frame, declaration);
+  activateVariableDeclaration(declaration, frame, e);
+  (e.moduleReferenceValues ??= new Map()).set(marker, name.toLowerCase());
 }
 
 function requireModuleExport(module: Readonly<Record<string, unknown>>, name: string): unknown {
@@ -1033,7 +1175,7 @@ function bindModuleNamespace(
   }
   const binding = bindModuleValue(frame, namespace, values, e);
   if (!isValueSlotArray(binding)) {
-    (e.moduleNamespaceValues ??= new Set()).add(binding);
+    (e.moduleReferenceValues ??= new Map()).set(binding, null);
   }
 }
 
@@ -1051,7 +1193,7 @@ function bindModuleImport(
     if (namespace === '*') {
       for (const [name, value] of Object.entries(module)) {
         if (isModuleCallable(value)) {
-          addModuleFunction(frame, bindModuleFunction(value, name), e);
+          bindModuleCallable(frame, name, value, e);
         } else {
           bindModuleValue(frame, name, value, e);
         }
@@ -1068,7 +1210,7 @@ function bindModuleImport(
   if (node.defaultImport !== null) {
     const value = requireModuleExport(module, 'default');
     if (isModuleCallable(value)) {
-      addModuleFunction(frame, bindModuleFunction(value, node.defaultImport), e);
+      bindModuleCallable(frame, node.defaultImport, value, e);
     } else {
       bindModuleValue(frame, node.defaultImport, value, e);
     }
@@ -1077,7 +1219,7 @@ function bindModuleImport(
     const value = requireModuleExport(module, specifier.name);
     const localName = specifier.alias ?? specifier.name;
     if (isModuleCallable(value)) {
-      addModuleFunction(frame, bindModuleFunction(value, localName), e);
+      bindModuleCallable(frame, localName, value, e);
     } else {
       bindModuleValue(frame, localName, value, e);
     }
@@ -1412,7 +1554,7 @@ function cellsForParams(
  * collect the rulesets defined directly in a scope, keyed by own-local
  * selector string (namespace-path descent). Built lazily on first path lookup.
  */
-function collectRulesets(statements: Statement[]): Map<string, Ruleset[]> | null {
+function collectRulesets(statements: readonly Statement[]): Map<string, Ruleset[]> | null {
   let map: Map<string, Ruleset[]> | null = null;
   const add = (key: string, s: Ruleset): void => {
     const list = (map ??= new Map()).get(key);
@@ -1445,11 +1587,47 @@ function collectRulesets(statements: Statement[]): Map<string, Ruleset[]> | null
   return map;
 }
 
+/**
+ * [import-fold] One frame's published import facts merged with its authored
+ * statements in source-fold order, for the one reader that needs an ARRAY
+ * ({@link collectRulesets} consumes a statement list, and did already before ranks
+ * existed). `published` is kept site-ascending by {@link insertRankedFact} and
+ * `statements` is index-ordered, so two cursors merge them in
+ * O(published + statements) INTEGER comparisons — no sort, no comparator closure,
+ * and no Map on the path. Its only caller memoizes it in {@link Frame.rulesets},
+ * which the next publication drops: it runs once per publication EPOCH, not once,
+ * so linear is the requirement, not a nicety.
+ */
+function factsInSourceOrder(
+  published: readonly Statement[] | null | undefined,
+  sites: readonly number[] | null | undefined,
+  statements: readonly Statement[]
+): readonly Statement[] {
+  if (!published?.length || !sites) {
+    return statements;
+  }
+  const merged: Statement[] = [];
+  let next = 0;
+  for (let index = 0; index < statements.length; index++) {
+    while (next < published.length && sites[next]! < index) {
+      merged.push(published[next]!);
+      next++;
+    }
+    merged.push(statements[index]!);
+  }
+  for (; next < published.length; next++) {
+    merged.push(published[next]!);
+  }
+  return merged;
+}
+
 function frameRulesets(frame: Frame): Map<string, Ruleset[]> | null {
   if (frame.rulesets !== undefined) {
     return frame.rulesets;
   }
-  const built = collectRulesets([...(frame.importedRules ?? []), ...(frame.statements ?? [])]);
+  const built = collectRulesets(
+    factsInSourceOrder(frame.importedRules, frame.importedRuleSites, frame.statements ?? [])
+  );
   frame.rulesets = built;
   return built;
 }
@@ -1513,7 +1691,7 @@ function orderedMixinsForStatements(
   e: EvalCtx
 ): MaybePromise<OrderedMixinIndex | null> {
   const byName = new Map<string, OrderedMixinCandidate[]>();
-  const add = (name: string, definition: MixinDefinition, rank: MixinRank): void => {
+  const add = (name: string, definition: MixinDefinition, rank: SourceRank): void => {
     const list = byName.get(name);
     const candidate = { definition, rank };
     if (list) {
@@ -1692,7 +1870,7 @@ function ensureFrameIndex(f: Frame, e: EvalCtx): MaybePromise<void> {
   return undefined;
 }
 
-function compareMixinRanks(a: MixinRank, b: MixinRank): number {
+function compareSourceRanks(a: SourceRank, b: SourceRank): number {
   const length = Math.min(a.length, b.length);
   for (let i = 0; i < length; i++) {
     if (a[i] !== b[i]) {
@@ -1707,7 +1885,7 @@ function frameMixinDefinitionMeta(frame: Frame): Map<MixinDefinition, MixinDefin
     return frame.mixinDefinitionMeta;
   }
   const meta = new Map<MixinDefinition, MixinDefinitionMeta>();
-  const visit = (rules: Statement[], rank: MixinRank, selectedPath: readonly SelectedMixinPath[]): void => {
+  const visit = (rules: Statement[], rank: SourceRank, selectedPath: readonly SelectedMixinPath[]): void => {
     for (let index = 0; index < rules.length; index++) {
       const statement = rules[index]!;
       const at = [...rank, index];
@@ -1737,27 +1915,116 @@ function publishSelectedMixinDefinition(frame: Frame, definition: MixinDefinitio
   if (!selected || !meta.selectedPath.every(path => selected.get(path.node) === path.rules)) {
     return;
   }
-  const events = frame.selectedMixinEvents ??= new Map<string, OrderedMixinCandidate[]>();
-  const list = events.get(definition.name);
-  if (list?.some(candidate => candidate.definition === definition)) {
+  if (frame.publishedMixinEvents?.get(definition.name)?.some(c => c.definition === definition)) {
     return;
   }
-  const candidate = { definition, rank: meta.rank };
+  publishRankedMixinEvent(frame, definition, meta.rank);
+}
+
+/** File one published definition in this frame's rank-ordered event list. */
+function publishRankedMixinEvent(frame: Frame, definition: MixinDefinition, rank: SourceRank): void {
+  const events = frame.publishedMixinEvents ??= new Map<string, OrderedMixinCandidate[]>();
+  const candidate = { definition, rank };
+  const list = events.get(definition.name);
   if (!list) {
     events.set(definition.name, [candidate]);
     return;
   }
   let index = list.length;
-  while (index > 0 && compareMixinRanks(candidate.rank, list[index - 1]!.rank) < 0) {
+  while (index > 0 && compareSourceRanks(candidate.rank, list[index - 1]!.rank) < 0) {
     index--;
   }
   list.splice(index, 0, candidate);
 }
 
+/**
+ * [import-fold] Authored position of each top-level statement. Built ONCE per
+ * frame and ONLY for the two callers that hold a statement but no cursor for it;
+ * every ordered merge steps a cursor and never comes here.
+ */
+function frameStatementIndex(frame: Frame): Map<Statement, number> {
+  const existing = frame.statementIndex;
+  if (existing) {
+    return existing;
+  }
+  const positions = new Map<Statement, number>();
+  const statements = frame.statements;
+  if (statements) {
+    for (let index = 0; index < statements.length; index++) {
+      positions.set(statements[index]!, index);
+    }
+  }
+  return (frame.statementIndex = positions);
+}
+
+/**
+ * [import-fold] The source-fold position of one `@import` that reached publication
+ * WITHOUT its statement index in hand — the render-time path, which is entered
+ * only for an import static planning did not already publish. Resolved from
+ * {@link frameStatementIndex}, so repeated imports in one frame share a single
+ * O(statements) pass instead of each scanning the body.
+ *
+ * `null` when the statement is not a direct member of this frame's body. The
+ * reachable case is ledger **A10**'s owner-authorised desugar (`@import "lib"
+ * screen;` becomes an `@media` block wrapping the import), which plan-time walks
+ * with the SAME scope; those facts keep publication order, exactly as they did
+ * before ranks existed.
+ */
+function importSiteRank(frame: Frame, node: Statement): SourceRank | null {
+  const at = frameStatementIndex(frame).get(node);
+  return at === undefined ? null : [at];
+}
+
+/** [import-fold] The rank one imported fact takes in the importing frame: the
+ *  `@import`'s own position extended by the fact's index in the imported
+ *  document. `null` when the import site is unknown, which keeps the fact's
+ *  historical publication order. Pure — the callers that must remember a rank
+ *  store it themselves. */
+function importedFactRank(site: SourceRank | null, index: number): SourceRank | null {
+  return site === null ? null : [...site, index];
+}
+
+/** [import-fold] The site of a rank — the statement index of the `@import` that
+ *  folded the fact in — or {@link UNRANKED_SITE}. */
+function factSite(rank: SourceRank | null): number {
+  return rank?.[0] ?? UNRANKED_SITE;
+}
+
+/**
+ * [import-fold] Add one published fact to a SITE-ASCENDING list and record its
+ * site in the parallel int array, so both ordered merges can two-cursor integers
+ * instead of sorting or consulting a map. Publication normally runs in ascending
+ * order (imports execute in source order, and one import's facts publish in
+ * document order), which costs one integer comparison and a push; the backward walk
+ * exists for the out-of-order cases — a deferred import retried after the body
+ * walk, and an unranked fact, which belongs in the leading publication-order
+ * prefix. Facts sharing a site keep publication order, which is their order in the
+ * imported document. Publication-time work: no lookup reaches this.
+ */
+function insertRankedFact<T extends Statement>(list: T[], sites: number[], fact: T, site: number): void {
+  let at = list.length;
+  while (at > 0 && site < sites[at - 1]!) {
+    at--;
+  }
+  if (at === list.length) {
+    list.push(fact);
+    sites.push(site);
+    return;
+  }
+  list.splice(at, 0, fact);
+  sites.splice(at, 0, site);
+}
+
 /** Publish an imported definition into the importing frame's existing lookup
  * map. Static planning exposes document-root facts before output evaluation;
- * lexical import execution still owns the imported document's body and CSS. */
-function publishImportedMixinDefinition(frame: Frame, definition: MixinDefinition, recordCallable = true): void {
+ * lexical import execution still owns the imported document's body and CSS.
+ * `rank` files it at its `@import`'s source position for dispatch ordering. */
+function publishImportedMixinDefinition(
+  frame: Frame,
+  definition: MixinDefinition,
+  recordCallable = true,
+  rank: SourceRank | null = null
+): void {
   const mixins = frame.mixins ??= new Map();
   const candidates = mixins.get(definition.name);
   if (candidates) {
@@ -1766,30 +2033,93 @@ function publishImportedMixinDefinition(frame: Frame, definition: MixinDefinitio
     mixins.set(definition.name, [definition]);
   }
   if (recordCallable) {
-    (frame.importedCallables ??= []).push(definition);
+    insertRankedFact(
+      frame.importedCallables ??= [],
+      frame.importedCallableSites ??= [],
+      definition,
+      factSite(rank)
+    );
+  }
+
+  /*
+   * `frameCandidatesInOrder` merges ranked events into the authored candidate
+   * list and then appends only the `mixins` entries it has not already placed,
+   * so this is a POSITION for the same definition, never a second candidate.
+   */
+  if (rank !== null && !frame.publishedMixinEvents?.get(definition.name)?.some(c => c.definition === definition)) {
+    publishRankedMixinEvent(frame, definition, rank);
   }
 }
 
-/** Publish an imported declaration into the current frame's existing scoped index. */
-function publishImportedVariableDeclaration(frame: Frame, declaration: VariableDeclaration): void {
+/** Publish an imported declaration into the current frame's existing scoped
+ * index. `rank` splices it at its `@import`'s source position, so a later local
+ * declaration of the same name still wins the backward scoped read.
+ *
+ * KNOWN LIMIT, `(multiple)` only: {@link Frame.factRanks} is keyed by the
+ * declaration NODE, so importing one document `(multiple)` times into the same
+ * frame leaves every occurrence remembered at the LAST site. Each occurrence is
+ * still spliced at its own correct position when it is published, and occurrences
+ * of one document keep their relative order, so this is observable only when a
+ * `(multiple)`-imported NAME collides with a local declaration written BETWEEN two
+ * of those imports. Both directions were already wrong before ranks existed. A
+ * per-occurrence fix needs a rank slot per stack entry (the site-array shape the
+ * ordered merges use), which is a wider change than this one. */
+function publishImportedVariableDeclaration(
+  frame: Frame,
+  declaration: VariableDeclaration,
+  rank: SourceRank | null = null
+): void {
   const index = frame.declIndex ??= { byName: new Map() };
   const declarations = index.byName.get(declaration.name);
-  if (declarations) {
-    declarations.push(declaration);
-  } else {
+  if (!declarations) {
     index.byName.set(declaration.name, [declaration]);
+    return;
   }
+  if (rank === null) {
+    declarations.push(declaration);
+    return;
+  }
+  (frame.factRanks ??= new Map()).set(declaration, rank);
+
+  /*
+   * The stack is already rank-sorted (authored declarations in source order,
+   * earlier imports spliced at their own positions), so one backward walk finds
+   * the slot. An entry with no position at all is a parameter cell, which stops
+   * the walk: it belongs ahead of every body fact.
+   */
+  let at = declarations.length;
+  while (at > 0) {
+    const previous = declarations[at - 1]!;
+    const publishedRank = frame.factRanks?.get(previous);
+    if (publishedRank !== undefined) {
+      if (compareSourceRanks(rank, publishedRank) >= 0) {
+        break;
+      }
+    } else {
+      const authoredAt = frameStatementIndex(frame).get(previous);
+      if (authoredAt === undefined || compareSourceRankToIndex(rank, authoredAt) >= 0) {
+        break;
+      }
+    }
+    at--;
+  }
+  declarations.splice(at, 0, declaration);
 }
 
-/** Publish an imported root ruleset for namespace-path descent. Import rules
- * retain import/source order ahead of the importing document's own facts. */
-function publishImportedRuleset(frame: Frame, rule: Ruleset): void {
-  (frame.importedRules ??= []).push(rule);
-  (frame.importedCallables ??= []).push(rule);
+/** Publish an imported root ruleset for namespace-path descent. `rank` places it
+ * among the importing document's own facts: its SITE is recorded per list entry, so
+ * one document imported `(multiple)` times contributes one correctly-placed entry
+ * per occurrence. */
+function publishImportedRuleset(frame: Frame, rule: Ruleset, rank: SourceRank | null = null): void {
+  const site = factSite(rank);
+  insertRankedFact(frame.importedRules ??= [], frame.importedRuleSites ??= [], rule, site);
+  insertRankedFact(frame.importedCallables ??= [], frame.importedCallableSites ??= [], rule, site);
 
   /*
    * It may have been materialized before this import; rebuild lazily with the
-   * newly published import prefix on the next namespace lookup.
+   * newly published fact in source-fold position on the next namespace lookup.
+   * Namespace descent needs no such invalidation: it two-cursors the published
+   * list live.
    */
   frame.rulesets = undefined;
 }
@@ -1825,12 +2155,18 @@ function claimPrepublishedImportFact(e: Emit, statement: Statement): boolean {
 
 /** Publish one imported document's direct lookup facts without executing or
  * copying its body. Static planning and lexical emission share this owner so a
- * definition is never classified through two different paths. */
+ * definition is never classified through two different paths.
+ *
+ * `site` is the `@import`'s own {@link SourceRank} in `frame`. Every fact is
+ * filed at `site` + its index in the imported document, which is what makes
+ * `@import` a SOURCE FOLD rather than an append: a local fact written after the
+ * `@import` outranks the imported one, and one written before it does not. */
 function publishImportedDocumentFacts(
   statements: readonly Statement[],
   frame: Frame,
   e: Emit,
   prepublish = false,
+  site: SourceRank | null = null,
   from = 0
 ): MaybePromise<void> {
   for (let index = from; index < statements.length; index++) {
@@ -1839,14 +2175,14 @@ function publishImportedDocumentFacts(
       if (prepublish && !claimPrepublishedImportFact(e, child)) {
         continue;
       }
-      publishImportedMixinDefinition(frame, child);
+      publishImportedMixinDefinition(frame, child, true, importedFactRank(site, index));
       continue;
     }
     if (child.type === 'VariableDeclaration') {
       if (prepublish && !claimPrepublishedImportFact(e, child)) {
         continue;
       }
-      publishImportedVariableDeclaration(frame, child);
+      publishImportedVariableDeclaration(frame, child, importedFactRank(site, index));
       continue;
     }
     if (child.type !== 'Ruleset') {
@@ -1855,7 +2191,8 @@ function publishImportedDocumentFacts(
     if (prepublish && !claimPrepublishedImportFact(e, child)) {
       continue;
     }
-    publishImportedRuleset(frame, child);
+    const rank = importedFactRank(site, index);
+    publishImportedRuleset(frame, child, rank);
 
     /* A plain imported ruleset is also a zero-argument Less mixin. Its
      * canonical Ruleset remains the namespace fact; publish only its
@@ -1864,11 +2201,25 @@ function publishImportedDocumentFacts(
     if (isThenable(built)) {
       const next = index + 1;
       return built.then((mixins) => {
-        publishOrderedMixins(frame, mixins, frame);
-        return publishImportedDocumentFacts(statements, frame, e, prepublish, next);
+        publishImportedRuleMixins(frame, mixins, rank);
+        return publishImportedDocumentFacts(statements, frame, e, prepublish, site, next);
       });
     }
-    publishOrderedMixins(frame, built, frame);
+    publishImportedRuleMixins(frame, built, rank);
+  }
+}
+
+/** The zero-argument callables synthesized for ONE imported ruleset, published at
+ *  that ruleset's own source-fold position. The Ruleset itself is already the
+ *  namespace fact, so these are not recorded as callables a second time. */
+function publishImportedRuleMixins(frame: Frame, index: OrderedMixinIndex | null, rank: SourceRank | null): void {
+  if (!index) {
+    return;
+  }
+  for (const candidates of index.byName.values()) {
+    for (const candidate of candidates) {
+      publishImportedMixinDefinition(frame, candidate.definition, false, rank);
+    }
   }
 }
 
@@ -1895,9 +2246,12 @@ function rememberImportedCallableBodies(
 
 /**
  * [dedup] A frame's source-ordered candidate list for `name`: the cached
- * interleaved parametric-def/ruleset-mixin list, plus any dynamically PUBLISHED
- * defs (detached-ruleset scope unlocking via `@rs()`, which pushes into `mixins`
- * without touching `statements`) appended.
+ * interleaved parametric-def/ruleset-mixin list, merged BY RANK with the defs
+ * published into this frame (`$if`-selected arms, `@import` folds), then any
+ * remaining `mixins` entry that carries no rank (detached-ruleset scope unlocking
+ * via `@rs()`, which pushes into `mixins` without touching `statements`)
+ * appended. The merge is why a rank is assigned at PUBLICATION time: this runs on
+ * every dispatch and may not compute one.
  */
 function frameCandidatesInOrder(f: Frame, name: string, e: EvalCtx): MixinDefinition[] {
   const mapDefs = f.mixins?.get(name);
@@ -1905,14 +2259,14 @@ function frameCandidatesInOrder(f: Frame, name: string, e: EvalCtx): MixinDefini
     return mapDefs?.slice() ?? [];
   }
   const base = frameOrderedMixins(f, e)?.byName.get(name) ?? [];
-  const events = f.selectedMixinEvents?.get(name) ?? [];
+  const events = f.publishedMixinEvents?.get(name) ?? [];
   const out: MixinDefinition[] = [];
   let baseIndex = 0;
   let eventIndex = 0;
   while (baseIndex < base.length || eventIndex < events.length) {
     const direct = base[baseIndex];
     const selected = events[eventIndex];
-    if (!selected || (direct !== undefined && compareMixinRanks(direct.rank, selected.rank) <= 0)) {
+    if (!selected || (direct !== undefined && compareSourceRanks(direct.rank, selected.rank) <= 0)) {
       out.push(direct!.definition);
       baseIndex++;
     } else {
@@ -1924,7 +2278,8 @@ function frameCandidatesInOrder(f: Frame, name: string, e: EvalCtx): MixinDefini
     return out;
   }
 
-  // Append published defs (in `mixins` but not authored in `statements`).
+  /* Append the rest: a def in `mixins` that neither `statements` authored nor a
+   * ranked event placed. An imported def is already positioned above. */
   for (const d of mapDefs) {
     if (!out.includes(d)) {
       out.push(d);
@@ -2415,15 +2770,39 @@ function findPathInScope(
   };
 
   /*
-   * Imported root rules are lexical splices in this scope. They must take part
-   * in element-value namespace descent just like authored rules, and are kept
-   * ahead of the importing document's source facts in import execution order.
+   * Imported root rules are lexical splices in this scope. They must take part in
+   * element-value namespace descent just like authored rules, AT the position of
+   * the `@import` that folded them in — an imported `#ns` precedes a local `#ns`
+   * only when its `@import` was written first.
+   *
+   * This is a LOOKUP path, so it allocates nothing, caches nothing, and reads no
+   * map: both inputs are already ordered (`importedCallables` site-ascending by
+   * construction, `statements` by index), so two cursors visit them in source-fold
+   * order in O(published + statements) INTEGER comparisons. An import-free scope
+   * takes the same single `for` loop over `statements` it always did. A cache here
+   * would be worse than useless — every import publication invalidates it, so it
+   * would re-merge once per publication epoch while this pays the same linear walk
+   * it already owed for visiting the facts.
    */
-  for (const s of scope.importedCallables ?? scope.importedRules ?? []) {
-    visit(s);
-  }
-  for (const s of st ?? []) {
-    visit(s);
+  const published = scope.importedCallables ?? scope.importedRules;
+  const sites = scope.importedCallables ? scope.importedCallableSites : scope.importedRuleSites;
+  if (!published?.length || !sites) {
+    for (const s of st ?? []) {
+      visit(s);
+    }
+  } else {
+    const total = st?.length ?? 0;
+    let next = 0;
+    for (let index = 0; index < total; index++) {
+      while (next < published.length && sites[next]! < index) {
+        visit(published[next]!);
+        next++;
+      }
+      visit(st![index]!);
+    }
+    for (; next < published.length; next++) {
+      visit(published[next]!);
+    }
   }
 
   /*
@@ -3361,11 +3740,14 @@ interface EvalCtx {
    */
   pluginHost?: PluginHost;
 
-  /** Functions bound by ModuleImport rather than the legacy raw-plugin ABI. */
+  /** SCSS module functions also use the dialect's qualified `name.member()`
+   * call shape; mark them so the legacy raw-plugin ABI does not intercept them. */
   moduleFns?: Set<Fn>;
 
-  /** Namespace collection identities used to disambiguate `$ns.member()` calls. */
-  moduleNamespaceValues?: Set<object>;
+  /** Imported callable markers map to their function path; imported namespace
+   * collection identities map to `null`. This lets explicit references dispatch
+   * without admitting module functions into bare CSS call lookup. */
+  moduleReferenceValues?: Map<object, string | null>;
 
   /** Compile-loaded script/data modules keyed by their canonical import fact. */
   plannedModuleImports?: Map<ModuleImport, PreparedModule> | null;
@@ -3458,29 +3840,6 @@ function evalValueSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybeP
     return evalValue(slot, frame, e);
   }
 
-  /*
-   * Less `math: 0` treats an authored top-level slash as arithmetic even when
-   * the parser retained it as an adjacent ValueSlot array.  Promote only the
-   * narrow, grammar-owned arithmetic shape here; ordinary space/slash values
-   * (font shorthands, lists, nested groups) continue through the layout join
-   * below.  The authored AST is immutable and no source bytes are inspected.
-   */
-  const promoted = promoteBareSlashValue(slot, e);
-  if (promoted !== null) {
-    return evalValue(promoted, frame, e);
-  }
-
-  /*
-   * A slash at this authored boundary keeps the whole scalar expression
-   * authored — a neighbouring `+`/`-` must not eagerly reduce before the
-   * preserved slash is emitted, or `4 / 2 + 5em` prints `4 / 7em`.
-   *
-   * That used to be done HERE, by re-entering the slot with `mathMode` forced
-   * to `'strict'`. It is now a parse fact: the Less grammar recognised the
-   * preserved slash group (`PreservedDivision`) and restated its operands as
-   * arithmetic that does not happen on its own (§12.6b). The operands say so
-   * themselves, so this walk needs no context of its own.
-   */
   const values = slot.map(value => evalValueSlot(value, frame, e));
   return combineAll(values, (resolved) => {
     const separators = valueLayoutOf(slot);
@@ -3514,191 +3873,17 @@ function evalValueSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybeP
   });
 }
 
-type BareSlashToken =
-  | { readonly kind: 'operand'; readonly node: ValueNode }
-  | { readonly kind: 'operator'; readonly operator: '+' | '-' | '*' | '/' | '%' };
-
-type BareSlashOperator = '+' | '-' | '*' | '/' | '%';
-
-const BARE_SLASH_OPERATORS = new Set(['+', '-', '*', '/', '%']);
-const BARE_SLASH_MULTIPLICATIVE = new Set<BareSlashOperator>(['*', '/', '%']);
-const BARE_SLASH_ADDITIVE = new Set<BareSlashOperator>(['+', '-']);
-
-function isBareSlashOperator(operator: string): operator is BareSlashOperator {
-  switch (operator) {
-    case '+':
-    case '-':
-    case '*':
-    case '/':
-    case '%':
-      return true;
-    default:
-      return false;
-  }
-}
-
-function isBareSlash(node: ValueNode): boolean {
-  return (node.type === 'Any' || node.type === 'Keyword') && node.src === '/';
-}
-
-function hasTopLevelBareSlash(slot: readonly ValueSlot[]): boolean {
-  for (const part of slot) {
-    if (!isValueSlotArray(part) && isBareSlash(part)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Flatten one existing arithmetic spine into infix tokens.  This deliberately
- * accepts only numeric/color leaves: variable references, calls, blocks, lists,
- * and authored space groups must retain their existing value semantics instead
- * of being guessed at by a broad declaration-value walk.
- *
- * A named-color `Keyword` (`red`) is a colour operand here too (NamedColor→Keyword
- * convergence): it is the same math operand a hex `Color` is, so `red / 2` folds
- * under `math: always` exactly like `#ff0000 / 2` (lessc 4.x). The fold itself is
- * performed downstream by `operate()` when the promoted `Operation` is evaluated —
- * this gate only lets the leaf through; `foo` (not a colour) is rejected here and
- * the slot stays an authored slash list.
- */
-function appendBareSlashTokens(node: ValueNode, tokens: BareSlashToken[]): boolean {
-  if (
-    node.type === 'Dimension'
-    || node.type === 'Color'
-    || (node.type === 'Keyword' && namedColor(node.src) !== undefined)
-  ) {
-    tokens.push({ kind: 'operand', node });
-    return true;
-  }
-  if (node.type !== 'Operation' || !isBareSlashOperator(node.operator)) {
-    return false;
-  }
-  if (!appendBareSlashTokens(node.left, tokens)) {
-    return false;
-  }
-  tokens.push({ kind: 'operator', operator: node.operator });
-  return appendBareSlashTokens(node.right, tokens);
-}
-
-/** Reduce one precedence tier over an already validated infix token stream. */
-function reduceBareSlashTier(
-  values: ValueNode[],
-  operators: Array<'+' | '-' | '*' | '/' | '%'>,
-  tier: ReadonlySet<string>
-): { values: ValueNode[]; operators: Array<'+' | '-' | '*' | '/' | '%'> } {
-  const nextValues: ValueNode[] = [values[0]!];
-  const nextOperators: Array<'+' | '-' | '*' | '/' | '%'> = [];
-  for (let i = 0; i < operators.length; i++) {
-    const operator = operators[i]!;
-    const right = values[i + 1]!;
-    if (tier.has(operator)) {
-      const left = nextValues.pop()!;
-
-      /*
-       * `mathOutsideParens: true` on every rung, `/` included. This tree is
-       * only ever built because the math policy is `always` (see
-       * `promoteBareSlashValue`, the sole caller), and `always` is exactly the
-       * answer "every operator computes with no enclosing math context". The
-       * factory's CSS-base default would say `false` for `/` and strand the
-       * division this promotion exists to perform.
-       *
-       * [TODO §12.6b step 1, remainder] Building an Operation HERE, at eval,
-       * from a slot the grammar left as a flat slash list, is the same defect
-       * §12.6b names: the Less grammar hardcodes `parens-division`
-       * (`TopProduct`/`TopSum` exclude `/`, and `PreservedDivision` exists) and
-       * so never builds this node even when the policy is `always`. Now that
-       * the grammar receives `mathMode`, the fix is to gate those productions
-       * on it and delete this promotion together with the last two
-       * `e.modes.mathMode` reads.
-       */
-      nextValues.push(operation(operator, left, right, false, true));
-    } else {
-      nextOperators.push(operator);
-      nextValues.push(right);
-    }
-  }
-  return { values: nextValues, operators: nextOperators };
-}
-
-/**
- * Promote a direct Less value array containing an authored slash to one
- * arithmetic operation tree in eager math mode.  Returns `null` for any shape
- * that is not an unambiguous scalar arithmetic expression, preserving the
- * existing authored join path for lists and CSS shorthand values.
- */
-function promoteBareSlashValue(slot: readonly ValueSlot[], e: EvalCtx): ValueNode | null {
-  if (!e.ev || e.modes.mathMode !== 'always' || slot.length < 3) {
-    return null;
-  }
-
-  /*
-   * Stay off the common adjacent-value path unless the grammar has already
-   * exposed a top-level slash leaf.  Nested groups are deliberately ignored:
-   * they have their own typed/list semantics and are not bare-slash facts.
-   */
-  if (!hasTopLevelBareSlash(slot)) {
-    return null;
-  }
-  const tokens: BareSlashToken[] = [];
-  for (const part of slot) {
-    if (isValueSlotArray(part)) {
-      return null;
-    }
-    if (isBareSlash(part)) {
-      tokens.push({ kind: 'operator', operator: '/' });
-      continue;
-    }
-    if (!appendBareSlashTokens(part, tokens)) {
-      return null;
-    }
-  }
-  if (!tokens.some(token => token.kind === 'operator' && token.operator === '/')) {
-    return null;
-  }
-  if (tokens.length < 3 || tokens.length % 2 === 0) {
-    return null;
-  }
-  const values: ValueNode[] = [];
-  const operators: Array<'+' | '-' | '*' | '/' | '%'> = [];
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i]!;
-    if (i % 2 === 0) {
-      if (token.kind !== 'operand') {
-        return null;
-      }
-      values.push(token.node);
-    } else {
-      if (token.kind !== 'operator') {
-        return null;
-      }
-      operators.push(token.operator);
-    }
-  }
-  let reduced = reduceBareSlashTier(values, operators, BARE_SLASH_MULTIPLICATIVE);
-  reduced = reduceBareSlashTier(reduced.values, reduced.operators, BARE_SLASH_ADDITIVE);
-  return reduced.values.length === 1 && reduced.operators.length === 0
-    ? reduced.values[0]!
-    : null;
-}
-
 function evalTypedSlot(
   slot: ValueSlot,
   frame: Frame | null,
   e: EvalCtx,
-  projectMixinValues = false
+  projectMixinValues = false,
+  writeRulesets = false
 ): MaybePromise<ValueGroup> {
   if (!isValueSlotArray(slot)) {
-    return evalTyped(slot, frame, e, projectMixinValues);
+    return evalTyped(slot, frame, e, projectMixinValues, writeRulesets);
   }
-  if ((e.calcDepth ?? 0) > 0) {
-    const slash = slashGroupOfSlot(slot);
-    if (slash !== null) {
-      return evalTyped(slash, frame, e, projectMixinValues);
-    }
-  }
-  const values = slot.map(value => evalTypedSlot(value, frame, e, projectMixinValues));
+  const values = slot.map(value => evalTypedSlot(value, frame, e, projectMixinValues, writeRulesets));
   return combineAll(values, resolved => resolved);
 }
 
@@ -3816,6 +4001,13 @@ function warnUnexpressibleUnit(value: Value, owner: object, e: EvalCtx): void {
 }
 
 function throwUnitArithmetic(error: unknown, node: object, e: EvalCtx): never {
+  if (error instanceof DivisionByZeroError) {
+    throw ERR.divisionByZero({
+      node,
+      ...arithmeticSiteLocation(node, e),
+      meta: { expr: error.expr }
+    });
+  }
   if (error instanceof UnitArithmeticError) {
     throw ERR.invalidUnitArithmetic({
       node,
@@ -3830,6 +4022,13 @@ function throwUnitArithmetic(error: unknown, node: object, e: EvalCtx): never {
    * author gets the same structured error and location rather than a bare
    * TypeError out of the public API.
    */
+  if (error instanceof EmptyOperandError) {
+    throw ERR.emptyOperand({
+      node,
+      ...arithmeticSiteLocation(node, e),
+      meta: { reason: error.message }
+    });
+  }
   if (error instanceof IncomparableOperandsError) {
     throw ERR.incomparableOperands({
       node,
@@ -3898,9 +4097,21 @@ function evalTyped(
   node: ValueNode,
   frame: Frame | null,
   e: EvalCtx,
-  projectMixinValues = false
+  projectMixinValues = false,
+  writeRulesets = false
 ): MaybePromise<ValueGroup> {
   switch (node.type) {
+    case 'AnonymousMixin':
+      /*
+       * [P37] A ruleset passed to a function is evaluated and kept: the function
+       * receives it as the raw text of its evaluated block, so a call written out
+       * as-is (unknown, not in scope, or failed and preserved) never loses it.
+       * Anywhere else it has no value, exactly as before.
+       */
+      return writeRulesets
+        ? writtenRulesetArgument(node, frame, e)
+        : mapMaybe(evalValue(node, frame, e), v => force(e, v));
+
     /* An AUTHORED `null` — provenance explicit, so `null` and an unbound value
      * stay distinguishable downstream while remaining the same value. */
     case 'Null':
@@ -3970,7 +4181,7 @@ function evalTyped(
         return hit.evaluated ?? withExcluded(e, bound, () =>
           isMixinCallValue(bound)
             ? force(e, literal(''))
-            : evalTypedSlot(bound, hit.frame, e, projectMixinValues));
+            : evalTypedSlot(bound, hit.frame, e, projectMixinValues, writeRulesets));
       });
     case 'Reference': {
       const moduleCall = evalModuleReferenceCall(node, frame, e);
@@ -4063,16 +4274,9 @@ function evalTyped(
        * its structure directly (each part resolved) instead of re-splitting a joined
        * string. Typed consumption only — the emit path (`evalValue`) still joins the
        * parts to bytes, so an un-consumed space value serializes exactly as before.
-       * EXCEPT a preserved-division slash group (`10px / 2`, built as a `Sequence`
-       * `[left, '/', right]` by value-expr) is NOT a list — it is one arithmetic
-       * value that must fold to bytes so an outer operation keeps it verbatim (guard
-       * 3). Fall through to the joined-bytes path for it.
        */
-      if (!isSlashGroup(node)) {
-        const parts = node.parts.map(p => evalTyped(p, frame, e, projectMixinValues));
-        return combineAll(parts, vals => vals);
-      }
-      return mapMaybe(evalValue(node, frame, e), v => force(e, v));
+      const parts = node.parts.map(p => evalTyped(p, frame, e, projectMixinValues));
+      return combineAll(parts, vals => vals);
     }
     case 'FunctionCall':
       /*
@@ -4083,12 +4287,18 @@ function evalTyped(
       return mapMaybe(evalCall(node, frame, e, true), v => force(e, v));
     case 'Condition':
       return mapMaybe(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), makeBool);
-    case 'IfValue':
+    case 'IfValue': {
+      const unlowered = unloweredCall(node);
+      if (unlowered !== null) {
+        return mapMaybe(evalCall(unlowered, frame, e, true), v => force(e, v));
+      }
+
       /* The taken arm is consumed TYPED — `if(@c, 1px, 2px) * 2` operates on the
        * branch value, not on its bytes. An unmatched chain has no value. */
       return mapMaybe(pickIfValue(node, frame, e), taken => taken === undefined
         ? NULL
         : evalTypedSlot(taken, frame, e, projectMixinValues));
+    }
     case 'Range':
       /*
        * Ranges are consumed structurally by `forItems`; a value-position use
@@ -4105,99 +4315,52 @@ function evalTyped(
   }
 }
 
-/**
- * A preserved-division slash group — the `Sequence` `[left, '/', right]` that
- * value-expr builds for `a / b` when the division is kept verbatim (parens-division
- * math mode). It is ONE arithmetic value, not a space list, so it must NOT
- * materialize to a value-domain `List` (that would break an outer operation and
- * misreport `length`/`extract`). Detected by a top-level `/` literal part.
- */
-function isSlashGroup(node: Sequence): boolean {
-  /*
-   * The direct Less grammar owns separator tokens as `Keyword` leaves; older
-   * hand-built AST tests may still use opaque `Any`. Both are the same typed
-   * slash fact here—never rediscover it from joined source bytes.
-   */
-  return node.parts.some(p => (p.type === 'Any' || p.type === 'Keyword') && p.src.trim() === '/');
+const PRODUCT_TIER: ReadonlySet<string> = new Set(['*', '/', '%']);
+const SUM_TIER: ReadonlySet<string> = new Set(['+', '-']);
+
+function arithmeticTier(operator: string): number {
+  return PRODUCT_TIER.has(operator) ? 2 : SUM_TIER.has(operator) ? 1 : 0;
 }
 
 /**
- * A Less variable may retain a glued top-level slash as the ordinary raw
- * `ValueSlot[]` shape (`50vh/2`).  That remains the public parser fact, but a
- * calc consumer still needs the same preserved-division interpretation as the
- * explicit spaced group.  Materialize only this temporary evaluator view; do
- * not change the authored AST or wrap ordinary arrays outside calc.
+ * The bytes of one operand of an operation that is kept as written. A paren
+ * group that is not evaluated drops its parens when its inner value is not a
+ * literal (a kept math-function operation is a `Keyword`), which is right for a
+ * redundant group (`calc(((10vh)) + …)`) but changes the value when the group
+ * carried precedence: `calc(100% - (a + b))` is not `calc(100% - a + b)`. So the
+ * group is re-spelled exactly when the tree needs it — a lower-tier operation
+ * under a higher-tier one, or an equal-tier one on the right of `-`, `/` or `%`.
  */
-function slashGroupOfSlot(slot: ValueSlot): Sequence | null {
-  if (!isValueSlotArray(slot)) {
-    return null;
+function preservedOperand(parent: Operation, child: ValueNode, value: EvalValue, onRight: boolean): string {
+  const bytes = emitValue(value);
+  if (isLiteral(value) || child.type !== 'Block' || child.delimiter !== 'paren') {
+    return bytes;
   }
-  let hasSlash = false;
-  for (const part of slot) {
-    if (isValueSlotArray(part)) {
-      return null;
-    }
-    hasSlash ||= (part.type === 'Any' || part.type === 'Keyword') && part.src.trim() === '/';
+  let inner: ValueSlot = child.value;
+  while (!isValueSlotArray(inner) && inner.type === 'Block' && inner.delimiter === 'paren') {
+    inner = inner.value;
   }
-  if (!hasSlash) {
-    return null;
+  if (isValueSlotArray(inner) || inner.type !== 'Operation') {
+    return bytes;
   }
-  const parts: ValueNode[] = [];
-  for (const part of slot) {
-    if (!isValueSlotArray(part)) {
-      parts.push(part);
-    }
+  const outerTier = arithmeticTier(parent.operator);
+  const innerTier = arithmeticTier(inner.operator);
+  if (outerTier === 0 || innerTier === 0) {
+    return bytes;
   }
-  const node: Sequence = { type: 'Sequence', parts };
-  const separators = valueLayoutOf(slot);
-  return separators === undefined ? node : withValueLayout(node, separators);
+  const needed = innerTier < outerTier
+    || (onRight && innerTier === outerTier && parent.operator !== '+' && parent.operator !== '*');
+  return needed ? `(${bytes})` : bytes;
 }
 
 /**
- * [calc] Reinterpret a preserved-division slash group (`[left, '/', right]`, and
- * left-associative chains `a / b / c`) as a left-nested division `Operation` so it
- * COMPUTES in a `calc(…)` math context. Returns `null` for a shape that is not a
- * clean `operand ('/' operand)+` chain (e.g. an interleaved space list carrying a
- * `/`), leaving it to fold verbatim. Each operand is a single part, or the run of
- * parts between two slashes wrapped back into a `Sequence`.
+ * An `Expression` the author spelled as a paren group — its span opens at the
+ * `(` before its value does. A `.jess` `$( … )` carries no span of its own and a
+ * bare Less computation starts where its value starts, so neither prints parens.
  */
-function slashGroupToOperation(node: Sequence): Operation | null {
-  const operands: ValueNode[] = [];
-  let run: ValueNode[] = [];
-  let sawSlash = false;
-  const flush = (): boolean => {
-    if (run.length === 0) {
-      return false;
-    }
-    operands.push(run.length === 1 ? run[0]! : spaced(run));
-    run = [];
-    return true;
-  };
-  for (const p of node.parts) {
-    if ((p.type === 'Any' || p.type === 'Keyword') && p.src.trim() === '/') {
-      if (!flush()) {
-        return null;
-      } // leading / empty operand
-      sawSlash = true;
-    } else {
-      run.push(p);
-    }
-  }
-  if (!flush() || !sawSlash || operands.length < 2) {
-    return null;
-  }
-
-  /*
-   * `mathOutsideParens: false` — this division computes because the enclosing
-   * `calc(…)` is a math context (`calcDepth`), never on its own. Saying `true`
-   * here would make the reinterpreted group compute outside calc too, which is
-   * the opposite of why it was preserved.
-   */
-  let op = operation('/', operands[0]!, operands[1]!, false, false);
-  for (let i = 2; i < operands.length; i++) {
-    op = operation('/', op, operands[i]!, false, false);
-  }
-  return op;
+function isAuthoredGroupExpression(node: Expression): boolean {
+  const start = sourceStartOf(node);
+  return start !== NO_SPAN && !isValueSlotArray(node.value) && start < sourceStartOf(node.value);
 }
 
 /**
@@ -4413,21 +4576,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         e.mergeImportant = true;
       }
       return evalValueSlot(node.value, frame, e);
-    case 'Sequence': {
-      /*
-       * Inside `calc(…)`, `/` is DIVISION (math), not a preserved slash separator:
-       * a variable holding a preserved-division slash group (`@var: 50vh/2`) spliced
-       * into calc must COMPUTE (`50vh / 2` → `25vh`) so an outer calc op keeps its
-       * parens around the simplified operand (`calc(50% + (25vh - 20px))`). An inline
-       * `50vh/2` written directly in calc already parses as an `Operation`; this makes
-       * the variable-reference form fold identically.
-       */
-      const div = (e.calcDepth ?? 0) > 0 ? slashGroupToOperation(node) : null;
-      if (div) {
-        return evalValue(div, frame, e);
-      }
+    case 'Sequence':
       return joinSpacedBytes(node, frame, e);
-    }
     case 'List': {
       /*
        * Emit each item's bytes joined by the canonical List separator fact. Source
@@ -4439,6 +4589,23 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        */
       const items = node.value.map(it => evalValueSlot(it, frame, e));
       return combineAll(items, (vals) => {
+        /*
+         * §4.7 — a list item is a final typed value too. The declaration boundary
+         * (`evalBytes`) validates the value it is handed, but a list emits its
+         * items to bytes HERE, so without this an item carrying an
+         * unexpressible unit (`$(2px * 3px) / 1px`) would skip the `unitMode`
+         * ladder that the same operation meets on its own.
+         */
+        if (e.ev) {
+          for (let index = 0; index < vals.length; index += 1) {
+            const item = vals[index]!;
+            if (!isLiteral(item)) {
+              const source = node.value[index];
+              validateValueGroupUnits(item, e.modes, source === undefined || isValueSlotArray(source) ? node : source, e, false);
+            }
+          }
+        }
+
         /*
          * [compress] tighten the comma separator (`, `→`,`); the `/` separator stays
          * spaced and a space list keeps its single space.
@@ -4498,7 +4665,12 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         return node.delimiter === 'square' ? makeBlock(v, 'square', node.escaped) : v;
       });
     }
-    case 'Expression':
+    case 'Expression': {
+      const unlowered = unloweredCall(node);
+      if (unlowered !== null) {
+        return evalCall(unlowered, frame, e, false);
+      }
+
       /*
        * A `$( … )` COMPUTATION BOUNDARY opens the math context but owns no output
        * delimiters — the `$(` and `)` are the marker, not a value's syntax. It stays
@@ -4506,7 +4678,17 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        * not (`$(foo)` -> `foo`, but `$((foo))` -> `(foo)`). `exprBoundary` marks the
        * position for a value-position `Condition` (§7.1).
        */
+      if (!e.ev && isAuthoredGroupExpression(node)) {
+        /*
+         * Not evaluated here (a preserved call re-emits its arguments), so the
+         * boundary does not compute — and a boundary the author spelled as a
+         * paren group (Less `(a + b)`, ledger P35) keeps its parens, or
+         * `percentage((20 / 20))` and `(a + b) * c` would change meaning.
+         */
+        return mapMaybe(evalValueSlot(node.value, frame, e), v => literal(`(${emitValue(v)})`));
+      }
       return evalValueSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true });
+    }
     case 'Condition':
       /*
        * [condition-grammar] Every construct that CONSUMES a condition — Less
@@ -4600,7 +4782,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         const l = evalValue(node.left, frame, e);
         const r = evalValue(node.right, frame, e);
         return combineAll([l, r], (values) => {
-          const bytes = `${emitValue(values[0]!)} ${node.operator} ${emitValue(values[1]!)}`;
+          const left = preservedOperand(node, node.left, values[0]!, false);
+          const right = preservedOperand(node, node.right, values[1]!, true);
+          const bytes = `${left} ${node.operator} ${right}`;
 
           /*
            * An operation preserved because it was authored inside a math
@@ -4634,12 +4818,18 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     }
     case 'FunctionCall':
       return evalCall(node, frame, e, false);
-    case 'IfValue':
+    case 'IfValue': {
+      const unlowered = unloweredCall(node);
+      if (unlowered !== null) {
+        return evalCall(unlowered, frame, e, false);
+      }
+
       /* An unmatched chain (`$if` with no `$else`, or Less `if(@c, a)`) is empty
        * bytes, exactly what an absent value emits. */
       return mapMaybe(pickIfValue(node, frame, e), taken => taken === undefined
         ? literal('')
         : evalValueSlot(taken, frame, e));
+    }
     case 'Interpolation':
       return evalInterp(node, frame, e);
     case 'Reference':
@@ -4653,12 +4843,11 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     }
     case 'AnonymousMixin':
       /*
-       * An anonymous mixin reaching a value/arg position is not byte-serializable:
-       * it can only be *called* (`@dr()`). less.js drops such an argument to an
-       * ordinary function (`fn({…})` → `fn()`), so it folds to empty bytes here
-       * rather than throwing. (Full `if()`/`isruleset()`/`isdefined()` DR handling —
-       * which evaluates and can RETURN a detached ruleset — is the deferred
-       * condition-grammar / FnCtx capability wave, not this path.)
+       * An anonymous mixin reaching a value position is not byte-serializable:
+       * it can only be *called* (`@dr()`), so it folds to empty bytes here. The
+       * one position ruled otherwise is a function argument (ledger P37), which
+       * the typed lane writes from the block's evaluated body
+       * ({@link writtenRulesetArgument}).
        */
       return literal('');
     case 'Collection':
@@ -5529,7 +5718,7 @@ function resolveReferenceResult(
   let sourceOwner = frame?.sourceOwner ?? null;
   let stepIndex = 0;
   if (
-    e.moduleNamespaceValues !== undefined
+    e.moduleReferenceValues !== undefined
     && !isValueSlotArray(value)
     && value.type === 'Lookup'
     && value.kind === 'entry'
@@ -5542,7 +5731,7 @@ function resolveReferenceResult(
       if (
         binding !== undefined
         && !isValueSlotArray(binding.value)
-        && e.moduleNamespaceValues.has(binding.value)
+        && e.moduleReferenceValues.get(binding.value) === null
       ) {
         value = binding.value;
         valueFrame = binding.frame;
@@ -5875,8 +6064,9 @@ function moduleReferenceCall(
   node: Reference,
   frame: Frame | null,
   e: EvalCtx
-): { name: string; call: ReferenceCall } | undefined {
-  if (e.moduleNamespaceValues === undefined || isValueSlotArray(node.base) || node.base.type !== 'Lookup') {
+): { name: string; call: ReferenceCall; fn: Fn } | undefined {
+  const moduleValues = e.moduleReferenceValues;
+  if (moduleValues === undefined || isValueSlotArray(node.base) || node.base.type !== 'Lookup') {
     return undefined;
   }
   let name: string;
@@ -5885,7 +6075,7 @@ function moduleReferenceCall(
   if (node.base.kind === 'var' && typeof node.base.name === 'string') {
     name = node.base.name;
     stepIndex = 0;
-    resolved = resolveVarRef(frame, name, node.base.scope, e);
+    resolved = resolveVarRef(frame, node.base.name, node.base.scope, e);
   } else if (node.base.kind === 'entry' && node.steps.length > 0) {
     const namespaceStep = node.steps[0]!;
     if (namespaceStep.type !== 'LookupStep' || typeof namespaceStep.name !== 'string') {
@@ -5898,18 +6088,27 @@ function moduleReferenceCall(
   } else {
     return undefined;
   }
+  if (!resolved || isValueSlotArray(resolved.value)) {
+    return undefined;
+  }
+
+  const importedPath = moduleValues.get(resolved.value);
+  if (importedPath === undefined) {
+    return undefined;
+  }
+  if (importedPath !== null) {
+    if (node.steps.length !== 1 || node.steps[0]?.type !== 'Call') {
+      return undefined;
+    }
+    const fn = lookupModuleFunction(frame, importedPath);
+    return fn === undefined ? undefined : { name: importedPath, call: node.steps[0], fn };
+  }
+
   if (node.steps.length - stepIndex < 2) {
     return undefined;
   }
   const call = node.steps[node.steps.length - 1]!;
   if (call.type !== 'Call') {
-    return undefined;
-  }
-  if (
-    !resolved
-    || isValueSlotArray(resolved.value)
-    || !e.moduleNamespaceValues.has(resolved.value)
-  ) {
     return undefined;
   }
   for (; stepIndex < node.steps.length - 1; stepIndex++) {
@@ -5920,10 +6119,8 @@ function moduleReferenceCall(
     name += `.${step.name}`;
   }
   const lowerName = name.toLowerCase();
-  if (e.scopedFunctionNames?.has(lowerName) !== true) {
-    return undefined;
-  }
-  return { name, call };
+  const fn = lookupModuleFunction(frame, lowerName);
+  return fn === undefined ? undefined : { name, call, fn };
 }
 
 function evalModuleReferenceCall(
@@ -5942,7 +6139,10 @@ function evalModuleReferenceCall(
     }
     args.push(callArg(arg.value, arg.name, arg.spread));
   }
-  return evalCall(funcCall(selected.name, args), frame, e, true);
+  if (!e.ev) {
+    return literal(node.raw);
+  }
+  return dispatchCall(funcCall(selected.name, args), frame, e, e.ev, selected.fn, false);
 }
 
 function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
@@ -6022,6 +6222,16 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
     if (!isValueGroupArray(v) && v.type === 'Keyword') {
       return calcInner(v.bytes) !== null ? v : makeKeyword(`calc(${v.bytes})`);
     }
+
+    /*
+     * `calc(x)` drops its wrapper only when `x` resolved to ONE value. A list
+     * (`calc(@v)` with `@v: 50vh/2`, a slash list under the default math mode)
+     * or a space run is not a `<calc-sum>` result, so unwrapping it would emit
+     * `50vh / 2` as the property value — no longer a calculation at all.
+     */
+    if (isValueGroupArray(v) || v.type === 'List') {
+      return makeKeyword(`calc(${emitValueC(v, e)})`);
+    }
     return v;
   });
 }
@@ -6091,6 +6301,19 @@ function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): Mayb
     }
     return literal(`${node.name}(${inner})`);
   });
+}
+
+/**
+ * [P36] The call a grammar lowered into `node`, when the document it was
+ * written in has no ambient built-ins — `null` when the lowered form stands.
+ * Less lowers `if()`/`boolean()`/`each()` into structure only in legacy mode;
+ * a later `@use` decides that, so the decision is read here, at evaluation.
+ * The call returned is evaluated like any other: `evalCall`, which finds no
+ * ambient built-in and takes the unknown-call path.
+ */
+function unloweredCall(node: AuthoredCallSlot): FunctionCall | null {
+  const call = node._asCall;
+  return call !== null && !hasAmbientFunctions(call) ? call : null;
 }
 
 /** Evaluate a function call: materialize the modeled arg list, then `ev.call`. */
@@ -7052,11 +7275,9 @@ function evalCall(
       try {
         const result = rawInvoker(selected, args, pluginFnContext(node, frame, e, sourceOwner));
         const settled = isThenable(result)
-          ? result.catch((error: unknown) => withSourceOwner(
-              e,
-              sourceOwner,
-              () => pluginCallFailure(node, error, frame, e)
-            ))
+          ? result.catch((error: unknown) => (error instanceof FunctionDeclined
+              ? dispatchCall(node, frame, e, ev, undefined, false)
+              : withSourceOwner(e, sourceOwner, () => pluginCallFailure(node, error, frame, e))))
           : result;
         if (isThenable(settled)) {
           observeRejectedThenable(settled);
@@ -7065,24 +7286,207 @@ function evalCall(
           ? evalCall(node, frame, { ...e, pluginHost: undefined }, demanded)
           : value);
       } catch (error) {
-        return withSourceOwner(e, sourceOwner, () => pluginCallFailure(node, error, frame, e));
+        /* A declined call is written out as-is, as a call to no function is. */
+        return error instanceof FunctionDeclined
+          ? dispatchCall(node, frame, e, ev, undefined, false)
+          : withSourceOwner(e, sourceOwner, () => pluginCallFailure(node, error, frame, e));
       }
     });
   }
 
+  /*
+   * [P36] A call written in a Less modern-mode document has no ambient
+   * built-ins: the registry is out of scope and an unimported name takes the
+   * evaluator's unknown-call path, the one `.jess` reaches through its empty
+   * registry (P17). The parser attached its document's scope to the node.
+   */
+  return dispatchCall(node, frame, e, ev, selected, hasAmbientFunctions(node));
+}
+
+/**
+ * Materialize a call's arguments TYPED and dispatch it through the evaluator:
+ * to `selected` when a scoped function was resolved, else to a built-in when
+ * `ambient`, else down the unknown-call path, which writes the call out as-is.
+ */
+function dispatchCall(
+  node: FunctionCall,
+  frame: Frame | null,
+  e: EvalCtx,
+  ev: ValueEvaluator,
+  selected: Fn | undefined,
+  ambient: boolean
+): MaybePromise<EvalValue> {
+  const sep = node.modern ? ' ' : ',';
+
   // Args are materialized TYPED (each arg's tag sourced from its parse node).
-  const typed = node.args.map(a => evalTypedSlot(a.value, frame, e, true));
+  const typed = node.args.map(a => evalTypedSlot(a.value, frame, e, true, true));
   return combineAll(typed, (vals) => {
-    const ordered = orderKeywordArgs(node.args, vals, ev, node.name, selected);
+    const ordered = orderKeywordArgs(node.args, vals, ev, node.name, selected, ambient);
     const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
     try {
-      const result = ev.call(node.name, args, e.modes, null, e.io, selected);
+      const result = ev.call(node.name, args, e.modes, null, e.io, selected, ambient);
       return isThenable(result)
         ? result.catch(error => invalidFunctionCall(node, error, e))
         : result;
     } catch (error) {
       return invalidFunctionCall(node, error, e);
     }
+  });
+}
+
+/**
+ * [P37] A ruleset passed to a function, evaluated in the scope it was bound in
+ * and written as one line: `{ color: red; .a { x: red; } }`
+ * (`{color:red;.a{x:red}}` compressed). The body follows the ruleset-body rules:
+ * variable and mixin definitions bind silently, `+:` / `+_:` merge into the
+ * first declaration of that name, a `null` value elides its own declaration, a
+ * ruleset-valued declaration raises `eval/ruleset-on-property`, `$prop` reads
+ * the body's earlier declarations, a guarded nested rule emits only when its
+ * guard holds, and a mixin call expands in place. A block with parameters, and
+ * a statement this writer has no one-line form for, raise
+ * `eval/ruleset-argument-with-rules` rather than being dropped.
+ */
+function writtenRulesetArgument(block: AnonymousMixin, frame: Frame | null, e: EvalCtx): MaybePromise<ValueGroup> {
+  if (block.params !== undefined) {
+    rejectRulesetArgument(block, 'parameters', e);
+  }
+  const lexical = frame === null ? null : detachedBinding(frame, block)?.lexicalFrame ?? frame;
+  return mapMaybe(writtenBlockBody(block, block.rules, lexical, e), makeAny);
+}
+
+function rejectRulesetArgument(block: AnonymousMixin, what: string, e: EvalCtx): never {
+  throw ERR.rulesetArgumentWithRules({
+    node: block,
+    ...callSiteLocation(block, e),
+    meta: { what }
+  });
+}
+
+/** One block body of a ruleset argument, braces included (see {@link writtenRulesetArgument}). */
+function writtenBlockBody(
+  block: AnonymousMixin,
+  rules: Statement[],
+  parent: Frame | null,
+  e: EvalCtx
+): MaybePromise<string> {
+  const bodyFrame: Frame = {
+    parent,
+    mixins: collectMixins(rules),
+    declIndex: collectDeclIndex(rules), cells: null, reassign: null
+  };
+  const compress = e.compress === true;
+  type Part = { readonly separator: string; readonly value: MaybePromise<string>; readonly sink: { elided: boolean } };
+  type Entry = { readonly name: MaybePromise<string>; readonly mergeKey: string | null; readonly parts: Part[]; important: boolean };
+
+  /* In source order: a declaration entry, or the finished bytes of a nested rule, at-rule or comment. */
+  const items: Array<Entry | MaybePromise<string>> = [];
+  const addDeclaration = (rule: Declaration, frame: Frame, important: boolean): void => {
+    recordPropertyDeclaration(bodyFrame, rule, frame);
+    assertDeclarationValueIsNotRuleset(rule, frame, e);
+    const sink = { elided: false };
+    const value = evalBytes(rule.value, frame, { ...e, elideSink: sink });
+    const key = rule.merge !== null && typeof rule.name === 'string' ? rule.name : null;
+    const prior = key === null
+      ? undefined
+      : items.find((item): item is Entry => typeof item === 'object' && 'mergeKey' in item && item.mergeKey === key);
+    if (prior !== undefined) {
+      prior.parts.push({ separator: rule.merge === ',' ? (compress ? ',' : ', ') : ' ', value, sink });
+      prior.important ||= important;
+      return;
+    }
+    items.push({
+      name: typeof rule.name === 'string' ? rule.name : evalBytes(rule.name, frame, e),
+      mergeKey: key,
+      parts: [{ separator: '', value, sink }],
+      important
+    });
+  };
+  for (const rule of rules) {
+    switch (rule.type) {
+      case 'VariableDeclaration':
+      case 'MixinDefinition':
+        break;
+      case 'Declaration':
+        addDeclaration(rule, bodyFrame, rule.important);
+        break;
+      case 'Comment':
+        items.push(rule.text);
+        break;
+      case 'Ruleset': {
+        const selector = combineAll(
+          rule.selector.selectors.map(branch => resolveSelectorBranch(branch, bodyFrame, e)),
+          branches => branches.join(compress ? ',' : ', ')
+        );
+        const guard = rule.guard;
+        const holds = guard === undefined
+          ? true
+          : withUnitErrors(rule, e, () => evalGuard(guard, guardDeps(bodyFrame, e)));
+        items.push(mapMaybe(holds, guarded => guarded
+          ? mapMaybe(selector, header => mapMaybe(
+              writtenBlockBody(block, rule.rules, bodyFrame, e),
+              body => `${header}${compress ? '' : ' '}${body}`
+            ))
+          : ''));
+        break;
+      }
+      case 'AtRuleBlock':
+        items.push(mapMaybe(atRulePreludeBytes(rule, bodyFrame, scratchEmit(e)), prelude =>
+          mapMaybe(writtenBlockBody(block, rule.rules, bodyFrame, e), body =>
+            `${rule.name}${prelude === '' ? '' : ` ${prelude}`}${compress ? '' : ' '}${body}`)));
+        break;
+      case 'MixinCall': {
+        /*
+         * The mixin expands in place; its declarations join this body. Rules it
+         * would emit have no place in the collected declaration run.
+         */
+        const em = scratchEmit(e);
+        const collected: Leaf[] = [];
+        const noop = (): void => {};
+        const nested: Partition = { encounteredContainer: false, trailing: [], pending: [], emitBlock: noop };
+        settledExpansion(expandCall(rule, null, null, bodyFrame, collected, noop, nested, em, false, true), rule, em);
+        if (nested.trailing.length > 0 || nested.pending.length > 0) {
+          rejectRulesetArgument(block, 'a mixin call that emits nested rules', e);
+        }
+        for (const leaf of collected) {
+          if (leaf.node.type === 'Declaration') {
+            addDeclaration(leaf.node, leaf.frame, leaf.important || leaf.node.important);
+          }
+        }
+        break;
+      }
+      default:
+        rejectRulesetArgument(block, `a ${rule.type}`, e);
+    }
+  }
+  const written = items.map((item) => {
+    if (typeof item !== 'object' || !('mergeKey' in item)) {
+      return mapMaybe(item, bytes => ({ bytes, declaration: false }));
+    }
+    return combineAll([item.name, ...item.parts.map(part => part.value)], ([name, ...values]) => {
+      let value = '';
+      item.parts.forEach((part, index) => {
+        if (!part.sink.elided) {
+          value += (value === '' ? '' : part.separator) + values[index]!;
+        }
+      });
+      if (item.parts.every(part => part.sink.elided)) {
+        return { bytes: '', declaration: true };
+      }
+      const important = item.important ? (compress ? '!important' : ' !important') : '';
+      return { bytes: `${name!}${compress ? ':' : ': '}${value}${important};`, declaration: true };
+    });
+  });
+  return combineAll(written, (pieces) => {
+    const kept = pieces.filter(piece => piece.bytes !== '');
+    if (kept.length === 0) {
+      return '{}';
+    }
+    if (!compress) {
+      return `{ ${kept.map(piece => piece.bytes).join(' ')} }`;
+    }
+    const last = kept[kept.length - 1]!;
+    const body = kept.map(piece => piece.bytes).join('');
+    return `{${last.declaration ? body.slice(0, -1) : body}}`;
   });
 }
 
@@ -7108,7 +7512,8 @@ function orderKeywordArgs<T>(
   vals: T[],
   ev: ValueEvaluator,
   name: string,
-  scopedFn: Fn | undefined
+  scopedFn: Fn | undefined,
+  ambient: boolean
 ): T[] {
   let hasName = false;
   for (let i = 0; i < args.length; i++) {
@@ -7121,7 +7526,7 @@ function orderKeywordArgs<T>(
     return vals;
   }
 
-  const params = ev.paramNames(name, scopedFn);
+  const params = ev.paramNames(name, scopedFn, ambient);
   if (params === undefined) {
     return vals;
   }
@@ -8228,7 +8633,7 @@ function scratchEmit(e: EvalCtx): Emit {
     fnScopeVersion: e.fnScopeVersion,
     pluginHost: e.pluginHost, // [plugin/P2] preserve the injected plugin runtime
     moduleFns: e.moduleFns,
-    moduleNamespaceValues: e.moduleNamespaceValues,
+    moduleReferenceValues: e.moduleReferenceValues,
     pluginRawBindings: e.pluginRawBindings,
     mixinUrlBindings: e.mixinUrlBindings,
     mixinValueBindings: e.mixinValueBindings,
@@ -10346,13 +10751,30 @@ function planImportedFacts(
     cssPlan: CssImportPlan | null,
     withinDocument: NonNullable<ImportDocumentTree['withinDocument']> | null,
     multipleImportDepth: boolean,
-    publishFrame: Frame | null
+    publishFrame: Frame | null,
+
+    /*
+     * [import-fold] Source-fold position, RELATIVE TO `publishFrame`, of the
+     * root-level `@import` this walk descends from. `null` at the document being
+     * served, where `statements` IS `publishFrame`'s body and the loop index below
+     * is the site.
+     */
+    publishRank: SourceRank | null = null,
+
+    /*
+     * [import-fold] Position of `statements` within `scope`'s own body — `[]` when
+     * `statements` IS that body (a document root), `null` when it is not addressable
+     * there (an at-rule block walked with the enclosing scope). An import's site is
+     * this prefix plus its loop index, so no import ever scans the body for itself.
+     */
+    rank: SourceRank | null = null
   ): Promise<void> => {
     const deferred: StyleImport[] = [];
+    const deferredSites: number[] = [];
     let deferredAnchors: number[] | null = null;
     let firstCssImportKey: string | null = null;
     let furtherCssImportKeys: Set<string> | null = null;
-    const visitImport = async (st: StyleImport, importCssPlan: CssImportPlan | null): Promise<void> => {
+    const visitImport = async (st: StyleImport, importCssPlan: CssImportPlan | null, at: number): Promise<void> => {
       recordAstExtendProfile?.('astExtend.preflight.importsVisited');
       const options = importRequestOptions(st.options);
       const specifier = importSpecifier(st, scope, e);
@@ -10387,13 +10809,27 @@ function planImportedFacts(
        * facts into the importing frame before its body is walked.
        */
       const isCompose = st.mode === 'compose';
+
+      /*
+       * [import-fold] Where this `@import` sits in each frame it publishes into —
+       * from the loop index (`at`), never a scan. `scope` owns the document being
+       * walked, so `rank` + `at` is the site. `publishFrame` is the ROOT render
+       * frame throughout the walk and its body is `statements` only at the document
+       * root (`publishRank === null`, where the site is the same); a nested import
+       * instead EXTENDS the site of the root-level import that reached it, rather
+       * than pretending to be one of the root's own statements.
+       */
+      const site = rank === null ? null : [...rank, at];
+      const publishSite = publishRank === null
+        ? site
+        : site === null ? publishRank : [...publishRank, ...site];
       if (!isCompose) {
-        const published = publishImportedDocumentFacts(loaded.document.rules, scope, e);
+        const published = publishImportedDocumentFacts(loaded.document.rules, scope, e, false, site);
         if (isThenable(published)) {
           await published;
         }
         if (publishFrame !== null && claimPrepublishedImportFact(e, st)) {
-          const prepublished = publishImportedDocumentFacts(loaded.document.rules, publishFrame, e, true);
+          const prepublished = publishImportedDocumentFacts(loaded.document.rules, publishFrame, e, true, publishSite);
           if (isThenable(prepublished)) {
             await prepublished;
           }
@@ -10425,7 +10861,11 @@ function planImportedFacts(
           reference ? null : importCssPlan,
           loaded.withinDocument ?? withinDocument,
           multipleImportDepth || importHasOption(options, 'multiple'),
-          isCompose ? null : publishFrame
+          isCompose ? null : publishFrame,
+          publishSite,
+
+          /* the imported document's own body: an import in it addresses by index */
+          []
         );
       };
       if (loaded.withinDocument) {
@@ -10434,7 +10874,8 @@ function planImportedFacts(
         await collect();
       }
     };
-    for (const st of statements) {
+    for (let at = 0; at < statements.length; at++) {
+      const st = statements[at]!;
       if (st.type === 'VariableDeclaration') {
         activateVariableDeclaration(st, scope, e);
       } else if (st.type === 'AtRuleStatement' && cssPlan !== null) {
@@ -10457,12 +10898,13 @@ function planImportedFacts(
         }
       } else if (st.type === 'StyleImport') {
         try {
-          await visitImport(st, cssPlan);
+          await visitImport(st, cssPlan, at);
         } catch (error) {
           if (!(error instanceof ImportPathNotReady)) {
             throw error;
           }
           deferred.push(st);
+          deferredSites.push(at);
           if (cssPlan !== null) {
             const anchor = appendCssImportPlan(cssPlan, null, null, null, null);
             (deferredAnchors ??= []).push(anchor);
@@ -10473,7 +10915,13 @@ function planImportedFacts(
         e.plannedModuleImports?.set(st, module);
         bindModuleImport(st, module, scope, e);
       } else if (st.type === 'AtRuleBlock') {
-        await visit(st.rules, scope, null, withinDocument, multipleImportDepth, null);
+        /*
+         * [import-fold] `rank: null`. An at-rule body is walked with the ENCLOSING
+         * scope, so a statement index here is not a position in that scope's body
+         * — and ledger A10's `@import "lib" screen;` desugar lands exactly here.
+         * Those facts keep publication order (see {@link importSiteRank}).
+         */
+        await visit(st.rules, scope, null, withinDocument, multipleImportDepth, null, null);
       }
     }
     for (let index = 0; index < deferred.length; index++) {
@@ -10481,7 +10929,7 @@ function planImportedFacts(
       const anchor = deferredAnchors?.[index] ?? -1;
       const previousTail = cssImports?.tail ?? -1;
       try {
-        await visitImport(pending, anchor === -1 ? null : cssImports);
+        await visitImport(pending, anchor === -1 ? null : cssImports, deferredSites[index]!);
         if (anchor !== -1 && cssImports !== null && cssImports.tail !== previousTail && previousTail !== anchor) {
           const next = cssImports!.next!;
           const after = next[anchor]!;
@@ -10503,7 +10951,7 @@ function planImportedFacts(
       }
     }
   };
-  return visit(root.rules, frame, cssImports, null, false, prepublishFrame).then(() => {
+  return visit(root.rules, frame, cssImports, null, false, prepublishFrame, null, []).then(() => {
     let plannedCssImports: CssImportPlan | null | undefined;
     if (cssImports === null) {
       plannedCssImports = undefined;
@@ -11322,7 +11770,9 @@ function runWhile(
 
 /** Select one `$if` branch and publish only that branch into this activation's scoped index. */
 function selectIfBody(node: If, frame: Frame, e: Emit): Statement[] | null {
-  const body = selectedIfBody(node, frame, e);
+  /* [P36] Not lowered where built-ins are not ambient: the body is the ordinary call statement. */
+  const unlowered = unloweredCall(node);
+  const body = unlowered === null ? selectedIfBody(node, frame, e) : [unlowered];
   if (!body) {
     return null;
   }
@@ -14177,6 +14627,9 @@ function resolveValueBlock(node: Binding, frame: Frame | null, e: EvalCtx): Valu
       continue;
     }
     if (cur.type === 'IfValue') {
+      if (unloweredCall(cur) !== null) {
+        return undefined;
+      }
       cur = pickIfBranch(cur, cursor, e);
       continue;
     }
@@ -14860,6 +15313,13 @@ function expandFor(
   source: NestedHeaderSource | null = null,
   sharedLeaves?: NestedLeafBuffer
 ): MaybePromise<void> {
+  /* [P36] Not lowered where built-ins are not ambient: evaluate the ordinary call statement, once. */
+  const unlowered = unloweredCall(node);
+  if (unlowered !== null) {
+    return sharedLeaves === undefined
+      ? walkBody([unlowered], composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion)
+      : nestedBody([unlowered], frame, e, undefined, imp, source, null, sharedLeaves, applyExpansion);
+  }
   return mapMaybe(forItems(node.iterable, frame, e), (items) => {
     const run = (start: number): MaybePromise<void> => {
       const collectionEntries = Array.isArray(items)
@@ -15261,7 +15721,7 @@ function expandSpreadArgs(
   return step(0);
 }
 
-/** Evaluate a structural spread while keeping preserved slash terms structural. */
+/** Evaluate a structural spread, keeping its positional items typed. */
 function evalTypedSpread(
   value: ValueSlot,
   frame: Frame,
@@ -15279,9 +15739,6 @@ function evalTypedSpread(
     if (hit && hitValue !== undefined && isValueSlot(hitValue)) {
       return withExcluded(e, hitValue, () => evalTypedSpread(hitValue, hit.frame, e));
     }
-  }
-  if (value.type === 'Sequence' && isSlashGroup(value)) {
-    return combineAll(value.parts.map(part => evalTyped(part, frame, e, true)), parts => parts);
   }
   return evalTypedSlot(value, frame, e, true);
 }
@@ -16287,7 +16744,15 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
       e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
   } else if (node.type === 'FunctionCall') {
-    const bytes = evalBytesSync(node, frame, e);
+    const bytes = statementCallBytes(node, frame, e);
+    if (isThenable(bytes)) {
+      observeRejectedThenable(bytes);
+      throw ERR.asyncInSyncPosition({
+        node,
+        ...callSiteLocation(node, e),
+        meta: { where: 'declaration-list call statement' }
+      });
+    }
     if (bytes.length === 0) {
       return;
     }
@@ -16921,18 +17386,19 @@ const MODULE_NAMESPACE_IDENT = /^-?[_a-zA-Z\u0080-\uFFFF][-_a-zA-Z0-9\u0080-\uFF
  * The auto-derived `@compose`/`@use` namespace: Sass's default-namespace rule
  * applied to the SPECIFIER STRING the author wrote (never the plugin-resolved
  * path). Take the last `/`-segment, strip a trailing file extension, strip a
- * leading `_` partial marker. `./foo.less` → `foo`, `#sass/map` → `map`,
- * `@co/design-tokens` → `design-tokens`, `./_theme.scss` → `theme`. Returns
+ * leading `_` partial marker or `#` package-import marker. `./foo.less` → `foo`,
+ * `#sass/map` → `map`, `#less` → `less`, `@co/design-tokens` → `design-tokens`,
+ * `./_theme.scss` → `theme`. Returns
  * `null` when the result is not a usable identifier — the author must then
  * spell an explicit `as <name>`.
  */
 function deriveModuleNamespace(specifier: string): string | null {
   /* Last `/`-segment, then strip a trailing `.ext` (only when a name precedes the
-     dot) and a leading `_` partial marker. Regex-based to keep `serialize.ts` free
+     dot) and a leading `_` or `#` marker. Regex-based to keep `serialize.ts` free
      of `lastIndexOf` (the diagnostic cold-path guard bans it). */
   const segment = /[^/]*$/.exec(specifier)?.[0] ?? specifier;
   const withoutExt = segment.replace(/^(.+)\.[^.]+$/, '$1');
-  const base = withoutExt.startsWith('_') ? withoutExt.slice(1) : withoutExt;
+  const base = withoutExt.startsWith('_') || withoutExt.startsWith('#') ? withoutExt.slice(1) : withoutExt;
   return MODULE_NAMESPACE_IDENT.test(base) ? base : null;
 }
 
@@ -17110,7 +17576,7 @@ function expandStyleImport(
         }
         const publishChildren = isCompose || hasPrepublishedImportFact(e, node)
           ? undefined
-          : publishImportedDocumentFacts(children, frame, e);
+          : publishImportedDocumentFacts(children, frame, e, false, importSiteRank(frame, node));
 
         /*
          * Published UNCONDITIONALLY here, before the document is remembered and
@@ -17390,8 +17856,68 @@ function emitRawInline(text: string, e: Emit): void {
   put(e, nl(e));
 }
 
-function canEmitRootCallValue(value: EvalValue): boolean {
-  return isLiteral(value) || (!isValueGroupArray(value) && value.type === 'Any');
+/**
+ * [P37] Whether a value a call leaves in statement position may stand there,
+ * per value type, at the two statement positions: the stylesheet root and a
+ * declaration list (a ruleset body). The two-position shape is AST v1's
+ * `allowRoot` / `allowRuleRoot` (2.0.0-alpha.1), where only statement node
+ * types were legal and every value node was not.
+ *
+ * A call can only produce a value, never a statement node. The one value that
+ * is statement text is `Any` — raw text or an escaped string, what `e()`
+ * returns (`e('…');`), and the empty result of a function that returns nothing.
+ * That row is the owner's ruling (P37: "raw text or an escaped string"), not a
+ * v1 port: v1's `Anonymous` carried neither flag. Every other value — a
+ * dimension, colour, keyword, and the call written back out as-is because it
+ * produced no result — is a value dumped into a statement position.
+ *
+ * Only value rows are checked, because a call cannot return a statement node.
+ * For the statement node types alpha.1 answered: a declaration is legal only
+ * in a declaration list, an at-rule only at the stylesheet root, and a
+ * ruleset, comment, variable declaration, extend or control statement in
+ * both. The at-rule "no" for a declaration list conflicts with nested `@media`
+ * being legal inside a ruleset; it is recorded here, not acted on, since no
+ * statement node reaches this check.
+ */
+const STATEMENT_RESULT_POSITIONS: Readonly<Record<Value['type'], readonly [root: boolean, declarationList: boolean]>> = {
+  Any: [true, true],
+  Block: [false, false],
+  Bool: [false, false],
+  Collection: [false, false],
+  Color: [false, false],
+  Dimension: [false, false],
+  Keyword: [false, false],
+  List: [false, false],
+  Null: [false, false],
+  Quoted: [false, false],
+  Url: [false, false]
+};
+
+/**
+ * [P37] Evaluate a call standing alone in statement position, once, and hold
+ * its result to {@link STATEMENT_RESULT_POSITIONS} for the position it lands in.
+ * The call is DEMANDED: a CSS colour or gradient call is dispatched rather than
+ * kept as authored bytes, so one left as a plain CSS call is caught too.
+ * Constructs a dialect lowers (Less `each()`/`if()`, mixin calls) never arrive
+ * here as a `FunctionCall`.
+ */
+function evalStatementCall(node: FunctionCall, frame: Frame, e: Emit): MaybePromise<ValueGroup> {
+  return mapMaybe(evalTyped(node, frame, e), (value) => {
+    const legal = !isValueGroupArray(value) && STATEMENT_RESULT_POSITIONS[value.type][e.depth === 0 ? 0 : 1];
+    if (!legal) {
+      throw ERR.invalidStatement({
+        node,
+        ...callSiteLocation(node, e),
+        meta: { what: `The result of "${node.name}()", ${isValueGroupArray(value) ? 'a value list' : `a ${value.type}`} \`${emitValue(value)}\`,` }
+      });
+    }
+    return value;
+  });
+}
+
+/** The emitted bytes of a statement call's result (see {@link evalStatementCall}). */
+function statementCallBytes(node: FunctionCall, frame: Frame, e: Emit): MaybePromise<string> {
+  return mapMaybe(evalStatementCall(node, frame, e), value => emitValueC(value, e));
 }
 
 /**
@@ -17403,22 +17929,6 @@ function canEmitRootCallValue(value: EvalValue): boolean {
 function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precomputed?: string): MaybePromise<void> {
   const start = e.off;
   const emitBytes = (bytes: string): void => {
-    const isRoot = e.depth === 0;
-    const isAllowedVoid = node.name.toLowerCase() === 'if';
-    if (isRoot && bytes.length === 0 && !isAllowedVoid) {
-      throw ERR.rootCallWithoutRoot({
-        node,
-        ...callSiteLocation(node, e),
-        meta: { name: node.name }
-      });
-    }
-    if (isRoot && node.args.length === 0 && bytes.trim() === `${node.name}()`) {
-      throw ERR.rootCallWithoutRoot({
-        node,
-        ...callSiteLocation(node, e),
-        meta: { name: node.name }
-      });
-    }
     if (bytes.length === 0) {
       return;
     }
@@ -17431,46 +17941,9 @@ function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precompute
       e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
     }
   };
-  const emitValueResult = (value: EvalValue): void => {
-    if (e.depth === 0 && !canEmitRootCallValue(value)) {
-      throw ERR.rootCallWithoutRoot({
-        node,
-        ...callSiteLocation(node, e),
-        meta: { name: node.name }
-      });
-    }
-    if (!isLiteral(value)) {
-      validateValueGroupUnits(value, e.modes, node, e, false);
-    }
-    emitBytes(emitValue(value));
-  };
-  const evalAndEmit = (): MaybePromise<void> =>
-    precomputed === undefined
-      ? e.depth === 0
-        ? mapMaybe(evalValue(node, frame, e), emitValueResult)
-        : mapMaybe(evalBytes(node, frame, e), emitBytes)
-      : emitBytes(precomputed);
-
-  /*
-   * A typed color is a value, not a statement surface.  Keep the normal
-   * byte-only fast path for ordinary/unknown calls, but retain this one fact
-   * while evaluating a known call so `rgba(0,0,0,0);` fails like Less instead
-   * of leaking a color token into the root output.
-   */
-  if (precomputed === undefined && e.ev && DEFERRED_COLOR_CALLS.has(node.name) && hasCssColorCallShape(node)) {
-    const value = evalTyped(node, frame, e);
-    return mapMaybe(value, (resolved) => {
-      if (!isValueGroupArray(resolved) && resolved.type === 'Color') {
-        throw ERR.invalidStatement({
-          node,
-          ...callSiteLocation(node, e),
-          meta: { what: 'Color' }
-        });
-      }
-      return evalAndEmit();
-    });
-  }
-  return evalAndEmit();
+  return precomputed === undefined
+    ? mapMaybe(statementCallBytes(node, frame, e), emitBytes)
+    : emitBytes(precomputed);
 }
 
 /**
@@ -17607,12 +18080,20 @@ function normalizeSupportsBytes(p: string, compress = false): string {
   return out;
 }
 
-function normalizeSupportsPrelude(parts: readonly SupportsPreludePart[], compress = false): string {
+/**
+ * Normalize a prelude's plain fragments with the at-rule's byte normalizer; a
+ * protected fragment (a [general-enclosed] group) passes through as written.
+ */
+function normalizePreludeParts(
+  parts: readonly SupportsPreludePart[],
+  normalize: (bytes: string, compress: boolean) => string,
+  compress = false
+): string {
   let out = '';
   let plain = '';
   const flushPlain = (): void => {
     if (plain.length > 0) {
-      out += normalizeSupportsBytes(plain, compress);
+      out += normalize(plain, compress);
     }
     plain = '';
   };
@@ -17638,6 +18119,12 @@ function normalizeSupportsPrelude(parts: readonly SupportsPreludePart[], compres
  */
 function evalSupportsPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<SupportsPreludePart[]> {
   const plain = (bytes: string): SupportsPreludePart[] => [{ bytes, protected: false }];
+
+  /* A structured [general-enclosed] group is emitted as written, as below. */
+  const verbatim = generalEnclosedSourceOf(node);
+  if (verbatim !== undefined) {
+    return [{ bytes: verbatim, protected: true }];
+  }
   if (isValueSlotArray(node)) {
     const authored = valueLayoutOf(node);
     const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
@@ -17739,83 +18226,115 @@ function joinPreludeParts(parts: Array<MaybePromise<string>>): MaybePromise<stri
  * delegating all leaf evaluation to the normal value path.
  */
 function evalQueryPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
+  return mapMaybe(evalQueryPreludeParts(node, frame, e), parts => parts.map(part => part.bytes).join(''));
+}
+
+/**
+ * The fragments of a media/container query prelude, in source order. A
+ * [general-enclosed] group (media-queries-4 §3.1) is emitted as written — the
+ * source bytes the parser recorded for it — and marked protected: it is syntax
+ * a future spec may define, so jess neither normalizes nor evaluates it (no
+ * `url()` transform, no function or math evaluation, ledger N8). Its
+ * structured AST stays for tooling.
+ */
+function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<SupportsPreludePart[]> {
+  const plain = (bytes: string): SupportsPreludePart[] => [{ bytes, protected: false }];
+  const verbatim = generalEnclosedSourceOf(node);
+  if (verbatim !== undefined) {
+    return [{ bytes: verbatim, protected: true }];
+  }
   if (isValueSlotArray(node)) {
     const authored = valueLayoutOf(node);
-    const parts: Array<MaybePromise<string>> = [];
+    const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
     for (let index = 0; index < node.length; index += 1) {
       if (index > 0) {
         const separator = authored?.[index - 1];
-        parts.push(separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : ' ');
+        parts.push(plain(separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : ' '));
       }
-      parts.push(evalQueryPrelude(node[index]!, frame, e));
+      parts.push(evalQueryPreludeParts(node[index]!, frame, e));
     }
-    return joinPreludeParts(parts);
+    return concatPreludeParts(parts);
   }
   switch (node.type) {
+    /*
+     * [general-enclosed] A template the parser marked because it carries the
+     * dialect's interpolation (P16) records no source bytes; it is substituted
+     * and then protected, so the call is never evaluated or re-spaced. Only the
+     * mark decides: an ordinary call with an interpolated argument
+     * (`e("@{w}")` in a feature value) is evaluated as any value is.
+     */
+    case 'FunctionCall': {
+      const payload = isGeneralEnclosedTemplate(node) ? generalEnclosedPayload(node.args) : null;
+      if (payload === null) {
+        return mapMaybe(evalBytes(node, frame, e), plain);
+      }
+      return mapMaybe(evalBytes(payload, frame, e), content =>
+        [{ bytes: `${node.name}(${content})`, protected: true }]);
+    }
     case 'Block': {
       const open = node.delimiter === 'square' ? '[' : '(';
       const close = node.delimiter === 'square' ? ']' : ')';
-      return mapMaybe(evalQueryPrelude(node.value, frame, e), inner => `${open}${inner}${close}`);
+      return concatPreludeParts([plain(open), evalQueryPreludeParts(node.value, frame, e), plain(close)]);
     }
     case 'Operation':
-      return joinPreludeParts([
-        evalQueryPrelude(node.left, frame, e),
-        node.operator === ':' ? ': ' : ` ${node.operator} `,
-        evalQueryPrelude(node.right, frame, e)
+      return concatPreludeParts([
+        evalQueryPreludeParts(node.left, frame, e),
+        plain(node.operator === ':' ? ': ' : ` ${node.operator} `),
+        evalQueryPreludeParts(node.right, frame, e)
       ]);
     case 'Sequence': {
-      const parts: Array<MaybePromise<string>> = [];
+      const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
       for (let index = 0; index < node.parts.length; index += 1) {
         if (index > 0) {
-          parts.push(' ');
+          parts.push(plain(' '));
         }
-        parts.push(evalQueryPrelude(node.parts[index]!, frame, e));
+        parts.push(evalQueryPreludeParts(node.parts[index]!, frame, e));
       }
-      return joinPreludeParts(parts);
+      return concatPreludeParts(parts);
     }
     case 'List': {
       const glue = node.sep === ',' ? ', ' : node.sep === '/' ? ' / ' : ' ';
       const authored = valueLayoutOf(node);
-      const parts: Array<MaybePromise<string>> = [];
+      const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
       for (let index = 0; index < node.value.length; index += 1) {
         if (index > 0) {
           const separator = authored?.[index - 1];
-          parts.push(separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue);
+          parts.push(plain(separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue));
         }
-        parts.push(evalQueryPrelude(node.value[index]!, frame, e));
+        parts.push(evalQueryPreludeParts(node.value[index]!, frame, e));
       }
-      return joinPreludeParts(parts);
+      return concatPreludeParts(parts);
     }
     case 'Lookup':
       /* Var only — see the typed lane above. */
       if (node.kind !== 'var') {
-        return evalBytes(node, frame, e);
+        return mapMaybe(evalBytes(node, frame, e), plain);
       }
-      return mapMaybe(lookupName(node, frame, e), (nm) => {
+      return mapMaybe(lookupName(node, frame, e), (nm): MaybePromise<SupportsPreludePart[]> => {
         const hit = resolveVarRef(frame, nm, node.scope, e);
         if (!hit) {
           if (hasExcludedVarRef(frame, nm, node.scope, e)) {
             recursiveReference(node, `@${nm}`, 'Variable', e);
           }
-          return evalBytes(node, frame, e);
+          return mapMaybe(evalBytes(node, frame, e), plain);
         }
         const value = hit.value;
         if (isMixinCallValue(value)) {
-          return evalBytes(node, frame, e);
+          return mapMaybe(evalBytes(node, frame, e), plain);
         }
         if (hit.evaluated !== null) {
-          return emitValue(hit.evaluated);
+          return plain(emitValue(hit.evaluated));
         }
-        return withExcluded(e, value, () => evalQueryPrelude(value, hit.frame, e));
+        return withExcluded(e, value, () => evalQueryPreludeParts(value, hit.frame, e));
       });
     case 'Reference': {
       const resolved = resolveReferenceResult(node, frame, e);
       if (resolved === null || isMixinCallValue(resolved.value)) {
-        return evalBytes(node, frame, e);
+        return mapMaybe(evalBytes(node, frame, e), plain);
       }
       return resolved.evaluated !== null
-        ? emitValue(resolved.evaluated)
-        : evalQueryPrelude(resolved.value, resolved.frame, e);
+        ? plain(emitValue(resolved.evaluated))
+        : evalQueryPreludeParts(resolved.value, resolved.frame, e);
     }
     case 'Quoted':
       /*
@@ -17827,9 +18346,9 @@ function evalQueryPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): May
        * keeps its quotes through `evalBytes` (`node.src`), so only the escaped
        * form needs re-wrapping here.
        */
-      return node.escaped ? `~${node.quote}${node.value}${node.quote}` : evalBytes(node, frame, e);
+      return node.escaped ? plain(`~${node.quote}${node.value}${node.quote}`) : mapMaybe(evalBytes(node, frame, e), plain);
     default:
-      return evalBytes(node, frame, e);
+      return mapMaybe(evalBytes(node, frame, e), plain);
   }
 }
 
@@ -17964,10 +18483,10 @@ function atRulePreludeBytes(node: AtRuleBlock, frame: Frame, e: Emit): MaybeProm
   }
   const lname = node.name.toLowerCase();
   if (lname === '@supports') {
-    return mapMaybe(evalSupportsPrelude(node.prelude, frame, e), parts => normalizeSupportsPrelude(parts, e.compress === true));
+    return mapMaybe(evalSupportsPrelude(node.prelude, frame, e), parts => normalizePreludeParts(parts, normalizeSupportsBytes, e.compress === true));
   }
   if (lname === '@media' || lname === '@container') {
-    return mapMaybe(evalQueryPrelude(node.prelude, frame, e), p => normalizeQueryPrelude(p, e.compress === true));
+    return mapMaybe(evalQueryPreludeParts(node.prelude, frame, e), parts => normalizePreludeParts(parts, normalizeQueryPrelude, e.compress === true));
   }
   return evalBytes(node.prelude, frame, e);
 }

@@ -325,7 +325,9 @@ const EXTEND_TARGET_TYPES = new Set(['ComplexSelector', 'PseudoSelectorComplex']
 const EXTERNAL_SOURCE_TYPES = new Set(['ImportStatement', 'UseRule', 'ForwardRule', 'ModuleImport', 'StyleImport', 'Plugin']);
 const FUNCTION_TYPES = new Set(['Call', 'VarCall', 'FunctionCall', 'ImportTailFunction']);
 const MAP_LIKE_VALUE_TYPES = new Set(['Collection', 'ValueBlock']);
-const MEDIA_FEATURE_NAME_TYPES = new Set(['QueryBareFeature', 'QueryColonFeature', 'QueryComparisonFeature', 'QueryRangeFeature']);
+
+/* The css CST node holding a query feature's name (`Property`) and value (`QueryValue`) children. */
+const MEDIA_FEATURE_NAME_TYPES = new Set(['QueryFeatureContents']);
 const PSEUDO_SELECTOR_TYPES = new Set(['PseudoSelector']);
 const ANB_PSEUDO_CLASSES = new Set([
   'nth-child',
@@ -1275,14 +1277,26 @@ function declarationPropertyValueCandidates(source: string, node: CssCstNode): r
   if (value === null) {
     return [];
   }
-  const sequences = childNodesOfType(value, 'ValueSequence');
-  if (sequences.length <= 1) {
+
+  /*
+   * A comma member is ONE `ValueSequence` — the space level — whose items are
+   * `ValueTerm` slash groups (P33 as amended 2026-09-24: the slash groups only
+   * its direct neighbours). Only a member that is one term holding one value
+   * can be a simple member; a slash-separated one (`1px / 2px`) is not.
+   */
+  const members = childNodesOfType(value, 'ValueSequence');
+  if (members.length <= 1) {
     const single = declarationPropertyValue(source, node);
     return single === null ? [] : [single];
   }
   const candidates: PropertyValueDiagnosticFact[] = [];
-  for (const sequence of sequences) {
-    const values = childNodesOfType(sequence, 'Value');
+  for (const member of members) {
+    const terms = childNodesOfType(member, 'ValueTerm');
+    if (terms.length !== 1) {
+      continue;
+    }
+    const sequence = member;
+    const values = childNodesOfType(terms[0]!, 'Value');
     if (values.length !== 1) {
       continue;
     }
@@ -2101,6 +2115,11 @@ function nonstandardLinearGradientDirection(source: string, node: CssCstNode, fu
   if (!LINEAR_GRADIENT_FUNCTION_NAMES.has(unprefixedName(functionName))) {
     return null;
   }
+
+  /*
+   * A function argument is one `ValueSequence` (the space level, whose items
+   * are `ValueTerm` slash groups — P33 as amended 2026-09-24).
+   */
   const firstArg = firstChildNodeOf(node, 'ValueSequence');
   if (firstArg === undefined || firstDescendantNodeMatching(firstArg, FUNCTION_TYPES) !== undefined) {
     return null;
@@ -2161,37 +2180,36 @@ function colorChannelFact(source: string, node: CssCstNode): ColorChannelFact {
 }
 
 function colorFunctionChannels(source: string, node: CssCstNode): ColorNotationFacts | null {
-  const argumentSequences: CssCstNode[] = [];
-  for (const child of cstChildrenOf(node)) {
-    if (isCstNode(child) && child.grammarType === 'ValueSequence') {
-      argumentSequences.push(child);
-    }
-  }
-  if (argumentSequences.length === 0) {
+  /* Each comma-separated argument is one `ValueSequence` (P33). */
+  const argumentTerms = childNodesOfType(node, 'ValueSequence');
+  if (argumentTerms.length === 0) {
     return { channels: [], alphaIndex: null, legacyCommaSyntax: false };
   }
-  if (argumentSequences.length > 1) {
+  if (argumentTerms.length > 1) {
     return {
-      channels: argumentSequences.map(sequence => colorChannelFact(source, sequence)),
-      alphaIndex: argumentSequences.length === 4 ? 3 : null,
+      channels: argumentTerms.map(term => colorChannelFact(source, term)),
+      alphaIndex: argumentTerms.length === 4 ? 3 : null,
       legacyCommaSyntax: true
     };
   }
 
+  /*
+   * Modern syntax: the alpha is whatever follows the slash SEPARATOR. The slash
+   * groups its direct neighbours into one `ValueTerm` (P33 as amended
+   * 2026-09-24), so the boundary is read structurally — each value after the
+   * first in a term follows a slash. The LAST slash wins, as the old scan's
+   * overwrite did.
+   */
   const channels: ColorChannelFact[] = [];
   let alphaIndex: number | null = null;
-  for (const child of cstChildrenOf(argumentSequences[0]!)) {
-    if (!isCstNode(child) || child.grammarType !== 'Value') {
-      continue;
+  for (const term of childNodesOfType(argumentTerms[0]!, 'ValueTerm')) {
+    const values = childNodesOfType(term, 'Value');
+    for (let index = 0; index < values.length; index++) {
+      if (index > 0) {
+        alphaIndex = channels.length;
+      }
+      channels.push(colorChannelFact(source, values[index]!));
     }
-    const start = absoluteStart(child);
-    const end = absoluteEnd(child);
-    const text = source.slice(start, end).trim();
-    if (text === '/') {
-      alphaIndex = channels.length;
-      continue;
-    }
-    channels.push(colorChannelFact(source, child));
   }
   return { channels, alphaIndex, legacyCommaSyntax: false };
 }
@@ -3007,8 +3025,7 @@ const STATIC_VALUE_WRAPPER_TYPES = new Set([
   'ValueListWithPriority',
   'ValueList',
   'ValueSequence',
-  'TopSumMaybeDivision',
-  'TopSum',
+  'MathValue',
   'FunctionScalarArgument',
   'Keyword',
   'Color',
@@ -5090,33 +5107,41 @@ function impossibleScssIfConditionSpans(source: string): DiagnosticSpan[] {
   return spans;
 }
 
+type DiagnosticDetails = {
+  readonly filePath?: string;
+  readonly qualifiers?: readonly string[];
+  readonly phase?: Phase;
+  readonly reason?: string;
+  readonly fix?: string;
+};
+
+type EmittedDiagnosticDetails = Omit<DiagnosticDetails, 'filePath'>;
+
 function diagnostic(
   code: string,
   defaultSeverity: DiagnosticSeverityName,
   message: string,
   span: DiagnosticSpan,
-  filePath?: string,
-  qualifiers?: readonly string[],
-  phase?: Phase
+  details?: DiagnosticDetails
 ): SourceDiagnostic {
   const start = Number(span.start);
   const end = Number(span.end);
   return {
     code,
-    phase: phase ?? (code.startsWith('parse/') ? 'parse' : 'lint'),
+    phase: details?.phase ?? (code.startsWith('parse/') ? 'parse' : 'lint'),
     source: 'jess',
     message,
-    reason: '',
-    fix: '',
+    reason: details?.reason ?? '',
+    fix: details?.fix ?? '',
     defaultSeverity,
-    filePath,
+    filePath: details?.filePath,
     start,
     end: Math.max(start, end),
     line: span.startLine,
     column: span.startColumn,
     endLine: span.endLine,
     endColumn: span.endColumn,
-    qualifiers
+    qualifiers: details?.qualifiers
   };
 }
 
@@ -5195,7 +5220,7 @@ function tolerantSourceScanDiagnostics(
       return;
     }
     emitted.add(key);
-    out.push(diagnostic(code, severity, message, span, filePath, qualifiers));
+    out.push(diagnostic(code, severity, message, span, { filePath, qualifiers }));
   };
   pushTolerantSourceScanDiagnostics(source, language, push);
   return out;
@@ -5330,7 +5355,7 @@ export function parseDiagnosticsForDoc(doc: ParseDiagnosticSource, filePath?: st
       'error',
       message,
       span,
-      filePath
+      { filePath }
     ));
   };
   for (const error of doc.errors) {
@@ -5391,8 +5416,7 @@ export function cstLintDiagnostics(
     severity: DiagnosticSeverityName,
     message: string,
     span: DiagnosticSpan,
-    qualifiers?: readonly string[],
-    phase?: Phase
+    details?: EmittedDiagnosticDetails
   ) => {
     const start = Number(span.start);
     const end = Number(span.end);
@@ -5401,7 +5425,7 @@ export function cstLintDiagnostics(
       return;
     }
     emitted.add(key);
-    out.push(diagnostic(code, severity, message, span, filePath, qualifiers, phase));
+    out.push(diagnostic(code, severity, message, span, { ...details, filePath }));
   };
   const push = (
     code: string,
@@ -5410,7 +5434,7 @@ export function cstLintDiagnostics(
     span: DiagnosticSpan,
     qualifiers?: readonly string[]
   ) => {
-    pushDiagnostic(code, severity, message, span, qualifiers);
+    pushDiagnostic(code, severity, message, span, { qualifiers });
   };
 
   const visit = (node: CssCstNode, context: VisitContext) => {
@@ -5426,6 +5450,27 @@ export function cstLintDiagnostics(
       : null;
     const functionName = FUNCTION_TYPES.has(gt) ? functionNameOf(source, start, end) : null;
     const isUrlFunction = gt === 'Url' || functionName === 'url';
+
+    /*
+     * Less v5 removes executable backtick values, but the tolerant CST keeps the
+     * complete legacy construct as one node. Report from that node so editors
+     * underline exactly the removed expression and retain the rest of the tree.
+     * The compiler's strict AST entry throws the matching parser error before
+     * evaluation; this path is the non-halting editor/diagnostic twin.
+     */
+    if (language === 'less' && gt === 'BacktickJavaScript') {
+      pushDiagnostic(
+        'parse/unsupported-inline-javascript',
+        'error',
+        'Inline JavaScript was removed in Less v5.',
+        node.span,
+        {
+          phase: 'parse',
+          reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
+          fix: 'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.'
+        }
+      );
+    }
     const isImageSetFunction = functionName !== null && unprefixedName(functionName) === 'image-set';
     const descriptorAtRuleName = gt === 'DescriptorBlock' ? atRuleNameOf(source, start, end) : null;
     const pageDescriptorContext = gt === 'MarginAtRule' && context.pageDescriptorContext === 'page'

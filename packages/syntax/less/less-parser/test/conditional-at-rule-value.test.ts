@@ -29,7 +29,7 @@ const kw = (src: string) => ({ type: 'Keyword', src });
 const dim = (src: string) => ({ type: 'Dimension', src });
 const paren = (inner: unknown) => ({ type: 'Block', delimiter: 'paren', value: inner });
 const op = (operator: string, left: unknown, right: unknown) => ({ type: 'Operation', operator, left, right });
-const ratio = (n: string, d: string) => op('/', dim(n), dim(d));
+const ratio = (n: string, d: string) => ({ type: 'List', sep: '/', value: [dim(n), dim(d)] });
 
 /* A `FunctionCall` argument is a `CallArg`, so the payload sits under `value`. */
 const call = (name: string, args: unknown[]) => ({ type: 'FunctionCall', name, args: args.map(value => ({ value })) });
@@ -51,8 +51,10 @@ function isDeclaration(value: unknown): value is Declaration {
 }
 
 /**
- * `<ratio>` — mediaqueries-4 §2.1, `<number> [ / <number> ]?`. The slash is a
- * typed `Operation`, never a value-position slash list and never re-joined text.
+ * `<ratio>` — mediaqueries-4 §2.1, `<number> [ / <number> ]?`. The slash is the
+ * Less division operator like any other Less slash (DESIGN-DECISIONS P34/P35);
+ * under the default math policy it does not divide, so the ratio is the
+ * slash-separated `List` the css base builds — never re-joined text.
  * A lone `<number>` is a whole ratio, so the slash tail is optional, not implied.
  */
 const RATIO: Array<[string, string, object]> = [

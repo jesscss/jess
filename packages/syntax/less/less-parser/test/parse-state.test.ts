@@ -56,8 +56,13 @@ function operationMathOutsideParens(sheet: Stylesheet): boolean {
   if (declaration?.type !== 'Declaration' || Array.isArray(declaration.value)) {
     throw new TypeError('expected an operation declaration');
   }
-  if (declaration.value.type !== 'Operation') {
+
+  /* A computed operation reaches the AST inside its `Expression` (ledger P35). */
+  const value = declaration.value.type === 'Expression' && !Array.isArray(declaration.value.value)
+    ? declaration.value.value
+    : declaration.value;
+  if (value.type !== 'Operation') {
     throw new TypeError('expected an operation');
   }
-  return declaration.value.mathOutsideParens;
+  return value.mathOutsideParens;
 }

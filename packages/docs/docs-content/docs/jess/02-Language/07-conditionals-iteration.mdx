@@ -65,18 +65,43 @@ $if ($shouldTroll) {
 
 ### Block scoping
 
-Unlike rulesets and at-rules, conditionals and iteration blocks do not create a new scope. That means that rules declared in a conditional or iteration block are automatically merged with their containing block.
+Rules and declarations written inside a conditional or iteration block are merged into the containing block, so they need no extra nesting:
+
+```less
+.box {
+  color: red;
+  $if (true) {
+    background: blue;
+  }
+}
+```
+→
+```css
+.box {
+  color: red;
+  background: blue;
+}
+```
+
+**Variables are scoped differently from rules.** A control-flow block opens a scope of its own, so a `:` declaration inside one is local to that block. Reassign with `:=` when you mean the variable outside it:
 
 ```less
 .box {
   $my-color: red;
   $if (true) {
-    $my-color: blue;
+    $my-color := blue;  // updates the outer binding
   }
-  color: $my-color; // blue
+  color: $my-color;     // blue
 }
-
 ```
+
+With `$my-color: blue` inside the `$if`, the block would get its own `$my-color` and `color` would be `red`. See [Scope](./variables#scope).
+
+:::caution[Not enforced yet for `$if` and `$while`]
+
+Today only `$for` enforces variable scoping in control-flow blocks, and `:=` inside `$for` fails to find an outer binding — [jess#232](https://github.com/jesscss/jess/issues/232). Writing `:=` for "update the outer variable" is correct either way.
+
+:::
 
 ## $for
 

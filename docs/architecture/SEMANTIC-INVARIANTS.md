@@ -126,7 +126,10 @@ divergences. This is roughly one fixture and one test file. Today the repo has
 **no test asserting anything about value-vs-position byte behavior** — the only
 one that ever existed asserted the divergence and was deleted.
 **STATUS: BUILDABLE.** Known violations: 1 documented (S1) + 2 undocumented
-riders on it + 1 cross-dialect (S3).
+riders on it + 1 cross-dialect (S3), plus one at-rule split that predates
+ledger N14: a lone general-enclosed bound keeps its padding in `@media ( foo(x) )`
+(the whole `<media-in-parens>` is the group) but is normalized to `(foo(x))` in
+`@container`, whose `ContainerQueryInParens` wraps it in an unmarked block.
 
 ## 3. A policy has one owner
 
@@ -192,7 +195,11 @@ recorded as unimplemented. There is no cross-dialect harness in the repo today:
 of the three test files importing more than one parser, none feeds one input to
 all four, and `test/ast-shape/shape-stability.test.ts` — the closest thing —
 imports only three parsers and uses **per-dialect disjoint corpora**.
-**STATUS: BUILDABLE.** Known violations: 2 (S3, S4).
+**STATUS: BUILDABLE.** Known violations: 3 (S3, S4, and jess#315: css reads a
+`@media`/`@container`/`@supports` `<general-enclosed>` group as structure,
+accepts general-enclosed `@media` features and prints a function-form one as
+written (`@media foo(x:y)`), while SCSS, `.jess` and non-converged Less read
+or reject them as text and SCSS still spaces `foo(x: y)` — ledger N14, P39).
 
 ## 5. Divergence is licensed by the dialect's own definition, and recorded where it is introduced
 
@@ -354,6 +361,7 @@ reintroduces each applicable shape.
 | S6  | ~~**Two precisions for one quantity**~~ — **CLOSED `137cfa8fa`**           | 3          | `fadein`/`fadeout` had already been merged onto the single `withAlpha` kernel, leaving one quantization (`round(newAlpha, 8)`, `packages/fns/src/less/color-helper.ts`). That construction-time round is now deleted, so alpha carries full precision and is quantized only by the output policy — ledger **C6**'s merge has no precision left to pick. |
 | S7  | **The pin that vanished** (`2bd16eb89`)                                    | governance | A semantic rule surviving only as a JSDoc comment because its tests — and the differential harness its commit cited as evidence — were deleted by an unrelated refactor. A rule whose only pin is a comment is undefended.                                                                                              |
 | S8  | ~~**Attribute-selector ident fusion**~~ — **CLOSED**                       | 2, 4, 7    | An opaque text join that concatenates already-separate tokens. `css`/`scss`/`jess` built `[…]` with `.join('')`, so `[data-x=y i]` emitted `[data-x=yi]` — still valid CSS, still accepted by `CSS.supports()`, matching a **disjoint** set of elements, with no error anywhere. Less, which built the same text structurally with an explicit space, was right but rejected `[data-x = y i]` outright. Both halves are one missing fact: a join over token text has to know where a token boundary is. Detector: `css-parser/test/byte-identity/fixtures/selector-attribute-unquoted-flag.css`. |
+| S9  | **Imported facts appended instead of folded in** — **FIXED `0ed91fb1d`** | 1, 8, governance | Publishing a fact into an index by APPENDING it, where the index's readers take last-wins (declarations) or source-order (mixin dispatch, namespace members). A document's own facts were collected when its frame was built and imported ones pushed on afterwards, so `@import "lib"; @v: A;` read `@v` as the imported `L` — lessc 4.9.1 says `A` — and mixin/namespace collisions resolved to the import whatever the `@import`'s lexical position. The mirror-image half filed imported rulesets AHEAD of every local one. An ordering fact has to be a RANK carried by the fact, assigned where the position is known (publication), never an insertion-order side effect. Invariant 1 is the precise shape: which fact won depended on WHEN publication ran, not on what the source says. Detector: `packages/jess/test/less/import-source-fold-order.test.ts` (three fact kinds + the reverse-order controls) and `packages/jess/test/scss/import-source-fold-order.test.ts` (the scss half); ledger **A2**/**N10**. |
 
 When a semantic incident is fixed, add a row and, where possible, a detector.
 The catalogue stays grounded in lived incidents, not style preference.

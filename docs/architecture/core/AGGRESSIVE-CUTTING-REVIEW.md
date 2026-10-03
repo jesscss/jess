@@ -133,14 +133,14 @@ a blanket optimization exemption or a new active architecture queue.
     "files": ["packages/core/src/ast/evaluator.ts"],
     "semanticBoundary": {
       "trigger": "a typed FunctionCall reaches evaluator dispatch with a registry miss or a selected callable result",
-      "scope": "Only the value evaluator owns this boundary. An unregistered plain FunctionCall is an optional CSS call and returns authored call bytes; a selected scoped or global callable either returns its typed result or sends its synchronous/asynchronous rejection through functionMode. MixinCall lookup, variable/property resolution, and mixin recursion are outside this seam.",
+      "scope": "Only the value evaluator owns this boundary. An unregistered plain FunctionCall is an optional CSS call and returns authored call bytes, and a call whose document has no ambient built-ins (ledger P36) skips the registry lookup and takes that same miss branch; a selected scoped or global callable either returns its typed result or sends its synchronous/asynchronous rejection through functionMode. MixinCall lookup, variable/property resolution, and mixin recursion are outside this seam.",
       "cases": ["unresolved-optional-function-call", "registered-sync-call-failure", "registered-async-call-failure"],
       "baseline": {"fixture": "benchmark.less", "phase": "render"}
     },
     "sourceCheck": {
       "file": "packages/core/src/ast/evaluator.ts",
       "caller": "const call = (",
-      "guard": "if (registry.has(name))",
+      "guard": "if (ambient && registry.has(name))",
       "call": "recoverAsyncCall("
     },
     "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/evaluator-call-boundary.test.ts"]}
@@ -231,7 +231,7 @@ a blanket optimization exemption or a new active architecture queue.
     ],
     "semanticRuntime": {
       "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
-      "scope": "This coordinated cutover changes recursive ValueGroup/List/Block facts, authored value layout, callable binding, mixin argument resolution, reference/index access, typed Collection overlay equality and iteration, strict final-unit validation, typed guard equality, Less lazy color-call demand, and asynchronous declaration deduplication across cooperating runtime owners. Those changes are semantic architecture work with real traversal and allocation shape; no single admission counter, byte-identical A/B, or speed claim would describe them truthfully.",
+      "scope": "This coordinated cutover changes recursive ValueGroup/List/Block facts, authored value layout, explicit imported-callable binding, mixin argument resolution, reference/index access, typed Collection overlay equality and iteration, strict final-unit validation, typed guard equality, Less lazy color-call demand, and asynchronous declaration deduplication across cooperating runtime owners. Imported Jess and Less functions occupy a separate lexical function table and dispatch only through their sigilled Reference shape; SCSS retains its qualified module-call syntax. Those changes are semantic architecture work with real traversal and allocation shape; no single admission counter, byte-identical A/B, or speed claim would describe them truthfully.",
       "cases": [
         "ValueSlot-array-evaluation-and-authored-layout",
         "List-value-separator-and-Block-delimiter-facts",
@@ -239,6 +239,7 @@ a blanket optimization exemption or a new active architecture queue.
         "Collection-spread-computed-key-overlay-and-iteration",
         "Less-lazy-color-call-demand-boundary",
         "defineFunction-typed-positional-named-and-lazy-binding",
+        "module-callable-explicit-reference-and-css-call-separation",
         "mixin-dispatch-ValueSlot-argument-resolution",
         "ValueLayout-provenance-side-table",
         "preserve-mode-calc-result-composition",
@@ -251,7 +252,7 @@ a blanket optimization exemption or a new active architecture queue.
       "baseline": {"fixture": "benchmark.less", "phase": "render"}
     },
     "evidence": {
-      "behaviorCommand": ["pnpm", "--filter", "@jesscss/core", "exec", "vitest", "run", "src/ast/__tests__/collection-value-direct-acceptance.test.ts", "src/ast/__tests__/collection-value-domain.test.ts", "src/ast/__tests__/for-direct-acceptance.test.ts", "src/ast/__tests__/value-access-direct-acceptance.test.ts", "src/ast/__tests__/nested-property-flatten-direct-acceptance.test.ts", "src/ast/__tests__/serialize-projection-ratchet.test.ts", "src/ast/__tests__/traversal.test.ts"],
+      "behaviorCommand": ["pnpm", "--filter", "@jesscss/core", "exec", "vitest", "run", "src/ast/__tests__/collection-value-direct-acceptance.test.ts", "src/ast/__tests__/collection-value-domain.test.ts", "src/ast/__tests__/for-direct-acceptance.test.ts", "src/ast/__tests__/value-access-direct-acceptance.test.ts", "src/ast/__tests__/nested-property-flatten-direct-acceptance.test.ts", "src/ast/__tests__/module-import-evaluation.test.ts", "src/ast/__tests__/serialize-projection-ratchet.test.ts", "src/ast/__tests__/traversal.test.ts"],
       "buildCommand": ["pnpm", "--filter", "@jesscss/core", "build"]
     }
   },

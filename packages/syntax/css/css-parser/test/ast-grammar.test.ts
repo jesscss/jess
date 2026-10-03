@@ -5,8 +5,7 @@ import type { SelectorBranch, SelectorTerm, Stylesheet } from '@jesscss/core/ast
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { simpleTokenText } from '../../../../core/src/ast/nodes.js';
 import { cssGrammar } from '../src/grammar.js';
-import { parseCssCst } from '../src/cst.js';
-import { commentTriviaLabels } from '../src/cst.js';
+import { parseCssCst, commentTriviaLabels } from '../src/cst.js';
 import { parse } from '../src/index.js';
 import { wptAnbParsing } from './wpt-syntax-vectors.js';
 import { bare } from '../../../../../test/provenance-free.js';
@@ -22,6 +21,7 @@ function isStylesheet(value: unknown): value is Stylesheet {
 function parseAst(input: string): Stylesheet {
   const result = run(cssGrammar.Stylesheet, input, {
     trivia: cssGrammar.whitespace,
+    state: { source: input },
     rootTrivia: { select: commentTriviaLabels }
   });
   if (!result.ok || result.unconsumedFrom !== null || !isStylesheet(result.value)) {
@@ -90,7 +90,14 @@ describe('CSS canonical-AST grammar', () => {
       rules: [
         { type: 'Declaration', name: 'space', value: [{ type: 'Keyword', src: 'red' }, { type: 'Keyword', src: 'blue' }] },
         { type: 'Declaration', name: 'comma', value: { type: 'List', sep: ',' } },
-        { type: 'Declaration', name: 'ratio', value: [{ type: 'Dimension', src: '1' }, { type: 'Any', src: '/' }, { type: 'Dimension', src: '2' }] }
+
+        /*
+         * A slash IS an explicit separator, so it reserves a `List` exactly as a
+         * comma does — this case used to assert the category error the title
+         * argues against, `[Dimension, Any '/', Dimension]`, with the separator
+         * smuggled in as a value atom. P33.
+         */
+        { type: 'Declaration', name: 'ratio', value: { type: 'List', sep: '/', value: [{ type: 'Dimension', src: '1' }, { type: 'Dimension', src: '2' }] } }
       ]
     });
     expectExplicitListSeparators(document);
@@ -894,6 +901,94 @@ describe('CSS canonical-AST grammar', () => {
     }
   });
 
+  it('reads each first-token arm of a query feature once, with a structured general-enclosed after a routed bound', () => {
+    const preludeOf = (source: string): unknown => {
+      const rule = parseAst(source).rules[0];
+      return rule?.type === 'AtRuleBlock' ? rule.prelude : rule;
+    };
+    const paren = (value: unknown) => ({ type: 'Block', delimiter: 'paren', value });
+    const call = (name: string, arg: unknown) => ({ type: 'FunctionCall', name, args: [{ value: arg }] });
+    const kw = (src: string) => ({ type: 'Keyword', src });
+
+    /*
+     * A function or unicode-range first bound that is not a range is
+     * `<general-enclosed>` (media-queries-4 §3.1): the bound as parsed, then
+     * the rest of the contents as values.
+     */
+    for (const prelude of ['@supports', '@container', '@media']) {
+      expect(preludeOf(`${prelude} (foo(x) bar) { a { b: c } }`), prelude).toMatchObject(
+        paren({ type: 'Sequence', parts: [call('foo', kw('x')), kw('bar')] })
+      );
+    }
+    expect(preludeOf('@supports (U+0-7F) { a { b: c } }')).toMatchObject(paren({ type: 'Any', src: 'U+0-7F' }));
+    expect(preludeOf('@supports (foo(x) < 5px) { a { b: c } }')).toMatchObject(
+      paren({ type: 'Sequence', parts: [call('foo', kw('x')), { type: 'Any', src: '<' }, { type: 'Dimension', src: '5px' }] })
+    );
+
+    /* Contents the value grammar does not read stay the raw general-enclosed text. */
+    expect(preludeOf('@supports (foo(x) {a}) { a { b: c } }')).toMatchObject(
+      paren({ type: 'Interpolation', parts: [{ lit: 'foo(x) {a}' }] })
+    );
+
+    expect(preludeOf('@media (U+0-7F < width) { a { b: c } }')).toMatchObject({
+      type: 'Block', delimiter: 'paren',
+      value: { type: 'Operation', operator: '<', left: { type: 'Any', src: 'U+0-7F' }, right: { type: 'Keyword', src: 'width' } }
+    });
+
+    /* An escaped `\(` ends a name, not a function opener. */
+    expect(preludeOf('@media (a\\(: 1) { a { b: c } }')).toMatchObject({
+      type: 'Block', delimiter: 'paren',
+      value: { type: 'Operation', operator: ':', left: { type: 'Keyword', src: 'a\\(' }, right: { type: 'Dimension', src: '1' } }
+    });
+  });
+
+  /*
+   * media-queries-4 §3: `<media-in-parens> = ( <media-condition> ) | <media-feature> | <general-enclosed>`,
+   * and `<media-condition> = <media-not> | <media-in-parens> [ <media-and>* | <media-or>* ]`.
+   */
+  it('parses a parenthesized media condition inside a media query', () => {
+    const preludeOf = (source: string): unknown => {
+      const rule = parseAst(source).rules[0];
+      return rule?.type === 'AtRuleBlock' ? rule.prelude : rule;
+    };
+    const paren = (value: unknown) => ({ type: 'Block', delimiter: 'paren', value });
+    const kw = (src: string) => ({ type: 'Keyword', src });
+    const feature = (name: string, src: string) => paren({ type: 'Operation', operator: ':', left: kw(name), right: { type: 'Dimension', src } });
+
+    expect(preludeOf('@media ((min-width: 1px) and (max-width: 2px)) { a { b: c } }')).toMatchObject(
+      paren({ type: 'Sequence', parts: [feature('min-width', '1px'), kw('and'), feature('max-width', '2px')] })
+    );
+    expect(preludeOf('@media screen and ((color) or (hover)) { a { b: c } }')).toMatchObject({
+      type: 'Sequence',
+      parts: [kw('screen'), kw('and'), paren({ type: 'Sequence', parts: [paren(kw('color')), kw('or'), paren(kw('hover'))] })]
+    });
+    expect(preludeOf('@media (not (color)) { a { b: c } }')).toMatchObject(
+      paren({ type: 'Sequence', parts: [kw('not'), paren(kw('color'))] })
+    );
+    expect(preludeOf('@media (((color))) { a { b: c } }')).toMatchObject(paren(paren(paren(kw('color')))));
+
+    /* `not` is still a feature name where no parenthesized condition follows it. */
+    expect(preludeOf('@media (not) { a { b: c } }')).toMatchObject(paren(kw('not')));
+
+    /* `not(` glued is a function token (css-syntax-3 §4.3.4), not a negation. */
+    expect(preludeOf('@media (not(a)) { a { b: c } }')).toMatchObject(paren({ type: 'FunctionCall', name: 'not' }));
+
+    /*
+     * A container or supports condition keeps its own owner for a nested group:
+     * the media condition does not take `(not (style(…)))` from
+     * `ContainerQueryInParens`, whose atoms read `style()` as general-enclosed.
+     */
+    const styleQuery = paren({ type: 'FunctionCall', name: 'style', args: [{ value: { type: 'Interpolation', parts: [{ lit: '--x: 1' }] } }] });
+    expect(preludeOf('@container (width > 1px) and (not (style(--x: 1))) { a { b: c } }')).toMatchObject({
+      type: 'Sequence',
+      parts: [{ type: 'Block' }, kw('and'), paren({ type: 'Sequence', parts: [kw('not'), styleQuery] })]
+    });
+    expect(preludeOf('@container (a) and ((style(--x: 1)) or (b)) { a { b: c } }')).toMatchObject({
+      type: 'Sequence',
+      parts: [{ type: 'Block' }, kw('and'), paren({ type: 'Sequence', parts: [styleQuery, kw('or'), paren(kw('b'))] })]
+    });
+  });
+
   it('keeps public supports-condition comments local to the typed condition grammar', () => {
     const source = '@supports/* keyword */ (display/* property */:/* value */grid/* close */)/* before-and */ and/* after-and */ (color: red)/* before-comma */,/* after-comma */ not/* after-not */ (width: 1px)/* before-brace */ { /* body */ .grid { display: grid; } }';
     const nested = '.card { @supports/* keyword */ (display/* property */: grid)/* before-brace */ { color: red; } }';
@@ -1390,7 +1485,7 @@ describe('CSS canonical-AST grammar', () => {
       @STARTING-STYLE legacy header { .start { color: red; } }
       @SCOPE { color: red; .scoped { color: blue; } }
       @KEYFRAMES fade alternate { from { opacity: 0; } }
-      @CHARSET custom (encoding);
+      @CHARSET "custom-encoding";
       @namespace svg /* keep */ url("https://example.test/ns");
     `;
     const cst = parseCssCst(source);
@@ -1401,7 +1496,7 @@ describe('CSS canonical-AST grammar', () => {
       { type: 'AtRuleBlock', name: '@STARTING-STYLE', prelude: { type: 'Any', src: 'legacy header' }, rules: [{ type: 'Ruleset' }] },
       { type: 'AtRuleBlock', name: '@SCOPE', prelude: null, rules: [{ type: 'Declaration' }, { type: 'Ruleset' }] },
       { type: 'AtRuleBlock', name: '@KEYFRAMES', prelude: { type: 'Any', src: 'fade alternate' }, rules: [{ type: 'Ruleset' }] },
-      { type: 'AtRuleStatement', name: '@CHARSET', prelude: { type: 'Any', src: 'custom (encoding)' } },
+      { type: 'AtRuleStatement', name: '@CHARSET', prelude: { type: 'Any', src: '"custom-encoding"' } },
       { type: 'AtRuleStatement', name: '@namespace', prelude: { type: 'Any', src: 'svg url("https://example.test/ns")' } }
     ]);
   });
@@ -1435,6 +1530,50 @@ describe('CSS canonical-AST grammar', () => {
       expect(cst.errors).toHaveLength(0);
       expect(cst.unconsumedFrom).toBeNull();
       expect(parseAst(source).rules[0]).toMatchObject(expected);
+    }
+  });
+
+  /*
+   * css-syntax-3 §3.2 gives `@charset` a `<string>` prelude and nothing else, so
+   * `@charset url(utf-8);` is not valid CSS — it used to parse here through the
+   * permissive generic statement prelude, and did so in EVERY position, which is
+   * why the body-position and nested cases are pinned alongside the prologue.
+   *
+   * The refusal is deliberately a recorded error rather than an unconsumed span:
+   * a plain failure is out-competed by the sibling opaque-block arm, which scans
+   * further before it fails, so the expectation never reaches the author.
+   */
+  it('refuses an @charset prelude that is not a quoted string, and says so', () => {
+    for (const source of [
+      '@charset url(utf-8);',
+      '@charset utf-8;',
+      '@charset;',
+      '@charset "utf-8" trailing;',
+      '.a { color: red }\n@charset url(utf-8);',
+      '.a { @charset url(utf-8); }'
+    ]) {
+      /* The public entry, not `parseAst`: a RECORDED refusal is what the
+       * grammar produces here, and only `parse()` reads `result.errors`. */
+      expect(() => parse(source), source).toThrow(
+        'An @charset prelude must be a quoted string, as in @charset "utf-8";.'
+      );
+    }
+  });
+
+  it('still reads every well-formed @charset prelude, in each position', () => {
+    for (const [source, index] of [
+      ['@charset "utf-8";', 0],
+      ['@charset /* keep */ "utf-8";', 0],
+      ['@charset \'utf-8\'  ;', 0],
+      ['.a { color: red }\n@CHARSET "utf-8";', 1]
+    ] as const) {
+      const cst = parseCssCst(source);
+      expect(cst.errors, source).toHaveLength(0);
+      expect(cst.unconsumedFrom, source).toBeNull();
+      expect(parseAst(source).rules[index], source).toMatchObject({
+        type: 'AtRuleStatement',
+        prelude: { type: 'Any' }
+      });
     }
   });
 
@@ -1915,9 +2054,10 @@ describe('CSS canonical-AST grammar', () => {
     expect(document.rules[0]).toMatchObject({
       type: 'Ruleset',
       rules: [
-        { type: 'Declaration', name: 'a', value: [{ type: 'Url' }, { type: 'Any', src: '/' }, { type: 'Keyword', src: 'cover' }] },
+        /* The `/` component boundary is a separator, so it reserves a `List` (P33). */
+        { type: 'Declaration', name: 'a', value: { type: 'List', sep: '/', value: [{ type: 'Url' }, { type: 'Keyword', src: 'cover' }] } },
         { type: 'Declaration', name: 'b', value: [{ type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--x' } }] }, { type: 'Keyword', src: 'solid' }] },
-        { type: 'Declaration', name: 'c', value: [{ type: 'FunctionCall', name: 'rgb', args: [{ value: { type: 'Dimension', number: 1 } }, { value: { type: 'Dimension', number: 2 } }, { value: { type: 'Dimension', number: 3 } }] }, { type: 'Any', src: '/' }, { type: 'Dimension', number: 0.5 }] },
+        { type: 'Declaration', name: 'c', value: { type: 'List', sep: '/', value: [{ type: 'FunctionCall', name: 'rgb', args: [{ value: { type: 'Dimension', number: 1 } }, { value: { type: 'Dimension', number: 2 } }, { value: { type: 'Dimension', number: 3 } }] }, { type: 'Dimension', number: 0.5 }] } },
         { type: 'Declaration', name: 'd', value: [{ type: 'FunctionCall', name: 'foo', args: [{ value: { type: 'Keyword', src: 'bar' } }] }, { type: 'Keyword', src: 'baz' }] },
         { type: 'Declaration', name: 'e', value: { type: 'FunctionCall', name: 'calc', args: [{ value: { type: 'Operation', operator: '+', right: { type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--x' } }] } } }] } },
         { type: 'Declaration', name: 'f', value: { type: 'FunctionCall', name: 'calc', args: [{ value: { type: 'Operation', operator: '+', left: { type: 'FunctionCall', name: 'var', args: [{ value: { type: 'Keyword', src: '--x' } }, { value: [{ type: 'Dimension', number: 1, unit: 'px' }, { type: 'Any', src: '+' }, { type: 'Dimension', number: 2, unit: 'px' }] }] }, right: { type: 'Dimension', number: 2, unit: 'px' } } }] } },

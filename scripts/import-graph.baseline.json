@@ -16,10 +16,9 @@
       "big.js",
       "bitset",
       "chalk",
-      "color-name",
       "lodash-es"
     ],
-    "bytes": 1454833
+    "bytes": 1488543
   },
   "@jesscss/core/ast": {
     "modules": [
@@ -27,7 +26,7 @@
       "packages/core/lib/at-rule.js"
     ],
     "externals": [],
-    "bytes": 32283
+    "bytes": 37854
   },
   "@jesscss/core/diagnostics": {
     "modules": [
@@ -35,17 +34,15 @@
       "packages/core/lib/diagnostics2.js"
     ],
     "externals": [],
-    "bytes": 24438
+    "bytes": 25613
   },
   "@jesscss/core/value": {
     "modules": [
       "packages/core/lib/value.js",
       "packages/core/lib/value2.js"
     ],
-    "externals": [
-      "color-name"
-    ],
-    "bytes": 30949
+    "externals": [],
+    "bytes": 30546
   },
   "@jesscss/css-parser": {
     "modules": [
@@ -61,7 +58,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 3421673
+    "bytes": 3311084
   },
   "@jesscss/css-parser/cst": {
     "modules": [
@@ -77,7 +74,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1766154
+    "bytes": 1781130
   },
   "@jesscss/css-parser/cst-host": {
     "modules": [
@@ -103,7 +100,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1766255
+    "bytes": 1781229
   },
   "@jesscss/css-parser/grammar/ast": {
     "modules": [
@@ -116,7 +113,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2633108
+    "bytes": 2522347
   },
   "@jesscss/css-parser/grammar/ast/positions": {
     "modules": [
@@ -129,7 +126,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 975017
+    "bytes": 989983
   },
   "@jesscss/css-parser/grammar/cst": {
     "modules": [
@@ -142,7 +139,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 975239
+    "bytes": 990215
   },
   "@jesscss/css-parser/grammar/cst/positions": {
     "modules": [
@@ -155,7 +152,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 975145
+    "bytes": 990119
   },
   "@jesscss/css-parser/positions": {
     "modules": [
@@ -171,7 +168,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1763407
+    "bytes": 1778545
   },
   "@jesscss/jess-parser": {
     "modules": [
@@ -180,7 +177,7 @@
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/jess/jess-parser/lib/chunks/parse-with.js",
       "packages/syntax/jess/jess-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/jess/jess-parser/lib/grammar/ast.js",
@@ -189,7 +186,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 3916006
+    "bytes": 2371429
   },
   "@jesscss/jess-parser/cst": {
     "modules": [
@@ -200,7 +197,7 @@
       "packages/parser-shared/lib/unknown-at-rule.js",
       "packages/syntax/css/css-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/css/css-parser/lib/cst-host.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/jess/jess-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/jess/jess-parser/lib/cst.js",
       "packages/syntax/jess/jess-parser/lib/grammar/cst.js"
@@ -208,7 +205,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 3917055
+    "bytes": 2372492
   },
   "@jesscss/jess-parser/cst/positions": {
     "modules": [
@@ -219,7 +216,7 @@
       "packages/parser-shared/lib/unknown-at-rule.js",
       "packages/syntax/css/css-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/css/css-parser/lib/cst-host.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/jess/jess-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/jess/jess-parser/lib/cst/positions.js",
       "packages/syntax/jess/jess-parser/lib/grammar/cst/positions.js"
@@ -227,7 +224,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 3926197
+    "bytes": 2381620
   },
   "@jesscss/jess-parser/grammar/ast": {
     "modules": [
@@ -236,13 +233,13 @@
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/jess/jess-parser/lib/grammar/ast.js"
     ],
     "externals": [
       "parseman"
     ],
-    "bytes": 3906655
+    "bytes": 2362078
   },
   "@jesscss/jess-parser/grammar/ast/positions": {
     "modules": [
@@ -251,13 +248,13 @@
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/jess/jess-parser/lib/grammar/ast/positions.js"
     ],
     "externals": [
       "parseman"
     ],
-    "bytes": 3915540
+    "bytes": 2370949
   },
   "@jesscss/jess-parser/grammar/cst": {
     "modules": [
@@ -266,13 +263,13 @@
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/jess/jess-parser/lib/grammar/cst.js"
     ],
     "externals": [
       "parseman"
     ],
-    "bytes": 3906915
+    "bytes": 2362352
   },
   "@jesscss/jess-parser/grammar/cst/positions": {
     "modules": [
@@ -281,13 +278,13 @@
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/jess/jess-parser/lib/grammar/cst/positions.js"
     ],
     "externals": [
       "parseman"
     ],
-    "bytes": 3915800
+    "bytes": 2371223
   },
   "@jesscss/jess-parser/positions": {
     "modules": [
@@ -296,7 +293,7 @@
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/jess/jess-parser/lib/chunks/parse-with.js",
       "packages/syntax/jess/jess-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/jess/jess-parser/lib/grammar/ast/positions.js",
@@ -305,7 +302,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 3924715
+    "bytes": 2380124
   },
   "@jesscss/less-parser": {
     "modules": [
@@ -315,7 +312,7 @@
       "packages/core/lib/diagnostics2.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/less/less-parser/lib/chunks/parse-with.js",
       "packages/syntax/less/less-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/less/less-parser/lib/grammar/ast.js",
@@ -325,7 +322,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 4125343
+    "bytes": 2588543
   },
   "@jesscss/less-parser/cst": {
     "modules": [
@@ -335,7 +332,7 @@
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/css/css-parser/lib/cst-host.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/less/less-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/less/less-parser/lib/cst.js",
       "packages/syntax/less/less-parser/lib/grammar/cst.js",
@@ -344,7 +341,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 4102572
+    "bytes": 2564285
   },
   "@jesscss/less-parser/cst/positions": {
     "modules": [
@@ -354,7 +351,7 @@
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/css/css-parser/lib/cst-host.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/less/less-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/less/less-parser/lib/cst/positions.js",
       "packages/syntax/less/less-parser/lib/grammar/cst/positions.js",
@@ -363,7 +360,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 4107239
+    "bytes": 2566074
   },
   "@jesscss/less-parser/grammar/ast": {
     "modules": [
@@ -371,14 +368,14 @@
       "packages/core/lib/at-rule.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/less/less-parser/lib/grammar/ast.js",
       "packages/syntax/less/less-parser/lib/parse-error.js"
     ],
     "externals": [
       "parseman"
     ],
-    "bytes": 3310711
+    "bytes": 1772411
   },
   "@jesscss/less-parser/grammar/ast/positions": {
     "modules": [
@@ -386,14 +383,14 @@
       "packages/core/lib/at-rule.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/less/less-parser/lib/grammar/ast/positions.js",
       "packages/syntax/less/less-parser/lib/parse-error.js"
     ],
     "externals": [
       "parseman"
     ],
-    "bytes": 3315202
+    "bytes": 1774024
   },
   "@jesscss/less-parser/grammar/cst": {
     "modules": [
@@ -401,14 +398,14 @@
       "packages/core/lib/at-rule.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/less/less-parser/lib/grammar/cst.js",
       "packages/syntax/less/less-parser/lib/parse-error.js"
     ],
     "externals": [
       "parseman"
     ],
-    "bytes": 3311085
+    "bytes": 1772798
   },
   "@jesscss/less-parser/grammar/cst/positions": {
     "modules": [
@@ -416,14 +413,14 @@
       "packages/core/lib/at-rule.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/less/less-parser/lib/grammar/cst/positions.js",
       "packages/syntax/less/less-parser/lib/parse-error.js"
     ],
     "externals": [
       "parseman"
     ],
-    "bytes": 3315495
+    "bytes": 1774330
   },
   "@jesscss/less-parser/positions": {
     "modules": [
@@ -433,7 +430,7 @@
       "packages/core/lib/diagnostics2.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/less/less-parser/lib/chunks/parse-with.js",
       "packages/syntax/less/less-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/less/less-parser/lib/grammar/ast/positions.js",
@@ -443,7 +440,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 4129533
+    "bytes": 2589855
   },
   "@jesscss/scss-parser": {
     "modules": [
@@ -452,7 +449,7 @@
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/scss/scss-parser/lib/chunks/parse-with.js",
       "packages/syntax/scss/scss-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/scss/scss-parser/lib/grammar/ast.js",
@@ -461,7 +458,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 3867939
+    "bytes": 2319563
   },
   "@jesscss/scss-parser/cst": {
     "modules": [
@@ -472,7 +469,7 @@
       "packages/parser-shared/lib/unknown-at-rule.js",
       "packages/syntax/css/css-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/css/css-parser/lib/cst-host.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/scss/scss-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/scss/scss-parser/lib/cst.js",
       "packages/syntax/scss/scss-parser/lib/grammar/cst.js"
@@ -480,7 +477,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 3871553
+    "bytes": 2322817
   },
   "@jesscss/scss-parser/cst/positions": {
     "modules": [
@@ -491,7 +488,7 @@
       "packages/parser-shared/lib/unknown-at-rule.js",
       "packages/syntax/css/css-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/css/css-parser/lib/cst-host.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/scss/scss-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/scss/scss-parser/lib/cst/positions.js",
       "packages/syntax/scss/scss-parser/lib/grammar/cst/positions.js"
@@ -499,7 +496,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 3879149
+    "bytes": 2330217
   },
   "@jesscss/scss-parser/grammar/ast": {
     "modules": [
@@ -508,13 +505,13 @@
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/scss/scss-parser/lib/grammar/ast.js"
     ],
     "externals": [
       "parseman"
     ],
-    "bytes": 3079860
+    "bytes": 1531115
   },
   "@jesscss/scss-parser/grammar/ast/positions": {
     "modules": [
@@ -523,13 +520,13 @@
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/scss/scss-parser/lib/grammar/ast/positions.js"
     ],
     "externals": [
       "parseman"
     ],
-    "bytes": 3087199
+    "bytes": 1538258
   },
   "@jesscss/scss-parser/grammar/cst": {
     "modules": [
@@ -538,13 +535,13 @@
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/scss/scss-parser/lib/grammar/cst.js"
     ],
     "externals": [
       "parseman"
     ],
-    "bytes": 3080086
+    "bytes": 1531350
   },
   "@jesscss/scss-parser/grammar/cst/positions": {
     "modules": [
@@ -553,13 +550,13 @@
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/scss/scss-parser/lib/grammar/cst/positions.js"
     ],
     "externals": [
       "parseman"
     ],
-    "bytes": 3087425
+    "bytes": 1538493
   },
   "@jesscss/scss-parser/positions": {
     "modules": [
@@ -568,7 +565,7 @@
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
-      "packages/syntax/css/css-parser/lib/grammar/ast.js",
+      "packages/syntax/css/css-parser/lib/grammar/base.js",
       "packages/syntax/scss/scss-parser/lib/chunks/parse-with.js",
       "packages/syntax/scss/scss-parser/lib/chunks/trivia-labels.js",
       "packages/syntax/scss/scss-parser/lib/grammar/ast/positions.js",
@@ -577,6 +574,6 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 3875102
+    "bytes": 2326530
   }
 }

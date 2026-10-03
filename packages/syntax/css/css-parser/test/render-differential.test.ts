@@ -11,8 +11,8 @@
  *
  * `docs/design/RESOLVED-SEMANTICS-AND-NAMING.md` §12.1 wants the `calc()`
  * precedence ladder (`CalcValue` / `CalcProduct` / `CalcSum`) to stop
- * contributing CST node names, the way Less's `MathAtom`/`MathProduct`/
- * `MathSum` already do. It is blocked on exactly one thing:
+ * contributing CST node names, the way Less's `MathAtom`/`MathSum` already
+ * do. It is blocked on exactly one thing:
  *
  * > Collapsing is not free: it moves the CST for every calc input … and the css
  * > differential to gate it does not exist yet.

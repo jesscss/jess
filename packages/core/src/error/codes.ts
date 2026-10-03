@@ -35,7 +35,7 @@ export type JessErrorCode =
   | 'eval/invalid-statement'
   | 'eval/module-config-rejected'
   | 'eval/property-in-root'
-  | 'eval/root-call-without-root'
+  | 'eval/ruleset-argument-with-rules'
   | 'eval/guarded-selector-list'
   | 'eval/ruleset-on-property'
   | 'eval/async-in-sync-position'
@@ -45,8 +45,10 @@ export type JessErrorCode =
   | 'eval/scss-warn'
   | 'eval/scss-error'
   | 'eval/invalid-unit-arithmetic'
+  | 'eval/division-by-zero'
   | 'eval/unexpressible-unit'
   | 'eval/incomparable-operands'
+  | 'eval/empty-operand'
   | 'eval/unit-conversion'
   | 'extend/protected-boundary'
   | 'extend/not-found'
@@ -120,9 +122,9 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
   [
     'parse/unsupported-inline-javascript',
     {
-      summary: 'Inline JavaScript is not supported',
-      reason: 'Backtick JavaScript expressions are not evaluated.',
-      fix: 'Move the expression into an explicit @from/@-from script import or a plugin function.'
+      summary: 'Inline JavaScript was removed in Less v5',
+      reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
+      fix: 'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.'
     }
   ],
   [
@@ -247,8 +249,8 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     {
       summary: 'Value node is not valid as a statement',
       reason:
-        '${what} is a value; it cannot stand on its own in a rules body — it was likely returned by a function/mixin or leaked from a detached ruleset.',
-      fix: 'Wrap it in a declaration (property: value) or return a valid statement node (ruleset, declaration, at-rule).'
+        '${what} is a value; it cannot stand on its own at the stylesheet root or in a declaration list — it was likely returned by a function/mixin, or is a call left as a plain CSS function call because no function by that name is in scope or it could not evaluate its arguments.',
+      fix: 'Wrap it in a declaration (property: value), import or define the function so it evaluates, or return a valid statement node (ruleset, declaration, at-rule) or raw text.'
     }
   ],
   [
@@ -270,12 +272,12 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     }
   ],
   [
-    'eval/root-call-without-root',
+    'eval/ruleset-argument-with-rules',
     {
-      summary: 'Function did not return a root node',
+      summary: 'A ruleset argument cannot be written out',
       reason:
-        'The root-level function call "${name}" evaluated to a value or void result instead of a root-level statement.',
-      fix: 'Call the function from a value position, or return a ruleset/declaration block that can be emitted at the root.'
+        'A ruleset passed to a function is written out as its evaluated block, but this one holds ${what}, which has no one-line form inside a CSS value.',
+      fix: 'Pass a ruleset of declarations, nested rules and at-rules, or call the ruleset in statement position (`@ruleset();`).'
     }
   ],
   [
@@ -353,12 +355,28 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     }
   ],
   [
+    'eval/division-by-zero',
+    {
+      summary: 'Division by zero',
+      reason: '${expr} divides by zero, so there is no quotient to emit.',
+      fix: 'Divide by a non-zero value, or keep the slash as a separator by not dividing it (math: parens-division).'
+    }
+  ],
+  [
     'eval/unexpressible-unit',
     {
       summary: 'Unit has no CSS spelling',
       reason:
         '${expr} composes a unit CSS cannot express, so no result can carry it honestly.',
       fix: 'Cancel the units, drop one side\'s unit, or wrap the expression in calc() to keep it as authored.'
+    }
+  ],
+  [
+    'eval/empty-operand',
+    {
+      summary: 'Operation on an empty value',
+      reason: '${reason}',
+      fix: 'Operate on a value: a function that returns nothing (false, true or an empty result) can only stand as a statement.'
     }
   ],
   [

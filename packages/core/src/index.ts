@@ -28,6 +28,7 @@ export {
   resolveErrorsConfig
 } from './warnings.js';
 export * from './plugin.js';
+export * from './provided-modules.js';
 export * from './jess-error.js';
 export * from './deprecation.js';
 export type { ApplySelectorKind, ExtendSelectorKind, SelectorPolicyKind } from './types/config.js';
@@ -35,6 +36,10 @@ export type { ApplySelectorKind, ExtendSelectorKind, SelectorPolicyKind } from '
 /** Canonical AST-v2 stylesheet execution. Parser construction stays under `./ast`. */
 export { prepareStaticImports, serialize } from './ast/serialize.js';
 export type { PreparedImports, PrepareStaticImportsOptions, SerializeOptions, Position } from './ast/serialize.js';
+
+/** Print a parsed stylesheet as `.jess` source (no evaluation). */
+export { emitJess, NoJessSpelling } from './ast/emit-jess.js';
+export type { EmitJessOptions, JessSpellingGap } from './ast/emit-jess.js';
 
 /** Build a v3 source map from the render's position stream (see `trackPositions`). */
 export { buildAstSourceMap } from './ast/sourcemap.js';
@@ -129,6 +134,7 @@ export {
   coerceNamedColorKeyword,
   namedColor,
   createFnRegistry,
-  defineFunction
+  defineFunction,
+  FunctionDeclined
 } from './value.js';
 export * from './types/index.js';

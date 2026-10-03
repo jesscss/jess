@@ -255,8 +255,8 @@ These are the migration-impact items that frequently break older workflows:
 - Inline backtick JavaScript is removed entirely.
 - It reports a fatal unsupported-syntax diagnostic; `javascriptEnabled` does not
   opt it back in.
-- Existing code that relies on backtick JS must move to a plain Less expression,
-  an explicit script/module boundary, or a plugin function.
+- Existing code that relies on backtick JS must move to a plain Less expression
+  or a JavaScript module loaded with `@use` and called through its namespace.
 
 Example:
 
@@ -266,6 +266,17 @@ Example:
 
 // preferred
 @assetVersion: "2026-03";
+```
+
+For reusable JavaScript logic, export a function from a module and call it
+through the explicit module binding:
+
+```less
+@use "./asset.js";
+
+.build {
+  version: @asset.version();
+}
 ```
 
 ### Math mode changes

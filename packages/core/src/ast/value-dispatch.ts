@@ -31,6 +31,20 @@ import type {
  * its structural items by kind and is spread. This evaluator route never forwards a
  * named-record argument; dialects such as Less therefore stay positional-only.
  */
+/**
+ * Thrown by a function that DECLINES the call rather than failing it: the call
+ * is then written out as-is, exactly as a call to no function would be. A Less
+ * 4.x legacy `@plugin` function declines by returning `null`/`undefined`
+ * (`less/lib/less/tree/call.js`); functionMode does not turn a decline into an
+ * error, because nothing failed.
+ */
+export class FunctionDeclined extends Error {
+  constructor() {
+    super('The function declined the call.');
+    this.name = 'FunctionDeclined';
+  }
+}
+
 export function dispatchFn(fn: Fn, value: ValueGroup, ctx: FnCtx): MaybePromise<ValueGroup> {
   return fn(value, ctx);
 }

@@ -102,6 +102,19 @@ ruling.
 Recorded so nobody has to rediscover it. Every claim below is re-checkable at
 `fb272dfc1`.
 
+> **Superseded in part — read ledger row P32 before relying on this section.**
+> Re-measured 2026-09-23, at parseman 0.50.7. **Rule 2 is now MET**: all three
+> supersets `import { cssBaseRules } from '@jesscss/css-parser/grammar'` and
+> compose it as a production rule map at every entry point
+> (`compose([cssBaseRules, …])`), which is exactly the form the paragraph
+> "It used to compose productions" below says composition must take if it
+> returns. The "Rule 2 is not met at all" and "What IS shared is token
+> recognition only" paragraphs describe `fb272dfc1`, not HEAD. **Rule 4** is
+> narrower: of the seven names in the table, only `LiteralQuoted` survives, in
+> all three supersets. **Rules 1 and 3** are re-measured in P32 too — rule 3 is
+> still violated. P32 is the current measurement; the text below is kept as the
+> record of what was true, not edited into agreement with today.
+
 **Rule 2 is not met at all — no superset imports another grammar's
 productions.** The `* CSS base: ../../../css/css-parser/src/grammar.ts` line at
 the top of each superset is a COMMENT inside the opening docblock, not an
@@ -561,10 +574,13 @@ that shape intentionally and fail with the richer diagnostic.
 
 13. **Is it gated?** A leading `not()` is the anti-pattern — 18 sites. So is
     `not(regex(...))` used as an end-of-value assertion: that is gating work
-    done by hand where a first-set gate is the mechanism. Less carries roughly
-    an order of magnitude more `not()` than the CSS grammar for the same surface
-    (owner measurement: ~460 against 21); re-measure rather than quoting the
-    figure.
+    done by hand where a first-set gate is the mechanism. Less once carried
+    roughly an order of magnitude more `not()` than the CSS grammar for the same
+    surface (owner measurement at the time: ~460 against 21). That gap has mostly
+    closed: re-measured at `f570a9712` (2026-09-23), css 23, less 51, scss 37,
+    jess 33 — about 2.2× for Less, not 22×. Re-measure rather than quoting either
+    figure (`grep -o 'not(' <grammar.ts> | wc -l`), and read a count as a lead to
+    the leading-`not()` sites, not as the finding.
 
 14. **Is it reachable and covered?** One production was CST-only, dead, and had
     zero tests. Ask which entry rule reaches this const and which test exercises

@@ -65,14 +65,16 @@ describe('Less constructs discovered outside the parser suites', () => {
   it('drops a comment out of var() arguments rather than emitting its bytes', () => {
     /*
      * The CSS parser leaks the comment bytes into the argument list as Any
-     * nodes; that defect is pinned in the CSS suite. Less is correct.
+     * nodes; that defect is pinned in the CSS suite. Less is correct. The
+     * fallback is a `<declaration-value>` — the custom-property value (ledger
+     * P2) — so it is literal `Any` text, never a typed keyword.
      */
     expect(firstRule('a { b: var(--x, /* c */ e) }')).toMatchObject({
       rules: [{
         value: {
           type: 'FunctionCall',
           name: 'var',
-          args: [{ value: { type: 'Keyword', src: '--x' } }, { value: { type: 'Keyword', src: 'e' } }]
+          args: [{ value: { type: 'Keyword', src: '--x' } }, { value: { type: 'Any', src: 'e' } }]
         }
       }]
     });
@@ -255,5 +257,62 @@ describe('Less constructs discovered outside the parser suites', () => {
     /* The key regex carries the operator lookahead, so only `@name:` opens the
      * keyword arm — `f(name: 1)` is no more accepted than it was before. */
     expect(() => parse('a { b: f(name: 1) }')).toThrow();
+  });
+});
+
+/*
+ * A slash is a SEPARATOR, so it is only reachable BETWEEN two value pieces
+ * (DESIGN-DECISIONS P33, owner 2026-09-23). `valuePiece` used to carry a bare
+ * `literal('/')` arm, and that arm was the only thing letting a slash stand
+ * with NO left operand — which is why `p: / 1` parsed here while css and the
+ * other supersets rejected it. That asymmetry is the measurement P33 was
+ * raised over.
+ *
+ * The rejection is EMERGENT: nothing checks first position. The one division
+ * operator in `MathSum` sits between two operands by construction (P34), so a
+ * leading slash simply has no production to enter.
+ */
+describe('the value slash needs a left operand (P33)', () => {
+  it.each([
+    ['bare ident', 'a { p: /img }'],
+    ['bare number', 'a { p: /1 }'],
+    ['spaced from its operand', 'a { p: / 1 }']
+  ])('rejects a value whose slash has no left operand (%s)', (_label, source) => {
+    const failure = failureOf(source);
+    expect(failure.message).toBe('Unexpected Less syntax.');
+    expect(failure.offset).toBe(0);
+  });
+
+  it('rejects a punctuation-led Less variable value', () => {
+    const failure = failureOf('@p: /img;');
+    expect(failure.offset).toBe(2);
+  });
+
+  /*
+   * Less math is untouched. A bare `/` reduces through the division operator
+   * in `MathSum`, shaped by `lessMathOutsideParens`, and the escape hatch for a
+   * real path value is unchanged.
+   */
+  it.each([
+    ['division operand pair', '@a: 4 / 2;'],
+    ['escaped path value', '@p: ~"/img";'],
+    ['font shorthand', 'a { font: 12px/1.5 Arial }'],
+    ['two space groups', 'a { border-radius: 1px 2px / 3px 4px }'],
+    ['slash inside a comma list', 'a { background: a, 1px / 2px }'],
+    ['absolute url path', 'a { background: url(/a.png) no-repeat }'],
+    ['protocol-relative url', 'a { p: url(//cdn/x.png) }'],
+    ['modern colour alpha component', 'a { p: rgb(15 23 42 / .22) }'],
+    ['custom property keeps <declaration-value>', 'a { --v: /img }'],
+    ['An+B is not a value', 'a:nth-child(2n+1) { c: d }'],
+
+    /*
+     * Less admits a comment as padding AFTER the separator via the division
+     * operator's `mathTrivia`. Pinned as the cross-dialect control for the css
+     * side: css's first `valueSlashBoundary` spelling rejected this shape while
+     * less accepted it, which is how the narrowing was caught.
+     */
+    ['comment after the slash', 'a { p: 12px / /* c */ 1.5 }']
+  ])('leaves a slash with an operand on each side alone (%s)', (_label, source) => {
+    expect(() => parse(source), source).not.toThrow();
   });
 });
