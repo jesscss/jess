@@ -689,7 +689,7 @@ const KNOWN = new Map<string, Known>([
   ['all-less:tests-unit/javascript-REMOVED/legacy/javascript.less', {
     cause: 'no-arm-a',
     outcome: 'arm-a-error',
-    reason: 'the Less arm itself does not render: parse/unsupported-inline-javascript: Inline JavaScript was removed in Less v5.'
+    reason: 'the Less arm itself does not render: parse/unsupported-inline-javascript: Inline JavaScript was removed in Less v5. Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.'
   }],
   ['all-less:tests-unit/layer/layer.less', {
     cause: 'cannot-express',

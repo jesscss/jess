@@ -5462,7 +5462,7 @@ export function cstLintDiagnostics(
       pushDiagnostic(
         'parse/unsupported-inline-javascript',
         'error',
-        'Inline JavaScript was removed in Less v5.',
+        'Inline JavaScript was removed in Less v5. Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
         node.span,
         {
           phase: 'parse',
