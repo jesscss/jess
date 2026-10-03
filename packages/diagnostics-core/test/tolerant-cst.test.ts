@@ -450,42 +450,42 @@ describe('collectTolerantDiagnostics', () => {
     }))).toEqual([
       {
         message:
-          'Inline JavaScript was removed in Less v5. Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
+          'Inline JavaScript was removed in Less v5. Move it to a module loaded with @use.',
         reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
         fix:
-          'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
+          'Move it to a module loaded with @use.',
         source: '`1 + 1`'
       },
       {
         message:
-          'Inline JavaScript was removed in Less v5. Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
+          'Inline JavaScript was removed in Less v5. Move it to a module loaded with @use.',
         reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
         fix:
-          'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
+          'Move it to a module loaded with @use.',
         source: '`2 + 2`'
       },
       {
         message:
-          'Inline JavaScript was removed in Less v5. Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
+          'Inline JavaScript was removed in Less v5. Move it to a module loaded with @use.',
         reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
         fix:
-          'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
+          'Move it to a module loaded with @use.',
         source: '`3 + 3`'
       },
       {
         message:
-          'Inline JavaScript was removed in Less v5. Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
+          'Inline JavaScript was removed in Less v5. Move it to a module loaded with @use.',
         reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
         fix:
-          'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
+          'Move it to a module loaded with @use.',
         source: '`Math.random()`'
       },
       {
         message:
-          'Inline JavaScript was removed in Less v5. Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
+          'Inline JavaScript was removed in Less v5. Move it to a module loaded with @use.',
         reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
         fix:
-          'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
+          'Move it to a module loaded with @use.',
         source: '`unfinished'
       }
     ]);

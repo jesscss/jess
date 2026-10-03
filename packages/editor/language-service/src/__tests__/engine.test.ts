@@ -331,7 +331,7 @@ describe('JessLanguageServiceEngine', () => {
       expect(diagnostic).toMatchObject({
         source: 'jess',
         message:
-          'Inline JavaScript was removed in Less v5. Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
+          'Inline JavaScript was removed in Less v5. Move it to a module loaded with @use.',
         severity: DiagnosticSeverity.Error
       });
       expect(diagnostic).toBeDefined();

@@ -108,11 +108,11 @@ export class LessInlineJavaScriptError extends SyntaxError {
   readonly endOffset: number;
   readonly reason = 'Backtick JavaScript expressions cannot be enabled or evaluated.';
   readonly fix =
-    'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.';
+    'Move it to a module loaded with @use.';
 
   constructor(offset: number, endOffset: number) {
     super(
-      'Inline JavaScript was removed in Less v5. Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.'
+      'Inline JavaScript was removed in Less v5. Move it to a module loaded with @use.'
     );
     this.name = 'LessInlineJavaScriptError';
     this.offset = offset;
