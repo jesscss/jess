@@ -95,7 +95,8 @@ describe("@jesscss/plugin-less", () => {
       {
         code: "parse/unsupported-inline-javascript",
         phase: "parse",
-        message: 'Inline JavaScript was removed in Less v5.',
+        message:
+          'Inline JavaScript was removed in Less v5. Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
         reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
         fix:
           'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',

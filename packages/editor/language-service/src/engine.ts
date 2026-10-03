@@ -2732,7 +2732,9 @@ export function createEngine(): JessLanguageServiceEngine {
         diagnostics.push({
           code: diagnostic.code,
           source: diagnostic.source,
-          message: diagnostic.phase === 'parse' && diagnostic.fix !== ''
+          message: diagnostic.phase === 'parse'
+            && diagnostic.fix !== ''
+            && !diagnostic.message.includes(diagnostic.fix)
             ? `${diagnostic.message} ${diagnostic.fix}`
             : diagnostic.message,
           severity: configured,
