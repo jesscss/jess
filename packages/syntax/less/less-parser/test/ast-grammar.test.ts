@@ -4896,11 +4896,76 @@ describe('Less AST grammar facts', () => {
   });
 
   it('recognizes inline backtick JavaScript as removed Less syntax', () => {
-    expect(() =>
-      run(lessGrammar.Document, '.entry { value: `1 + 1`; }', {
-        trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
-      })
-    ).toThrow(LessInlineJavaScriptError);
+    for (const source of [
+      '.entry { value: `1 + 1`; }',
+      '.entry { value: fn(`1 + 1`); }',
+      '.entry { value: foo`1 + 1`bar; }',
+      '.entry { value: calc(`1 + 1`); }',
+      '.entry { value: calc(foo`1 + 1`); }',
+      '.entry { value: calc(`1 + 1`bar); }',
+      '.entry { value: calc(foo`1 + 1`bar); }',
+      '.entry { --value: `1 + 1`; }',
+      '.entry { --value: fn(`1 + 1`); }',
+      '.entry { --value: foo`1 + 1`bar; }',
+      '.entry { --value: fn(foo`1 + 1`bar); }',
+      '@legacy foo`1 + 1`bar;',
+      '.entry { value: `1 + 1; }\n.after { color: red; }',
+      '.entry { value: fn(`1 + 1); }\n.after { color: red; }',
+      '.entry { value: calc(`1 + 1); }\n.after { color: red; }',
+      '.entry { --value: fn(`1 + 1); }\n.after { color: red; }',
+      '.entry { value: `(function(){var x = 1 + 1;\nreturn x})()`; }',
+      '.entry { value: `let x = 1; x`; }',
+      '.entry { value: `let x = 1; label: x`; }',
+      '.entry { value: `let x = 1; obj: {a: 1}`; }',
+      '.entry { value: fn(`let x = 1; label: x`); }',
+      '.entry { value: calc(`let x = 1; label: x`); }',
+      '.entry { --value: `let x = 1; label: x`; }',
+      '.entry { value: `{a: 1, b: 2}`; }',
+      '.entry { value: `a, b`; }',
+      '.entry { value: `/[;})]/.test(value)`; }',
+      '.entry { value: `a / b`; }',
+      '.entry { value: `"a\\\nb"`; }',
+      '@legacy `{a: 1}` { color: red; }',
+      '@legacy-label `let x = 1; label: x` { color: red; }',
+      '@legacy foo`1 + 1 { color: red; }\n.after { color: blue; }'
+    ]) {
+      expect(
+        () => run(lessGrammar.Document, source, {
+          trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+        }),
+        source
+      ).toThrow(LessInlineJavaScriptError);
+    }
+  });
+
+  it('reports the complete span of delimiter-bearing backtick JavaScript', () => {
+    for (const source of [
+      '@a: `@{b}`;\n.after {}',
+      '.entry { value: `let x = 1; x`; }',
+      '.entry { value: `let x = 1; label: x`; }',
+      '.entry { value: `let x = 1; obj: {a: 1}`; }',
+      '.entry { value: fn(`let x = 1; label: x`); }',
+      '.entry { value: calc(`let x = 1; label: x`); }',
+      '.entry { --value: `let x = 1; label: x`; }',
+      '@legacy-label `let x = 1; label: x` { color: red; }',
+      '@legacy `{a: 1}` { color: red; }'
+    ]) {
+      let error: unknown;
+
+      try {
+        run(lessGrammar.Document, source, {
+          trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+        });
+      } catch (caught) {
+        error = caught;
+      }
+
+      expect(error, source).toMatchObject({
+        name: 'LessInlineJavaScriptError',
+        offset: source.indexOf('`'),
+        endOffset: source.lastIndexOf('`') + 1
+      });
+    }
   });
 
   it('recognizes bare at-variable prelude interpolation as removed Less syntax', () => {

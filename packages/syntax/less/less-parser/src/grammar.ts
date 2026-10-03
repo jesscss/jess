@@ -23,7 +23,7 @@ import {
   attempt, rules, classifiedTrivia, compose,
   node, regex, literal, sequence, choice, many, oneOrMore, oneOrMoreSep, optional,
   not, scanTo, balanced, expect, parser, noTrivia, label, word, keywords, field, leaf, peek,
-  dispatch, endsWith, makeWhen, makeWord, matches, otherwise, routed, token, transform, when
+  dispatch, endsWith, makeWhen, makeWord, matches, otherwise, routed, token, transform, when, withCtx
 } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
@@ -594,7 +594,79 @@ const importOption = keywords(
   ['reference', 'optional', 'once', 'multiple', 'inline', 'css', 'less'],
   { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
-const inlineJavaScriptBody = regex(/(?:[^`\\]|\\[\s\S])*/);
+// A Less variable name is a css ident (css-syntax-3 §4.3.11), escapes included,
+// so `@\63 olor` and `@color` name one variable; the reducer decodes it.
+const lessSupportedVariableName = regex(/(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+const lessUnsupportedNumericVariableName = node(
+  'UnsupportedVariableName',
+  regex(/[0-9][-_a-zA-Z0-9\u0080-\uffff]*/),
+  children => ({ unsupportedVariableName: requireToken(children[0]).value })
+);
+const lessDashVariableName = leaf(
+  noTrivia(sequence(literal('-'), optional(regex(/[-_a-zA-Z0-9\u0080-\uffff]+/)))),
+  (children) => {
+    if (!Array.isArray(children)) {
+      throw new TypeError('Less dash variable name lost its grammar facts.');
+    }
+    const tail = children[1];
+    return tail === undefined || tail === null
+      ? { unsupportedVariableName: '-' }
+      : `-${requireTerminalText(tail)}`;
+  }
+);
+const lessVariableName = choice(lessUnsupportedNumericVariableName, lessSupportedVariableName, lessDashVariableName);
+const inlineJavaScriptDoubleQuoted = noTrivia(sequence(
+  literal('"'),
+  regex(/(?:[^"\\]|\\[\s\S])*/),
+  literal('"')
+));
+const inlineJavaScriptSingleQuoted = noTrivia(sequence(
+  literal('\''),
+  regex(/(?:[^'\\]|\\[\s\S])*/),
+  literal('\'')
+));
+const inlineJavaScriptRegexLiteral = noTrivia(sequence(
+  literal('/'),
+  regex(/(?:[^/\\`\n\r]|\\[^\n\r])*/),
+  literal('/'),
+  regex(/[a-z]*/i)
+));
+const inlineJavaScriptInterpolation = sequence(
+  literal('@'),
+  balanced('{', '}', {
+    skip: [inlineJavaScriptDoubleQuoted, inlineJavaScriptSingleQuoted, lineComment, blockComment, inlineJavaScriptRegexLiteral],
+    strict: true
+  })
+);
+const inlineJavaScriptParen = balanced(
+  '(', ')', {
+    skip: [inlineJavaScriptDoubleQuoted, inlineJavaScriptSingleQuoted, lineComment, blockComment, inlineJavaScriptRegexLiteral],
+    strict: true
+  }
+);
+const inlineJavaScriptBracket = balanced(
+  '[', ']', {
+    skip: [inlineJavaScriptDoubleQuoted, inlineJavaScriptSingleQuoted, lineComment, blockComment, inlineJavaScriptRegexLiteral],
+    strict: true
+  }
+);
+const inlineJavaScriptBrace = balanced(
+  '{', '}', {
+    skip: [inlineJavaScriptDoubleQuoted, inlineJavaScriptSingleQuoted, lineComment, blockComment, inlineJavaScriptRegexLiteral],
+    strict: true
+  }
+);
+const inlineJavaScriptEscapedLineEnd = sequence(
+  literal('\\'),
+  choice(literal('\r\n'), literal('\n'), literal('\r'))
+);
+const inlineJavaScriptRecoveryBoundary = choice(
+  literal(';'),
+  literal('}'),
+  literal(')'),
+  literal(']'),
+  literal('{')
+);
 // Math productions run under `noTrivia`, so their operators own precisely the
 // gap that distinguishes arithmetic from a Less space-list. `leaf()` keeps the
 // comment-aware structural gap hidden from `lessMathRun`: it receives a flat
@@ -720,28 +792,6 @@ const staticPseudoChunk = regex(/(?:[^()\[\]'"@/]|@(?![@{_a-zA-Z\u0080-\uffff-])
 const enclosedText = regex(/(?:\\[\s\S]|\/(?!\*)|@(?!\{)|[^\\/'"@()[\]{}]+)+/);
 const enclosedDoubleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^"\\@])+/);
 const enclosedSingleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^'\\@])+/);
-// A Less variable name is a css ident (css-syntax-3 §4.3.11), escapes included,
-// so `@\63 olor` and `@color` name one variable; the reducer decodes it.
-const lessSupportedVariableName = regex(/(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
-const lessUnsupportedNumericVariableName = node(
-  'UnsupportedVariableName',
-  regex(/[0-9][-_a-zA-Z0-9\u0080-\uffff]*/),
-  children => ({ unsupportedVariableName: requireToken(children[0]).value })
-);
-const lessDashVariableName = leaf(
-  noTrivia(sequence(literal('-'), optional(regex(/[-_a-zA-Z0-9\u0080-\uffff]+/)))),
-  (children) => {
-    if (!Array.isArray(children)) {
-      throw new TypeError('Less dash variable name lost its grammar facts.');
-    }
-    const tail = children[1];
-    return tail === undefined || tail === null
-      ? { unsupportedVariableName: '-' }
-      : `-${requireTerminalText(tail)}`;
-  }
-);
-const lessVariableName = choice(lessUnsupportedNumericVariableName, lessSupportedVariableName, lessDashVariableName);
-
 const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const caseOf = makeWhen({ caseInsensitive: true });
   const lessWord = makeWord(IDENT_BOUNDARY);
@@ -1333,6 +1383,85 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     noTrivia(sequence(literal('@'), lessVariableName)),
     (children, _fields, span) => `@${requireSupportedVariableName(children[1], span.start, span.end)}`
   );
+  // Once removed inline JavaScript is unfinished, a later backtick is
+  // ambiguous: it may close this expression or open one in the next
+  // declaration. Reuse the declaration grammar's names and trivia so escaped
+  // and interpolated properties, variables, and comment-separated heads all
+  // establish the same recovery boundary as their real productions.
+  const inlineJavaScriptFollowingDeclaration = noTrivia(sequence(
+    literal(';'),
+    optional(whitespace),
+    peek(choice(
+      literal('}'),
+      sequence(
+        choice(
+          variableName,
+          g.PunctuationMapKeyToken,
+          sequence(
+            choice(g.InterpolatedProperty, g.NumericMapKeyToken, g.DeclarationPropertyToken),
+            optional(whitespace),
+            optional(sequence(
+              choice(literal('+_'), literal('+')),
+              optional(whitespace)
+            ))
+          )
+        ),
+        optional(whitespace),
+        literal(':'),
+        optional(whitespace),
+        literal('`')
+      )
+    ))
+  ));
+  // Scan the removed expression once. The enclosing Less boundary is retained
+  // as a recovery checkpoint while Parseman continues toward the real closing
+  // tick. Its paired-sentinel parity keeps complete statements and object
+  // literals intact without joining an unfinished value to a later
+  // declaration's ticks.
+  const inlineJavaScriptBody = scanTo(
+    literal('`'),
+    {
+      recoverAt: inlineJavaScriptRecoveryBoundary,
+      stopAt: choice(inlineJavaScriptEscapedLineEnd, inlineJavaScriptFollowingDeclaration),
+      skip: [
+        inlineJavaScriptDoubleQuoted,
+        inlineJavaScriptSingleQuoted,
+        lineComment,
+        blockComment,
+        sequence(literal('\\'), regex(/[^\n\r]/)),
+        inlineJavaScriptInterpolation,
+        inlineJavaScriptParen,
+        inlineJavaScriptBracket,
+        inlineJavaScriptBrace,
+        inlineJavaScriptRegexLiteral
+      ]
+    }
+  );
+  // In a generic at-rule header, an unmatched `{` belongs to the surrounding
+  // CSS block. Keep that boundary visible to recovery. A leading object literal
+  // is still unambiguous and is consumed structurally before the recovery scan,
+  // which preserves the common complete ``@legacy `{...}` { ... }`` form.
+  const atRuleInlineJavaScriptBody = sequence(
+    optional(inlineJavaScriptBrace),
+    scanTo(
+      literal('`'),
+      {
+        recoverAt: inlineJavaScriptRecoveryBoundary,
+        stopAt: choice(inlineJavaScriptEscapedLineEnd, inlineJavaScriptFollowingDeclaration),
+        skip: [
+          inlineJavaScriptDoubleQuoted,
+          inlineJavaScriptSingleQuoted,
+          lineComment,
+          blockComment,
+          sequence(literal('\\'), regex(/[^\n\r]/)),
+          inlineJavaScriptInterpolation,
+          inlineJavaScriptParen,
+          inlineJavaScriptBracket,
+          inlineJavaScriptRegexLiteral
+        ]
+      }
+    )
+  );
   const VarDeclaration = node(
     'VariableDeclaration',
     sequence(variableName, literal(':'), choice(sequence(g.NamespacedMixinValue, mixinValueWithoutLookup), g.ImportantValue, sequence(g.FlatMixinCall, mixinValueWithoutLookup), sequence(not(literal('{')), g.VariableValue)), declarationEnd),
@@ -1749,7 +1878,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // of reporting a generic value-position expected-token failure.
   const BacktickJavaScript = node(
     'BacktickJavaScript',
-    noTrivia(sequence(literal('`'), inlineJavaScriptBody, literal('`'))),
+    noTrivia(sequence(
+      literal('`'),
+      choice(
+        {
+          gate: state => state === 'less-at-rule-inline-javascript',
+          combinator: atRuleInlineJavaScriptBody
+        },
+        inlineJavaScriptBody
+      ),
+      optional(literal('\\')),
+      optional(literal('`'))
+    )),
     (_children, _fields, span) => {
       throw new LessInlineJavaScriptError(span.start, span.end);
     }
@@ -1853,7 +1993,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     noTrivia(sequence(g.CalcProduct, many(sequence(sumOperator, g.CalcProduct)))),
     children => foldOperation(children)
   );
-  const calcValueAtom = choice(
+  const calcValueWithoutBacktick = choice(
     g.MixinReference,
     g.InterpolatedValue,
     g.EscapedQuoted,
@@ -1869,6 +2009,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.CalcParen,
     g.EscapeValue,
     PercentEscape
+  );
+  // Less 4 admitted inline JavaScript as a glued fragment inside calc values,
+  // for example `calc(foo`x`bar)`. Keep the whole legacy shape reachable so
+  // both strict parsing and tolerant diagnostics encounter the typed removed
+  // construct instead of failing later on calc's closing delimiter.
+  const calcBacktickTail = noTrivia(sequence(
+    BacktickJavaScript,
+    many(choice(BacktickJavaScript, calcValueWithoutBacktick))
+  ));
+  const calcValueAtom = choice(
+    calcBacktickTail,
+    noTrivia(sequence(calcValueWithoutBacktick, optional(calcBacktickTail)))
   );
   const Value = node(
     'Value',
@@ -1967,7 +2119,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     leaf(peek(literal('@')), () => ({ kind: 'glued-value-boundary' })),
     g.valuePiece
   );
-  const valueContinuation = choice(valueTriviaBoundary, gluedVariableValueBoundary);
+  const gluedBacktickValueBoundary = noTrivia(sequence(
+    BacktickJavaScript,
+    optional(g.valuePiece)
+  ));
+  const valueContinuation = choice(
+    valueTriviaBoundary,
+    gluedVariableValueBoundary,
+    gluedBacktickValueBoundary
+  );
   // Function arguments are the one value context where top-level Less
   // comparison/logical syntax has a separate continuation. Stop before that
   // marker so the FunctionArgument family can route it through FunctionCondition;
@@ -1979,7 +2139,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const functionArgumentValueContinuation = choice(
     functionArgumentValueTriviaBoundary,
-    gluedVariableValueBoundary
+    gluedVariableValueBoundary,
+    gluedBacktickValueBoundary
   );
   // Adjacent value pieces are normally separated by authored whitespace, but a
   // Less variable reference may also be glued straight onto the previous piece
@@ -2137,6 +2298,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const CustomInnerPart: Combinator<CustomValuePart> = choice(
     g.Interpolation,
+    BacktickJavaScript,
     g.CustomValueInnerContent,
     g.CustomValueSingleQuoted,
     g.CustomValueDoubleQuoted,
@@ -2146,6 +2308,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const CustomPart: Combinator<CustomValuePart> = choice(
     g.Interpolation,
+    BacktickJavaScript,
     g.CustomValueOuterContent,
     g.CustomValueSingleQuoted,
     g.CustomValueDoubleQuoted,
@@ -3727,6 +3890,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     choice(
       g.EscapedQuoted,
       g.LiteralQuoted,
+      withCtx('less-at-rule-inline-javascript', BacktickJavaScript),
       g.Color,
       g.Dimension,
       g.PagePseudo,

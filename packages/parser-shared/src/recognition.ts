@@ -485,9 +485,9 @@ const lessInterpolatedValueStart = cssIdentifier;
  * Custom-property values remain CSS declaration-value text in Less, except for
  * Less variable references that Less evaluates inside those values. These leaves
  * deliberately exclude balanced delimiters, strings, comments, strict `@{…}`
- * interpolation, and raw `@name`-shaped tokens so the direct Less grammar can
- * decide whether the token is a literal at-keyword or a structural variable
- * reference instead of scanning a completed value span.
+ * interpolation, raw `@name`-shaped tokens, and legacy backtick JavaScript so
+ * the direct Less grammar can decide whether each is literal content or a
+ * structural language construct instead of scanning a completed value span.
  * Less's own custom-property leaf. It differs from the shared CSS one only by
  * leaving escapes to the Less custom-property content leaves below. The `+`
  * (not `*`) keeps the reserved bare `--` out, matching css-variables-1 §2 and
@@ -506,8 +506,8 @@ const lessCustomProperty = regex(/--[-_a-zA-Z0-9\u0080-\uffff]+/);
  * The `i` flag is inert for the rest of the pattern — its remaining classes are
  * punctuation or already span both cases.
  */
-const lessCustomOuterContent = regex(/(?:(?![ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*important(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*[;}])(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})(?!@[-_a-zA-Z0-9\u0080-\uffff]+)[^(){}[\];'"\/\\]))+|\/(?!\*)/i);
-const lessCustomInnerContent = regex(/(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})(?!@[-_a-zA-Z0-9\u0080-\uffff]+)[^(){}[\]'"\/\\])+|\/(?!\*)/i);
+const lessCustomOuterContent = regex(/(?:(?![ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*important(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*[;}])(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})(?!@[-_a-zA-Z0-9\u0080-\uffff]+)[^(){}[\];'"`\/\\]))+|\/(?!\*)/i);
+const lessCustomInnerContent = regex(/(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})(?!@[-_a-zA-Z0-9\u0080-\uffff]+)[^(){}[\]'"`\/\\])+|\/(?!\*)/i);
 export const cssSyntax = rules(_g => ({
   Identifier: keywordValue,
   AttributeOperator: attributeOperator,

@@ -426,6 +426,268 @@ describe('collectTolerantDiagnostics', () => {
     ]);
   });
 
+  it('reports every removed Less backtick value and keeps parsing later rules', () => {
+    const source = [
+      '.legacy {',
+      '  first: foo`1 + 1`bar;',
+      '  second: calc(`2 + 2`);',
+      '  calc-adjacent: calc(before`3 + 3`after);',
+      '  --third: before`Math.random()`after;',
+      '  fourth: `unfinished;',
+      '}',
+      '.after {}'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({ source, language: 'less' });
+    const diagnostics = result.diagnostics.filter(
+      diagnostic => diagnostic.code === 'parse/unsupported-inline-javascript'
+    );
+
+    expect(diagnostics.map(diagnostic => ({
+      message: diagnostic.message,
+      reason: diagnostic.reason,
+      fix: diagnostic.fix,
+      source: source.slice(diagnostic.start, diagnostic.end)
+    }))).toEqual([
+      {
+        message: 'Inline JavaScript was removed in Less v5.',
+        reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
+        fix:
+          'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
+        source: '`1 + 1`'
+      },
+      {
+        message: 'Inline JavaScript was removed in Less v5.',
+        reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
+        fix:
+          'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
+        source: '`2 + 2`'
+      },
+      {
+        message: 'Inline JavaScript was removed in Less v5.',
+        reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
+        fix:
+          'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
+        source: '`3 + 3`'
+      },
+      {
+        message: 'Inline JavaScript was removed in Less v5.',
+        reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
+        fix:
+          'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
+        source: '`Math.random()`'
+      },
+      {
+        message: 'Inline JavaScript was removed in Less v5.',
+        reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
+        fix:
+          'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
+        source: '`unfinished'
+      }
+    ]);
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === 'parse/syntax-error')).toBe(false);
+    expect(result.diagnostics.some(diagnostic =>
+      diagnostic.code === LINT_CODES.emptyRules
+      && diagnostic.start >= source.indexOf('.after')
+    )).toBe(true);
+  });
+
+  it('recovers unfinished Less backticks before parent-owned delimiters', () => {
+    const source = [
+      '.legacy {',
+      '  function-value: fn(`function);',
+      '  calc-value: calc(`calc);',
+      '  --custom-group: fn(`custom);',
+      '}',
+      '@legacy foo`header { color: red; }',
+      '.after {}'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({ source, language: 'less' });
+    const backticks = result.diagnostics.filter(
+      diagnostic => diagnostic.code === 'parse/unsupported-inline-javascript'
+    );
+
+    expect(backticks.map(diagnostic => source.slice(diagnostic.start, diagnostic.end))).toEqual([
+      '`function',
+      '`calc',
+      '`custom',
+      '`header '
+    ]);
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === 'parse/syntax-error')).toBe(false);
+    expect(result.diagnostics.some(diagnostic =>
+      diagnostic.code === LINT_CODES.emptyRules
+      && diagnostic.start >= source.indexOf('.after')
+    )).toBe(true);
+  });
+
+  it('keeps a complete multiline Less backtick as one diagnostic construct', () => {
+    const source = [
+      '.legacy {',
+      '  value: `(function(){var x = 1 + 1;',
+      '    return x})()`;',
+      '}',
+      '.after {}'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({ source, language: 'less' });
+    const backticks = result.diagnostics.filter(
+      diagnostic => diagnostic.code === 'parse/unsupported-inline-javascript'
+    );
+
+    expect(backticks.map(diagnostic => source.slice(diagnostic.start, diagnostic.end))).toEqual([
+      '`(function(){var x = 1 + 1;\n    return x})()`'
+    ]);
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === 'parse/syntax-error')).toBe(false);
+    expect(result.diagnostics.some(diagnostic =>
+      diagnostic.code === LINT_CODES.emptyRules
+      && diagnostic.start >= source.indexOf('.after')
+    )).toBe(true);
+  });
+
+  it('keeps interpolation and line-comment delimiters inside complete Less backticks', () => {
+    const source = [
+      '@a: `@{b}`;',
+      '.legacy {',
+      '  escaped: `1 + \\`tick\\``;',
+      '  statements: `let x = 1; x`;',
+      '  label: `let x = 1; label: x`;',
+      '  object-label: `let x = 1; obj: {a: 1}`;',
+      '  function-label: fn(`let x = 1; label: x`);',
+      '  calc-label: calc(`let x = 1; label: x`);',
+      '  --custom-label: `let x = 1; label: x`;',
+      '  object: `{a: 1, b: 2}`;',
+      '  comma: `a, b`;',
+      '  regex: `/[;})]/.test(value)`;',
+      '  division: `a / b`;',
+      '  continued-string: `"a\\',
+      'b"`;',
+      '  commented: `(function(){ // ) ] }',
+      '    return 1; })()`;',
+      '  unfinished-group: `fn(;',
+      '}',
+      '@legacy `{a: 1}` { color: red; }',
+      '@legacy-label `let x = 1; label: x` { color: blue; }',
+      '.after {}'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({ source, language: 'less' });
+    const backticks = result.diagnostics.filter(
+      diagnostic => diagnostic.code === 'parse/unsupported-inline-javascript'
+    );
+
+    expect(backticks.map(diagnostic => source.slice(diagnostic.start, diagnostic.end))).toEqual([
+      '`@{b}`',
+      '`1 + \\`tick\\``',
+      '`let x = 1; x`',
+      '`let x = 1; label: x`',
+      '`let x = 1; obj: {a: 1}`',
+      '`let x = 1; label: x`',
+      '`let x = 1; label: x`',
+      '`let x = 1; label: x`',
+      '`{a: 1, b: 2}`',
+      '`a, b`',
+      '`/[;})]/.test(value)`',
+      '`a / b`',
+      '`"a\\\nb"`',
+      '`(function(){ // ) ] }\n    return 1; })()`',
+      '`fn(',
+      '`{a: 1}`',
+      '`let x = 1; label: x`'
+    ]);
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === 'parse/syntax-error')).toBe(false);
+    expect(result.diagnostics.some(diagnostic =>
+      diagnostic.code === LINT_CODES.emptyRules
+      && diagnostic.start >= source.indexOf('.after')
+    )).toBe(true);
+  });
+
+  it('does not pair an unfinished backtick with the next declaration', () => {
+    const source = [
+      '.legacy {',
+      '  first: `bad;',
+      '  second: `good`;',
+      '  color: red;',
+      '}',
+      '.after {}'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({ source, language: 'less' });
+    const backticks = result.diagnostics.filter(
+      diagnostic => diagnostic.code === 'parse/unsupported-inline-javascript'
+    );
+
+    expect(backticks.map(diagnostic => source.slice(diagnostic.start, diagnostic.end))).toEqual([
+      '`bad',
+      '`good`'
+    ]);
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === 'parse/syntax-error')).toBe(false);
+    expect(result.diagnostics.some(diagnostic =>
+      diagnostic.code === LINT_CODES.emptyRules
+      && diagnostic.start >= source.indexOf('.after')
+    )).toBe(true);
+  });
+
+  it('does not pair unfinished backticks across Less declaration heads', () => {
+    const source = [
+      '@first: `bad;',
+      '@second: /* comment */ `also bad;',
+      '@{third}: `dynamic bad;',
+      '@map: {',
+      '  first: `map bad;',
+      '  <: `punctuation bad;',
+      '};',
+      '.legacy {',
+      '  first: `nested bad;',
+      '  1: `numeric bad;',
+      '  \\63 olor: `escaped bad;',
+      '  foo-@{third}: `interpolated bad;',
+      '}',
+      '.after {}'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({ source, language: 'less' });
+    const backticks = result.diagnostics.filter(
+      diagnostic => diagnostic.code === 'parse/unsupported-inline-javascript'
+    );
+
+    expect(backticks.map(diagnostic => source.slice(diagnostic.start, diagnostic.end))).toEqual([
+      '`bad',
+      '`also bad',
+      '`dynamic bad',
+      '`map bad',
+      '`punctuation bad',
+      '`nested bad',
+      '`numeric bad',
+      '`escaped bad',
+      '`interpolated bad'
+    ]);
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === 'parse/syntax-error')).toBe(false);
+    expect(result.diagnostics.some(diagnostic =>
+      diagnostic.code === LINT_CODES.emptyRules
+      && diagnostic.start >= source.indexOf('.after')
+    )).toBe(true);
+  });
+
+  it('does not pair an escaped unfinished line with a later backtick', () => {
+    const source = [
+      '.legacy {',
+      '  escaped: `slash\\',
+      '  ;',
+      '  next: `next;',
+      '}',
+      '.after {}'
+    ].join('\n');
+    const result = collectTolerantDiagnostics({ source, language: 'less' });
+    const backticks = result.diagnostics.filter(
+      diagnostic => diagnostic.code === 'parse/unsupported-inline-javascript'
+    );
+
+    expect(backticks.map(diagnostic => source.slice(diagnostic.start, diagnostic.end))).toEqual([
+      '`slash\\',
+      '`next'
+    ]);
+    expect(result.diagnostics.some(diagnostic => diagnostic.code === 'parse/syntax-error')).toBe(false);
+    expect(result.diagnostics.some(diagnostic =>
+      diagnostic.code === LINT_CODES.emptyRules
+      && diagnostic.start >= source.indexOf('.after')
+    )).toBe(true);
+  });
+
   it('reports duplicate custom properties in one declaration block', () => {
     const source = '.a { --brand: red; --Brand: blue; --brand: green; color: red; color: blue; }';
     const result = collectTolerantDiagnostics({

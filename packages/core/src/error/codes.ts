@@ -122,9 +122,9 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
   [
     'parse/unsupported-inline-javascript',
     {
-      summary: 'Inline JavaScript is not supported',
-      reason: 'Backtick JavaScript expressions are not evaluated.',
-      fix: 'Move the expression into an explicit @from/@-from script import or a plugin function.'
+      summary: 'Inline JavaScript was removed in Less v5',
+      reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
+      fix: 'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.'
     }
   ],
   [

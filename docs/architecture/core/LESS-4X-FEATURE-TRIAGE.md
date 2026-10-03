@@ -253,10 +253,12 @@ bare form are kept running and asserted to fail (`all-less.test.ts:290-299`).
 ### 3.11 JavaScript evaluation — DELIBERATE
 
 Backtick `` `expr` `` raises `parse/unsupported-inline-javascript: Inline
-backtick JavaScript is not supported.` with file/line/column, **including with
-`javascriptEnabled: true`**. This is ledger **A3** (removed entirely in v5, not
-opt-in; the parser still recognizes it so migration tooling can point at
-`@use`/`@-from`). Working as designed.
+JavaScript was removed in Less v5.` with its complete source range, **including
+with `javascriptEnabled: true`**. The compiler stops before evaluation; the
+tolerant CST retains the node so editors can underline it and keep parsing the
+rest of the document. This is ledger **A3** (removed entirely in v5, not opt-in),
+and the diagnostic directs migration to a JavaScript module loaded with `@use`
+and called through its namespace.
 
 ---
 

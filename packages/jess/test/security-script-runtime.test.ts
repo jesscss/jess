@@ -50,8 +50,10 @@ describe("Jess restricted script runtime integration", () => {
       {
         code: "parse/unsupported-inline-javascript",
         phase: "parse",
-        reason: "Backtick JavaScript expressions are not evaluated.",
-        fix: expect.stringContaining("@from/@-from"),
+        message: 'Inline JavaScript was removed in Less v5.',
+        reason: 'Backtick JavaScript expressions cannot be enabled or evaluated.',
+        fix:
+          'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.',
         filePath: styleFile,
         line: 1,
         column: 10,

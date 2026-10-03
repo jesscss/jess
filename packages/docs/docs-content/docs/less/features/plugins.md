@@ -12,9 +12,10 @@ Released [v2.5.0](https://github.com/less/less.js/blob/master/CHANGELOG.md)
 :::warning 5.x+ status
 In the 5.x+ track, `@plugin` is **deprecated** and **experimentally supported**.
 
-`@use` / `@from` script modules are the planned replacement, but Less 5 does
-not recognize or execute them as modules yet. For current options and the live
-support status, see [Modules and Imports](./modules-and-imports.mdx).
+`@use` script modules are the replacement for imported functions and data.
+Less derives their namespace from the file name; it does not implement `@from`.
+For the canonical syntax and support status, see
+[Modules and Imports](./modules-and-imports.mdx).
 :::
 
 ## Writing your first plugin
