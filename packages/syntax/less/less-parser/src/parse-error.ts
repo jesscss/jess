@@ -111,7 +111,9 @@ export class LessInlineJavaScriptError extends SyntaxError {
     'Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.';
 
   constructor(offset: number, endOffset: number) {
-    super('Inline JavaScript was removed in Less v5.');
+    super(
+      'Inline JavaScript was removed in Less v5. Move the JavaScript into a module, load it with @use, and call an exported function through its module namespace.'
+    );
     this.name = 'LessInlineJavaScriptError';
     this.offset = offset;
     this.endOffset = endOffset;
