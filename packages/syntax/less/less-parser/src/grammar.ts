@@ -594,9 +594,76 @@ const importOption = keywords(
   ['reference', 'optional', 'once', 'multiple', 'inline', 'css', 'less'],
   { caseInsensitive: true, boundary: IDENT_BOUNDARY }
 );
-// A Less variable name is a css ident (css-syntax-3 §4.3.11), escapes included,
-// so `@\63 olor` and `@color` name one variable; the reducer decodes it.
-const lessSupportedVariableName = regex(/(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+const variableNameHexEscape = node(
+  'VariableNameEscape',
+  regex(/\\[0-9a-fA-F]{1,6}[ \t\n\r\f]?/),
+  (children) => {
+    const source = requireTerminalText(children[0]);
+    const codePoint = parseInt(source.slice(1).trim(), 16);
+    return {
+      variableNamePart: codePoint === 0 || (codePoint >= 0xD800 && codePoint <= 0xDFFF) || codePoint > 0x10FFFF
+        ? '\uFFFD'
+        : String.fromCodePoint(codePoint),
+      variableNameSource: source,
+      supportedStart: codePoint < 48 || codePoint > 57
+    };
+  }
+);
+const variableNameSimpleEscape = node(
+  'VariableNameEscape',
+  sequence(literal('\\'), regex(/[^\n\r\f]/)),
+  (children) => {
+    const decoded = requireTerminalText(children.at(-1));
+    return {
+      variableNamePart: decoded,
+      variableNameSource: `\\${decoded}`,
+      supportedStart: decoded < '0' || decoded > '9'
+    };
+  }
+);
+const variableNameEscape = choice(variableNameHexEscape, variableNameSimpleEscape);
+// A Less variable name is a css ident (css-syntax-3 §4.3.11), escapes included.
+// Escapes are grammar facts, so the reducer decodes already-recognized segments
+// without scanning the captured source a second time.
+const lessSupportedVariableName = node(
+  'VariableName',
+  noTrivia(sequence(
+    choice(regex(/[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/), variableNameEscape),
+    many(choice(regex(/[-_a-zA-Z0-9\u0080-\uffff]+/), variableNameEscape))
+  )),
+  (children) => {
+    let variableName = '';
+    let variableNameSource = '';
+    let supportedStart = true;
+    let first = true;
+    for (const child of children) {
+      if (
+        typeof child === 'object'
+        && child !== null
+        && 'variableNamePart' in child
+        && typeof child.variableNamePart === 'string'
+        && 'variableNameSource' in child
+        && typeof child.variableNameSource === 'string'
+        && 'supportedStart' in child
+        && typeof child.supportedStart === 'boolean'
+      ) {
+        variableName += child.variableNamePart;
+        variableNameSource += child.variableNameSource;
+        if (first) {
+          supportedStart = child.supportedStart;
+        }
+      } else {
+        const text = requireTerminalText(child);
+        variableName += text;
+        variableNameSource += text;
+      }
+      first = false;
+    }
+    return supportedStart && variableName !== '-'
+      ? { variableName, variableNameSource }
+      : { unsupportedVariableName: variableName, variableNameSource };
+  }
+);
 const lessUnsupportedNumericVariableName = node(
   'UnsupportedVariableName',
   regex(/[0-9][-_a-zA-Z0-9\u0080-\uffff]*/),
