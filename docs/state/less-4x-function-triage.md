@@ -99,7 +99,7 @@ named ledger row; **BUG** = call-verified divergence with no ruling behind it;
 | `pow` | `(x, y)` | OK / §7-A | `less/pow.ts:6` — `pow(2,3)`→`8`; `pow(-1,0.5)`→`NaN` (bug) |
 | `mod` | `(a, b)` | OK / §7-A | `less/mod.ts:6` — `mod(3,2)`→`1`; `mod(1,0)`→`NaN` (bug) |
 | `percentage` | `(n)` | OK | `less/percentage.ts:6` — `percentage(0.5)`→`50%` |
-| `round` | `(n, f=0)` | **BUG** | `less/round.ts:10` → `packages/core/src/ast/round.ts:12` uses `Math.round` (half toward +∞); 4.x uses `toFixed` (half away from zero). `round(-1.5)`→jess `-1`, 4.x `-2`. `round(-2.5)`→`-2` vs `-3`. `round(-1.55, 1)`→`-1.5` vs `-1.6`. Positive halves agree. See §7-B. |
+| `round` | `(n, f=0)` | **INTENDED DIVERGENCE / V8** (was BUG) | `less/round.ts:10` → `packages/core/src/ast/round.ts:12` uses `Math.round` (half toward +∞); 4.x uses `toFixed` (half away from zero). `round(-1.5)`→jess `-1`, 4.x `-2`. `round(-2.5)`→`-2` vs `-3`. `round(-1.55, 1)`→`-1.5` vs `-1.6`. Positive halves agree. Owner 2026-10-04 (V8): the toward-+∞ tie is correct per CSS `round()`. See §7-B. |
 | `min` | `(...)` | OK | `less/min.ts:5` — `min(5,1,3,2)`→`1`; incomparable units preserved verbatim, matching 4.x |
 | `max` | `(...)` | OK | `less/max.ts:5` — `max(5,1,3,2)`→`5` |
 | `convert` | `(val, unit)` | OK | `less/convert.ts:10` — `convert(9s,"ms")`→`9000ms`; incompatible unit returns input, matching 4.x |
@@ -288,9 +288,11 @@ DELIBERATELY-DIFFERENT with no work needed**; it is recorded here so nobody
 ## 7. Behavioural divergences with no ruling behind them
 
 > **ALL FOUR RULED AND LANDED 2026-07-30** (`docs/architecture/core/DESIGN-DECISIONS.md`):
-> §7-A → **V7** (SETTLED), §7-B → **V8** (OPEN, implemented on the defensible
-> reading), §7-C → **V10** (SETTLED). The §4 rejections were also ruled: **V9**
-> (OPEN) — five of the six are CORRECT rejections and were kept; `tint`/`shade`
+> §7-A → **V7** (SETTLED), §7-B → **V8** (SETTLED by the owner 2026-10-04 —
+> tie toward +∞ per CSS `round()`, overruling the away-from-zero reading landed
+> 2026-07-30; see the §7-B note), §7-C → **V10** (SETTLED). The §4 rejections were also ruled: **V9**
+> (SETTLED by the owner 2026-10-04: Less built-ins reject excess arguments, CSS
+> functions are never validated) — five of the six are CORRECT rejections and were kept; `tint`/`shade`
 > were a real gap and were fixed. §7-D is untouched and remains open.
 
 ### 6-A. `NaN` leaks into emitted CSS
@@ -350,6 +352,13 @@ algorithm is kept — only the tie call site changed — so the kernel still bea
 direction are independent. Colour quantization reads the same kernel but its inputs
 are non-negative, so V5 is unaffected.
 
+**SUPERSEDED — ledger V8, SETTLED by the owner 2026-10-04.** The tie goes toward
+`+∞`, following CSS Values 4 §10.3 (`round()`, strategy `nearest`: an exact tie
+chooses the upper multiple). `round(-1.5)` → `-1`, `round(-2.5)` → `-2`,
+`round(-1.55, 1)` → `-1.5`. The 2026-07-30 away-from-zero kernel change above is
+to be reverted; the premise "CSS has no opinion" was wrong. This diverges from
+4.x's `toFixed` on exact negative halves by design (ledger E5).
+
 ### 6-C. An alpha-adjusted colour that ends up opaque emits `rgb(...)`, not hex
 
 `fade(#f00, 100%)` and `fadein(rgba(255,0,0,0.9), 50%)` → jess `rgb(255, 0, 0)`, 4.x
@@ -394,7 +403,7 @@ is *not* an argument-shape rejection, which is what `preserve` was designed for.
   and V2's own premise (CSS-superset verbatim pass-through) covers it. The clause
   that survives in V2 is the historical-Less form, which is genuinely not CSS. F5
   keeps its narrower jurisdiction over the 3+-slot colour constructors.
-- `isurl`'s former absence is resolved by OPEN ledger row V15. The earlier source
+- `isurl`'s former absence is resolved by ledger row V15 (SETTLED by the owner 2026-10-04). The earlier source
   comment was wrong to call the parser's `Url` fact unusable: a typed-only value
   projection preserves it without taxing ordinary URL output or scanning bytes.
 
