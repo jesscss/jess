@@ -6448,8 +6448,14 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
   });
 }
 
-/** CSS color constructors whose authored call is inert until a value consumer demands it. */
+/** CSS color constructors whose authored call is inert until a value consumer demands it (ledger F5). */
 const DEFERRED_COLOR_CALLS = new Set(['rgb', 'rgba', 'hsl', 'hsla']);
+
+/*
+ * CSS functions Less does not define, kept as authored: only their own spelling
+ * is preserved, so a call written in their arguments still dispatches. An F5
+ * color constructor, by contrast, is written out whole.
+ */
 const DEFERRED_CSS_AUTHORED_CALLS = new Set(['linear-gradient']);
 
 /**
@@ -6488,11 +6494,12 @@ function shouldPreserveCssAuthoredCall(node: FunctionCall, lessDocument: boolean
  * call on the non-evaluating byte lane. Each argument is written as authored,
  * keyword included ({@link writtenArgument}, ledger P23).
  *
- * `deferred` marks a deferred CSS-authored call: only the call itself is inert,
- * so a call written in its arguments (`linear-gradient(fade(red, 50%), blue)`)
- * still dispatches, through the held evaluator ({@link EvalCtx.heldEv}).
+ * `callsDispatch` marks a CSS function Less does not define
+ * (`DEFERRED_CSS_AUTHORED_CALLS`): only the call itself is inert, so a call
+ * written in its arguments (`linear-gradient(fade(red, 50%), blue)`) still
+ * dispatches, through the held evaluator ({@link EvalCtx.heldEv}).
  */
-function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx, deferred = false): MaybePromise<EvalValue> {
+function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx, callsDispatch = false): MaybePromise<EvalValue> {
   if (node.args.length === 0) {
     return literal(`${node.name}()`);
   }
@@ -6502,7 +6509,7 @@ function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx, defer
    * Disable typed literal canonicalization for this byte lane; variable
    * references still resolve through the same live frame walk.
    */
-  const preserve = e.ev ? { ...e, ev: null, heldEv: deferred ? e.ev : null } : e;
+  const preserve = e.ev ? { ...e, ev: null, heldEv: callsDispatch ? e.ev : null } : e;
   const items = node.args.map(a => evalValueSlot(a.value, frame, preserve));
   return combineAll(items, (vals) => {
     const authored = valueLayoutOf(node.args);
@@ -7520,7 +7527,7 @@ function evalCall(
    */
   const lessDocument = e.context?.sourceContext?.plugin?.supportedExtensions?.includes('.less') === true;
   if (!demanded && shouldPreserveCssAuthoredCall(node, lessDocument)) {
-    return preserveCall(node, frame, e, true);
+    return preserveCall(node, frame, e, DEFERRED_CSS_AUTHORED_CALLS.has(lname));
   }
   const ev = e.ev;
 
