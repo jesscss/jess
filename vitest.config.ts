@@ -9,16 +9,16 @@ import parseman from 'parseman/plugin';
 const root = dirname(fileURLToPath(import.meta.url));
 
 /**
- * Resolve workspace packages to their `src/index.ts` FOR VITEST ONLY, via
- * exact-match aliases. Vitest is TS-aware (rewrites `.js`→`.ts`), so tests run
- * against current source with no lib rebuild and no stale-lib phantom failures.
+ * Resolve workspace packages to their source FOR VITEST ONLY, via exact-match
+ * aliases. Vitest is TS-aware (rewrites `.js`→`.ts`), so tests run against
+ * current source with no lib rebuild and no stale-lib phantom failures.
  *
  * We deliberately do NOT use a `"source"` export condition for this: that
  * condition leaks to every resolver, including non-TS-aware loaders (the
  * `styles-config` config loader, native `require`), which then choke on core's
  * `.js` import specifiers (`Cannot find module core/src/tree/index.js`). An
  * alias is vitest-scoped, so those loaders keep resolving to built `lib`.
- * Exact-match (`^name$`) so only bare imports alias; subpaths fall through.
+ * Exact-match (`^name$`), one alias per bare name and per subpath export.
  *
  * The scan RECURSES into grouping directories. `e96d1035d` regrouped packages by
  * syntax (`packages/less-parser` -> `packages/syntax/less/less-parser`), which put
@@ -33,7 +33,19 @@ const root = dirname(fileURLToPath(import.meta.url));
  * hard-coded depth or a list of group names to keep in sync.
  */
 function workspaceSrcAliases() {
-  const alias: { find: RegExp; replacement: string }[] = [];
+  const exact = (specifier: string, replacement: string) => ({
+    find: new RegExp(`^${specifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`),
+    replacement
+  });
+
+  /*
+   * Kept on the css grammar module itself, as before subpaths were derived:
+   * `src/grammar/base.ts` is only the re-export shell that gives the compose base
+   * its own lib entry. It comes first because the first matching alias wins.
+   */
+  const alias: { find: RegExp; replacement: string }[] = [
+    exact('@jesscss/css-parser/grammar/base', resolve(root, 'packages/syntax/css/css-parser/src/grammar.ts'))
+  ];
 
   const visit = (dir: string, depth: number): void => {
     /*
@@ -53,16 +65,46 @@ function workspaceSrcAliases() {
       if (!existsSync(src)) {
         return;
       }
-      let name: string | undefined;
+      let pkg: { name?: string; exports?: Record<string, string | { import?: string }> };
       try {
-        name = JSON.parse(readFileSync(pj, 'utf8')).name;
+        pkg = JSON.parse(readFileSync(pj, 'utf8'));
       } catch {
         return;
       }
+      const name = pkg.name;
       if (!name) {
         return;
       }
-      alias.push({ find: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`), replacement: src });
+      alias.push(exact(name, src));
+
+      /*
+       * Every subpath export, too (`@jesscss/core/ast`, `@jesscss/fns/sass/registry`,
+       * `@jesscss/less-parser/cst`, …), aliased to the source module its `lib`
+       * file is built from. Left on node resolution, a subpath lands on built
+       * `lib` while the bare name above lands on `src`: a HALF-source graph, in
+       * which a source-side consumer runs a stale lib module (and its lib copy of
+       * `@jesscss/core`, so `instanceof` across the boundary is false). Derived
+       * from `exports`, not listed, so a new subpath cannot be forgotten.
+       *
+       * The parsers' `grammar/interpreter/*` exports are the one twinless kind:
+       * the interpreter build of `src/grammar/<variant>.ts`, with no source file
+       * of their own, so they stay on lib. Any other export without a source twin
+       * THROWS rather than silently falling back to lib.
+       */
+      for (const [key, target] of Object.entries(pkg.exports ?? {})) {
+        const file = /^\.\/lib\/(.+)\.js$/.exec((typeof target === 'string' ? target : target.import) ?? '')?.[1];
+        if (key === '.' || file === undefined || file.startsWith('grammar/interpreter/')) {
+          continue;
+        }
+        const source = resolve(dir, 'src', `${file}.ts`);
+        if (!existsSync(source)) {
+          throw new Error(
+            `vitest.config.ts: ${name}${key.slice(1)} exports lib/${file}.js but ${source} does not exist. `
+            + 'Point the export at its source module, or tests silently resolve it to built lib.'
+          );
+        }
+        alias.push(exact(`${name}${key.slice(1)}`, source));
+      }
       return;
     }
     let entries: string[];
@@ -80,113 +122,6 @@ function workspaceSrcAliases() {
   };
 
   visit(resolve(root, 'packages'), 0);
-
-  /*
-   * CSS-parser subpaths used by source-aliased workspace parsers. Subpaths
-   * normally fall through to node resolution, which misses from a consuming
-   * package when the direct parser package itself has been aliased to `src`.
-   * These aliases preserve the same source-to-source graph that the built
-   * package exports provide to production consumers.
-  */
-  /*
-   * NOTE: a `@jesscss/css-parser/jess` alias used to sit here, guarded by
-   * existsSync against `src/jess.ts`. That file is gone, the package no longer
-   * exports `./jess`, and nothing imports it — so the guard made it a silent
-   * no-op rather than an error. Removed; re-add only alongside a real export.
-   */
-  const cssGrammar = resolve(root, 'packages/syntax/css/css-parser/src/grammar.ts');
-  if (existsSync(cssGrammar)) {
-    alias.push({ find: /^@jesscss\/css-parser\/grammar\/base$/, replacement: cssGrammar });
-  }
-
-  /*
-   * `./cst` for every dialect, for the same reason. This subpath matters more
-   * than the two above: `less-parser/src/cst.ts` imports
-   * `@jesscss/css-parser/cst`, so once the bare parser names resolve to `src`,
-   * leaving `/cst` on node resolution would build a HALF-source graph — a
-   * source-side less CST wrapping a lib-side css CST builder. The shape gate
-   * reads `buildCssCstNode`'s output, so that split would have it measuring the
-   * previously built `lib` while reporting on `src`.
-   */
-  /*
-   * All four dialects map straight across: `src/cst.ts` is the package's `./cst`
-   * export everywhere. css-parser additionally publishes `./cst-host`, the
-   * shared CST builder its own wrappers and the other three dialects call. The
-   * host is a separate entry precisely so that importing it does not pull the
-   * CSS CST grammar tables, so it needs its own alias — routing it through
-   * `./cst` here would reintroduce that edge on the source-side graph.
-   */
-  const subpaths: [string, string][] = [
-    ['@jesscss/css-parser/cst', 'packages/syntax/css/css-parser/src/cst.ts'],
-    ['@jesscss/css-parser/cst-host', 'packages/syntax/css/css-parser/src/cst-host.ts'],
-    ['@jesscss/less-parser/cst', 'packages/syntax/less/less-parser/src/cst.ts'],
-    ['@jesscss/scss-parser/cst', 'packages/syntax/scss/scss-parser/src/cst.ts'],
-    ['@jesscss/jess-parser/cst', 'packages/syntax/jess/jess-parser/src/cst.ts'],
-
-    /*
-     * `./cst/positions` — the same four entries bound to the line-aware grammar
-     * table. `f2121762c` split them out of `./cst` (retiring
-     * `parseXDiagnosticCst`) and did not add them here, so they stayed on node
-     * resolution: the CST shape gate's line-carrying half died with
-     * ERR_MODULE_NOT_FOUND, and every source-aliased consumer of
-     * `diagnostics-core` got the half-source graph the note above describes.
-     * All four are listed, not just the two the gate imports, because the
-     * half-graph hazard is per-dialect and does not care who imports first.
-     */
-    ['@jesscss/css-parser/cst/positions', 'packages/syntax/css/css-parser/src/cst/positions.ts'],
-    ['@jesscss/less-parser/cst/positions', 'packages/syntax/less/less-parser/src/cst/positions.ts'],
-    ['@jesscss/scss-parser/cst/positions', 'packages/syntax/scss/scss-parser/src/cst/positions.ts'],
-    ['@jesscss/jess-parser/cst/positions', 'packages/syntax/jess/jess-parser/src/cst/positions.ts'],
-
-    /*
-     * `./positions` — the bare line-aware AST grammar entry (sibling of `./cst`
-     * and `./cst/positions` above), the same half-source hazard. Left on node
-     * resolution it lands on built `lib`, so a source-only test run (the CI
-     * `test-source` job, which primes only core/fns/parser-shared and never
-     * builds the parsers) fails with ERR_MODULE_NOT_FOUND the moment a test or
-     * a source-aliased parser imports it.
-     */
-    ['@jesscss/css-parser/positions', 'packages/syntax/css/css-parser/src/positions.ts'],
-    ['@jesscss/less-parser/positions', 'packages/syntax/less/less-parser/src/positions.ts'],
-    ['@jesscss/scss-parser/positions', 'packages/syntax/scss/scss-parser/src/positions.ts'],
-    ['@jesscss/jess-parser/positions', 'packages/syntax/jess/jess-parser/src/positions.ts'],
-
-    /*
-     * `@jesscss/core` itself is aliased to source by the walk above. Leaving
-     * this subpath on node resolution would give a test two copies of the error
-     * classes — a source-side `JessError` from the root and a lib-side one from
-     * the diagnostic surface — and `instanceof` across that boundary is false.
-     */
-    ['@jesscss/core/diagnostics', 'packages/core/src/diagnostics.ts'],
-
-    /*
-     * `@jesscss/compiler/diagnostics` — same source-graph reason; `@jesscss/compiler`
-     * is not in the `test-source` prime, so this subpath would miss on a no-parser-build
-     * run.
-     */
-    ['@jesscss/compiler/diagnostics', 'packages/compiler/src/diagnostics.ts']
-  ];
-  for (const [specifier, file] of subpaths) {
-    const source = resolve(root, file);
-
-    /*
-     * THROWS rather than existsSync-skipping. These are expected to exist;
-     * degrading to a no-op would rebuild the half-source graph described above
-     * and report nothing — the same silent-miss that killed the shape gate, and
-     * the reason the dead `@jesscss/css-parser/jess` alias above was removed.
-     */
-    if (!existsSync(source)) {
-      throw new Error(
-        `vitest.config.ts: expected ${specifier} source at ${source}. `
-        + 'If the file moved, update this alias — do not delete it, or workspace '
-        + `tests will silently resolve ${specifier} to built lib.`
-      );
-    }
-    alias.push({
-      find: new RegExp(`^${specifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`),
-      replacement: source
-    });
-  }
   return alias;
 }
 
