@@ -252,20 +252,21 @@ const skippedFixtures: SkippedFixture[] = (
      */
     /*
      * Nested fixtures, visible since the lane started discovering one level
-     * deeper. Both features are deferred, and these four are the only nested
-     * fixtures with goldens that do not pass.
+     * deeper. dumpLineNumbers output is an intended divergence and source maps
+     * need a dedicated harness; these four are the only nested fixtures with
+     * goldens that do not pass.
      */
     {
       file: 'tests-config/debug/all/linenumbers-all.less',
-      reason: 'dumpLineNumbers is declared in the config surface (core/src/types/config.ts) but nothing consumes it — the golden expects `/* line N, {path} */` annotations (same feature as the tests-config/debug/linenumbers.less skip)'
+      reason: 'INTENDED DIVERGENCE (owner ruling 2026-10-04): dumpLineNumbers is accepted with a deprecation/dump-line-numbers-option warning and otherwise ignored, so the golden\'s `/* line N, {path} */` annotations are never emitted (warning pinned in test/config-merge.test.ts)'
     },
     {
       file: 'tests-config/debug/comments/linenumbers-comments.less',
-      reason: 'dumpLineNumbers is not implemented — the golden expects `/* line N, {path} */` annotations'
+      reason: 'INTENDED DIVERGENCE (owner ruling 2026-10-04): dumpLineNumbers is accepted with a deprecation warning and otherwise ignored — the golden expects `/* line N, {path} */` annotations'
     },
     {
       file: 'tests-config/debug/mediaquery/linenumbers-mediaquery.less',
-      reason: 'dumpLineNumbers is not implemented — the golden expects @media-encoded line annotations'
+      reason: 'INTENDED DIVERGENCE (owner ruling 2026-10-04): dumpLineNumbers is accepted with a deprecation warning and otherwise ignored — the golden expects @media-encoded line annotations'
     },
     {
       file: 'tests-config/sourcemaps/comprehensive/comprehensive.less',

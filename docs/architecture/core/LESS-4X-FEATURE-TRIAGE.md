@@ -421,9 +421,11 @@ fixture status changed.
 
 - **`isurl`** (§2) is fixed under V15; **`style()`** (§2) is reachable both as a
   function and as a typed container-query prelude.
-- **`dumpLineNumbers`** has no effect in either option bucket. Less 4.x
-  deprecates it and `packages/config/src/types.ts:225-229` marks it `@removed`,
-  so this is consistent with intent — recorded, not filed.
+- **`dumpLineNumbers`** has no effect on output in either option bucket. Owner
+  ruling 2026-10-04: it is accepted with one
+  `deprecation/dump-line-numbers-option` warning per render and otherwise
+  ignored (`packages/compiler/src/index.ts`, `createContextFromResolved`), so the
+  `tests-config/debug/*` line-number goldens are intended divergences.
 - **`lint`**, **`insecure`**, **`strictImports`** are accepted by the options
   type and produce no observable behaviour change in the cases probed. **Not
   investigated further** — see §7.

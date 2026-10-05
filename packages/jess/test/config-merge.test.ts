@@ -229,4 +229,39 @@ describe('Config Merging', () => {
       && warning.fix.includes('disableScriptModules')
     )).toBe(true);
   });
+
+  /*
+   * Less 4.x `dumpLineNumbers` (`lessc --line-numbers`) is accepted but has no
+   * effect in v5: one deprecation warning per render, and the CSS is exactly
+   * what the same render produces without the option.
+   */
+  it.each([
+    ['language.less', { language: { less: { dumpLineNumbers: 'comments' } } }],
+    ['compile', { compile: { dumpLineNumbers: 'all' } }]
+  ])('accepts deprecated %s.dumpLineNumbers with one warning and unchanged output', async (_where, options) => {
+    const testFile = path.join(tempDir, 'test.less');
+    fs.writeFileSync(testFile, '.a {\n  color: red;\n}\n@media screen {\n  .b { color: blue; }\n}\n');
+
+    const plain = await new Compiler().renderToResult(testFile, { suppressWarnings: true });
+    const result = await new Compiler(options).renderToResult(testFile, { suppressWarnings: true });
+
+    const deprecations = result.warnings.filter(warning =>
+      warning.code === 'deprecation/dump-line-numbers-option');
+    expect(deprecations).toHaveLength(1);
+    expect(deprecations[0]!.reason).toContain('dumpLineNumbers');
+    expect(deprecations[0]!.fix).toContain('sourceMap');
+    expect(result.errors).toEqual([]);
+    expect(result.css).toBe(plain.css);
+    expect(result.css).not.toContain('line ');
+  });
+
+  it('does not warn when dumpLineNumbers is unset or off', async () => {
+    const testFile = path.join(tempDir, 'test.less');
+    fs.writeFileSync(testFile, '.a { color: red; }');
+
+    for (const options of [{}, { language: { less: { dumpLineNumbers: '' } } }]) {
+      const result = await new Compiler(options).renderToResult(testFile, { suppressWarnings: true });
+      expect(result.warnings.map(warning => warning.code)).not.toContain('deprecation/dump-line-numbers-option');
+    }
+  });
 });
