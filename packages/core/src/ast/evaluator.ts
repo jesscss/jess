@@ -21,16 +21,17 @@ import { sniffLiteral } from './literal-tag.js';
 import type { FnRegistry } from './value-dispatch.js';
 import { dispatchFn, FunctionDeclined } from './value-dispatch.js';
 import { makeKeyword } from './value-factory.js';
+import { emitCompressed } from './compress.js';
 
 /** Join an unknown-fn's arg bytes verbatim (per separator). Under compress the
- *  comma list-divider tightens (`,`); space and `/` separators are significant
- *  and kept (v5 keeps `/` spaced). Arg SPELLINGS stay verbatim either way. */
+ *  comma list-divider tightens (`,`) and each arg folds by its type, as in any
+ *  other value position; space and `/` separators are significant and kept
+ *  (v5 keeps `/` spaced). */
 function verbatimArgs(args: ValueGroup, modes?: EvalModes): string {
   const separator = groupSeparator(args);
-  const glue = separator === ' '
-    ? ' '
-    : (separator === ',' && modes?.compress === true ? ',' : sepGlue(separator));
-  return groupItems(args).map(emitValue).join(glue);
+  const compress = modes?.compress === true;
+  const glue = separator === ' ' ? ' ' : sepGlue(separator, compress);
+  return groupItems(args).map(compress ? emitCompressed : emitValue).join(glue);
 }
 
 /** Preserve an optional CSS call after name resolution or invocation failed. */

@@ -376,8 +376,8 @@ Math-function preservation (`min(100% - 30px)` returning the expression rather t
 
 - `--relative-urls` → `--rewrite-urls=all` (or `rewriteUrls`).
 - `--ie-compat` is a no-op in modern pipelines.
-- built-in `compress` → use a dedicated CSS minifier.
-- `dumpLineNumbers` / `--line-numbers` → use sourcemaps.
+- `dumpLineNumbers` / `--line-numbers` → accepted with a warning and otherwise ignored; use sourcemaps.
+- built-in `compress` is **not** deprecated: it is a supported minifier in 5.x and replaces `less-plugin-clean-css`.
 - `strictImports` is deprecated; avoid it in new configs.
 
 ## Runs on the Jess engine

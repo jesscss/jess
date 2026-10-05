@@ -204,7 +204,9 @@ export interface LessOptions {
   urlArgs?: string;
 
   /**
-   * @removed The dumpLineNumbers option is not useful nor supported in browsers. Use sourcemaps instead.
+   * @deprecated Accepted for Less 4.x compatibility, but it has no effect: no
+   * line-number comments or `-sass-debug-info` media queries are emitted. Setting
+   * it reports a `deprecation/dump-line-numbers-option` warning. Use source maps instead.
    *
    * @default undefined
    */

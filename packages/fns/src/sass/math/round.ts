@@ -1,4 +1,4 @@
-import { defineFunction, makeDimension } from '@jesscss/core';
+import { defineFunction, makeDimension, round as roundNumber } from '@jesscss/core';
 
 /**
  * Sass `math.round($number)` / the global `round()`.
@@ -8,11 +8,10 @@ import { defineFunction, makeDimension } from '@jesscss/core';
  * while Sass follows CSS `round()`, whose second argument is the STEP to round
  * to the nearest multiple of (`round(1.234, 2)` → `2`).
  *
- * Half-way values round away from zero, matching `math.round(-2.5)` → `-3`.
+ * Ties go through the shared core kernel, so they follow CSS Values 4
+ * `round(nearest)` like Less does: the UPPER value wins (`math.round(-2.5)` →
+ * `-2`). dart-sass rounds negative halves away from zero; that is not copied.
  */
-const roundHalfAwayFromZero = (n: number): number =>
-  n < 0 ? -Math.round(-n) : Math.round(n);
-
 const round = defineFunction('round', {
   params: [
     { name: 'number', type: 'Dimension' },
@@ -20,12 +19,15 @@ const round = defineFunction('round', {
   ] as const,
   body: (number, step) => {
     if (step === undefined) {
-      return makeDimension(roundHalfAwayFromZero(number.number), number.unit);
+      return makeDimension(roundNumber(number.number), number.unit);
     }
     if (step.number === 0) {
       return makeDimension(Number.NaN, number.unit);
     }
-    const multiple = roundHalfAwayFromZero(number.number / step.number) * step.number;
+
+    // The multiples of `-b` are the multiples of `b`; a signed divisor would flip "upper".
+    const size = Math.abs(step.number);
+    const multiple = roundNumber(number.number / size) * size;
 
     // Re-derive through the step so binary-fraction steps do not leak float dust.
     return makeDimension(Number(multiple.toPrecision(15)), number.unit || step.unit);

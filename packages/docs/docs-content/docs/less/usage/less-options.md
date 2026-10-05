@@ -285,7 +285,7 @@ This option allows you to specify a argument to go on to every URL. This may be 
 |---|---|
 | `lessc --line-numbers=comments`<br>`lessc --line-numbers=mediaquery`<br>`lessc --line-numbers=all` | `{ dumpLineNumbers: 'comments' }` |
 
-Generates inline source-mapping. This was the only option before browsers started supporting sourcemaps. 
+In Less 4.x this generated inline source-mapping, the only option before browsers supported source maps. Less 5 accepts the option but ignores it: no line-number comments or debug media queries are emitted, and setting it reports a `deprecation/dump-line-numbers-option` warning. Use [source maps](#source-map-options) instead.
 
 #### Pre-Loaded Plugin
 
@@ -301,20 +301,61 @@ See: [Pre-Loaded Plugins](./plugins)
 Runs the less parser and just reports errors without any output.
 
 
-#### Compress (Deprecated)
+#### Compress
 
 | | |
 |---|---|
 | `lessc --compress -x` | `{ compress: true }` |
 
-Compress using less built-in compression. This does an okay job but does not utilise all the tricks of dedicated css compression. In general, we recommend looking at third-party tools that clean and compress CSS after your Less has been transformed to CSS.
+Emits minified CSS. In 5.x, compressed output is a supported feature rather than a deprecated one: it applies every safe fold that Less 4.x `compress` and dart-sass `compressed` apply, and never a transform that could change what the CSS means. It also replaces minifying plugins such as `less-plugin-clean-css`. See [Compressed Output](../advanced/compressed-output) for exactly what it changes.
 
+
+#### Remote Imports
+
+| | |
+|---|---|
+| no command-line flag | `styles.config.*`: `compile: { plugins: [remoteImportPlugin({ allow: ['cdn.example.com'] })] }` |
+
+Less 4.x downloaded every `@import` of an `http(s)://` URL. Less 5 downloads nothing by default: a URL import is left in the output as a plain CSS `@import`. To import Less from hosts you trust, install `@jesscss/plugin-remote-import` and add it to `compile.plugins` in a `styles.config.*` file beside (or above) your entry file. That config file is read by every Less 5 entry point that compiles a file: `lessc`, `less.render()` with a `filename`, and the `jess` CLI.
+
+```js
+// styles.config.mjs
+import { remoteImportPlugin } from '@jesscss/plugin-remote-import';
+
+export default {
+  compile: {
+    plugins: [
+      remoteImportPlugin({
+        allow: ['cdn.example.com'], // required: exact host names
+        maxBytes: 512 * 1024,       // optional: the default, in bytes
+        timeout: 5000               // optional: the default, in milliseconds
+      })
+    ]
+  }
+};
+```
+
+With the plugin configured:
+
+- Only `https://` URLs on an `allow` host are downloaded. Hosts are matched exactly — no wildcards, no ports — and a private, loopback or link-local address can't be allowed. A host that resolves to one of those addresses is refused too.
+- A URL is downloaded exactly as written, with or without a file extension, as in Less 4.x. One without an extension is parsed as Less.
+- A URL import to any other host, or over plain `http://`, is a compile error. `(optional)` does not hide that error. To keep a URL in the output as a plain CSS `@import` — a Google Fonts stylesheet, say — mark it `(css)`: `@import (css) url("https://fonts.googleapis.com/css?family=Open+Sans");`.
+- `(optional)` skips a URL the server answers with 404 or 410, as it skips a missing local file.
+- `@import (inline)` of an allowed URL downloads it and inlines it like a local file.
+- Every path inside a downloaded file — in `@import`, `@import (inline)`, `data-uri()`, `@use` or `@plugin` — is resolved against the file's URL, so `@import "vars.less"` in `https://cdn.example.com/theme/main.less` loads `https://cdn.example.com/theme/vars.less`. A downloaded file can't read a file from your disk.
+- `data-uri()` and `image-size()` never download: a URL in `data-uri()` keeps its `url()` fallback. `@use` and `@plugin` load from local files only, so a URL there is an error.
+- Redirects are followed only within the same origin, at most five times.
+- A response larger than `maxBytes`, or an import that takes longer than `timeout` (redirects and body included), is an error.
+
+Under [Deno](https://deno.com/), also run with `--allow-net` set to the same hosts (for example `deno run --allow-net=cdn.example.com …`). Deno then refuses a connection to any other host even if the plugin's own check were wrong. The plugin refuses to start under Deno with unrestricted network access (`--allow-net` with no host list, or `-A`), because then nothing at runtime backs the allow list. Node has no per-host network permission, so on Node the plugin's check is the only one.
 
 #### Allow Imports from Insecure HTTPS Hosts
 
 | | |
 |---|---|
 | `lessc --insecure` | `{ insecure: true }` |
+
+Has no effect in Less 5. [Remote imports](#remote-imports) are https-only and always verify the server's certificate.
 
 
 ## Source Map Options

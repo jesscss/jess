@@ -122,6 +122,52 @@ describe('output.compress — value folds (must fold)', () => {
   it('emits `!important` with no leading space', async () => {
     expect(await min('a { color: red !important }')).toBe('a{color:red!important}');
   });
+
+  it('folds every dimension in a multi-part value, whatever its position', async () => {
+    expect(await min('a { margin: 0.50px 10.00% }')).toBe('a{margin:.5px 10%}');
+    expect(await min('a { transition: opacity 0.30s, color 1.0s }')).toBe('a{transition:opacity .3s,color 1s}');
+    expect(await min('@m: 0.50px 1.0px; a { margin: @m }')).toBe('a{margin:.5px 1px}');
+    expect(await min('a { transform: translate(0.5px, 1.0px) }')).toBe('a{transform:translate(.5px,1px)}');
+  });
+
+  it('writes an authored line break or comment between value parts as one space', async () => {
+    expect(await min('a { margin: 1px\n    2px }')).toBe('a{margin:1px 2px}');
+    expect(await min('a { margin: 1px /* gap */ 2px }')).toBe('a{margin:1px 2px}');
+    expect(await min('a { transform: translate(\n    1px,\n    2px\n  ) }')).toBe('a{transform:translate(1px,2px)}');
+    expect(await min('a { color: rgba(\n    0,\n    0,\n    0,\n    0.5\n  ) }')).toBe('a{color:rgba(0,0,0,.5)}');
+  });
+
+  it('writes a computed function-form color compactly, in the same form', async () => {
+    expect(await min('a { color: fade(#ff0000, 50%) }')).toBe('a{color:rgba(255,0,0,.5)}');
+    expect(await min('a { color: spin(hsla(10, 50%, 50%, 0.5), 10) }')).toBe('a{color:hsla(20,50%,50%,.5)}');
+  });
+
+  it('folds a list handed whole to an unknown function, item by item', async () => {
+    expect(await min('@l: 0.50px, 1.0px; a { b: foo(@l) }')).toBe('a{b:foo(.5px,1px)}');
+  });
+
+  it('folds a value the same whether it reaches the declaration directly or through a mixin', async () => {
+    const direct = await min('a { b: rgba(255, 0, 0, 0.5) }');
+    expect(direct).toBe('a{b:rgba(255,0,0,.5)}');
+    expect(await min('.m(@a) { b: @a } a { .m(rgba(255, 0, 0, 0.5)) }')).toBe(direct);
+    expect(await min('@c: rgba(255, 0, 0, 0.5); .m(@a) { b: @a } a { .m(@c) }')).toBe(direct);
+    expect(await min('.m(@a: rgba(255, 0, 0, 0.5)) { b: @a } a { .m() }')).toBe(direct);
+    expect(await min('.m(@a) { b: @a } a { .m(fade(#ff0000, 50%)) }')).toBe(direct);
+  });
+});
+
+describe('output.compress — interpolated text is never rewritten', () => {
+  /*
+   * Spliced bytes become part of a larger token, so folding them would change
+   * which element a selector matches or what a string says.
+   */
+  it('keeps an interpolated color as written in a selector, string, escape, and property name', async () => {
+    expect(await min('@d: #ffffff; .s-@{d} { b: @d }')).toBe('.s-#ffffff{b:#fff}');
+    expect(await min('@d: #ffffff; a { content: "@{d}" }')).toBe('a{content:"#ffffff"}');
+    expect(await min('@d: #ffffff; a { b: ~"@{d}-x" }')).toBe('a{b:#ffffff-x}');
+    expect(await min('@d: #ffffff; a { @{d}-x: 1 }')).toBe('a{#ffffff-x:1}');
+    expect(await min('@c: rgba(255, 0, 0, 0.5); a { content: "@{c}" }')).toBe('a{content:"rgba(255, 0, 0, 0.5)"}');
+  });
 });
 
 describe('output.compress — structural', () => {
@@ -147,6 +193,15 @@ describe('output.compress — structural', () => {
       .toBe('@media(min-width:40em){a{color:red}}');
     expect(await min('@supports (display: grid) { a { color: red } }'))
       .toBe('@supports(display:grid){a{color:red}}');
+  });
+
+  it('drops a comment or line break between at-rule query parts', async () => {
+    expect(await min('@media screen, /* c */ print { a { b: c } }')).toBe('@media screen,print{a{b:c}}');
+    expect(await min('@media screen and\n  (min-width: 10px) { a { b: c } }')).toBe('@media screen and (min-width:10px){a{b:c}}');
+  });
+
+  it('tightens the comma list of an at-rule statement prelude', async () => {
+    expect(await min('@layer a, /* c */ b;')).toBe('@layer a,b;');
   });
 
   it('drops an empty rule entirely', async () => {

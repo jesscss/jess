@@ -1,109 +1,74 @@
 /**
  * MATHEMATICAL correctness audit for source-map generation: decode the emitted
  * v3 map with a self-contained base64-VLQ decoder (independent of the encoder)
- * and assert that EVERY mapping lands on the SAME token in the generated CSS and
- * in its mapped source — the round-trip that defines a correct source map.
+ * and assert that EVERY mapping holds at its exact generated and authored
+ * columns — the round-trip that defines a correct source map (`mappingKind`).
  *
  * Covers the hard cases where OUTPUT order != SOURCE order, so a mapping proves
  * itself only by pointing a moved output token back to its authored location:
- *   - multi-file (`@import`) attribution;
+ *   - multi-file (`@import`) attribution, including an `(inline)` import;
  *   - hoisted `@charset` (source line 4 -> output line 1);
  *   - a bubbled `@media` (nested in source, emitted at root);
  *   - nested selectors, audited in BOTH `collapseNesting` modes (flattened vs
- *     nested output — different generated positions, same source tokens).
+ *     nested output — different generated positions, same source tokens);
+ *   - text a host injects ahead of the entry file, and output blanked after
+ *     the walk.
  */
 import { describe, it, expect } from 'vitest';
+import * as fs from 'fs';
 import * as path from 'path';
 import { Compiler } from '../src/index.js';
+import { Compiler as BaseCompiler, type ConfigOptions } from '@jesscss/compiler';
+import { defineFunction, makeNull } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
-
-const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-
-/** Decode v3 `mappings` into [genLine0, genCol0, srcIndex, srcLine0, srcCol0]. */
-function decodeVLQ(str: string): number[][] {
-  const out: number[][] = [];
-  let srcIdx = 0;
-  let srcLine = 0;
-  let srcCol = 0;
-  str.split(';').forEach((line, genLine) => {
-    let genCol = 0;
-    if (line === '') {
-      return;
-    }
-    for (const seg of line.split(',')) {
-      const nums: number[] = [];
-      let shift = 0;
-      let value = 0;
-      for (const ch of seg) {
-        const d = B64.indexOf(ch);
-        value += (d & 31) << shift;
-        if (d & 32) {
-          shift += 5;
-        } else {
-          const magnitude = value >> 1;
-          nums.push(value & 1 ? -magnitude : magnitude);
-          value = 0;
-          shift = 0;
-        }
-      }
-      if (nums.length >= 4) {
-        genCol += nums[0]!;
-        srcIdx += nums[1]!;
-        srcLine += nums[2]!;
-        srcCol += nums[3]!;
-        out.push([genLine, genCol, srcIdx, srcLine, srcCol]);
-      } else if (nums.length === 1) {
-        genCol += nums[0]!;
-      }
-    }
-  });
-  return out;
-}
-
-/** The leading token at a 0-based line/column, whitespace-trimmed. */
-function tokenAt(text: string, line0: number, col0: number): string {
-  const line = text.split('\n')[line0] ?? '';
-  const match = line.slice(col0).match(/^\s*([.#@]?[-\w%]+|\S+?)/);
-  return (match ? match[1]! : line.slice(col0, col0 + 12)).trim();
-}
+import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
+import { decodeSourceMapMappings, mappingKind, tokenAt } from './test-utils.js';
 
 interface AuditResult {
+  readonly css: string;
   readonly count: number;
   readonly sourcesSeen: Set<string>;
 }
 
-async function auditRoundTrip(entry: string, collapseNesting: boolean, compress = false): Promise<AuditResult> {
-  const c = new Compiler({
-    output: { collapseNesting, compress, sourceMap: { outputSourceFiles: true } },
-    compile: { plugins: [lessPlugin()] }
-  });
-  const r = await c.renderToResult(entry, {});
+type Rendered = { css: string; map?: string };
+
+function audit(entry: string, r: Rendered): AuditResult {
   const css = r.css;
   const map = JSON.parse(r.map!) as { sources: string[]; sourcesContent: string[]; mappings: string };
-  const mappings = decodeVLQ(map.mappings);
+  const mappings = decodeSourceMapMappings(map.mappings);
   const sourcesSeen = new Set<string>();
   const genLines = css.split('\n');
-  for (const [gl, gc, si, sl, sc] of mappings) {
-    const genToken = tokenAt(css, gl, gc);
-    const srcToken = tokenAt(map.sourcesContent[si] ?? '', sl, sc);
 
-    /*
-     * Exact-token round-trip is the invariant for declarations, values, and
-     * (in nested output) selectors. A FLATTENED compound selector is the one
-     * legitimate exception: `.wrapper .inner` in the output maps to the inner
-     * rule's own source (`.inner`) — the rule that owns it — so its leading
-     * output token is the inherited parent, not the mapped source token. Accept
-     * that only when the mapped source token still appears in the generated line
-     * (a genuinely wrong mapping points at a token absent from the output).
-     */
-    const ok = genToken === srcToken || (genLines[gl] ?? '').includes(srcToken);
+  /* Each embedded source is the file as authored — nothing injected ahead of it. */
+  map.sources.forEach((source, index) => {
+    expect(map.sourcesContent[index]).toBe(fs.readFileSync(path.resolve(path.dirname(entry), source), 'utf8'));
+  });
+  for (const [gl, gc, si, sl, sc] of mappings) {
+    const srcLines = (map.sourcesContent[si!] ?? '').split('\n');
+    expect(sl! >= 0 && sl! < srcLines.length && sc! >= 0, `mapped ${sl}:${sc} is inside ${map.sources[si!]}`).toBe(true);
+    const gen = genLines[gl!] ?? '';
+    const src = srcLines[sl!]!;
     expect(
-      ok,
-      `${path.basename(entry)} collapse=${collapseNesting}: gen(${gl + 1}:${gc}) "${genToken}" (line: ${JSON.stringify(genLines[gl])}) does not round-trip to ${path.basename(map.sources[si]!)}(${sl + 1}:${sc}) "${srcToken}"`
-    ).toBe(true);
-    sourcesSeen.add(path.basename(map.sources[si]!));
+      mappingKind(gen, gc!, src, sc!),
+      `${path.basename(entry)}: gen(${gl! + 1}:${gc}) "${tokenAt(gen, gc!)}" (line: ${JSON.stringify(gen)}) does not map to ${path.basename(map.sources[si!]!)}(${sl! + 1}:${sc}) "${tokenAt(src, sc!)}"`
+    ).toBeDefined();
+    sourcesSeen.add(path.basename(map.sources[si!]!));
   }
-  return { count: mappings.length, sourcesSeen };
+  return { css, count: mappings.length, sourcesSeen };
+}
+
+async function auditRoundTrip(
+  entry: string,
+  collapseNesting: boolean,
+  compress = false,
+  less: Record<string, unknown> = {}
+): Promise<AuditResult> {
+  const c = new Compiler({
+    output: { collapseNesting, compress, sourceMap: { outputSourceFiles: true } },
+    compile: { plugins: [lessPlugin()] },
+    language: { less }
+  });
+  return audit(entry, await c.renderToResult(entry, {}));
 }
 
 const fixtures = path.join(__dirname, 'fixtures', 'sourcemap');
@@ -127,7 +92,8 @@ describe('source map round-trip is mathematically correct', () => {
     /*
      * Compress rewrites the emitted bytes but not the position mechanism (`put()`
      * records offsets regardless of content), so the SAME independent decode +
-     * token round-trip must still hold with `{ compress: true }`.
+     * exact-column check must still hold with `{ compress: true }`, where every
+     * rule shares one generated line.
      */
     it(`compressed output stays source-map-correct (collapseNesting=${collapseNesting})`, async () => {
       const imports = await auditRoundTrip(path.join(fixtures, 'entry.less'), collapseNesting, true);
@@ -138,5 +104,92 @@ describe('source map round-trip is mathematically correct', () => {
       const reordered = await auditRoundTrip(path.join(fixtures, 'reorder.less'), collapseNesting, true);
       expect(reordered.count).toBeGreaterThanOrEqual(6);
     });
+
+    /*
+     * An extend found while expanding a mixin rewrites the target's header after
+     * the walk has moved past it, so every mapping recorded later must still
+     * land on its own token once the header has grown.
+     */
+    it(`a header rewritten by a late extend keeps later mappings in place (collapseNesting=${collapseNesting})`, async () => {
+      for (const compress of [false, true]) {
+        const r = await auditRoundTrip(path.join(fixtures, 'late-extend.less'), collapseNesting, compress);
+        expect(r.count).toBeGreaterThanOrEqual(5);
+      }
+    });
+
+    /*
+     * Less `globalVars` and `banner` are injected ahead of the entry source; the
+     * map must still point into the file as authored. The banner is emitted but
+     * has no authored home, so it is left unmapped rather than pointed at line 1.
+     */
+    it(`injected globalVars and banner do not shift entry-file mappings (collapseNesting=${collapseNesting})`, async () => {
+      const entry = path.join(fixtures, 'reorder.less');
+      const vars = await auditRoundTrip(entry, collapseNesting, false, { globalVars: { injectedA: '1px', injectedB: 'red' } });
+      expect(vars.count).toBeGreaterThanOrEqual(6);
+      for (const compress of [false, true]) {
+        const banner = await auditRoundTrip(entry, collapseNesting, compress, { banner: '/*! injected banner */', globalVars: { injectedA: '1px' } });
+        expect(banner.css).toContain('/*! injected banner */');
+        expect(banner.count).toBeGreaterThanOrEqual(6);
+      }
+    });
   }
+
+  /*
+   * A host `prepareSource` hook may inject text that does not end in a line
+   * break, so the entry's first line is shifted sideways as well as down. A
+   * rule it injects is emitted, but has no authored home and stays unmapped.
+   */
+  it('maps the entry first line under a same-line injected prefix', async () => {
+    const entry = path.join(fixtures, 'reorder.less');
+    const prefix = '.host { x: 1 } ';
+    const config: ConfigOptions = {
+      output: { collapseNesting: true, sourceMap: { outputSourceFiles: true } },
+      compile: { plugins: [lessPlugin()] },
+      language: {}
+    };
+    const compiler = new BaseCompiler(config, {
+      prepareSource: source => ({ source: `${prefix}${source}`, sourceOffset: prefix.length })
+    });
+    const r = audit(entry, await compiler.renderToResult(entry, {}));
+    expect(r.css).toContain('.host {');
+    expect(r.count).toBeGreaterThanOrEqual(6);
+  });
+
+  /*
+   * `(inline)` splices the file's text; each spliced line maps to its own line
+   * in that file. The `?query` is part of the URL, not of the file name.
+   */
+  it('maps an (inline) import line by line, query string and all', async () => {
+    for (const compress of [false, true]) {
+      const r = await auditRoundTrip(path.join(fixtures, 'inline-entry.less'), true, compress);
+      expect(r.css).toContain('.inlined');
+      expect(r.sourcesSeen.has('inline.css')).toBe(true);
+      expect(r.sourcesSeen.has('inline-entry.less')).toBe(true);
+    }
+  });
+
+  /*
+   * A declaration whose awaited value is null is blanked after the walk; it
+   * emitted nothing, so it must not leave a mapping on the next declaration.
+   */
+  it('leaves no mapping for a declaration blanked after the walk', async () => {
+    const asyncNull = defineFunction('anull', {
+      variadic: true,
+      params: [],
+      body: async () => {
+        await new Promise(resolve => setTimeout(resolve, 1));
+        return makeNull();
+      }
+    });
+    const entry = path.join(fixtures, 'async-null.less');
+    for (const compress of [false, true]) {
+      const c = new Compiler({
+        output: { collapseNesting: true, compress, sourceMap: { outputSourceFiles: true } },
+        compile: { plugins: [lessPlugin(), lessCompatPlugin({ functions: [asyncNull] })] }
+      });
+      const r = audit(entry, await c.renderToResult(entry, {}));
+      expect(r.css).not.toContain('gone');
+      expect(r.css).toContain('kept');
+    }
+  });
 });

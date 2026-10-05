@@ -10,6 +10,9 @@
  */
 import { parseHex } from './literal-tag.js';
 import { shortestColorName } from './color-names.js';
+import { colorRgb, HEX, serializeColor } from './color.js';
+import { formatNumber } from './format-number.js';
+import { isValueGroupArray, joinGroup, sepGlue, type EvalValue } from './value-eval.js';
 
 const hx = (v: number): string => {
   const h = (v & 255).toString(16);
@@ -90,6 +93,39 @@ export function compressDimensionBytes(bytes: string): string {
     }
   }
   return `${sign}${int}${frac}${unit}`;
+}
+
+/** A computed number in compressed spelling (`0.5`→`.5`). */
+const compressedNumber = (n: number): string => compressDimensionBytes(formatNumber(n));
+
+/**
+ * A typed value's compressed bytes, folded by its result type: a dimension
+ * zero-trimmed, a hex color to the shortest of {folded hex, name}, a
+ * function-form color compact in the same form, a comma list tightened. Any
+ * other value keeps its bytes.
+ */
+export function emitCompressed(v: EvalValue): string {
+  if (typeof v === 'string') {
+    return v;
+  }
+  if (isValueGroupArray(v)) {
+    return joinGroup(v, ' ', emitCompressed);
+  }
+  switch (v.type) {
+    case 'Dimension':
+      return compressDimensionBytes(v.bytes);
+    case 'Color': {
+      if (v.format === HEX) {
+        const [r, g, b] = colorRgb(v);
+        return shortestColor(r, g, b, v.alpha);
+      }
+      return serializeColor(v, compressedNumber, ',');
+    }
+    case 'List':
+      return joinGroup(v.value, sepGlue(v.sep, true), emitCompressed);
+    default:
+      return v.bytes;
+  }
 }
 
 /**

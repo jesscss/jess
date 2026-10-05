@@ -141,7 +141,12 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +1 function (`evalQueryPreludeParts`): a media/container prelude is built as
     // fragments so a [general-enclosed] group passes the normalizer as written;
     // the supports normalizer became the shared `normalizePreludeParts`.
-    expect(occurrences(/^function |^async function /gmu)).toBe(474);
+    // +1 function (`resolvePositionOffsets`): source-map positions record chunk
+    // indices during the walk and become character offsets once, after the
+    // post-walk chunk rewrites; the walk no longer keeps a running offset.
+    // +1 function (`spliceCtx`): an interpolation splice evaluates without
+    // compress, so compressed output never rewrites text inside a larger token.
+    expect(occurrences(/^function |^async function /gmu)).toBe(476);
     expect(occurrences(/new Map/gu)).toBe(71);
     expect(occurrences(/new Set/gu)).toBe(40);
     expect(occurrences(/new WeakMap/gu)).toBe(4);

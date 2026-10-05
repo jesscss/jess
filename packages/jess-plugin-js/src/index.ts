@@ -1,6 +1,8 @@
 import {
+  type JessError,
   type Plugin,
-  AbstractPlugin
+  AbstractPlugin,
+  ERR
 } from '@jesscss/core';
 import * as fs from 'node:fs';
 import * as net from 'node:net';
@@ -29,6 +31,20 @@ export class PluginFunctionError extends Error {
     this.originalName = originalName;
   }
 }
+
+/**
+ * The sandbox refused a Less 4 plugin-manager API (`UnsupportedLessPluginApiError`
+ * in `runtime-worker.ts`, whose message is the member refused). It is reported
+ * as the `plugin/unsupported-feature` diagnostic the in-process bridge of
+ * `@jesscss/plugin-less-compat` raises, not as a script that threw.
+ */
+const lessPluginApiRefusal = (
+  plugin: string,
+  result: { error?: string; errorName?: string }
+): JessError | undefined =>
+  result.errorName === 'UnsupportedLessPluginApiError' && result.error !== undefined
+    ? ERR.pluginUnsupported({ meta: { plugin, feature: result.error } })
+    : undefined;
 
 /**
  * Child-process stdio streams are typed as bare `Writable`/`Readable`, which do
@@ -900,7 +916,8 @@ export class JsPlugin extends AbstractPlugin {
     const modulePath = path.resolve(absoluteFilePath);
     const loadResult = await this.callWorker({ type: 'loadLessPlugin', modulePath, options });
     if (!loadResult.ok) {
-      throw new PluginFunctionError(path.basename(modulePath), loadResult.error ?? 'an unknown sandbox failure', loadResult.stack);
+      throw lessPluginApiRefusal(path.basename(modulePath), loadResult)
+        ?? new PluginFunctionError(path.basename(modulePath), loadResult.error ?? 'an unknown sandbox failure', loadResult.stack);
     }
     const functions: Record<string, ContextualPluginFunction> = {};
     for (const functionName of loadResult.functions ?? []) {
@@ -964,7 +981,7 @@ export class JsPlugin extends AbstractPlugin {
         return { value: decodeBridgeResult(result.value) };
       }
       if (!result.need) {
-        throw new PluginFunctionError(
+        throw lessPluginApiRefusal(path.basename(modulePath), result) ?? new PluginFunctionError(
           functionName,
           result.error ?? 'an unknown sandbox failure',
           result.stack,

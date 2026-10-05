@@ -12,6 +12,27 @@ stabilization pass graduates one explicitly. Deferred items are NOT abandoned �
 each is sequenced here, generally behind core work (the D-EVAL flip completion
 and the drive to Less-4.x perf parity).
 
+**Owner rulings (2026-10-04) — Phases C, D and E are in scope for v5.** The
+deferrals below are kept as the record of how the plan was sequenced; the scope
+is now set by the decision ledger
+([`DESIGN-DECISIONS.md`](../architecture/core/DESIGN-DECISIONS.md)):
+
+- **Phase C** — remote `@import` is built as an opt-in, allowlisted, `https:`-only
+  plugin whose host list Deno `--allow-net` also enforces, with a test proving
+  Deno denies an off-list host (ledger **A13**). It shipped as
+  `@jesscss/plugin-remote-import`; see the Phase C table below.
+- **Phase D** — source maps ship first, then compress (ledger **O3**). The engine
+  already emits v3 maps (`packages/core/src/ast/sourcemap.ts`, assembled in
+  `packages/compiler/src/index.ts`) and compress landed in `8460078ff`; what
+  remains is the Less-facing option surface and the source-map fixture harness.
+- **Phase E** — the legacy Less host-hook ABI stays a deliberate non-goal (ledger
+  **A12**): only the opt-in `@jesscss/plugin-less-compat` ships a v5 diagnostic
+  naming the native replacement (npm-import → `@jesscss/plugin-node-modules`,
+  minify → `output.compress`); a pre/post-processor string shim is allowed only
+  if trivially cheap and zero-cost when unused; visitors never.
+- `dumpLineNumbers` is accepted with a deprecation warning and otherwise ignored
+  (ledger **O11**); its fixtures are intended divergences.
+
 ## Operating model — two tracks, rolling alpha cadence
 
 **Owner decision (2026-08-29):** release cadence and roadmap work run as **two
@@ -95,8 +116,8 @@ The local URL-rewrite portion of this phase has graduated. `rewriteUrls`,
 the typed URL/import transform path. The full corpus now passes the dedicated
 rewrite/rootpath/url-args fixtures; `static-urls/urls` retains only the separately
 recorded authored multiline-value spelling difference. Remote source loading is
-the sole remaining Phase C feature and still needs an owner-approved network/IO
-allowlist.
+implemented as the opt-in `@jesscss/plugin-remote-import` (ledger **A13**, owner
+2026-10-04; `docs/design/REMOTE-IMPORTS-NETWORK-POLICY.md`).
 
 | Fixture                                                    | Feature                                                                                | Current disposition                                      |
 | ---------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------- |
@@ -104,15 +125,16 @@ allowlist.
 | `rootpath-rewrite-urls-all`, `rootpath-rewrite-urls-local` | `rootpath` + `rewriteUrls` combined                                                    | **IMPLEMENTED**                                           |
 | `static-urls/urls`                                         | static `url()` handling under rewrite                                                  | **IMPLEMENTED**; only authored-layout mismatch remains   |
 | `url-args/urls`                                            | `urlArgs` — append a cache-busting arg to every `url()`                                | **IMPLEMENTED**                                           |
-| `import/import-remote`                                     | Remote URL imports that fetch and inline external Less sources                         | **DEFERRED** — needs explicit network/IO allowlisting     |
+| `import/import-remote`                                     | Remote URL imports that fetch and inline external Less sources                         | **IMPLEMENTED** — opt-in allowlisted plugin, ledger **A13** |
 
 The implemented rows are option-plumbing over the URL/import handling that the
 core already owns. They are retained here to keep the original phase inventory
 auditable rather than silently deleting completed commitments.
 `process-imports/google.less` graduated on 2026-07-28: `processImports: false`
 now leaves remote/CSS imports un-inlined in the public alpha fixture lane.
-Remote URL import loading remains excluded from the alpha fixture lane until the
-resolver has an explicit allowlist/security model for network access.
+Remote URL import loading is opt-in through `@jesscss/plugin-remote-import`; the
+fixture lane gates `import/import-remote` with that plugin's transport answering
+from the local test-data checkout.
 
 ## Phase D — source maps
 
@@ -122,9 +144,16 @@ resolver has an explicit allowlist/security model for network access.
 | `sourcemaps-include-source`                                                                                | `sourceMapIncludeSource` (inline sources in the map) | same                                                    | Phase D |
 | `sourcemaps-rootpath`                                                                                      | `sourceMapRootpath`                                  | same                                                    | Phase D |
 | `sourcemaps-url`                                                                                           | `sourceMapURL` (annotation)                          | same                                                    | Phase D |
-| (suite) `sourcemaps/basic`, `sourcemaps/custom-props`, `sourcemaps-disable-annotation`, `sourcemaps-empty` | general `.map` output correctness                    | the render API emits CSS only today; no `.map` artifact | Phase D |
+| (suite) `sourcemaps/basic`, `sourcemaps/custom-props`, `sourcemaps-disable-annotation`, `sourcemaps-empty` | general `.map` output correctness                    | needs a source-map output harness (the engine emits the map) | Phase D |
 
-**Hard dependency:** source-map output maps generated CSS bytes back to source
+**Status (2026-10-04):** the dependency below is resolved and Phase D is v5
+scope. The engine emits v3 source maps (`packages/core/src/ast/sourcemap.ts`,
+assembled by `assembleSourceMap` in `packages/compiler/src/index.ts`); the
+remaining work is the Less-facing option surface and a map-artifact harness for
+these fixtures. Owner sequencing (ledger **O3**): source maps first, then
+compress.
+
+**Hard dependency (as originally planned):** source-map output maps generated CSS bytes back to source
 positions. On the projecting spine that requires a **decided emit-time provenance
 model** — resolving a computed value's source position from the enclosing
 source-bearing construct at emit time, gated on `tracksSources`. That model is an
@@ -139,17 +168,26 @@ Less 5 alpha.1 supports the Jess plugin route and the Less `@plugin`
 function-registration path needed by the active fixture lane. It does **not**
 promise the full Less 4.x host API surface.
 
-| Fixture | Feature | Why deferred | Target |
-| --- | --- | --- | --- |
-| `filemanagerPlugin/filemanager` | custom Less file-manager plugin API | needs an explicit resolver/importer bridge and security model | Phase E |
-| `preProcessorPlugin/preProcessor` | Less preprocessor plugin hook | rewrites source before parsing; needs a reviewed pre-parse extension boundary | Phase E |
-| `postProcessorPlugin/postProcessor` | Less postprocessor plugin hook | rewrites emitted CSS after render; needs a reviewed output-extension boundary | Phase E |
-| `visitorPlugin/visitor` | Less visitor plugin API | legacy tree visitor ABI does not map directly to the canonical Jess tree/projection model | Phase E |
-| `plugin-module`, `plugin-preeval` | legacy CommonJS plugin graphs and pre-eval/tree visitor behavior | requires compatibility decisions beyond ordinary Less `@plugin` function registration | Phase E |
+**Scope decision:** ledger **A12** (owner 2026-09-14, reaffirmed 2026-10-04). The
+host-hook ABI is a deliberate non-goal. Only the opt-in
+`@jesscss/plugin-less-compat` (never the default stack) ships the bare minimum: a
+clear v5 diagnostic naming the native replacement (npm-import →
+`@jesscss/plugin-node-modules`, minify → `output.compress`). A pre/post-processor
+string-transform shim is allowed only if it is trivially cheap and zero-cost when
+unused. Visitors: never. The "why deferred" column records the original
+reasoning; the last column is the disposition under A12.
 
-These are release-note limitations for the first alpha, not silent fixture
-drops. When one graduates, add focused API/diagnostic tests before adding the
-upstream fixture to the public alpha lane.
+| Fixture | Feature | Why deferred | Disposition |
+| --- | --- | --- | --- |
+| `filemanagerPlugin/filemanager` | custom Less file-manager plugin API | needs an explicit resolver/importer bridge and security model | non-goal; diagnostic names `@jesscss/plugin-node-modules` |
+| `preProcessorPlugin/preProcessor` | Less preprocessor plugin hook | rewrites source before parsing; needs a reviewed pre-parse extension boundary | non-goal; optional zero-cost string shim only |
+| `postProcessorPlugin/postProcessor` | Less postprocessor plugin hook | rewrites emitted CSS after render; needs a reviewed output-extension boundary | non-goal; optional zero-cost string shim only; minify via `output.compress` |
+| `visitorPlugin/visitor` | Less visitor plugin API | legacy tree visitor ABI does not map directly to the canonical Jess tree/projection model | non-goal; never |
+| `plugin-module`, `plugin-preeval` | legacy CommonJS plugin graphs and pre-eval/tree visitor behavior | requires compatibility decisions beyond ordinary Less `@plugin` function registration | non-goal: `plugin-module` loads the `clean-css` minifier (→ `output.compress`); `plugin-preeval` is a pre-eval visitor (never) |
+
+These are release-note limitations, not silent fixture drops. Each fixture
+graduates only as the A12 diagnostic (or shim) it exercises, with focused
+API/diagnostic tests added first.
 
 ## Related deferrals tracked elsewhere (not config-lane)
 
@@ -177,9 +215,10 @@ upstream fixture to the public alpha lane.
   the captured parent/suffix-ampersand child boundary, while explicit collapse
   produces the golden `.fruit-cap-apple, …` branches. Less `each()` is the opt-in
   for one emitted rule per ordinary list item without changing global nesting.
-  The same fixture also exposes two independent OPEN O8 output-policy questions: whether
-  an interpolated multi-branch nested header keeps the canonical one-branch-per-line
-  form, and whether leading whitespace inside an escaped quoted selector is
-  preserved at the header boundary. The maintained golden also has `foo: bar`
-  where the quoted-case source says `foo: baz`. Those rows require owner
-  reconciliation; they are not remaining selector-capture implementation work.
+  The same fixture also exposed the two O8 output-policy questions, now ruled
+  (owner 2026-10-04, ledger **O8**): an interpolated multi-branch nested header
+  prints one branch per line, and leading whitespace from an escaped quoted
+  selector at the header boundary is canonicalized away (implementation
+  pending). The maintained golden also has `foo: bar` where the quoted-case
+  source says `foo: baz`; that fixture typo still needs owner reconciliation.
+  None of this is remaining selector-capture implementation work.

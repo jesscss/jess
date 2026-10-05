@@ -231,6 +231,15 @@ disables file-based `@plugin`. The old `disablePluginRule` option is still
 recognized for Less compatibility, but it is deprecated and maps to the same
 runtime switch.
 
+A file-based `@plugin` script may `require()` its own sibling CommonJS files
+(`./file`, `../file`) inside that sandbox root; Node built-ins and npm packages
+are not available to it. Plugins that register functions keep working, but the
+Less 4 plugin-manager hooks do not: a plugin that adds a visitor, pre-processor,
+post-processor, or file manager is refused with an error naming the replacement
+(`compress` for minifier plugins such as `less-plugin-clean-css`,
+`@jesscss/plugin-node-modules` for `less-plugin-npm-import`, and running other
+post-processors on the compiled CSS). See [Plugins](../features/plugins).
+
 Example migration path:
 
 ```less
@@ -245,6 +254,10 @@ Prefer explicit Less expressions/functions where possible:
 ```
 
 If your project still requires JS evaluation, move that usage behind the optional plugin/runtime policy path and validate behavior in CI before enabling broadly.
+
+### Remote imports are opt-in
+
+Less 4.x downloaded any `@import "https://…"` while compiling. In 5.x nothing is downloaded by default: a URL import stays in the output as a plain CSS `@import`. If you import Less from a CDN, list its host with `@jesscss/plugin-remote-import` — see [Remote Imports](./less-options.md#remote-imports).
 
 ## Deprecations and removals to plan for
 
@@ -315,8 +328,8 @@ Example:
 
 - `--relative-urls` -> migrate to `--rewrite-urls=all` or explicit `rewriteUrls`.
 - `--ie-compat` is deprecated/no-op in modern pipelines.
-- Built-in `compress` is deprecated; use dedicated CSS minification.
-- `dumpLineNumbers` / `--line-numbers` is deprecated; use sourcemaps.
+- `dumpLineNumbers` / `--line-numbers` is deprecated and has no effect: no line-number comments are emitted, and setting it reports a deprecation warning. Use source maps.
+- Built-in `compress` is **not** deprecated in 5.x — it is a supported minifier and replaces `less-plugin-clean-css` (see [Compressed Output](../advanced/compressed-output)).
 - `strictImports` is deprecated and should be avoided in new configurations.
 
 Example:

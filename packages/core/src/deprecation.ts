@@ -64,6 +64,9 @@ export class Deprecation {
     }),
     new Deprecation('disable-plugin-rule-option', {
       description: 'disablePluginRule is deprecated. Use disableScriptModules instead.'
+    }),
+    new Deprecation('dump-line-numbers-option', {
+      description: 'dumpLineNumbers is deprecated and has no effect: no line-number comments or media queries are emitted. Use source maps instead.'
     })
   ];
 
