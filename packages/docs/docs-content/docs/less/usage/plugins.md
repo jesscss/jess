@@ -28,10 +28,12 @@ Deno sandbox with Less-compatible injected variables such as `functions`, `tree`
 
 The sandbox read root is the project root: the directory of the
 `styles.config.*` above the entry Less file, or the entry file's own directory
-when there is none. A plugin script outside that root is refused, and so is any
-file read outside it. Set `compile.jsReadRoot` in a `styles.config.*` to an
-absolute path to choose another root. Environment and process access are denied,
-and network access is disabled unless plugin-js policy explicitly allows it.
+when there is none. A source with no file path (`less.render()` without
+`filename`) has the current working directory as its root. A plugin script
+outside that root is refused, and so is any file read outside it. Set
+`compile.jsReadRoot` in a `styles.config.*` to an absolute path to choose
+another root. Environment and process access are denied, and network access is
+disabled unless plugin-js policy explicitly allows it.
 
 This is a deliberate difference from Less 4.x, which ran a plugin script in the
 Node process with full access to the file system, the environment, and the

@@ -226,7 +226,7 @@ One surprising behavior for some teams is that legacy Less workflows could execu
 
 In 5.x, executable JavaScript has a stronger opt-in model: local/package JS and legacy file-based `@plugin` execution require `@jesscss/plugin-js` and run on Deno, which is secure by default. JSON imports are data-only and do not need that runtime. Deno-backed scripts cannot read outside the configured script sandbox root, cannot access Node `process` or environment variables by default, and cannot use the network unless plugin-js policy explicitly allows it.
 
-The sandbox root is the directory of the `styles.config.*` above the entry file, or the entry file's own directory when there is none, so a `@plugin` script outside your project is refused. Set `compile.jsReadRoot` in a `styles.config.*` to an absolute path to choose another root. See [Pre-Loaded Plugins](./plugins#less-5x-script-runtime-policy).
+The sandbox root is the directory of the `styles.config.*` above the entry file, or the entry file's own directory when there is none (the current working directory for a source with no file path), so a `@plugin` script outside your project is refused. Set `compile.jsReadRoot` in a `styles.config.*` to an absolute path to choose another root. See [Pre-Loaded Plugins](./plugins#less-5x-script-runtime-policy).
 
 To turn off executable scripts entirely, use `disableScriptModules`. This also
 disables file-based `@plugin`. The old `disablePluginRule` option is still
