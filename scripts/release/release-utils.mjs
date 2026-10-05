@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { builtinModules } from 'node:module';
 import path from 'node:path';
+import { initSync as initModuleLexer, parse as parseModule } from 'es-module-lexer';
 
 const RUNTIME_DEP_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies'];
 const WORKSPACE_SCAN_SKIP_DIRS = new Set(['node_modules', 'lib', 'dist', '.cache']);
@@ -85,11 +86,21 @@ export function getRuntimeWorkspaceDeps(manifest) {
 }
 
 /*
- * Static `import … from` / `export … from` / side-effect `import` at the start
- * of a line, and literal `import(…)` / `require(…)`. Specifiers holding `$` or
- * a backtick are template text, not imports.
+ * `require()` of a literal specifier: quoted or a template without `${}`,
+ * including rolldown's `__require` shim. es-module-lexer reads every ES
+ * `import`/`export … from`/`import()`, minified or not, but not CommonJS.
  */
-const RUNTIME_IMPORT = /^\s*(?:import|export)\b[^;'"]*?\bfrom\s*(['"])([^'"\s$`]+)\1|^\s*import\s*(['"])([^'"\s$`]+)\3|\b(?:import|require)\(\s*(['"])([^'"\s$`]+)\5\s*\)/gmu;
+const REQUIRE_CALL = /\b(?:__)?require\(\s*(['"`])([^'"`$\s]+)\1\s*\)/gu;
+
+function bareSpecifiers(source) {
+  const [imports] = parseModule(source);
+  return [
+    ...imports.flatMap(({ n }) => n === undefined ? [] : [n]),
+    ...[...source.matchAll(REQUIRE_CALL)].map(match => match[2])
+  ].filter(specifier => !/^[./#]/u.test(specifier)
+    && !specifier.startsWith('node:')
+    && !builtinModules.includes(specifier));
+}
 
 /**
  * Bare imports in a package's shipped JavaScript that its manifest does not
@@ -98,6 +109,7 @@ const RUNTIME_IMPORT = /^\s*(?:import|export)\b[^;'"]*?\bfrom\s*(['"])([^'"\s$`]
  * nothing; a strict install fails on them.
  */
 export function findUndeclaredRuntimeImports(packageDir, manifest) {
+  initModuleLexer();
   const declared = new Set([
     manifest.name,
     ...RUNTIME_DEP_FIELDS.flatMap(field => Object.keys(manifest[field] ?? {}))
@@ -117,11 +129,7 @@ export function findUndeclaredRuntimeImports(packageDir, manifest) {
       if (!/\.[cm]?js$/u.test(entry.name)) {
         continue;
       }
-      for (const match of readFileSync(file, 'utf8').matchAll(RUNTIME_IMPORT)) {
-        const specifier = match[2] ?? match[4] ?? match[6];
-        if (/^[./#]/u.test(specifier) || specifier.startsWith('node:') || builtinModules.includes(specifier)) {
-          continue;
-        }
+      for (const specifier of bareSpecifiers(readFileSync(file, 'utf8'))) {
         const [first, second] = specifier.split('/');
         const name = first.startsWith('@') ? `${first}/${second}` : first;
         if (!declared.has(name)) {

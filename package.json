@@ -24,6 +24,7 @@
     "bootstrap": "^5.3.8",
     "cross-env": "~7.0.3",
     "css-tree": "github:csstree/csstree#v3.2.1",
+    "es-module-lexer": "~2.3.2",
     "eslint": "^9.31.0",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-jsdoc": "~63.2.2",

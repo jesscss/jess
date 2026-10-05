@@ -76,6 +76,9 @@ importers:
       css-tree:
         specifier: github:csstree/csstree#v3.2.1
         version: https://codeload.github.com/csstree/csstree/tar.gz/8a6caba481be4cae4b0e8690af643ff8e59271f2
+      es-module-lexer:
+        specifier: ~2.3.2
+        version: 2.3.2
       eslint:
         specifier: ^9.31.0
         version: 9.39.5(jiti@1.21.7)

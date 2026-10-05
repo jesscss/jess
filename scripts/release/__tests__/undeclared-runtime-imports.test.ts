@@ -47,6 +47,20 @@ describe('findUndeclaredRuntimeImports', () => {
     ]);
   });
 
+  it('reads minified ES modules and template-literal requires', () => {
+    const dir = packageWith([
+      ['lib/index.js', 'import{a}from"./x.js";import{b as c}from"undeclared-esm";'
+      + 'import d from"@jesscss/css-parser";export{c,d};'],
+      ['lib/index.cjs', 'let a=require(`./x.cjs`),b=require(`undeclared-cjs`),'
+      + 'e=__require("undeclared-shim");']
+    ]);
+    expect([...findUndeclaredRuntimeImports(dir, manifest)].sort()).toEqual([
+      ['undeclared-cjs', ['lib/index.cjs']],
+      ['undeclared-esm', ['lib/index.js']],
+      ['undeclared-shim', ['lib/index.cjs']]
+    ]);
+  });
+
   it('accepts declared, builtin, relative and self imports', () => {
     const dir = packageWith([
       ['lib/index.js', [
@@ -66,7 +80,8 @@ describe('findUndeclaredRuntimeImports', () => {
   it('ignores text that only looks like an import, and nested node_modules', () => {
     const dir = packageWith([
       ['lib/worker.js', 'const require = s => { throw new Error(`require("${s}") is not supported`); };\n'
-      + 'const word = keyword(\'import(\');\nconst note = "values from \'x\'";\n'],
+      + 'const word = keyword(\'import(\');\nconst note = "values from \'x\'";\n'
+      + '/**\n * @example\n * @import "pkg/x";\n * import "in-a-comment";\n */\nexport {};\n'],
       ['lib/types.d.ts', 'import type { X } from "undeclared-types";\n'],
       ['node_modules/dep/index.js', 'import "undeclared-nested";\n']
     ]);

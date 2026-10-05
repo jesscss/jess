@@ -115,13 +115,6 @@ function assertPackedManifest(pkg, tarball, expectedVersion) {
       );
     }
   }
-
-  if (pkg.name === '@jesscss/css-parser') {
-    assert(
-      manifest.dependencies?.['@jesscss/parser-shared'] === expectedVersion,
-      `${pkg.name}: packed dependencies must carry @jesscss/parser-shared@${expectedVersion}`
-    );
-  }
 }
 
 function packageDirFor(pkgName) {
