@@ -66,14 +66,21 @@ describe('scss plugin render-through', () => {
   });
 
   /**
-   * `math.round` shares the core rounding kernel with Less `round()`: an exact tie goes
-   * to the upper value (CSS Values 4 round(nearest)), not away from zero as dart-sass does.
+   * `math.round` and the global `round($number, $step)` share the core rounding kernel
+   * with Less `round()`: an exact tie breaks away from zero. Expected bytes are
+   * dart-sass 1.101.7 output for the same input.
+   *
+   * TODO(provided-modules-source): `math.round` (a–c) reaches `@jesscss/fns` through
+   * the plugin's own `require` (its `sass:math` provided module, `ProvidedModules` in
+   * core), so it runs the BUILT lib even under vitest; only the global `round()` (d, e)
+   * runs source. Retire when provided modules load through an import vite can alias.
    */
-  it('rounds an exact `math.round` tie toward +infinity', async () => {
+  it('rounds an exact tie away from zero, as dart-sass does', async () => {
     const compiler = new Compiler();
-    const src = '@use "sass:math";\n.t { a: math.round(-0.5); b: math.round(-2.5); c: math.round(2.5); }';
+    const src = '@use "sass:math";\n'
+      + '.t { a: math.round(-0.5); b: math.round(-2.5); c: math.round(2.5); d: round(-2.5, 1); e: round(2.5, -1); }';
     const css = await compiler.renderString(src, { extension: '.scss' });
-    expect(css).toBe('.t {\n  a: 0;\n  b: -2;\n  c: 3;\n}\n');
+    expect(css).toBe('.t {\n  a: -1;\n  b: -3;\n  c: 3;\n  d: -3;\n  e: 3;\n}\n');
   });
 
   /**

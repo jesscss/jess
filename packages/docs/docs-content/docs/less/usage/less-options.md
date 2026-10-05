@@ -314,9 +314,9 @@ Emits minified CSS. In 5.x, compressed output is a supported feature rather than
 
 | | |
 |---|---|
-| no command-line flag | `styles.config.*`: `compile: { plugins: [remoteImportPlugin({ allow: ['cdn.example.com'] })] }` |
+| no `lessc` flag | `styles.config.*`: `compile: { plugins: [remoteImportPlugin({ allow: ['cdn.example.com'] })] }` |
 
-Less 4.x downloaded every `@import` of an `http(s)://` URL. Less 5 downloads nothing by default: a URL import is left in the output as a plain CSS `@import`. To import Less from hosts you trust, install `@jesscss/plugin-remote-import` and add it to `compile.plugins` in a `styles.config.*` file beside (or above) your entry file. That config file is read by every Less 5 entry point that compiles a file: `lessc`, `less.render()` with a `filename`, and the `jess` CLI.
+Less 4.x downloaded every `@import` of an `http(s)://` URL. Less 5 downloads nothing by default: a URL import is left in the output as a plain CSS `@import`. A URL import that can never be plain CSS — `(reference)`, `(less)`, `(inline)`, `@compose` — is a compile error instead. To import Less from hosts you trust, install `@jesscss/plugin-remote-import` and add it to `compile.plugins` in a `styles.config.*` file beside (or above) your entry file. That config file is read by every Less 5 entry point that compiles a file: `lessc`, `less.render()` with a `filename`, and the `jess` CLI. The `jess` CLI also takes the hosts directly: `--allow-remote-imports cdn.example.com,fonts.example.com` (comma-separated, and the flag may repeat).
 
 ```js
 // styles.config.mjs
@@ -337,15 +337,20 @@ export default {
 
 With the plugin configured:
 
-- Only `https://` URLs on an `allow` host are downloaded. Hosts are matched exactly — no wildcards, no ports — and a private, loopback or link-local address can't be allowed. A host that resolves to one of those addresses is refused too.
-- A URL is downloaded exactly as written, with or without a file extension, as in Less 4.x. One without an extension is parsed as Less.
-- A URL import to any other host, or over plain `http://`, is a compile error. `(optional)` does not hide that error. To keep a URL in the output as a plain CSS `@import` — a Google Fonts stylesheet, say — mark it `(css)`: `@import (css) url("https://fonts.googleapis.com/css?family=Open+Sans");`.
+- Only `https://` URLs on an `allow` host are downloaded. Hosts are matched exactly by name — no wildcards, no ports, and no IP addresses. A host that resolves to a private, loopback or link-local address is refused.
+- A URL Less treats as CSS — one written with a `.css` file name, such as `@import "@{cdn}/theme.css"`, or one marked `(css)` — is never downloaded, on an allowed host or not. A URL spelled entirely by a variable (`@import "@{url}"`) is judged by how it is written, not its value, so it follows the rules below.
+- A URL on an allowed host is downloaded exactly as written, with or without a file extension. One without an extension is parsed in the language of the file that imports it.
+- A URL without a file extension that isn't downloaded — on another host, an IP address, or plain `http://` — stays in the output as a plain CSS `@import`, so a Google Fonts stylesheet such as `@import url("https://fonts.googleapis.com/css?family=Open+Sans");` keeps working.
+- Any other URL import that isn't downloaded — one with a file extension, such as `.less`, or an `(inline)`, `(reference)` or `(less)` import, which can never stay CSS — is a compile error. `(optional)` does not hide that error.
+- An import that stays CSS keeps its media query: `@import url("https://fonts.googleapis.com/css?family=Open+Sans") screen;` comes out as written. An import that is downloaded is wrapped in `@media screen { … }`, as a local one is.
 - `(optional)` skips a URL the server answers with 404 or 410, as it skips a missing local file.
 - `@import (inline)` of an allowed URL downloads it and inlines it like a local file.
 - Every path inside a downloaded file — in `@import`, `@import (inline)`, `data-uri()`, `@use` or `@plugin` — is resolved against the file's URL, so `@import "vars.less"` in `https://cdn.example.com/theme/main.less` loads `https://cdn.example.com/theme/vars.less`. A downloaded file can't read a file from your disk.
-- `data-uri()` and `image-size()` never download: a URL in `data-uri()` keeps its `url()` fallback. `@use` and `@plugin` load from local files only, so a URL there is an error.
+- `rewriteUrls` and `rootpath` work inside a downloaded file as they do inside a local import. When `rewriteUrls` rewrites a relative `url()`, it points it at the downloaded file's location: `url(img/a.png)` in `https://cdn.example.com/theme/main.less` becomes `url(https://cdn.example.com/theme/img/a.png)`.
+- `data-uri()` and `image-size()` never download: a URL in `data-uri()` keeps its `url()` fallback. `@use` and `@plugin` load from local files only, so a URL there is an error, with or without the plugin.
 - Redirects are followed only within the same origin, at most five times.
 - A response larger than `maxBytes`, or an import that takes longer than `timeout` (redirects and body included), is an error.
+- Downloads are not pinned to a lockfile or an integrity hash: a host that changes a file changes your build.
 
 Under [Deno](https://deno.com/), also run with `--allow-net` set to the same hosts (for example `deno run --allow-net=cdn.example.com …`). Deno then refuses a connection to any other host even if the plugin's own check were wrong. The plugin refuses to start under Deno with unrestricted network access (`--allow-net` with no host list, or `-A`), because then nothing at runtime backs the allow list. Node has no per-host network permission, so on Node the plugin's check is the only one.
 
@@ -355,7 +360,7 @@ Under [Deno](https://deno.com/), also run with `--allow-net` set to the same hos
 |---|---|
 | `lessc --insecure` | `{ insecure: true }` |
 
-Has no effect in Less 5. [Remote imports](#remote-imports) are https-only and always verify the server's certificate.
+Has no effect in Less 5, and setting it reports a deprecation warning. [Remote imports](#remote-imports) are https-only and always verify the server's certificate.
 
 
 ## Source Map Options
@@ -402,7 +407,7 @@ dev-files/main.less
 
 This is the opposite of the rootpath option, it specifies a path which should be removed from the output paths. For instance if you are compiling a file in the less-files directory but the source files will be available on your web server in the root or current directory, you can specify this to remove the additional `less-files` part of the path.
 
-It defaults to the path to the input less file.
+It defaults to the path to the input less file. It is also removed from the front of the `sourceMappingURL` written into the CSS, so a map URL under the basepath becomes relative to it.
 
 #### Include Less Source in the Source Map
 

@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, propertyReference, pseudoSelector, quoted, reference, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorCapture, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, reference, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorCapture, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -1465,11 +1465,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       );
     }
   );
-  // `@plugin`/`@-plugin` is a compile-time directive, not an unknown CSS at-rule. Its
-  // target and the *inner* option string are grammar facts so the evaluator
-  // never rediscovers either from raw prelude bytes. EnclosedContent
-  // recursively closes delimiters and preserves arbitrary option text as
-  // interpolation literal/ref segments, matching Less's opaque option string.
+  /**
+   * `@plugin`/`@-plugin` is a compile-time directive, not an unknown CSS at-rule.
+   * Its target and the *inner* option string are grammar facts so the evaluator
+   * never rediscovers either from raw prelude bytes. EnclosedContent
+   * recursively closes delimiters and preserves arbitrary option text as
+   * interpolation literal/ref segments, matching Less's opaque option string.
+   * The node carries the statement's span, so a plugin that fails to load or is
+   * refused is reported at its `@plugin`.
+   */
   const PluginDirective = node(
     'Plugin',
     sequence(
@@ -1481,7 +1485,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       field('target', quotedOrUrlTarget),
       literal(';')
     ),
-    (_children, fields): Plugin => {
+    (_children, fields, span): Plugin => {
       const target = requireField(fields, 'target').value;
       if (!isQuoted(target) && !isUrl(target) && !isInterp(target)) {
         throw new TypeError('Less Plugin lost its typed target.');
@@ -1490,7 +1494,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       if (optionValue !== null && !isInterp(optionValue)) {
         throw new TypeError('Less Plugin options must remain an interpolation template.');
       }
-      return { type: 'Plugin', target, options: optionValue };
+      return withSourceSpan(plugin(target, optionValue), span);
     }
   );
   // A call arm here is a COMPLETE variable value, so it must not claim the call

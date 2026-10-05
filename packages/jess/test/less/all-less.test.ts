@@ -347,7 +347,7 @@ const skippedFixtures: SkippedFixture[] = (
      */
     {
       file: 'tests-config/sourcemaps/comprehensive/comprehensive.less',
-      reason: 'OPEN (escalated to the corpus owner): the golden annotation names tests-config/sourcemaps-comprehensive/, which the fixture\'s `sourceMap: true` config does not yield; the CSS before the annotation and the map are gated in sourcemaps.test.ts'
+      reason: 'GOLDEN CORRECTION PROPOSED (less.js fork branch lane/v5-sourcemap-comprehensive-golden, not yet merged): the golden annotation names tests-config/sourcemaps-comprehensive/comprehensive.css.map, but the fixture\'s `sourceMap: true` config yields comprehensive.css.map; the CSS before the annotation and the map are gated in sourcemaps.test.ts'
     },
     {
       file: 'tests-unit/permissive-parse/permissive-parse.less',

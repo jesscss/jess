@@ -42,10 +42,14 @@
     "styles-config": "workspace:*"
   },
   "peerDependencies": {
-    "@jesscss/plugin-js": "workspace:*"
+    "@jesscss/plugin-js": "workspace:*",
+    "@jesscss/plugin-remote-import": "workspace:*"
   },
   "peerDependenciesMeta": {
     "@jesscss/plugin-js": {
+      "optional": true
+    },
+    "@jesscss/plugin-remote-import": {
       "optional": true
     }
   },

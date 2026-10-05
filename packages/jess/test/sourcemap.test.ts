@@ -171,6 +171,45 @@ describe('source map generation (live AST-v2 render path)', () => {
     expect(JSON.parse(fromString.map!).file).toBe('output.css');
   });
 
+  /* Less 4.x `source-map-builder.js`: `removeBasepath(this.sourceMapURL)`. */
+  it('strips sourceMapBasepath from the annotation URL as from every source', async () => {
+    const explicit = await new Compiler().renderToResult(entry, {
+      output: { sourceMap: { sourceMapBasepath: dir, sourceMapURL: path.join(dir, 'maps', 'entry.css.map') } }
+    });
+    expect(explicit.css.endsWith('/*# sourceMappingURL=maps/entry.css.map */')).toBe(true);
+    expect(explicit.sourceMapURL).toBe('maps/entry.css.map');
+
+    /* The default basepath, the input file's directory, is stripped too. */
+    const defaulted = await new Compiler().renderToResult(entry, {
+      output: { sourceMap: { sourceMapURL: path.join(dir, 'entry.css.map') } }
+    });
+    expect(defaulted.sourceMapURL).toBe('entry.css.map');
+
+    /* Windows separators: Less normalizes the basepath and the map filename to `/`. */
+    const windows = await new Compiler().renderToResult(entry, {
+      output: { sourceMap: { sourceMapBasepath: 'C:\\site', sourceMapFilename: 'C:\\site\\css\\entry.css.map' } }
+    });
+    expect(windows.sourceMapURL).toBe('css/entry.css.map');
+
+    const elsewhere = await new Compiler().renderToResult(entry, {
+      output: { sourceMap: { sourceMapBasepath: dir, sourceMapURL: '../maps/entry.css.map' } }
+    });
+    expect(elsewhere.sourceMapURL).toBe('../maps/entry.css.map');
+  });
+
+  /* A source no mapping names (an import that only defines variables) is neither listed nor embedded. */
+  it('embeds sourcesContent only for sources a mapping names', async () => {
+    fs.writeFileSync(path.join(dir, 'vars.less'), '@c: red;\n');
+    fs.writeFileSync(entry, '@import "vars";\n.entry {\n  color: @c;\n}\n');
+    const result = await new Compiler().renderToResult(entry, {
+      output: { sourceMap: { outputSourceFiles: true } }
+    });
+    expect(JSON.parse(result.map!)).toMatchObject({
+      sources: ['entry.less'],
+      sourcesContent: [fs.readFileSync(entry, 'utf8')]
+    });
+  });
+
   it('is zero-cost when off: no annotation and byte-identical to a bare render', async () => {
     const off = await new Compiler().renderToResult(entry, {});
     expect(off.css).not.toContain('sourceMappingURL');

@@ -4,6 +4,7 @@ import {
   Context,
   type UrlTransformRequest,
   ERR,
+  EXTERNAL_IMPORT_SPECIFIER,
   type ISafeParseResult,
   type PluginInterface,
   type SafeParseOptions,
@@ -287,6 +288,23 @@ function rewriteUrlPath(url: string, rootpath: string): string {
     : rewritten;
 }
 
+/**
+ * A relative URL in a fetched document names a resource beside that document,
+ * so rewriting rebases it onto the document's URL — the remote counterpart of
+ * prefixing a local import's directory. The result is absolute, so `rootpath`
+ * has nothing to prefix. Only the leading `./`/`../` segments are resolved as a
+ * URL (clamped at the host's root); the rest keeps its authored text, escapes
+ * included.
+ */
+function rebaseOntoDocumentUrl(url: string, documentUrl: string, quoted: boolean): string {
+  let rest = url;
+  while (rest.startsWith('./') || rest.startsWith('../')) {
+    rest = rest.slice(rest.indexOf('/') + 1);
+  }
+  const directory = new URL(url.slice(0, url.length - rest.length) || '.', documentUrl).href;
+  return (quoted ? directory : escapeUnquotedUrlPath(directory)) + rest;
+}
+
 function escapeUnquotedUrlPath(pathValue: string): string {
   let escaped = '';
   for (const char of pathValue) {
@@ -371,17 +389,21 @@ export class LessPlugin extends AbstractPlugin {
        */
       if (rewriteUrls !== 'local' || local) {
         const rebasesImportedUrl = rewriteUrls === true || rewriteUrls === 'all' || (rewriteUrls === 'local' && local);
-        let rootpath = this.opts.rootpath ?? '';
-        if (!quoted) {
-          rootpath = escapeUnquotedUrlPath(rootpath);
-        }
-        if (rebasesImportedUrl && fromFilePath && entryFilePath) {
-          const relativeDirectory = path.relative(path.dirname(entryFilePath), path.dirname(fromFilePath));
-          if (relativeDirectory) {
-            rootpath += `${relativeDirectory.split(path.sep).join('/')}/`;
+        if (rebasesImportedUrl && fromFilePath !== undefined && EXTERNAL_IMPORT_SPECIFIER.test(fromFilePath)) {
+          transformed = rebaseOntoDocumentUrl(value, fromFilePath, quoted);
+        } else {
+          let rootpath = this.opts.rootpath ?? '';
+          if (!quoted) {
+            rootpath = escapeUnquotedUrlPath(rootpath);
           }
+          if (rebasesImportedUrl && fromFilePath && entryFilePath) {
+            const relativeDirectory = path.relative(path.dirname(entryFilePath), path.dirname(fromFilePath));
+            if (relativeDirectory) {
+              rootpath += `${relativeDirectory.split(path.sep).join('/')}/`;
+            }
+          }
+          transformed = rewriteUrlPath(value, rootpath);
         }
-        transformed = rewriteUrlPath(value, rootpath);
       } else {
         transformed = normalizeUrlPath(value);
       }

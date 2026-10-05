@@ -13,6 +13,13 @@ export interface ImportOptions {
   optional?: boolean;
   inline?: boolean;
 
+  /**
+   * The import has no CSS meaning, so it can never stay a CSS `@import`:
+   * `(inline)`, `(reference)`, `(less)`, `@-import`, `@compose`. An external
+   * specifier no plugin claims is then an error rather than a CSS terminal.
+   */
+  mustLoad?: boolean;
+
   /** Retain repeated imports rather than the default once behavior. */
   multiple?: boolean;
 

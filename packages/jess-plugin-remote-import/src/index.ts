@@ -2,17 +2,18 @@ import type { PluginInterface } from '@jesscss/core';
 import { ERR } from '@jesscss/core/diagnostics';
 import { lookup } from 'node:dns/promises';
 import { BlockList, isIP } from 'node:net';
+import { posix } from 'node:path';
 
 /** The transport a remote import is fetched through — the global `fetch` shape. */
 export type RemoteFetch = (url: string, init: { redirect: 'manual'; signal: AbortSignal }) => Promise<Response>;
 
 export interface RemoteImportPluginOptions {
   /**
-   * Hosts remote imports may be fetched from, spelled as a URL prints them
-   * (`cdn.example.com`: lowercase, punycode for an IDN). Matching is exact: no
-   * wildcards, no ports, and never a private, loopback or link-local address.
-   * Required and non-empty. Under Deno, pass the same list to `--allow-net` so
-   * the runtime enforces it too; unrestricted `--allow-net` is refused.
+   * Hosts remote imports may be fetched from and inlined, spelled as a URL
+   * prints them (`cdn.example.com`: lowercase, punycode for an IDN). Matching is
+   * exact: no wildcards, no ports, and never an IP address. Required and
+   * non-empty. Under Deno, pass the same list to `--allow-net` so the runtime
+   * enforces it too; unrestricted `--allow-net` is refused.
    */
   allow: readonly string[];
 
@@ -42,7 +43,7 @@ const DEFAULT_MAX_BYTES = 512 * 1024;
 const DEFAULT_TIMEOUT = 5000;
 
 /**
- * Addresses a remote import never reaches: unspecified, private, shared
+ * Addresses an allowed host may never resolve to: unspecified, private, shared
  * (CGNAT), loopback, link-local, benchmarking, multicast and reserved IPv4
  * (broadcast included), and unique-local, link-local, site-local and multicast
  * IPv6. An IPv6 address that embeds an IPv4 one is checked by that address.
@@ -107,7 +108,7 @@ const remoteUrl = (specifier: string): URL | undefined => {
   return url?.protocol === 'https:' || url?.protocol === 'http:' ? url : undefined;
 };
 
-/** An allow entry as `URL.hostname` spells it. Throws for anything but a bare, public host. */
+/** An allow entry as `URL.hostname` spells it. Throws for anything but a bare host name. */
 function allowedHost(entry: string): string {
   const url = URL.canParse(`https://${entry}/`) ? new URL(`https://${entry}/`) : undefined;
   if (url === undefined || entry.includes('*') || url.port !== '' || url.host !== entry.toLowerCase()) {
@@ -116,10 +117,8 @@ function allowedHost(entry: string): string {
       + 'such as "cdn.example.com" — no scheme, port, path or wildcard.'
     );
   }
-  if (isPrivateAddress(unbracket(url.hostname))) {
-    throw new Error(
-      `remote-import: allow entry "${entry}" is a private, loopback or link-local address; remote imports never reach those.`
-    );
+  if (isIP(unbracket(url.hostname)) !== 0) {
+    throw new Error(`remote-import: allow entry "${entry}" is an IP address; remote imports are fetched from named hosts only.`);
   }
   return url.hostname;
 }
@@ -200,7 +199,8 @@ async function readText(response: Response, maxBytes: number, href: string, sign
  *
  * Only {@link RemoteImportPlugin.getSource} touches the network. A remote import
  * reaches it through Context's ordinary claim → resolve → locate → source route,
- * and a host off the list is rejected at the claim, before any request.
+ * and a URL off the list is left a CSS `@import` or rejected at the claim,
+ * before any request.
  */
 export class RemoteImportPlugin implements PluginInterface {
   name = 'remote-import';
@@ -229,18 +229,28 @@ export class RemoteImportPlugin implements PluginInterface {
   }
 
   /**
-   * Claims every http(s) or protocol-relative import — with or without an
-   * extension, as Less 4.x fetches a URL exactly as written. One that is plain
-   * http or names a host off the allow list is an error, never a silent
-   * terminal: configuring this plugin asks for remote sources to be inlined.
+   * Claims an https import on the allow list: the list names the hosts that are
+   * fetched and inlined, not the ones a stylesheet may reference. Less has
+   * already left every URL it classifies as CSS (an authored `.css` path,
+   * `(css)`) a CSS `@import`, so any other http(s) or protocol-relative
+   * import gets here. Off the list, an extensionless one — Google Fonts'
+   * `/css?family=…` — stays a CSS `@import` (false), unless it must load
+   * (`(inline)`, `(reference)`, `(less)`, `@compose`); any other cannot be a
+   * CSS `@import` and is an error. Never a request.
    */
-  canResolveImport(specifier: string): boolean {
+  canResolveImport(specifier: string, _currentDir: string, _searchPaths: string[], mustLoad: boolean): boolean {
     const url = remoteUrl(specifier);
     if (url === undefined) {
       return false;
     }
-    this.check(url);
-    return true;
+    const refusal = this.refusal(url);
+    if (refusal === undefined) {
+      return true;
+    }
+    if (!mustLoad && posix.extname(url.pathname) === '') {
+      return false;
+    }
+    throw new Error(refusal);
   }
 
   /** The first candidate that is an allowed https URL — never a request. */
@@ -265,7 +275,10 @@ export class RemoteImportPlugin implements PluginInterface {
     if (requested === undefined) {
       throw new Error(`remote-import: "${location}" is not a remote URL.`);
     }
-    this.check(requested);
+    const refusal = this.refusal(requested);
+    if (refusal !== undefined) {
+      throw new Error(refusal);
+    }
     let url = requested;
     const signal = AbortSignal.timeout(this.timeout);
     try {
@@ -304,13 +317,18 @@ export class RemoteImportPlugin implements PluginInterface {
     }
   }
 
-  private check(url: URL): void {
+  /** Why this URL is not fetched, or undefined when it is. */
+  private refusal(url: URL): string | undefined {
     if (url.protocol !== 'https:') {
-      throw new Error(`Remote import ${url.href} is refused: remote imports are https-only.`);
+      return `Remote import ${url.href} is refused: remote imports are https-only.`;
+    }
+    if (isIP(unbracket(url.hostname)) !== 0) {
+      return `Remote import ${url.href} is refused: ${url.hostname} is an IP address, and remote imports are fetched from named hosts only.`;
     }
     if (!this.allow.has(url.hostname)) {
-      throw new Error(`Remote import ${url.href} is refused: ${url.hostname} is not on the remote-import allow list.`);
+      return `Remote import ${url.href} is refused: ${url.hostname} is not on the remote-import allow list.`;
     }
+    return undefined;
   }
 }
 

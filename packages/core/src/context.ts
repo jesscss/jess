@@ -64,9 +64,16 @@ const SCRIPT_MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', 
 const SCRIPT_RUNTIME_MISSING_MESSAGE = 'Feature not supported. Install @jesscss/plugin-js to enable script execution features.';
 const SCRIPT_MODULES_DISABLED_MESSAGE = 'Script modules are disabled by disableScriptModules.';
 
-/** Modules and plugins are code or data loaded by the runtime, so they come from local files only. */
-const remoteModuleMessage = (location: string): string =>
-  `Module ${location} is remote; @use and @plugin load modules from local files only.`;
+/**
+ * Modules and plugins are code or data loaded by the runtime, so they come from
+ * local files only: a URL — written, rebased from a remote document, or located
+ * by a plugin — is refused without a request.
+ */
+function refuseRemoteModule(location: string): void {
+  if (EXTERNAL_IMPORT_SPECIFIER.test(location)) {
+    throw new Error(`Module ${location} is remote; @use and @plugin load modules from local files only.`);
+  }
+}
 
 type LoadedImportResult = {
   node: ParsedDocument | null;
@@ -599,7 +606,8 @@ export class Context {
     const source = this.sourceContext;
     const file = source?.file;
     const sourceKey = file?.fullPath ?? file?.path ?? process.cwd();
-    return `${sourceKey}\0${this.pluginCacheKey(source?.plugin)}\0${importPath}\0${importParseCacheKey(importOptions)}`;
+    const mustLoad = importOptions.mustLoad === true ? '\0must-load' : '';
+    return `${sourceKey}\0${this.pluginCacheKey(source?.plugin)}\0${importPath}\0${importParseCacheKey(importOptions)}${mustLoad}`;
   }
 
   private moduleCacheKey(importPath: string, importOptions: ImportOptions): string {
@@ -1430,17 +1438,17 @@ export class Context {
 
   /**
    * Whether a plugin opts in to loading this import. Only an external specifier
-   * needs a claim; unclaimed, it stays a CSS terminal. A plugin refuses one by
-   * throwing.
+   * needs a claim; unclaimed, it stays a CSS terminal unless it `mustLoad`. A
+   * plugin refuses one by throwing, with its own reason.
    */
-  private async isClaimed(importPath: string): Promise<boolean> {
+  private async isClaimed(importPath: string, mustLoad: boolean): Promise<boolean> {
     if (!EXTERNAL_IMPORT_SPECIFIER.test(importPath)) {
       return true;
     }
     const currentDirectory = this.sourceContext?.file?.path ?? process.cwd();
     const { searchPaths = [] } = this.opts;
     for (const plugin of this.plugins) {
-      if (await plugin.canResolveImport?.(importPath, currentDirectory, searchPaths)) {
+      if (await plugin.canResolveImport?.(importPath, currentDirectory, searchPaths, mustLoad)) {
         return true;
       }
     }
@@ -1725,7 +1733,19 @@ export class Context {
 
   private async loadImportUncached(importPath: string, importOptions: ImportOptions = {}) {
     const target = this.importTarget(importPath);
-    return await this.isClaimed(target) ? this.getTree(target, importOptions) : undefined;
+    const mustLoad = importOptions.mustLoad === true;
+    if (await this.isClaimed(target, mustLoad)) {
+      return this.getTree(target, importOptions);
+    }
+
+    /** No plugin loads it, and it has no CSS meaning, so it cannot stay a CSS `@import` either. */
+    if (mustLoad) {
+      throw new Error(
+        `No plugin loads ${target}, and this import cannot stay a CSS @import. `
+        + 'Remote imports need @jesscss/plugin-remote-import with the host on its allow list.'
+      );
+    }
+    return undefined;
   }
 
   /**
@@ -1737,7 +1757,7 @@ export class Context {
    */
   async readInlineImport(importPath: string): Promise<{ resolvedPath: string; source: string }> {
     const target = this.importTarget(importPath);
-    if (!(await this.isClaimed(target))) {
+    if (!(await this.isClaimed(target, true))) {
       throw ERR.importNotFound({
         meta: { specifier: importPath, from: this.sourceContext?.file?.path ?? process.cwd() }
       });
@@ -1848,10 +1868,9 @@ export class Context {
   }
 
   private async getModuleUncached(importPath: string, importOptions: ImportOptions = {}): Promise<LoadedModuleResult> {
+    refuseRemoteModule(this.importTarget(importPath));
     const { resolvedPath, triedPaths, friendlyPath, ext } = await this._getPath(importPath);
-    if (EXTERNAL_IMPORT_SPECIFIER.test(resolvedPath)) {
-      throw new Error(remoteModuleMessage(resolvedPath));
-    }
+    refuseRemoteModule(resolvedPath);
     const isJsonImport = ext === '.json';
     const isScriptModuleImport = SCRIPT_MODULE_EXTENSIONS.has(ext);
     const { type } = importOptions;
@@ -1965,10 +1984,9 @@ export class Context {
    * interprets the returned module; Context does not know a dialect ABI.
    */
   async getPluginModule(importPath: string, options: string | null = null) {
+    refuseRemoteModule(this.importTarget(importPath));
     const { resolvedPath, triedPaths, friendlyPath, ext } = await this._getPluginPath(importPath);
-    if (EXTERNAL_IMPORT_SPECIFIER.test(resolvedPath)) {
-      throw new Error(remoteModuleMessage(resolvedPath));
-    }
+    refuseRemoteModule(resolvedPath);
     let plugin = this.plugins.find(candidate =>
       candidate.supportedExtensions?.includes(ext) && candidate.importPlugin);
     if (!plugin) {

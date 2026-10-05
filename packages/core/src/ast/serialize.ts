@@ -475,12 +475,15 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
     /*
      * Parse-mode selection remains Context/plugin-owned. The typed Less `(less)`
      * flag asks the existing dispatcher for its `less` plugin even when the path
-     * ends in `.css`; core never chooses or invokes a parser itself.
+     * ends in `.css`; core never chooses or invokes a parser itself. An import
+     * with no CSS meaning — `(less)`, `@-import`, `(reference)`, `@compose` —
+     * must load, so a plugin refuses rather than leaves it a CSS terminal.
      */
-    const explicitSourceImport = node.name.toLowerCase() === '@-import';
+    const less = importHasOption(options, 'less') || node.name.toLowerCase() === '@-import';
+    const mustLoad = less || node.mode === 'compose' || importHasOption(options, 'reference');
     let loaded: Awaited<ReturnType<Context['loadImport']>>;
     try {
-      loaded = await context.loadImport(specifier, importHasOption(options, 'less') || explicitSourceImport ? { type: 'less' } : {});
+      loaded = await context.loadImport(specifier, less ? { type: 'less', mustLoad } : { mustLoad });
     } catch (error) {
       /*
        * `(optional)` suppresses ONLY the missing-file diagnostic, and the import
@@ -1295,7 +1298,7 @@ function activateBodyDependencies(
         if (!mayLoadUnplannedModule) {
           continue;
         }
-        return context.getModule(statement.path.value).then(({ module }) => {
+        return context.getModule(statement.path.value).catch(moduleLoadFailed(statement, e)).then(({ module }) => {
           plannedModules?.set(statement, module);
           bindModuleImport(statement, module, frame, e);
           return run(index + 1);
@@ -7306,6 +7309,22 @@ function pluginFnContext(
   };
 }
 
+/**
+ * A `@use` whose module cannot load is an import failure at the `@use`, as a
+ * `@plugin` that cannot load is a plugin failure at the `@plugin`.
+ */
+function moduleLoadFailed(statement: ModuleImport, e: EvalCtx): (error: unknown) => never {
+  return (error) => {
+    throw error instanceof JessError
+      ? error.attributeTo(callSiteLocation(statement, e))
+      : ERR.importLoadFailed({
+          node: statement,
+          ...callSiteLocation(statement, e),
+          meta: { specifier: statement.path.value, reason: error instanceof Error ? error.message : String(error) }
+        });
+  };
+}
+
 /** Source position of a call node, for a diagnostic that points at the call site. */
 function callSiteLocation(node: object, e: EvalCtx): {
   filePath?: string; source?: string; line?: number; column?: number;
@@ -11339,7 +11358,7 @@ function planImportedFacts(
           }
         }
       } else if (st.type === 'ModuleImport' && e.context) {
-        const { module } = await e.context.getModule(st.path.value);
+        const { module } = await e.context.getModule(st.path.value).catch(moduleLoadFailed(st, e));
         e.plannedModuleImports?.set(st, module);
         bindModuleImport(st, module, scope, e);
       } else if (st.type === 'AtRuleBlock') {
@@ -18169,7 +18188,7 @@ function importSpecifier(node: StyleImport, frame: Frame, e: Emit): string {
  * understands `@import (reference) "a";`. `importThroughContext` is the only
  * reader of `node.options`; it never reaches output, matching Less 4.x.
  */
-function emitCssImportAtRule(node: StyleImport, frame: Frame, e: Emit): void {
+function emitCssImportAtRule(node: StyleImport, frame: Frame, e: Emit, mediaQuery = ''): void {
   const start = e.chunks.length;
   if (e.depth > 0) {
     put(e, INDENT.repeat(e.depth));
@@ -18183,6 +18202,10 @@ function emitCssImportAtRule(node: StyleImport, frame: Frame, e: Emit): void {
   } else if (node.namespace !== null) {
     put(e, ' as ');
     put(e, node.namespace);
+  }
+  if (mediaQuery.length > 0) {
+    put(e, ' ');
+    put(e, mediaQuery);
   }
   put(e, ';\n');
   if (e.positions) {
@@ -18934,7 +18957,13 @@ function expandAtRuleBlock(
    * The prelude resolves BEFORE any byte is written, so the rewind marks below
    * still bracket exactly this at-rule's output.
    */
-  return mapMaybe(atRulePreludeBytes(node, frame, e), (prelude) => {
+  return mapMaybe(atRulePreludeBytes(node, frame, e), prelude => mapMaybe(mediaImportStayingCss(node, frame, e), (cssImport) => {
+    if (cssImport !== null) {
+      if (e.referenceImportDepth === 0) {
+        emitCssImportAtRule(cssImport, frame, e, prelude);
+      }
+      return;
+    }
     const bodyFrame: Frame = {
       parent: frame,
       mixins: collectMixins(node.rules),
@@ -18944,6 +18973,37 @@ function expandAtRuleBlock(
     return nestedSource === undefined
       ? writeCollapsedAtRuleBlock(node, frame, bodyFrame, e, ctx, prelude)
       : writeNestedAtRuleBlock(node, frame, bodyFrame, e, nestedSource, prelude);
+  }));
+}
+
+/**
+ * The import a `@media` block wraps, when that import stays a CSS terminal. The
+ * Less grammar desugars `@import "x" q;` into `@media q { @import "x"; }` so a
+ * LOADED document renders inside the query (ledger A10). An import nothing loads
+ * — an unclaimed URL — is a real CSS `@import`, which carries its query
+ * verbatim (A10): `@import "x" q;`, since CSS ignores an `@import` inside
+ * `@media`. Null for any other block, or when the import loads. The answer is
+ * the request `expandStyleImport` then consumes, so nothing is asked twice.
+ */
+function mediaImportStayingCss(node: AtRuleBlock, frame: Frame, e: Emit): MaybePromise<StyleImport | null> {
+  const child = node.rules.length === 1 ? node.rules[0]! : null;
+  const importDocument = e.importDocument;
+  if (child?.type !== 'StyleImport' || child.mode !== 'import' || importDocument === undefined
+    || node.name.toLowerCase() !== '@media' || e.context?.options.processImports === false) {
+    return null;
+  }
+  const planned = e.plannedImportDocuments?.get(child);
+  if (planned !== undefined) {
+    return planned.loaded === undefined ? child : null;
+  }
+  const options = importRequestOptions(child.options);
+  if (importHasOption(options, 'inline')) {
+    return null;
+  }
+  const request: ImportDocumentRequest = { node: child, specifier: importSpecifier(child, frame, e), options };
+  return mapMaybe(importDocument(request), (loaded) => {
+    e.plannedImportDocuments?.set(child, { request, loaded });
+    return loaded === undefined ? child : null;
   });
 }
 

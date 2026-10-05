@@ -167,7 +167,11 @@ describe('V19 one-evaluator projection ratchet', () => {
     // reference head a miss in both value evaluators.
     // -4 functions and -1 `new Set`: `settledCandidates`, `descendNamespacePath`,
     // `resolveToMixinCall` and `joinPreludeParts` had no callers left.
-    expect(occurrences(/^function |^async function /gmu)).toBe(478);
+    // +1 function (`mediaImportStayingCss`, ledger A10): an import the media
+    // desugar wrapped that nothing loads is written as one `@import … q;`.
+    // +1 function (`moduleLoadFailed`): a `@use` that cannot load is an
+    // `import/load-failed` at the `@use`, as `@plugin` already is.
+    expect(occurrences(/^function |^async function /gmu)).toBe(480);
     expect(occurrences(/new Map/gu)).toBe(73);
     expect(occurrences(/new Set/gu)).toBe(37);
     expect(occurrences(/new WeakMap/gu)).toBe(4);

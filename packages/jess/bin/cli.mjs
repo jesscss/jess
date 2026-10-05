@@ -20,12 +20,17 @@ function printCompileUsage() {
 Compile .less / .jess files to CSS.
 
 Options:
-  --no-color    Disable ANSI color and terminal hyperlinks in diagnostics.
+  --allow-remote-imports <hosts>  Fetch and inline https @imports from these
+                                  hosts (comma-separated; repeatable). Needs
+                                  @jesscss/plugin-remote-import.
+  --no-color                      Disable ANSI color and terminal hyperlinks in
+                                  diagnostics.
 
 Examples:
   jess input.less
   jess input.less output.css
   jess input.less -o dist
+  jess input.less --allow-remote-imports cdn.example.com
   jess lint src/**/*.less`);
 }
 
@@ -60,6 +65,30 @@ function quietResult(result) {
   };
 }
 
+/**
+ * `--allow-remote-imports` adds the opt-in remote-import plugin with that
+ * allow list, as `compile.plugins` in a styles config would; it replaces one
+ * configured there.
+ */
+async function remoteImportOptions(hosts) {
+  if (hosts === undefined) {
+    return undefined;
+  }
+  let plugin;
+  try {
+    ({ remoteImportPlugin: plugin } = await import('@jesscss/plugin-remote-import'));
+  } catch {
+    console.error('--allow-remote-imports needs @jesscss/plugin-remote-import. Install it next to jess.');
+    process.exit(2);
+  }
+  try {
+    return { compile: { plugins: [plugin({ allow: hosts.flatMap(list => list.split(',')) })] } };
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(2);
+  }
+}
+
 async function runCompile(args) {
   const { values, positionals } = parseCliArgs({
     args,
@@ -67,6 +96,7 @@ async function runCompile(args) {
     allowNegative: true,
     options: {
       out: { type: 'string', short: 'o' },
+      'allow-remote-imports': { type: 'string', multiple: true },
       color: { type: 'boolean' },
       help: { type: 'boolean', short: 'h' }
     }
@@ -84,7 +114,7 @@ async function runCompile(args) {
   const outName = path.basename(outFile);
 
   const { Compiler } = await import('../lib/index.js');
-  const compiler = new Compiler();
+  const compiler = new Compiler(await remoteImportOptions(values['allow-remote-imports']));
   const startTime = Date.now();
 
   try {

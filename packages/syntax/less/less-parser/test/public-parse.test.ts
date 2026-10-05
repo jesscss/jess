@@ -669,6 +669,14 @@ describe('public Less parse()', () => {
     );
   });
 
+  it('spans a Plugin directive, so a failed load is reported at its statement', () => {
+    const source = '.a { color: red; }\n@plugin "./p";\n';
+    const directive = parse(source).rules[1];
+    expect(directive?.type).toBe('Plugin');
+    const span = directive === undefined ? undefined : sourceSpanOf(directive);
+    expect(span === undefined ? undefined : source.slice(span.start, span.end)).toBe('@plugin "./p";');
+  });
+
   it('keeps explicit empty Less declaration values as canonical empty facts', () => {
     const document = parse('.card { margin: ; padding:; }');
 

@@ -449,6 +449,23 @@ describe('the less-compat tree shim', () => {
     expect(warning!.reason).toContain('not supported');
   }, 30000);
 
+  it('refuses a hook reached from a file the plugin requires, at its @plugin statement', async () => {
+    const { dir, entry } = makeProject(
+      'require("./file-manager");',
+      '.a { color: red; }\n@plugin "./p";\n'
+    );
+    fs.writeFileSync(path.join(dir, 'file-manager.js'), 'module.exports = new less.FileManager();', 'utf8');
+
+    const result = await makeCompiler(dir).renderToResult(entry, { suppressWarnings: true, breakOnError: false });
+
+    const refusal = result.errors.find(e => e.code === 'plugin/unsupported-feature');
+    expect(refusal, `expected plugin/unsupported-feature, got ${JSON.stringify(result.errors.map(e => e.code))}`)
+      .toBeDefined();
+    expect(refusal!.message).toBe('Plugin "p.js" uses less.FileManager, which is not supported');
+    expect(refusal!.filePath).toBe(entry);
+    expect(refusal!.line).toBe(2);
+  }, 30000);
+
   it('registers @plugin functions declared in an imported file', async () => {
     const { dir, entry } = makeProject(
       'functions.add(\'answer\', function () { return new tree.Dimension(42, \'px\'); });',

@@ -1,11 +1,9 @@
 /**
  * `sass:math` `round` — tie direction.
  *
- * Ties follow CSS Values 4 `round(nearest, A, B)` (§10.3): an exact half goes to the
- * UPPER multiple, toward `+infinity`. This is the shared `@jesscss/core` rounding
- * kernel, the same rule Less's `round()` uses. dart-sass 1.101 rounds negative halves
- * away from zero instead (`math.round(-2.5)` → `-3`, `round(-2.5, 1)` → `-3`); sass-spec
- * has no negative-half case, so this departs from dart-sass only, deliberately.
+ * An exact half breaks away from zero through the shared `@jesscss/core` rounding
+ * kernel (ledger V8), the rule Less's `round()` uses too. Every expectation is
+ * dart-sass 1.101.7 output for the same call.
  */
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import type { ValueGroup } from '@jesscss/core';
@@ -21,16 +19,20 @@ const numberOf = (value: MaybePromise<ValueGroup>): number => {
 };
 
 describe('sass:math — round ties', () => {
-  it('breaks an exact tie toward +infinity', () => {
+  it('breaks an exact tie away from zero', () => {
     expect(numberOf(round(makeDimension(2.5)))).toBe(3);
-    expect(Math.abs(numberOf(round(makeDimension(-0.5))))).toBe(0);
-    expect(numberOf(round(makeDimension(-1.5)))).toBe(-1);
-    expect(numberOf(round(makeDimension(-2.5)))).toBe(-2);
+    expect(numberOf(round(makeDimension(-0.5)))).toBe(-1);
+    expect(numberOf(round(makeDimension(-1.5)))).toBe(-2);
+    expect(numberOf(round(makeDimension(-2.5)))).toBe(-3);
   });
 
-  it('breaks a step tie toward +infinity, whatever the step sign', () => {
-    expect(numberOf(round(makeDimension(-2.5), makeDimension(1)))).toBe(-2);
-    expect(numberOf(round(makeDimension(-0.75), makeDimension(0.5)))).toBe(-0.5);
+  it('rounds a negative value that lands on zero to zero', () => {
+    expect(Math.abs(numberOf(round(makeDimension(-0.4))))).toBe(0);
+  });
+
+  it('breaks a step tie away from zero, whatever the step sign', () => {
+    expect(numberOf(round(makeDimension(-2.5), makeDimension(1)))).toBe(-3);
+    expect(numberOf(round(makeDimension(-0.75), makeDimension(0.5)))).toBe(-1);
     expect(numberOf(round(makeDimension(2.5), makeDimension(-1)))).toBe(3);
     expect(numberOf(round(makeDimension(-101), makeDimension(-25)))).toBe(-100);
   });

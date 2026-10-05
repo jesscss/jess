@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { outputDiagnostics } from '@jesscss/compiler/diagnostics';
 import { Compiler } from '../src/index.js';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -203,7 +204,7 @@ describe('Config Merging', () => {
 
     expect(context.opts.disableScriptModules).toBe(true);
     expect(context.warnings.some(warning =>
-      warning.code === 'eval/deprecated'
+      warning.code === 'deprecation/disable-plugin-rule-option'
       && warning.reason.includes('disablePluginRule')
       && warning.fix.includes('disableScriptModules')
     )).toBe(true);
@@ -224,10 +225,37 @@ describe('Config Merging', () => {
 
     expect(context.opts.disableScriptModules).toBe(true);
     expect(context.warnings.some(warning =>
-      warning.code === 'eval/deprecated'
+      warning.code === 'deprecation/disable-plugin-rule-option'
       && warning.reason.includes('disablePluginRule')
       && warning.fix.includes('disableScriptModules')
     )).toBe(true);
+  });
+
+  it('reports the disablePluginRule deprecation against the options, not a stylesheet line', async () => {
+    const testFile = path.join(tempDir, 'test.less');
+    fs.writeFileSync(testFile, '.a { color: red; }');
+
+    const result = await new Compiler({ compile: { disablePluginRule: true } })
+      .renderToResult(testFile, { suppressWarnings: true });
+    const deprecations = result.warnings.filter(warning =>
+      warning.code === 'deprecation/disable-plugin-rule-option');
+    expect(deprecations).toHaveLength(1);
+    expect(deprecations[0]!.filePath).toBeUndefined();
+
+    /* So the formatter prints it as a bare one-liner, naming no file or line. */
+    const printed: string[] = [];
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
+      printed.push(String(chunk));
+      return true;
+    });
+    try {
+      outputDiagnostics([], deprecations, { colors: false });
+    } finally {
+      stdout.mockRestore();
+    }
+    expect(printed.join('')).toContain('deprecation/disable-plugin-rule-option');
+    expect(printed.join('')).not.toContain('test.less');
+    expect(printed.join('')).not.toMatch(/:1:1\b/);
   });
 
   /*
@@ -256,6 +284,39 @@ describe('Config Merging', () => {
     expect(result.errors).toEqual([]);
     expect(result.css).toBe(plain.css);
     expect(result.css).not.toContain('line ');
+  });
+
+  /*
+   * Less 4.x `insecure` (`lessc --insecure`) let a remote import skip
+   * certificate checks. Remote imports are https-only and always verify the
+   * certificate, so the option is accepted, warns once, and changes nothing.
+   */
+  it.each([
+    ['language.less', { language: { less: { insecure: true } } }],
+    ['compile', { compile: { insecure: true } }]
+  ])('accepts deprecated %s.insecure with one no-effect warning and unchanged output', async (_where, options) => {
+    const testFile = path.join(tempDir, 'test.less');
+    fs.writeFileSync(testFile, '@import url("https://fonts.googleapis.com/css?family=Open+Sans");\n.a { color: red; }\n');
+
+    const plain = await new Compiler().renderToResult(testFile, { suppressWarnings: true });
+    const result = await new Compiler(options).renderToResult(testFile, { suppressWarnings: true });
+
+    const deprecations = result.warnings.filter(warning => warning.code === 'deprecation/insecure-option');
+    expect(deprecations).toHaveLength(1);
+    expect(deprecations[0]!.reason).toBe('"insecure" is deprecated and has no effect: remote imports are https-only and always verify the server certificate.');
+    expect(deprecations[0]!.filePath).toBeUndefined();
+    expect(result.errors).toEqual([]);
+    expect(result.css).toBe(plain.css);
+  });
+
+  it('does not warn when insecure is unset or false', async () => {
+    const testFile = path.join(tempDir, 'test.less');
+    fs.writeFileSync(testFile, '.a { color: red; }');
+
+    for (const options of [{}, { language: { less: { insecure: false } } }]) {
+      const result = await new Compiler(options).renderToResult(testFile, { suppressWarnings: true });
+      expect(result.warnings.map(warning => warning.code)).not.toContain('deprecation/insecure-option');
+    }
   });
 
   it('does not warn when dumpLineNumbers is unset or off', async () => {

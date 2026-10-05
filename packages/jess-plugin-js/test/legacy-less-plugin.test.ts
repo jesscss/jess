@@ -41,9 +41,20 @@ describe('legacy Less @plugin runtime', () => {
   describe('Less 4 plugin-manager hooks are refused, naming the replacement', () => {
     const cases: Array<[string, string, string]> = [
       ['pluginManager.addVisitor()', 'manager.addVisitor({});', 'visitor API'],
+      ['pluginManager.getVisitors()', 'manager.getVisitors();', 'visitor API'],
+      ['pluginManager.visitor()', 'manager.visitor().first();', 'visitor API'],
+      ['pluginManager.visitors', 'manager.visitors.push({});', 'visitor API'],
+      ['pluginManager.iterator', 'void manager.iterator;', 'visitor API'],
       ['pluginManager.addPreProcessor()', 'manager.addPreProcessor({});', 'before it reaches the compiler'],
+      ['pluginManager.getPreProcessors()', 'manager.getPreProcessors();', 'before it reaches the compiler'],
+      ['pluginManager.preProcessors', 'manager.preProcessors.push({});', 'before it reaches the compiler'],
       ['pluginManager.addPostProcessor()', 'manager.addPostProcessor({});', 'output.compress'],
+      ['pluginManager.getPostProcessors()', 'manager.getPostProcessors();', 'output.compress'],
+      ['pluginManager.postProcessors', 'manager.postProcessors.push({});', 'output.compress'],
       ['pluginManager.addFileManager()', 'manager.addFileManager({});', '@jesscss/plugin-node-modules'],
+      ['pluginManager.getFileManagers()', 'manager.getFileManagers();', '@jesscss/plugin-node-modules'],
+      ['pluginManager.fileManagers', 'manager.fileManagers.push({});', '@jesscss/plugin-node-modules'],
+      ['pluginManager.Loader', 'manager.Loader.loadPlugin("x");', 'pluginManager.addPlugin()'],
       ['less.visitors', 'new less.visitors.Visitor(this);', 'visitor API'],
       ['less.FileManager', 'new less.FileManager();', '@jesscss/plugin-node-modules'],
       ['less.environment', 'less.environment.addFileManager({});', '@jesscss/plugin-node-modules']
@@ -94,6 +105,123 @@ describe('legacy Less @plugin runtime', () => {
       const refused = await refusal(Promise.resolve(loaded.functions.late()));
       expect(refused.code).toBe('plugin/unsupported-feature');
       expect(refused.message).toContain('less.visitors');
+    }, 30000);
+
+    it('refuses the hook API on the call-time this.context.pluginManager', async () => {
+      const { runtime, entry } = project([
+        ['root/plugin.js', 'functions.add("late", function() { return this.context.pluginManager.getVisitors(); });']
+      ]);
+      const loaded = await runtime.importLessPlugin(entry);
+      const refused = await refusal(Promise.resolve(loaded.functions.late()));
+      expect(refused.message).toBe('Plugin "plugin.js" uses pluginManager.getVisitors(), which is not supported');
+    }, 30000);
+
+    it.each([
+      ['less', 'new less.visitors.Visitor({})'],
+      ['globalThis.less', 'new globalThis.less.visitors.Visitor({})'],
+      ['Less', 'new Less.visitors.Visitor({})']
+    ])('refuses the hook API reached from a required file through %s', async (_view, use) => {
+      const { runtime, entry } = project([
+        ['root/plugin.js', 'require("./visitor");'],
+        ['root/visitor.js', `module.exports = ${use};`]
+      ]);
+      const refused = await refusal(runtime.importLessPlugin(entry));
+      expect(refused.message).toBe('Plugin "plugin.js" uses less.visitors, which is not supported');
+    }, 30000);
+
+    it.each([
+      ['less.visitors', 'new Less.visitors.Visitor({});'],
+      ['less.FileManager', 'new globalThis.less.FileManager();'],
+      ['less.environment', 'globalThis.Less.environment.addFileManager({});']
+    ])('refuses %s on the worker-global facade too', async (feature, use) => {
+      const { runtime, entry } = project([['root/plugin.js', use]]);
+      const refused = await refusal(runtime.importLessPlugin(entry));
+      expect(refused.message).toBe(`Plugin "plugin.js" uses ${feature}, which is not supported`);
+    }, 30000);
+  });
+
+  describe('the rest of the Less 4 plugin manager works', () => {
+    it('installs function plugins through pluginManager.addPlugin() and addPlugins()', async () => {
+      const { runtime, entry } = project([
+        ['root/plugin.js', [
+          'const one = { install(l, m, registry) { registry.add("one", () => new tree.Dimension(1)); } };',
+          'registerPlugin({',
+          '  install(less, manager) {',
+          '    manager.addPlugin(one, "one.js");',
+          '    manager.addPlugins([{ install(l, m, registry) { registry.add("two", () => new tree.Dimension(2)); } }]);',
+          '    manager.addPlugins(undefined);',
+          '    const facts = [',
+          '      manager.get("one.js") === one, manager.get("none.js"), manager.installedPlugins.length,',
+          '      manager.get(fileInfo.filename) === manager.installedPlugins[0], manager.less === less',
+          '    ];',
+          '    functions.add("facts", () => facts.join(","));',
+          '  }',
+          '});'
+        ].join('\n')]
+      ]);
+      const loaded = await runtime.importLessPlugin(entry);
+      expect(Object.keys(loaded.functions).sort()).toEqual(['facts', 'one', 'two']);
+      await expect(loaded.functions.one()).resolves.toMatchObject({ number: 1 });
+      await expect(loaded.functions.two()).resolves.toMatchObject({ number: 2 });
+
+      /* The registered plugin itself is installed first, cached by its file, as 4.x's loader does. */
+      await expect(loaded.functions.facts()).resolves.toBe('true,,3,true,true');
+    }, 30000);
+
+    it('hands the call-time this.context.pluginManager the install-time plugins', async () => {
+      const { runtime, entry } = project([
+        ['root/plugin.js', [
+          'registerPlugin({',
+          '  install(less, manager) {',
+          '    manager.addPlugin({ name: "child" }, "child.js");',
+          '    functions.add("child", function() { return this.context.pluginManager.get("child.js").name; });',
+          '  }',
+          '});'
+        ].join('\n')]
+      ]);
+      const loaded = await runtime.importLessPlugin(entry);
+      await expect(loaded.functions.child()).resolves.toBe('child');
+    }, 30000);
+
+    it('installs from any array-like passed to addPlugins(), as 4.x does', async () => {
+      const { runtime, entry } = project([
+        ['root/plugin.js', [
+          'registerPlugin({',
+          '  install(less, manager) {',
+          '    manager.addPlugins({ length: 1, 0: { install(l, m, registry) { registry.add("three", () => new tree.Dimension(3)); } } });',
+          '  }',
+          '});'
+        ].join('\n')]
+      ]);
+      const loaded = await runtime.importLessPlugin(entry);
+      await expect(loaded.functions.three()).resolves.toMatchObject({ number: 3 });
+    }, 30000);
+
+    it('lets a plugin spread its manager and less without tripping the refused fields', async () => {
+      const { runtime, entry } = project([
+        ['root/plugin.js', [
+          'registerPlugin({',
+          '  install(less, manager) {',
+          '    const keys = Object.keys({ ...manager, ...less }).filter(key => key === "visitors" || key === "FileManager");',
+          '    functions.add("keys", () => keys.join(","));',
+          '  }',
+          '});'
+        ].join('\n')]
+      ]);
+      const loaded = await runtime.importLessPlugin(entry);
+      await expect(loaded.functions.keys()).resolves.toBe('');
+    }, 30000);
+
+    it('refuses installing a plugin from inside a function body, whose functions the host would never learn', async () => {
+      const { runtime, entry } = project([
+        ['root/plugin.js', [
+          'functions.add("late", function() {',
+          '  this.context.pluginManager.addPlugin({ install(l, m, registry) { registry.add("never", () => 1); } });',
+          '});'
+        ].join('\n')]
+      ]);
+      const loaded = await runtime.importLessPlugin(entry);
+      await expect(Promise.resolve(loaded.functions.late())).rejects.toThrow('not from inside a function body');
     }, 30000);
   });
 
@@ -164,6 +292,15 @@ describe('legacy Less @plugin runtime', () => {
       await expect(runtime.importLessPlugin(entry)).rejects.toThrow(
         'Less @plugin require("fs") is not supported: only relative requires ("./file", "../file") of CommonJS files inside the script root are.'
       );
+    }, 30000);
+
+    it('hands required files the plugin\'s own less, whose registry the plugin owns', async () => {
+      const { runtime, entry } = project([
+        ['root/plugin.js', 'require("./lib");'],
+        ['root/lib.js', 'less.functions.functionRegistry.add("fromlib", () => new less.tree.Dimension(7, "px"));']
+      ]);
+      const loaded = await runtime.importLessPlugin(entry);
+      await expect(loaded.functions.fromlib()).resolves.toMatchObject({ number: 7, unit: 'px' });
     }, 30000);
 
     it('does not hand required files the plugin globals or Node process', async () => {
