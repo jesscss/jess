@@ -99,7 +99,7 @@ named ledger row; **BUG** = call-verified divergence with no ruling behind it;
 | `pow` | `(x, y)` | OK / §7-A | `less/pow.ts:6` — `pow(2,3)`→`8`; `pow(-1,0.5)`→`NaN` (bug) |
 | `mod` | `(a, b)` | OK / §7-A | `less/mod.ts:6` — `mod(3,2)`→`1`; `mod(1,0)`→`NaN` (bug) |
 | `percentage` | `(n)` | OK | `less/percentage.ts:6` — `percentage(0.5)`→`50%` |
-| `round` | `(n, f=0)` | **INTENDED DIVERGENCE (V8)** | `less/round.ts` → `packages/core/src/ast/round.ts` breaks ties toward +∞ (CSS Values 4 `round(nearest)`); 4.x uses `toFixed` (half away from zero). `round(-1.5)`→jess `-1`, 4.x `-2`. `round(-2.5)`→`-2` vs `-3`. `round(-1.55, 1)`→`-1.5` vs `-1.6`. Positive halves agree. Owner 2026-10-04 (V8). See §6-B. |
+| `round` | `(n, f=0)` | OK (V8) | `less/round.ts` → `packages/core/src/ast/round.ts` breaks ties away from zero, as 4.x's `toFixed` does: `round(-0.5)`→`-1`, `round(-1.5)`→`-2`, `round(-2.5)`→`-3`, `round(-1.55, 1)`→`-1.6`, `round(1.55, 1)`→`1.6`, identical to lessc 4.9.1. Owner 2026-10-05 (V8). One unruled difference: `round(1.005, 2)`→jess `1.01`, 4.x `1`. See §6-B. |
 | `min` | `(...)` | OK | `less/min.ts:5` — `min(5,1,3,2)`→`1`; incomparable units preserved verbatim, matching 4.x |
 | `max` | `(...)` | OK | `less/max.ts:5` — `max(5,1,3,2)`→`5` |
 | `convert` | `(val, unit)` | OK | `less/convert.ts:10` — `convert(9s,"ms")`→`9000ms`; incompatible unit returns input, matching 4.x |
@@ -288,10 +288,9 @@ DELIBERATELY-DIFFERENT with no work needed**; it is recorded here so nobody
 ## 7. Behavioural divergences with no ruling behind them
 
 > **ALL FOUR RULED AND LANDED 2026-07-30** (`docs/architecture/core/DESIGN-DECISIONS.md`):
-> §7-A → **V7** (SETTLED), §7-B → **V8** (SETTLED by the owner 2026-10-04: CSS Values 4
-> tie-to-upper, overruling the away-from-zero reading landed 2026-07-30; see §6-B),
-> §7-C → **V10** (SETTLED). The §4 rejections were also ruled: **V9**
-> (SETTLED by the owner 2026-10-04: Less built-ins reject excess arguments, CSS
+> §7-A → **V7** (SETTLED), §7-B → **V8** (SETTLED by the owner 2026-10-05: ties round
+> away from zero, as in 4.x; see §6-B), §7-C → **V10** (SETTLED). The §4 rejections
+> were also ruled: **V9** (SETTLED by the owner 2026-10-04: Less built-ins reject excess arguments, CSS
 > functions are never validated) — five of the six are CORRECT rejections and were kept; `tint`/`shade`
 > were a real gap and were fixed. §7-D is untouched and remains open.
 
@@ -328,31 +327,27 @@ untouched (V1). Side effect: a non-finite `Dimension` is now unconstructible, wh
 deleted `extract`'s non-finite-index branch and the three `packages/fns` tests that
 pinned the old spelling.
 
-### 6-B. `round()` rounds negative halves the other way
+### 6-B. `round()` tie direction
 
-`packages/core/src/ast/round.ts` breaks ties toward `+∞`. 4.x uses
-`Number.prototype.toFixed`, which is half-away-from-zero. Diverges only on exact
-negative halves: `round(-1.5)` → `-1` vs `-2`; `round(-2.5)` → `-2` vs `-3`;
-`round(-1.55, 1)` → `-1.5` vs `-1.6`. Positive values agree everywhere tested.
+4.x `round()` uses `Number.prototype.toFixed`, which breaks an exact half away from
+zero. Not a precision-policy question — V4 governs *how many digits* a computed number
+gets, not *which way a tie breaks*. The tie rule lives in the rounding kernel,
+`packages/core/src/ast/round.ts`, which frames itself as "the ROUNDING KERNEL, not the
+output policy".
 
-Not a precision-policy question — V4 governs *how many digits* a computed number gets,
-not *which way a tie breaks*. The tie rule lives in the rounding kernel, which the
-`round.ts` header already frames as "the ROUNDING KERNEL, not the output policy".
-(The first triage pass claimed CSS has no opinion here. It does: CSS Values 4
-`round(nearest)`, §10.3, which is what decided it below.)
+**RESOLVED — ledger V8, owner ruling 2026-10-05:** "The Less function should behave
+the same as it has." Ties round away from zero: `round(-0.5)` → `-1`, `round(-1.5)` →
+`-2`, `round(-2.5)` → `-3`, `round(-1.55, 1)` → `-1.6`, `round(1.55, 1)` → `1.6`,
+`round(2.5)` → `3`, each identical to lessc 4.9.1. A negative value that rounds to zero
+emits `0` (`round(-0.4)`), as 4.x does. dart-sass `math.round` / `round($n, $step)`
+break ties the same way and read the same kernel. This reverts the 2026-10-04
+toward-+∞ change (CSS Values 4 `round(nearest)`).
 
-**RESOLVED — ledger V8, owner ruling 2026-10-04.** CSS Values 4 `round(nearest)`
-(§10.3): an exact tie goes to the UPPER value, toward +∞. `round(-1.5)` → `-1`,
-`round(-2.5)` → `-2`, `round(-1.55, 1)` → `-1.5`, `round(-0.5)` → `0`; positive values
-unchanged. This overrules the half-away-from-zero rule implemented 2026-07-30, so
-negative exact halves are an intended divergence from 4.x `round()`. The lodash
-exponential-shift algorithm is kept — only the tie call site changed — so the kernel
-still beats `toFixed` on decimally-representable inputs (`round(1.005, 2)` → `1.01`).
-Sass `math.round` / `round($n, $step)` route through the same kernel (dart-sass's
-away-from-zero tie is not copied); a negative step rounds by its magnitude so "upper"
-stays toward +∞. V4 is untouched: digits and tie direction are independent. Colour
-quantization reads the same kernel; its channels are clamped to `[0, 255]` after
-rounding and alpha is non-negative, so V5 is unaffected.
+One difference remains and has no ruling: the kernel's lodash exponential shift rounds
+a *decimally* exact tie that the binary double sits just below, so `round(1.005, 2)` →
+`1.01` where 4.x's `toFixed` gives `1`. V4 is untouched: digits and tie direction are
+independent. Colour quantization reads the same kernel; its channels are clamped to
+`[0, 255]` after rounding and alpha is non-negative, so V5 is unaffected.
 
 ### 6-C. An alpha-adjusted colour that ends up opaque emits `rgb(...)`, not hex
 

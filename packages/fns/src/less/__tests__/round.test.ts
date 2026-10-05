@@ -8,13 +8,14 @@ describe('Less round()', () => {
     expect(result).toMatchObject({ type: 'Dimension', number: 2.35, unit: 'px' });
   });
 
-  it('breaks an exact tie toward +infinity, at any precision', () => {
+  it('breaks an exact tie away from zero, at any precision, as Less 4.x does', () => {
     const px = (n: number) => makeDimension(n, 'px');
     expect(lessRound(px(2.5))).toMatchObject({ number: 3, unit: 'px' });
-    expect(lessRound(px(-1.5))).toMatchObject({ number: -1, unit: 'px' });
-    expect(lessRound(px(-2.5))).toMatchObject({ number: -2, unit: 'px' });
+    expect(lessRound(px(-0.5))).toMatchObject({ number: -1, unit: 'px' });
+    expect(lessRound(px(-1.5))).toMatchObject({ number: -2, unit: 'px' });
+    expect(lessRound(px(-2.5))).toMatchObject({ number: -3, unit: 'px' });
     expect(lessRound(px(1.55), makeDimension(1))).toMatchObject({ number: 1.6, unit: 'px' });
-    expect(lessRound(px(-1.55), makeDimension(1))).toMatchObject({ number: -1.5, unit: 'px' });
+    expect(lessRound(px(-1.55), makeDimension(1))).toMatchObject({ number: -1.6, unit: 'px' });
   });
 
   it('keeps precision optional while rejecting raw JavaScript numbers', () => {
