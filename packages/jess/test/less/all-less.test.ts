@@ -448,6 +448,10 @@ const expectedFailureFixtures = new Map<string, string>([
   [
     'tests-unit/media/media.less',
     'top-level bare @var at-rule preludes are rejected (@media @smartphone / @media @all and @tv)'
+  ],
+  [
+    'tests-config/3rd-party/bootstrap4.less',
+    'golden was re-cut from jess output while jess#349 dropped cross-import extenders: it lacks the `.input-group-sm/lg > ...` extenders on `.form-control-plaintext.form-control-sm/lg` and `select.form-control-sm/lg:not([size]):not([multiple])` that less 4.x and jess now emit; owner golden patch pending'
   ]
 
   /*
