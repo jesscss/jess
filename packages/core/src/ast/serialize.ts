@@ -6326,15 +6326,20 @@ function evalModuleReferenceCall(
 }
 
 /**
- * A value reference that resolved to nothing. An unbound head (`@nope.x`, a
- * namespace read before its `@compose`) is a failed resolution, so an eval error
- * unless the read is optional; any other unresolvable chain keeps its authored text.
+ * A value reference that resolved to nothing is a failed resolution: an eval
+ * error unless the read is optional, which gets its authored text as the
+ * sentinel. The error names an unbound head (`@nope.x`) by itself, and any
+ * other unresolvable chain (`@list[5]`, a member of a memberless value) whole.
  */
 function unresolvedReference(node: Reference, frame: Frame | null, e: EvalCtx): EvalValue {
-  const base = node.base;
-  if (!e.optional && !isValueSlotArray(base) && base.type === 'Lookup' && base.kind === 'var'
-    && typeof base.name === 'string' && resolveVarRef(frame, base.name, base.scope, e) === undefined) {
-    unresolvedSymbol(node, `@${base.name}`, e);
+  if (!e.optional) {
+    const base = node.base;
+    let symbol = node.raw;
+    if (!isValueSlotArray(base) && base.type === 'Lookup' && base.kind === 'var'
+      && typeof base.name === 'string' && resolveVarRef(frame, base.name, base.scope, e) === undefined) {
+      symbol = `@${base.name}`;
+    }
+    unresolvedSymbol(node, symbol, e);
   }
   return literal(node.raw);
 }

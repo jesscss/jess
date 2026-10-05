@@ -120,6 +120,21 @@ describe('Less reference semantic contracts through the public AST route', () =>
     })).rejects.toMatchObject({ code: 'resolve/name-not-found' });
   });
 
+  /*
+   * A reference chain that resolves to nothing is a failed resolution: an eval
+   * error at the reference, never its authored text in the CSS.
+   */
+  it.each([
+    ['an index past the end of a list', '@list: 1 2; .entry { value: @list[5]; }', '@list[5]'],
+    ['a member of a value that has no members', '@map: { a: 1; } .entry { value: @map[a][b]; }', '@map[a][b]']
+  ])('reports %s as an unresolved reference', async (_label, source, symbol) => {
+    const compiler = new Compiler({ output: { collapseNesting: true } });
+    await expect(compiler.renderString(source, {
+      filePath: 'entry.less',
+      extension: '.less'
+    })).rejects.toMatchObject({ code: 'resolve/name-not-found', reason: `Symbol "${symbol}" is undefined in this scope.`, line: 1 });
+  });
+
   it.each([
     ['recursive variable', '@bodyColor: darken(@bodyColor, 30%); .entry { color: @bodyColor; }', '@bodyColor'],
     ['recursive property', '.entry { color: darken($color, 10%); }', '$color']
