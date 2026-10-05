@@ -20,6 +20,7 @@ export type JsBridgeValue =
   | { __jessBridge: true; kind: 'dimension'; value: number; unit?: string }
   | { __jessBridge: true; kind: 'color'; rgb: [number, number, number]; alpha?: number; bytes?: string }
   | { __jessBridge: true; kind: 'quoted'; value: string; quote?: '"' | '\''; escaped?: boolean }
+  | { __jessBridge: true; kind: 'keyword'; value: string }
   | { __jessBridge: true; kind: 'anonymous'; value: string; raw?: true }
   | { __jessBridge: true; kind: 'list'; items: JsBridgeValue[]; separator: ',' | '/' | ';' }
   | { __jessBridge: true; kind: 'expression'; items: JsBridgeValue[] }
@@ -85,7 +86,7 @@ function encodeFacadeValue(value: BridgeRecord): JsBridgeValue | undefined {
     case 'Anonymous':
     case 'Keyword':
       return typeof value.value === 'string'
-        ? { __jessBridge: true, kind: 'anonymous', value: value.value }
+        ? { __jessBridge: true, kind: value.type === 'Keyword' ? 'keyword' : 'anonymous', value: value.value }
         : undefined;
     case 'Expression':
       return Array.isArray(value.value)
@@ -132,6 +133,7 @@ export function encodeBridgeValue(value: unknown): unknown {
       case 'Dimension': return { __jessBridge: true, kind: 'dimension', value: node.number, unit: node.unit } satisfies JsBridgeValue;
       case 'Color': return { __jessBridge: true, kind: 'color', rgb: [node.rgb[0], node.rgb[1], node.rgb[2]], alpha: node.alpha, bytes: node.bytes } satisfies JsBridgeValue;
       case 'Quoted': return { __jessBridge: true, kind: 'quoted', value: node.value, quote: node.quote === '\'' ? '\'' : '"', escaped: node.escaped } satisfies JsBridgeValue;
+      case 'Keyword': return { __jessBridge: true, kind: 'keyword', value: node.bytes } satisfies JsBridgeValue;
       case 'List':
         return node.sep === ',' || node.sep === '/'
           ? { __jessBridge: true, kind: 'list', items: node.value.map(encodeBridgeChildValue), separator: node.sep } satisfies JsBridgeValue
@@ -175,6 +177,7 @@ function decodeValue(value: JsBridgeValue): ValueGroup {
      * colour instead of an opaque keyword — the same materialization the engine
      * performs on any other computed byte string.
      */
+    case 'keyword':
     case 'anonymous': return sniffLiteral(value.value);
     case 'expression': return value.items.map(decodeValue);
     case 'list': return makeList(value.items.map(decodeValue), value.separator === ';' ? ',' : value.separator);

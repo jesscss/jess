@@ -50,6 +50,7 @@ export interface NativeLessApi {
     Dimension: new (value: number, unit?: string) => NativeLessDimension;
     Quoted: new (quote: string, value: string, escaped?: boolean) => NativeLessQuoted;
     Color: new (rgb: string | readonly [number, number, number], alpha?: number) => NativeLessColor;
+    Keyword: new (value: string) => NativeLessKeyword;
     Anonymous: new (value: unknown) => NativeLessAnonymous;
   };
 }
@@ -73,6 +74,12 @@ export interface NativeLessColor {
   readonly type: 'Color';
   readonly rgb: string | readonly [number, number, number];
   readonly alpha: number;
+  readonly value: string;
+  valueOf(): string;
+}
+
+export interface NativeLessKeyword {
+  readonly type: 'Keyword';
   readonly value: string;
   valueOf(): string;
 }
@@ -143,6 +150,16 @@ class LessColor implements NativeLessColor {
       ? (rgb.startsWith('#') ? rgb : `#${rgb}`)
       : `rgb(${rgb.join(', ')})`;
   }
+
+  valueOf(): string {
+    return this.value;
+  }
+}
+
+class LessKeyword implements NativeLessKeyword {
+  readonly type = 'Keyword';
+
+  constructor(readonly value: string) {}
 
   valueOf(): string {
     return this.value;
@@ -264,6 +281,7 @@ export function toNativeLessValue(value: PluginRawArgument | ValueGroup): unknow
   switch (node.type) {
     case 'Dimension': return new LessDimension(node.number, node.unit);
     case 'Quoted': return new LessQuoted(node.quote, node.value, node.escaped);
+    case 'Keyword': return new LessKeyword(node.bytes);
     case 'Color': return { type: 'Color', rgb: node.rgb, alpha: node.alpha, value: node.bytes, bytes: node.bytes, valueOf: () => node.bytes };
     case 'List':
       return node.sep === ',' || node.sep === '/'
@@ -398,6 +416,7 @@ export class LessApiBridge {
         Dimension: LessDimension,
         Quoted: LessQuoted,
         Color: LessColor,
+        Keyword: LessKeyword,
         Anonymous: LessAnonymous
       }
     };

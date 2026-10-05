@@ -631,6 +631,8 @@ const decodeBridgeValue = (value) => {
       return new Color(value.rgb, value.alpha ?? 1, value.bytes);
     case 'quoted':
       return new Quoted(value.quote ?? '"', value.value, value.escaped === true);
+    case 'keyword':
+      return new Keyword(value.value);
     case 'anonymous':
       return new Anonymous(value.value);
     case 'list':

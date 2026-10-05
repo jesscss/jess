@@ -118,4 +118,11 @@ describe('AST-v2 native function boundary', () => {
     expect(await upper(makeKeyword('red'))).toBe('RED');
     expect(await upper(sniffLiteral('#fff'))).toBe('#FFF');
   });
+
+  it('hands a plugin a plain identifier as a tree.Keyword', () => {
+    const { tree } = new LessApiBridge().less;
+    const bold = toNativeLessValue(makeKeyword('bold'));
+    expect(bold).toBeInstanceOf(tree.Keyword);
+    expect(bold).toMatchObject({ type: 'Keyword', value: 'bold' });
+  });
 });

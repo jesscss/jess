@@ -52,4 +52,18 @@ describe('legacy @plugin colour round-trip preserves authored short form', () =>
       '.round-trip {\n  a: 223.74999999999997 167.81249999999997 0 / 1;\n}'
     ].join('\n'));
   });
+
+  /*
+   * A plain identifier reaches a plugin as a `tree.Keyword`, as in less.js, so
+   * `node.type` and `instanceof tree.Keyword` checks see the same node type.
+   * Oracle: lessc 4.9.1 on `types.less`.
+   */
+  it('hands a plugin each argument as its Less node type', async () => {
+    const c = new Compiler({
+      output: { collapseNesting: true },
+      compile: { jsReadRoot: fixtures, plugins: [lessPlugin(), jsPlugin({ jsReadRoot: fixtures, runtimeApi: 'less' }), lessCompatPlugin()] }
+    });
+    const css = (await c.render(path.join(fixtures, 'types.less'), { suppressWarnings: true, breakOnError: false })).trim();
+    expect(css).toBe('.types {\n  a: Keyword+ Color Dimension Quoted Expression;\n}');
+  });
 });
