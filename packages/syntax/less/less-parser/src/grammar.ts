@@ -1426,17 +1426,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           // list has a `@media` desugaring. A pure media-query-list never spells
           // the `supports`/`layer` keyword, so a text tail carrying either is a
           // supports/layer condition (or a malformed mix) and is rejected. A
-          // media-query list (typed through `MediaQueryPrelude`
-          // Block) or `@{…}` interpolation is a media query and carries neither.
+          // typed media-query list (`MediaQueryPrelude` Block) carries neither;
+          // an interpolated tail is checked on its literal parts.
           // `@-import` rejected every tail above, so this is always a bare
           // `@import`; the `!isLegacyImport` guard is defensive against a future
           // keyword (a compile-time `@-compose` admits no media wrap).
           const isLegacyImport = lowered === '@import';
-          // ponytail: substring test over the opaque text tail, NOT a regex —
-          // grammars forbid regex literals outside `regex()`. Upgrade path: a
-          // typed `ImportTail` split (media-query vs supports/layer), the same
-          // gap the tail comment above records; then this branches on `.type`.
-          // Structured (Block / `@{…}`) tails are `isValueNode` and bypass this.
+          // ponytail: substring test over the text tail and an interpolated
+          // tail's literal parts, NOT a regex — grammars forbid regex literals
+          // outside `regex()` — so it also fires inside a word (`player`).
+          // Upgrade path: a typed `ImportTail` split (media-query vs
+          // supports/layer), the same gap the tail comment above records; then
+          // this branches on `.type`. A typed Block tail bypasses it.
           const tailText = isAny(tail)
             ? tail.src.toLowerCase()
             : isInterp(tail) ? tail.parts.map(part => 'lit' in part ? part.lit : '').join('').toLowerCase() : '';
@@ -2057,6 +2058,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // custom-property value. `FunctionStatement` keeps the plain
   // `identOrFunction`: widening it would scan every `--x: …` custom-property
   // declaration through its dispatch and turn `--f(…);` into a statement call.
+  //
+  // BLOCKED restatements (checklist item 1, outcome 4): `valueIdentOrFunction`
+  // is css's `identOrFunction`, a local terminal there rather than a rule this
+  // grammar can reference, and `RoutedCustomPropertyValue` is css's rule of
+  // that name, which routes through `routed()` — the case parseman does not
+  // see through a composed rule (jess#298, as for the if-test shells below).
+  // Both go when css exposes its opener and jess#298 lands.
   const valueIdentOrFunction = token(noTrivia(sequence(
     g.IdentToken,
     optional(literal('('))
