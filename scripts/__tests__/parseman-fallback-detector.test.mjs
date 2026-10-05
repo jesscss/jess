@@ -20,6 +20,7 @@ import {
   RUNTIME_DRIVERS,
   TABLE_DRIVER_SPECIFIER,
   artifactFallbacks,
+  recognitionReads,
   scanBuildLog
 } from '../parseman-fallback-detector.mjs';
 
@@ -153,4 +154,35 @@ test('the production table driver is accepted without allowing table macro vocab
     assert.equal(findings.length, 1);
     assert.equal(findings[0].kind, 'combinator');
   }
+});
+
+test('a fused grammar may read parser-shared only for its compose metadata', () => {
+  /*
+   * The healthy shape is the trailer every built dialect grammar really ships
+   * (`<less|scss|jess>-parser/lib/grammar/ast.js`): the recognition rules are
+   * in the table, and the import survives only to republish their pieces.
+   */
+  const imports = 'import { lessSyntax } from "@jesscss/parser-shared/recognition";\n'
+    + 'import * as pseudo from "@jesscss/parser-shared/pseudo-consts";\n';
+  const fused = `${imports}export const pieces = [...lessSyntax[Symbol.for("parseman.composedPieces")] ?? [], `
+    + '...pseudo[Symbol.for("parseman.composedPieces")] ?? []];';
+  assert.deepEqual(recognitionReads(fused), []);
+
+  for (const read of [
+    'lessSyntax.Ident',
+    'lessSyntax["Ident"]',
+    'pseudo.cssPseudoSyntax',
+    'lessSyntax[Symbol.for("parseman.other")]',
+    'lessSyntax'
+  ]) {
+    const findings = recognitionReads(`${imports}export const leak = ${read};`);
+    assert.equal(findings.length, 1, read);
+    assert.equal(findings[0].kind, 'recognition');
+  }
+
+  /* Only parser-shared is constrained; the css compose base is a real import. */
+  assert.deepEqual(
+    recognitionReads('import { cssBaseRules } from "@jesscss/css-parser/grammar/base";\nexport const g = cssBaseRules.Rule;'),
+    []
+  );
 });

@@ -16,12 +16,16 @@
  *       is first materialized by a real parse.
  *
  * This gate closes both, for every dialect that composes on cssBaseRules. It
- * runs against already-built `lib/` (CI builds every package before the check
- * step), so it must never trigger its own build.
+ * also asserts the recognition leaves were fused (jesscss/jess#176): the table
+ * reads `@jesscss/parser-shared` only for its compose metadata, never as
+ * grammar (`recognitionReads` in parseman-fallback-detector.mjs says why the
+ * import itself stays). It runs against already-built `lib/` (CI builds every
+ * package before the check step), so it must never trigger its own build.
  *
  * Run:  node scripts/probe/compose-fused-check.mjs
  */
 import { readFileSync, existsSync } from 'node:fs';
+import { recognitionReads } from '../parseman-fallback-detector.mjs';
 import { dirname, resolve, join } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 
@@ -91,6 +95,14 @@ for (const { name, lib, cstFn } of DIALECTS) {
       console.log(`  ✓ ${variant}: fused (${tableRules} tableRules(, 0 compose()`);
     }
 
+    // (a) also covers the recognition leaves: parser-shared is read only for its compose metadata.
+    const recognition = recognitionReads(code);
+    if (recognition.length > 0) {
+      fail(`${variant}: recognition NOT fused — ${recognition.map(({ line, detail }) => `line ${line}: ${detail}`).join('; ')}`);
+    } else {
+      console.log(`  ✓ ${variant}: recognition fused (parser-shared read only as compose metadata)`);
+    }
+
     /*
      * (b) loads: importing the public entry + parsing a sample materializes the
      * table, catching a materializeDirectBuilders/rebind throw at gate time.
@@ -119,4 +131,4 @@ if (failed) {
   console.error('\n✗ Compose build-then-load gate FAILED — a variant did not fuse or would not load.');
   process.exit(1);
 }
-console.log('\n✓ Compose build-then-load gate PASSED — all Less + SCSS + Jess variants fuse to tableRules( and load + parse.');
+console.log('\n✓ Compose build-then-load gate PASSED — all Less + SCSS + Jess variants fuse to tableRules(, recognition included, and load + parse.');

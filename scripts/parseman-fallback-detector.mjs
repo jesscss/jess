@@ -13,7 +13,9 @@
  * GRAMMAR-SIZE-FACTS §2.7, an `_rp[N].parse(` count and a compose-warning regex
  * in check-macro-buildable.mjs, and a `DEGRADE_PATTERNS` list in
  * verify-compose-integrity.mjs — and two of the four were checking nothing (§4d).
- * It lives here now, once, and both gates import it.
+ * It lives here now, once, and both gates import it. Its sibling — "a fused
+ * table reads `@jesscss/parser-shared` only for compose metadata"
+ * (`recognitionReads`) — lives here too, for compose-fused-check.mjs.
  *
  * THE TWO SIGNALS, and why there are two.
  *
@@ -133,15 +135,14 @@ export const RUNTIME_DRIVERS = new Set([
 export const TABLE_DRIVER_SPECIFIER = 'parseman/table';
 const TABLE_RUNTIME_DRIVERS = new Set(['tableRules']);
 
-const espree = (() => {
-  /*
-   * espree comes from the workspace's eslint install rather than a direct
-   * dependency: it is already present and already the version eslint parses
-   * this repo with. Same sourcing as check-macro-buildable.mjs.
-   */
-  const eslintEntry = require.resolve('eslint');
-  return require(require.resolve('espree', { paths: [eslintEntry] }));
-})();
+/*
+ * espree and eslint-scope come from the workspace's eslint install rather than
+ * direct dependencies: they are already present and already the versions eslint
+ * parses this repo with. Same sourcing as check-macro-buildable.mjs.
+ */
+const eslintEntry = require.resolve('eslint');
+const espree = require(require.resolve('espree', { paths: [eslintEntry] }));
+const eslintScope = require(require.resolve('eslint-scope', { paths: [eslintEntry] }));
 
 function isParsemanSpecifier(specifier) {
   return specifier === 'parseman' || specifier.startsWith('parseman/');
@@ -198,6 +199,91 @@ export function artifactFallbacks(code) {
         line,
         detail: `imports '${name}' from '${specifier}' — a macro combinator, not a runtime driver: `
           + 'this declaration was left as source for the interpreter'
+      });
+    }
+  }
+  return findings;
+}
+
+/**
+ * The package whose recognition leaves the macro FUSES into a dialect's table.
+ *
+ * A fused grammar still imports it, deliberately: the tsdown configs keep it
+ * external so a downstream `compose()` can follow the grammar's
+ * `parseman.composedPieces` spread across the package boundary. That spread is
+ * the ONLY thing a fused table may read from it. Any other read (`cssSyntax.Ident`
+ * as a rule, a call into it) means a recognition leaf was not fused and the
+ * table reaches into parser-shared's grammar at parse time.
+ */
+const RECOGNITION_PACKAGE = '@jesscss/parser-shared';
+const COMPOSED_PIECES = 'parseman.composedPieces';
+
+/** `Symbol.for('parseman.composedPieces')`, exactly. */
+function isComposedPiecesKey(node) {
+  return node.type === 'CallExpression'
+    && node.callee.type === 'MemberExpression'
+    && !node.callee.computed
+    && node.callee.object.type === 'Identifier'
+    && node.callee.object.name === 'Symbol'
+    && node.callee.property.name === 'for'
+    && node.arguments.length === 1
+    && node.arguments[0].type === 'Literal'
+    && node.arguments[0].value === COMPOSED_PIECES;
+}
+
+/**
+ * Reads of `@jesscss/parser-shared` in one built grammar module other than its
+ * compose metadata. Each finding is `{ kind: 'recognition', line, detail }`; a
+ * parse failure is a finding, as in {@link artifactFallbacks}.
+ */
+export function recognitionReads(code) {
+  let ast;
+  try {
+    ast = espree.parse(code, { ecmaVersion: 'latest', sourceType: 'module', loc: true, range: true });
+  } catch (error) {
+    return [{ kind: 'unparsable', line: 0, detail: error.message }];
+  }
+
+  /* The member expression each identifier is the object of, if any. */
+  const memberOf = new Map();
+  const pending = [ast];
+  while (pending.length > 0) {
+    const node = pending.pop();
+    if (node.type === 'MemberExpression' && node.object.type === 'Identifier') {
+      memberOf.set(node.object, node);
+    }
+    for (const key in node) {
+      const child = node[key];
+      if (Array.isArray(child)) {
+        for (const item of child) {
+          if (item !== null && typeof item?.type === 'string') {
+            pending.push(item);
+          }
+        }
+      } else if (child !== null && typeof child?.type === 'string') {
+        pending.push(child);
+      }
+    }
+  }
+
+  const moduleScope = eslintScope.analyze(ast, { ecmaVersion: 2025, sourceType: 'module' }).acquire(ast, true);
+  const findings = [];
+  for (const variable of moduleScope.variables) {
+    const def = variable.defs[0];
+    const specifier = def?.type === 'ImportBinding' ? def.parent.source.value : '';
+    if (specifier !== RECOGNITION_PACKAGE && !specifier.startsWith(`${RECOGNITION_PACKAGE}/`)) {
+      continue;
+    }
+    for (const reference of variable.references) {
+      const member = memberOf.get(reference.identifier);
+      if (member?.computed && isComposedPiecesKey(member.property)) {
+        continue;
+      }
+      findings.push({
+        kind: 'recognition',
+        line: reference.identifier.loc.start.line,
+        detail: `reads '${variable.name}' from '${specifier}' as grammar, not as its ${COMPOSED_PIECES} metadata: `
+          + 'a recognition leaf was not fused into the table'
       });
     }
   }
