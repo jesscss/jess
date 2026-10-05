@@ -159,8 +159,8 @@ import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, se
 import { evalGuard, guardUsesDefault, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
 import { computeExtends, type ExtendPlacementResults, type ExtendResults } from './extend.js'; // [extend]
-import { documentHasExtend, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
-import type { PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
+import { atRuleScope, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
+import type { AtRuleScopes, PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
 import type { Level } from './extend/ir.js';
 import { branchFromSelector, descendantBranch, levelFromSelectorList } from './extend/ir.js';
 import { DocumentContext, documentTriviaOf, type Context, type SourceContext } from '../context.js';
@@ -10506,6 +10506,14 @@ function collectDynamicExtendSets(
   return dynamicHere;
 }
 
+/** The import preflight's mutable {@link PlanOverlay}. */
+interface ImportPlanOverlay {
+  subjects: PlanSubject[];
+  instructions: PlanInstruction[];
+  hiddenReferenceRules: Set<Ruleset> | null;
+  atRuleScopes: AtRuleScopes;
+}
+
 /**
  * [extend/dynamic] Pre-walk STATIC extend preflight for a loaded imported document.
  * It records the imported document's STATICALLY-placed subjects and `:extend()`
@@ -10519,11 +10527,7 @@ function collectDynamicExtendSets(
 function planImportedStaticExtend(
   statements: readonly Statement[],
   e: Emit,
-  overlay: {
-    subjects: PlanSubject[];
-    instructions: PlanInstruction[];
-    hiddenReferenceRules: Set<Ruleset> | null;
-  },
+  overlay: ImportPlanOverlay,
   path: Level[],
   scope: number[],
   parent: PlanSubject | null,
@@ -10564,7 +10568,7 @@ function planImportedStaticExtend(
       const owner = hidden
         ? { node: statement, parent: referenceAtRule }
         : referenceAtRule;
-      planImportedStaticExtend(statement.rules, e, overlay, path, scope, parent, hidden, referenceBoundary, owner);
+      planImportedStaticExtend(statement.rules, e, overlay, path, atRuleScope(scope, statement, overlay.atRuleScopes), parent, hidden, referenceBoundary, owner);
     } else if (statement.type === 'For' || statement.type === 'MixinDefinition') {
       if (!e.importedDynamicExtendPresent) {
         if (hidden) {
@@ -10581,6 +10585,30 @@ function planImportedStaticExtend(
   }
 }
 
+const NO_AT_RULES: readonly AtRuleBlock[] = [];
+
+/**
+ * Whether the import planner's walk reaches an `@import`/`@use`: at document level or
+ * inside an at-rule block (where `@import "x" screen;` lands), the same statements
+ * {@link planImportedFacts}'s `visit` descends into.
+ */
+function bodyHasPlannedImport(statements: readonly Statement[]): boolean {
+  for (const statement of statements) {
+    if (statement.type === 'StyleImport' || statement.type === 'ModuleImport') {
+      return true;
+    }
+    if (statement.type === 'AtRuleBlock' && bodyHasPlannedImport(statement.rules)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether an imported document carries an `:extend()` anywhere — statically placed or
+ * in a loop/mixin body. The import-side answer to the root's {@link classifyExtend}
+ * (`static || dynamic`): the same statements, a boolean only, and stack-safe.
+ */
 function bodyMayPlanExtend(statements: readonly Statement[]): boolean {
   /*
    * Imported component bodies can be deeply nested. This admission scan must be
@@ -10632,6 +10660,9 @@ type ImportPlannerInput = {
   hiddenRules: ReadonlySet<Ruleset>;
   referenceBoundaries: ReadonlyMap<Ruleset, object>;
   overlay: PlanOverlay;
+
+  /** The root document's extend surface, classified once for the planner and the render. */
+  extendClass: ExtendClass;
 
   /**
    * `undefined` means this planner invocation did not own CSS-import placement;
@@ -10706,12 +10737,10 @@ function planImportedFacts(
    * synchronous callable-body ownership, while actual import/extend facts opt
    * into planning.
    */
+  const extendClass: ExtendClass = { static: false, dynamic: false };
+  classifyExtend(root.rules, false, extendClass);
   const plansImports = e.context?.options.processImports !== false && importDocument !== undefined;
-  const rootHasExtend = plansImports && documentHasExtend(root);
-  if (!plansImports
-    || (!rootHasExtend && !root.rules.some(child =>
-      child.type === 'StyleImport' || child.type === 'ModuleImport'
-    ))) {
+  if (!plansImports || (!extendClass.static && !bodyHasPlannedImport(root.rules))) {
     recordAstExtendProfile?.('astExtend.preflight.noFeatureBypasses');
     return {
       root,
@@ -10720,34 +10749,42 @@ function planImportedFacts(
       overlay: {
         subjects: [],
         instructions: [],
-        hiddenReferenceRules: null
+        hiddenReferenceRules: null,
+        atRuleScopes: null
       },
+      extendClass,
       cssImports: undefined
     };
   }
   const seen = new Set<string>();
-  const overlay: {
-    subjects: PlanSubject[];
-    instructions: PlanInstruction[];
-    hiddenReferenceRules: Set<Ruleset> | null;
-  } = {
+  const overlay: ImportPlanOverlay = {
     subjects: [],
     instructions: [],
-    hiddenReferenceRules: null
+    hiddenReferenceRules: null,
+    atRuleScopes: new Map()
   };
 
   /*
-   * Extend matching is graph-wide: once ANY document in the import graph carries an
-   * `:extend()`, every imported document's rules are potential targets. The root
-   * seeds the flag; imported documents visited before the first extend-bearing one
-   * are planned, in visit order, when it appears. A graph with no extend anywhere
-   * plans nothing.
+   * Extend matching is graph-wide (EXTEND-SEMANTICS §6): once ANY document in the
+   * import graph carries an `:extend()` — statically placed or in a loop/mixin body —
+   * every imported document's statically-placed rules are potential targets. The root
+   * seeds the flag; an imported document visited before the first extend-bearing one
+   * waits in `pending*` (parallel arrays) and is planned, in visit order, when that
+   * extend appears. A graph with no extend plans nothing. The prepare pass only loads
+   * documents and discards its overlay, so it plans nothing either.
    */
-  let graphHasExtend = rootHasExtend;
-  let unplanned: Array<{ rules: readonly Statement[]; referenceBoundary: object | null }> | null = null;
-  const planImported = (rules: readonly Statement[], referenceBoundary: object | null): void => {
+  const plansExtend = !deferUnreadyImports;
+  let graphHasExtend = extendClass.static || extendClass.dynamic;
+  let pendingRules: Array<readonly Statement[]> | null = null;
+  let pendingReference: boolean[] | null = null;
+  let pendingAtRules: Array<readonly AtRuleBlock[]> | null = null;
+  const planImported = (rules: readonly Statement[], reference: boolean, atRules: readonly AtRuleBlock[]): void => {
     recordAstExtendProfile?.('astExtend.preflight.importsFeatureBearing');
-    planImportedStaticExtend(rules, e, overlay, [], [], null, referenceBoundary !== null, referenceBoundary, null);
+    let scope = EMPTY_SCOPE;
+    for (const atRule of atRules) {
+      scope = atRuleScope(scope, atRule, overlay.atRuleScopes);
+    }
+    planImportedStaticExtend(rules, e, overlay, [], scope, null, reference, reference ? {} : null, null);
   };
   const cssImports: CssImportPlan | null = collectCssImports
     ? {
@@ -10766,6 +10803,13 @@ function planImportedFacts(
     cssPlan: CssImportPlan | null,
     withinDocument: NonNullable<ImportDocumentTree['withinDocument']> | null,
     multipleImportDepth: boolean,
+
+    /*
+     * The at-rule blocks enclosing `statements`, outermost first, across import
+     * boundaries — an imported document inherits its import site's. They give the
+     * document's rules their extend scope (EXTEND-SEMANTICS §8).
+     */
+    atRules: readonly AtRuleBlock[],
     publishFrame: Frame | null,
 
     /*
@@ -10858,20 +10902,25 @@ function planImportedFacts(
        * are DYNAMIC placements the static preflight cannot resolve — the ONE render
        * walk records those (ledger X12).
        */
-      const referenceBoundary = reference ? {} : null;
-      if (!graphHasExtend && bodyMayPlanExtend(loaded.document.rules)) {
-        graphHasExtend = true;
-        if (unplanned !== null) {
-          for (const pending of unplanned) {
-            planImported(pending.rules, pending.referenceBoundary);
+      if (plansExtend) {
+        if (!graphHasExtend && bodyMayPlanExtend(loaded.document.rules)) {
+          graphHasExtend = true;
+          if (pendingRules !== null) {
+            for (let index = 0; index < pendingRules.length; index++) {
+              planImported(pendingRules[index]!, pendingReference![index]!, pendingAtRules![index]!);
+            }
+            pendingRules = null;
+            pendingReference = null;
+            pendingAtRules = null;
           }
-          unplanned = null;
         }
-      }
-      if (graphHasExtend) {
-        planImported(loaded.document.rules, referenceBoundary);
-      } else {
-        (unplanned ??= []).push({ rules: loaded.document.rules, referenceBoundary });
+        if (graphHasExtend) {
+          planImported(loaded.document.rules, reference, atRules);
+        } else {
+          (pendingRules ??= []).push(loaded.document.rules);
+          (pendingReference ??= []).push(reference);
+          (pendingAtRules ??= []).push(atRules);
+        }
       }
       const collect = async (): Promise<void> => {
         await visit(
@@ -10880,6 +10929,7 @@ function planImportedFacts(
           reference ? null : importCssPlan,
           loaded.withinDocument ?? withinDocument,
           multipleImportDepth || importHasOption(options, 'multiple'),
+          atRules,
           isCompose ? null : publishFrame,
           publishSite,
 
@@ -10940,7 +10990,7 @@ function planImportedFacts(
          * — and ledger A10's `@import "lib" screen;` desugar lands exactly here.
          * Those facts keep publication order (see {@link importSiteRank}).
          */
-        await visit(st.rules, scope, null, withinDocument, multipleImportDepth, null, null);
+        await visit(st.rules, scope, null, withinDocument, multipleImportDepth, plansExtend ? [...atRules, st] : atRules, null, null);
       }
     }
     for (let index = 0; index < deferred.length; index++) {
@@ -10970,7 +11020,7 @@ function planImportedFacts(
       }
     }
   };
-  return visit(root.rules, frame, cssImports, null, false, prepublishFrame, null, []).then(() => {
+  return visit(root.rules, frame, cssImports, null, false, NO_AT_RULES, prepublishFrame, null, []).then(() => {
     let plannedCssImports: CssImportPlan | null | undefined;
     if (cssImports === null) {
       plannedCssImports = undefined;
@@ -10980,7 +11030,7 @@ function planImportedFacts(
       plannedCssImports = cssImports;
     }
     return {
-      root, hiddenRules: new Set(), referenceBoundaries: new Map(), overlay,
+      root, hiddenRules: new Set(), referenceBoundaries: new Map(), overlay, extendClass,
       cssImports: plannedCssImports
     };
   });
@@ -11157,13 +11207,12 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     const plannedRoot = planned.root;
 
     /*
-     * [extend] ONE spine traversal classifies the document's extend surface (fusing the
-     * former `documentHasExtend` + `documentHasDynamicExtend` walks). A no-extend
-     * document (`!static && !dynamic`) skips the interp pre-pass and never allocates
-     * dynamic-extend state, so it is byte- and cost-identical to the base no-extend path.
+     * [extend] The planner classified the document's extend surface in its one spine
+     * traversal. A no-extend document (`!static && !dynamic`) skips the interp pre-pass
+     * and never allocates dynamic-extend state, so it is byte- and cost-identical to
+     * the base no-extend path.
      */
-    const extendClass: ExtendClass = { static: false, dynamic: false };
-    classifyExtend(plannedRoot.rules, false, extendClass);
+    const extendClass = planned.extendClass;
 
     /*
      * [extend/selector-interp] Resolve interpolated selectors to static text BEFORE the
@@ -12001,7 +12050,8 @@ function foldDynamicExtends(e: Emit): void {
   const overlay: PlanOverlay = {
     subjects: [...base.subjects, ...dyn.subjects],
     instructions: [...base.instructions, ...dyn.instructions],
-    hiddenReferenceRules
+    hiddenReferenceRules,
+    atRuleScopes: base.atRuleScopes
   };
   const resolved = computeExtends(dyn.root, dyn.hiddenRules, dyn.referenceBoundaries, overlay);
   if (resolved === null) {

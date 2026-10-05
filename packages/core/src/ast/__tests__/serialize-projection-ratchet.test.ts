@@ -141,8 +141,12 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +1 function (`evalQueryPreludeParts`): a media/container prelude is built as
     // fragments so a [general-enclosed] group passes the normalizer as written;
     // the supports normalizer became the shared `normalizePreludeParts`.
-    expect(occurrences(/^function |^async function /gmu)).toBe(474);
-    expect(occurrences(/new Map/gu)).toBe(71);
+    // +1 function (`bodyHasPlannedImport`) and +1 `new Map` (the import planner's
+    // render-scoped at-rule scope ids, `AtRuleScopes`): the planner gate now sees an
+    // import nested in an at-rule block, and an imported `@media` gets its own extend
+    // scope instead of its parent's (EXTEND-SEMANTICS §8).
+    expect(occurrences(/^function |^async function /gmu)).toBe(475);
+    expect(occurrences(/new Map/gu)).toBe(72);
     expect(occurrences(/new Set/gu)).toBe(40);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
