@@ -10,8 +10,10 @@ The behavior below is anchored on two references, NOT on the current engine:
 
 1. **The extend fixtures** in less.js `alpha`
    (`packages/test-data/tests-unit/<fixture>/{<fixture>.less,<fixture>.css}`),
-   read read-only via `oracle-source.ts` and gated by
-   `packages/core/src/ast/parse-host/__tests__/extend-byte-identity.test.ts`.
+   rendered and gated by the Less fixture lane
+   (`packages/jess/test/less/all-less.test.ts`) and
+   `packages/jess/test/less/extend-exact-oracle.test.ts`, both applying the pending
+   golden edits in `packages/jess/test/less/pending-golden-edits.ts`.
    The `alpha` TOP-LEVEL `.css` (with `:is()` compaction) is the intended v5
    output.
 2. **Owner-confirmed corrections** in
@@ -172,7 +174,7 @@ compound position.
 
 `extend-clearfix` again: 4.x `legacy` emits `.clearfix:after, .foo:after,
 .bar:after`; v5 emits `:is(.clearfix, .foo, .bar):after`. This is why
-`legacy/*.css` is NOT a v5 reference (see `oracle-source.ts`).
+`legacy/*.css` is NOT a v5 reference.
 
 Two compaction behaviors:
 
@@ -544,11 +546,10 @@ a fixture. These are the owner questions:
 
 - Engine: `packages/core/src/ast/extend/` (clean-room `ir`/`compose`/`match`/`plan`/`solve`/`emit`; barrel `packages/core/src/ast/extend.ts`).
 - Legacy (dying, NOT a reference): `packages/core/src/tree/extend/{plan,solve,emit,pipeline,extend-index}.ts`.
-- Reference plumbing: `packages/core/src/ast/parse-host/__tests__/oracle-source.ts`, `docs/architecture/core/REFERENCE.md`.
-- Byte-identity gate: `packages/core/src/ast/parse-host/__tests__/extend-byte-identity.test.ts`.
+- Reference plumbing: `docs/architecture/core/REFERENCE.md`.
+- Byte-identity gates: `packages/jess/test/less/all-less.test.ts`, `packages/jess/test/less/extend-exact-oracle.test.ts` (pending golden edits: `packages/jess/test/less/pending-golden-edits.ts`).
 - Corrections: `docs/architecture/core/proposed-alpha-corrections/{README.md,extend.css,extend-exact.css}`.
 - Handoff / status: `docs/architecture/core/R1-EXTEND-HANDOFF.md`.
-- Kill-list (extend cleanup): `docs/architecture/core/TREE2-KILL-LIST.md`.
 - User-facing pages (canonical source `packages/docs-content/`):
   - Less: `docs/less/features/extend.md` (syntax), `docs/less/advanced/extend-is-wrapping.md` (`:is()` grafting), `docs/less/advanced/extend-semantics.md` (full behavior + nuances).
   - Jess: `docs/jess/02-Language/05a-advanced-extend.mdx`, `docs/jess/06-Advanced/05-extend.md`.
