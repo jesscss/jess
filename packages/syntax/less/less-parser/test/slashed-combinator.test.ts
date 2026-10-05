@@ -84,15 +84,18 @@ describe('slashed combinators are rejected by name', () => {
   });
 
   /*
-   * PINNED trade-off: a glued declaration is read as a ruleset first, so a
-   * value that spells a selector pseudo function with a `/word/` inside it
-   * (`a:is(b /c/ d)`) now gets the selector diagnostic. lessc 4.x reads the
-   * declaration `a: is(b / c / d)`; no CSS function has those names.
+   * KNOWN GAP: a glued declaration is read as a ruleset first, and a pseudo
+   * argument rejects a `/word/` as soon as it folds, so a declaration whose
+   * value spells a selector pseudo function with a `/word/` inside it is
+   * rejected. Both are valid CSS declarations: css and scss parse them, and
+   * lessc 4.x emits `a: is(b / c / d)` and `src: local(Foo / Bar / Baz)`. They
+   * failed with a generic syntax error before the pseudo argument read the
+   * slashed combinator; now they get the G37 diagnostic.
    */
-  it('names a slashed word inside a glued selector-pseudo-named value', () => {
-    expect(failureOf('.x { a:is(b /c/ d); }')).toMatchObject({
-      code: 'parse/unsupported-slashed-combinator',
-      offset: 12
-    });
+  it.fails.each([
+    '.x { a:is(b /c/ d); }',
+    '@font-face { src:local(Foo/Bar/Baz); }'
+  ])('parses the glued declaration %j', (source) => {
+    expect(failureOf(source)).toBeUndefined();
   });
 });

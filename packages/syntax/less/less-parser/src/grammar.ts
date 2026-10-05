@@ -126,7 +126,6 @@ import {
   requireMixinReferenceBaseFact,
   requireRulesetBody,
   requireSelectorList,
-  rejectSlashedCombinator,
   requireSelectorListWithExtendsFact,
   requireStatementArray,
   requireString,
@@ -4675,9 +4674,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * list it is only a fact until the ruleset's `{` commits, because the ruleset
    * arm is tried first on a glued declaration (`grid-area:a /b/ c;`), which then
    * fails at its `;` and leaves the declaration arm to read the `/`s as
-   * slashes. A pseudo argument or an extend target has no declaration reading,
-   * so its complex selector rejects the fact as soon as it is reduced. The
-   * tolerant CST keeps the node and the rule around it.
+   * slashes. Inside a pseudo argument or an extend target the complex selector
+   * rejects it as soon as it folds its segments (`complexSegmentsFrom`). That
+   * also rejects a glued declaration whose value spells a selector pseudo with a
+   * `/word/` in it (`a:is(b /c/ d);`, `src:local(Foo/Bar/Baz);`), which failed
+   * generically before and is pinned as an expected failure. The tolerant CST
+   * keeps the node and the rule around it.
    */
   const SlashedCombinator = node(
     'SlashedCombinator',
@@ -4709,13 +4711,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(
       optional(relativeSelectorCombinator),
       g.PseudoArgumentCompound,
-      many(choice(
-        sequence(not(whenGuardAhead), optional(staticCombinator), parser({ trivia: staticSelectorTrivia }, g.PseudoArgumentCompound)),
-        sequence(SlashedCombinator, parser({ trivia: staticSelectorTrivia }, g.PseudoArgumentCompound))
+      many(sequence(
+        choice(SlashedCombinator, sequence(not(whenGuardAhead), optional(staticCombinator))),
+        parser({ trivia: staticSelectorTrivia }, g.PseudoArgumentCompound)
       ))
     ),
     (children) => {
-      rejectSlashedCombinator(children);
       const first = children[0];
       const leading = (isLessTerminalText(first, '>') || isLessTerminalText(first, '+') || isLessTerminalText(first, '~')) ? first : undefined;
       const branch = selectorBranchOf(complexSegmentsFrom(children));
@@ -5133,15 +5134,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       // An extend target can carry a typed selector interpolation, unlike its
       // inline subject. Keep `.@{name}` in the AST rather than rescanning it.
       g.CompoundSelector,
-      many(choice(
-        sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), optional(staticCombinator), g.CompoundSelector),
-        sequence(SlashedCombinator, g.CompoundSelector)
+      many(sequence(
+        choice(SlashedCombinator, sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), optional(staticCombinator))),
+        g.CompoundSelector
       ))
     ),
-    (children, _fields, span) => {
-      rejectSlashedCombinator(children);
-      return withSourceSpan(selectorBranchOf(complexSegmentsFrom(children)), span);
-    }
+    (children, _fields, span) => withSourceSpan(selectorBranchOf(complexSegmentsFrom(children)), span)
   );
   const ExtendTarget = node(
     'ExtendTarget',
