@@ -127,6 +127,7 @@ import {
   requireRulesetBody,
   mixinBodyStatements,
   requireSelectorList,
+  rejectSlashedCombinator,
   requireSelectorListWithExtendsFact,
   requireStatementArray,
   requireString,
@@ -4665,6 +4666,24 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     parser({ trivia: staticSelectorTrivia }, g.PseudoArgumentSelector),
     children => requireSelectorList(children[0])
   );
+  /*
+   * `/deep/` and `/shadow/` (Less 4 took any `/word/`) were Shadow DOM v0
+   * combinators that never became CSS; Less 5 rejects them (ledger G37). The
+   * shape is recognized only so the diagnostic names it (jess#247), wherever a
+   * combinator can stand: between two selectors of a ruleset's list, inside a
+   * selector pseudo's argument, and inside an `:extend()` target. In a ruleset
+   * list it is only a fact until the ruleset's `{` commits, because the ruleset
+   * arm is tried first on a glued declaration (`grid-area:a /b/ c;`), which then
+   * fails at its `;` and leaves the declaration arm to read the `/`s as
+   * slashes. A pseudo argument or an extend target has no declaration reading,
+   * so its complex selector rejects the fact as soon as it is reduced. The
+   * tolerant CST keeps the node and the rule around it.
+   */
+  const SlashedCombinator = node(
+    'SlashedCombinator',
+    regex(/\/[a-zA-Z]+\//),
+    (children, _fields, span) => ({ slashedCombinator: requireToken(children[0]).value, start: span.start, end: span.end })
+  );
   // This selector family is private to functional pseudo arguments.  A block
   // comment immediately between two simple selectors is lexical trivia, not a
   // descendant relation (`.a/*x*/.b` is one compound); actual whitespace still
@@ -4690,9 +4709,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(
       optional(relativeSelectorCombinator),
       g.PseudoArgumentCompound,
-      many(sequence(not(whenGuardAhead), optional(staticCombinator), parser({ trivia: staticSelectorTrivia }, g.PseudoArgumentCompound)))
+      many(choice(
+        sequence(not(whenGuardAhead), optional(staticCombinator), parser({ trivia: staticSelectorTrivia }, g.PseudoArgumentCompound)),
+        sequence(SlashedCombinator, parser({ trivia: staticSelectorTrivia }, g.PseudoArgumentCompound))
+      ))
     ),
     (children) => {
+      rejectSlashedCombinator(children);
       const first = children[0];
       const leading = (isLessTerminalText(first, '>') || isLessTerminalText(first, '+') || isLessTerminalText(first, '~')) ? first : undefined;
       const branch = selectorBranchOf(complexSegmentsFrom(children));
@@ -5123,9 +5146,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       // An extend target can carry a typed selector interpolation, unlike its
       // inline subject. Keep `.@{name}` in the AST rather than rescanning it.
       g.CompoundSelector,
-      many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), optional(staticCombinator), g.CompoundSelector))
+      many(choice(
+        sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), optional(staticCombinator), g.CompoundSelector),
+        sequence(SlashedCombinator, g.CompoundSelector)
+      ))
     ),
-    (children, _fields, span) => withSourceSpan(selectorBranchOf(complexSegmentsFrom(children)), span)
+    (children, _fields, span) => {
+      rejectSlashedCombinator(children);
+      return withSourceSpan(selectorBranchOf(complexSegmentsFrom(children)), span);
+    }
   );
   const ExtendTarget = node(
     'ExtendTarget',
@@ -5196,21 +5225,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       }
       return branch;
     }
-  );
-  /*
-   * `/deep/` and `/shadow/` (Less 4 took any `/word/`) were Shadow DOM v0
-   * combinators that never became CSS; Less 5 rejects them (ledger G37). The
-   * shape is recognized only so the diagnostic names it (jess#247): it joins
-   * two selectors of a ruleset's list, and the ruleset rejects it once its `{`
-   * commits. Until then it is only a fact, because the ruleset arm is tried
-   * first on a glued declaration (`grid-area:a /b/ c;`), which then fails at
-   * its `;` and leaves the declaration arm to read the `/`s as slashes. The
-   * tolerant CST keeps the node and the rule around it.
-   */
-  const SlashedCombinator = node(
-    'SlashedCombinator',
-    regex(/\/[a-zA-Z]+\//),
-    (children, _fields, span) => ({ slashedCombinator: requireToken(children[0]).value, start: span.start, end: span.end })
   );
   const slashedBranchTail = many(sequence(SlashedCombinator, selectorBranch));
   const selectorListWithExtends = node(

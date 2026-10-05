@@ -34,7 +34,12 @@ describe('slashed combinators are rejected by name', () => {
     ['any /word/ after a type selector', 'div /wat/ span { color: red; }', 4, '/wat/'],
     ['a nested rule', '.a {\n  .b /deep/ .c { x: y; }\n}', 10, '/deep/'],
     ['glued to its neighbours', '.a/deep/.b { c: d; }', 2, '/deep/'],
-    ['after a later branch of a list', '.a, .b /deep/ .c { d: e; }', 7, '/deep/']
+    ['after a later branch of a list', '.a, .b /deep/ .c { d: e; }', 7, '/deep/'],
+    ['inside a selector pseudo argument', ':is(.a /deep/ .b) { c: d; }', 7, '/deep/'],
+    ['inside a later pseudo argument branch', '.x:not(.y, .a /shadow/ .b) { c: d; }', 14, '/shadow/'],
+    ['glued inside a pseudo argument', '.x:where(.a/deep/.b) { c: d; }', 11, '/deep/'],
+    ['inside an inline :extend() target', '.x:extend(.a /deep/ .b) { c: d; }', 13, '/deep/'],
+    ['inside a body :extend() target', '.x { &:extend(.a /deep/ .b); }', 17, '/deep/']
   ])('%s', (_label, source, offset, combinator) => {
     const failure = failureOf(source);
     expect(failure).toBeInstanceOf(LessSlashedCombinatorError);
@@ -76,5 +81,18 @@ describe('slashed combinators are rejected by name', () => {
     const result = parseLessCst(source);
     expect(result.ok).toBe(true);
     expect(hasNode(result.tree, 'SlashedCombinator')).toBe(false);
+  });
+
+  /*
+   * PINNED trade-off: a glued declaration is read as a ruleset first, so a
+   * value that spells a selector pseudo function with a `/word/` inside it
+   * (`a:is(b /c/ d)`) now gets the selector diagnostic. lessc 4.x reads the
+   * declaration `a: is(b / c / d)`; no CSS function has those names.
+   */
+  it('names a slashed word inside a glued selector-pseudo-named value', () => {
+    expect(failureOf('.x { a:is(b /c/ d); }')).toMatchObject({
+      code: 'parse/unsupported-slashed-combinator',
+      offset: 12
+    });
   });
 });

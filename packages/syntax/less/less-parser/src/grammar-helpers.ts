@@ -1769,6 +1769,18 @@ function isRulesetTailFact(value: unknown): value is RulesetTailFact {
 }
 
 /**
+ * A pseudo-argument or `:extend()` target complex selector that joins two
+ * compounds with a removed slashed combinator (ledger G37). Neither position
+ * has a declaration reading to fall back to, so it is rejected on reduction.
+ */
+function rejectSlashedCombinator(children: readonly unknown[]): void {
+  const slashed = children.find(isSlashedCombinatorFact);
+  if (slashed !== undefined) {
+    throw new LessSlashedCombinatorError(slashed.start, slashed.end, slashed.slashedCombinator);
+  }
+}
+
+/**
  * A committed ruleset's selector list. Called once the ruleset's `{` has
  * committed, so this is where a removed slashed combinator in the list is
  * rejected (ledger G37).
@@ -2486,6 +2498,7 @@ export {
   requireRulesetBody,
   mixinBodyStatements,
   requireSelectorList,
+  rejectSlashedCombinator,
   requireSelectorListWithExtendsFact,
   requireStatementArray,
   requireString,
