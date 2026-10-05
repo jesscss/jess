@@ -136,12 +136,49 @@ describe('remote @import', () => {
     expect(requested).toEqual([]);
   });
 
+  /*
+   * The Less grammar wraps a media-tailed import in `@media` so a loaded document
+   * renders inside the query. One that stays a CSS @import keeps the query on the
+   * at-rule instead: browsers ignore an `@import` inside `@media`.
+   */
+  it.each([
+    ['with the plugin, off the list', true],
+    ['without the plugin', false]
+  ])('keeps a media-tailed URL import that stays CSS one @import with its query — %s', async (_case, withPlugin) => {
+    const { fetch, requested } = serve([]);
+    const source = '@import url("https://fonts.googleapis.com/css?family=Open+Sans") screen and (min-width: 40em);\n.a { color: red; }\n';
+
+    const result = await render(entry(source), withPlugin ? fetch : undefined);
+
+    expect(result.errors).toEqual([]);
+    expect(result.css).toBe('@import url("https://fonts.googleapis.com/css?family=Open+Sans") screen and (min-width: 40em);\n.a {\n  color: red;\n}\n');
+    expect(requested).toEqual([]);
+  });
+
+  /* The answer for a URL that may stay CSS is not reused for a later import of it that must load. */
+  it.each([
+    ['(reference)', '@import (reference) "https://fonts.googleapis.com/css?family=X";'],
+    ['@compose', '@compose "https://fonts.googleapis.com/css?family=X";']
+  ])('refuses a later %s of a URL an earlier @import left CSS', async (_case, second) => {
+    const { fetch, requested } = serve([]);
+
+    const result = await render(entry(`@import "https://fonts.googleapis.com/css?family=X";\n${second}\n`), fetch);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'import/load-failed',
+      message: expect.stringContaining('fonts.googleapis.com is not on the remote-import allow list')
+    })]);
+    expect(requested).toEqual([]);
+  });
+
   it('never fetches a URL Less classifies as CSS, even on an allowed host', async () => {
     const { fetch, requested } = serve([]);
     const source = [
       '@import "https://cdn.example.com/theme.css";',
       '@import url(https://cdn.example.com/print.css) print;',
       '@import (css) "https://cdn.example.com/theme.less";',
+      '@cdn: "https://evil.example";',
+      '@import "@{cdn}/theme.css";',
       ''
     ].join('\n');
 
@@ -152,6 +189,7 @@ describe('remote @import', () => {
       '@import "https://cdn.example.com/theme.css";',
       '@import url(https://cdn.example.com/print.css) print;',
       '@import "https://cdn.example.com/theme.less";',
+      '@import "https://evil.example/theme.css";',
       ''
     ].join('\n'));
     expect(requested).toEqual([]);
@@ -176,6 +214,24 @@ describe('remote @import', () => {
       message: expect.stringContaining(reason)
     })]);
     expect(requested).toEqual([]);
+  });
+
+  /* With no plugin nothing is fetched, so an import with no CSS meaning has nowhere to go. */
+  it.each([
+    ['(reference)', '@import (reference) "https://cdn.example.com/theme.less";'],
+    ['(less)', '@import (less) "https://fonts.googleapis.com/css?family=Open+Sans";'],
+    ['@-import', '@-import "https://cdn.example.com/theme";'],
+    ['@compose', '@compose "https://cdn.example.com/theme/tokens.less";']
+  ])('refuses %s of a URL without the plugin instead of writing it out', async (_case, source) => {
+    const network = vi.spyOn(globalThis, 'fetch');
+
+    const result = await render(entry(`${source}\n.a { color: red; }\n`));
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'import/load-failed',
+      message: expect.stringContaining('this import cannot stay a CSS @import')
+    })]);
+    expect(network).not.toHaveBeenCalled();
   });
 
   /* `@compose` has no CSS meaning, so it always loads: the @import policy with no CSS @import to fall back to. */
@@ -252,9 +308,33 @@ describe('remote @import', () => {
     const network = vi.spyOn(globalThis, 'fetch');
     const { fetch, requested } = serve([]);
 
-    const result = await render(entry(`@use "${specifier}";\n`), withPlugin ? fetch : undefined);
+    fs.writeFileSync(path.join(dir, 'local.less'), '.local { color: red; }\n');
+
+    const alone = await render(entry(`@use "${specifier}";\n`), withPlugin ? fetch : undefined);
+    const besideAnImport = await render(entry(`@import "local.less";\n@use "${specifier}";\n`), withPlugin ? fetch : undefined);
+
+    for (const result of [alone, besideAnImport]) {
+      expect(result.errors).toEqual([expect.objectContaining({
+        code: 'import/load-failed',
+        message: expect.stringContaining(`Module ${specifier} is remote; @use and @plugin load modules from local files only`)
+      })]);
+    }
+    expect(requested).toEqual([]);
+    expect(network).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['an allowed host', true],
+    ['no plugin', false]
+  ])('refuses @plugin of a URL on %s before resolving it', async (_case, withPlugin) => {
+    const network = vi.spyOn(globalThis, 'fetch');
+    const { fetch, requested } = serve([]);
+    const specifier = 'https://cdn.example.com/plugins/p.js';
+
+    const result = await render(entry(`@plugin "${specifier}";\n`), withPlugin ? fetch : undefined);
 
     expect(result.errors).toEqual([expect.objectContaining({
+      code: 'plugin/load-failed',
       message: expect.stringContaining(`Module ${specifier} is remote; @use and @plugin load modules from local files only`)
     })]);
     expect(requested).toEqual([]);

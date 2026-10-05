@@ -15,9 +15,8 @@ export interface ImportOptions {
 
   /**
    * The import has no CSS meaning, so it can never stay a CSS `@import`:
-   * `(inline)`, `(reference)`, `(less)`, `@-import`, `@compose`. A plugin asked
-   * to claim such an external specifier refuses it (throws) rather than
-   * leaving it unclaimed.
+   * `(inline)`, `(reference)`, `(less)`, `@-import`, `@compose`. An external
+   * specifier no plugin claims is then an error rather than a CSS terminal.
    */
   mustLoad?: boolean;
 

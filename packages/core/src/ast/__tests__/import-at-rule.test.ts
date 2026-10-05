@@ -651,30 +651,39 @@ describe('StyleImport', () => {
   /*
    * A claim is told whether the import could stay a CSS `@import`: one with no
    * CSS meaning — `(reference)`, `(less)`, `@-import`, `@compose`, `(inline)` —
-   * must load, so a plugin that will not load it can refuse instead of leaving
-   * it a terminal.
+   * must load. Left unclaimed, the rest stay CSS terminals and those are errors.
    */
-  it('tells a claiming plugin which external imports must load', async () => {
+  it('tells a claiming plugin which external imports must load, and refuses those left unclaimed', async () => {
+    const target = (name: string) => quoted(`"https://h.example/${name}"`, `https://h.example/${name}`, '"', false);
+    const cases: Array<[name: string, statement: StyleImport, mustLoad: boolean]> = [
+      ['plain', authoredImport('@import', target('plain')), false],
+      ['optional', authoredImport('@import', target('optional'), list([keyword('optional')], ',')), false],
+      ['reference', authoredImport('@import', target('reference'), list([keyword('reference')], ',')), true],
+      ['less', authoredImport('@import', target('less'), list([keyword('less')], ',')), true],
+      ['source', authoredImport('@-import', target('source')), true],
+      ['compose', styleImport('@compose', target('compose'), { mode: 'compose' }), true]
+    ];
     const claims: Array<[string, boolean]> = [];
-    const context = new Context({}, [{
+    const declining = () => new Context({}, [{
       name: 'remote',
       canResolveImport: (specifier: string, _currentDir: string, _searchPaths: string[], mustLoad: boolean) => {
         claims.push([specifier.slice('https://h.example/'.length), mustLoad]);
         return false;
       }
     }]);
-    const target = (name: string) => quoted(`"https://h.example/${name}"`, `https://h.example/${name}`, '"', false);
-    const document = stylesheet([
-      authoredImport('@import', target('plain')),
-      authoredImport('@import', target('optional'), list([keyword('optional')], ',')),
-      authoredImport('@import', target('reference'), list([keyword('reference')], ',')),
-      authoredImport('@import', target('less'), list([keyword('less')], ',')),
-      authoredImport('@-import', target('source')),
-      styleImport('@compose', target('compose'), { mode: 'compose' })
-    ]);
 
-    await serialize(document, { context });
-    await expect(context.readInlineImport('https://h.example/inline')).rejects.toMatchObject({ code: 'import/not-found' });
+    for (const [name, statement, mustLoad] of cases) {
+      const rendered = Promise.resolve(serialize(stylesheet([statement]), { context: declining() }));
+      if (mustLoad) {
+        await expect(rendered, name).rejects.toMatchObject({
+          code: 'import/load-failed',
+          message: expect.stringContaining(`https://h.example/${name}, and this import cannot stay a CSS @import`)
+        });
+      } else {
+        await expect(rendered, name).resolves.toEqual({ css: `@import "https://h.example/${name}";\n` });
+      }
+    }
+    await expect(declining().readInlineImport('https://h.example/inline')).rejects.toMatchObject({ code: 'import/not-found' });
 
     expect(new Map(claims)).toEqual(new Map([
       ['plain', false],
@@ -886,6 +895,28 @@ describe('StyleImport', () => {
       null,
       any('screen and (max-width: 600px)')
     )).toThrow(SyntaxError);
+  });
+
+  /*
+   * An import nothing loads is a real CSS `@import`, which carries its media
+   * query verbatim (ledger A10): `@media q { @import … }` is ignored by browsers.
+   */
+  it('writes an unclaimed import inside the media wrapper as one @import carrying the query', async () => {
+    const wrapped = (target: string) => atRuleBlock(
+      '@media',
+      any('screen and (max-width: 600px)'),
+      [styleImport('@import', url(quoted(`"${target}"`, target, '"', false)), { mode: 'import' })]
+    );
+    const requested: string[] = [];
+    const rendered = await Promise.resolve(serialize(stylesheet([wrapped('https://fonts.example/css?family=A'), rule('.x', [decl('color', keyword('red'))])]), {
+      importDocument: ({ specifier }) => {
+        requested.push(specifier);
+        return undefined;
+      }
+    }));
+
+    expect(rendered).toEqual({ css: '@import url("https://fonts.example/css?family=A") screen and (max-width: 600px);\n.x {\n  color: red;\n}\n' });
+    expect(requested).toEqual(['https://fonts.example/css?family=A']);
   });
 
   it('loads a stylesheet import at its lexical position', async () => {

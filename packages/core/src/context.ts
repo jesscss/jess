@@ -1443,9 +1443,8 @@ export class Context {
 
   /**
    * Whether a plugin opts in to loading this import. Only an external specifier
-   * needs a claim; unclaimed, it stays a CSS terminal. A plugin refuses one by
-   * throwing — which it does for an import that `mustLoad` and that it will not
-   * load.
+   * needs a claim; unclaimed, it stays a CSS terminal unless it `mustLoad`. A
+   * plugin refuses one by throwing, with its own reason.
    */
   private async isClaimed(importPath: string, mustLoad: boolean): Promise<boolean> {
     if (!EXTERNAL_IMPORT_SPECIFIER.test(importPath)) {
@@ -1739,7 +1738,19 @@ export class Context {
 
   private async loadImportUncached(importPath: string, importOptions: ImportOptions = {}) {
     const target = this.importTarget(importPath);
-    return await this.isClaimed(target, importOptions.mustLoad === true) ? this.getTree(target, importOptions) : undefined;
+    const mustLoad = importOptions.mustLoad === true;
+    if (await this.isClaimed(target, mustLoad)) {
+      return this.getTree(target, importOptions);
+    }
+
+    /** No plugin loads it, and it has no CSS meaning, so it cannot stay a CSS `@import` either. */
+    if (mustLoad) {
+      throw new Error(
+        `No plugin loads ${target}, and this import cannot stay a CSS @import. `
+        + 'Remote imports need @jesscss/plugin-remote-import with the host on its allow list.'
+      );
+    }
+    return undefined;
   }
 
   /**

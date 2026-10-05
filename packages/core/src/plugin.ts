@@ -159,13 +159,14 @@ export interface PluginInterface {
    * `(inline)` one included) enters the normal resolve → locate → source → parse
    * pipeline. A positive result does not
    * fetch: this plugin must still resolve and locate the source through those
-   * ordinary capabilities. Absent means external imports remain CSS terminals.
+   * ordinary capabilities. Unclaimed, an external import stays a CSS terminal.
    * An import written inside a remote document is rebased onto that document's
    * URL first, so it is asked here too. Throwing rejects the import as an error.
    *
    * `mustLoad` is true when the import can never stay a CSS `@import` —
-   * `(inline)`, `(reference)`, `(less)`, `@-import`, `@compose` — so a plugin
-   * that will not load it should throw rather than return false.
+   * `(inline)`, `(reference)`, `(less)`, `@-import`, `@compose`. Unclaimed, such
+   * an import is an error; a plugin that will not load it may throw first to
+   * give its own reason.
    */
   canResolveImport?(specifier: string, currentDir: string, searchPaths: string[], mustLoad: boolean): boolean | Promise<boolean>;
 

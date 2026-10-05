@@ -272,7 +272,6 @@ describe('RemoteImportPlugin fetch', () => {
 
     await expect(plugin.getSource('https://cdn.example.com/a.less')).rejects.toThrow('timed out after 10ms');
   });
-
 });
 
 describe('RemoteImportPlugin default transport', () => {
