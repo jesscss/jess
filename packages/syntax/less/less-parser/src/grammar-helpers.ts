@@ -328,6 +328,49 @@ function staticTextWithTriviaGaps(children: readonly unknown[], triviaLog: reado
   return semanticGapText(text);
 }
 
+/**
+ * A generic at-rule prelude: its tokens with one space per gap, trimmed, as
+ * bytes. A `@{…}` in it makes the prelude an interpolation over those bytes, as
+ * `@{…}` is in every other Less prelude.
+ */
+function atRulePreludeFrom(children: readonly unknown[], triviaLog: readonly number[]): Any | Interpolation | null {
+  if (!children.some(isInterpolationFact)) {
+    const text = staticTextWithTriviaGaps(children, triviaLog).trim();
+    return text === '' ? null : any(text);
+  }
+  const gapBefore = new Set<number>();
+  for (let index = 0; index < lessTriviaEntryCount(triviaLog); index += 1) {
+    gapBefore.add(lessTriviaEntryInsertIndex(triviaLog, index));
+  }
+  const parts: Interpolation['parts'] = [];
+  for (let index = 0; index < children.length; index++) {
+    if (gapBefore.has(index)) {
+      appendInterpolationLiteral(parts, ' ');
+    }
+    const child = children[index];
+    if (isInterpolationFact(child)) {
+      parts.push({ ref: child.ref, unquote: true });
+    } else {
+      appendInterpolationLiteral(parts, staticText(child));
+    }
+  }
+  const trimmed: Interpolation['parts'] = [];
+  for (let index = 0; index < parts.length; index++) {
+    const part = parts[index]!;
+    if (!('lit' in part)) {
+      trimmed.push(part);
+      continue;
+    }
+    let lit = semanticGapText(part.lit);
+    lit = index === 0 ? lit.trimStart() : lit;
+    lit = index === parts.length - 1 ? lit.trimEnd() : lit;
+    if (lit !== '') {
+      trimmed.push({ lit });
+    }
+  }
+  return interpolation(trimmed);
+}
+
 function isQuoted(value: unknown): value is Quoted {
   return typeof value === 'object'
     && value !== null
@@ -2436,6 +2479,7 @@ export {
   staticSelectorPseudoFrom,
   staticText,
   staticTextWithTriviaGaps,
+  atRulePreludeFrom,
   triviaTextAtInsertIndex,
   unsupportedVariableNameFrom,
   valuePieceReducerWithTrivia,

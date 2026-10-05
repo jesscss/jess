@@ -35,6 +35,7 @@ import { closeAmbientFunctions, functionScopeOf, requireLessParseState } from '.
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 import {
   appendInterpolationLiteral,
+  atRulePreludeFrom,
   argumentFunctionFromChildren,
   lessBranchSegments,
   callArgumentSource,
@@ -4169,9 +4170,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     when(endsWith('('), g.GenericFunction),
     otherwise(AtRulePreludeKeyword)
   );
-  // Generic at-rule headers have no parser-owned syntax-preserving evaluation
-  // model for interpolation or parenthesized forms. Their direct subset stays
-  // static; `@layer` gets its own typed interpolation alternative below.
+  // The typed subset of a generic at-rule header. Interpolation and
+  // parenthesized forms are left to `AtRulePrelude`, which keeps the header's
+  // bytes and makes a `@{…}` in them an interpolation; `@layer` gets its own
+  // typed interpolation alternative below.
   const AtRulePreludeValueAtom = node(
     'AtRulePreludeValueAtom',
     choice(
@@ -4231,6 +4233,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     scanSkipSingleString
   ));
   const atPreludeText = noTrivia(regex(/(?:\\[\s\S]|\/(?!\*)|[^\\/@ \t\n\r\f,;{}()[\]"'])+/));
+  /*
+   * An unknown at-rule's prelude is a permissive token run in which Less
+   * evaluates only `@{…}` (ledger P2), so a `@{…}` makes the prelude an
+   * interpolation over its bytes. A bare `@name` there is the bare-variable
+   * diagnostic (ledger P7), whose advice is that `@{…}` form.
+   */
   const AtRulePrelude = node(
     'AtRulePrelude',
     parser(
@@ -4240,14 +4248,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         atPreludeComma,
         atPreludeGroup,
         atPreludeQuoted,
+        g.VariableInterpolation,
         g.BareVariableInterpolation,
         atPreludeText
       ))
     ),
-    (children, _fields, _span, _rawChildren, triviaLog) => {
-      const text = staticTextWithTriviaGaps(children, triviaLog).trim();
-      return text === '' ? null : any(text);
-    }
+    (children, _fields, _span, _rawChildren, triviaLog) => atRulePreludeFrom(children, triviaLog)
   );
   const lessUnknownAtPreludeText = noTrivia(regex(/(?:\\[\s\S]|@(?!\{)|\/(?!\*)|[^\\/@ \t\n\r\f,;{}()[\]"'])+/));
   const lessUnknownAtPreludeCapture = many(choice(
@@ -4261,8 +4267,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // CSS-defined statement at-rules have grammar-owned interpolation forms that
   // the generic at-rule subset intentionally does not accept. Keep the
   // namespace prefix and URI as ordinary typed values; this preserves
-  // `@namespace @{prefix} "…"` without widening unknown at-rules such as
-  // `@custom foo@{name};` into a raw/recovered-header path.
+  // `@namespace @{prefix} "…"` as typed values rather than the byte prelude a
+  // generic at-rule such as `@custom foo@{name};` interpolates.
   // Gating note: `url(` overlaps the URI-only arm with an identifier-prefixed
   // namespace in the analyzer, but the glued `url(` delimiter belongs to
   // `PlainUrl`; dispatching on bare `url` would lose that distinction.
@@ -4295,9 +4301,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const genericAtRuleBlockTail = choice(
     attempt(sequence(
-      // Generic headers serialize as ordinary bytes. Their interpolation and
-      // parenthesized forms need a dedicated syntax-preserving model, so this
-      // This route deliberately leaves them closed.
+      // The typed header first; interpolation and parenthesized forms fall to
+      // the byte prelude in the arm below.
       attempt(g.AtRulePreludeValue),
       atRuleBlockBody
     )),

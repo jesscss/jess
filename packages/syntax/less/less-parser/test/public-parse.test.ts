@@ -1592,16 +1592,12 @@ describe('public Less parse()', () => {
       serialize(parse('@query: card; @container @{query} { .c { color: red; } }'), { evaluator: buildEvaluator(makeLessRegistry()) }).css
     ).toBe('@container card {\n  .c {\n    color: red;\n  }\n}\n');
 
-    for (const invalid of [
-      '@media @{query} screen { .media { color: red; } }',
-      '@custom @{query} { .media { color: red; } }',
-      '@custom foo@{query} { .media { color: red; } }',
-      '@custom foo @{query} { .media { color: red; } }',
-      '@custom foo@{query};',
-      '@custom foo @{query};'
-    ]) {
-      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
-    }
+    expect(() => parse('@media @{query} screen { .media { color: red; } }')).toThrow(SyntaxError);
+
+    /* An unknown at-rule's prelude interpolates `@{…}` (ledger P2). */
+    expect(
+      serialize(parse('@query: card; @custom @{query} { .m { color: red; } } @custom foo@{query}; @custom foo @{query};'), { evaluator: buildEvaluator(makeLessRegistry()) }).css
+    ).toBe('@custom card {\n  .m {\n    color: red;\n  }\n}\n@custom foocard;\n@custom foo card;\n');
   });
 
   it('keeps invalid interpolation-shaped quoted import text literal', () => {

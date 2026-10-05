@@ -21,7 +21,11 @@ describe('the bare-variable diagnostic advises a form that parses', () => {
     ['an @import supports() condition', '@import url(x.css) supports(@a);'],
     ['an @import supports() declaration', '@import url(x.css) supports(@a: b);'],
     ['an @import supports() value', '@import url(x.css) supports(display: @a);'],
-    ['an @import layer() name', '@import url(x.css) layer(@a);']
+    ['an @import layer() name', '@import url(x.css) layer(@a);'],
+    ['an unknown at-rule prelude', '@foo @a { b: c }'],
+    ['a later word of an unknown at-rule prelude', '@foo bar @a { b: c }'],
+    ['an unknown statement at-rule', '@foo @a;'],
+    ['an @page prelude', '@page @a { b: c }']
   ])('in %s', (_label, source) => {
     let failure: unknown;
     try {
@@ -40,6 +44,17 @@ describe('the bare-variable diagnostic advises a form that parses', () => {
     const source = '@a: display; @import url(x.css) supports(@{a}: grid); .x { w: if(supports(@{a}: grid): 1px; else: 2px); }';
     expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '@import url(x.css) supports(display: grid);\n.x {\n  w: if(supports(display: grid): 1px; else: 2px);\n}\n'
+    );
+  });
+
+  /*
+   * An unknown at-rule's prelude evaluates only `@{…}` (ledger P2), so the
+   * advised form is an interpolation there too.
+   */
+  it('renders the advised interpolation in an unknown at-rule prelude', () => {
+    const source = '@a: x; @foo bar @{a} (y) { b: c } @page @{a} { b: c } @foo @{a};';
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
+      '@foo bar x (y) {\n  b: c;\n}\n@page x {\n  b: c;\n}\n@foo x;\n'
     );
   });
 
