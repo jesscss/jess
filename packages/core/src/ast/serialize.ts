@@ -4441,8 +4441,21 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'Color':
       return literal(e.compress ? shortestColorFromHex(node.src) : node.src);
 
-    case 'Keyword':
     case 'Any':
+      /*
+       * [compress] A mixin argument binds as its evaluated bytes. When the binding
+       * kept the typed value beside them (a function-form color, a list), that
+       * value folds by its type, as the same value reaching the declaration
+       * directly does.
+       */
+      if (e.compress === true) {
+        const carried = frame?.mixinValueBindings?.get(node) ?? e.mixinValueBindings?.get(node);
+        if (carried !== undefined) {
+          return carried;
+        }
+      }
+      return literal(node.src);
+    case 'Keyword':
     case 'Comment':
 
     /*
@@ -5023,9 +5036,11 @@ function evalCollection(
  * so it stays a literal: §4.3 measures `b: "v#{$x}"` as `b: "v"`, not a drop.
  */
 function evalInterp(node: Interpolation, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
+  const lone = node.parts.length === 1 ? node.parts[0]! : undefined;
+  const ei = lone !== undefined && 'ref' in lone && lone.ref.type === 'Expression' ? e : spliceCtx(e);
   const pieces: Array<MaybePromise<EvalValue>> = [];
   for (const part of node.parts) {
-    pieces.push('lit' in part ? part.lit : evalValue(part.ref, frame, e));
+    pieces.push('lit' in part ? part.lit : evalValue(part.ref, frame, ei));
   }
   return combineAll(pieces, (values) => {
     let bytes = '';
@@ -5089,8 +5104,19 @@ function evalInterp(node: Interpolation, frame: Frame | null, e: EvalCtx): Maybe
     }
     return elided && values.length > 0
       ? NULL
-      : literal(resolveEmergentInterp(bytes, frame, e));
+      : literal(resolveEmergentInterp(bytes, frame, ei));
   });
+}
+
+/**
+ * [compress] The context an interpolation splice evaluates in. Spliced bytes
+ * become part of a larger token — a selector, a string, a property name — and
+ * folding them would change that token (`.s-@{c}` with `@c: #ffffff` is not
+ * `.s-#fff`), so compressed output spells them exactly as pretty output does
+ * (ledger O3: safe-only).
+ */
+function spliceCtx(e: EvalCtx): EvalCtx {
+  return e.compress === true ? { ...e, compress: false, modes: { ...e.modes, compress: false } } : e;
 }
 
 /** A Less identifier byte (`@{name}` name class: `-_A-Za-z0-9` + non-ASCII). */
@@ -6530,7 +6556,17 @@ function mixinGroupMode(value: ValueGroup): MixinGroupMode {
   return valueGroupHasUrl(value) ? MIXIN_GROUP_URL : MIXIN_GROUP_VALUE;
 }
 
-/** Construct one candidate-owned eager snapshot from already-derived source facts. */
+/**
+ * Construct one candidate-owned eager snapshot from already-derived source facts.
+ *
+ * TODO(compress-mixin-snapshot): under `output.compress` some callers derive
+ * `bytes` through `evalBytes`, which folds them, so a parameter interpolated
+ * inside the mixin body (`.s-@{a}` with `.m(@c)`, `@c: #ffffff`) prints the
+ * folded `#fff` — a different selector (ledger O3: safe-only). The fix is to
+ * snapshot the uncompressed spelling and carry the typed value for every
+ * snapshot under compress, so declarations still fold it by type. Tracked in
+ * docs/architecture/core/LESS-4X-FEATURE-TRIAGE.md row 5.
+ */
 function snapshotPreparedMixinValue(
   value: ValueGroup,
   mode: MixinGroupMode,
@@ -7705,7 +7741,7 @@ function evalBytes(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromi
  * unit multiset to validate.
  */
 function evalBytesInterp(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
-  return mapMaybe(evalValue(node, frame, e), emitValue);
+  return mapMaybe(evalValue(node, frame, spliceCtx(e)), emitValue);
 }
 
 /** Bytes for a synchronous position (at-rule prelude); async there is out of scope. */

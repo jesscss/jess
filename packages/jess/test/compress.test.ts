@@ -141,6 +141,33 @@ describe('output.compress — value folds (must fold)', () => {
     expect(await min('a { color: fade(#ff0000, 50%) }')).toBe('a{color:rgba(255,0,0,.5)}');
     expect(await min('a { color: spin(hsla(10, 50%, 50%, 0.5), 10) }')).toBe('a{color:hsla(20,50%,50%,.5)}');
   });
+
+  it('folds a list handed whole to an unknown function, item by item', async () => {
+    expect(await min('@l: 0.50px, 1.0px; a { b: foo(@l) }')).toBe('a{b:foo(.5px,1px)}');
+  });
+
+  it('folds a value the same whether it reaches the declaration directly or through a mixin', async () => {
+    const direct = await min('a { b: rgba(255, 0, 0, 0.5) }');
+    expect(direct).toBe('a{b:rgba(255,0,0,.5)}');
+    expect(await min('.m(@a) { b: @a } a { .m(rgba(255, 0, 0, 0.5)) }')).toBe(direct);
+    expect(await min('@c: rgba(255, 0, 0, 0.5); .m(@a) { b: @a } a { .m(@c) }')).toBe(direct);
+    expect(await min('.m(@a: rgba(255, 0, 0, 0.5)) { b: @a } a { .m() }')).toBe(direct);
+    expect(await min('.m(@a) { b: @a } a { .m(fade(#ff0000, 50%)) }')).toBe(direct);
+  });
+});
+
+describe('output.compress — interpolated text is never rewritten', () => {
+  /*
+   * Spliced bytes become part of a larger token, so folding them would change
+   * which element a selector matches or what a string says.
+   */
+  it('keeps an interpolated color as written in a selector, string, escape, and property name', async () => {
+    expect(await min('@d: #ffffff; .s-@{d} { b: @d }')).toBe('.s-#ffffff{b:#fff}');
+    expect(await min('@d: #ffffff; a { content: "@{d}" }')).toBe('a{content:"#ffffff"}');
+    expect(await min('@d: #ffffff; a { b: ~"@{d}-x" }')).toBe('a{b:#ffffff-x}');
+    expect(await min('@d: #ffffff; a { @{d}-x: 1 }')).toBe('a{#ffffff-x:1}');
+    expect(await min('@c: rgba(255, 0, 0, 0.5); a { content: "@{c}" }')).toBe('a{content:"rgba(255, 0, 0, 0.5)"}');
+  });
 });
 
 describe('output.compress — structural', () => {

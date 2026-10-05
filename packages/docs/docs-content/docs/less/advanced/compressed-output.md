@@ -85,6 +85,14 @@ the comma spaces and leading zeros go. Converting a
 color between representations is a lossy-of-intent optimization that belongs
 behind a finer-grained option, not the default `compress`.
 
+**Interpolated text is never re-spelled.** A value spliced into a selector, a
+string, an escape or a property name becomes part of a larger token, so it keeps
+the spelling pretty output gives it: with `@c: #ffffff`, `.s-@{c}` stays
+`.s-#ffffff` and `content: "@{c}"` stays `"#ffffff"` — folding them would match
+a different element or say something different. The same value in a declaration
+still folds (`color: @c` → `color:#fff`), however it got there — directly, through
+a variable, or as a mixin argument.
+
 **An authored bare color keyword is left verbatim** — `color: white` stays
 `white`. Every fold is driven by the value's **classification**: `#ffffff` is a
 `Color`, `0.5px` is a `Dimension`, but a bare `white` is a `Keyword`. Knowing
