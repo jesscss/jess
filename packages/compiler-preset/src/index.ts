@@ -57,7 +57,7 @@ class DefaultCompilerStackImpl implements DefaultCompilerStack {
     return [
       nodeModulesPlugin({ basePath: context.resolutionBaseDir }),
       this.getOrCreateJessPlugin(),
-      this.lessPluginResolver.getOrCreate(context.optionsFor('less')),
+      this.lessPluginResolver.getOrCreate(context.optionsFor('less'), [], context),
       this.getOrCreateScssPlugin()
     ];
   }

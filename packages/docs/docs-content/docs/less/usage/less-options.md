@@ -7,6 +7,10 @@ origin: less
 ---
 ## Cross-Platform Options
 
+Less 5 also reads a `styles.config.*` file beside (or above) the file it compiles. An option passed to `less.render()` or `lessc` wins over the same option in that file's `language.less` block and over a `compile` mode (including the `strict` preset); the config file applies to the options the call leaves unset.
+
+The mode options (`math`, `unitMode`, `moduleMode`) accept only the values listed for them. Any other value is an error, not a fallback to another mode.
+
 ### Include Paths
 
 | | |
@@ -181,7 +185,11 @@ Output:
 
 #### Strict Math (Deprecated)
 
-_This has been replaced by the [`math`](#math) option._
+| | |
+|---|---|
+| `lessc -sm=on`<br>`lessc --strict-math=on` | `{ strictMath: true }` |
+
+_This has been replaced by the [`math`](#math) option._ Less 5 still accepts it as an alias: `on` / `true` is `math: 'parens'`, and `off` / `false` leaves the default (`parens-division`). As in Less 4.x, `lessc` also takes `t`, `y`, `yes`, `f`, `n` and `no`, in any case. An explicit `math` wins. When `strictMath` decides the math mode, that is, when no `math` is set, a deprecation warning names the mapping.
 
 
 
@@ -222,13 +230,13 @@ In this case, things are clearly not right - a length multiplied by a length giv
 |---|---|
 | `lessc -su=on`<br>`lessc --strict-units=on` | `{ strictUnits: true }` |
 
-_Deprecated alias for `unitMode`: `on` / `true` sets `unitMode: 'strict'`; `off` / `false` means "not strict", i.e. the default `preserve` (the Less 4.x fold is only selected by an explicit `unitMode: 'loose'`). A deprecation warning naming the mapping is logged during compile whenever it is used._
+_Deprecated alias for `unitMode`: `on` / `true` sets `unitMode: 'strict'`; `off` / `false` means "not strict", i.e. the default `preserve` (the Less 4.x fold is only selected by an explicit `unitMode: 'loose'`). `lessc` takes the same on/off spellings as `--strict-math`. When `strictUnits` decides the unit mode, that is, when no `unitMode` is set, a deprecation warning names the mapping during compile._
 
 ### Module Mode
 
 | | |
 |---|---|
-| | `{ moduleMode: MODE }` |
+| `lessc --module-mode=MODE` | `{ moduleMode: MODE }` |
 
 `MODE` is `auto` (the default) or `modern`, and decides whether the Less built-in functions are available in a `.less` file without importing them.
 
@@ -314,9 +322,10 @@ Emits minified CSS. In 5.x, compressed output is a supported feature rather than
 
 | | |
 |---|---|
-| no `lessc` flag | `styles.config.*`: `compile: { plugins: [remoteImportPlugin({ allow: ['cdn.example.com'] })] }` |
+| `lessc --allow-remote-imports=cdn.example.com` | `{ allowRemoteImports: ['cdn.example.com'] }` |
+| | `styles.config.*`: `compile: { plugins: [remoteImportPlugin({ allow: ['cdn.example.com'] })] }` |
 
-Less 4.x downloaded every `@import` of an `http(s)://` URL. Less 5 downloads nothing by default: a URL import is left in the output as a plain CSS `@import`. A URL import that can never be plain CSS — `(reference)`, `(less)`, `(inline)`, `@compose` — is a compile error instead. To import Less from hosts you trust, install `@jesscss/plugin-remote-import` and add it to `compile.plugins` in a `styles.config.*` file beside (or above) your entry file. That config file is read by every Less 5 entry point that compiles a file: `lessc`, `less.render()` with a `filename`, and the `jess` CLI. The `jess` CLI also takes the hosts directly: `--allow-remote-imports cdn.example.com,fonts.example.com` (comma-separated, and the flag may repeat).
+Less 4.x downloaded every `@import` of an `http(s)://` URL. Less 5 downloads nothing by default: a URL import is left in the output as a plain CSS `@import`. A URL import that can never be plain CSS — `(reference)`, `(less)`, `(inline)`, `@compose` — is a compile error instead. To import Less from hosts you trust, install `@jesscss/plugin-remote-import` and add it to `compile.plugins` in a `styles.config.*` file beside (or above) your entry file. That config file is read by every Less 5 entry point that compiles a file: `lessc`, `less.render()` with a `filename`, and the `jess` CLI. `lessc` and the `jess` CLI also take the hosts directly: `--allow-remote-imports cdn.example.com,fonts.example.com` (comma-separated, and the flag may repeat), as does `less.render()` with `allowRemoteImports`; the flag and the option need the plugin installed next to `less` or `jess`.
 
 ```js
 // styles.config.mjs
@@ -374,6 +383,8 @@ Most of these options are not applicable to using Less.js in the browser, as you
 | `lessc --source-map` | `{ sourceMap: {} }` |
 
 Tells less to generate a sourcemap.
+
+The CSS ends with a `/*# sourceMappingURL=… */` annotation. Without a [Source Map URL](#source-map-url), the URL is the map's file name: `sourceMapFilename`, else `sourceMapOutputFilename` with `.map` appended, else the input file's name with `.css.map` (`main.less` → `main.css.map`). With none of those known, as for `less.render()` without a `filename`, no annotation is written. Empty output gets neither a map nor an annotation.
 
 #### Source Map Output Filename
 

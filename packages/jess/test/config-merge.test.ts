@@ -64,8 +64,11 @@ describe('Config Merging', () => {
 
     expect(css).toBeTruthy();
     expect(css).toContain('color: red');
-    // The final config should have collapseNesting: true and customProperty: 'render-value'
-    // demonstrating that render options override compiler options, which override file config
+
+    /*
+     * The final config should have collapseNesting: true and customProperty: 'render-value'
+     * demonstrating that render options override compiler options, which override file config
+     */
   });
 
   it('should concatenate arrays instead of replacing them', async () => {
@@ -108,9 +111,12 @@ describe('Config Merging', () => {
 
     expect(css).toBeTruthy();
     expect(css).toContain('color: blue');
-    // The final plugins array should contain all 6 plugins in order:
-    // file-plugin-1, file-plugin-2, compiler-plugin-1, compiler-plugin-2, render-plugin-1, render-plugin-2
-    // Arrays are concatenated, not replaced
+
+    /*
+     * The final plugins array should contain all 6 plugins in order:
+     * file-plugin-1, file-plugin-2, compiler-plugin-1, compiler-plugin-2, render-plugin-1, render-plugin-2
+     * Arrays are concatenated, not replaced
+     */
   });
 
   it('should handle nested object merging correctly', async () => {
@@ -153,8 +159,11 @@ describe('Config Merging', () => {
 
     expect(css).toBeTruthy();
     expect(css).toContain('color: green');
-    // Verify nested merging works - property1 should be 'render-value-1', property2 should be 'file-value-2'
-    // This demonstrates that nested objects are merged, not replaced
+
+    /*
+     * Verify nested merging works - property1 should be 'render-value-1', property2 should be 'file-value-2'
+     * This demonstrates that nested objects are merged, not replaced
+     */
   });
 
   it('adds configured plugin-js as a lazy proxy without starting Deno at context creation', () => {
@@ -175,10 +184,12 @@ describe('Config Merging', () => {
   });
 
   it('auto-wires the optional plugin-js for script imports without listing it in plugins', async () => {
-    // @jesscss/plugin-js is end-user installed: when it is resolvable, script
-    // (JS/TS) imports auto-wire without configuring it in `plugins`. The auto-wire
-    // hook resolves the plugin proxy for JS extensions; when plugin-js is absent
-    // the hook returns undefined and core emits the "Install @jesscss/plugin-js" gate.
+    /*
+     * @jesscss/plugin-js is end-user installed: when it is resolvable, script
+     * (JS/TS) imports auto-wire without configuring it in `plugins`. The auto-wire
+     * hook resolves the plugin proxy for JS extensions; when plugin-js is absent
+     * the hook returns undefined and core emits the "Install @jesscss/plugin-js" gate.
+     */
     const testFile = path.join(tempDir, 'test.less');
     fs.writeFileSync(testFile, '.a { color: red; }');
 
@@ -317,6 +328,47 @@ describe('Config Merging', () => {
       const result = await new Compiler(options).renderToResult(testFile, { suppressWarnings: true });
       expect(result.warnings.map(warning => warning.code)).not.toContain('deprecation/insecure-option');
     }
+  });
+
+  /*
+   * With a file path as input, the render options' `language` is the
+   * per-language config, as everywhere in `ConfigOptions`; the entry's language
+   * comes from its extension. It is never read as the entry's language name.
+   */
+  it('honours render-time language.less options when the input is a file path', async () => {
+    fs.writeFileSync(path.join(tempDir, 'styles.config.cjs'), 'module.exports = { compile: { mathMode: \'always\' } };\n');
+    const testFile = path.join(tempDir, 'test.less');
+    fs.writeFileSync(testFile, '.a { w: 2 + 3; }\n');
+
+    const result = await new Compiler().renderToResult(testFile, {
+      suppressWarnings: true,
+      language: { less: { mathMode: 'parens', dumpLineNumbers: 'comments' } }
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.css).toContain('w: 2 + 3;');
+    expect(result.warnings.map(warning => warning.code)).toContain('deprecation/dump-line-numbers-option');
+  });
+
+  it('names the styles.config that sets an invalid Less mode value, and only that file', async () => {
+    const configFile = path.join(tempDir, 'styles.config.cjs');
+    const testFile = path.join(tempDir, 'test.less');
+    fs.writeFileSync(testFile, '.a { w: 1px; }\n');
+
+    fs.writeFileSync(configFile, 'module.exports = { language: { less: { unitMode: \'stict\' } } };\n');
+    await expect(new Compiler().renderToResult(testFile)).rejects.toMatchObject({
+      code: 'plugin/invalid-option',
+      filePath: configFile
+    });
+
+    /* A config file is loaded once per directory, so the second case gets its own. */
+    const validDir = path.join(tempDir, 'valid');
+    fs.mkdirSync(validDir);
+    fs.writeFileSync(path.join(validDir, 'styles.config.cjs'), 'module.exports = { compile: { mathMode: \'always\' } };\n');
+    const validTestFile = path.join(validDir, 'test.less');
+    fs.writeFileSync(validTestFile, '.a { w: 1px; }\n');
+    await expect(new Compiler().renderToResult(validTestFile, { language: { less: { unitMode: 'stict' } } }))
+      .rejects.toMatchObject({ code: 'plugin/invalid-option', filePath: undefined });
   });
 
   it('does not warn when dumpLineNumbers is unset or off', async () => {

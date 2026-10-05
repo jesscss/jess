@@ -906,6 +906,21 @@ export const ERR = {
     });
   },
 
+  /**
+   * A plugin option is set to a value outside its documented set. Options are
+   * not a stylesheet, so the diagnostic names the option, and `filePath` is the
+   * config file when one sets the value; a value passed in code has no file.
+   */
+  pluginInvalidOption(
+    args: Common & { meta: { plugin: string; option: string; value: string; allowed: string } }
+  ) {
+    return makeJessError({
+      code: 'plugin/invalid-option',
+      phase: 'plugin',
+      ...args
+    });
+  },
+
   /** A `@plugin`/`@use` function raised — user code failed, not a value mismatch. */
   pluginFunctionThrew(
     args: Common & { meta: { name: string; reason: string } }

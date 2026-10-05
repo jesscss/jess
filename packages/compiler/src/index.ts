@@ -264,6 +264,12 @@ export type CompilerPluginContext = {
   language?: string;
   resolutionBaseDir?: string;
   optionsFor(language?: string): Record<string, unknown>;
+
+  /**
+   * The options `configFilePath` alone sets (empty when no config file was
+   * found), so a plugin can name that file when one of its values is invalid.
+   */
+  configFileOptionsFor(language?: string): Record<string, unknown>;
 };
 
 export type CompilerHooks = {
@@ -299,6 +305,7 @@ type ResolvedRenderConfig = {
   /** Dialect of this render's entry source; selects the built-in fn set. */
   language?: string;
   optionsFor(language?: string): Record<string, unknown>;
+  configFileOptionsFor(language?: string): Record<string, unknown>;
 };
 
 const isSourceMapOption = (value: unknown): value is NonNullable<OutputOptions['sourceMap']> =>
@@ -746,6 +753,12 @@ export class Compiler {
           language: targetLanguage,
           input: configInputPath,
           output: resolvedOutputFilePath
+        }) as Record<string, unknown>,
+      configFileOptionsFor: (targetLanguage?: string) =>
+        getOptions(loadedFileConfig, {
+          language: targetLanguage,
+          input: configInputPath,
+          output: resolvedOutputFilePath
         }) as Record<string, unknown>
     };
   }
@@ -1000,7 +1013,8 @@ export class Compiler {
       resolvedOutputFilePath: resolved.resolvedOutputFilePath,
       language: resolved.language,
       resolutionBaseDir,
-      optionsFor: resolved.optionsFor
+      optionsFor: resolved.optionsFor,
+      configFileOptionsFor: resolved.configFileOptionsFor
     };
   }
 
@@ -1423,11 +1437,13 @@ export class Compiler {
 
   async renderToResult(
     input: string | { source: string; filePath?: string; language?: string; extension?: string },
-    options?: Partial<ConfigOptions> & {
-      filePath?: string;
-      language?: string;
-      extension?: string;
-    }
+
+    /*
+     * `language` here is the per-language config (`language.less`), as
+     * everywhere in `ConfigOptions`. The entry's language name comes only from
+     * the input object, else from the file extension.
+     */
+    options?: Partial<ConfigOptions>
   ): Promise<{
     css: string;
     errors: ErrorDiagnostic[];
@@ -1443,8 +1459,8 @@ export class Compiler {
     const isSourceContent = typeof input === 'object' && 'source' in input;
     const source = isSourceContent ? input.source : undefined;
     const filePath = isSourceContent ? input.filePath : input;
-    const language = isSourceContent ? input.language : options?.language;
-    const extension = isSourceContent ? input.extension : options?.extension;
+    const language = isSourceContent ? input.language : undefined;
+    const extension = isSourceContent ? input.extension : undefined;
     const renderOptions = options;
     const { resolved, context, profile } = await this.prepareRender(filePath, renderOptions, { language, extension });
 
