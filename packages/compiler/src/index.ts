@@ -20,6 +20,7 @@ import {
   serialize,
   prepareStaticImports,
   buildAstSourceMap,
+  removeSourceMapBasepath,
   type PreparedImports,
   type PluginInterface,
   type Position
@@ -120,7 +121,11 @@ export interface RenderedStylesheet {
   /** v3 source map JSON (external form), when source maps are enabled. */
   map?: string;
 
-  /** The `sourceMappingURL` written into the CSS annotation, when one is written. */
+  /**
+   * The external map's URL, basepath-stripped. The annotation names it, except
+   * that `sourceMapFileInline` writes a `data:` URI and
+   * `disableSourcemapAnnotation` writes nothing; it is returned either way.
+   */
   sourceMapURL?: string;
 }
 
@@ -133,8 +138,9 @@ export interface RenderedStylesheet {
  * that output name + `.map`, appended with no trailing newline;
  * `sourceMapFileInline` embeds the map as a base64 `data:` URI;
  * `disableSourcemapAnnotation` writes nothing; and empty output gets neither a
- * map nor an annotation. The corpus `sourcemaps*` fixtures (goldens and expected
- * maps) pin these. The annotation URL is not basepath-stripped. The external
+ * map nor an annotation. Like Less 4.x (`source-map-builder.js`), the basepath
+ * is stripped from the annotation URL as from every source. The corpus
+ * `sourcemaps*` fixtures (goldens and expected maps) pin these. The external
  * `.map` string is returned for callers that write it to disk — this compiler
  * has no file-writing CLI.
  */
@@ -152,20 +158,23 @@ function assembleSourceMap(
     ?? (outputFilePath === undefined
       ? (inputFilePath === undefined ? 'output.css' : `${path.basename(inputFilePath, path.extname(inputFilePath))}.css`)
       : path.basename(outputFilePath));
+  const basepath = (option.sourceMapBasepath
+    ?? (inputFilePath === undefined ? undefined : path.dirname(path.resolve(inputFilePath))))?.replace(/\\/g, '/');
   const encoded = buildAstSourceMap(css, positions, {
     outputFilename,
     sourceMapRootpath: option.sourceMapRootpath,
-    sourceMapBasepath: option.sourceMapBasepath ?? (inputFilePath === undefined ? undefined : path.dirname(path.resolve(inputFilePath))),
+    sourceMapBasepath: basepath,
     outputSourceFiles: option.outputSourceFiles
   });
   const map = JSON.stringify(encoded);
 
-  const sourceMapURL = option.sourceMapURL
-    ?? option.sourceMapFilename
+  const url = option.sourceMapURL
+    ?? option.sourceMapFilename?.replace(/\\/g, '/')
     ?? (option.sourceMapFullFilename === undefined ? undefined : path.basename(option.sourceMapFullFilename))
     ?? (inputFilePath === undefined && outputFilePath === undefined && option.sourceMapOutputFilename === undefined
       ? undefined
       : `${outputFilename}.map`);
+  const sourceMapURL = url === undefined ? undefined : removeSourceMapBasepath(url, basepath);
   const annotationURL = option.sourceMapFileInline === true
     ? `data:application/json;base64,${Buffer.from(map, 'utf8').toString('base64')}`
     : sourceMapURL;

@@ -42,7 +42,7 @@ export { emitJess, NoJessSpelling } from './ast/emit-jess.js';
 export type { EmitJessOptions, JessSpellingGap } from './ast/emit-jess.js';
 
 /** Build a v3 source map from the render's position stream (see `trackPositions`). */
-export { buildAstSourceMap } from './ast/sourcemap.js';
+export { buildAstSourceMap, removeSourceMapBasepath } from './ast/sourcemap.js';
 export type { AstSourceMapOptions } from './ast/sourcemap.js';
 
 /** Construct the typed value evaluator used by the canonical AST-v2 execution path. */
