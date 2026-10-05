@@ -310,11 +310,49 @@ Runs the less parser and just reports errors without any output.
 Compress using less built-in compression. This does an okay job but does not utilise all the tricks of dedicated css compression. In general, we recommend looking at third-party tools that clean and compress CSS after your Less has been transformed to CSS.
 
 
+#### Remote Imports
+
+| | |
+|---|---|
+| no command-line flag | `styles.config.*`: `compile: { plugins: [remoteImportPlugin({ allow: ['cdn.example.com'] })] }` |
+
+Less 4.x downloaded every `@import` of an `http(s)://` URL. Less 5 downloads nothing by default: a URL import is left in the output as a plain CSS `@import`. To import Less from hosts you trust, install `@jesscss/plugin-remote-import` and add it to `compile.plugins` in a `styles.config.*` file beside (or above) your entry file. That config file is read by every Less 5 entry point that compiles a file: `lessc`, `less.render()` with a `filename`, and the `jess` CLI.
+
+```js
+// styles.config.mjs
+import { remoteImportPlugin } from '@jesscss/plugin-remote-import';
+
+export default {
+  compile: {
+    plugins: [
+      remoteImportPlugin({
+        allow: ['cdn.example.com'], // required: exact host names
+        maxBytes: 512 * 1024,       // optional: the default, in bytes
+        timeout: 5000               // optional: the default, in milliseconds
+      })
+    ]
+  }
+};
+```
+
+With the plugin configured:
+
+- Only `https://` URLs on an `allow` host are downloaded. Hosts are matched exactly — no wildcards, no ports — and a private, loopback or link-local address can't be allowed. A host that resolves to one of those addresses is refused too.
+- A URL import to any other host, or over plain `http://`, is a compile error. `(optional)` does not hide that error.
+- Imports inside a downloaded file are resolved against its URL, so `@import "vars.less"` in `https://cdn.example.com/theme/main.less` loads `https://cdn.example.com/theme/vars.less`. A downloaded file can't import a file from your disk.
+- Redirects are followed only within the same origin, at most five times.
+- A response larger than `maxBytes`, or an import that takes longer than `timeout` (redirects and body included), is an error.
+- A URL without a file extension, such as `https://fonts.googleapis.com/css?family=Open+Sans`, stays a CSS `@import`.
+
+Under [Deno](https://deno.com/), also run with `--allow-net` set to the same hosts (for example `deno run --allow-net=cdn.example.com …`). Deno then refuses a connection to any other host even if the plugin's own check were wrong. Node has no per-host network permission, so on Node the plugin's check is the only one.
+
 #### Allow Imports from Insecure HTTPS Hosts
 
 | | |
 |---|---|
 | `lessc --insecure` | `{ insecure: true }` |
+
+Has no effect in Less 5. [Remote imports](#remote-imports) are https-only and always verify the server's certificate.
 
 
 ## Source Map Options

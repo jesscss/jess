@@ -156,10 +156,12 @@ registry members are not active lane checks.
 
 ### Not a registry entry: `import-remote`
 
-`tests-unit/import/import-remote.less` is **not** in `expectedFailureFixtures`.
-It is a member of the separate `skippedFixtures` array in the same file — remote
-URL imports require an explicit network/IO allowlist, which is not part of the
-alpha harness policy. It must not be counted in any registry disposition.
+`tests-unit/import/import-remote.less` is in neither `expectedFailureFixtures`
+nor `skippedFixtures`: it is an ordinary passing gate. The harness enables the
+opt-in `@jesscss/plugin-remote-import` for `cdn.jsdelivr.net` with a transport
+that answers from the local test-data checkout, so the fixture exercises the
+remote-import route without a network
+(`docs/design/REMOTE-IMPORTS-NETWORK-POLICY.md` §7).
 
 The named reason beside every entry remains in
 `expectedFailureFixtures`; update that reason and this classification together.

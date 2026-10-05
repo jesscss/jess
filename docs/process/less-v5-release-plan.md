@@ -95,8 +95,8 @@ The local URL-rewrite portion of this phase has graduated. `rewriteUrls`,
 the typed URL/import transform path. The full corpus now passes the dedicated
 rewrite/rootpath/url-args fixtures; `static-urls/urls` retains only the separately
 recorded authored multiline-value spelling difference. Remote source loading is
-the sole remaining Phase C feature and still needs an owner-approved network/IO
-allowlist.
+implemented as the opt-in `@jesscss/plugin-remote-import`
+(`docs/design/REMOTE-IMPORTS-NETWORK-POLICY.md`).
 
 | Fixture                                                    | Feature                                                                                | Current disposition                                      |
 | ---------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------- |
@@ -104,15 +104,16 @@ allowlist.
 | `rootpath-rewrite-urls-all`, `rootpath-rewrite-urls-local` | `rootpath` + `rewriteUrls` combined                                                    | **IMPLEMENTED**                                           |
 | `static-urls/urls`                                         | static `url()` handling under rewrite                                                  | **IMPLEMENTED**; only authored-layout mismatch remains   |
 | `url-args/urls`                                            | `urlArgs` — append a cache-busting arg to every `url()`                                | **IMPLEMENTED**                                           |
-| `import/import-remote`                                     | Remote URL imports that fetch and inline external Less sources                         | **DEFERRED** — needs explicit network/IO allowlisting     |
+| `import/import-remote`                                     | Remote URL imports that fetch and inline external Less sources                         | **IMPLEMENTED** (opt-in plugin, host allowlist)           |
 
 The implemented rows are option-plumbing over the URL/import handling that the
 core already owns. They are retained here to keep the original phase inventory
 auditable rather than silently deleting completed commitments.
 `process-imports/google.less` graduated on 2026-07-28: `processImports: false`
 now leaves remote/CSS imports un-inlined in the public alpha fixture lane.
-Remote URL import loading remains excluded from the alpha fixture lane until the
-resolver has an explicit allowlist/security model for network access.
+Remote URL import loading is opt-in through `@jesscss/plugin-remote-import`; the
+fixture lane gates `import/import-remote` with that plugin's transport answering
+from the local test-data checkout.
 
 ## Phase D — source maps
 
