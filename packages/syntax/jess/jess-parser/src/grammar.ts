@@ -299,6 +299,9 @@ type JessRules = {
 };
 
 type SharedSyntax = {
+  /* Inherited from the CSS base: the glued `ns|` / `*|` / `|` prefix terminal. */
+  AttributeNamespace: Combinator<unknown>;
+
   /*
    * Converged to the CSS base (inherited via compose): same token rule
    * token(noTrivia(sequence(<number>, '%'))), used only by keyframeSelector.
@@ -710,16 +713,6 @@ const dollarInterpolationStructure = noTrivia(sequence(
 ));
 const customPropertyChunk = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 const selectorTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
-
-/*
- * A CSS-namespaces prefix: `<ident>|`, `*|`, or bare `|`, glued (no whitespace
- * around `|` \u2014 CSS Namespaces \u00a72, selectors-4 \u00a75.1). It prefixes a type/universal
- * selector (`svg|circle`, `*|a`, `|a`) and an attribute name (`[svg|attr]`), so
- * one recognizer serves both \u2014 the same shape the CSS base and the other dialects
- * use (one representation per construct). `(?!=)` keeps the attribute operator
- * `|=` (selectors-4 \u00a76.3) on its own route so `[a|=b]` is `a` matched by `|=`.
- */
-const attributeNamespace = regex(/(?:-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)?\|(?!=)/);
 
 /*
  * The parent selector. `&` alone is a selector reference; `&` fused with an
@@ -1980,14 +1973,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * syntax, so Jess restates the frame only to put the restricted
    * LiteralQuoted slot where CSS reads `g.Quoted`; Jess's own `Quoted`
    * interpolates. A namespaced attribute name (`[svg|attr]`, `[*|attr]`,
-   * `[|attr]`) takes the same glued `attributeNamespace` prefix the CSS base
-   * uses.
+   * `[|attr]`) takes the CSS base's own glued `AttributeNamespace` prefix.
    */
   const AttributeSelector = node<SimpleSelector>(
     'AttributeSelector',
     sequence(
       literal('['),
-      optional(attributeNamespace),
+      optional(g.AttributeNamespace),
       g.Identifier,
       optional(sequence(
         g.AttributeOperator,

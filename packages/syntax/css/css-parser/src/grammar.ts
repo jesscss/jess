@@ -1040,6 +1040,12 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * The namespace prefix as a rule, so a dialect composes this one terminal
+   * instead of restating it (both of CSS's own uses read it through `g`).
+   */
+  const AttributeNamespace = attributeNamespace;
+
+  /*
    * `ns|E` / `*|E` / `|E` is ONE type selector with a namespace prefix
    * (selectors-4 §5.1), not two compounds joined by a `|` combinator. It leads
    * the compound choice because its prefix shares a first char with a plain type
@@ -1048,11 +1054,6 @@ const cssFactory = (g: GrammarSelf) => {
    * the whole `svg|circle` text, matching the other dialects (one representation
    * per construct).
    */
-  /*
-   * The namespace prefix as a rule, so a dialect composes this one terminal
-   * instead of restating it (both of CSS's own uses read it through `g`).
-   */
-  const AttributeNamespace = attributeNamespace;
   const NamespaceTypeSelector = node(
     'NamespaceTypeSelector',
     noTrivia(sequence(
