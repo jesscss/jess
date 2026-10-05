@@ -45,17 +45,6 @@ describe('scss plugin render-through', () => {
    * comparison — not the raw `@if`/`@else` at-rules verbatim. Without this
    * gate the scss-parser suite stayed green while the product mis-compiled.
    */
-  /**
-   * `math.round` shares the core rounding kernel with Less `round()`: an exact tie goes
-   * to the upper value (CSS Values 4 round(nearest)), not away from zero as dart-sass does.
-   */
-  it('rounds an exact `math.round` tie toward +infinity', async () => {
-    const compiler = new Compiler();
-    const src = '@use "sass:math";\n.t { a: math.round(-0.5); b: math.round(-2.5); c: math.round(2.5); }';
-    const css = await compiler.renderString(src, { extension: '.scss' });
-    expect(css).toBe('.t {\n  a: 0;\n  b: -2;\n  c: 3;\n}\n');
-  });
-
   it('evaluates an `@if`/`@else` comparison — true branch', async () => {
     const compiler = new Compiler();
     const src = '$a: 1;\n.x {\n  @if $a == 1 { color: red; } @else { color: blue; }\n}';
@@ -74,6 +63,17 @@ describe('scss plugin render-through', () => {
     expect(css).not.toContain('color: red');
     expect(css).not.toContain('@if');
     expect(css).not.toContain('@else');
+  });
+
+  /**
+   * `math.round` shares the core rounding kernel with Less `round()`: an exact tie goes
+   * to the upper value (CSS Values 4 round(nearest)), not away from zero as dart-sass does.
+   */
+  it('rounds an exact `math.round` tie toward +infinity', async () => {
+    const compiler = new Compiler();
+    const src = '@use "sass:math";\n.t { a: math.round(-0.5); b: math.round(-2.5); c: math.round(2.5); }';
+    const css = await compiler.renderString(src, { extension: '.scss' });
+    expect(css).toBe('.t {\n  a: 0;\n  b: -2;\n  c: 3;\n}\n');
   });
 
   /**
