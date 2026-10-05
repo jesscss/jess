@@ -42,6 +42,7 @@ import { join } from 'node:path';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 import jessPlugin from '@jesscss/plugin-jess';
+import scssPlugin from '@jesscss/plugin-scss';
 
 const render = async (source: string, collapseNesting: boolean) =>
   (await new Compiler({
@@ -298,6 +299,14 @@ describe('Less block comments at a statement boundary inside a block', () => {
       const css = await new Compiler({ output: { collapseNesting }, compile: { plugins: [lessPlugin()] } })
         .render(join(dir, 'entry.less'));
       expect(css.replace(/\s+/g, ' ').trim()).toBe(expected);
+    }
+  });
+
+  it('writes a document-level loop body\'s comment at the document level (.scss)', async () => {
+    for (const collapseNesting of [false, true]) {
+      const css = await new Compiler({ output: { collapseNesting }, compile: { plugins: [scssPlugin()] } })
+        .renderString('/* r */ @each $v in 1, 2 { /* c */ .x-#{$v} { v: $v; } }', { language: 'scss', extension: '.scss' });
+      expect(css.replace(/\s+/g, ' ').trim()).toBe('/* r */ /* c */ .x-1 { v: 1; } /* c */ .x-2 { v: 2; }');
     }
   });
 

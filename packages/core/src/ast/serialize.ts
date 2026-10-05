@@ -10032,11 +10032,17 @@ function markSilentStatementBlockCommentTrivia(node: Statement, e: Emit): void {
  */
 function holdBodyTrivia(owner: object, e: Emit): void {
   const start = bodyStartOf(owner);
-  if (e.trivia === undefined || start === NO_SPAN) {
+  if (start !== NO_SPAN) {
+    holdTriviaBetween(start, bodyEndOf(owner), e);
+  }
+}
+
+/** HOLD the comment runs between two offsets ({@link holdBodyTrivia}). */
+function holdTriviaBetween(start: number, end: number, e: Emit): void {
+  if (e.trivia === undefined) {
     return;
   }
   const table = commentTableOf(e.trivia);
-  const end = bodyEndOf(owner);
   for (let i = firstRunAtOrAfter(table, start); i < table.runs.length && table.runStart[i]! <= end; i++) {
     if (table.runEnd[i]! <= end && runHasBlockComment(table, i)) {
       e.emittedBlockTrivia.holdIndex(table, i);
@@ -11935,6 +11941,14 @@ function emitDocumentStatements(
   };
   const flushDocumentGroup = (group: Leaf[]): MaybePromise<void> => {
     const trailingBlockComments = takePendingLeafBlockComments(e, group);
+
+    /* A comment statement (SCSS) at the document level is written there, not in a block. */
+    if (group.length !== 0 && group.every(leaf => leaf.node.type === 'Comment')) {
+      for (const leaf of group) {
+        emitLeaf(leaf, e, true);
+      }
+      group.length = 0;
+    }
     if (group.length) {
       return mapMaybe(
         flushBlock([], group, e, undefined, undefined, trailingBlockComments),
@@ -13156,7 +13170,7 @@ interface BodyTriviaReplay {
  * its runs are freed for this copy, and {@link EmittedTrivia.closeCopy}
  * restores them once the body is walked.
  */
-function bodyTriviaReplay(owner: object, e: Emit): BodyTriviaReplay | undefined {
+function bodyTriviaReplay(owner: object, e: Emit, span?: ReplaySpan): BodyTriviaReplay | undefined {
   const trivia = e.trivia;
   if (trivia === undefined) {
     return undefined;
@@ -13165,9 +13179,11 @@ function bodyTriviaReplay(owner: object, e: Emit): BodyTriviaReplay | undefined 
   if (table.runs.length === 0) {
     return undefined;
   }
-  let start = bodyStartOf(owner);
+  let start = span?.start ?? bodyStartOf(owner);
   let end: number;
-  if (start === NO_SPAN) {
+  if (span !== undefined) {
+    end = span.end;
+  } else if (start === NO_SPAN) {
     const body = bodySpanForTriviaReplay(owner, e);
     if (body === undefined) {
       return undefined;
@@ -15846,8 +15862,15 @@ function expandFor(
       : nestedBody([unlowered], frame, e, undefined, imp, source, null, sharedLeaves, applyExpansion);
   }
 
-  /* Each iteration writes its own copy of the body, comments included. */
-  holdBodyTrivia(node, e);
+  /*
+   * Each iteration writes its own copy of the body, comments included. The
+   * body span is found once: a loop with no recorded body span (SCSS
+   * `@each`/`@for`) locates its braces in the source a single time.
+   */
+  const bodySpan = bodySpanForTriviaReplay(node, e);
+  if (bodySpan !== undefined) {
+    holdTriviaBetween(bodySpan.start, bodySpan.end, e);
+  }
   return mapMaybe(forItems(node.iterable, frame, e), (items) => {
     const run = (start: number): MaybePromise<void> => {
       const collectionEntries = Array.isArray(items)
@@ -15903,7 +15926,7 @@ function expandFor(
         if (item !== null) {
           bindForDetached(loopFrame, bindings, item);
         }
-        const bodyTrivia = bodyTriviaReplay(node, e);
+        const bodyTrivia = bodySpan === undefined ? undefined : bodyTriviaReplay(node, e, bodySpan);
         const walked = mapMaybe(
           activateBodyDependencies(node.rules, loopFrame, e),
           () => sharedLeaves === undefined

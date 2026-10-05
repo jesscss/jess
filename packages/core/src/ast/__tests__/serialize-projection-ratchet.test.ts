@@ -186,8 +186,9 @@ describe('V19 one-evaluator projection ratchet', () => {
     // `insideSpan`): both writers write a custom property's value one way, and
     // the root replay finds a statement span by binary search. +1 function
     // (`placeStatementCall`): a statement call is evaluated where it stands in
-    // either writer's walk.
-    expect(occurrences(/^function |^async function /gmu)).toBe(490);
+    // either writer's walk. +1 function (`holdTriviaBetween`): a loop locates
+    // its body span once for all of its iterations.
+    expect(occurrences(/^function |^async function /gmu)).toBe(491);
     expect(occurrences(/new Map/gu)).toBe(73);
     expect(occurrences(/new Set/gu)).toBe(37);
     expect(occurrences(/new WeakMap/gu)).toBe(6);
