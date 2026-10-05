@@ -49,6 +49,25 @@ describe('escaped strings at the Less plugin boundary', () => {
     ]);
   });
 
+  /*
+   * Blocked on the AST (PINNED-DEFECTS-AUDIT D22): the parser lowers an escaped
+   * string that interpolates (`~"a @{v}"`) to a bare `Interpolation` with no
+   * quote and no escaped flag, so its value is read back from its text and a
+   * plugin gets a Dimension, a Color or a Keyword.
+   */
+  it.fails('hands a plugin an interpolated escaped string as an escaped tree.Quoted', async () => {
+    const seen: string[] = [];
+    await render('@n: 4; @c: red; @v: q;\n.x { a: probe(~"@{n}px", ~"@{c}", ~\'a @{v}\'); }', {
+      install(_less, _manager, functions) {
+        functions.add('probe', (...args: unknown[]) => {
+          seen.push(...args.map(describeArg));
+          return 'ok';
+        });
+      }
+    });
+    expect(seen).toEqual(['Quoted("4px", escaped=true)', 'Quoted("red", escaped=true)', 'Quoted(\'a q\', escaped=true)']);
+  });
+
   it('writes an escaped tree.Quoted result unquoted, as Less does', async () => {
     const css = await render('.x { a: wrap(1); }', {
       install(less, _manager, functions) {

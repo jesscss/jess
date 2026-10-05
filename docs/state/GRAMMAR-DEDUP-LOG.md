@@ -1201,3 +1201,20 @@ now quantified — a big multi-week effort, not a switch.
   re-dispatch until that fold's slice 5 lands. Two grammar dedups noted for later
   (the four `<query-in-parens>` forks vs scss's unified one; the typed at-rule
   prelude duplicated across jess/less/scss).
+- 2026-10-05 — **Macro-fusion checks moved onto the built artifacts (jess#176).**
+  `check:compose-fused` (`scripts/probe/compose-fused-check.mjs`) now covers CSS
+  (its four variants and `grammar/base.js`) as well as Less/SCSS/Jess, reads the
+  CommonJS build of each variant beside the ESM one, counts runtime
+  `compose(`/`composeLeaf(` from the syntax tree (a doc comment no longer
+  counts), asserts each public entry loads only its own variant's table, and
+  asserts recognition fusion with `recognitionReads`
+  (`scripts/parseman-fallback-detector.mjs`). The Vite build-in-a-test fusion
+  and entry checks it replaces are deleted. One correction to #176's own
+  wording: a fused grammar still imports `@jesscss/parser-shared` BY DESIGN —
+  the tsdown configs keep it external so a downstream `compose()` can follow
+  `parseman.composedPieces` across the package boundary (see
+  `LESS-COMPOSE-REAUTHOR-PLAN.md` §2) — so the gate asserts "read only as
+  compose metadata", not "no import". `check:macro` now also reports a
+  side-effect `import 'parseman'`; jess-parser's helpers carried one
+  (`import {} from 'parseman'`), which loaded the parseman root runtime in all
+  four fused Jess variants; removed.
