@@ -171,9 +171,20 @@ describe('V19 one-evaluator projection ratchet', () => {
     // desugar wrapped that nothing loads is written as one `@import … q;`.
     // +1 function (`moduleLoadFailed`): a `@use` that cannot load is an
     // `import/load-failed` at the `@use`, as `@plugin` already is.
-    expect(occurrences(/^function |^async function /gmu)).toBe(480);
+    // +6 functions, -2 `new Set` (walk-recorded extend placement, jess#355/#359/
+    // #360/#361, ledger X14): `openDynamicPath`/`dynamicPathAt` give a mixin- or
+    // loop-placed rule its ancestors' selector IR (built on first read only),
+    // `withDynamicPlacement` restores the recorder's at-rule scope, sheet boundary
+    // and open rules after a rule, at-rule or composed module, `placementProjection`
+    // keeps a `(reference)` copy's projection apart from a plain copy's,
+    // `hiddenRulesToReveal` reserves the hidden rules a walk-recorded extend may
+    // reveal, and `collectInstructionAtoms`/`collectBodyExtendAtoms` gather the
+    // targets of extends that only the walk reaches; `visibleHeaderFromProjection`,
+    // the merged set of hidden reference rules and the set of loop bodies that
+    // earned a placement token (every loop iteration and mixin call now does) are gone.
+    expect(occurrences(/^function |^async function /gmu)).toBe(486);
     expect(occurrences(/new Map/gu)).toBe(73);
-    expect(occurrences(/new Set/gu)).toBe(37);
+    expect(occurrences(/new Set/gu)).toBe(35);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

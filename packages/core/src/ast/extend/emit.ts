@@ -47,7 +47,7 @@ import {
 import type { Branch, Compound, Level, Simple } from './ir.js';
 import { composePath } from './compose.js';
 import { branchWholeMatches, matchBoundarySpan } from './match.js';
-import { collectPlan, documentHasExtend, reaches } from './plan.js';
+import { boundaryReaches, collectPlan, documentHasExtend, reaches } from './plan.js';
 import type { PlanInstruction, PlanOverlay, PlanSubject } from './plan.js';
 import { buildContribs, runFixpoint, solveComposed } from './solve.js';
 import type { ContribMap } from './solve.js';
@@ -128,9 +128,6 @@ export interface ExtendResults {
    */
   hiddenByRule: Map<Ruleset, boolean[]>;
 
-  /** Hidden reference subjects, retained separately from canonical AST nodes. */
-  hiddenReferenceRules: ReadonlySet<Ruleset> | null;
-
   /** Reference-imported at-rule containers with at least one visible descendant. */
   visibleReferenceAtRules: Set<AtRuleBlock> | null;
 
@@ -151,6 +148,9 @@ export interface ExtendResults {
    * token is issued by the serializer's preflight and is never attached to AST.
    */
   byPlacement: WeakMap<object, ExtendPlacementResults> | null;
+
+  /** The plan's {@link Plan.targetAtoms}: every atom an extend target names. */
+  targetAtoms: ReadonlySet<string>;
 }
 
 /* ------------------------------------------------------ sibling compaction */
@@ -411,12 +411,7 @@ function relativizeExtender(inst: PlanInstruction, subject: PlanSubject): PlanIn
  * Compute extend results for a parsed AST root. Returns `null` when the
  * document has NO `:extend()` at all (the serializer's zero-cost gate).
  */
-export function computeExtends(
-  root: Stylesheet,
-  hiddenRules?: ReadonlySet<Ruleset>,
-  referenceBoundaries?: ReadonlyMap<Ruleset, object>,
-  overlay?: PlanOverlay
-): ExtendResults | null {
+export function computeExtends(root: Stylesheet, overlay?: PlanOverlay): ExtendResults | null {
   /*
    * Zero-cost gate: an allocation-free pre-scan short-circuits the common case (no
    * `:extend()` anywhere) before any subject/instruction plan is built.
@@ -424,7 +419,7 @@ export function computeExtends(
   if (!documentHasExtend(root) && (!overlay || overlay.instructions.length === 0)) {
     return null;
   }
-  const plan = collectPlan(root, hiddenRules, referenceBoundaries, overlay);
+  const plan = collectPlan(root, overlay);
   if (plan.instructions.length === 0) {
     return null;
   }
@@ -442,7 +437,6 @@ export function computeExtends(
   const hiddenByRule = new Map<Ruleset, boolean[]>();
   const nestedPlan = new Map<Ruleset, NestedRulePlan>();
   const hoistHeader = new Map<Ruleset, string[]>();
-  const hiddenReferenceRules = overlay?.hiddenReferenceRules ?? null;
   const staticProjection: ExtendPlacementResults = {
     flatByRule,
     hiddenByRule,
@@ -495,8 +489,8 @@ export function computeExtends(
 
       /*
        * [placeholder] A placeholder seed branch is hidden PER BRANCH, not per
-       * subject: `%ph, .a { … }` keeps `.a`. That granularity is why
-       * `Ruleset.reference` could not be reused — it is a whole-rule flag.
+       * subject: `%ph, .a { … }` keeps `.a`. That granularity is why the
+       * subject's `hidden` flag could not be reused — it hides a whole rule.
        *
        * This marks provenance so the per-branch mask carries a placeholder the
        * same way it carries an `@import (reference)` rule. It is NOT sufficient
@@ -523,9 +517,7 @@ export function computeExtends(
   };
 
   const reachingOf = (s: PlanSubject): PlanInstruction[] =>
-    plan.instructions.filter(i =>
-      (i.referenceBoundary === null || i.referenceBoundary === s.referenceBoundary)
-      && reaches(i.scope, s.scope));
+    plan.instructions.filter(i => boundaryReaches(i.boundary, s.boundary) && reaches(i.scope, s.scope));
 
   const childrenOf = new Map<PlanSubject, PlanSubject[]>();
   for (const s of plan.subjects) {
@@ -993,11 +985,11 @@ export function computeExtends(
   return {
     flatByRule,
     hiddenByRule,
-    hiddenReferenceRules,
     visibleReferenceAtRules: staticProjection.visibleReferenceAtRules,
     visibleReferenceRuleAncestors: staticProjection.visibleReferenceRuleAncestors,
     nestedPlan,
     hoistHeader,
-    byPlacement
+    byPlacement,
+    targetAtoms: plan.targetAtoms
   };
 }

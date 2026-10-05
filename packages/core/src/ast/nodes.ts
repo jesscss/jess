@@ -709,9 +709,9 @@ export function simpleSelectorIsPlaceholder(simple: SimpleToken): boolean {
  *
  * Placeholder-ness is a property of the BRANCH, not of the rule: dart-sass emits
  * `.a { … }` for `%ph, .a { … }`, keeping the sibling branch. That is why
- * `Ruleset.reference` could not carry this — it is a whole-rule flag, and one
- * additionally confined to an import boundary, whereas any extend anywhere may
- * reach a placeholder.
+ * `(reference)` hiding could not carry this — it hides a whole rule placement, and
+ * one confined to an import boundary, whereas any extend anywhere may reach a
+ * placeholder.
  *
  * The sigil is matched only at a segment BOUNDARY so an authored escape inside
  * an identifier (`.foo\\bar`) is not mistaken for one. Deliberately NOT matched
@@ -1202,16 +1202,6 @@ export interface Ruleset extends SpanSlots, BodySpanSlots {
    * common unguarded rule (the serializer's zero-cost gate holds).
    */
   readonly guard?: GuardNode;
-
-  /**
-   * [import:reference] This rule came from an `@import (reference)` file, so it is
-   * HIDDEN: it emits nothing on its OWN (the serializer drops a rule whose visible
-   * branches are empty), but it stays in the tree — indexed for mixin dispatch and
-   * available for `:extend` to fold a VISIBLE extender branch into. When an extend
-   * pulls it into visibility, only the visible extender branch survives (see the
-   * extend engine's per-branch `hidden` provenance + the serializer's drop filter).
-   */
-  readonly reference?: boolean;
 }
 
 /**

@@ -12,7 +12,7 @@ import { branchSharesAtom, branchText, cloneBranch, collectBranchAtoms } from '.
 import type { Branch } from './ir.js';
 import { composePath } from './compose.js';
 import { applyInstruction } from './match.js';
-import { reaches, recordAstExtendProfile } from './plan.js';
+import { boundaryReaches, reaches, recordAstExtendProfile } from './plan.js';
 import type { Plan, PlanInstruction, PlanSubject } from './plan.js';
 
 /** An instruction's precomputed composed extender branches + their text keys. */
@@ -121,11 +121,11 @@ export function solveComposed(seed: Branch[], subject: PlanSubject, plan: Plan, 
   const reachable = plan.instructions.filter(i =>
 
     /*
-     * A visible instruction may pull a reference subject into output. A hidden
-     * instruction is confined to the reference document that defined it, so it
-     * never aliases authored siblings outside that import boundary.
+     * A visible instruction may pull a reference subject into output. A confined
+     * instruction (a reference sheet's, a composed module's) never aliases rules
+     * outside the sheets it was loaded with.
      */
-    (i.referenceBoundary === null || i.referenceBoundary === subject.referenceBoundary)
+    boundaryReaches(i.boundary, subject.boundary)
     && reaches(i.scope, subject.scope));
   if (reachable.length === 0) {
     return { list: seed, changed: false };

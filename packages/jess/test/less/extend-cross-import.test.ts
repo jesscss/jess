@@ -115,6 +115,21 @@ describe('extend across @import', () => {
       expect(await renderFile('later-main.less')).toBe(smX);
     });
 
+    /*
+     * Hiding follows the import, not the shared rule (jess#359): the plain copy keeps its
+     * selector, and the extend reaches the hidden copy as it reaches any referenced rule
+     * (ledger X13). less 4.x renders only `smX`: its import-once also swallows an import
+     * that carries options, which jess's does not — a ruling there shows up here.
+     */
+    it('plain and (reference) import of one sheet keep the plain copy visible', async () => {
+      expect(await renderFile('plain-and-ref-main.less')).toBe(`${smX}\n.x {\n  b: 2;\n}`);
+    });
+
+    // less 4.x renders the same (jess#355).
+    it('(reference) import, extender in a mixin body', async () => {
+      expect(await renderFile('ref-mixin-main.less')).toBe(['.x {', '  b: 2;', '}'].join('\n'));
+    });
+
     // less 4.x duplicates per extender (`.sm .y, .x .y`); v5 grafts `:is()` (ledger X3).
     it('extend all, including inside an imported @media', async () => {
       expect(await renderFile('all-main.less')).toBe(
@@ -194,11 +209,39 @@ describe('extend across @import', () => {
   });
 
   /*
-   * `@compose` emits its module's CSS, and an extend in the composing sheet targets it like any
-   * other rule of the render's output (ledger X12). No ledger row rules on extend across
-   * `@compose` yet; this pins the current behavior so a ruling shows up as a test change.
+   * An `@import` inside a ruleset runs as that ruleset's body (jess#358); less 4.x renders
+   * the same.
    */
-  it('@compose module rules are extend targets', async () => {
-    expect(await renderFile('compose-main.less')).toBe(['.sm,', '.x {', '  b: 2;', '}'].join('\n'));
+  describe('@import inside a ruleset', () => {
+    it('nests the imported rules under the ruleset', async () => {
+      expect(await renderFile('ruleset-import-main.less')).toBe(['.wrap .sm {', '  b: 2;', '}'].join('\n'));
+    });
+
+    it('is an extend target at its nested placement', async () => {
+      expect(await renderFile('ruleset-import-extend-main.less')).toBe(
+        ['.wrap .sm,', '.x {', '  b: 2;', '}'].join('\n')
+      );
+    });
+  });
+
+  /*
+   * Extend across `@compose` follows Sass module semantics (ledger X14): the composing sheet's
+   * extend reaches the composed module's rules, a module's extend reaches only its own rules
+   * and what it composes — never the composing sheet's.
+   */
+  describe('@compose', () => {
+    it('module rules are targets of the composing sheet', async () => {
+      expect(await renderFile('compose-main.less')).toBe(['.sm,', '.x {', '  b: 2;', '}'].join('\n'));
+    });
+
+    it('a module extend does not reach the composing sheet', async () => {
+      expect(await renderFile('compose-upstream-main.less')).toBe(
+        ['.own,', '.z {', '  c: 3;', '}', '.sm {', '  b: 2;', '}'].join('\n')
+      );
+    });
+
+    it('a module mixin-body extend does not reach the composing sheet', async () => {
+      expect(await renderFile('compose-mixin-upstream-main.less')).toBe(['.sm {', '  b: 2;', '}'].join('\n'));
+    });
   });
 });

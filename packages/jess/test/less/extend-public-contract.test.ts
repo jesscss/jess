@@ -147,6 +147,32 @@ describe('public direct-AST extend contracts', () => {
     expect(await render(source)).toBe(expected);
   });
 
+  /*
+   * A rule reached through a mixin call extends and is extended where it lands: inside
+   * the `@media` the call lands in (EXTEND-SEMANTICS §8, jess#360), and as its composed
+   * selector parts, so a compound target can meet it (jess#361). less 4.x renders the same.
+   */
+  it.each([
+    [
+      '.sm { b: 2; }\n@media print {\n  .m() { .x { &:extend(.sm); } }\n  .m();\n}',
+      '.sm {\n  b: 2;\n}\n'
+    ],
+    [
+      '.m() { .x { &:extend(.sm); } }\n.sm { b: 2; }\n@media print {\n  .sm { c: 3; }\n  .m();\n}',
+      '.sm {\n  b: 2;\n}\n@media print {\n  .sm,\n  .x {\n    c: 3;\n  }\n}\n'
+    ],
+    [
+      '.m() { .p { &.q, &.r { a: 1; } } }\n.m();\n.x:extend(.p.q) {}',
+      '.p.q,\n.p.r,\n.x {\n  a: 1;\n}\n'
+    ],
+    [
+      '.b { .m(); }\n.m() { .p { .q { a: 1; } } }\n.x:extend(.b .p .q) {}',
+      '.b .p .q,\n.x {\n  a: 1;\n}\n'
+    ]
+  ])('places a mixin-body rule where the call lands: %j', async (source, expected) => {
+    expect(await render(source)).toBe(expected);
+  });
+
   it('rejects a comma-list parent in a non-leading ampersand merge template', async () => {
     await expect(render([
       '@list-quoted: ~\'apple, satsuma, banana, pear\';',
