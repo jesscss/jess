@@ -78,15 +78,14 @@ export interface NestedRulePlan {
   hoistNested?: boolean;
 
   /**
-   * [&-boundary] PER-BOUNDARY hoist distance: the number of enclosing rule blocks
-   * this `hoistNested` rule must rise out of before it is emitted (the `maxBnd` of
-   * the crossed span — the deepest ancestor `&` the extend match reaches). `1` (the
-   * default when absent) is the classic single-level hoist trigger-P/X land on: the
-   * rule emits at its immediate parent's level. `k > 1` bubbles it up `k` levels via
-   * the serializer's re-hoist queue, so a match that crosses `k` nesting boundaries
-   * leaves the strictly-outer `bnd > k` ancestors as wrappers (not blindly one level,
-   * not always root). Its `header` is the flat solve with those wrapper ancestor
-   * segments STRIPPED — the enclosing blocks re-supply them.
+   * [&-boundary] Hoist distance: the number of enclosing rule blocks this rule must
+   * rise out of before it is emitted. `1` (the default when absent) emits it at its
+   * immediate parent's level; `k > 1` bubbles it up `k` levels via the serializer's
+   * re-hoist queue. A trigger-P/X flatten carries the full flat header, so it rises
+   * out of every enclosing rule block. A trigger-C crossing rises `maxBnd` blocks
+   * (the deepest ancestor `&` the match reaches), leaving the strictly-outer
+   * `bnd > k` ancestors as wrappers; its `header` is the flat solve with those
+   * wrapper ancestor segments STRIPPED — the enclosing blocks re-supply them.
    */
   hoistBubble?: number;
 
@@ -1120,15 +1119,23 @@ export function computeExtends(
        */
       const hoisted = groupedBranches(siblingCompact(flatBySubject.get(s)!, true), true).map(branchOut);
       projectionFor(s).hoistHeader.set(s.rule, hoisted);
+
+      /*
+       * The hoisted header is the FULL flat composition, a top-level selector, so the
+       * rule rises out of every enclosing rule block (`s.path` holds one level per
+       * enclosing rule). Rising one block left a deeper rule inside its grandparent
+       * with the grandparent's selector repeated in its header.
+       */
+      const hoistBubble = s.path.length - 1;
       if (mode === 'renest') {
         /*
          * RE-NEST: emit the subtree at the hoist position with the composed cross-`&`
          * header, children stay literal-nested. `flatten` still defers it to the
          * enclosing block's hoist queue; `hoistNested` picks the nested emission.
          */
-        projectionFor(s).nestedPlan.set(s.rule, { flatten: true, hoistNested: true, header: hoisted, splits: [] });
+        projectionFor(s).nestedPlan.set(s.rule, { flatten: true, hoistNested: true, header: hoisted, splits: [], hoistBubble });
       } else {
-        projectionFor(s).nestedPlan.set(s.rule, { flatten: true, header: [], splits: [] });
+        projectionFor(s).nestedPlan.set(s.rule, { flatten: true, header: [], splits: [], hoistBubble });
       }
       continue;
     }
@@ -1140,7 +1147,7 @@ export function computeExtends(
        * the flat solve's leading wrapper-ancestor segments STRIPPED — the enclosing
        * blocks re-supply that prefix, so the header renders once, not twice. `drop === 0`
        * (the span reaches the outermost ancestor) hoists the whole rule to root with the
-       * full flat header, exactly like the always-root single-level trigger-P/X path.
+       * full flat header, exactly like the trigger-P/X path.
        */
       const solved = flatBySubject.get(s)!;
       const subPath = cross.drop > 0 ? solved.map(b => dropLeadingSegs(b, cross.drop)) : solved;

@@ -95,6 +95,16 @@ describe('extend :is() grouping keeps native specificity in every output mode', 
 });
 
 describe('nested output of an extended nested rule', () => {
+  /*
+   * A flattened nested rule carries its full composed header, so it lands at the
+   * top level. It used to rise one block only, leaving `.a { :is(.a .b, .a .c) e }`,
+   * which needs two `.a` ancestors.
+   */
+  it('emits a deeper flattened rule at the top level', async () => {
+    await expect(render('.a { .b, .c { e { y: 2; } } } .d:extend(.a .b e) {}', false))
+      .resolves.toBe(':is(.a .b, .a .c) e,\n.d {\n  y: 2;\n}\n');
+  });
+
   it('splits a mixed-specificity hoisted sibling group and keeps an equal one', async () => {
     await expect(render('.t { th, .x { x: 1 } } .foo:extend(.t th) {}', false))
       .resolves.toBe('.t th,\n.t .x,\n.foo {\n  x: 1;\n}\n');

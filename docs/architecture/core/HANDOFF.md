@@ -4082,13 +4082,14 @@ involved.
   partition into groups; the serializer's `opaqueJoin` and extend emission both
   call it. Extend splits a mixed group into equal-specificity groups and writes
   an unfoldable member (pseudo-element, unlisted pseudo-class, complex member
-  after a combinator) as its own branch.
+  after a combinator) as its own branch. Also: a trigger-P/X flattened nested
+  rule now rises to the top level (its header is the full flat composition).
 - Architecture surface: new `packages/core/src/ast/is-grouping.ts`;
   `serialize.ts` `opaqueJoin` (the fold loop now partitions instead of
   scanning runs; `leadsWithCombinator`/`tokenFoldSpecificity`/
   `branchFoldSpecificity`/`NATIVE_FOLD_PSEUDO_CLASSES` moved to the module);
   `extend/emit.ts` header emission (`groupedBranches`/`regroupBranch`/
-  `splitGroup`/`spliceMember`/`mergeCompound`);
+  `splitGroup`/`spliceMember`/`mergeCompound`, the P/X `hoistBubble`);
   `extend/ir.ts` (`Simple.src` on text tokens, `Simple.fold` on `:is()`
   grafts); `extend/compose.ts` and `extend/match.ts` carry the two fields.
 - Separation/duplication: one owner for specificity and foldability. The
@@ -4183,7 +4184,7 @@ involved.
       "recursive-ValueGroup-final-unit-validation",
       "async-declaration-dedup-output-order"
     ],
-    "why": "Extend's own :is() groups and the nesting fold share one grouping module; extend splits a group whose members differ in specificity at header emission, in every output mode. No evaluator, value or matcher change; semantic output work with no cost-cutting or neutrality claim.",
+    "why": "Extend's own :is() groups and the nesting fold share one grouping module; extend splits a group whose members differ in specificity at header emission, in every output mode, and a trigger-P/X flattened nested rule rises to the top level. No evaluator, value or matcher change; semantic output work with no cost-cutting or neutrality claim.",
     "dangerTokensJustification": "The new walks run only on extend-touched headers and multi-branch nesting child lists, once per branch or group member; a group that stays whole allocates nothing; matcher and planner counters are identical before and after.",
     "behaviorEvidence": "packages/jess/test/less/extend-is-grouping.test.ts, packages/core/src/ast/__tests__/is-grouping.test.ts and the updated collapse-nesting-mode.test.ts pin the rule, red on origin/lane/v5-native-is-fold; the all-Less lane passes with the extend goldens' new groups registered in pendingGoldenEdits.",
     "buildEvidence": "pnpm --filter @jesscss/core build passes; the core suite passes.",

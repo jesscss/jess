@@ -356,9 +356,14 @@ STAYS nested and its extend rewrites the local selector in place, with three ref
     extender that does not descend from its parent (hoisted whole-complex sibling).
   A flatten whose subject STILL HAS surviving nested children RE-NESTS the corrected
   subtree under its hoisted header (`emit.ts` `'renest'` mode) rather than composing
-  the children flat (`'collapse'`, which cascades to descendants). Flatten only when
-  there is no shared prefix to strip and the match crosses; otherwise the local
-  rewrite / prefix strip keeps the rule nested.
+  the children flat (`'collapse'`, which cascades to descendants). A trigger-P/X
+  flatten's header is the full flat composition, so the rule rises out of EVERY
+  enclosing rule block (`hoistBubble` = its nesting depth); rising one block left
+  `.a { .b, .c { e } }` + `.d:extend(.a .b e)` as `.a { :is(.a .b, .a .c) e, .d {…} }`,
+  which needs two `.a` ancestors. Only a sub-span match that crosses the `&`
+  (`emit.ts` trigger C, the per-boundary hoist) keeps outer ancestors as wrappers.
+  Flatten only when there is no shared prefix to strip and the match crosses;
+  otherwise the local rewrite / prefix strip keeps the rule nested.
 
 ### 7b. Exact-extender-into-children SPLIT (LANDED)
 
