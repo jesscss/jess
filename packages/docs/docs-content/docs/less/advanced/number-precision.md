@@ -118,5 +118,37 @@ un-operated literal is emitted verbatim.
 
 :::
 
+## Rounding ties go up
+
+`round()` follows CSS Values 4
+[`round(nearest)`](https://drafts.csswg.org/css-values-4/#round-func): a value
+exactly halfway between two results goes to the **upper** one, toward +∞, for
+negative numbers too.
+
+```less
+.a {
+  a: round(2.5);
+  b: round(-2.5);
+  c: round(-1.55, 1);
+}
+```
+
+```css
+.a {
+  a: 3;
+  b: -2;
+  c: -1.5;
+}
+```
+
+:::note Changed in 5.0
+
+Less 4.x rounded negative halves away from zero, so it printed `b: -3` and
+`c: -1.6`. Positive values round the same in both versions. Sass `math.round` and
+`round($number, $step)` share the same tie rule (dart-sass rounds negative halves
+away from zero).
+
+:::
+
 See also: [Value & Separator Formatting](./value-formatting.md) ·
 [Math functions](../functions/math-functions.md).
