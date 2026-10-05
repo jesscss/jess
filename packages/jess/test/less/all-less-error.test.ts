@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as glob from 'glob';
 import * as path from 'path';
+import { readFileSync } from 'fs';
 import { Compiler } from '../../src/index.js';
 import { resolveLessTestDataRoot, lessHarnessFunctionsPlugin } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
@@ -50,9 +51,12 @@ async function withFixtureTimeout<T>(
 // they're gone from this list. What remains is: genuine v5 behavior that no
 // option changes, plus REAL gaps where Jess still fails to error.
 const acceptedDivergences = new Map<string, string>([
-  // Intentional v5 behavior even under error-surfacing options — a color fn whose
-  // argument is a runtime `var()` can't be evaluated at build, so v5 preserves it.
-  ['tests-error/eval/color-func-invalid-color-2.less', 'v5 preserves darken(var(--x), …): a runtime var() arg is un-evaluable at build'],
+  /*
+   * Intentional v5 behavior even under error-surfacing options: regular variables
+   * are lazy (ledger R1) and `@base-color` is never referenced, so its failing
+   * `darken()` never runs. Referenced, it rejects (function-mode.test.ts).
+   */
+  ['tests-error/eval/color-func-invalid-color-2.less', 'lazy variables (R1): the failing call sits in an unreferenced variable']
 
   // Real should-error GAPS — Jess still ACCEPTS these with error options on;
   // each asserts KEEP-accepting, so a fix that closes it trips the test.
@@ -81,6 +85,49 @@ const rootCallFunctionFixtures = new Set([
   'tests-error/eval/functions-12-quoted.less',
   'tests-error/eval/functions-15-value.less'
 ]);
+
+/*
+ * Fixtures Less 4.x rejects in a built-in's argument check or in unit
+ * arithmetic. Under the v5 defaults they render — the failing call verbatim
+ * (functionMode 'preserve', ledger C17), the unit clash as `calc()` (unitMode
+ * 'preserve', V18) — so they reject only with the options in makeCompiler. They
+ * must then reject where Less does: the line and column of the fixture's `.txt`.
+ * A unit-arithmetic diagnostic points at the failing operator rather than the
+ * declaration start Less reports, so only its line is compared.
+ *
+ * Wording is not asserted. Known differences: the argument binder reports
+ * `percentage: arg 0 expected Dimension, got List` where Less says `argument must
+ * be a number` (`unit()` likewise drops Less's parenthesis hint), and
+ * `svg-gradient(black, orange)` reports the stop-list message because the stops
+ * are counted structurally; Less counted the characters of `orange` and so
+ * reached its direction message instead.
+ */
+const callSiteErrorFixtures = new Map<string, string>([
+  ['tests-error/eval/add-mixed-units.less', 'eval/invalid-unit-arithmetic'],
+  ['tests-error/eval/add-mixed-units2.less', 'eval/invalid-unit-arithmetic'],
+  ['tests-error/eval/divide-mixed-units.less', 'eval/invalid-unit-arithmetic'],
+  ['tests-error/eval/multiply-mixed-units.less', 'eval/invalid-unit-arithmetic'],
+  ['tests-error/eval/color-func-invalid-color.less', 'eval/invalid-function'],
+  ['tests-error/eval/percentage-css-var.less', 'eval/invalid-function'],
+  ['tests-error/eval/percentage-non-number-argument.less', 'eval/invalid-function'],
+  ['tests-error/eval/svg-gradient1.less', 'eval/invalid-function'],
+  ['tests-error/eval/svg-gradient2.less', 'eval/invalid-function'],
+  ['tests-error/eval/svg-gradient3.less', 'eval/invalid-function'],
+  ['tests-error/eval/svg-gradient4.less', 'eval/invalid-function'],
+  ['tests-error/eval/svg-gradient5.less', 'eval/invalid-function'],
+  ['tests-error/eval/svg-gradient6.less', 'eval/invalid-function'],
+  ['tests-error/eval/unit-function.less', 'eval/invalid-function']
+]);
+
+/** The `on line N, column M` location in a fixture's expected Less error. */
+function lessErrorLocation(file: string): { line: number; column: number } {
+  const txt = readFileSync(path.join(TD, file.replace(/\.less$/, '.txt')), 'utf8');
+  const match = / on line (\d+), column (\d+):/.exec(txt);
+  if (!match) {
+    throw new Error(`${file}: no location in the expected error`);
+  }
+  return { line: Number(match[1]), column: Number(match[2]) };
+}
 
 function makeCompiler() {
   return new Compiler({
@@ -139,6 +186,15 @@ describe('Less error corpus (Jess must error where Less errors)', () => {
           expect.objectContaining({ phase: 'eval', code: 'eval/invalid-statement' })
         ]));
         expect(errors.some(error => error.code === 'eval/async-in-sync-position'), `${file} must not leak the async render lane`).toBe(false);
+      }
+      const callSiteCode = callSiteErrorFixtures.get(file);
+      if (callSiteCode) {
+        const { line, column } = lessErrorLocation(file);
+        expect(errors[0], `${file} should reject at the Less call site`).toMatchObject({
+          code: callSiteCode,
+          line,
+          ...(callSiteCode === 'eval/invalid-unit-arithmetic' ? {} : { column })
+        });
       }
       if (divergence) {
         expect(errored, `${file} now errors — remove from acceptedDivergences`).toBe(false);

@@ -34,7 +34,7 @@ function makeCompiler(compileExtra: Record<string, unknown> = {}) {
 describe('functionMode', () => {
   it('default \'preserve\' renders the call as-is silently', async () => {
     for (const f of FIXTURES) {
-      const r = await makeCompiler().renderToResult(path.join(TD, `${f}.less`), { breakOnError: true } as any);
+      const r = await makeCompiler().renderToResult(path.join(TD, `${f}.less`), { breakOnError: true });
       // renders (no error) …
       expect(r.errors ?? []).toHaveLength(0);
       expect(r.css.length).toBeGreaterThan(0);
@@ -47,10 +47,23 @@ describe('functionMode', () => {
   it('\'error\' throws the underlying Less function error', async () => {
     for (const f of FIXTURES) {
       const r = await makeCompiler({ functionMode: 'error' })
-        .renderToResult(path.join(TD, `${f}.less`), { breakOnError: true } as any)
-        .catch((e: any) => ({ errors: [{ message: String(e?.message) }] }));
-      expect((r as any).errors?.length ?? 0, `${f} should error under functionMode:'error'`).toBeGreaterThan(0);
+        .renderToResult(path.join(TD, `${f}.less`), { breakOnError: true })
+        .catch((error: unknown) => ({ errors: [error] }));
+      expect(r.errors?.length ?? 0, `${f} should error under functionMode:'error'`).toBeGreaterThan(0);
     }
+  }, 60000);
+
+  it('evaluates a failing call in a variable only where the variable is referenced (lazy variables, R1)', async () => {
+    // tests-error/eval/color-func-invalid-color-2 declares this variable and never reads it.
+    const declared = '@base-color: darken(var(--baseColor, red), 50%);';
+    const referenced = `${declared}\n.a { color: @base-color; }`;
+    const options = { filePath: 'entry.less', extension: '.less' };
+
+    await expect(makeCompiler({ functionMode: 'error' }).renderString(declared, options)).resolves.toBe('');
+    await expect(makeCompiler({ functionMode: 'error' }).renderString(referenced, options))
+      .rejects.toMatchObject({ code: 'eval/invalid-function', line: 1, column: 14 });
+    await expect(makeCompiler().renderString(referenced, options))
+      .resolves.toContain('color: darken(var(--baseColor, red), 50%)');
   }, 60000);
 
   it('leaves unknown (non-registered) function names as-is WITHOUT warning, even in error mode', async () => {
@@ -59,7 +72,7 @@ describe('functionMode', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'fm-'));
     const file = path.join(dir, 'a.less');
     writeFileSync(file, '.a { x: calc(1px + 2px); y: madeup(1, 2); }');
-    const r = await makeCompiler({ functionMode: 'error' }).renderToResult(file, { breakOnError: true } as any);
+    const r = await makeCompiler({ functionMode: 'error' }).renderToResult(file, { breakOnError: true });
     expect(r.warnings ?? []).toHaveLength(0);
     expect(r.css).toContain('madeup(1, 2)');
   }, 60000);
