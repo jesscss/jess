@@ -68,9 +68,12 @@ describe('scss plugin render-through', () => {
   /**
    * `math.round` and the global `round($number, $step)` share the core rounding kernel
    * with Less `round()`: an exact tie breaks away from zero. Expected bytes are
-   * dart-sass 1.101.7 output for the same input. `math.round` reaches `@jesscss/fns`
-   * through the plugin's own `require` (its `sass:math` provided module), so it runs
-   * the BUILT lib even under vitest; the global `round()` runs source.
+   * dart-sass 1.101.7 output for the same input.
+   *
+   * TODO(provided-modules-source): `math.round` (a–c) reaches `@jesscss/fns` through
+   * the plugin's own `require` (its `sass:math` provided module, `ProvidedModules` in
+   * core), so it runs the BUILT lib even under vitest; only the global `round()` (d, e)
+   * runs source. Retire when provided modules load through an import vite can alias.
    */
   it('rounds an exact tie away from zero, as dart-sass does', async () => {
     const compiler = new Compiler();
