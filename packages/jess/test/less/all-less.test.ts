@@ -16,7 +16,9 @@ import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
  *    reported as a skipped test so it shows up in the run, and the stale-skip
  *    gate at the bottom of this file fails if one starts matching its golden.
  * 2. `expectedFailureFixtures` — RUN, and asserted to fail. Fixing the cause
- *    fails the entry, which is how a fix gets noticed.
+ *    fails the entry, which is how a fix gets noticed. An entry may also pin
+ *    how it fails: a diagnostic code (`expectedFailureDiagnosticCodes`), or the
+ *    exact hunks it differs from its golden by (`expectedFailureGoldenDiffs`).
  * 3. no `.css` golden next to the `.less` — a helper or partial, never a fixture.
  *
  * There used to be a fourth: an `invalidLess` array in `@jesscss/shared` that
@@ -448,6 +450,10 @@ const expectedFailureFixtures = new Map<string, string>([
   [
     'tests-unit/media/media.less',
     'top-level bare @var at-rule preludes are rejected (@media @smartphone / @media @all and @tv)'
+  ],
+  [
+    'tests-config/3rd-party/bootstrap4.less',
+    'the golden records `color: #fff` in four rules where a darkened background now reaches `color-yiq` (jess#348); golden patch awaiting the owner'
   ]
 
   /*
@@ -483,15 +489,17 @@ const expectedFailureFixtures = new Map<string, string>([
 ]);
 
 /*
- * Owner goldens shown wrong against the oracle, awaiting the owner's update.
- * The fixture stays gated byte-for-byte against its golden with these
- * replacements applied; once the golden is fixed, the entry fails and must go.
+ * An expected failure can pin HOW its output differs from the golden: the output
+ * must equal the golden with exactly these `[golden text, emitted text]`
+ * replacements, so the rest of the fixture stays byte-gated meanwhile. Once the
+ * golden changes, the entry fails and must go.
  */
-const pendingGoldenFixes = new Map<string, readonly (readonly [string, string])[]>([
+const expectedFailureGoldenDiffs = new Map<string, readonly (readonly [string, string])[]>([
   [
     /*
-     * jess#348: `color-yiq` received the darkened background as black, so the
-     * golden records `#fff`; lessc 4.x and jess now emit `#212529`.
+     * jess#348: `color-yiq` received the darkened background as black when the
+     * golden was regenerated, so it records `#fff`; jess (and lessc 4.9.1) emit
+     * `#212529`.
      */
     'tests-config/3rd-party/bootstrap4.less',
     [
@@ -503,11 +511,11 @@ const pendingGoldenFixes = new Map<string, readonly (readonly [string, string])[
   ]
 ]);
 
-function readExpectedCss(file: string, expectedFile: string): string {
-  let css = readFileSync(expectedFile, 'utf8');
-  for (const [from, to] of pendingGoldenFixes.get(file) ?? []) {
+function withGoldenDiffs(file: string, golden: string, diffs: readonly (readonly [string, string])[]): string {
+  let css = golden;
+  for (const [from, to] of diffs) {
     if (!css.includes(from)) {
-      throw new Error(`${file}: the golden no longer contains \`${from}\`; remove its pendingGoldenFixes entry`);
+      throw new Error(`${file}: the golden no longer contains \`${from}\`; remove its expected-failure entries`);
     }
     css = css.replace(from, to);
   }
@@ -578,7 +586,7 @@ describe('Can render Less files to CSS', () => {
               : '';
           const expectedFailureReason = expectedFailureFixtures.get(file);
           const renderFixture = async () => {
-            const expectedCss = readExpectedCss(file, testCase.expectedFile);
+            const expectedCss = readFileSync(testCase.expectedFile, 'utf8');
 
             /*
              * Merge test case config with base compiler config
@@ -657,6 +665,13 @@ describe('Can render Less files to CSS', () => {
                 actualDiagnosticCodes,
                 `${file} is expected to surface diagnostic ${expectedDiagnosticCode}`
               ).toContain(expectedDiagnosticCode);
+              return;
+            }
+
+            const goldenDiffs = expectedFailureGoldenDiffs.get(file);
+            if (goldenDiffs !== undefined) {
+              const { expectedCss, result } = await withFixtureTimeout(file, renderFixture);
+              expect(result.css).toBe(withGoldenDiffs(file, expectedCss, goldenDiffs));
               return;
             }
 
