@@ -150,8 +150,10 @@ describe('@import folds imported facts in at the import\'s lexical position', ()
 
   /*
    * A frame whose body holds a lowered `if()` reads a declaration stack rebuilt
-   * around the selected branch (jess#245). Every read in one frame must still
-   * see the same source fold, before and after the `if()`.
+   * around the selected branch (jess#245). A read on either side of an `if()`
+   * that declares nothing sees the same import fold. (When the selected branch
+   * itself declares the name, reads before and after the `if()` differ; when a
+   * branch's declarations become visible is not ruled yet.)
    */
   it('resolves one binding across a frame that contains an if()', async () => {
     const consumersAroundIf = '.x { a: @v; }\nif((true), { .b { a: @v; } });\n.c { a: @v; }\n';

@@ -811,6 +811,14 @@ export interface Frame {
   factRanks?: Map<VariableDeclaration, SourceRank>;
 
   /**
+   * [import-fold] Whether {@link statements} holds a `$if`/`$while`, whose
+   * selected body {@link collectSelectedDeclIndex} splices into the declaration
+   * stacks by position. Decided once, at the first imported declaration that
+   * opens a stack; only such a frame records that declaration's rank.
+   */
+  controlFlow?: boolean;
+
+  /**
    * [import-fold] Authored position of each top-level statement, built ONCE and
    * only on the paths that must resolve a position from the statement itself
    * rather than from a loop cursor: a published declaration colliding with an
@@ -2094,7 +2102,10 @@ function publishImportedVariableDeclaration(
 ): void {
   const index = frame.declIndex ??= { byName: new Map() };
   const declarations = index.byName.get(declaration.name);
-  if (rank !== null) {
+
+  /* A stack's first entry needs a rank only to be placed against a `$if`/`$while` body. */
+  if (rank !== null && (declarations !== undefined
+    || (frame.controlFlow ??= (frame.statements ?? []).some(statement => statement.type === 'If' || statement.type === 'While')))) {
     (frame.factRanks ??= new Map()).set(declaration, rank);
   }
   if (!declarations) {
