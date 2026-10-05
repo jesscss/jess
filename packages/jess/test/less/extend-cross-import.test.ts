@@ -28,14 +28,14 @@ import lessPlugin from '@jesscss/plugin-less';
 
 const fixtures = path.join(__dirname, 'fixtures', 'extend-cross-import');
 
-const mkCompiler = () =>
+const mkCompiler = (collapseNesting: boolean) =>
   new Compiler({
-    output: { collapseNesting: true },
+    output: { collapseNesting },
     compile: { plugins: [lessPlugin()] }
   });
 
-async function renderFile(rel: string): Promise<string> {
-  const result = await mkCompiler().renderToResult(path.join(fixtures, rel));
+async function renderFile(rel: string, collapseNesting = true): Promise<string> {
+  const result = await mkCompiler(collapseNesting).renderToResult(path.join(fixtures, rel));
   return result.css.trim();
 }
 
@@ -125,9 +125,43 @@ describe('extend across @import', () => {
       expect(await renderFile('plain-and-ref-main.less')).toBe(`${smX}\n.x {\n  b: 2;\n}`);
     });
 
-    // less 4.x renders the same (jess#355).
+    // A referenced rule an extend reaches surfaces under the extender only (ledger X13, jess#355).
     it('(reference) import, extender in a mixin body', async () => {
       expect(await renderFile('ref-mixin-main.less')).toBe(['.x {', '  b: 2;', '}'].join('\n'));
+    });
+
+    // Referenced rules no extend reaches stay hidden (ledger X13).
+    it('(reference) import, extender in a mixin body that is never called', async () => {
+      expect(await renderFile('ref-uncalled-main.less')).toBe(['.own {', '  a: 1;', '}'].join('\n'));
+    });
+
+    it('(reference) import, exact extend that misses a nested rule', async () => {
+      expect(await renderFile('ref-nested-main.less')).toBe('');
+    });
+
+    // A sheet a `(reference)` sheet imports is referenced too (ledger X13, A2).
+    it('plain import inside a (reference) sheet', async () => {
+      expect(await renderFile('ref-outer-main.less')).toBe(['.x {', '  b: 2;', '}'].join('\n'));
+    });
+
+    /*
+     * Each `(reference)` or `(multiple)` import is its own placement of the sheet's rules, so
+     * an extend in one `@media` block reaches only that block's copy (EXTEND-SEMANTICS §8,
+     * jess#359).
+     */
+    it('(reference) imports in two @media blocks', async () => {
+      expect(await renderFile('ref-media-main.less')).toBe(
+        ['@media print {', '  .x {', '    b: 2;', '  }', '}', '@media screen {', '  .y {', '    c: 1;', '  }', '}'].join('\n')
+      );
+    });
+
+    it('plain and (multiple) imports in two @media blocks', async () => {
+      expect(await renderFile('multiple-media-main.less')).toBe(
+        [
+          '@media print {', '  .sm,', '  .x {', '    b: 2;', '  }', '}',
+          '@media screen {', '  .sm {', '    b: 2;', '  }', '  .y {', '    c: 1;', '  }', '}'
+        ].join('\n')
+      );
     });
 
     // less 4.x duplicates per extender (`.sm .y, .x .y`); v5 grafts `:is()` (ledger X3).
@@ -209,8 +243,8 @@ describe('extend across @import', () => {
   });
 
   /*
-   * An `@import` inside a ruleset runs as that ruleset's body (jess#358); less 4.x renders
-   * the same.
+   * An `@import` inside a ruleset runs as that ruleset's body (jess#358): `@import` is a
+   * source fold (ledger A2) whose body splices at the import position (ledger N10).
    */
   describe('@import inside a ruleset', () => {
     it('nests the imported rules under the ruleset', async () => {
@@ -221,6 +255,10 @@ describe('extend across @import', () => {
       expect(await renderFile('ruleset-import-extend-main.less')).toBe(
         ['.wrap .sm,', '.x {', '  b: 2;', '}'].join('\n')
       );
+    });
+
+    it('inside a (reference) sheet, is an extend target at its nested placement', async () => {
+      expect(await renderFile('ref-ruleset-import-main.less')).toBe(['.x {', '  b: 2;', '}'].join('\n'));
     });
   });
 
@@ -242,6 +280,44 @@ describe('extend across @import', () => {
 
     it('a module mixin-body extend does not reach the composing sheet', async () => {
       expect(await renderFile('compose-mixin-upstream-main.less')).toBe(['.sm {', '  b: 2;', '}'].join('\n'));
+    });
+
+    /*
+     * A module is one module however many sheets compose it, and every one of them reaches
+     * it, whichever composed it first.
+     */
+    it('a module composed by two sheets is reached by the extends of both, in either order', async () => {
+      const ccY = ['.cc,', '.y {', '  c: 1;', '}'].join('\n');
+      const aa = ['.aa {', '  a: 1;', '}'].join('\n');
+      expect(await renderFile('diamond-main.less')).toBe(`${ccY}\n${aa}`);
+      expect(await renderFile('diamond-reversed-main.less')).toBe(`${ccY}\n${aa}`);
+      expect(await renderFile('diamond-direct-main.less')).toBe(ccY);
+    });
+  });
+
+  /*
+   * Nested output (`collapseNesting: false`) is the Less v5 default; the placement rules
+   * above hold there too.
+   */
+  describe('nested output', () => {
+    it('(reference) import, extender in a mixin body', async () => {
+      expect(await renderFile('ref-mixin-main.less', false)).toBe(['.x {', '  b: 2;', '}'].join('\n'));
+    });
+
+    it('(reference) import, extender in a mixin body that is never called', async () => {
+      expect(await renderFile('ref-uncalled-main.less', false)).toBe(['.own {', '  a: 1;', '}'].join('\n'));
+    });
+
+    it('(reference) imports in two @media blocks', async () => {
+      expect(await renderFile('ref-media-main.less', false)).toBe(
+        ['@media print {', '  .x {', '    b: 2;', '  }', '}', '@media screen {', '  .y {', '    c: 1;', '  }', '}'].join('\n')
+      );
+    });
+
+    it('@import inside a ruleset nests the imported rules', async () => {
+      expect(await renderFile('ruleset-import-main.less', false)).toBe(
+        ['.wrap {', '  .sm {', '    b: 2;', '  }', '}'].join('\n')
+      );
     });
   });
 });

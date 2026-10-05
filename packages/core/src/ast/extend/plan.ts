@@ -44,27 +44,45 @@ export interface PlanInstruction {
 
 /**
  * A sheet whose extends do not reach the rest of the import graph: a `(reference)`
- * import, or a `@compose`d module. `parent` is the boundary the sheet was loaded
- * from (null for the root document's graph).
+ * import placement, or a `@compose`d module. A module is ONE boundary per identity,
+ * however many sheets compose it, so `parents` holds every boundary it was loaded
+ * from (null for the root document's graph): the module graph is a DAG, not a tree.
  */
 export interface ExtendBoundary {
-  readonly parent: ExtendBoundary | null;
+  readonly parents: Array<ExtendBoundary | null>;
 }
 
 /**
  * Whether an extend written inside `inst` reaches a rule placed inside `subject`:
  * an unconfined extend reaches everything, a confined one reaches its own sheet and
- * the sheets loaded from it. So a composing sheet's extend reaches its composed
- * module's rules, while the module's own extend never reaches the composing sheet
- * (ledger X14, Sass module semantics); a `(reference)` sheet's extend stays inside it.
+ * every sheet loaded from it, through any path. So a composing sheet's extend reaches
+ * its composed module's rules, while the module's own extend never reaches the
+ * composing sheet (ledger X14, Sass module semantics); a `(reference)` sheet's extend
+ * stays inside it.
  */
 export function boundaryReaches(inst: ExtendBoundary | null, subject: ExtendBoundary | null): boolean {
-  for (let cursor = subject; inst !== cursor; cursor = cursor.parent) {
-    if (cursor === null) {
-      return false;
+  if (inst === null || inst === subject) {
+    return true;
+  }
+  if (subject === null) {
+    return false;
+  }
+
+  /* An upward search; `seen` guards a compose cycle (`a` composes `b` composes `a`). */
+  const pending = [subject];
+  const seen = [subject];
+  while (pending.length > 0) {
+    for (const parent of pending.pop()!.parents) {
+      if (parent === inst) {
+        return true;
+      }
+      if (parent !== null && !seen.includes(parent)) {
+        seen.push(parent);
+        pending.push(parent);
+      }
     }
   }
-  return true;
+  return false;
 }
 
 export interface PlanSubject {
@@ -78,19 +96,6 @@ export interface PlanSubject {
   /** The enclosing authored subject rule, or null at the top level. */
   parent: PlanSubject | null;
 
-  /** [import:reference] The subject rule came from a `(reference)` import — its own
-   * seed branches are HIDDEN (emit nothing unless a visible extender folds in). */
-  hidden: boolean;
-
-  /** See {@link PlanInstruction.boundary}. */
-  boundary: ExtendBoundary | null;
-
-  /** Concrete render placement for a repeated canonical body (`$for`/`each`). */
-  placement?: object;
-
-  /** Nearest hidden at-rule occurrence, retaining its concrete placement chain. */
-  referenceAtRule: PlanReferenceAtRule | null;
-
   /**
    * FAST-REJECT: true when some level on this subject's ancestor path (own-local ∪
    * ancestors) contains an atom that is also an instruction-target atom. Computed
@@ -101,6 +106,23 @@ export interface PlanSubject {
    * `targetAtoms` is populated (i.e. the document has extends).
    */
   mayMatch: boolean;
+
+  /** [import:reference] The subject rule came from a `(reference)` import — its own
+   * seed branches are HIDDEN (emit nothing unless a visible extender folds in). */
+  hidden: boolean;
+
+  /** See {@link PlanInstruction.boundary}. */
+  boundary: ExtendBoundary | null;
+
+  /** Nearest hidden at-rule occurrence, retaining its concrete placement chain. */
+  referenceAtRule: PlanReferenceAtRule | null;
+
+  /**
+   * The render placement of one copy of a canonical rule: a loop iteration, a mixin
+   * call, a `(reference)` or `(multiple)` import. Undefined for the static placement.
+   * Every subject literal declares it, so all subjects keep one shape.
+   */
+  placement: object | undefined;
 }
 
 /** One hidden at-rule occurrence in the render-local reference-import plan. */
@@ -182,7 +204,8 @@ export function collectPlan(root: Stylesheet, overlay?: PlanOverlay): Plan {
           mayMatch: false,
           hidden: false,
           boundary: null,
-          referenceAtRule: null
+          referenceAtRule: null,
+          placement: undefined
         };
         subjects.push(subject);
         if (rule.extendInstructions) {

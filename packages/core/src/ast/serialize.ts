@@ -168,7 +168,7 @@ import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness
 import { computeExtends, type ExtendPlacementResults, type ExtendResults } from './extend.js'; // [extend]
 import { atRuleScope, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
 import type { AtRuleScopes, ExtendBoundary, PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
-import type { Level } from './extend/ir.js';
+import type { Branch, Level } from './extend/ir.js';
 import { branchFromSelector, branchSharesAtom, collectBranchAtoms, descendantBranch, levelFromSelectorList, textSimple } from './extend/ir.js';
 import { DocumentContext, documentTriviaOf, type Context, type SourceContext } from '../context.js';
 import type { ModuleConfigRejection } from '../plugin.js';
@@ -8641,13 +8641,17 @@ interface DynExtendSlot {
   emitted: string[];
 
   /** [import:reference] The rule was emitted inside a `(reference)` import: its own
-   * seed branch is HIDDEN, so if no visible extender folds in, the RESERVED block
-   * (chunks `chunkIndex`…`blockEnd`) is blanked; otherwise its header is rewritten to
-   * the visible extender branches only. */
+   * seed branch is HIDDEN, so if no visible extender folds in, its block (chunks
+   * `chunkIndex`…`blockEnd`) is blanked; otherwise its header is rewritten to the
+   * visible extender branches only. */
   hiddenRef: boolean;
 
-  /** Exclusive end of the reserved block's chunk range (for blanking a hidden-ref
-   * rule the fold leaves with no visible branch). */
+  /** The hidden rule had no visible branch when the walk emitted it: its block is
+   * RESERVED for an extend the fold may still fold in, and blanked when none does. */
+  reserved: boolean;
+
+  /** Exclusive end of the block's chunk range (for blanking a hidden-ref rule the
+   * fold leaves with no visible branch). */
   blockEnd: number;
 
   /** The header was emitted by the NESTED writer (`writeNestedRule`): the deferred
@@ -8671,9 +8675,11 @@ interface DynamicExtendState {
   scope: number[];
 
   /** The sheet boundary the walk is currently emitting (a composed module or a
-   * `(reference)` sheet), keyed from the import planner by its import statement. */
+   * `(reference)` sheet): the import planner's, by import statement for a
+   * `(reference)` placement and by module identity for a `@compose`. */
   boundary: ExtendBoundary | null;
   importBoundaries: ReadonlyMap<StyleImport, ExtendBoundary> | null;
+  moduleBoundaries: Map<string, ExtendBoundary>;
 
   /**
    * The flat writer's open rules, outermost first: each rule, its composed header,
@@ -8685,6 +8691,11 @@ interface DynamicExtendState {
   pathHeaders: string[][];
   pathKinds: number[];
   pathMemo: Array<Level[] | undefined>;
+
+  /** Selector IR built once per canonical node, however often the walk places it: a
+   * rule's own level, and an `:extend()`'s target branches. */
+  ownLevels: Map<Ruleset, Level>;
+  targetBranches: Map<ExtendInstruction, Branch[]>;
 
   /** Hidden `(reference)` rules a walk-recorded extend may still reveal, and the
    * hidden rules enclosing them (#355). Null when nothing can be revealed. */
@@ -8777,11 +8788,21 @@ interface Emit extends EvalCtx {
   importedStaticExtendRules: Set<Ruleset> | null;
 
   /*
-   * [extend/dynamic] Set by the pre-walk static imported preflight when an imported
-   * document carries an extend inside a `$for`/`each()` or mixin-definition body — a
-   * dynamic placement the static preflight cannot see, so walk-time recording must run.
+   * [extend/dynamic] Set by the pre-walk static imported preflight (which runs only
+   * when the graph has an extend) when an imported document has a placement it cannot
+   * see — a `$for`/`each()`, mixin-definition or detached-ruleset body that places a
+   * rule, or an `@import` inside a ruleset — so walk-time recording must run.
    */
-  importedDynamicExtendPresent: boolean;
+  importedWalkPlacement: boolean;
+
+  /*
+   * [extend] The planner's render placement token for each `(reference)` or
+   * `(multiple)` import it planned, and the token of the import placement being
+   * emitted (undefined in the static placement). Extend projections are looked up
+   * by placement, so two copies of one canonical rule never share one (#359).
+   */
+  importPlacements: ReadonlyMap<StyleImport, object> | null;
+  importPlacement: object | undefined;
 
   /*
    * [extend] set while emitting a hoisted (flattened) nested subtree via the flat
@@ -8913,7 +8934,9 @@ function scratchEmit(e: EvalCtx): Emit {
     extends: null,
     dynamicExtend: null,
     importedStaticExtendRules: null,
-    importedDynamicExtendPresent: false,
+    importedWalkPlacement: false,
+    importPlacements: null,
+    importPlacement: undefined,
     hoistMode: false,
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] fresh scratch walk; own runaway backstop
@@ -10821,11 +10844,11 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
  * [extend/dynamic] Whether a document carries STATIC and/or DYNAMIC `:extend()`.
  * `static` — an extend on the ordinary Ruleset/AtRuleBlock spine (the pre-walk
  * `computeExtends`/interp-prepass surface). `dynamic` — an extend reached only through
- * a `$for`/`each()` loop or mixin-definition body (recorded by the ONE render walk,
- * ledger X12), or an `@import` inside a ruleset or such a body: the import planner
- * never reaches that sheet, so the walk records its rules and extends where they land.
- * A document can have both. `places` — a loop or mixin-definition body places a rule:
- * once the graph has any extend, the walk must record that rule as a target.
+ * a body the walk places (see {@link placingBody}; recorded by the ONE render walk,
+ * ledger X12). A document can have both. `places` — such a body places a rule, a mixin
+ * call places its callee's rules (a ruleset called as a mixin included), or an
+ * `@import` sits inside a ruleset or such a body (the import planner never reaches
+ * that sheet): once the graph has any extend, the walk must record what they place.
  */
 interface ExtendClass {
   static: boolean;
@@ -10834,12 +10857,34 @@ interface ExtendClass {
 }
 
 /**
+ * Body `index` of a statement that places rules only when the render walk runs it: a
+ * `$for`/`each()` loop, a mixin definition, a `$if`/`$while` control block (one body
+ * per `$if` branch), or a detached ruleset (`@dr: { … }`). Null past the last body, and
+ * for every other statement. Their rules are never static extend subjects; the walk
+ * records them where they land. Indexed, so the per-render classifiers allocate nothing.
+ */
+function placingBody(st: Statement, index: number): readonly Statement[] | null {
+  switch (st.type) {
+    case 'For':
+    case 'MixinDefinition':
+    case 'While':
+      return index === 0 ? st.rules : null;
+    case 'If':
+      return st.branches[index]?.rules ?? null;
+    case 'VariableDeclaration':
+      return index === 0 && !isValueSlotArray(st.value) && st.value.type === 'AnonymousMixin' ? st.value.rules : null;
+    default:
+      return null;
+  }
+}
+
+/**
  * [extend/dynamic] ONE spine traversal that classifies a document's extend surface,
  * fusing what used to be two separate whole-document walks (`documentHasExtend` +
- * `documentHasDynamicExtend`). Once inside a loop/mixin body (`inDynamic`) every extend
+ * `documentHasDynamicExtend`). Once inside a placing body (`inDynamic`) every extend
  * is dynamic. A `{ static:false, dynamic:false }` result is the no-extend document: the
  * caller then takes exactly the original zero-cost path. Pure shape analysis — no
- * evaluation. Short-circuits once both bits are set.
+ * evaluation. Short-circuits once both bits are set (the walk is then armed anyway).
  */
 function classifyExtend(statements: readonly Statement[], inDynamic: boolean, out: ExtendClass, placed = inDynamic): void {
   for (const st of statements) {
@@ -10860,10 +10905,16 @@ function classifyExtend(statements: readonly Statement[], inDynamic: boolean, ou
       classifyExtend(st.rules, inDynamic, out, true);
     } else if (st.type === 'AtRuleBlock') {
       classifyExtend(st.rules, inDynamic, out, placed);
-    } else if (st.type === 'For' || st.type === 'MixinDefinition') {
-      classifyExtend(st.rules, true, out);
-    } else if (st.type === 'StyleImport' && placed) {
-      out.dynamic = true;
+    } else if (st.type === 'StyleImport') {
+      if (placed) {
+        out.places = true;
+      }
+    } else if (st.type === 'MixinCall') {
+      out.places = true;
+    } else {
+      for (let index = 0, body = placingBody(st, 0); body !== null; body = placingBody(st, ++index)) {
+        classifyExtend(body, true, out);
+      }
     }
   }
 }
@@ -10871,8 +10922,8 @@ function classifyExtend(statements: readonly Statement[], inDynamic: boolean, ou
 /**
  * [extend/dynamic] ONE armed-only walk over the document: the static-spine Ruleset
  * nodes (`staticRules` — every rule reachable through ruleset / at-rule nesting, NOT
- * through a loop or mixin body; a rule outside it was reached dynamically and records
- * its facts at emit), and the target atoms of the extends in loop and mixin bodies.
+ * through a placing body; a rule outside it was reached dynamically and records its
+ * facts at emit), and the target atoms of the extends in placing bodies.
  * Runs only when dynamic recording is armed, so non-extend documents pay nothing.
  *
  * F5 note: the planner's subject-rule set is NOT reused here — the pre-walk
@@ -10896,8 +10947,10 @@ function collectDynamicExtendSets(
       collectDynamicExtendSets(st.rules, inDynamic, staticRules, targetAtoms);
     } else if (st.type === 'AtRuleBlock') {
       collectDynamicExtendSets(st.rules, inDynamic, staticRules, targetAtoms);
-    } else if (st.type === 'For' || st.type === 'MixinDefinition') {
-      collectDynamicExtendSets(st.rules, true, staticRules, targetAtoms);
+    } else {
+      for (let index = 0, body = placingBody(st, 0); body !== null; body = placingBody(st, ++index)) {
+        collectDynamicExtendSets(body, true, staticRules, targetAtoms);
+      }
     }
   }
 }
@@ -10912,10 +10965,9 @@ function collectInstructionAtoms(instructions: readonly ExtendInstruction[], ato
 }
 
 /**
- * Collect the target atoms of every `:extend()` in an imported loop or mixin-definition
- * body; true when the body places a rule. Those extends run only when the walk reaches
- * them, so their targets are what a hidden `(reference)` rule must stay renderable for
- * (#355).
+ * Collect the target atoms of every `:extend()` in an imported placing body; true
+ * when the body places a rule. Those extends run only when the walk reaches them, so
+ * their targets are what a hidden `(reference)` rule must stay renderable for (#355).
  */
 function collectBodyExtendAtoms(statements: readonly Statement[], atoms: Set<string>): boolean {
   let places = false;
@@ -10926,8 +10978,14 @@ function collectBodyExtendAtoms(statements: readonly Statement[], atoms: Set<str
         collectInstructionAtoms(st.extendInstructions, atoms);
       }
       collectBodyExtendAtoms(st.rules, atoms);
-    } else if (st.type === 'AtRuleBlock' || st.type === 'For' || st.type === 'MixinDefinition') {
+    } else if (st.type === 'AtRuleBlock') {
       places = collectBodyExtendAtoms(st.rules, atoms) || places;
+    } else if (st.type === 'StyleImport' || st.type === 'MixinCall') {
+      places = true;
+    } else {
+      for (let index = 0, body = placingBody(st, 0); body !== null; body = placingBody(st, ++index)) {
+        places = collectBodyExtendAtoms(body, atoms) || places;
+      }
     }
   }
   return places;
@@ -10939,30 +10997,55 @@ interface ImportPlanOverlay {
   instructions: PlanInstruction[];
   atRuleScopes: AtRuleScopes;
 
-  /** The boundary of each composed module and `(reference)` sheet, by its import. */
+  /** The boundary of each `(reference)` import placement, by its import statement. */
   importBoundaries: Map<StyleImport, ExtendBoundary> | null;
 
-  /** Target atoms of the extends in imported loop and mixin-definition bodies. */
+  /** The ONE boundary of each composed module, by module identity (ledger X14). */
+  moduleBoundaries: Map<string, ExtendBoundary>;
+
+  /** The render placement token of each `(reference)` or `(multiple)` import. */
+  importPlacements: Map<StyleImport, object> | null;
+
+  /** Target atoms of the extends in imported placing bodies. */
   dynamicTargetAtoms: Set<string> | null;
+
+  /** Hidden `(reference)` rules whose body holds an `@import` the walk places. */
+  importingRules: Set<Ruleset> | null;
 }
 
 /**
- * The render placement of every `(reference)`-hidden extend fact. A hidden copy of a
- * rule projects apart from a visible copy of the same canonical rule (an `@import`
- * and an `@import (reference)` of one file, #359), so hidden facts never share the
- * static projection.
+ * The ONE extend boundary of the module identity `key`, recording `composer` as a
+ * sheet it is loaded from: a module composed by two sheets is reached by the extends
+ * of both, whichever loaded it first (ledger X14). A module with no identity gets a
+ * boundary per composition.
  */
-const REFERENCE_PLACEMENT = {};
+function composedModuleBoundary(
+  boundaries: Map<string, ExtendBoundary>,
+  key: string | undefined,
+  composer: ExtendBoundary | null
+): ExtendBoundary {
+  let boundary = key === undefined ? undefined : boundaries.get(key);
+  if (boundary === undefined) {
+    boundary = { parents: [composer] };
+    if (key !== undefined) {
+      boundaries.set(key, boundary);
+    }
+  } else if (!boundary.parents.includes(composer)) {
+    boundary.parents.push(composer);
+  }
+  return boundary;
+}
 
 /**
  * [extend/dynamic] Pre-walk STATIC extend preflight for a loaded imported document.
  * It records the imported document's STATICALLY-placed subjects and `:extend()`
  * instructions into the shared overlay using selector SHAPES only (`levelFromSelectorList`
- * / `branchFromSelector`) — never re-driving evaluation. `$for`/`each()` and
- * mixin-definition bodies are left to the walk-time dynamic recorder (a placement the
- * static preflight cannot resolve); encountering one with an extend flags
- * `e.importedDynamicExtendPresent` so that recorder runs. This is the imported-document
- * analogue of `collectPlan`, not a second evaluation pass.
+ * / `branchFromSelector`) — never re-driving evaluation. Placing bodies (see
+ * {@link placingBody}) are left to the walk-time dynamic recorder (a placement the
+ * static preflight cannot resolve); one that places a rule flags
+ * `e.importedWalkPlacement` so that recorder runs. This is the imported-document
+ * analogue of `collectPlan`, not a second evaluation pass. `placement` is the import
+ * placement the facts belong to (undefined for the static placement).
  */
 function planImportedStaticExtend(
   statements: readonly Statement[],
@@ -10973,16 +11056,16 @@ function planImportedStaticExtend(
   parent: PlanSubject | null,
   hidden: boolean,
   boundary: ExtendBoundary | null,
-  referenceAtRule: PlanReferenceAtRule | null
+  referenceAtRule: PlanReferenceAtRule | null,
+  placement: object | undefined
 ): void {
-  const placement = hidden ? REFERENCE_PLACEMENT : undefined;
   for (const statement of statements) {
     if (statement.type === 'Ruleset') {
       const own = levelFromSelectorList(statement.selector);
       const rulePath = [...path, own];
       const subject: PlanSubject = {
         rule: statement, path: rulePath, scope, ownLocal: own, parent,
-        hidden, boundary, mayMatch: false, referenceAtRule, placement
+        mayMatch: false, hidden, boundary, referenceAtRule, placement
       };
       overlay.subjects.push(subject);
       (e.importedStaticExtendRules ??= new Set()).add(statement);
@@ -11000,23 +11083,36 @@ function planImportedStaticExtend(
           }
         }
       }
-      planImportedStaticExtend(statement.rules, e, overlay, rulePath, scope, subject, hidden, boundary, referenceAtRule);
+      planImportedStaticExtend(statement.rules, e, overlay, rulePath, scope, subject, hidden, boundary, referenceAtRule, placement);
     } else if (statement.type === 'AtRuleBlock') {
       const owner = hidden
         ? { node: statement, parent: referenceAtRule, placement }
         : referenceAtRule;
-      planImportedStaticExtend(statement.rules, e, overlay, path, atRuleScope(scope, statement, overlay.atRuleScopes), parent, hidden, boundary, owner);
-    } else if (statement.type === 'For' || statement.type === 'MixinDefinition') {
+      planImportedStaticExtend(statement.rules, e, overlay, path, atRuleScope(scope, statement, overlay.atRuleScopes), parent, hidden, boundary, owner, placement);
+    } else if (statement.type === 'StyleImport') {
       /*
-       * The graph has an extend (this planner runs only then), so a loop or mixin
-       * body that places a rule arms the walk recorder: that rule is a target.
+       * An import inside a ruleset lands where the walk places it (see ExtendClass).
+       * A hidden ruleset must then still run its body, or the walk never reaches it.
        */
-      if (collectBodyExtendAtoms(statement.rules, overlay.dynamicTargetAtoms ??= new Set())) {
-        e.importedDynamicExtendPresent = true;
+      if (parent !== null) {
+        e.importedWalkPlacement = true;
+        if (hidden) {
+          (overlay.importingRules ??= new Set()).add(parent.rule);
+        }
       }
-    } else if (statement.type === 'StyleImport' && path.length > 0) {
-      /* An import inside a ruleset lands where the walk places it (see ExtendClass). */
-      e.importedDynamicExtendPresent = true;
+    } else if (statement.type === 'MixinCall') {
+      /* A call places its callee's rules where it lands (see ExtendClass). */
+      e.importedWalkPlacement = true;
+    } else {
+      /*
+       * The graph has an extend (this planner runs only then), so a placing body that
+       * places a rule arms the walk recorder: that rule is a target.
+       */
+      for (let index = 0, body = placingBody(statement, 0); body !== null; body = placingBody(statement, ++index)) {
+        if (collectBodyExtendAtoms(body, overlay.dynamicTargetAtoms ??= new Set())) {
+          e.importedWalkPlacement = true;
+        }
+      }
     }
   }
 }
@@ -11042,7 +11138,7 @@ function bodyHasPlannedImport(statements: readonly Statement[]): boolean {
 
 /**
  * Whether an imported document carries an `:extend()` anywhere — statically placed or
- * in a loop/mixin body. The import-side answer to the root's {@link classifyExtend}
+ * in a placing body. The import-side answer to the root's {@link classifyExtend}
  * (`static || dynamic`): the same statements, a boolean only, and stack-safe.
  */
 function bodyMayPlanExtend(statements: readonly Statement[]): boolean {
@@ -11061,25 +11157,23 @@ function bodyMayPlanExtend(statements: readonly Statement[]): boolean {
         return true;
       }
       for (const child of statement.rules) {
-        /* An import inside a ruleset is a walk-placed sheet (see ExtendClass). */
-        if (child.type === 'StyleImport') {
-          return true;
-        }
         pending.push(child);
       }
     } else if (statement.type === 'AtRuleBlock') {
       for (const child of statement.rules) {
         pending.push(child);
       }
-    } else if (statement.type === 'For' || statement.type === 'MixinDefinition') {
+    } else {
       /*
-       * `$for`/`each()` AND mixin-definition bodies are dynamic placement forms
-       * that must admit imported extend planning before they execute — an imported
-       * mixin whose body carries `&:extend()` (e.g. Bootstrap's `#make-grid-columns()`
-       * grid columns) arms the walk-time dynamic recorder the same way a loop does.
+       * Placing bodies (loops, mixin definitions, control blocks, detached rulesets)
+       * must admit imported extend planning before they execute — an imported mixin
+       * whose body carries `&:extend()` (e.g. Bootstrap's `#make-grid-columns()` grid
+       * columns) arms the walk-time dynamic recorder the same way a loop does.
        */
-      for (const child of statement.rules) {
-        pending.push(child);
+      for (let index = 0, body = placingBody(statement, 0); body !== null; body = placingBody(statement, ++index)) {
+        for (const child of body) {
+          pending.push(child);
+        }
       }
     }
   }
@@ -11098,10 +11192,9 @@ function bodyMayPlanExtend(statements: readonly Statement[]): boolean {
 type ImportPlannerInput = {
   root: Stylesheet;
   overlay: PlanOverlay;
-  importBoundaries: ReadonlyMap<StyleImport, ExtendBoundary> | null;
 
-  /** Target atoms of the extends in imported loop and mixin-definition bodies. */
-  dynamicTargetAtoms: ReadonlySet<string> | null;
+  /** The planner's own overlay (`overlay` itself), null when it planned nothing. */
+  imports: ImportPlanOverlay | null;
 
   /** The root document's extend surface, classified once for the planner and the render. */
   extendClass: ExtendClass;
@@ -11191,8 +11284,7 @@ function planImportedFacts(
         instructions: [],
         atRuleScopes: null
       },
-      importBoundaries: null,
-      dynamicTargetAtoms: null,
+      imports: null,
       extendClass,
       cssImports: undefined
     };
@@ -11203,7 +11295,10 @@ function planImportedFacts(
     instructions: [],
     atRuleScopes: new Map(),
     importBoundaries: null,
-    dynamicTargetAtoms: null
+    moduleBoundaries: new Map(),
+    importPlacements: null,
+    dynamicTargetAtoms: null,
+    importingRules: null
   };
 
   /*
@@ -11211,28 +11306,26 @@ function planImportedFacts(
    * import graph carries an `:extend()` — statically placed or in a loop/mixin body —
    * every imported document's statically-placed rules are potential targets. The root
    * seeds the flag; an imported document visited before the first extend-bearing one
-   * waits in `pending*` (parallel arrays) and is planned, in visit order, when that
-   * extend appears. A graph with no extend plans nothing. The prepare pass only loads
-   * documents and discards its overlay, so it plans nothing either.
+   * waits in `pendingPlans` and is planned, in visit order, when that extend appears.
+   * A graph with no extend plans nothing. The prepare pass only loads documents and
+   * discards its overlay, so it plans nothing either.
    */
   const plansExtend = !deferUnreadyImports;
   let graphHasExtend = extendClass.static || extendClass.dynamic;
-  let pendingRules: Array<readonly Statement[]> | null = null;
-  let pendingReference: boolean[] | null = null;
-  let pendingAtRules: Array<readonly AtRuleBlock[]> | null = null;
-  let pendingBoundaries: Array<ExtendBoundary | null> | null = null;
+  let pendingPlans: Array<() => void> | null = null;
   const planImported = (
     rules: readonly Statement[],
     reference: boolean,
     atRules: readonly AtRuleBlock[],
-    boundary: ExtendBoundary | null
+    boundary: ExtendBoundary | null,
+    placement: object | undefined
   ): void => {
     recordAstExtendProfile?.('astExtend.preflight.importsFeatureBearing');
     let scope = EMPTY_SCOPE;
     for (const atRule of atRules) {
       scope = atRuleScope(scope, atRule, overlay.atRuleScopes);
     }
-    planImportedStaticExtend(rules, e, overlay, [], scope, null, reference, boundary, null);
+    planImportedStaticExtend(rules, e, overlay, [], scope, null, reference, boundary, null, placement);
   };
   const cssImports: CssImportPlan | null = collectCssImports
     ? {
@@ -11278,9 +11371,18 @@ function planImportedFacts(
 
     /*
      * The extend boundary of the sheet being walked: null in the root document's
-     * graph, else the innermost `@compose`d module it was loaded from (ledger X14).
+     * graph, else the innermost `@compose`d module or `(reference)` sheet it was
+     * loaded from (ledger X14).
      */
-    boundary: ExtendBoundary | null = null
+    boundary: ExtendBoundary | null = null,
+
+    /*
+     * Whether the sheet being walked is inside a `(reference)` import, and the render
+     * placement its rules land in (undefined for the static placement). A sheet a
+     * `(reference)` sheet imports is hidden too, and shares its placement.
+     */
+    hidden = false,
+    placement: object | undefined = undefined
   ): Promise<void> => {
     const deferred: StyleImport[] = [];
     const deferredSites: number[] = [];
@@ -11306,13 +11408,6 @@ function planImportedFacts(
         return;
       }
       recordAstExtendProfile?.('astExtend.preflight.importsLoaded');
-      if (options === null && !multipleImportDepth && loaded.key !== undefined) {
-        if (seen.has(loaded.key)) {
-          return;
-        }
-        seen.add(loaded.key);
-      }
-      rememberImportedCallableBodies(loaded.document, loaded.document.rules, e.context);
 
       /*
        * `@compose` is isolated and non-transitive: its facts are NOT spliced into
@@ -11322,6 +11417,17 @@ function planImportedFacts(
        * facts into the importing frame before its body is walked.
        */
       const isCompose = st.mode === 'compose';
+      if (options === null && !multipleImportDepth && loaded.key !== undefined) {
+        if (seen.has(loaded.key)) {
+          /* A module composed again is still loaded from this sheet too (ledger X14). */
+          if (isCompose && plansExtend) {
+            composedModuleBoundary(overlay.moduleBoundaries, loaded.key, boundary);
+          }
+          return;
+        }
+        seen.add(loaded.key);
+      }
+      rememberImportedCallableBodies(loaded.document, loaded.document.rules, e.context);
 
       /*
        * [import-fold] Where this `@import` sits in each frame it publishes into —
@@ -11353,40 +11459,47 @@ function planImportedFacts(
       /*
        * A composed module's extends reach only the module and what it loads; a
        * `(reference)` sheet's stay inside that sheet. Plain imports share their
-       * importer's boundary.
+       * importer's boundary. A `(reference)` or `(multiple)` import is its own render
+       * placement, so its copies of the sheet's rules project apart from every other
+       * copy (#359); a plain import shares its importer's placement.
        */
-      const childBoundary = isCompose ? { parent: boundary } : boundary;
-      const sheetBoundary = reference ? { parent: childBoundary } : childBoundary;
-      if (plansExtend && sheetBoundary !== boundary) {
-        (overlay.importBoundaries ??= new Map()).set(st, sheetBoundary);
+      const sheetHidden = hidden || reference;
+      let sheetBoundary = boundary;
+      let sheetPlacement = placement;
+      if (plansExtend) {
+        if (isCompose) {
+          sheetBoundary = composedModuleBoundary(overlay.moduleBoundaries, loaded.key, boundary);
+        }
+        if (reference) {
+          sheetBoundary = { parents: [sheetBoundary] };
+          (overlay.importBoundaries ??= new Map()).set(st, sheetBoundary);
+        }
+        if (reference || importHasOption(options, 'multiple')) {
+          sheetPlacement = {};
+          (overlay.importPlacements ??= new Map()).set(st, sheetPlacement);
+        }
       }
 
       /*
        * The imported document's STATICALLY-placed Rulesets are recorded from selector
-       * SHAPES (never re-evaluated). Its `$for`/`each()` and mixin-definition bodies
-       * are DYNAMIC placements the static preflight cannot resolve — the ONE render
-       * walk records those (ledger X12).
+       * SHAPES (never re-evaluated). Its placing bodies are DYNAMIC placements the
+       * static preflight cannot resolve — the ONE render walk records those (ledger X12).
        */
       if (plansExtend) {
         if (!graphHasExtend && bodyMayPlanExtend(loaded.document.rules)) {
           graphHasExtend = true;
-          if (pendingRules !== null) {
-            for (let index = 0; index < pendingRules.length; index++) {
-              planImported(pendingRules[index]!, pendingReference![index]!, pendingAtRules![index]!, pendingBoundaries![index]!);
+          if (pendingPlans !== null) {
+            for (const plan of pendingPlans) {
+              plan();
             }
-            pendingRules = null;
-            pendingReference = null;
-            pendingAtRules = null;
-            pendingBoundaries = null;
+            pendingPlans = null;
           }
         }
         if (graphHasExtend) {
-          planImported(loaded.document.rules, reference, atRules, sheetBoundary);
+          planImported(loaded.document.rules, sheetHidden, atRules, sheetBoundary, sheetPlacement);
         } else {
-          (pendingRules ??= []).push(loaded.document.rules);
-          (pendingReference ??= []).push(reference);
-          (pendingAtRules ??= []).push(atRules);
-          (pendingBoundaries ??= []).push(sheetBoundary);
+          const rules = loaded.document.rules;
+          (pendingPlans ??= []).push(() => planImported(rules, sheetHidden, atRules, sheetBoundary, sheetPlacement));
         }
       }
       const collect = async (): Promise<void> => {
@@ -11402,7 +11515,9 @@ function planImportedFacts(
 
           /* the imported document's own body: an import in it addresses by index */
           [],
-          childBoundary
+          sheetBoundary,
+          sheetHidden,
+          sheetPlacement
         );
       };
       if (loaded.withinDocument) {
@@ -11458,7 +11573,7 @@ function planImportedFacts(
          * — and ledger A10's `@import "lib" screen;` desugar lands exactly here.
          * Those facts keep publication order (see {@link importSiteRank}).
          */
-        await visit(st.rules, scope, null, withinDocument, multipleImportDepth, plansExtend ? [...atRules, st] : atRules, null, null, null, boundary);
+        await visit(st.rules, scope, null, withinDocument, multipleImportDepth, plansExtend ? [...atRules, st] : atRules, null, null, null, boundary, hidden, placement);
       }
     }
     for (let index = 0; index < deferred.length; index++) {
@@ -11497,11 +11612,7 @@ function planImportedFacts(
     } else {
       plannedCssImports = cssImports;
     }
-    return {
-      root, overlay, importBoundaries: overlay.importBoundaries,
-      dynamicTargetAtoms: overlay.dynamicTargetAtoms, extendClass,
-      cssImports: plannedCssImports
-    };
+    return { root, overlay, imports: overlay, extendClass, cssImports: plannedCssImports };
   });
 }
 
@@ -11536,7 +11647,9 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     extends: null,
     dynamicExtend: null,
     importedStaticExtendRules: null,
-    importedDynamicExtendPresent: false,
+    importedWalkPlacement: false,
+    importPlacements: null,
+    importPlacement: undefined,
     hoistMode: false,
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false },
     mixinDepth: 0,
@@ -11627,7 +11740,9 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     extends: null, // [extend] computed below (after selector-interp pre-pass)
     dynamicExtend: null,
     importedStaticExtendRules: null,
-    importedDynamicExtendPresent: false,
+    importedWalkPlacement: false,
+    importPlacements: null,
+    importPlacement: undefined,
     hoistMode: false, // [extend]
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] runaway mixin-expansion depth guard
@@ -11690,39 +11805,41 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
       resolveSelectorInterpForExtend(plannedRoot.rules, rootFrame, e);
     }
     e.extends = computeExtends(plannedRoot, planned.overlay); // [extend] null when no `:extend()` anywhere
+    e.importPlacements = planned.imports?.importPlacements ?? null;
 
     /*
      * [extend/dynamic] Arm walk-time extend recording only when the document has a
-     * DYNAMIC extend surface (an extend inside a loop or mixin-definition body, in the
-     * main document or an import), or a loop or mixin body places a rule a planned
-     * extend may target. A static-only extend document with no such body leaves this
-     * null and is byte- and cost-identical to the pre-walk path (ledger X12 /
+     * DYNAMIC extend surface (an extend inside a placing body, in the main document or
+     * an import), or the graph has an extend and something places a rule the static
+     * plan cannot see (a placing body, or an `@import` inside a ruleset). A static-only
+     * extend document with no such placement, and every document with no extend, leaves
+     * this null and is byte- and cost-identical to the pre-walk path (ledger X12 /
      * EXTEND-SEMANTICS §1a).
      */
-    if (extendClass.dynamic || e.importedDynamicExtendPresent || (extendClass.places && e.extends !== null)) {
+    if (extendClass.dynamic || e.importedWalkPlacement || (extendClass.places && e.extends !== null)) {
       const staticRules = new Set<Ruleset>();
-      const revealAtoms = new Set<string>(planned.dynamicTargetAtoms);
-      collectDynamicExtendSets(plannedRoot.rules, false, staticRules, revealAtoms);
+      const dynamicAtoms = new Set<string>(planned.imports?.dynamicTargetAtoms);
+      collectDynamicExtendSets(plannedRoot.rules, false, staticRules, dynamicAtoms);
       if (e.importedStaticExtendRules) {
         for (const rule of e.importedStaticExtendRules) {
           staticRules.add(rule);
         }
       }
-      for (const atom of e.extends?.targetAtoms ?? []) {
-        revealAtoms.add(atom);
-      }
-      const reveal = hiddenRulesToReveal(planned.overlay.subjects, revealAtoms);
+      const reveal = hiddenRulesToReveal(planned.overlay, dynamicAtoms, planned.imports?.importingRules ?? null);
       e.dynamicExtend = {
         root: plannedRoot,
         baseOverlay: planned.overlay,
         atRuleScopes: planned.overlay.atRuleScopes ?? new Map(),
         scope: EMPTY_SCOPE,
         boundary: null,
-        importBoundaries: planned.importBoundaries,
+        importBoundaries: planned.imports?.importBoundaries ?? null,
+        moduleBoundaries: planned.imports?.moduleBoundaries ?? new Map(),
         pathRules: [],
         pathHeaders: [],
         pathKinds: [],
         pathMemo: [],
+        ownLevels: new Map(),
+        targetBranches: new Map(),
         revealRules: reveal?.rules ?? null,
         revealAncestors: reveal?.ancestors ?? null,
         staticRules,
@@ -11966,7 +12083,7 @@ function emitDocumentStatements(
          */
         if (e.referenceImportDepth === 0
           || referenceRuleIsVisible(child, frame, e)
-          || extendProjection(frame, e)?.visibleReferenceRuleAncestors?.has(child) === true
+          || extendProjection(e)?.visibleReferenceRuleAncestors?.has(child) === true
           || e.dynamicExtend?.revealRules?.has(child) === true
           || e.dynamicExtend?.revealAncestors?.has(child) === true) {
           emitBeforeDocumentStatement(child);
@@ -12067,7 +12184,7 @@ function emitDocumentStatements(
       // [atrule] top-level at-rules
       case 'AtRuleBlock':
         if (e.referenceImportDepth === 0
-          || extendProjection(frame, e)?.visibleReferenceAtRules?.has(child) === true) {
+          || extendProjection(e)?.visibleReferenceAtRules?.has(child) === true) {
           emitBeforeDocumentStatement(child);
           const emitted = expandAtRuleBlock(child, frame, e);
           markAfterDocumentStatement(child);
@@ -12371,9 +12488,10 @@ const EMPTY_SCOPE: number[] = [];
  * AST-derived IR. A compound or complex header is held as one opaque compound: it
  * serializes and folds correctly, but a compound target cannot match one of its parts.
  * ponytail: used only where the selector IR is not known — an interpolated selector
- * (its resolved tokens live only in the composed text) and the nested writer's
- * own-local header. Upgrade path: keep the resolved interpolation tokens from the
- * walk's composition if a compound target ever has to meet such a rule.
+ * (its resolved tokens live only in the composed text) or a header composed against
+ * a placement the recorder never opened. Upgrade path: keep the resolved
+ * interpolation tokens from the walk's composition if a compound target ever has to
+ * meet such a rule.
  */
 function opaqueLevel(header: readonly string[]): Level {
   return header.map(text => descendantBranch([textSimple(text)]));
@@ -12382,19 +12500,45 @@ function opaqueLevel(header: readonly string[]): Level {
 /** How an open rule's extend path starts (see {@link DynamicExtendState.pathKinds}). */
 const PATH_NESTED = 0; // under the enclosing open rule
 const PATH_ROOT = 1; // at a root context: its own selector alone
-const PATH_OPAQUE = 2; // its composed header text, held as one opaque level
+const PATH_OPAQUE = 2; // its header text, held as one opaque level
+const PATH_OPAQUE_NESTED = 3; // its own-local header text, opaque, under the enclosing open rule
+const PATH_ROOT_GUARD = 4; // a root `&` guard block: its own selector alone; its children are root rules
 
 /**
- * [extend/dynamic] Open `rule` on the flat writer's path, composed as `header` under
- * `parent` (null at a root context). Returns the open-rule depth to restore.
+ * [extend/dynamic] Open `rule` on the recorder's path, written with `header`: the
+ * flat writer's composed header, or the nested writer's own-local one (`local`).
+ * `rooted` — written at a root context; `opaque` — composed against a placement the
+ * recorder cannot see (a nested ruleset-mixin placement). Returns the open-rule depth
+ * to restore.
  */
-function openDynamicPath(dyn: DynamicExtendState, rule: Ruleset, parent: string[] | null, header: string[]): number {
+function openDynamicPath(
+  dyn: DynamicExtendState,
+  rule: Ruleset,
+  rooted: boolean,
+  header: string[],
+  local: boolean,
+  opaque = false
+): number {
   const depth = dyn.pathRules.length;
+
+  /*
+   * Under a root `&` guard block (`& when (…) { … }`), which the nested writer keeps
+   * as a lone `&` wrapper, a rule composes as a root rule, as the flat writer has it.
+   */
+  if (!rooted && depth > 0 && dyn.pathKinds[depth - 1] === PATH_ROOT_GUARD) {
+    rooted = true;
+  }
+  let kind = rooted ? PATH_ROOT : PATH_NESTED;
+  if (rooted && local && header.length === 1 && header[0] === '&') {
+    kind = PATH_ROOT_GUARD;
+  } else if (opaque || (!rooted && depth === 0)) {
+    kind = PATH_OPAQUE;
+  } else if (rule.selector.selectors.some(selectorBranchHasInterp)) {
+    kind = local && !rooted ? PATH_OPAQUE_NESTED : PATH_OPAQUE;
+  }
   dyn.pathRules.push(rule);
   dyn.pathHeaders.push(header);
-  dyn.pathKinds.push(rule.selector.selectors.some(selectorBranchHasInterp) || (parent !== null && depth === 0)
-    ? PATH_OPAQUE
-    : parent === null ? PATH_ROOT : PATH_NESTED);
+  dyn.pathKinds.push(kind);
   dyn.pathMemo.push(undefined);
   return depth;
 }
@@ -12409,15 +12553,40 @@ function dynamicPathAt(dyn: DynamicExtendState, index: number): Level[] {
   let path = dyn.pathMemo[index];
   if (path === undefined) {
     const kind = dyn.pathKinds[index]!;
-    if (kind === PATH_OPAQUE) {
-      path = [opaqueLevel(dyn.pathHeaders[index]!)];
-    } else {
-      const own = levelFromSelectorList(dyn.pathRules[index]!.selector);
-      path = kind === PATH_ROOT ? [own] : [...dynamicPathAt(dyn, index - 1), own];
-    }
+    const own = kind === PATH_OPAQUE || kind === PATH_OPAQUE_NESTED
+      ? opaqueLevel(dyn.pathHeaders[index]!)
+      : ownLevelOf(dyn, dyn.pathRules[index]!);
+    path = kind === PATH_ROOT || kind === PATH_ROOT_GUARD || kind === PATH_OPAQUE ? [own] : [...dynamicPathAt(dyn, index - 1), own];
     dyn.pathMemo[index] = path;
   }
   return path;
+}
+
+/**
+ * [extend/dynamic] Record the extend facts of the innermost open rule, `rule`: its
+ * path is the open rules it composed under, its placement the innermost one it lands
+ * in. An inline extend narrows to its own branch only on a structured path. `target`
+ * — the rule is also a match subject (false when the fold could not rewrite its
+ * header, so solving it would be wasted work).
+ */
+function recordOpenRule(dyn: DynamicExtendState, rule: Ruleset, frame: Frame, e: Emit, target = true): void {
+  const open = dyn.pathRules.length - 1;
+  const kind = dyn.pathKinds[open]!;
+  recordDynamicExtendFacts(
+    dyn, rule, innermostExtendPlacement(frame, e), e.referenceImportDepth > 0,
+    dynamicPathAt(dyn, open), kind === PATH_ROOT || kind === PATH_ROOT_GUARD || kind === PATH_NESTED, target
+  );
+}
+
+/** [extend/dynamic] A rule's own selector level, built once per canonical rule. The
+ * solver never mutates a level (composePath clones), so every placement shares it. */
+function ownLevelOf(dyn: DynamicExtendState, rule: Ruleset): Level {
+  let own = dyn.ownLevels.get(rule);
+  if (own === undefined) {
+    own = levelFromSelectorList(rule.selector);
+    dyn.ownLevels.set(rule, own);
+  }
+  return own;
 }
 
 /**
@@ -12431,14 +12600,18 @@ function withDynamicPlacement<T>(
   boundary: ExtendBoundary | null,
   run: () => MaybePromise<T>
 ): MaybePromise<T> {
-  const restore = (): void => {
+  return settled(run, () => {
     dyn.scope = scope;
     dyn.boundary = boundary;
     dyn.pathRules.length = depth;
     dyn.pathHeaders.length = depth;
     dyn.pathKinds.length = depth;
     dyn.pathMemo.length = depth;
-  };
+  });
+}
+
+/** Run `run`, then `restore` however it settles: returned, resolved, thrown or rejected. */
+function settled<T>(run: () => MaybePromise<T>, restore: () => void): MaybePromise<T> {
   try {
     const result = run();
     if (isThenable(result)) {
@@ -12455,23 +12628,37 @@ function withDynamicPlacement<T>(
 /**
  * [extend/dynamic] The hidden `(reference)` rules a walk-recorded extend may reveal
  * (#355), and the hidden rules enclosing them. A hidden rule with no visible branch
- * is otherwise never rendered, so a mixin- or loop-body extender found later in the
- * walk would have no header to fold into. A hidden rule whose path shares an atom
- * with an extend target renders as a RESERVED block, which the fold blanks when
- * nothing reveals it. Reads the planner's subjects; builds no selector IR.
+ * is otherwise never rendered, so a placing-body extender found later in the walk
+ * would have no header to fold into. `atoms` are the target atoms of the extends in
+ * placing bodies — the only extends the static plan has not already applied — closed
+ * over the hidden static extends they reach (an extender a recorded extend reveals
+ * reveals its own targets). A hidden rule whose own level shares one, or whose body
+ * holds an `@import` the walk places (`importing`), renders as a RESERVED block,
+ * which the fold blanks when nothing reveals it. Reads the planner's facts; builds no
+ * selector IR.
  */
 function hiddenRulesToReveal(
-  subjects: readonly PlanSubject[],
-  atoms: Set<string>
+  overlay: PlanOverlay,
+  atoms: Set<string>,
+  importing: ReadonlySet<Ruleset> | null
 ): { rules: Set<Ruleset>; ancestors: Set<Ruleset> } | null {
-  if (atoms.size === 0) {
+  if (atoms.size === 0 && importing === null) {
     return null;
+  }
+  for (let size = -1; size !== atoms.size;) {
+    size = atoms.size;
+    for (const inst of overlay.instructions) {
+      if (inst.extenderHidden && inst.extenderPath.some(level => level.some(b => branchSharesAtom(b, atoms)))) {
+        collectBranchAtoms(inst.target, atoms);
+      }
+    }
   }
   const rules = new Set<Ruleset>();
   const ancestors = new Set<Ruleset>();
-  for (const s of subjects) {
+  for (const s of overlay.subjects) {
     if (!s.hidden
       || (!(s.parent !== null && rules.has(s.parent.rule))
+        && importing?.has(s.rule) !== true
         && !s.ownLocal.some(b => branchSharesAtom(b, atoms)))) {
       continue;
     }
@@ -12480,19 +12667,20 @@ function hiddenRulesToReveal(
       ancestors.add(p.rule);
     }
   }
+  recordAstExtendProfile?.('astExtend.preflight.revealRules', rules.size);
   return rules.size === 0 ? null : { rules, ancestors };
 }
 
 /** [extend/dynamic] The placement that keys a walk-recorded fact or header slot: the
- * innermost `$for`/mixin placement token on the frame chain, else inside a
- * `(reference)` import the shared hidden placement, else none (static). */
-function innermostExtendPlacement(frame: Frame | null, hidden: boolean): object | undefined {
+ * innermost `$for`/mixin-call placement token on the frame chain, else the import
+ * placement being emitted, else none (static). */
+function innermostExtendPlacement(frame: Frame | null, e: Emit): object | undefined {
   for (let cursor = frame; cursor; cursor = cursor.parent) {
     if (cursor.extendPlacement) {
       return cursor.extendPlacement;
     }
   }
-  return hidden ? REFERENCE_PLACEMENT : undefined;
+  return e.importPlacement;
 }
 
 /** [extend/splice] True when this rule is emitted through a mixin-call body splice —
@@ -12509,36 +12697,52 @@ function reachedViaMixinSplice(frame: Frame | null): boolean {
 
 /**
  * [extend/dynamic] Record the extend facts for a rule reached through a dynamic
- * expansion (a loop or mixin-call body, or an import inside a ruleset), at the at-rule
- * scope and sheet boundary it lands in. `path` is its extend path: the flat writer's
- * open rules (`dynamicPathAt`), or the nested writer's own-local header. This only
- * registers the fact — it never re-drives evaluation (ledger X12 / EXTEND-SEMANTICS
- * §1a). A rule already accounted for statically is skipped by the callers.
+ * expansion (a placing body or mixin call, or an import inside a ruleset), at the
+ * at-rule scope, sheet boundary and placement it lands in. `path` is its extend path:
+ * the flat writer's open rules (`dynamicPathAt`), or the nested writer's own-local
+ * header. This only registers the fact — it never re-drives evaluation (ledger X12 /
+ * EXTEND-SEMANTICS §1a). A rule the static plan already holds at this placement is
+ * skipped by the callers.
  */
-function recordDynamicExtendFacts(dyn: DynamicExtendState, rule: Ruleset, frame: Frame, hidden: boolean, path: Level[], structured: boolean): void {
+function recordDynamicExtendFacts(
+  dyn: DynamicExtendState,
+  rule: Ruleset,
+  placement: object | undefined,
+  hidden: boolean,
+  path: Level[],
+  structured: boolean,
+  target: boolean
+): void {
   const scope = dyn.scope;
   const boundary = dyn.boundary;
-  dyn.subjects.push({
-    rule,
-    path,
-    scope,
-    ownLocal: path[path.length - 1]!,
-    parent: null,
-    mayMatch: false,
-    hidden,
-    boundary,
-    referenceAtRule: null,
-    placement: innermostExtendPlacement(frame, hidden)
-  });
+  if (target) {
+    dyn.subjects.push({
+      rule,
+      path,
+      scope,
+      ownLocal: path[path.length - 1]!,
+      parent: null,
+      mayMatch: false,
+      hidden,
+      boundary,
+      referenceAtRule: null,
+      placement
+    });
+  }
   if (rule.extendInstructions) {
     for (const inst of rule.extendInstructions) {
       /* An inline extend binds to its own branch, as `collectPlan` reads it. */
       const extenderPath = inst.subject && structured
         ? [...path.slice(0, -1), levelFromSelectorList(inst.subject)]
         : path;
-      for (const sel of inst.target.selectors) {
+      let targets = dyn.targetBranches.get(inst);
+      if (targets === undefined) {
+        targets = inst.target.selectors.map(branchFromSelector);
+        dyn.targetBranches.set(inst, targets);
+      }
+      for (const target of targets) {
         dyn.instructions.push({
-          target: branchFromSelector(sel),
+          target,
           partial: inst.partial,
           extenderPath,
           scope,
@@ -12553,20 +12757,20 @@ function recordDynamicExtendFacts(dyn: DynamicExtendState, rule: Ruleset, frame:
 
 /** [extend/dynamic] Register the header chunk `flushBlock` just wrote as a rewritable
  * FLAT target slot (keyed per emission by the placement token). */
-function recordDynExtendSlot(e: Emit, rule: Ruleset, frame: Frame, emitted: string[]): void {
+function recordDynExtendSlot(e: Emit, rule: Ruleset, frame: Frame, emitted: string[], reserved: boolean): void {
   const dyn = e.dynamicExtend;
   if (!dyn || dyn.pendingHeaderChunk < 0) {
     return;
   }
-  const hiddenRef = e.referenceImportDepth > 0;
   dyn.slots.push({
     rule,
-    token: innermostExtendPlacement(frame, hiddenRef),
+    token: innermostExtendPlacement(frame, e),
     chunkIndex: dyn.pendingHeaderChunk,
     indent: dyn.pendingHeaderIndent,
     hoistMode: e.hoistMode,
     emitted,
-    hiddenRef,
+    hiddenRef: e.referenceImportDepth > 0,
+    reserved,
     blockEnd: e.chunks.length,
     nested: false
   });
@@ -12580,58 +12784,81 @@ function recordNestedDynExtendSlot(e: Emit, rule: Ruleset, frame: Frame, chunkIn
   if (!dyn) {
     return;
   }
-  const hiddenRef = e.referenceImportDepth > 0;
   dyn.slots.push({
     rule,
-    token: innermostExtendPlacement(frame, hiddenRef),
+    token: innermostExtendPlacement(frame, e),
     chunkIndex,
     indent,
     hoistMode: e.hoistMode,
     emitted,
-    hiddenRef,
+    hiddenRef: e.referenceImportDepth > 0,
+    reserved: false,
     blockEnd,
     nested: true
   });
 }
 
 /**
+ * [extend/dynamic] The extend results once the walk-recorded facts join the static
+ * plan, or null when they cannot change any header. A recorded rule that shares no
+ * atom with any extend target can neither match nor chain (the planner's `mayMatch`
+ * argument), so it is left out; with none left and no recorded extend, the static
+ * results already stand and nothing is re-solved.
+ */
+function resolveDynamicExtends(dyn: DynamicExtendState, base: ExtendResults | null): ExtendResults | null {
+  const atoms = new Set<string>(base?.targetAtoms);
+  for (const inst of dyn.instructions) {
+    collectBranchAtoms(inst.target, atoms);
+  }
+  const subjects = dyn.subjects.filter(s => s.path.some(level => level.some(b => branchSharesAtom(b, atoms))));
+  recordAstExtendProfile?.('astExtend.fold.recordedSubjects', dyn.subjects.length);
+  recordAstExtendProfile?.('astExtend.fold.keptSubjects', subjects.length);
+  if (subjects.length === 0 && dyn.instructions.length === 0) {
+    return null;
+  }
+  const overlay: PlanOverlay = {
+    subjects: [...dyn.baseOverlay.subjects, ...subjects],
+    instructions: [...dyn.baseOverlay.instructions, ...dyn.instructions],
+    atRuleScopes: dyn.atRuleScopes
+  };
+  return computeExtends(dyn.root, overlay);
+}
+
+/**
  * [extend/dynamic] DEFERRED REWRITE. After the ONE render walk, re-solve extend with
  * the STATIC plan plus the walk-recorded dynamic facts, then overwrite each recorded
- * target header slot whose complete selector now differs from what was emitted. No
- * evaluation is re-driven — this reads resolved static shapes and rewrites text
- * (ledger X12 / EXTEND-SEMANTICS §1a).
+ * target header slot whose complete selector now differs from what was emitted, and
+ * blank each hidden `(reference)` block left with no visible branch. No evaluation is
+ * re-driven — this reads resolved static shapes and rewrites text (ledger X12 /
+ * EXTEND-SEMANTICS §1a).
  */
 function foldDynamicExtends(e: Emit): void {
   const dyn = e.dynamicExtend;
-  if (!dyn || (dyn.subjects.length === 0 && dyn.instructions.length === 0)) {
+  if (!dyn) {
     return;
   }
-  const base = dyn.baseOverlay;
-  const overlay: PlanOverlay = {
-    subjects: [...base.subjects, ...dyn.subjects],
-    instructions: [...base.instructions, ...dyn.instructions],
-    atRuleScopes: dyn.atRuleScopes
-  };
-  const resolved = computeExtends(dyn.root, overlay);
-  if (resolved === null) {
-    return;
+  const resolved = resolveDynamicExtends(dyn, e.extends);
+  if (resolved !== null) {
+    e.extends = resolved;
   }
-  e.extends = resolved;
   for (const slot of dyn.slots) {
-    const projection = placementProjection(resolved, slot.token, slot.hiddenRef);
     let visible: string[] | null;
-    if (slot.nested) {
+    if (resolved === null) {
+      /* Nothing recorded changes a header: only a RESERVED block, which nothing revealed, goes. */
+      visible = slot.reserved ? null : slot.emitted;
+    } else if (slot.nested) {
       /*
        * NESTED writer: recompose from the own-local `nestedPlan` header (a flat
        * composed header would double the ancestor prefix at a nested position). A
        * flattened/hoisted nested plan is left as emitted — restructuring is not a
        * deferred-rewrite operation (a bounded follow-up, see EXTEND-SEMANTICS §1a).
        */
-      const plan = projection?.nestedPlan.get(slot.rule);
+      const plan = placementProjection(resolved, slot.token)?.nestedPlan.get(slot.rule);
       visible = plan && !plan.flatten
         ? withoutPlaceholders(plan.header)
         : slot.emitted;
     } else {
+      const projection = placementProjection(resolved, slot.token);
       const header0 = slot.hoistMode
         ? projection?.hoistHeader.get(slot.rule) ?? projection?.flatByRule.get(slot.rule) ?? slot.emitted
         : projection?.flatByRule.get(slot.rule) ?? slot.emitted;
@@ -12640,8 +12867,8 @@ function foldDynamicExtends(e: Emit): void {
     if (visible === null) {
       /*
        * [import:reference] A hidden `(reference)` rule with no visible extender folded
-       * in emits nothing: blank the RESERVED block it was emitted into. A non-reference
-       * rule never resolves to null here, so this only fires for reserved reference blocks.
+       * in emits nothing: blank the block it was emitted into. A non-reference rule
+       * never resolves to null here, so this only fires for hidden reference blocks.
        */
       if (slot.hiddenRef) {
         for (let i = slot.chunkIndex; i < slot.blockEnd; i++) {
@@ -12706,49 +12933,25 @@ function visibleHeaderCore(
 }
 
 /**
- * The projection for one placement: its loop iteration's when it has one, else
- * inside a `(reference)` import the hidden placement's — null when nothing hidden
- * projected — and never the static projection, which holds the visible copies of
- * the same canonical rules (#359).
+ * The extend projection of one render placement: the static projection for the
+ * static placement (`token` undefined), else that placement's own — null when the
+ * plan projected nothing there. Never the static projection for a placed copy: it
+ * holds the static copy of the same canonical rules (#359).
  */
 function placementProjection(
   ext: ExtendResults,
-  token: object | undefined,
-  hidden: boolean
+  token: object | undefined
 ): ExtendResults | ExtendPlacementResults | null {
-  const placed = ext.byPlacement;
-  const projection = token ? placed?.get(token) : undefined;
-  if (projection !== undefined) {
-    return projection;
-  }
-  return hidden ? placed?.get(REFERENCE_PLACEMENT) ?? null : ext;
+  return token === undefined ? ext : ext.byPlacement?.get(token) ?? null;
 }
 
-function extendProjection(frame: Frame | null, e: Emit): ExtendResults | ExtendPlacementResults | null {
-  const ext = e.extends;
-  if (ext === null) {
-    return null;
-  }
-  const placed = ext.byPlacement;
-
-  /*
-   * Dynamic plan facts exist only for looped placements. The lexical walk is
-   * therefore off the ordinary static path and is bounded by the current nested
-   * render-frame chain—not a tree walk or a rediscovery of source nodes.
-   */
-  if (placed) {
-    for (let cursor = frame; cursor; cursor = cursor.parent) {
-      const token = cursor.extendPlacement;
-      if (!token) {
-        continue;
-      }
-      const projection = placed.get(token);
-      if (projection) {
-        return projection;
-      }
-    }
-  }
-  return placementProjection(ext, undefined, e.referenceImportDepth > 0);
+/**
+ * The extend projection the walk emits under. The pre-walk plan knows the static
+ * placement and each planned import placement; a loop iteration or mixin call is a
+ * placement only the deferred fold projects, so the walk reads its import placement.
+ */
+function extendProjection(e: Emit): ExtendResults | ExtendPlacementResults | null {
+  return e.extends === null ? null : placementProjection(e.extends, e.importPlacement);
 }
 
 /**
@@ -12776,14 +12979,14 @@ function withoutPlaceholders(header: string[]): string[] | null {
 }
 
 function visibleHeader(rule: Ruleset, header: string[], frame: Frame, e: Emit): string[] | null {
-  return visibleHeaderCore(rule, header, extendProjection(frame, e), e.referenceImportDepth > 0);
+  return visibleHeaderCore(rule, header, extendProjection(e), e.referenceImportDepth > 0);
 }
 
 /** A hidden reference subject emits only when its current extend projection has
  * at least one visible branch. A missing mask on a projected rule means every
  * surviving branch is visible (not that visibility information is absent). */
 function referenceRuleIsVisible(rule: Ruleset, frame: Frame, e: Emit): boolean {
-  const ext = extendProjection(frame, e);
+  const ext = extendProjection(e);
   if (ext?.flatByRule.has(rule) !== true) {
     return false;
   }
@@ -12817,7 +13020,7 @@ function expandRule(
   nestedHoist?: HoistEntry[]
 ): MaybePromise<void> {
   if (nestedSource !== undefined && nestedHoist !== undefined) {
-    const nestedPlan = extendProjection(frame, e)?.nestedPlan.get(rule);
+    const nestedPlan = extendProjection(e)?.nestedPlan.get(rule);
     if (nestedPlan?.flatten) {
       recordAstExtendProfile?.('astExtend.emit.nestedHoistPlacements');
       nestedHoist.push({ rule, frame, bubble: nestedPlan.hoistBubble ?? 1 });
@@ -12932,7 +13135,7 @@ function flattenResolved(
     /* [extend/dynamic] The rule is open on the recorder's path while its body emits. */
     return withDynamicPlacement(
       dyn,
-      openDynamicPath(dyn, rule, parent, headerComposed),
+      openDynamicPath(dyn, rule, parent === null, headerComposed, false),
       dyn.scope,
       dyn.boundary,
       () => flattenWithHeader(
@@ -12981,45 +13184,39 @@ function flattenWithHeader(
    * independently (the composed model needs no parent-child override). Absent an
    * extend override the header is byte-identical to the no-extend serializer.
    */
-  const projection = extendProjection(frame, e);
+  const projection = extendProjection(e);
 
   /*
-   * [extend/splice] The static plan (`flatByRule`) is keyed on the rule NODE, but a
-   * ruleset called as a mixin splices that same node under a NEW call-site selector.
-   * A per-placement projection (a dynamic-extend loop/mixin body) already carries the
-   * right header; the STATIC projection does not, so for a static extend-target rule
-   * reached through a plain mixin splice the composed call-site header is authoritative.
+   * [extend/splice] The static plan (`flatByRule`) is keyed on the rule NODE at its
+   * own placement, but a ruleset called as a mixin splices that same node under a
+   * NEW call-site selector, so there the composed call-site header is authoritative.
    * `flatByRule` only holds extend-TARGET rules, so this is a no-op for every other rule.
    */
   const flat = projection?.flatByRule.get(rule);
   const hoist = e.hoistMode ? projection?.hoistHeader.get(rule) : undefined;
 
   /*
-   * The frame-chain splice check runs ONLY when this rule has a static extend
-   * header at all (`flat`/`hoist` present) — a rule the plan never touched keeps
-   * the O(1) path. A per-placement projection (dynamic-extend body) is already
-   * placement-correct, so only the STATIC projection is overridden.
+   * [extend/dynamic] A rule reached through a dynamic expansion (a placing body, a
+   * mixin call — including a ruleset called as a mixin — or an import inside a ruleset)
+   * records its extend facts here, at its call-site placement; its path is the open
+   * rules it composed under, and no evaluation is re-driven. A static rule at its own
+   * placement is already in the pre-walk plan (ledger X12). The frame-chain splice
+   * check runs only for a static rule the plan touched or the walk records — any
+   * other rule keeps the O(1) path.
    */
-  const spliced = (flat !== undefined || hoist !== undefined)
-    && (projection === null || projection === e.extends)
+  const dyn = e.dynamicExtend;
+  const isStatic = dyn === null || dyn.staticRules.has(rule);
+  const viaCall = (flat !== undefined || hoist !== undefined || (dyn !== null && isStatic))
     && reachedViaMixinSplice(frame);
+  const spliced = viaCall && (flat !== undefined || hoist !== undefined);
   const header0 = spliced
     ? headerComposed
     : e.hoistMode
       ? hoist ?? flat ?? headerComposed
       : flat ?? headerComposed;
-
-  /*
-   * [extend/dynamic] Record this rule's extender fact if it was reached through a
-   * dynamic expansion (a loop or mixin-call body). Its path is the open rules it
-   * composed under; no evaluation is re-driven. Static rules are already in the
-   * pre-walk plan and are skipped (ledger X12).
-   */
-  const dyn = e.dynamicExtend;
-  const recorded = dyn !== null && !dyn.staticRules.has(rule);
+  const recorded = dyn !== null && (!isStatic || viaCall);
   if (recorded) {
-    const open = dyn.pathRules.length - 1;
-    recordDynamicExtendFacts(dyn, rule, frame, e.referenceImportDepth > 0, dynamicPathAt(dyn, open), dyn.pathKinds[open] !== PATH_OPAQUE);
+    recordOpenRule(dyn, rule, frame, e);
   }
 
   /*
@@ -13031,7 +13228,9 @@ function flattenWithHeader(
    * extend may reach (#355).
    */
   let header = visibleHeader(rule, header0, frame, e);
-  if (header === null && e.referenceImportDepth > 0 && (recorded || dyn?.revealRules?.has(rule) === true)) {
+  const reserved = header === null && e.referenceImportDepth > 0
+    && (recorded || dyn?.revealRules?.has(rule) === true);
+  if (reserved) {
     header = withoutPlaceholders(header0);
   }
   const referenceAncestor = header === null
@@ -13080,9 +13279,7 @@ function flattenWithHeader(
       return mapMaybe(flushBlock(
         visible, group, e, rule.selector, parent, rule, trailingBlockComments
       ), () => {
-        if (!spliced) {
-          recordDynExtendSlot(e, rule, frame, visible);
-        }
+        recordDynExtendSlot(e, rule, frame, visible, reserved);
         group.length = 0;
       });
     }
@@ -13102,9 +13299,7 @@ function flattenWithHeader(
       return mapMaybe(flushBlock(
         visible, leaves, e, rule.selector, parent, rule, trailingBlockComments
       ), () => {
-        if (!spliced) {
-          recordDynExtendSlot(e, rule, frame, visible);
-        }
+        recordDynExtendSlot(e, rule, frame, visible, reserved);
       });
     }
   };
@@ -13128,9 +13323,7 @@ function flattenWithHeader(
         return mapMaybe(flushBlock(
           visible, [], e, rule.selector, parent, rule, EMPTY_LEAF_BLOCK_COMMENTS
         ), () => {
-          if (!spliced) {
-            recordDynExtendSlot(e, rule, frame, visible);
-          }
+          recordDynExtendSlot(e, rule, frame, visible, reserved);
         });
       }
       return flush();
@@ -13632,7 +13825,7 @@ function walkBody(
              */
             const appliesPlacement = placement !== null
               && !(hoist !== undefined
-                && extendProjection(frame, e)?.nestedPlan.get(node)?.flatten === true)
+                && extendProjection(e)?.nestedPlan.get(node)?.flatten === true)
               && selectorListHasAmpersand(node.selector);
             const emitted = expandRule(
               node,
@@ -14068,12 +14261,20 @@ function walkBody(
           if (nested) {
             flushBuf();
             emitBeforeRootStatement(node);
+
+            /*
+             * A `(reference)` sheet takes the reference dispatcher, as at the document
+             * root: the nested writer skips every hidden rule, so a rule an extend
+             * reveals would never be written.
+             */
             const imported = expandStyleImport(
               node,
               frame,
               e,
               e.importDocument,
-              (document, importFrame) => nestedBody(document.rules, importFrame, e, hoist, imp)
+              e.referenceImportDepth > 0 || importOptionWords(node.options).includes('reference')
+                ? undefined
+                : (document, importFrame) => nestedBody(document.rules, importFrame, e, hoist, imp)
             );
             if (isThenable(imported)) {
               return imported.then(() => {
@@ -14118,12 +14319,14 @@ function walkBody(
              * as a buffered leaf discarded that MaybePromise.
              *
              * A loaded sheet runs as this rule's body, exactly as if it were written
-             * here: its rules nest under this rule's selector (`.wrap { @import
-             * "t.less"; }` emits `.wrap .sm`, jess#358). A `(reference)` sheet keeps
-             * the reference dispatcher, which hides its output.
+             * here (ledger A2: `@import` is a source fold; N10: imported bodies are
+             * lexical splices at the import position): its rules nest under this
+             * rule's selector (`.wrap { @import "t.less"; }` emits `.wrap .sm`,
+             * jess#358), inside a `(reference)` sheet too, where this rule hides them.
+             * An import that is itself `(reference)` keeps the reference dispatcher,
+             * which hides the sheet's own declarations as well.
              */
-            const emitLoaded = composed === null || e.referenceImportDepth > 0
-              || importHasOption(importRequestOptions(node.options), 'reference')
+            const emitLoaded = composed === null || importOptionWords(node.options).includes('reference')
               ? undefined
               : (document: Stylesheet, importFrame: Frame) => walkBody(
                   document.rules, composed, ancestor, importFrame, group,
@@ -14342,7 +14545,7 @@ function walkReferenceAncestorBody(
           emitted = expandRule(node, composed, ancestor, frame, e, imp, expandBubbledSelectorList);
           break;
         case 'AtRuleBlock':
-          emitted = extendProjection(frame, e)?.visibleReferenceAtRules?.has(node) === true
+          emitted = extendProjection(e)?.visibleReferenceAtRules?.has(node) === true
             ? expandAtRuleBlock(node, frame, e, composed)
             : undefined;
           break;
@@ -14447,7 +14650,7 @@ function expandReferenceAncestorFor(
           statements: node.rules,
           sourceOwner: frame.sourceOwner ?? null,
           extendPlacement: e.dynamicExtend === null ? undefined : {},
-          ...(bindingValueFrames ? { bindingValueFrames } : {})
+          bindingValueFrames
         };
         if (item !== null) {
           bindForDetached(loopFrame, bindings, item);
@@ -14657,10 +14860,12 @@ function expandCall(
 
             /*
              * [extend/dynamic] Each call places its body's rules apart (see
-             * Frame.extendPlacement). Always declared, so every call frame keeps one shape.
+             * Frame.extendPlacement). Every field is declared, so every call frame
+             * keeps one shape.
              */
             extendPlacement: e.dynamicExtend === null ? undefined : {},
-            ...(namespaced || homeFrame === frame ? {} : { fallback: frame, callerFallback: true })
+            fallback: namespaced || homeFrame === frame ? undefined : frame,
+            callerFallback: namespaced || homeFrame === frame ? undefined : true
           };
           takeMixinValueBindings(boundSourceKeys, e, callFrame);
           captureArgDefFrames(bindings, frame, callFrame);
@@ -15993,7 +16198,7 @@ function expandFor(
           statements: node.rules,
           sourceOwner: frame.sourceOwner ?? null,
           extendPlacement: e.dynamicExtend === null ? undefined : {},
-          ...(bindingValueFrames ? { bindingValueFrames } : {})
+          bindingValueFrames
         };
         if (item !== null) {
           bindForDetached(loopFrame, bindings, item);
@@ -18214,7 +18419,14 @@ function expandStyleImport(
           const seen = e.loadedImports ??= new Map();
           if (seen.has(emitOnceKey)) {
             if (isCompose) {
-              /* Rendered once already; this compose edge still binds its own namespace to that activation. */
+              /*
+               * Rendered once already; this compose edge still binds its own namespace
+               * to that activation, and the module is loaded from this sheet too, so
+               * this sheet's extends reach it (ledger X14).
+               */
+              if (e.dynamicExtend !== null) {
+                composedModuleBoundary(e.dynamicExtend.moduleBoundaries, emitOnceKey, e.dynamicExtend.boundary);
+              }
               const activated = seen.get(emitOnceKey);
               if (!activated) {
                 throw moduleConfigRejected(
@@ -18278,22 +18490,39 @@ function expandStyleImport(
            * body is this StyleImport, so the media wrap is an ENCLOSING node here,
            * not something this emitter reconstructs from a tail.
            *
-           * [extend/dynamic] A composed module or `(reference)` sheet records its walk
-           * facts inside its own extend boundary (ledger X14), the one the planner gave
-           * its static facts.
+           * [extend] A `(reference)` or `(multiple)` import is its own render
+           * placement, the one the planner gave its static facts (a fresh one for an
+           * import the planner never reached); any other import emits in its
+           * importer's. [extend/dynamic] A composed module or `(reference)` sheet
+           * records its walk facts inside its own extend boundary (ledger X14).
            */
+          const ownReference = importHasOption(request.options, 'reference');
+          const placement = e.importPlacements?.get(node)
+            ?? (ownReference || importHasOption(request.options, 'multiple') ? {} : e.importPlacement);
           const dyn = e.dynamicExtend;
-          const boundary = dyn === null
-            ? undefined
-            : dyn.importBoundaries?.get(node)
-              ?? (isCompose || importHasOption(request.options, 'reference') ? { parent: dyn.boundary } : undefined);
+          let boundary = dyn?.boundary ?? null;
+          if (dyn !== null && isCompose) {
+            boundary = composedModuleBoundary(dyn.moduleBoundaries, loaded.key, boundary);
+          }
+          if (dyn !== null && ownReference) {
+            boundary = dyn.importBoundaries?.get(node) ?? { parents: [boundary] };
+          }
           const emit = (): MaybePromise<void> => {
-            if (dyn === null || boundary === undefined) {
+            const outerPlacement = e.importPlacement;
+            const outerBoundary = dyn?.boundary ?? null;
+            if (placement === outerPlacement && boundary === outerBoundary) {
               return emitDocument();
             }
-            const outer = dyn.boundary;
-            dyn.boundary = boundary;
-            return withDynamicPlacement(dyn, dyn.pathRules.length, dyn.scope, outer, emitDocument);
+            e.importPlacement = placement;
+            if (dyn !== null) {
+              dyn.boundary = boundary;
+            }
+            return settled(emitDocument, () => {
+              e.importPlacement = outerPlacement;
+              if (dyn !== null) {
+                dyn.boundary = outerBoundary;
+              }
+            });
           };
 
           /*
@@ -19427,7 +19656,7 @@ function emitAtRuleBody(
         return nested(node, () => expandRule(node, null, null, frame, e));
       case 'AtRuleBlock':
         return e.referenceImportDepth === 0
-          || extendProjection(frame, e)?.visibleReferenceAtRules?.has(node) === true
+          || extendProjection(e)?.visibleReferenceAtRules?.has(node) === true
           ? nested(node, () => expandAtRuleBlock(node, frame, e))
           : undefined;
       case 'AtRuleStatement':
@@ -19700,7 +19929,7 @@ function emitBubbleBody(
           break;
         case 'AtRuleBlock':
           if (e.referenceImportDepth !== 0
-            && extendProjection(frame, e)?.visibleReferenceAtRules?.has(node) !== true) {
+            && extendProjection(e)?.visibleReferenceAtRules?.has(node) !== true) {
             break;
           }
           if (deferStaticChildren) {
@@ -20301,7 +20530,7 @@ function writeNestedRule(
   placement: NestedRuleMixinPlacement | null,
   outerHoist?: HoistEntry[]
 ): MaybePromise<void> {
-  const plan = extendProjection(frame, e)?.nestedPlan.get(rule);
+  const plan = extendProjection(e)?.nestedPlan.get(rule);
   if (plan?.collapseTransparent) {
     /*
      * [extend] decl-less `&&` self-collapse: emit the body (the pure-`&` child,
@@ -20376,16 +20605,25 @@ function writeNestedRule(
     }
 
     /*
-     * [extend/dynamic] Record this nested rule's extender fact if it was reached
-     * through a dynamic expansion (a loop or mixin-call body). `own` is its composed
-     * own-local selector; for the dynamic extender shapes this covers (top-level and
-     * root-`&`/mixin-hoisted rules) it IS the composed extender. No evaluation is
-     * re-driven (ledger X12). Genuinely deep-nested dynamic extenders fold as their
-     * own-local remainder — a bounded follow-up, see EXTEND-SEMANTICS §1a.
+     * [extend/dynamic] The rule is open on the recorder's path while its body emits,
+     * and records its extend facts if it was reached through a dynamic expansion (a
+     * placing body or a mixin call): its path is the open rules it nests under, as in
+     * the flat writer. No evaluation is re-driven (ledger X12).
      */
     const dyn = e.dynamicExtend;
-    if (dyn !== null && !dyn.staticRules.has(rule)) {
-      recordDynamicExtendFacts(dyn, rule, frame, e.referenceImportDepth > 0, [opaqueLevel(own)], false);
+    const depth = dyn === null ? -1 : openDynamicPath(dyn, rule, source === null, own, true, placement !== null);
+    const recorded = dyn !== null && (!dyn.staticRules.has(rule) || reachedViaMixinSplice(frame));
+
+    /*
+     * A recorded rule written under a parent block is no rewritable slot, so no
+     * target: its plan has no parent subject to keep the header own-local, and moving
+     * an extender out of the parent is restructuring, not a header rewrite
+     * (EXTEND-SEMANTICS §1a). Its own extends still record.
+     */
+    const rewritable = !recorded || source === null
+      || dyn.pathKinds[depth] === PATH_ROOT || dyn.pathKinds[depth] === PATH_ROOT_GUARD;
+    if (recorded) {
+      recordOpenRule(dyn, rule, frame, e, rewritable);
     }
     const authoredHeader = e.compress !== true && plan === undefined && placement === null && source === null
       ? authoredSelectorHeaderWithTrivia(rule.selector, own, e)
@@ -20458,7 +20696,7 @@ function writeNestedRule(
          * [extend/dynamic] The surviving nested block's header is a rewritable target
          * slot: the deferred fold overwrites it in place if dynamic extenders fold in.
          */
-        if (e.dynamicExtend && headerChunkIndex >= 0) {
+        if (e.dynamicExtend && headerChunkIndex >= 0 && rewritable) {
           recordNestedDynExtendSlot(e, rule, frame, headerChunkIndex, idt, own, e.chunks.length);
         }
       }
@@ -20503,7 +20741,7 @@ function writeNestedRule(
             outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble - 1 });
             continue;
           }
-          const emitted = extendProjection(h.frame, e)?.nestedPlan.get(h.rule)?.hoistNested
+          const emitted = extendProjection(e)?.nestedPlan.get(h.rule)?.hoistNested
             ? expandRule(h.rule, null, null, h.frame, e, imp, false, null)
             : emitHoisted(h.rule, h.frame, e);
           if (isThenable(emitted)) {
@@ -20513,10 +20751,11 @@ function writeNestedRule(
       };
       return mapMaybe(emitSplits(0), () => runHoist(0));
     };
-    return mapMaybe(
+    const body = (): MaybePromise<void> => mapMaybe(
       activateBodyDependencies(rule.rules, childFrame, e),
       () => mapMaybe(nestedBody(rule.rules, childFrame, e, hoist, imp, childSource, null, undefined, false, rule), finish)
     );
+    return dyn === null ? body() : withDynamicPlacement(dyn, depth, dyn.scope, dyn.boundary, body);
   });
 }
 
