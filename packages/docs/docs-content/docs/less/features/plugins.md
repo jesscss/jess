@@ -215,12 +215,20 @@ A Less.js plugin should export an object that has one or more of these propertie
 
 }
 ```
-The PluginManager instance for the `install()` function provides methods for adding visitors, file managers, and post-processors.
+In Less 4.x, the PluginManager instance for the `install()` function provides methods for adding visitors, file managers, and post-processors.
 
 Here are some example repos showing the different plugin types. <!-- TODO: updated examples -->
  - post-processor: https://github.com/less/less-plugin-clean-css
  - visitor: https://github.com/less/less-plugin-inline-urls
  - file-manager: https://github.com/less/less-plugin-npm-import
+
+:::note 5.x
+The PluginManager visitor and file-manager hooks and the full Less 4.x
+`less.tree` API are not part of Less 5. Function plugins are still supported
+(see the status note at the top of this page). The two hooks most plugins use have built-in replacements: npm-style
+imports (`less-plugin-npm-import`) are handled by `@jesscss/plugin-node-modules`,
+and minification (`less-plugin-clean-css`) by the `compress` option.
+:::
 
 ## Pre-Loaded Plugins
 

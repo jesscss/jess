@@ -1,9 +1,12 @@
 # Remote (network) imports behind an explicit, runtime-enforced allowlist
 
-> **Proposed, not built.** Today `@import "https://host/x.less"` is a CSS
-> terminal: the import isn't fetched, it's passed through as a literal
-> `@import url(...)`. This describes an opt-in path that fetches it — and the
-> policy that keeps that path safe.
+> **Owner-approved to build, not built yet** (direction 2026-09-18; build ruling
+> 2026-10-04, ledger **A13** in `docs/architecture/core/DESIGN-DECISIONS.md`).
+> Today `@import "https://host/x.less"` is a CSS terminal: the import isn't
+> fetched, it's passed through as a literal `@import url(...)`. This describes
+> an opt-in path that fetches it — and the policy that keeps that path safe. The
+> ledger row is the record of what is ruled; §8 says which questions are still
+> open.
 
 Base: `1fec4d3dcba2686abc9ab34ef3055542b26e0b7f`.
 Related code: `packages/core/src/plugin.ts` (the `canResolveImport → resolve →
@@ -67,7 +70,7 @@ as `plugin-node-modules`:
 
 | Capability | Behavior |
 | --- | --- |
-| `canResolveImport(specifier)` | `true` only for `https:` (and configured `http:`) URL specifiers whose host is on `allow`. A host **not** on the list returns `false` → the import falls through to a CSS terminal (or an error, see §6), and **no fetch is attempted**. |
+| `canResolveImport(specifier)` | `true` only for `https:` URL specifiers whose host is on `allow`. A host **not** on the list returns `false` → the import falls through to a CSS terminal (or an error, see §6), and **no fetch is attempted**. |
 | `resolve` / `expandImport` | Identity for a URL (no `.less`/`_partial` expansion); may normalize the host + drop default ports. |
 | `locate` | Returns the canonical absolute URL as the source identity. |
 | `getSource(url)` | The **only** method that touches the network. Performs the fetch under the constraints in §4. |
@@ -108,8 +111,8 @@ is denied (fail-closed); the launcher asserts the two sets match.
 
 Even for an allowed host:
 
-- **Scheme**: `https:` only unless the caller opts a host into `http:`
-  explicitly.
+- **Scheme**: `https:` only (ruled 2026-10-04). An `http:` per-host opt-in is
+  not part of the ruled design and would need its own ruling.
 - **No cross-host redirects**: follow redirects only while the host stays on the
   allowlist; a redirect off-list aborts (Deno also denies it at the socket).
 - **SSRF belt-and-suspenders**: reject literal-IP hosts and private/link-local
@@ -134,10 +137,10 @@ Two behaviors for `@import "https://not-allowed.example/x.less"`:
    allowlist" — surfaces the intent ("I meant to inline this") instead of
    silently shipping a runtime `@import`.
 
-Proposed: **error when a remote-import plugin is configured** (the caller opted
-into inlining, so a blocked host is a mistake worth reporting), **terminal when
-no plugin is configured** (the current, network-free default). Open for owner
-sign-off (§8).
+Ruled (owner 2026-10-04, ledger A13): **error when a remote-import plugin is
+configured** (the caller opted into inlining, so a blocked host is a mistake
+worth reporting), **terminal when no plugin is configured** (the current,
+network-free default).
 
 ## 7. The proof: a test that shows Deno *denies* an off-list host
 
@@ -165,10 +168,15 @@ in the suite, not just prose.
 
 ## 8. Open questions for the owner
 
+Ruled 2026-10-04 (ledger A13): Q1 (a blocked host is an error), and the
+private-range half of Q2 (SSRF private-range deny), together with `https:` only,
+no cross-host redirects, size/time caps, and the Deno proof-of-denial test.
+Still open: the explicit IP-host opt-in half of Q2, and Q3–Q5.
+
 1. **Terminal vs error** for a disallowed host when the plugin is configured
-   (§6) — proposed: error. Confirm.
-2. **IP / private-range hosts**: default-deny with an explicit opt-in (§5), or
-   out of scope for v1?
+   (§6) — **ruled: error.**
+2. **IP / private-range hosts**: private ranges are denied (**ruled**). Whether
+   an explicit IP-host opt-in exists in v1 is still open.
 3. **Reproducibility**: ship a lockfile / SRI-style integrity for remote imports
    in v1, or defer? (Argues for content-addressed caching if yes.)
 4. **CLI**: does `lessc` expose `--allow-net`/`--remote-import-host` in v1, or is

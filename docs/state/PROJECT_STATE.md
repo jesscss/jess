@@ -207,7 +207,8 @@ Both are pending the numeric-precision landing. Because the map asserts the
 failure, fixing precision will trip the entry and demand its own deletion.
 
 `import-remote.less` is excluded from the alpha harness until remote URL import
-loading has an explicit network/IO allowlist. It is tracked in
+loading has an explicit network/IO allowlist. That allowlist is now ruled
+(ledger A13, owner 2026-10-04) and awaits its plugin. It is tracked in
 `docs/process/less-v5-release-plan.md`, not in `known-failures.json`.
 
 **A Less-corpus number is only meaningful together with the less.js checkout

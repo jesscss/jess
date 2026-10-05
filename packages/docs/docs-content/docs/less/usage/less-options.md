@@ -285,7 +285,7 @@ This option allows you to specify a argument to go on to every URL. This may be 
 |---|---|
 | `lessc --line-numbers=comments`<br>`lessc --line-numbers=mediaquery`<br>`lessc --line-numbers=all` | `{ dumpLineNumbers: 'comments' }` |
 
-Generates inline source-mapping. This was the only option before browsers started supporting sourcemaps. 
+In Less 4.x this generated inline source-mapping, the only option before browsers started supporting sourcemaps. In 5.x the option is still accepted, so existing configs keep compiling, but it reports a deprecation warning and is otherwise ignored: no line-number comments or media-query annotations are emitted. Use [source maps](./sourcemaps) instead.
 
 #### Pre-Loaded Plugin
 
@@ -301,13 +301,13 @@ See: [Pre-Loaded Plugins](./plugins)
 Runs the less parser and just reports errors without any output.
 
 
-#### Compress (Deprecated)
+#### Compress
 
 | | |
 |---|---|
 | `lessc --compress -x` | `{ compress: true }` |
 
-Compress using less built-in compression. This does an okay job but does not utilise all the tricks of dedicated css compression. In general, we recommend looking at third-party tools that clean and compress CSS after your Less has been transformed to CSS.
+Emits minified CSS. In 5.x, compressed output is a supported feature rather than a deprecated one: it applies every safe fold that Less 4.x `compress` and dart-sass `compressed` apply, and never a transform that could change what the CSS means. It also replaces minifying plugins such as `less-plugin-clean-css`. See [Compressed Output](../advanced/compressed-output) for exactly what it changes.
 
 
 #### Allow Imports from Insecure HTTPS Hosts
