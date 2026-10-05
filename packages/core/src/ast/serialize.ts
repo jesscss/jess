@@ -6241,7 +6241,7 @@ function moduleReferenceCall(
   node: Reference,
   frame: Frame | null,
   e: EvalCtx
-): { name: string; call: ReferenceCall; fn: Fn } | undefined {
+): { name: string; call: ReferenceCall; fn: Fn; namespaced: boolean } | undefined {
   const moduleValues = e.moduleReferenceValues;
   if (moduleValues === undefined || isValueSlotArray(node.base) || node.base.type !== 'Lookup') {
     return undefined;
@@ -6278,7 +6278,7 @@ function moduleReferenceCall(
       return undefined;
     }
     const fn = lookupModuleFunction(frame, importedPath);
-    return fn === undefined ? undefined : { name: importedPath, call: node.steps[0], fn };
+    return fn === undefined ? undefined : { name: importedPath, call: node.steps[0], fn, namespaced: false };
   }
 
   if (node.steps.length - stepIndex < 2) {
@@ -6297,7 +6297,7 @@ function moduleReferenceCall(
   }
   const lowerName = name.toLowerCase();
   const fn = lookupModuleFunction(frame, lowerName);
-  return fn === undefined ? undefined : { name, call, fn };
+  return fn === undefined ? undefined : { name, call, fn, namespaced: true };
 }
 
 function evalModuleReferenceCall(
@@ -6319,7 +6319,10 @@ function evalModuleReferenceCall(
   if (!e.ev) {
     return literal(node.raw);
   }
-  return dispatchCall(funcCall(selected.name, args), frame, e, e.ev, selected.fn, false);
+
+  /* Carries the reference's span, so a failure is named where the call was written. */
+  const call: FunctionCall = { ...funcCall(selected.name, args), _s: node._s, _e: node._e };
+  return dispatchCall(call, frame, e, e.ev, selected.fn, false, selected.namespaced);
 }
 
 /**
@@ -7512,6 +7515,10 @@ function evalCall(
  * Materialize a call's arguments TYPED and dispatch it through the evaluator:
  * to `selected` when a scoped function was resolved, else to a built-in when
  * `ambient`, else down the unknown-call path, which writes the call out as-is.
+ *
+ * A `namespaced` call (`@ns.fn(…)`, `$ns.fn(…)`) can never be a CSS function,
+ * so `functionMode: 'preserve'` has nothing valid to write out: a failure is
+ * an eval error whatever the configured mode (jess#280).
  */
 function dispatchCall(
   node: FunctionCall,
@@ -7519,8 +7526,12 @@ function dispatchCall(
   e: EvalCtx,
   ev: ValueEvaluator,
   selected: Fn | undefined,
-  ambient: boolean
+  ambient: boolean,
+  namespaced = false
 ): MaybePromise<EvalValue> {
+  const modes = namespaced && e.modes.functionMode !== 'error'
+    ? { ...e.modes, functionMode: 'error' as const }
+    : e.modes;
   const sep = node.modern ? ' ' : ',';
 
   // Args are materialized TYPED (each arg's tag sourced from its parse node).
@@ -7546,7 +7557,7 @@ function dispatchCall(
       ? { args: ordered === vals ? args : (sep === ',' ? makeList(vals, ',') : vals), keywords: node.args }
       : undefined;
     try {
-      const result = ev.call(node.name, args, e.modes, null, e.io, selected, ambient, written);
+      const result = ev.call(node.name, args, modes, null, e.io, selected, ambient, written);
       return isThenable(result)
         ? result.catch(error => invalidFunctionCall(node, error, e))
         : result;
