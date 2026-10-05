@@ -10,15 +10,25 @@ import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 /**
  * `functionMode` — mirrors `unitMode`. Governs an optional/global function call
  * that matched a registered function but couldn't be evaluated (bad args, or the
- * function threw). Default `'preserve'` renders the call as-is silently;
- * `'error'` throws the underlying error (Less 4.x parity).
+ * function threw). Default `'preserve'` keeps it as a call, silently, with its
+ * arguments evaluated and canonically spaced (`unit(80/16,rem)` →
+ * `unit(80 / 16, rem)`); `'error'` throws the underlying error (Less 4.x parity).
+ *
+ * Every Less error fixture that renders only because of this default (ledger
+ * C17), with the declaration it renders.
  */
 const TD = resolveLessTestDataRoot();
-const FIXTURES = [
-  'tests-error/eval/unit-function',
-  'tests-error/eval/percentage-non-number-argument',
-  'tests-error/eval/color-func-invalid-color',
-  'tests-error/eval/svg-gradient1'
+const FIXTURES: ReadonlyArray<readonly [fixture: string, declaration: string]> = [
+  ['tests-error/eval/color-func-invalid-color', 'color: color("NOT A COLOR");'],
+  ['tests-error/eval/percentage-css-var', 'b: percentage(var(--x));'],
+  ['tests-error/eval/percentage-non-number-argument', 'percentage: percentage(16 / 17);'],
+  ['tests-error/eval/svg-gradient1', 'a: svg-gradient(horizontal, black, white);'],
+  ['tests-error/eval/svg-gradient2', 'a: svg-gradient(to bottom, black, orange, 45%, white);'],
+  ['tests-error/eval/svg-gradient3', 'a: svg-gradient(black, orange);'],
+  ['tests-error/eval/svg-gradient4', 'a: svg-gradient(horizontal, black, white);'],
+  ['tests-error/eval/svg-gradient5', 'a: svg-gradient(to bottom, black, orange, 45%, white);'],
+  ['tests-error/eval/svg-gradient6', 'a: svg-gradient(black, orange);'],
+  ['tests-error/eval/unit-function', 'font-size: unit(80 / 16, rem);']
 ];
 
 function makeCompiler(compileExtra: Record<string, unknown> = {}) {
@@ -32,20 +42,19 @@ function makeCompiler(compileExtra: Record<string, unknown> = {}) {
 }
 
 describe('functionMode', () => {
-  it('default \'preserve\' renders the call as-is silently', async () => {
-    for (const f of FIXTURES) {
+  it('default \'preserve\' keeps the call silently', async () => {
+    for (const [f, declaration] of FIXTURES) {
       const r = await makeCompiler().renderToResult(path.join(TD, `${f}.less`), { breakOnError: true });
-      // renders (no error) …
-      expect(r.errors ?? []).toHaveLength(0);
-      expect(r.css.length).toBeGreaterThan(0);
+      expect(r.errors ?? [], `${f} should render`).toHaveLength(0);
+      expect(r.css, `${f} should keep the call`).toContain(declaration);
 
-      // … without treating valid CSS-compatible output as a warning.
+      // Valid CSS-compatible output is not a warning.
       expect(r.warnings ?? [], `${f} should preserve silently`).toHaveLength(0);
     }
   }, 60000);
 
   it('\'error\' throws the underlying Less function error', async () => {
-    for (const f of FIXTURES) {
+    for (const [f] of FIXTURES) {
       const r = await makeCompiler({ functionMode: 'error' })
         .renderToResult(path.join(TD, `${f}.less`), { breakOnError: true })
         .catch((error: unknown) => ({ errors: [error] }));
@@ -67,8 +76,10 @@ describe('functionMode', () => {
   }, 60000);
 
   it('leaves unknown (non-registered) function names as-is WITHOUT warning, even in error mode', async () => {
-    // `calc`/`madeup` are not registered functions → they render as-is via
-    // name-resolution fallback, never reaching functionMode. No warning.
+    /*
+     * `calc`/`madeup` are not registered functions → they render as-is via
+     * name-resolution fallback, never reaching functionMode. No warning.
+     */
     const dir = mkdtempSync(path.join(tmpdir(), 'fm-'));
     const file = path.join(dir, 'a.less');
     writeFileSync(file, '.a { x: calc(1px + 2px); y: madeup(1, 2); }');
