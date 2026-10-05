@@ -68,8 +68,3 @@
     color: red;
   }
 }
-@media only screen and(color) {
-  a {
-    color: red;
-  }
-}

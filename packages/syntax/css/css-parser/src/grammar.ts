@@ -3762,19 +3762,19 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * The terms after a clause's first: each read with the connective that
-   * introduces it, if any.
+   * `only <media-type> [ and <media-condition-without-or> ]`: after the type,
+   * every term is introduced by a connective. A glued `and(` is no connective,
+   * so `only screen and(color)` is rejected like any other malformed query.
    */
-  const mediaTermSteps = many(sequence(
-    optional(mediaAndOr),
-    g.MediaTerm
-  ));
   const QueryOnlyClause = node(
     'QueryOnlyClause',
     sequence(
       g.QueryOnly,
       QueryNonOnlyKeyword,
-      mediaTermSteps
+      many(sequence(
+        mediaAndOr,
+        g.MediaTerm
+      ))
     ),
     children => spaced(children.map(child => isValue(child) ? child : keyword(tokenText(child))))
   );
@@ -3798,7 +3798,10 @@ const cssFactory = (g: GrammarSelf) => {
       QueryOnlyClause,
       sequence(
         g.MediaTerm,
-        mediaTermSteps
+        many(sequence(
+          optional(mediaAndOr),
+          g.MediaTerm
+        ))
       )
     ),
     children => queryConditionChain(children)
