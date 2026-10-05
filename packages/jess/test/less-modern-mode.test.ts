@@ -66,6 +66,35 @@ describe('Less modern mode (P36)', () => {
       .resolves.toBe('a {\n  color: #cc0000;\n  padding: -5px;\n}\n');
   });
 
+  /*
+   * A call made through a namespace can never be a CSS function, so when it
+   * cannot produce a value there is nothing to write out as-is: it is an eval
+   * error under every functionMode (jess#280), named where it was written. The
+   * namespace is a stylesheet binding and never reaches the CSS.
+   */
+  describe('a failed namespaced call', () => {
+    const failing = '@use "#less";\na {\n  color: @less.darken(rgb(10 20 30), 10%);\n}\n';
+
+    it.each(['preserve', 'error'] as const)('is an eval error under functionMode %s', async (functionMode) => {
+      const rendered = compiler().renderString(failing, { extension: '.less', config: { compile: { functionMode } } });
+      await expect(rendered).rejects.toThrow(expect.objectContaining({
+        code: 'eval/invalid-function',
+        line: 3,
+        column: 10
+      }));
+    });
+
+    it('is an eval error in .jess', async () => {
+      await expect(compiler().renderString('@-use "#less";\na { color: $less.darken(rgb(10 20 30), 10%); }', { extension: '.jess' }))
+        .rejects.toThrow(expect.objectContaining({ code: 'eval/invalid-function' }));
+    });
+
+    it('is an eval error for a declined argument shape that a CSS call would keep', async () => {
+      await expect(less('@use "#less";\na { w: @less.min(1px, 1em); }'))
+        .rejects.toThrow(expect.objectContaining({ code: 'eval/invalid-function' }));
+    });
+  });
+
   it.each(['#less', '@jesscss/fns/less'])('modern: `@use "%s"` binds `less` and computes', async (specifier) => {
     await expect(less(`@use "${specifier}";\na { color: @less.darken(red, 10%); padding: min(-5px, 1px); }`))
       .resolves.toBe('a {\n  color: #cc0000;\n  padding: min(-5px, 1px);\n}\n');

@@ -80,3 +80,19 @@ export function convertValue(number: number, fromUnit: string, toUnit: string): 
   }
   return number * (GROUP_FACTORS[fg]![fromUnit]! / GROUP_FACTORS[tg]![toUnit]!);
 }
+
+/**
+ * The identity of a compound unit multiset (`px*px`, `em/cm`): its numerator
+ * and denominator units, each sorted, spelled `a*b/c`. Two compound values share
+ * a unit exactly when their keys are equal. That is the identical-multiset rule
+ * `+`/`-` apply to a compound operand (ledger V18) and the one comparison
+ * applies to it, so the two never disagree. The units are not converted: a
+ * compound result keeps the units its operands were written in.
+ */
+export function unitMultisetKey(numerator: readonly string[], denominator: readonly string[]): string {
+  const num = numerator.length < 2 ? numerator.join('') : [...numerator].sort().join('*');
+  if (denominator.length === 0) {
+    return num;
+  }
+  return `${num}/${denominator.length < 2 ? denominator[0]! : [...denominator].sort().join('*')}`;
+}

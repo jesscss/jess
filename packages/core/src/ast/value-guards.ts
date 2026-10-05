@@ -13,7 +13,7 @@ import {
   type ValueGroup,
   type Value
 } from './value-eval.js';
-import { unify } from './value-units.js';
+import { unify, unitMultisetKey } from './value-units.js';
 import { namedColor } from './color-names.js';
 import type { UnitMode } from '../types/modes.js';
 
@@ -102,13 +102,15 @@ function dimensionCompare(
    * raw magnitude against any unit. That is the whole of what makes `=` loose,
    * and it is unconditional now — the unit distinction is not retained by an
    * ambient mode but DECLINED by the operator, in `sameType`, which `==` and the
-   * numeric arm of {@link SASS_EQUAL} apply on top of this ground.
+   * numeric arm of {@link SASS_EQUAL} apply on top of this ground. It is decided
+   * before either side is measured, so the common guard (`@i > 0`) allocates
+   * nothing.
    */
-  if (!a.unit || !b.unit) {
+  if (isUnitless(a) || isUnitless(b)) {
     return numericCompare(a.number, b.number);
   }
-  const au = unify(a.number, a.unit);
-  const bu = unify(b.number, b.unit);
+  const au = numericGround(a);
+  const bu = numericGround(b);
   if (au.unit !== bu.unit) {
     if (unitMode === 'strict') {
       throw incompatibleUnits(a, b);
@@ -116,6 +118,35 @@ function dimensionCompare(
     return undefined;
   }
   return numericCompare(au.number, bu.number);
+}
+
+/**
+ * A unitless number: no unit, and no unit multiset. A compound value whose
+ * units all cancelled (`6px / 2px`) is one; a unit product (`2px * 3px`) is not,
+ * even when it carries no display unit.
+ */
+const isUnitless = (d: Dimension): boolean =>
+  !d.unit && !d.numerator?.length && !d.denominator?.length;
+
+/**
+ * A dimension on numeric ground: its magnitude and the unit it is measured in.
+ * A plain dimension (the hot case) is one {@link unify} call to its group's
+ * canonical unit. A compound operand (an arithmetic result carrying a unit
+ * multiset with more than one numerator or any denominator, `2px * 3px`,
+ * `1 / 2px`) is measured in its whole multiset, the identity `+`/`-` require
+ * of it ({@link unitMultisetKey}, ledger V18).
+ *
+ * The display `unit` is NOT the unit of a compound operand — it is only how
+ * less.js spells one (the backup unit, else the first denominator), so
+ * comparing on it equated `px*px` and `1/px` with `px`.
+ */
+function numericGround(d: Dimension): { number: number; unit: string } {
+  const numerator = d.numerator;
+  const denominator = d.denominator;
+  if (numerator === undefined || (numerator.length <= 1 && !denominator?.length)) {
+    return unify(d.number, numerator?.[0] ?? d.unit);
+  }
+  return { number: d.number, unit: unitMultisetKey(numerator, denominator ?? []) };
 }
 
 /** 3-way compare over primitives (`<`/`>` are lexical on strings); `!=` → undefined. */
@@ -424,10 +455,10 @@ function sameType(a: ValueGroup, b: ValueGroup): boolean {
     return asColor(a) !== undefined && asColor(b) !== undefined;
   }
   if (a.type === 'Dimension' && b.type === 'Dimension') {
-    if (!a.unit || !b.unit) {
-      return !a.unit && !b.unit;
+    if (isUnitless(a) || isUnitless(b)) {
+      return isUnitless(a) && isUnitless(b);
     }
-    return unify(a.number, a.unit).unit === unify(b.number, b.unit).unit;
+    return numericGround(a).unit === numericGround(b).unit;
   }
   return true;
 }
@@ -461,19 +492,12 @@ function pushScalarSassEqualityCandidateKeys(
 ): void {
   into.push(`${path}:spelling:${type === 'Quoted' && 'quote' in value ? value.value : value.bytes}`);
   if (type === 'Dimension' && 'number' in value && 'unit' in value) {
-    let normalizedNumber = value.number;
-    let normalizedUnit = '';
-    if (value.unit !== '') {
-      const normalized = unify(value.number, value.unit);
-      normalizedNumber = normalized.number;
-      normalizedUnit = normalized.unit;
+    if (isUnitless(value)) {
+      pushNumericCandidateKeys(into, path, value.number, '<unitless>');
+    } else {
+      const ground = numericGround(value);
+      pushNumericCandidateKeys(into, path, ground.number, ground.unit);
     }
-    pushNumericCandidateKeys(
-      into,
-      path,
-      normalizedNumber,
-      normalizedUnit === '' ? '<unitless>' : normalizedUnit
-    );
     if (Math.abs(value.number) <= COMPARE_TOLERANCE) {
       into.push(`${path}:null-zero`);
     }

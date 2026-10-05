@@ -86,6 +86,27 @@ describe('Less @use script and data modules', () => {
     const { errors } = await render('@use "./fns.js";\n.a { v: @fns.nope(1); }', functions);
     expect(errors).toEqual(['Symbol "nope" is undefined in this scope.']);
   });
+
+  /* A namespaced call is never CSS, so a throwing function cannot be written out as-is (jess#280). */
+  it('reports a function that throws instead of writing the namespaced call out', async () => {
+    const files: SourceFile[] = [['fns.js', 'export const boom = () => { throw new Error("kaboom"); };\n']];
+    const { css, errors } = await render('@use "./fns.js";\n.a { v: @fns.boom(1); }', files);
+    expect(css).toBe('');
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('kaboom');
+  });
+
+  /*
+   * NaN has no CSS spelling, and the script runtime's JSON transport turns it
+   * into `null`, which silently dropped the declaration.
+   */
+  it.each(['NaN', 'Infinity'])('reports a function that returns %s', async (result) => {
+    const files: SourceFile[] = [['fns.js', `export const bad = () => ${result};\n`]];
+    const { css, errors } = await render('@use "./fns.js";\n.a { v: @fns.bad(1); w: 1; }', files);
+    expect(css).toBe('');
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain(result);
+  });
 });
 
 describe('Less @compose stylesheet modules', () => {
@@ -200,20 +221,105 @@ describe('Less @compose stylesheet modules', () => {
       .toBe('.m {\n  x: 2;\n  y: 2;\n}\n.a {\n  x: 2;\n  y: 2;\n}\n');
   });
 
+  /* Ruling J6(a): a `set` cannot reconfigure a module identity already loaded without one (as Sass). */
   it('rejects a `set` on a module that was already loaded without one', async () => {
     const { errors } = await render('@compose "./theme.less";\n@compose "./theme.less" as t2 set { @primary: red; }\n.a { c: @t2.primary; }');
     expect(errors).toEqual(['Module "./theme.less" was already loaded without configuration; only the first import of a module can configure it with "set".']);
   });
 
-  it('rejects composing a module that @import already folded into the stylesheet', async () => {
-    const { errors } = await render('@import "./theme.less";\n@compose "./theme.less";\n.a { c: @theme.primary; }');
-    expect(errors).toEqual(['Module "./theme.less" was already loaded by @import, which folds it into the importing scope; it cannot also be composed as an isolated module.']);
+  /*
+   * The document-root `set` is activated ahead of output, but a plain compose
+   * nested in a rule or an at-rule that comes before it in source loads the
+   * module first, so the `set` is still the one that comes too late.
+   */
+  it('rejects a document-root `set` that a nested plain compose before it already loaded', async () => {
+    for (const entry of [
+      '.wrap { @compose "./theme.less"; .a { c: @theme.primary; } }\n@compose "./theme.less" as t2 set { @primary: red; }\n',
+      '@media screen { @compose "./theme.less"; .a { c: @theme.primary; } }\n@compose "./theme.less" as t2 set { @primary: red; }\n'
+    ]) {
+      const { errors } = await render(entry);
+      expect(errors).toEqual(['Module "./theme.less" was already loaded without configuration; only the first import of a module can configure it with "set".']);
+    }
   });
 
-  it('a namespace read before its @compose is an unresolved name, not verbatim text', async () => {
-    const { css, errors } = await render('.a { c: @theme.primary; }\n@compose "./theme.less" with { @primary: red; }');
-    expect(errors).toEqual(['Symbol "@theme" is undefined in this scope.']);
-    expect(css).not.toContain('@theme.primary');
+  it('lets a nested plain compose after a document-root `set` inherit it', async () => {
+    const { css, errors } = await render('@compose "./theme.less" set { @primary: red; }\n.wrap { @compose "./theme.less"; c: @theme.primary; }\n');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.theme-base {\n  color: red;\n  border-color: #cc0000;\n}\n.wrap {\n  c: red;\n}\n');
+  });
+
+  /* Ruling J6(b): an identity an @import folded into the stylesheet cannot also be composed. */
+  it('rejects composing a module that @import already folded into the stylesheet', async () => {
+    for (const entry of [
+      '@import "./theme.less";\n@compose "./theme.less";\n.a { c: @theme.primary; }',
+      '.wrap { @import "./theme.less"; }\n@compose "./theme.less";\n'
+    ]) {
+      const { errors } = await render(entry);
+      expect(errors).toEqual(['Module "./theme.less" was already loaded by @import, which folds it into the importing scope; it cannot also be composed as an isolated module.']);
+    }
+  });
+
+  /*
+   * Ruling J6(c): Less lookups are order-independent, so a document-root
+   * compose publishes its namespace before any output, as an @import publishes
+   * its facts (N10). A local binding written after the @compose outranks it.
+   */
+  it('resolves a namespace read placed before its @compose', async () => {
+    const { css, errors } = await render('.a { c: @theme.primary; e: @theme.accent; }\n@compose "./theme.less" with { @primary: red; }');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.a {\n  c: red;\n  e: #cc0000;\n}\n.theme-base {\n  color: red;\n  border-color: #cc0000;\n}\n');
+  });
+
+  /*
+   * Rulings J6(c)/(e): the early-published module is the module as it stands
+   * after evaluation, so the facts its own @imports fold in are published into
+   * its activation ahead of output too, and a read before the @compose and one
+   * after it see one binding.
+   */
+  it('includes the module\'s own @import facts in a namespace read placed before its @compose', async () => {
+    const files: SourceFile[] = [['m.less', '@x: 1;\n@import "./lib.less";\n'], ['lib.less', '@x: 2;\n.lib { a: b; }\n']];
+    for (const [entry, expected] of [
+      ['.a { x: @m.x; }\n@compose "./m.less";\n.b { x: @m.x; }\n', '.a {\n  x: 2;\n}\n.lib {\n  a: b;\n}\n.b {\n  x: 2;\n}\n'],
+      ['.a { x: @x; }\n@compose "./m.less" as *;\n.b { x: @x; }\n', '.a {\n  x: 2;\n}\n.lib {\n  a: b;\n}\n.b {\n  x: 2;\n}\n']
+    ] as const) {
+      const { css, errors } = await render(entry, files);
+      expect(errors).toEqual([]);
+      expect(css).toBe(expected);
+    }
+  });
+
+  it('resolves an `as *` member read placed before its @compose, and lets a later local win', async () => {
+    const { css, errors } = await render('.a { c: @primary; s: @spacing[normal]; }\n@compose "./theme.less" as *;\n@primary: green;\n');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.a {\n  c: green;\n  s: 8px;\n}\n.theme-base {\n  color: blue;\n  border-color: #0000cc;\n}\n');
+  });
+
+  it('binds an early-read namespace to the one activation a shared module renders under', async () => {
+    const { css, errors } = await render('.a { c: @again.primary; }\n@compose "./theme.less" set { @primary: red; }\n@compose "./theme.less" as again;\n');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.a {\n  c: red;\n}\n.theme-base {\n  color: red;\n  border-color: #cc0000;\n}\n');
+  });
+
+  it('still reports a namespace that is bound nowhere', async () => {
+    const { css, errors } = await render('.a { c: @nope.primary; }\n@compose "./theme.less";');
+    expect(errors).toEqual(['Symbol "@nope" is undefined in this scope.']);
+    expect(css).not.toContain('@nope.primary');
+  });
+
+  /*
+   * A document that writes @compose is in modern mode, where each() is an
+   * unimported call (ledger P36); a legacy document reaches a namespace a
+   * modern partial composed. The loop reads each member once, as `@ns.name`
+   * does: through the module activation, configuration included.
+   */
+  it('each() over a namespace iterates its members as the activation binds them', async () => {
+    const files: SourceFile[] = [
+      ['partial.less', '@compose "./tokens.less" with { @a: 5; }\n'],
+      ['tokens.less', '@a: 1;\n@b: 2;\n@b: 3;\n']
+    ];
+    const { css, errors } = await render('@import "./partial.less";\n.a { each(@tokens, { k-@{key}: @value; }); }', files);
+    expect(errors).toEqual([]);
+    expect(css).toBe('.a {\n  k-a: 5;\n  k-b: 3;\n}\n');
   });
 
   it('reports an unknown member', async () => {

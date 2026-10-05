@@ -214,7 +214,7 @@ class Color extends Node {
     }
     const text = String(rgb).replace(/^#/, '');
     const expanded = text.length >= 6
-      ? [text.slice(0, 2), text.slice(2, 4), text.slice(4, 6), text.slice(6, 8)]
+      ? [text.slice(0, 2), text.slice(2, 4), text.slice(4, 6), text.length >= 8 ? text.slice(6, 8) : undefined]
       : [text[0] + text[0], text[1] + text[1], text[2] + text[2], text[3] ? text[3] + text[3] : undefined];
     const channels = expanded.slice(0, 3).map(pair => parseInt(pair, 16));
     if (channels.some(Number.isNaN)) {
@@ -759,6 +759,28 @@ const isJsonValue = (value) => {
   }
 };
 
+/**
+ * Why a function result cannot cross the JSON transport back to the engine, or
+ * `null` when it can. `JSON.stringify` writes NaN and ±Infinity as `null`,
+ * which the engine reads as a declined call (`@plugin`) or a null value that
+ * drops its declaration (`@use`) — so a non-finite number is refused here,
+ * while it is still visible, and the engine reports it at the call.
+ */
+const unsendableResult = (value) => {
+  let nonFinite = null;
+  try {
+    JSON.stringify(value, (_key, item) => {
+      if (nonFinite === null && typeof item === 'number' && !Number.isFinite(item)) {
+        nonFinite = String(item);
+      }
+      return item;
+    });
+  } catch {
+    return 'is not JSON-serializable';
+  }
+  return nonFinite === null ? null : `is ${nonFinite}, which has no CSS spelling`;
+};
+
 const send = (payload) => {
   Deno.stdout.writeSync(encoder.encode(`${JSON.stringify(payload)}\n`));
 };
@@ -1163,8 +1185,9 @@ const invokeLessPluginFunction = async (modulePath, functionName, args, options 
     activeLogSink = previousSink;
   }
   const result = encodeBridgeValue(raw);
-  if (!isJsonValue(result)) {
-    throw new Error(`Result for Less @plugin function "${functionName}" is not JSON-serializable.`);
+  const unsendable = unsendableResult(result);
+  if (unsendable !== null) {
+    throw new Error(`Result for Less @plugin function "${functionName}" ${unsendable}.`);
   }
   return {
     value: result,
@@ -1181,8 +1204,9 @@ const invokeExport = async (modulePath, exportName, args) => {
     throw new Error(`Export "${exportName}" is not callable.`);
   }
   const result = encodeBridgeValue(await target(...args.map(decodeBridgeValue)));
-  if (!isJsonValue(result)) {
-    throw new Error(`Result for "${exportName}" is not JSON-serializable.`);
+  const unsendable = unsendableResult(result);
+  if (unsendable !== null) {
+    throw new Error(`Result for "${exportName}" ${unsendable}.`);
   }
   return result;
 };

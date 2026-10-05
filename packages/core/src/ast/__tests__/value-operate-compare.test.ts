@@ -12,9 +12,10 @@
  * false to that AND to `bar < foo`, which §4.2 rules out — see the row below.
  */
 import { describe, expect, it } from 'vitest';
-import { compare, compareMatch } from '../value-guards.js';
+import { compare, compareMatch, SASS_EQUAL } from '../value-guards.js';
 import { makeAny, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword, makeQuoted } from '../value-factory.js';
 import { IncomparableOperandsError, UnitArithmeticError, type Value } from '../value-eval.js';
+import { operate } from '../value-operate.js';
 
 const dim = (n: number, u = ''): Value => makeDimension(n, u);
 
@@ -201,6 +202,12 @@ describe('compare — unitMode reaches comparison, not just arithmetic', () => {
       .toThrow('Bad units: \'px*px\' and \'em*px\'.');
   });
 
+  it('throws for a compound operand against its own display unit under strict', () => {
+    const squared = makeCompoundDimension(6, 'px', ['px', 'px'], [], 'px');
+    expect(() => compare('=', squared, dim(6, 'px'), 'strict'))
+      .toThrow('Bad units: \'px*px\' and \'px\'.');
+  });
+
   it('does NOT throw for units that reconcile, whatever the mode', () => {
     expect(compare('=', dim(1, 'in'), dim(96, 'px'), 'strict')).toBe(true);
     expect(compare('>', dim(1, 's'), dim(500, 'ms'), 'strict')).toBe(true);
@@ -219,5 +226,73 @@ describe('compare — unitMode reaches comparison, not just arithmetic', () => {
   it('does not reach non-dimension operands', () => {
     expect(compare('=', makeKeyword('foo'), makeKeyword('bar'), 'strict')).toBe(false);
     expect(compare('>', makeQuoted('b'), makeQuoted('a'), 'strict')).toBe(true);
+  });
+});
+
+/*
+ * A compound operand (`2px * 3px`, `1 / 2px`) is a dimension in its WHOLE unit
+ * multiset. Its display unit is only a spelling (less.js `Unit.genCSS`: the
+ * backup unit, else the first denominator), so comparing on it equated `px*px`
+ * with `px` and `1/px` with `px`. Its unit on numeric ground is the whole
+ * multiset as written: the identical-multiset identity `+`/`-` already require
+ * of a compound operand (ledger V18), shared through `unitMultisetKey`.
+ */
+describe('compare — a compound operand compares on its whole unit multiset', () => {
+  const squared = makeCompoundDimension(6, 'px', ['px', 'px'], [], 'px');
+  const reciprocal = makeCompoundDimension(0.5, 'px', [], ['px'], undefined);
+
+  it('a unit product is not its display unit', () => {
+    expect(compare('=', squared, dim(6, 'px'))).toBe(false);
+    expect(compare('>', squared, dim(5, 'px'))).toBe(false);
+    expect(compare('=', dim(6, 'px'), squared)).toBe(false);
+  });
+
+  it('a reciprocal is not its denominator unit', () => {
+    expect(compare('=', reciprocal, dim(0.5, 'px'))).toBe(false);
+  });
+
+  it('the same multiset compares on magnitude, in any order', () => {
+    expect(compare('=', squared, makeCompoundDimension(6, 'px', ['px', 'px'], [], 'px'))).toBe(true);
+    expect(compare('>', squared, makeCompoundDimension(5, 'px', ['px', 'px'], [], 'px'))).toBe(true);
+    expect(compare('=', makeCompoundDimension(2, 'em', ['em', 'px'], [], 'em'), makeCompoundDimension(2, 'px', ['px', 'em'], [], 'px'))).toBe(true);
+  });
+
+  /*
+   * One unit identity for a compound operand: `=` and `+`/`-` both take the
+   * multiset as written (ledger V18), so a pair `+` rejects is not equal either,
+   * and under strict both throw.
+   */
+  it('a multiset is the units it was written in, exactly as `+`/`-` take it', () => {
+    const inchPixels = makeCompoundDimension(1, 'in', ['in', 'px'], [], 'in');
+    const pixelPixels = makeCompoundDimension(96, 'px', ['px', 'px'], [], 'px');
+    expect(compare('=', inchPixels, pixelPixels)).toBe(false);
+    expect(() => compare('=', inchPixels, pixelPixels, 'strict')).toThrow('Bad units: \'in*px\' and \'px*px\'.');
+    expect(() => operate('+', inchPixels, pixelPixels, { unitMode: 'strict' }))
+      .toThrow('Bad units: \'in*px\' and \'px*px\'.');
+  });
+
+  it('a unitless operand stays a wildcard on raw magnitude', () => {
+    expect(compare('>', squared, dim(5))).toBe(true);
+    expect(compare('=', reciprocal, dim(0.5))).toBe(true);
+  });
+
+  it('a ratio of convertible units is a compound operand, not the number it would convert to', () => {
+    const inchesPerPixel = makeCompoundDimension(1, 'in', ['in'], ['px'], 'in');
+    expect(compare('=', inchesPerPixel, dim(1))).toBe(true);
+    expect(compare('=', inchesPerPixel, dim(96))).toBe(false);
+    expect(compare('==', inchesPerPixel, dim(1))).toBe(false);
+  });
+
+  it('a value whose units all cancelled is unitless', () => {
+    const cancelled = makeCompoundDimension(3, '', [], [], 'px');
+    expect(compare('=', cancelled, dim(3))).toBe(true);
+    expect(compare('==', cancelled, dim(3))).toBe(true);
+    expect(compare('==', cancelled, dim(3, 'px'))).toBe(false);
+  });
+
+  it('type-equal and Sass equality decline the display-unit coincidence', () => {
+    expect(compare('==', squared, dim(6, 'px'))).toBe(false);
+    expect(compare(SASS_EQUAL, squared, dim(6, 'px'))).toBe(false);
+    expect(compare(SASS_EQUAL, squared, makeCompoundDimension(6, 'px', ['px', 'px'], [], 'px'))).toBe(true);
   });
 });

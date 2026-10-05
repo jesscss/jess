@@ -325,19 +325,28 @@ describe('direct canonical value access', () => {
     expect(render(document)).toBe('.entry {\n  width: 20px;\n}\n');
   });
 
+  /*
+   * Only `[-1]` falls back to the final selected callee's last variable; any
+   * other index into a result with no declarations resolves to nothing, which
+   * is an eval error rather than the accessor's authored text.
+   */
   it('keeps the empty-accessor fallback scoped to the final index and final selected callee', () => {
     const last = (key: number) => reference(
       mixinCall('.pick'),
       [{ type: 'LookupStep' as const, name: key, kind: 'index' as const }],
       `.pick()[${key}]`
     );
-    const document = stylesheet([
+    const document = (key: number) => stylesheet([
       mixinDef('.pick', [], [variableDeclaration('return', keyword('first'), { mode: 'declare' })]),
       mixinDef('.pick', [], [variableDeclaration('return', keyword('second'), { mode: 'declare' })]),
-      rule('.entry', [decl('last', last(-1)), decl('first', last(1))])
+      rule('.entry', [decl('value', last(key))])
     ]);
 
-    expect(render(document)).toBe('.entry {\n  last: second;\n  first: .pick()[1];\n}\n');
+    expect(render(document(-1))).toBe('.entry {\n  value: second;\n}\n');
+    expect(() => render(document(1))).toThrow(expect.objectContaining({
+      code: 'resolve/name-not-found',
+      reason: 'Symbol ".pick()[1]" is undefined in this scope.'
+    }));
   });
 
   it('propagates importance through a direct property accessor exactly once', () => {

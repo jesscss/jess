@@ -73,7 +73,12 @@ describe('R3 live and scoped variable stores', () => {
     expect(render(document)).toBe('.card {\n  live: blue;\n  scoped: navy;\n}\n');
   });
 
-  it('publishes only selected branch declarations after the control point and preserves nested source order', () => {
+  /*
+   * Ledger N15: a selected arm's declarations are inline declarations at the
+   * `$if`, so a scoped read before it sees them too (order-independent,
+   * last-wins); a live read stays in execution order.
+   */
+  it('publishes selected branch declarations at the control point and preserves nested source order', () => {
     const document = stylesheet([
       variableDeclaration('tone', keyword('gray'), { mode: 'declare' }),
       rule('.before', [decl('scoped', variableReference('tone', 'scoped'))]),
@@ -99,7 +104,7 @@ describe('R3 live and scoped variable stores', () => {
       ])
     ]);
 
-    expect(render(document)).toBe('.before {\n  scoped: gray;\n}\n'
+    expect(render(document)).toBe('.before {\n  scoped: green;\n}\n'
       + '.inside {\n  live: green;\n  scoped: green;\n  nested: blue;\n}\n'
       + '.after {\n  live: green;\n  scoped: green;\n}\n');
   });

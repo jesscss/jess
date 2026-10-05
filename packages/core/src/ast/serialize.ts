@@ -43,6 +43,7 @@ import {
   NULL_NODE,
   spaced,
   variableDeclaration,
+  variableReference,
   anonymousMixin,
   isLiteralNode,
   isTypedLiteral,
@@ -625,6 +626,13 @@ interface MixinDefinitionMeta {
 /** Shared, source-order declaration facts for one lexical body. Never mutated. */
 interface DeclIndex {
   readonly byName: Map<string, VariableDeclaration[]>;
+
+  /**
+   * Whether the body holds a `$if`/`if()`/`$while`, whose selected body
+   * {@link collectSelectedDeclIndex} splices into the stacks by position. Read
+   * off the statements the index is built from, so no frame re-scans its body.
+   */
+  readonly controlFlow: boolean;
 }
 
 /**
@@ -744,7 +752,20 @@ export interface Frame {
   /** Branches selected by this activation; absent until a Jess `$if` executes. */
   selectedIfBodies?: Map<If, Statement[]>;
 
-  /** Source-ordered direct + selected-branch declaration index for this activation. */
+  /**
+   * The direct `if()`/`$if` statements {@link preselectControlFlow} decided for
+   * this activation, each with its arm or `null` for none. Execution reuses a
+   * decision instead of evaluating the condition again. Absent until the frame's
+   * control flow is first selected.
+   */
+  preselectedIfs?: ReadonlyMap<If, Statement[] | null>;
+
+  /**
+   * Source-ordered direct + selected-branch declaration index for this
+   * activation. `undefined` until the frame's control flow is first selected
+   * ({@link preselectControlFlow}), and again after an imported fact joins the
+   * frame, until the next scoped read rebuilds it ({@link selectControlFlow}).
+   */
   selectedDeclIndex?: DeclIndex | null;
 
   /*
@@ -828,14 +849,6 @@ export interface Frame {
    * reaches it.
    */
   factRanks?: Map<VariableDeclaration, SourceRank>;
-
-  /**
-   * [import-fold] Whether {@link statements} holds a `$if`/`$while`, whose
-   * selected body {@link collectSelectedDeclIndex} splices into the declaration
-   * stacks by position. Decided once, at the first imported declaration that
-   * opens a stack; only such a frame records that declaration's rank.
-   */
-  controlFlow?: boolean;
 
   /**
    * [import-fold] Authored position of each top-level statement, built ONCE and
@@ -1463,6 +1476,7 @@ function collectDeclIndex(
       }
     }
   }
+  let controlFlow = false;
   for (const s of statements) {
     if (s.type === 'VariableDeclaration') {
       const stack = byName.get(s.name);
@@ -1471,9 +1485,11 @@ function collectDeclIndex(
       } else {
         byName.set(s.name, [s]);
       }
+    } else if (s.type === 'If' || s.type === 'While') {
+      controlFlow = true;
     }
   }
-  return byName.size === 0 ? null : { byName };
+  return byName.size === 0 && !controlFlow ? null : { byName, controlFlow };
 }
 
 /**
@@ -1548,7 +1564,7 @@ function collectSelectedDeclIndex(frame: Frame, selected: ReadonlyMap<If, Statem
       visit(statement.rules, at);
     }
   }
-  return byName.size === 0 ? null : { byName };
+  return byName.size === 0 ? null : { byName, controlFlow: true };
 }
 
 /** Seed one activation's live cells from mixin/function parameters.
@@ -2119,46 +2135,53 @@ function publishImportedVariableDeclaration(
   declaration: VariableDeclaration,
   rank: SourceRank | null = null
 ): void {
-  const index = frame.declIndex ??= { byName: new Map() };
+  const index = frame.declIndex ??= { byName: new Map(), controlFlow: false };
   const declarations = index.byName.get(declaration.name);
 
   /* A stack's first entry needs a rank only to be placed against a `$if`/`$while` body. */
-  if (rank !== null && (declarations !== undefined
-    || (frame.controlFlow ??= (frame.statements ?? []).some(statement => statement.type === 'If' || statement.type === 'While')))) {
+  if (rank !== null && (declarations !== undefined || index.controlFlow)) {
     (frame.factRanks ??= new Map()).set(declaration, rank);
   }
   if (!declarations) {
     index.byName.set(declaration.name, [declaration]);
-    return;
-  }
-  if (rank === null) {
+  } else if (rank === null) {
     declarations.push(declaration);
-    return;
+  } else {
+    /*
+     * The stack is already rank-sorted (authored declarations in source order,
+     * earlier imports spliced at their own positions), so one backward walk finds
+     * the slot. An entry with no position at all is a parameter cell, which stops
+     * the walk: it belongs ahead of every body fact.
+     */
+    let at = declarations.length;
+    while (at > 0) {
+      const previous = declarations[at - 1]!;
+      const publishedRank = frame.factRanks?.get(previous);
+      if (publishedRank !== undefined) {
+        if (compareSourceRanks(rank, publishedRank) >= 0) {
+          break;
+        }
+      } else {
+        const authoredAt = frameStatementIndex(frame).get(previous);
+        if (authoredAt === undefined || compareSourceRankToIndex(rank, authoredAt) >= 0) {
+          break;
+        }
+      }
+      at--;
+    }
+    declarations.splice(at, 0, declaration);
   }
 
   /*
-   * The stack is already rank-sorted (authored declarations in source order,
-   * earlier imports spliced at their own positions), so one backward walk finds
-   * the slot. An entry with no position at all is a parameter cell, which stops
-   * the walk: it belongs ahead of every body fact.
+   * A frame that has already selected its control-flow bodies reads the stacks
+   * rebuilt around them, so the new fact must join those too. They are rebuilt
+   * once, at the next scoped read ({@link selectControlFlow}), never once per
+   * published fact: an `@import` publishes a whole document. Only a frame with
+   * a direct `$if`/`if()`/`$while` ever has a selection.
    */
-  let at = declarations.length;
-  while (at > 0) {
-    const previous = declarations[at - 1]!;
-    const publishedRank = frame.factRanks?.get(previous);
-    if (publishedRank !== undefined) {
-      if (compareSourceRanks(rank, publishedRank) >= 0) {
-        break;
-      }
-    } else {
-      const authoredAt = frameStatementIndex(frame).get(previous);
-      if (authoredAt === undefined || compareSourceRankToIndex(rank, authoredAt) >= 0) {
-        break;
-      }
-    }
-    at--;
+  if (frame.selectedDeclIndex !== undefined) {
+    frame.selectedDeclIndex = undefined;
   }
-  declarations.splice(at, 0, declaration);
 }
 
 /** Publish an imported root ruleset for namespace-path descent. `rank` places it
@@ -2205,6 +2228,21 @@ function claimPrepublishedImportFact(e: Emit, statement: Statement): boolean {
     set.add(statement);
     e.prepublishedImportFacts = set;
   }
+  return true;
+}
+
+/** Claim one `@import` whose facts the planner publishes into a `@compose` module's activation. */
+function claimModulePrepublishedImport(e: Emit, activation: Frame, statement: StyleImport): boolean {
+  const byFrame = e.prepublishedModuleImports ??= new Map();
+  const claimed = byFrame.get(activation);
+  if (claimed === undefined) {
+    byFrame.set(activation, new Set([statement]));
+    return true;
+  }
+  if (claimed.has(statement)) {
+    return false;
+  }
+  claimed.add(statement);
   return true;
 }
 
@@ -3039,6 +3077,9 @@ function lookupScopedBinding(frame: Frame | null, name: string, e?: EvalCtx): Bi
     if (replacement && (!e?.excluded.has(replacement.value))) {
       return { value: replacement.value, frame: f.bindingValueFrames?.get(replacement.value) ?? f, evaluated: null };
     }
+    if (f.selectedDeclIndex === undefined && f.declIndex?.controlFlow === true) {
+      selectControlFlow(f, e);
+    }
     const stack = (f.selectedDeclIndex ?? f.declIndex)?.byName.get(name);
     if (stack) {
       for (let i = stack.length - 1; i >= 0; i--) {
@@ -3162,62 +3203,107 @@ function hasExcludedVarRef(frame: Frame | null, name: string, lookup: 'live' | '
     : hasExcludedScopedBinding(frame, name, e) || hasExcludedLeakedBinding(frame, name, e);
 }
 
-function callValueContainsVarRef(value: CallValue, name: string, lookup: 'live' | 'scoped'): boolean {
+/**
+ * Whether any {@link Lookup} in a value satisfies `test` (called with `context`,
+ * so a caller passes a static predicate and allocates no closure). An indirect
+ * `@@x` also recurses into the node that NAMES its target.
+ */
+function callValueHasLookup<C>(value: CallValue, test: (node: Lookup, context: C) => boolean, context: C): boolean {
   if (isValueSlotArray(value)) {
-    return value.some(item => callValueContainsVarRef(item, name, lookup));
+    return value.some(item => callValueHasLookup(item, test, context));
   }
   if (value.type === 'MixinCall') {
-    return value.args.some(arg => callValueContainsVarRef(arg.value, name, lookup));
+    return value.args.some(arg => callValueHasLookup(arg.value, test, context));
   }
   switch (value.type) {
     case 'Lookup':
-      /* A direct `@x` matches by name; an indirect `@@x` recurses into the node
-       * that NAMES the target, which is what the old VarIndirect arm did. */
-      return typeof value.name === 'string'
-        ? value.kind === 'var' && value.name === name && value.scope === lookup
-        : callValueContainsVarRef(value.name, name, lookup);
+      return test(value, context) || (typeof value.name !== 'string' && callValueHasLookup(value.name, test, context));
     case 'Url':
-      return callValueContainsVarRef(value.value, name, lookup);
+      return callValueHasLookup(value.value, test, context);
     case 'Sequence':
-      return value.parts.some(part => callValueContainsVarRef(part, name, lookup));
+      return value.parts.some(part => callValueHasLookup(part, test, context));
     case 'List':
-      return value.value.some(part => callValueContainsVarRef(part, name, lookup));
+      return value.value.some(part => callValueHasLookup(part, test, context));
     case 'Branch':
-      return callValueContainsVarRef(value.condition, name, lookup)
-        || callValueContainsVarRef(value.value, name, lookup);
+      return callValueHasLookup(value.condition, test, context)
+        || callValueHasLookup(value.value, test, context);
     case 'Important':
-      return callValueContainsVarRef(value.value, name, lookup);
+      return callValueHasLookup(value.value, test, context);
     case 'Operation':
-      return callValueContainsVarRef(value.left, name, lookup)
-        || callValueContainsVarRef(value.right, name, lookup);
+      return callValueHasLookup(value.left, test, context)
+        || callValueHasLookup(value.right, test, context);
     case 'FunctionCall':
-      return value.args.some(arg => callValueContainsVarRef(arg.value, name, lookup));
+      return value.args.some(arg => callValueHasLookup(arg.value, test, context));
     case 'Block':
-      return callValueContainsVarRef(value.value, name, lookup);
+      return callValueHasLookup(value.value, test, context);
     case 'Interpolation':
-      return value.parts.some(part => 'ref' in part && callValueContainsVarRef(part.ref, name, lookup));
+      return value.parts.some(part => 'ref' in part && callValueHasLookup(part.ref, test, context));
     case 'Reference':
-      return callValueContainsVarRef(value.base, name, lookup)
+      return callValueHasLookup(value.base, test, context)
         || value.steps.some((step) => {
           if (step.type === 'Call') {
-            return step.args.some(arg => callValueContainsVarRef(arg.value, name, lookup));
+            return step.args.some(arg => callValueHasLookup(arg.value, test, context));
           }
           return step.type === 'LookupStep' && typeof step.name !== 'string'
             && typeof step.name !== 'number'
-            && callValueContainsVarRef(step.name, name, lookup);
+            && callValueHasLookup(step.name, test, context);
         });
     case 'Range':
-      return callValueContainsVarRef(value.start, name, lookup)
-        || callValueContainsVarRef(value.end, name, lookup)
-        || (value.step !== null && callValueContainsVarRef(value.step, name, lookup));
+      return callValueHasLookup(value.start, test, context)
+        || callValueHasLookup(value.end, test, context)
+        || (value.step !== null && callValueHasLookup(value.step, test, context));
     case 'IfValue':
       /* Arm VALUES only, the same reach a `Condition` gets here: a guard tree is
        * not a value slot, so a self-reference inside one is out of this walk's
        * domain in both nodes alike. */
-      return value.branches.some(branch => callValueContainsVarRef(branch.value, name, lookup));
+      return value.branches.some(branch => callValueHasLookup(branch.value, test, context));
     default:
       return false;
   }
+}
+
+/** A read of the scoped binding `name` — what a self-reading declaration checks for. */
+const readsScoped = (node: Lookup, name: string): boolean =>
+  node.kind === 'var' && node.name === name && node.scope === 'scoped';
+
+/**
+ * A read whose answer depends on how far execution has got: a live binding,
+ * which exists once the write before it has run, or a property accessor, which
+ * reads the declarations emitted so far.
+ */
+const readsInOrder = (node: Lookup): boolean =>
+  node.kind === 'prop' || (node.kind === 'var' && node.scope === 'live');
+
+/** Whether a condition reads any binding {@link readsInOrder}. */
+function guardReadsInOrder(guard: GuardNode): boolean {
+  switch (guard.g) {
+    case 'and':
+    case 'or':
+      return guardReadsInOrder(guard.left) || guardReadsInOrder(guard.right);
+    case 'not':
+      return guardReadsInOrder(guard.inner);
+    case 'cmp':
+    case 'match':
+      return callValueHasLookup(guard.left, readsInOrder, undefined) || callValueHasLookup(guard.right, readsInOrder, undefined);
+    case 'truth':
+      return callValueHasLookup(guard.value, readsInOrder, undefined);
+    case 'call':
+      return guard.args.some(arg => callValueHasLookup(arg, readsInOrder, undefined));
+    case 'default':
+      return false;
+  }
+}
+
+/** {@link guardReadsInOrder} per `if()`/`$if`, a fact of its source decided once. */
+const ifReadsInOrderCache = new WeakMap<If, boolean>();
+
+function ifReadsInOrder(node: If): boolean {
+  let reads = ifReadsInOrderCache.get(node);
+  if (reads === undefined) {
+    reads = node.branches.some(branch => branch.guard !== null && guardReadsInOrder(branch.guard));
+    ifReadsInOrderCache.set(node, reads);
+  }
+  return reads;
 }
 
 /**
@@ -3285,7 +3371,7 @@ function snapshotLiveWrite(value: ValueSlot | MixinCall): ValueSlot | MixinCall 
 function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e: EvalCtx): void {
   if (
     node.write.mode === 'declare'
-    && callValueContainsVarRef(node.value, node.name, 'scoped')
+    && callValueHasLookup(node.value, readsScoped, node.name)
     && withExcluded(e, node.value, () => resolveVarRef(frame, node.name, 'scoped', e)) === undefined
   ) {
     recursiveReference(node, `@${node.name}`, 'Variable', e);
@@ -5503,24 +5589,31 @@ function evalToDeclMap(statements: Statement[], frame: Frame | null, e: EvalCtx,
 /**
  * A composed module's variable member: whatever the module's activation binds
  * the name to — configuration overlay, nested `@import` facts and later writes
- * included (spec R6 §E.1) — never the authored value re-read. A name the module
- * writes conditionally or reassigns through the live store (`$x ?: v`, `$x := v`,
- * `!default`) is a live variable, read from the activation's final cell, which a
- * configuration seeds and a later hard write replaces. Every other name is read
- * through the scoped store, where a configuration overlays the declared binding.
- * For a plain declaration both stores agree.
+ * included (spec R6 §E.1) — never the authored value re-read. The store it is
+ * read through is {@link memberLookup}'s.
  */
 function activatedVarMember(activation: Frame, name: string, e: EvalCtx): DeclEntry | undefined {
-  let lookup: VariableLookup = 'scoped';
-  for (const declaration of activation.declIndex?.byName.get(name) ?? []) {
-    if (declaration.write.mode !== 'declare' && declaration.write.scope === 'live') {
-      lookup = 'live';
-    }
-  }
-  const bound = resolveVarRef(activation, name, lookup, e);
+  const bound = resolveVarRef(activation, name, memberLookup(activation, name), e);
   return bound === undefined
     ? undefined
     : { name, value: bound.value, frame: bound.frame, evaluated: bound.evaluated, important: false };
+}
+
+/**
+ * The store a composed module's member is read through. A name the module
+ * writes conditionally or reassigns through the live store (`$x ?: v`,
+ * `$x := v`, `!default`) is a live variable, read from the activation's final
+ * cell, which a configuration seeds and a later hard write replaces. Every
+ * other name is read through the scoped store, where a configuration overlays
+ * the declared binding. For a plain declaration both stores agree.
+ */
+function memberLookup(activation: Frame, name: string): VariableLookup {
+  for (const declaration of activation.declIndex?.byName.get(name) ?? []) {
+    if (declaration.write.mode !== 'declare' && declaration.write.scope === 'live') {
+      return 'live';
+    }
+  }
+  return 'scoped';
 }
 
 function valueCollectionToDeclMap(value: ValueCollection, parent: Frame | null): DeclMap {
@@ -6284,7 +6377,7 @@ function moduleReferenceCall(
   node: Reference,
   frame: Frame | null,
   e: EvalCtx
-): { name: string; call: ReferenceCall; fn: Fn } | undefined {
+): { name: string; call: ReferenceCall; fn: Fn; namespaced: boolean } | undefined {
   const moduleValues = e.moduleReferenceValues;
   if (moduleValues === undefined || isValueSlotArray(node.base) || node.base.type !== 'Lookup') {
     return undefined;
@@ -6321,7 +6414,7 @@ function moduleReferenceCall(
       return undefined;
     }
     const fn = lookupModuleFunction(frame, importedPath);
-    return fn === undefined ? undefined : { name: importedPath, call: node.steps[0], fn };
+    return fn === undefined ? undefined : { name: importedPath, call: node.steps[0], fn, namespaced: false };
   }
 
   if (node.steps.length - stepIndex < 2) {
@@ -6340,7 +6433,7 @@ function moduleReferenceCall(
   }
   const lowerName = name.toLowerCase();
   const fn = lookupModuleFunction(frame, lowerName);
-  return fn === undefined ? undefined : { name, call, fn };
+  return fn === undefined ? undefined : { name, call, fn, namespaced: true };
 }
 
 function evalModuleReferenceCall(
@@ -6362,19 +6455,35 @@ function evalModuleReferenceCall(
   if (!e.ev) {
     return literal(node.raw);
   }
-  return dispatchCall(funcCall(selected.name, args), frame, e, e.ev, selected.fn, false);
+
+  /*
+   * Carries the reference's span (its head's, where only the head has one), so
+   * a failure is named where the call was written.
+   */
+  const call = funcCall(selected.name, args);
+  const written = sourceStartOf(node) === NO_SPAN && !isValueSlotArray(node.base) ? node.base : node;
+  call._s = sourceStartOf(written);
+  call._e = sourceEndOf(written);
+  return dispatchCall(call, frame, e, e.ev, selected.fn, false, selected.namespaced);
 }
 
 /**
- * A value reference that resolved to nothing. An unbound head (`@nope.x`, a
- * namespace read before its `@compose`) is a failed resolution, so an eval error
- * unless the read is optional; any other unresolvable chain keeps its authored text.
+ * A value reference that resolved to nothing is a failed resolution: an eval
+ * error unless the read is optional, which gets its authored text as the
+ * sentinel. The error names an unbound head by itself, as it was written
+ * (`@nope`, `$nope`, `$^nope`), and any other unresolvable chain (`@list[5]`,
+ * a member of a memberless value) whole. It is placed at the reference, or at
+ * its head when only the head carries a source span.
  */
 function unresolvedReference(node: Reference, frame: Frame | null, e: EvalCtx): EvalValue {
-  const base = node.base;
-  if (!e.optional && !isValueSlotArray(base) && base.type === 'Lookup' && base.kind === 'var'
-    && typeof base.name === 'string' && resolveVarRef(frame, base.name, base.scope, e) === undefined) {
-    unresolvedSymbol(node, `@${base.name}`, e);
+  if (!e.optional) {
+    const base = node.base;
+    let symbol = node.raw;
+    if (!isValueSlotArray(base) && base.type === 'Lookup' && base.kind === 'var'
+      && typeof base.name === 'string' && resolveVarRef(frame, base.name, base.scope, e) === undefined) {
+      symbol = node.raw.slice(0, node.raw.indexOf(base.name) + base.name.length);
+    }
+    unresolvedSymbol(sourceStartOf(node) === NO_SPAN && !isValueSlotArray(base) ? base : node, symbol, e);
   }
   return literal(node.raw);
 }
@@ -7620,10 +7729,26 @@ function evalCall(
   return dispatchCall(node, frame, e, ev, selected, hasAmbientFunctions(node));
 }
 
+/** One `functionMode: 'error'` copy per render's modes, for namespaced calls (ruling J1). */
+const erroringModesCache = new WeakMap<EvalModes, EvalModes>();
+
+function erroringModes(modes: EvalModes): EvalModes {
+  let erroring = erroringModesCache.get(modes);
+  if (erroring === undefined) {
+    erroring = { ...modes, functionMode: 'error' };
+    erroringModesCache.set(modes, erroring);
+  }
+  return erroring;
+}
+
 /**
  * Materialize a call's arguments TYPED and dispatch it through the evaluator:
  * to `selected` when a scoped function was resolved, else to a built-in when
  * `ambient`, else down the unknown-call path, which writes the call out as-is.
+ *
+ * A `namespaced` call (`@ns.fn(…)`, `$ns.fn(…)`) can never be a CSS function,
+ * so `functionMode: 'preserve'` has nothing valid to write out: a failure is
+ * an eval error whatever the configured mode (jess#280).
  */
 function dispatchCall(
   node: FunctionCall,
@@ -7631,8 +7756,10 @@ function dispatchCall(
   e: EvalCtx,
   ev: ValueEvaluator,
   selected: Fn | undefined,
-  ambient: boolean
+  ambient: boolean,
+  namespaced = false
 ): MaybePromise<EvalValue> {
+  const modes = namespaced && e.modes.functionMode !== 'error' ? erroringModes(e.modes) : e.modes;
   const sep = node.modern ? ' ' : ',';
 
   // Args are materialized TYPED (each arg's tag sourced from its parse node).
@@ -7658,7 +7785,7 @@ function dispatchCall(
       ? { args: ordered === vals ? args : (sep === ',' ? makeList(vals, ',') : vals), keywords: node.args }
       : undefined;
     try {
-      const result = ev.call(node.name, args, e.modes, null, e.io, selected, ambient, written);
+      const result = ev.call(node.name, args, modes, null, e.io, selected, ambient, written);
       return isThenable(result)
         ? result.catch(error => invalidFunctionCall(node, error, e))
         : result;
@@ -8945,18 +9072,34 @@ interface Emit extends EvalCtx {
   mixinDepth: number;
 
   /**
-   * Emit-once registry of loaded module identities. A shared `@compose`d module
-   * maps to its one activation frame, so a later compose edge of the same
-   * identity binds its namespace there instead of evaluating the module again.
+   * Emit-once registry of loaded module identities, filled as each import or
+   * compose renders: `null` for a module an `@import` folded in, the activation
+   * frame for a shared `@compose`d module.
    */
   loadedImports: Map<string, Frame | null> | null;
+
+  /** The one activation of each shared `@compose`d module identity ({@link activateComposeEdge}). */
+  moduleActivations: Map<string, Frame> | null;
+
+  /**
+   * `@compose` edges the import planner activated ahead of output, each removed
+   * when execution reaches it — so an entry is an edge not yet executed.
+   */
+  composeActivations: Map<StyleImport, ComposeActivation> | null;
+
+  /**
+   * `@import`s inside a planner-activated `@compose` module whose facts were
+   * published into that activation ahead of output, per activation, so its
+   * body does not publish them again.
+   */
+  prepublishedModuleImports: Map<Frame, Set<Statement>> | null;
 
   /**
    * [module config] Per module IDENTITY (`loaded.key`) `set` configuration, so a
    * later plain `@compose`/`@use` of the same module inherits it and a conflicting
    * reconfiguration can be rejected (spec R6 Part E §E.2/E-d).
    */
-  moduleConfigs?: Map<string, StyleImportConfig> | null;
+  moduleConfigs: Map<string, StyleImportConfig> | null;
 
   /** A `(multiple)` import makes its transitive imports multiple too. */
   multipleImportDepth: number;
@@ -9052,6 +9195,10 @@ function scratchEmit(e: EvalCtx): Emit {
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] fresh scratch walk; own runaway backstop
     loadedImports: null,
+    moduleActivations: null,
+    composeActivations: null,
+    prepublishedModuleImports: null,
+    moduleConfigs: null,
     multipleImportDepth: 0,
     referenceImportDepth: 0,
     atRuleBodyDepth: 0,
@@ -11557,6 +11704,20 @@ function planImportedFacts(
       recordAstExtendProfile?.('astExtend.preflight.importsLoaded');
 
       /*
+       * A compose that is a direct member of a publication frame's body — the
+       * document's, or a module's activated here — activates now and binds its
+       * namespace there (ruling J6c); its own body is then walked as that
+       * activation's, so the facts of the `@import`s directly in it are
+       * published early into the activation as N10 publishes the document's.
+       */
+      const activation = st.mode === 'compose' && publishFrame !== null && publishRank === null && rank !== null
+        ? activateComposeEdge(st, loaded.key, loaded.document.rules, specifier, publishFrame, e, [...rank, at], true)
+        : undefined;
+      if (activation !== undefined) {
+        (e.composeActivations ??= new Map()).set(st, activation);
+      }
+
+      /*
        * `@compose` is isolated and non-transitive: its facts are NOT spliced into
        * the importer (the render path's `publishComposedModule` owns the namespace
        * binding / `as *` merge), and its body walks in an isolated frame so nested
@@ -11594,8 +11755,16 @@ function planImportedFacts(
         if (isThenable(published)) {
           await published;
         }
-        if (publishFrame !== null && claimPrepublishedImportFact(e, st)) {
-          const prepublished = publishImportedDocumentFacts(loaded.document.rules, publishFrame, e, true, publishSite);
+
+        /*
+         * The document's facts are claimed render-wide, so a document reached
+         * twice publishes once. A module activation is its own frame: it claims
+         * the import, and publishes every fact of it, for that frame alone.
+         */
+        const intoDocument = publishFrame === prepublishFrame;
+        if (publishFrame !== null
+          && (intoDocument ? claimPrepublishedImportFact(e, st) : claimModulePrepublishedImport(e, publishFrame, st))) {
+          const prepublished = publishImportedDocumentFacts(loaded.document.rules, publishFrame, e, intoDocument, publishSite);
           if (isThenable(prepublished)) {
             await prepublished;
           }
@@ -11662,8 +11831,8 @@ function planImportedFacts(
           loaded.withinDocument ?? withinDocument,
           multipleImportDepth || importHasOption(options, 'multiple'),
           atRules,
-          isCompose ? null : publishFrame,
-          publishSite,
+          isCompose ? activation?.frame ?? null : publishFrame,
+          isCompose ? null : publishSite,
 
           /* the imported document's own body: an import in it addresses by index */
           [],
@@ -11806,6 +11975,10 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false },
     mixinDepth: 0,
     loadedImports: null,
+    moduleActivations: null,
+    composeActivations: null,
+    prepublishedModuleImports: null,
+    moduleConfigs: null,
     multipleImportDepth: 0,
     referenceImportDepth: 0,
     atRuleBodyDepth: 0,
@@ -11900,6 +12073,10 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] runaway mixin-expansion depth guard
     loadedImports: null,
+    moduleActivations: null,
+    composeActivations: null,
+    prepublishedModuleImports: null,
+    moduleConfigs: null,
     multipleImportDepth: 0,
     referenceImportDepth: 0,
     atRuleBodyDepth: 0,
@@ -12522,7 +12699,7 @@ function ruleGuardPasses(rule: Ruleset, frame: Frame, e: EvalCtx): MaybePromise<
  * flow shares its containing frame, but extend analysis may inspect a selected
  * arm without publishing declaration state.
  */
-function selectedIfBody(node: If, frame: Frame, e: Emit): Statement[] | null {
+function selectedIfBody(node: If, frame: Frame, e: EvalCtx): Statement[] | null {
   for (const branch of node.branches) {
     if (branch.guard !== null && !settledGuard(withUnitErrors(node, e, () => evalGuard(branch.guard!, guardDeps(frame, e))), '$if arm selection', node, e)) {
       continue;
@@ -12562,11 +12739,13 @@ function runWhile(
   emitBody: (rules: Statement[]) => MaybePromise<void>
 ): MaybePromise<void> {
   /*
-   * Publish the body's declarations into this frame's index BEFORE the first
-   * condition runs. `$if` gets the same index through `selectIfBody`;
-   * a `$while` has no arm to select, so it registers its one body directly.
+   * The body's declarations are in this frame's index BEFORE the first
+   * condition runs: a `$while` has no arm to select, so selecting the frame's
+   * control flow registers its one body ({@link collectSelectedDeclIndex}).
    */
-  frame.selectedDeclIndex = collectSelectedDeclIndex(frame, frame.selectedIfBodies ?? EMPTY_SELECTED_IF_BODIES);
+  if (frame.selectedDeclIndex === undefined && frame.declIndex?.controlFlow === true) {
+    selectControlFlow(frame, e);
+  }
   const step = (start: number): MaybePromise<void> => {
     for (let i = start; i < MAX_WHILE_ITERATIONS; i++) {
       if (!settledGuard(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), '$while condition', node, e)) {
@@ -12586,18 +12765,127 @@ function runWhile(
   return step(0);
 }
 
-/** Select one `$if` branch and publish only that branch into this activation's scoped index. */
-function selectIfBody(node: If, frame: Frame, e: Emit): Statement[] | null {
+/**
+ * Build a frame's selected declaration index: the first time, by deciding its
+ * control flow ({@link preselectControlFlow}); after an imported fact has
+ * joined the frame, by rebuilding the stacks around the decisions already made.
+ * Called only for a frame with a direct `$if`/`if()`/`$while` whose index is
+ * not built. Without an evaluation context nothing can be decided yet, so the
+ * read sees the frame's plain index.
+ */
+function selectControlFlow(frame: Frame, e: EvalCtx | undefined): void {
+  if (frame.preselectedIfs !== undefined) {
+    frame.selectedDeclIndex = collectSelectedDeclIndex(frame, frame.selectedIfBodies ?? EMPTY_SELECTED_IF_BODIES);
+  } else if (e !== undefined) {
+    preselectControlFlow(frame, e);
+  }
+}
+
+/** An arm whose statements can add to the selected declaration index. */
+const armDeclares = (body: readonly Statement[]): boolean =>
+  body.some(statement => statement.type === 'VariableDeclaration' || statement.type === 'While' || statement.type === 'If');
+
+/**
+ * Decide a frame's direct control flow before its first scoped read or its
+ * first control statement, whichever execution reaches first (ledger N15,
+ * ruling J2): a selected arm's declarations are inline declarations at the
+ * `if()`/`$if`, and scoped (`@name`, `$^name`) lookup is order-independent and
+ * last-wins in the frame, so a scoped read written before it sees the arm too.
+ * Every `$while` body registers as well ({@link collectSelectedDeclIndex}).
+ *
+ * Each `if()`/`$if` is decided ONCE per activation, here or, failing that, when
+ * execution reaches it ({@link selectIfBody}): the arm whose declarations are
+ * visible is always the arm that runs, and a condition runs once. Conditions
+ * are decided in source order, each seeing the arms before it and neither its
+ * own arm nor a later one, so `@c: red; if((iscolor(@c)), { @c: 1px; … })`
+ * selects its arm and every other read of `@c` in the frame is `1px`.
+ *
+ * Deciding stops at the first statement that cannot be decided before
+ * execution, and that statement and every one after it are decided when
+ * execution reaches them, so a condition always sees exactly the arms before
+ * it. Such a statement is one whose condition reads a binding
+ * {@link readsInOrder}, or names one that exists only once execution has made
+ * it — a variable a mixin call leaks into the frame.
+ *
+ * The conditions run on a statement-level context: whatever read triggered
+ * this may be mid-way through another value (its exclusions, an optional
+ * probe, a `calc()` or an `!important` sink), none of which is the condition's.
+ */
+function preselectControlFlow(frame: Frame, e: EvalCtx): void {
+  const decided = new Map<If, Statement[] | null>();
+  frame.preselectedIfs = decided;
+  frame.selectedDeclIndex = collectSelectedDeclIndex(frame, frame.selectedIfBodies ?? EMPTY_SELECTED_IF_BODIES);
+  const statements = frame.statements;
+  if (!statements) {
+    return;
+  }
+  let ctx: EvalCtx | undefined;
+  for (const statement of statements) {
+    if (statement.type !== 'If' || unloweredCall(statement) !== null) {
+      continue;
+    }
+    if (ifReadsInOrder(statement)) {
+      return;
+    }
+    ctx ??= {
+      ...e,
+      excluded: new Set(),
+      optional: false,
+      calcDepth: undefined,
+      parenFrames: undefined,
+      exprBoundary: undefined,
+      importantSink: undefined,
+      elideSink: undefined,
+      mergeImportant: undefined,
+      defaultFn: undefined
+    };
+    let body: Statement[] | null;
+    try {
+      body = selectedIfBody(statement, frame, ctx);
+    } catch (error) {
+      if (error instanceof JessError && error.code === 'resolve/name-not-found') {
+        return;
+      }
+      throw error;
+    }
+    decided.set(statement, body);
+    if (body !== null) {
+      (frame.selectedIfBodies ??= new Map()).set(statement, body);
+      if (armDeclares(body)) {
+        frame.selectedDeclIndex = collectSelectedDeclIndex(frame, frame.selectedIfBodies);
+      }
+    }
+  }
+}
+
+/**
+ * The arm of an `if()`/`$if` that execution has reached: the decision
+ * {@link preselectControlFlow} made for it, else its condition evaluated now,
+ * with the selected arm published into this activation's scoped index.
+ */
+function selectIfBody(node: If, frame: Frame, e: EvalCtx): Statement[] | null {
   /* [P36] Not lowered where built-ins are not ambient: the body is the ordinary call statement. */
   const unlowered = unloweredCall(node);
-  const body = unlowered === null ? selectedIfBody(node, frame, e) : [unlowered];
+  if (unlowered !== null) {
+    return [unlowered];
+  }
+  if (frame.selectedDeclIndex === undefined && frame.declIndex?.controlFlow === true) {
+    selectControlFlow(frame, e);
+  }
+  const decided = frame.preselectedIfs?.get(node);
+  if (decided !== undefined) {
+    return decided;
+  }
+  const body = selectedIfBody(node, frame, e);
   if (!body) {
     return null;
   }
   const selected = frame.selectedIfBodies ??= new Map();
   if (selected.get(node) !== body) {
     selected.set(node, body);
-    frame.selectedDeclIndex = collectSelectedDeclIndex(frame, selected);
+    if (frame.selectedDeclIndex !== undefined) {
+      frame.selectedDeclIndex = collectSelectedDeclIndex(frame, selected);
+    }
   }
   return body;
 }
@@ -16109,6 +16397,29 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Ma
   }
   const map = resolveForRuleset(node, frame, e);
   if (map) {
+    /*
+     * A composed module's namespace is its members, not its authored body: each
+     * name once, at its first declaration, read through the activation as
+     * `@ns.name` reads it ({@link activatedVarMember}), so configuration,
+     * reassignment and the module's last same-name declaration are what the
+     * loop sees.
+     */
+    const activation = composedModuleFrame(map.rules, map.frame);
+    if (activation !== null) {
+      const items: ForItem[] = [];
+      const seen = new Set<string>();
+      for (const s of map.rules) {
+        if (s.type !== 'VariableDeclaration' || seen.has(s.name)) {
+          continue;
+        }
+        seen.add(s.name);
+        const member = activatedVarMember(activation, s.name, e);
+        if (member !== undefined && !isMixinCallValue(member.value)) {
+          items.push({ value: member.value, key: any(s.name), valueFrame: member.frame ?? activation });
+        }
+      }
+      return items;
+    }
     const mapFrame: Frame = {
       parent: map.frame,
       mixins: collectMixins(map.rules),
@@ -18487,29 +18798,31 @@ function publishComposedModule(
   node: StyleImport,
   importerFrame: Frame,
   bodyFrame: Frame,
-  config: StyleImportConfig | null,
-  specifier: string
+  specifier: string,
+  rank: SourceRank | null
 ): void {
   const children = bodyFrame.statements!;
   const namespace = node.namespace ?? deriveModuleNamespace(specifier);
   if (namespace === '*') {
     /*
      * `as *`: the module's OWN top-level members merge unqualified into the
-     * importer, a configured member as its configured binding (spec R6 §E.1).
-     * Value-block members still resolve in the isolated bodyFrame, so redirect
-     * each value block's closure there.
+     * importer. Each variable member is a scoped fact, filed at the compose's
+     * position, that reads the member in the activation through the store a
+     * namespace member is read through ({@link memberLookup}), so it sees what
+     * `@ns.name` sees: the configured binding, and after the module has run,
+     * its final one (spec R6 §E.1). The live binding is a write, made when
+     * execution reaches the compose ({@link bindComposedLiveMembers}).
      */
-    for (const child of children) {
-      if (child.type === 'VariableDeclaration') {
-        publishImportedVariableDeclaration(
-          importerFrame,
-          config?.bindings.find(binding => binding.name === child.name) ?? child
-        );
-        if (isValueBlockBinding(child.value)) {
-          bindDetached(importerFrame, child.value, bodyFrame, bodyFrame.sourceOwner ?? null);
-        }
-      } else if (child.type === 'MixinDefinition') {
-        publishImportedMixinDefinition(importerFrame, child);
+    eachComposedVariableMember(children, (child, index) => {
+      const read = variableReference(child.name, memberLookup(bodyFrame, child.name));
+      const member = variableDeclaration(child.name, read, { mode: 'declare' });
+      publishImportedVariableDeclaration(importerFrame, member, importedFactRank(rank, index));
+      (importerFrame.bindingValueFrames ??= new Map()).set(read, bodyFrame);
+    });
+    for (let index = 0; index < children.length; index++) {
+      const child = children[index]!;
+      if (child.type === 'MixinDefinition') {
+        publishImportedMixinDefinition(importerFrame, child, true, importedFactRank(rank, index));
       } else if (child.type === 'Ruleset') {
         /*
          * ponytail: publishes the ruleset for namespace descent + reference, but NOT
@@ -18517,7 +18830,7 @@ function publishComposedModule(
          * (publishImportedDocumentFacts). `as *` is the discouraged path; wire the
          * ordered-mixin publish here if a bare `.name()` call across `as *` is needed.
          */
-        publishImportedRuleset(importerFrame, child);
+        publishImportedRuleset(importerFrame, child, importedFactRank(rank, index));
       }
     }
     return;
@@ -18530,8 +18843,142 @@ function publishComposedModule(
     );
   }
   const block = anonymousMixin(children);
-  publishImportedVariableDeclaration(importerFrame, variableDeclaration(namespace, block, { mode: 'declare' }));
+  publishImportedVariableDeclaration(importerFrame, variableDeclaration(namespace, block, { mode: 'declare' }), rank);
   bindDetached(importerFrame, block, bodyFrame, bodyFrame.sourceOwner ?? null);
+}
+
+/** Each variable member a composed module exposes: every name once, at its first top-level declaration. */
+function eachComposedVariableMember(
+  children: readonly Statement[],
+  visit: (declaration: VariableDeclaration, index: number) => void
+): void {
+  const seen = new Set<string>();
+  for (let index = 0; index < children.length; index++) {
+    const child = children[index]!;
+    if (child.type === 'VariableDeclaration' && !seen.has(child.name)) {
+      seen.add(child.name);
+      visit(child, index);
+    }
+  }
+}
+
+/**
+ * The live half of an `as *` compose: write each variable member into the
+ * importer's live store when execution reaches the compose, as a declaration
+ * written there would be (ledger R5: a live `$name` read is execution-ordered).
+ * The scoped half is {@link publishComposedModule}'s, which may run earlier.
+ */
+function bindComposedLiveMembers(node: StyleImport, importerFrame: Frame, bodyFrame: Frame): void {
+  if (node.namespace !== '*') {
+    return;
+  }
+  eachComposedVariableMember(bodyFrame.statements!, (child) => {
+    const read = variableReference(child.name, memberLookup(bodyFrame, child.name));
+    const member = variableDeclaration(child.name, read, { mode: 'declare' });
+    const cells = importerFrame.cells ??= new Map();
+    cells.set(child.name, {
+      declaration: member, value: read, valueFrame: bodyFrame, evaluated: null,
+      prev: liveCellPredecessor(cells, member)
+    });
+  });
+}
+
+/** One `@compose` edge's activation: the frame its module evaluates in, and the identity it renders once under. */
+interface ComposeActivation {
+  readonly frame: Frame;
+  readonly emitOnceKey: string | undefined;
+}
+
+/**
+ * Activate one `@compose` edge and bind its namespace (or `as *` members) in
+ * `importerFrame` at `rank` (spec R6 Part E).
+ *
+ * The EFFECTIVE configuration (§E.2/E-d): a SHARED config (`set`, and scss
+ * `@use … with` lowered to `set`) persists per module IDENTITY (`key`), so a
+ * later plain `@compose` of the same module inherits it, and a second SHARED
+ * config whose values differ conflicts and rejects (an identical restatement
+ * does not). A PER-EDGE `with { … }` (less/jess) is an independent mixin-like
+ * instantiation: it uses only its own values, never inherits a recorded shared
+ * config, and never conflicts with one. A shared module has ONE activation per
+ * identity, which every later edge binds its namespace to.
+ *
+ * A document-root compose runs this from the import planner (`planned`), before
+ * any output statement, so its namespace is published early like an `@import`'s
+ * facts (ledger N10, ruling J6c): Less lookups are order-independent, and a read
+ * placed before the `@compose` resolves. Any other compose runs it when
+ * execution reaches it.
+ */
+function activateComposeEdge(
+  node: StyleImport,
+  key: string | undefined,
+  children: Statement[],
+  specifier: string,
+  importerFrame: Frame,
+  e: Emit,
+  rank: SourceRank | null,
+  planned: boolean
+): ComposeActivation {
+  const authoredConfig = node.config ?? null;
+  let config = authoredConfig;
+  if (key !== undefined) {
+    const recorded = e.moduleConfigs?.get(key) ?? null;
+    if (authoredConfig !== null && authoredConfig.kind === 'set') {
+      if (recorded !== null && !sameModuleConfig(recorded, authoredConfig)) {
+        throw moduleConfigRejected(
+          node,
+          `Module "${specifier}" is already configured with a different set of values; a module can only be configured once.`,
+          specifier
+        );
+      }
+      if (recorded === null) {
+        /*
+         * A shared module renders once, under the configuration of the first
+         * edge that loads it. One already loaded without a `set` is already
+         * activated, so a later `set` would be silently ignored (ruling J6a).
+         */
+        if (e.loadedImports?.has(key) || e.moduleActivations?.has(key)) {
+          throw alreadyLoadedUnconfigured(node, specifier);
+        }
+        (e.moduleConfigs ??= new Map()).set(key, authoredConfig);
+      }
+    } else if (authoredConfig === null && recorded !== null) {
+      /*
+       * The `set` this edge would inherit was recorded ahead of output by a
+       * document-root edge that execution has not reached yet. This edge comes
+       * first in source order, so it loads the module without configuration
+       * and the `set` after it is the one J6(a) rejects.
+       */
+      if (!planned) {
+        for (const edge of e.composeActivations?.keys() ?? []) {
+          if (edge.config === recorded) {
+            throw alreadyLoadedUnconfigured(edge, specifier);
+          }
+        }
+      }
+      config = recorded;
+    }
+  }
+  const emitOnceKey = (config === null || config.kind === 'set') && e.multipleImportDepth === 0 ? key : undefined;
+  let frame = emitOnceKey === undefined ? undefined : e.moduleActivations?.get(emitOnceKey);
+  if (frame === undefined) {
+    if (config !== null) {
+      validateModuleConfig(node, specifier, config, children, e);
+    }
+    frame = config !== null ? configuredModuleFrame(children, config, importerFrame) : unconfiguredModuleFrame(children);
+    if (emitOnceKey !== undefined) {
+      (e.moduleActivations ??= new Map()).set(emitOnceKey, frame);
+    }
+  }
+  publishComposedModule(node, importerFrame, frame, specifier, rank);
+  return { frame, emitOnceKey };
+}
+
+function alreadyLoadedUnconfigured(node: StyleImport, specifier: string): JessError {
+  return moduleConfigRejected(
+    node,
+    `Module "${specifier}" was already loaded without configuration; only the first import of a module can configure it with "set".`,
+    specifier
+  );
 }
 
 /**
@@ -18577,113 +19024,66 @@ function expandStyleImport(
         }
 
         /*
-         * [module config] Resolve the EFFECTIVE configuration for this compose edge
-         * (spec R6 Part E §E.2/E-d). A SHARED config (`set`, and scss `@use … with`
-         * lowered to `set`) persists per module IDENTITY (`loaded.key`): it is
-         * recorded so a LATER plain `@compose` of the same module inherits it, and a
-         * second SHARED config whose values differ conflicts and rejects (an
-         * identical restatement does not). A PER-EDGE `with { … }` (less/jess) is an
-         * INDEPENDENT mixin-like instantiation: it uses only its own values, never
-         * inherits a recorded shared config, and never conflicts with one.
-         */
-        const authoredConfig = node.mode === 'compose' ? node.config ?? null : null;
-        let config = authoredConfig;
-        if (node.mode === 'compose' && loaded.key !== undefined) {
-          const recorded = e.moduleConfigs?.get(loaded.key) ?? null;
-          if (authoredConfig !== null && authoredConfig.kind === 'set') {
-            if (recorded !== null && !sameModuleConfig(recorded, authoredConfig)) {
-              throw moduleConfigRejected(
-                node,
-                `Module "${request.specifier}" is already configured with a different set of values; a module can only be configured once.`,
-                request.specifier
-              );
-            }
-            if (recorded === null) {
-              /*
-               * A shared module renders once, under the configuration of the
-               * first edge that loads it. One already loaded without a `set` is
-               * already rendered, so a later `set` would be silently ignored.
-               */
-              if (e.loadedImports?.has(loaded.key)) {
-                throw moduleConfigRejected(
-                  node,
-                  `Module "${request.specifier}" was already loaded without configuration; only the first import of a module can configure it with "set".`,
-                  request.specifier
-                );
-              }
-              (e.moduleConfigs ??= new Map()).set(loaded.key, authoredConfig);
-            }
-          } else if (authoredConfig === null && recorded !== null) {
-            config = recorded;
-          }
-        }
-
-        /*
+         * A `@compose` (spec R6 Part E) evaluates the module in its own isolated
+         * overlay frame (like a mixin-call body), NOT spliced into the importing
+         * frame: its own nested `@compose`/`@import` stay local, so `@compose` is
+         * non-transitive (unlike the transitively-leaky `@import`). A
+         * document-root compose was activated, and its namespace bound, by the
+         * import planner ({@link activateComposeEdge}); any other is activated
+         * here. Either way an `as *` compose writes its live bindings here, at
+         * its position ({@link bindComposedLiveMembers}).
+         *
          * Emit-once dedup keyed on module IDENTITY for SHARED modules — a plain
-         * import/compose, an inherited `set`, or an authored `set` (jess/.less
-         * `set { … }` and SCSS `@use … with (…)`, which the scss grammar lowers to
-         * the shared `set` kind). A shared module is a singleton: it renders ONCE,
-         * and a later plain/inherited import of the same identity does NOT re-emit.
-         * A PER-EDGE `with { … }` (less/jess only) is a distinct instantiation — like
-         * a mixin call with its own params — so it bypasses the dedup and each edge
-         * renders its own output.
+         * import/compose, an inherited `set`, or an authored `set`. A shared module
+         * is a singleton: it renders ONCE, and a later plain/inherited import of the
+         * same identity does NOT re-emit. A PER-EDGE `with { … }` (less/jess only)
+         * is a distinct instantiation — like a mixin call with its own params — so
+         * it bypasses the dedup and each edge renders its own output.
          */
-        const sharedModule = config === null || config.kind === 'set';
         const children = loaded.document?.rules ?? [];
         const isCompose = node.mode === 'compose';
-        const emitOnceKey = sharedModule && request.options === null && e.multipleImportDepth === 0
-          ? loaded.key
-          : undefined;
+        let activation: ComposeActivation | undefined;
+        if (isCompose) {
+          activation = e.composeActivations?.get(node);
+          if (activation === undefined) {
+            activation = activateComposeEdge(
+              node, loaded.key, children, request.specifier, frame, e, importSiteRank(frame, node), false
+            );
+          } else {
+            e.composeActivations!.delete(node);
+          }
+          bindComposedLiveMembers(node, frame, activation.frame);
+        }
+        const bodyFrame = activation?.frame ?? frame;
+        const emitOnceKey = request.options !== null || e.multipleImportDepth !== 0
+          ? undefined
+          : activation === undefined ? loaded.key : activation.emitOnceKey;
         if (emitOnceKey !== undefined) {
           const seen = e.loadedImports ??= new Map();
           if (seen.has(emitOnceKey)) {
             if (isCompose) {
-              /*
-               * Rendered once already; this compose edge still binds its own namespace
-               * to that activation, and the module is loaded from this sheet too, so
-               * this sheet's extends reach it (ledger X14).
-               */
-              if (e.dynamicExtend !== null) {
-                composedModuleBoundary(e.dynamicExtend.moduleBoundaries, emitOnceKey, e.dynamicExtend.boundary);
-              }
-              const activated = seen.get(emitOnceKey);
-              if (!activated) {
+              if (seen.get(emitOnceKey) === null) {
                 throw moduleConfigRejected(
                   node,
                   `Module "${request.specifier}" was already loaded by @import, which folds it into the importing scope; it cannot also be composed as an isolated module.`,
                   request.specifier
                 );
               }
-              publishComposedModule(node, frame, activated, config, request.specifier);
+
+              /*
+               * Rendered once already; the module is loaded from this sheet too, so
+               * this sheet's extends reach it (ledger X14).
+               */
+              if (e.dynamicExtend !== null) {
+                composedModuleBoundary(e.dynamicExtend.moduleBoundaries, emitOnceKey, e.dynamicExtend.boundary);
+              }
             }
             return;
           }
-          seen.set(emitOnceKey, null);
-        }
-
-        /*
-         * A `@compose` (spec R6 Part E) evaluates the module in its own isolated
-         * overlay frame (like a mixin-call body), NOT spliced into the importing
-         * frame: its own nested `@compose`/`@import` stay local, so `@compose` is
-         * non-transitive (unlike the transitively-leaky `@import`). Its facts never
-         * flat-publish into the importer; instead its OWN top-level members are
-         * exposed through a namespace binding (`@ns.member`) or, with `as *`, merged
-         * unqualified. A CONFIGURED compose additionally overlays its `with`/`set`
-         * values in `configuredModuleFrame`.
-         */
-        if (config !== null) {
-          validateModuleConfig(node, request.specifier, config, children, e);
-        }
-        const bodyFrame = isCompose
-          ? (config !== null ? configuredModuleFrame(children, config, frame) : unconfiguredModuleFrame(children))
-          : frame;
-        if (isCompose) {
-          if (emitOnceKey !== undefined) {
-            e.loadedImports!.set(emitOnceKey, bodyFrame);
-          }
-          publishComposedModule(node, frame, bodyFrame, config, request.specifier);
+          seen.set(emitOnceKey, isCompose ? bodyFrame : null);
         }
         const publishChildren = isCompose || hasPrepublishedImportFact(e, node)
+          || e.prepublishedModuleImports?.get(frame)?.has(node) === true
           ? undefined
           : publishImportedDocumentFacts(children, frame, e, false, importSiteRank(frame, node));
 

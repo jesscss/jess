@@ -367,7 +367,11 @@ export function fromNativeLessResult(result: unknown): ValueGroup {
   if (result === null || result === undefined) {
     throw new FunctionDeclined();
   }
-  if (result === true || !result) {
+
+  /* NaN is falsy, but it is a fault in the plugin, not a "null function": it
+   * takes the number path, where a non-finite number has no CSS spelling and
+   * throws — as the sandboxed path refuses it too. */
+  if (result === true || (!result && !Number.isNaN(result))) {
     return makeAny('');
   }
   if (typeof result === 'string') {

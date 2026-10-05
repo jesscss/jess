@@ -177,6 +177,38 @@ describe('@plugin function failures are never silent', () => {
     expect(warning!.column).toBeGreaterThan(1);
   }, 30000);
 
+  /*
+   * NaN has no CSS spelling, and the sandbox's JSON transport turns it into
+   * `null` — which reads as a declined call. It is a fault in the plugin, named
+   * at the call.
+   */
+  it.each(['NaN', 'Infinity'])('reports a %s result at the call site instead of dropping or re-emitting the call', async (result) => {
+    const { dir, entry } = makeProject(
+      `functions.add('bad', function () { return ${result}; });`,
+      '@plugin "./p";\n\n.a {\n  width: bad(1);\n  height: 1px;\n}\n'
+    );
+    const outcome = await makeCompiler(dir).renderToResult(entry, { suppressWarnings: true, breakOnError: true });
+
+    expect(outcome.css).toBe('');
+    const failure = outcome.errors.find(e => e.code === 'plugin/function-threw');
+    expect(failure, `expected plugin/function-threw, got ${JSON.stringify(outcome.errors.map(e => e.code))}`).toBeDefined();
+    expect(failure!.reason).toContain('bad');
+    expect(failure!.reason).toMatch(/NaN|Infinity/);
+    expect(failure!.line).toBe(4);
+    expect(failure!.column).toBeGreaterThan(1);
+  }, 30000);
+
+  it('reports a NaN result from an in-process plugin the same way', async () => {
+    const plugin = {
+      install(api: { functions: { functionRegistry: { add(name: string, fn: () => unknown): void } } }) {
+        api.functions.functionRegistry.add('bad', () => Number.NaN);
+      }
+    };
+    const compiler = new Compiler({ compile: { plugins: [lessPlugin(), lessCompatPlugin({ plugins: [plugin] })] } });
+    await expect(compiler.renderString('.a {\n  width: bad(1);\n}\n', { language: 'less' }))
+      .rejects.toThrow(expect.objectContaining({ code: 'plugin/function-threw', line: 2 }));
+  });
+
   it('surfaces a plugin that cannot be loaded at its own @plugin statement', async () => {
     const { dir, entry } = makeProject(
       'throw new Error(\'PLUGIN_LOAD_EXPLODED\');',
@@ -237,6 +269,26 @@ describe('the less-compat tree shim', () => {
     expect(result.errors).toEqual([]);
     expect(result.css).toContain('x: Quoted("x" escaped=true) Quoted(\'q\' escaped=true) Quoted("y" escaped=true) Quoted("a b" escaped=true) Anonymous(z);');
     expect(result.css).toContain('y: z;');
+  }, 30000);
+
+  /*
+   * A six-digit hex has no alpha pair: it is opaque, not `parseInt('', 16)`
+   * (NaN). The alpha is read inside the plugin, where the engine's own handling
+   * of a NaN result cannot hide it.
+   */
+  it('builds an opaque tree.Color from six- and three-digit hex', async () => {
+    const { dir, entry } = makeProject(
+      [
+        'functions.add(\'six\', () => new tree.Color(\'b8daff\'));',
+        'functions.add(\'three\', () => new tree.Color(\'fc0\'));',
+        'functions.add(\'alphas\', () => `${new tree.Color(\'b8daff\').alpha} ${new tree.Color(\'fc0\').alpha} ${new tree.Color(\'b8daff80\').alpha}`);'
+      ].join('\n'),
+      '@plugin "./p";\n.a { b: six(); c: three(); d: alphas(); }\n'
+    );
+    const result = await makeCompiler(dir).renderToResult(entry, { suppressWarnings: true, breakOnError: true });
+
+    expect(result.errors).toEqual([]);
+    expect(result.css).toBe('.a {\n  b: #b8daff;\n  c: #ffcc00;\n  d: 1 1 0.5019607843137255;\n}\n');
   }, 30000);
 
   it('exposes tree.Variable.prototype.find and a real this.context', async () => {

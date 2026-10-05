@@ -210,10 +210,45 @@ describe('V19 one-evaluator projection ratchet', () => {
     // (`placeStatementCall`): a statement call is evaluated where it stands in
     // either writer's walk. +1 function (`holdTriviaBetween`): a loop locates
     // its body span once for all of its iterations.
-    expect(occurrences(/^function |^async function /gmu)).toBe(503);
-    expect(occurrences(/new Map/gu)).toBe(78);
-    expect(occurrences(/new Set/gu)).toBe(37);
-    expect(occurrences(/new WeakMap/gu)).toBe(6);
+    // +2 functions (`preselectControlFlow`, `guardReadsInOrder`, ledger N15): a
+    // frame's `if()`/`$if` arms whose conditions read only scoped bindings are
+    // selected at its first scoped read, so a read before the `if()` sees the
+    // selected branch as an inline declaration. The value walk the condition
+    // check needs is `callValueHasLookup`, the self-reference walk generalized
+    // over a static predicate rather than a second walk.
+    // +1 `new Set` (module namespaces, ledger A8): a loop over a composed
+    // module's namespace iterates each member name once, through its activation.
+    // +2 functions, +4 `new Map`, +1 `new Set` (module activations, ledger A15):
+    // `activateComposeEdge` is the one place a compose edge resolves its
+    // configuration and shared activation (`moduleActivations`, per identity) and
+    // binds its namespace — run by the import planner for a document-root compose
+    // (`composeActivations`), so the namespace is published early like an
+    // import's facts, else when execution reaches it; `memberLookup` names the
+    // store a member is read through, shared by `@ns.name` and `as *`, whose
+    // members bind in both of the importer's stores (`bindingValueFrames`,
+    // `cells`), once per name.
+    // +2 functions, +2 `new Map`, +1 `new Set`, +1 `new WeakMap` (ruling J2):
+    // each `if()` is decided once per activation (`preselectedIfs`) and its
+    // decision reused when execution reaches it; `selectControlFlow` rebuilds the
+    // selected index lazily, once after an import publishes a whole document,
+    // instead of once per published fact; the conditions run on a
+    // statement-level context (a fresh exclusion set); `ifReadsInOrder` caches
+    // a per-`if()` source fact.
+    // +4 functions, +1 `new Map`, +1 `new Set` (rulings J6a/c, ledger R5): an
+    // `as *` compose writes its live bindings where it executes
+    // (`bindComposedLiveMembers`, sharing the member walk
+    // `eachComposedVariableMember` with the early scoped publication); a
+    // planner-activated module claims the `@import`s whose facts it published
+    // early, per activation (`claimModulePrepublishedImport`); a nested plain
+    // compose before a document-root `set` is rejected with the one
+    // `alreadyLoadedUnconfigured` diagnostic the later-`set` case raises.
+    // +1 function, +1 `new WeakMap` (ruling J1): `erroringModes` keeps one
+    // error-mode copy of a render's modes for namespaced calls instead of
+    // spreading the modes on every call.
+    expect(occurrences(/^function |^async function /gmu)).toBe(514);
+    expect(occurrences(/new Map/gu)).toBe(85);
+    expect(occurrences(/new Set/gu)).toBe(41);
+    expect(occurrences(/new WeakMap/gu)).toBe(8);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);
 
@@ -247,7 +282,10 @@ describe('V19 one-evaluator projection ratchet', () => {
     expect(occurrences(/expandFor\(/gu)).toBe(6);
     expect(occurrences(/expandNestedFor\(/gu)).toBe(0);
     expect(occurrences(/selectIfBodyForRender\(/gu)).toBe(0);
+
+    /* `preselectControlFlow` decides arms through the one condition evaluator, `selectedIfBody` (ruling J2). */
     expect(occurrences(/selectIfBody\(/gu)).toBe(6);
+    expect(occurrences(/selectedIfBody\(/gu)).toBe(3);
     expect(occurrences(/runWhile\(/gu)).toBe(6);
   });
 
