@@ -208,7 +208,7 @@ const skippedFixtures: SkippedFixture[] = (
      * work before they can be release gates.
      */
     { file: 'tests-config/debug/linenumbers.less', reason: 'debug output fixture; no expected CSS in upstream fixture' },
-    { file: 'tests-config/filemanagerPlugin/filemanager.less', reason: 'custom Less file manager plugin API needs scope decision' },
+    { file: 'tests-config/filemanagerPlugin/filemanager.less', reason: 'INTENDED DIVERGENCE (A12): the Less 4 plugin-manager hook ABI is a v5 non-goal. The fixture names its plugin through the lessc `--plugin` path option (`language.less.plugin`), which is not a jess option; passed in-process, the plugin is refused with plugin/unsupported-feature at `less.environment`, naming @jesscss/plugin-node-modules (test/less/plugin-diagnostics.test.ts)' },
     { file: 'tests-config/include-path/import-test-e.less', reason: 'helper imported by include-path fixture; no expected CSS' },
     { file: 'tests-config/import-redirect/import-redirect.less', reason: 'no expected CSS in upstream fixture' },
     { file: 'tests-config/js-type-errors/js-type-error.less', reason: 'expected error fixture, not render-to-CSS fixture' },
@@ -223,8 +223,8 @@ const skippedFixtures: SkippedFixture[] = (
     { file: 'tests-config/math-strict/mixins-args.less', reason: 'no expected CSS in upstream fixture' },
     { file: 'tests-config/math-strict/parens.less', reason: 'no expected CSS in upstream fixture' },
     { file: 'tests-config/no-js-errors/no-js-errors.less', reason: 'expected error fixture, not render-to-CSS fixture' },
-    { file: 'tests-config/postProcessorPlugin/postProcessor.less', reason: 'Less postprocessor plugin API needs scope decision' },
-    { file: 'tests-config/preProcessorPlugin/preProcessor.less', reason: 'Less preprocessor plugin API needs scope decision' },
+    { file: 'tests-config/postProcessorPlugin/postProcessor.less', reason: 'INTENDED DIVERGENCE (A12): the Less 4 plugin-manager hook ABI is a v5 non-goal. The fixture names its plugin through the lessc `--plugin` path option (`language.less.plugin`), which is not a jess option; passed in-process, the plugin is refused with plugin/unsupported-feature at `pluginManager.addPostProcessor()`, naming output.compress (test/less/plugin-diagnostics.test.ts)' },
+    { file: 'tests-config/preProcessorPlugin/preProcessor.less', reason: 'INTENDED DIVERGENCE (A12): the Less 4 plugin-manager hook ABI is a v5 non-goal. The fixture names its plugin through the lessc `--plugin` path option (`language.less.plugin`), which is not a jess option; passed in-process, the plugin is refused with plugin/unsupported-feature at `pluginManager.addPreProcessor()` (test/less/plugin-diagnostics.test.ts)' },
     { file: 'tests-config/root-registry/file.less', reason: 'no expected CSS in upstream fixture' },
     { file: 'tests-config/root-registry/root.less', reason: 'no expected CSS in upstream fixture' },
     { file: 'tests-config/strict-imports/imported.less', reason: 'helper imported by strict-imports fixture; no expected CSS' },
@@ -235,7 +235,7 @@ const skippedFixtures: SkippedFixture[] = (
     { file: 'tests-config/sourcemaps-empty/var-defs.less', reason: 'source-map output suite needs dedicated output artifact checks' },
     { file: 'tests-config/sourcemaps-variable-selector/basic.less', reason: 'source-map output suite needs dedicated output artifact checks' },
     { file: 'tests-config/sourcemaps-variable-selector/vars.less', reason: 'source-map output suite needs dedicated output artifact checks' },
-    { file: 'tests-config/visitorPlugin/visitor.less', reason: 'Less visitor plugin API needs scope decision' },
+    { file: 'tests-config/visitorPlugin/visitor.less', reason: 'INTENDED DIVERGENCE (A12): the Less 4 plugin-manager hook ABI is a v5 non-goal. The fixture names its plugin through the lessc `--plugin` path option (`language.less.plugin`), which is not a jess option; passed in-process, the plugin is refused with plugin/unsupported-feature at `less.visitors` (test/less/plugin-diagnostics.test.ts)' },
     {
       file: 'tests-unit/import/import-remote.less',
       reason:
@@ -416,7 +416,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/plugin-preeval/plugin-preeval.less',
-    'the legacy tree visitor ABI is not supported (isPreEvalVisitor, manager.addVisitor, visitors.Visitor); this is not an @plugin extension-resolution gap'
+    'INTENDED DIVERGENCE (A12): the legacy tree-visitor ABI is a v5 non-goal; loading plugin-preeval.js is refused at its `less.visitors` read with a plugin/load-failed diagnostic naming the missing visitor API (test/less/plugin-diagnostics.test.ts)'
   ],
   [
     'tests-unit/plugin/plugin.less',
@@ -489,7 +489,8 @@ const expectedFailureDiagnosticCodes = new Map<string, string>([
    * parse error, so these two import fixtures no longer surface a diagnostic —
    * they still differ from the external golden only on render layout (see the
    * expected-failure reasons), not on a parse error. */
-  ['tests-unit/urls/urls.less', 'import/not-found']
+  ['tests-unit/urls/urls.less', 'import/not-found'],
+  ['tests-unit/plugin-preeval/plugin-preeval.less', 'plugin/load-failed']
 ]);
 
 type RenderResult = Awaited<ReturnType<Compiler['renderToResult']>>;

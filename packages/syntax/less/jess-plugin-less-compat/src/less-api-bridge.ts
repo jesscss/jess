@@ -2,6 +2,7 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   defineFunction,
   emitValue,
+  ERR,
   FunctionDeclined,
   groupItems,
   HEX,
@@ -34,8 +35,33 @@ export type ContextualPluginFunction = (
 export type NativeLessPlugin = {
   readonly name?: string;
   readonly opts?: unknown;
-  install?(less: NativeLessApi, manager: undefined, functions: NativeLessFunctionRegistry): void;
+  install?(less: NativeLessApi, manager: NativeLessPluginManager, functions: NativeLessFunctionRegistry): void;
 };
+
+/**
+ * The Less 4 plugin-manager hooks. v5 does not run any of them: each call is
+ * refused with a `plugin/unsupported-feature` diagnostic naming the native
+ * replacement, so the plugin cannot install half-working.
+ */
+export interface NativeLessPluginManager {
+  addVisitor(visitor: unknown): never;
+  addPreProcessor(processor: unknown, priority?: number): never;
+  addPostProcessor(processor: unknown, priority?: number): never;
+  addFileManager(fileManager: unknown): never;
+}
+
+/*
+ * The replacement each refusal names. `@plugin` scripts run in the Deno legacy
+ * runtime of `@jesscss/plugin-js` (`runtime-worker.ts`), which cannot import
+ * this module and refuses the same API with the same wording.
+ */
+const NO_VISITORS = 'Less v5 has no visitor API: remove the plugin, or port what it does to a function plugin or to a step that runs on the compiled CSS.';
+const NO_PRE_PROCESSORS = 'Less v5 does not run source pre-processors: transform the source before it reaches the compiler.';
+const NO_POST_PROCESSORS = 'Less v5 does not run CSS post-processors: for minification (less-plugin-clean-css) set output.compress (`compress` in less.render / lessc); otherwise run the tool, e.g. PostCSS with autoprefixer, on the compiled CSS.';
+const NO_FILE_MANAGERS = 'Less v5 has no custom file managers: for npm imports (less-plugin-npm-import) use @jesscss/plugin-node-modules; other import resolution belongs in a Jess plugin\'s resolve/locate hooks.';
+
+const pluginName = (plugin: NativeLessPlugin): string =>
+  plugin.name ?? (plugin.constructor === Object ? 'unnamed' : plugin.constructor.name);
 
 export interface NativeLessFunctionRegistry {
   add(name: string, fn: NativeLessFunction): void;
@@ -385,7 +411,17 @@ export class LessApiBridge {
       },
       get: name => this.#registered.get(name.toLowerCase())
     };
-    this.less = {
+    let installing = 'unnamed';
+    const refuse = (feature: string, replacement: string): never => {
+      throw ERR.pluginUnsupported({ meta: { plugin: installing, feature, replacement } });
+    };
+    const manager: NativeLessPluginManager = {
+      addVisitor: () => refuse('pluginManager.addVisitor()', NO_VISITORS),
+      addPreProcessor: () => refuse('pluginManager.addPreProcessor()', NO_PRE_PROCESSORS),
+      addPostProcessor: () => refuse('pluginManager.addPostProcessor()', NO_POST_PROCESSORS),
+      addFileManager: () => refuse('pluginManager.addFileManager()', NO_FILE_MANAGERS)
+    };
+    this.less = Object.defineProperties({
       functions: { functionRegistry: this.registry },
       tree: {
         Dimension: LessDimension,
@@ -393,9 +429,15 @@ export class LessApiBridge {
         Color: LessColor,
         Anonymous: LessAnonymous
       }
-    };
+    }, {
+      /* 4.x plugins reach these before the hook call (`new less.visitors.Visitor(this)`). */
+      visitors: { get: () => refuse('less.visitors', NO_VISITORS) },
+      FileManager: { get: () => refuse('less.FileManager', NO_FILE_MANAGERS) },
+      environment: { get: () => refuse('less.environment', NO_FILE_MANAGERS) }
+    });
     for (const plugin of plugins) {
-      plugin.install?.(this.less, undefined, this.registry);
+      installing = pluginName(plugin);
+      plugin.install?.(this.less, manager, this.registry);
     }
     this.globalFns = this.#fns;
   }

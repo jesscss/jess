@@ -782,6 +782,31 @@ const loadModule = async (modulePath) => {
   return exports;
 };
 
+/**
+ * A refusal of the Less 4 plugin-manager API, which v5 deliberately does not
+ * run. Like {@link UnsupportedTreeNodeError} it fails the load with a message
+ * naming the member and the native replacement, instead of dropping the hook.
+ */
+class UnsupportedLessPluginApiError extends Error {
+  constructor(feature, replacement) {
+    super(`Less @plugin: ${feature} is not supported. ${replacement}`);
+    this.name = 'UnsupportedLessPluginApiError';
+  }
+}
+
+/*
+ * The replacements, worded as `@jesscss/plugin-less-compat` words them for
+ * in-process plugins (`less-api-bridge.ts`); this sandbox cannot import it.
+ */
+const NO_VISITORS = 'Less v5 has no visitor API: remove the plugin, or port what it does to a function plugin or to a step that runs on the compiled CSS.';
+const NO_PRE_PROCESSORS = 'Less v5 does not run source pre-processors: transform the source before it reaches the compiler.';
+const NO_POST_PROCESSORS = 'Less v5 does not run CSS post-processors: for minification (less-plugin-clean-css) set output.compress (`compress` in less.render / lessc); otherwise run the tool, e.g. PostCSS with autoprefixer, on the compiled CSS.';
+const NO_FILE_MANAGERS = 'Less v5 has no custom file managers: for npm imports (less-plugin-npm-import) use @jesscss/plugin-node-modules; other import resolution belongs in a Jess plugin\'s resolve/locate hooks.';
+
+const refuseLessPluginApi = (feature, replacement) => {
+  throw new UnsupportedLessPluginApiError(feature, replacement);
+};
+
 /*
  * Deprecated Less @plugin support only. Jess @-use is plain ESM and must not
  * pass through this injected-variable wrapper.
@@ -804,22 +829,25 @@ const createLegacyLessPluginRuntime = (modulePath, options) => {
     }
   };
   const manager = {
-    visitors: [],
-    addVisitor(visitor) {
-      this.visitors.push(visitor);
-    },
-    addPreProcessor() {},
-    addPostProcessor() {},
+    addVisitor: () => refuseLessPluginApi('pluginManager.addVisitor()', NO_VISITORS),
+    addPreProcessor: () => refuseLessPluginApi('pluginManager.addPreProcessor()', NO_PRE_PROCESSORS),
+    addPostProcessor: () => refuseLessPluginApi('pluginManager.addPostProcessor()', NO_POST_PROCESSORS),
+    addFileManager: () => refuseLessPluginApi('pluginManager.addFileManager()', NO_FILE_MANAGERS),
     registerPlugin(plugin) {
       installPlugin(plugin);
     }
   };
-  const less = {
+  const less = Object.defineProperties({
     ...lessFacade,
     functions: {
       functionRegistry: functions
     }
-  };
+  }, {
+    /* 4.x plugins reach these before the hook call (`new less.visitors.Visitor(this)`). */
+    visitors: { get: () => refuseLessPluginApi('less.visitors', NO_VISITORS) },
+    FileManager: { get: () => refuseLessPluginApi('less.FileManager', NO_FILE_MANAGERS) },
+    environment: { get: () => refuseLessPluginApi('less.environment', NO_FILE_MANAGERS) }
+  });
   const installPlugin = (plugin) => {
     if (!plugin) {
       return;
@@ -866,6 +894,7 @@ const createLegacyLessPluginRuntime = (modulePath, options) => {
     exports: {},
     functions,
     localFunctions,
+    less,
     manager,
     require,
     registerPlugin,
@@ -903,12 +932,7 @@ const loadLessPlugin = async (modulePath, options = null) => {
     runtime.registerPlugin,
     runtime.functions,
     lessFacade.tree,
-    {
-      ...lessFacade,
-      functions: {
-        functionRegistry: runtime.functions
-      }
-    },
+    runtime.less,
     runtime.fileInfo,
     undefined
   );

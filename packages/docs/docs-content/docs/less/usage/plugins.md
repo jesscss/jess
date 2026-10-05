@@ -40,7 +40,7 @@ While the easiest way to use a plugin is using the [`@plugin` at-rule](../featur
 
 ### Preprocessing
 
-Pre-loading plugins is necessary if you want to add a Less.js Pre-processor. That is, a plugin that gets called and passed the raw Less source before parsing even starts. An example of this would be a [Sass-To-Less Pre-processor plugin](../tools/plugins).
+In Less 4.x, pre-loading plugins was necessary to add a Less.js Pre-processor. That is, a plugin that gets called and passed the raw Less source before parsing even starts. An example of this would be a [Sass-To-Less Pre-processor plugin](../tools/plugins). Less 5 does not run pre-processors (or visitors, post-processors, or file managers): such a plugin is refused with an error naming the replacement. See [Plugins](../features/plugins).
 
 Note: pre-loading is not necessary for _pre-evaluation_ plugins (after Less source is parsed, but before it is evaluated).
 

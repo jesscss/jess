@@ -849,8 +849,12 @@ export const ERR = {
   },
 
   // Plugin
+  /**
+   * A plugin reached for an API this compiler deliberately does not provide
+   * (e.g. a Less 4 plugin-manager hook). `replacement` names what to use instead.
+   */
   pluginUnsupported(
-    args: Common & { meta: { plugin: string; feature: string } }
+    args: Common & { meta: { plugin: string; feature: string; replacement: string } }
   ) {
     return makeJessError({
       code: 'plugin/unsupported-feature',
