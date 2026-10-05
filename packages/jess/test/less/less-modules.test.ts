@@ -200,13 +200,34 @@ describe('Less @compose stylesheet modules', () => {
       .toBe('.m {\n  x: 2;\n  y: 2;\n}\n.a {\n  x: 2;\n  y: 2;\n}\n');
   });
 
-  /* Ledger A15(a): a `set` cannot reconfigure a module identity already loaded without one (as Sass). */
+  /* Ruling J6(a): a `set` cannot reconfigure a module identity already loaded without one (as Sass). */
   it('rejects a `set` on a module that was already loaded without one', async () => {
     const { errors } = await render('@compose "./theme.less";\n@compose "./theme.less" as t2 set { @primary: red; }\n.a { c: @t2.primary; }');
     expect(errors).toEqual(['Module "./theme.less" was already loaded without configuration; only the first import of a module can configure it with "set".']);
   });
 
-  /* Ledger A15(b): an identity an @import folded into the stylesheet cannot also be composed. */
+  /*
+   * The document-root `set` is activated ahead of output, but a plain compose
+   * nested in a rule or an at-rule that comes before it in source loads the
+   * module first, so the `set` is still the one that comes too late.
+   */
+  it('rejects a document-root `set` that a nested plain compose before it already loaded', async () => {
+    for (const entry of [
+      '.wrap { @compose "./theme.less"; .a { c: @theme.primary; } }\n@compose "./theme.less" as t2 set { @primary: red; }\n',
+      '@media screen { @compose "./theme.less"; .a { c: @theme.primary; } }\n@compose "./theme.less" as t2 set { @primary: red; }\n'
+    ]) {
+      const { errors } = await render(entry);
+      expect(errors).toEqual(['Module "./theme.less" was already loaded without configuration; only the first import of a module can configure it with "set".']);
+    }
+  });
+
+  it('lets a nested plain compose after a document-root `set` inherit it', async () => {
+    const { css, errors } = await render('@compose "./theme.less" set { @primary: red; }\n.wrap { @compose "./theme.less"; c: @theme.primary; }\n');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.theme-base {\n  color: red;\n  border-color: #cc0000;\n}\n.wrap {\n  c: red;\n}\n');
+  });
+
+  /* Ruling J6(b): an identity an @import folded into the stylesheet cannot also be composed. */
   it('rejects composing a module that @import already folded into the stylesheet', async () => {
     for (const entry of [
       '@import "./theme.less";\n@compose "./theme.less";\n.a { c: @theme.primary; }',
@@ -218,7 +239,7 @@ describe('Less @compose stylesheet modules', () => {
   });
 
   /*
-   * Ledger A15(c): Less lookups are order-independent, so a document-root
+   * Ruling J6(c): Less lookups are order-independent, so a document-root
    * compose publishes its namespace before any output, as an @import publishes
    * its facts (N10). A local binding written after the @compose outranks it.
    */
@@ -226,6 +247,24 @@ describe('Less @compose stylesheet modules', () => {
     const { css, errors } = await render('.a { c: @theme.primary; e: @theme.accent; }\n@compose "./theme.less" with { @primary: red; }');
     expect(errors).toEqual([]);
     expect(css).toBe('.a {\n  c: red;\n  e: #cc0000;\n}\n.theme-base {\n  color: red;\n  border-color: #cc0000;\n}\n');
+  });
+
+  /*
+   * Rulings J6(c)/(e): the early-published module is the module as it stands
+   * after evaluation, so the facts its own @imports fold in are published into
+   * its activation ahead of output too, and a read before the @compose and one
+   * after it see one binding.
+   */
+  it('includes the module\'s own @import facts in a namespace read placed before its @compose', async () => {
+    const files: SourceFile[] = [['m.less', '@x: 1;\n@import "./lib.less";\n'], ['lib.less', '@x: 2;\n.lib { a: b; }\n']];
+    for (const [entry, expected] of [
+      ['.a { x: @m.x; }\n@compose "./m.less";\n.b { x: @m.x; }\n', '.a {\n  x: 2;\n}\n.lib {\n  a: b;\n}\n.b {\n  x: 2;\n}\n'],
+      ['.a { x: @x; }\n@compose "./m.less" as *;\n.b { x: @x; }\n', '.a {\n  x: 2;\n}\n.lib {\n  a: b;\n}\n.b {\n  x: 2;\n}\n']
+    ] as const) {
+      const { css, errors } = await render(entry, files);
+      expect(errors).toEqual([]);
+      expect(css).toBe(expected);
+    }
   });
 
   it('resolves an `as *` member read placed before its @compose, and lets a later local win', async () => {

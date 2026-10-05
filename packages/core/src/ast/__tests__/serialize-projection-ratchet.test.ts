@@ -195,9 +195,17 @@ describe('V19 one-evaluator projection ratchet', () => {
     // instead of once per published fact; the conditions run on a
     // statement-level context (a fresh exclusion set); `ifReadsInOrder` caches
     // a per-`if()` source fact.
-    expect(occurrences(/^function |^async function /gmu)).toBe(486);
-    expect(occurrences(/new Map/gu)).toBe(79);
-    expect(occurrences(/new Set/gu)).toBe(40);
+    // +4 functions, +1 `new Map`, +1 `new Set` (rulings J6a/c, ledger R5): an
+    // `as *` compose writes its live bindings where it executes
+    // (`bindComposedLiveMembers`, sharing the member walk
+    // `eachComposedVariableMember` with the early scoped publication); a
+    // planner-activated module claims the `@import`s whose facts it published
+    // early, per activation (`claimModulePrepublishedImport`); a nested plain
+    // compose before a document-root `set` is rejected with the one
+    // `alreadyLoadedUnconfigured` diagnostic the later-`set` case raises.
+    expect(occurrences(/^function |^async function /gmu)).toBe(490);
+    expect(occurrences(/new Map/gu)).toBe(80);
+    expect(occurrences(/new Set/gu)).toBe(41);
     expect(occurrences(/new WeakMap/gu)).toBe(5);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

@@ -2229,6 +2229,21 @@ function claimPrepublishedImportFact(e: Emit, statement: Statement): boolean {
   return true;
 }
 
+/** Claim one `@import` whose facts the planner publishes into a `@compose` module's activation. */
+function claimModulePrepublishedImport(e: Emit, activation: Frame, statement: StyleImport): boolean {
+  const byFrame = e.prepublishedModuleImports ??= new Map();
+  const claimed = byFrame.get(activation);
+  if (claimed === undefined) {
+    byFrame.set(activation, new Set([statement]));
+    return true;
+  }
+  if (claimed.has(statement)) {
+    return false;
+  }
+  claimed.add(statement);
+  return true;
+}
+
 /** Publish one imported document's direct lookup facts without executing or
  * copying its body. Static planning and lexical emission share this owner so a
  * definition is never classified through two different paths.
@@ -8895,17 +8910,27 @@ interface Emit extends EvalCtx {
   loadedImports: Map<string, Frame | null> | null;
 
   /** The one activation of each shared `@compose`d module identity ({@link activateComposeEdge}). */
-  moduleActivations?: Map<string, Frame> | null;
+  moduleActivations: Map<string, Frame> | null;
 
-  /** Document-root `@compose` edges the import planner activated ahead of output. */
-  composeActivations?: Map<StyleImport, ComposeActivation> | null;
+  /**
+   * `@compose` edges the import planner activated ahead of output, each removed
+   * when execution reaches it — so an entry is an edge not yet executed.
+   */
+  composeActivations: Map<StyleImport, ComposeActivation> | null;
+
+  /**
+   * `@import`s inside a planner-activated `@compose` module whose facts were
+   * published into that activation ahead of output, per activation, so its
+   * body does not publish them again.
+   */
+  prepublishedModuleImports: Map<Frame, Set<Statement>> | null;
 
   /**
    * [module config] Per module IDENTITY (`loaded.key`) `set` configuration, so a
    * later plain `@compose`/`@use` of the same module inherits it and a conflicting
    * reconfiguration can be rejected (spec R6 Part E §E.2/E-d).
    */
-  moduleConfigs?: Map<string, StyleImportConfig> | null;
+  moduleConfigs: Map<string, StyleImportConfig> | null;
 
   /** A `(multiple)` import makes its transitive imports multiple too. */
   multipleImportDepth: number;
@@ -8998,6 +9023,10 @@ function scratchEmit(e: EvalCtx): Emit {
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] fresh scratch walk; own runaway backstop
     loadedImports: null,
+    moduleActivations: null,
+    composeActivations: null,
+    prepublishedModuleImports: null,
+    moduleConfigs: null,
     multipleImportDepth: 0,
     referenceImportDepth: 0,
     atRuleBodyDepth: 0,
@@ -11330,11 +11359,19 @@ function planImportedFacts(
         return;
       }
       recordAstExtendProfile?.('astExtend.preflight.importsLoaded');
-      if (st.mode === 'compose' && publishFrame !== null && publishRank === null && rank !== null) {
-        (e.composeActivations ??= new Map()).set(
-          st,
-          activateComposeEdge(st, loaded.key, loaded.document.rules, specifier, publishFrame, e, [...rank, at])
-        );
+
+      /*
+       * A compose that is a direct member of a publication frame's body — the
+       * document's, or a module's activated here — activates now and binds its
+       * namespace there (ruling J6c); its own body is then walked as that
+       * activation's, so the facts of the `@import`s directly in it are
+       * published early into the activation as N10 publishes the document's.
+       */
+      const activation = st.mode === 'compose' && publishFrame !== null && publishRank === null && rank !== null
+        ? activateComposeEdge(st, loaded.key, loaded.document.rules, specifier, publishFrame, e, [...rank, at], true)
+        : undefined;
+      if (activation !== undefined) {
+        (e.composeActivations ??= new Map()).set(st, activation);
       }
       if (options === null && !multipleImportDepth && loaded.key !== undefined) {
         if (seen.has(loaded.key)) {
@@ -11371,8 +11408,16 @@ function planImportedFacts(
         if (isThenable(published)) {
           await published;
         }
-        if (publishFrame !== null && claimPrepublishedImportFact(e, st)) {
-          const prepublished = publishImportedDocumentFacts(loaded.document.rules, publishFrame, e, true, publishSite);
+
+        /*
+         * The document's facts are claimed render-wide, so a document reached
+         * twice publishes once. A module activation is its own frame: it claims
+         * the import, and publishes every fact of it, for that frame alone.
+         */
+        const intoDocument = publishFrame === prepublishFrame;
+        if (publishFrame !== null
+          && (intoDocument ? claimPrepublishedImportFact(e, st) : claimModulePrepublishedImport(e, publishFrame, st))) {
+          const prepublished = publishImportedDocumentFacts(loaded.document.rules, publishFrame, e, intoDocument, publishSite);
           if (isThenable(prepublished)) {
             await prepublished;
           }
@@ -11414,8 +11459,8 @@ function planImportedFacts(
           loaded.withinDocument ?? withinDocument,
           multipleImportDepth || importHasOption(options, 'multiple'),
           atRules,
-          isCompose ? null : publishFrame,
-          publishSite,
+          isCompose ? activation?.frame ?? null : publishFrame,
+          isCompose ? null : publishSite,
 
           /* the imported document's own body: an import in it addresses by index */
           []
@@ -11556,6 +11601,10 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false },
     mixinDepth: 0,
     loadedImports: null,
+    moduleActivations: null,
+    composeActivations: null,
+    prepublishedModuleImports: null,
+    moduleConfigs: null,
     multipleImportDepth: 0,
     referenceImportDepth: 0,
     atRuleBodyDepth: 0,
@@ -11647,6 +11696,10 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1, droppedSemi: false }, // [adjacent-merge]
     mixinDepth: 0, // [recursion-backstop] runaway mixin-expansion depth guard
     loadedImports: null,
+    moduleActivations: null,
+    composeActivations: null,
+    prepublishedModuleImports: null,
+    moduleConfigs: null,
     multipleImportDepth: 0,
     referenceImportDepth: 0,
     atRuleBodyDepth: 0,
@@ -18090,30 +18143,22 @@ function publishComposedModule(
   if (namespace === '*') {
     /*
      * `as *`: the module's OWN top-level members merge unqualified into the
-     * importer. Each variable member binds, in both of the importer's stores,
-     * to a read of that member in the activation through the store a
-     * namespace member is read through ({@link memberLookup}), so a scoped and
-     * a live read alike see what `@ns.name` sees: the configured binding, and
-     * after the module has run, its final one (spec R6 §E.1).
+     * importer. Each variable member is a scoped fact, filed at the compose's
+     * position, that reads the member in the activation through the store a
+     * namespace member is read through ({@link memberLookup}), so it sees what
+     * `@ns.name` sees: the configured binding, and after the module has run,
+     * its final one (spec R6 §E.1). The live binding is a write, made when
+     * execution reaches the compose ({@link bindComposedLiveMembers}).
      */
-    const seen = new Set<string>();
+    eachComposedVariableMember(children, (child, index) => {
+      const read = variableReference(child.name, memberLookup(bodyFrame, child.name));
+      const member = variableDeclaration(child.name, read, { mode: 'declare' });
+      publishImportedVariableDeclaration(importerFrame, member, importedFactRank(rank, index));
+      (importerFrame.bindingValueFrames ??= new Map()).set(read, bodyFrame);
+    });
     for (let index = 0; index < children.length; index++) {
       const child = children[index]!;
-      if (child.type === 'VariableDeclaration') {
-        if (seen.has(child.name)) {
-          continue;
-        }
-        seen.add(child.name);
-        const read = variableReference(child.name, memberLookup(bodyFrame, child.name));
-        const member = variableDeclaration(child.name, read, { mode: 'declare' });
-        publishImportedVariableDeclaration(importerFrame, member, importedFactRank(rank, index));
-        (importerFrame.bindingValueFrames ??= new Map()).set(read, bodyFrame);
-        const cells = importerFrame.cells ??= new Map();
-        cells.set(child.name, {
-          declaration: member, value: read, valueFrame: bodyFrame, evaluated: null,
-          prev: liveCellPredecessor(cells, member)
-        });
-      } else if (child.type === 'MixinDefinition') {
+      if (child.type === 'MixinDefinition') {
         publishImportedMixinDefinition(importerFrame, child, true, importedFactRank(rank, index));
       } else if (child.type === 'Ruleset') {
         /*
@@ -18139,6 +18184,42 @@ function publishComposedModule(
   bindDetached(importerFrame, block, bodyFrame, bodyFrame.sourceOwner ?? null);
 }
 
+/** Each variable member a composed module exposes: every name once, at its first top-level declaration. */
+function eachComposedVariableMember(
+  children: readonly Statement[],
+  visit: (declaration: VariableDeclaration, index: number) => void
+): void {
+  const seen = new Set<string>();
+  for (let index = 0; index < children.length; index++) {
+    const child = children[index]!;
+    if (child.type === 'VariableDeclaration' && !seen.has(child.name)) {
+      seen.add(child.name);
+      visit(child, index);
+    }
+  }
+}
+
+/**
+ * The live half of an `as *` compose: write each variable member into the
+ * importer's live store when execution reaches the compose, as a declaration
+ * written there would be (ledger R5: a live `$name` read is execution-ordered).
+ * The scoped half is {@link publishComposedModule}'s, which may run earlier.
+ */
+function bindComposedLiveMembers(node: StyleImport, importerFrame: Frame, bodyFrame: Frame): void {
+  if (node.namespace !== '*') {
+    return;
+  }
+  eachComposedVariableMember(bodyFrame.statements!, (child) => {
+    const read = variableReference(child.name, memberLookup(bodyFrame, child.name));
+    const member = variableDeclaration(child.name, read, { mode: 'declare' });
+    const cells = importerFrame.cells ??= new Map();
+    cells.set(child.name, {
+      declaration: member, value: read, valueFrame: bodyFrame, evaluated: null,
+      prev: liveCellPredecessor(cells, member)
+    });
+  });
+}
+
 /** One `@compose` edge's activation: the frame its module evaluates in, and the identity it renders once under. */
 interface ComposeActivation {
   readonly frame: Frame;
@@ -18158,10 +18239,11 @@ interface ComposeActivation {
  * config, and never conflicts with one. A shared module has ONE activation per
  * identity, which every later edge binds its namespace to.
  *
- * A document-root compose runs this from the import planner, before any output
- * statement, so its namespace is published early like an `@import`'s facts
- * (ledger N10): Less lookups are order-independent, and a read placed before the
- * `@compose` resolves. Any other compose runs it when execution reaches it.
+ * A document-root compose runs this from the import planner (`planned`), before
+ * any output statement, so its namespace is published early like an `@import`'s
+ * facts (ledger N10, ruling J6c): Less lookups are order-independent, and a read
+ * placed before the `@compose` resolves. Any other compose runs it when
+ * execution reaches it.
  */
 function activateComposeEdge(
   node: StyleImport,
@@ -18170,7 +18252,8 @@ function activateComposeEdge(
   specifier: string,
   importerFrame: Frame,
   e: Emit,
-  rank: SourceRank | null
+  rank: SourceRank | null,
+  planned: boolean
 ): ComposeActivation {
   const authoredConfig = node.config ?? null;
   let config = authoredConfig;
@@ -18188,18 +18271,27 @@ function activateComposeEdge(
         /*
          * A shared module renders once, under the configuration of the first
          * edge that loads it. One already loaded without a `set` is already
-         * activated, so a later `set` would be silently ignored.
+         * activated, so a later `set` would be silently ignored (ruling J6a).
          */
         if (e.loadedImports?.has(key) || e.moduleActivations?.has(key)) {
-          throw moduleConfigRejected(
-            node,
-            `Module "${specifier}" was already loaded without configuration; only the first import of a module can configure it with "set".`,
-            specifier
-          );
+          throw alreadyLoadedUnconfigured(node, specifier);
         }
         (e.moduleConfigs ??= new Map()).set(key, authoredConfig);
       }
     } else if (authoredConfig === null && recorded !== null) {
+      /*
+       * The `set` this edge would inherit was recorded ahead of output by a
+       * document-root edge that execution has not reached yet. This edge comes
+       * first in source order, so it loads the module without configuration
+       * and the `set` after it is the one J6(a) rejects.
+       */
+      if (!planned) {
+        for (const edge of e.composeActivations?.keys() ?? []) {
+          if (edge.config === recorded) {
+            throw alreadyLoadedUnconfigured(edge, specifier);
+          }
+        }
+      }
       config = recorded;
     }
   }
@@ -18216,6 +18308,14 @@ function activateComposeEdge(
   }
   publishComposedModule(node, importerFrame, frame, specifier, rank);
   return { frame, emitOnceKey };
+}
+
+function alreadyLoadedUnconfigured(node: StyleImport, specifier: string): JessError {
+  return moduleConfigRejected(
+    node,
+    `Module "${specifier}" was already loaded without configuration; only the first import of a module can configure it with "set".`,
+    specifier
+  );
 }
 
 /**
@@ -18266,7 +18366,9 @@ function expandStyleImport(
          * frame: its own nested `@compose`/`@import` stay local, so `@compose` is
          * non-transitive (unlike the transitively-leaky `@import`). A
          * document-root compose was activated, and its namespace bound, by the
-         * import planner ({@link activateComposeEdge}); any other is activated here.
+         * import planner ({@link activateComposeEdge}); any other is activated
+         * here. Either way an `as *` compose writes its live bindings here, at
+         * its position ({@link bindComposedLiveMembers}).
          *
          * Emit-once dedup keyed on module IDENTITY for SHARED modules — a plain
          * import/compose, an inherited `set`, or an authored `set`. A shared module
@@ -18277,11 +18379,18 @@ function expandStyleImport(
          */
         const children = loaded.document?.rules ?? [];
         const isCompose = node.mode === 'compose';
-        const activation = isCompose
-          ? e.composeActivations?.get(node) ?? activateComposeEdge(
-            node, loaded.key, children, request.specifier, frame, e, importSiteRank(frame, node)
-          )
-          : undefined;
+        let activation: ComposeActivation | undefined;
+        if (isCompose) {
+          activation = e.composeActivations?.get(node);
+          if (activation === undefined) {
+            activation = activateComposeEdge(
+              node, loaded.key, children, request.specifier, frame, e, importSiteRank(frame, node), false
+            );
+          } else {
+            e.composeActivations!.delete(node);
+          }
+          bindComposedLiveMembers(node, frame, activation.frame);
+        }
         const bodyFrame = activation?.frame ?? frame;
         const emitOnceKey = request.options !== null || e.multipleImportDepth !== 0
           ? undefined
@@ -18301,6 +18410,7 @@ function expandStyleImport(
           seen.set(emitOnceKey, isCompose ? bodyFrame : null);
         }
         const publishChildren = isCompose || hasPrepublishedImportFact(e, node)
+          || e.prepublishedModuleImports?.get(frame)?.has(node) === true
           ? undefined
           : publishImportedDocumentFacts(children, frame, e, false, importSiteRank(frame, node));
 

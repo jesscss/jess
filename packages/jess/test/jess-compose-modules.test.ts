@@ -54,6 +54,23 @@ describe('.jess @-compose namespace members', () => {
       .resolves.toBe('.a {\n  x: gold;\n}\n');
   });
 
+  /*
+   * Ledger R5: a live `$x` read is execution-ordered, so an `as *` member is
+   * written into the live store where the compose executes, as a declaration
+   * there would be. Its scoped fact is published ahead of output (ruling J6c),
+   * so a scoped `$^x` read before the compose sees it.
+   */
+  it('writes `as *` members into the live store where the compose executes', async () => {
+    await expect(render('.a { x: $x; }\n@-compose "./m.jess" as *;\n', '$x: 2;\n'))
+      .rejects.toThrow(expect.objectContaining({ code: 'resolve/name-not-found' }));
+    await expect(render('.a { x: $^x; }\n@-compose "./m.jess" as *;\n', '$x: 2;\n'))
+      .resolves.toBe('.a {\n  x: 2;\n}\n');
+    await expect(render('$x: 1;\n@-compose "./m.jess" as *;\n.a { x: $x; y: $^x; }\n', '$x: 2;\n'))
+      .resolves.toBe('.a {\n  x: 2;\n  y: 2;\n}\n');
+    await expect(render('@-compose "./m.jess" as *;\n$x: 1;\n.a { x: $x; y: $^x; }\n', '$x: 2;\n'))
+      .resolves.toBe('.a {\n  x: 1;\n  y: 1;\n}\n');
+  });
+
   it('an `as *` read of a live-written member is the final binding, as through a namespace', async () => {
     await expect(render('@-compose "./m.jess" as *;\n.a { x: $x; }\n', '$x: 1;\n.m { a: $x; }\n$x := 2;\n'))
       .resolves.toBe('.m {\n  a: 1;\n}\n.a {\n  x: 2;\n}\n');
