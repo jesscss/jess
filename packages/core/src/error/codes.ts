@@ -22,6 +22,8 @@ export type JessErrorCode =
   | 'parse/unsupported-variable-name'
   | 'parse/unsupported-mixin-name'
   | 'parse/unparenthesized-mixin-guard'
+  | 'parse/leading-separator-value'
+  | 'parse/uncalled-mixin-reference'
   | 'parse/import-postlude-on-compile-time-import'
   | 'parse/source-import-css-syntax'
   | 'resolve/name-not-found'
@@ -159,6 +161,22 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'Less mixin guard conditions must be parenthesized',
       reason: 'Top-level Less mixin guards require each condition after when to be wrapped in parentheses.',
       fix: 'Wrap the guard condition, for example: when (default()).'
+    }
+  ],
+  [
+    'parse/leading-separator-value',
+    {
+      summary: 'A Less value cannot start with "/"',
+      reason: 'A slash separates two values, so it needs a value before it. A path is a value only inside url() or a string.',
+      fix: 'Write the path as url(/path) or as an escaped string such as ~"/path".'
+    }
+  ],
+  [
+    'parse/uncalled-mixin-reference',
+    {
+      summary: 'A mixin reference is not a value',
+      reason: 'In a value, a mixin reference must be called or looked up; on its own it has no value.',
+      fix: 'Call the mixin, for example .mixin(), or escape the text, for example ~".mixin".'
     }
   ],
   [

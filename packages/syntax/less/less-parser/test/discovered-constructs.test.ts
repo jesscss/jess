@@ -278,7 +278,9 @@ describe('Less constructs discovered outside the parser suites', () => {
  *
  * The rejection is EMERGENT: nothing checks first position. The one division
  * operator in `MathSum` sits between two operands by construction (P34), so a
- * leading slash simply has no production to enter.
+ * leading slash simply has no production to enter. Once every value reading
+ * has failed, the `LeadingSeparatorValue` diagnostic recognizes the shape so
+ * the error sits on the slash (jess#235); it accepts nothing.
  */
 describe('the value slash needs a left operand (P33)', () => {
   it.each([
@@ -286,14 +288,17 @@ describe('the value slash needs a left operand (P33)', () => {
     ['bare number', 'a { p: /1 }'],
     ['spaced from its operand', 'a { p: / 1 }']
   ])('rejects a value whose slash has no left operand (%s)', (_label, source) => {
-    const failure = failureOf(source);
-    expect(failure.message).toBe('Unexpected Less syntax.');
-    expect(failure.offset).toBe(0);
+    expect(failureOf(source)).toMatchObject({
+      code: 'parse/leading-separator-value',
+      offset: source.indexOf('/')
+    });
   });
 
   it('rejects a punctuation-led Less variable value', () => {
-    const failure = failureOf('@p: /img;');
-    expect(failure.offset).toBe(2);
+    expect(failureOf('@p: /img;')).toMatchObject({
+      code: 'parse/leading-separator-value',
+      offset: 4
+    });
   });
 
   /*

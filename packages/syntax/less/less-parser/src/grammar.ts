@@ -32,7 +32,7 @@ import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { any, atRuleBlock, atRuleStatement, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, propertyReference, pseudoSelector, quoted, reference, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorCapture, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, requireLessParseState } from './parse-state.js';
-import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessSourceImportSyntaxError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
+import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 import {
   appendInterpolationLiteral,
   argumentFunctionFromChildren,
@@ -144,6 +144,7 @@ import {
   staticTextWithTriviaGaps,
   valuePieceReducerWithTrivia,
   lessValueSlot,
+  sourceFromState,
   variableNameText,
   variableValueSlot
 } from './grammar-helpers.js';
@@ -1580,9 +1581,42 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       }
     )
   );
+  /*
+   * Two value starts Less does not have (ledger P33: a punctuation-led value is
+   * rejected, in a variable and in a property alike). They are recognized only
+   * so the diagnostic sits on the token that starts them and names the cause.
+   * Each is the last arm of a value position, so valid input never reaches it.
+   *
+   * A leading `/` is a separator with nothing on its left; a comment opener is
+   * trivia and never matches. The rest of the value is read as the permissive
+   * custom-property value — the one place a bare path is a value — so the
+   * statement keeps its extent for recovery.
+   */
+  const LeadingSeparatorValue = node(
+    'LeadingSeparatorValue',
+    sequence(regex(/\/(?![*/])/), g.CustomValue),
+    (_children, _fields, span) => {
+      throw new LessLeadingSeparatorValueError(span.start, span.end);
+    }
+  );
+  /*
+   * A mixin reference that is neither called nor looked up (jess#236). The
+   * called and looked-up forms are value arms ahead of this one. A `#` run of
+   * hex digits is a mistyped colour (`#fffff`), not a reference, so it keeps
+   * the ordinary value failure.
+   */
+  const UncalledMixinReference = node(
+    'UncalledMixinReference',
+    sequence(not(regex(/#[0-9a-fA-F]+(?![-_a-zA-Z0-9\u0080-￿\\])/)), mixinName, many(MixinPathTail)),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => {
+      const name = sourceFromState(state)?.slice(span.start, span.end) ?? requireToken(children[0]).value;
+      throw new LessUncalledMixinReferenceError(span.start, span.end, name);
+    }
+  );
+  const rejectedValueStart = choice(LeadingSeparatorValue, UncalledMixinReference);
   const VarDeclaration = node(
     'VariableDeclaration',
-    sequence(variableName, literal(':'), choice(sequence(g.NamespacedMixinValue, mixinValueWithoutLookup), g.ImportantValue, sequence(g.FlatMixinCall, mixinValueWithoutLookup), sequence(not(literal('{')), g.VariableValue)), declarationEnd),
+    sequence(variableName, literal(':'), choice(sequence(g.NamespacedMixinValue, mixinValueWithoutLookup), g.ImportantValue, sequence(g.FlatMixinCall, mixinValueWithoutLookup), sequence(not(literal('{')), g.VariableValue), rejectedValueStart), declarationEnd),
     (children, _fields, span) => {
       const name = requireTerminalText(children[0]).slice(1);
       const value = children[2];
@@ -2609,7 +2643,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         // Less accepts an explicit empty declaration value (`margin: ;`). Keep
         // it as a canonical empty opaque value rather than dropping the
         // declaration or falling back to a second parser.
-        optional(g.ValueListWithPriority)
+        optional(choice(g.ValueListWithPriority, rejectedValueStart))
       ))
     )),
     (children, fields, span) => {

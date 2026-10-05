@@ -273,14 +273,13 @@ describe('Less parser errors through the public AST route', () => {
     expect(valid.errors).toEqual([]);
   });
 
-  it('summarizes selector-context parser failures without leaking atom internals', async () => {
+  it('reports an uncalled mixin alias on its reference without leaking atom internals', async () => {
     /*
-     * The failure lands on the `:` at line 6, column 9. Under correct 0.48.1
-     * narrowing the deepest frame is a rule/selector position (a block,
-     * combinator, class/id selector, or mixin call could continue), NOT a value
-     * position — it only looked like one while the 0.46.0 OP_CHOICE union bug
-     * widened the expected set into the value-atom signature. The clean summary
-     * must name that frame in prose and never print the raw selector regex.
+     * `@alias: .theme;` (the tests-error namespacing-3 shape) used to fail on
+     * the `:` at line 6, column 9, summarized as a selector/mixin-call/block
+     * frame. A punctuation-led value is rejected (ledger P33), and the
+     * diagnostic now sits on `.theme` and names it (jess#236). The no-leak
+     * requirement below is unchanged.
      */
     const source = [
       '.theme() {',
@@ -299,13 +298,14 @@ describe('Less parser errors through the public AST route', () => {
 
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]).toMatchObject({
-      code: 'parse/syntax-error',
+      code: 'parse/uncalled-mixin-reference',
       phase: 'parse',
-      message: 'Expected a selector, mixin call, or block.',
-      reason: 'Less expected a selector, mixin call, or block to continue here, but this token starts none of them.',
-      fix: 'Continue the selector, call a mixin, or open a block with \'{\'.',
+      message: 'A mixin reference is not a value.',
+      fix: 'Call it as .theme() to use its result, or write ~".theme" to keep it as text.',
       line: 6,
-      column: 9,
+      column: 11,
+      endLine: 6,
+      endColumn: 17,
       file: { source }
     });
 
@@ -447,6 +447,31 @@ describe('Less parser errors through the public AST route', () => {
     });
     expect(result.errors[0]?.message).not.toContain('Expected:');
     expect(result.errors[0]?.reason).not.toContain('";"');
+  });
+
+  it('reports a slash-led variable value on the slash, naming the cause (jess#235)', async () => {
+    /*
+     * The value stays rejected (ledger P33: a slash separates two values). The
+     * diagnostic used to land on the `:` with a generic message.
+     */
+    const source = '@p: /img/icon.svg;\n.x { u: @p; }';
+    const result = await new Compiler().renderToResult(
+      { source, filePath: 'entry.less', extension: '.less' },
+      { breakOnError: false }
+    );
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({
+      code: 'parse/leading-separator-value',
+      phase: 'parse',
+      message: 'A Less value cannot start with "/".',
+      fix: 'Write the path as url(/path) or as an escaped string such as ~"/path".',
+      line: 1,
+      column: 5,
+      endLine: 1,
+      endColumn: 18,
+      file: { source }
+    });
   });
 
   it('reports a root-level leading combinator at its own site, not a later construct', async () => {

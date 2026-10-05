@@ -20,8 +20,10 @@ export {
   LessDynamicCharsetError,
   LessImportPostludeError,
   LessInlineJavaScriptError,
+  LessLeadingSeparatorValueError,
   LessParseError,
   LessSourceImportSyntaxError,
+  LessUncalledMixinReferenceError,
   LessUnparenthesizedMixinGuardError,
   LessUnsupportedMixinNameError,
   LessUnsupportedVariableNameError

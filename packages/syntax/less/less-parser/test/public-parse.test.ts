@@ -444,7 +444,7 @@ describe('public Less parse()', () => {
 
   it('keeps direct parse error messages free of raw Parseman expected tokens', () => {
     const source =
-      '.theme(){foo:bar;} .val { @alias: .theme; foo: @alias[foo]; }';
+      '.theme(){foo:bar;} .val { @alias: ~; foo: @alias[foo]; }';
     let thrown: unknown;
 
     try {
@@ -459,15 +459,11 @@ describe('public Less parse()', () => {
     }
 
     /*
-     * The failure lands on the `:` in `@alias:`. Under parseman 0.48.1's honest
-     * narrowing the deepest frame is a rule/selector position — a block,
-     * combinator, class/id selector, or mixin call could continue — not a value
-     * position; it only reported "Expected a Less value" while the 0.46.0
-     * OP_CHOICE union bug widened the expected set into the value-atom
-     * signature. The direct-parse message summary has no selector-context
-     * branch, so it falls to the bare-generic form. That is clean (the point of
-     * this test); a nicer selector summary lives on the core-classifier path and
-     * is a consistency follow-up, not a regression.
+     * The failure lands on the `:` in `@alias:`, and its expected set mixes the
+     * selector-context and value-atom facts. The direct-parse message summary
+     * names neither, so it falls to the bare-generic form. That is clean (the
+     * point of this test). `@alias: .theme;` used to be the input here; it now
+     * reports its own uncalled-mixin-reference diagnostic (jess#236).
      */
     expect(thrown.message).toBe(
       'Unexpected Less syntax. Expected valid Less syntax here.'
