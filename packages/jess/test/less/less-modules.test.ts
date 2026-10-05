@@ -86,6 +86,27 @@ describe('Less @use script and data modules', () => {
     const { errors } = await render('@use "./fns.js";\n.a { v: @fns.nope(1); }', functions);
     expect(errors).toEqual(['Symbol "nope" is undefined in this scope.']);
   });
+
+  /* A namespaced call is never CSS, so a throwing function cannot be written out as-is (jess#280). */
+  it('reports a function that throws instead of writing the namespaced call out', async () => {
+    const files: SourceFile[] = [['fns.js', 'export const boom = () => { throw new Error("kaboom"); };\n']];
+    const { css, errors } = await render('@use "./fns.js";\n.a { v: @fns.boom(1); }', files);
+    expect(css).toBe('');
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('kaboom');
+  });
+
+  /*
+   * NaN has no CSS spelling, and the script runtime's JSON transport turns it
+   * into `null`, which silently dropped the declaration.
+   */
+  it.each(['NaN', 'Infinity'])('reports a function that returns %s', async (result) => {
+    const files: SourceFile[] = [['fns.js', `export const bad = () => ${result};\n`]];
+    const { css, errors } = await render('@use "./fns.js";\n.a { v: @fns.bad(1); w: 1; }', files);
+    expect(css).toBe('');
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain(result);
+  });
 });
 
 describe('Less @compose stylesheet modules', () => {
