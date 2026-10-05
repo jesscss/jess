@@ -1583,9 +1583,17 @@ describe('public Less parse()', () => {
       '@import url(theme.css);\n.asset {\n  image: url(icons/path.svg);\n  template: url(theme/icon.svg);\n}\n@media screen {\n  .media {\n    color: red;\n  }\n}\n@supports (display: grid) {\n  .supports {\n    display: grid;\n  }\n}\n@keyframes fade {\n  from {\n    opacity: 0;\n  }\n}\n'
     );
 
+    /*
+     * `@container @a` is the bare-variable diagnostic, and its advice is
+     * `@{a}`, so the interpolated container name parses as a static one does
+     * (jess#319).
+     */
+    expect(
+      serialize(parse('@query: card; @container @{query} { .c { color: red; } }'), { evaluator: buildEvaluator(makeLessRegistry()) }).css
+    ).toBe('@container card {\n  .c {\n    color: red;\n  }\n}\n');
+
     for (const invalid of [
       '@media @{query} screen { .media { color: red; } }',
-      '@container @{query} { .media { color: red; } }',
       '@custom @{query} { .media { color: red; } }',
       '@custom foo@{query} { .media { color: red; } }',
       '@custom foo @{query} { .media { color: red; } }',

@@ -1231,9 +1231,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return list(options, ',');
     }
   );
+  /*
+   * Inside a `layer(…)`/`supports(…)` group a variable interpolates as
+   * `@{name}`, as in any at-rule prelude; a bare `@name` is the prelude
+   * diagnostic, whose advice therefore parses here (jess#319). Outside a group
+   * the tail is a media-query list or one complete `@{…}`.
+   */
   const ImportTailParen = noTrivia(sequence(
     literal('('),
-    many(choice(staticTailText, g.Quoted, g.ImportTailGroup)),
+    many(choice(staticTailText, g.Quoted, g.ImportTailGroup, g.VariableInterpolation, g.BareVariableInterpolation)),
     literal(')')
   ));
   const ImportTailGroup = g.ImportTailParen;
@@ -1274,7 +1280,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.AtRuleInterpolation,
       g.ImportTailText
     ),
-    children => children.length === 1 ? children[0] : children
+    (children) => {
+      if (!children.some(isInterpolationFact)) {
+        return children.length === 1 ? children[0] : children;
+      }
+      // Text with `@{…}` in it is one typed interpolation, literal runs and refs.
+      return enclosedInterpolationFromChildren(children.map(child => isInterpolationFact(child) ? child : staticText(child)));
+    }
   );
   /**
    * There are TWO import nodes and this reducer picks between them. A plain CSS
@@ -1429,7 +1441,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           // typed `ImportTail` split (media-query vs supports/layer), the same
           // gap the tail comment above records; then this branches on `.type`.
           // Structured (Block / `@{…}`) tails are `isValueNode` and bypass this.
-          const tailText = isAny(tail) ? tail.src.toLowerCase() : '';
+          const tailText = isAny(tail)
+            ? tail.src.toLowerCase()
+            : isInterp(tail) ? tail.parts.map(part => 'lit' in part ? part.lit : '').join('').toLowerCase() : '';
           const tailHasSupportsOrLayer = tailText.includes('supports') || tailText.includes('layer');
           if (!isLegacyImport || tailHasSupportsOrLayer) {
             throw new LessImportPostludeError(span.start, span.end);
@@ -3907,11 +3921,20 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   /*
    * As in an `@supports` prelude, a bare `@variable` is a diagnostic here: a
-   * supports condition interpolates as `@{a}`.
+   * supports condition interpolates as `@{a}`. Contents that open with `@{`
+   * are read as the general-enclosed content an `@supports (@{a}: b)` group
+   * is read as, so the advised spelling parses here too (jess#319).
    */
   const SupportsTest = node(
     'Call',
-    sequence(routed(), choice(g.BareVariableInterpolation, g.SupportsTestBody)),
+    sequence(
+      routed(),
+      choice(
+        g.BareVariableInterpolation,
+        sequence(peek(literal('@{')), g.EnclosedContent, literal(')')),
+        g.SupportsTestBody
+      )
+    ),
     children => ifTestCall(children)
   );
   const StyleTest = node(
@@ -3994,9 +4017,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     choice(
       g.BareVariableInterpolation,
       g.ContainerCondition,
+      // An interpolated name, alone or before a condition, as a static name is.
       sequence(
         g.AtRuleInterpolation,
-        g.ContainerCondition
+        optional(g.ContainerCondition)
       ),
       sequence(
         g.ContainerName,
