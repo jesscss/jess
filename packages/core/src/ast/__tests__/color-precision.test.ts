@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { HEX, HSL, RGB, serializeColor } from '../color.js';
 import type { Color } from '../value-eval.js';
-import { makeColorHsl } from '../value-factory.js';
+import { makeColorHsl, makeColorRgb } from '../value-factory.js';
 
 /**
  * Ruling V4 (numeric emit) + V5 (colour quantized at the OUTPUT boundary only) over
@@ -14,12 +14,9 @@ import { makeColorHsl } from '../value-factory.js';
  * failure mode V4 names explicitly and the reason it is a relative tolerance instead.
  */
 describe('colour emit obeys the output number policy', () => {
-  const rgbPct = (pct: number): Color =>
-    ({ type: 'Color', rgb: [0, 0, 0], alpha: 1, format: RGB, rgbPct: [pct, 0, 0], bytes: '' }) as Color;
-  const alphaPct = (pct: number): Color =>
-    ({ type: 'Color', rgb: [1, 2, 3], alpha: 0.5, format: RGB, alphaPct: pct, bytes: '' }) as Color;
-  const hsl = (h: number, s: number, l: number): Color =>
-    ({ type: 'Color', rgb: [0, 0, 0], alpha: 1, format: HSL, hsl: [h, s, l], bytes: '' }) as Color;
+  const rgbPct = (pct: number): Color => makeColorRgb([0, 0, 0], 1, RGB, { rgbPct: [pct, 0, 0] });
+  const alphaPct = (pct: number): Color => makeColorRgb([1, 2, 3], 0.5, RGB, { alphaPct: pct });
+  const hsl = (h: number, s: number, l: number): Color => makeColorHsl([h, s, l], 1, HSL);
 
   it('never annihilates a small magnitude to zero (the 8-dp floor did)', () => {
     expect(serializeColor(rgbPct(2e-9))).toBe('rgb(0.000000002%, 0%, 0%)');
