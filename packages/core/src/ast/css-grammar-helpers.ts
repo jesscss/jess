@@ -216,11 +216,11 @@ export function semicolonGroupedCall(children: readonly unknown[]): FunctionCall
   const { segments, separators, commas, branches } = splitArguments(children, 1, children.length - 1);
   if (segments.length === 1) {
     const args = segments[0]!;
-    const branchList = withFirstBranchCondition(args);
+    const branchList = args.length === 2 ? withFirstBranchCondition(args[0]!, args[1]!) : undefined;
     if (branchList !== undefined) {
       return funcCall(name, [branchList]);
     }
-    return funcCall(name, withLayoutWhenComplete([...args], commas[0]!, Math.max(0, args.length - 1)));
+    return funcCall(name, withLayoutWhenComplete(args, commas[0]!, Math.max(0, args.length - 1)));
   }
   const groups = semicolonGroups(segments, commas, branches);
   return funcCall(name, [withLayoutWhenComplete(list(groups, ';'), separators, groups.length - 1)]);
@@ -278,16 +278,12 @@ function isOpenBranch(value: ValueSlot | undefined): value is Branch {
 
 /**
  * Give a branch list its first condition. A call body left-factored on its
- * first argument reduces to `[condition, rest]`, where `rest` is a
- * {@link branchRest} result; this returns the one branch-list argument, or
- * `undefined` when the arguments are not that shape. A parsed condition is never
+ * first argument reduces to the two arguments `condition, rest`, where `rest`
+ * is a {@link branchRest} result; this returns the one branch-list argument,
+ * or `undefined` when they are not that shape. A parsed condition is never
  * empty, so an empty one only ever marks the branch awaiting it.
  */
-export function withFirstBranchCondition(args: readonly ValueSlot[]): ValueSlot | undefined {
-  const [condition, rest] = args;
-  if (args.length !== 2 || condition === undefined || rest === undefined) {
-    return undefined;
-  }
+export function withFirstBranchCondition(condition: ValueSlot, rest: ValueSlot): ValueSlot | undefined {
   if (isOpenBranch(rest)) {
     return branch(condition, rest.value);
   }
@@ -473,14 +469,13 @@ export function withTriviaGaps(children: readonly unknown[], triviaLog: readonly
   if (triviaLog.length === 0) {
     return children;
   }
-  const gapBefore = new Set<number>();
-  for (let index = 2; index < triviaLog.length; index += CSS_NODE_TRIVIA_STRIDE) {
-    gapBefore.add(triviaLog[index] ?? 0);
-  }
   const gapped: unknown[] = [];
+  let entry = 2;
   for (let index = 0; index <= children.length; index++) {
-    if (gapBefore.has(index)) {
+    entry = skipGapAt(triviaLog, entry, index);
+    if (entry < 0) {
       gapped.push(' ');
+      entry = -entry;
     }
     if (index < children.length) {
       gapped.push(children[index]);
@@ -489,8 +484,40 @@ export function withTriviaGaps(children: readonly unknown[], triviaLog: readonly
   return gapped;
 }
 
+/**
+ * The trivia log's insertion indices only grow, so the gaps are read with one
+ * cursor: past every entry at `index`, negated when there was one.
+ */
+function skipGapAt(triviaLog: readonly number[], entry: number, index: number): number {
+  if (entry >= triviaLog.length || triviaLog[entry] !== index) {
+    return entry;
+  }
+  let next = entry;
+  while (next < triviaLog.length && triviaLog[next] === index) {
+    next += CSS_NODE_TRIVIA_STRIDE;
+  }
+  return -next;
+}
+
+/** {@link withTriviaGaps} as the joined source text, without the gapped array. */
+function textWithTriviaGaps(children: readonly unknown[], triviaLog: readonly number[]): string {
+  let text = '';
+  let entry = 2;
+  for (let index = 0; index <= children.length; index++) {
+    entry = skipGapAt(triviaLog, entry, index);
+    if (entry < 0) {
+      text += ' ';
+      entry = -entry;
+    }
+    if (index < children.length) {
+      text += sourceText(children[index]);
+    }
+  }
+  return text;
+}
+
 export function semanticTextWithTriviaGaps(children: readonly unknown[], triviaLog: readonly number[]): string {
-  return semanticGapText(withTriviaGaps(children, triviaLog).map(sourceText).join(''));
+  return semanticGapText(textWithTriviaGaps(children, triviaLog));
 }
 
 /**
@@ -501,14 +528,13 @@ export function semanticTextWithTriviaGaps(children: readonly unknown[], triviaL
  * value from its flag only where trivia does, so no space is ever invented.
  */
 export function attributeSelectorFrom(children: readonly unknown[], triviaLog: readonly number[]): SimpleSelector {
-  const parts = withTriviaGaps(children, triviaLog);
   if (!children.some(isInterpolation)) {
-    return simpleSelector(parts.map(sourceText).join(''));
+    return simpleSelector(textWithTriviaGaps(children, triviaLog));
   }
 
   // A dialect's interpolating slot (SCSS `#{…}`): the rest stays literal text.
   return interpolatedSimpleSelector(interpolationFromTemplateChildren(
-    parts.map(part => isInterpolation(part) ? part : { value: sourceText(part) }),
+    withTriviaGaps(children, triviaLog).map(part => isInterpolation(part) ? part : { value: sourceText(part) }),
     'CSS'
   ));
 }
@@ -782,12 +808,18 @@ export function queryFeatureContents(children: readonly unknown[], span: AstSour
  * — records its source bytes, so the emitter prints it as written.
  */
 export function queryFeatureBlock(children: readonly unknown[], span: AstSourceSpan, state: unknown): ValueNode {
-  const contents = children.filter(child => !isTerminalText(child) || (tokenText(child) !== '(' && tokenText(child) !== ')'));
+  let count = 0;
+  let only: unknown;
+  for (const child of children) {
+    if (!isTerminalText(child) || (tokenText(child) !== '(' && tokenText(child) !== ')')) {
+      count++;
+      only = child;
+    }
+  }
   const group = block(generalEnclosedArgument(children) ?? []);
-  const only = contents[0];
 
   /* Only the group whose own contents are general-enclosed; a group around a marked group is a condition. */
-  const isQuery = contents.length === 1 && isValue(only) && (generalEnclosedSourceOf(only) === undefined || only.type === 'Block');
+  const isQuery = count === 1 && isValue(only) && (generalEnclosedSourceOf(only) === undefined || only.type === 'Block');
   return isQuery ? group : withAuthoredGeneralEnclosed(group, span, state);
 }
 

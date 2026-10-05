@@ -1382,7 +1382,7 @@ function functionCallFromChildren(
   /* [P38] `[condition, BranchRest]` is one branch-list argument. */
   const [condition, rest] = args;
   if (args.length === 2 && condition !== undefined && rest !== undefined && !isLessCallArg(rest)) {
-    const branches = withFirstBranchCondition([isLessCallArg(condition) ? [] : condition, rest]);
+    const branches = withFirstBranchCondition(isLessCallArg(condition) ? [] : condition, rest);
     if (branches !== undefined) {
       if (isLessCallArg(condition)) {
         throw new SyntaxError('A keyword argument cannot be a branch condition.');

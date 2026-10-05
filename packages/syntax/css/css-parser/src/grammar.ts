@@ -2665,17 +2665,7 @@ const cssFactory = (g: GrammarSelf) => {
         g.ValueTerm
       ))
     )),
-    (children, fields) => {
-      const values = valueSlotChildren(children);
-      if (values.length === 1) {
-        return values[0]!;
-      }
-      return withAuthoredSeparators(
-        values,
-        fields,
-        values.length - 1
-      );
-    }
+    (children, fields) => spaceRun(children, fields)
   );
 
   /*
