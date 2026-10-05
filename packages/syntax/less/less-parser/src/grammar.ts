@@ -3353,7 +3353,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const ValueBlock = node(
     'ValueBlock',
     sequence(literal('{'), many(g.BodyStatement), optional(g.Call), literal('}')),
-    (children, _fields, _span, rawChildren) => withBlockBody(classifyValueBlock(requireValueBlockBody(children)), rawChildren)
+    /* The braces are the node's first and last tokens, so its own span gives the
+     * body span (where its comments are) with no raw-children capture. */
+    (children, _fields, span) => withBodySpan(
+      classifyValueBlock(requireValueBlockBody(children)),
+      { start: span.start + 1, end: span.end - 1 }
+    )
   );
   const CallArgumentValue = node(
     'CallArgumentValue',
