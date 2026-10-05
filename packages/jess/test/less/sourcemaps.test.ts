@@ -218,6 +218,7 @@ describe('Less source-map fixtures', () => {
         const goldenCss = readFileSync(golden, 'utf8');
         if (fixture.annotationUnresolved) {
           expect(result.css.replace(ANNOTATION, '')).toBe(goldenCss.replace(ANNOTATION, ''));
+          expect(ANNOTATION.exec(goldenCss)?.[1], 'golden annotation now matches: drop annotationUnresolved').not.toBe(annotation?.[1]);
         } else {
           expect(result.css).toBe(goldenCss);
         }
