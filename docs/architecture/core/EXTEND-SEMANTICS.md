@@ -263,6 +263,26 @@ counts like any other. The zero-extend fast-reject is per import GRAPH, never pe
 document: a graph with no extend plans nothing (jess#349). Interpolated selectors are
 covered by §10.
 
+A rule a mixin call or loop body places — or an `@import` inside a ruleset, which runs
+as that ruleset's body (`.wrap { @import "t.less"; }` → `.wrap .sm`) — extends and is
+extended where it lands: as its selector composed under the rules it is placed in, in
+the `@media` scope it is placed in (§8), once per placement:
+
+```less
+.m() { .p { &.q, &.r { a: 1; } } }
+.m();
+.x:extend(.p.q) {}
+// → .p.q, .p.r, .x { a: 1; }
+```
+
+An interpolated selector in such a body is held as its composed text, so a compound
+target cannot meet it part by part.
+
+Extend across `@compose` follows Sass module semantics (ledger X14): the composing
+sheet's extend reaches the composed module's rules, and a module's extend reaches only
+the module and what it composes — never the composing sheet's rules
+(`extend-cross-import.test.ts`).
+
 ## 7. Nested / ruleset-scoped extends
 
 Extend matches nested (compiled) selectors and can be authored from any nesting
@@ -379,6 +399,9 @@ scope. So `@media print { .x:extend(.sm) {} }` in one imported sheet does not re
 top-level `.sm` in another, while `@media print { @import "t.less"; .x:extend(.sm) {} }`
 extends the imported `.sm` (`extend-cross-import.test.ts`).
 
+A mixin call is placed the same way: `@media print { .m(); }` puts the rules and extends
+of `.m()`'s body in the `print` scope, wherever `.m()` is defined.
+
 ## 9. Compound / complex / combinator targets
 
 The target can be a compound, a complex selector, or carry combinators, and each
@@ -433,6 +456,12 @@ EXTENDER's selector only — the referenced target header never surfaces on its 
 // `.target` never appears in output
 ```
 
+Hiding follows the import placement, not the rule: a sheet imported both plainly and as
+`(reference)` keeps its plain copy's own selector, and a reference sheet's rule called as
+a mixin from outside the import renders as normal. A hidden rule an extend recorded by
+the render walk (in a mixin or loop body) may still reveal renders as a reserved block
+that the deferred fold rewrites to the extender, or blanks.
+
 ---
 
 ## 12. OPEN / needs owner confirmation
@@ -476,9 +505,7 @@ a fixture. These are the owner questions:
 5. **Cross-`@import` extend routing (ledger X9).** No longer eval-routed: the import
    planner records each imported sheet's statically-placed rules and extends from
    their selector shapes (`planImportedStaticExtend`), and the one render walk records
-   loop/mixin-body placements (§1a). What stays open is whether extend crosses
-   `@compose`: today a composed module's emitted rules are targets like any other
-   (pinned in `extend-cross-import.test.ts`), with no ruling behind it.
+   loop/mixin-body placements (§1a). Extend across `@compose` follows ledger X14 (§6).
 
 6. **`div.ext5` / duplicated-extender dedup.** `extend.md` "Duplication
    Detection" notes Less 4.x has NONE (`.alert:extend(.alert-info, .widget)`
