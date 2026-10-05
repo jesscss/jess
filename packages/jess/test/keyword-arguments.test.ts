@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Compiler } from '../src/index.js';
 
 /**
@@ -41,6 +44,50 @@ describe('keyword arguments in a function call', () => {
   it('mixes positional and keyword arguments, positional filling the unclaimed slots', async () => {
     await expect(render('@function f($x, $y) { @return $x $y; } a { b: f(1, $y: 2); }', '.scss'))
       .resolves.toBe('a {\n  b: 1 2;\n}\n');
+  });
+
+  /* jess#279: a call written out as-is is written as the author wrote it. */
+  it('keeps the keywords of a call to an unknown function', async () => {
+    await expect(render('a { b: foo(@x: 1, 2); }', '.less'))
+      .resolves.toBe('a {\n  b: foo(@x: 1, 2);\n}\n');
+    await expect(render('a { b: foo($x: 1, 2); }', '.scss'))
+      .resolves.toBe('a {\n  b: foo($x: 1, 2);\n}\n');
+  });
+
+  it('keeps the keywords, in authored order, of a built-in call that could not produce a value', async () => {
+    await expect(render('a { b: darken(@amount: 10%, @color: rgb(10 20 30)); }', '.less'))
+      .resolves.toBe('a {\n  b: darken(@amount: 10%, @color: rgb(10 20 30));\n}\n');
+  });
+
+  /*
+   * Ledger P23: every writer of a call written out as-is spells it the same way,
+   * so the bytes do not depend on which path reached the writer. A call nested
+   * in a deferred CSS call takes the byte lane, not the evaluator's fallback.
+   */
+  it('keeps the keywords of a call written out inside a deferred CSS call', async () => {
+    await expect(render('a { c: rgb(foo(@b: 2, @a: 1), 2, 3); }', '.less'))
+      .resolves.toBe('a {\n  c: rgb(foo(@b: 2, @a: 1), 2, 3);\n}\n');
+    await expect(render('a { b: linear-gradient(to right, fade(@amount: 50%, @color: red), blue); }', '.less'))
+      .resolves.toBe('a {\n  b: linear-gradient(to right, fade(@amount: 50%, @color: red), blue);\n}\n');
+  });
+
+  it('tightens a written keyword under compress as it does the commas', async () => {
+    await expect(new Compiler({ compile: { collapseNesting: true }, output: { compress: true } })
+      .renderString('a { b: foo(@x: 1, 2); }', { filePath: 'keyword-arguments.less', extension: '.less' }))
+      .resolves.toBe('a{b:foo(@x:1,2)}');
+  });
+
+  /*
+   * The keyword is spelled as the PARSER recorded it, not by the dialect of
+   * whichever document reads the value: a Less call read from `.jess` is
+   * still `@y`.
+   */
+  it('spells a keyword in the dialect the call was written in', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'jess-keyword-dialect-'));
+    writeFileSync(join(dir, 'kw.less'), '@v: foo(@y: 1);\n');
+    writeFileSync(join(dir, 'entry.jess'), '@-import "./kw.less";\n.y { c: $v; }\n');
+    await expect(new Compiler({ compile: { collapseNesting: true } }).render(join(dir, 'entry.jess')))
+      .resolves.toBe('.y {\n  c: foo(@y: 1);\n}\n');
   });
 
   it('parses the Sass module-call spelling that blocked the Foundation corpus', async () => {

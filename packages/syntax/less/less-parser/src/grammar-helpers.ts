@@ -1828,7 +1828,7 @@ function mixinCallArgumentFromInterior(item: MixinInteriorItem): MixinCallArgume
     }
     return item.default === undefined
       ? callArg(item.reference)
-      : callArg(item.default, item.reference.name);
+      : callArg(item.default, item.reference.name, false, '@');
   }
   return callArg(item.value);
 }

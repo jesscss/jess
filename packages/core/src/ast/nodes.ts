@@ -448,8 +448,12 @@ export interface Interpolation extends SpanSlots {
  * user `@function f($n) { @return … }`. The field is OMITTED for the plain,
  * parameterless block so that shape stays monomorphic. A call binds args→params
  * (positional/named/default) and yields the value of the rules' `result:` entry.
+ *
+ * Its body span (the source inside its braces) is where its comments live: they
+ * are trivia, so a block written out away from its own position — called, or
+ * passed to a function — replays them from that span.
  */
-export interface AnonymousMixin {
+export interface AnonymousMixin extends BodySpanSlots {
   readonly type: 'AnonymousMixin';
   readonly rules: Statement[];
   readonly params?: Param[];
@@ -648,6 +652,15 @@ export interface CallArg<V extends CallValue = CallValue> {
   /** `[spread]` Less `@args...` — `value` is a list variable to SPLAT into
    *  positional args at the call site before binding. */
   readonly spread: boolean;
+
+  /**
+   * The sigil the keyword was written with — `@` in Less, `$` in Sass and
+   * `.jess` — recorded by the parser, or `undefined` for a positional argument.
+   * `name` is the binding name; this is the rest of the AUTHORED spelling, so a
+   * call written out as-is spells its keywords as written (ledger P23) without
+   * core ever asking which dialect a node came from.
+   */
+  readonly sigil: string | undefined;
 }
 
 /* ---------------------------------------------------------------- selectors */
@@ -1538,7 +1551,9 @@ export const pseudoSelector = (
 ): PseudoSelector => ({ type: 'PseudoSelector', text: args !== null ? null : text, interp, name, args, crossable: crossable(name), _s: NO_SPAN, _e: NO_SPAN });
 export const interpolation = (parts: InterpPart[]): Interpolation => ({ type: 'Interpolation', parts, _s: NO_SPAN, _e: NO_SPAN });
 export const anonymousMixin = (rules: Statement[], params?: Param[]): AnonymousMixin =>
-  params === undefined ? { type: 'AnonymousMixin', rules } : { type: 'AnonymousMixin', rules, params };
+  params === undefined
+    ? { type: 'AnonymousMixin', rules, _bs: NO_SPAN, _be: NO_SPAN }
+    : { type: 'AnonymousMixin', rules, params, _bs: NO_SPAN, _be: NO_SPAN };
 
 /** Less-style `{ … }` blocks are executable anonymous mixins. Jess and Sass
  * data collections are constructed by their dedicated collection grammars. */
@@ -1714,8 +1729,8 @@ export const operation = (
  * single hidden class — a caller that "omits" a name passes `undefined`, it does
  * not omit the property.
  */
-export const callArg = <V extends CallValue>(value: V, name?: string, spread = false): CallArg<V> =>
-  ({ value, name, spread });
+export const callArg = <V extends CallValue>(value: V, name?: string, spread = false, sigil?: string): CallArg<V> =>
+  ({ value, name, spread, sigil });
 
 /** Normalize a mixed authored-argument array to {@link CallArg}s. A bare value
  *  slot (node OR nested array) is positional; an already-built `CallArg` passes

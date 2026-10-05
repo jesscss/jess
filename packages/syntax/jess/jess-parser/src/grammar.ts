@@ -994,7 +994,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       const name = named
         ? children.find((child): child is Token => isToken(child) && child.value !== '$' && child.value !== ':')
         : undefined;
-      return callArg(fact.value, name?.value);
+      return callArg(fact.value, name?.value, false, name === undefined ? undefined : '$');
     }
   );
   const ExpressionReferenceCallTail = node<JessReferenceTail>(
@@ -5027,7 +5027,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       const name = named
         ? children.find((child): child is Token => isToken(child) && child.value !== '$' && child.value !== ':')
         : undefined;
-      return callArg(value, name?.value);
+      return callArg(value, name?.value, false, name === undefined ? undefined : '$');
     }
   );
 

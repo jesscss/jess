@@ -172,7 +172,27 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
         '.show > .btn-warning.dropdown-toggle',
         '.btn-light:hover',
         '.show > .btn-light.dropdown-toggle'
-      ].map((selector): readonly [string, string] => [`${selector} {\n  color: #fff;`, `${selector} {\n  color: #212529;`])
+      ].map((selector): readonly [string, string] => [`${selector} {\n  color: #fff;`, `${selector} {\n  color: #212529;`]),
+
+      /*
+       * The golden encodes a fixed composition bug: a child of a nested
+       * multi-branch `&`-less rule kept only the first parent branch, dropping
+       * `.btn-group-toggle > .btn-group > .btn input[…]` and six
+       * `.input-group > … + …` selectors. Proposed golden: less.js branch
+       * lane/v5-eval-serialize-goldens.
+       */
+      [
+        '.btn-group-toggle > .btn input[type="radio"],\n.btn-group-toggle > .btn input[type="checkbox"] {',
+        ':is(.btn-group-toggle > .btn, .btn-group-toggle > .btn-group > .btn) input[type="radio"],\n:is(.btn-group-toggle > .btn, .btn-group-toggle > .btn-group > .btn) input[type="checkbox"] {'
+      ],
+      [
+        '.input-group > .form-control + .form-control,\n.input-group > .form-control + .custom-select,\n.input-group > .form-control + .custom-file {',
+        [
+          ':is(.input-group > .form-control, .input-group > .custom-select, .input-group > .custom-file) + .form-control,',
+          ':is(.input-group > .form-control, .input-group > .custom-select, .input-group > .custom-file) + .custom-select,',
+          ':is(.input-group > .form-control, .input-group > .custom-select, .input-group > .custom-file) + .custom-file {'
+        ].join('\n')
+      ]
     ]
   ]
 ]);

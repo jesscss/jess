@@ -1860,7 +1860,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       if (value === undefined) {
         throw new TypeError('Less function keyword argument lost its value.');
       }
-      return callArg(value, staticText(requireField(fields, 'key').value).slice(1));
+      return callArg(value, staticText(requireField(fields, 'key').value).slice(1), false, '@');
     }
   );
   const FunctionArgument = node(
@@ -2746,7 +2746,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       sequence(literal('@'), lessVariableName, literal(':'), g.CallArgumentValue),
       (children, _fields, span) => {
         const name = requireSupportedVariableName(children[1], span.start, span.start + variableNameText(children[1]).length + 1);
-        return callArg(requireMixinCallArgumentValue(children[3]), name);
+        return callArg(requireMixinCallArgumentValue(children[3]), name, false, '@');
       }
     ),
     PositionalMixinCallArgument
@@ -3479,7 +3479,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const ValueBlock = node(
     'ValueBlock',
     sequence(literal('{'), many(g.BodyStatement), optional(g.Call), literal('}')),
-    children => classifyValueBlock(requireValueBlockBody(children))
+    /* The braces are the node's first and last tokens, so its own span gives the
+     * body span (where its comments are) with no raw-children capture. */
+    (children, _fields, span) => withBodySpan(
+      classifyValueBlock(requireValueBlockBody(children)),
+      { start: span.start + 1, end: span.end - 1 }
+    )
   );
   const CallArgumentValue = node(
     'CallArgumentValue',

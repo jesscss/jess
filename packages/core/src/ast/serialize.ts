@@ -135,6 +135,7 @@ import {
   itemBoundary,
   literal,
   sepGlue,
+  writtenArgument,
   type EvalModes,
   type FnScope,
   type PluginCallCtx,
@@ -146,7 +147,8 @@ import {
   type EvalValue,
   type ValueEvaluator,
   type ValueGroup,
-  type Value
+  type Value,
+  type WrittenArguments
 } from './value-eval.js';
 import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
 import { defineFunction, FunctionDeclined } from './value-dispatch.js';
@@ -811,20 +813,31 @@ export interface Frame {
    * [import-fold] {@link SourceRank} of each published import DECLARATION — the
    * `@import`'s own position extended by the declaration's index in the imported
    * document. Declarations only, because the ordered declaration stack is the only
-   * consumer that must compare two published facts to each other; the ordered
+   * consumer that must compare a published fact to another fact or to a statement
+   * position (the `$if`/`$while` splice in `collectSelectedDeclIndex`); the ordered
    * merges carry a site int per entry instead, and dispatch candidates carry their
    * rank on the candidate. Authored statements are deliberately absent: their rank
-   * IS their index in {@link statements}. Written and read at PUBLICATION time —
-   * no lookup path reaches it.
+   * IS their index in {@link statements}. Written at PUBLICATION time and read
+   * there or when a control-block selection rebuilds the index — no lookup path
+   * reaches it.
    */
   factRanks?: Map<VariableDeclaration, SourceRank>;
 
   /**
+   * [import-fold] Whether {@link statements} holds a `$if`/`$while`, whose
+   * selected body {@link collectSelectedDeclIndex} splices into the declaration
+   * stacks by position. Decided once, at the first imported declaration that
+   * opens a stack; only such a frame records that declaration's rank.
+   */
+  controlFlow?: boolean;
+
+  /**
    * [import-fold] Authored position of each top-level statement, built ONCE and
-   * only on the two paths that must resolve a position from the statement itself
+   * only on the paths that must resolve a position from the statement itself
    * rather than from a loop cursor: a published declaration colliding with an
-   * existing stack entry, and an import that reaches publication without its
-   * index in hand. Integer values — never a tuple per statement.
+   * existing stack entry, an import that reaches publication without its index in
+   * hand, and a control-block body spliced into the declaration stacks. Integer
+   * values — never a tuple per statement.
    */
   statementIndex?: Map<Statement, number>;
 
@@ -1458,44 +1471,52 @@ function collectDeclIndex(
 }
 
 /**
- * Augment this frame's ordinary declaration index with branches selected by this
- * activation. The ordinary index can contain parameter bindings that do not
- * occur in `statements`; retain those as a prefix while rebuilding authored body
- * declarations around the selected control-flow paths.
+ * Augment this frame's ordinary declaration index with the control-flow bodies
+ * selected by this activation. The ordinary stacks are already in source-fold
+ * order — parameter cells first, then authored declarations with each imported
+ * fact spliced at its `@import` (N10) — so a body's declarations are spliced into
+ * that order at the position of the `$if`/`$while` that holds them, never
+ * appended after a prefix of everything that is not a direct statement.
  */
-function collectSelectedDeclIndex(
-  statements: Statement[],
-  selected: ReadonlyMap<If, Statement[]>,
-  ordinary: DeclIndex | null
-): DeclIndex | null {
+function collectSelectedDeclIndex(frame: Frame, selected: ReadonlyMap<If, Statement[]>): DeclIndex | null {
   const byName = new Map<string, VariableDeclaration[]>();
-  const direct = new Set<VariableDeclaration>();
-  for (const statement of statements) {
-    if (statement.type === 'VariableDeclaration') {
-      direct.add(statement);
+  if (frame.declIndex) {
+    for (const [name, stack] of frame.declIndex.byName) {
+      byName.set(name, stack.slice());
     }
   }
-  if (ordinary) {
-    for (const [name, stack] of ordinary.byName) {
-      const prefix = stack.filter(declaration => !direct.has(declaration));
-      if (prefix.length > 0) {
-        byName.set(name, prefix);
-      }
+  const statements = frame.statements ?? [];
+
+  /*
+   * The authored position of an entry already in a stack, or `-1` when it has
+   * none to compare: a parameter cell, an unranked import, or a declaration this
+   * pass spliced in from an EARLIER control block. Each of those sits at or
+   * before the block being placed, so it stops the backward walk.
+   */
+  const positionOf = (declaration: VariableDeclaration): number => {
+    const rank = frame.factRanks?.get(declaration);
+    return rank === undefined ? frameStatementIndex(frame).get(declaration) ?? -1 : factSite(rank);
+  };
+  const place = (declaration: VariableDeclaration, at: number): void => {
+    const stack = byName.get(declaration.name);
+    if (!stack) {
+      byName.set(declaration.name, [declaration]);
+      return;
     }
-  }
-  const visit = (rules: Statement[]): void => {
+    let slot = stack.length;
+    while (slot > 0 && positionOf(stack[slot - 1]!) > at) {
+      slot--;
+    }
+    stack.splice(slot, 0, declaration);
+  };
+  const visit = (rules: Statement[], at: number): void => {
     for (const statement of rules) {
       if (statement.type === 'VariableDeclaration') {
-        const stack = byName.get(statement.name);
-        if (stack) {
-          stack.push(statement);
-        } else {
-          byName.set(statement.name, [statement]);
-        }
+        place(statement, at);
       } else if (statement.type === 'If') {
         const branch = selected.get(statement);
         if (branch) {
-          visit(branch);
+          visit(branch, at);
         }
       } else if (statement.type === 'While') {
         /*
@@ -1506,11 +1527,21 @@ function collectSelectedDeclIndex(
          * — without it the body's own declaration is invisible here and the
          * recursion guard fires on the first iteration.
          */
-        visit(statement.rules);
+        visit(statement.rules, at);
       }
     }
   };
-  visit(statements);
+  for (let at = 0; at < statements.length; at++) {
+    const statement = statements[at]!;
+    if (statement.type === 'If') {
+      const branch = selected.get(statement);
+      if (branch) {
+        visit(branch, at);
+      }
+    } else if (statement.type === 'While') {
+      visit(statement.rules, at);
+    }
+  }
   return byName.size === 0 ? null : { byName };
 }
 
@@ -1952,7 +1983,7 @@ function publishRankedMixinEvent(frame: Frame, definition: MixinDefinition, rank
 
 /**
  * [import-fold] Authored position of each top-level statement. Built ONCE per
- * frame and ONLY for the two callers that hold a statement but no cursor for it;
+ * frame and ONLY for the callers that hold a statement but no cursor for it;
  * every ordered merge steps a cursor and never comes here.
  */
 function frameStatementIndex(frame: Frame): Map<Statement, number> {
@@ -2084,6 +2115,12 @@ function publishImportedVariableDeclaration(
 ): void {
   const index = frame.declIndex ??= { byName: new Map() };
   const declarations = index.byName.get(declaration.name);
+
+  /* A stack's first entry needs a rank only to be placed against a `$if`/`$while` body. */
+  if (rank !== null && (declarations !== undefined
+    || (frame.controlFlow ??= (frame.statements ?? []).some(statement => statement.type === 'If' || statement.type === 'While')))) {
+    (frame.factRanks ??= new Map()).set(declaration, rank);
+  }
   if (!declarations) {
     index.byName.set(declaration.name, [declaration]);
     return;
@@ -2092,7 +2129,6 @@ function publishImportedVariableDeclaration(
     declarations.push(declaration);
     return;
   }
-  (frame.factRanks ??= new Map()).set(declaration, rank);
 
   /*
    * The stack is already rank-sorted (authored declarations in source order,
@@ -6220,7 +6256,7 @@ function evalModuleReferenceCall(
     if (isMixinCallValue(arg.value)) {
       throw new TypeError(`Module function "${selected.name}" cannot receive a mixin call argument.`);
     }
-    args.push(callArg(arg.value, arg.name, arg.spread));
+    args.push(callArg(arg.value, arg.name, arg.spread, arg.sigil));
   }
   if (!e.ev) {
     return literal(node.raw);
@@ -6353,7 +6389,12 @@ function shouldPreserveCssAuthoredCall(node: FunctionCall, lessDocument: boolean
     || DEFERRED_CSS_AUTHORED_CALLS.has(lname);
 }
 
-/** Re-emit a call after resolving variable/interpolation bytes, without invoking its callable. */
+/**
+ * Re-emit a call after resolving variable/interpolation bytes, without invoking
+ * its callable: a deferred CSS-authored call, a failed plugin call, and every
+ * call on the non-evaluating byte lane. Each argument is written as authored,
+ * keyword included ({@link writtenArgument}, ledger P23).
+ */
 function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   if (node.args.length === 0) {
     return literal(`${node.name}()`);
@@ -6364,7 +6405,7 @@ function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): Mayb
    * Disable typed literal canonicalization for this byte lane; variable
    * references still resolve through the same live frame walk.
    */
-  const preserve = e.ev === null ? e : { ...e, ev: null };
+  const preserve = e.ev ? { ...e, ev: null } : e;
   const items = node.args.map(a => evalValueSlot(a.value, frame, preserve));
   return combineAll(items, (vals) => {
     const authored = valueLayoutOf(node.args);
@@ -6372,14 +6413,13 @@ function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): Mayb
 
     /*
      * Comma spacing is minimal-correctness normalized to one space after the
-     * comma (owner rule 2026-08-17), matching the general call/list byte lane
-     * above — it is NOT authorship.
+     * comma (owner rule 2026-08-17) — it is NOT authorship.
      */
     const glue = node.modern ? ' ' : sepGlue(',', compress);
-    let inner = emitValueC(vals[0]!, e);
+    let inner = writtenArgument(node.args[0]!, emitValueC(vals[0]!, e), compress);
     for (let index = 1; index < vals.length; index += 1) {
       inner += itemBoundary(authored?.[index - 1], glue, compress);
-      inner += emitValueC(vals[index]!, e);
+      inner += writtenArgument(node.args[index]!, emitValueC(vals[index]!, e), compress);
     }
     return literal(`${node.name}(${inner})`);
   });
@@ -7398,10 +7438,27 @@ function dispatchCall(
   // Args are materialized TYPED (each arg's tag sourced from its parse node).
   const typed = node.args.map(a => evalTypedSlot(a.value, frame, e, true, true));
   return combineAll(typed, (vals) => {
-    const ordered = orderKeywordArgs(node.args, vals, ev, node.name, selected, ambient);
+    let named = false;
+    for (let i = 0; i < node.args.length; i++) {
+      if (node.args[i]!.name !== undefined) {
+        named = true;
+        break;
+      }
+    }
+    const ordered = named ? orderKeywordArgs(node.args, vals, ev, node.name, selected, ambient) : vals;
     const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
+
+    /*
+     * A call that names an argument also hands over its arguments as written,
+     * read only if the call is written out as-is (P23). The keywords are the
+     * call's own arguments; when nothing was rebound, the order is the authored
+     * one already.
+     */
+    const written: WrittenArguments | undefined = named
+      ? { args: ordered === vals ? args : (sep === ',' ? makeList(vals, ',') : vals), keywords: node.args }
+      : undefined;
     try {
-      const result = ev.call(node.name, args, e.modes, null, e.io, selected, ambient);
+      const result = ev.call(node.name, args, e.modes, null, e.io, selected, ambient, written);
       return isThenable(result)
         ? result.catch(error => invalidFunctionCall(node, error, e))
         : result;
@@ -7427,8 +7484,15 @@ function writtenRulesetArgument(block: AnonymousMixin, frame: Frame | null, e: E
   if (block.params !== undefined) {
     rejectRulesetArgument(block, 'parameters', e);
   }
-  const lexical = frame === null ? null : detachedBinding(frame, block)?.lexicalFrame ?? frame;
-  return mapMaybe(writtenBlockBody(block, block.rules, lexical, e), makeAny);
+  const binding = frame === null ? undefined : detachedBinding(frame, block);
+  const lexical = binding?.lexicalFrame ?? frame;
+
+  /*
+   * Under the block's own document, so its comments read that document's
+   * trivia. The argument is a COPY of the block, so it tracks which of the
+   * block's comments it has written on a scratch emitter of its own.
+   */
+  return withSourceOwner(e, binding?.sourceOwner, () => mapMaybe(writtenBlockBody(block, block, lexical, e, scratchEmit(e)), makeAny));
 }
 
 function rejectRulesetArgument(block: AnonymousMixin, what: string, e: EvalCtx): never {
@@ -7439,13 +7503,17 @@ function rejectRulesetArgument(block: AnonymousMixin, what: string, e: EvalCtx):
   });
 }
 
-/** One block body of a ruleset argument, braces included (see {@link writtenRulesetArgument}). */
+/** One block body of a ruleset argument, braces included (see {@link writtenRulesetArgument}).
+ *  `owner` is the block itself or a rule nested in it: the node whose body is
+ *  written. `trivia` tracks the comments this argument has written. */
 function writtenBlockBody(
   block: AnonymousMixin,
-  rules: Statement[],
+  owner: AnonymousMixin | Ruleset | AtRuleBlock,
   parent: Frame | null,
-  e: EvalCtx
+  e: EvalCtx,
+  trivia: Emit
 ): MaybePromise<string> {
+  const rules = owner.rules;
   const bodyFrame: Frame = {
     parent,
     mixins: collectMixins(rules),
@@ -7478,7 +7546,30 @@ function writtenBlockBody(
       important
     });
   };
+
+  /*
+   * The body's comments are trivia in its body span (jess#301), replayed by the
+   * same cursor a call of the block uses: each is written where it sits between
+   * two statements, and the runs inside a statement belong to that statement.
+   */
+  const replay = bodyTriviaReplay(owner, trivia);
+  const commentsBefore = (limit: number): void => {
+    const comments = replay === undefined ? undefined : takeBodyTrivia(replay, limit, undefined, trivia);
+    for (const text of comments ?? []) {
+      if (keepComment(e, text)) {
+        items.push(text);
+      }
+    }
+  };
   for (const rule of rules) {
+    const start = rule.type === 'VariableDeclaration' ? sourceStartOf(rule) : statementStartOf(rule) ?? NO_SPAN;
+    if (start !== NO_SPAN) {
+      commentsBefore(start);
+    }
+    const end = rule.type === 'VariableDeclaration' ? sourceEndOf(rule) : statementEndOf(rule) ?? NO_SPAN;
+    while (replay !== undefined && replay.index < replay.table.runs.length && replay.table.runStart[replay.index]! < end) {
+      replay.index++;
+    }
     switch (rule.type) {
       case 'VariableDeclaration':
       case 'MixinDefinition':
@@ -7500,7 +7591,7 @@ function writtenBlockBody(
           : withUnitErrors(rule, e, () => evalGuard(guard, guardDeps(bodyFrame, e)));
         items.push(mapMaybe(holds, guarded => guarded
           ? mapMaybe(selector, header => mapMaybe(
-              writtenBlockBody(block, rule.rules, bodyFrame, e),
+              writtenBlockBody(block, rule, bodyFrame, e, trivia),
               body => `${header}${compress ? '' : ' '}${body}`
             ))
           : ''));
@@ -7508,13 +7599,14 @@ function writtenBlockBody(
       }
       case 'AtRuleBlock':
         items.push(mapMaybe(atRulePreludeBytes(rule, bodyFrame, scratchEmit(e)), prelude =>
-          mapMaybe(writtenBlockBody(block, rule.rules, bodyFrame, e), body =>
+          mapMaybe(writtenBlockBody(block, rule, bodyFrame, e, trivia), body =>
             `${rule.name}${prelude === '' ? '' : ` ${prelude}`}${compress ? '' : ' '}${body}`)));
         break;
       case 'MixinCall': {
         /*
-         * The mixin expands in place; its declarations join this body. Rules it
-         * would emit have no place in the collected declaration run.
+         * The mixin expands in place; its declarations join this body, each
+         * after the comments its expansion replayed ahead of it. Rules it would
+         * emit have no place in the collected declaration run.
          */
         const em = scratchEmit(e);
         const collected: Leaf[] = [];
@@ -7524,16 +7616,29 @@ function writtenBlockBody(
         if (nested.trailing.length > 0 || nested.pending.length > 0) {
           rejectRulesetArgument(block, 'a mixin call that emits nested rules', e);
         }
+        const keepAll = (comments: readonly string[] | null): void => {
+          for (const text of comments ?? []) {
+            if (keepComment(e, text)) {
+              items.push(text);
+            }
+          }
+        };
         for (const leaf of collected) {
+          keepAll(leaf.leadingBlockComments);
           if (leaf.node.type === 'Declaration') {
             addDeclaration(leaf.node, leaf.frame, leaf.important || leaf.node.important);
           }
         }
+        keepAll(em.pendingLeafBlockCommentOwner === collected ? em.pendingLeafBlockComments : null);
         break;
       }
       default:
         rejectRulesetArgument(block, `a ${rule.type}`, e);
     }
+  }
+  if (replay !== undefined) {
+    commentsBefore(replay.end);
+    trivia.emittedBlockTrivia.closeCopy(replay);
   }
   const written = items.map((item) => {
     if (typeof item !== 'object' || !('mergeKey' in item)) {
@@ -7575,8 +7680,8 @@ function writtenBlockBody(
  * callee's own parameter list — so the order comes from the resolved function
  * ({@link ValueEvaluator.paramNames}), never from the call site.
  *
- * Returns `vals` UNCHANGED when nothing was named, so an ordinary positional
- * call pays one `name !== undefined` test per argument and allocates nothing.
+ * Called only for a call that names an argument: the caller's one
+ * `name !== undefined` scan keeps an ordinary positional call off this path.
  *
  * It also returns `vals` unchanged when the callee declares no parameter by that
  * name (or is unknown): the call then reaches dispatch with exactly its authored
@@ -7592,17 +7697,6 @@ function orderKeywordArgs<T>(
   scopedFn: Fn | undefined,
   ambient: boolean
 ): T[] {
-  let hasName = false;
-  for (let i = 0; i < args.length; i++) {
-    if (args[i]!.name !== undefined) {
-      hasName = true;
-      break;
-    }
-  }
-  if (!hasName) {
-    return vals;
-  }
-
   const params = ev.paramNames(name, scopedFn, ambient);
   if (params === undefined) {
     return vals;
@@ -8898,7 +8992,7 @@ function emitBlockClose(e: Emit, idt: string, lb?: Emit['lastBlock']): void {
  * compress keeps only `/*! … *&#47;` bang comments (license headers), matching
  * Less 4.x / dart-sass / cssnano / lightningcss.
  */
-function keepComment(e: Emit, text: string): boolean {
+function keepComment(e: EvalCtx, text: string): boolean {
   return e.compress !== true || text.startsWith('/*!');
 }
 
@@ -9089,27 +9183,126 @@ function firstRunAtOrAfter(table: CommentTable, offset: number): number {
 class EmittedTrivia {
   private readonly bits = new Map<CommentTable, Uint8Array>();
 
-  /** Read-only: never allocates. An absent bitset means nothing is owned yet. */
+  /** Read-only: never allocates. An absent bitset means nothing is owned yet.
+   *  A HELD run counts as owned: no replay may write it. */
   hasIndex(table: CommentTable, i: number): boolean {
     if (i < 0) {
       return false;
     }
     const owned = this.bits.get(table);
-    return owned?.[table.canonical[i]!] === 1;
+    return (owned?.[table.canonical[i]!] ?? 0) !== 0;
   }
 
+  /** Claim run `i`. A HELD run stays held: it is already closed to every replay. */
   addIndex(table: CommentTable, i: number): void {
     if (i < 0) {
       return;
     }
+    const owned = this.bitsOf(table);
+    const at = table.canonical[i]!;
+    if (owned[at] !== HELD_RUN) {
+      owned[at] = OWNED_RUN;
+    }
+  }
+
+  /**
+   * Whether a leaf being written may write run `i`, its own inline comment.
+   * A free run is claimed. A HELD run sits inside a callable body, and a leaf
+   * of that body is only ever written by an expansion of it — later than the
+   * expansion's walk, so after the run was held again — so the leaf writes it
+   * and leaves it held for the next expansion's leaf.
+   */
+  takeForLeaf(table: CommentTable, i: number): boolean {
+    const owned = this.bitsOf(table);
+    const at = table.canonical[i]!;
+    if (owned[at] === OWNED_RUN) {
+      return false;
+    }
+    if (owned[at] === FREE_RUN) {
+      owned[at] = OWNED_RUN;
+    }
+    return true;
+  }
+
+  /**
+   * HOLD one run of a callable body — a mixin definition's or a detached
+   * ruleset's — unless something already owns it. Its comments belong to the
+   * body, not to the statement list the definition sits in, so every replay
+   * skips a held run; only an expansion of the body writes it ({@link openCopy}).
+   */
+  holdIndex(table: CommentTable, i: number): void {
+    const owned = this.bitsOf(table);
+    const at = table.canonical[i]!;
+    if (owned[at] === FREE_RUN) {
+      owned[at] = HELD_RUN;
+    }
+  }
+
+  /**
+   * Open ONE expansion of a callable body: every run from run `from` up to offset
+   * `end` is freed for it, whatever owned it, and the runs that were owned or
+   * held are returned for {@link closeCopy} (`undefined` when none was). Each
+   * call or ruleset argument writes its own copy of the body, so it writes its
+   * own copy of the body's comments too.
+   */
+  openCopy(table: CommentTable, from: number, end: number): SavedRuns | undefined {
+    const owned = this.bits.get(table);
+    if (owned === undefined) {
+      return undefined;
+    }
+    let states: Uint8Array | undefined;
+    for (let i = from; i < table.runs.length && table.runStart[i]! < end; i++) {
+      const at = table.canonical[i]!;
+      if (owned[at] !== FREE_RUN) {
+        states ??= new Uint8Array(firstRunAtOrAfter(table, end) - from);
+        states[i - from] = owned[at]!;
+        owned[at] = FREE_RUN;
+      }
+    }
+    return states === undefined ? undefined : { from, states };
+  }
+
+  /**
+   * Close the expansion a replay opened ({@link openCopy}). A run that was held
+   * or owned before it gets that state back, so a definition stays held. A run
+   * that was free keeps what the expansion left: the comments it wrote stay
+   * owned, so the writers that run when its leaves are emitted do not write
+   * them a second time.
+   */
+  closeCopy(replay: BodyTriviaReplay | undefined): void {
+    const saved = replay?.saved;
+    if (saved === undefined) {
+      return;
+    }
+    const table = replay!.table;
+    const owned = this.bitsOf(table);
+    for (let k = 0; k < saved.states.length; k++) {
+      if (saved.states[k] !== FREE_RUN) {
+        owned[table.canonical[saved.from + k]!] = saved.states[k]!;
+      }
+    }
+  }
+
+  private bitsOf(table: CommentTable): Uint8Array {
     let owned = this.bits.get(table);
     if (owned === undefined) {
       owned = new Uint8Array(table.runs.length);
       this.bits.set(table, owned);
     }
-    owned[table.canonical[i]!] = 1;
+    return owned;
   }
 }
+
+/** The run states one callable-body expansion saved ({@link EmittedTrivia.openCopy}). */
+interface SavedRuns {
+  readonly from: number;
+  readonly states: Uint8Array;
+}
+
+/** {@link EmittedTrivia} run states. */
+const FREE_RUN = 0;
+const OWNED_RUN = 1;
+const HELD_RUN = 2;
 
 function inlineBlockCommentText(
   table: CommentTable,
@@ -9275,8 +9468,7 @@ function takeIndexedInlineBlockCommentTriviaAfter(node: Statement, e: Emit): str
    * legacy Parseman root map for all whitespace gaps; comment runs are already
    * sparse and source ordered. */
   const trailing = commentRunStartingAt(table, spanEnd);
-  if (trailing >= 0 && !e.emittedBlockTrivia.hasIndex(table, trailing) && runHasBlockComment(table, trailing)) {
-    e.emittedBlockTrivia.addIndex(table, trailing);
+  if (trailing >= 0 && runHasBlockComment(table, trailing) && e.emittedBlockTrivia.takeForLeaf(table, trailing)) {
     return inlineBlockCommentText(table, trailing);
   }
   for (let i = firstRunAtOrAfter(table, spanStart); i < table.runs.length; i++) {
@@ -9284,7 +9476,7 @@ function takeIndexedInlineBlockCommentTriviaAfter(node: Statement, e: Emit): str
       break;
     }
     const runEnd = table.runEnd[i]!;
-    if (runEnd > spanEnd || e.emittedBlockTrivia.hasIndex(table, i) || !runHasBlockComment(table, i)) {
+    if (runEnd > spanEnd || !runHasBlockComment(table, i)) {
       continue;
     }
     let index = runEnd;
@@ -9295,10 +9487,9 @@ function takeIndexedInlineBlockCommentTriviaAfter(node: Statement, e: Emit): str
       }
       index++;
     }
-    if (index !== spanEnd) {
+    if (index !== spanEnd || !e.emittedBlockTrivia.takeForLeaf(table, i)) {
       continue;
     }
-    e.emittedBlockTrivia.addIndex(table, i);
     return inlineBlockCommentText(table, i);
   }
   return null;
@@ -9592,6 +9783,12 @@ function customPropertyValueWithTrivia(value: ValueSlot, frame: Frame | null, e:
   return combineAll(pieces, values => values.join(''));
 }
 
+/**
+ * A statement that writes nothing where it stands owns its comments, so no
+ * replay writes them there. The comments inside a CALLABLE body — a mixin
+ * definition's, or a detached ruleset's bound by a declaration — are HELD
+ * instead: they belong to the body, and each expansion writes its own copy.
+ */
 function markSilentStatementBlockCommentTrivia(node: Statement, e: Emit): void {
   const trivia = e.trivia;
   if (trivia === undefined) {
@@ -9601,13 +9798,34 @@ function markSilentStatementBlockCommentTrivia(node: Statement, e: Emit): void {
   if (spanStart === NO_SPAN) {
     return;
   }
-  const span = { start: spanStart, end: sourceEndOf(node) };
+  const spanEnd = sourceEndOf(node);
   const table = commentTableOf(trivia);
-  for (let i = firstRunAtOrAfter(table, span.start); i < table.runs.length; i++) {
-    if (table.runStart[i]! > span.end) {
+  const body = node.type === 'MixinDefinition'
+    ? node
+    : node.type === 'VariableDeclaration' && !isValueSlotArray(node.value) && node.value.type === 'AnonymousMixin'
+      ? node.value
+      : undefined;
+  let bodyStart = NO_SPAN;
+  let bodyEnd = NO_SPAN;
+  if (body !== undefined) {
+    bodyStart = bodyStartOf(body);
+    bodyEnd = bodyEndOf(body);
+    if (bodyStart === NO_SPAN) {
+      /* No recorded body span: hold all of it rather than claim the body's comments. */
+      bodyStart = spanStart;
+      bodyEnd = spanEnd;
+    }
+  }
+  for (let i = firstRunAtOrAfter(table, spanStart); i < table.runs.length; i++) {
+    if (table.runStart[i]! > spanEnd) {
       break;
     }
-    if (table.runEnd[i]! <= span.end && runHasBlockComment(table, i)) {
+    if (table.runEnd[i]! > spanEnd || !runHasBlockComment(table, i)) {
+      continue;
+    }
+    if (bodyStart !== NO_SPAN && table.runStart[i]! >= bodyStart && table.runEnd[i]! <= bodyEnd) {
+      e.emittedBlockTrivia.holdIndex(table, i);
+    } else {
       e.emittedBlockTrivia.addIndex(table, i);
     }
   }
@@ -10209,6 +10427,7 @@ function evaluateSilentStatement(
 ): boolean {
   if (node.type === 'MixinDefinition') {
     publishSelectedMixinDefinition(frame, node);
+    markSilentStatementBlockCommentTrivia(node, e);
     return true;
   }
   activateVariableDeclaration(node, frame, e);
@@ -11568,6 +11787,7 @@ function emitDocumentStatements(
         } else {
           publishSelectedMixinDefinition(frame, child);
         }
+        markSilentStatementBlockCommentTrivia(child, e);
         documentTriviaSuppressedByDefinition = true;
         break;
       case 'VariableDeclaration':
@@ -11879,11 +12099,7 @@ function runWhile(
    * condition runs. `$if` gets the same index through `selectIfBody`;
    * a `$while` has no arm to select, so it registers its one body directly.
    */
-  frame.selectedDeclIndex = collectSelectedDeclIndex(
-    frame.statements ?? [],
-    frame.selectedIfBodies ?? EMPTY_SELECTED_IF_BODIES,
-    frame.declIndex
-  );
+  frame.selectedDeclIndex = collectSelectedDeclIndex(frame, frame.selectedIfBodies ?? EMPTY_SELECTED_IF_BODIES);
   const step = (start: number): MaybePromise<void> => {
     for (let i = start; i < MAX_WHILE_ITERATIONS; i++) {
       if (!settledGuard(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), '$while condition', node, e)) {
@@ -11914,7 +12130,7 @@ function selectIfBody(node: If, frame: Frame, e: Emit): Statement[] | null {
   const selected = frame.selectedIfBodies ??= new Map();
   if (selected.get(node) !== body) {
     selected.set(node, body);
-    frame.selectedDeclIndex = collectSelectedDeclIndex(frame.statements ?? [], selected, frame.declIndex);
+    frame.selectedDeclIndex = collectSelectedDeclIndex(frame, selected);
   }
   return body;
 }
@@ -12388,7 +12604,7 @@ function flattenResolved(
    * onto (a multi-branch header collapses to `:is(...)`).
    */
   let headerComposed: MaybePromise<string[]>;
-  let childAncestor: string;
+  let childAncestor: string | null;
 
   /*
    * [nesting] At a ROOT context `rootStrings` resolves a parentless `&` to EMPTY.
@@ -12420,7 +12636,10 @@ function flattenResolved(
     childAncestor = wrapIsList(rawComposed);
   } else {
     headerComposed = opaqueJoin(ancestor ?? wrapIsList(parent), rule.selector, frame, e);
-    childAncestor = rawComposed[0] ?? '';
+
+    /* The header itself, once resolved, as ONE unit: every branch of it is an
+     * ancestor of the children (`.a { .b, .c { e {} } }` → `:is(.a .b, .a .c) e`). */
+    childAncestor = null;
   }
   return mapMaybe(headerComposed, headerComposed =>
     flattenWithHeader(
@@ -12431,7 +12650,7 @@ function flattenResolved(
       imp,
       childComposed,
       headerComposed,
-      childAncestor,
+      childAncestor ?? wrapIsList(headerComposed),
       expandBubbledSelectorList
     ));
 }
@@ -12710,8 +12929,16 @@ interface BodyTriviaReplay {
   readonly table: CommentTable;
   readonly end: number;
   index: number;
+
+  /** The states {@link EmittedTrivia.openCopy} saved, indexed from the body's first run. */
+  readonly saved: SavedRuns | undefined;
 }
 
+/**
+ * Open the comment replay for ONE expansion of a callable body (a mixin call,
+ * a detached ruleset call, a ruleset argument): its runs are freed for this
+ * copy, and {@link EmittedTrivia.closeCopy} restores them once the body is written.
+ */
 function bodyTriviaReplay(owner: object, e: Emit): BodyTriviaReplay | undefined {
   const trivia = e.trivia;
   if (trivia === undefined) {
@@ -12735,8 +12962,39 @@ function bodyTriviaReplay(owner: object, e: Emit): BodyTriviaReplay | undefined 
   }
   const low = firstRunAtOrAfter(table, start);
   return low < table.runs.length && table.runStart[low]! < end
-    ? { table, end, index: low }
+    ? { table, end, index: low, saved: e.emittedBlockTrivia.openCopy(table, low, end) }
     : undefined;
+}
+
+/**
+ * Take the body's comment runs from the cursor up to offset `end` that nothing
+ * owns yet, as text. An exact declaration-tail run (at `inlineStart`) stays
+ * leaf-owned, so it keeps its inline placement when the leaves are written.
+ */
+function takeBodyTrivia(
+  replay: BodyTriviaReplay,
+  end: number,
+  inlineStart: number | undefined,
+  e: Emit
+): string[] | undefined {
+  let comments: string[] | undefined;
+  const table = replay.table;
+  while (replay.index < table.runs.length) {
+    const i = replay.index;
+    if (table.runStart[i]! >= end || table.runStart[i]! >= replay.end) {
+      break;
+    }
+    replay.index++;
+    if (
+      table.runStart[i] !== inlineStart
+      && table.runEnd[i]! <= replay.end
+      && !e.emittedBlockTrivia.hasIndex(table, i)
+      && runHasBlockComment(table, i)
+    ) {
+      pushRunComments(table, i, comments ??= [], e);
+    }
+  }
+  return comments;
 }
 
 function queueBodyTriviaBefore(
@@ -12752,28 +13010,8 @@ function queueBodyTriviaBefore(
   if (end === undefined) {
     return;
   }
-  let comments: string[] | undefined;
-  const table = replay.table;
   const previousLeaf = group[group.length - 1];
-  const inlineStart = previousLeaf === undefined ? undefined : statementEndOf(previousLeaf.node);
-  while (replay.index < table.runs.length) {
-    const i = replay.index;
-    if (table.runStart[i]! >= end || table.runStart[i]! >= replay.end) {
-      break;
-    }
-    replay.index++;
-
-    /* An exact declaration-tail run remains leaf-owned so it keeps inline
-     * placement when this callable's leaves are emitted after expansion. */
-    if (
-      table.runStart[i] !== inlineStart
-      && table.runEnd[i]! <= replay.end
-      && !e.emittedBlockTrivia.hasIndex(table, i)
-      && runHasBlockComment(table, i)
-    ) {
-      pushRunComments(table, i, comments ??= [], e);
-    }
-  }
+  const comments = takeBodyTrivia(replay, end, previousLeaf === undefined ? undefined : statementEndOf(previousLeaf.node), e);
   if (comments !== undefined) {
     queueLeafBlockComments(e, group, comments);
   }
@@ -12802,31 +13040,11 @@ function queueBodyTriviaTail(
   if (replay === undefined) {
     return;
   }
-  let comments: string[] | undefined;
-  const table = replay.table;
   const target = partition?.encounteredContainer === true && partition.lastLeadingGroup !== undefined
     ? partition.lastLeadingGroup
     : group;
   const previousLeaf = target[target.length - 1];
-  const inlineStart = previousLeaf === undefined ? undefined : statementEndOf(previousLeaf.node);
-  while (replay.index < table.runs.length) {
-    const i = replay.index;
-    if (table.runStart[i]! >= replay.end) {
-      break;
-    }
-    replay.index++;
-
-    /* See queueBodyTriviaBefore: the canonical leaf writer owns this exact
-     * declaration-tail boundary; this cursor owns the remaining body tail. */
-    if (
-      table.runStart[i] !== inlineStart
-      && table.runEnd[i]! <= replay.end
-      && !e.emittedBlockTrivia.hasIndex(table, i)
-      && runHasBlockComment(table, i)
-    ) {
-      pushRunComments(table, i, comments ??= [], e);
-    }
-  }
+  const comments = takeBodyTrivia(replay, replay.end, previousLeaf === undefined ? undefined : statementEndOf(previousLeaf.node), e);
   if (comments !== undefined) {
     if (target === partition?.lastLeadingGroup && partition.lastLeadingEmission !== undefined) {
       partition.lastLeadingEmission(comments);
@@ -13832,6 +14050,7 @@ function walkReferenceAncestorBody(
           break;
         case 'MixinDefinition':
           publishSelectedMixinDefinition(frame, node);
+          markSilentStatementBlockCommentTrivia(node, e);
           emitted = undefined;
           break;
         case 'VariableDeclaration':
@@ -14208,6 +14427,7 @@ function expandCall(
               if (sharedLeaves === undefined) {
                 queueBodyTriviaTail(bodyTrivia, group, partition, e);
               }
+              e.emittedBlockTrivia.closeCopy(bodyTrivia);
               leakBodyVars(frame, def.rules, callFrame, e);
               publishOrderedMixins(frame, frameOrderedMixins(callFrame, e), callFrame);
               if (def.ruleMixin !== true) {
@@ -14219,6 +14439,7 @@ function expandCall(
           if (sharedLeaves === undefined) {
             queueBodyTriviaTail(bodyTrivia, group, partition, e);
           }
+          e.emittedBlockTrivia.closeCopy(bodyTrivia);
 
           /*
            * [scope-leak] after expansion the mixin's own `@x:` declarations unlock into
@@ -14918,35 +15139,58 @@ function expandReferenceCall(
       bindings
     );
     const drBody = valueBlockBody(r.dr);
-    const executeBody = () => mapMaybe(
-      activateBodyDependencies(drBody, r.callFrame, e),
-      () => sharedLeaves === undefined
-        ? walkBody(
-            drBody,
-            composed,
-            ancestor,
-            r.callFrame,
-            group,
-            flush,
-            partition,
-            e,
-            imp,
-            forceLeading,
-            propertyScope,
-            applyExpansion
-          )
-        : nestedBody(
-            drBody,
-            r.callFrame,
-            e,
-            undefined,
-            imp,
-            source,
-            null,
-            sharedLeaves,
-            applyExpansion
-          )
-    );
+
+    /*
+     * The block's comments are trivia inside its body span, replayed exactly as
+     * a mixin body's are: its declaration HOLDS them, and each call writes its
+     * own copy. The replay is opened under the block's own source owner, so a
+     * block bound in an imported document reads that document's trivia.
+     */
+    const executeBody = () => {
+      const bodyTrivia = drBody.length === 0 ? undefined : bodyTriviaReplay(r.dr, e);
+      const walked = mapMaybe(
+        activateBodyDependencies(drBody, r.callFrame, e),
+        () => sharedLeaves === undefined
+          ? walkBody(
+              drBody,
+              composed,
+              ancestor,
+              r.callFrame,
+              group,
+              flush,
+              partition,
+              e,
+              imp,
+              forceLeading,
+              propertyScope,
+              applyExpansion,
+              false,
+              bodyTrivia
+            )
+          : nestedBody(
+              drBody,
+              r.callFrame,
+              e,
+              undefined,
+              imp,
+              source,
+              null,
+              sharedLeaves,
+              applyExpansion,
+              undefined,
+              bodyTrivia
+            )
+      );
+      if (bodyTrivia === undefined) {
+        return walked;
+      }
+      return mapMaybe(walked, () => {
+        if (sharedLeaves === undefined) {
+          queueBodyTriviaTail(bodyTrivia, group, partition, e);
+        }
+        e.emittedBlockTrivia.closeCopy(bodyTrivia);
+      });
+    };
     return withSourceOwner(e, r.callFrame.sourceOwner, executeBody);
   };
 
@@ -18882,6 +19126,7 @@ function emitAtRuleBody(
 
       case 'MixinDefinition':
         publishSelectedMixinDefinition(frame, node);
+        markSilentStatementBlockCommentTrivia(node, e);
         return undefined;
       case 'VariableDeclaration':
         activateVariableDeclaration(node, frame, e);
@@ -19388,6 +19633,7 @@ function emitBubbleBody(
         }
         case 'MixinDefinition':
           publishSelectedMixinDefinition(frame, node);
+          markSilentStatementBlockCommentTrivia(node, e);
           break;
         case 'VariableDeclaration':
           activateVariableDeclaration(node, frame, e);

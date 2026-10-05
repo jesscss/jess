@@ -148,6 +148,31 @@ describe('@import folds imported facts in at the import\'s lexical position', ()
     ].join('\n'));
   });
 
+  /*
+   * A frame whose body holds a lowered `if()` reads a declaration stack rebuilt
+   * around the selected branch (jess#245). A read on either side of an `if()`
+   * that declares nothing sees the same import fold. (When the selected branch
+   * itself declares the name, reads before and after the `if()` differ; when a
+   * branch's declarations become visible is not ruled yet.)
+   */
+  it('resolves one binding across a frame that contains an if()', async () => {
+    const consumersAroundIf = '.x { a: @v; }\nif((true), { .b { a: @v; } });\n.c { a: @v; }\n';
+    const expected = (v: string): string => `.x {\n  a: ${v};\n}\n.b {\n  a: ${v};\n}\n.c {\n  a: ${v};\n}\n`;
+
+    await expect(render(`@v: A;\n@import "lib";\n${consumersAroundIf}`, '@v: L;\n')).resolves.toBe(expected('L'));
+    await expect(render(`@import "lib";\n@v: A;\n${consumersAroundIf}`, '@v: L;\n')).resolves.toBe(expected('A'));
+    await expect(render(`.r {\n@v: A;\n@import "lib";\n${consumersAroundIf}}\n`, '@v: L;\n')).resolves.toBe(
+      '.r {\n  .x {\n    a: L;\n  }\n  .b {\n    a: L;\n  }\n  .c {\n    a: L;\n  }\n}\n'
+    );
+  });
+
+  it('files a declaration from a selected if() branch at the if()', async () => {
+    await expect(render('@import "lib";\nif((true), { @v: B; });\n.x { a: @v; }\n', '@v: L;\n'))
+      .resolves.toBe('.x {\n  a: B;\n}\n');
+    await expect(render('if((true), { @v: B; });\n@import "lib";\n.x { a: @v; }\n', '@v: L;\n'))
+      .resolves.toBe('.x {\n  a: L;\n}\n');
+  });
+
   it('keeps a later-imported plain ruleset ahead of the local one (control: already passing)', async () => {
     const css = await render(`${ruleLocal}@import "lib";\n${ruleConsumers}`, ruleLib);
 

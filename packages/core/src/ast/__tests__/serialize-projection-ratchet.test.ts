@@ -150,9 +150,15 @@ describe('V19 one-evaluator projection ratchet', () => {
     // render-scoped at-rule scope ids, `AtRuleScopes`): the planner gate now sees an
     // import nested in an at-rule block, and an imported `@media` gets its own extend
     // scope instead of its parent's (EXTEND-SEMANTICS §8).
-    expect(occurrences(/^function |^async function /gmu)).toBe(477);
+    // -1 `new Set` (jess#245): a control-flow body's declarations are spliced
+    // into the ordinary source-fold stacks at the `$if`/`$while`, so the set of
+    // direct declarations that split those stacks into a prefix is gone.
+    // +1 function (`takeBodyTrivia`, jess#301): the one comment cursor of a
+    // callable body, shared by a call's replay and a ruleset argument's writer;
+    // the two cursor loops it replaced in `queueBodyTriviaBefore`/`Tail` are gone.
+    expect(occurrences(/^function |^async function /gmu)).toBe(478);
     expect(occurrences(/new Map/gu)).toBe(72);
-    expect(occurrences(/new Set/gu)).toBe(40);
+    expect(occurrences(/new Set/gu)).toBe(39);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);
