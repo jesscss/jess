@@ -52,11 +52,12 @@ describe('@compose module isolation', () => {
   });
 
   it('does NOT bind the namespace under `as *` (members are unqualified only)', async () => {
-    const css = await render('__asstar-ns.less',
+    const { css, errors } = await renderResult('__asstar-ns.less',
       '@compose "foo.less" as *;\n.box { color: @foo.colors.primary; }\n');
 
-    // @foo is unbound, so the reference survives verbatim rather than resolving.
-    expect(css).toContain('@foo.colors.primary');
+    // @foo is unbound, so the read is a failed resolution, never verbatim text.
+    expect(css).not.toContain('@foo.colors.primary');
+    expect(errors.map(d => d.reason)).toEqual(['Symbol "@foo" is undefined in this scope.']);
   });
 
   it('is non-transitive: a grandparent cannot reach a grandchild member', async () => {

@@ -2,9 +2,11 @@
 
 Status: IMPLEMENTED MECHANISM. The core `Reference` lookup/call chain is in
 production. Script/data module imports now bind namespace values and functions,
-including Less `@module.fn()` and Jess `$module.fn()` calls. The broader A8
-member-access policy remains owner-open in `DESIGN-DECISIONS.md`; this status
-records shipped code and does not close that requirement.
+including Less `@module.fn()` and Jess `$module.fn()` calls. Member-access
+policy is ledger A8 (SETTLED, owner 2026-10-01). A `@compose` namespace's
+`.name(args)` is a mixin call: in value position it is an error (built); in
+statement position (`@theme.elevate();`) it is not reachable yet, because of the
+Parseman routing requirement below.
 
 ## Parseman routing requirement (observed during direct Less implementation)
 

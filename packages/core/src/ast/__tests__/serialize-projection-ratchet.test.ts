@@ -156,9 +156,20 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +1 function (`takeBodyTrivia`, jess#301): the one comment cursor of a
     // callable body, shared by a call's replay and a ruleset argument's writer;
     // the two cursor loops it replaced in `queueBodyTriviaBefore`/`Tail` are gone.
+    // `new Set` → `new Map` (module identity): the emit-once `loadedImports`
+    // registry also records a shared `@compose`d module's one activation frame,
+    // so a later compose edge binds its namespace there instead of going unbound.
+    // +4 functions (module namespaces, R6 §E.1 / ledger A8): `composedModuleFrame`
+    // names the one fact that a namespace block is its module's activation,
+    // `activatedMemberLookup` picks the store a member is read through,
+    // `rejectComposedMemberCall` turns a call on a @compose member into an error
+    // instead of a dropped call, and `unresolvedReference` makes an unbound
+    // reference head a miss in both value evaluators.
+    // -4 functions and -1 `new Set`: `settledCandidates`, `descendNamespacePath`,
+    // `resolveToMixinCall` and `joinPreludeParts` had no callers left.
     expect(occurrences(/^function |^async function /gmu)).toBe(478);
-    expect(occurrences(/new Map/gu)).toBe(72);
-    expect(occurrences(/new Set/gu)).toBe(39);
+    expect(occurrences(/new Map/gu)).toBe(73);
+    expect(occurrences(/new Set/gu)).toBe(37);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

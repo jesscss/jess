@@ -111,6 +111,7 @@ import type {
   ValueNode,
   ValueSlot,
   VariableDeclaration,
+  VariableLookup,
   Lookup,
   Url
 } from './nodes.js';
@@ -2869,9 +2870,8 @@ function findPathInScope(
  * [mixin-match] Source-ordered candidates for a namespaced/compound call, found
  * by element-value descent. Walk the scope chain from the call site; the FIRST
  * frame whose own rulesets yield a match wins (Less iterates `context.frames`
- * and uses the first that `find`s the selector). Supersedes the old
- * one-key-per-segment `descendNamespacePath` + `ownCandidates`, which could not
- * match a compound def (`.jo.ki()`), an `&`-nested step (`.amp.support()`), or a
+ * and uses the first that `find`s the selector). A one-key-per-segment descent
+ * could not match a compound def (`.jo.ki()`), an `&`-nested step (`.amp.support()`), or a
  * call whose compound run spans a descendant-nested definition
  * (`.do.re.mi.fa.sol.la.si()`). */
 function findPathCandidates(frame: Frame, call: MixinCall, e: EvalCtx, homes: Map<MixinDefinition, Frame>): MixinDefinition[] {
@@ -3320,11 +3320,13 @@ function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e:
   }
   if (node.write.mode === 'reassign') {
     if (node.write.scope === 'live') {
-      const found = lookupLiveCell(frame, node.name);
-      if (!found) {
+      /* The cell's OWNER frame, not the frame its value evaluates in: a module
+       * configuration seeds a cell whose value belongs to the importer. */
+      const owner = liveCellOwnerFrame(frame, node.name, e);
+      if (!owner) {
         throw new ReferenceError(`live variable $${node.name} is undefined`);
       }
-      const cells = found.frame.cells!;
+      const cells = owner.cells!;
       cells.set(node.name, {
         declaration: node, value: node.value, valueFrame: null, evaluated: null,
         prev: liveCellPredecessor(cells, node)
@@ -4249,7 +4251,7 @@ function evalTyped(
        */
       const resolved = resolveReferenceResult(node, frame, e);
       if (resolved === null) {
-        return force(e, literal(node.raw));
+        return force(e, unresolvedReference(node, frame, e));
       }
       return isMixinCallValue(resolved.value)
         ? force(e, literal(node.raw))
@@ -5310,6 +5312,13 @@ interface DeclMap {
    * are in candidate/source order; last match wins (Less per-name last-declaration).
    */
   varFrames: Frame[] | null;
+
+  /**
+   * [module namespace] The activation a composed module's members live in. Its
+   * `byVar` entries name the members (the module's own declarations); the one a
+   * reference selects is then read in this activation ({@link activatedVarMember}).
+   */
+  activation: Frame | null;
 }
 
 /** Pick the member map an accessor key targets (`var` vs `prop`), per its kind. */
@@ -5441,7 +5450,7 @@ function resolveDeclarationMember(
 }
 
 /** Collect a body's declarations into name→value maps (+ ordered list). */
-function evalToDeclMap(statements: Statement[], frame: Frame | null, e: EvalCtx): DeclMap {
+function evalToDeclMap(statements: Statement[], frame: Frame | null, e: EvalCtx, activation: Frame | null = null): DeclMap {
   recordMapPropertyTimeline(statements, frame);
   const byVar = new Map<string, DeclEntry>();
   const byProp = new Map<string, DeclEntry>();
@@ -5468,7 +5477,30 @@ function evalToDeclMap(statements: Statement[], frame: Frame | null, e: EvalCtx)
       list.push(entry);
     }
   }
-  return { byVar, byProp, list, unified: false, valueEntries: null, varFrames: null };
+  return { byVar, byProp, list, unified: false, valueEntries: null, varFrames: null, activation };
+}
+
+/**
+ * A composed module's variable member: whatever the module's activation binds
+ * the name to — configuration overlay, nested `@import` facts and later writes
+ * included (spec R6 §E.1) — never the authored value re-read. A name the module
+ * writes conditionally or reassigns through the live store (`$x ?: v`, `$x := v`,
+ * `!default`) is a live variable, read from the activation's final cell, which a
+ * configuration seeds and a later hard write replaces. Every other name is read
+ * through the scoped store, where a configuration overlays the declared binding.
+ * For a plain declaration both stores agree.
+ */
+function activatedVarMember(activation: Frame, name: string, e: EvalCtx): DeclEntry | undefined {
+  let lookup: VariableLookup = 'scoped';
+  for (const declaration of activation.declIndex?.byName.get(name) ?? []) {
+    if (declaration.write.mode !== 'declare' && declaration.write.scope === 'live') {
+      lookup = 'live';
+    }
+  }
+  const bound = resolveVarRef(activation, name, lookup, e);
+  return bound === undefined
+    ? undefined
+    : { name, value: bound.value, frame: bound.frame, evaluated: bound.evaluated, important: false };
 }
 
 function valueCollectionToDeclMap(value: ValueCollection, parent: Frame | null): DeclMap {
@@ -5499,7 +5531,8 @@ function valueCollectionToDeclMap(value: ValueCollection, parent: Frame | null):
     list: valueEntries.items,
     unified: true,
     valueEntries,
-    varFrames: null
+    varFrames: null,
+    activation: null
   };
 }
 
@@ -5623,6 +5656,18 @@ function resolveBaseDeclMap(
    */
   const rs = resolveForRuleset(base, frame, e);
   if (rs) {
+    /*
+     * A composed module's namespace reads its members in the module's own
+     * activation, never a second one, and builds that member map once per
+     * activation however many compose edges and importers share it.
+     * ponytail: the member map is O(own members), built once per activation
+     * that is read; a per-name occurrence read needs the activation's declIndex
+     * to tell the module's own declarations from facts published into it.
+     */
+    const module = composedModuleFrame(rs.rules, rs.frame);
+    if (module !== null) {
+      return memoPureDeclMap(rs.rules, module, e, () => evalToDeclMap(rs.rules, module, e, module));
+    }
     return memoPureDeclMap(base, frame, e, () => {
       const bodyFrame: Frame = {
         parent: rs.frame,
@@ -5711,7 +5756,7 @@ function declMapFromMixinCall(
     into.set(name, entry);
     list.push(entry);
   }
-  return { byVar, byProp, list, unified: false, valueEntries: null, varFrames };
+  return { byVar, byProp, list, unified: false, valueEntries: null, varFrames, activation: null };
 }
 
 /** The value yielded by a called value-lambda: the LAST top-level `result:`
@@ -5821,10 +5866,12 @@ function invokeValueLambda(
   return { value: result, frame: activation };
 }
 
+/** `statementCall`: the reference is a statement-position call ({@link rejectComposedMemberCall}). */
 function resolveReferenceResult(
   node: Reference,
   frame: Frame | null,
-  e: EvalCtx
+  e: EvalCtx,
+  statementCall = false
 ): {
   value: ValueSlot | MixinCall;
   frame: Frame | null;
@@ -6162,6 +6209,14 @@ function resolveReferenceResult(
     if (!matched && looseKey !== undefined && looseKind !== undefined) {
       matched = looseMemberLookup(map, looseKey, looseKind, e, looseValueKey);
     }
+    if (map.activation !== null) {
+      if (matched && map.byVar.get(matched.name) === matched) {
+        matched = activatedVarMember(map.activation, matched.name, e);
+      }
+      if (!statementCall && node.steps[stepIndex + 1]?.type === 'Call') {
+        rejectComposedMemberCall(node, matched, missingSymbol);
+      }
+    }
     if (!matched) {
       unresolvedSymbol(node, missingSymbol, e);
     }
@@ -6264,6 +6319,20 @@ function evalModuleReferenceCall(
   return dispatchCall(funcCall(selected.name, args), frame, e, e.ev, selected.fn, false);
 }
 
+/**
+ * A value reference that resolved to nothing. An unbound head (`@nope.x`, a
+ * namespace read before its `@compose`) is a failed resolution, so an eval error
+ * unless the read is optional; any other unresolvable chain keeps its authored text.
+ */
+function unresolvedReference(node: Reference, frame: Frame | null, e: EvalCtx): EvalValue {
+  const base = node.base;
+  if (!e.optional && !isValueSlotArray(base) && base.type === 'Lookup' && base.kind === 'var'
+    && typeof base.name === 'string' && resolveVarRef(frame, base.name, base.scope, e) === undefined) {
+    unresolvedSymbol(node, `@${base.name}`, e);
+  }
+  return literal(node.raw);
+}
+
 function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   const moduleCall = evalModuleReferenceCall(node, frame, e);
   if (moduleCall !== undefined) {
@@ -6271,7 +6340,7 @@ function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybeP
   }
   const resolved = resolveReferenceResult(node, frame, e);
   if (resolved === null) {
-    return literal(node.raw);
+    return unresolvedReference(node, frame, e);
   }
   return isMixinCallValue(resolved.value)
     ? literal(node.raw)
@@ -8704,7 +8773,13 @@ interface Emit extends EvalCtx {
    * before a native stack overflow. Threaded through `scratchEmit`.
    */
   mixinDepth: number;
-  loadedImports: Set<string> | null;
+
+  /**
+   * Emit-once registry of loaded module identities. A shared `@compose`d module
+   * maps to its one activation frame, so a later compose edge of the same
+   * identity binds its namespace there instead of evaluating the module again.
+   */
+  loadedImports: Map<string, Frame | null> | null;
 
   /**
    * [module config] Per module IDENTITY (`loaded.key`) `set` configuration, so a
@@ -14610,26 +14685,13 @@ function expandApply(
   return mapMaybe(gather, () => run(0));
 }
 
-/** Candidate lookup in a probe position that cannot suspend (see {@link settledDispatch}). */
-function settledCandidates(list: MaybePromise<MixinDefinition[]>, call: MixinCall, e: EvalCtx): MixinDefinition[] {
-  if (isThenable(list)) {
-    observeRejectedThenable(list);
-    throw ERR.asyncInSyncPosition({
-      node: call,
-      ...callSiteLocation(call, e),
-      meta: { where: 'mixin candidate lookup in a synchronous probe position' }
-    });
-  }
-  return list;
-}
-
 /**
- * Dispatch in a position that cannot suspend. Namespace-path descent builds a
- * scope index, and a transparent-shell probe answers a structural question
- * before any emission — both are reached from callers that would have to be
- * restructured, so an awaitable dispatch is reported rather than guessed at.
+ * Dispatch in a position that cannot suspend. Namespace-path descent dispatches
+ * an intermediate namespace's implicit zero-argument call while it builds a
+ * scope index, from a caller that would have to be restructured, so an
+ * awaitable dispatch is reported rather than guessed at.
  *
- * TODO(maybe-promise-sync-islands): fold these two onto the awaitable lane.
+ * TODO(maybe-promise-sync-islands): fold this onto the awaitable lane.
  */
 function settledDispatch(selected: MaybePromise<Selection[]>, call: MixinCall, e: EvalCtx): Selection[] {
   if (isThenable(selected)) {
@@ -14641,47 +14703,6 @@ function settledDispatch(selected: MaybePromise<Selection[]>, call: MixinCall, e
     });
   }
   return selected;
-}
-
-/**
- * Descend a namespace path (`#ns > .a`) to the scope frame in which the
- * final mixin dispatches. Each segment resolves a ruleset by own-local selector
- * and layers its body as a new scope. Returns `null` if any segment is unknown.
- */
-function descendNamespacePath(path: MixinCall['path'], frame: Frame): Frame | null {
-  let scope: Frame | null = frame;
-  for (const seg of path) {
-    let rules: Ruleset[] | undefined;
-    let owner: Frame | null = null;
-    for (let f: Frame | null = scope; f; f = f.parent) {
-      const hit = f.rulesets !== undefined || f.statements ? frameRulesets(f)?.get(seg.selector) : undefined;
-      if (hit?.length) {
-        rules = hit;
-        owner = f;
-        break;
-      }
-    }
-    if (!rules) {
-      return null;
-    }
-
-    /*
-     * Imported facts execute in a particular render placement. A Ruleset found by
-     * namespace lookup contributes both that placement's already-published
-     * import prefix and its authored body, matching lexical import splice order.
-     */
-    const bodies: Statement[] = rules.flatMap(r => [
-      ...(owner?.rulePlacements?.get(r)?.importedRules ?? []),
-      ...r.rules
-    ]);
-    scope = {
-      parent: scope,
-      mixins: collectMixins(bodies),
-      declIndex: collectDeclIndex(bodies), cells: null, reassign: null,
-      statements: bodies
-    };
-  }
-  return scope;
 }
 
 /** Move selected typed snapshots onto the activation that owns their bindings. */
@@ -14925,29 +14946,6 @@ function pickIfBranch(node: IfValue, frame: Frame | null, e: EvalCtx): ValueSlot
  * @x();` splices the chosen branch's declarations. Returns `undefined` when the
  * chain terminates in anything that is not a detached ruleset.
  */
-/** Follow a `@var` alias chain to a MIXIN-CALL binding (`@alias: .something(foo)`),
- *  so `@alias()` / a `@another-mixin()` parameter dispatches that call. Returns
- *  undefined when the chain does not end at a `MixinCall` (e.g. a detached ruleset). */
-function resolveToMixinCall(node: Binding | undefined, frame: Frame | null): MixinCall | undefined {
-  const seen = new Set<Binding>();
-  let cur: Binding | undefined = node;
-  while (cur && !seen.has(cur)) {
-    seen.add(cur);
-    if (isValueSlotArray(cur)) {
-      return undefined;
-    }
-    if (cur.type === 'MixinCall') {
-      return cur;
-    }
-    if (cur.type === 'Lookup' && cur.kind === 'var') {
-      cur = lookupVar(frame, literalName(cur));
-      continue;
-    }
-    return undefined;
-  }
-  return undefined;
-}
-
 function resolveValueBlock(node: Binding, frame: Frame | null, e: EvalCtx): ValueBlock | undefined {
   const seen = new Set<Binding>();
   let cur: Binding | undefined = node;
@@ -15074,7 +15072,7 @@ function expandReferenceCall(
   if (step?.type !== 'Call') {
     return;
   }
-  const resolved = resolveReferenceResult(call, frame, e);
+  const resolved = resolveReferenceResult(call, frame, e, true);
   if (!resolved) {
     /*
      * [content] `@content` / `$content()` with no block bound to THIS mixin's own
@@ -17750,6 +17748,41 @@ function unconfiguredModuleFrame(statements: Statement[]): Frame {
   };
 }
 
+/**
+ * The activation a value block's members live in when the block is a composed
+ * module's namespace, else `null`. {@link publishComposedModule} binds the
+ * namespace block over its module frame's own `statements`, so a block whose
+ * lexical frame was built over that very body IS the module, already activated.
+ */
+function composedModuleFrame(rules: readonly Statement[], lexicalFrame: Frame | null): Frame | null {
+  return lexicalFrame !== null && lexicalFrame.statements === rules ? lexicalFrame : null;
+}
+
+/**
+ * A `@compose` stylesheet module exports no functions: `.name(args)` on its
+ * namespace is a mixin call, which is a statement (ledger A8, R6 §D.3). So a
+ * call on one of its members outside a statement is an error, never a silently
+ * dropped call — unless the member is a value lambda (a block yielding
+ * `result:`, which is what a dialect function lowers to).
+ */
+function rejectComposedMemberCall(node: Reference, member: DeclEntry | undefined, symbol: string): void {
+  const value = member?.value;
+  if (value !== undefined && !isValueSlotArray(value) && value.type === 'AnonymousMixin'
+    && lambdaResultValue(value.rules) !== undefined) {
+    return;
+  }
+  const reason = `"${symbol}" cannot be called as a value: a @compose stylesheet module has no member functions `
+    + '(its `.name()` is a mixin call, a statement); functions come from @use script modules.';
+  throw new JessError({
+    code: 'eval/invalid-function',
+    phase: 'eval',
+    node,
+    summary: 'Invalid function call',
+    reason,
+    meta: { name: symbol, reason }
+  });
+}
+
 /* A usable module namespace identifier (the same ident shape the grammars use). */
 const MODULE_NAMESPACE_IDENT = /^-?[_a-zA-Z\u0080-\uFFFF][-_a-zA-Z0-9\u0080-\uFFFF]*$/;
 
@@ -17780,29 +17813,34 @@ function deriveModuleNamespace(specifier: string): string | null {
  * convention: `'*'` merges members unqualified, a name binds them under
  * `@<name>`, and `null` auto-derives from the specifier.
  *
- * A named module binds `@<ns>` to a value block over the module's rules whose
- * member lookups resolve in the isolated `bodyFrame` — so `@ns.member` (and the
- * chained `@ns.map.key` from the forward member-access chain) reaches the
- * module's own facts and nothing its sub-modules composed.
+ * A named module binds `@<ns>` to a value block over the activation's OWN body
+ * (`bodyFrame.statements`, never a re-loaded copy of the document), so member
+ * lookups resolve in the isolated `bodyFrame` ({@link composedModuleFrame}) —
+ * `@ns.member` (and the chained `@ns.map.key` from the forward member-access
+ * chain) reaches the module's own facts and nothing its sub-modules composed.
  */
 function publishComposedModule(
   node: StyleImport,
-  children: Statement[],
   importerFrame: Frame,
   bodyFrame: Frame,
-  specifier: string,
-  e: Emit
+  config: StyleImportConfig | null,
+  specifier: string
 ): void {
+  const children = bodyFrame.statements!;
   const namespace = node.namespace ?? deriveModuleNamespace(specifier);
   if (namespace === '*') {
     /*
      * `as *`: the module's OWN top-level members merge unqualified into the
-     * importer. Their value-block members still resolve in the isolated
-     * bodyFrame, so redirect each value block's closure there.
+     * importer, a configured member as its configured binding (spec R6 §E.1).
+     * Value-block members still resolve in the isolated bodyFrame, so redirect
+     * each value block's closure there.
      */
     for (const child of children) {
       if (child.type === 'VariableDeclaration') {
-        publishImportedVariableDeclaration(importerFrame, child);
+        publishImportedVariableDeclaration(
+          importerFrame,
+          config?.bindings.find(binding => binding.name === child.name) ?? child
+        );
         if (isValueBlockBinding(child.value)) {
           bindDetached(importerFrame, child.value, bodyFrame, bodyFrame.sourceOwner ?? null);
         }
@@ -17897,6 +17935,18 @@ function expandStyleImport(
               );
             }
             if (recorded === null) {
+              /*
+               * A shared module renders once, under the configuration of the
+               * first edge that loads it. One already loaded without a `set` is
+               * already rendered, so a later `set` would be silently ignored.
+               */
+              if (e.loadedImports?.has(loaded.key)) {
+                throw moduleConfigRejected(
+                  node,
+                  `Module "${request.specifier}" was already loaded without configuration; only the first import of a module can configure it with "set".`,
+                  request.specifier
+                );
+              }
               (e.moduleConfigs ??= new Map()).set(loaded.key, authoredConfig);
             }
           } else if (authoredConfig === null && recorded !== null) {
@@ -17915,15 +17965,30 @@ function expandStyleImport(
          * renders its own output.
          */
         const sharedModule = config === null || config.kind === 'set';
-        if (sharedModule && request.options === null && e.multipleImportDepth === 0 && loaded.key !== undefined) {
-          const seen = e.loadedImports ??= new Set();
-          if (seen.has(loaded.key)) {
+        const children = loaded.document?.rules ?? [];
+        const isCompose = node.mode === 'compose';
+        const emitOnceKey = sharedModule && request.options === null && e.multipleImportDepth === 0
+          ? loaded.key
+          : undefined;
+        if (emitOnceKey !== undefined) {
+          const seen = e.loadedImports ??= new Map();
+          if (seen.has(emitOnceKey)) {
+            if (isCompose) {
+              /* Rendered once already; this compose edge still binds its own namespace to that activation. */
+              const activated = seen.get(emitOnceKey);
+              if (!activated) {
+                throw moduleConfigRejected(
+                  node,
+                  `Module "${request.specifier}" was already loaded by @import, which folds it into the importing scope; it cannot also be composed as an isolated module.`,
+                  request.specifier
+                );
+              }
+              publishComposedModule(node, frame, activated, config, request.specifier);
+            }
             return;
           }
-          seen.add(loaded.key);
+          seen.set(emitOnceKey, null);
         }
-
-        const children = loaded.document?.rules ?? [];
 
         /*
          * A `@compose` (spec R6 Part E) evaluates the module in its own isolated
@@ -17935,7 +18000,6 @@ function expandStyleImport(
          * unqualified. A CONFIGURED compose additionally overlays its `with`/`set`
          * values in `configuredModuleFrame`.
          */
-        const isCompose = node.mode === 'compose';
         if (config !== null) {
           validateModuleConfig(node, request.specifier, config, children, e);
         }
@@ -17943,7 +18007,10 @@ function expandStyleImport(
           ? (config !== null ? configuredModuleFrame(children, config, frame) : unconfiguredModuleFrame(children))
           : frame;
         if (isCompose) {
-          publishComposedModule(node, children, frame, bodyFrame, request.specifier, e);
+          if (emitOnceKey !== undefined) {
+            e.loadedImports!.set(emitOnceKey, bodyFrame);
+          }
+          publishComposedModule(node, frame, bodyFrame, config, request.specifier);
         }
         const publishChildren = isCompose || hasPrepublishedImportFact(e, node)
           ? undefined
@@ -18568,7 +18635,11 @@ function evalSupportsPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): 
   }
 }
 
-/** The `SupportsPreludePart[]` analogue of {@link joinPreludeParts}. */
+/**
+ * Concatenate prelude fragments in SOURCE order. Stays synchronous while every
+ * fragment is settled; only the first awaitable fragment moves the join onto
+ * `Promise.all`, which preserves positional order however the tail settles.
+ */
 function concatPreludeParts(parts: Array<MaybePromise<SupportsPreludePart[]>>): MaybePromise<SupportsPreludePart[]> {
   const out: SupportsPreludePart[] = [];
   for (let index = 0; index < parts.length; index += 1) {
@@ -18577,29 +18648,6 @@ function concatPreludeParts(parts: Array<MaybePromise<SupportsPreludePart[]>>): 
       return Promise.all(parts.slice(index)).then(rest => [...out, ...rest.flat()]);
     }
     out.push(...part);
-  }
-  return out;
-}
-
-/**
- * Concatenate prelude fragments in SOURCE order. Stays entirely synchronous
- * while every fragment is settled — the ordinary prelude allocates one array and
- * no promise — and only the first awaitable fragment moves the join onto
- * `Promise.all`, which preserves positional order regardless of which fragment
- * settles first.
- */
-function joinPreludeParts(parts: Array<MaybePromise<string>>): MaybePromise<string> {
-  let out = '';
-  for (let index = 0; index < parts.length; index += 1) {
-    const part = parts[index]!;
-    if (isThenable(part)) {
-      /*
-       * Only the remaining tail needs awaiting; what is already joined stays put,
-       * so the result reads in source order however the tail settles.
-       */
-      return Promise.all(parts.slice(index)).then(rest => out + rest.join(''));
-    }
-    out += part;
   }
   return out;
 }

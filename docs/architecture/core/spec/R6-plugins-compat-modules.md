@@ -327,9 +327,8 @@ Recompute when `@plugin`-injected visitors widen the set mid-run.
 > These are top-level dependency directives in every implemented grammar. Jess
 > supports `@-use` and `@-from`; Less supports `@use`/`@-use` with a filename-derived
 > namespace; SCSS `sass:*` routes to trusted `@jesscss/fns` modules. JSON binds
-> as data, while local/package JS and TS use `@jesscss/plugin-js`. A8's broader
-> member-access policy remains owner-open; this records implementation state
-> without closing that requirement.
+> as data, while local/package JS and TS use `@jesscss/plugin-js`. Member-access
+> policy is ledger A8 (SETTLED, owner 2026-10-01); Part D records what is built.
 
 Source of truth: **owner memory `import-atrule-semantics-less-vs-jess`** (settled)
 and `forward-as-export-design-thread` (open). tree2 has NO module handling today
@@ -426,14 +425,18 @@ build `@-export` semantics** beyond parsing/accepting the node; flag as owner-op
 
 ## Part D — PROPOSED: `@use`/`@compose` namespace-access syntax
 
-> **STATUS: PARTLY IMPLEMENTED; A8 REMAINS OWNER-OPEN.**
+> **STATUS: PARTLY IMPLEMENTED; policy SETTLED as ledger A8 (owner 2026-10-01).**
 > Source of truth is owner memory `namespace-access-use-compose-model` (owner-
 > decided 2026-07-18, verbatim). This part specifies HOW a namespaced module's
 > members are *accessed* once §C's module scope exists (`@compose` isolated scope,
 > `@use` JS import). It ties directly into R4.4's namespace/accessor resolution
 > engine — the interpolation-body half of the model lives in
 > `R4-interpolation-detached-merge-namespaces.md` §R4.6 (cross-linked below).
-> Namespace data reads and script-module function calls are built; other A8 policy remains open.
+> Built: namespace data reads (`@ns.x`, `@ns[@x]`, chained), script-module
+> function calls, and the value-position error for `.name(args)` on a `@compose`
+> namespace. Not built: the statement-position `@compose` member MIXIN call
+> (`@theme.elevate();`), blocked on the grammar routing below — today it parses
+> as an unknown at-rule.
 >
 > **Blocked on / see [`REFERENCE-CALL-PLAN.md`](../REFERENCE-CALL-PLAN.md)** — the
 > core Reference-call machinery (grammar member-call chain + node + eval dispatch
