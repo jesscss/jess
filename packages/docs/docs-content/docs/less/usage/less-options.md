@@ -402,7 +402,7 @@ dev-files/main.less
 
 This is the opposite of the rootpath option, it specifies a path which should be removed from the output paths. For instance if you are compiling a file in the less-files directory but the source files will be available on your web server in the root or current directory, you can specify this to remove the additional `less-files` part of the path.
 
-It defaults to the path to the input less file.
+It defaults to the path to the input less file. It is also removed from the front of the `sourceMappingURL` written into the CSS, so a map URL under the basepath becomes relative to it.
 
 #### Include Less Source in the Source Map
 

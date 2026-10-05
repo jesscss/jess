@@ -31,7 +31,8 @@ import type { Position } from './serialize.js';
  * `normalizeFilename` does (basepath strip, then rootpath prefix);
  * `outputSourceFiles` embeds the content of each source a mapping names. Text a
  * host injected ahead of the entry file (`DocumentContextOptions.file.sourceOffset`)
- * has no authored position and is left unmapped.
+ * has no authored position and is left unmapped. These three choices are ledger
+ * row O12.
  */
 export interface AstSourceMapOptions {
   /** Recorded as the map's `file` (the generated output filename). */
@@ -73,16 +74,22 @@ function lineColFromIndex(lineStarts: number[], offset: number): { line: number;
   return { line: low + 1, column: offset - lineStarts[low]! };
 }
 
+/**
+ * Less `removeBasepath`: strip a `/`-separated `basepath` prefix and the one
+ * separator after it. Less applies it to every `source` and to the
+ * `sourceMappingURL` annotation (`source-map-builder.js`).
+ */
+export function removeSourceMapBasepath(path: string, basepath: string | undefined): string {
+  if (basepath === undefined || basepath === '' || path.indexOf(basepath) !== 0) {
+    return path;
+  }
+  const rest = path.substring(basepath.length);
+  return rest.charAt(0) === '/' || rest.charAt(0) === '\\' ? rest.substring(1) : rest;
+}
+
 /** Less `normalizeFilename`: basepath removal, then rootpath prefix (already `/`-terminated). */
 function normalizeFilename(filename: string, rootpath: string, basepath: string | undefined): string {
-  let path = filename.replace(/\\/g, '/');
-  if (basepath !== undefined && basepath !== '' && path.indexOf(basepath) === 0) {
-    path = path.substring(basepath.length);
-    if (path.charAt(0) === '/' || path.charAt(0) === '\\') {
-      path = path.substring(1);
-    }
-  }
-  return rootpath + path;
+  return rootpath + removeSourceMapBasepath(filename.replace(/\\/g, '/'), basepath);
 }
 
 /**
