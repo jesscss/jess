@@ -198,10 +198,18 @@ export interface LessOptions {
   math?: 0 | 1 | 2 | 3 | MathMode | 'strict-legacy';
 
   /**
-   * @deprecated Use `unitMode` instead. If `true`, sets `unitMode` to 'strict'.
-   * If `false`, sets the unitMode to 'loose'.
-   * If undefined, uses the `unitMode` value (defaults to 'preserve').
-   * @default false
+   * @deprecated Use `mathMode` instead. The Less 4.x boolean alias of `math`:
+   * `true` sets `mathMode` to 'parens'; `false` leaves the default
+   * ('parens-division'). An explicit `mathMode` or `math` wins. Setting it warns.
+   * @default undefined
+   */
+  strictMath?: boolean;
+
+  /**
+   * @deprecated Use `unitMode` instead. If `true`, sets `unitMode` to 'strict';
+   * `false` leaves the default ('preserve'), never the Less 4.x 'loose' fold.
+   * An explicit `unitMode` wins. Setting it warns.
+   * @default undefined
    */
   strictUnits?: boolean;
 

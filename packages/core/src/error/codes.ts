@@ -57,6 +57,7 @@ export type JessErrorCode =
   | 'extend/not-found'
   | 'extend/not-accessible'
   | 'plugin/unsupported-feature'
+  | 'plugin/invalid-option'
   | 'plugin/function-threw'
   | 'plugin/load-failed'
   | 'plugin/log'
@@ -459,6 +460,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'Plugin "${plugin}" uses ${feature}, which is not supported',
       reason: 'Plugin "${plugin}" uses ${feature}, which this compiler does not provide, so the plugin cannot be installed.',
       fix: '${replacement}'
+    }
+  ],
+  [
+    'plugin/invalid-option',
+    {
+      summary: 'The ${plugin} option ${option} must be ${allowed}; got ${value}',
+      reason: 'The ${plugin} plugin has no ${option} value ${value}, so it would have to guess which mode was meant.',
+      fix: 'Set ${option} to ${allowed}.'
     }
   ],
 

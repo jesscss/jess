@@ -46,6 +46,40 @@ export const lessPluginDefaults = {
 const lessValueEvaluator = buildEvaluator(makeLessRegistry());
 
 /**
+ * The documented values of each mode option. Any other value is rejected: read
+ * as some other mode, a typo would silently change the output.
+ */
+const MODE_OPTION_VALUES = {
+  mathMode: ['always', 'parens-division', 'parens', 'strict'],
+  math: [0, 1, 2, 3, 'always', 'parens-division', 'parens', 'strict', 'strict-legacy'],
+  unitMode: ['loose', 'preserve', 'strict'],
+  moduleMode: ['auto', 'modern']
+} as const;
+
+function formatOptionValue(value: unknown): string {
+  return typeof value === 'string' ? `'${value}'` : String(value);
+}
+
+function checkModeOptions(opts: LessPluginOptions): void {
+  for (const [option, values] of Object.entries(MODE_OPTION_VALUES)) {
+    const allowed: readonly unknown[] = values;
+    const value: unknown = Reflect.get(opts, option);
+    if (value === undefined || allowed.includes(value)) {
+      continue;
+    }
+    const listed = allowed.map(formatOptionValue);
+    throw ERR.pluginInvalidOption({
+      meta: {
+        plugin: 'less',
+        option,
+        value: typeof value === 'string' ? `'${value}'` : JSON.stringify(value) ?? String(value),
+        allowed: `${listed.slice(0, -1).join(', ')} or ${listed.at(-1)}`
+      }
+    });
+  }
+}
+
+/**
  * `#less` is this plugin's private path to the Less built-in module
  * `@jesscss/fns/less`, resolved from THIS package's location so it works
  * whatever the importing project installs. The plugin loads and trusts it (no
@@ -163,6 +197,7 @@ export class LessPluginResolver {
     const optionsKey = stableStringify({
       math: lessOptions.math,
       mathMode: lessOptions.mathMode,
+      strictMath: lessOptions.strictMath,
       strictUnits: lessOptions.strictUnits,
       unitMode: lessOptions.unitMode,
       moduleMode: lessOptions.moduleMode,
@@ -324,6 +359,7 @@ export class LessPlugin extends AbstractPlugin {
 
   constructor(public opts: LessPluginOptions = {}) {
     super();
+    checkModeOptions(opts);
 
     // Handle deprecated math option -> mathMode conversion
     let mathMode: MathMode;
@@ -341,8 +377,22 @@ export class LessPlugin extends AbstractPlugin {
         // 3 or 'strict-legacy' -> 'parens' (deprecated, use 'strict' instead)
         mathMode = 'parens';
       }
+    } else if (opts.strictMath === true) {
+      mathMode = 'parens';
     } else {
       mathMode = lessPluginDefaults.mathMode;
+    }
+
+    /*
+     * `strictMath` is the Less 4.x boolean alias of `math` (orchestrator judgment
+     * under owner delegation, 2026-10-05), on the `strictUnits` pattern: `true`
+     * is 'parens', `false` the default, and an explicit `mathMode` or `math`
+     * wins. Any use warns.
+     */
+    if (opts.strictMath !== undefined && opts.mathMode === undefined && opts.math === undefined) {
+      logger.warn(
+        `strictMath is deprecated; use mathMode. strictMath: ${String(opts.strictMath)} now means mathMode: '${mathMode}'`
+      );
     }
 
     /*
