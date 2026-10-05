@@ -54,7 +54,6 @@ type MixinInteriorFact = {
   readonly trailingSeparator?: ',' | ';';
 };
 type MixinReferenceBaseFact = { readonly call: MixinCall; readonly raw: string };
-type AttributeNameFact = { readonly namespace: string; readonly name: string };
 type ExtendTargetFact = { readonly target: SelectorList; readonly partial: boolean };
 type BodyExtendFact = { readonly bodyExtensions: readonly ExtendInstruction[] };
 type SelectorBranchFact = { readonly selector: SelectorBranch; readonly extensions: readonly ExtendInstruction[] };
@@ -1694,12 +1693,6 @@ function isParam(value: unknown): value is Param {
     && ('name' in value || 'pattern' in value || 'rest' in value);
 }
 
-function isAttributeNameFact(value: unknown): value is AttributeNameFact {
-  return typeof value === 'object' && value !== null
-    && 'namespace' in value && typeof value.namespace === 'string'
-    && 'name' in value && typeof value.name === 'string';
-}
-
 function isExtendInstruction(value: unknown): value is ExtendInstruction {
   return typeof value === 'object' && value !== null
     && 'target' in value && isLessSelectorList(value.target)
@@ -2360,7 +2353,6 @@ export {
   isAny,
   isAtRuleBlock,
   isAtRuleStatement,
-  isAttributeNameFact,
   isBareMixinCallFact,
   isBodyExtendFact,
   isComplex,
@@ -2490,7 +2482,6 @@ export {
 };
 
 export type {
-  AttributeNameFact,
   BareMixinCallFact,
   BodyExtendFact,
   CallValue,

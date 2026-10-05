@@ -56,7 +56,6 @@ import {
   interpolationFactFromChildren,
   interpolationPartsFrom,
   isAny,
-  isAttributeNameFact,
   isBareMixinCallFact,
   isBodyExtendFact,
   isComplexTailFact,
@@ -151,7 +150,6 @@ import {
   variableValueSlot
 } from './grammar-helpers.js';
 import type {
-  AttributeNameFact,
   BodyExtendFact,
   CustomValuePart,
   EnclosedNameFact,
@@ -325,7 +323,6 @@ type LessRules = {
   PseudoArgumentSelector: Combinator<SelectorList>;
   AttributeNamespace: Combinator<string>;
   NamespaceTypeSelector: Combinator<SimpleSelector>;
-  AttributeName: Combinator<AttributeNameFact>;
   AttributeSelector: Combinator<SimpleSelector>;
   InterpolatedAttributeToken: Combinator<Interpolation>;
   InterpolatedAttributeValueToken: Combinator<Interpolation>;
@@ -4798,14 +4795,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(g.AttributeNamespace, choice(staticIdentifier, literal('*'))),
     children => simpleSelector(children.map(requireTerminalText).join(''))
   );
-  const AttributeName = node(
-    'AttributeName',
-    sequence(optional(g.AttributeNamespace), staticIdentifier),
-    children => ({
-      namespace: children.find((child): child is string => typeof child === 'string') ?? '',
-      name: requireToken(children.at(-1)).value
-    })
-  );
   // Less's attribute name/value interpolation is one complete selector token.
   // Keep every literal delimiter and every interpolation reference (`@{…}` and
   // `${…}`) as an `Interpolation` part rather than recovering the bracket text
@@ -4893,7 +4882,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
               ))
             ),
             sequence(
-              g.AttributeName,
+              optional(g.AttributeNamespace),
+              staticIdentifier,
               g.AttributeOperator,
               choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted),
               optional(g.AttributeModifier)
@@ -4914,9 +4904,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
               parts.push(part);
             }
           }
-        } else if (isAttributeNameFact(child)) {
-          const name = child;
-          appendInterpolationLiteral(parts, `${name.namespace}${name.name}`);
         } else if (typeof child === 'string') {
           appendInterpolationLiteral(parts, child);
         } else {
@@ -5581,7 +5568,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     PseudoArgumentSelector,
     AttributeNamespace,
     NamespaceTypeSelector,
-    AttributeName,
     AttributeSelector,
     InterpolatedAttributeToken,
     InterpolatedAttributeValueToken,

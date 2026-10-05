@@ -129,7 +129,9 @@ describe('Less constructs discovered outside the parser suites', () => {
 
   it.each([
     ['a[@{n}="x"i]{c:d}', [{ lit: '[' }, { ref: { name: 'n' } }, { lit: '="x"i]' }]],
-    ['a[ @{n} = "x" i ]{c:d}', [{ lit: '[ ' }, { ref: { name: 'n' } }, { lit: ' = "x" i ]' }]]
+    ['a[ @{n} = "x" i ]{c:d}', [{ lit: '[ ' }, { ref: { name: 'n' } }, { lit: ' = "x" i ]' }]],
+    ['a[ data-x = "@{s}" i ]{c:d}', [{ lit: '[ data-x = "' }, { ref: { name: 's' } }, { lit: '" i ]' }]],
+    ['a[ data-x = @{s} i ]{c:d}', [{ lit: '[ data-x = ' }, { ref: { name: 's' } }, { lit: ' i ]' }]]
   ])('keeps the authored whitespace in an interpolated attribute selector (%s)', (source, parts) => {
     expect(firstRule(source)).toMatchObject({
       selector: { selectors: [{ value: [{ text: 'a' }, { interp: { parts } }] }] }
