@@ -28,6 +28,7 @@ export {
   resolveErrorsConfig
 } from './warnings.js';
 export * from './plugin.js';
+export { EXTERNAL_IMPORT_SPECIFIER } from './import-options.js';
 export * from './provided-modules.js';
 export * from './jess-error.js';
 export * from './deprecation.js';

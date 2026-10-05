@@ -286,6 +286,39 @@ describe('Config Merging', () => {
     expect(result.css).not.toContain('line ');
   });
 
+  /*
+   * Less 4.x `insecure` (`lessc --insecure`) let a remote import skip
+   * certificate checks. Remote imports are https-only and always verify the
+   * certificate, so the option is accepted, warns once, and changes nothing.
+   */
+  it.each([
+    ['language.less', { language: { less: { insecure: true } } }],
+    ['compile', { compile: { insecure: true } }]
+  ])('accepts deprecated %s.insecure with one no-effect warning and unchanged output', async (_where, options) => {
+    const testFile = path.join(tempDir, 'test.less');
+    fs.writeFileSync(testFile, '@import url("https://fonts.googleapis.com/css?family=Open+Sans");\n.a { color: red; }\n');
+
+    const plain = await new Compiler().renderToResult(testFile, { suppressWarnings: true });
+    const result = await new Compiler(options).renderToResult(testFile, { suppressWarnings: true });
+
+    const deprecations = result.warnings.filter(warning => warning.code === 'deprecation/insecure-option');
+    expect(deprecations).toHaveLength(1);
+    expect(deprecations[0]!.reason).toBe('"insecure" is deprecated and has no effect: remote imports are https-only and always verify the server certificate.');
+    expect(deprecations[0]!.filePath).toBeUndefined();
+    expect(result.errors).toEqual([]);
+    expect(result.css).toBe(plain.css);
+  });
+
+  it('does not warn when insecure is unset or false', async () => {
+    const testFile = path.join(tempDir, 'test.less');
+    fs.writeFileSync(testFile, '.a { color: red; }');
+
+    for (const options of [{}, { language: { less: { insecure: false } } }]) {
+      const result = await new Compiler(options).renderToResult(testFile, { suppressWarnings: true });
+      expect(result.warnings.map(warning => warning.code)).not.toContain('deprecation/insecure-option');
+    }
+  });
+
   it('does not warn when dumpLineNumbers is unset or off', async () => {
     const testFile = path.join(tempDir, 'test.less');
     fs.writeFileSync(testFile, '.a { color: red; }');

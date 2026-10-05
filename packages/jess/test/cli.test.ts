@@ -73,6 +73,54 @@ describe('jess CLI', () => {
     }
   });
 
+  /*
+   * No request is made in these cases: an off-list `.less` URL is refused at
+   * the plugin's claim, and an extensionless one off the list stays CSS.
+   */
+  it('adds the remote-import allow list with --allow-remote-imports', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-cli-remote-'));
+    try {
+      const input = path.join(directory, 'entry.less');
+      const output = path.join(directory, 'entry.css');
+      fs.writeFileSync(input, '@import url("https://fonts.googleapis.com/css?family=Open+Sans");\n@import "https://evil.example/theme.less";\n');
+
+      const without = await run([input, '--no-color']);
+      expect(without.code).toBe(0);
+      expect(fs.readFileSync(output, 'utf8')).toBe(
+        '@import url("https://fonts.googleapis.com/css?family=Open+Sans");\n@import "https://evil.example/theme.less";\n'
+      );
+
+      const allowed = await run([input, '--allow-remote-imports', 'cdn.example.com,fonts.example.com', '--no-color']);
+      expect(allowed.code).toBe(1);
+      expect(allowed.stderr).toContain('evil.example is not on the remote-import allow list');
+
+      fs.writeFileSync(input, '@import url("https://fonts.googleapis.com/css?family=Open+Sans");\n');
+      const extensionless = await run([input, '--allow-remote-imports=cdn.example.com', '--no-color']);
+      expect(extensionless.code).toBe(0);
+      expect(fs.readFileSync(output, 'utf8')).toBe('@import url("https://fonts.googleapis.com/css?family=Open+Sans");\n');
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    [['cdn.example.com,*'], 'allow entry "*" is not a host'],
+    [['cdn.example.com', '8.8.8.8'], 'allow entry "8.8.8.8" is an IP address']
+  ])('rejects the allow list %j before compiling', async (lists, message) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-cli-remote-allow-'));
+    try {
+      const input = path.join(directory, 'entry.less');
+      fs.writeFileSync(input, '.entry { color: red; }');
+
+      const result = await run([input, ...lists.flatMap(hosts => ['--allow-remote-imports', hosts])]);
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain(message);
+      expect(fs.existsSync(path.join(directory, 'entry.css'))).toBe(false);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('surfaces lint diagnostics through the jess lint command', async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-cli-lint-'));
     try {

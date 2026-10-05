@@ -32,6 +32,17 @@ jess input.less dist/input.css
 jess input.less -o dist
 ```
 
+To import stylesheets from hosts you trust over https, name them with
+`--allow-remote-imports` (comma-separated; the flag may repeat). It needs
+`@jesscss/plugin-remote-import` installed next to `jess`:
+
+```bash
+jess input.less --allow-remote-imports cdn.example.com
+```
+
+Without it, an `@import` of a URL stays in the output as a plain CSS `@import`
+and nothing is downloaded.
+
 The default command is intentionally short because it mirrors familiar tools:
 `sass input.scss output.css`, `lessc input.less output.css`, and `tsc` all keep
 the primary build workflow close to the command name. Linting is explicit because

@@ -146,7 +146,11 @@ describe('V19 one-evaluator projection ratchet', () => {
     // post-walk chunk rewrites; the walk no longer keeps a running offset.
     // +1 function (`spliceCtx`): an interpolation splice evaluates without
     // compress, so compressed output never rewrites text inside a larger token.
-    expect(occurrences(/^function |^async function /gmu)).toBe(476);
+    // +1 function (`mediaImportStayingCss`, ledger A10): an import the media
+    // desugar wrapped that nothing loads is written as one `@import … q;`.
+    // +1 function (`moduleLoadFailed`): a `@use` that cannot load is an
+    // `import/load-failed` at the `@use`, as `@plugin` already is.
+    expect(occurrences(/^function |^async function /gmu)).toBe(478);
     expect(occurrences(/new Map/gu)).toBe(71);
     expect(occurrences(/new Set/gu)).toBe(40);
     expect(occurrences(/new WeakMap/gu)).toBe(4);

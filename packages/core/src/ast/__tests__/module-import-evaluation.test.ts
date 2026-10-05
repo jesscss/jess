@@ -108,6 +108,15 @@ describe('ModuleImport evaluation', () => {
     expect(plugin.importCalls).toBe(1);
   });
 
+  it('reports a module that cannot load as import/load-failed, while preparing and while rendering', async () => {
+    const document = stylesheet([moduleImport(modulePath(tempModule('broken.js')), 'use', 'broken')]);
+    const failure = { code: 'import/load-failed', message: expect.stringContaining('Unexpected module path') };
+    const context = () => new Context({}, [new ModulePlugin(new Map())]);
+
+    await expect(Promise.resolve(prepareStaticImports(document, { context: context(), evaluator }))).rejects.toMatchObject(failure);
+    await expect(Promise.resolve(serialize(document, { context: context(), evaluator }))).rejects.toMatchObject(failure);
+  });
+
   it('binds @-use functions under a namespace and supports as *', async () => {
     const file = tempModule('math.js');
     const inc = defineFunction('inc', {

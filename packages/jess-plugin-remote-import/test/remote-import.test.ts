@@ -2,6 +2,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { JessError } from '@jesscss/core';
 import { RemoteImportPlugin, type RemoteFetch } from '../src/index.js';
 
+/** DNS answers for the default transport's address check; an unlisted host does not resolve. */
+const dns = vi.hoisted(() => ({ answers: new Map<string, string>() }));
+vi.mock('node:dns/promises', () => ({
+  lookup: async (hostname: string) => {
+    const address = dns.answers.get(hostname);
+    if (address === undefined) {
+      throw new Error(`getaddrinfo ENOTFOUND ${hostname}`);
+    }
+    return [{ address, family: address.includes(':') ? 6 : 4 }];
+  }
+}));
+
 /** A transport over canned routes that records every request; anything unrouted fails the test. */
 function serve(routes: ReadonlyArray<readonly [url: string, respond: () => Response]>): { fetch: RemoteFetch; requested: string[] } {
   const requested: string[] = [];
@@ -43,20 +55,14 @@ describe('RemoteImportPlugin allow list', () => {
   });
 
   it.each([
-    ['127.0.0.1'], ['10.1.2.3'], ['172.20.0.1'], ['192.168.1.1'], ['169.254.169.254'], ['100.100.100.200'], ['0.0.0.0'],
-    ['198.18.0.1'], ['224.0.0.1'], ['255.255.255.255'],
-    ['[::]'], ['[::1]'], ['[fd00::1]'], ['[fe80::1]'], ['[fec0::1]'], ['[ff02::1]'], ['[::ffff:7f00:1]'],
-    ['[::a9fe:a9fe]'], ['[64:ff9b::a9fe:a9fe]'], ['[2002:a9fe:a9fe::1]']
-  ])(
-    'rejects the private, loopback or link-local address %s',
-    (entry) => {
-      expect(() => new RemoteImportPlugin({ allow: [entry] })).toThrow('private, loopback or link-local');
-    }
-  );
+    ['8.8.8.8'], ['127.0.0.1'], ['169.254.169.254'], ['[2001:db8::1]'], ['[::1]'], ['[64:ff9b::808:808]']
+  ])('rejects the IP address %s: hosts are named, public or not', (entry) => {
+    expect(() => new RemoteImportPlugin({ allow: [entry] })).toThrow('is an IP address; remote imports are fetched from named hosts only');
+  });
 
-  it('keeps hosts as a URL spells them, a public IPv4 inside IPv6 included', () => {
-    expect([...new RemoteImportPlugin({ allow: ['CDN.Example.com', '[2001:db8::1]', '[64:ff9b::808:808]', '[2002:808:808::1]'] }).allow])
-      .toEqual(['cdn.example.com', '[2001:db8::1]', '[64:ff9b::808:808]', '[2002:808:808::1]']);
+  it('keeps hosts as a URL spells them', () => {
+    expect([...new RemoteImportPlugin({ allow: ['CDN.Example.com', 'fonts.example.com'] }).allow])
+      .toEqual(['cdn.example.com', 'fonts.example.com']);
   });
 });
 
@@ -86,28 +92,44 @@ describe('RemoteImportPlugin under Deno', () => {
 describe('RemoteImportPlugin claim', () => {
   const { fetch, requested } = serve([]);
   const plugin = new RemoteImportPlugin({ allow: ['cdn.example.com'], fetch });
+  const claim = (specifier: string, mustLoad = false) => plugin.canResolveImport(specifier, '/styles', [], mustLoad);
 
   it('claims an https or protocol-relative URL on an allowed host, with or without an extension', () => {
-    expect(plugin.canResolveImport('https://cdn.example.com/theme.less')).toBe(true);
-    expect(plugin.canResolveImport('//cdn.example.com/theme.less?v=2')).toBe(true);
-    expect(plugin.canResolveImport('https://cdn.example.com/css?family=Open+Sans')).toBe(true);
+    expect(claim('https://cdn.example.com/theme.less')).toBe(true);
+    expect(claim('//cdn.example.com/theme.less?v=2')).toBe(true);
+    expect(claim('https://cdn.example.com/css?family=Open+Sans')).toBe(true);
+    expect(claim('https://cdn.example.com/theme', true)).toBe(true);
   });
 
   it('leaves anything but an http(s) URL alone', () => {
-    expect(plugin.canResolveImport('theme.less')).toBe(false);
-    expect(plugin.canResolveImport('C:/styles/theme.less')).toBe(false);
-    expect(plugin.canResolveImport('data:text/css,a{}')).toBe(false);
+    expect(claim('theme.less')).toBe(false);
+    expect(claim('C:/styles/theme.less')).toBe(false);
+    expect(claim('data:text/css,a{}')).toBe(false);
+  });
+
+  /* The allow list names the hosts that are fetched and inlined, not the ones a stylesheet may reference. */
+  it.each([
+    ['https://fonts.googleapis.com/css?family=Open+Sans'],
+    ['//fonts.googleapis.com/css2?family=Inter'],
+    ['https://8.8.8.8/theme'],
+    ['http://cdn.example.com/theme']
+  ])('leaves %s, extensionless and not fetched, a CSS @import', (specifier) => {
+    expect(claim(specifier)).toBe(false);
+    expect(requested).toEqual([]);
   });
 
   it.each([
-    ['https://fonts.googleapis.com/css?family=Open+Sans', 'fonts.googleapis.com is not on the remote-import allow list'],
-    ['https://evil.example/theme.less', 'evil.example is not on the remote-import allow list'],
-    ['https://cdn.example.com.evil.example/theme.less', 'cdn.example.com.evil.example is not on the remote-import allow list'],
-    ['https://cdn.example.com@evil.example/theme.less', 'evil.example is not on the remote-import allow list'],
-    ['https://169.254.169.254/latest.less', '169.254.169.254 is not on the remote-import allow list'],
-    ['http://cdn.example.com/theme.less', 'https-only']
-  ])('rejects %s before any request', (specifier, reason) => {
-    expect(() => plugin.canResolveImport(specifier)).toThrow(reason);
+    ['https://fonts.googleapis.com/css?family=Open+Sans', true, 'fonts.googleapis.com is not on the remote-import allow list'],
+    ['https://evil.example/theme.less', false, 'evil.example is not on the remote-import allow list'],
+    ['https://evil.example/theme.php?v=2', false, 'evil.example is not on the remote-import allow list'],
+    ['https://cdn.example.com.evil.example/theme.less', false, 'cdn.example.com.evil.example is not on the remote-import allow list'],
+    ['https://cdn.example.com@evil.example/theme.less', false, 'evil.example is not on the remote-import allow list'],
+    ['https://169.254.169.254/latest.less', false, '169.254.169.254 is an IP address, and remote imports are fetched from named hosts only'],
+    ['https://[2001:db8::1]/theme', true, '[2001:db8::1] is an IP address'],
+    ['http://cdn.example.com/theme.less', false, 'https-only'],
+    ['http://cdn.example.com/theme', true, 'https-only']
+  ])('refuses %s (must load: %s), which cannot stay a CSS @import, before any request', (specifier, mustLoad, reason) => {
+    expect(() => claim(specifier, mustLoad)).toThrow(reason);
     expect(requested).toEqual([]);
   });
 
@@ -250,9 +272,38 @@ describe('RemoteImportPlugin fetch', () => {
 
     await expect(plugin.getSource('https://cdn.example.com/a.less')).rejects.toThrow('timed out after 10ms');
   });
+});
 
-  it('refuses a host that resolves to a loopback address with the default transport', async () => {
-    await expect(new RemoteImportPlugin({ allow: ['localhost'] }).getSource('https://localhost/a.less'))
-      .rejects.toThrow(/localhost resolves to (127\.0\.0\.1|::1), a private, loopback or link-local address/);
+describe('RemoteImportPlugin default transport', () => {
+  afterEach(() => {
+    dns.answers.clear();
+    vi.unstubAllGlobals();
   });
+
+  it.each([
+    ['127.0.0.1'], ['10.1.2.3'], ['172.20.0.1'], ['192.168.1.1'], ['169.254.169.254'], ['100.100.100.200'], ['0.0.0.0'],
+    ['198.18.0.1'], ['224.0.0.1'], ['255.255.255.255'],
+    ['::'], ['::1'], ['fd00::1'], ['fe80::1'], ['fec0::1'], ['ff02::1'], ['::ffff:7f00:1'],
+    ['::a9fe:a9fe'], ['64:ff9b::a9fe:a9fe'], ['2002:a9fe:a9fe::1']
+  ])('refuses an allowed host that resolves to the private, loopback or link-local address %s', async (address) => {
+    const network = vi.fn<typeof fetch>();
+    vi.stubGlobal('fetch', network);
+    dns.answers.set('cdn.example.com', address);
+
+    await expect(new RemoteImportPlugin({ allow: ['cdn.example.com'] }).getSource('https://cdn.example.com/a.less'))
+      .rejects.toThrow(`cdn.example.com resolves to ${address}, a private, loopback or link-local address`);
+    expect(network).not.toHaveBeenCalled();
+  });
+
+  it.each([['93.184.215.14'], ['2001:db8::1'], ['64:ff9b::808:808'], ['2002:808:808::1']])(
+    'fetches from an allowed host that resolves to the public address %s',
+    async (address) => {
+      const network = vi.fn<typeof fetch>(async () => new Response('.a {}'));
+      vi.stubGlobal('fetch', network);
+      dns.answers.set('cdn.example.com', address);
+
+      await expect(new RemoteImportPlugin({ allow: ['cdn.example.com'] }).getSource('https://cdn.example.com/a.less')).resolves.toBe('.a {}');
+      expect(network).toHaveBeenCalledOnce();
+    }
+  );
 });

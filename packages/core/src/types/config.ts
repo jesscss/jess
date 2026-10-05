@@ -116,7 +116,10 @@ export interface LessOptions {
   strictImports?: boolean | 'error';
 
   /**
-   * Allow Imports from Insecure HTTPS Hosts
+   * @deprecated Accepted for Less 4.x compatibility, but it has no effect:
+   * remote imports are https-only and always verify the server certificate.
+   * Setting it reports a `deprecation/insecure-option` warning.
+   *
    * @default false
    */
   insecure?: boolean;
