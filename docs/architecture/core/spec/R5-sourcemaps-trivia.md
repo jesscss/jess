@@ -175,9 +175,9 @@ which node happens to carry the offset.
 map, and the composition draws from MULTIPLE source nodes.** In flattened mode
 `composeOne('.a', '&:hover') → '.a:hover'` fuses bytes from the **parent** rule's
 selector node and the **child** rule's selector node into one emitted string.
-tree2 today pushes ONE `Position` for `rule.selector` (the child). Two policies,
-**owner-confirm which is v5**:
-  - **selector-granular (Less 4.x-parity, likely default):** one segment per
+tree2 today pushes ONE `Position` for `rule.selector` (the child). Two policies;
+v5 is **selector-granular** (decided, ledger O12):
+  - **selector-granular (Less 4.x-parity):** one segment per
     emitted complex selector, attributed to the **child** selector node's source
     offset (the innermost authored selector). Coarse but matches Less.
   - **sub-selector-granular:** a segment at the `.a` bytes → parent origin, a
@@ -241,7 +241,8 @@ identity** (not just an offset) through the import inline — the bridge context
 per-file, so the stamped provenance must record `(file, offset)`, or the side
 lane must be keyed such that an inlined node resolves to its origin file.
 `buildSourceMap` already handles multiple `source` values + `setSourceContent`
-per source. **Owner-confirm** whether v5 emits `sourcesContent`.
+per source. Decided (ledger O12): with `outputSourceFiles`, v5 embeds
+`sourcesContent` for each source some mapping names, and no other.
 
 ### 2.6 Invariants (sourcemap)
 
@@ -527,16 +528,18 @@ never skipped.
 
 ## 8. Open owner-confirm items
 
-1. **Sourcemap granularity (T3/T7).** Selector-granular (Less-parity) vs
-   sub-selector-granular; property/value granularity. Source from the alpha map,
-   do not assume from the coarse lane.
+1. **Sourcemap granularity (T3/T7).** Decided (ledger O12): one mapping per
+   emitted node (selector header, declaration, value, at-rule), the header
+   mapped to the rule that owns it. Per-selector-part mapping is a possible
+   follow-up.
 2. **Placed-mixin origin (A2/T1).** Confirm placed content maps to the definition
    body (assumed) vs the call site.
 3. **Authored-whitespace scope (§3.2).** Confirm v5 output is canonical
    whitespace + faithful inter-member **comments** (assumed), NOT full authored
    inter-token whitespace round-trip. This decides whether the §3 fork is needed
    at all or only for the sparse comment case.
-4. **`sourcesContent` emission (§2.5).** Does the v5 map embed source content?
+4. **`sourcesContent` emission (§2.5).** Decided (ledger O12): embedded for
+   each source some mapping names.
 5. **Which deprecations fire in v5 alpha (§4.2).** The exact subset of
    `Deprecation.values` the tree2 walk must emit (memory
    `deprecation-emission-not-wired-v5`).
