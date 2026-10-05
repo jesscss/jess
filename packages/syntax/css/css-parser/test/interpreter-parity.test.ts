@@ -4,11 +4,12 @@ import { parseWith, type CssAstGrammar } from '../src/parse-with.js';
 import { commentTriviaLabels } from '../src/trivia-labels.js';
 import {
   assertEnginesAgree,
+  assertNoRuntimeCodegen,
   AST_VARIANTS,
   CSS_FIXTURES,
   CST_VARIANTS,
   cstOutcome,
-  interpreterParsesWithoutCodegen,
+  ENGINES,
   loadEnginePair,
   outcome,
   type Pins
@@ -39,8 +40,8 @@ describe('CSS grammar: macro-compiled and interpreter bundles agree', () => {
     expect(CSS_FIXTURES.length).toBeGreaterThan(80);
   });
 
-  it('the interpreter grammar loads and parses with runtime code generation disallowed', () => {
-    expect(interpreterParsesWithoutCodegen(LIB, 'ast', '.a { b: c; }')).toBe(true);
+  it.each(ENGINES)('the %s grammar generates no code at runtime', (engine) => {
+    assertNoRuntimeCodegen(LIB, engine, '.a { b: c; }');
   });
 
   it.each(AST_VARIANTS)('AST %s', async (variant) => {

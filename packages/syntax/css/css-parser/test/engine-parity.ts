@@ -95,25 +95,80 @@ export async function loadEnginePair(
   };
 }
 
+export const ENGINES = ['compiled', 'interpreter'] as const;
+
+const VARIANTS: readonly Variant[] = [...AST_VARIANTS, ...CST_VARIANTS];
+const CST_HOST = pathToFileURL(fileURLToPath(new URL('../lib/cst-host.js', import.meta.url))).href;
+
 /**
- * Whether the interpreter twin of `variant` loads and parses `source` in a Node
- * that refuses to turn strings into code (`--disallow-code-generation-from-strings`,
- * Node's form of a Content-Security-Policy without `'unsafe-eval'`). Browser
- * bundlers resolve the interpreter twin, so this is the check that a page with
- * such a policy can load the grammar at all.
+ * Loads `engine`'s four grammar variants in a fresh Node and parses `source`
+ * with each, counting every call to `Function` and `eval` from before parseman
+ * loads. The child also runs with `--disallow-code-generation-from-strings`,
+ * Node's form of a Content-Security-Policy without `'unsafe-eval'`. Counting
+ * matters as well as the flag: a path that tries `new Function`, catches the
+ * `EvalError` and falls back still parses, but a browser reports the attempt as
+ * a policy violation.
  */
-export function interpreterParsesWithoutCodegen(libDir: string, variant: Variant, source: string): boolean {
-  const grammarUrl = pathToFileURL(join(libDir, 'grammar', 'interpreter', `${variant}.js`)).href;
-  const script = `const { run } = await import('parseman');
-const grammar = Object.values(await import(${JSON.stringify(grammarUrl)}))[0];
-process.stdout.write(String(run(grammar.Stylesheet, ${JSON.stringify(source)}).ok));`;
+function runtimeCodegen(libDir: string, engine: Engine, source: string): { calls: number; parsed: Record<string, unknown> } {
+  const dir = engine === 'compiled' ? 'grammar' : join('grammar', 'interpreter');
+  const grammars = VARIANTS.map(variant => [variant, pathToFileURL(join(libDir, dir, `${variant}.js`)).href]);
+  const script = `let calls = 0;
+const RealFunction = globalThis.Function;
+globalThis.Function = new Proxy(RealFunction, {
+  construct(target, args, newTarget) { calls++; return Reflect.construct(target, args, newTarget); },
+  apply(target, self, args) { calls++; return Reflect.apply(target, self, args); }
+});
+const realEval = globalThis.eval;
+globalThis.eval = code => { calls++; return realEval(code); };
+const { run } = await import('parseman');
+const { parseCst } = await import(${JSON.stringify(CST_HOST)});
+const source = ${JSON.stringify(source)};
+const parsed = {};
+for (const [variant, url] of ${JSON.stringify(grammars)}) {
+  try {
+    const module = await import(url);
+    const grammar = module[Object.keys(module).find(name => name.endsWith('Grammar'))];
+    parsed[variant] = variant.startsWith('cst') ? parseCst(grammar, source, 'Stylesheet', {}, []).ok : run(grammar.Stylesheet, source).ok;
+  } catch (error) {
+    parsed[variant] = error.name + ': ' + error.message;
+  }
+}
+process.stdout.write(JSON.stringify({ calls, parsed }));`;
   const child = spawnSync(
     process.execPath,
     ['--disallow-code-generation-from-strings', '--input-type=module', '-e', script],
     { cwd: dirname(libDir), encoding: 'utf8' }
   );
   expect(child.stderr, 'child stderr').toBe('');
-  return child.status === 0 && child.stdout === 'true';
+  return JSON.parse(child.stdout) as { calls: number; parsed: Record<string, unknown> };
+}
+
+/*
+ * PINNED DEFECT, interpreter engine of the composed dialects (Less, SCSS, Jess):
+ * parseman 0.51's runtime `compose()` rebuilds every composed piece from
+ * serialized source with `eval`/`new Function` (jess#325), so their interpreter
+ * grammars throw `EvalError` where code generation is disallowed. CSS composes
+ * nothing at runtime, and the compiled grammars — what Node and browser bundles
+ * load — are clean. Remove with the parseman release whose `compose()` links.
+ */
+export const COMPOSED_CODEGEN_PINS: ReadonlyMap<Engine, string> = new Map([
+  ['interpreter', 'runtime compose() evaluates serialized source (jess#325)']
+]);
+
+/**
+ * Every variant of `engine` loads and parses `source` without turning a string
+ * into code, so a page whose policy omits `'unsafe-eval'` can use it. A PINNED
+ * engine asserts the current, wrong behaviour instead, and fails once it is fixed.
+ */
+export function assertNoRuntimeCodegen(libDir: string, engine: Engine, source: string, pinned?: string): void {
+  const { calls, parsed } = runtimeCodegen(libDir, engine, source);
+  const clean = calls === 0 && VARIANTS.every(variant => parsed[variant] === true);
+  if (pinned !== undefined) {
+    expect(clean, `${engine}: PINNED (${pinned}) no longer generates code — remove the pin`).toBe(false);
+    return;
+  }
+  expect(parsed).toEqual(Object.fromEntries(VARIANTS.map(variant => [variant, true])));
+  expect(calls, `${engine}: Function/eval calls`).toBe(0);
 }
 
 function isTriviaMap(value: Record<string, unknown>): value is Record<string, unknown> & TriviaMap {
