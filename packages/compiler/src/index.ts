@@ -1063,22 +1063,19 @@ export class Compiler {
     };
 
     const context = new Context(contextOptions, plugins);
+
+    /* Option deprecations are about the options, not a stylesheet, so they carry no source location. */
     if (usesDeprecatedDisablePluginRule) {
-      context.warn(WARN.deprecated({
-        filePath: resolved.filePath,
-        meta: {
-          what: 'disablePluginRule',
-          use: 'disableScriptModules',
-          deprecation: Deprecation.fromId('disable-plugin-rule-option') ?? Deprecation.userAuthored
-        }
+      const deprecation = Deprecation.fromId('disable-plugin-rule-option') ?? Deprecation.userAuthored;
+      context.warnDeprecation(deprecation, WARN.deprecated({
+        meta: { what: 'disablePluginRule', use: 'disableScriptModules', deprecation }
       }));
     }
 
     /*
      * Less 4.x `dumpLineNumbers` is accepted and otherwise ignored: v5 emits no
      * line-number comments or debug media queries. A falsy value is 4.x's "off"
-     * and requests nothing, so only a real request warns. The warning is about
-     * the options, not a stylesheet, so it carries no source location.
+     * and requests nothing, so only a real request warns.
      */
     if (contextOptions.dumpLineNumbers) {
       const deprecation = Deprecation.fromId('dump-line-numbers-option') ?? Deprecation.userAuthored;
