@@ -10541,6 +10541,9 @@ interface Leaf {
 
   /** Produced by the core `$apply` expansion; its repeated output stays visible. */
   fromApply: boolean;
+
+  /** A statement call's result, evaluated where the call stands ({@link placeStatementCall}). */
+  callBytes: string | null;
 }
 
 function evaluatedLeaf(
@@ -10548,9 +10551,25 @@ function evaluatedLeaf(
   frame: Frame,
   important = false,
   fromApply = false,
-  leadingBlockComments: readonly string[] | null = null
+  leadingBlockComments: readonly string[] | null = null,
+  callBytes: string | null = null
 ): Leaf {
-  return { node, frame, important, leadingBlockComments, fromApply };
+  return { node, frame, important, leadingBlockComments, fromApply, callBytes };
+}
+
+/**
+ * [P37] Evaluate a call in statement position where it stands in the walk, as
+ * the nested writer does, and place its result as a leaf. One that writes
+ * nothing places none, so the block it would have stood alone in is elided
+ * (ledger O6) — decided before the block is written, even when the call
+ * settles asynchronously.
+ */
+function placeStatementCall(node: FunctionCall, frame: Frame, e: Emit, place: (leaf: Leaf) => void): MaybePromise<void> {
+  return mapMaybe(statementCallBytes(node, frame, e), (bytes) => {
+    if (bytes.length !== 0) {
+      place(evaluatedLeaf(node, frame, false, false, null, bytes));
+    }
+  });
 }
 
 const EMPTY_LEAF_BLOCK_COMMENTS: string[] = [];
@@ -10596,7 +10615,7 @@ function evaluateLeafStatement(
 ): void {
   queueBodyTriviaBefore(bodyTrivia, node, group, e);
   if (node.type === 'Comment') {
-    place({ node, frame, important, leadingBlockComments: null, fromApply });
+    place({ node, frame, important, leadingBlockComments: null, fromApply, callBytes: null });
     return;
   }
   skipBodyTrivia(bodyTrivia, node, e);
@@ -10604,12 +10623,12 @@ function evaluateLeafStatement(
   const parts = nestedPropertyDeclarations(node);
   if (parts === null) {
     recordPropertyDeclaration(propertyScope, node, frame);
-    place({ node, frame, important, leadingBlockComments: null, fromApply });
+    place({ node, frame, important, leadingBlockComments: null, fromApply, callBytes: null });
     return;
   }
   for (const part of parts) {
     recordPropertyDeclaration(propertyScope, part, frame);
-    place({ node: part, frame, important, leadingBlockComments: null, fromApply });
+    place({ node: part, frame, important, leadingBlockComments: null, fromApply, callBytes: null });
   }
 }
 
@@ -14149,7 +14168,10 @@ function walkBody(
             markAfterRootStatement(node);
             break;
           }
-          addLeaf(group, partition, evaluatedLeaf(node, frame), forceLeading, e);
+          const placed = placeStatementCall(node, frame, e, placeLeaf);
+          if (isThenable(placed)) {
+            return placed.then(() => run(index + 1));
+          }
           break;
         }
         case 'MixinDefinition':
@@ -17287,12 +17309,8 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
       e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
     }
   } else if (node.type === 'FunctionCall') {
-    const bytes = statementCallBytes(node, frame, e);
-    const asLine = (b: string): string => (b.length === 0 ? '' : idt + b + nl(e));
-    if (isThenable(bytes)) {
-      putPending(e, mapMaybe(bytes, asLine));
-    } else if (bytes.length !== 0) {
-      put(e, asLine(bytes));
+    if (leaf.callBytes !== null) {
+      put(e, idt + leaf.callBytes + nl(e));
     }
     if (e.positions) {
       e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
@@ -18546,9 +18564,9 @@ function statementCallBytes(node: FunctionCall, frame: Frame, e: Emit): MaybePro
  * at document scope — no trailing `;`), so an `e(...)` escape emits its inner
  * text. Emitted at the current indent; an empty result contributes nothing.
  */
-function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precomputed?: string): MaybePromise<void> {
+function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit): MaybePromise<void> {
   const start = e.chunks.length;
-  const emitBytes = (bytes: string): void => {
+  return mapMaybe(statementCallBytes(node, frame, e), (bytes) => {
     if (bytes.length === 0) {
       return;
     }
@@ -18560,10 +18578,7 @@ function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precompute
     if (e.positions) {
       e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
     }
-  };
-  return precomputed === undefined
-    ? mapMaybe(statementCallBytes(node, frame, e), emitBytes)
-    : emitBytes(precomputed);
+  });
 }
 
 /**
@@ -19304,11 +19319,14 @@ function emitAtRuleBody(
     switch (node.type) {
       case 'Declaration':
       case 'Comment':
-      case 'FunctionCall':
         if (e.referenceImportDepth === 0) {
           addLeaf(group, null, evaluatedLeaf(node, frame), false, e);
         }
         return undefined;
+      case 'FunctionCall':
+        return e.referenceImportDepth === 0
+          ? placeStatementCall(node, frame, e, leaf => addLeaf(group, null, leaf, false, e))
+          : undefined;
       case 'Ruleset':
         return nested(node, () => expandRule(node, null, null, frame, e));
       case 'AtRuleBlock':
@@ -19536,11 +19554,20 @@ function emitBubbleBody(
       switch (node.type) {
         case 'Declaration':
         case 'Comment':
-        case 'FunctionCall':
           if (e.referenceImportDepth === 0) {
             addLeaf(group, null, evaluatedLeaf(node, frame), false, e);
           }
           break;
+        case 'FunctionCall': {
+          if (e.referenceImportDepth !== 0) {
+            break;
+          }
+          const placed = placeStatementCall(node, frame, e, leaf => addLeaf(group, null, leaf, false, e));
+          if (isThenable(placed)) {
+            return placed.then(() => run(index + 1));
+          }
+          break;
+        }
         case 'Ruleset':
           if (deferStaticChildren) {
             deferredChildren!.push(() => {

@@ -52,9 +52,9 @@ describe('V19 one-evaluator projection ratchet', () => {
     expect(occurrences(/pendingLeafBlockComments\.(?:get|set|delete)\(/gu)).toBe(0);
     expect(occurrences(/\.\.\.\(imp \? \{ important: true \} : \{\}\)/gu)).toBe(0);
     expect(occurrences(/\.\.\.\(applyExpansion \? \{ fromApply: true \} : \{\}\)/gu)).toBe(0);
-    expect(occurrences(/return \{ node, frame, important, leadingBlockComments, fromApply \};/gu)).toBe(1);
-    expect(occurrences(/place\(\{ node, frame, important, leadingBlockComments: null, fromApply \}\);/gu)).toBe(2);
-    expect(occurrences(/place\(\{ node: part, frame, important, leadingBlockComments: null, fromApply \}\);/gu)).toBe(1);
+    expect(occurrences(/return \{ node, frame, important, leadingBlockComments, fromApply, callBytes \};/gu)).toBe(1);
+    expect(occurrences(/place\(\{ node, frame, important, leadingBlockComments: null, fromApply, callBytes: null \}\);/gu)).toBe(2);
+    expect(occurrences(/place\(\{ node: part, frame, important, leadingBlockComments: null, fromApply, callBytes: null \}\);/gu)).toBe(1);
     expect(SOURCE).toContain('pendingLeafBlockComments: string[] | null;');
     expect(SOURCE).toContain('pendingLeafBlockCommentOwner: Leaf[] | null;');
   });
@@ -184,8 +184,10 @@ describe('V19 one-evaluator projection ratchet', () => {
     // own walk, the one cursor a call's body already used, and a loop body is
     // held for its iterations. +2 functions (`putDeclarationValue`,
     // `insideSpan`): both writers write a custom property's value one way, and
-    // the root replay finds a statement span by binary search.
-    expect(occurrences(/^function |^async function /gmu)).toBe(489);
+    // the root replay finds a statement span by binary search. +1 function
+    // (`placeStatementCall`): a statement call is evaluated where it stands in
+    // either writer's walk.
+    expect(occurrences(/^function |^async function /gmu)).toBe(490);
     expect(occurrences(/new Map/gu)).toBe(73);
     expect(occurrences(/new Set/gu)).toBe(37);
     expect(occurrences(/new WeakMap/gu)).toBe(6);

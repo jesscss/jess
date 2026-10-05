@@ -194,11 +194,12 @@ describe('source map round-trip is mathematically correct', () => {
   });
 
   /*
-   * A declaration value, a custom property value and a statement call whose
-   * bytes settle after the walk each fill a chunk reserved in source order, so
-   * each is mapped over that chunk: at its settled bytes, to its authored start.
+   * A declaration value and a custom property value whose bytes settle after
+   * the walk each fill a chunk reserved in source order, so each is mapped over
+   * that chunk: at its settled bytes, to its authored start. A statement call
+   * settles where it stands in the walk, and is mapped like any written leaf.
    */
-  it('maps every slot that settles after the walk at its settled bytes', async () => {
+  it('maps every slot that settles asynchronously at its settled bytes', async () => {
     const settle = async <T>(value: T): Promise<T> => {
       await new Promise(resolve => setTimeout(resolve, 1));
       return value;
