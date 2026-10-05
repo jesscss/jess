@@ -624,6 +624,13 @@ interface MixinDefinitionMeta {
 /** Shared, source-order declaration facts for one lexical body. Never mutated. */
 interface DeclIndex {
   readonly byName: Map<string, VariableDeclaration[]>;
+
+  /**
+   * Whether the body holds a `$if`/`if()`/`$while`, whose selected body
+   * {@link collectSelectedDeclIndex} splices into the stacks by position. Read
+   * off the statements the index is built from, so no frame re-scans its body.
+   */
+  readonly controlFlow: boolean;
 }
 
 /**
@@ -742,7 +749,11 @@ export interface Frame {
   /** Branches selected by this activation; absent until a Jess `$if` executes. */
   selectedIfBodies?: Map<If, Statement[]>;
 
-  /** Source-ordered direct + selected-branch declaration index for this activation. */
+  /**
+   * Source-ordered direct + selected-branch declaration index for this
+   * activation; `undefined` until the frame's control flow is first selected
+   * ({@link preselectControlFlow}, {@link selectIfBody}, {@link runWhile}).
+   */
   selectedDeclIndex?: DeclIndex | null;
 
   /*
@@ -826,14 +837,6 @@ export interface Frame {
    * reaches it.
    */
   factRanks?: Map<VariableDeclaration, SourceRank>;
-
-  /**
-   * [import-fold] Whether {@link statements} holds a `$if`/`$while`, whose
-   * selected body {@link collectSelectedDeclIndex} splices into the declaration
-   * stacks by position. Decided once, at the first imported declaration that
-   * opens a stack; only such a frame records that declaration's rank.
-   */
-  controlFlow?: boolean;
 
   /**
    * [import-fold] Authored position of each top-level statement, built ONCE and
@@ -1461,6 +1464,7 @@ function collectDeclIndex(
       }
     }
   }
+  let controlFlow = false;
   for (const s of statements) {
     if (s.type === 'VariableDeclaration') {
       const stack = byName.get(s.name);
@@ -1469,9 +1473,11 @@ function collectDeclIndex(
       } else {
         byName.set(s.name, [s]);
       }
+    } else if (s.type === 'If' || s.type === 'While') {
+      controlFlow = true;
     }
   }
-  return byName.size === 0 ? null : { byName };
+  return byName.size === 0 && !controlFlow ? null : { byName, controlFlow };
 }
 
 /**
@@ -1546,7 +1552,7 @@ function collectSelectedDeclIndex(frame: Frame, selected: ReadonlyMap<If, Statem
       visit(statement.rules, at);
     }
   }
-  return byName.size === 0 ? null : { byName };
+  return byName.size === 0 ? null : { byName, controlFlow: true };
 }
 
 /** Seed one activation's live cells from mixin/function parameters.
@@ -2117,46 +2123,51 @@ function publishImportedVariableDeclaration(
   declaration: VariableDeclaration,
   rank: SourceRank | null = null
 ): void {
-  const index = frame.declIndex ??= { byName: new Map() };
+  const index = frame.declIndex ??= { byName: new Map(), controlFlow: false };
   const declarations = index.byName.get(declaration.name);
 
   /* A stack's first entry needs a rank only to be placed against a `$if`/`$while` body. */
-  if (rank !== null && (declarations !== undefined
-    || (frame.controlFlow ??= (frame.statements ?? []).some(statement => statement.type === 'If' || statement.type === 'While')))) {
+  if (rank !== null && (declarations !== undefined || index.controlFlow)) {
     (frame.factRanks ??= new Map()).set(declaration, rank);
   }
   if (!declarations) {
     index.byName.set(declaration.name, [declaration]);
-    return;
-  }
-  if (rank === null) {
+  } else if (rank === null) {
     declarations.push(declaration);
-    return;
+  } else {
+    /*
+     * The stack is already rank-sorted (authored declarations in source order,
+     * earlier imports spliced at their own positions), so one backward walk finds
+     * the slot. An entry with no position at all is a parameter cell, which stops
+     * the walk: it belongs ahead of every body fact.
+     */
+    let at = declarations.length;
+    while (at > 0) {
+      const previous = declarations[at - 1]!;
+      const publishedRank = frame.factRanks?.get(previous);
+      if (publishedRank !== undefined) {
+        if (compareSourceRanks(rank, publishedRank) >= 0) {
+          break;
+        }
+      } else {
+        const authoredAt = frameStatementIndex(frame).get(previous);
+        if (authoredAt === undefined || compareSourceRankToIndex(rank, authoredAt) >= 0) {
+          break;
+        }
+      }
+      at--;
+    }
+    declarations.splice(at, 0, declaration);
   }
 
   /*
-   * The stack is already rank-sorted (authored declarations in source order,
-   * earlier imports spliced at their own positions), so one backward walk finds
-   * the slot. An entry with no position at all is a parameter cell, which stops
-   * the walk: it belongs ahead of every body fact.
+   * A frame that has already selected its control-flow bodies reads the stacks
+   * rebuilt around them, so the new fact joins those too. Only a frame with a
+   * `$if`/`if()`/`$while` ever has a selection.
    */
-  let at = declarations.length;
-  while (at > 0) {
-    const previous = declarations[at - 1]!;
-    const publishedRank = frame.factRanks?.get(previous);
-    if (publishedRank !== undefined) {
-      if (compareSourceRanks(rank, publishedRank) >= 0) {
-        break;
-      }
-    } else {
-      const authoredAt = frameStatementIndex(frame).get(previous);
-      if (authoredAt === undefined || compareSourceRankToIndex(rank, authoredAt) >= 0) {
-        break;
-      }
-    }
-    at--;
+  if (frame.selectedDeclIndex !== undefined) {
+    frame.selectedDeclIndex = collectSelectedDeclIndex(frame, frame.selectedIfBodies ?? EMPTY_SELECTED_IF_BODIES);
   }
-  declarations.splice(at, 0, declaration);
 }
 
 /** Publish an imported root ruleset for namespace-path descent. `rank` places it
@@ -3036,6 +3047,9 @@ function lookupScopedBinding(frame: Frame | null, name: string, e?: EvalCtx): Bi
     const replacement = f.reassign?.get(name);
     if (replacement && (!e?.excluded.has(replacement.value))) {
       return { value: replacement.value, frame: f.bindingValueFrames?.get(replacement.value) ?? f, evaluated: null };
+    }
+    if (f.selectedDeclIndex === undefined && f.declIndex?.controlFlow === true && e !== undefined) {
+      preselectControlFlow(f, e);
     }
     const stack = (f.selectedDeclIndex ?? f.declIndex)?.byName.get(name);
     if (stack) {
@@ -12165,7 +12179,7 @@ function ruleGuardPasses(rule: Ruleset, frame: Frame, e: EvalCtx): MaybePromise<
  * flow shares its containing frame, but extend analysis may inspect a selected
  * arm without publishing declaration state.
  */
-function selectedIfBody(node: If, frame: Frame, e: Emit): Statement[] | null {
+function selectedIfBody(node: If, frame: Frame, e: EvalCtx): Statement[] | null {
   for (const branch of node.branches) {
     if (branch.guard !== null && !settledGuard(withUnitErrors(node, e, () => evalGuard(branch.guard!, guardDeps(frame, e))), '$if arm selection', node, e)) {
       continue;
@@ -12229,8 +12243,31 @@ function runWhile(
   return step(0);
 }
 
+/**
+ * Select a frame's control-flow bodies before its first scoped read (ledger
+ * N15): a selected Less `if()` branch's declarations are inline declarations at
+ * the `if()`, and Less `@name` scoping is order-independent and last-wins in
+ * the frame, so a read written before the `if()` sees the branch too. A
+ * `$while` body registers here as well, as {@link runWhile} registers it.
+ *
+ * Only a lowered Less `if()` is selected ahead of execution: its condition
+ * reads scoped `@name` bindings, which resolve the same wherever they are
+ * read. A `$if`/`@if` condition may read live bindings that exist only once the
+ * statements before it have run, so its arm is still selected when execution
+ * reaches it. Arms are selected in source order, each condition seeing the
+ * arms selected before it.
+ */
+function preselectControlFlow(frame: Frame, e: EvalCtx): void {
+  frame.selectedDeclIndex = collectSelectedDeclIndex(frame, EMPTY_SELECTED_IF_BODIES);
+  for (const statement of frame.statements ?? []) {
+    if (statement.type === 'If' && statement._asCall !== null && unloweredCall(statement) === null) {
+      selectIfBody(statement, frame, e);
+    }
+  }
+}
+
 /** Select one `$if` branch and publish only that branch into this activation's scoped index. */
-function selectIfBody(node: If, frame: Frame, e: Emit): Statement[] | null {
+function selectIfBody(node: If, frame: Frame, e: EvalCtx): Statement[] | null {
   /* [P36] Not lowered where built-ins are not ambient: the body is the ordinary call statement. */
   const unlowered = unloweredCall(node);
   const body = unlowered === null ? selectedIfBody(node, frame, e) : [unlowered];

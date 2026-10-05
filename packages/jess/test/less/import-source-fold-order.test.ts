@@ -151,9 +151,7 @@ describe('@import folds imported facts in at the import\'s lexical position', ()
   /*
    * A frame whose body holds a lowered `if()` reads a declaration stack rebuilt
    * around the selected branch (jess#245). A read on either side of an `if()`
-   * that declares nothing sees the same import fold. (When the selected branch
-   * itself declares the name, reads before and after the `if()` differ; when a
-   * branch's declarations become visible is not ruled yet.)
+   * that declares nothing sees the same import fold.
    */
   it('resolves one binding across a frame that contains an if()', async () => {
     const consumersAroundIf = '.x { a: @v; }\nif((true), { .b { a: @v; } });\n.c { a: @v; }\n';
@@ -171,6 +169,35 @@ describe('@import folds imported facts in at the import\'s lexical position', ()
       .resolves.toBe('.x {\n  a: B;\n}\n');
     await expect(render('if((true), { @v: B; });\n@import "lib";\n.x { a: @v; }\n', '@v: L;\n'))
       .resolves.toBe('.x {\n  a: L;\n}\n');
+  });
+
+  /*
+   * A selected if() branch's declarations are inline declarations at the if()
+   * (ledger N15): Less @name scoping is order-independent and last-wins in the
+   * frame, so a read written BEFORE the if() sees the branch too. lessc rejects
+   * the construct, so there is no reference behaviour.
+   */
+  it('lets a read before the if() see the selected branch, as an inline declaration', async () => {
+    const around = '.x { a: @v; }\nif((true), { @v: B; });\n.y { a: @v; }\n';
+    await expect(render(`@v: A;\n${around}`, '')).resolves.toBe('.x {\n  a: B;\n}\n.y {\n  a: B;\n}\n');
+    await expect(render(`@v: A;\n${around}@v: C;\n`, '')).resolves.toBe('.x {\n  a: C;\n}\n.y {\n  a: C;\n}\n');
+    await expect(render('@v: A;\n.x { a: @v; }\nif((false), { @v: B; }, { @v: E; });\n', ''))
+      .resolves.toBe('.x {\n  a: E;\n}\n');
+    await expect(render(`.r {\n@v: A;\n${around}}\n`, '')).resolves.toBe(
+      '.r {\n  .x {\n    a: B;\n  }\n  .y {\n    a: B;\n  }\n}\n'
+    );
+  });
+
+  it('selects an if() whose condition reads a binding declared after it', async () => {
+    await expect(render('.x { a: @v; }\nif((iscolor(@c)), { @v: B; });\n@c: red;\n@v: A;\n', ''))
+      .resolves.toBe('.x {\n  a: A;\n}\n');
+    await expect(render('@v: A;\n.x { a: @v; }\nif((iscolor(@c)), { @v: B; });\n@c: red;\n', ''))
+      .resolves.toBe('.x {\n  a: B;\n}\n');
+  });
+
+  it('keeps a nested import that follows the if() visible to later reads', async () => {
+    await expect(render('.r {\n.x { a: @w; }\nif((true), { @w: B; });\n@import "lib";\n.c { a: @v; }\n}\n', '@v: L;\n'))
+      .resolves.toBe('.r {\n  .x {\n    a: B;\n  }\n  .c {\n    a: L;\n  }\n}\n');
   });
 
   it('keeps a later-imported plain ruleset ahead of the local one (control: already passing)', async () => {

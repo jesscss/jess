@@ -171,7 +171,10 @@ describe('V19 one-evaluator projection ratchet', () => {
     // desugar wrapped that nothing loads is written as one `@import … q;`.
     // +1 function (`moduleLoadFailed`): a `@use` that cannot load is an
     // `import/load-failed` at the `@use`, as `@plugin` already is.
-    expect(occurrences(/^function |^async function /gmu)).toBe(480);
+    // +1 function (`preselectControlFlow`, ledger N15): a frame's Less `if()`
+    // arms are selected at its first scoped read, so a read before the `if()`
+    // sees the selected branch as an inline declaration.
+    expect(occurrences(/^function |^async function /gmu)).toBe(481);
     expect(occurrences(/new Map/gu)).toBe(73);
     expect(occurrences(/new Set/gu)).toBe(37);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
@@ -208,7 +211,9 @@ describe('V19 one-evaluator projection ratchet', () => {
     expect(occurrences(/expandFor\(/gu)).toBe(6);
     expect(occurrences(/expandNestedFor\(/gu)).toBe(0);
     expect(occurrences(/selectIfBodyForRender\(/gu)).toBe(0);
-    expect(occurrences(/selectIfBody\(/gu)).toBe(6);
+
+    /* +1: `preselectControlFlow` selects a frame's Less `if()` arms through the same selector (ledger N15). */
+    expect(occurrences(/selectIfBody\(/gu)).toBe(7);
     expect(occurrences(/runWhile\(/gu)).toBe(6);
   });
 
