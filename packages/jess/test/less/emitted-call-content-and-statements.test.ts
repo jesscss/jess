@@ -60,6 +60,16 @@ describe('a ruleset argument to a call emitted as written (P37, jess#290)', () =
       .resolves.toBe('a{x:foo({a:1px;b:2!important})}');
   });
 
+  /* #294: the block follows the output's formatting, never its authored layout. */
+  it('writes an authored multi-line block on one line, comments included, compressed with the output', async () => {
+    const source = 'a { x: foo({\n    v: 1;\n      /* c */ /*! k */\n    .n {\n      w: 2;\n    }\n  }); }';
+    await expect(less(source))
+      .resolves.toBe('a {\n  x: foo({ v: 1; /* c */ /*! k */ .n { w: 2; } });\n}\n');
+    const compressed = new Compiler({ output: { collapseNesting: true, compress: true }, compile: { plugins: [lessPlugin()] } });
+    await expect(compressed.renderString(source, { language: 'less' }))
+      .resolves.toBe('a{x:foo({v:1;/*! k */.n{w:2}})}');
+  });
+
   it('evaluates and keeps nested rules, at-rules, mixin calls and $prop reads', async () => {
     await expect(less('@c: red; a { x: foo({ .a { x: @c; } }); }'))
       .resolves.toBe('a {\n  x: foo({ .a { x: red; } });\n}\n');
