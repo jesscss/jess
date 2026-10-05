@@ -180,9 +180,10 @@ In Less 5, an `@import` of an `https://`, `http://` or `//` URL is left in the o
 
 ```less
 // Without the plugin, both stay as-is in the output.
-// With the plugin allowing cdn.example.com, the first is downloaded and imported.
+// With the plugin allowing cdn.example.com, the first is downloaded and imported;
+// the second stays as-is because it is marked (css).
 @import "https://cdn.example.com/theme.less";
-@import url("https://fonts.googleapis.com/css?family=Open+Sans");
+@import (css) url("https://fonts.googleapis.com/css?family=Open+Sans");
 ```
 
-A URL without a file extension, such as the Google Fonts endpoint above, always stays a CSS `@import`.
+With the plugin configured, a URL import on a host it doesn't allow is an error. Mark a URL `(css)` to keep it a CSS `@import` whatever its host.
