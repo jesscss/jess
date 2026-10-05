@@ -97,18 +97,23 @@ function dimensionCompare(
   b: Dimension,
   unitMode: UnitMode | undefined
 ): -1 | 0 | 1 | undefined {
-  const au = numericGround(a);
-  const bu = numericGround(b);
-
   /*
    * A unitless operand is a WILDCARD on numeric ground (§4.1): it compares on
    * raw magnitude against any unit. That is the whole of what makes `=` loose,
    * and it is unconditional now — the unit distinction is not retained by an
    * ambient mode but DECLINED by the operator, in `sameType`, which `==` and the
-   * numeric arm of {@link SASS_EQUAL} apply on top of this ground.
+   * numeric arm of {@link SASS_EQUAL} apply on top of this ground. Between two
+   * plain dimensions a unitless one (the common guard, `@i > 0`) is decided
+   * before either side is measured; a compound operand is unitless when its
+   * units cancel, and then compares as the number it measures.
    */
-  if (au.unit === '' || bu.unit === '') {
+  if (a.numerator === undefined && b.numerator === undefined && (!a.unit || !b.unit)) {
     return numericCompare(a.number, b.number);
+  }
+  const au = numericGround(a);
+  const bu = numericGround(b);
+  if (au.unit === '' || bu.unit === '') {
+    return numericCompare(au.unit === '' ? au.number : a.number, bu.unit === '' ? bu.number : b.number);
   }
   if (au.unit !== bu.unit) {
     if (unitMode === 'strict') {
@@ -131,10 +136,12 @@ function dimensionCompare(
  * comparing on it equated `px*px` and `1/px` with `px`. A plain dimension (the
  * hot case) stays one {@link unify} call.
  */
+const isPlainUnitless = (d: Dimension): boolean => d.numerator === undefined && !d.unit;
+
 function numericGround(d: Dimension): { number: number; unit: string } {
   const numerator = d.numerator;
   if (numerator === undefined) {
-    return d.unit ? unify(d.number, d.unit) : { number: d.number, unit: '' };
+    return unify(d.number, d.unit);
   }
   let number = d.number;
   const counts = new Map<string, number>();
@@ -468,7 +475,7 @@ function sameType(a: ValueGroup, b: ValueGroup): boolean {
     return asColor(a) !== undefined && asColor(b) !== undefined;
   }
   if (a.type === 'Dimension' && b.type === 'Dimension') {
-    return numericGround(a).unit === numericGround(b).unit;
+    return (isPlainUnitless(a) && isPlainUnitless(b)) || numericGround(a).unit === numericGround(b).unit;
   }
   return true;
 }

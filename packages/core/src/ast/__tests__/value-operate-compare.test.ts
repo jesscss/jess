@@ -266,6 +266,13 @@ describe('compare — a compound operand compares on its whole unit multiset', (
     expect(compare('=', reciprocal, dim(0.5))).toBe(true);
   });
 
+  it('a ratio whose units cancel on conversion is the unitless number it measures', () => {
+    const inchesPerPixel = makeCompoundDimension(1, 'in', ['in'], ['px'], 'in');
+    expect(compare('=', inchesPerPixel, dim(96))).toBe(true);
+    expect(compare('==', inchesPerPixel, dim(96))).toBe(true);
+    expect(compare('=', inchesPerPixel, dim(1))).toBe(false);
+  });
+
   it('type-equal and Sass equality decline the display-unit coincidence', () => {
     expect(compare('==', squared, dim(6, 'px'))).toBe(false);
     expect(compare(SASS_EQUAL, squared, dim(6, 'px'))).toBe(false);

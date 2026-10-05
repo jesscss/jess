@@ -20,10 +20,10 @@ import * as path from 'path';
  * equals its own spelling. `a = "a"`, `1 = "1"` and `red = "red"` were all
  * false on lessc 4.6.3 and are true here.
  */
-async function matches(cond: string): Promise<boolean> {
+async function matches(cond: string, prelude = ''): Promise<boolean> {
   const dir = mkdtempSync(path.join(tmpdir(), 'eq-'));
   const f = path.join(dir, 'a.less');
-  writeFileSync(f, `.m() when (${cond}) { hit: 1; }\n.a { .m(); }`);
+  writeFileSync(f, `${prelude}.m() when (${cond}) { hit: 1; }\n.a { .m(); }`);
   const c = new Compiler({
     output: { collapseNesting: true },
     compile: { plugins: [lessPlugin(), lessCompatPlugin()] }
@@ -39,6 +39,19 @@ describe('`.less` guard equality is loose on every ground', () => {
     expect(await matches('2px = 2')).toBe(true);
     expect(await matches('2px = 2px')).toBe(true);
     expect(await matches('1in = 96px')).toBe(true);
+  }, 60000);
+
+  /*
+   * A computed product or ratio carries its whole unit multiset; its display
+   * unit is only how it would be spelled. `2px * 3px` is px*px, not px, and
+   * `1 / 2px` is 1/px, not px.
+   */
+  it('numeric ground — a compound operand compares on its whole unit multiset', async () => {
+    const operands = '@square: (2px * 3px);\n@perPixel: (1 / 2px);\n@other: (1px * 6px);\n';
+    expect(await matches('@square = 6px', operands)).toBe(false);
+    expect(await matches('@perPixel = 0.5px', operands)).toBe(false);
+    expect(await matches('@square = @other', operands)).toBe(true);
+    expect(await matches('@square > 5', operands)).toBe(true);
   }, 60000);
 
   it('colour ground — rgb + alpha', async () => {
