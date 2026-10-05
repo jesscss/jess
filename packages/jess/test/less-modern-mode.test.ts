@@ -135,13 +135,12 @@ describe('Less modern mode (P36)', () => {
     });
 
     /*
-     * The unknown-call path drops a keyword argument's name (#279). Until that
-     * is fixed these calls lose it exactly as `darken(@color: …)` does, no
-     * better and no worse. `each()` has no keyword spelling to compare.
+     * An unimported call is written as written, so its keyword arguments keep
+     * their names (#279). `each()` has no keyword spelling to compare.
      */
-    it('modern: a keyword argument fares exactly as it does on darken() (#279)', async () => {
+    it('modern: an unimported call keeps its keyword arguments (#279)', async () => {
       await expect(less('@use "#less";\n@a: 2;\n@c: red;\nx { a: darken(@color: @c, 10%); b: if(@k: @a, 2px); c: boolean(@k: @a); }'))
-        .resolves.toBe('x {\n  a: darken(red, 10%);\n  b: if(2, 2px);\n  c: boolean(2);\n}\n');
+        .resolves.toBe('x {\n  a: darken(@color: red, 10%);\n  b: if(@k: 2, 2px);\n  c: boolean(@k: 2);\n}\n');
     });
   });
 

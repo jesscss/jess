@@ -43,6 +43,19 @@ describe('keyword arguments in a function call', () => {
       .resolves.toBe('a {\n  b: 1 2;\n}\n');
   });
 
+  /* jess#279: a call written out as-is is written as the author wrote it. */
+  it('keeps the keywords of a call to an unknown function', async () => {
+    await expect(render('a { b: foo(@x: 1, 2); }', '.less'))
+      .resolves.toBe('a {\n  b: foo(@x: 1, 2);\n}\n');
+    await expect(render('a { b: foo($x: 1, 2); }', '.scss'))
+      .resolves.toBe('a {\n  b: foo($x: 1, 2);\n}\n');
+  });
+
+  it('keeps the keywords, in authored order, of a built-in call that could not produce a value', async () => {
+    await expect(render('a { b: darken(@amount: 10%, @color: rgb(10 20 30)); }', '.less'))
+      .resolves.toBe('a {\n  b: darken(@amount: 10%, @color: rgb(10 20 30));\n}\n');
+  });
+
   it('parses the Sass module-call spelling that blocked the Foundation corpus', async () => {
     /* `color.adjust` has no implementation yet, so it PRESERVES — the point of
      * this case is that it reaches evaluation at all instead of being a parse

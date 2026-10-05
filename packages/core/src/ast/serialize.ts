@@ -142,7 +142,8 @@ import {
   type EvalValue,
   type ValueEvaluator,
   type ValueGroup,
-  type Value
+  type Value,
+  type WrittenArguments
 } from './value-eval.js';
 import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
 import { defineFunction, FunctionDeclined } from './value-dispatch.js';
@@ -7346,8 +7347,9 @@ function dispatchCall(
   return combineAll(typed, (vals) => {
     const ordered = orderKeywordArgs(node.args, vals, ev, node.name, selected, ambient);
     const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
+    const written = writtenArguments(node, vals, e);
     try {
-      const result = ev.call(node.name, args, e.modes, null, e.io, selected, ambient);
+      const result = ev.call(node.name, args, e.modes, null, e.io, selected, ambient, written);
       return isThenable(result)
         ? result.catch(error => invalidFunctionCall(node, error, e))
         : result;
@@ -7355,6 +7357,30 @@ function dispatchCall(
       return invalidFunctionCall(node, error, e);
     }
   });
+}
+
+/**
+ * The arguments of a call that names any of them, in authored order with each
+ * keyword spelled in the dialect it was written in (`@amount` in Less, `$amount`
+ * in Sass and `.jess`), so a call written out as-is keeps them (jess#279).
+ * `undefined` for an all-positional call, which allocates nothing.
+ */
+function writtenArguments(node: FunctionCall, vals: ValueGroup[], e: EvalCtx): WrittenArguments | undefined {
+  let named = false;
+  for (const arg of node.args) {
+    if (arg.name !== undefined) {
+      named = true;
+      break;
+    }
+  }
+  if (!named) {
+    return undefined;
+  }
+  const sigil = e.context?.sourceContext?.plugin?.supportedExtensions?.includes('.less') === true ? '@' : '$';
+  return {
+    args: makeList(vals, ','),
+    keywords: node.args.map(arg => (arg.name === undefined ? undefined : `${sigil}${arg.name}`))
+  };
 }
 
 /**

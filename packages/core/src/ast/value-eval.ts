@@ -571,6 +571,16 @@ export interface PluginHost {
   ): MaybePromise<ValueGroup | undefined>;
 }
 
+/**
+ * A call's arguments in AUTHORED order, each with the keyword it was written
+ * with (`@amount`, `$amount`) or `undefined` for a positional one. `args` holds
+ * one item per `keywords` entry.
+ */
+export interface WrittenArguments {
+  readonly args: ValueGroup;
+  readonly keywords: readonly (string | undefined)[];
+}
+
 export interface ValueEvaluator {
   /**
    * Materialize a SYNTHETIC / COMPUTED string (a joined `Sequence`/`Interpolation` result,
@@ -609,6 +619,14 @@ export interface ValueEvaluator {
 
     /** Whether the registry's built-ins are in scope; default `true`. */
     ambient?: boolean,
+
+    /**
+     * The arguments as written, for a call that names any of them. A call that
+     * is written out as-is — an unknown name, or a function that could not
+     * produce a value — is written from these, so `darken(@color: red)` keeps its
+     * keyword. Omitted for a positional call, whose `args` are already as written.
+     */
+    written?: WrittenArguments,
   ): MaybePromise<ValueGroup>;
 
   /**
