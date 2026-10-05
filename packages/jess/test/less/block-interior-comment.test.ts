@@ -273,6 +273,19 @@ describe('Less block comments at a statement boundary inside a block', () => {
     await bothEmitters('#ns { .m() { /* c */ v: 1; } } a { #ns > .m(); }', 'a { /* c */ v: 1; }');
   });
 
+  /* jess#346: a comment at the top of a conditional at-rule body stays there. */
+  it('keeps a comment at its place in an at-rule body', async () => {
+    await bothEmitters(
+      '@media print { /* m */ .z { a: b; } } @supports (display: grid) { /* s */ .w { a: b; } }',
+      '@media print { /* m */ .z { a: b; } } @supports (display: grid) { /* s */ .w { a: b; } }'
+    );
+    await bothEmitters(
+      '@media print { /* m */ @media (min-width: 1px) { .z { a: b; } } }',
+      '@media print { /* m */ @media (min-width: 1px) { .z { a: b; } } }'
+    );
+    await bothEmitters('@font-face { /* f */ font-family: x; /* g */ }', '@font-face { /* f */ font-family: x; /* g */ }');
+  });
+
   it('writes a bubbled at-rule\'s comment inside the at-rule', async () => {
     await expect(render('a { b: 0; @media print { /* pm */ q: 1; } }', true))
       .resolves.toBe('a { b: 0; } @media print { a { /* pm */ q: 1; } }');
