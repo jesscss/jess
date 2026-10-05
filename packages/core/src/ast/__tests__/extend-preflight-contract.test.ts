@@ -51,6 +51,22 @@ describe('AST extend preflight cost contract', () => {
     expect(counters['astExtend.preflight.loopPlacements'] ?? 0).toBe(0);
   });
 
+  it('plans no imported document when the import graph has no extend', async () => {
+    const imported = ast.stylesheet([ast.rule('.sm', [ast.decl('b', ast.color('red'))])]);
+    const document = ast.stylesheet([
+      ast.styleImport('@import', ast.quoted('"t.less"', 't.less', '"', false), { mode: 'import' }),
+      ast.styleImport('@import', ast.quoted('"r.less"', 'r.less', '"', false), { mode: 'import', options: ast.list([ast.keyword('reference')], ',') }),
+      ast.rule('.plain', [ast.decl('color', ast.color('red'))])
+    ]);
+
+    await expect(serialize(document, {
+      importDocument: ({ specifier }) => ({ document: imported, key: specifier })
+    })).resolves.toEqual({ css: '.sm {\n  b: red;\n}\n.plain {\n  color: red;\n}\n' });
+    expect(counters['astExtend.preflight.importsVisited']).toBe(2);
+    expect(counters['astExtend.preflight.importsFeatureBearing'] ?? 0).toBe(0);
+    expect(counters['astExtend.plan.calls'] ?? 0).toBe(0);
+  });
+
   it('folds an imported-loop extend through the one render walk (no cold preflight)', async () => {
     /*
      * An imported `$for`/`each()` loop body is a DYNAMIC placement: the static import

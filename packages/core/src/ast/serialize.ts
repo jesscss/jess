@@ -10706,9 +10706,10 @@ function planImportedFacts(
    * synchronous callable-body ownership, while actual import/extend facts opt
    * into planning.
    */
-  if (e.context?.options.processImports === false
-    || !importDocument
-    || (!documentHasExtend(root) && !root.rules.some(child =>
+  const plansImports = e.context?.options.processImports !== false && importDocument !== undefined;
+  const rootHasExtend = plansImports && documentHasExtend(root);
+  if (!plansImports
+    || (!rootHasExtend && !root.rules.some(child =>
       child.type === 'StyleImport' || child.type === 'ModuleImport'
     ))) {
     recordAstExtendProfile?.('astExtend.preflight.noFeatureBypasses');
@@ -10733,6 +10734,20 @@ function planImportedFacts(
     subjects: [],
     instructions: [],
     hiddenReferenceRules: null
+  };
+
+  /*
+   * Extend matching is graph-wide: once ANY document in the import graph carries an
+   * `:extend()`, every imported document's rules are potential targets. The root
+   * seeds the flag; imported documents visited before the first extend-bearing one
+   * are planned, in visit order, when it appears. A graph with no extend anywhere
+   * plans nothing.
+   */
+  let graphHasExtend = rootHasExtend;
+  let unplanned: Array<{ rules: readonly Statement[]; referenceBoundary: object | null }> | null = null;
+  const planImported = (rules: readonly Statement[], referenceBoundary: object | null): void => {
+    recordAstExtendProfile?.('astExtend.preflight.importsFeatureBearing');
+    planImportedStaticExtend(rules, e, overlay, [], [], null, referenceBoundary !== null, referenceBoundary, null);
   };
   const cssImports: CssImportPlan | null = collectCssImports
     ? {
@@ -10838,21 +10853,25 @@ function planImportedFacts(
       const childFrame: Frame = { parent: isCompose ? null : scope, mixins: collectMixins(loaded.document.rules), declIndex: collectDeclIndex(loaded.document.rules), cells: null, reassign: null, statements: loaded.document.rules };
 
       /*
-       * Ordinary imports must not pay selector-IR/planning cost. The typed body
-       * itself is the admission fact: it carries STATICALLY-placed Ruleset extends,
-       * recorded here from selector SHAPES (never re-evaluated). Its `$for`/`each()`
-       * and mixin-definition bodies are DYNAMIC placements the static preflight cannot
-       * resolve — the ONE render walk records those (ledger X12).
-       * A reference import contributes hidden Ruleset subjects even when the imported
-       * document contains no own `:extend()`: a visible extender in the importing
-       * document may still target one of those rules. Ordinary imports retain the
-       * feature-bearing admission gate and avoid planner work when no extend facts
-       * can participate.
+       * The imported document's STATICALLY-placed Rulesets are recorded from selector
+       * SHAPES (never re-evaluated). Its `$for`/`each()` and mixin-definition bodies
+       * are DYNAMIC placements the static preflight cannot resolve — the ONE render
+       * walk records those (ledger X12).
        */
-      if (bodyMayPlanExtend(loaded.document.rules) || reference) {
-        recordAstExtendProfile?.('astExtend.preflight.importsFeatureBearing');
-        const referenceBoundary = reference ? {} : null;
-        planImportedStaticExtend(loaded.document.rules, e, overlay, [], [], null, referenceBoundary !== null, referenceBoundary, null);
+      const referenceBoundary = reference ? {} : null;
+      if (!graphHasExtend && bodyMayPlanExtend(loaded.document.rules)) {
+        graphHasExtend = true;
+        if (unplanned !== null) {
+          for (const pending of unplanned) {
+            planImported(pending.rules, pending.referenceBoundary);
+          }
+          unplanned = null;
+        }
+      }
+      if (graphHasExtend) {
+        planImported(loaded.document.rules, referenceBoundary);
+      } else {
+        (unplanned ??= []).push({ rules: loaded.document.rules, referenceBoundary });
       }
       const collect = async (): Promise<void> => {
         await visit(

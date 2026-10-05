@@ -255,6 +255,12 @@ Cross-`@import` closure resolves through the import boundary
 (`extend-cross-import.test.ts`, reference = real less@4): `.a:extend(.b)` in main +
 `.b:extend(.c)` in the imported sheet yields `.c, .b, .a { color: red; }`.
 
+Targets are graph-wide: every rule of every imported sheet is a target for an extend
+anywhere in the import graph, whether or not that sheet has an `:extend()` of its own
+(`@import "t.less"; .x:extend(.sm) {}` with `.sm` in `t.less` → `.sm, .x { … }`). The
+zero-extend fast-reject is per import GRAPH, never per document: a graph with no extend
+plans nothing (jess#349).
+
 ## 7. Nested / ruleset-scoped extends
 
 Extend matches nested (compiled) selectors and can be authored from any nesting

@@ -1,22 +1,23 @@
 /**
  * extend-cross-import.test.ts — OUTPUT-level coverage for extend semantics that cross an
- * `@import` boundary. Two gaps the reachability/predicate suites do not reach at the rendered-
- * CSS level:
+ * `@import` boundary, at the rendered-CSS level:
  *
  *   1. CROSS-IMPORT TRANSITIVE CLOSURE. `.a:extend(.b)` (main) and `.b:extend(.c)` (imported)
  *      split across an `@import`. The closure `.c ← .b ← .a` must resolve THROUGH the import so
- *      the imported `.c` block gains BOTH `.b` and `.a`. (Extend-through-import is currently
- *      EVAL-routed — the spine fold is a separate WIP — so this may route to eval; the assertion
- *      is on OUTPUT and holds regardless of routing.)
+ *      the imported `.c` block gains BOTH `.b` and `.a`.
  *
  *   2. REFERENCE-IMPORT VISIBILITY (negative). `@import (reference)` hides the imported sheet's
  *      own rules from output, but an extend that MATCHES a referenced target pulls in only the
  *      matched rule under the EXTENDER's selector — the referenced `.target` header itself never
  *      surfaces on its own.
  *
- * EXPECTED OUTPUTS ARE THE ORACLE — derived from real `less@4` (less 4.6.7 standalone
- * `less.render`, NOT the jess-backed alpha). Jess is asserted to match; a divergence would be a
- * FINDING (marked `it.fails` + reported), never code-to-match.
+ *   3. GRAPH-WIDE TARGETS. An imported sheet with no `:extend()` of its own is still a target for
+ *      an extend anywhere else in the import graph.
+ *
+ * EXPECTED OUTPUTS ARE THE ORACLE — derived from real `less@4` (standalone `less.render`, NOT the
+ * jess-backed alpha), except where v5 intentionally grafts `:is()` instead of duplicating
+ * (EXTEND-SEMANTICS §5). Jess is asserted to match; a divergence would be a FINDING (marked
+ * `it.fails` + reported), never code-to-match.
  */
 import { describe, it, expect } from 'vitest';
 import * as path from 'path';
@@ -86,5 +87,50 @@ describe('extend across @import (output oracle vs less@4)', () => {
     expect(css).toBe(
       ['.grid-column,', '.col-1,', '.col-2,', '.col-3 {', '  color: red;', '}'].join('\n')
     );
+  });
+
+  /*
+   * The imported sheet has NO `:extend()` of its own. Its rules are still extend
+   * targets for every other document in the import graph (jess#349). Oracle: less 4.9.1.
+   */
+  describe('imported sheet without its own extend is still a target', () => {
+    const smX = ['.sm,', '.x {', '  b: 2;', '}'].join('\n');
+
+    it('plain import', async () => {
+      expect(await renderFile('plain-main.less')).toBe(smX);
+    });
+
+    it('(reference) import, exact extend', async () => {
+      expect(await renderFile('ref-exact-main.less')).toBe(['.x {', '  b: 2;', '}'].join('\n'));
+    });
+
+    it('(multiple) import', async () => {
+      expect(await renderFile('multiple-main.less')).toBe(`${smX}\n${smX}`);
+    });
+
+    it('nested import chain', async () => {
+      expect(await renderFile('chain-main.less')).toBe(smX);
+    });
+
+    it('extender in a LATER import targets an earlier import', async () => {
+      expect(await renderFile('later-main.less')).toBe(smX);
+    });
+
+    // less 4.9.1 duplicates per extender (`.sm .y, .x .y`); v5 grafts `:is()` (EXTEND-SEMANTICS §5).
+    it('extend all, including inside an imported @media', async () => {
+      expect(await renderFile('all-main.less')).toBe(
+        [
+          smX,
+          ':is(.sm, .x) .y {',
+          '  c: 3;',
+          '}',
+          '@media (min-width: 1px) {',
+          '  :is(.sm, .x):hover {',
+          '    d: 4;',
+          '  }',
+          '}'
+        ].join('\n')
+      );
+    });
   });
 });

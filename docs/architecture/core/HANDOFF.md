@@ -4073,6 +4073,137 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: 2026-10-04 graph-wide extend admission for imported documents
+  (jess#349). An `:extend()` whose target lived in an imported sheet was dropped
+  unless that sheet carried an extend of its own, because the import planner
+  admitted each imported document to static extend planning on a per-document
+  "has extends" test. Admission is now per import graph: the root's
+  `documentHasExtend` result seeds the flag, and an imported document visited
+  before the first extend-bearing one waits in a render-local `unplanned` list
+  that is planned, in visit order, when that extend appears.
+- Architecture surface: `packages/core/src/ast/serialize.ts` `planImportedFacts`
+  (the root gate, the `graphHasExtend`/`unplanned` state, and the `visitImport`
+  admission); focused output tests in `packages/jess/test/less/extend-cross-import.test.ts`
+  and a no-extend-graph case in `extend-preflight-contract.test.ts`. Parser, AST
+  shapes, the extend engine (`ast/extend/**`), the dynamic recorder, and public
+  APIs are unchanged.
+- Separation/duplication: one admission rule replaces two. The special case that
+  always planned `(reference)` imports is deleted; a reference import is admitted
+  by the same graph rule as every other import. `planImportedStaticExtend`
+  remains the only imported-document planner.
+- Cumulative node weight: zero AST/CST fields, zero `Emit`/`Frame` fields.
+- New traversal: none per document. `bodyMayPlanExtend` now runs only until the
+  graph is known to carry an extend (before, every import ran it). The root gate
+  calls `documentHasExtend(root)` exactly as before; its result is kept instead
+  of being discarded. Each imported document is planned at most once per visit,
+  as before.
+- New node/materialization: one `{ rules, referenceBoundary }` entry per imported
+  document visited while the graph has no extend yet, and one `planImported`
+  closure per planner call. A graph with no extend anywhere still plans nothing
+  (`plan.calls` and `importsFeatureBearing` stay 0, pinned by the new contract
+  case).
+- Render path: unchanged. The walk, the dynamic recorder, and the post-walk fold
+  are untouched; imported rules that were previously recorded only by the dynamic
+  recorder's opaque fallback are now ordinary static subjects.
+- Helper/API surface: one private closure (`planImported`) inside
+  `planImportedFacts`. No export, node contract, fallback, source scan, or reparse.
+- Metadata mutations: only render-local planner state (`overlay`,
+  `e.importedStaticExtendRules`) is written, by the existing planner.
+- Review-flagged diff tokens: [loop/traversal] the one new loop drains
+  `unplanned` once, when the first extend-bearing document appears; each entry is
+  planned once and the list is dropped. [materialized array/object] the
+  `unplanned` array and its entries exist only while an extend-bearing graph has
+  not yet been proven, and `planImported` is one closure per planner call; the
+  `[]`/`null` literals in its call are the existing `planImportedStaticExtend`
+  root arguments, moved from the old call site.
+- Evidence: red-to-green — the five new `extend-cross-import` cases (plain,
+  `(multiple)`, nested chain, extender in a later import, `extend all` inside an
+  imported `@media`) fail with the per-document gate and pass with this change;
+  oracle is less 4.9.1 (v5 `:is()` graft for the partial case). The new
+  `extend-preflight-contract` case pins that a graph with only a plain and a
+  `(reference)` import and no extend plans nothing. Core suite 219 files / 3345
+  tests / 10 skipped / 2 todo, 0 failed. Bootstrap 4 (pinned bootstrap-less-port
+  0.3.0) regains 20 cross-file extender selectors on
+  `.form-control-plaintext.form-control-sm/lg` and
+  `select.form-control-sm/lg:not([size]):not([multiple])`; its re-cut golden
+  encodes the old drop and is held as an expected failure pending the owner's
+  golden patch. `benchmark.less` render output is unchanged
+  (SHA-256 `29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8`,
+  123,223 bytes; its two imports are empty). Current `measure:less:hotpath`
+  baseline on Node v24.11.1: `benchmark.less` 55.60 ms median (30 samples,
+  `signal=usable`); the bootstrap 4 wrapper read 315 ms before and 323 ms after
+  with `signal=noisy` (43-61% RSD) on a contended machine and supports no claim.
+- Verdict: accepted as a semantic correction with `performanceClaim: none`.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-extend-dynamic-fold",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "why": "Extend matching is graph-wide: any extend anywhere in the import graph can target any imported rule, so the static import preflight must admit every imported document once the graph is known to carry an extend. A per-document gate cannot know about extends in the importer or in later imports, and the only alternative carrier, the walk-time dynamic recorder, records unplanned rules as opaque text that cannot match a branch of a nested multi-branch rule.",
+    "dangerTokensJustification": "One render-local array holds imported documents visited before the first extend-bearing document; it is drained once and dropped, and stays unallocated when the root carries an extend. A graph with no extend never plans. bodyMayPlanExtend stops running once the graph is known to carry an extend. No new AST walk, Map, Set, WeakMap, Frame or Emit field is added.",
+    "falsePath": {
+      "fixture": "extend-preflight-contract:no-extend",
+      "counters": {
+        "calls": 1,
+        "preflight.collectCalls": 0,
+        "preflight.overlaySubjects": 0,
+        "preflight.overlayInstructions": 0,
+        "preflight.loopPlacements": 0
+      }
+    },
+    "featurePath": {
+      "fixture": "extend-preflight-contract:imported-loop",
+      "counters": {
+        "preflight.importsVisited": 1,
+        "preflight.importsFeatureBearing": 1
+      }
+    },
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "parse-render",
+      "currentMedianMs": 55.6,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  },
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Collection-spread-computed-key-overlay-and-iteration",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "module-callable-explicit-reference-and-css-call-separation",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "The import planner now admits imported documents to static extend planning per import graph instead of per document, so a rule in an imported sheet is an extend target whether or not that sheet carries an extend of its own. This changes emitted CSS for affected import graphs and makes no speed, neutrality, or byte-identity claim.",
+    "dangerTokensJustification": "The only additions are a render-local list of imported documents awaiting the first extend in the graph, drained once, and one planner closure per planner call. No-extend graphs plan nothing; no new AST traversal, Map, Set, WeakMap, Frame or Emit field is added.",
+    "behaviorEvidence": "extend-cross-import 9/9 (5 new cases red before, green after), extend-preflight-contract 3/3 (new no-extend-graph case), the core suite (3345 passed), and the all-Less fixture lane pass.",
+    "buildEvidence": "The dependency-ordered release build and the core package build pass; the core build tsconfig typechecks clean.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 55.6,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  }
+]
+```
+
 - Latest pass: 2026-10-01 explicit imported-callable references. Jess selected,
   default, flat, and namespace function imports now dispatch only through
   `$name(…)` or `$namespace.name(…)`; importing a name cannot change a bare
