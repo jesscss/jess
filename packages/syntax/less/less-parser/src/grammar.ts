@@ -254,7 +254,6 @@ type LessRules = {
   FlatMixinCall: Combinator<MixinCall>;
   NamespacedMixinCall: Combinator<MixinCall>;
   NamespacedMixinValue: Combinator<MixinCall>;
-  HexColorValue: Combinator<ValueNode>;
   MixinReference: Combinator<ValueNode>;
   MixinReferenceChain: Combinator<Reference>;
   ReferenceCall: Combinator<Reference>;
@@ -393,8 +392,8 @@ type SharedSyntax = {
   AttributeModifier: Combinator<unknown>;
   AttributeOperator: Combinator<unknown>;
   HexColor: Combinator<string>;
-  // Converged to the CSS base (inherited via compose): shared HexColor token,
-  // reducer differs only requireToken().value vs tokenText() over one token.
+  // Overrides the CSS base: a Less `#` head is shared with namespace references,
+  // so a hex run continued by `.`/`[`/`(` is a reference, never a colour.
   Color: Combinator<ValueNode>;
   UnicodeRangeToken: Combinator<string>;
   // Converged to the CSS base (inherited via compose): same named
@@ -2228,7 +2227,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.VariableReferenceChain,
     g.PropertyReference,
     g.Dimension,
-    g.Color,
     g.FormatFunction,
     IdentifierOrFunction,
     g.CalcParen,
@@ -2259,7 +2257,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.VariableReferenceChain,
       g.PropertyReference,
       g.Dimension,
-      g.Color,
       g.FormatFunction,
       IdentifierOrFunction,
       g.SelectorCapture,
@@ -3110,19 +3107,20 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return { call: withPath, raw };
     }
   );
-  // A `#`-headed value that spells a complete hex color and is NOT continued by
-  // a reference opener (`.`/`[`/`(`) is a Color, recognized FORWARD. This leads
-  // the shared-head arm so the ubiquitous `#fff` never enters the reference
-  // chain, fails a required accessor, and rewinds — the exact `attempt` cost the
-  // old ordering paid on every hex color. The negative lookahead also excludes a
-  // trailing hex digit, so a longer run (`#fffff`) declines here and falls to the
-  // chain like any other non-color head.
-  const HexColorValue = node(
+  /*
+   * Overrides the CSS base `Color`. In Less a `#` head is shared with namespace
+   * references (`#ns.m()`, `#ns[key]`), so a hex run continued by a reference
+   * opener (`.`/`[`/`(`) is decided FORWARD as a reference head, never a colour:
+   * `@x: #add.m;` is the namespace `#add`, and it gets the reference's own
+   * diagnostic instead of a colour followed by stray bytes. The negative
+   * lookahead also excludes a trailing hex digit, so a longer run (`#fffff`)
+   * declines here. CSS keeps its plain hash colour: it has no `#name.` path.
+   * Leading the shared-head arm (`MixinReference`) with it keeps the ubiquitous
+   * `#fff` out of the reference chain, so no colour enters it and rewinds.
+   */
+  const Color = node(
     'Color',
     regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F.[(])/),
-    // Byte-identical to the shared `g.Color` reducer this arm precedes (a plain
-    // `color(text)`, no span), so a hex color reduces to the exact same node
-    // whether it is reached here or through the ordinary Color arm.
     children => color(requireToken(children[0]).value)
   );
   // A static namespace/mixin invocation remains the existing typed MixinCall
@@ -3145,14 +3143,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     }
   );
   // The value-atom reference arm: a forward hex color OR a Reference chain, first
-  // set `[.#]`, no rewind on the hot path. `HexColorValue` recognizes `#fff`
+  // set `[.#]`, no rewind on the hot path. `Color` recognizes `#fff`
   // outright; a head continued by an accessor declines that lookahead and routes
   // to the chain (`#ns[key]`, `#library.add(1)[result]`). A tail-less non-color
   // head (`.class`, `#ns`, `.mixin()`) matches NEITHER and fails cleanly — the
   // enclosing choice then falls to its selector/color siblings, exactly as the
   // old `attempt(MixinReference)` did after rewinding, but without throwing.
   const MixinReference = choice(
-    HexColorValue,
+    g.Color,
     g.MixinReferenceChain
   );
   const ReferenceCall = node(
@@ -3195,7 +3193,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.Quoted,
       g.EscapedQuoted,
       g.Dimension,
-      g.Color,
       g.Call,
       g.Keyword
     ),
@@ -5527,7 +5524,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     FlatMixinCall,
     NamespacedMixinCall,
     NamespacedMixinValue,
-    HexColorValue,
+    Color,
     MixinReference,
     MixinReferenceChain,
     ReferenceCall,

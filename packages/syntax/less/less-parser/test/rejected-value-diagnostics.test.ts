@@ -37,6 +37,8 @@ describe('punctuation-led Less values are rejected at their first token', () => 
     ['a variable', '@foo: .a;', 6, '.a'],
     ['a variable followed by a ruleset', '@foo: .a;\n.bar { color: red; }', 6, '.a'],
     ['a namespaced variable', '@foo: #ns.a;', 6, '#ns.a'],
+    ['a namespace spelled in hex letters', '@x: #add.m;', 4, '#add.m'],
+    ['a hex-letter namespace in a property', '.x { p: #abc.m; }', 8, '#abc.m'],
     ['a property', '.x { p: .a; }', 8, '.a'],
     ['a reference spaced from its semicolon', '@foo: .a ;', 6, '.a']
   ])('PINNED (P33 `.a` OPEN) — names an uncalled mixin reference in %s (jess#236)', (_label, source, offset, name) => {
@@ -66,6 +68,9 @@ describe('punctuation-led Less values are rejected at their first token', () => 
     '.x { p: /* lead */ red; }',
     '@x: .5;',
     '@c: #fff;',
+    '@c: #add;',
+    '@x: #add.m();',
+    '@x: #add[@k];',
     '@foo: .a();',
     '@foo: #ns.a();',
     '@foo: .a[@x];',
