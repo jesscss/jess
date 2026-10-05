@@ -1,5 +1,6 @@
 // @ts-nocheck
 /* eslint-disable @typescript-eslint/naming-convention */
+import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const encoder = new TextEncoder();
@@ -782,6 +783,89 @@ const loadModule = async (modulePath) => {
   return exports;
 };
 
+/**
+ * A refusal of the Less 4 plugin-manager API, which v5 deliberately does not
+ * run. The message is only the member refused (`pluginManager.addVisitor()`,
+ * `less.visitors`, ...): the host turns it into a `plugin/unsupported-feature`
+ * diagnostic whose wording and replacement come from `@jesscss/core`, the same
+ * one the in-process bridge of `@jesscss/plugin-less-compat` reports.
+ */
+class UnsupportedLessPluginApiError extends Error {
+  constructor(feature) {
+    super(feature);
+    this.name = 'UnsupportedLessPluginApiError';
+  }
+}
+
+const refuseLessPluginApi = (feature) => {
+  throw new UnsupportedLessPluginApiError(feature);
+};
+
+/* Node's file and directory lookup, minus `.node` addons and package.json `main`. */
+const REQUIRE_SUFFIXES = ['', '.js', '.json', '/index.js', '/index.json'];
+
+const isRequirableFile = (candidate) => {
+  try {
+    return Deno.statSync(candidate).isFile;
+  } catch (err) {
+    if (err instanceof Deno.errors.NotFound) {
+      return false;
+    }
+    throw err;
+  }
+};
+
+/**
+ * `require()` for a legacy `@plugin` file: RELATIVE specifiers only, resolved
+ * against the requiring file as Node resolves a file path. Every stat and read
+ * goes through the same permission broker as the plugin file itself, so a
+ * require can never reach past jsReadRoot. A `.json` file is parsed. Any other
+ * required file is plain CommonJS: it gets `module`, `exports`, `require`,
+ * `__filename` and `__dirname`, not the plugin globals, and no Node `process`.
+ * Each file evaluates once per load, and is cached before it runs, so a require
+ * cycle sees partial exports (as in Node).
+ */
+const createLegacyRequire = (fromPath, cache) => (specifier) => {
+  const request = String(specifier);
+  if (!request.startsWith('./') && !request.startsWith('../')) {
+    throw new Error(`Less @plugin require("${request}") is not supported: only relative requires ("./file", "../file") of CommonJS files inside the script root are.`);
+  }
+  let resolved;
+  try {
+    /*
+     * Resolve from the requiring file's real path, as Node does: the broker
+     * compares canonical paths, and a candidate that does not exist cannot be
+     * canonicalized, so under a symlinked read root it would read as outside.
+     */
+    const base = resolve(dirname(Deno.realPathSync(fromPath)), request);
+    resolved = REQUIRE_SUFFIXES.map(suffix => base + suffix).find(isRequirableFile);
+  } catch (err) {
+    throw new Error(`Less @plugin require("${request}") from "${fromPath}" was refused: ${err?.message ?? String(err)}`);
+  }
+  if (resolved === undefined) {
+    throw new Error(`Less @plugin require("${request}"): no file found from "${fromPath}".`);
+  }
+  let module = cache.get(resolved);
+  if (!module) {
+    module = { exports: {} };
+    cache.set(resolved, module);
+    const source = Deno.readTextFileSync(resolved);
+    if (resolved.endsWith('.json')) {
+      module.exports = JSON.parse(source);
+      return module.exports;
+    }
+    new Function('module', 'exports', 'require', '__filename', '__dirname', 'process', source)(
+      module,
+      module.exports,
+      createLegacyRequire(resolved, cache),
+      resolved,
+      dirname(resolved),
+      undefined
+    );
+  }
+  return module.exports;
+};
+
 /*
  * Deprecated Less @plugin support only. Jess @-use is plain ESM and must not
  * pass through this injected-variable wrapper.
@@ -804,22 +888,25 @@ const createLegacyLessPluginRuntime = (modulePath, options) => {
     }
   };
   const manager = {
-    visitors: [],
-    addVisitor(visitor) {
-      this.visitors.push(visitor);
-    },
-    addPreProcessor() {},
-    addPostProcessor() {},
+    addVisitor: () => refuseLessPluginApi('pluginManager.addVisitor()'),
+    addPreProcessor: () => refuseLessPluginApi('pluginManager.addPreProcessor()'),
+    addPostProcessor: () => refuseLessPluginApi('pluginManager.addPostProcessor()'),
+    addFileManager: () => refuseLessPluginApi('pluginManager.addFileManager()'),
     registerPlugin(plugin) {
       installPlugin(plugin);
     }
   };
-  const less = {
+  const less = Object.defineProperties({
     ...lessFacade,
     functions: {
       functionRegistry: functions
     }
-  };
+  }, {
+    /* 4.x plugins reach these before the hook call (`new less.visitors.Visitor(this)`). */
+    visitors: { get: () => refuseLessPluginApi('less.visitors') },
+    FileManager: { get: () => refuseLessPluginApi('less.FileManager') },
+    environment: { get: () => refuseLessPluginApi('less.environment') }
+  });
   const installPlugin = (plugin) => {
     if (!plugin) {
       return;
@@ -856,9 +943,6 @@ const createLegacyLessPluginRuntime = (modulePath, options) => {
       candidate.eval(less);
     }
   };
-  const require = (specifier) => {
-    throw new Error(`Less @plugin require("${specifier}") is not supported in the Deno sandbox yet.`);
-  };
   const registerPlugin = (plugin) => {
     installPlugin(plugin);
   };
@@ -866,8 +950,9 @@ const createLegacyLessPluginRuntime = (modulePath, options) => {
     exports: {},
     functions,
     localFunctions,
+    less,
     manager,
-    require,
+    require: createLegacyRequire(modulePath, new Map()),
     registerPlugin,
     fileInfo: { filename: modulePath }
   };
@@ -903,12 +988,7 @@ const loadLessPlugin = async (modulePath, options = null) => {
     runtime.registerPlugin,
     runtime.functions,
     lessFacade.tree,
-    {
-      ...lessFacade,
-      functions: {
-        functionRegistry: runtime.functions
-      }
-    },
+    runtime.less,
     runtime.fileInfo,
     undefined
   );

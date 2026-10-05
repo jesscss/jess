@@ -133,6 +133,21 @@ export class JessError {
     this.lexerErrors = init.lexerErrors;
   }
 
+  /**
+   * Attributes a diagnostic raised by code that knew no source (a plugin
+   * runtime refusing a Less 4 hook, a disabled `@plugin` load) to the statement
+   * or call it was raised under. One that already has a location keeps it.
+   */
+  attributeTo(at: { filePath?: string; source?: string; line?: number; column?: number }): this {
+    if (this.filePath === undefined) {
+      this.filePath = at.filePath;
+      this.source = at.source;
+      this.line = at.line ?? this.line;
+      this.column = at.column ?? this.column;
+    }
+    return this;
+  }
+
   /** Plain-text diagnostic: header + reason/fix. No colors, links, or frame. */
   toString(): string {
     const loc = this.filePath ? `${this.filePath}:${this.line}:${this.column}` : '(unknown)';
