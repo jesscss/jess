@@ -6068,6 +6068,31 @@ function resolveReferenceResult(
     if (!map) {
       return null;
     }
+
+    /*
+     * Ledger A8: `.name(args)` on a `@compose` namespace in STATEMENT position is
+     * a call of the module's `.name` mixin, dispatched in the module's own
+     * activation (its definitions and bindings), exactly like a namespaced
+     * `#ns.name()` call. Decided on the activation's mixin table before any
+     * member lookup, so the call never pays a scan of the module's members. The
+     * Call step that follows is consumed here: its args are the call's, and the
+     * call carries the reference's span for its diagnostics.
+     */
+    if (statementCall && map.activation !== null && step.type === 'LookupStep' && step.kind === 'member'
+      && typeof step.name === 'string') {
+      const call = node.steps[stepIndex + 1];
+      const name = `.${step.name}`;
+      if (call?.type === 'Call' && map.activation.mixins?.has(name)) {
+        value = {
+          type: 'MixinCall', name, args: call.args, path: [], important: false, content: null,
+          _s: node._s, _e: node._e
+        };
+        valueFrame = map.activation;
+        evaluated = null;
+        stepIndex++;
+        continue;
+      }
+    }
     let matched: DeclEntry | undefined;
     let missingSymbol = node.raw;
 
@@ -6213,25 +6238,10 @@ function resolveReferenceResult(
       matched = looseMemberLookup(map, looseKey, looseKind, e, looseValueKey);
     }
     if (map.activation !== null) {
-      const called = node.steps[stepIndex + 1]?.type === 'Call';
-
-      /*
-       * Ledger A8: `.name(args)` on a `@compose` namespace in STATEMENT position is
-       * a call of the module's `.name` mixin, dispatched in the module's own
-       * activation (its definitions and bindings), exactly like a namespaced
-       * `#ns.name()` call. The following Call step binds the arguments.
-       */
-      if (statementCall && called && step.type === 'LookupStep' && step.kind === 'member'
-        && typeof step.name === 'string' && map.activation.mixins?.has(`.${step.name}`)) {
-        value = mixinCall(`.${step.name}`, []);
-        valueFrame = map.activation;
-        evaluated = null;
-        continue;
-      }
       if (matched && map.byVar.get(matched.name) === matched) {
         matched = activatedVarMember(map.activation, matched.name, e);
       }
-      if (!statementCall && called) {
+      if (!statementCall && node.steps[stepIndex + 1]?.type === 'Call') {
         rejectComposedMemberCall(node, matched, missingSymbol);
       }
     }

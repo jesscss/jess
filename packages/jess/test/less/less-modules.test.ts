@@ -169,6 +169,20 @@ describe('Less @compose stylesheet modules', () => {
     expect(css).toBe('.a {\n  box-shadow: 0 3px 0 black;\n}\n');
   });
 
+  it('reports a failed member mixin call at its call site', async () => {
+    const elevate: SourceFile = ['elevate.less', '.lift(@d) { box-shadow: 0 @d 0 black; }\n'];
+    const directory = project([elevate, ['entry.less', '@compose "./elevate.less";\n.a {\n  @elevate.lift(1px, 2px, 3px);\n}\n']]);
+    const compiler = new Compiler();
+    try {
+      const result = await compiler.renderToResult(path.join(directory, 'entry.less'));
+      const errors = (result as { errors?: { reason?: string; line?: number; column?: number }[] }).errors ?? [];
+      expect(errors.map(error => [error.reason, error.line, error.column]))
+        .toEqual([['Symbol ".lift()" is undefined in this scope.', 3, 3]]);
+    } finally {
+      compiler.dispose();
+    }
+  });
+
   it('keeps a spaced `@name .member(…);` an at-rule, and an unknown member an error', async () => {
     const elevate: SourceFile = ['elevate.less', '.lift(@d) { box-shadow: 0 @d 0 black; }\n'];
     expect((await render('@compose "./elevate.less";\n.a { @elevate.sink(3px); }', [elevate])).errors)
