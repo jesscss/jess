@@ -1084,7 +1084,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-QueryClause">
     <h2><a href="#rule-QueryClause">§</a> QueryClause</h2>
     <div class="diagram" data-rule="QueryClause"></div>
-    <div class="ebnf">QueryClause ::= QueryOnly !(&quot;layer&quot; | &quot;only&quot;) Keyword ((QueryAndOr !&quot;(&quot;)? MediaTerm)* | MediaTerm ((QueryAndOr !&quot;(&quot;)? MediaTerm)*</div>
+    <div class="ebnf">QueryClause ::= QueryOnly !(&quot;layer&quot; | &quot;only&quot;) Keyword (QueryAndOr !&quot;(&quot; MediaTerm)* | MediaTerm ((QueryAndOr !&quot;(&quot;)? MediaTerm)*</div>
   </section>
   <section class="rule" id="rule-Enclosed">
     <h2><a href="#rule-Enclosed">§</a> Enclosed</h2>
@@ -2129,7 +2129,7 @@ At runtime, these constants can be found on the Diagram class.
   { name: "Keyword", dsl: function(){ return Diagram(NonTerminal("Identifier")); } },
   { name: "QueryFeature", dsl: function(){ return Diagram(Sequence(Terminal("("), NonTerminal("QueryFeatureContents"), Terminal(")"))); } },
   { name: "MediaTerm", dsl: function(){ return Diagram(Choice(0, NonTerminal("MediaInParens"), Sequence(Sequence(Comment("not"), Sequence(NonTerminal("QueryAndOr"), Sequence(Comment("not"), Terminal("(")))), Sequence(Comment("not"), Sequence(Choice(0, Terminal("layer"), Terminal("only")), Sequence(Comment("not"), Terminal("(")))), Terminal("IDENT (escapes allowed)"), Optional(Terminal("(")), Choice(0, Sequence(Comment("…"), Terminal(")")), Skip())))); } },
-  { name: "QueryClause", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("QueryOnly"), Sequence(Comment("not"), Choice(0, Terminal("layer"), Terminal("only"))), NonTerminal("Keyword"), ZeroOrMore(Sequence(Optional(Sequence(NonTerminal("QueryAndOr"), Sequence(Comment("not"), Terminal("(")))), NonTerminal("MediaTerm")))), Sequence(NonTerminal("MediaTerm"), ZeroOrMore(Sequence(Optional(Sequence(NonTerminal("QueryAndOr"), Sequence(Comment("not"), Terminal("(")))), NonTerminal("MediaTerm")))))); } },
+  { name: "QueryClause", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("QueryOnly"), Sequence(Comment("not"), Choice(0, Terminal("layer"), Terminal("only"))), NonTerminal("Keyword"), ZeroOrMore(Sequence(NonTerminal("QueryAndOr"), Sequence(Comment("not"), Terminal("(")), NonTerminal("MediaTerm")))), Sequence(NonTerminal("MediaTerm"), ZeroOrMore(Sequence(Optional(Sequence(NonTerminal("QueryAndOr"), Sequence(Comment("not"), Terminal("(")))), NonTerminal("MediaTerm")))))); } },
   { name: "Enclosed", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("QueryFunctionOpen"), NonTerminal("EnclosedContent"), Terminal(")")), Sequence(Terminal("("), NonTerminal("EnclosedContent"), Terminal(")")))); } },
   { name: "ContainerQueryInParens", dsl: function(){ return Diagram(Sequence(Terminal("("), NonTerminal("ContainerQueryCondition"), Terminal(")"))); } },
   { name: "ContainerStyleQuery", dsl: function(){ return Diagram(NonTerminal("Enclosed")); } },
