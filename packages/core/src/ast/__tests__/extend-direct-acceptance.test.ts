@@ -194,11 +194,13 @@ describe('direct canonical extend', () => {
       ])
     ]);
 
+    /* `.target` (0,1,0) and `.outer .inner` (0,2,0) differ, so the group splits. */
     expect(render(document)).toBe('.target,\n'
       + '.outer .inner {\n'
       + '  color: red;\n'
       + '}\n'
-      + ':is(.target, .outer .inner) .child {\n'
+      + '.target .child,\n'
+      + '.outer .inner .child {\n'
       + '  color: blue;\n'
       + '}\n');
   });
@@ -347,7 +349,10 @@ describe('ampersand-boundary (RUNG P-amp): structural &-compose', () => {
      * `.outer .mid .leaf` (origins 2,1,0). `.z:extend(.mid .leaf all)` matches the
      * `.mid`(ancestor)+`.leaf`(own) sub-span — a boundary CROSS. On dev the parent
      * `.outer .mid` was one embedded-space simple so `.mid .leaf` never matched and
-     * `.z` was dropped; now it grafts in place.
+     * `.z` was dropped; now it grafts in place. The matched span `.mid .leaf` is
+     * complex and follows `.outer `, so it cannot sit inside `:is()` (`.outer
+     * :is(.mid .leaf)` would let `.mid` sit above `.outer`): each alternative is its
+     * own branch.
      */
     const leaf = complexSelector([
       { term: compoundSelectorOf([simpleSelector('&')]) },
@@ -358,7 +363,8 @@ describe('ampersand-boundary (RUNG P-amp): structural &-compose', () => {
       rule('.z', [], [{ target: selist(descendant('.mid', '.leaf')), partial: true }])
     ]);
 
-    expect(render(document)).toBe('.outer :is(.mid .leaf, .z) {\n'
+    expect(render(document)).toBe('.outer .mid .leaf,\n'
+      + '.outer .z {\n'
       + '  c: d;\n'
       + '}\n');
   });
@@ -384,7 +390,8 @@ describe('ampersand-boundary (RUNG P-amp): structural &-compose', () => {
       rule('.z', [], [{ target: selist(target), partial: true }])
     ]);
 
-    expect(render(document)).toBe('.a :is(.p .b .p, .z) {\n'
+    expect(render(document)).toBe('.a .p .b .p,\n'
+      + '.a .z {\n'
       + '  c: d;\n'
       + '}\n');
   });

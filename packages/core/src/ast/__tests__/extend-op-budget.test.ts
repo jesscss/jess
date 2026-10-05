@@ -140,6 +140,36 @@ const nestedHoistPlacementsFor = (n: number): number => {
   return counters['astExtend.emit.nestedHoistPlacements'] ?? 0;
 };
 
+/**
+ * `.t1 .t2` grafted twice: `n` extenders of `.t1` that cannot sit in `:is()` (a vendor
+ * pseudo-class) and `n` equal-specificity extenders of `.t2`. The first group splits
+ * into n + 1 branches, each repeating the second group, which stays whole.
+ */
+const regroupDoc = (n: number): ReturnType<CoreAst['stylesheet']> => {
+  const rules = [ast.rule(ast.complexSelector([
+    { term: ast.compoundSelectorOf([ast.simpleSelector('.t1')]) },
+    { combinator: ' ', term: ast.compoundSelectorOf([ast.simpleSelector('.t2')]) }
+  ]), [ast.decl('color', ast.keyword('red'))])];
+  for (let i = 0; i < n; i++) {
+    rules.push(ast.rule(
+      ast.compoundSelectorOf([ast.simpleSelector(`.v${i}`), ast.simpleSelector(':-moz-focusring')]),
+      [],
+      [{ target: ast.selist(ast.sel('.t1')), partial: true }]
+    ));
+    rules.push(ast.rule(`.w${i}`, [], [{ target: ast.selist(ast.sel('.t2')), partial: true }]));
+  }
+  return ast.stylesheet(rules);
+};
+
+const regroupCountsFor = (n: number): { scores: number; walks: number } => {
+  resetCounters();
+  serialize(regroupDoc(n), { collapseNesting: true });
+  return {
+    scores: counters['astExtend.emit.groupMemberScores'] ?? 0,
+    walks: counters['astExtend.emit.regroupWalks'] ?? 0
+  };
+};
+
 const DISCOVER = process.env.EXTEND_BUDGET_DISCOVER === 'true';
 
 describe('extend operation-counter budgets', () => {
@@ -249,6 +279,24 @@ describe('extend operation-counter budgets', () => {
       + `the document has ONE instruction, so both must equal it. A larger count means `
       + `buildContribs went back to recomposing per subject instead of using the render memo.`
     ).toBe(base);
+  });
+
+  it('scores each extend group member once per header, however often a split repeats it (#4 gate)', () => {
+    /*
+     * A split repeats the rest of the branch once per alternative. Re-planning each
+     * repeated group per alternative made both counts quadratic (n = 40: 3448 scores
+     * for 82 distinct members); the per-header plan memo keeps them linear.
+     */
+    const base = regroupCountsFor(20);
+    const doubled = regroupCountsFor(40);
+
+    /* Two headers: the rule's flat projection and its nested one. */
+    expect(base.scores).toBe(2 * (2 * 20 + 2));
+    expect(doubled.scores).toBe(2 * (2 * 40 + 2));
+    expect(
+      doubled.walks / base.walks,
+      `regroup walks grew from ${base.walks} (n=20) to ${doubled.walks} (n=40)`
+    ).toBeLessThanOrEqual(2.2);
   });
 
   it('issues one nested hoist placement per crossing source rule', () => {

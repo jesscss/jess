@@ -4073,6 +4073,260 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: 2026-10-05 shared `:is()` grouping (owner rulings 2026-10-05:
+  extend's own `:is()` groups follow the same keep-native-specificity rule as
+  the `'native'` nesting fold, in every output mode; a member that cannot fold
+  is written in the Less 4.x expanded form; branch order inside one selector
+  list may change, so equal-specificity branches group across non-adjacent
+  positions). One module, `packages/core/src/ast/is-grouping.ts`, owns
+  specificity, the "may this branch sit inside `:is()`" check and the partition
+  into groups; the serializer's `opaqueJoin` and extend emission both call it.
+  Extend splits a mixed group into equal-specificity groups at header emission
+  and writes an unfoldable member (pseudo-element, unlisted pseudo-class, a
+  token without parser provenance, a complex member the group does not lead
+  with) as its own branch: simples before the group join the member's first
+  compound, simples after it its last compound. A chained group is checked again
+  where its member lands; an authored or nesting `:is()` keeps its arm list and
+  an alternative of another specificity stands alone. A changed top-level rule
+  compacts its siblings in nested output as in flat output. A trigger-P/X
+  flattened nested rule rises to the top level, re-opening any at-rule it rose
+  out of.
+- Architecture surface: new `packages/core/src/ast/is-grouping.ts`;
+  `serialize.ts` `opaqueJoin` (partitions instead of scanning runs; one-group
+  fast path), `HoistEntry.wrappers` + `emitHoistEntry` + `nestedAtRuleShell`
+  (a nested at-rule passes its body's hoisted rules outward with itself as a
+  wrapper); `extend/emit.ts` header emission (`groupedBranches`,
+  `regroupBranch` with a resume cursor, `planGroup` + the per-header
+  `groupPlans` memo, `splitGroup`, `splitArms`, `spliceMember`,
+  `mergeCompound`), sibling compaction dedup in `mergeCompoundsToIs`, the
+  nested top-level header compaction, the P/X `hoistBubble`; `extend/ir.ts`
+  (`Simple.src` on text tokens, `Simple.fold` on `:is()` grafts);
+  `extend/compose.ts` and `extend/match.ts` carry the two fields;
+  `extend/conflict.ts` exports its type check for the compound merge.
+- Separation/duplication: one owner for specificity and foldability. The
+  module walks two representations — the parsed selector AST (nesting fold)
+  and extend's selector IR — through one token scorer: an IR text token keeps
+  the AST token it was built from (`src`) and is scored by the same
+  `tokenSpecificity`; a token without `src` scores -1 (no text is read back).
+  `conflict.ts` `classify` stays separate: it answers which simple must lead a
+  compound and which pairs make an invalid compound (type/id), treating every
+  unknown head as a type; the grouping refuses to score those heads. They ask
+  different questions, so neither replaces the other.
+- Cumulative node weight: zero AST/CST node kinds or fields. The extend IR (not
+  an AST node) gains `src` on text simples and `fold` on `:is()` simples, both
+  set by their one factory shape so every IR simple of a kind has one shape.
+  `HoistEntry` (serializer-private) gains `wrappers`, set at both literals.
+- New traversal: [loop/traversal] `extendBranchSpecificity` walks a member's
+  segments and simples; `regroupBranch` scans a header branch's compounds from a
+  cursor, so a split resumes where it happened and never rescans the prefix;
+  `planGroup` resolves and scores each member of a group once per header
+  (`groupPlans` memo, created only after the first split, so a group repeated
+  by a split is planned once); `partitionGroups` scans its keys. All run only on
+  extend-touched headers (the candidate set the fast reject admits) and on
+  `opaqueJoin` child lists; the matcher's work is unchanged. Per render
+  (collapseNesting true; false/native/compact equal): `benchmark.less` 702
+  regroup walks, 339 member scores, 0 splits; `bootstrap4.less` 1086, 268, 124
+  group splits + 8 authored-arm splits; extend 110/44/4; extend-chaining
+  192/16/2; extend-nest 64/12/2; extend-selector 137/64/7; extend-exact 35/2/0.
+  Matcher and planner counters (`astExtend.match.branchComparisons`,
+  `astExtend.plan.subjects`, …) are identical to the previous lane head on all
+  44 fixture×mode renders, and so is every output byte.
+- New node/materialization: [node construction] the `groupPlans` `Map` (one per
+  header that splits) and the `seen` `Set` in `mergeCompoundsToIs` (a merge
+  only); [materialized array/object] a group that stays whole allocates
+  nothing (scores are compared before a keys array exists; every group on
+  `benchmark.less`); a split allocates its plan (keys, sizes, the resolved
+  member list when a member split), the output list and one branch per
+  alternative; `groupedBranches` copies the header list only when a branch
+  split. [array spread/materialization] `mergeCompound` spreads the three runs
+  of a spliced compound; a hoisted entry crossing an at-rule copies its wrapper
+  list. [array helper] `slice()` copies in `withSimple`/`spliceMember`/
+  `planGroup`/`splitArms`/`groupedBranches`, `values.join` for the one-group
+  fold, `members.map(branchText)` for the merge dedup.
+- Render path: still stringify-only. Groups are emitted through `branchOut`; a
+  wrapper at-rule re-emits its already-resolved prelude string.
+- Helper/API surface: `is-grouping.ts` exports `nestingGroupKey`,
+  `extendBranchSpecificity` and `partitionGroups` inside core (no package
+  export); `conflict.ts` exports `isTypeSelector` inside core; emit and
+  serializer helpers above are module-private.
+- Metadata mutations: none. [parent/source mutation] flagged
+  `groupedBranches(header, s.parent === null)` reads the plan subject's parent;
+  nothing is assigned.
+- Review-flagged diff tokens: [loop/traversal], [array helper], [array
+  spread/materialization], [node construction], [side map/set] (the
+  pseudo-class allowlist `Set` moved from `serialize.ts`, built once at load;
+  the merge-dedup `Set`; the `groupPlans` `Map`) and [materialized
+  array/object] as above.
+- Behavior evidence: `packages/jess/test/less/extend-is-grouping.test.ts` (16
+  tests, every output mode: 4.x placement after a combinator and at the head,
+  chained groups checked where spliced, authored `:is()` arm splits, nested
+  top-level compaction and dedup, at-rule wrappers on the nested hoist),
+  `packages/core/src/ast/__tests__/is-grouping.test.ts` (7) and the
+  `extend-op-budget.test.ts` regroup gate (84 member scores at n=20 and 164 at
+  n=40, 924 without the plan memo); probes of each case fail on the previous
+  lane head 4969cf9ef. Core suite 221 files / 3372 tests, the Less fixture lane
+  151 passed / 28 skipped, `extend-exact-oracle.test.ts` 3/3.
+- Build evidence: `pnpm --filter @jesscss/core build` and `pnpm run
+  build:release` pass; `tsc --noEmit -p packages/core` reports no error in
+  `src/` (the test-file type errors predate this lane).
+- Boundary evidence: `is-grouping.ts` is core-internal — no package export, no
+  public type; its three exports are imported only by `serialize.ts`,
+  `extend/emit.ts` and its unit test. Corpus renders (149 fixtures plus
+  `benchmark.less` and `bootstrap.less`, harness/false/true/native/compact) are
+  byte-identical to the previous lane head; against the base
+  (`origin/lane/v5-native-is-fold`) only bootstrap4, extend, extend-chaining,
+  extend-nest and extend-selector change, as registered in
+  `pending-golden-edits.ts`.
+- Evidence: `benchmark.less` (collapseNesting true) SHA-256
+  `ac5ea0650e8339dd405c49746523b663eb1d2b2fa6a6e469639c19fdc2d9669e` (123,303
+  bytes), unchanged by this fix pass. `measure:less:hotpath` on
+  `benchmark.less`: median 50.17 ms, signal unstable (load average 13); no
+  speed or neutrality claim.
+- Verdict: accepted as a semantic output change with `performanceClaim: none`.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Collection-spread-computed-key-overlay-and-iteration",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "module-callable-explicit-reference-and-css-call-separation",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "Extend's own :is() groups and the nesting fold share one grouping module; extend splits a group whose members differ in specificity at header emission, in every output mode, writes an unfoldable member in the Less 4.x expanded form, and a flattened nested rule rises to the top level with the at-rules it crossed. No evaluator, value or matcher change; semantic output work with no cost-cutting or neutrality claim.",
+    "dangerTokensJustification": "The new walks run only on extend-touched headers and multi-branch nesting child lists; each group member is resolved and scored once per header (op-budget gate), a split resumes from its cursor, a group that stays whole allocates nothing, and matcher and planner counters are identical before and after.",
+    "behaviorEvidence": "packages/jess/test/less/extend-is-grouping.test.ts, packages/core/src/ast/__tests__/is-grouping.test.ts, the extend-op-budget regroup gate and the updated collapse-nesting-mode.test.ts pin the rule; the all-Less lane passes with the extend goldens' new groups registered in pending-golden-edits.ts.",
+    "buildEvidence": "pnpm --filter @jesscss/core build passes; the core suite passes.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 50.17,
+      "outputSha256": "ac5ea0650e8339dd405c49746523b663eb1d2b2fa6a6e469639c19fdc2d9669e",
+      "outputBytes": 123303
+    }
+  }
+]
+```
+
+- Latest pass: 2026-10-05 `collapseNesting: 'native'` child-list fold (owner
+  ruling 2026-10-05: fold what keeps native specificity; ledger O10 amendment
+  pending). `'native'` now folds a run of consecutive nested child branches into
+  `:is()` when every branch is a single compound of the same specificity and
+  nothing in it changes matching or invalid-selector behaviour inside `:is()`:
+  no interpolation, pseudo-element, namespace prefix, attribute `s` flag,
+  `:scope`, functional pseudo-class other than `:is()`/`:not()`/`:has()`/
+  `:where()`, nested `:has()`, or pseudo-class outside an allowlist of standard
+  ones every major engine implements. `'compact'` and nested output are
+  unchanged.
+- Architecture surface: `packages/core/src/ast/serialize.ts` only —
+  `opaqueJoin` (one fold loop for both flatten styles, keyed per branch) and the
+  new `tokenFoldSpecificity`/`branchFoldSpecificity` with the module-level
+  `NATIVE_FOLD_PSEUDO_CLASSES`. No parser, evaluator, extend or AST change.
+- Separation/duplication: `'native'` reuses `'compact'`'s fold loop; the only
+  difference is the per-branch key (specificity vs combinator shape), so there is
+  no second fold implementation. Specificity is read from the selector IR the
+  parser built, never from emitted CSS. The language service (postcss parse plus
+  `@csstools/selector-specificity`) and diagnostics-core (`tolerant-cst.ts`) score
+  other representations for hover and lint; extend's `conflict.ts` `classify`
+  answers a different question (which simples can conflict) with a different
+  default for unknown heads.
+- Cumulative node weight: zero AST/CST node kinds or fields.
+- New traversal: [loop/traversal] `branchFoldSpecificity` walks one child
+  branch's compounds and `tokenFoldSpecificity` walks a structured pseudo's
+  argument list, recursing only into `:is()`/`:not()`/`:has()`/`:where()`
+  arguments. Both run only in `opaqueJoin` under `'native'` for a child list of
+  two or more branches, once per branch, over IR already in hand; the fact is
+  not carried by the parser (a SimpleSelector keeps no kind or specificity), so
+  there is no existing edge to read it from. Measured per `benchmark.less`
+  render: 30 joins, 152 branch and 108 token visits; per `bootstrap4.less`: 65
+  joins, 197 and 83.
+- New node/materialization: [node construction] [side map/set] the
+  `NATIVE_FOLD_PSEUDO_CLASSES` `Set`, built once at module load. Per join, the
+  native path allocates the `out` array, one `run` array, the `flushRun` closure,
+  and one `run` array per non-empty run flushed (34 per `benchmark.less` render,
+  35 per `bootstrap4.less`); `'compact'` already allocated the same shapes. The
+  pseudo-class lookup lowercases only on a Set miss (0 per render on both
+  fixtures); the structured-pseudo name lowercase allocates nothing for an
+  already-lowercase short name.
+- Render path: still stringify-only. A folded run is written as
+  `a + ' :is(' + run.join(', ') + ')'`; no node is built to print it.
+- Helper/API surface: two module-private functions, no export.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [loop/traversal] the two IR walks above;
+  [array helper] the `run.join(', ')` that writes a folded run (moved from the
+  compact-only branch, not new work per run); [node construction] and
+  [side map/set] the module-load `Set` above.
+- Behavior evidence: `packages/jess/test/less/collapse-nesting-mode.test.ts`
+  pins every guard; 15 mutations of the guards (each removed or weakened) each
+  turn at least one test red. The all-Less lane renders all 140 recorded cases
+  under the harness config and again with `JESS_FORCE_COLLAPSE_NESTING=true`:
+  only `tests-config/3rd-party/bootstrap4.less` changes against
+  `origin/feat/less-v5-completion` (27 rule headers, registered in
+  `pendingGoldenEdits`).
+- Evidence: `benchmark.less` (collapseNesting true, plugin-less) changes by
+  design from SHA-256
+  `0750e502564808e2f54ddfc9feaf79085cabc1ba693d710fac38e1930e302349` (124,811
+  bytes) to `a27f697180dcb0ad3cf4b3b27385834972c7c3896f7bc05165565440c46b3f84`
+  (123,383 bytes): 11 equal-specificity folds such as
+  `#ad div.footer div.vote_views :is(#login_register_msg, #encourage_vote_msg)`.
+  `'compact'` and `false` output are byte-identical to the base. Op counts above
+  are the cost evidence. `measure:less:hotpath` on `benchmark.less` (Node
+  24.11.1) reported an 86.31 ms median with signal noisy (81.8% RSD, load
+  average about 37); a baseline only, no speed or neutrality claim.
+- Verdict: accepted as a semantic output change with `performanceClaim: none`.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Collection-spread-computed-key-overlay-and-iteration",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "module-callable-explicit-reference-and-css-call-separation",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "The AST serializer joins a nested child list under collapseNesting 'native' by folding runs of branches whose specificity it reads from the selector IR, instead of always distributing them. No evaluator or value change; semantic output work with no cost-cutting or neutrality claim.",
+    "dangerTokensJustification": "The two IR walks run only for a multi-branch child list under 'native', once per branch, bounded by that branch's compounds and its selector-function arguments; the allowlist Set is built once at module load; the join that writes a folded run is the one 'compact' already used.",
+    "behaviorEvidence": "packages/jess/test/less/collapse-nesting-mode.test.ts pins every guard, each red under its mutation; the all-Less lane passes with bootstrap4's 27 folded headers registered in pendingGoldenEdits.",
+    "buildEvidence": "pnpm --filter @jesscss/core build passes; the core suite passes.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 86.31,
+      "outputSha256": "a27f697180dcb0ad3cf4b3b27385834972c7c3896f7bc05165565440c46b3f84",
+      "outputBytes": 123383
+    }
+  }
+]
+```
+
 - Latest pass: 2026-10-05 remote-import follow-up review fixes
   (`docs/design/REMOTE-IMPORTS-NETWORK-POLICY.md` §6/§8). An import the media
   desugar wrapped that stays a CSS terminal is written as one `@import "…" q;`

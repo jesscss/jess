@@ -85,7 +85,13 @@ describe('extend element/id conflict guard', () => {
       rule(selist(extender), [], [{ target: selist(sel('.a')), partial: true }])
     ]);
 
-    expect(render(document)).toBe('div:is(.a, div.b) {\n'
+    /*
+     * `.a` (0,1,0) and `div.b` (0,1,1) cannot share an `:is()` without raising
+     * `div.a`, so each is its own branch. The repeated `div` merges into one type
+     * selector (Less 4.x writes the invalid `divdiv.b`).
+     */
+    expect(render(document)).toBe('div.a,\n'
+      + 'div.b {\n'
       + '  color: red;\n'
       + '}\n');
   });
