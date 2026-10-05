@@ -50,8 +50,7 @@ type Fixture = {
 
   /**
    * The golden's `sourceMappingURL` names a path the fixture's config does not
-   * yield; which side is right is an open question for the corpus owner, so
-   * only the CSS before the annotation is compared to it.
+   * yield, so only the CSS before the annotation is compared to it.
    */
   annotationUnresolved?: true;
 };
@@ -63,7 +62,10 @@ const fixtures: Fixture[] = [
   /*
    * Its golden's annotation names `tests-config/sourcemaps-comprehensive/`; the
    * fixture lives in `tests-config/sourcemaps/comprehensive/` and its config is
-   * `sourceMap: true`, which annotates `comprehensive.css.map`.
+   * `sourceMap: true`, which annotates `comprehensive.css.map`. The golden
+   * correction is proposed on the less.js fork branch
+   * `lane/v5-sourcemap-comprehensive-golden`; once it lands, drop
+   * `annotationUnresolved` here and the `all-less` skip.
    */
   { file: 'tests-config/sourcemaps/comprehensive/comprehensive.less', kind: 'map', expected: 'sourcemaps/comprehensive.json', layout: 'current', annotationUnresolved: true },
   { file: 'tests-config/sourcemaps-url/sourcemaps-url.less', kind: 'map', expected: 'sourcemaps/sourcemaps-url.json', layout: 'current' },
