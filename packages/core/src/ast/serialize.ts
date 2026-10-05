@@ -3175,60 +3175,93 @@ function hasExcludedVarRef(frame: Frame | null, name: string, lookup: 'live' | '
     : hasExcludedScopedBinding(frame, name, e) || hasExcludedLeakedBinding(frame, name, e);
 }
 
-function callValueContainsVarRef(value: CallValue, name: string, lookup: 'live' | 'scoped'): boolean {
+/**
+ * Whether any {@link Lookup} in a value satisfies `test` (called with `context`,
+ * so a caller passes a static predicate and allocates no closure). An indirect
+ * `@@x` also recurses into the node that NAMES its target.
+ */
+function callValueHasLookup<C>(value: CallValue, test: (node: Lookup, context: C) => boolean, context: C): boolean {
   if (isValueSlotArray(value)) {
-    return value.some(item => callValueContainsVarRef(item, name, lookup));
+    return value.some(item => callValueHasLookup(item, test, context));
   }
   if (value.type === 'MixinCall') {
-    return value.args.some(arg => callValueContainsVarRef(arg.value, name, lookup));
+    return value.args.some(arg => callValueHasLookup(arg.value, test, context));
   }
   switch (value.type) {
     case 'Lookup':
-      /* A direct `@x` matches by name; an indirect `@@x` recurses into the node
-       * that NAMES the target, which is what the old VarIndirect arm did. */
-      return typeof value.name === 'string'
-        ? value.kind === 'var' && value.name === name && value.scope === lookup
-        : callValueContainsVarRef(value.name, name, lookup);
+      return test(value, context) || (typeof value.name !== 'string' && callValueHasLookup(value.name, test, context));
     case 'Url':
-      return callValueContainsVarRef(value.value, name, lookup);
+      return callValueHasLookup(value.value, test, context);
     case 'Sequence':
-      return value.parts.some(part => callValueContainsVarRef(part, name, lookup));
+      return value.parts.some(part => callValueHasLookup(part, test, context));
     case 'List':
-      return value.value.some(part => callValueContainsVarRef(part, name, lookup));
+      return value.value.some(part => callValueHasLookup(part, test, context));
     case 'Branch':
-      return callValueContainsVarRef(value.condition, name, lookup)
-        || callValueContainsVarRef(value.value, name, lookup);
+      return callValueHasLookup(value.condition, test, context)
+        || callValueHasLookup(value.value, test, context);
     case 'Important':
-      return callValueContainsVarRef(value.value, name, lookup);
+      return callValueHasLookup(value.value, test, context);
     case 'Operation':
-      return callValueContainsVarRef(value.left, name, lookup)
-        || callValueContainsVarRef(value.right, name, lookup);
+      return callValueHasLookup(value.left, test, context)
+        || callValueHasLookup(value.right, test, context);
     case 'FunctionCall':
-      return value.args.some(arg => callValueContainsVarRef(arg.value, name, lookup));
+      return value.args.some(arg => callValueHasLookup(arg.value, test, context));
     case 'Block':
-      return callValueContainsVarRef(value.value, name, lookup);
+      return callValueHasLookup(value.value, test, context);
     case 'Interpolation':
-      return value.parts.some(part => 'ref' in part && callValueContainsVarRef(part.ref, name, lookup));
+      return value.parts.some(part => 'ref' in part && callValueHasLookup(part.ref, test, context));
     case 'Reference':
-      return callValueContainsVarRef(value.base, name, lookup)
+      return callValueHasLookup(value.base, test, context)
         || value.steps.some((step) => {
           if (step.type === 'Call') {
-            return step.args.some(arg => callValueContainsVarRef(arg.value, name, lookup));
+            return step.args.some(arg => callValueHasLookup(arg.value, test, context));
           }
           return step.type === 'LookupStep' && typeof step.name !== 'string'
             && typeof step.name !== 'number'
-            && callValueContainsVarRef(step.name, name, lookup);
+            && callValueHasLookup(step.name, test, context);
         });
     case 'Range':
-      return callValueContainsVarRef(value.start, name, lookup)
-        || callValueContainsVarRef(value.end, name, lookup)
-        || (value.step !== null && callValueContainsVarRef(value.step, name, lookup));
+      return callValueHasLookup(value.start, test, context)
+        || callValueHasLookup(value.end, test, context)
+        || (value.step !== null && callValueHasLookup(value.step, test, context));
     case 'IfValue':
       /* Arm VALUES only, the same reach a `Condition` gets here: a guard tree is
        * not a value slot, so a self-reference inside one is out of this walk's
        * domain in both nodes alike. */
-      return value.branches.some(branch => callValueContainsVarRef(branch.value, name, lookup));
+      return value.branches.some(branch => callValueHasLookup(branch.value, test, context));
     default:
+      return false;
+  }
+}
+
+/** A read of the scoped binding `name` — what a self-reading declaration checks for. */
+const readsScoped = (node: Lookup, name: string): boolean =>
+  node.kind === 'var' && node.name === name && node.scope === 'scoped';
+
+/**
+ * A read whose answer depends on how far execution has got: a live binding,
+ * which exists once the write before it has run, or a property accessor, which
+ * reads the declarations emitted so far.
+ */
+const readsInOrder = (node: Lookup): boolean =>
+  node.kind === 'prop' || (node.kind === 'var' && node.scope === 'live');
+
+/** Whether a condition reads any binding {@link readsInOrder}. */
+function guardReadsInOrder(guard: GuardNode): boolean {
+  switch (guard.g) {
+    case 'and':
+    case 'or':
+      return guardReadsInOrder(guard.left) || guardReadsInOrder(guard.right);
+    case 'not':
+      return guardReadsInOrder(guard.inner);
+    case 'cmp':
+    case 'match':
+      return callValueHasLookup(guard.left, readsInOrder, undefined) || callValueHasLookup(guard.right, readsInOrder, undefined);
+    case 'truth':
+      return callValueHasLookup(guard.value, readsInOrder, undefined);
+    case 'call':
+      return guard.args.some(arg => callValueHasLookup(arg, readsInOrder, undefined));
+    case 'default':
       return false;
   }
 }
@@ -3298,7 +3331,7 @@ function snapshotLiveWrite(value: ValueSlot | MixinCall): ValueSlot | MixinCall 
 function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e: EvalCtx): void {
   if (
     node.write.mode === 'declare'
-    && callValueContainsVarRef(node.value, node.name, 'scoped')
+    && callValueHasLookup(node.value, readsScoped, node.name)
     && withExcluded(e, node.value, () => resolveVarRef(frame, node.name, 'scoped', e)) === undefined
   ) {
     recursiveReference(node, `@${node.name}`, 'Variable', e);
@@ -12265,22 +12298,24 @@ function runWhile(
 
 /**
  * Select a frame's control-flow bodies before its first scoped read (ledger
- * N15): a selected Less `if()` branch's declarations are inline declarations at
- * the `if()`, and Less `@name` scoping is order-independent and last-wins in
- * the frame, so a read written before the `if()` sees the branch too. A
- * `$while` body registers here as well, as {@link runWhile} registers it.
+ * N15): a selected arm's declarations are inline declarations at the
+ * `if()`/`$if`, and scoped (`@name`, `$^name`) lookup is order-independent and
+ * last-wins in the frame, so a scoped read written before it sees the arm too.
+ * A `$while` body registers here as well, as {@link runWhile} registers it.
  *
- * Only a lowered Less `if()` is selected ahead of execution: its condition
- * reads scoped `@name` bindings, which resolve the same wherever they are
- * read. A `$if`/`@if` condition may read live bindings that exist only once the
- * statements before it have run, so its arm is still selected when execution
- * reaches it. Arms are selected in source order, each condition seeing the
- * arms selected before it.
+ * Only a condition that reads nothing {@link readsInOrder} is evaluated ahead
+ * of execution — every Less `if()`, whose conditions read scoped `@name`
+ * bindings, and a `.jess` `$if` over scoped bindings, as a Less `if()` converts
+ * to. A condition over a live binding or a property accessor depends on the
+ * statements before it, so its arm is still selected when execution reaches
+ * it. Arms are selected in source order, each condition seeing the arms
+ * selected before it.
  */
 function preselectControlFlow(frame: Frame, e: EvalCtx): void {
   frame.selectedDeclIndex = collectSelectedDeclIndex(frame, EMPTY_SELECTED_IF_BODIES);
   for (const statement of frame.statements ?? []) {
-    if (statement.type === 'If' && statement._asCall !== null && unloweredCall(statement) === null) {
+    if (statement.type === 'If' && unloweredCall(statement) === null
+      && !statement.branches.some(branch => branch.guard !== null && guardReadsInOrder(branch.guard))) {
       selectIfBody(statement, frame, e);
     }
   }

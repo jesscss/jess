@@ -171,9 +171,12 @@ describe('V19 one-evaluator projection ratchet', () => {
     // desugar wrapped that nothing loads is written as one `@import … q;`.
     // +1 function (`moduleLoadFailed`): a `@use` that cannot load is an
     // `import/load-failed` at the `@use`, as `@plugin` already is.
-    // +1 function (`preselectControlFlow`, ledger N15): a frame's Less `if()`
-    // arms are selected at its first scoped read, so a read before the `if()`
-    // sees the selected branch as an inline declaration.
+    // +2 functions (`preselectControlFlow`, `guardReadsInOrder`, ledger N15): a
+    // frame's `if()`/`$if` arms whose conditions read only scoped bindings are
+    // selected at its first scoped read, so a read before the `if()` sees the
+    // selected branch as an inline declaration. The value walk the condition
+    // check needs is `callValueHasLookup`, the self-reference walk generalized
+    // over a static predicate rather than a second walk.
     // +1 `new Set` (module namespaces, ledger A8): a loop over a composed
     // module's namespace iterates each member name once, through its activation.
     // +2 functions, +4 `new Map`, +1 `new Set` (module activations, ledger A15):
@@ -185,7 +188,7 @@ describe('V19 one-evaluator projection ratchet', () => {
     // store a member is read through, shared by `@ns.name` and `as *`, whose
     // members bind in both of the importer's stores (`bindingValueFrames`,
     // `cells`), once per name.
-    expect(occurrences(/^function |^async function /gmu)).toBe(483);
+    expect(occurrences(/^function |^async function /gmu)).toBe(484);
     expect(occurrences(/new Map/gu)).toBe(77);
     expect(occurrences(/new Set/gu)).toBe(39);
     expect(occurrences(/new WeakMap/gu)).toBe(4);

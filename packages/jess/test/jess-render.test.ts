@@ -30,6 +30,21 @@ describe('Jess parser plugin render-through', () => {
     expect(css).toBe('.paint {\n  color: red;\n}\n.entry {\n  color: red;\n}\n');
   });
 
+  /*
+   * Ledger N15: a selected arm's declarations are inline declarations at the
+   * `$if`. A condition that reads only scoped bindings selects the same arm
+   * wherever it is read, so a scoped read before the `$if` sees the arm, as
+   * the Less `if()` it converts from does. A condition that reads a live
+   * binding is selected in execution order, as live reads are.
+   */
+  it('lets a scoped read before a $if see the arm its scoped condition selects', async () => {
+    const render = (source: string) => new Compiler().renderString(source, { filePath: 'entry.jess', extension: '.jess' });
+    await expect(render('$v: A;\n.x { a: $^v; }\n$if (true) { $v: B; }\n.y { a: $^v; }\n'))
+      .resolves.toBe('.x {\n  a: B;\n}\n.y {\n  a: B;\n}\n');
+    await expect(render('$on: 1;\n$v: A;\n.x { a: $^v; }\n$if ($on == 1) { $v: B; }\n.y { a: $^v; }\n'))
+      .resolves.toBe('.x {\n  a: A;\n}\n.y {\n  a: B;\n}\n');
+  });
+
   it('preserves repeated output from the core $apply operation', async () => {
     const css = await new Compiler().renderString(
       '.paint { color: red; } .entry { $apply .paint; $apply .paint; }',
