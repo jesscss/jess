@@ -3279,9 +3279,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const MixinGuardTopTerm = node(
     'MixinGuardTopTerm',
+    // The parenthesized term leads: a guard operand is a math run whose atoms
+    // include a math group, so the unparenthesized diagnostic arm would
+    // otherwise read every `(` as a math group first, fail at the comparison,
+    // and leave the group to be read again.
     choice(
-      unparenthesizedMixinGuard,
       sequence(optional(lessWord('not')), literal('('), g.MixinGuardOr, literal(')')),
+      unparenthesizedMixinGuard,
       sequence(lessWord('not'), g.MixinGuardTerm)
     ),
     (children): MixinGuard => {
