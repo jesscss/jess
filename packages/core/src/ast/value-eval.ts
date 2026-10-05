@@ -386,16 +386,6 @@ export const DEFAULT_MODES: EvalModes = {
 };
 
 /**
- * An operand pair whose units cannot reconcile, raised under `unitMode: 'strict'`.
- *
- * Lives in the value domain rather than in `value-operate.ts` because BOTH
- * arithmetic and comparison raise it: `1px + 3em` and `2px > 1em` are the same
- * defect, and `serialize.ts` re-raises either with its source location by
- * matching this one class. `value-guards.ts` declares a hard module boundary
- * that admits the value domain, so a shared home here is what lets comparison
- * throw without importing the arithmetic module.
- */
-/**
  * A computed division whose divisor is zero. Deliberately NOT a `TypeError`: the
  * `preserve` rung catches `TypeError`s to spell an unexpressible result as
  * `calc(…)`, and a division by zero has no result to spell (DESIGN-DECISIONS
@@ -408,11 +398,40 @@ export class DivisionByZeroError extends Error {
   }
 }
 
+/**
+ * An operand pair whose units cannot reconcile, raised under `unitMode: 'strict'`.
+ *
+ * Lives in the value domain rather than in `value-operate.ts` because BOTH
+ * arithmetic and comparison raise it: `1px + 3em` and `2px > 1em` are the same
+ * defect, and `serialize.ts` re-raises either with its source location by
+ * matching this one class. `value-guards.ts` declares a hard module boundary
+ * that admits the value domain, so a shared home here is what lets comparison
+ * throw without importing the arithmetic module.
+ */
 export class UnitArithmeticError extends TypeError {
   constructor(message: string) {
     super(message);
     this.name = 'UnitArithmeticError';
   }
+}
+
+/**
+ * A dimension's unit as a diagnostic names it: the whole multiset (`em*px`,
+ * `px/em`), less.js `Unit.toString`. `unit` is the CSS display spelling and
+ * collapses a compound to one member, which would name the wrong unit in an
+ * error about exactly that compound.
+ */
+export function unitName(d: Dimension): string {
+  let name = (d.numerator ?? (d.unit ? [d.unit] : [])).join('*');
+  for (const unit of d.denominator ?? []) {
+    name += `/${unit}`;
+  }
+  return name;
+}
+
+/** `+`/`-` or a comparison over two dimensions whose units do not reconcile. */
+export function incompatibleUnits(a: Dimension, b: Dimension): UnitArithmeticError {
+  return new UnitArithmeticError(`Incompatible units. Change the units or use the unit function. Bad units: '${unitName(a)}' and '${unitName(b)}'.`);
 }
 
 /**

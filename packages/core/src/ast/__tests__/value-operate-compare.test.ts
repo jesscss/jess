@@ -13,7 +13,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { compare, compareMatch } from '../value-guards.js';
-import { makeAny, makeColorRgb, makeDimension, makeKeyword, makeQuoted } from '../value-factory.js';
+import { makeAny, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword, makeQuoted } from '../value-factory.js';
 import { IncomparableOperandsError, UnitArithmeticError, type Value } from '../value-eval.js';
 
 const dim = (n: number, u = ''): Value => makeDimension(n, u);
@@ -192,6 +192,13 @@ describe('compare — unitMode reaches comparison, not just arithmetic', () => {
   it('names both offending units, matching the arithmetic message', () => {
     expect(() => compare('>', dim(2, 'px'), dim(1, 'em'), 'strict'))
       .toThrow(/Bad units: 'px' and 'em'/);
+  });
+
+  it('names a compound operand by its whole unit multiset, as arithmetic does', () => {
+    const squared = makeCompoundDimension(2, 'px', ['px', 'px'], [], 'px');
+    const mixed = makeCompoundDimension(1, 'em', ['em', 'px'], [], 'em');
+    expect(() => compare('>', squared, mixed, 'strict'))
+      .toThrow('Bad units: \'px*px\' and \'em*px\'.');
   });
 
   it('does NOT throw for units that reconcile, whatever the mode', () => {
