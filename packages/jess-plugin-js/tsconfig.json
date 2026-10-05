@@ -3,11 +3,11 @@
   "compilerOptions": {
     "noEmit": true,
     "outDir": "./lib",
-    "rootDir": "./src",
+    "rootDir": ".",
     "composite": true,
     "declaration": true,
     "declarationMap": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "lib", "**/*.test.ts"]
+  "include": ["src/**/*", "test/**/*"],
+  "exclude": ["node_modules", "lib"]
 }

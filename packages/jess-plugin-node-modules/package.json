@@ -25,10 +25,12 @@
   ],
   "scripts": {
     "build": "pnpm compile",
+    "ci": "pnpm build && pnpm test",
     "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "dev": "tsdown --tsconfig tsconfig.build.json --watch",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
-    "lint": "eslint '**/*.{js,ts}'"
+    "lint": "eslint '**/*.{js,ts}'",
+    "test": "vitest --run"
   },
   "dependencies": {
     "@jesscss/core": "workspace:*",

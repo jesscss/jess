@@ -255,13 +255,6 @@ const isFnsPath = (importPath: string): boolean => {
   return isInTrustedPackage(path.dirname(path.resolve(importPath)));
 };
 
-/** `EAGAIN` on a non-blocking FIFO means "no reply yet", not a failure. */
-const isRetryableRead = (error: unknown): boolean =>
-  typeof error === 'object'
-  && error !== null
-  && 'code' in error
-  && error.code === 'EAGAIN';
-
 const isJsonValue = (value: unknown) => {
   try {
     JSON.stringify(value);

@@ -7,6 +7,15 @@
  */
 import { RemoteImportPlugin } from '../../src/index.ts';
 
+/** The slice of the Deno namespace used here, for the package's Node type environment (which has no Deno lib). */
+declare const Deno: {
+  errors: { NotCapable: ErrorConstructor; PermissionDenied: ErrorConstructor };
+  serve(
+    options: { hostname: string; port: number; onListen(): void },
+    handler: () => Response
+  ): { addr: { port: number }; shutdown(): Promise<void> };
+};
+
 type Outcome = 'runtime-denied' | 'reached-network' | 'resolved';
 
 /** NotCapable (Deno 2; PermissionDenied before it) from fetch, or EPERM from a permission-checked DNS lookup. */
