@@ -362,7 +362,7 @@ const expectedFailureFixtures = new Map<string, string>([
    */
   [
     'tests-config/3rd-party/bootstrap4.less',
-    'GOLDEN PENDING: the golden encodes a fixed composition bug — a child of a nested multi-branch `&`-less rule kept only the first parent branch, dropping `.btn-group-toggle > .btn-group > .btn input[…]` and six `.input-group > … + …` selectors. Proposed golden: less.js branch lane/v5-eval-serialize-goldens'
+    'GOLDEN PENDING: the golden encodes a fixed composition bug — a child of a nested multi-branch `&`-less rule kept only the first parent branch, dropping `.btn-group-toggle > .btn-group > .btn input[…]` and six `.input-group > … + …` selectors. Proposed golden: less.js branch lane/v5-eval-serialize-goldens; the corrected bytes are asserted exactly (expectedFailureGoldenPatches)'
   ],
   [
     'tests-unit/urls/urls.less',
@@ -493,6 +493,29 @@ const expectedFailureDiagnosticCodes = new Map<string, string>([
    * they still differ from the external golden only on render layout (see the
    * expected-failure reasons), not on a parse error. */
   ['tests-unit/urls/urls.less', 'import/not-found']
+]);
+
+/*
+ * An expected failure whose golden is wrong in KNOWN bytes: the entry asserts
+ * byte identity against the golden with exactly these replacements, so nothing
+ * else can regress behind the expected failure. A replacement that no longer
+ * finds its stale bytes means the golden was updated — drop both entries.
+ */
+const expectedFailureGoldenPatches = new Map<string, ReadonlyArray<readonly [string, string]>>([
+  ['tests-config/3rd-party/bootstrap4.less', [
+    [
+      '.btn-group-toggle > .btn input[type="radio"],\n.btn-group-toggle > .btn input[type="checkbox"] {',
+      ':is(.btn-group-toggle > .btn, .btn-group-toggle > .btn-group > .btn) input[type="radio"],\n:is(.btn-group-toggle > .btn, .btn-group-toggle > .btn-group > .btn) input[type="checkbox"] {'
+    ],
+    [
+      '.input-group > .form-control + .form-control,\n.input-group > .form-control + .custom-select,\n.input-group > .form-control + .custom-file {',
+      [
+        ':is(.input-group > .form-control, .input-group > .custom-select, .input-group > .custom-file) + .form-control,',
+        ':is(.input-group > .form-control, .input-group > .custom-select, .input-group > .custom-file) + .custom-select,',
+        ':is(.input-group > .form-control, .input-group > .custom-select, .input-group > .custom-file) + .custom-file {'
+      ].join('\n')
+    ]
+  ]]
 ]);
 
 type RenderResult = Awaited<ReturnType<Compiler['renderToResult']>>;
@@ -629,6 +652,21 @@ describe('Can render Less files to CSS', () => {
                 actualDiagnosticCodes,
                 `${file} is expected to surface diagnostic ${expectedDiagnosticCode}`
               ).toContain(expectedDiagnosticCode);
+              return;
+            }
+
+            const goldenPatch = expectedFailureGoldenPatches.get(file);
+            if (goldenPatch !== undefined) {
+              const { expectedCss, result } = await withFixtureTimeout(file, renderFixture);
+              let patched = expectedCss;
+              for (const [stale, corrected] of goldenPatch) {
+                expect(
+                  patched.includes(stale),
+                  `${file}: the golden no longer holds the bytes this entry corrects; it was updated, so drop the entry`
+                ).toBe(true);
+                patched = patched.replace(stale, corrected);
+              }
+              expect(result.css).toBe(patched);
               return;
             }
 
