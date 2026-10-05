@@ -357,8 +357,8 @@ const expectedFailureFixtures = new Map<string, string>([
    * `continueRender`); and
    * (2) the stale 4.x golden π (`3.141592653589793`) was updated to jess's v5
    * 10-digit output quantization (`3.1415926536`, DESIGN-DECISIONS.md V4). The
-   * owner authorized landing this `import.less` fix (2026-09-06); the placement
-   * itself is the OPEN N11 spec argument, not an owner placement ruling.
+   * owner authorized landing this `import.less` fix (2026-09-06) and ratified
+   * the N11 placement as implemented (2026-10-04).
    */
   [
     'tests-unit/urls/urls.less',
@@ -423,7 +423,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/parse-interpolation/parse-interpolation.less',
-    'selector capture itself is complete. INTENDED DIVERGENCE (owner ruling 2026-08-22): fixture-local collapseNesting:false preserves the final `@{list-cap} { .fruit-cap-& {…} }` boundary instead of implicitly flattening it; collapseNesting:true emits the golden `.fruit-cap-apple, …` branches exactly, and Less `each()` is the explicit rule-multiplication form. Separate OPEN O8 owner decisions remain for canonical nested selector-list wrapping and leading whitespace from an escaped quoted selector at the header boundary; the maintained golden also says `foo: bar` where its quoted-case source says `foo: baz`. Owner reconciliation is required for those output-policy rows and the fixture typo'
+    'selector capture itself is complete. INTENDED DIVERGENCE (owner ruling 2026-08-22): fixture-local collapseNesting:false preserves the final `@{list-cap} { .fruit-cap-& {…} }` boundary instead of implicitly flattening it; collapseNesting:true emits the golden `.fruit-cap-apple, …` branches exactly, and Less `each()` is the explicit rule-multiplication form. O8 is ruled (owner 2026-10-04): an interpolated multi-branch nested header prints one branch per line, and leading whitespace from an escaped quoted selector at the header boundary is canonicalized away; implementation pending. The maintained golden also says `foo: bar` where its quoted-case source says `foo: baz`; that fixture typo still needs owner reconciliation'
   ],
   [
     'tests-unit/permissive-parse/permissive-parse.less',
@@ -469,7 +469,7 @@ const expectedFailureFixtures = new Map<string, string>([
    * whose stale 4.x golden was updated: (1) `min()`/`max()` over incompatible
    * units preserve every authored argument (`min(6em, 5, 4ex, 3, 2pt, 1)`) rather
    * than emitting less.js's order-dependent partial reduction, an "implementation
-   * accident, not a semantic" — DESIGN-DECISIONS C20 (OPEN, owner-to-ratify);
+   * accident, not a semantic" — DESIGN-DECISIONS C20 (SETTLED, owner 2026-10-04);
    * `packages/fns/src/less/min-max.ts`. And (2) the numeric output policy is a
    * single owner (`format-number.ts`, shortest decimal within 1e-10 relative, no
    * significant-figure cap) — DESIGN-DECISIONS V4 (SETTLED) with F6 as its
