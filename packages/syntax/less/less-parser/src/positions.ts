@@ -22,6 +22,7 @@ export {
   LessInlineJavaScriptError,
   LessLeadingSeparatorValueError,
   LessParseError,
+  LessSlashedCombinatorError,
   LessSourceImportSyntaxError,
   LessUncalledMixinReferenceError,
   LessUnparenthesizedMixinGuardError,

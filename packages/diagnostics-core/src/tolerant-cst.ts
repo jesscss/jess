@@ -5473,8 +5473,9 @@ export function cstLintDiagnostics(
     }
 
     /*
-     * The two Less value starts the strict AST rejects (ledger P33) are kept as
-     * nodes in the tolerant CST, so their twin is reported from the node here.
+     * Shapes the strict Less AST rejects by name — the two punctuation-led
+     * value starts (ledger P33) and the slashed combinators (ledger G37) — are
+     * kept as nodes in the tolerant CST, so their twin is reported from the node.
      */
     if (language === 'less' && gt === 'LeadingSeparatorValue') {
       pushDiagnostic(
@@ -5486,6 +5487,19 @@ export function cstLintDiagnostics(
           phase: 'parse',
           reason: 'A slash separates two values, so it needs a value before it. A path is a value only inside url() or a string.',
           fix: 'Write the path as url(/path) or as an escaped string such as ~"/path".'
+        }
+      );
+    }
+    if (language === 'less' && gt === 'SlashedCombinator') {
+      pushDiagnostic(
+        'parse/unsupported-slashed-combinator',
+        'error',
+        `The ${source.slice(start, end)} combinator was removed in Less v5.`,
+        node.span,
+        {
+          phase: 'parse',
+          reason: 'Slashed combinators were Shadow DOM proposals that never became CSS, and browsers removed them.',
+          fix: 'Use a descendant combinator (a space), or ::part() or ::slotted() to style across a shadow boundary.'
         }
       );
     }

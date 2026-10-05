@@ -24,6 +24,7 @@ export type JessErrorCode =
   | 'parse/unparenthesized-mixin-guard'
   | 'parse/leading-separator-value'
   | 'parse/uncalled-mixin-reference'
+  | 'parse/unsupported-slashed-combinator'
   | 'parse/import-postlude-on-compile-time-import'
   | 'parse/source-import-css-syntax'
   | 'resolve/name-not-found'
@@ -177,6 +178,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'A mixin reference is not a value',
       reason: 'In a value, a mixin reference must be called or looked up; on its own it has no value.',
       fix: 'Call the mixin, for example .mixin(), or escape the text, for example ~".mixin".'
+    }
+  ],
+  [
+    'parse/unsupported-slashed-combinator',
+    {
+      summary: 'Slashed combinators were removed in Less v5',
+      reason: 'Slashed combinators were Shadow DOM proposals that never became CSS, and browsers removed them.',
+      fix: 'Use a descendant combinator (a space), or ::part() or ::slotted() to style across a shadow boundary.'
     }
   ],
   [

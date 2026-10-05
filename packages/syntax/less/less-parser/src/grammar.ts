@@ -32,7 +32,7 @@ import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { any, atRuleBlock, atRuleStatement, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, propertyReference, pseudoSelector, quoted, reference, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorCapture, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, requireLessParseState } from './parse-state.js';
-import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
+import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSlashedCombinatorError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 import {
   appendInterpolationLiteral,
   argumentFunctionFromChildren,
@@ -4999,6 +4999,24 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.InterpolatedAttributeSelector
   );
   /*
+   * `/deep/` and `/shadow/` (Less 4 took any `/word/`) were Shadow DOM v0
+   * combinators that never became CSS; Less 5 rejects them (ledger G37). The
+   * shape is recognized only so the diagnostic names it (jess#247), and the
+   * tolerant CST keeps the rule around it. It must stand between spaces: this
+   * node reports as soon as it matches, and the ruleset arm is tried first on
+   * an unspaced declaration, where a glued `/b/` is a slash value
+   * (`grid-area:a/b/c`). The leading-space check follows the `/`, so the
+   * pattern still opens on `/` for first-set gating.
+   */
+  const SlashedCombinator = node(
+    'SlashedCombinator',
+    regex(/\/(?<=[ \t\n\r\f]\/)[a-zA-Z]+\/(?=[ \t\n\r\f])/),
+    (children, _fields, span) => {
+      throw new LessSlashedCombinatorError(span.start, span.end, requireToken(children[0]).value);
+    }
+  );
+  const selectorCombinator = choice(staticCombinator, SlashedCombinator);
+  /*
    * Statement-position class/id starts share their parsed selector prefix with
    * mixin paths. `(` and `;` later select the mixin tails; selector punctuation
    * continues from this same branch. The first simple is deliberately the
@@ -5016,7 +5034,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'SelectorBranch',
     sequence(
       ClassIdCompound,
-      many(sequence(not(whenGuardAhead), optional(staticCombinator), g.CompoundSelector))
+      many(sequence(not(whenGuardAhead), optional(selectorCombinator), g.CompoundSelector))
     ),
     (children, _fields, span) => ({
       selector: withSourceSpan(selectorBranchOf(complexSegmentsFrom(children)), span),
@@ -5043,7 +5061,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'ComplexSelector',
     sequence(
       g.CompoundSelector,
-      many(sequence(not(whenGuardAhead), optional(staticCombinator), g.CompoundSelector))
+      many(sequence(not(whenGuardAhead), optional(selectorCombinator), g.CompoundSelector))
     ),
     (children, _fields, span) => withSourceSpan(selectorBranchOf(complexSegmentsFrom(children)), span)
   );
