@@ -2878,6 +2878,16 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           })())
     })
   );
+  // A `.name` member step, shared by the value-position chain below and the
+  // statement-position `@ns.member(args);` call (`ReferenceCall`).
+  const ReferenceDotTail = node(
+    'ReferenceDotTail',
+    sequence(literal('.'), g.VariableNameToken),
+    (children): ReferenceTailFact => {
+      const name = requireToken(children[1]).value;
+      return { step: { type: 'LookupStep', kind: 'member', name }, src: `.${name}` };
+    }
+  );
   const ReferenceTail = choice(
     node(
       'ReferenceBracketTail',
@@ -2887,14 +2897,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         return { step: { type: 'LookupStep', kind: accessor.keyKind, name: accessor.key }, src: `[${accessor.src}]` };
       }
     ),
-    node(
-      'ReferenceDotTail',
-      sequence(literal('.'), g.VariableNameToken),
-      (children): ReferenceTailFact => {
-        const name = requireToken(children[1]).value;
-        return { step: { type: 'LookupStep', kind: 'member', name }, src: `.${name}` };
-      }
-    ),
+    ReferenceDotTail,
     node(
       'ReferenceCallTail',
       sequence(literal('('), optional(g.MixinArguments), literal(')')),
@@ -3154,21 +3157,37 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.Color,
     g.MixinReferenceChain
   );
+  /*
+   * A statement-position call: `@detached();`, or a member of a module
+   * namespace, `@theme.elevate(3px);` — on a `@compose` namespace that is the
+   * module's `.elevate` mixin (ledger A8). The `.member` steps are glued to the
+   * name, so the `.` after `@name` decides the member route on the current
+   * token and the generic at-rule arms never see it; a spaced
+   * `@theme .elevate();` stays an at-rule statement.
+   */
   const ReferenceCall = node(
     'VarCall',
     sequence(
-      literal('@'), not(word(
-        'supports',
-        IDENT_BOUNDARY,
-        { caseInsensitive: true }
-      )), lessVariableName, literal('('),
+      noTrivia(sequence(
+        literal('@'), not(word(
+          'supports',
+          IDENT_BOUNDARY,
+          { caseInsensitive: true }
+        )), lessVariableName, many(ReferenceDotTail)
+      )),
+      literal('('),
       optional(g.MixinArguments),
       literal(')'), optional(literal(';'))
     ),
     (children, _fields, span) => {
       const name = requireSupportedVariableName(children[1], span.start, span.start + variableNameText(children[1]).length + 1);
+      const members = children.filter(isReferenceTailFact);
       const args = mixinArgumentsFromChildren(children);
-      return withSourceSpan(reference(variableReference(name, 'scoped'), [{ type: 'Call', args }], `@${name}()`), span);
+      return withSourceSpan(reference(
+        variableReference(name, 'scoped'),
+        [...members.map(member => member.step), { type: 'Call', args }],
+        `@${name}${members.map(member => member.src).join('')}()`
+      ), span);
     }
   );
   const mixinGuardDefaultOperand = node(

@@ -1681,11 +1681,25 @@ function isMixinCall(value: unknown): value is MixinCall {
     && 'important' in value && typeof value.important === 'boolean';
 }
 
+/** A statement `@name(…);` or `@ns.member(…);`: member steps, then one call. */
 function isReferenceCall(value: unknown): value is Reference {
-  return typeof value === 'object' && value !== null && 'type' in value
+  if (!(typeof value === 'object' && value !== null && 'type' in value
     && value.type === 'Reference' && 'base' in value && isVarRef(value.base)
-    && 'steps' in value && Array.isArray(value.steps)
-    && value.steps.length === 1 && value.steps[0]?.type === 'Call';
+    && 'steps' in value && Array.isArray(value.steps))) {
+    return false;
+  }
+  const steps: readonly ReferenceStep[] = value.steps;
+  const last = steps.length - 1;
+  if (last < 0 || steps[last]!.type !== 'Call') {
+    return false;
+  }
+  for (let index = 0; index < last; index++) {
+    const step = steps[index]!;
+    if (step.type !== 'LookupStep' || step.kind !== 'member') {
+      return false;
+    }
+  }
+  return true;
 }
 
 function isParam(value: unknown): value is Param {

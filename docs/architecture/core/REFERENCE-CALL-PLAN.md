@@ -5,8 +5,11 @@ production. Script/data module imports now bind namespace values and functions,
 including Less `@module.fn()` and Jess `$module.fn()` calls. Member-access
 policy is ledger A8 (SETTLED, owner 2026-10-01). A `@compose` namespace's
 `.name(args)` is a mixin call: in value position it is an error (built); in
-statement position (`@theme.elevate();`) it is not reachable yet, because of the
-Parseman routing requirement below.
+statement position (`@theme.elevate(3px);`) it calls the module's `.elevate`
+mixin in the module's own activation (built). The Less `VarCall` statement reads
+glued `.name` member tails between `@name` and its call, decided forward on the
+`.` after the name, so the at-rule arms never see the statement; a spaced
+`@theme .elevate();` stays an unknown at-rule statement.
 
 ## Parseman routing requirement (observed during direct Less implementation)
 

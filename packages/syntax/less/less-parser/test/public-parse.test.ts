@@ -3359,6 +3359,27 @@ describe('public Less parse()', () => {
     });
   });
 
+  /* Ledger A8: `.name(args)` on a module namespace is a statement call. */
+  it('reads a statement call through a namespace member', () => {
+    expect(parse('.a { @theme.ns.elevate(3px); }')).toMatchObject({
+      rules: [{
+        rules: [{
+          type: 'Reference',
+          base: { type: 'Lookup', kind: 'var', name: 'theme' },
+          steps: [
+            { type: 'LookupStep', kind: 'member', name: 'ns' },
+            { type: 'LookupStep', kind: 'member', name: 'elevate' },
+            { type: 'Call', args: [{ value: { type: 'Dimension', src: '3px' } }] }
+          ],
+          raw: '@theme.ns.elevate()'
+        }]
+      }]
+    });
+    expect(parse('.a { @theme .elevate(3px); }')).toMatchObject({
+      rules: [{ rules: [{ type: 'AtRuleStatement', name: '@theme' }] }]
+    });
+  });
+
   it('returns bare function-call statements through the public Stylesheet route', () => {
     const document = parse('e("x"); .card { e("y"); }');
     expect(document).toMatchObject({

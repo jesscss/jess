@@ -6213,10 +6213,25 @@ function resolveReferenceResult(
       matched = looseMemberLookup(map, looseKey, looseKind, e, looseValueKey);
     }
     if (map.activation !== null) {
+      const called = node.steps[stepIndex + 1]?.type === 'Call';
+
+      /*
+       * Ledger A8: `.name(args)` on a `@compose` namespace in STATEMENT position is
+       * a call of the module's `.name` mixin, dispatched in the module's own
+       * activation (its definitions and bindings), exactly like a namespaced
+       * `#ns.name()` call. The following Call step binds the arguments.
+       */
+      if (statementCall && called && step.type === 'LookupStep' && step.kind === 'member'
+        && typeof step.name === 'string' && map.activation.mixins?.has(`.${step.name}`)) {
+        value = mixinCall(`.${step.name}`, []);
+        valueFrame = map.activation;
+        evaluated = null;
+        continue;
+      }
       if (matched && map.byVar.get(matched.name) === matched) {
         matched = activatedVarMember(map.activation, matched.name, e);
       }
-      if (!statementCall && node.steps[stepIndex + 1]?.type === 'Call') {
+      if (!statementCall && called) {
         rejectComposedMemberCall(node, matched, missingSymbol);
       }
     }
