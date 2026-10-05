@@ -324,8 +324,8 @@ Example:
 
 - `--relative-urls` -> migrate to `--rewrite-urls=all` or explicit `rewriteUrls`.
 - `--ie-compat` is deprecated/no-op in modern pipelines.
-- Built-in `compress` is deprecated; use dedicated CSS minification.
-- `dumpLineNumbers` / `--line-numbers` is deprecated; use sourcemaps.
+- Built-in `compress` is kept, and replaces minifier plugins such as `less-plugin-clean-css`.
+- `dumpLineNumbers` / `--line-numbers` is deprecated and has no effect: no line-number comments are emitted, and setting it reports a deprecation warning. Use source maps.
 - `strictImports` is deprecated and should be avoided in new configurations.
 
 Example:

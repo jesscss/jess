@@ -285,7 +285,7 @@ This option allows you to specify a argument to go on to every URL. This may be 
 |---|---|
 | `lessc --line-numbers=comments`<br>`lessc --line-numbers=mediaquery`<br>`lessc --line-numbers=all` | `{ dumpLineNumbers: 'comments' }` |
 
-Generates inline source-mapping. This was the only option before browsers started supporting sourcemaps. 
+In Less 4.x this generated inline source-mapping, the only option before browsers supported source maps. Less 5 accepts the option but ignores it: no line-number comments or debug media queries are emitted, and setting it reports a `deprecation/dump-line-numbers-option` warning. Use [source maps](#source-map-options) instead.
 
 #### Pre-Loaded Plugin
 
