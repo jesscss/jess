@@ -5,8 +5,8 @@
  * This deliberately does not use the workspace package manager after packing:
  * every Jess package comes from an npm-style tarball in an empty temporary
  * project. That catches workspace links, missing `files` entries, invalid
- * workspace-protocol rewriting, and package-closure omissions which source
- * tests cannot see.
+ * workspace-protocol rewriting, package-closure omissions, and runtime imports
+ * a manifest does not declare, which source tests cannot see.
  *
  * It is intentionally version-agnostic. The alpha release scripts resolve the
  * final lockstep version later; `pnpm pack` rewrites workspace dependencies in
@@ -20,6 +20,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync
@@ -27,7 +28,7 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getAlphaReleasePlan } from './release-utils.mjs';
+import { findUndeclaredRuntimeImports, getAlphaReleasePlan } from './release-utils.mjs';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const allowlistPath = path.join(rootDir, 'scripts/release/alpha-allowlist.json');
@@ -161,6 +162,25 @@ function assertConsumerPackagesAreReal(consumerDir, pkgNames) {
       }
     }
   }
+}
+
+/*
+ * npm hoists every tarball to the top of this one flat tree, so a package that
+ * imports a dependency it never declares still loads here, and fails for a
+ * consumer with a strict (pnpm, Yarn PnP) install. Check the declarations
+ * against the shipped files instead.
+ */
+function assertRuntimeImportsDeclared(consumerDir, pkgNames) {
+  const problems = pkgNames.flatMap((name) => {
+    const installed = path.join(consumerDir, 'node_modules', packageDirFor(name));
+    const manifest = JSON.parse(readFileSync(path.join(installed, 'package.json'), 'utf8'));
+    return [...findUndeclaredRuntimeImports(installed, manifest)].map(([dependency, files]) =>
+      `${name} imports ${dependency} (${files.join(', ')}) without declaring it`);
+  });
+  assert(
+    problems.length === 0,
+    `packed packages import dependencies missing from their dependencies, optionalDependencies and peerDependencies:\n- ${problems.join('\n- ')}`
+  );
 }
 
 function writeConsumerChecks(consumerDir, packageNames) {
@@ -345,6 +365,7 @@ function main() {
 
     run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--omit=dev'], consumerDir);
     assertConsumerPackagesAreReal(consumerDir, plan.publishOrder);
+    assertRuntimeImportsDeclared(consumerDir, plan.publishOrder);
     const checks = writeConsumerChecks(consumerDir, plan.publishOrder);
     run(process.execPath, [checks.imports], consumerDir);
     run(process.execPath, [checks.cli], consumerDir);
