@@ -39,15 +39,33 @@ export type NativeLessPlugin = {
 };
 
 /**
- * The Less 4 plugin-manager hooks. v5 does not run any of them: each call is
- * refused with a `plugin/unsupported-feature` diagnostic naming the native
- * replacement, so the plugin cannot install half-working.
+ * The Less 4 `PluginManager` (`less/lib/less/plugin-manager.js`). Installing
+ * plugins works as in 4.x. v5 runs no visitors, pre/post-processors or file
+ * managers, so every member that adds, lists or exposes them is refused with a
+ * `plugin/unsupported-feature` diagnostic naming the native replacement, and
+ * the plugin cannot install half-working.
  */
 export interface NativeLessPluginManager {
+  readonly less: NativeLessApi;
+  readonly installedPlugins: NativeLessPlugin[];
+  readonly pluginCache: Record<string, NativeLessPlugin>;
+  addPlugins(plugins?: readonly NativeLessPlugin[]): void;
+  addPlugin(plugin: NativeLessPlugin, filename?: string, functionRegistry?: NativeLessFunctionRegistry): void;
+  get(filename: string): NativeLessPlugin | undefined;
   addVisitor(visitor: unknown): never;
+  getVisitors(): never;
+  visitor(): never;
+  readonly visitors: never;
   addPreProcessor(processor: unknown, priority?: number): never;
+  getPreProcessors(): never;
+  readonly preProcessors: never;
   addPostProcessor(processor: unknown, priority?: number): never;
+  getPostProcessors(): never;
+  readonly postProcessors: never;
   addFileManager(fileManager: unknown): never;
+  getFileManagers(): never;
+  readonly fileManagers: never;
+  readonly Loader: never;
 }
 
 /**
@@ -421,28 +439,66 @@ export class LessApiBridge {
         Anonymous: LessAnonymous
       }
     };
+    const installedPlugins: NativeLessPlugin[] = [];
+    const pluginCache: Record<string, NativeLessPlugin> = {};
     plugins.forEach((plugin, index) => {
       /*
-       * Each plugin gets its own manager and `less` view, so a refusal names the
-       * plugin that reached for the hook, even when a function it registered
-       * reads `less.visitors` long after install.
+       * Each configured plugin gets its own manager and `less` view, so a
+       * refusal names the plugin that reached for the hook, even when a function
+       * it registered reads `less.visitors` long after install. A plugin it adds
+       * through `addPlugin()` shares them: the configured plugin is the one to
+       * remove.
        */
       const label = pluginLabel(plugin, index);
       const refuse = (feature: string): never => {
         throw ERR.pluginUnsupported({ meta: { plugin: label, feature } });
-      };
-      const manager: NativeLessPluginManager = {
-        addVisitor: () => refuse('pluginManager.addVisitor()'),
-        addPreProcessor: () => refuse('pluginManager.addPreProcessor()'),
-        addPostProcessor: () => refuse('pluginManager.addPostProcessor()'),
-        addFileManager: () => refuse('pluginManager.addFileManager()')
       };
       const less = Object.defineProperties({ ...this.less }, {
         visitors: { get: () => refuse('less.visitors') },
         FileManager: { get: () => refuse('less.FileManager') },
         environment: { get: () => refuse('less.environment') }
       });
-      plugin.install?.(less, manager, this.registry);
+      const manager: NativeLessPluginManager = {
+        less,
+        installedPlugins,
+        pluginCache,
+        addPlugins: (more) => {
+          more?.forEach(added => manager.addPlugin(added));
+        },
+        addPlugin: (added, filename, functionRegistry) => {
+          installedPlugins.push(added);
+          if (filename) {
+            pluginCache[filename] = added;
+          }
+          added.install?.(less, manager, functionRegistry ?? this.registry);
+        },
+        get: filename => pluginCache[filename],
+        addVisitor: () => refuse('pluginManager.addVisitor()'),
+        getVisitors: () => refuse('pluginManager.getVisitors()'),
+        visitor: () => refuse('pluginManager.visitor()'),
+        get visitors() {
+          return refuse('pluginManager.visitors');
+        },
+        addPreProcessor: () => refuse('pluginManager.addPreProcessor()'),
+        getPreProcessors: () => refuse('pluginManager.getPreProcessors()'),
+        get preProcessors() {
+          return refuse('pluginManager.preProcessors');
+        },
+        addPostProcessor: () => refuse('pluginManager.addPostProcessor()'),
+        getPostProcessors: () => refuse('pluginManager.getPostProcessors()'),
+        get postProcessors() {
+          return refuse('pluginManager.postProcessors');
+        },
+        addFileManager: () => refuse('pluginManager.addFileManager()'),
+        getFileManagers: () => refuse('pluginManager.getFileManagers()'),
+        get fileManagers() {
+          return refuse('pluginManager.fileManagers');
+        },
+        get Loader() {
+          return refuse('pluginManager.Loader');
+        }
+      };
+      manager.addPlugin(plugin);
     });
     this.globalFns = this.#fns;
   }

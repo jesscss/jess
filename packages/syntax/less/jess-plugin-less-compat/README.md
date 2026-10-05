@@ -7,11 +7,12 @@ and provides the shared Jess-owned bridge for Less-style plugin function
 registration and Less-shaped function values.
 
 The public compiler does **not** support Less 4 visitors, pre/post-processors,
-file manager plugins, or a full Less tree AST adapter. A plugin that calls
-`pluginManager.addVisitor` / `addPreProcessor` / `addPostProcessor` /
-`addFileManager` (or reads `less.visitors`, `less.FileManager`,
-`less.environment`) is refused with a `plugin/unsupported-feature` error that
-names the replacement: `output.compress` instead of a minifier such as
+file manager plugins, or a full Less tree AST adapter. The plugin manager handed
+to `install()` installs plugins as in 4.x (`addPlugin`, `addPlugins`, `get`,
+`installedPlugins`, `pluginCache`); a plugin that adds, lists or reads its
+visitors, pre/post-processors, file managers or `Loader` (or reads
+`less.visitors`, `less.FileManager`, `less.environment`) is refused with a
+`plugin/unsupported-feature` error that names the replacement: `output.compress` instead of a minifier such as
 `less-plugin-clean-css`, `@jesscss/plugin-node-modules` instead of
 `less-plugin-npm-import`, and running other post-processors (e.g. PostCSS with
 autoprefixer) on the compiled CSS.

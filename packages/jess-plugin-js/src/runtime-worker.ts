@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const moduleCache = new Map();
-const lessPluginFunctionCache = new Map();
+const lessPluginRuntimeCache = new Map();
 const runtimeApi = Deno.args.includes('--runtime-api=less') ? 'less' : 'module';
 
 /**
@@ -801,6 +801,55 @@ const refuseLessPluginApi = (feature) => {
   throw new UnsupportedLessPluginApiError(feature);
 };
 
+const refusedGetters = (owner, members) => Object.fromEntries(members.map(member =>
+  [member, { get: () => refuseLessPluginApi(`${owner}.${member}`) }]));
+
+/* 4.x plugins reach these before the hook call (`new less.visitors.Visitor(this)`). */
+const REFUSED_LESS_MEMBERS = refusedGetters('less', ['visitors', 'FileManager', 'environment']);
+
+/** The `less` a plugin, and every file it requires, sees: the facade plus its function registry. */
+const createPluginLess = functionRegistry =>
+  Object.defineProperties({ ...lessFacade, functions: { functionRegistry } }, REFUSED_LESS_MEMBERS);
+
+/* The 4.x PluginManager members that add, list or expose what v5 never runs. */
+const REFUSED_MANAGER_METHODS = [
+  'addVisitor', 'getVisitors', 'visitor',
+  'addPreProcessor', 'getPreProcessors',
+  'addPostProcessor', 'getPostProcessors',
+  'addFileManager', 'getFileManagers'
+];
+const REFUSED_MANAGER_FIELDS = refusedGetters('pluginManager', ['visitors', 'preProcessors', 'postProcessors', 'fileManagers', 'Loader']);
+
+/**
+ * The Less 4 `PluginManager` (`less/lib/less/plugin-manager.js`): installing
+ * plugins works as in 4.x; every hook member is refused.
+ */
+const createPluginManager = (less) => {
+  const pluginCache = {};
+  const manager = {
+    less,
+    installedPlugins: [],
+    pluginCache,
+    addPlugins(plugins) {
+      for (const plugin of plugins ?? []) {
+        manager.addPlugin(plugin);
+      }
+    },
+    addPlugin(plugin, filename, functionRegistry) {
+      manager.installedPlugins.push(plugin);
+      if (filename) {
+        pluginCache[filename] = plugin;
+      }
+      plugin.install?.(less, manager, functionRegistry ?? less.functions.functionRegistry);
+    },
+    get: filename => pluginCache[filename]
+  };
+  for (const member of REFUSED_MANAGER_METHODS) {
+    manager[member] = () => refuseLessPluginApi(`pluginManager.${member}()`);
+  }
+  return Object.defineProperties(manager, REFUSED_MANAGER_FIELDS);
+};
+
 /* Node's file and directory lookup, minus `.node` addons and package.json `main`. */
 const REQUIRE_SUFFIXES = ['', '.js', '.json', '/index.js', '/index.json'];
 
@@ -821,11 +870,12 @@ const isRequirableFile = (candidate) => {
  * goes through the same permission broker as the plugin file itself, so a
  * require can never reach past jsReadRoot. A `.json` file is parsed. Any other
  * required file is plain CommonJS: it gets `module`, `exports`, `require`,
- * `__filename` and `__dirname`, not the plugin globals, and no Node `process`.
- * Each file evaluates once per load, and is cached before it runs, so a require
- * cycle sees partial exports (as in Node).
+ * `__filename`, `__dirname` and the plugin's own `less` (so its hook refusals
+ * and function registry too), not the other plugin globals, and no Node
+ * `process`. Each file evaluates once per load, and is cached before it runs,
+ * so a require cycle sees partial exports (as in Node).
  */
-const createLegacyRequire = (fromPath, cache) => (specifier) => {
+const createLegacyRequire = (fromPath, cache, less) => (specifier) => {
   const request = String(specifier);
   if (!request.startsWith('./') && !request.startsWith('../')) {
     throw new Error(`Less @plugin require("${request}") is not supported: only relative requires ("./file", "../file") of CommonJS files inside the script root are.`);
@@ -854,13 +904,14 @@ const createLegacyRequire = (fromPath, cache) => (specifier) => {
       module.exports = JSON.parse(source);
       return module.exports;
     }
-    new Function('module', 'exports', 'require', '__filename', '__dirname', 'process', source)(
+    new Function('module', 'exports', 'require', '__filename', '__dirname', 'process', 'less', source)(
       module,
       module.exports,
-      createLegacyRequire(resolved, cache),
+      createLegacyRequire(resolved, cache, less),
       resolved,
       dirname(resolved),
-      undefined
+      undefined,
+      less
     );
   }
   return module.exports;
@@ -887,26 +938,8 @@ const createLegacyLessPluginRuntime = (modulePath, options) => {
       return localFunctions.get(String(name).toLowerCase());
     }
   };
-  const manager = {
-    addVisitor: () => refuseLessPluginApi('pluginManager.addVisitor()'),
-    addPreProcessor: () => refuseLessPluginApi('pluginManager.addPreProcessor()'),
-    addPostProcessor: () => refuseLessPluginApi('pluginManager.addPostProcessor()'),
-    addFileManager: () => refuseLessPluginApi('pluginManager.addFileManager()'),
-    registerPlugin(plugin) {
-      installPlugin(plugin);
-    }
-  };
-  const less = Object.defineProperties({
-    ...lessFacade,
-    functions: {
-      functionRegistry: functions
-    }
-  }, {
-    /* 4.x plugins reach these before the hook call (`new less.visitors.Visitor(this)`). */
-    visitors: { get: () => refuseLessPluginApi('less.visitors') },
-    FileManager: { get: () => refuseLessPluginApi('less.FileManager') },
-    environment: { get: () => refuseLessPluginApi('less.environment') }
-  });
+  const less = createPluginLess(functions);
+  const manager = createPluginManager(less);
   const installPlugin = (plugin) => {
     if (!plugin) {
       return;
@@ -923,9 +956,9 @@ const createLegacyLessPluginRuntime = (modulePath, options) => {
     if (candidate && options != null && typeof candidate.setOptions === 'function') {
       candidate.setOptions(options);
     }
-    if (candidate && typeof candidate.install === 'function') {
-      candidate.install(less, manager, functions);
-    }
+
+    /* As 4.x's loader does: the plugin is installed, and cached under its file. */
+    manager.addPlugin(candidate, modulePath);
     if (candidate && options != null && typeof candidate.setOptions === 'function') {
       candidate.setOptions(options);
     }
@@ -943,17 +976,14 @@ const createLegacyLessPluginRuntime = (modulePath, options) => {
       candidate.eval(less);
     }
   };
-  const registerPlugin = (plugin) => {
-    installPlugin(plugin);
-  };
   return {
     exports: {},
     functions,
     localFunctions,
     less,
     manager,
-    require: createLegacyRequire(modulePath, new Map()),
-    registerPlugin,
+    require: createLegacyRequire(modulePath, new Map(), less),
+    registerPlugin: installPlugin,
     fileInfo: { filename: modulePath }
   };
 };
@@ -962,9 +992,9 @@ const lessPluginCacheKey = (modulePath, options) => `${modulePath}\u0000${option
 
 const loadLessPlugin = async (modulePath, options = null) => {
   const cacheKey = lessPluginCacheKey(modulePath, options);
-  let functions = lessPluginFunctionCache.get(cacheKey);
-  if (functions) {
-    return Array.from(functions.keys());
+  const cached = lessPluginRuntimeCache.get(cacheKey);
+  if (cached) {
+    return Array.from(cached.localFunctions.keys());
   }
   const source = await Deno.readTextFile(modulePath);
   const runtime = createLegacyLessPluginRuntime(modulePath, options);
@@ -996,9 +1026,8 @@ const loadLessPlugin = async (modulePath, options = null) => {
   if (typeof exported === 'function' || (exported && typeof exported.install === 'function')) {
     runtime.registerPlugin(exported);
   }
-  functions = runtime.localFunctions;
-  lessPluginFunctionCache.set(cacheKey, functions);
-  return Array.from(functions.keys());
+  lessPluginRuntimeCache.set(cacheKey, runtime);
+  return Array.from(runtime.localFunctions.keys());
 };
 
 /**
@@ -1023,9 +1052,10 @@ const hostCallKey = (name, args) => `${String(name).toLowerCase()} ${JSON.string
  * Builds the `this` a Less 4 plugin function body expects: `this.context` with
  * `frames` / `importantScope` / `pluginManager`, plus `this.currentFileInfo`.
  * Without this the body's `this` is the sandbox global and every `this.context`
- * read is `undefined`.
+ * read is `undefined`. The `pluginManager` is the one the plugin was installed
+ * with, its `less` serving built-ins from the live call site.
  */
-const createPluginCallContext = (facts, logs) => {
+const createPluginCallContext = (facts, manager) => {
   const importantScope = [{ important: '' }];
 
   const frame = {
@@ -1072,17 +1102,7 @@ const createPluginCallContext = (facts, logs) => {
     }
   };
 
-  void logs;
-  const pluginManager = {
-    less: {
-      ...lessFacade,
-      functions: { functionRegistry }
-    },
-    getPreProcessors: () => [],
-    getPostProcessors: () => [],
-    getVisitors: () => [],
-    getFileManagers: () => []
-  };
+  const pluginManager = Object.create(manager, { less: { value: createPluginLess(functionRegistry) } });
 
   const context = {
     frames: [frame],
@@ -1103,18 +1123,17 @@ const createPluginCallContext = (facts, logs) => {
 
 const invokeLessPluginFunction = async (modulePath, functionName, args, options = null, facts = null) => {
   const cacheKey = lessPluginCacheKey(modulePath, options);
-  let functions = lessPluginFunctionCache.get(cacheKey);
-  if (!functions) {
+  if (!lessPluginRuntimeCache.has(cacheKey)) {
     await loadLessPlugin(modulePath, options);
-    functions = lessPluginFunctionCache.get(cacheKey);
   }
-  const fn = functions?.get(String(functionName).toLowerCase());
+  const runtime = lessPluginRuntimeCache.get(cacheKey);
+  const fn = runtime?.localFunctions.get(String(functionName).toLowerCase());
   if (typeof fn !== 'function') {
     throw new Error(`Less @plugin function "${functionName}" is not registered.`);
   }
   const logs = [];
   const resolved = facts ?? { vars: {}, calls: {}, fileInfo: null };
-  const callContext = createPluginCallContext(resolved, logs);
+  const callContext = createPluginCallContext(resolved, runtime.manager);
   const previousSink = activeLogSink;
   activeLogSink = logs;
   let raw;
