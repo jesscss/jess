@@ -161,7 +161,7 @@ import { UnitArithmeticError, calcInner, preservedUnitClashes, validateFinalUnit
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
-import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
+import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, guardUsesDefault, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
 import { computeExtends, type ExtendPlacementResults, type ExtendResults } from './extend.js'; // [extend]
@@ -3624,7 +3624,8 @@ function unresolvedMixinCall(call: MixinCall, e: EvalCtx): never {
  * a stray async value there raises rather than being silently mis-dispatched.
  */
 function makeResolver(frame: Frame | null, e: EvalCtx): ValueResolver {
-  return (v: ValueSlot) => evalBytes(v, frame, e);
+  /* An argument's bytes are its own spelling, whatever the output policy (see eagerSnapshot). */
+  return (v: ValueSlot) => evalBytes(v, frame, spliceCtx(e));
 }
 
 /**
@@ -3835,6 +3836,15 @@ interface EvalCtx {
 
   /* Non-URL structure is visible only at function/plugin argument boundaries. */
   mixinValueBindings: Map<Binding, ValueGroup> | null;
+
+  /*
+   * [compress] The declaration spelling of an eager argument snapshot whose
+   * compressed spelling differs from its own (ledger O3). The snapshot's bytes
+   * stay the value as authored, which every splice writes; a declaration under
+   * compress writes this instead. Created with the render, so every derived
+   * context shares it; absent when compress is off.
+   */
+  compressedBindings?: Map<Binding, string>;
 
 }
 
@@ -4513,16 +4523,19 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
 
     case 'Any':
       /*
-       * [compress] A mixin argument binds as its evaluated bytes. When the binding
-       * kept the typed value beside them (a function-form color, a list), that
-       * value folds by its type, as the same value reaching the declaration
-       * directly does.
+       * [compress] A mixin argument binds as its evaluated bytes, spelled as
+       * written. When the binding kept the typed value beside them (a
+       * function-form color, a list), that value folds by its type, as the same
+       * value reaching the declaration directly does; otherwise the binding's
+       * recorded declaration spelling is written. A splice evaluates with
+       * compress off, so it writes the bytes as written.
        */
       if (e.compress === true) {
         const carried = frame?.mixinValueBindings?.get(node) ?? e.mixinValueBindings?.get(node);
         if (carried !== undefined) {
           return carried;
         }
+        return literal(e.compressedBindings?.get(node) ?? node.src);
       }
       return literal(node.src);
     case 'Keyword':
@@ -5812,7 +5825,7 @@ function invokeValueLambda(
   const resolveCaller = makeResolver(callerFrame, e);
   const resolveDefault: DefaultResolver = (v, boundSoFar) => {
     const overlay: Frame = { parent: defFrame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
-    const b = evalBytes(v, overlay, e);
+    const b = eagerSnapshot(v, overlay, e);
     if (isThenable(b)) {
       observeRejectedThenable(b);
       throw ERR.asyncInSyncPosition({
@@ -5821,7 +5834,7 @@ function invokeValueLambda(
         meta: { where: 'lambda parameter default' }
       });
     }
-    return any(b);
+    return b;
   };
 
   /*
@@ -5834,7 +5847,8 @@ function invokeValueLambda(
     syntheticDef,
     preparedArgs,
     resolveCaller,
-    resolveDefault
+    resolveDefault,
+    compressedEagerSources(callerFrame, e)
   );
   if (isThenable(boundArgs)) {
     /*
@@ -6729,14 +6743,8 @@ function mixinGroupMode(value: ValueGroup): MixinGroupMode {
 
 /**
  * Construct one candidate-owned eager snapshot from already-derived source facts.
- *
- * TODO(compress-mixin-snapshot): under `output.compress` some callers derive
- * `bytes` through `evalBytes`, which folds them, so a parameter interpolated
- * inside the mixin body (`.s-@{a}` with `.m(@c)`, `@c: #ffffff`) prints the
- * folded `#fff` — a different selector (ledger O3: safe-only). The fix is to
- * snapshot the uncompressed spelling and carry the typed value for every
- * snapshot under compress, so declarations still fold it by type. Tracked in
- * docs/architecture/core/LESS-4X-FEATURE-TRIAGE.md row 5.
+ * `bytes` is the value's own spelling (see {@link eagerSnapshot}); a scalar that
+ * compress folds also records its declaration spelling.
  */
 function snapshotPreparedMixinValue(
   value: ValueGroup,
@@ -6752,8 +6760,55 @@ function snapshotPreparedMixinValue(
   } else if (mode === MIXIN_GROUP_VALUE) {
     (e.mixinValueBindings ??= new Map()).set(bound, value);
     retain?.(bound);
+  } else if (e.compressedBindings !== undefined) {
+    noteCompressedSpelling(bound, emitCompressed(value), e);
   }
   return bound;
+}
+
+/**
+ * [compress] Record the declaration spelling of a snapshot when compress writes
+ * it differently from the snapshot's own bytes (EvalCtx.compressedBindings).
+ */
+function noteCompressedSpelling(bound: Any, folded: string, e: EvalCtx): void {
+  if (folded !== bound.src) {
+    e.compressedBindings!.set(bound, folded);
+  }
+}
+
+/**
+ * The eager snapshot of one argument evaluated in `frame`: Less binds an
+ * argument as its evaluated bytes. A binding is never re-spelled by the output
+ * policy, so the bytes are the value as written and a splice of the parameter
+ * writes them unchanged (ledger O3: interpolated text is never re-spelled);
+ * under compress the folded spelling a declaration writes is kept beside them.
+ */
+function eagerSnapshot(source: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<Any> {
+  const spelled = mapMaybe(evalBytes(source, frame, spliceCtx(e)), any);
+  if (e.compressedBindings === undefined) {
+    return spelled;
+  }
+  return mapMaybe(spelled, bound => mapMaybe(evalBytes(source, frame, e), (folded) => {
+    noteCompressedSpelling(bound, folded, e);
+    return bound;
+  }));
+}
+
+/**
+ * [compress] The binding adapter for an argument the ordinary eager route would
+ * snapshot ({@link eagerSnapshot}), so it also records its declaration spelling.
+ * A ruleset, a mixin call or a typed literal binds by reference, as before.
+ */
+function compressedEagerSource(value: CallValue, frame: Frame | null, e: EvalCtx): MaybePromise<CallValue> | undefined {
+  return e.compressedBindings === undefined || isMixinCallValue(value) || isTypedCallValue(value)
+    || (!isValueSlotArray(value) && isValueBlock(value))
+    ? undefined
+    : eagerSnapshot(value, frame, e);
+}
+
+/** [compress] {@link compressedEagerSource} as the adapter of a call that tracks no other source. */
+function compressedEagerSources(frame: Frame | null, e: EvalCtx): BoundSourceResolvers | undefined {
+  return e.compressedBindings === undefined ? undefined : { resolve: value => compressedEagerSource(value, frame, e) };
 }
 
 /** Snapshot one canonical result while retaining structure only when bytes would erase it. */
@@ -6782,7 +6837,7 @@ function resolveAuthoredMixinValue(
 ): MaybePromise<CallValue> {
   return mapMaybe(evalTypedSlot(source, frame, e, true), (value) => {
     const mode = mixinGroupMode(value);
-    const bytes = mode === MIXIN_GROUP_VALUE ? evalBytes(source, frame, e) : emitValue(value);
+    const bytes = mode === MIXIN_GROUP_VALUE ? evalBytes(source, frame, spliceCtx(e)) : emitValue(value);
     return mapMaybe(bytes, resolved => snapshotPreparedMixinValue(value, mode, resolved, e, retain));
   });
 }
@@ -6818,7 +6873,7 @@ function resolvePluginBoundHit(
   candidateRoot: boolean
 ): MaybePromise<CallValue> {
   if (!hit) {
-    return mapMaybe(evalBytes(source, frame, e), any);
+    return eagerSnapshot(source, frame, e);
   }
   if (hit.evaluated !== null) {
     return snapshotPreparedMixinValue(
@@ -6834,7 +6889,7 @@ function resolvePluginBoundHit(
     return value;
   }
   if (isMixinCallValue(value)) {
-    return mapMaybe(evalBytes(source, frame, e), any);
+    return eagerSnapshot(source, frame, e);
   }
 
   const rootWasCached = candidateRoot && e.pluginRawBindings?.has(value) === true;
@@ -6842,9 +6897,8 @@ function resolvePluginBoundHit(
   if (candidateRoot && !rootWasCached) {
     retain?.(value);
   }
-  const snapshot = withExcluded(e, value, () => evalBytes(value, hit.frame, e));
-  return mapMaybe(snapshot, (bytes) => {
-    const bound = any(bytes);
+  const snapshot = withExcluded(e, value, () => eagerSnapshot(value, hit.frame, e));
+  return mapMaybe(snapshot, (bound) => {
     if (typed !== null) {
       e.pluginRawBindings!.set(bound, typed);
       retain?.(bound);
@@ -6988,11 +7042,11 @@ function boundSourceTracker(
   const evaluatedBytes = trackValue
     ? (source: ValueSlot): MaybePromise<string> => {
         if (source === valueSources?.valueSource) {
-          return primaryBytes ??= evalBytes(source, frame, e);
+          return primaryBytes ??= evalBytes(source, frame, spliceCtx(e));
         }
         let bytes = additionalBytes?.get(source);
         if (bytes === undefined) {
-          bytes = evalBytes(source, frame, e);
+          bytes = evalBytes(source, frame, spliceCtx(e));
           (additionalBytes ??= new Map()).set(source, bytes);
         }
         return bytes;
@@ -7057,7 +7111,7 @@ function boundSourceTracker(
     const pluginEligible = trackPlugin && !isValueSlotArray(value) && !isMixinCallValue(value)
       && value.type === 'Lookup' && value.kind === 'var' && typeof value.name === 'string';
     if (spreadValue === undefined && mode === MIXIN_VALUE_NONE && !pluginEligible) {
-      return undefined;
+      return compressedEagerSource(value, frame, e);
     }
     if (trackValue && (spreadValue !== undefined || mode !== MIXIN_VALUE_NONE)) {
       if (spreadValue !== undefined) {
@@ -8895,6 +8949,7 @@ function scratchEmit(e: EvalCtx): Emit {
     pluginRawBindings: e.pluginRawBindings,
     mixinUrlBindings: e.mixinUrlBindings,
     mixinValueBindings: e.mixinValueBindings,
+    compressedBindings: e.compressedBindings,
     io: e.io, // [io] preserve the file-read capability
     chunks: [],
     positions: null,
@@ -11491,6 +11546,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     pluginRawBindings: null,
     mixinUrlBindings: null,
     mixinValueBindings: null,
+    compressedBindings: options?.compress === true ? new Map() : undefined,
     io: options?.io
   };
   const rootFrame: Frame = {
@@ -11587,6 +11643,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     pluginRawBindings: null,
     mixinUrlBindings: null,
     mixinValueBindings: null,
+    compressedBindings: options?.compress === true ? new Map() : undefined,
     io: options?.io // [io] per-render file-read capability for the IO built-ins
   };
   const rootFrame: Frame = {
@@ -14879,11 +14936,12 @@ function leakBodyVars(callerFrame: Frame, rules: Statement[], callFrame: Frame, 
     if (!isValueSlotArray(v) && (isValueBlock(v) || isTypedLiteral(v))) {
       snap = v;
     } else {
-      const b = evalBytes(v, callFrame, e);
+      const b = eagerSnapshot(v, callFrame, e);
       if (isThenable(b)) {
+        observeRejectedThenable(b);
         continue;
       }
-      snap = any(b);
+      snap = b;
     }
     const map = (callerFrame.leaked ??= new Map());
     const stack = map.get(s.name);
@@ -15272,10 +15330,10 @@ function bindContentArgs(
   const resolveCaller = makeResolver(callerFrame, e);
   const resolveDefault: DefaultResolver = (v, boundSoFar) => {
     const overlay: Frame = { parent: defFrame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
-    return mapMaybe(evalBytes(v, overlay, e), any);
+    return eagerSnapshot(v, overlay, e);
   };
   const prepared = substituteClosureVarArgs(call, callerFrame, e, false);
-  return bindArgs(syntheticDef, prepared, resolveCaller, resolveDefault);
+  return bindArgs(syntheticDef, prepared, resolveCaller, resolveDefault, compressedEagerSources(callerFrame, e));
 }
 
 /* --------------------------------------------------------------- [each/For] */
@@ -15913,7 +15971,7 @@ function dispatch(
       : classifyMixinValueSource(v, overlay, e);
     const pluginEligible = trackPlugin && lookup !== undefined;
     if (mode === MIXIN_VALUE_NONE && !pluginEligible) {
-      return mapMaybe(evalBytes(v, overlay, e), any);
+      return eagerSnapshot(v, overlay, e);
     }
     const candidateRoot = lookupName !== undefined && boundSoFar.has(lookupName);
     const needsRetention = mode !== MIXIN_VALUE_NONE
@@ -15937,7 +15995,7 @@ function dispatch(
         return mapMaybe(evaluated, (group) => {
           const groupMode = mixinGroupMode(group);
           const bytes = groupMode === MIXIN_GROUP_VALUE
-            ? withExcluded(e, hitValue, () => evalBytes(hitValue, hit!.frame, e))
+            ? withExcluded(e, hitValue, () => evalBytes(hitValue, hit!.frame, spliceCtx(e)))
             : emitValue(group);
           return mapMaybe(bytes, resolved =>
             snapshotPreparedMixinValue(group, groupMode, resolved, e, retain!));
@@ -15972,7 +16030,7 @@ function dispatch(
     const prepared = substituteClosureVarArgs(call1, frame, e, true, spreadValueBindings);
     const valueBearing = isValueBearingMixinCall(prepared);
     const call2 = valueBearing ? prepared.call : prepared;
-    const trackValue = valueSpread || valueBearing;
+    const trackValue = valueSpread || valueBearing || e.compressedBindings !== undefined;
     const trackMode = (trackPlugin ? TRACK_PLUGIN_SOURCE : 0)
       | (trackValue ? TRACK_VALUE_SOURCE : 0);
     const boundSources: BoundSourceTracker | undefined = trackMode !== 0
@@ -16119,26 +16177,25 @@ function expandSpreadArgs(
         throw new Error('A deferred mixin call cannot be used as a spread argument.');
       }
       if (classifyMixinValueSource(source, frame, e) === MIXIN_VALUE_NONE) {
-        const resolved = resolveCaller(source);
+        const resolved = combineAll(
+          e.compressedBindings === undefined ? [resolveCaller(source)] : [resolveCaller(source), evalBytes(source, frame, e)],
+          ([bytes, folded]) => pushSpread(args, bytes!, e, folded)
+        );
         if (isThenable(resolved)) {
           const at = index;
-          return resolved.then((bytes) => {
-            pushSpread(args, bytes);
-            return step(at + 1);
-          });
+          return resolved.then(() => step(at + 1));
         }
-        pushSpread(args, resolved);
         continue;
       }
       const spreadValue = evalTypedSpread(source, frame, e);
       if (isThenable(spreadValue)) {
         const at = index;
         return spreadValue.then((settled) => {
-          valueState = pushTypedSpread(args, expanded, settled, valueState);
+          valueState = pushTypedSpread(args, expanded, settled, e, valueState);
           return step(at + 1);
         });
       }
-      valueState = pushTypedSpread(args, expanded, spreadValue, valueState);
+      valueState = pushTypedSpread(args, expanded, spreadValue, e, valueState);
     }
     return valueState ?? expanded;
   };
@@ -16172,6 +16229,7 @@ function pushTypedSpread(
   args: CallArg[],
   call: MixinCall,
   value: ValueGroup,
+  e: EvalCtx,
   state?: ValueBearingSpreadCall
 ): ValueBearingSpreadCall | undefined {
   const items = isValueGroupArray(value)
@@ -16184,14 +16242,14 @@ function pushTypedSpread(
       if (!isValueGroupArray(value) && value.type === 'List' && value.sep === '/' && index !== 0) {
         args.push(callArg(any('/')));
       }
-      state = pushTypedSpreadItem(args, call, items[index]!, state);
+      state = pushTypedSpreadItem(args, call, items[index]!, e, state);
     }
     return state;
   }
   if (!isValueGroupArray(value) && value.type === 'Url') {
-    return pushTypedSpreadItem(args, call, value, state);
+    return pushTypedSpreadItem(args, call, value, e, state);
   }
-  pushSpread(args, emitValue(value));
+  pushSpread(args, emitValue(value), e, e.compressedBindings === undefined ? undefined : emitCompressed(value));
   return state;
 }
 
@@ -16200,6 +16258,7 @@ function pushTypedSpreadItem(
   args: CallArg[],
   call: MixinCall,
   value: ValueGroup,
+  e: EvalCtx,
   state?: ValueBearingSpreadCall
 ): ValueBearingSpreadCall | undefined {
   const bytes = emitValue(value).trim();
@@ -16208,6 +16267,9 @@ function pushTypedSpreadItem(
   }
   const snapshot = any(bytes);
   args.push(callArg(snapshot));
+  if (e.compressedBindings !== undefined) {
+    noteCompressedSpelling(snapshot, emitCompressed(value).trim(), e);
+  }
   if (valueGroupNeedsMixinCarrier(value)) {
     const bindings = state ?? {
       call,
@@ -16223,14 +16285,24 @@ function pushTypedSpreadItem(
   return state;
 }
 
-/** Split one resolved spread argument into the positional args it splats to. */
-function pushSpread(args: CallArg[], rawBytes: string): void {
+/**
+ * Split one resolved spread argument into the positional args it splats to.
+ * Under compress `folded` is the same argument's compressed spelling; each
+ * piece records its own when the two split alike (EvalCtx.compressedBindings).
+ */
+function pushSpread(args: CallArg[], rawBytes: string, e: EvalCtx, folded?: string): void {
   const bytes = rawBytes.trim();
   if (bytes === '') {
     return;
   }
-  for (const piece of splitListBytes(bytes)) {
-    args.push(callArg(any(piece)));
+  const pieces = splitListBytes(bytes);
+  const foldedPieces = folded === undefined ? undefined : splitListBytes(folded.trim());
+  for (let index = 0; index < pieces.length; index++) {
+    const snapshot = any(pieces[index]!);
+    args.push(callArg(snapshot));
+    if (foldedPieces?.length === pieces.length) {
+      noteCompressedSpelling(snapshot, foldedPieces[index]!, e);
+    }
   }
 }
 

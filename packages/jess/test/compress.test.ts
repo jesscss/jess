@@ -153,6 +153,16 @@ describe('output.compress — value folds (must fold)', () => {
     expect(await min('@c: rgba(255, 0, 0, 0.5); .m(@a) { b: @a } a { .m(@c) }')).toBe(direct);
     expect(await min('.m(@a: rgba(255, 0, 0, 0.5)) { b: @a } a { .m() }')).toBe(direct);
     expect(await min('.m(@a) { b: @a } a { .m(fade(#ff0000, 50%)) }')).toBe(direct);
+    expect(await min('.m(@a) { b: @a } a { .m(unit(0.5, px)) }')).toBe('a{b:.5px}');
+    expect(await min('@d: 0.50px; .m(@a) { b: @a } a { .m(@d) }')).toBe('a{b:.5px}');
+    expect(await min('@l: white 0.50px; .m(@a, @b) { b: @a @b } a { .m(@l...) }')).toBe('a{b:white .5px}');
+  });
+
+  /* A guard pattern compares the argument as written, as it does uncompressed. */
+  it('selects the same mixin as uncompressed output does', async () => {
+    const source = '.m(#ffffff) { b: hit } .m(@a) when (default()) { b: miss } @c: #fff; a { .m(@c) }';
+    expect(await min(source)).toBe('a{b:miss}');
+    expect(await pretty(source)).toBe('a {\n  b: miss;\n}\n');
   });
 });
 
@@ -167,6 +177,22 @@ describe('output.compress — interpolated text is never rewritten', () => {
     expect(await min('@d: #ffffff; a { b: ~"@{d}-x" }')).toBe('a{b:#ffffff-x}');
     expect(await min('@d: #ffffff; a { @{d}-x: 1 }')).toBe('a{#ffffff-x:1}');
     expect(await min('@c: rgba(255, 0, 0, 0.5); a { content: "@{c}" }')).toBe('a{content:"rgba(255, 0, 0, 0.5)"}');
+  });
+
+  /* A mixin parameter binds the value as written; only its declaration folds. */
+  it('keeps a mixin parameter as written wherever it is spliced', async () => {
+    expect(await min('@c: #ffffff; .m(@a) { .s-@{a} { x: @a } } .m(@c);')).toBe('.s-#ffffff{x:#fff}');
+    expect(await min('@d: 0.50px 1.0em; .m(@a) { x: @a; .s-@{a} { z: 1 } } a { .m(@d) }'))
+      .toBe('a{x:.5px 1em;.s-0.50px 1.0em{z:1}}');
+    expect(await min('.m(@a; @b: @a) { x: @b; .s-@{b} { z: 1 } } @d: 0.50px; a { .m(@d) }'))
+      .toBe('a{x:.5px;.s-0.50px{z:1}}');
+    expect(await min('.a(@x) { .b(@x) } .b(@y) { x: @y; .s-@{y} { z: 1 } } @c: #ffffff; a { .a(@c) }'))
+      .toBe('a{x:#fff;.s-#ffffff{z:1}}');
+    expect(await min('@l: white, 0.50px; .m(@a, @b) { y: @b; .s-@{b} { z: 1 } } a { .m(@l...) }'))
+      .toBe('a{y:.5px;.s-0.50px{z:1}}');
+    expect(await min('.m(@rest...) { x: @rest; y: "@{rest}" } @d: 0.50px; a { .m(@d, #ffffff) }'))
+      .toBe('a{x:.5px #fff;y:"0.50px #ffffff"}');
+    expect(await min('@c: #ffffff; .m(@a) { x: e(%("%s", @a)) } a { .m(@c) }')).toBe('a{x:#ffffff}');
   });
 });
 
