@@ -149,8 +149,7 @@ import { defineFunction, FunctionDeclined } from './value-dispatch.js';
 import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
-import { colorRgb, HEX } from './color.js'; // [compress] typed-color channel read + hex-format tag
-import { compressDimensionBytes, compressSelectorHeader, shortestColor, shortestColorFromHex } from './compress.js';
+import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
 import { UnitArithmeticError, calcInner, preservedUnitClashes, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
@@ -3869,9 +3868,10 @@ function evalValueSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybeP
         continue;
       }
       if (!empty) {
-        bytes += separators === undefined ? ' ' : separators[index - 1] ?? ' ';
+        const run = separators === undefined ? ' ' : separators[index - 1] ?? ' ';
+        bytes += e.compress === true ? compressedGap(run) : run;
       }
-      bytes += emitValue(item);
+      bytes += emitValueC(item, e);
       empty = false;
     }
 
@@ -6307,7 +6307,7 @@ function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): Mayb
        * above — it is NOT authorship. The ONLY authored boundaries replayed
        * verbatim are a newline + its indentation offset and a block comment.
        */
-      inner += separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue;
+      inner += e.compress !== true && separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue;
       inner += emitValueC(vals[index]!, e);
     }
     return literal(`${node.name}(${inner})`);
@@ -7240,7 +7240,7 @@ function evalCall(
       let inner = emitValueC(vals[0]!, e);
       for (let index = 1; index < vals.length; index += 1) {
         const separator = authored?.[index - 1];
-        inner += separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue;
+        inner += e.compress !== true && separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue;
         inner += emitValueC(vals[index]!, e);
       }
       return literal(`${node.name}(${inner})`);
@@ -7668,7 +7668,8 @@ function joinSpacedBytes(node: Sequence, frame: Frame | null, e: EvalCtx): Maybe
        * [compress] a space list keeps ONE space; the authored (possibly multi-line)
        * boundary run is replayed only in pretty output.
        */
-      out += e.compress === true ? ' ' : (authored?.[index - 1] ?? ' ');
+      const run = authored?.[index - 1] ?? ' ';
+      out += e.compress === true ? compressedGap(run) : run;
       out += emitValueC(values[index]!, e);
     }
     return literal(out);
@@ -7678,36 +7679,17 @@ function joinSpacedBytes(node: Sequence, frame: Frame | null, e: EvalCtx): Maybe
 /**
  * [compress] Compress-aware value emit. Off (or a bare-string literal that was
  * already folded upstream in {@link evalValue}) is exactly {@link emitValue}. On,
- * a typed COMPUTED leaf folds by its RESULT type: a hex-format `Color` to the
- * shortest of {folded hex, named color}, a `Dimension` to its zero-trimmed
- * spelling; a space-group recurses per item. Function-form colors (`rgb()`/`hsl()`,
- * a non-HEX format) are left as their serialized bytes (no representation change).
+ * a typed COMPUTED value folds by its RESULT type ({@link emitCompressed}).
  */
 function emitValueC(v: EvalValue, e: EvalCtx): string {
-  if (e.compress !== true || typeof v === 'string') {
-    return emitValue(v);
-  }
-  if (isValueGroupArray(v)) {
-    let out = '';
-    let empty = true;
-    for (const item of v) {
-      if (isElided(item)) {
-        continue;
-      }
-      out = empty ? emitValueC(item, e) : `${out} ${emitValueC(item, e)}`;
-      empty = false;
-    }
-    return out;
-  }
-  if (v.type === 'Dimension') {
-    return compressDimensionBytes(v.bytes);
-  }
-  if (v.type === 'Color' && v.format === HEX) {
-    const [r, g, b] = colorRgb(v);
-    return shortestColor(r, g, b, v.alpha);
-  }
-  return v.bytes;
+  return e.compress !== true || typeof v === 'string' ? emitValue(v) : emitCompressed(v);
 }
+
+/**
+ * [compress] An authored run between two value parts: glued parts stay glued,
+ * and any other run — a line break, a comment, several spaces — is one space.
+ */
+const compressedGap = (run: string): string => (run === '' ? '' : ' ');
 
 /** Fold a value node and return its emitted bytes. */
 function evalBytes(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
@@ -18279,7 +18261,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
     for (let index = 0; index < node.length; index += 1) {
       if (index > 0) {
         const separator = authored?.[index - 1];
-        parts.push(plain(separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : ' '));
+        parts.push(plain(e.compress !== true && separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : ' '));
       }
       parts.push(evalQueryPreludeParts(node[index]!, frame, e));
     }
@@ -18323,13 +18305,13 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
       return concatPreludeParts(parts);
     }
     case 'List': {
-      const glue = node.sep === ',' ? ', ' : node.sep === '/' ? ' / ' : ' ';
+      const glue = node.sep === ',' ? (e.compress === true ? ',' : ', ') : node.sep === '/' ? ' / ' : ' ';
       const authored = valueLayoutOf(node);
       const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
       for (let index = 0; index < node.value.length; index += 1) {
         if (index > 0) {
           const separator = authored?.[index - 1];
-          parts.push(plain(separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue));
+          parts.push(plain(e.compress !== true && separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue));
         }
         parts.push(evalQueryPreludeParts(node.value[index]!, frame, e));
       }

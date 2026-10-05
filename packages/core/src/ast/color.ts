@@ -119,9 +119,12 @@ function toHex(c: Color): string {
  * which ruling V4 forbids (no fixed decimal-places rounding) and which annihilated
  * any percent below ~5e-9 to `0%`.
  */
-function alphaText(c: Color, a: number): string {
-  return c.alphaPct !== undefined ? `${formatNumber(c.alphaPct)}%` : formatNumber(a);
+function alphaText(c: Color, a: number, num: (v: number) => string): string {
+  return c.alphaPct !== undefined ? `${num(c.alphaPct)}%` : num(a);
 }
+
+/** A number with its leading zero dropped (`0.5`→`.5`, `-0.5`→`-.5`): compressed output only. */
+const compactNumber = (v: number): string => formatNumber(v).replace(/^(-?)0\./u, '$1.');
 
 /**
  * Serialize a color in scalar syntax. A verbatim source literal (`c.src`) wins;
@@ -129,31 +132,36 @@ function alphaText(c: Color, a: number): string {
  * (`rgbPct`/`alphaPct`/`hueUnit`) reproduces an un-operated constructor's authored
  * spelling (`%` channels, `%` alpha, hue unit); when absent the emit is the
  * canonical no-source branch (`${rgb[idx]}` / `${alpha}`).
+ *
+ * `compact` (compressed output) keeps the same function form and drops only
+ * the comma spaces and leading zeros: `rgba(255, 0, 0, 0.5)` → `rgba(255,0,0,.5)`.
  */
-export function serializeColor(c: Color): string {
+export function serializeColor(c: Color, compact = false): string {
   if (c.src !== undefined) {
     return c.src;
   }
   const format = c.format ?? HEX;
+  const comma = compact ? ',' : ', ';
+  const num = compact ? compactNumber : formatNumber;
   if (format === RGB) {
     const rgb = colorRgb(c);
     const pct = c.rgbPct;
     const chan = (idx: number): string =>
-      pct?.[idx] !== undefined ? `${formatNumber(clamp(pct[idx]!, 100))}%` : `${rgb[idx]}`;
+      pct?.[idx] !== undefined ? `${num(clamp(pct[idx]!, 100))}%` : `${rgb[idx]}`;
     const r = chan(0), g = chan(1), b = chan(2);
     const a = clamp(c.alpha, 1);
     const modern = c.modernSyntax === true;
     if (modern) {
-      return a < 1 ? `rgb(${r} ${g} ${b} / ${alphaText(c, a)})` : `rgb(${r} ${g} ${b})`;
+      return a < 1 ? `rgb(${r} ${g} ${b} / ${alphaText(c, a, num)})` : `rgb(${r} ${g} ${b})`;
     }
-    return a < 1 ? `rgba(${r}, ${g}, ${b}, ${alphaText(c, a)})` : `rgb(${r}, ${g}, ${b})`;
+    return a < 1 ? `rgba(${r}${comma}${g}${comma}${b}${comma}${alphaText(c, a, num)})` : `rgb(${r}${comma}${g}${comma}${b})`;
   }
   if (format === HSL) {
     const [h, s, l] = c.hsl ?? rgbToHsl(c.rgb[0], c.rgb[1], c.rgb[2]);
     const a = clamp(c.alpha, 1);
-    const hue = formatNumber(h);
-    const S = formatNumber(clamp(s, 1) * 100);
-    const L = formatNumber(clamp(l, 1) * 100);
+    const hue = num(h);
+    const S = num(clamp(s, 1) * 100);
+    const L = num(clamp(l, 1) * 100);
     const modern = c.modernSyntax === true;
 
     /*
@@ -162,9 +170,11 @@ export function serializeColor(c: Color): string {
      */
     const hueUnit = modern ? (c.hueUnit || 'deg') : (c.hueUnit ?? '');
     if (modern) {
-      return a < 1 ? `hsl(${hue}${hueUnit} ${S}% ${L}% / ${alphaText(c, a)})` : `hsl(${hue}${hueUnit} ${S}% ${L}%)`;
+      return a < 1 ? `hsl(${hue}${hueUnit} ${S}% ${L}% / ${alphaText(c, a, num)})` : `hsl(${hue}${hueUnit} ${S}% ${L}%)`;
     }
-    return a < 1 ? `hsla(${hue}${hueUnit}, ${S}%, ${L}%, ${alphaText(c, a)})` : `hsl(${hue}${hueUnit}, ${S}%, ${L}%)`;
+    return a < 1
+      ? `hsla(${hue}${hueUnit}${comma}${S}%${comma}${L}%${comma}${alphaText(c, a, num)})`
+      : `hsl(${hue}${hueUnit}${comma}${S}%${comma}${L}%)`;
   }
   return toHex(c);
 }
