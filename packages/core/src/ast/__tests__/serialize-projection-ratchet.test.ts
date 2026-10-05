@@ -52,9 +52,9 @@ describe('V19 one-evaluator projection ratchet', () => {
     expect(occurrences(/pendingLeafBlockComments\.(?:get|set|delete)\(/gu)).toBe(0);
     expect(occurrences(/\.\.\.\(imp \? \{ important: true \} : \{\}\)/gu)).toBe(0);
     expect(occurrences(/\.\.\.\(applyExpansion \? \{ fromApply: true \} : \{\}\)/gu)).toBe(0);
-    expect(occurrences(/return \{ node, frame, important, leadingBlockComments, fromApply \};/gu)).toBe(1);
-    expect(occurrences(/place\(\{ node, frame, important, leadingBlockComments: null, fromApply \}\);/gu)).toBe(2);
-    expect(occurrences(/place\(\{ node: part, frame, important, leadingBlockComments: null, fromApply \}\);/gu)).toBe(1);
+    expect(occurrences(/return \{ node, frame, important, leadingBlockComments, fromApply, callBytes \};/gu)).toBe(1);
+    expect(occurrences(/place\(\{ node, frame, important, leadingBlockComments: null, fromApply, callBytes: null \}\);/gu)).toBe(2);
+    expect(occurrences(/place\(\{ node: part, frame, important, leadingBlockComments: null, fromApply, callBytes: null \}\);/gu)).toBe(1);
     expect(SOURCE).toContain('pendingLeafBlockComments: string[] | null;');
     expect(SOURCE).toContain('pendingLeafBlockCommentOwner: Leaf[] | null;');
   });
@@ -193,10 +193,27 @@ describe('V19 one-evaluator projection ratchet', () => {
     // however a run settles. The maps are the planner's module boundaries and import
     // placement tokens; the sets, the fold's target atoms and the hidden rulesets that
     // hold a walk-placed `@import`.
-    expect(occurrences(/^function |^async function /gmu)).toBe(492);
+    // +1 function (`putPending`): every slot that settles after the walk reserves
+    // its chunk through one helper, so each records its source-map position alike.
+    // +4 functions (`eagerSnapshot`, `carryCompressed`,
+    // `compressedEagerSource`, `compressedEagerSources`) and +2 `new WeakMap`
+    // (the render-scoped `compressedBindings`, created once per render entry): a
+    // mixin argument is evaluated once and binds as written; under compress it
+    // carries the value a declaration folds (ledger O3).
+    // +4 functions (`holdBodyTrivia`, `skipBodyTrivia`, `ownsItsComments`,
+    // `replayBodyTriviaBefore`) against -2 (`emitBodyBlockCommentTriviaBefore`,
+    // `bodyStartForTriviaReplay`): every body's comments are replayed by its
+    // own walk, the one cursor a call's body already used, and a loop body is
+    // held for its iterations. +2 functions (`putDeclarationValue`,
+    // `insideSpan`): both writers write a custom property's value one way, and
+    // the root replay finds a statement span by binary search. +1 function
+    // (`placeStatementCall`): a statement call is evaluated where it stands in
+    // either writer's walk. +1 function (`holdTriviaBetween`): a loop locates
+    // its body span once for all of its iterations.
+    expect(occurrences(/^function |^async function /gmu)).toBe(503);
     expect(occurrences(/new Map/gu)).toBe(78);
     expect(occurrences(/new Set/gu)).toBe(37);
-    expect(occurrences(/new WeakMap/gu)).toBe(4);
+    expect(occurrences(/new WeakMap/gu)).toBe(6);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);
 
@@ -206,7 +223,7 @@ describe('V19 one-evaluator projection ratchet', () => {
      */
     expect(occurrences(/const buf: Leaf\[\] = nested \? \(sharedLeaves\?\.leaves \?\? \[\]\) : MOOT_LEAVES/gu)).toBe(1);
     expect(occurrences(/evaluateLeafStatement\(/gu)).toBe(3);
-    expect(occurrences(/evaluateSilentStatement\(/gu)).toBe(5);
+    expect(occurrences(/evaluateSilentStatement\(/gu)).toBe(2);
   });
 
   it('keeps one evaluator for callable expansion', () => {

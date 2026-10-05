@@ -1296,7 +1296,7 @@ export type ForBinding =
   | { readonly kind: 'bracket'; readonly names: readonly [string, string] }
   | { readonly kind: 'tuple'; readonly names: readonly [string, string, ...string[]] };
 
-export interface For extends AuthoredCallSlot {
+export interface For extends AuthoredCallSlot, BodySpanSlots {
   readonly type: 'For';
   readonly iterable: ValueSlot | MixinCall;
   readonly rules: Statement[];
@@ -1555,7 +1555,7 @@ export const forNode = (
   rules: Statement[],
   binding: ForBinding,
   asCall: FunctionCall | null = null
-): For => ({ type: 'For', iterable, rules, binding, _asCall: asCall });
+): For => ({ type: 'For', iterable, rules, binding, _asCall: asCall, _bs: NO_SPAN, _be: NO_SPAN });
 export const ifNode = (branches: readonly [IfBranch, ...IfBranch[]], asCall: FunctionCall | null = null): If =>
   ({ type: 'If', branches, _asCall: asCall });
 export const whileNode = (guard: GuardNode, rules: Statement[]): While => ({ type: 'While', guard, rules });

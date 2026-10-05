@@ -46,7 +46,10 @@ describe('keyword arguments in a function call', () => {
       .resolves.toBe('a {\n  b: 1 2;\n}\n');
   });
 
-  /* jess#279: a call written out as-is is written as the author wrote it. */
+  /*
+   * Ledger P23 (jess#279): a call written out as-is keeps its keyword names
+   * exactly as authored, sigil included.
+   */
   it('keeps the keywords of a call to an unknown function', async () => {
     await expect(render('a { b: foo(@x: 1, 2); }', '.less'))
       .resolves.toBe('a {\n  b: foo(@x: 1, 2);\n}\n');
@@ -61,8 +64,9 @@ describe('keyword arguments in a function call', () => {
 
   /*
    * Ledger P23: every writer of a call written out as-is spells it the same way,
-   * so the bytes do not depend on which path reached the writer. A call nested
-   * in a deferred CSS call takes the byte lane, not the evaluator's fallback.
+   * so the bytes do not depend on which path reached the writer — here a call
+   * nested in a deferred CSS call: an unknown one, and a built-in whose
+   * parameters have no names to bind the keywords to.
    */
   it('keeps the keywords of a call written out inside a deferred CSS call', async () => {
     await expect(render('a { c: rgb(foo(@b: 2, @a: 1), 2, 3); }', '.less'))

@@ -3521,11 +3521,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         literal('}')
       )
     ),
-    (children): LessEachCallback => {
+    /* The body span, inside the callback's own braces, is where its comments are. */
+    (children, _fields, _span, rawChildren): LessEachCallback => {
+      const bodySpan = bodySpanFromRaw(rawChildren);
       if (requireToken(children[0]).value === '{') {
         return {
           binding: { kind: 'comma', names: ['value', 'key', 'index'] },
-          rules: requireCallbackStatements(children.slice(1, -1))
+          rules: requireCallbackStatements(children.slice(1, -1)),
+          bodySpan
         };
       }
       const names = children.filter((child): child is string => typeof child === 'string');
@@ -3535,12 +3538,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       }
       const body = requireCallbackStatements(children.slice(bodyStart + 1, -1));
       if (names.length === 1) {
-        return { binding: { kind: 'single', name: names[0]! }, rules: body };
+        return { binding: { kind: 'single', name: names[0]! }, rules: body, bodySpan };
       }
       if (names.length === 2 || names.length === 3) {
         return {
           binding: { kind: 'comma', names: [names[0]!, names[1]!, names[2]] },
-          rules: body
+          rules: body,
+          bodySpan
         };
       }
       throw new TypeError('Less grammar produced an invalid each() callback binding.');
@@ -3591,7 +3595,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         ),
         { start: span.start, end: isSpannedToken(close) ? close.span.end : span.end }
       );
-      return forNode(isMixinCall(iterable) ? iterable : requireValueSlot(iterable), callback.rules, callback.binding, asCall);
+      const loop = forNode(isMixinCall(iterable) ? iterable : requireValueSlot(iterable), callback.rules, callback.binding, asCall);
+      return callback.bodySpan === undefined ? loop : withBodySpan(loop, callback.bodySpan);
     }
   );
   const enclosedRaw = node(

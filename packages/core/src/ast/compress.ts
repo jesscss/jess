@@ -101,8 +101,9 @@ const compressedNumber = (n: number): string => compressDimensionBytes(formatNum
 /**
  * A typed value's compressed bytes, folded by its result type: a dimension
  * zero-trimmed, a hex color to the shortest of {folded hex, name}, a
- * function-form color compact in the same form, a comma list tightened. Any
- * other value keeps its bytes.
+ * function-form color compact in the same form, a comma list tightened. A
+ * color still spelled by its name is a named-color keyword and stays verbatim
+ * (ledger O3). Any other value keeps its bytes.
  */
 export function emitCompressed(v: EvalValue): string {
   if (typeof v === 'string') {
@@ -115,6 +116,10 @@ export function emitCompressed(v: EvalValue): string {
     case 'Dimension':
       return compressDimensionBytes(v.bytes);
     case 'Color': {
+      /* A color still spelled by its NAME is a named-color keyword: verbatim. */
+      if (v.src !== undefined && v.src.charCodeAt(0) !== 35 /* # */) {
+        return v.src;
+      }
       if (v.format === HEX) {
         const [r, g, b] = colorRgb(v);
         return shortestColor(r, g, b, v.alpha);

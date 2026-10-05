@@ -162,7 +162,7 @@ import { UnitArithmeticError, calcInner, preservedUnitClashes, validateFinalUnit
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
-import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
+import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, guardUsesDefault, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { isTruthy } from './value-truth.js'; // [§4.4] the one typed truthiness predicate
 import { computeExtends, type ExtendPlacementResults, type ExtendResults } from './extend.js'; // [extend]
@@ -3626,7 +3626,8 @@ function unresolvedMixinCall(call: MixinCall, e: EvalCtx): never {
  * a stray async value there raises rather than being silently mis-dispatched.
  */
 function makeResolver(frame: Frame | null, e: EvalCtx): ValueResolver {
-  return (v: ValueSlot) => evalBytes(v, frame, e);
+  /* An argument's bytes are its own spelling, whatever the output policy (see eagerSnapshot). */
+  return (v: ValueSlot) => evalBytes(v, frame, spliceCtx(e));
 }
 
 /**
@@ -3830,6 +3831,17 @@ interface EvalCtx {
 
   /* Non-URL structure is visible only at function/plugin argument boundaries. */
   mixinValueBindings: Map<Binding, ValueGroup> | null;
+
+  /*
+   * [compress] The typed value an eager argument snapshot was evaluated to, when
+   * compress spells it differently from the snapshot's own bytes (ledger O3).
+   * The bytes stay the value as written, which every splice writes; a
+   * declaration under compress folds this value instead, and a structural
+   * consumer (a function argument, `each()`, a spread) reads its items. Created
+   * with the render, so every derived context shares it; absent when compress
+   * is off.
+   */
+  compressedBindings?: WeakMap<Binding, ValueGroup>;
 
 }
 
@@ -4191,7 +4203,8 @@ function evalTyped(
        */
       if (projectMixinValues) {
         const carried = frame?.mixinValueBindings?.get(node)
-          ?? e.mixinValueBindings?.get(node);
+          ?? e.mixinValueBindings?.get(node)
+          ?? e.compressedBindings?.get(node);
         if (carried !== undefined) {
           return carried;
         }
@@ -4509,13 +4522,14 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
 
     case 'Any':
       /*
-       * [compress] A mixin argument binds as its evaluated bytes. When the binding
-       * kept the typed value beside them (a function-form color, a list), that
-       * value folds by its type, as the same value reaching the declaration
-       * directly does.
+       * [compress] A mixin argument binds as its evaluated bytes, spelled as
+       * written. When the binding kept the typed value beside them, that value
+       * folds by its type, as the same value reaching the declaration directly
+       * does. A splice evaluates with compress off, so it writes the bytes as
+       * written.
        */
       if (e.compress === true) {
-        const carried = frame?.mixinValueBindings?.get(node) ?? e.mixinValueBindings?.get(node);
+        const carried = frame?.mixinValueBindings?.get(node) ?? e.mixinValueBindings?.get(node) ?? e.compressedBindings?.get(node);
         if (carried !== undefined) {
           return carried;
         }
@@ -5808,7 +5822,7 @@ function invokeValueLambda(
   const resolveCaller = makeResolver(callerFrame, e);
   const resolveDefault: DefaultResolver = (v, boundSoFar) => {
     const overlay: Frame = { parent: defFrame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
-    const b = evalBytes(v, overlay, e);
+    const b = eagerSnapshot(v, overlay, e);
     if (isThenable(b)) {
       observeRejectedThenable(b);
       throw ERR.asyncInSyncPosition({
@@ -5817,7 +5831,7 @@ function invokeValueLambda(
         meta: { where: 'lambda parameter default' }
       });
     }
-    return any(b);
+    return b;
   };
 
   /*
@@ -5830,7 +5844,8 @@ function invokeValueLambda(
     syntheticDef,
     preparedArgs,
     resolveCaller,
-    resolveDefault
+    resolveDefault,
+    compressedEagerSources(callerFrame, e)
   );
   if (isThenable(boundArgs)) {
     /*
@@ -6455,8 +6470,14 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
   });
 }
 
-/** CSS color constructors whose authored call is inert until a value consumer demands it. */
+/** CSS color constructors whose authored call is inert until a value consumer demands it (ledger F5). */
 const DEFERRED_COLOR_CALLS = new Set(['rgb', 'rgba', 'hsl', 'hsla']);
+
+/*
+ * CSS functions Less does not define, written out as a call without dispatch:
+ * only the call is inert, its arguments are values (see preserveCall). An F5
+ * color constructor, by contrast, is written out whole.
+ */
 const DEFERRED_CSS_AUTHORED_CALLS = new Set(['linear-gradient']);
 
 /**
@@ -6494,22 +6515,38 @@ function shouldPreserveCssAuthoredCall(node: FunctionCall, lessDocument: boolean
  * its callable: a deferred CSS-authored call, a failed plugin call, and every
  * call on the non-evaluating byte lane. Each argument is written as authored,
  * keyword included ({@link writtenArgument}, ledger P23).
+ *
+ * `argumentsAreValues` marks a CSS function Less does not define
+ * (`DEFERRED_CSS_AUTHORED_CALLS`): only the call itself is inert, and each
+ * argument is a value like any declaration value — a call, a condition or an
+ * operation written in it is evaluated (ledger P37), a unit error in it raises,
+ * and a literal is spelled as it is everywhere else (ledger V4).
  */
-function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
+function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx, argumentsAreValues = false): MaybePromise<EvalValue> {
   if (node.args.length === 0) {
     return literal(`${node.name}()`);
   }
 
   /*
-   * A deferred call must retain literal spellings (`.5`, hue units) exactly.
-   * Disable typed literal canonicalization for this byte lane; variable
-   * references still resolve through the same live frame walk.
+   * An F5 color call (and the non-evaluating byte lane) retains literal
+   * spellings (`.5`, hue units) exactly: typed literal canonicalization is off
+   * for its arguments; variable references still resolve through the same live
+   * frame walk.
    */
-  const preserve = e.ev ? { ...e, ev: null } : e;
+  const preserve = e.ev && !argumentsAreValues ? { ...e, ev: null } : e;
   const items = node.args.map(a => evalValueSlot(a.value, frame, preserve));
   return combineAll(items, (vals) => {
     const authored = valueLayoutOf(node.args);
     const compress = e.compress === true;
+    if (argumentsAreValues) {
+      for (let index = 0; index < vals.length; index += 1) {
+        const value = vals[index]!;
+        if (!isLiteral(value)) {
+          const slot = node.args[index]!.value;
+          validateValueGroupUnits(value, e.modes, isValueSlotArray(slot) ? (slot[0] ?? node) : slot, e, false);
+        }
+      }
+    }
 
     /*
      * Comma spacing is minimal-correctness normalized to one space after the
@@ -6746,14 +6783,8 @@ function mixinGroupMode(value: ValueGroup): MixinGroupMode {
 
 /**
  * Construct one candidate-owned eager snapshot from already-derived source facts.
- *
- * TODO(compress-mixin-snapshot): under `output.compress` some callers derive
- * `bytes` through `evalBytes`, which folds them, so a parameter interpolated
- * inside the mixin body (`.s-@{a}` with `.m(@c)`, `@c: #ffffff`) prints the
- * folded `#fff` — a different selector (ledger O3: safe-only). The fix is to
- * snapshot the uncompressed spelling and carry the typed value for every
- * snapshot under compress, so declarations still fold it by type. Tracked in
- * docs/architecture/core/LESS-4X-FEATURE-TRIAGE.md row 5.
+ * `bytes` is the value's own spelling (see {@link eagerSnapshot}); under compress
+ * the snapshot also carries the value it folds from ({@link carryCompressed}).
  */
 function snapshotPreparedMixinValue(
   value: ValueGroup,
@@ -6770,7 +6801,61 @@ function snapshotPreparedMixinValue(
     (e.mixinValueBindings ??= new Map()).set(bound, value);
     retain?.(bound);
   }
+  if (e.compressedBindings !== undefined) {
+    carryCompressed(bound, value, e);
+  }
   return bound;
+}
+
+/**
+ * [compress] Keep the typed value a snapshot was evaluated to beside it when
+ * compress spells that value differently from the snapshot's bytes
+ * (EvalCtx.compressedBindings).
+ */
+function carryCompressed(bound: Any, value: ValueGroup, e: EvalCtx): void {
+  if (emitCompressed(value) !== bound.src) {
+    e.compressedBindings!.set(bound, value);
+  }
+}
+
+/**
+ * The eager snapshot of one argument evaluated in `frame`: Less binds an
+ * argument as its evaluated bytes. A binding is never re-spelled by the output
+ * policy, so the bytes are the value as written and a splice of the parameter
+ * writes them unchanged (ledger O3: interpolated text is never re-spelled).
+ *
+ * Under compress the argument is evaluated ONCE, typed and spelled as written,
+ * and the snapshot carries that value, which a declaration folds by its type
+ * ({@link carryCompressed}). Evaluating it a second time for the folded bytes
+ * would run its functions twice.
+ */
+function eagerSnapshot(source: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<Any> {
+  if (e.compressedBindings === undefined) {
+    return mapMaybe(evalBytes(source, frame, e), any);
+  }
+  return mapMaybe(evalTypedSlot(source, frame, spliceCtx(e), true), (value) => {
+    validateValueGroupUnits(value, e.modes, isValueSlotArray(source) ? (source[0] ?? {}) : source, e, false);
+    const bound = any(emitValue(value));
+    carryCompressed(bound, value, e);
+    return bound;
+  });
+}
+
+/**
+ * [compress] The binding adapter for an argument the ordinary eager route would
+ * snapshot ({@link eagerSnapshot}), so it also records its declaration spelling.
+ * A ruleset, a mixin call or a typed literal binds by reference, as before.
+ */
+function compressedEagerSource(value: CallValue, frame: Frame | null, e: EvalCtx): MaybePromise<CallValue> | undefined {
+  return e.compressedBindings === undefined || isMixinCallValue(value) || isTypedCallValue(value)
+    || (!isValueSlotArray(value) && isValueBlock(value))
+    ? undefined
+    : eagerSnapshot(value, frame, e);
+}
+
+/** [compress] {@link compressedEagerSource} as the adapter of a call that tracks no other source. */
+function compressedEagerSources(frame: Frame | null, e: EvalCtx): BoundSourceResolvers | undefined {
+  return e.compressedBindings === undefined ? undefined : { resolve: value => compressedEagerSource(value, frame, e) };
 }
 
 /** Snapshot one canonical result while retaining structure only when bytes would erase it. */
@@ -6799,7 +6884,7 @@ function resolveAuthoredMixinValue(
 ): MaybePromise<CallValue> {
   return mapMaybe(evalTypedSlot(source, frame, e, true), (value) => {
     const mode = mixinGroupMode(value);
-    const bytes = mode === MIXIN_GROUP_VALUE ? evalBytes(source, frame, e) : emitValue(value);
+    const bytes = mode === MIXIN_GROUP_VALUE ? evalBytes(source, frame, spliceCtx(e)) : emitValue(value);
     return mapMaybe(bytes, resolved => snapshotPreparedMixinValue(value, mode, resolved, e, retain));
   });
 }
@@ -6835,7 +6920,7 @@ function resolvePluginBoundHit(
   candidateRoot: boolean
 ): MaybePromise<CallValue> {
   if (!hit) {
-    return mapMaybe(evalBytes(source, frame, e), any);
+    return eagerSnapshot(source, frame, e);
   }
   if (hit.evaluated !== null) {
     return snapshotPreparedMixinValue(
@@ -6851,7 +6936,7 @@ function resolvePluginBoundHit(
     return value;
   }
   if (isMixinCallValue(value)) {
-    return mapMaybe(evalBytes(source, frame, e), any);
+    return eagerSnapshot(source, frame, e);
   }
 
   const rootWasCached = candidateRoot && e.pluginRawBindings?.has(value) === true;
@@ -6859,9 +6944,8 @@ function resolvePluginBoundHit(
   if (candidateRoot && !rootWasCached) {
     retain?.(value);
   }
-  const snapshot = withExcluded(e, value, () => evalBytes(value, hit.frame, e));
-  return mapMaybe(snapshot, (bytes) => {
-    const bound = any(bytes);
+  const snapshot = withExcluded(e, value, () => eagerSnapshot(value, hit.frame, e));
+  return mapMaybe(snapshot, (bound) => {
     if (typed !== null) {
       e.pluginRawBindings!.set(bound, typed);
       retain?.(bound);
@@ -7005,11 +7089,11 @@ function boundSourceTracker(
   const evaluatedBytes = trackValue
     ? (source: ValueSlot): MaybePromise<string> => {
         if (source === valueSources?.valueSource) {
-          return primaryBytes ??= evalBytes(source, frame, e);
+          return primaryBytes ??= evalBytes(source, frame, spliceCtx(e));
         }
         let bytes = additionalBytes?.get(source);
         if (bytes === undefined) {
-          bytes = evalBytes(source, frame, e);
+          bytes = evalBytes(source, frame, spliceCtx(e));
           (additionalBytes ??= new Map()).set(source, bytes);
         }
         return bytes;
@@ -7074,7 +7158,7 @@ function boundSourceTracker(
     const pluginEligible = trackPlugin && !isValueSlotArray(value) && !isMixinCallValue(value)
       && value.type === 'Lookup' && value.kind === 'var' && typeof value.name === 'string';
     if (spreadValue === undefined && mode === MIXIN_VALUE_NONE && !pluginEligible) {
-      return undefined;
+      return compressedEagerSource(value, frame, e);
     }
     if (trackValue && (spreadValue !== undefined || mode !== MIXIN_VALUE_NONE)) {
       if (spreadValue !== undefined) {
@@ -7481,7 +7565,7 @@ function evalCall(
    */
   const lessDocument = e.context?.sourceContext?.plugin?.supportedExtensions?.includes('.less') === true;
   if (!demanded && shouldPreserveCssAuthoredCall(node, lessDocument)) {
-    return preserveCall(node, frame, e);
+    return preserveCall(node, frame, e, DEFERRED_CSS_AUTHORED_CALLS.has(lname));
   }
   const ev = e.ev;
 
@@ -8949,6 +9033,7 @@ function scratchEmit(e: EvalCtx): Emit {
     pluginRawBindings: e.pluginRawBindings,
     mixinUrlBindings: e.mixinUrlBindings,
     mixinValueBindings: e.mixinValueBindings,
+    compressedBindings: e.compressedBindings,
     io: e.io, // [io] preserve the file-read capability
     chunks: [],
     positions: null,
@@ -9048,15 +9133,14 @@ function putValue(e: Emit, node: ValueSlot, frame: Frame | null, positionNode?: 
     const r = contIndent !== undefined && e.compress !== true ? reindentContinuations(lead, contIndent) : lead;
     return emitImportant || sink.hit ? normalizeImportant(r, e.compress === true) : r;
   };
-  if (isThenable(b)) {
-    const i = e.chunks.length;
-    e.chunks.push('');
-    e.pending.push({ i, p: Promise.resolve(mapMaybe(b, finish)) });
-    return null;
-  }
-  const bytes = finish(b);
   const valStart = e.chunks.length;
-  put(e, bytes);
+  let bytes: string | null = null;
+  if (isThenable(b)) {
+    putPending(e, mapMaybe(b, finish));
+  } else {
+    bytes = finish(b);
+    put(e, bytes);
+  }
   if (e.positions && positionNode) {
     e.positions.push({ node: positionNode, type: positionNode.type, start: valStart, end: e.chunks.length, source: srcFile(e) });
   }
@@ -9067,6 +9151,16 @@ function putValue(e: Emit, node: ValueSlot, frame: Frame | null, positionNode?: 
 
 function put(e: Emit, s: string): void {
   e.chunks.push(s);
+}
+
+/**
+ * [async] Reserve ONE chunk, in source order, for bytes that settle after the
+ * walk; `finish` fills it before offsets are resolved. A position recorded over
+ * the reserved chunk therefore maps the settled bytes like any written chunk.
+ */
+function putPending(e: Emit, bytes: MaybePromise<string>): void {
+  e.pending.push({ i: e.chunks.length, p: Promise.resolve(bytes) });
+  e.chunks.push('');
 }
 
 /** Turn the walk's chunk-index positions into character offsets of the final output. */
@@ -9402,11 +9496,11 @@ class EmittedTrivia {
   }
 
   /**
-   * Open ONE expansion of a callable body: every run from run `from` up to offset
+   * Open ONE written copy of a body: every run from run `from` up to offset
    * `end` is freed for it, whatever owned it, and the runs that were owned or
    * held are returned for {@link closeCopy} (`undefined` when none was). Each
-   * call or ruleset argument writes its own copy of the body, so it writes its
-   * own copy of the body's comments too.
+   * placement of a body — a rule at its place, a call, a ruleset argument, a
+   * loop iteration — writes its own copy of the body's comments.
    */
   openCopy(table: CommentTable, from: number, end: number): SavedRuns | undefined {
     const owned = this.bits.get(table);
@@ -9426,11 +9520,10 @@ class EmittedTrivia {
   }
 
   /**
-   * Close the expansion a replay opened ({@link openCopy}). A run that was held
-   * or owned before it gets that state back, so a definition stays held. A run
-   * that was free keeps what the expansion left: the comments it wrote stay
-   * owned, so the writers that run when its leaves are emitted do not write
-   * them a second time.
+   * Close the copy a replay opened ({@link openCopy}). A run that was held or
+   * owned before gets that state back, so a definition stays held for its next
+   * expansion. A run that was free keeps what the copy left: the comments it
+   * wrote stay owned, so no later replay of the enclosing body writes them again.
    */
   closeCopy(replay: BodyTriviaReplay | undefined): void {
     const saved = replay?.saved;
@@ -9544,6 +9637,21 @@ function isReplaySpan(span: ReplaySpan | undefined): span is ReplaySpan {
   return span !== undefined;
 }
 
+/** Whether `[start, end)` lies inside one of `spans` (source-ordered and disjoint): a binary search. */
+function insideSpan(spans: readonly ReplaySpan[], start: number, end: number): boolean {
+  let low = 0;
+  let high = spans.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (spans[middle]!.start <= start) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+  return low > 0 && end <= spans[low - 1]!.end;
+}
+
 function emitBlockCommentTriviaBetween(
   e: Emit,
   start: number | undefined,
@@ -9578,12 +9686,8 @@ function emitBlockCommentTriviaBetween(
       continue;
     }
 
-    /*
-     * `excludedSpans` is the root replay's statement list. It is bounded and
-     * small (556 span tests across the entire Less corpus, 0 on benchmark.less),
-     * so the linear scan stays as-is rather than growing an index for it.
-     */
-    if (excludedSpans.some(span => runStart >= span.start && runEnd <= span.end)) {
+    /* `excludedSpans` is the root replay's source-ordered statement spans. */
+    if (insideSpan(excludedSpans, runStart, runEnd)) {
       continue;
     }
     const from = table.commentAt[i]!;
@@ -9957,28 +10061,25 @@ function markSilentStatementBlockCommentTrivia(node: Statement, e: Emit): void {
   if (trivia === undefined) {
     return;
   }
+  const body = node.type === 'MixinDefinition'
+    ? node
+    : node.type === 'VariableDeclaration' && !isValueSlotArray(node.value) && node.value.type === 'AnonymousMixin'
+      ? node.value
+      : undefined;
+
+  /* The body's own span holds its comments even when the statement records none. */
+  if (body !== undefined) {
+    holdBodyTrivia(body, e);
+  }
   const spanStart = sourceStartOf(node);
   if (spanStart === NO_SPAN) {
     return;
   }
   const spanEnd = sourceEndOf(node);
   const table = commentTableOf(trivia);
-  const body = node.type === 'MixinDefinition'
-    ? node
-    : node.type === 'VariableDeclaration' && !isValueSlotArray(node.value) && node.value.type === 'AnonymousMixin'
-      ? node.value
-      : undefined;
-  let bodyStart = NO_SPAN;
-  let bodyEnd = NO_SPAN;
-  if (body !== undefined) {
-    bodyStart = bodyStartOf(body);
-    bodyEnd = bodyEndOf(body);
-    if (bodyStart === NO_SPAN) {
-      /* No recorded body span: hold all of it rather than claim the body's comments. */
-      bodyStart = spanStart;
-      bodyEnd = spanEnd;
-    }
-  }
+
+  /* No recorded body span: hold all of it rather than claim the body's comments. */
+  const holdAll = body !== undefined && bodyStartOf(body) === NO_SPAN;
   for (let i = firstRunAtOrAfter(table, spanStart); i < table.runs.length; i++) {
     if (table.runStart[i]! > spanEnd) {
       break;
@@ -9986,23 +10087,36 @@ function markSilentStatementBlockCommentTrivia(node: Statement, e: Emit): void {
     if (table.runEnd[i]! > spanEnd || !runHasBlockComment(table, i)) {
       continue;
     }
-    if (bodyStart !== NO_SPAN && table.runStart[i]! >= bodyStart && table.runEnd[i]! <= bodyEnd) {
+    if (holdAll) {
       e.emittedBlockTrivia.holdIndex(table, i);
     } else {
-      e.emittedBlockTrivia.addIndex(table, i);
+      e.emittedBlockTrivia.addIndex(table, i); // a held body run stays held
     }
   }
 }
 
-/* The start offset alone, with no object built: this runs per statement inside
- * an at-rule body, and every caller that only needs the start must not pay for
- * a `{ start, end }` the base version got for free from the retained side table. */
-function bodyStartForTriviaReplay(owner: object, e: Emit): number {
-  const bodyStart = bodyStartOf(owner);
-  if (bodyStart !== NO_SPAN) {
-    return bodyStart;
+/**
+ * HOLD the comment runs of a body that only its expansions write — a loop body,
+ * written once per iteration ({@link EmittedTrivia.holdIndex}).
+ */
+function holdBodyTrivia(owner: object, e: Emit): void {
+  const start = bodyStartOf(owner);
+  if (start !== NO_SPAN) {
+    holdTriviaBetween(start, bodyEndOf(owner), e);
   }
-  return bodySpanForTriviaReplay(owner, e)?.start ?? NO_SPAN;
+}
+
+/** HOLD the comment runs between two offsets ({@link holdBodyTrivia}). */
+function holdTriviaBetween(start: number, end: number, e: Emit): void {
+  if (e.trivia === undefined) {
+    return;
+  }
+  const table = commentTableOf(e.trivia);
+  for (let i = firstRunAtOrAfter(table, start); i < table.runs.length && table.runStart[i]! <= end; i++) {
+    if (table.runEnd[i]! <= end && runHasBlockComment(table, i)) {
+      e.emittedBlockTrivia.holdIndex(table, i);
+    }
+  }
 }
 
 function bodySpanForTriviaReplay(owner: object, e: Emit): ReplaySpan | undefined {
@@ -10054,17 +10168,6 @@ function bodyBlockCommentTexts(owner: object, e: Emit): string[] {
     }
   }
   return out;
-}
-
-function emitBodyBlockCommentTriviaBefore(owner: object, before: object, e: Emit, indent: string, after: number): number {
-  const bodyStart = bodyStartForTriviaReplay(owner, e);
-  const beforeStart = sourceStartOf(before);
-  return emitBlockCommentTriviaBetween(
-    e,
-    Math.max(bodyStart === NO_SPAN ? after : bodyStart, after),
-    beforeStart === NO_SPAN ? undefined : beforeStart,
-    indent
-  );
 }
 
 function emitLeadingDocumentBlockComments(e: Emit, indent = ''): void {
@@ -10493,7 +10596,9 @@ function hasBodyBlockCommentTrivia(owner: object, e: Emit): boolean {
     if (table.runStart[i]! > body.end) {
       break;
     }
-    if (table.runEnd[i]! <= body.end && runHasBlockComment(table, i)) {
+
+    /* A held run belongs to a callable body inside this one, which writes it. */
+    if (table.runEnd[i]! <= body.end && runHasBlockComment(table, i) && !e.emittedBlockTrivia.hasIndex(table, i)) {
       return true;
     }
   }
@@ -10511,6 +10616,9 @@ interface Leaf {
 
   /** Produced by the core `$apply` expansion; its repeated output stays visible. */
   fromApply: boolean;
+
+  /** A statement call's result, evaluated where the call stands ({@link placeStatementCall}). */
+  callBytes: string | null;
 }
 
 function evaluatedLeaf(
@@ -10518,9 +10626,25 @@ function evaluatedLeaf(
   frame: Frame,
   important = false,
   fromApply = false,
-  leadingBlockComments: readonly string[] | null = null
+  leadingBlockComments: readonly string[] | null = null,
+  callBytes: string | null = null
 ): Leaf {
-  return { node, frame, important, leadingBlockComments, fromApply };
+  return { node, frame, important, leadingBlockComments, fromApply, callBytes };
+}
+
+/**
+ * [P37] Evaluate a call in statement position where it stands in the walk, as
+ * the nested writer does, and place its result as a leaf. One that writes
+ * nothing places none, so the block it would have stood alone in is elided
+ * (ledger O6) — decided before the block is written, even when the call
+ * settles asynchronously.
+ */
+function placeStatementCall(node: FunctionCall, frame: Frame, e: Emit, place: (leaf: Leaf) => void): MaybePromise<void> {
+  return mapMaybe(statementCallBytes(node, frame, e), (bytes) => {
+    if (bytes.length !== 0) {
+      place(evaluatedLeaf(node, frame, false, false, null, bytes));
+    }
+  });
 }
 
 const EMPTY_LEAF_BLOCK_COMMENTS: string[] = [];
@@ -10566,19 +10690,20 @@ function evaluateLeafStatement(
 ): void {
   queueBodyTriviaBefore(bodyTrivia, node, group, e);
   if (node.type === 'Comment') {
-    place({ node, frame, important, leadingBlockComments: null, fromApply });
+    place({ node, frame, important, leadingBlockComments: null, fromApply, callBytes: null });
     return;
   }
+  skipBodyTrivia(bodyTrivia, node, e);
 
   const parts = nestedPropertyDeclarations(node);
   if (parts === null) {
     recordPropertyDeclaration(propertyScope, node, frame);
-    place({ node, frame, important, leadingBlockComments: null, fromApply });
+    place({ node, frame, important, leadingBlockComments: null, fromApply, callBytes: null });
     return;
   }
   for (const part of parts) {
     recordPropertyDeclaration(propertyScope, part, frame);
-    place({ node: part, frame, important, leadingBlockComments: null, fromApply });
+    place({ node: part, frame, important, leadingBlockComments: null, fromApply, callBytes: null });
   }
 }
 
@@ -10587,17 +10712,13 @@ function evaluateSilentStatement(
   node: MixinDefinition | VariableDeclaration,
   frame: Frame,
   e: Emit
-): boolean {
+): void {
   if (node.type === 'MixinDefinition') {
     publishSelectedMixinDefinition(frame, node);
-    markSilentStatementBlockCommentTrivia(node, e);
-    return true;
+  } else {
+    activateVariableDeclaration(node, frame, e);
   }
-  activateVariableDeclaration(node, frame, e);
   markSilentStatementBlockCommentTrivia(node, e);
-  return !isValueSlotArray(node.value)
-    && 'type' in node.value
-    && isValueBlock(node.value);
 }
 
 /** The resolved property name of a declaration (interp names resolve sync). */
@@ -11704,6 +11825,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     pluginRawBindings: null,
     mixinUrlBindings: null,
     mixinValueBindings: null,
+    compressedBindings: options?.compress === true ? new WeakMap() : undefined,
     io: options?.io
   };
   const rootFrame: Frame = {
@@ -11802,6 +11924,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     pluginRawBindings: null,
     mixinUrlBindings: null,
     mixinValueBindings: null,
+    compressedBindings: options?.compress === true ? new WeakMap() : undefined,
     io: options?.io // [io] per-render file-read capability for the IO built-ins
   };
   const rootFrame: Frame = {
@@ -12057,16 +12180,9 @@ function emitDocumentStatements(
   const deferredImports: StyleImport[] = [];
   const delayedStatements: Statement[] = [];
   let documentTriviaCursor = 0;
-  let documentTriviaSuppressedByDefinition = false;
   const emitBeforeDocumentStatement = (child: Statement): void => {
     if (e.referenceImportDepth !== 0) {
       documentTriviaCursor = statementStartOf(child) ?? documentTriviaCursor;
-      documentTriviaSuppressedByDefinition = false;
-      return;
-    }
-    if (documentTriviaSuppressedByDefinition) {
-      documentTriviaCursor = statementStartOf(child) ?? documentTriviaCursor;
-      documentTriviaSuppressedByDefinition = false;
       return;
     }
     emitBlockCommentTriviaBetween(e, documentTriviaCursor, statementStartOf(child), '');
@@ -12076,9 +12192,17 @@ function emitDocumentStatements(
   };
   const flushDocumentGroup = (group: Leaf[]): MaybePromise<void> => {
     const trailingBlockComments = takePendingLeafBlockComments(e, group);
+
+    /* A comment statement (SCSS) at the document level is written there, not in a block. */
+    if (group.length !== 0 && group.every(leaf => leaf.node.type === 'Comment')) {
+      for (const leaf of group) {
+        emitLeaf(leaf, e, true);
+      }
+      group.length = 0;
+    }
     if (group.length) {
       return mapMaybe(
-        flushBlock([], group, e, undefined, undefined, undefined, trailingBlockComments),
+        flushBlock([], group, e, undefined, undefined, trailingBlockComments),
         () => {
           group.length = 0;
         }
@@ -12135,14 +12259,10 @@ function emitDocumentStatements(
           publishSelectedMixinDefinition(frame, child);
         }
         markSilentStatementBlockCommentTrivia(child, e);
-        documentTriviaSuppressedByDefinition = true;
         break;
       case 'VariableDeclaration':
         activateVariableDeclaration(child, frame, e);
         markSilentStatementBlockCommentTrivia(child, e);
-        if (!isValueSlotArray(child.value) && 'type' in child.value && isValueBlock(child.value)) {
-          documentTriviaSuppressedByDefinition = true;
-        }
         break;
       case 'MixinCall': {
         if (e.referenceImportDepth !== 0) {
@@ -13308,7 +13428,7 @@ function flattenWithHeader(
        * and header merge; top-level rules (`parent === null`) never do.
        */
       return mapMaybe(flushBlock(
-        visible, group, e, rule.selector, parent, rule, trailingBlockComments
+        visible, group, e, rule.selector, parent, trailingBlockComments
       ), () => {
         recordDynExtendSlot(e, rule, frame, visible, reserved);
         group.length = 0;
@@ -13328,7 +13448,7 @@ function flattenWithHeader(
   ): MaybePromise<void> => {
     if (leaves.length || trailingBlockComments.length !== 0) {
       return mapMaybe(flushBlock(
-        visible, leaves, e, rule.selector, parent, rule, trailingBlockComments
+        visible, leaves, e, rule.selector, parent, trailingBlockComments
       ), () => {
         recordDynExtendSlot(e, rule, frame, visible, reserved);
       });
@@ -13350,45 +13470,56 @@ function flattenWithHeader(
       }
     };
     if (!partition.encounteredContainer) {
-      if (group.length === 0 && e.pendingLeafBlockCommentOwner !== group && hasBodyBlockCommentTrivia(rule, e)) {
-        return mapMaybe(flushBlock(
-          visible, [], e, rule.selector, parent, rule, EMPTY_LEAF_BLOCK_COMMENTS
-        ), () => {
-          recordDynExtendSlot(e, rule, frame, visible, reserved);
-        });
-      }
       return flush();
     }
     queueLeadingGroup(group, partition, e);
     flushPending(partition);
     return runTrailing(0);
   };
-  const executeBody = () => mapMaybe(
-    activateBodyDependencies(rule.rules, childFrame, e),
-    () => walkBody(
-      rule.rules,
-      childComposed,
-      childComposed === null ? null : childAncestor,
-      childFrame,
-      group,
-      flush,
-      partition,
-      e,
-      imp,
-      false,
-      childFrame,
-      false,
-      expandBubbledSelectorList
-    )
-  );
+
+  /*
+   * [G28] The rule's comments are trivia in its body span, replayed by its own
+   * walk: each lands before the leaf that follows it, and one after the last
+   * statement trails the block. Every placement of the rule writes its own copy.
+   */
+  const executeBody = (): MaybePromise<void> => {
+    const bodyTrivia = bodyTriviaReplay(rule, e);
+    return mapMaybe(
+      mapMaybe(
+        activateBodyDependencies(rule.rules, childFrame, e),
+        () => walkBody(
+          rule.rules,
+          childComposed,
+          childComposed === null ? null : childAncestor,
+          childFrame,
+          group,
+          flush,
+          partition,
+          e,
+          imp,
+          false,
+          childFrame,
+          false,
+          expandBubbledSelectorList,
+          bodyTrivia
+        )
+      ),
+      () => {
+        queueBodyTriviaTail(bodyTrivia, group, partition, e);
+        e.emittedBlockTrivia.closeCopy(bodyTrivia);
+        return finish();
+      }
+    );
+  };
 
   /*
    * A Ruleset can be rendered from an imported document before it is later called
    * as a ruleset-mixin. Its canonical body owns the imported document's source
    * identity in both placements, so nested `(inline)` imports resolve from that
-   * document rather than the caller/root document.
+   * document rather than the caller/root document, and its comments are read
+   * from that document's trivia.
    */
-  return mapMaybe(withSourceOwner(e, childFrame.sourceOwner, executeBody), finish);
+  return withSourceOwner(e, childFrame.sourceOwner, executeBody);
 }
 
 /** [partition] Queue the direct leaves preceding a collapsed child as one parent block. */
@@ -13445,22 +13576,30 @@ function addLeaf(
   }
 }
 
-/** Sparse body-comment cursor used only while replaying a callable body. */
+/**
+ * Sparse comment cursor over one body while it is walked. A comment between two
+ * statements is queued, in source order, onto the leaf written next; a comment
+ * inside a statement belongs to that statement's own writer.
+ */
 interface BodyTriviaReplay {
   readonly table: CommentTable;
   readonly end: number;
   index: number;
+
+  /** The end of the last declaration walked: the run starting there is its inline comment. */
+  declarationEnd: number | undefined;
 
   /** The states {@link EmittedTrivia.openCopy} saved, indexed from the body's first run. */
   readonly saved: SavedRuns | undefined;
 }
 
 /**
- * Open the comment replay for ONE expansion of a callable body (a mixin call,
- * a detached ruleset call, a ruleset argument): its runs are freed for this
- * copy, and {@link EmittedTrivia.closeCopy} restores them once the body is written.
+ * Open the comment replay for ONE written copy of a body — a rule at its place,
+ * a mixin call, a detached ruleset call, a ruleset argument, a loop iteration:
+ * its runs are freed for this copy, and {@link EmittedTrivia.closeCopy}
+ * restores them once the body is walked.
  */
-function bodyTriviaReplay(owner: object, e: Emit): BodyTriviaReplay | undefined {
+function bodyTriviaReplay(owner: object, e: Emit, span?: ReplaySpan): BodyTriviaReplay | undefined {
   const trivia = e.trivia;
   if (trivia === undefined) {
     return undefined;
@@ -13469,9 +13608,11 @@ function bodyTriviaReplay(owner: object, e: Emit): BodyTriviaReplay | undefined 
   if (table.runs.length === 0) {
     return undefined;
   }
-  let start = bodyStartOf(owner);
+  let start = span?.start ?? bodyStartOf(owner);
   let end: number;
-  if (start === NO_SPAN) {
+  if (span !== undefined) {
+    end = span.end;
+  } else if (start === NO_SPAN) {
     const body = bodySpanForTriviaReplay(owner, e);
     if (body === undefined) {
       return undefined;
@@ -13483,7 +13624,7 @@ function bodyTriviaReplay(owner: object, e: Emit): BodyTriviaReplay | undefined 
   }
   const low = firstRunAtOrAfter(table, start);
   return low < table.runs.length && table.runStart[low]! < end
-    ? { table, end, index: low, saved: e.emittedBlockTrivia.openCopy(table, low, end) }
+    ? { table, end, index: low, declarationEnd: undefined, saved: e.emittedBlockTrivia.openCopy(table, low, end) }
     : undefined;
 }
 
@@ -13531,10 +13672,82 @@ function queueBodyTriviaBefore(
   if (end === undefined) {
     return;
   }
-  const previousLeaf = group[group.length - 1];
-  const comments = takeBodyTrivia(replay, end, previousLeaf === undefined ? undefined : statementEndOf(previousLeaf.node), e);
+  const comments = takeBodyTrivia(replay, end, replay.declarationEnd, e);
   if (comments !== undefined) {
     queueLeafBlockComments(e, group, comments);
+  }
+}
+
+/**
+ * Queue the comments before `node` onto the next leaf, then step over the
+ * comments `node` writes itself — an at-rule body walk's one replay step.
+ */
+function replayBodyTriviaBefore(replay: BodyTriviaReplay | undefined, node: Statement, group: Leaf[], e: Emit): void {
+  queueBodyTriviaBefore(replay, node, group, e);
+  if (node.type === 'Declaration' || ownsItsComments(node, true)) {
+    skipBodyTrivia(replay, node, e);
+  }
+}
+
+/**
+ * Step the replay over one statement's own span. A comment inside a declaration
+ * value, a nested rule, an at-rule, a call's arguments or a loop body belongs
+ * to that statement's writer, never to the block the statement sits in.
+ */
+function skipBodyTrivia(replay: BodyTriviaReplay | undefined, statement: Statement, e: Emit): void {
+  if (replay === undefined) {
+    return;
+  }
+  const table = replay.table;
+  const end = statementEndOf(statement);
+  if (end === undefined) {
+    /*
+     * A custom property is unspanned (its value keeps its comments, and a span
+     * would claim the run after it). The comments inside its value are the
+     * value's own (customPropertyValueWithTrivia): claimed, not stepped over,
+     * so the comments before them stay in place for the next statement.
+     */
+    const value = statement.type === 'Declaration' && !isValueSlotArray(statement.value) ? statement.value : undefined;
+    const valueStart = value === undefined ? NO_SPAN : sourceStartOf(value);
+    if (valueStart !== NO_SPAN) {
+      const valueEnd = sourceEndOf(value!);
+      for (let i = Math.max(replay.index, firstRunAtOrAfter(table, valueStart)); i < table.runs.length && table.runStart[i]! < valueEnd; i++) {
+        if (table.runEnd[i]! <= valueEnd) {
+          e.emittedBlockTrivia.addIndex(table, i);
+        }
+      }
+    }
+    return;
+  }
+  while (replay.index < table.runs.length && table.runStart[replay.index]! < end) {
+    replay.index++;
+  }
+  replay.declarationEnd = statement.type === 'Declaration' ? end : undefined;
+}
+
+/**
+ * Whether a statement writes the comments inside its own span (see
+ * {@link skipBodyTrivia}). A collapsed nested rule is decided where it is
+ * placed: one merged into this block (`& { … }`) is walked with this body's
+ * replay, so its comments land between the leaves around them.
+ */
+function ownsItsComments(node: Statement, nested: boolean): boolean {
+  switch (node.type) {
+    case 'Ruleset':
+      return nested;
+    case 'AtRuleBlock':
+    case 'AtRuleStatement':
+    case 'UnknownAtRuleBlock':
+    case 'StyleImport':
+    case 'ModuleImport':
+    case 'MixinCall':
+    case 'Apply':
+    case 'Reference':
+    case 'FunctionCall':
+    case 'For':
+      return true;
+    default:
+      return false;
   }
 }
 
@@ -13564,8 +13777,7 @@ function queueBodyTriviaTail(
   const target = partition?.encounteredContainer === true && partition.lastLeadingGroup !== undefined
     ? partition.lastLeadingGroup
     : group;
-  const previousLeaf = target[target.length - 1];
-  const comments = takeBodyTrivia(replay, replay.end, previousLeaf === undefined ? undefined : statementEndOf(previousLeaf.node), e);
+  const comments = takeBodyTrivia(replay, replay.end, replay.declarationEnd, e);
   if (comments !== undefined) {
     if (target === partition?.lastLeadingGroup && partition.lastLeadingEmission !== undefined) {
       partition.lastLeadingEmission(comments);
@@ -13662,33 +13874,24 @@ function walkBody(
    * a nested projection buffers; the collapsed projection places into `group`.
    */
   const buf: Leaf[] = nested ? (sharedLeaves?.leaves ?? []) : MOOT_LEAVES;
-  let bodyOwner: object | undefined;
-  let bodyTriviaCursor = 0;
+
+  /*
+   * [G28] A nested rule's own body: this walk owns its comment replay
+   * ({@link bodyTriviaReplay}), queued before each statement like every other
+   * body's. A shared or inline walk uses the replay it was handed.
+   */
+  const ownsReplay = nested && sharedLeaves === undefined && owner !== undefined && bodyTrivia === undefined;
+  if (ownsReplay) {
+    bodyTrivia = bodyTriviaReplay(owner, e);
+  }
   let rootTriviaCursor: number | undefined;
-  let rootTriviaSuppressedByDefinition = false;
   let inlineLeaves: NestedLeafBuffer | undefined;
   let flushBuf: () => void = MOOT_FLUSH;
-  let replayBodyCommentsBefore: (statement: Statement) => void = NOOP_BEFORE_STATEMENT;
   let emitBeforeRootStatement: (node: Statement) => void = NOOP_BEFORE_STATEMENT;
   let markAfterRootStatement: (node: Statement) => void = NOOP_BEFORE_STATEMENT;
   let emitTrailingRootTrivia: () => void = NOOP_TRAILING_TRIVIA;
   let placeLeaf: (leaf: Leaf) => void;
   if (nested) {
-    /*
-     * [G28] Body-interior comment replay, mirroring the walk the collapsed emitter
-     * already performs. Only armed when this call owns the body outright.
-     */
-    bodyOwner = sharedLeaves === undefined ? owner : undefined;
-    const bodyOwnerStart = bodyOwner === undefined ? NO_SPAN : bodyStartOf(bodyOwner);
-    bodyTriviaCursor = bodyOwnerStart === NO_SPAN ? 0 : bodyOwnerStart;
-    replayBodyCommentsBefore = (statement: Statement): void => {
-      if (bodyOwner === undefined) {
-        return;
-      }
-      emitBodyBlockCommentTriviaBefore(bodyOwner, statement, e, INDENT.repeat(e.depth), bodyTriviaCursor);
-      const end = sourceEndOf(statement);
-      bodyTriviaCursor = end === NO_SPAN ? bodyTriviaCursor : end;
-    };
     flushBuf = sharedLeaves?.flush ?? (() => {
       if (buf.length === 0 && e.pendingLeafBlockCommentOwner !== buf) {
         return;
@@ -13720,15 +13923,12 @@ function walkBody(
             const start = index;
             settledEmission(withSourceOwner(e, sourceOwner, () => {
               for (let at = start; at < end; at++) {
-                const owned = buf[at]!;
-                replayBodyCommentsBefore(owned.node);
-                emitNestedLeafOwned(owned, e);
+                emitNestedLeafOwned(buf[at]!, e);
               }
             }), leaf.node, e);
             index = end;
             continue;
           }
-          replayBodyCommentsBefore(leaf.node);
           emitNestedLeafOwned(leaf, e);
           index++;
         }
@@ -13743,20 +13943,21 @@ function walkBody(
     });
     inlineLeaves = sharedLeaves ?? { leaves: buf, flush: flushBuf, propertyScope: frame };
     rootTriviaCursor = frame.parent === null && sharedLeaves === undefined ? 0 : undefined;
+
+    /*
+     * Every root statement of the document, not just this walk's: a document
+     * split at its imports is walked in runs, and each run's replay starts at
+     * the document's start.
+     */
     const rootTriviaExclusions = rootTriviaCursor === undefined
       ? []
-      : statements.map((statement) => {
+      : (frame.statements ?? statements).map((statement) => {
           const start = statementStartOf(statement);
           const end = statementEndOf(statement);
           return start === undefined || end === undefined ? undefined : { start, end };
         }).filter(isReplaySpan);
     emitBeforeRootStatement = (node: Statement): void => {
       if (rootTriviaCursor === undefined) {
-        return;
-      }
-      if (rootTriviaSuppressedByDefinition) {
-        rootTriviaCursor = statementStartOf(node) ?? rootTriviaCursor;
-        rootTriviaSuppressedByDefinition = false;
         return;
       }
       emitBlockCommentTriviaBetween(e, rootTriviaCursor, statementStartOf(node), '', rootTriviaExclusions);
@@ -13794,6 +13995,9 @@ function walkBody(
       const node = statements[index]!;
       if (node.type !== 'Declaration' && node.type !== 'Comment') {
         queueBodyTriviaBefore(bodyTrivia, node, nested ? buf : group, e);
+        if (ownsItsComments(node, nested)) {
+          skipBodyTrivia(bodyTrivia, node, e);
+        }
       }
 
       /*
@@ -13846,7 +14050,6 @@ function walkBody(
               break;
             }
             flushBuf();
-            replayBodyCommentsBefore(node);
             emitBeforeRootStatement(node);
 
             /*
@@ -13928,16 +14131,14 @@ function walkBody(
                 forceLeading,
                 propertyScope,
                 applyExpansion,
-                expandBubbledSelectorList
+                expandBubbledSelectorList,
+                bodyTrivia
               );
             };
             const passes = ruleGuardPasses(rule, frame, e);
             const emitted = mapMaybe(passes, emitSelf);
             if (isThenable(emitted)) {
-              return emitted.then(() => walkBody(
-                statements.slice(index + 1), rComposedSelf, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope, applyExpansion, expandBubbledSelectorList
-              ));
+              return emitted.then(() => run(index + 1));
             }
             break;
           }
@@ -13951,24 +14152,20 @@ function walkBody(
             queueLeadingGroup(group, partition, e);
             flushPending(partition);
             partition.encounteredContainer = true;
+            skipBodyTrivia(bodyTrivia, rule, e);
             partition.trailing.push(() => expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList));
           } else {
+            skipBodyTrivia(bodyTrivia, rule, e);
             const flushed = flush();
             if (isThenable(flushed)) {
               return flushed.then(() => mapMaybe(
                 expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList),
-                () => walkBody(
-                  statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                  partition, e, imp, forceLeading, propertyScope, applyExpansion, expandBubbledSelectorList
-                )
+                () => run(index + 1)
               ));
             }
             const emitted = expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList);
             if (isThenable(emitted)) {
-              return emitted.then(() => walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope, applyExpansion, expandBubbledSelectorList
-              ));
+              return emitted.then(() => run(index + 1));
             }
           }
           break;
@@ -13998,10 +14195,7 @@ function walkBody(
           } else {
             const expanded = expandCall(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, undefined, propertyScope, applyExpansion);
             if (isThenable(expanded)) {
-              return expanded.then(() => walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope, applyExpansion
-              ));
+              return expanded.then(() => run(index + 1));
             }
           }
           break;
@@ -14028,10 +14222,7 @@ function walkBody(
           } else {
             const expanded = expandApply(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope);
             if (isThenable(expanded)) {
-              return expanded.then(() => walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope, applyExpansion
-              ));
+              return expanded.then(() => run(index + 1));
             }
           }
           break;
@@ -14059,10 +14250,7 @@ function walkBody(
           } else {
             const expanded = expandReferenceCall(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
             if (isThenable(expanded)) {
-              return expanded.then(() => walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope, applyExpansion
-              ));
+              return expanded.then(() => run(index + 1));
             }
           }
           break;
@@ -14090,10 +14278,7 @@ function walkBody(
           } else {
             const expanded = expandFor(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
             if (isThenable(expanded)) {
-              return expanded.then(() => walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope, applyExpansion
-              ));
+              return expanded.then(() => run(index + 1));
             }
           }
           break;
@@ -14102,7 +14287,7 @@ function walkBody(
             flushBuf();
             const body = selectIfBody(node, frame, e);
             if (body) {
-              const emitted = nestedBody(body, frame, e, hoist, imp, source, placement, undefined, applyExpansion);
+              const emitted = nestedBody(body, frame, e, hoist, imp, source, placement, undefined, applyExpansion, undefined, bodyTrivia);
               if (isThenable(emitted)) {
                 return emitted.then(() => run(index + 1));
               }
@@ -14111,12 +14296,9 @@ function walkBody(
           }
           const body = selectIfBody(node, frame, e);
           if (body) {
-            const emitted = walkBody(body, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
+            const emitted = walkBody(body, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion, expandBubbledSelectorList, bodyTrivia);
             if (isThenable(emitted)) {
-              return emitted.then(() => walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope, applyExpansion
-              ));
+              return emitted.then(() => run(index + 1));
             }
           }
           break;
@@ -14124,20 +14306,18 @@ function walkBody(
         case 'While': {
           if (nested) {
             flushBuf();
-            const emitted = runWhile(node, frame, e, rules => nestedBody(rules, frame, e, hoist, imp, source, placement, undefined, applyExpansion));
+            const emitted = runWhile(node, frame, e, rules => nestedBody(rules, frame, e, hoist, imp, source, placement, undefined, applyExpansion, undefined, bodyTrivia));
             if (isThenable(emitted)) {
               return emitted.then(() => run(index + 1));
             }
             break;
           }
           const emitted = runWhile(node, frame, e, rules => walkBody(
-            rules, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion
+            rules, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion,
+            expandBubbledSelectorList, bodyTrivia
           ));
           if (isThenable(emitted)) {
-            return emitted.then(() => walkBody(
-              statements.slice(index + 1), composed, ancestor, frame, group, flush,
-              partition, e, imp, forceLeading, propertyScope, applyExpansion
-            ));
+            return emitted.then(() => run(index + 1));
           }
           break;
         }
@@ -14216,18 +14396,12 @@ function walkBody(
             if (isThenable(flushed)) {
               return flushed.then(() => mapMaybe(
                 emitAt(),
-                () => walkBody(
-                  statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                  partition, e, imp, forceLeading, propertyScope
-                )
+                () => run(index + 1)
               ));
             }
             const emitted = emitAt();
             if (isThenable(emitted)) {
-              return emitted.then(() => walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope
-              ));
+              return emitted.then(() => run(index + 1));
             }
           }
           break;
@@ -14276,10 +14450,7 @@ function walkBody(
             if (isThenable(flushed)) {
               return flushed.then(() => {
                 emitAtRuleStatement(node, frame, e);
-                return walkBody(
-                  statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                  partition, e, imp, forceLeading, propertyScope, applyExpansion
-                );
+                return run(index + 1);
               });
             }
             emitAtRuleStatement(node, frame, e);
@@ -14367,18 +14538,12 @@ function walkBody(
             if (isThenable(flushed)) {
               return flushed.then(() => mapMaybe(
                 expandStyleImport(node, frame, e, e.importDocument, emitLoaded),
-                () => walkBody(
-                  statements.slice(index + 1), composed, ancestor, frame, group,
-                  flush, partition, e, imp, forceLeading, propertyScope
-                )
+                () => run(index + 1)
               ));
             }
             const imported = expandStyleImport(node, frame, e, e.importDocument, emitLoaded);
             if (isThenable(imported)) {
-              return imported.then(() => walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group,
-                flush, partition, e, imp, forceLeading, propertyScope
-              ));
+              return imported.then(() => run(index + 1));
             }
           } else if (partition !== null && composed !== null) {
             addLeaf(group, partition, evaluatedLeaf(node, frame), forceLeading, e);
@@ -14387,10 +14552,7 @@ function walkBody(
             if (isThenable(flushed)) {
               return flushed.then(() => mapMaybe(
                 expandStyleImport(node, frame, e, e.importDocument),
-                () => walkBody(
-                  statements.slice(index + 1), composed, ancestor, frame, group,
-                  flush, partition, e, imp, forceLeading, propertyScope
-                )
+                () => run(index + 1)
               ));
             }
 
@@ -14401,10 +14563,7 @@ function walkBody(
              */
             const imported = expandStyleImport(node, frame, e, e.importDocument);
             if (isThenable(imported)) {
-              return imported.then(() => walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group,
-                flush, partition, e, imp, forceLeading, propertyScope
-              ));
+              return imported.then(() => run(index + 1));
             }
           }
           break;
@@ -14428,10 +14587,7 @@ function walkBody(
             if (isThenable(flushed)) {
               return flushed.then(() => {
                 emitModuleImport(node, frame, e);
-                return walkBody(
-                  statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                  partition, e, imp, forceLeading, propertyScope, applyExpansion
-                );
+                return run(index + 1);
               });
             }
             emitModuleImport(node, frame, e);
@@ -14457,10 +14613,7 @@ function walkBody(
             if (isThenable(flushed)) {
               return flushed.then(() => {
                 emitUnknownAtRuleBlock(node, e);
-                return walkBody(
-                  statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                  partition, e, imp, forceLeading, propertyScope, applyExpansion
-                );
+                return run(index + 1);
               });
             }
             emitUnknownAtRuleBlock(node, e);
@@ -14482,43 +14635,28 @@ function walkBody(
             markAfterRootStatement(node);
             break;
           }
-          addLeaf(group, partition, evaluatedLeaf(node, frame), forceLeading, e);
+          const placed = placeStatementCall(node, frame, e, placeLeaf);
+          if (isThenable(placed)) {
+            return placed.then(() => run(index + 1));
+          }
           break;
         }
         case 'MixinDefinition':
-          if (nested) {
-            if (evaluateSilentStatement(node, frame, e) && rootTriviaCursor !== undefined) {
-              rootTriviaSuppressedByDefinition = true;
-            }
-          } else {
-            evaluateSilentStatement(node, frame, e);
-          }
-          break;
         case 'VariableDeclaration':
-          if (nested) {
-            if (evaluateSilentStatement(node, frame, e) && rootTriviaCursor !== undefined) {
-              rootTriviaSuppressedByDefinition = true;
-            }
-          } else {
-            evaluateSilentStatement(node, frame, e);
-          }
+          evaluateSilentStatement(node, frame, e);
           break;
       }
     }
     if (nested) {
-      queueBodyTriviaTail(bodyTrivia, buf, null, e);
+      if (ownsReplay) {
+        queueBodyTriviaTail(bodyTrivia, buf, null, e);
+      }
       if (!sharedLeaves) {
         flushBuf();
-
-        /*
-         * [G28] Comments after the LAST statement but still inside the block.
-         * The per-statement walk above only reaches comments that precede a
-         * statement, so without this a trailing `a { b: c; /* z *\/ }` is lost.
-         */
-        if (bodyOwner !== undefined) {
-          emitBlockCommentTriviaBetween(e, bodyTriviaCursor, bodyEndOf(bodyOwner), INDENT.repeat(e.depth));
-        }
         emitTrailingRootTrivia();
+      }
+      if (ownsReplay) {
+        e.emittedBlockTrivia.closeCopy(bodyTrivia);
       }
     }
   };
@@ -14975,9 +15113,7 @@ function expandCall(
           const emitted = withSourceOwner(e, callFrame.sourceOwner, executeBody);
           if (isThenable(emitted)) {
             return emitted.then(() => {
-              if (sharedLeaves === undefined) {
-                queueBodyTriviaTail(bodyTrivia, group, partition, e);
-              }
+              queueBodyTriviaTail(bodyTrivia, sharedLeaves?.leaves ?? group, sharedLeaves === undefined ? partition : null, e);
               e.emittedBlockTrivia.closeCopy(bodyTrivia);
               leakBodyVars(frame, def.rules, callFrame, e);
               publishOrderedMixins(frame, frameOrderedMixins(callFrame, e), callFrame);
@@ -14987,9 +15123,7 @@ function expandCall(
               return run(index + 1);
             });
           }
-          if (sharedLeaves === undefined) {
-            queueBodyTriviaTail(bodyTrivia, group, partition, e);
-          }
+          queueBodyTriviaTail(bodyTrivia, sharedLeaves?.leaves ?? group, sharedLeaves === undefined ? partition : null, e);
           e.emittedBlockTrivia.closeCopy(bodyTrivia);
 
           /*
@@ -15314,11 +15448,12 @@ function leakBodyVars(callerFrame: Frame, rules: Statement[], callFrame: Frame, 
     if (!isValueSlotArray(v) && (isValueBlock(v) || isTypedLiteral(v))) {
       snap = v;
     } else {
-      const b = evalBytes(v, callFrame, e);
+      const b = eagerSnapshot(v, callFrame, e);
       if (isThenable(b)) {
+        observeRejectedThenable(b);
         continue;
       }
-      snap = any(b);
+      snap = b;
     }
     const map = (callerFrame.leaked ??= new Map());
     const stack = map.get(s.name);
@@ -15400,7 +15535,10 @@ function publishExplicitRulesets(frame: Frame, rules: Statement[], callFrame: Fr
         parent: callFrame,
         mixins: collectMixins(statement.rules),
         declIndex: collectDeclIndex(statement.rules), cells: null, reassign: null,
-        statements: statement.rules
+        statements: statement.rules,
+
+        /* The rule sits in the called body, so it is that body's document's source. */
+        sourceOwner: callFrame.sourceOwner
       };
       (callFrame.rulePlacements ??= new Map()).set(statement, placement);
     }
@@ -15659,9 +15797,7 @@ function expandReferenceCall(
         return walked;
       }
       return mapMaybe(walked, () => {
-        if (sharedLeaves === undefined) {
-          queueBodyTriviaTail(bodyTrivia, group, partition, e);
-        }
+        queueBodyTriviaTail(bodyTrivia, sharedLeaves?.leaves ?? group, sharedLeaves === undefined ? partition : null, e);
         e.emittedBlockTrivia.closeCopy(bodyTrivia);
       });
     };
@@ -15707,10 +15843,10 @@ function bindContentArgs(
   const resolveCaller = makeResolver(callerFrame, e);
   const resolveDefault: DefaultResolver = (v, boundSoFar) => {
     const overlay: Frame = { parent: defFrame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
-    return mapMaybe(evalBytes(v, overlay, e), any);
+    return eagerSnapshot(v, overlay, e);
   };
   const prepared = substituteClosureVarArgs(call, callerFrame, e, false);
-  return bindArgs(syntheticDef, prepared, resolveCaller, resolveDefault);
+  return bindArgs(syntheticDef, prepared, resolveCaller, resolveDefault, compressedEagerSources(callerFrame, e));
 }
 
 /* --------------------------------------------------------------- [each/For] */
@@ -16022,6 +16158,11 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Ma
     return base.parts.map(value => ({ value, key: null }));
   }
   if (base.type === 'Any' || base.type === 'Keyword') {
+    /* [compress] A snapshot that carries its value iterates that value's items. */
+    const carried = base.type === 'Any' ? e.compressedBindings?.get(base) : undefined;
+    if (carried !== undefined) {
+      return { evaluatedItems: groupItems(carried) };
+    }
     return splitListBytes(base.src).map(b => ({ value: any(b), key: null }));
   }
 
@@ -16179,6 +16320,16 @@ function expandFor(
       ? walkBody([unlowered], composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion)
       : nestedBody([unlowered], frame, e, undefined, imp, source, null, sharedLeaves, applyExpansion);
   }
+
+  /*
+   * Each iteration writes its own copy of the body, comments included. The
+   * body span is found once: a loop with no recorded body span (SCSS
+   * `@each`/`@for`) locates its braces in the source a single time.
+   */
+  const bodySpan = bodySpanForTriviaReplay(node, e);
+  if (bodySpan !== undefined) {
+    holdTriviaBetween(bodySpan.start, bodySpan.end, e);
+  }
   return mapMaybe(forItems(node.iterable, frame, e), (items) => {
     const run = (start: number): MaybePromise<void> => {
       const collectionEntries = Array.isArray(items)
@@ -16234,7 +16385,8 @@ function expandFor(
         if (item !== null) {
           bindForDetached(loopFrame, bindings, item);
         }
-        const emitted = mapMaybe(
+        const bodyTrivia = bodySpan === undefined ? undefined : bodyTriviaReplay(node, e, bodySpan);
+        const walked = mapMaybe(
           activateBodyDependencies(node.rules, loopFrame, e),
           () => sharedLeaves === undefined
             ? walkBody(
@@ -16249,7 +16401,9 @@ function expandFor(
                 imp,
                 forceLeading,
                 propertyScope,
-                applyExpansion
+                applyExpansion,
+                false,
+                bodyTrivia
               )
             : nestedBody(
                 node.rules,
@@ -16260,9 +16414,15 @@ function expandFor(
                 source,
                 null,
                 sharedLeaves,
-                applyExpansion
+                applyExpansion,
+                undefined,
+                bodyTrivia
               )
         );
+        const emitted = mapMaybe(walked, () => {
+          queueBodyTriviaTail(bodyTrivia, sharedLeaves?.leaves ?? group, sharedLeaves === undefined ? partition : null, e);
+          e.emittedBlockTrivia.closeCopy(bodyTrivia);
+        });
         if (isThenable(emitted)) {
           return emitted.then(() => run(i + 1));
         }
@@ -16348,7 +16508,7 @@ function dispatch(
       : classifyMixinValueSource(v, overlay, e);
     const pluginEligible = trackPlugin && lookup !== undefined;
     if (mode === MIXIN_VALUE_NONE && !pluginEligible) {
-      return mapMaybe(evalBytes(v, overlay, e), any);
+      return eagerSnapshot(v, overlay, e);
     }
     const candidateRoot = lookupName !== undefined && boundSoFar.has(lookupName);
     const needsRetention = mode !== MIXIN_VALUE_NONE
@@ -16372,7 +16532,7 @@ function dispatch(
         return mapMaybe(evaluated, (group) => {
           const groupMode = mixinGroupMode(group);
           const bytes = groupMode === MIXIN_GROUP_VALUE
-            ? withExcluded(e, hitValue, () => evalBytes(hitValue, hit!.frame, e))
+            ? withExcluded(e, hitValue, () => evalBytes(hitValue, hit!.frame, spliceCtx(e)))
             : emitValue(group);
           return mapMaybe(bytes, resolved =>
             snapshotPreparedMixinValue(group, groupMode, resolved, e, retain!));
@@ -16407,7 +16567,7 @@ function dispatch(
     const prepared = substituteClosureVarArgs(call1, frame, e, true, spreadValueBindings);
     const valueBearing = isValueBearingMixinCall(prepared);
     const call2 = valueBearing ? prepared.call : prepared;
-    const trackValue = valueSpread || valueBearing;
+    const trackValue = valueSpread || valueBearing || e.compressedBindings !== undefined;
     const trackMode = (trackPlugin ? TRACK_PLUGIN_SOURCE : 0)
       | (trackValue ? TRACK_VALUE_SOURCE : 0);
     const boundSources: BoundSourceTracker | undefined = trackMode !== 0
@@ -16554,26 +16714,27 @@ function expandSpreadArgs(
         throw new Error('A deferred mixin call cannot be used as a spread argument.');
       }
       if (classifyMixinValueSource(source, frame, e) === MIXIN_VALUE_NONE) {
-        const resolved = resolveCaller(source);
+        /* [compress] Evaluated once, typed, so each piece carries the item it folds from. */
+        const resolved = e.compressedBindings === undefined
+          ? mapMaybe(resolveCaller(source), bytes => pushSpread(args, bytes))
+          : mapMaybe(evalTypedSlot(source, frame, spliceCtx(e), true), (value) => {
+              pushTypedSpread(args, expanded, value, e, undefined, false);
+            });
         if (isThenable(resolved)) {
           const at = index;
-          return resolved.then((bytes) => {
-            pushSpread(args, bytes);
-            return step(at + 1);
-          });
+          return resolved.then(() => step(at + 1));
         }
-        pushSpread(args, resolved);
         continue;
       }
       const spreadValue = evalTypedSpread(source, frame, e);
       if (isThenable(spreadValue)) {
         const at = index;
         return spreadValue.then((settled) => {
-          valueState = pushTypedSpread(args, expanded, settled, valueState);
+          valueState = pushTypedSpread(args, expanded, settled, e, valueState);
           return step(at + 1);
         });
       }
-      valueState = pushTypedSpread(args, expanded, spreadValue, valueState);
+      valueState = pushTypedSpread(args, expanded, spreadValue, e, valueState);
     }
     return valueState ?? expanded;
   };
@@ -16602,12 +16763,18 @@ function evalTypedSpread(
   return evalTypedSlot(value, frame, e, true);
 }
 
-/** Append one evaluated spread group, retaining typed positional items. */
+/**
+ * Append one evaluated spread group, retaining typed positional items. With
+ * `bearing` off (a plain spread under compress) the items only carry the value
+ * a declaration folds; the call stays an ordinary one.
+ */
 function pushTypedSpread(
   args: CallArg[],
   call: MixinCall,
   value: ValueGroup,
-  state?: ValueBearingSpreadCall
+  e: EvalCtx,
+  state?: ValueBearingSpreadCall,
+  bearing = true
 ): ValueBearingSpreadCall | undefined {
   const items = isValueGroupArray(value)
     ? value
@@ -16619,12 +16786,20 @@ function pushTypedSpread(
       if (!isValueGroupArray(value) && value.type === 'List' && value.sep === '/' && index !== 0) {
         args.push(callArg(any('/')));
       }
-      state = pushTypedSpreadItem(args, call, items[index]!, state);
+      state = pushTypedSpreadItem(args, call, items[index]!, e, state, bearing);
     }
     return state;
   }
   if (!isValueGroupArray(value) && value.type === 'Url') {
-    return pushTypedSpreadItem(args, call, value, state);
+    return pushTypedSpreadItem(args, call, value, e, state, bearing);
+  }
+
+  /*
+   * One value that is not a list. A value compress folds (a dimension, a
+   * color) is one piece; anything else splits as its bytes always have.
+   */
+  if (e.compressedBindings !== undefined && emitCompressed(value) !== emitValue(value)) {
+    return pushTypedSpreadItem(args, call, value, e, state, bearing);
   }
   pushSpread(args, emitValue(value));
   return state;
@@ -16635,7 +16810,9 @@ function pushTypedSpreadItem(
   args: CallArg[],
   call: MixinCall,
   value: ValueGroup,
-  state?: ValueBearingSpreadCall
+  e: EvalCtx,
+  state?: ValueBearingSpreadCall,
+  bearing = true
 ): ValueBearingSpreadCall | undefined {
   const bytes = emitValue(value).trim();
   if (bytes === '') {
@@ -16643,7 +16820,10 @@ function pushTypedSpreadItem(
   }
   const snapshot = any(bytes);
   args.push(callArg(snapshot));
-  if (valueGroupNeedsMixinCarrier(value)) {
+  if (e.compressedBindings !== undefined) {
+    carryCompressed(snapshot, value, e);
+  }
+  if (bearing && valueGroupNeedsMixinCarrier(value)) {
     const bindings = state ?? {
       call,
       valueBindings: new Map<Any, ValueGroup>(),
@@ -16782,7 +16962,6 @@ function flushBlock(
   e: Emit,
   selNode?: SelectorList,
   parentKey?: object | null,
-  owner?: object,
   trailingBlockComments: readonly string[] = EMPTY_LEAF_BLOCK_COMMENTS
 ): MaybePromise<void> {
   /*
@@ -16805,6 +16984,11 @@ function flushBlock(
     }
   }
   const emit = (kept: Leaf[], mergeMode: MergeGroupMode = MERGE_NONE): void => {
+    /* A block of comments the output drops (compress) writes nothing (ledger O6). */
+    if (kept.length === 0 && !trailingBlockComments.some(comment => keepComment(e, comment))) {
+      return;
+    }
+
     // [atrule] indent by the current block depth (0 at top level == prior behavior).
     const idt = blockIndent(e);
     const authoredHeader = e.compress !== true && parentKey === null && selector.length === selNode?.selectors.length
@@ -16851,16 +17035,9 @@ function flushBlock(
       }
       put(e, blockOpen(e));
     }
-    if (owner !== undefined && kept.length === 0 && trailingBlockComments.length === 0) {
-      emitBodyBlockCommentTrivia(owner, e, e.depth > 0 ? INDENT.repeat(e.depth + 1) : INDENT);
-    }
     if (mergeMode !== MERGE_NONE) {
       mergeFold(kept, e, bodyIndent(e), emitLeaf, mergeMode);
     } else {
-      const bodyOwner = owner;
-      const bodyStart = bodyOwner === undefined ? NO_SPAN : bodyStartOf(bodyOwner);
-      const hasBody = bodyStart !== NO_SPAN;
-      let bodyTriviaCursor = hasBody ? bodyStart : 0;
       for (let index = 0; index < kept.length;) {
         const leaf = kept[index]!;
         const sourceOwner = leaf.frame.sourceOwner;
@@ -16877,36 +17054,20 @@ function flushBlock(
           const start = index;
           settledEmission(withSourceOwner(e, sourceOwner, () => {
             for (let at = start; at < end; at++) {
-              const owned = kept[at]!;
-              if (hasBody) {
-                emitBlockCommentTriviaBetween(e, bodyTriviaCursor, statementStartOf(owned.node), INDENT.repeat(e.depth + 1));
-                bodyTriviaCursor = statementEndOf(owned.node) ?? bodyTriviaCursor;
-              }
-              for (const comment of owned.leadingBlockComments ?? []) {
-                putBlockComment(e, INDENT.repeat(e.depth + 1), comment);
-              }
-              emitLeafOwned(owned, e);
+              emitLeafOwned(kept[at]!, e);
             }
           }), leaf.node, e);
           index = end;
           continue;
         }
-        if (hasBody) {
-          emitBlockCommentTriviaBetween(e, bodyTriviaCursor, statementStartOf(leaf.node), INDENT.repeat(e.depth + 1));
-          bodyTriviaCursor = statementEndOf(leaf.node) ?? bodyTriviaCursor;
-        }
-        for (const comment of leaf.leadingBlockComments ?? []) {
-          putBlockComment(e, INDENT.repeat(e.depth + 1), comment);
-        }
         emitLeafOwned(leaf, e);
         index++;
       }
-      if (hasBody) {
-        emitBlockCommentTriviaBetween(e, bodyTriviaCursor, bodyOwner === undefined ? bodyTriviaCursor : bodyEndOf(bodyOwner), INDENT.repeat(e.depth + 1));
-      }
     }
+
+    /* The body's comments after its last leaf (queueBodyTriviaTail). */
     for (const comment of trailingBlockComments) {
-      putBlockComment(e, INDENT.repeat(e.depth + 1), comment);
+      putBlockComment(e, bodyIndent(e), comment);
     }
     emitBlockClose(e, idt, lb);
 
@@ -16983,11 +17144,28 @@ function dedupGroup(group: Leaf[], e: Emit): MaybePromise<Leaf[]> {
     if (!suppressed) {
       return group;
     }
+
+    /*
+     * A dropped duplicate's leading comments are trivia, not part of the
+     * declaration: they stay, ahead of the next declaration kept (the later
+     * occurrence always is).
+     */
     const out: Leaf[] = [];
+    let carried: string[] | null = null;
     for (let i = 0; i < group.length; i++) {
-      if (!suppressed.has(i)) {
-        out.push(group[i]!);
+      const leaf = group[i]!;
+      if (suppressed.has(i)) {
+        if (leaf.leadingBlockComments !== null && leaf.leadingBlockComments.length !== 0) {
+          (carried ??= []).push(...leaf.leadingBlockComments);
+        }
+        continue;
       }
+      if (carried !== null) {
+        out.push({ ...leaf, leadingBlockComments: [...carried, ...leaf.leadingBlockComments ?? []] });
+        carried = null;
+        continue;
+      }
+      out.push(leaf);
     }
     return out;
   };
@@ -17519,10 +17697,45 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
   emitLeafOwned(leaf, e, atRoot);
 }
 
+/**
+ * Write a declaration's value, for both writers. A custom property's value is
+ * its authored text, comments included; any other value is evaluated. Returns
+ * whether the value settles after the walk.
+ */
+function putDeclarationValue(
+  e: Emit,
+  node: Declaration,
+  frame: Frame,
+  continuationIndent: string,
+  important: boolean,
+  onNewLine: boolean,
+  isCustom: boolean,
+  mark: DropMark
+): boolean {
+  const customValue = isCustom ? customPropertyValueWithTrivia(node.value, frame, e) : null;
+  if (customValue === null) {
+    const prevElide = e.elideSink;
+    e.elideSink = mark.sink; // [null] this declaration's elision, not an enclosing one
+    const deferred = putValue(e, node.value, frame, isValueSlotArray(node.value) ? undefined : node.value, continuationIndent, important, onNewLine) === null; // [whitespace] continuation indent
+    e.elideSink = prevElide;
+    return deferred;
+  }
+  const valStart = e.chunks.length;
+  const written = (value: string): string => (important ? normalizeImportant(value, e.compress === true) : value);
+  if (isThenable(customValue)) {
+    putPending(e, mapMaybe(customValue, written));
+  } else {
+    put(e, written(customValue));
+  }
+  if (e.positions && !isValueSlotArray(node.value)) {
+    e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.chunks.length, source: srcFile(e) });
+  }
+  return false;
+}
+
 /** Emit one leaf after its source owner/trivia are already active. */
 function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
   const { node, frame } = leaf;
-  const start = e.chunks.length;
 
   /*
    * [atrule] a declaration/comment sits one level in from its container's depth.
@@ -17530,6 +17743,12 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
    * left at depth 0 rather than one level in.
    */
   const idt = atRoot ? blockIndent(e) : bodyIndent(e);
+
+  /* The comments queued ahead of the leaf precede it, outside its mapped span. */
+  for (const comment of leaf.leadingBlockComments ?? []) {
+    putBlockComment(e, idt, comment);
+  }
+  const start = e.chunks.length;
   if (node.type === 'Declaration') {
     assertDeclarationValueIsNotRuleset(node, frame, e);
     const name = declName(node, frame, e);
@@ -17541,7 +17760,6 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
       });
     }
     const mark = dropMark(e);
-    let deferred = false;
     const isCustom = name.startsWith('--');
     e.lastDeclCustom = isCustom; // [compress] gate the last-`;` drop in emitBlockClose
     put(e, idt);
@@ -17555,28 +17773,7 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
      */
     put(e, (e.compress === true && !isCustom) || onNewLine ? ':' : ': ');
     const important = node.important === true || leaf.important === true;
-    const customValue = isCustom
-      ? customPropertyValueWithTrivia(node.value, frame, e)
-      : null;
-    if (customValue === null) {
-      const prevElide = e.elideSink;
-      e.elideSink = mark.sink; // [null] this declaration's elision, not an enclosing one
-      deferred = putValue(e, node.value, frame, isValueSlotArray(node.value) ? undefined : node.value, idt + INDENT, important, onNewLine) === null; // [whitespace] continuation indent
-      e.elideSink = prevElide;
-    } else if (isThenable(customValue)) {
-      const i = e.chunks.length;
-      e.chunks.push('');
-      e.pending.push({
-        i,
-        p: Promise.resolve(mapMaybe(customValue, value => important ? normalizeImportant(value, e.compress === true) : value))
-      });
-    } else {
-      const valStart = e.chunks.length;
-      put(e, important ? normalizeImportant(customValue, e.compress === true) : customValue);
-      if (e.positions && !isValueSlotArray(node.value)) {
-        e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.chunks.length, source: srcFile(e) });
-      }
-    }
+    const deferred = putDeclarationValue(e, node, frame, idt + INDENT, important, onNewLine, isCustom, mark);
     if (e.positions) {
       e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
     }
@@ -17594,18 +17791,11 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
       e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
     }
   } else if (node.type === 'FunctionCall') {
-    const bytes = statementCallBytes(node, frame, e);
-    const asLine = (b: string): string => (b.length === 0 ? '' : idt + b + nl(e));
-    if (isThenable(bytes)) {
-      // [async] reserve the call's slot in source order; its settled line fills it after the walk
-      const i = e.chunks.length;
-      e.chunks.push('');
-      e.pending.push({ i, p: Promise.resolve(mapMaybe(bytes, asLine)) });
-    } else if (bytes.length !== 0) {
-      put(e, asLine(bytes));
-      if (e.positions) {
-        e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
-      }
+    if (leaf.callBytes !== null) {
+      put(e, idt + leaf.callBytes + nl(e));
+    }
+    if (e.positions) {
+      e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
     }
   } else if (node.type === 'AtRuleBlock') {
     /*
@@ -17634,9 +17824,7 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
       const asBytes = (l: ImportDocument | undefined): string =>
         l !== undefined && 'inline' in l ? idt + l.inline + '\n' : '';
       if (isThenable(loaded)) {
-        const i = e.chunks.length;
-        e.chunks.push('');
-        e.pending.push({ i, p: Promise.resolve(mapMaybe(loaded, asBytes)) });
+        putPending(e, mapMaybe(loaded, asBytes));
       } else {
         put(e, asBytes(loaded));
       }
@@ -18898,9 +19086,9 @@ function statementCallBytes(node: FunctionCall, frame: Frame, e: Emit): MaybePro
  * at document scope — no trailing `;`), so an `e(...)` escape emits its inner
  * text. Emitted at the current indent; an empty result contributes nothing.
  */
-function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precomputed?: string): MaybePromise<void> {
+function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit): MaybePromise<void> {
   const start = e.chunks.length;
-  const emitBytes = (bytes: string): void => {
+  return mapMaybe(statementCallBytes(node, frame, e), (bytes) => {
     if (bytes.length === 0) {
       return;
     }
@@ -18912,10 +19100,7 @@ function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precompute
     if (e.positions) {
       e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
     }
-  };
-  return precomputed === undefined
-    ? mapMaybe(statementCallBytes(node, frame, e), emitBytes)
-    : emitBytes(precomputed);
+  });
 }
 
 /**
@@ -19573,7 +19758,7 @@ function writeCollapsedAtRuleBlock(
        * top-level shape (bare direct decls) but still bubbles nested at-rules out
        * of the body's rulesets.
        */
-      ? emitBubbleBody(node.rules, ctx && ctx.length > 0 ? ctx : null, bodyFrame, e)
+      ? emitBubbleBody(node.rules, ctx && ctx.length > 0 ? ctx : null, bodyFrame, e, node)
       : emitAtRuleBody(node.rules, bodyFrame, e, node);
     return mapMaybe(rendered, () => {
       e.atRuleBodyDepth--;
@@ -19605,16 +19790,18 @@ function settledExpansion(result: MaybePromise<void>, call: MixinCall, e: EvalCt
 /**
  * Emit an at-rule body. Consecutive declarations/comments group as DIRECT block
  * children (no selector wrapper). A nested ruleset / at-rule descends one level.
+ * The body's comments are replayed by this walk when it owns the body (`owner`),
+ * or by the replay of the body it is inlined into (`inlineTrivia`).
  */
 function emitAtRuleBody(
   statements: Statement[],
   frame: Frame,
   e: Emit,
-  owner?: object
+  owner?: object,
+  inlineTrivia?: BodyTriviaReplay
 ): MaybePromise<void> {
   const group: Leaf[] = [];
-  const ownerBodyStart = owner === undefined ? NO_SPAN : bodyStartOf(owner);
-  let bodyTriviaCursor = ownerBodyStart === NO_SPAN ? 0 : ownerBodyStart;
+  const bodyTrivia = owner === undefined ? inlineTrivia : bodyTriviaReplay(owner, e);
   const flushDirect = (): void => {
     const trailingBlockComments = takePendingLeafBlockComments(e, group);
     if (group.length > 0) {
@@ -19623,13 +19810,6 @@ function emitAtRuleBody(
         mergeFold(group, e, bodyIndent(e), emitLeaf, mergeMode);
       } else {
         for (const leaf of group) {
-          if (owner !== undefined) {
-            emitBodyBlockCommentTriviaBefore(owner, leaf.node, e, INDENT.repeat(e.depth + 1), bodyTriviaCursor);
-            {
-              const leafEnd = sourceEndOf(leaf.node);
-              bodyTriviaCursor = leafEnd === NO_SPAN ? bodyTriviaCursor : leafEnd;
-            }
-          }
           emitLeaf(leaf, e);
         }
       }
@@ -19648,13 +19828,6 @@ function emitAtRuleBody(
    */
   const nested = (node: Statement, run: () => MaybePromise<void>): MaybePromise<void> => {
     flushDirect();
-    if (owner !== undefined) {
-      emitBodyBlockCommentTriviaBefore(owner, node, e, INDENT.repeat(e.depth + 1), bodyTriviaCursor);
-      {
-        const nodeEnd = sourceEndOf(node);
-        bodyTriviaCursor = nodeEnd === NO_SPAN ? bodyTriviaCursor : nodeEnd;
-      }
-    }
     e.depth++;
     let out: MaybePromise<void>;
     try {
@@ -19678,11 +19851,14 @@ function emitAtRuleBody(
     switch (node.type) {
       case 'Declaration':
       case 'Comment':
-      case 'FunctionCall':
         if (e.referenceImportDepth === 0) {
           addLeaf(group, null, evaluatedLeaf(node, frame), false, e);
         }
         return undefined;
+      case 'FunctionCall':
+        return e.referenceImportDepth === 0
+          ? placeStatementCall(node, frame, e, leaf => addLeaf(group, null, leaf, false, e))
+          : undefined;
       case 'Ruleset':
         return nested(node, () => expandRule(node, null, null, frame, e));
       case 'AtRuleBlock':
@@ -19732,11 +19908,11 @@ function emitAtRuleBody(
           return undefined;
         }
         const body = selectIfBody(node, frame, e);
-        return body ? emitAtRuleBody(body, frame, e) : undefined;
+        return body ? emitAtRuleBody(body, frame, e, undefined, bodyTrivia) : undefined;
       }
       case 'While':
         return e.referenceImportDepth === 0
-          ? runWhile(node, frame, e, rules => emitAtRuleBody(rules, frame, e))
+          ? runWhile(node, frame, e, rules => emitAtRuleBody(rules, frame, e, undefined, bodyTrivia))
           : undefined;
 
       case 'MixinDefinition':
@@ -19758,13 +19934,21 @@ function emitAtRuleBody(
    */
   const run = (index: number): MaybePromise<void> => {
     for (; index < statements.length; index++) {
-      const stepped = one(statements[index]!);
+      const node = statements[index]!;
+      replayBodyTriviaBefore(bodyTrivia, node, group, e);
+      const stepped = one(node);
       if (isThenable(stepped)) {
         const at = index;
         return stepped.then(() => run(at + 1));
       }
     }
+    if (owner !== undefined) {
+      queueBodyTriviaTail(bodyTrivia, group, null, e);
+    }
     flushDirect();
+    if (owner !== undefined) {
+      e.emittedBlockTrivia.closeCopy(bodyTrivia);
+    }
     return undefined;
   };
   return run(0);
@@ -19789,8 +19973,12 @@ function emitBubbleBody(
   statements: Statement[],
   ctx: string[] | null,
   frame: Frame,
-  e: Emit
+  e: Emit,
+  owner?: object,
+  inlineTrivia?: BodyTriviaReplay
 ): MaybePromise<void> {
+  /* The body's comments, replayed as {@link emitAtRuleBody} replays them. */
+  const bodyTrivia = owner === undefined ? inlineTrivia : bodyTriviaReplay(owner, e);
   // [nesting] opaque ancestor for `&`-less rules composed inside the bubbled context.
   const ctxAncestor = ctx === null ? null : wrapIsList(ctx);
   const group: Leaf[] = [];
@@ -19820,7 +20008,7 @@ function emitBubbleBody(
       // Wrap the direct declarations in the propagated selector context.
       e.depth++;
       const emitted = flushBlock(
-        ctx, group, e, undefined, undefined, undefined, trailingBlockComments
+        ctx, group, e, undefined, undefined, trailingBlockComments
       );
       if (isThenable(emitted)) {
         return emitted.then(
@@ -19894,14 +20082,24 @@ function emitBubbleBody(
   const run = (start: number): MaybePromise<void> => {
     for (let index = start; index < statements.length; index++) {
       const node = statements[index]!;
+      replayBodyTriviaBefore(bodyTrivia, node, group, e);
       switch (node.type) {
         case 'Declaration':
         case 'Comment':
-        case 'FunctionCall':
           if (e.referenceImportDepth === 0) {
             addLeaf(group, null, evaluatedLeaf(node, frame), false, e);
           }
           break;
+        case 'FunctionCall': {
+          if (e.referenceImportDepth !== 0) {
+            break;
+          }
+          const placed = placeStatementCall(node, frame, e, leaf => addLeaf(group, null, leaf, false, e));
+          if (isThenable(placed)) {
+            return placed.then(() => run(index + 1));
+          }
+          break;
+        }
         case 'Ruleset':
           if (deferStaticChildren) {
             deferredChildren!.push(() => {
@@ -20229,7 +20427,7 @@ function emitBubbleBody(
           }
           const body = selectIfBody(node, frame, e);
           if (body) {
-            const emitted = emitBubbleBody(body, ctx, frame, e);
+            const emitted = emitBubbleBody(body, ctx, frame, e, undefined, bodyTrivia);
             if (isThenable(emitted)) {
               return emitted.then(() => run(index + 1));
             }
@@ -20240,7 +20438,7 @@ function emitBubbleBody(
           if (e.referenceImportDepth !== 0) {
             break;
           }
-          const emitted = runWhile(node, frame, e, rules => emitBubbleBody(rules, ctx, frame, e));
+          const emitted = runWhile(node, frame, e, rules => emitBubbleBody(rules, ctx, frame, e, undefined, bodyTrivia));
           if (isThenable(emitted)) {
             return emitted.then(() => run(index + 1));
           }
@@ -20255,6 +20453,10 @@ function emitBubbleBody(
           markSilentStatementBlockCommentTrivia(node, e);
           break;
       }
+    }
+    if (owner !== undefined) {
+      queueBodyTriviaTail(bodyTrivia, group, null, e);
+      e.emittedBlockTrivia.closeCopy(bodyTrivia);
     }
     const flushed = flushDirect();
     if (deferredChildren === null) {
@@ -20332,11 +20534,13 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
 /** Emit one nested leaf after its source owner/trivia are already active. */
 function emitNestedLeafOwned(leaf: Leaf, e: Emit): void {
   const { node, frame } = leaf;
-  const start = e.chunks.length;
   const idt = blockIndent(e);
+
+  /* The comments queued ahead of the leaf precede it, outside its mapped span. */
   for (const comment of leaf.leadingBlockComments ?? []) {
     putBlockComment(e, idt, comment);
   }
+  const start = e.chunks.length;
   if (node.type === 'Declaration') {
     assertDeclarationValueIsNotRuleset(node, frame, e);
     const mark = dropMark(e);
@@ -20352,17 +20556,10 @@ function emitNestedLeafOwned(leaf: Leaf, e: Emit): void {
 
     // [compress] a custom property keeps its `: ` separator verbatim (see emitLeafOwned).
     put(e, (e.compress === true && !isCustom) || onNewLine ? ':' : ': ');
-    const valStart = e.chunks.length;
     const important = node.important === true || leaf.important === true;
-    const prevElide = e.elideSink;
-    e.elideSink = mark.sink; // [null] this declaration's elision, not an enclosing one
-    const deferred = putValue(e, node.value, frame, isValueSlotArray(node.value) ? undefined : node.value, idt + INDENT, important, onNewLine) === null; // [whitespace] continuation indent
-    e.elideSink = prevElide;
+    const deferred = putDeclarationValue(e, node, frame, idt + INDENT, important, onNewLine, isCustom, mark);
     markSilentStatementBlockCommentTrivia(node, e);
     if (e.positions) {
-      if (!isValueSlotArray(node.value)) {
-        e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.chunks.length, source: srcFile(e) });
-      }
       e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
     }
     emitInlineBlockCommentTriviaAfter(node, e);
@@ -20702,14 +20899,13 @@ function writeNestedRule(
     const finish = (): MaybePromise<void> => {
       e.depth--;
       if (e.chunks.length === afterHeader) {
-        if (hasBodyBlockCommentTrivia(rule, e)) {
-          emitBodyBlockCommentTrivia(rule, e, INDENT.repeat(e.depth + 1));
-        } else {
-          // Nothing emitted in the block: drop the header/braces (rewind).
-          e.chunks.length = markChunks;
-          if (e.positions) {
-            e.positions.length = markPos;
-          }
+        /*
+         * Nothing emitted in the block, not even a comment (the walk writes the
+         * body's own): drop the header/braces (rewind, ledger O6).
+         */
+        e.chunks.length = markChunks;
+        if (e.positions) {
+          e.positions.length = markPos;
         }
       } else {
         emitBlockClose(e, idt, lb);
@@ -20838,15 +21034,12 @@ function writeNestedAtRuleBlock(
   const finish = (): void => {
     e.depth--;
     if (e.chunks.length === afterHeader) {
-      if (hasBodyBlockCommentTrivia(node, e)) {
-        emitBodyBlockCommentTrivia(node, e, INDENT.repeat(e.depth + 1));
-      } else {
-        e.chunks.length = markChunks;
-        if (e.positions) {
-          e.positions.length = markPos;
-        }
-        return;
+      /* Nothing emitted, not even a comment (the walk writes the body's own). */
+      e.chunks.length = markChunks;
+      if (e.positions) {
+        e.positions.length = markPos;
       }
+      return;
     }
     emitBlockClose(e, idt);
     if (e.positions) {
