@@ -150,9 +150,11 @@ describe('V19 one-evaluator projection ratchet', () => {
     // `rejectComposedMemberCall` turns a call on a @compose member into an error
     // instead of a dropped call, and `unresolvedReference` makes an unbound
     // reference head a miss in both value evaluators.
-    expect(occurrences(/^function |^async function /gmu)).toBe(478);
+    // -4 functions and -1 `new Set`: `settledCandidates`, `descendNamespacePath`,
+    // `resolveToMixinCall` and `joinPreludeParts` had no callers left.
+    expect(occurrences(/^function |^async function /gmu)).toBe(474);
     expect(occurrences(/new Map/gu)).toBe(72);
-    expect(occurrences(/new Set/gu)).toBe(39);
+    expect(occurrences(/new Set/gu)).toBe(38);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

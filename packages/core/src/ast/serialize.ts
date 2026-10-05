@@ -2821,9 +2821,8 @@ function findPathInScope(
  * [mixin-match] Source-ordered candidates for a namespaced/compound call, found
  * by element-value descent. Walk the scope chain from the call site; the FIRST
  * frame whose own rulesets yield a match wins (Less iterates `context.frames`
- * and uses the first that `find`s the selector). Supersedes the old
- * one-key-per-segment `descendNamespacePath` + `ownCandidates`, which could not
- * match a compound def (`.jo.ki()`), an `&`-nested step (`.amp.support()`), or a
+ * and uses the first that `find`s the selector). A one-key-per-segment descent
+ * could not match a compound def (`.jo.ki()`), an `&`-nested step (`.amp.support()`), or a
  * call whose compound run spans a descendant-nested definition
  * (`.do.re.mi.fa.sol.la.si()`). */
 function findPathCandidates(frame: Frame, call: MixinCall, e: EvalCtx, homes: Map<MixinDefinition, Frame>): MixinDefinition[] {
@@ -14329,26 +14328,13 @@ function expandApply(
   return mapMaybe(gather, () => run(0));
 }
 
-/** Candidate lookup in a probe position that cannot suspend (see {@link settledDispatch}). */
-function settledCandidates(list: MaybePromise<MixinDefinition[]>, call: MixinCall, e: EvalCtx): MixinDefinition[] {
-  if (isThenable(list)) {
-    observeRejectedThenable(list);
-    throw ERR.asyncInSyncPosition({
-      node: call,
-      ...callSiteLocation(call, e),
-      meta: { where: 'mixin candidate lookup in a synchronous probe position' }
-    });
-  }
-  return list;
-}
-
 /**
- * Dispatch in a position that cannot suspend. Namespace-path descent builds a
- * scope index, and a transparent-shell probe answers a structural question
- * before any emission — both are reached from callers that would have to be
- * restructured, so an awaitable dispatch is reported rather than guessed at.
+ * Dispatch in a position that cannot suspend. Namespace-path descent dispatches
+ * an intermediate namespace's implicit zero-argument call while it builds a
+ * scope index, from a caller that would have to be restructured, so an
+ * awaitable dispatch is reported rather than guessed at.
  *
- * TODO(maybe-promise-sync-islands): fold these two onto the awaitable lane.
+ * TODO(maybe-promise-sync-islands): fold this onto the awaitable lane.
  */
 function settledDispatch(selected: MaybePromise<Selection[]>, call: MixinCall, e: EvalCtx): Selection[] {
   if (isThenable(selected)) {
@@ -14360,47 +14346,6 @@ function settledDispatch(selected: MaybePromise<Selection[]>, call: MixinCall, e
     });
   }
   return selected;
-}
-
-/**
- * Descend a namespace path (`#ns > .a`) to the scope frame in which the
- * final mixin dispatches. Each segment resolves a ruleset by own-local selector
- * and layers its body as a new scope. Returns `null` if any segment is unknown.
- */
-function descendNamespacePath(path: MixinCall['path'], frame: Frame): Frame | null {
-  let scope: Frame | null = frame;
-  for (const seg of path) {
-    let rules: Ruleset[] | undefined;
-    let owner: Frame | null = null;
-    for (let f: Frame | null = scope; f; f = f.parent) {
-      const hit = f.rulesets !== undefined || f.statements ? frameRulesets(f)?.get(seg.selector) : undefined;
-      if (hit?.length) {
-        rules = hit;
-        owner = f;
-        break;
-      }
-    }
-    if (!rules) {
-      return null;
-    }
-
-    /*
-     * Imported facts execute in a particular render placement. A Ruleset found by
-     * namespace lookup contributes both that placement's already-published
-     * import prefix and its authored body, matching lexical import splice order.
-     */
-    const bodies: Statement[] = rules.flatMap(r => [
-      ...(owner?.rulePlacements?.get(r)?.importedRules ?? []),
-      ...r.rules
-    ]);
-    scope = {
-      parent: scope,
-      mixins: collectMixins(bodies),
-      declIndex: collectDeclIndex(bodies), cells: null, reassign: null,
-      statements: bodies
-    };
-  }
-  return scope;
 }
 
 /** Move selected typed snapshots onto the activation that owns their bindings. */
@@ -14644,29 +14589,6 @@ function pickIfBranch(node: IfValue, frame: Frame | null, e: EvalCtx): ValueSlot
  * @x();` splices the chosen branch's declarations. Returns `undefined` when the
  * chain terminates in anything that is not a detached ruleset.
  */
-/** Follow a `@var` alias chain to a MIXIN-CALL binding (`@alias: .something(foo)`),
- *  so `@alias()` / a `@another-mixin()` parameter dispatches that call. Returns
- *  undefined when the chain does not end at a `MixinCall` (e.g. a detached ruleset). */
-function resolveToMixinCall(node: Binding | undefined, frame: Frame | null): MixinCall | undefined {
-  const seen = new Set<Binding>();
-  let cur: Binding | undefined = node;
-  while (cur && !seen.has(cur)) {
-    seen.add(cur);
-    if (isValueSlotArray(cur)) {
-      return undefined;
-    }
-    if (cur.type === 'MixinCall') {
-      return cur;
-    }
-    if (cur.type === 'Lookup' && cur.kind === 'var') {
-      cur = lookupVar(frame, literalName(cur));
-      continue;
-    }
-    return undefined;
-  }
-  return undefined;
-}
-
 function resolveValueBlock(node: Binding, frame: Frame | null, e: EvalCtx): ValueBlock | undefined {
   const seen = new Set<Binding>();
   let cur: Binding | undefined = node;
@@ -18328,7 +18250,11 @@ function evalSupportsPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): 
   }
 }
 
-/** The `SupportsPreludePart[]` analogue of {@link joinPreludeParts}. */
+/**
+ * Concatenate prelude fragments in SOURCE order. Stays synchronous while every
+ * fragment is settled; only the first awaitable fragment moves the join onto
+ * `Promise.all`, which preserves positional order however the tail settles.
+ */
 function concatPreludeParts(parts: Array<MaybePromise<SupportsPreludePart[]>>): MaybePromise<SupportsPreludePart[]> {
   const out: SupportsPreludePart[] = [];
   for (let index = 0; index < parts.length; index += 1) {
@@ -18337,29 +18263,6 @@ function concatPreludeParts(parts: Array<MaybePromise<SupportsPreludePart[]>>): 
       return Promise.all(parts.slice(index)).then(rest => [...out, ...rest.flat()]);
     }
     out.push(...part);
-  }
-  return out;
-}
-
-/**
- * Concatenate prelude fragments in SOURCE order. Stays entirely synchronous
- * while every fragment is settled — the ordinary prelude allocates one array and
- * no promise — and only the first awaitable fragment moves the join onto
- * `Promise.all`, which preserves positional order regardless of which fragment
- * settles first.
- */
-function joinPreludeParts(parts: Array<MaybePromise<string>>): MaybePromise<string> {
-  let out = '';
-  for (let index = 0; index < parts.length; index += 1) {
-    const part = parts[index]!;
-    if (isThenable(part)) {
-      /*
-       * Only the remaining tail needs awaiting; what is already joined stays put,
-       * so the result reads in source order however the tail settles.
-       */
-      return Promise.all(parts.slice(index)).then(rest => out + rest.join(''));
-    }
-    out += part;
   }
   return out;
 }
