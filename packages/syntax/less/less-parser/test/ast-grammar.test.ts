@@ -6999,7 +6999,16 @@ describe('Less AST grammar facts', () => {
     if (!isStylesheet(result.value)) {
       throw new TypeError('expected Stylesheet');
     }
-    expect(serialize(result.value).css).toContain('value: 42;');
+
+    // `@theme` is unbound, so its member read is an eval error; the call chain alone evaluates.
+    expect(() => serialize(result.value)).toThrow(expect.objectContaining({ code: 'resolve/name-not-found' }));
+    const bound = run(lessGrammar.Document, source.replace(' member: @theme[key].next(1);', ''), {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    });
+    if (!isStylesheet(bound.value)) {
+      throw new TypeError('expected Stylesheet');
+    }
+    expect(serialize(bound.value).css).toContain('value: 42;');
   });
 
   it('constructs $@variable namespace property keys without flattening their indirection', () => {
