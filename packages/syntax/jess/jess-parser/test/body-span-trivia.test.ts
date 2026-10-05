@@ -68,9 +68,13 @@ describe('Jess block body spans', () => {
     expect(css('.a {\n  /* in */\n  color: red;\n}\n')).toBe('.a {\n  /* in */\n  color: red;\n}\n');
   });
 
+  /*
+   * `.a` writes no declarations of its own, so its comment gets a comment-only
+   * block at its source position among its nested rules (ledger G28).
+   */
   it('emits the inner comment of every nesting level against its own body', () => {
     expect(css('.a {\n  /* outer */\n  .b {\n    /* inner */\n    color: red;\n  }\n}\n'))
-      .toBe('.a .b {\n  /* inner */\n  color: red;\n}\n');
+      .toBe('.a {\n  /* outer */\n}\n.a .b {\n  /* inner */\n  color: red;\n}\n');
   });
 
   it('emits a block comment authored inside an otherwise empty ruleset', () => {
@@ -82,26 +86,15 @@ describe('Jess block body spans', () => {
     expect(css('.a {\n  // gone\n  color: red;\n}\n')).toBe('.a {\n  color: red;\n}\n');
   });
 
-  /*
-   * `/* outer *\/` sits in `.a`'s body but before `.b`, and `.b` is a nested
-   * ruleset with no source span, so nothing bounds the run to a position. The
-   * body-end flush belongs to the frame that emitted declarations, which `.a`
-   * has none of, so the run is never claimed. `@jesscss/css-parser` drops it
-   * identically — this is the missing STATEMENT span, not the body span.
-   */
-  it('PINNED DEFECT — drops a body comment that precedes a nested ruleset', () => {
+  /* Every body's comments are replayed by that body's own walk (ledger G28). */
+  it('keeps a body comment that precedes a nested ruleset', () => {
     expect(css('.a {\n  /* outer */\n  .b { color: red; }\n}\n'))
-      .toBe('.a .b {\n  color: red;\n}\n');
+      .toBe('.a {\n  /* outer */\n}\n.a .b {\n  color: red;\n}\n');
   });
 
-  /*
-   * `emitAtRuleBody` replays only BEFORE a statement with a source span, and
-   * has no closing flush against the body end the way a ruleset body does. Same
-   * bytes from `@jesscss/css-parser`.
-   */
-  it('PINNED DEFECT — drops a comment inside an at-rule block body', () => {
+  it('keeps a comment inside an at-rule block body (jess#346)', () => {
     expect(css('@media screen {\n  /* in */\n  .a { color: red; }\n}\n'))
-      .toBe('@media screen {\n  .a {\n    color: red;\n  }\n}\n');
+      .toBe('@media screen {\n  /* in */\n  .a {\n    color: red;\n  }\n}\n');
   });
 
   /*

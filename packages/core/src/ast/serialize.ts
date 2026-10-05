@@ -9756,7 +9756,11 @@ function statementStartOf(node: Statement): number | undefined {
   if (node.type === 'VariableDeclaration') {
     return undefined;
   }
-  const start = node.type === 'Ruleset' ? sourceStartOf(node.selector) : sourceStartOf(node);
+
+  /* A keyframe block spans the Ruleset but not its selector; read whichever is spanned. */
+  const start = node.type === 'Ruleset' && sourceStartOf(node.selector) !== NO_SPAN
+    ? sourceStartOf(node.selector)
+    : sourceStartOf(node);
   return start === NO_SPAN ? undefined : start;
 }
 
@@ -20379,6 +20383,7 @@ function emitBubbleBody(
 ): MaybePromise<void> {
   /* The body's comments, replayed as {@link emitAtRuleBody} replays them. */
   const bodyTrivia = owner === undefined ? inlineTrivia : bodyTriviaReplay(owner, e);
+
   // [nesting] opaque ancestor for `&`-less rules composed inside the bubbled context.
   const ctxAncestor = ctx === null ? null : wrapIsList(ctx);
   const group: Leaf[] = [];

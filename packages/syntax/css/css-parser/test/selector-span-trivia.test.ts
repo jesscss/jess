@@ -75,15 +75,18 @@ describe('CSS top-level statement spans', () => {
   });
 
   /*
-   * The at-rule block span is what keeps this OUT of the top-level replay. With
-   * no span on the block the run is not excluded and surfaces after the closing
-   * brace, in the wrong place. Dropping it here is correct pending block
-   * interior re-emission, which no dialect has yet; emitting it in the wrong
-   * position would not be.
+   * The at-rule block span keeps this OUT of the top-level replay; the body's
+   * own walk writes it between the rules it sits between (jess#346).
    */
-  it('PINNED DEFECT — drops a comment inside an at-rule body rather than misplacing it', () => {
+  it('keeps a comment inside an at-rule body between the rules it sits between', () => {
     expect(css('x { p: v; }\n@media test {\n  a { p: v; }\n  /* inner */\n  b { p: v; }\n}\ny { p: v; }\n'))
-      .toBe('x {\n  p: v;\n}\n@media test {\n  a {\n    p: v;\n  }\n  b {\n    p: v;\n  }\n}\ny {\n  p: v;\n}\n');
+      .toBe('x {\n  p: v;\n}\n@media test {\n  a {\n    p: v;\n  }\n  /* inner */\n  b {\n    p: v;\n  }\n}\ny {\n  p: v;\n}\n');
+  });
+
+  /* A keyframe block spans its Ruleset but not its selector. */
+  it('keeps a comment between keyframe blocks', () => {
+    expect(css('@keyframes k {\n  from { opacity: 0; }\n  /* mid */\n  to { opacity: 1; }\n}\n'))
+      .toBe('@keyframes k {\n  from {\n    opacity: 0;\n  }\n  /* mid */\n  to {\n    opacity: 1;\n  }\n}\n');
   });
 
   /*
