@@ -314,9 +314,9 @@ Emits minified CSS. In 5.x, compressed output is a supported feature rather than
 
 | | |
 |---|---|
-| `jess --allow-remote-imports cdn.example.com` | `styles.config.*`: `compile: { plugins: [remoteImportPlugin({ allow: ['cdn.example.com'] })] }` |
+| no `lessc` flag | `styles.config.*`: `compile: { plugins: [remoteImportPlugin({ allow: ['cdn.example.com'] })] }` |
 
-Less 4.x downloaded every `@import` of an `http(s)://` URL. Less 5 downloads nothing by default: a URL import is left in the output as a plain CSS `@import`. To import Less from hosts you trust, install `@jesscss/plugin-remote-import` and add it to `compile.plugins` in a `styles.config.*` file beside (or above) your entry file. That config file is read by every Less 5 entry point that compiles a file: `lessc`, `less.render()` with a `filename`, and the `jess` CLI. The `jess` CLI also takes the hosts directly: `--allow-remote-imports cdn.example.com,fonts.example.com` (comma-separated, and the flag may repeat).
+Less 4.x downloaded every `@import` of an `http(s)://` URL. Less 5 downloads nothing by default: a URL import is left in the output as a plain CSS `@import`. A URL import that can never be plain CSS — `(reference)`, `(less)`, `(inline)`, `@compose` — is a compile error instead. To import Less from hosts you trust, install `@jesscss/plugin-remote-import` and add it to `compile.plugins` in a `styles.config.*` file beside (or above) your entry file. That config file is read by every Less 5 entry point that compiles a file: `lessc`, `less.render()` with a `filename`, and the `jess` CLI. The `jess` CLI also takes the hosts directly: `--allow-remote-imports cdn.example.com,fonts.example.com` (comma-separated, and the flag may repeat).
 
 ```js
 // styles.config.mjs
@@ -338,11 +338,11 @@ export default {
 With the plugin configured:
 
 - Only `https://` URLs on an `allow` host are downloaded. Hosts are matched exactly by name — no wildcards, no ports, and no IP addresses. A host that resolves to a private, loopback or link-local address is refused.
-- A URL Less treats as CSS — a `.css` file, or one marked `(css)` — is never downloaded, on an allowed host or not.
+- A URL Less treats as CSS — one written with a `.css` file name, such as `@import "@{cdn}/theme.css"`, or one marked `(css)` — is never downloaded, on an allowed host or not. A URL spelled entirely by a variable (`@import "@{url}"`) is judged by how it is written, not its value, so it follows the rules below.
 - A URL on an allowed host is downloaded exactly as written, with or without a file extension. One without an extension is parsed in the language of the file that imports it.
 - A URL without a file extension that isn't downloaded — on another host, an IP address, or plain `http://` — stays in the output as a plain CSS `@import`, so a Google Fonts stylesheet such as `@import url("https://fonts.googleapis.com/css?family=Open+Sans");` keeps working.
 - Any other URL import that isn't downloaded — one with a file extension, such as `.less`, or an `(inline)`, `(reference)` or `(less)` import, which can never stay CSS — is a compile error. `(optional)` does not hide that error.
-- With a media query, an import that stays CSS comes out wrapped as `@media screen { @import "…"; }`, which browsers ignore; mark it `(css)` to get `@import "…" screen;`.
+- An import that stays CSS keeps its media query: `@import url("https://fonts.googleapis.com/css?family=Open+Sans") screen;` comes out as written. An import that is downloaded is wrapped in `@media screen { … }`, as a local one is.
 - `(optional)` skips a URL the server answers with 404 or 410, as it skips a missing local file.
 - `@import (inline)` of an allowed URL downloads it and inlines it like a local file.
 - Every path inside a downloaded file — in `@import`, `@import (inline)`, `data-uri()`, `@use` or `@plugin` — is resolved against the file's URL, so `@import "vars.less"` in `https://cdn.example.com/theme/main.less` loads `https://cdn.example.com/theme/vars.less`. A downloaded file can't read a file from your disk.

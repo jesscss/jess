@@ -3,7 +3,9 @@
 **Opt-in `@import` of stylesheets over https, from hosts you name.**
 
 Without this plugin, Jess and Less 5 never download anything: an
-`@import "https://…"` stays in the output as a plain CSS `@import`. With it, a
+`@import "https://…"` stays in the output as a plain CSS `@import`, and one that
+cannot be CSS — `(reference)`, `(less)`, `(inline)`, `@compose` — is an error.
+With it, a
 URL import whose host is on your allow list is fetched and imported like a
 local file. The `jess` CLI adds it with
 `--allow-remote-imports cdn.example.com`.
@@ -25,12 +27,17 @@ What it enforces:
   the hosts a stylesheet may link to. Exact host names; no wildcards, no ports,
   and never an IP address. A host that resolves to a private, loopback or
   link-local address is refused.
-- **Less decides what is CSS first.** A `.css` or `(css)` URL is never fetched.
-  An extensionless URL that is not fetched — Google Fonts' `/css?family=…` —
-  stays a plain CSS `@import`. Any other URL that is not fetched — a `.less`
-  URL, or an `(inline)`, `(reference)`, `(less)` or `@compose` import — is an
-  error, even under `(optional)`. `(optional)` skips a URL the server answers
-  with 404 or 410.
+- **Less decides what is CSS first.** A URL written with a `.css` path
+  (`@import "@{cdn}/theme.css"` included) or marked `(css)` is never fetched.
+  One spelled entirely by a variable is classified by how it is written, not
+  by its value, so it is not CSS: off the list it is refused like a `.less` URL. An extensionless URL that is
+  not fetched — Google Fonts' `/css?family=…` — stays a plain CSS `@import`,
+  media query included. Any other URL that is not fetched — a `.less` URL, or
+  an `(inline)`, `(reference)`, `(less)` or `@compose` import — is an error,
+  even under `(optional)`. `(optional)` skips a URL the server answers with 404
+  or 410. In an SCSS file only a `.css` URL is CSS so far: Sass's rule that
+  every `http(s)://` and `url()` import is plain CSS is not applied yet, so such
+  an import goes through the allow list as above.
 - **https only**, **same-origin redirects only** (at most five), a **size cap**
   (`maxBytes`, default 512 KiB) and a **time limit** (`timeout`, default 5 s).
 - **Every path inside a downloaded file resolves against its URL** — in

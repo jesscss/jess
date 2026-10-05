@@ -4073,6 +4073,137 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: 2026-10-05 remote-import follow-up review fixes
+  (`docs/design/REMOTE-IMPORTS-NETWORK-POLICY.md` §6/§8). An import the media
+  desugar wrapped that stays a CSS terminal is written as one `@import "…" q;`
+  instead of `@media q { @import "…"; }`, which browsers ignore (ledger A10: a
+  real CSS `@import` carries its query). An import that must load and that no plugin
+  claims is an error instead of an `@import`/`@compose`/`@-import` written out.
+  A `@use` that cannot load is `import/load-failed` at the `@use`, as `@plugin`
+  is `plugin/load-failed`.
+- Architecture surface: the serializer's `expandAtRuleBlock` (new
+  `mediaImportStayingCss`), `emitCssImportAtRule` (an optional media query),
+  the two `getModule` call sites (new `moduleLoadFailed`); Context's
+  `loadImportUncached`.
+- Separation/duplication: the media-wrapped terminal reuses the
+  planned import answer `expandStyleImport` consumes, so the import is asked
+  once; `@use` failures use the attribution shape `@plugin` already had.
+- Cumulative node weight: zero AST/CST node kinds or fields.
+- New traversal: none. `mediaImportStayingCss` reads one `rules.length` and
+  returns for every at-rule block that is not `@media` wrapping exactly one
+  `StyleImport`.
+- New node/materialization: [node construction] the `Error` thrown by
+  `loadImportUncached` for an unclaimed must-load import and the
+  `ImportDocumentRequest` literal `mediaImportStayingCss` builds only when no
+  planned answer exists — both on the import path, not per node; the
+  `moduleLoadFailed` closure is built once per `@use` load.
+- Render path: one extra call per at-rule block, returning on its first test for
+  every block but a media-wrapped import.
+- Helper/API surface: none exported.
+- Metadata mutations: `plannedImportDocuments` gains the entry for a
+  media-wrapped import when no planner recorded one — the same record the
+  planner writes.
+- Review-flagged diff tokens: [node construction] and [routine error control]
+  the must-load refusal and the `@use` failure wrapper above; [array
+  spread/materialization] the `...callSiteLocation(statement, e)` spread into
+  that wrapper's diagnostic, built only when a `@use` fails; [materialized
+  array/object] the `ImportDocumentRequest` literal `mediaImportStayingCss`
+  builds only for a media-wrapped import no planner recorded.
+- Behavior evidence: core `import-at-rule.test.ts` (must-load refusal when
+  unclaimed, media-wrapped terminal) and
+  `module-import-evaluation.test.ts` (`@use` load failure while preparing and
+  while rendering); jess `remote-imports.test.ts` (media-tailed URL left CSS
+  with and without the plugin, the mustLoad cache key, must-load imports
+  without the plugin, `@use` and `@plugin` codes). Each
+  was red with its code path reverted.
+- Evidence: the `benchmark.less` render output (collapseNesting true) is
+  byte-identical to the previous pass (SHA-256
+  `29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8`, 123,223
+  bytes). `measure:less:hotpath` on Node 24.11.1 reported a 52.02 ms median
+  (10.5% RSD) on a shared machine; a baseline only, no speed or neutrality
+  claim.
+- Verdict: accepted as a semantic import change with `performanceClaim: none`.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "context-external-import-dispatch-boundary",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "cases": ["claimed-external-import", "unclaimed-external-terminal", "unclaimed-must-load-refusal", "ordinary-local-import", "import-inside-remote-document"],
+    "why": "An external import no plugin claims stays a CSS terminal unless it must load; then Context refuses it instead of returning an unclaimed result the serializer would write out as a non-CSS at-rule. Local imports take the same path as before.",
+    "dangerTokensJustification": "The refusal is a terminal throw after the existing claim loop, reached only for an unclaimed external specifier that must load; it is never control flow on a successful load.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 52.02,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  },
+  {
+    "id": "core-context-emit-selector-contract",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
+    "cases": [
+      "Context-plugin-source-parser-dispatch",
+      "emit-walk-context-output-option",
+      "Ruleset-interpolated-selector-boundary",
+      "selector-match-string-and-node-combinators",
+      "extend-index-tagged-graft-atoms",
+      "Sequence-subclass-preserving-evaluation",
+      "callable-output-root-property-guard",
+      "serializer-at-rule-and-selector-surface"
+    ],
+    "why": "Context's loadImportUncached refuses an unclaimed must-load external import. The serializer's at-rule surface asks, for a @media block wrapping exactly one StyleImport, whether that import stays a CSS terminal and then writes it as one @import with the query. Semantic output work with no cost-cutting or neutrality claim.",
+    "dangerTokensJustification": "expandAtRuleBlock gains one synchronous call that returns on its first length test for every at-rule but a media-wrapped import; that one reuses the planned import answer and allocates a request only when none was planned.",
+    "behaviorEvidence": "Core import-at-rule.test.ts pins the media-wrapped terminal and the must-load refusal; jess remote-imports.test.ts pins both end to end; each red with its code reverted. benchmark.less output unchanged.",
+    "buildEvidence": "pnpm --filter @jesscss/core build passes; the core suite passes.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 52.02,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  },
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Collection-spread-computed-key-overlay-and-iteration",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "module-callable-explicit-reference-and-css-call-separation",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "The two getModule call sites attribute a failed @use load to the @use as import/load-failed, as @plugin already is plugin/load-failed. No evaluator or value change and no speed claim.",
+    "dangerTokensJustification": "The moduleLoadFailed closure is built once per @use load on the cold module path, not per node.",
+    "behaviorEvidence": "Core module-import-evaluation.test.ts pins the @use failure code while preparing and while rendering; each call site red with its wrapper removed.",
+    "buildEvidence": "pnpm --filter @jesscss/core build passes.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 52.02,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  }
+]
+```
+
 - Latest pass: 2026-10-05 remote-import follow-ups (orchestrator judgment under
   owner delegation, `docs/design/REMOTE-IMPORTS-NETWORK-POLICY.md` §8). The
   allow list now names the hosts that are fetched and inlined, not the ones a

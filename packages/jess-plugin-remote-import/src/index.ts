@@ -231,12 +231,12 @@ export class RemoteImportPlugin implements PluginInterface {
   /**
    * Claims an https import on the allow list: the list names the hosts that are
    * fetched and inlined, not the ones a stylesheet may reference. Less has
-   * already left every URL it classifies as CSS (`.css`, `(css)`) a CSS
-   * `@import`, so any other http(s) or protocol-relative import gets here. Off
-   * the list, an extensionless one — Google Fonts' `/css?family=…` — stays a
-   * CSS `@import` (false), unless it must load (`(inline)`, `(reference)`,
-   * `(less)`, `@compose`); any other cannot be a CSS `@import` and is an error.
-   * Never a request.
+   * already left every URL it classifies as CSS (an authored `.css` path,
+   * `(css)`) a CSS `@import`, so any other http(s) or protocol-relative
+   * import gets here. Off the list, an extensionless one — Google Fonts'
+   * `/css?family=…` — stays a CSS `@import` (false), unless it must load
+   * (`(inline)`, `(reference)`, `(less)`, `@compose`); any other cannot be a
+   * CSS `@import` and is an error. Never a request.
    */
   canResolveImport(specifier: string, _currentDir: string, _searchPaths: string[], mustLoad: boolean): boolean {
     const url = remoteUrl(specifier);

@@ -226,7 +226,11 @@ in this order:
 1. **Less classifies it first.** A URL Less treats as a CSS import — a `.css`
    path, `(css)` — is a CSS terminal the parser already made an `@import`
    at-rule; it never reaches the plugin and is never fetched, on or off the
-   list.
+   list. The parser reads the authored spelling, so `@import "@{cdn}/theme.css"`
+   is CSS too; a target spelled entirely by a variable (`@import "@{url}"`) is
+   a compile-time import whatever it evaluates to, because the node is chosen
+   at parse time and nothing defers (`docs/design/RESOLVED-SEMANTICS-AND-NAMING.md`
+   §12.3b) — so it takes steps 2–4 like any other URL with an extension.
 2. **Fetched:** an `https:` URL on the allow list.
 3. **Left a CSS `@import`:** an extensionless URL that is not fetched (off the
    list, an IP-literal host, or plain `http:`) and may stay CSS — Google Fonts'
@@ -240,13 +244,29 @@ in this order:
    is a mistake to report. `(optional)` does not suppress it — `optional`
    covers a missing file, not a refused one.
 
-Without the plugin, a URL import is a CSS terminal, as before.
+Without the plugin, a URL import is a CSS terminal, as before — except one that
+must load (`(inline)`, `(reference)`, `(less)`, `@-import`, `@compose`): nothing
+is fetched and it cannot be CSS, so it is an error (`import/load-failed` from
+Context's `loadImportUncached`; an `(inline)` one is `import/not-found`, as
+before). Previously such an import was written out as `@import "…"` — a
+`(reference)` import emitting CSS — or as a verbatim `@compose`/`@-import`
+at-rule, which is not CSS.
 
 A media query on a compile-time `@import` is desugared at parse time into an
-`@media` block around the import (ledger A10), so an extensionless URL left CSS
-with a media query emits `@media q { @import "…"; }`, which browsers ignore.
-Mark such an import `(css)` to get `@import "…" q;`. Whether the desugared form
-should collapse back when the import stays CSS is open (§8).
+`@media` block around the import (ledger A10), so a **loaded** document renders
+inside the query — on an allowed host too, as a local one does. An import that
+**stays a CSS terminal** is a real CSS `@import`, which carries its media query
+verbatim (A10): the serializer writes the wrapper and its sole import as one
+`@import "…" q;` (`mediaImportStayingCss`), since browsers ignore an `@import`
+inside `@media`. So an extensionless URL off the list keeps its query, with or
+without the plugin. An authored `@media q { @import "…"; }` whose only statement
+is an import that stays CSS is written the same way — the one form CSS can
+express it in.
+
+The classification is the importing file's grammar's (`importIsCompileTime`).
+The SCSS grammar applies only the `.css` rule today, not Sass's rule that every
+`http(s)://` and `url()` import is plain CSS, so with the plugin configured an
+SCSS URL import goes through the claim above (§8, item 12).
 
 A file the server reports missing — HTTP 404 or 410 — is `import/not-found`,
 so `(optional)` skips it exactly as it skips a missing local file. Any other
@@ -289,14 +309,19 @@ transport and an injected DNS answer; no test makes a real network request.
 
 End to end through the `Compiler`, `packages/jess/test/remote-imports.test.ts`
 covers the opt-in default, the claim and allow list, CSS-classified URLs never
-fetched, extensionless URLs off the list left CSS (Google Fonts), every
-must-load form refused off the list, `@compose` of a URL, `(optional)` over a
-404, `(inline)` and `data-uri()` of a URL, the `@use` refusal with and without
-the plugin, `rewriteUrls`/`rootpath` inside a fetched document, and a remote
-document naming a real local file by absolute path through each of `@import`,
+fetched (an authored `.css` suffix after a variable included), extensionless URLs off the list
+left CSS (Google Fonts) with their media query kept on the `@import`, every
+must-load form refused off the list and without the plugin, a later must-load
+import of a URL an earlier `@import` left CSS (the loaded-import cache keys on
+`mustLoad`), `@compose` of a URL, `(optional)` over a 404, `(inline)` and
+`data-uri()` of a URL, the `@use` (`import/load-failed`) and `@plugin`
+(`plugin/load-failed`) refusals with and without the plugin,
+`rewriteUrls`/`rootpath` inside a fetched document, and a remote document naming
+a real local file by absolute path through each of `@import`,
 `@import (inline)`, `data-uri()`, `@use` and `@plugin` — the file's contents
 never reach the output. `packages/core/src/ast/__tests__/import-at-rule.test.ts`
-pins which imports reach the claim with `mustLoad`;
+pins which imports reach the claim with `mustLoad`, the must-load refusal when
+nothing claims one, and the media-wrapped terminal;
 `packages/jess/test/cli.test.ts` covers `--allow-remote-imports`; and
 `packages/jess/test/config-merge.test.ts` the `insecure` warning.
 
@@ -343,13 +368,20 @@ like CSS / best UX"; applied above):
     exactly as for local imports, with `url()` values rebased onto the
     document's URL (§3).
 
-Still open for the owner:
+Applied with the judgments above: an import that stays a CSS terminal keeps its
+media query on the `@import` (§6), and an import that must load is an error
+without the plugin as with it (§6).
 
-11. **A media-tailed import left CSS.** The parse-time desugar of a media query
-    on a compile-time `@import` (ledger A10) wraps the import in `@media`, so
-    when the import stays a CSS terminal — no plugin, or an extensionless URL off
-    the list — the output is `@media q { @import "…"; }`, which browsers ignore.
-    `(css)` avoids it. Options: collapse the wrapper back to `@import "…" q;`
-    when its sole import stays CSS (needs a desugar marker, since an authored
-    `@media q { @import "…"; }` has the same shape), or keep the media tail
-    typed on the import for URL targets.
+Open:
+
+11. **A media list alone.** The judgment behind item 7 counted a media list
+    among the things that make a URL a CSS import. Less does not classify by a media list
+    (only by a `.css` path or an option), so a media-tailed `.less` or
+    extensionless URL on an allowed host is fetched and rendered inside the
+    query, as a local import is; one that is not fetched stays CSS with its
+    query (§6). Whether a media list should also stop a fetch on an allowed host
+    is not settled.
+12. **SCSS URL imports.** Sass makes every `http(s)://` and `url()` import plain
+    CSS; the SCSS grammar classifies only `.css` (§6). Applying Sass's rule is a
+    grammar change in `packages/syntax/scss/scss-parser` and moves the AST of
+    those imports from `StyleImport` to `AtRuleStatement`.
