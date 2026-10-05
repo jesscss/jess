@@ -24,9 +24,14 @@ import type { Position } from './serialize.js';
  *   3. per-position source-file identity: `Position.source`, stamped at each push
  *      from the active source owner, so imported files map to themselves.
  *
- * Mirrors Less 4.x `SourceMapOutput`/`SourceMapBuilder` shape: one mapping per
- * emitted chunk, `normalizeFilename` (basepath strip + rootpath prefix), and
- * `sourcesContent` under `outputSourceFiles`.
+ * Granularity: one mapping at the start of each emitted node (selector header,
+ * declaration, value, at-rule, statement), and one per line of an `(inline)`
+ * import. Less 4.x writes one per emitted chunk instead, so the two maps differ
+ * in bytes, not in where a token points. `sources` are normalized as Less
+ * `normalizeFilename` does (basepath strip, then rootpath prefix);
+ * `outputSourceFiles` embeds the content of each source a mapping names. Text a
+ * host injected ahead of the entry file (`DocumentContextOptions.file.sourceOffset`)
+ * has no authored position and is left unmapped.
  */
 export interface AstSourceMapOptions {
   /** Recorded as the map's `file` (the generated output filename). */

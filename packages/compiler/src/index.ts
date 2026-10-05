@@ -127,14 +127,16 @@ export interface RenderedStylesheet {
 /**
  * Assemble the source map + CSS annotation from the render's position stream.
  *
- * Mirrors Less 4.x (`parse-tree.js` defaults + `SourceMapBuilder`): sources are
- * relative to the input file's directory unless `sourceMapBasepath` is given;
- * the map's `file` is the output CSS name (`<input>.css` when none is known);
- * the annotation URL is `sourceMapURL`, else `sourceMapFilename`, else that
- * output name + `.map`; `sourceMapFileInline` embeds the map as a base64
- * `data:` URI; `disableSourcemapAnnotation` writes nothing; and empty output
- * gets neither a map nor an annotation. The external `.map` string is returned
- * for callers that write it to disk — this compiler has no file-writing CLI.
+ * Sources are relative to the input file's directory unless `sourceMapBasepath`
+ * is given; the map's `file` is the output CSS name (`<input>.css` when none is
+ * known); the annotation URL is `sourceMapURL`, else `sourceMapFilename`, else
+ * that output name + `.map`, appended with no trailing newline;
+ * `sourceMapFileInline` embeds the map as a base64 `data:` URI;
+ * `disableSourcemapAnnotation` writes nothing; and empty output gets neither a
+ * map nor an annotation. The corpus `sourcemaps*` fixtures (goldens and expected
+ * maps) pin these. The annotation URL is not basepath-stripped. The external
+ * `.map` string is returned for callers that write it to disk — this compiler
+ * has no file-writing CLI.
  */
 function assembleSourceMap(
   css: string,
