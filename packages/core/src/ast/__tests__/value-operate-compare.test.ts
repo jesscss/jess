@@ -12,7 +12,7 @@
  * false to that AND to `bar < foo`, which §4.2 rules out — see the row below.
  */
 import { describe, expect, it } from 'vitest';
-import { compare, compareMatch } from '../value-guards.js';
+import { compare, compareMatch, SASS_EQUAL } from '../value-guards.js';
 import { makeAny, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword, makeQuoted } from '../value-factory.js';
 import { IncomparableOperandsError, UnitArithmeticError, type Value } from '../value-eval.js';
 
@@ -201,6 +201,12 @@ describe('compare — unitMode reaches comparison, not just arithmetic', () => {
       .toThrow('Bad units: \'px*px\' and \'em*px\'.');
   });
 
+  it('throws for a compound operand against its own display unit under strict', () => {
+    const squared = makeCompoundDimension(6, 'px', ['px', 'px'], [], 'px');
+    expect(() => compare('=', squared, dim(6, 'px'), 'strict'))
+      .toThrow('Bad units: \'px*px\' and \'px\'.');
+  });
+
   it('does NOT throw for units that reconcile, whatever the mode', () => {
     expect(compare('=', dim(1, 'in'), dim(96, 'px'), 'strict')).toBe(true);
     expect(compare('>', dim(1, 's'), dim(500, 'ms'), 'strict')).toBe(true);
@@ -219,5 +225,50 @@ describe('compare — unitMode reaches comparison, not just arithmetic', () => {
   it('does not reach non-dimension operands', () => {
     expect(compare('=', makeKeyword('foo'), makeKeyword('bar'), 'strict')).toBe(false);
     expect(compare('>', makeQuoted('b'), makeQuoted('a'), 'strict')).toBe(true);
+  });
+});
+
+/*
+ * A compound operand (`2px * 3px`, `1 / 2px`) is a dimension in its WHOLE unit
+ * multiset. Its display unit is only a spelling (less.js `Unit.genCSS`: the
+ * backup unit, else the first denominator), so comparing on it equated `px*px`
+ * with `px` and `1/px` with `px`. Numeric ground reconciles units unit by unit
+ * (RESOLVED-SEMANTICS-AND-NAMING §4.1), as `+`/`-` require an identical
+ * multiset (ledger V18).
+ */
+describe('compare — a compound operand compares on its whole unit multiset', () => {
+  const squared = makeCompoundDimension(6, 'px', ['px', 'px'], [], 'px');
+  const reciprocal = makeCompoundDimension(0.5, 'px', [], ['px'], undefined);
+
+  it('a unit product is not its display unit', () => {
+    expect(compare('=', squared, dim(6, 'px'))).toBe(false);
+    expect(compare('>', squared, dim(5, 'px'))).toBe(false);
+    expect(compare('=', dim(6, 'px'), squared)).toBe(false);
+  });
+
+  it('a reciprocal is not its denominator unit', () => {
+    expect(compare('=', reciprocal, dim(0.5, 'px'))).toBe(false);
+  });
+
+  it('the same multiset compares on magnitude, converting each unit', () => {
+    expect(compare('=', squared, makeCompoundDimension(6, 'px', ['px', 'px'], [], 'px'))).toBe(true);
+    expect(compare('>', squared, makeCompoundDimension(5, 'px', ['px', 'px'], [], 'px'))).toBe(true);
+    expect(compare('=', makeCompoundDimension(1, 'in', ['in', 'px'], [], 'in'), makeCompoundDimension(96, 'px', ['px', 'px'], [], 'px'))).toBe(true);
+    expect(compare('=', makeCompoundDimension(1, 'px', ['px'], ['ms'], 'px'), makeCompoundDimension(1000, 'px', ['px'], ['s'], 'px'))).toBe(true);
+  });
+
+  it('a multiset that converts down to one unit compares against that unit', () => {
+    expect(compare('=', makeCompoundDimension(1, 'in', ['in', 'px'], ['px'], 'in'), dim(96, 'px'))).toBe(true);
+  });
+
+  it('a unitless operand stays a wildcard on raw magnitude', () => {
+    expect(compare('>', squared, dim(5))).toBe(true);
+    expect(compare('=', reciprocal, dim(0.5))).toBe(true);
+  });
+
+  it('type-equal and Sass equality decline the display-unit coincidence', () => {
+    expect(compare('==', squared, dim(6, 'px'))).toBe(false);
+    expect(compare(SASS_EQUAL, squared, dim(6, 'px'))).toBe(false);
+    expect(compare(SASS_EQUAL, squared, makeCompoundDimension(6, 'px', ['px', 'px'], [], 'px'))).toBe(true);
   });
 });

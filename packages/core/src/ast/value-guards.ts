@@ -97,6 +97,9 @@ function dimensionCompare(
   b: Dimension,
   unitMode: UnitMode | undefined
 ): -1 | 0 | 1 | undefined {
+  const au = numericGround(a);
+  const bu = numericGround(b);
+
   /*
    * A unitless operand is a WILDCARD on numeric ground (§4.1): it compares on
    * raw magnitude against any unit. That is the whole of what makes `=` loose,
@@ -104,11 +107,9 @@ function dimensionCompare(
    * ambient mode but DECLINED by the operator, in `sameType`, which `==` and the
    * numeric arm of {@link SASS_EQUAL} apply on top of this ground.
    */
-  if (!a.unit || !b.unit) {
+  if (au.unit === '' || bu.unit === '') {
     return numericCompare(a.number, b.number);
   }
-  const au = unify(a.number, a.unit);
-  const bu = unify(b.number, b.unit);
   if (au.unit !== bu.unit) {
     if (unitMode === 'strict') {
       throw incompatibleUnits(a, b);
@@ -116,6 +117,49 @@ function dimensionCompare(
     return undefined;
   }
   return numericCompare(au.number, bu.number);
+}
+
+/**
+ * A dimension on numeric ground: its magnitude in canonical units, and the unit
+ * it is measured in — the canonical unit, or for a compound operand (an
+ * arithmetic result carrying a numerator/denominator multiset, `2px * 3px`) the
+ * whole canonical multiset spelled `px*px/s`, cancelled after conversion so
+ * `in*px/px` is `px`. `''` is unitless.
+ *
+ * The display `unit` is NOT the unit of a compound operand — it is only how
+ * less.js spells one (the backup unit, else the first denominator), so
+ * comparing on it equated `px*px` and `1/px` with `px`. A plain dimension (the
+ * hot case) stays one {@link unify} call.
+ */
+function numericGround(d: Dimension): { number: number; unit: string } {
+  const numerator = d.numerator;
+  if (numerator === undefined) {
+    return d.unit ? unify(d.number, d.unit) : { number: d.number, unit: '' };
+  }
+  let number = d.number;
+  const counts = new Map<string, number>();
+  for (const unit of numerator) {
+    const canonical = unify(1, unit);
+    number *= canonical.number;
+    counts.set(canonical.unit, (counts.get(canonical.unit) ?? 0) + 1);
+  }
+  for (const unit of d.denominator ?? []) {
+    const canonical = unify(1, unit);
+    number /= canonical.number;
+    counts.set(canonical.unit, (counts.get(canonical.unit) ?? 0) - 1);
+  }
+  const num: string[] = [];
+  const den: string[] = [];
+  for (const [unit, count] of counts) {
+    for (let i = 0; i < count; i++) {
+      num.push(unit);
+    }
+    for (let i = 0; i < -count; i++) {
+      den.push(unit);
+    }
+  }
+  const spelled = num.sort().join('*');
+  return { number, unit: den.length === 0 ? spelled : `${spelled}/${den.sort().join('*')}` };
 }
 
 /** 3-way compare over primitives (`<`/`>` are lexical on strings); `!=` → undefined. */
@@ -424,10 +468,7 @@ function sameType(a: ValueGroup, b: ValueGroup): boolean {
     return asColor(a) !== undefined && asColor(b) !== undefined;
   }
   if (a.type === 'Dimension' && b.type === 'Dimension') {
-    if (!a.unit || !b.unit) {
-      return !a.unit && !b.unit;
-    }
-    return unify(a.number, a.unit).unit === unify(b.number, b.unit).unit;
+    return numericGround(a).unit === numericGround(b).unit;
   }
   return true;
 }
@@ -461,13 +502,7 @@ function pushScalarSassEqualityCandidateKeys(
 ): void {
   into.push(`${path}:spelling:${type === 'Quoted' && 'quote' in value ? value.value : value.bytes}`);
   if (type === 'Dimension' && 'number' in value && 'unit' in value) {
-    let normalizedNumber = value.number;
-    let normalizedUnit = '';
-    if (value.unit !== '') {
-      const normalized = unify(value.number, value.unit);
-      normalizedNumber = normalized.number;
-      normalizedUnit = normalized.unit;
-    }
+    const { number: normalizedNumber, unit: normalizedUnit } = numericGround(value);
     pushNumericCandidateKeys(
       into,
       path,
