@@ -1897,6 +1897,16 @@ export const importOptionWords = (options: List | null): string[] => {
  * parser can read.
  */
 const CSS_TARGET = /\.css(?:[?#].*)?$/iu;
+const HTTP_URL_TARGET = /^https?:\/\//iu;
+
+/**
+ * Whether an import target is spelled as an `http://` / `https://` URL. Sass
+ * makes every such import plain CSS (`spec/at-rules/import.md`, "is plain
+ * CSS"); Less and Jess do not, so this is a separate fact rather than a branch
+ * of {@link importIsCompileTime}.
+ */
+export const importTargetIsHttpUrl = (target: Quoted | Url | Interpolation): boolean =>
+  HTTP_URL_TARGET.test(importTargetSpelling(target));
 
 /**
  * WHICH of the two import nodes an `@import` becomes — decided from SYNTAX, by

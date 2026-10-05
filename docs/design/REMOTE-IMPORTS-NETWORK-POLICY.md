@@ -264,9 +264,10 @@ is an import that stays CSS is written the same way — the one form CSS can
 express it in.
 
 The classification is the importing file's grammar's (`importIsCompileTime`).
-The SCSS grammar applies only the `.css` rule today, not Sass's rule that every
-`http(s)://` and `url()` import is plain CSS, so with the plugin configured an
-SCSS URL import goes through the claim above (§8, item 12).
+The SCSS grammar adds Sass's own rule (`importTargetIsHttpUrl`): an `http://` or
+`https://` target, quoted or in `url()`, is plain CSS, so an SCSS URL import is
+never fetched, with or without the plugin (§8, item 12). A local `url()` target
+keeps its partial-import classification.
 
 A file the server reports missing — HTTP 404 or 410 — is `import/not-found`,
 so `(optional)` skips it exactly as it skips a missing local file. Any other
@@ -381,7 +382,11 @@ Open:
     query, as a local import is; one that is not fetched stays CSS with its
     query (§6). Whether a media list should also stop a fetch on an allowed host
     is not settled.
-12. **SCSS URL imports.** Sass makes every `http(s)://` and `url()` import plain
-    CSS; the SCSS grammar classifies only `.css` (§6). Applying Sass's rule is a
-    grammar change in `packages/syntax/scss/scss-parser` and moves the AST of
-    those imports from `StyleImport` to `AtRuleStatement`.
+
+Resolved since (orchestrator judgment under the same delegation):
+
+12. **SCSS URL imports — resolved (orchestrator judgment J10, 2026-10-05).** An
+    SCSS `@import` of an `http(s)://` URL, quoted or in `url()`, is a plain CSS
+    import per the Sass spec: the SCSS `ImportStatement` reducer builds an
+    `AtRuleStatement`, never a `StyleImport`, so it is never fetched (§6). A
+    local `url()` import is unchanged.
