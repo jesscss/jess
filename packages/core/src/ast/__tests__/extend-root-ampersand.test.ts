@@ -5,6 +5,7 @@ import {
   compoundSelectorOf, complexSelector, decl, keyword, simpleSelector, stylesheet, rule, sel, selist, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
+import { parse as parseLess } from '../../../../syntax/less/less-parser/src/index.js';
 
 /**
  * A ROOT parentless `&` — the `& when (…) { … }` / `& { … }` guard-block idiom Less
@@ -119,5 +120,30 @@ describe('root parentless ampersand', () => {
       + '.a .b {\n'
       + '  color: red;\n'
       + '}\n');
+  });
+});
+
+/*
+ * A `&` fused into a compound under a parent of several compounds is the parent spliced
+ * in place, as the serializer composes it: the simples before the `&` join the parent's
+ * first compound and those after it (a `&-suffix` included) its last. Extend matches that
+ * composed selector, never a one-arm `:is(parent)` wrap.
+ */
+describe('fused ampersand under a multi-compound parent', () => {
+  const renderLess = (src: string): string | undefined =>
+    serialize(parseLess(src), { evaluator, collapseNesting: true }).css;
+
+  it('is matched as the composed selector', () => {
+    expect(renderLess('.b { .p { &.q { m: 1 } } } .x:extend(.b .p.q) {}'))
+      .toBe('.b .p.q,\n.x {\n  m: 1;\n}\n');
+    expect(renderLess('.b { .p { .q& { m: 1 } } } .z:extend(.q.b .p) {}'))
+      .toBe('.q.b .p,\n.z {\n  m: 1;\n}\n');
+    expect(renderLess('.b { .p { &-foo { m: 1 } } } .z:extend(.b .p-foo) {}'))
+      .toBe('.b .p-foo,\n.z {\n  m: 1;\n}\n');
+  });
+
+  it('carries an all graft without a one-arm :is() around the parent', () => {
+    expect(renderLess('.x { .arrow { &::before { m: 1 } } } .y:extend(.x all) {}'))
+      .toBe(':is(.x, .y) .arrow::before {\n  m: 1;\n}\n');
   });
 });

@@ -237,7 +237,14 @@ the extend engine both call it.
   selector, at the arm's own specificity), and every other alternative replaces the
   whole `:is()` on its own — returned to the list it would raise elements the extend
   never touched (`:is(.c.k, .z) .d` + `#b:extend(.c all)` → `:is(.c.k, .z) .d, #b.k .d`).
-  A plain compound alternative is merged in; anything else keeps a one-arm `:is()`.
+  An alternative is written in place in the 4.x placement, a complex one too
+  (`.p .q:extend(.c all)` gives `.p .q.k .d`), never as a one-arm `:is()`.
+- A `&` fused into a compound under a parent of several compounds composes as the
+  parent spliced in place, as the serializer writes it (`.b { .p { &.q {} } }` is
+  `.b .p.q`, `.q&` is `.q.b .p`, `&-foo` is `.b .p-foo`), and extend matches that
+  composed selector: `.x:extend(.b .p.q)` reaches it, and an `all` graft on `.x` in
+  `.x { .arrow { &::before {} } }` gives `:is(.x, .y) .arrow::before`, never a one-arm
+  `:is(:is(.x, .y) .arrow)::before`.
 - KNOWN GAPS: an `all` match of a whole authored `:is()` arm still appends the
   extender to the authored list (`:is(.c, .z) .d` + `#b:extend(.c all)` →
   `:is(.c, .z, #b) .d`, raising `.c .d`/`.z .d`); orchestrator judgment

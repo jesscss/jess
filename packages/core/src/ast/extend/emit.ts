@@ -604,14 +604,10 @@ function splitArms(b: Branch, k: number, p: number, arms: Branch[], root: boolea
   const out: Branch[] = [];
   pushRegrouped(out, withSimple(b, k, p, { t: 'is', branches: kept, fold: false }), root, k, p + 1);
   for (const alternative of alone ?? []) {
-    /* A plain compound is the same selector merged in; anything else keeps its `:is()`. */
-    if (alternative.segments.length === 1 && alternative.segments[0]!.compound.value.every(s => s.t === 'text')) {
-      const spliced = spliceMember(b, k, p, alternative);
-      if (spliced !== null) {
-        pushRegrouped(out, spliced, root, k, p);
-      }
-    } else {
-      pushRegrouped(out, withSimple(b, k, p, { t: 'is', branches: [alternative], fold: false }), root, k, p + 1);
+    /* Written in place, never as a one-arm `:is()` (ledger X3's 4.x placement). */
+    const spliced = spliceMember(b, k, p, alternative);
+    if (spliced !== null) {
+      pushRegrouped(out, spliced, root, k, p);
     }
   }
   return out;

@@ -100,6 +100,10 @@ describe('extend :is() grouping keeps native specificity in every output mode', 
       .resolves.toBe(':is(.c.k, .z) .d, #b.k .d');
     await expect(extendHeader(':is(.c.k, .z) .d { m: 1 } .y:extend(.c all) {}'))
       .resolves.toBe(':is(:is(.c, .y).k, .z) .d');
+
+    // A complex alternative is written in place too, never as a one-arm `:is()`.
+    await expect(extendHeader(':is(.c.k, .z) .d { m: 1 } .p .q:extend(.c all) {}'))
+      .resolves.toBe(':is(.c.k, .z) .d, .p .q.k .d');
   });
 
   it('compacts a changed top-level rule\'s siblings in nested output too, each member once', async () => {
