@@ -449,8 +449,7 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
     const request = { node, specifier, options };
     if (importHasOption(options, 'inline')) {
       try {
-        const bytes = await context.readBinary(specifier);
-        return { inline: bytes.toString() };
+        return { inline: await context.readInlineImport(specifier) };
       } catch (error) {
         importError(request, error);
       }

@@ -4073,64 +4073,95 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: 2026-10-04 remote-import route through Context. The opt-in
-  `@jesscss/plugin-remote-import` needs four Context/plugin-contract facts that
-  were wrong for a URL: the source of a located path now comes from the plugin
-  that located it; a URL is neither expanded into filesystem candidates nor
-  stripped of its query; `AbstractPlugin.resolve` passes a URL through instead
-  of joining it onto a directory; and an import written inside a fetched
-  document is rebased onto that document's URL before the existing claim gate.
-  The shared external-specifier pattern moved to `import-options.ts` and now
-  needs a two-character scheme, so a Windows drive path is a file path.
+- Latest pass: 2026-10-04 remote-import route through Context, with its review
+  fixes. The opt-in `@jesscss/plugin-remote-import` needs Context/plugin-contract
+  facts that were wrong for a URL: the source of a located path comes from the
+  plugin that located it; a URL is neither expanded into filesystem candidates
+  nor stripped of its query; `AbstractPlugin.resolve` passes a URL through and
+  `AbstractPlugin.locate` skips one; and every path written inside a fetched
+  document is rebased onto that document's URL. The rebase lives in `_getPath`,
+  the one resolver behind `@import`, `@import (inline)`, `data-uri()`/
+  `image-size()`, `@use` and `@plugin`, so no route from a fetched document
+  reaches a local file; a path that does not resolve onto the document's host
+  is an error. A located URL is read only by its locator: `(inline)` passes the
+  same claim gate as `@import` and reads through the locator's `getSource`
+  (`Context.readInlineImport`), `readBinary` reports a URL missing so
+  `data-uri()` keeps its `url()` fallback, and `@use`/`@plugin` refuse a URL. An
+  extensionless URL takes its extension from the importing document. The shared
+  external-specifier pattern moved to `import-options.ts` and needs a
+  two-character scheme, so a Windows drive path is a file path.
   `@jesscss/plugin-less` no longer claims jsDelivr npm URLs.
-- Architecture surface: `packages/core/src/context.ts` (`loadImportUncached`,
-  `_getPath`, `getTree`, `getModuleUncached`, `getPluginModule`),
-  `packages/core/src/plugin.ts` (`AbstractPlugin.resolve`, contract docs),
-  `packages/core/src/import-options.ts`, and the Less plugin's resolver.
-  Evaluation, render, lookup, serializer, and parser code are unchanged.
+- Architecture surface: `packages/core/src/context.ts` (`importTarget`,
+  `isClaimed`, `readSource`, `_getPath`, `getTree`, `loadImportUncached`,
+  `readInlineImport`, `readBinary`, `getModuleUncached`, `getPluginModule`),
+  `packages/core/src/plugin.ts` (`AbstractPlugin.resolve`/`locate`, contract
+  docs), `packages/core/src/import-options.ts`, the serializer's `(inline)`
+  branch in `packages/core/src/ast/serialize.ts` (one call swapped for
+  `readInlineImport`), and the Less plugin's resolver. Evaluation, render,
+  lookup, and parser code are unchanged.
 - Separation/duplication: one external-specifier pattern serves Context and
   `AbstractPlugin`; the second copy in `context.ts` is gone. `_getPath` computes
   the dispatch extension once and its callers read it instead of re-deriving it.
-  No second loader, resolver, or network path exists in core; only the plugin's
-  `getSource` touches the network.
+  The claim loop moved out of `loadImportUncached` into `isClaimed` and the
+  reader choice out of `getTree` into `readSource`, each now shared by `@import`
+  and `(inline)` instead of copied. No second loader, resolver, or network path
+  exists in core; only the plugin's `getSource` touches the network.
 - Cumulative node weight: zero AST/CST node kinds or fields. The private
   `ResolvedPathResult` gains `ext` and `locator`.
-- New traversal: none. The locator is recorded inside the existing locate loop;
-  no added loop, walk, or scan.
-- New node/materialization: [node construction] one `URL` per import written
-  inside a fetched (remote) document, to rebase it onto that document's URL.
-  Local documents never construct one: the guard is a string test on the
-  importer's path. No AST node, wrapper, or materialized array is added.
+- New traversal: [loop/traversal] the plugin loop in `isClaimed` is the claim
+  loop moved out of `loadImportUncached`; it runs only for an external
+  specifier, now for an `(inline)` one too. The locator is recorded inside the
+  existing locate loop. No added walk or scan.
+- New node/materialization: [node construction] `new URL` in `importTarget`,
+  one or two per path named inside a fetched document, and one in `_getPath` to
+  read a located URL's extension from its path; local documents and local paths
+  construct none (string tests guard both). [materialized array/object] the
+  `searchPaths = []` default in `isClaimed` is the claim loop's existing
+  default, moved. No AST node, wrapper, or materialized array is added.
 - Render path: unchanged. Import loading happens before evaluation writes, and
-  render still streams strings.
-- Helper/API surface: no new helper or public export. The pattern constant is
-  internal (`import-options.ts` is not re-exported as a value).
+  render still streams strings; the `(inline)` branch now returns the reader's
+  string instead of converting a `Buffer`.
+- Helper/API surface: private `importTarget`, `isClaimed` and `readSource`,
+  public `Context.readInlineImport`, and the shared `remoteModuleMessage`. Each
+  replaces code that would otherwise be repeated per route: the rebase and claim
+  loop formerly inline in `loadImportUncached`, the reader choice in `getTree`,
+  and `readBinary(…).toString()` in the serializer's `(inline)` branch.
 - Metadata mutations: none. No parent, provenance, or source fact is written.
-- Review-flagged diff tokens: [node construction] the `new URL(importPath,
-  importer)` rebase, reached only for imports inside a fetched document — a
-  cold, per-import path that never runs for local files and adds no per-node
-  or per-render cost.
+- Review-flagged diff tokens: [loop/traversal] the moved claim loop above;
+  [node construction] the `URL` constructions above, all on cold per-import
+  paths that never run for local files; [routine error control] the refusals —
+  a path off a fetched document's host, `@use`/`@plugin` of a URL, and the
+  `No source getter found` error moved from `getTree` — each a terminal import
+  error, never control flow on a successful path; [materialized array/object]
+  the moved `searchPaths` default.
 - Behavior evidence: core `import-at-rule.test.ts` pins the external-specifier
   passthrough in `AbstractPlugin.resolve`, sourcing from the locating plugin
   with the query kept and the fragment dropped, the rebase and claim of an
   import inside a remote document, and the Windows drive path (each red before
-  the change). The jess `remote-imports.test.ts` suite pins the default stack
-  leaving URL imports (jsDelivr included) as terminals with no fetch, plus the
-  plugin path end to end. Core passes 219 files / 3,348 tests; jess passes
-  125 files / 1,900 tests; all-Less passes 140 with 43 skips, with
-  `tests-unit/import/import-remote.less` now a gate.
-- Build evidence: dependency-ordered `pnpm run build:release` passes;
-  `verify:types` passes 25/25 configs; `verify:jess-api`, `verify:package-exports`,
-  and `check:engines` pass.
-- Boundary evidence: no public type or export change in core. The new package
-  `@jesscss/plugin-remote-import` is added to the alpha allowlist and the
-  publish-set validation passes.
+  the change). The jess `remote-imports.test.ts` suite (15 tests) pins the
+  default stack leaving URL imports (jsDelivr included) as terminals with no
+  fetch, the plugin path end to end, and — red before the review fixes — a
+  fetched document naming a real local file through `@import (inline)`,
+  `data-uri()`, `@use` and `@plugin` (each leaked the file before), a path off
+  the document's host, `(inline)` and `data-uri()` of a URL, the `@use` refusal,
+  `(optional)` over a 404, and extensionless URLs. Core passes 219 files /
+  3,348 tests; the jess ratchet passes 1,956 tests with 0 failing; all-Less
+  passes 140 with 43 skips, with `tests-unit/import/import-remote.less` a gate.
+- Build evidence: dependency-ordered `pnpm run build:release` passed for the
+  route; after the review fixes `pnpm --filter @jesscss/core build` and
+  `pnpm --filter @jesscss/plugin-remote-import build` pass and core
+  `tsc -p tsconfig.build.json` is clean.
+- Boundary evidence: core's public `Context` gains `readInlineImport`, the
+  `(inline)` reader the serializer calls; no type or export of the jess API
+  report changes. The new package `@jesscss/plugin-remote-import` is on the
+  alpha allowlist and imports only `@jesscss/core/diagnostics` at runtime.
 - Evidence: behavior evidence is tests only. The current `benchmark.less`
-  render output is byte-identical to the previous pass's recorded baseline
-  (SHA-256 `29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8`,
-  123,223 bytes). `measure:less:hotpath` on Node 24.11.1 reported a 62.96 ms
-  median with an unstable signal (19.8% RSD) on a shared machine; it is a
-  baseline only and carries no speed or neutrality claim.
+  render output (collapseNesting true) is byte-identical to the previous pass's
+  recorded baseline (SHA-256
+  `29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8`, 123,223
+  bytes). `measure:less:hotpath` on Node 24.11.1 reported a 64.10 ms median
+  with a noisy signal (39.8% RSD) on a shared machine; it is a baseline only and
+  carries no speed or neutrality claim.
 - Verdict: accepted as a semantic boundary correction with
   `performanceClaim: none`.
 - Hot-path cost contracts:
@@ -4141,12 +4172,12 @@ involved.
     "verdict": "accepted",
     "performanceClaim": "none",
     "cases": ["claimed-external-import", "unclaimed-external-terminal", "ordinary-local-import", "import-inside-remote-document"],
-    "why": "Context still owns external-import admission alone. A URL now reaches the plugin that claimed it intact: it is not expanded, joined onto a directory, or stripped of its query, and the plugin that located it supplies its source. An import inside a fetched document is rebased onto that document's URL so it meets the same claim gate instead of resolving to a local file. Unclaimed URLs remain CSS terminals with no network action.",
-    "dangerTokensJustification": "The only added construction is one URL per import written inside a fetched document, guarded by a string test on the importer's path, so local documents allocate nothing new. The locator is captured inside the existing locate loop and the extension is computed once where it was already computed; no traversal, side map, or async continuation is added.",
+    "why": "Context still owns external-import admission alone. A URL now reaches the plugin that claimed it intact: it is not expanded, joined onto a directory, or stripped of its query, and only the plugin that located it reads it. Every path inside a fetched document is rebased onto that document's URL in _getPath, the resolver all import, inline, data-uri, @use and @plugin routes share, so none of them reaches a local file; @import and (inline) meet the same claim gate. Unclaimed URLs remain CSS terminals with no network action.",
+    "dangerTokensJustification": "The URL constructions run only for a path written inside a fetched document or a located URL, guarded by string tests, so local documents and local paths allocate nothing new. The claim loop is the existing one moved into a shared method and runs only for an external specifier; the locator is captured inside the existing locate loop. The added throws are terminal refusals, never control flow on a successful import.",
     "baseline": {
       "fixture": "benchmark.less",
       "phase": "render",
-      "currentMedianMs": 62.96,
+      "currentMedianMs": 64.1,
       "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
       "outputBytes": 123223
     }
@@ -4166,14 +4197,47 @@ involved.
       "callable-output-root-property-guard",
       "serializer-at-rule-and-selector-surface"
     ],
-    "why": "Context's plugin source dispatch now asks the plugin that located a path for its source, falling back to the first source getter, and reads the dispatch extension from the one place that computes it. This corrects which plugin reads a located URL; it is semantic dispatch work with no cost-cutting or neutrality claim.",
-    "dangerTokensJustification": "The dispatch change records the locating plugin inside the existing locate loop and replaces three path.extname re-derivations with one computed value; no allocation, traversal, or side table is added. The one URL construction belongs to the external-import boundary record and runs only for imports inside fetched documents.",
-    "behaviorEvidence": "Core vitest 219 files / 3,348 tests pass, including the new locator-source, query, remote-rebase, and drive-path cases in import-at-rule.test.ts; jess 1,900 tests and all-Less 140 pass.",
-    "buildEvidence": "pnpm run build:release and pnpm --filter @jesscss/core build pass; verify:types passes 25/25 configs.",
+    "why": "Context's plugin source dispatch now asks the plugin that located a path for its source, falling back to the first source getter, for @import and (inline) alike, and reads the dispatch extension from the one place that computes it. Byte readers and module loaders refuse a located URL. This corrects which plugin reads a located URL; it is semantic dispatch work with no cost-cutting or neutrality claim.",
+    "dangerTokensJustification": "The dispatch change records the locating plugin inside the existing locate loop, moves the reader choice out of getTree into one shared method, and replaces three path.extname re-derivations with one computed value; no traversal or side table is added. The URL constructions and refusals belong to the external-import boundary record and run only for fetched documents or located URLs.",
+    "behaviorEvidence": "Core vitest 219 files / 3,348 tests pass, including the locator-source, query, remote-rebase, and drive-path cases in import-at-rule.test.ts; jess remote-imports 15/15 cover every route from a fetched document; the jess ratchet passes 1,956 tests and all-Less 140.",
+    "buildEvidence": "pnpm --filter @jesscss/core build and pnpm --filter @jesscss/plugin-remote-import build pass; core tsc -p tsconfig.build.json is clean.",
     "baseline": {
       "fixture": "benchmark.less",
       "phase": "render",
-      "currentMedianMs": 62.96,
+      "currentMedianMs": 64.1,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  },
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Collection-spread-computed-key-overlay-and-iteration",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "module-callable-explicit-reference-and-css-call-separation",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "The serializer's (inline) import branch now asks Context.readInlineImport for the text instead of reading bytes itself, so an (inline) URL passes the same claim gate and source reader as @import and a fetched document's (inline) path stays on its host. It is a semantic import-route correction with no evaluator, value, or render change and no speed claim.",
+    "dangerTokensJustification": "One call is swapped inside the existing async (inline) branch: the Buffer read and toString become one string read, so no loop, node, array, or side table is added to the serializer. The danger tokens in this diff belong to Context and are accounted for by the external-import boundary record.",
+    "behaviorEvidence": "jess remote-imports 15/15 cover (inline) of a local file, an allowed URL, an off-list host, and a fetched document's local path; the jess ratchet passes 1,956 tests and all-Less 140.",
+    "buildEvidence": "pnpm --filter @jesscss/core build passes and core tsc -p tsconfig.build.json is clean after the change.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 64.1,
       "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
       "outputBytes": 123223
     }

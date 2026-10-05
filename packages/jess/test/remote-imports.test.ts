@@ -105,19 +105,94 @@ describe('remote @import', () => {
     expect(requested).toEqual([]);
   });
 
-  it('never lets a remote document reach a local file', async () => {
-    const secret = path.join(dir, 'secret.less');
-    fs.writeFileSync(secret, '.secret { color: red; }\n');
-    const { fetch, requested } = serve([
-      ['https://cdn.example.com/theme/main.less', `@import "${secret}";\n`]
-    ]);
+  it('keeps a (css) URL import a CSS @import with the plugin configured, whatever its host', async () => {
+    const { fetch, requested } = serve([]);
+    const source = '@import (css) url("https://fonts.googleapis.com/css?family=Open+Sans");\n';
 
-    const result = await render(entry('@import "https://cdn.example.com/theme/main.less";\n'), fetch);
+    const result = await render(entry(source), fetch);
 
-    expect(result.css).not.toContain('.secret');
-    expect(requested).toEqual([
-      'https://cdn.example.com/theme/main.less',
-      new URL(secret, 'https://cdn.example.com/').href
-    ]);
+    expect(result.errors).toEqual([]);
+    expect(result.css).toBe('@import url("https://fonts.googleapis.com/css?family=Open+Sans");\n');
+    expect(requested).toEqual([]);
+  });
+
+  it('reads an (inline) URL through the plugin like a local file, and refuses an off-list host before any request', async () => {
+    const base = '.base { margin: 0; }\n';
+    fs.writeFileSync(path.join(dir, 'base.css'), base);
+    const { fetch, requested } = serve([['https://cdn.example.com/theme/base.css', base]]);
+
+    const local = await render(entry('@import (inline) "base.css";\n'));
+    const allowed = await render(entry('@import (inline) "https://cdn.example.com/theme/base.css";\n'), fetch);
+    const offList = await render(entry('@import (inline) "https://evil.example/x.css";\n'), fetch);
+
+    expect(allowed.errors).toEqual([]);
+    expect(allowed.css).toContain(base);
+    expect(allowed.css).toBe(local.css);
+    expect(offList.errors).toEqual([expect.objectContaining({
+      message: expect.stringContaining('evil.example is not on the remote-import allow list')
+    })]);
+    expect(requested).toEqual(['https://cdn.example.com/theme/base.css']);
+  });
+
+  it('never fetches for data-uri(): a URL keeps its url() fallback', async () => {
+    const { fetch, requested } = serve([]);
+
+    const result = await render(entry('.a { b: data-uri("https://cdn.example.com/img/x.png"); }\n'), fetch);
+
+    expect(result.errors).toEqual([]);
+    expect(result.css).toBe('.a {\n  b: url("https://cdn.example.com/img/x.png");\n}\n');
+    expect(requested).toEqual([]);
+  });
+
+  it('refuses @use of a URL: modules load from local files only', async () => {
+    const { fetch, requested } = serve([]);
+
+    const result = await render(entry('@use "https://cdn.example.com/theme/vars.json";\n'), fetch);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      message: expect.stringContaining('https://cdn.example.com/theme/vars.json is remote')
+    })]);
+    expect(requested).toEqual([]);
+  });
+
+  describe('a remote document never reaches the local disk', () => {
+    const marker = 'TOPSECRET-TOKEN';
+
+    /*
+     * Every route a document names a file by. The fetched document names a real
+     * local file by absolute path; each route must take it as a path on the
+     * document's host instead, so the marker never reaches the output.
+     */
+    it.each([
+      ['@import', (file: string) => `@import "${file}.less";\n`],
+      ['@import (inline)', (file: string) => `@import (inline) "${file}.txt";\n`],
+      ['data-uri()', (file: string) => `.a { b: data-uri("${file}.txt"); }\n`],
+      ['@use', (file: string) => `@use "${file}.json";\n.a { b: @secret.token; }\n`],
+      ['@plugin', (file: string) => `@plugin "${file}.js";\n.a { b: pwn(); }\n`]
+    ])('through %s', async (_route, body) => {
+      const local = path.join(dir, 'secret');
+      fs.writeFileSync(`${local}.less`, `.secret { b: ${marker}; }\n`);
+      fs.writeFileSync(`${local}.txt`, marker);
+      fs.writeFileSync(`${local}.json`, JSON.stringify({ token: marker }));
+      fs.writeFileSync(`${local}.js`, `registerPlugin({ install(_less, _manager, functions) { functions.add('pwn', () => '${marker}'); } });\n`);
+      const { fetch, requested } = serve([['https://cdn.example.com/theme/main.less', body(local)]]);
+
+      const result = await render(entry('@import "https://cdn.example.com/theme/main.less";\n'), fetch);
+
+      expect(result.css).not.toContain(marker);
+      expect(result.errors.map(error => error.message).join('\n')).not.toContain(marker);
+      expect(requested.every(url => url.startsWith('https://cdn.example.com/'))).toBe(true);
+    });
+
+    it('refuses a path that does not resolve onto the document\'s host', async () => {
+      const { fetch, requested } = serve([['https://cdn.example.com/theme/main.less', '@import "C:/secret.less";\n']]);
+
+      const result = await render(entry('@import "https://cdn.example.com/theme/main.less";\n'), fetch);
+
+      expect(result.errors).toEqual([expect.objectContaining({
+        message: expect.stringContaining('does not name a resource on its host')
+      })]);
+      expect(requested).toEqual(['https://cdn.example.com/theme/main.less']);
+    });
   });
 });

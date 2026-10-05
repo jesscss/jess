@@ -155,8 +155,9 @@ export interface PluginInterface {
 
   /**
    * Explicit opt-in for an external import identifier (a URL or
-   * protocol-relative specifier). Context asks this before it enters the normal
-   * resolve → locate → source → parse pipeline. A positive result does not
+   * protocol-relative specifier). Context asks this before an `@import` (an
+   * `(inline)` one included) enters the normal resolve → locate → source → parse
+   * pipeline. A positive result does not
    * fetch: this plugin must still resolve and locate the source through those
    * ordinary capabilities. Absent means external imports remain CSS terminals.
    * An import written inside a remote document is rebased onto that document's
@@ -258,9 +259,12 @@ export abstract class AbstractPlugin implements PluginInterface {
     return readFile(absoluteFilePath, 'utf8');
   }
 
-  /** Gets the first match using from the filesystem that exists */
+  /** Gets the first match from the filesystem that exists. A URL is not a file, so it is left to the plugin that claims it. */
   locate(pathCandidates: string[], currentDir: string): null | string {
     for (const candidate of pathCandidates) {
+      if (EXTERNAL_IMPORT_SPECIFIER.test(candidate)) {
+        continue;
+      }
       const absolutePath = isAbsolute(candidate) ? candidate : join(currentDir, candidate);
       if (existsSync(absolutePath)) {
         return absolutePath;
