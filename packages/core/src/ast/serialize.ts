@@ -3700,13 +3700,6 @@ interface EvalCtx {
    */
   calcDepth?: number;
 
-  /*
-   * The evaluator held back while a deferred CSS call's arguments keep their
-   * authored spelling (`ev` is null there). A call written inside those
-   * arguments is still a call: it dispatches through this evaluator.
-   */
-  heldEv?: ValueEvaluator | null;
-
   /**
    * Parenthesized AST value nesting enables Less arithmetic in paren modes.
    *
@@ -6452,8 +6445,8 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
 const DEFERRED_COLOR_CALLS = new Set(['rgb', 'rgba', 'hsl', 'hsla']);
 
 /*
- * CSS functions Less does not define, kept as authored: only their own spelling
- * is preserved, so a call written in their arguments still dispatches. An F5
+ * CSS functions Less does not define, written out as a call without dispatch:
+ * only the call is inert, its arguments are values (see preserveCall). An F5
  * color constructor, by contrast, is written out whole.
  */
 const DEFERRED_CSS_AUTHORED_CALLS = new Set(['linear-gradient']);
@@ -6494,26 +6487,37 @@ function shouldPreserveCssAuthoredCall(node: FunctionCall, lessDocument: boolean
  * call on the non-evaluating byte lane. Each argument is written as authored,
  * keyword included ({@link writtenArgument}, ledger P23).
  *
- * `callsDispatch` marks a CSS function Less does not define
- * (`DEFERRED_CSS_AUTHORED_CALLS`): only the call itself is inert, so a call
- * written in its arguments (`linear-gradient(fade(red, 50%), blue)`) still
- * dispatches, through the held evaluator ({@link EvalCtx.heldEv}).
+ * `argumentsAreValues` marks a CSS function Less does not define
+ * (`DEFERRED_CSS_AUTHORED_CALLS`): only the call itself is inert, and each
+ * argument is a value like any declaration value — a call, a condition or an
+ * operation written in it is evaluated (ledger P37), a unit error in it raises,
+ * and a literal is spelled as it is everywhere else (ledger V4).
  */
-function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx, callsDispatch = false): MaybePromise<EvalValue> {
+function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx, argumentsAreValues = false): MaybePromise<EvalValue> {
   if (node.args.length === 0) {
     return literal(`${node.name}()`);
   }
 
   /*
-   * A deferred call must retain literal spellings (`.5`, hue units) exactly.
-   * Disable typed literal canonicalization for this byte lane; variable
-   * references still resolve through the same live frame walk.
+   * An F5 color call (and the non-evaluating byte lane) retains literal
+   * spellings (`.5`, hue units) exactly: typed literal canonicalization is off
+   * for its arguments; variable references still resolve through the same live
+   * frame walk.
    */
-  const preserve = e.ev ? { ...e, ev: null, heldEv: callsDispatch ? e.ev : null } : e;
+  const preserve = e.ev && !argumentsAreValues ? { ...e, ev: null } : e;
   const items = node.args.map(a => evalValueSlot(a.value, frame, preserve));
   return combineAll(items, (vals) => {
     const authored = valueLayoutOf(node.args);
     const compress = e.compress === true;
+    if (argumentsAreValues) {
+      for (let index = 0; index < vals.length; index += 1) {
+        const value = vals[index]!;
+        if (!isLiteral(value)) {
+          const slot = node.args[index]!.value;
+          validateValueGroupUnits(value, e.modes, isValueSlotArray(slot) ? (slot[0] ?? node) : slot, e, false);
+        }
+      }
+    }
 
     /*
      * Comma spacing is minimal-correctness normalized to one space after the
@@ -7510,9 +7514,7 @@ function evalCall(
     return evalCalc(node, frame, e);
   }
   if (!e.ev) {
-    return e.heldEv
-      ? evalCall(node, frame, { ...e, ev: e.heldEv, heldEv: null }, demanded)
-      : preserveCall(node, frame, e);
+    return preserveCall(node, frame, e);
   }
   const lname = node.name.toLowerCase();
 

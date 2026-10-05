@@ -108,15 +108,23 @@ describe('Less built-in argument errors through the public AST route', () => {
   });
 
   /*
-   * A deferred CSS call is inert only itself: its arguments are still values, so
-   * a Less built-in written inside one computes, while the gradient keeps its own
-   * authored bytes (comments, `.5`, a CSS color call left as written).
+   * A deferred CSS call is inert only itself: its arguments are values like any
+   * declaration value (ledger P37). A Less built-in, a condition or an operation
+   * written inside one computes, a literal is spelled as it is everywhere else
+   * (ledger V4: `.5turn` gains its `0`), and the call keeps its comments and any
+   * CSS color call left as written (ledger F5).
    */
-  it('computes a Less built-in written inside a deferred linear-gradient()', async () => {
+  it('evaluates the arguments of a deferred linear-gradient() as values', async () => {
     const compiler = new Compiler({ output: { collapseNesting: true } });
+    const render = (source: string) => compiler.renderString(source, { filePath: 'entry.less', extension: '.less' });
     const source = '@c: red; .entry { a: linear-gradient(to right, fade(@c, 50%), darken(#fff, 10%) 10.0%, rgba(0,0,0,.5) /* stop */, .5turn); }';
-    await expect(compiler.renderString(source, { filePath: 'entry.less', extension: '.less' }))
-      .resolves.toBe('.entry {\n  a: linear-gradient(to right, rgba(255, 0, 0, 0.5), #e6e6e6 10.0%, rgba(0, 0, 0, .5) /* stop */, .5turn);\n}\n');
+    await expect(render(source))
+      .resolves.toBe('.entry {\n  a: linear-gradient(to right, rgba(255, 0, 0, 0.5), #e6e6e6 10.0%, rgba(0, 0, 0, .5) /* stop */, 0.5turn);\n}\n');
+    await expect(render('@b: boolean(1 > 0); @w: 10%; .entry { a: linear-gradient(if(@b, red, blue), if((true), red, blue)); b: linear-gradient(to right, red (@w * 2), blue (10% + 5%)); }'))
+      .resolves.toBe('.entry {\n  a: linear-gradient(red, red);\n  b: linear-gradient(to right, red 20%, blue 15%);\n}\n');
+    await expect(new Compiler({ output: { collapseNesting: true }, compile: { unitMode: 'strict' } })
+      .renderString('.entry { a: linear-gradient(red (1px + 1s), blue); }', { filePath: 'entry.less', extension: '.less' }))
+      .rejects.toMatchObject({ code: 'eval/invalid-unit-arithmetic' });
   });
 
   it('dispatches Less color overloads instead of leaking CSS-shaped authored bytes', async () => {
