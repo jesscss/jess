@@ -135,6 +135,17 @@ describe('Less reference semantic contracts through the public AST route', () =>
     })).rejects.toMatchObject({ code: 'resolve/name-not-found', reason: `Symbol "${symbol}" is undefined in this scope.`, line: 1 });
   });
 
+  /* An unbound head is named as it was written, at the reference. */
+  it.each([
+    ['.less', '.entry { value: @nope[1]; }', '@nope', 17],
+    ['.jess', '.entry { value: $nope[1]; }', '$nope', 17],
+    ['.jess', '.entry { value: $^nope[1]; }', '$^nope', 17]
+  ])('names an unbound %s reference head as written, where it was written', async (extension, source, symbol, column) => {
+    const compiler = new Compiler({ output: { collapseNesting: true } });
+    await expect(compiler.renderString(source, { filePath: `entry${extension}`, extension }))
+      .rejects.toMatchObject({ code: 'resolve/name-not-found', reason: `Symbol "${symbol}" is undefined in this scope.`, line: 1, column });
+  });
+
   it.each([
     ['recursive variable', '@bodyColor: darken(@bodyColor, 30%); .entry { color: @bodyColor; }', '@bodyColor'],
     ['recursive property', '.entry { color: darken($color, 10%); }', '$color']

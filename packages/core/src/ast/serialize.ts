@@ -6413,16 +6413,24 @@ function evalModuleReferenceCall(
     return literal(node.raw);
   }
 
-  /* Carries the reference's span, so a failure is named where the call was written. */
-  const call: FunctionCall = { ...funcCall(selected.name, args), _s: node._s, _e: node._e };
+  /*
+   * Carries the reference's span (its head's, where only the head has one), so
+   * a failure is named where the call was written.
+   */
+  const call = funcCall(selected.name, args);
+  const written = sourceStartOf(node) === NO_SPAN && !isValueSlotArray(node.base) ? node.base : node;
+  call._s = sourceStartOf(written);
+  call._e = sourceEndOf(written);
   return dispatchCall(call, frame, e, e.ev, selected.fn, false, selected.namespaced);
 }
 
 /**
  * A value reference that resolved to nothing is a failed resolution: an eval
  * error unless the read is optional, which gets its authored text as the
- * sentinel. The error names an unbound head (`@nope.x`) by itself, and any
- * other unresolvable chain (`@list[5]`, a member of a memberless value) whole.
+ * sentinel. The error names an unbound head by itself, as it was written
+ * (`@nope`, `$nope`, `$^nope`), and any other unresolvable chain (`@list[5]`,
+ * a member of a memberless value) whole. It is placed at the reference, or at
+ * its head when only the head carries a source span.
  */
 function unresolvedReference(node: Reference, frame: Frame | null, e: EvalCtx): EvalValue {
   if (!e.optional) {
@@ -6430,9 +6438,9 @@ function unresolvedReference(node: Reference, frame: Frame | null, e: EvalCtx): 
     let symbol = node.raw;
     if (!isValueSlotArray(base) && base.type === 'Lookup' && base.kind === 'var'
       && typeof base.name === 'string' && resolveVarRef(frame, base.name, base.scope, e) === undefined) {
-      symbol = `@${base.name}`;
+      symbol = node.raw.slice(0, node.raw.indexOf(base.name) + base.name.length);
     }
-    unresolvedSymbol(node, symbol, e);
+    unresolvedSymbol(sourceStartOf(node) === NO_SPAN && !isValueSlotArray(base) ? base : node, symbol, e);
   }
   return literal(node.raw);
 }
@@ -7609,6 +7617,18 @@ function evalCall(
   return dispatchCall(node, frame, e, ev, selected, hasAmbientFunctions(node));
 }
 
+/** One `functionMode: 'error'` copy per render's modes, for namespaced calls (ruling J1). */
+const erroringModesCache = new WeakMap<EvalModes, EvalModes>();
+
+function erroringModes(modes: EvalModes): EvalModes {
+  let erroring = erroringModesCache.get(modes);
+  if (erroring === undefined) {
+    erroring = { ...modes, functionMode: 'error' };
+    erroringModesCache.set(modes, erroring);
+  }
+  return erroring;
+}
+
 /**
  * Materialize a call's arguments TYPED and dispatch it through the evaluator:
  * to `selected` when a scoped function was resolved, else to a built-in when
@@ -7627,9 +7647,7 @@ function dispatchCall(
   ambient: boolean,
   namespaced = false
 ): MaybePromise<EvalValue> {
-  const modes = namespaced && e.modes.functionMode !== 'error'
-    ? { ...e.modes, functionMode: 'error' as const }
-    : e.modes;
+  const modes = namespaced && e.modes.functionMode !== 'error' ? erroringModes(e.modes) : e.modes;
   const sep = node.modern ? ' ' : ',';
 
   // Args are materialized TYPED (each arg's tag sourced from its parse node).

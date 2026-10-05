@@ -203,10 +203,13 @@ describe('V19 one-evaluator projection ratchet', () => {
     // early, per activation (`claimModulePrepublishedImport`); a nested plain
     // compose before a document-root `set` is rejected with the one
     // `alreadyLoadedUnconfigured` diagnostic the later-`set` case raises.
-    expect(occurrences(/^function |^async function /gmu)).toBe(490);
+    // +1 function, +1 `new WeakMap` (ruling J1): `erroringModes` keeps one
+    // error-mode copy of a render's modes for namespaced calls instead of
+    // spreading the modes on every call.
+    expect(occurrences(/^function |^async function /gmu)).toBe(491);
     expect(occurrences(/new Map/gu)).toBe(80);
     expect(occurrences(/new Set/gu)).toBe(41);
-    expect(occurrences(/new WeakMap/gu)).toBe(5);
+    expect(occurrences(/new WeakMap/gu)).toBe(6);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);
 
