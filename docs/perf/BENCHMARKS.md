@@ -93,4 +93,26 @@ known gap to fill when total-eval-vs-4.x becomes a focus.
 
 Measurement discipline: report the `signal`/rsd; a machine running other dev
 servers reads "unstable" and those ms are indicative only. Prefer ratios.
+
+**Counts when the machine is loaded: marginal instructions retired.** On macOS,
+`/usr/bin/time -l` reports the process's `instructions retired`. Run the same
+parse-bench with no warm-up at two sample counts and divide the difference by the
+difference in parses: `(I(N2) − I(N1)) / (N2 − N1)`. Startup, module load and JIT
+warm-up are paid by both runs, so they cancel. Run each side several times and
+take the median.
+
+```
+BENCH_CASES=benchmark.less /usr/bin/time -l node packages/syntax/less/less-parser/test/parse-bench.mjs m 0 10
+BENCH_CASES=benchmark.less /usr/bin/time -l node packages/syntax/less/less-parser/test/parse-bench.mjs m 0 40
+```
+
+parse-bench times both surfaces, so the quotient is one AST parse plus one CST
+parse. Measured 2026-10-05 at load averages of 10–85, where interleaved
+timings swung ±8% on identical libs:
+
+- the spread across runs of one lib was under ±1%;
+- a 0.7% difference reproduced between two libs.
+
+To A/B two grammar builds, swap saved `lib/` snapshots into the package
+directory, as the interleaved timing A/B does.
 See `docs/perf/V8-ARCHITECTURE.md` for the invariants a perf change must hold.
