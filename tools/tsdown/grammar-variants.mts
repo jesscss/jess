@@ -188,15 +188,13 @@ const interpreterPlugin = {
 };
 
 /*
- * A grammar source declares all four variants at top level, and each is a
- * `compose()`/`composeLeaf()` call that lowers the whole grammar when it runs.
- * The macro replaces those initializers with table literals, but here they stay
- * calls, so a variant entry that exports one grammar would still build the
- * other three on import — about 70% of the Less interpreter's load time.
- * Declaring the two pure lets rolldown drop the unexported ones. `rules()` is
- * deliberately NOT listed: dropping the recognition maps no variant composes
- * changes the Less AST (`interpreter-parity.test.ts` fails), so its calls are
- * not side-effect free.
+ * A grammar source declares all four variants at top level, each a
+ * `compose()`/`composeLeaf()` call. The macro replaces those initializers with
+ * table literals, but here they stay calls, so a variant entry that exports one
+ * grammar would still create the other three on import. Declaring the two pure
+ * lets rolldown drop the unexported ones. `rules()` is deliberately NOT listed:
+ * dropping the recognition maps no variant composes changes the Less AST
+ * (`interpreter-parity.test.ts` fails), so its calls are not side-effect free.
  */
 const INTERPRETER_TREESHAKE = { manualPureFunctions: ['compose', 'composeLeaf'] };
 

@@ -1,6 +1,7 @@
+import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname, join, relative } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { expect } from 'vitest';
 import { createTriviaMapFromParseman } from '@jesscss/core/ast';
 import type { TriviaMap } from '@jesscss/core';
@@ -92,6 +93,27 @@ export async function loadEnginePair(
     compiled: grammarOf(await import(compiledFile), compiledFile),
     interpreter: grammarOf(await import(interpreterFile), interpreterFile)
   };
+}
+
+/**
+ * Whether the interpreter twin of `variant` loads and parses `source` in a Node
+ * that refuses to turn strings into code (`--disallow-code-generation-from-strings`,
+ * Node's form of a Content-Security-Policy without `'unsafe-eval'`). Browser
+ * bundlers resolve the interpreter twin, so this is the check that a page with
+ * such a policy can load the grammar at all.
+ */
+export function interpreterParsesWithoutCodegen(libDir: string, variant: Variant, source: string): boolean {
+  const grammarUrl = pathToFileURL(join(libDir, 'grammar', 'interpreter', `${variant}.js`)).href;
+  const script = `const { run } = await import('parseman');
+const grammar = Object.values(await import(${JSON.stringify(grammarUrl)}))[0];
+process.stdout.write(String(run(grammar.Stylesheet, ${JSON.stringify(source)}).ok));`;
+  const child = spawnSync(
+    process.execPath,
+    ['--disallow-code-generation-from-strings', '--input-type=module', '-e', script],
+    { cwd: dirname(libDir), encoding: 'utf8' }
+  );
+  expect(child.stderr, 'child stderr').toBe('');
+  return child.status === 0 && child.stdout === 'true';
 }
 
 function isTriviaMap(value: Record<string, unknown>): value is Record<string, unknown> & TriviaMap {

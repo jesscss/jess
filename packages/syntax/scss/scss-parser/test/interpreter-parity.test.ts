@@ -9,6 +9,7 @@ import {
   CST_VARIANTS,
   cstOutcome,
   fixtureFiles,
+  interpreterParsesWithoutCodegen,
   loadEnginePair,
   outcome
 } from '../../../css/css-parser/test/engine-parity.js';
@@ -25,6 +26,10 @@ const CORPUS = [...CSS_FIXTURES, ...fixtureFiles('packages/syntax/scss/scss-pars
 describe('SCSS grammar: macro-compiled and interpreter bundles agree', () => {
   it('has a corpus', () => {
     expect(CORPUS.length).toBeGreaterThan(CSS_FIXTURES.length);
+  });
+
+  it('the interpreter grammar loads and parses with runtime code generation disallowed', () => {
+    expect(interpreterParsesWithoutCodegen(LIB, 'ast', '.a { b: c; }')).toBe(true);
   });
 
   it.each(AST_VARIANTS)('AST %s', async (variant) => {

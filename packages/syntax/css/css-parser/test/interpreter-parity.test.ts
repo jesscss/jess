@@ -8,6 +8,7 @@ import {
   CSS_FIXTURES,
   CST_VARIANTS,
   cstOutcome,
+  interpreterParsesWithoutCodegen,
   loadEnginePair,
   outcome,
   type Pins
@@ -36,6 +37,10 @@ const PINNED_ALL: Pins = new Map([
 describe('CSS grammar: macro-compiled and interpreter bundles agree', () => {
   it('has a corpus', () => {
     expect(CSS_FIXTURES.length).toBeGreaterThan(80);
+  });
+
+  it('the interpreter grammar loads and parses with runtime code generation disallowed', () => {
+    expect(interpreterParsesWithoutCodegen(LIB, 'ast', '.a { b: c; }')).toBe(true);
   });
 
   it.each(AST_VARIANTS)('AST %s', async (variant) => {
