@@ -568,6 +568,7 @@ const NO_VISITORS = 'Less v5 has no visitor API: remove the plugin, or port what
 const NO_PRE_PROCESSORS = 'Less v5 does not run source pre-processors: transform the source before it reaches the compiler.';
 const NO_POST_PROCESSORS = 'Less v5 does not run CSS post-processors: for minification (less-plugin-clean-css) set output.compress (`compress` in less.render / lessc); otherwise run the tool, e.g. PostCSS with autoprefixer, on the compiled CSS.';
 const NO_FILE_MANAGERS = 'Less v5 has no custom file managers: for npm imports (less-plugin-npm-import) use @jesscss/plugin-node-modules; other import resolution belongs in a Jess plugin\'s resolve/locate hooks.';
+const VALUES_ONLY = 'A Less v5 function plugin returns a value (a dimension, color, string, keyword, list or declaration list): write the rest in the stylesheet.';
 
 /**
  * The Less 4 plugin-manager API that Less v5 deliberately does not run, keyed
@@ -598,7 +599,28 @@ const UNSUPPORTED_PLUGIN_API_REPLACEMENTS: ReadonlyMap<string, string> = new Map
   /* 4.x plugins reach these before the hook call (`new less.visitors.Visitor(this)`). */
   ['less.visitors', NO_VISITORS],
   ['less.FileManager', NO_FILE_MANAGERS],
-  ['less.environment', NO_FILE_MANAGERS]
+  ['less.environment', NO_FILE_MANAGERS],
+
+  /*
+   * Tree nodes beyond the function-plugin value surface (`tree.AtRule`, and its
+   * 4.x factory `less.atrule()`): a function plugin returns a value, and the rest
+   * of the tree API is not provided.
+   */
+  ['tree.AtRule', `At-rules are statements, not values. ${VALUES_ONLY}`],
+  ['tree.Attribute', `Attribute selectors are selector structure. ${VALUES_ONLY}`],
+  ['tree.Combinator', `Combinators are selector structure. ${VALUES_ONLY}`],
+  ['tree.Condition', `Guard conditions are evaluated by the compiler. ${VALUES_ONLY}`],
+  ['tree.Element', `Selector elements are selector structure. ${VALUES_ONLY}`],
+  ['tree.Extend', `:extend is resolved by the compiler. ${VALUES_ONLY}`],
+  ['tree.Import', `@import is resolved while documents load, before plugin functions run. ${VALUES_ONLY}`],
+  ['tree.JavaScript', 'Inline JavaScript evaluation was removed: write the expression as a function plugin.'],
+  ['tree.Media', `@media is a statement, not a value. ${VALUES_ONLY}`],
+  ['tree.MixinCall', `Mixin calls are dispatched by the compiler. ${VALUES_ONLY}`],
+  ['tree.MixinDefinition', `Mixin definitions are statements, not values. ${VALUES_ONLY}`],
+  ['tree.NamespaceValue', `Namespace lookups are resolved by the compiler. ${VALUES_ONLY}`],
+  ['tree.Selector', `Selectors are statement structure. ${VALUES_ONLY}`],
+  ['tree.VariableCall', `Detached-ruleset calls are dispatched by the compiler. ${VALUES_ONLY}`],
+  ['tree.Ruleset with selectors', `Only an anonymous declaration list crosses the plugin value boundary. ${VALUES_ONLY}`]
 ]);
 
 export function makeJessErrorFromDiagnostic(
