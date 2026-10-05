@@ -105,10 +105,30 @@ export interface PlanOverlay {
   readonly instructions: readonly PlanInstruction[];
   readonly hiddenReferenceRules: ReadonlySet<Ruleset> | null;
 
+  /** Render-scoped at-rule scope ids the preflight assigned; see {@link atRuleScope}. */
+  readonly atRuleScopes: AtRuleScopes | null;
 }
+
+/**
+ * One scope id per at-rule block, shared by every planner walk of one render. The
+ * import preflight and `collectPlan` walk different documents in different passes;
+ * keying the id on the block lets an import nested in a root `@media` share that
+ * block's scope, and keeps an imported `@media` from inheriting its parent's.
+ */
+export type AtRuleScopes = Map<AtRuleBlock, number>;
 
 function instructionTargets(inst: ExtendInstruction): Branch[] {
   return inst.target.selectors.map(branchFromSelector);
+}
+
+/** The scope of the statements inside `node`, entered from `scope`. */
+export function atRuleScope(scope: number[], node: AtRuleBlock, ids: AtRuleScopes): number[] {
+  let id = ids.get(node);
+  if (id === undefined) {
+    id = ids.size;
+    ids.set(node, id);
+  }
+  return [...scope, id];
 }
 
 export function collectPlan(
@@ -122,7 +142,7 @@ export function collectPlan(
   const instructions: PlanInstruction[] = [];
   const targetAtoms = new Set<string>();
   let order = 0;
-  let scopeCounter = 0;
+  const scopeIds = overlay?.atRuleScopes ?? new Map<AtRuleBlock, number>();
 
   const walk = (
     statements: Statement[],
@@ -174,8 +194,7 @@ export function collectPlan(
         }
         walk(rule.rules, rulePath, scope, subject);
       } else if (st.type === 'AtRuleBlock') {
-        const inner = [...scope, scopeCounter++];
-        walk(st.rules, path, inner, parent);
+        walk(st.rules, path, atRuleScope(scope, st, scopeIds), parent);
       }
 
       // MixinDefinition / MixinCall / declarations / at-rule statements: no extend surface.

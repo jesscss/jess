@@ -19,7 +19,8 @@ describe('direct canonical extend', () => {
     const overlay = {
       subjects: new Array(150_000).fill(overlaySubject),
       instructions: [],
-      hiddenReferenceRules: null
+      hiddenReferenceRules: null,
+      atRuleScopes: null
     };
     const plan = collectPlan(stylesheet([rule('.root', [])]), undefined, undefined, overlay);
 

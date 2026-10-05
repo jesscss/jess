@@ -1,0 +1,6 @@
+@import "compound-base.less";
+.loop(@i) when (@i > 0) {
+  .x@{i} { &:extend(.p.q); }
+  .loop(@i - 1);
+}
+.loop(2);

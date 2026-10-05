@@ -123,6 +123,57 @@ const baseCompiler = new Compiler({
   }
 });
 
+/*
+ * A golden known to lag a fix, with the exact edit the owner has been asked to make.
+ * The fixture keeps its full byte gate against the edited golden. Each `from` must
+ * occur exactly once in the golden, so the entry fails — and must be removed — once
+ * the owner applies the edit.
+ */
+const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string, to: string]>>([
+  [
+    /*
+     * The golden was re-cut from jess output while jess#349 dropped cross-import
+     * extenders: it lacks the `.input-group-sm/lg > ...` extenders.
+     */
+    'tests-config/3rd-party/bootstrap4.less',
+    [
+      ['.form-control-plaintext.form-control-lg {\n', [
+        '.form-control-plaintext.form-control-lg,',
+        ...['sm', 'lg'].flatMap(size => [
+          `.input-group-${size} > .form-control-plaintext.form-control,`,
+          `.input-group-${size} > .input-group-prepend > .form-control-plaintext.input-group-text,`,
+          `.input-group-${size} > .input-group-append > .form-control-plaintext.input-group-text,`,
+          `.input-group-${size} > .input-group-prepend > .form-control-plaintext.btn,`,
+          `.input-group-${size} > .input-group-append > .form-control-plaintext.btn,`
+        ])
+      ].join('\n').slice(0, -1) + ' {\n'],
+      ...['sm', 'lg'].map((size): readonly [string, string] => {
+        const tail = ':not([size]):not([multiple])';
+        return [`select.form-control-${size}${tail} {\n`, [
+          `select.form-control-${size}${tail},`,
+          `.input-group-${size} > select.form-control${tail},`,
+          `.input-group-${size} > .input-group-prepend > select.input-group-text${tail},`,
+          `.input-group-${size} > .input-group-append > select.input-group-text${tail},`,
+          `.input-group-${size} > .input-group-prepend > select.btn${tail},`,
+          `.input-group-${size} > .input-group-append > select.btn${tail} {\n`
+        ].join('\n')];
+      })
+    ]
+  ]
+]);
+
+function applyPendingGoldenEdits(file: string, golden: string): string {
+  let edited = golden;
+  for (const [from, to] of pendingGoldenEdits.get(file) ?? []) {
+    const at = edited.indexOf(from);
+    if (at === -1 || edited.indexOf(from, at + 1) !== -1) {
+      throw new Error(`${file}: the pending golden edit no longer applies; remove its pendingGoldenEdits entry`);
+    }
+    edited = edited.slice(0, at) + to + edited.slice(at + from.length);
+  }
+  return edited;
+}
+
 const envFixturePattern = process.env.JESS_LESS_FIXTURE;
 const fixtureFilter = envFixturePattern
   ? new RegExp(envFixturePattern)
@@ -557,7 +608,7 @@ describe('Can render Less files to CSS', () => {
               : '';
           const expectedFailureReason = expectedFailureFixtures.get(file);
           const renderFixture = async () => {
-            const expectedCss = readFileSync(testCase.expectedFile, 'utf8');
+            const expectedCss = applyPendingGoldenEdits(file, readFileSync(testCase.expectedFile, 'utf8'));
 
             /*
              * Merge test case config with base compiler config

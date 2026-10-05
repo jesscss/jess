@@ -255,6 +255,14 @@ Cross-`@import` closure resolves through the import boundary
 (`extend-cross-import.test.ts`, reference = real less@4): `.a:extend(.b)` in main +
 `.b:extend(.c)` in the imported sheet yields `.c, .b, .a { color: red; }`.
 
+Targets are graph-wide: a rule of an imported sheet is a target for an extend anywhere
+in the import graph, whether or not that sheet has an `:extend()` of its own
+(`@import "t.less"; .x:extend(.sm) {}` with `.sm` in `t.less` → `.sm, .x { … }`), subject
+to the same `@media` scoping as inlined rules (§8). An extend inside a mixin or loop body
+counts like any other. The zero-extend fast-reject is per import GRAPH, never per
+document: a graph with no extend plans nothing (jess#349). Interpolated selectors are
+covered by §10.
+
 ## 7. Nested / ruleset-scoped extends
 
 Extend matches nested (compiled) selectors and can be authored from any nesting
@@ -364,6 +372,13 @@ reaches `tv` and its descendant `hires` but NOT the top-level `.ext2` rule.
 Crucially, v5 keeps the nested `@media` blocks nested — it does NOT merge/flatten
 them (contrast Less 4.x, which merges `@media (tv) and (hires)`).
 
+The scope is the placed one, across `@import`: an imported sheet's `@media` blocks
+scope its extends exactly as if the sheet were inlined, and an import inside an at-rule
+block (including the `@import "x" screen;` form) places the whole sheet in that block's
+scope. So `@media print { .x:extend(.sm) {} }` in one imported sheet does not reach a
+top-level `.sm` in another, while `@media print { @import "t.less"; .x:extend(.sm) {} }`
+extends the imported `.sm` (`extend-cross-import.test.ts`).
+
 ## 9. Compound / complex / combinator targets
 
 The target can be a compound, a complex selector, or carry combinators, and each
@@ -458,11 +473,12 @@ a fixture. These are the owner questions:
    intended to fold merge-anchoring in here — confirm it stays out of the extend
    surface.
 
-5. **Cross-`@import` extend is EVAL-routed, not spine-folded.** The transitive
-   closure through an import boundary currently routes to the legacy eval path
-   (per `extend-cross-import.test.ts`), a separate WIP from the spine fold. The
-   OUTPUT reference holds regardless of routing, but the intended final routing for
-   cross-import extend is unsettled.
+5. **Cross-`@import` extend routing (ledger X9).** No longer eval-routed: the import
+   planner records each imported sheet's statically-placed rules and extends from
+   their selector shapes (`planImportedStaticExtend`), and the one render walk records
+   loop/mixin-body placements (§1a). What stays open is whether extend crosses
+   `@compose`: today a composed module's emitted rules are targets like any other
+   (pinned in `extend-cross-import.test.ts`), with no ruling behind it.
 
 6. **`div.ext5` / duplicated-extender dedup.** `extend.md` "Duplication
    Detection" notes Less 4.x has NONE (`.alert:extend(.alert-info, .widget)`

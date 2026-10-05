@@ -4,9 +4,11 @@ const PROFILE_KEY = '__JESS_EXTEND_PROFILE_COUNTERS__';
 
 type CoreAst = typeof import('../nodes.js');
 type Serialize = typeof import('../serialize.js')['serialize'];
+type PrepareStaticImports = typeof import('../serialize.js')['prepareStaticImports'];
 
 let ast: CoreAst;
 let serialize: Serialize;
+let prepareStaticImports: PrepareStaticImports;
 let counters: Record<string, number>;
 
 /*
@@ -19,7 +21,7 @@ beforeAll(async () => {
   counters = {};
   (globalThis as typeof globalThis & { [PROFILE_KEY]?: Record<string, number> })[PROFILE_KEY] = counters;
   ast = await import('../nodes.js');
-  ({ serialize } = await import('../serialize.js'));
+  ({ serialize, prepareStaticImports } = await import('../serialize.js'));
 });
 
 beforeEach(() => {
@@ -49,6 +51,41 @@ describe('AST extend preflight cost contract', () => {
     expect(counters['astExtend.preflight.overlaySubjects'] ?? 0).toBe(0);
     expect(counters['astExtend.preflight.overlayInstructions'] ?? 0).toBe(0);
     expect(counters['astExtend.preflight.loopPlacements'] ?? 0).toBe(0);
+  });
+
+  it('plans no imported document when the import graph has no extend', async () => {
+    const imported = ast.stylesheet([ast.rule('.sm', [ast.decl('b', ast.color('red'))])]);
+    const document = ast.stylesheet([
+      ast.styleImport('@import', ast.quoted('"t.less"', 't.less', '"', false), { mode: 'import' }),
+      ast.styleImport('@import', ast.quoted('"r.less"', 'r.less', '"', false), { mode: 'import', options: ast.list([ast.keyword('reference')], ',') }),
+      ast.rule('.plain', [ast.decl('color', ast.color('red'))])
+    ]);
+
+    await expect(serialize(document, {
+      importDocument: ({ specifier }) => ({ document: imported, key: specifier })
+    })).resolves.toEqual({ css: '.sm {\n  b: red;\n}\n.plain {\n  color: red;\n}\n' });
+    expect(counters['astExtend.preflight.importsVisited']).toBe(2);
+    expect(counters['astExtend.preflight.importsFeatureBearing'] ?? 0).toBe(0);
+    expect(counters['astExtend.plan.calls'] ?? 0).toBe(0);
+  });
+
+  it('plans no extend facts while only preparing imports', async () => {
+    /*
+     * The prepare pass loads the import graph for a later render and discards its
+     * own overlay; the render plans the extend facts once.
+     */
+    const imported = ast.stylesheet([ast.rule('.sm', [ast.decl('b', ast.color('red'))])]);
+    const document = ast.stylesheet([
+      ast.styleImport('@import', ast.quoted('"t.less"', 't.less', '"', false), { mode: 'import' }),
+      ast.rule('.x', [], [{ target: ast.selist(ast.sel('.sm')), partial: false }])
+    ]);
+
+    await prepareStaticImports(document, {
+      importDocument: ({ specifier }) => ({ document: imported, key: specifier })
+    });
+    expect(counters['astExtend.preflight.importsVisited']).toBe(1);
+    expect(counters['astExtend.preflight.importsFeatureBearing'] ?? 0).toBe(0);
+    expect(counters['astExtend.plan.subjects'] ?? 0).toBe(0);
   });
 
   it('folds an imported-loop extend through the one render walk (no cold preflight)', async () => {

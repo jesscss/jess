@@ -146,8 +146,12 @@ describe('V19 one-evaluator projection ratchet', () => {
     // post-walk chunk rewrites; the walk no longer keeps a running offset.
     // +1 function (`spliceCtx`): an interpolation splice evaluates without
     // compress, so compressed output never rewrites text inside a larger token.
-    expect(occurrences(/^function |^async function /gmu)).toBe(476);
-    expect(occurrences(/new Map/gu)).toBe(71);
+    // +1 function (`bodyHasPlannedImport`) and +1 `new Map` (the import planner's
+    // render-scoped at-rule scope ids, `AtRuleScopes`): the planner gate now sees an
+    // import nested in an at-rule block, and an imported `@media` gets its own extend
+    // scope instead of its parent's (EXTEND-SEMANTICS §8).
+    expect(occurrences(/^function |^async function /gmu)).toBe(477);
+    expect(occurrences(/new Map/gu)).toBe(72);
     expect(occurrences(/new Set/gu)).toBe(40);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
     expect(occurrences(/new WeakSet/gu)).toBe(0);

@@ -4073,6 +4073,167 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: 2026-10-04 graph-wide extend admission for imported documents
+  (jess#349). An `:extend()` whose target lived in an imported sheet was dropped
+  unless that sheet carried an extend of its own, because the import planner
+  admitted each imported document to static extend planning on a per-document
+  "has extends" test. Admission is now per import graph: the root's extend
+  classification (static OR loop/mixin-body) seeds the flag, and an imported
+  document visited before the first extend-bearing one waits in render-local
+  parallel arrays that are planned, in visit order, when that extend appears.
+  Widening admission exposed the import planner's flat at-rule scope (every
+  imported `@media` shared its parent's scope), so at-rule scope ids are now one
+  render-scoped `AtRuleScopes` map shared by the import planner and
+  `collectPlan`, and an import nested in an at-rule block inherits that block's
+  scope (EXTEND-SEMANTICS §8). The planner gate also sees an import nested in an
+  at-rule block, and the prepare pass no longer plans extend facts it discards.
+- Architecture surface: `packages/core/src/ast/serialize.ts` `planImportedFacts`
+  (the root gate and its classification, `graphHasExtend` and the `pending*`
+  arrays, the `atRules` chain on `visit`, the prepare-mode guard),
+  `planImportedStaticExtend` (at-rule scopes), `bodyHasPlannedImport`, and
+  `continueRender` (reads the planner's classification); `packages/core/src/ast/extend/plan.ts`
+  (`AtRuleScopes`, `atRuleScope`, `PlanOverlay.atRuleScopes`, `collectPlan`'s
+  scope ids). Output tests in `packages/jess/test/less/extend-cross-import.test.ts`;
+  cost cases in `extend-preflight-contract.test.ts`. Parser, AST shapes, the
+  extend matcher/solver, the dynamic recorder, and public APIs are unchanged.
+- Separation/duplication: one admission rule replaces two. The special case that
+  always planned `(reference)` imports is deleted. The root and the imported
+  documents are classified by the same rule (`classifyExtend` static||dynamic
+  for the root, its stack-safe boolean twin `bodyMayPlanExtend` for imports);
+  before, the root seed was static-only. The import planner and `collectPlan`
+  now share one at-rule scope helper instead of two diverging counters.
+  `planImportedStaticExtend` remains the only imported-document planner.
+- Cumulative node weight: zero AST/CST fields, zero `Emit`/`Frame` fields;
+  `PlanOverlay` and the planner result gain one field each.
+- New traversal: the root's extend surface is classified once, in the planner,
+  and handed to the render (before: `documentHasExtend` in the planner plus
+  `classifyExtend` in the render — one root walk fewer). `bodyHasPlannedImport`
+  scans document-level statements and at-rule bodies only, and only when the root
+  has no static extend. Per import, an extend-bearing graph now runs the planner
+  walk (`planImportedStaticExtend`) instead of the admission scan once the flag
+  is set: on bootstrap 4 the render pass went from 81 admission scans + 5 planner
+  walks to 32 admission scans + 81 planner walks, and planner walks are the
+  heavier kind (selector IR per rule). The prepare pass (`Compiler.compile`)
+  previously ran the same planner walks and discarded them; it now runs none.
+- New node/materialization: one `AtRuleScopes` Map per render that reaches the
+  import planner, with one entry per at-rule block a planner walk enters; one
+  `atRules` array per at-rule block `visit` enters while planning extends; three
+  lazily allocated parallel arrays holding imported documents visited before the
+  graph is known to carry an extend (no per-entry tuple objects). Subject IR for
+  every imported rule in an extend-bearing graph is the existing planner's cost,
+  now paid by the 76 bootstrap 4 imports it previously skipped: `plan.subjects`
+  2183 → 2746 (+26%).
+- Render path: unchanged. The walk, the dynamic recorder, and the post-walk fold
+  are untouched; imported rules that were previously recorded only by the dynamic
+  recorder's opaque fallback are now ordinary static subjects.
+- Helper/API surface: `atRuleScope` and the `AtRuleScopes` type exported from
+  `extend/plan.ts` (internal module), one private function
+  (`bodyHasPlannedImport`), one private closure (`planImported`). No package
+  export, node contract, fallback, source scan, or reparse.
+- Metadata mutations: only render-local planner state (`overlay`,
+  `e.importedStaticExtendRules`, the scope map) is written.
+- Review-flagged diff tokens: [loop/traversal] the drain loop plans each pending
+  document once, when the first extend-bearing document appears; the scope loop
+  in `planImported` is bounded by at-rule nesting depth.
+  [array spread/materialization] the `[...atRules, st]` and `atRuleScope`'s
+  `[...scope, id]` are one per at-rule block entered, the same shape
+  `collectPlan` already used. [node construction] the `new Map()` is the one
+  `AtRuleScopes` per planner call; the planner result's `new Set()`/`new Map()`
+  are its existing empty `hiddenRules`/`referenceBoundaries`, unchanged. [side
+  map/set] `AtRuleScopes` is a strong, render-scoped Map dropped wholesale with
+  the plan, not a per-node weak side table (invariant 11). [materialized
+  array/object] the `ExtendClass` is the one the render already built, now built
+  in the planner and passed on; the `pending*` arrays replace per-entry tuple
+  objects; the overlay literals gain one field; `NO_AT_RULES` is a shared empty
+  constant.
+- Evidence: red-to-green — `extend-cross-import` gains plain, `(multiple)`,
+  nested chain, later-import extender and `extend all` cases (graph-wide
+  admission); three root mixin/loop-body extender cases (classification seed);
+  four imported-`@media` scope cases that the first cut of this change had
+  regressed; two at-rule-nested import cases and the `@import … print` form
+  (gate + scope inheritance); and a `@compose` pin. `extend-preflight-contract`
+  pins that a no-extend graph plans nothing and that the prepare pass plans
+  nothing. Core suite 219 files / 3346 passed / 10 skipped / 2 todo; all-Less
+  lane 183 discovered / 139 passed / 44 skipped / 0 failed with bootstrap 4 back
+  as a full byte gate against its golden plus the pending owner edit (the 20
+  restored `.input-group-sm/lg > ...` extenders). `benchmark.less` render output
+  is unchanged (SHA-256
+  `29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8`, 123,223
+  bytes). Timing on a contended machine was `signal=noisy` (92.27 ms median,
+  69.4% RSD) and supports no claim; the last usable baseline is 55.60 ms.
+- Verdict: accepted as a semantic correction with `performanceClaim: none`.
+  Follow-up: build subject IR lazily, only for rules whose atoms can meet a
+  target, in one planner shared by the root and imports.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-extend-dynamic-fold",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "why": "Extend matching is graph-wide: any extend anywhere in the import graph, including one in a root mixin or loop body, can target any imported rule, so the static import preflight must admit every imported document once the graph is known to carry an extend. A per-document gate cannot know about extends in the importer or in later imports, and the only alternative carrier, the walk-time dynamic recorder, records unplanned rules as opaque text that cannot match a branch of a nested multi-branch rule. Admitting every imported rule requires each imported at-rule block to carry its own scope, so an @media-scoped extend stays inside its @media.",
+    "dangerTokensJustification": "Imported documents visited before the first extend-bearing one wait in three lazily allocated parallel arrays, drained once and dropped. A graph with no extend never plans, and the prepare pass never plans. bodyMayPlanExtend stops running once the graph is known to carry an extend. At-rule scope ids live in one strong render-scoped Map, not a WeakMap. The root is classified once instead of twice. No AST field, Frame or Emit field, or WeakMap is added.",
+    "falsePath": {
+      "fixture": "extend-preflight-contract:no-extend",
+      "counters": {
+        "calls": 1,
+        "preflight.collectCalls": 0,
+        "preflight.overlaySubjects": 0,
+        "preflight.overlayInstructions": 0,
+        "preflight.loopPlacements": 0
+      }
+    },
+    "featurePath": {
+      "fixture": "extend-preflight-contract:imported-loop",
+      "counters": {
+        "preflight.importsVisited": 1,
+        "preflight.importsFeatureBearing": 1
+      }
+    },
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "parse-render",
+      "currentMedianMs": 55.6,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  },
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Collection-spread-computed-key-overlay-and-iteration",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "module-callable-explicit-reference-and-css-call-separation",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "The import planner now admits imported documents to static extend planning per import graph instead of per document, scopes each imported at-rule block on its own, and places an import nested in an at-rule block in that block's scope. A rule in an imported sheet is an extend target whether or not that sheet carries an extend of its own, and an @media-scoped extend stays inside its @media across imports. This changes emitted CSS for affected import graphs and makes no speed, neutrality, or byte-identity claim.",
+    "dangerTokensJustification": "The additions are three lazily allocated parallel arrays of imported documents awaiting the first extend in the graph, drained once; one render-scoped at-rule scope Map; one at-rule chain array per at-rule block visited while planning; and one planner closure per planner call. No-extend graphs and the prepare pass plan nothing; no new AST traversal, WeakMap, Frame or Emit field is added.",
+    "behaviorEvidence": "extend-cross-import 21/21 (graph-wide admission, root mixin/loop-body seed, imported @media scope, at-rule-nested import and @compose cases), extend-preflight-contract 4/4 (no-extend graph and prepare pass plan nothing), the core suite (3346 passed), and the all-Less fixture lane (139 passed, 44 skipped, bootstrap 4 gated against its golden plus the pending owner edit).",
+    "buildEvidence": "The dependency-ordered release build and the core package build pass; the core build tsconfig typechecks clean.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 55.6,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  }
+]
+```
+
 - Latest pass: 2026-10-04 remote-import route through Context, with its review
   fixes. The opt-in `@jesscss/plugin-remote-import` needs Context/plugin-contract
   facts that were wrong for a URL: the source of a located path comes from the
