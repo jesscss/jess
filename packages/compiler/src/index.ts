@@ -121,7 +121,11 @@ export interface RenderedStylesheet {
   /** v3 source map JSON (external form), when source maps are enabled. */
   map?: string;
 
-  /** The `sourceMappingURL` written into the CSS annotation, when one is written. */
+  /**
+   * The external map's URL, basepath-stripped. The annotation names it, except
+   * that `sourceMapFileInline` writes a `data:` URI and
+   * `disableSourcemapAnnotation` writes nothing; it is returned either way.
+   */
   sourceMapURL?: string;
 }
 

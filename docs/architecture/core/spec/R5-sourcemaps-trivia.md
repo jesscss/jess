@@ -68,13 +68,12 @@ rule / selector-list / declaration / value / at-rule / root granularity
   fine internal representation but must be converted the same way — and converted
   on the **source** text for the origin side, on the **generated** text for the
   generated side.
-- **C. Rule granularity is coarser than the intended-v5 map.** Less 4.x /
-  alpha emit segment boundaries at selector and declaration-name/value
-  granularity (a mapping at the start of each selector, each property, each
-  value). tree2's lane has roughly that shape already (it pushes a `Position` for
-  the selector node and one for the value node) — but this must be **confirmed
-  against the intended v5 map granularity** (§10), not assumed from the coarse
-  lane's current shape.
+- **C. Rule granularity is coarser than the intended-v5 map.** Less 4.x emits a
+  segment per output chunk that carries a source index: each composed selector
+  part, each declaration name and its closing `;` (the values in
+  `packages/less/test/sourcemaps/comprehensive.json` carry none).
+  tree2's lane pushes a `Position` for the selector node and one for the value
+  node. The v5 granularity is decided in ledger O12 (§8 item 1, rule A3).
 
 **Consequence:** R5 is not "turn the flag on." The coarse lane must be
 **re-founded** to (1) carry a **source** provenance offset per emitted chunk and
@@ -175,13 +174,18 @@ which node happens to carry the offset.
 map, and the composition draws from MULTIPLE source nodes.** In flattened mode
 `composeOne('.a', '&:hover') → '.a:hover'` fuses bytes from the **parent** rule's
 selector node and the **child** rule's selector node into one emitted string.
-tree2 today pushes ONE `Position` for `rule.selector` (the child). Two policies;
-v5 is **selector-granular** (decided, ledger O12):
-  - **selector-granular (Less 4.x-parity):** one segment per
-    emitted complex selector, attributed to the **child** selector node's source
-    offset (the innermost authored selector). Coarse but matches Less.
-  - **sub-selector-granular:** a segment at the `.a` bytes → parent origin, a
-    segment at the `:hover` bytes → child origin. Finer; only if alpha emits it.
+tree2 pushes ONE `Position` for `rule.selector` (the child). Two policies;
+v5 is **header-granular** (decided, ledger O12):
+  - **header-granular (v5):** one segment per emitted selector header, at its
+    first byte, attributed to the **owning (child)** rule's selector node. A
+    header that wraps (`.p .a,\n.p .b {`) gets one segment, on its first line,
+    and the parent bytes of a composed selector point at the child. Coarser
+    than Less 4.x.
+  - **per-selector-part (Less 4.x):** a segment at each composed part, each
+    attributed to the rule that authored it: in
+    `packages/less/test/sourcemaps/comprehensive.json`, `.container .header {`
+    maps column 0 to `.container` (source line 21) and column 10 to `.header`
+    (source line 25). A possible v5 follow-up.
   In **nested mode** (R0, the v5 default) there is **no composition** — each rule
   emits its own local selector (`ownStrings`), so each selector maps cleanly to
   its own source node. Nested mode is therefore the *easier* attribution case and
@@ -477,11 +481,11 @@ legacy map itself is not owner-audited. Therefore:
 |---|---|---|---|
 | T1 | Placed mixin decl attributed to call site, not def body | **Yes** | A1/A2; two-call same-origin assertion (§5.3) |
 | T2 | String-keyed attribution collapses two same-string selectors' origins | **Yes** | A4; two-`.a` different-origin assertion |
-| T3 | Composed selector `.a:hover` attributed to only one of its two source nodes at wrong granularity | **Yes** | A3; owner-confirm granularity |
+| T3 | Composed selector `.a:hover` attributed to only one of its two source nodes at wrong granularity | **Yes** | A3; header-granular (O12) |
 | T4 | Shared/placed leaf re-emits authored inter-member trivia into a mismatched gap | Partly (comment variants change bytes; ws variants don't) | A5 / §3.5; placement-with-comment fixture |
 | T5 | Interned string assumed to "handle trivia"; per-member boundaries lost → comment in wrong gap | Comment cases: no (bytes change) | §3.1/§3.3; `comments`/`comments2` analog green |
 | T6 | Import origin off-by-one / wrong source file after inline | **Yes** | §2.5; import-origin assertion |
-| T7 | Coarse rule-granularity map when intended v5 is finer (or vice-versa) | **Yes** | Owner-confirm granularity (§10); anchor fixtures |
+| T7 | Coarse rule-granularity map when intended v5 is finer (or vice-versa) | **Yes** | Granularity decided (O12, §8 item 1); anchor fixtures |
 | T8 | `hasComment` lossy bit mislabels `//` vs `/* */`, wrong inline-safety on placement | Possibly (bytes) | §3.4; carry Parséman kinds |
 | T9 | Sourcemap lane adds cost when maps are OFF (regresses the R0–R4 perf thesis) | N/A (perf) | Invariant §2.6.3; race op-counts unchanged |
 
@@ -529,8 +533,9 @@ never skipped.
 ## 8. Open owner-confirm items
 
 1. **Sourcemap granularity (T3/T7).** Decided (ledger O12): one mapping per
-   emitted node (selector header, declaration, value, at-rule), the header
-   mapped to the rule that owns it. Per-selector-part mapping is a possible
+   emitted node (selector header, declaration, computed value, at-rule), the
+   header mapped to the rule that owns it (rule A3). A literal value shares its
+   declaration's mapping. Per-selector-part mapping (Less 4.x) is a possible
    follow-up.
 2. **Placed-mixin origin (A2/T1).** Confirm placed content maps to the definition
    body (assumed) vs the call site.

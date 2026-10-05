@@ -25,9 +25,9 @@ import type { Position } from './serialize.js';
  *      from the active source owner, so imported files map to themselves.
  *
  * Granularity: one mapping at the start of each emitted node (selector header,
- * declaration, value, at-rule, statement), and one per line of an `(inline)`
- * import. Less 4.x writes one per emitted chunk instead, so the two maps differ
- * in bytes, not in where a token points. `sources` are normalized as Less
+ * declaration, computed value, at-rule, statement), and one per line of an
+ * `(inline)` import. A composed selector header maps whole to its owning rule;
+ * Less 4.x maps each part to the rule that wrote it. `sources` are normalized as Less
  * `normalizeFilename` does (basepath strip, then rootpath prefix);
  * `outputSourceFiles` embeds the content of each source a mapping names. Text a
  * host injected ahead of the entry file (`DocumentContextOptions.file.sourceOffset`)
@@ -78,6 +78,10 @@ function lineColFromIndex(lineStarts: number[], offset: number): { line: number;
  * Less `removeBasepath`: strip a `/`-separated `basepath` prefix and the one
  * separator after it. Less applies it to every `source` and to the
  * `sourceMappingURL` annotation (`source-map-builder.js`).
+ *
+ * ponytail: plain string prefix, exactly Less's `path.indexOf(basepath) === 0`,
+ * so basepath `/a/sub` also strips `/a/subx/m.css.map` to `x/m.css.map`. Check
+ * for a `/` boundary after the prefix if that ever bites.
  */
 export function removeSourceMapBasepath(path: string, basepath: string | undefined): string {
   if (basepath === undefined || basepath === '' || path.indexOf(basepath) !== 0) {
