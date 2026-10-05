@@ -11,6 +11,8 @@ import {
   lessFixturePackagesPlugin,
   lessHarnessFunctionsPlugin,
   lessTestDataRemoteImports,
+  readNumericFunctionArg,
+  readStringFunctionArg,
   resolveLessTestDataRoot,
   upstreamHarnessSourceMap,
   withFixtureTimeout
@@ -816,7 +818,7 @@ describe('Less fixture harness diagnostics', () => {
       while (running) {
         const slice = performance.now() + 5;
         while (performance.now() < slice) {
-          // Burn CPU the way a runaway eval loop does, yielding between slices.
+          // Burn CPU, yielding to the event loop between slices, so the poll cuts it off mid-flight.
         }
         await new Promise(resolve => setImmediate(resolve));
       }
@@ -831,6 +833,27 @@ describe('Less fixture harness diagnostics', () => {
     }
   });
 
+  it('fails runaway work that never yields to the event loop once it settles', async () => {
+    /*
+     * A render that only chains microtasks starves the poll, the way Jess's
+     * synchronous eval does, so the budget is only checked when it finishes.
+     */
+    const start = process.cpuUsage();
+    const neverYields = async (): Promise<string> => {
+      for (;;) {
+        const { user, system } = process.cpuUsage(start);
+        if ((user + system) / 1000 > 100) {
+          return 'rendered';
+        }
+        await Promise.resolve();
+      }
+    };
+    await expect(withFixtureTimeout(file, neverYields, { cpuMs: 50, wallMs: 60_000 })).rejects.toMatchObject({
+      name: 'FixtureTimeoutError',
+      message: expect.stringMatching(/of CPU, over its 50 ms budget\.$/)
+    });
+  });
+
   it('does not charge a fixture for time spent off the CPU', async () => {
     /*
      * On a loaded machine a fixture waits for a core; on its CPU clock that is
@@ -838,5 +861,10 @@ describe('Less fixture harness diagnostics', () => {
      */
     const offCpu = () => new Promise<string>(resolve => setTimeout(() => resolve('rendered'), 500));
     await expect(withFixtureTimeout(file, offCpu, { cpuMs: 100, wallMs: 60_000 })).resolves.toBe('rendered');
+  });
+
+  it('reads a harness function argument whose value is null from its primitive', () => {
+    expect(readNumericFunctionArg({ value: null, valueOf: () => 3 })).toBe(3);
+    expect(readStringFunctionArg({ value: null, valueOf: () => '"red"' })).toBe('red');
   });
 });

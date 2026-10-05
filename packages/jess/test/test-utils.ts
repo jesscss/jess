@@ -14,12 +14,12 @@ export interface TestCase {
 }
 
 export type NumericLike = {
-  value?: number | { number?: number };
+  value?: number | { number?: number } | null;
   valueOf?: () => unknown;
 };
 
 export type StringLike = {
-  value?: string | { value?: string };
+  value?: string | { value?: string } | null;
   valueOf?: () => unknown;
 };
 
@@ -52,7 +52,7 @@ export function readNumericFunctionArg(value: NumericLike): number {
   if (typeof value?.value === 'number') {
     return value.value;
   }
-  if (typeof value?.value === 'object' && typeof value.value.number === 'number') {
+  if (typeof value?.value === 'object' && typeof value.value?.number === 'number') {
     return value.value.number;
   }
   const primitive = value?.valueOf?.() ?? value;
@@ -63,7 +63,7 @@ export function readStringFunctionArg(value: StringLike): string {
   if (typeof value?.value === 'string') {
     return value.value.replace(/^(['"])(.*)\1$/, '$2');
   }
-  if (typeof value?.value === 'object' && typeof value.value.value === 'string') {
+  if (typeof value?.value === 'object' && typeof value.value?.value === 'string') {
     return value.value.value.replace(/^(['"])(.*)\1$/, '$2');
   }
   const primitive = value?.valueOf?.() ?? value;
@@ -404,8 +404,18 @@ export type FixtureBudget = {
  * stalled case burns none, so it keeps a wall ceiling, set under vitest's 30 s
  * `testTimeout` so this error, which names the fixture, fires first.
  *
- * `process.cpuUsage()` is the fixture's own CPU because vitest's default `forks`
- * pool runs each test file in its own process, one test at a time.
+ * The CPU budget is checked twice. A poll cuts off work that yields to the
+ * event loop. A render that never yields (synchronous eval, microtask chains)
+ * starves the poll, so the budget is checked again when `work` settles: a
+ * runaway that finishes still fails. One that never finishes and never yields
+ * cannot be stopped from inside its own thread; it hangs the worker.
+ *
+ * The budget is absolute, sized with about 3x headroom over bootstrap4.less on
+ * Apple Silicon; a slower runner has less. `process.cpuUsage()` is this process
+ * only: vitest runs one test at a time per fork (the root config shares forks
+ * across files, so async work an earlier test left running is charged here),
+ * and CPU spent in child processes, such as plugin-js's Deno worker, is not
+ * counted, which leaves those to the wall ceiling.
  */
 export async function withFixtureTimeout<T>(
   file: string,
@@ -414,20 +424,33 @@ export async function withFixtureTimeout<T>(
 ): Promise<T> {
   const cpuStart = process.cpuUsage();
   const wallStart = performance.now();
+  const overBudget = (): FixtureTimeoutError | undefined => {
+    const { user, system } = process.cpuUsage(cpuStart);
+    const cpuMs = (user + system) / 1000;
+    return cpuMs > budget.cpuMs
+      ? new FixtureTimeoutError(file, `it burned ${Math.round(cpuMs)} ms of CPU, over its ${budget.cpuMs} ms budget`)
+      : undefined;
+  };
   let poll: ReturnType<typeof setInterval> | undefined;
   const timeout = new Promise<never>((_resolve, reject) => {
     poll = setInterval(() => {
-      const { user, system } = process.cpuUsage(cpuStart);
-      const cpuMs = (user + system) / 1000;
-      if (cpuMs > budget.cpuMs) {
-        reject(new FixtureTimeoutError(file, `it burned ${Math.round(cpuMs)} ms of CPU, over its ${budget.cpuMs} ms budget`));
-      } else if (performance.now() - wallStart > budget.wallMs) {
-        reject(new FixtureTimeoutError(file, `it was still unsettled after ${budget.wallMs} ms`));
+      const error = overBudget()
+        ?? (performance.now() - wallStart > budget.wallMs
+          ? new FixtureTimeoutError(file, `it was still unsettled after ${budget.wallMs} ms`)
+          : undefined);
+      if (error) {
+        reject(error);
       }
     }, 25);
   });
   try {
-    return await Promise.race([work(), timeout]);
+    const settled = work().finally(() => {
+      const error = overBudget();
+      if (error) {
+        throw error;
+      }
+    });
+    return await Promise.race([settled, timeout]);
   } finally {
     clearInterval(poll);
   }
