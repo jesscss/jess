@@ -50,18 +50,19 @@ export interface NativeLessPluginManager {
   addFileManager(fileManager: unknown): never;
 }
 
-/*
- * The replacement each refusal names. `@plugin` scripts run in the Deno legacy
- * runtime of `@jesscss/plugin-js` (`runtime-worker.ts`), which cannot import
- * this module and refuses the same API with the same wording.
+/**
+ * What a refusal calls the plugin: its `name`, else its class name, else its
+ * position in the `plugins` option. A 4.x plugin built as a constructor with an
+ * object-literal prototype (less-plugin-clean-css) has neither name, and an ESM
+ * namespace or `Object.create(null)` plugin has no `constructor` at all.
  */
-const NO_VISITORS = 'Less v5 has no visitor API: remove the plugin, or port what it does to a function plugin or to a step that runs on the compiled CSS.';
-const NO_PRE_PROCESSORS = 'Less v5 does not run source pre-processors: transform the source before it reaches the compiler.';
-const NO_POST_PROCESSORS = 'Less v5 does not run CSS post-processors: for minification (less-plugin-clean-css) set output.compress (`compress` in less.render / lessc); otherwise run the tool, e.g. PostCSS with autoprefixer, on the compiled CSS.';
-const NO_FILE_MANAGERS = 'Less v5 has no custom file managers: for npm imports (less-plugin-npm-import) use @jesscss/plugin-node-modules; other import resolution belongs in a Jess plugin\'s resolve/locate hooks.';
-
-const pluginName = (plugin: NativeLessPlugin): string =>
-  plugin.name ?? (plugin.constructor === Object ? 'unnamed' : plugin.constructor.name);
+const pluginLabel = (plugin: NativeLessPlugin, index: number): string => {
+  if (plugin.name) {
+    return plugin.name;
+  }
+  const ctor: unknown = Reflect.get(plugin, 'constructor');
+  return typeof ctor === 'function' && ctor !== Object && ctor.name !== '' ? ctor.name : `plugins[${index}]`;
+};
 
 export interface NativeLessFunctionRegistry {
   add(name: string, fn: NativeLessFunction): void;
@@ -411,17 +412,7 @@ export class LessApiBridge {
       },
       get: name => this.#registered.get(name.toLowerCase())
     };
-    let installing = 'unnamed';
-    const refuse = (feature: string, replacement: string): never => {
-      throw ERR.pluginUnsupported({ meta: { plugin: installing, feature, replacement } });
-    };
-    const manager: NativeLessPluginManager = {
-      addVisitor: () => refuse('pluginManager.addVisitor()', NO_VISITORS),
-      addPreProcessor: () => refuse('pluginManager.addPreProcessor()', NO_PRE_PROCESSORS),
-      addPostProcessor: () => refuse('pluginManager.addPostProcessor()', NO_POST_PROCESSORS),
-      addFileManager: () => refuse('pluginManager.addFileManager()', NO_FILE_MANAGERS)
-    };
-    this.less = Object.defineProperties({
+    this.less = {
       functions: { functionRegistry: this.registry },
       tree: {
         Dimension: LessDimension,
@@ -429,16 +420,30 @@ export class LessApiBridge {
         Color: LessColor,
         Anonymous: LessAnonymous
       }
-    }, {
-      /* 4.x plugins reach these before the hook call (`new less.visitors.Visitor(this)`). */
-      visitors: { get: () => refuse('less.visitors', NO_VISITORS) },
-      FileManager: { get: () => refuse('less.FileManager', NO_FILE_MANAGERS) },
-      environment: { get: () => refuse('less.environment', NO_FILE_MANAGERS) }
+    };
+    plugins.forEach((plugin, index) => {
+      /*
+       * Each plugin gets its own manager and `less` view, so a refusal names the
+       * plugin that reached for the hook, even when a function it registered
+       * reads `less.visitors` long after install.
+       */
+      const label = pluginLabel(plugin, index);
+      const refuse = (feature: string): never => {
+        throw ERR.pluginUnsupported({ meta: { plugin: label, feature } });
+      };
+      const manager: NativeLessPluginManager = {
+        addVisitor: () => refuse('pluginManager.addVisitor()'),
+        addPreProcessor: () => refuse('pluginManager.addPreProcessor()'),
+        addPostProcessor: () => refuse('pluginManager.addPostProcessor()'),
+        addFileManager: () => refuse('pluginManager.addFileManager()')
+      };
+      const less = Object.defineProperties({ ...this.less }, {
+        visitors: { get: () => refuse('less.visitors') },
+        FileManager: { get: () => refuse('less.FileManager') },
+        environment: { get: () => refuse('less.environment') }
+      });
+      plugin.install?.(less, manager, this.registry);
     });
-    for (const plugin of plugins) {
-      installing = pluginName(plugin);
-      plugin.install?.(this.less, manager, this.registry);
-    }
     this.globalFns = this.#fns;
   }
 

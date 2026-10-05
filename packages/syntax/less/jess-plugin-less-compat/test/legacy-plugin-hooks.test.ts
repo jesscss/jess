@@ -14,17 +14,20 @@ import { LessCompatPlugin } from '../src/plugin.js';
  * that reaches for it must fail with a diagnostic that names the API and its
  * native replacement, never with a bare TypeError or a silently dropped hook.
  */
-function installError(plugin: NativeLessPlugin): JessError {
+function refusalOf(run: () => unknown): JessError {
   try {
-    new LessApiBridge([plugin]);
+    run();
   } catch (error) {
     if (error instanceof JessError) {
       return error;
     }
     throw error;
   }
-  throw new Error('expected the plugin install to be refused');
+  throw new Error('expected a plugin/unsupported-feature refusal');
 }
+
+const installError = (...plugins: NativeLessPlugin[]): JessError =>
+  refusalOf(() => new LessApiBridge(plugins));
 
 const isNativeLessPlugin = (value: unknown): value is NativeLessPlugin =>
   typeof value === 'object' && value !== null && 'install' in value && typeof value.install === 'function';
@@ -84,7 +87,7 @@ describe('legacy Less plugin-manager hooks', () => {
     const refused = installError(realPlugin('less-plugin-clean-css'));
 
     /* Its prototype is a plain object literal, so no class name survives. */
-    expect(refused.message).toContain('Plugin "unnamed"');
+    expect(refused.message).toContain('Plugin "plugins[0]"');
     expect(refused.message).toContain('pluginManager.addPostProcessor()');
     expect(refused.fix).toContain('output.compress');
   });
@@ -102,6 +105,38 @@ describe('legacy Less plugin-manager hooks', () => {
       }
     }]);
     expect(bridge.globalFns).toHaveLength(1);
+  });
+
+  it('installs a plugin with no constructor (an ESM namespace, Object.create(null))', () => {
+    const plugin: NativeLessPlugin = {
+      install(_less, _manager, functions) {
+        functions.add('one', () => 1);
+      }
+    };
+    Object.setPrototypeOf(plugin, null);
+    expect(new LessApiBridge([plugin]).globalFns).toHaveLength(1);
+  });
+
+  it('names a plugin with neither a name nor a class by its position in plugins', () => {
+    const refused = installError(
+      { name: 'functions-only', install: (_less, _manager, functions) => functions.add('one', () => 1) },
+      { install: (_less, manager) => manager.addVisitor({}) }
+    );
+    expect(refused.message).toContain('Plugin "plugins[1]"');
+  });
+
+  it('names the plugin whose function reads a refused member after install', () => {
+    const bridge = new LessApiBridge([
+      {
+        name: 'late-reader',
+        install(less, _manager, functions) {
+          functions.add('late', () => Reflect.get(less, 'visitors'));
+        }
+      },
+      { name: 'installed-last', install: () => undefined }
+    ]);
+    expect(refusalOf(() => bridge.registry.get('late')?.()).message)
+      .toContain('Plugin "late-reader" uses less.visitors');
   });
 
   it('surfaces the refusal from the opt-in compat plugin', () => {
