@@ -378,6 +378,12 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
     source: 'a[*|href] { color: red }'
   },
   {
+    // selectors-4 §6: whitespace may lead the attribute name, prefix included.
+    id: 'namespaced attribute selectors after leading whitespace',
+    group: 'selector',
+    source: 'a[ svg|href="x" ] b[ *|href] c[ |lang] { color: red }'
+  },
+  {
     id: 'attribute presence selector',
     group: 'selector',
     source: 'a[href] { color: red }'

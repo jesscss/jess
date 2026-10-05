@@ -322,7 +322,6 @@ type LessRules = {
   PseudoArgumentComplex: Combinator<SelectorBranch>;
   PseudoArgumentSelectorTail: Combinator<SelectorBranch>;
   PseudoArgumentSelector: Combinator<SelectorList>;
-  AttributeNamespace: Combinator<string>;
   NamespaceTypeSelector: Combinator<SimpleSelector>;
   AttributeSelector: Combinator<SimpleSelector>;
   InterpolatedAttributeToken: Combinator<Interpolation>;
@@ -379,6 +378,8 @@ type LessRules = {
 type LessInputRules = LessRules & typeof lessSyntax;
 
 type SharedSyntax = {
+  // Inherited from the CSS base: the glued `ns|` / `*|` / `|` prefix terminal.
+  AttributeNamespace: Combinator<unknown>;
   // Inherited from the CSS base: an only-clause or a chain of QueryTerm (Less's).
   QueryClause: Combinator<ValueNode>;
   // Inherited from the CSS base: ( <container-condition> ), whose atoms reach Less's QueryFeature and ContainerStyleQuery leaves.
@@ -4838,18 +4839,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       ]));
     }
   );
-  const AttributeNamespace = node(
-    'AttributeNamespace',
-    choice(
-      // `|=` is the CSS attribute operator, not a namespace separator. Guard
-      // the namespace arm before consuming `|` so a quoted interpolation after
-      // `prop|=` remains on the ordinary attribute-value route.
-      sequence(staticIdentifier, literal('|'), not(literal('='))),
-      literal('*|'),
-      literal('|')
-    ),
-    children => children.map(requireToken).map(token => token.value).join('')
-  );
   const NamespaceTypeSelector = node(
     'NamespaceTypeSelector',
     sequence(g.AttributeNamespace, choice(staticIdentifier, literal('*'))),
@@ -4891,9 +4880,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * before the modifier, so `[data-x = y i]` is valid CSS and every superset
    * must accept it, as it accepts the tight `[a="x"i]`. The separation of the
    * unquoted value from the modifier is carried by ident tokenization —
-   * `[a=yi]` is one greedy `staticIdentifier`, `[a=y i]` is two. The `[`
-   * itself keeps the ambient compound trivia, so a comment before it still
-   * joins one compound and `a [b]` stays a descendant relation. This is the
+   * `[a=yi]` is one greedy `staticIdentifier`, `[a=y i]` is two. The `[` is
+   * the bracket block's first token, so the block reads trivia only AFTER it
+   * (`[ ns|x]`, as in the CSS base); what precedes it is the ambient compound
+   * trivia's, so a comment before it still joins one compound and `a [b]`
+   * stays a descendant relation. The namespace prefix is the CSS base's own
+   * `AttributeNamespace` terminal. This is the
    * CSS base's frame and reduction (`attributeSelectorFrom`, authored
    * whitespace kept — ledger O7) over Less's static slots: Less's `Identifier`
    * is a routed value-position rule, so the inherited frame cannot read it
@@ -4901,20 +4893,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    */
   const AttributeSelector = node(
     'AttributeSelector',
-    sequence(
-      literal('['),
-      parser(
-        { trivia: staticSelectorTrivia },
-        sequence(
-          optional(g.AttributeNamespace),
-          staticIdentifier,
-          optional(sequence(
-            g.AttributeOperator,
-            choice(staticIdentifier, g.LiteralQuoted),
-            optional(g.AttributeModifier)
-          )),
-          literal(']')
-        )
+    parser(
+      { trivia: staticSelectorTrivia },
+      sequence(
+        literal('['),
+        optional(g.AttributeNamespace),
+        staticIdentifier,
+        optional(sequence(
+          g.AttributeOperator,
+          choice(staticIdentifier, g.LiteralQuoted),
+          optional(g.AttributeModifier)
+        )),
+        literal(']')
       )
     ),
     (children, _fields, _span, _rawChildren, triviaLog) => attributeSelectorFrom(children, triviaLog)
@@ -4926,31 +4916,29 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    */
   const InterpolatedAttributeSelector = node(
     'InterpolatedAttributeSelector',
-    sequence(
-      literal('['),
-      parser(
-        { trivia: staticSelectorTrivia },
-        sequence(
-          choice(
-            sequence(
-              optional(g.AttributeNamespace),
-              g.InterpolatedAttributeToken,
-              optional(sequence(
-                g.AttributeOperator,
-                choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted, g.LessIdentifier, g.LiteralQuoted),
-                optional(g.AttributeModifier)
-              ))
-            ),
-            sequence(
-              optional(g.AttributeNamespace),
-              staticIdentifier,
+    parser(
+      { trivia: staticSelectorTrivia },
+      sequence(
+        literal('['),
+        choice(
+          sequence(
+            optional(g.AttributeNamespace),
+            g.InterpolatedAttributeToken,
+            optional(sequence(
               g.AttributeOperator,
-              choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted),
+              choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted, g.LessIdentifier, g.LiteralQuoted),
               optional(g.AttributeModifier)
-            )
+            ))
           ),
-          literal(']')
-        )
+          sequence(
+            optional(g.AttributeNamespace),
+            staticIdentifier,
+            g.AttributeOperator,
+            choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted),
+            optional(g.AttributeModifier)
+          )
+        ),
+        literal(']')
       )
     ),
     (children, _fields, _span, _rawChildren, triviaLog) => {
@@ -5619,7 +5607,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     PseudoArgumentComplex,
     PseudoArgumentSelectorTail,
     PseudoArgumentSelector,
-    AttributeNamespace,
     NamespaceTypeSelector,
     AttributeSelector,
     InterpolatedAttributeToken,

@@ -108,6 +108,7 @@ type GrammarRuleName =
   | 'AtRulePreludeSegments'
   | 'AtRuleStatement'
   | 'AttributeModifier'
+  | 'AttributeNamespace'
   | 'AttributeOperator'
   | 'AttributeSelector'
   | 'BasicSelector'
@@ -1047,10 +1048,15 @@ const cssFactory = (g: GrammarSelf) => {
    * the whole `svg|circle` text, matching the other dialects (one representation
    * per construct).
    */
+  /*
+   * The namespace prefix as a rule, so a dialect composes this one terminal
+   * instead of restating it (both of CSS's own uses read it through `g`).
+   */
+  const AttributeNamespace = attributeNamespace;
   const NamespaceTypeSelector = node(
     'NamespaceTypeSelector',
     noTrivia(sequence(
-      attributeNamespace,
+      g.AttributeNamespace,
       choice(g.Identifier, literal('*'))
     )),
     children => simpleSelector(children.map(tokenText).join(''))
@@ -1059,7 +1065,7 @@ const cssFactory = (g: GrammarSelf) => {
     'AttributeSelector',
     sequence(
       literal('['),
-      optional(attributeNamespace),
+      optional(g.AttributeNamespace),
       g.Identifier,
       optional(sequence(
         g.AttributeOperator,
@@ -4881,6 +4887,7 @@ const cssFactory = (g: GrammarSelf) => {
     CompoundSelector,
     simpleSelectorAtom,
     BasicSelector,
+    AttributeNamespace,
     NamespaceTypeSelector,
     AttributeSelector,
     PseudoSelector,
