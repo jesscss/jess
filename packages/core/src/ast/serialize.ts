@@ -7345,9 +7345,16 @@ function dispatchCall(
   // Args are materialized TYPED (each arg's tag sourced from its parse node).
   const typed = node.args.map(a => evalTypedSlot(a.value, frame, e, true, true));
   return combineAll(typed, (vals) => {
-    const ordered = orderKeywordArgs(node.args, vals, ev, node.name, selected, ambient);
+    let named = false;
+    for (let i = 0; i < node.args.length; i++) {
+      if (node.args[i]!.name !== undefined) {
+        named = true;
+        break;
+      }
+    }
+    const ordered = named ? orderKeywordArgs(node.args, vals, ev, node.name, selected, ambient) : vals;
     const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
-    const written = writtenArguments(node, vals, e);
+    const written = named ? writtenArguments(node, vals, e) : undefined;
     try {
       const result = ev.call(node.name, args, e.modes, null, e.io, selected, ambient, written);
       return isThenable(result)
@@ -7363,19 +7370,10 @@ function dispatchCall(
  * The arguments of a call that names any of them, in authored order with each
  * keyword spelled in the dialect it was written in (`@amount` in Less, `$amount`
  * in Sass and `.jess`), so a call written out as-is keeps them (jess#279).
- * `undefined` for an all-positional call, which allocates nothing.
+ * Only a call with a keyword argument builds one; a positional call's arguments
+ * are already as written.
  */
-function writtenArguments(node: FunctionCall, vals: ValueGroup[], e: EvalCtx): WrittenArguments | undefined {
-  let named = false;
-  for (const arg of node.args) {
-    if (arg.name !== undefined) {
-      named = true;
-      break;
-    }
-  }
-  if (!named) {
-    return undefined;
-  }
+function writtenArguments(node: FunctionCall, vals: ValueGroup[], e: EvalCtx): WrittenArguments {
   const sigil = e.context?.sourceContext?.plugin?.supportedExtensions?.includes('.less') === true ? '@' : '$';
   return {
     args: makeList(vals, ','),
@@ -7595,8 +7593,8 @@ function writtenBlockBody(
  * callee's own parameter list — so the order comes from the resolved function
  * ({@link ValueEvaluator.paramNames}), never from the call site.
  *
- * Returns `vals` UNCHANGED when nothing was named, so an ordinary positional
- * call pays one `name !== undefined` test per argument and allocates nothing.
+ * Called only for a call that names an argument: the caller's one
+ * `name !== undefined` scan keeps an ordinary positional call off this path.
  *
  * It also returns `vals` unchanged when the callee declares no parameter by that
  * name (or is unknown): the call then reaches dispatch with exactly its authored
@@ -7612,17 +7610,6 @@ function orderKeywordArgs<T>(
   scopedFn: Fn | undefined,
   ambient: boolean
 ): T[] {
-  let hasName = false;
-  for (let i = 0; i < args.length; i++) {
-    if (args[i]!.name !== undefined) {
-      hasName = true;
-      break;
-    }
-  }
-  if (!hasName) {
-    return vals;
-  }
-
   const params = ev.paramNames(name, scopedFn, ambient);
   if (params === undefined) {
     return vals;
