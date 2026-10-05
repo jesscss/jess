@@ -48,6 +48,12 @@ import {
   enclosedInterpolationFromChildren,
   foldFunctionCondition,
   foldMixinGuards,
+  functionConditionOperandFrom,
+  functionConditionParenFrom,
+  functionConditionTermFrom,
+  isLessGuardOperand,
+  mixinGuardTermFrom,
+  requireGuardTerm,
   functionCallFromChildren,
   functionConditionSource,
   functionNameFromOpener,
@@ -163,6 +169,7 @@ import type {
   InterpolationFact,
   LessCallArg,
   LessEachCallback,
+  LessGuardOperand,
   LessMathRun,
   MixinCallArgument,
   MixinGuard,
@@ -215,7 +222,7 @@ type LessRules = {
   FunctionConditionOr: Combinator<FunctionConditionFact>;
   FunctionConditionAnd: Combinator<FunctionConditionFact>;
   FunctionConditionTerm: Combinator<FunctionConditionFact>;
-  FunctionConditionOperand: Combinator<ValueNode>;
+  FunctionConditionOperand: Combinator<LessGuardOperand | ValueNode>;
   FunctionConditionParen: Combinator<FunctionConditionFact>;
   Call: Combinator<ValueNode>;
   CallArgumentFunction: Combinator<FunctionCall>;
@@ -265,15 +272,16 @@ type LessRules = {
   MixinGuardTopOr: Combinator<MixinGuard>;
   MixinGuardTopAnd: Combinator<MixinGuard>;
   MixinGuardTopTerm: Combinator<MixinGuard>;
-  MixinGuardOr: Combinator<MixinGuard>;
-  MixinGuardAnd: Combinator<MixinGuard>;
-  MixinGuardTerm: Combinator<MixinGuard>;
-  MixinGuardOperand: Combinator<ValueNode>;
+  MixinGuardOr: Combinator<MixinGuard | LessGuardOperand>;
+  MixinGuardAnd: Combinator<MixinGuard | LessGuardOperand>;
+  MixinGuardTerm: Combinator<MixinGuard | LessGuardOperand>;
+  MixinGuardOperand: Combinator<ValueNode | LessMathRun>;
   EachName: Combinator<string>;
   /** A complete Less statement body, shared by detached rulesets and `each()` callbacks. */
   BodyStatement: Combinator<Statement | string>;
   EachCallback: Combinator<LessEachCallback>;
   EachFunctionStatement: Combinator<For>;
+  IfFunctionStatement: Combinator<FunctionCall | If>;
   SupportsValue: Combinator<ValueNode>;
   SupportsFeature: Combinator<ValueNode>;
   EnclosedContent: Combinator<Interpolation>;
@@ -1709,66 +1717,30 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   // only after those values have been recognized.
   const FunctionConditionOperand = node(
     'FunctionConditionOperand',
-    oneOrMore(sequence(not(functionConditionStop), g.MathValue)),
-    (children) => {
-      const values = children.filter(isValueNode);
-      if (values.length === 0) {
-        throw new TypeError('Less function condition lost its operand.');
-      }
-      return values.length === 1 ? values[0]! : spaced(values);
-    }
+    oneOrMore(sequence(not(functionConditionStop), g.MathSum)),
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => functionConditionOperandFrom(children, state)
   );
   const FunctionConditionParen = node(
     'FunctionConditionParen',
     sequence(literal('('), g.FunctionConditionOr, literal(')')),
-    (children): FunctionConditionFact => {
-      const inner = children.find(isFunctionConditionFact);
-      if (inner === undefined) {
-        throw new TypeError('Less function condition lost its parenthesized operand.');
-      }
-      return { guard: inner.guard, src: `(${inner.src})`, grouped: true, hasComparison: inner.hasComparison };
-    }
+    (children, _fields, span, _rawChildren, _triviaLog, state) => functionConditionParenFrom(children, span, state)
   );
+  /*
+   * A group is read once, as a condition; the token after its `)` decides what
+   * it was, as in `MixinGuardTerm`: the rest of a math run makes it an operand
+   * (`if(((1 + 1) * 2 = 4), …)`), and a comparison compares the value it holds.
+   */
   const FunctionConditionTerm = node(
     'FunctionConditionTerm',
     sequence(
       optional(functionConditionNot),
-      choice(g.FunctionConditionParen, g.FunctionConditionOperand),
+      choice(
+        sequence(g.FunctionConditionParen, noTrivia(many(sequence(choice(productOperator, sumOperator), g.MathAtom)))),
+        g.FunctionConditionOperand
+      ),
       optional(sequence(functionConditionOperator, choice(g.FunctionConditionParen, g.FunctionConditionOperand)))
     ),
-    (children): FunctionConditionFact => {
-      const nested = children.filter(isFunctionConditionFact);
-      const values = children.filter(isValueNode);
-      const operator = children.map(guardOperatorText).find((value): value is string => value !== null)?.trim();
-      const left = nested[0] ?? (values[0] === undefined ? undefined : { guard: lessTruth(values[0]), src: functionConditionSource(values[0]), grouped: false, hasComparison: false, bare: values[0] });
-      const right = nested[1] ?? (values.length > 1 && values[1] !== undefined ? { guard: lessTruth(values[1]), src: functionConditionSource(values[1]), grouped: false, hasComparison: false, bare: values[1] } : undefined);
-      if (left === undefined) {
-        throw new TypeError('Less function condition term lost its left operand.');
-      }
-      let guard: MixinGuard;
-      let src: string;
-      if (operator === undefined) {
-        guard = left.guard;
-        src = left.src;
-      } else {
-        if (right === undefined) {
-          throw new TypeError('Less comparison requires value operands.');
-        }
-        if (nested.length === 0 && children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === 'not')) {
-          throw new TypeError('Less function condition `not` requires a grouped condition operand.');
-        }
-        const leftValue = left.bare ?? condition(left.guard, left.src);
-        const rightValue = right.bare ?? condition(right.guard, right.src);
-        guard = { g: 'cmp', op: operator, left: leftValue, right: rightValue };
-        src = `${left.src} ${operator} ${right.src}`;
-      }
-      const negated = children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === 'not');
-      const hasComparison = operator !== undefined || left.hasComparison || right?.hasComparison === true;
-      const grouped = operator === undefined && left.grouped;
-      return negated
-        ? { guard: { g: 'not', inner: guard }, src: `not(${src})`, grouped, hasComparison }
-        : { guard, src, grouped, hasComparison };
-    }
+    (children, _fields, _span, rawChildren, _triviaLog, state) => functionConditionTermFrom(children, rawChildren, state)
   );
   const FunctionConditionAnd = node(
     'FunctionConditionAnd',
@@ -2008,10 +1980,34 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(GenericFunction, terminalFunctionBoundary),
     ([call]) => isStatement(call) ? call : ''
   );
+  /*
+   * A statement `if(<condition>, { … }, { … });` reads its arguments with the
+   * value call's reader (`FunctionArguments`), so its condition is the same
+   * `FunctionCondition` a value-position `if()` reads, a comparison
+   * (`if((@a = 1), { … });`) included. The generic statement lane's argument
+   * reader takes values and calls only.
+   */
+  const IfFunctionCall = node(
+    'Call',
+    parser({ trivia: functionTrivia }, sequence(routed(), g.FunctionArguments, literal(')'))),
+    argumentFunctionFromChildren
+  );
+  const IfFunctionStatement = node(
+    'Call',
+    sequence(IfFunctionCall, choice(literal(';'), terminalFunctionBoundary)),
+    (children) => {
+      const call = children.find(isFunctionCall);
+      if (call === undefined) {
+        throw new TypeError('Less if() statement lost its call fact.');
+      }
+      return lowerLogicalCallStatement(call);
+    }
+  );
   const FunctionStatement = transform(
     dispatch(
       identOrFunction,
       caseOf('each(', g.EachFunctionStatement),
+      caseOf('if(', g.IfFunctionStatement),
       /*
        * The url/calc exclusion here is LOAD-BEARING, not redundant with
        * `genericFunctionOpen`'s `not(keywords(['url(','calc(']))` guard (:3380).
@@ -3189,75 +3185,48 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     // less.js does (`@a: default; .m() when (@a = default)` matches there).
     // Whether that comparison means anything is a language-service fact.
     //
-    // Every other operand is a value-position math run (`g.MathValue`, the
-    // operand of an `if()` condition too), as Less 4's `atomicCondition` reads
-    // an `addition()`: `when (2 * 2 > 1)` and `when (@n - 1 > 0)` compute, and a
-    // bare slash follows the math policy exactly as it does in a value.
+    // Every other operand is a math run (`g.MathSum`, the operand of an `if()`
+    // condition too), as Less 4's `atomicCondition` reads an `addition()`:
+    // `when (2 * 2 > 1)` and `when (@n - 1 > 0)` compute. The run is left
+    // UNFOLDED for the term to fold: as a guard operand it follows the math
+    // policy exactly as a value does, and inside a group read as an operand it
+    // is that group's math (`mixinGuardTermFrom`).
     choice(
       mixinGuardDefaultOperand,
-      g.MathValue
+      g.MathSum
     ),
-    children => requireValueNode(children[0])
+    children => requireMathSum(children)
+  );
+  /*
+   * A `(` opens a group that is read ONCE, as a guard. What follows its `)`
+   * decides what it was: the rest of a math run or a comparison makes it a math
+   * group in an operand (`((1 + 1) = 2)`, `((@a + @b) * 2 > 10)`), and nothing
+   * makes it a grouped guard. The operand arm never starts with `(`.
+   */
+  const mixinGuardGroupTail = sequence(
+    noTrivia(many(sequence(choice(productOperator, sumOperator), g.MathAtom))),
+    optional(sequence(mixinGuardOperator, g.MixinGuardOperand))
   );
   const MixinGuardTerm = node(
     'MixinGuardTerm',
     sequence(
       optional(lessWord('not')),
       choice(
-        sequence(literal('('), g.MixinGuardOr, literal(')')),
-        sequence(g.MixinGuardOperand, optional(sequence(mixinGuardOperator, g.MixinGuardOperand)))
+        sequence(literal('('), g.MixinGuardOr, literal(')'), mixinGuardGroupTail),
+        sequence(not(literal('(')), g.MixinGuardOperand, optional(sequence(mixinGuardOperator, g.MixinGuardOperand)))
       )
     ),
-    (children): MixinGuard => {
-      const nested = children.find(isMixinGuard);
-      const values = children.filter(isValueNode);
-      const operator = children.map(guardOperatorText).find((value): value is string => value !== null);
-      let guard: MixinGuard;
-      if (nested !== undefined) {
-        guard = nested;
-      } else {
-        const left = values[0];
-        if (left === undefined) {
-          throw new TypeError('Less grammar produced a guard without a value.');
-        }
-        if (operator === undefined) {
-          const call = isFunctionCall(left) ? left : null;
-          if (call !== null && isDefaultGuardCall(call)) {
-            guard = { g: 'default' };
-          } else if (call !== null) {
-            guard = { g: 'call', name: call.name, args: call.args.map(arg => requireValueNode(arg.value)) };
-          } else {
-            guard = lessGuardTruth(left);
-          }
-        } else {
-          const right = values[1];
-          if (right === undefined) {
-            throw new TypeError('Less grammar produced a comparison guard without a right operand.');
-          }
-          /*
-           * GUARD position, so the comparison lowers to the MATCH test (§4.2a).
-           * This production family is reached only from `g.MixinGuard` — the
-           * `when` clause of a mixin definition or a CSS guard — and both ask
-           * whether a definition APPLIES. `.generic(1, true) when (@a < @b)`
-           * has no ordering and therefore does not match; lessc 4.6.3 agrees,
-           * and so does the owner-maintained expected CSS. Value position keeps
-           * the assertion, built separately in `FunctionConditionTerm`.
-           */
-          guard = { g: 'match', op: operator, left, right };
-        }
-      }
-      return children.some(child => isLessTerminalText(child, 'not')) ? { g: 'not', inner: guard } : guard;
-    }
+    (children, _fields, _span, rawChildren, _triviaLog, state) => mixinGuardTermFrom(children, rawChildren, state)
   );
   const MixinGuardAnd = node(
     'MixinGuardAnd',
     sequence(g.MixinGuardTerm, many(sequence(lessWord('and'), g.MixinGuardTerm))),
-    children => foldMixinGuards('and', children)
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => foldMixinGuards('and', children, state)
   );
   const MixinGuardOr = node(
     'MixinGuardOr',
     sequence(g.MixinGuardAnd, many(sequence(choice(lessWord('or'), literal(',')), g.MixinGuardAnd))),
-    children => foldMixinGuards('or', children)
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => foldMixinGuards('or', children, state)
   );
   const unparenthesizedMixinGuard = node(
     'UnparenthesizedMixinGuard',
@@ -3289,23 +3258,20 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       unparenthesizedMixinGuard,
       sequence(lessWord('not'), g.MixinGuardTerm)
     ),
-    (children): MixinGuard => {
-      const guard = children.find(isMixinGuard);
-      if (guard === undefined) {
-        throw new TypeError('Less grammar produced an empty top-level grouped guard.');
-      }
+    (children, _fields, _span, _rawChildren, _triviaLog, state): MixinGuard => {
+      const guard = requireGuardTerm(children.find(child => isMixinGuard(child) || isLessGuardOperand(child)), state);
       return children.some(child => isLessTerminalText(child, 'not')) ? { g: 'not', inner: guard } : guard;
     }
   );
   const MixinGuardTopAnd = node(
     'MixinGuardTopAnd',
     sequence(g.MixinGuardTopTerm, many(sequence(lessWord('and'), g.MixinGuardTopTerm))),
-    children => foldMixinGuards('and', children)
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => requireGuardTerm(foldMixinGuards('and', children, state), state)
   );
   const MixinGuardTopOr = node(
     'MixinGuardTopOr',
     sequence(g.MixinGuardTopAnd, many(sequence(choice(lessWord('or'), literal(',')), g.MixinGuardTopAnd))),
-    children => foldMixinGuards('or', children)
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => requireGuardTerm(foldMixinGuards('or', children, state), state)
   );
   const MixinGuard = node(
     'MixinGuard',
@@ -5556,6 +5522,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     BodyStatement,
     EachCallback,
     EachFunctionStatement,
+    IfFunctionStatement,
     SupportsValue,
     SupportsFeature,
     EnclosedContent,
