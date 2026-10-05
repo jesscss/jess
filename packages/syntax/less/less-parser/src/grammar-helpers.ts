@@ -1130,8 +1130,20 @@ function customValueFromParts(parts: readonly CustomValuePart[]): ValueNode {
       throw new TypeError('Less custom value retained an untyped grammar part.');
     }
   };
-  for (const part of parts) {
-    append(part);
+  /*
+   * The declaration gap already took the whitespace after the `:`, so a value
+   * that opens with whitespace opened with a block comment (`--x: /* c *&#47; red`).
+   * The comment is trivia, replayed from the value's span; the comment-free
+   * value drops the edge whitespace it leaves behind (css-syntax-3 §5.5.6).
+   * ponytail: `trimStart()` also drops a non-CSS space (U+00A0, U+FEFF), as
+   * `trimCustomValueEnd` does at the other edge.
+   */
+  for (const [index, part] of parts.entries()) {
+    if (index !== 0 || typeof part !== 'string') {
+      append(part);
+    } else if (part.trimStart() !== '') {
+      append(part.trimStart());
+    }
   }
   if (hasInterpolation) {
     return interpolation(interpolationParts);

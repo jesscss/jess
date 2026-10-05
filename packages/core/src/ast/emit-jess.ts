@@ -171,6 +171,9 @@ const isSpaceRun = (slot: ValueSlot | CallValue): boolean =>
 class JessPrinter {
   readonly gaps: JessSpellingGap[] = [];
   readonly #comments: readonly Trivia[];
+
+  /** Comment runs a custom-property value printed in place ({@link customValue}). */
+  readonly #printed = new Set<Trivia>();
   readonly #importPath: (path: string) => string;
   readonly #functions: EmitJessOptions['functions'];
 
@@ -228,7 +231,7 @@ class JessPrinter {
       if (run.start >= to) {
         break;
       }
-      if (run.start >= from && run.end <= to) {
+      if (run.start >= from && run.end <= to && !this.#printed.has(run)) {
         out += `${indent}${run.src.slice(run.start, run.end).trim()}\n`;
       }
     }
@@ -397,10 +400,26 @@ class JessPrinter {
       : gap('Declaration', 'a property name that is not an identifier (a Less map key such as `100` or `<`): the `.jess` `Declaration` name is an `Identifier`');
   }
 
-  /** `CustomDeclaration`: custom-property values are raw CSS. */
+  /**
+   * `CustomDeclaration`: custom-property values are raw CSS, so one with a
+   * comment written in it prints its source bytes, comments in place; the body
+   * replay then skips those comments.
+   */
   customValue(value: ValueSlot): string {
     if (!isSlotArray(value) && (value.type === 'Any' || value.type === 'Keyword')) {
-      return value.src;
+      const start = sourceStartOf(value);
+      const end = sourceEndOf(value);
+      let src: string | undefined;
+      for (const run of this.#comments) {
+        if (run.start >= end) {
+          break;
+        }
+        if (run.start >= start && run.end <= end) {
+          this.#printed.add(run);
+          src = run.src;
+        }
+      }
+      return src === undefined ? value.src : src.slice(start, end);
     }
     return this.value(value, At.Value);
   }

@@ -3,7 +3,7 @@ import { makeLessRegistry } from '@jesscss/fns';
 import { parse } from '@jesscss/less-parser';
 import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
 import { serialize } from '../../../../core/src/ast/serialize.js';
-import { triviaMapOf } from '../../../../core/src/ast/provenance.js';
+import { sourceSpanOf, triviaMapOf } from '../../../../core/src/ast/provenance.js';
 
 /**
  * A custom property is permissive at the CSS base, and valid CSS must parse in
@@ -188,5 +188,27 @@ describe('Less custom properties', () => {
       + '  --f: "@{literal}"/* q */blue;\n'
       + '}\n'
     );
+  });
+
+  /*
+   * A block comment before the first value part opens the value: the value's
+   * span starts at it, so it is written in place. The comment-free value keeps
+   * no edge whitespace. Whitespace and `//` comments after the `:` stay outside.
+   */
+  it('starts a custom-property value at a comment that opens it', () => {
+    const source = '@v: red; .x { --a: /* c */ @{v}; --b: /* d */ blue; --c: // l\n  green; }';
+    const document = parse(source);
+    const rule = document.rules[1];
+    if (rule?.type !== 'Ruleset') {
+      throw new TypeError('expected a ruleset');
+    }
+    const spans = rule.rules.map((declaration) => {
+      const span = declaration.type === 'Declaration' && !Array.isArray(declaration.value) ? sourceSpanOf(declaration.value) : undefined;
+      return span === undefined ? undefined : source.slice(span.start, span.end);
+    });
+
+    expect(spans).toEqual(['/* c */ @{v}', '/* d */ blue', 'green']);
+    expect(rule.rules[1]).toMatchObject({ type: 'Declaration', value: { type: 'Any', src: 'blue' } });
+    expect(serialize(document).css).toBe('.x {\n  --a: /* c */ red;\n  --b: /* d */ blue;\n  --c: green;\n}\n');
   });
 });

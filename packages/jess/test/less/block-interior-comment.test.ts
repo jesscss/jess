@@ -301,6 +301,13 @@ describe('Less block comments at a statement boundary inside a block', () => {
     await bothEmitters('a { --y: a /* d */ b; z: 1; }', 'a { --y: a /* d */ b; z: 1; }');
   });
 
+  it('writes a comment that opens a custom property\'s value in the value', async () => {
+    await bothEmitters(
+      '@v: red; a { --x: /* c */ @{v}; --y: /* d */ blue; --z: /* e */ green !important; z: 1; }',
+      'a { --x: /* c */ red; --y: /* d */ blue; --z: /* e */ green !important; z: 1; }'
+    );
+  });
+
   it('reads a nested rule\'s comments from the file the rule is written in', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'jess-imported-mixin-comment-'));
     writeFileSync(join(dir, 'lib.less'), '/* padding padding padding */\n.m() { v: 1;\n  .n { /* lib-n */ q: 1; } }\n');
