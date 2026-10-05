@@ -16,8 +16,9 @@
  * parameterised by.
  */
 
-import { appendCustomValueParts as appendCustomValuePartsIn, cssBaseMathOutsideParens, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, keyword, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueSlot, withValueLayout } from '@jesscss/core/ast';
+import { appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, keyword, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueSlot, withValueLayout } from '@jesscss/core/ast';
 import type { AtRuleStatement, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { ScssImportPostludeError } from './parse-error.js';
 
 export type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
 export type ScssValueTail = { readonly kind: 'space' | 'slash'; readonly value: ValueNode; readonly separator: string };
@@ -152,6 +153,44 @@ export interface ScssImportListFact {
 
 export function isScssImportListFact(value: unknown): value is ScssImportListFact {
   return typeof value === 'object' && value !== null && 'kind' in value && value.kind === 'scss-import-list';
+}
+
+/**
+ * `ImportStatement`'s reduction: one import per target. The targets are the
+ * run after the at-keyword; a postlude is never a quoted string, `url()` or
+ * interpolation (`#{$media}` is rejected there), so the first value after the
+ * run is the last target's tail.
+ */
+export function scssImportStatementFrom(
+  children: readonly unknown[],
+  span: { readonly start: number; readonly end: number }
+): StyleImport | AtRuleStatement | ScssImportListFact {
+  let end = 1;
+  while (isScssImportTarget(children[end])) {
+    end += 1;
+  }
+  if (end === 1) {
+    throw new TypeError('SCSS @import requires a typed target.');
+  }
+  const tail = children.slice(end).find(isScssValue) ?? null;
+  const imports: Array<StyleImport | AtRuleStatement> = [];
+  for (let index = 1; index < end; index += 1) {
+    const target = children[index];
+    if (!isScssImportTarget(target)) {
+      continue;
+    }
+    const postlude = index === end - 1 ? tail : null;
+    const spelling = importTargetSpelling(target);
+    if (!sassImportUrlIsPlainCss(spelling) && importIsCompileTime('@import', target, null, null, spelling)) {
+      if (postlude !== null) {
+        throw new ScssImportPostludeError(span.start, span.end);
+      }
+      imports.push(styleImport('@import', target, { mode: 'import' }));
+    } else {
+      imports.push(atRuleStatement('@import', postlude === null ? target : spaced([target, postlude])));
+    }
+  }
+  return imports.length === 1 ? imports[0]! : { kind: 'scss-import-list', statements: imports };
 }
 
 export function isVarRef(value: unknown): value is Lookup {
