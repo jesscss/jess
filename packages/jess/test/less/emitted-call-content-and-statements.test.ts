@@ -60,7 +60,12 @@ describe('a ruleset argument to a call emitted as written (P37, jess#290)', () =
       .resolves.toBe('a{x:foo({a:1px;b:2!important})}');
   });
 
-  /* #294: the block follows the output's formatting, never its authored layout. */
+  /*
+   * #294 asked whether a ruleset argument follows the output's formatting or
+   * keeps its authored layout; no ledger row rules it yet. This pins what the
+   * writer does today — the block follows the output's formatting, in both
+   * modes alike — so a change to either mode is seen, not a decided rule.
+   */
   it('writes an authored multi-line block on one line, comments included, compressed with the output', async () => {
     const source = 'a { x: foo({\n    v: 1;\n      /* c */ /*! k */\n    .n {\n      w: 2;\n    }\n  }); }';
     await expect(less(source))
