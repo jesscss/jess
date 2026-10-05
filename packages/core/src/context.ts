@@ -1818,7 +1818,9 @@ export class Context {
     sourceEnd?: number;
   } = {}) {
     const { filePath, type, extension, sourceOffset, sourceEnd } = options;
-    const virtualPath = filePath || `virtual.${extension || 'jess'}`;
+
+    /* `extension` comes with or without its dot ('.less' or 'less'). */
+    const virtualPath = filePath || `virtual${extension?.startsWith('.') ? extension : `.${extension || 'jess'}`}`;
     const ext = extension || path.extname(virtualPath);
 
     const plugin = this.findParserPlugin(type, ext);

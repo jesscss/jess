@@ -87,6 +87,17 @@ describe('Less path resolution', () => {
     expect(css).toContain('color: blue');
   });
 
+  /* A source with no file path is named `virtual.<ext>`, whether `extension` has its dot or not. */
+  it('names a source rendered without a file path virtual.<ext>', async () => {
+    for (const extension of ['.less', 'less']) {
+      const result = await new Compiler().renderToResult(
+        { source: '.a {\n  color: @missing;\n}\n', language: 'less', extension },
+        {}
+      );
+      expect(result.errors?.[0]).toMatchObject({ filePath: 'virtual.less', line: 2 });
+    }
+  });
+
   it('restores each imported AST document as the base for its nested imports', async () => {
     const nestedDir = path.join(tempDir, 'nested');
     fs.mkdirSync(nestedDir);
