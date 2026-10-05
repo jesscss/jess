@@ -11475,6 +11475,11 @@ function planImportedFacts(
           (overlay.importBoundaries ??= new Map()).set(st, sheetBoundary);
         }
         if (reference || importHasOption(options, 'multiple')) {
+          /*
+           * ponytail: keyed by the import statement, so one statement the planner
+           * reaches twice (inside a sheet imported `(multiple)` twice) keeps its last
+           * token. Key by the visit path if such nested copies must project apart.
+           */
           sheetPlacement = {};
           (overlay.importPlacements ??= new Map()).set(st, sheetPlacement);
         }
