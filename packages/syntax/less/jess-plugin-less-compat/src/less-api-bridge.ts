@@ -256,12 +256,15 @@ export function toNativeLessValue(value: PluginRawArgument | ValueGroup): unknow
     return new LazyDetachedRuleset(value);
   }
 
-  // A named colour (`white`) is a Color to a Less 4.x plugin (`{ rgb: [r, g, b] }`).
+  /*
+   * A named colour (`white`) is a Color to a Less 4.x plugin (`{ rgb: [r, g, b] }`).
+   * A Color's `value` is its CSS text, as the sandboxed bridge's `tree.Color` reports it.
+   */
   const node = coerceNamedColorKeyword(value);
   switch (node.type) {
     case 'Dimension': return new LessDimension(node.number, node.unit);
     case 'Quoted': return new LessQuoted(node.quote, node.value, node.escaped);
-    case 'Color': return { type: 'Color', rgb: node.rgb, alpha: node.alpha, bytes: node.bytes, valueOf: () => node.bytes };
+    case 'Color': return { type: 'Color', rgb: node.rgb, alpha: node.alpha, value: node.bytes, bytes: node.bytes, valueOf: () => node.bytes };
     case 'List':
       return node.sep === ',' || node.sep === '/'
         ? new LazyValueList(node)

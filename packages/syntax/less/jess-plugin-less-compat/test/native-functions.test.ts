@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { Context } from '@jesscss/core';
-import { defineFunction, emitValue, HEX, makeColorHsl, makeDimension, makeKeyword, type FnCtx, type Value } from '@jesscss/core';
+import { defineFunction, emitValue, HEX, makeColorHsl, makeDimension, makeKeyword, sniffLiteral, type FnCtx, type Value } from '@jesscss/core';
 import { LessApiBridge, toNativeLessValue } from '../src/less-api-bridge.js';
 import { LessCompatPlugin } from '../src/plugin.js';
 
@@ -106,5 +106,16 @@ describe('AST-v2 native function boundary', () => {
       typeof value === 'object' && value !== null && 'rgb' in value ? value.rgb : undefined;
     expect(rgbOf(toNativeLessValue(makeColorHsl([45, 1, 0.5], 1, HEX)))).toEqual([255, 191.25, 0]);
     expect(rgbOf(toNativeLessValue(makeKeyword('white')))).toEqual([255, 255, 255]);
+  });
+
+  it('gives a colour argument its CSS text as `value`', async () => {
+    const bridge = new LessApiBridge([{
+      install(_less, _manager, functions) {
+        functions.add('upper', (color: { value?: unknown }) => String(color.value).toUpperCase());
+      }
+    }]);
+    const upper = async (arg: Value) => emitValue((await bridge.invokeRawFunction(bridge.globalFns[0]!, [arg], fnCtx))!);
+    expect(await upper(makeKeyword('red'))).toBe('RED');
+    expect(await upper(sniffLiteral('#fff'))).toBe('#FFF');
   });
 });
