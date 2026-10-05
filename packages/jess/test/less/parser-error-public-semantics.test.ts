@@ -277,9 +277,9 @@ describe('Less parser errors through the public AST route', () => {
     /*
      * `@alias: .theme;` (the tests-error namespacing-3 shape) used to fail on
      * the `:` at line 6, column 9, summarized as a selector/mixin-call/block
-     * frame. A punctuation-led value is rejected (ledger P33), and the
-     * diagnostic now sits on `.theme` and names it (jess#236). The no-leak
-     * requirement below is unchanged.
+     * frame. The rejection itself is pinned while its ruling is OPEN (ledger
+     * P33 leaves `.a` open; jess#236), but the diagnostic now sits on `.theme`
+     * and names it. The no-leak requirement below is unchanged.
      */
     const source = [
       '.theme() {',

@@ -12,10 +12,11 @@ function failureOf(source: string): unknown {
 }
 
 /*
- * A punctuation-led value is rejected in Less, in a variable and in a property
- * alike (ledger P33). The rejection is not in question here; the diagnostic is.
- * It must sit on the offending token and name the cause, not report a generic
- * failure somewhere earlier in the statement.
+ * A slash-led value is rejected in Less, in a variable and in a property alike
+ * (ledger P33). An uncalled mixin reference is rejected too, but whether it
+ * should be is OPEN (P33 leaves `.a` open; jess#236), so those cases pin
+ * today's rejection. Either way the diagnostic must sit on the offending token
+ * and name the cause, not report a generic failure earlier in the statement.
  */
 describe('punctuation-led Less values are rejected at their first token', () => {
   it.each([
@@ -36,8 +37,9 @@ describe('punctuation-led Less values are rejected at their first token', () => 
     ['a variable', '@foo: .a;', 6, '.a'],
     ['a variable followed by a ruleset', '@foo: .a;\n.bar { color: red; }', 6, '.a'],
     ['a namespaced variable', '@foo: #ns.a;', 6, '#ns.a'],
-    ['a property', '.x { p: .a; }', 8, '.a']
-  ])('names an uncalled mixin reference in %s (jess#236)', (_label, source, offset, name) => {
+    ['a property', '.x { p: .a; }', 8, '.a'],
+    ['a reference spaced from its semicolon', '@foo: .a ;', 6, '.a']
+  ])('PINNED (P33 `.a` OPEN) — names an uncalled mixin reference in %s (jess#236)', (_label, source, offset, name) => {
     expect(failureOf(source)).toMatchObject({
       code: 'parse/uncalled-mixin-reference',
       offset,
@@ -45,8 +47,12 @@ describe('punctuation-led Less values are rejected at their first token', () => 
     });
   });
 
-  it('keeps a mistyped colour on the ordinary value failure', () => {
-    expect(failureOf('.test { color: #fffff; }')).toMatchObject({ code: 'parse/syntax-error' });
+  it.each([
+    ['a mistyped colour', '.test { color: #fffff; }'],
+    ['a called mixin in a property', '.x { p: .a(); }'],
+    ['a called namespaced mixin in a property', '.x { a: #ns > .m(); }']
+  ])('keeps %s on the ordinary value failure', (_label, source) => {
+    expect(failureOf(source)).toMatchObject({ code: 'parse/syntax-error' });
   });
 
   it.each([

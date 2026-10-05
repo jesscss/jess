@@ -5473,9 +5473,10 @@ export function cstLintDiagnostics(
     }
 
     /*
-     * Shapes the strict Less AST rejects by name — the two punctuation-led
-     * value starts (ledger P33) and the slashed combinators (ledger G37) — are
-     * kept as nodes in the tolerant CST, so their twin is reported from the node.
+     * Shapes the strict Less AST rejects by name — a slash-led value (ledger
+     * P33), an uncalled mixin reference (rejected today; ruling OPEN under
+     * P33) and the slashed combinators (ledger G37) — are kept as nodes in the
+     * tolerant CST, so their twin is reported from the node.
      */
     if (language === 'less' && gt === 'LeadingSeparatorValue') {
       pushDiagnostic(

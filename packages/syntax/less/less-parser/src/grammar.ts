@@ -1592,15 +1592,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     )
   );
   /*
-   * Two value starts Less does not have (ledger P33: a punctuation-led value is
-   * rejected, in a variable and in a property alike). They are recognized only
-   * so the diagnostic sits on the token that starts them and names the cause.
-   * Each is the last arm of a value position, so valid input never reaches it.
+   * Two value starts Less rejects, recognized only so the diagnostic sits on
+   * the token that starts them and names the cause. Each is the last arm of a
+   * value position, so valid input never reaches it, and each accepts nothing.
    *
-   * A leading `/` is a separator with nothing on its left; a comment opener is
-   * trivia and never matches. The rest of the value is read as the permissive
-   * custom-property value — the one place a bare path is a value — so the
-   * statement keeps its extent for recovery.
+   * A leading `/` is a separator with nothing on its left (ledger P33: a
+   * punctuation-led value is rejected, in a variable and in a property alike);
+   * a comment opener is trivia and never matches. The rest of the value is read
+   * as the permissive custom-property value — the one place a bare path is a
+   * value — so the statement keeps its extent for recovery.
    */
   const LeadingSeparatorValue = node(
     'LeadingSeparatorValue',
@@ -1610,14 +1610,21 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     }
   );
   /*
-   * A mixin reference that is neither called nor looked up (jess#236). The
-   * called and looked-up forms are value arms ahead of this one. A `#` run of
-   * hex digits is a mistyped colour (`#fffff`), not a reference, so it keeps
-   * the ordinary value failure.
+   * A mixin reference that is the whole value, neither called nor looked up
+   * (jess#236): the called and looked-up forms are value arms ahead of this
+   * one, so it only names a reference that ends the value. Less 5 rejects it
+   * today; whether it should is OPEN (ledger P33 leaves `.a` open). A lone `#`
+   * and hex digits there is a mistyped colour (`#fffff`), not a reference, so
+   * it keeps the ordinary value failure.
    */
   const UncalledMixinReference = node(
     'UncalledMixinReference',
-    sequence(not(regex(/#[0-9a-fA-F]+(?![-_a-zA-Z0-9\u0080-￿\\])/)), mixinName, many(MixinPathTail)),
+    sequence(
+      not(regex(/#[0-9a-fA-F]+[ \t\n\r\f]*[;}!]/)),
+      mixinName,
+      many(MixinPathTail),
+      peek(regex(/[;}!]/))
+    ),
     (children, _fields, span, _rawChildren, _triviaLog, state) => {
       const name = sourceFromState(state)?.slice(span.start, span.end) ?? requireToken(children[0]).value;
       throw new LessUncalledMixinReferenceError(span.start, span.end, name);

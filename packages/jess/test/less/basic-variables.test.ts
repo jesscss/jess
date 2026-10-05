@@ -68,13 +68,15 @@ describe('Less variable references through the public AST route', () => {
   });
 
   /*
-   * jess#236. lessc 4.9.1 keeps `@foo: .a;` as permissive text and only raises
-   * on `@foo()`. Less 5 rejects the declaration at parse time — a
-   * punctuation-led value is rejected in a variable as in a property (ledger
-   * P33) — and the diagnostic names the uncalled mixin reference on its own
-   * token, with the called and escaped spellings as the fix.
+   * PINNED (jess#236). lessc 4.9.1 keeps `@foo: .a;` as permissive text and
+   * only raises on `@foo()`. Less 5 rejects the declaration at parse time, and
+   * whether it should is OPEN: ledger P33 settles the leading `/` but leaves
+   * `.a` open. Until that is ruled this pins today's rejection; what is fixed
+   * is the diagnostic, which names the uncalled mixin reference on its own
+   * token, with the called and escaped spellings as the fix. Kept here because
+   * it is an absence-of-diagnostics case that no render fixture can express.
    */
-  it('rejects an uncalled mixin reference held in a variable, naming it', async () => {
+  it('PINNED (P33 `.a` OPEN) — rejects an uncalled mixin reference held in a variable, naming it', async () => {
     const result = await new Compiler().renderToResult(
       { source: '@foo: .a;\n.bar { color: red; }', filePath: 'entry.less', extension: '.less' },
       { breakOnError: false }
