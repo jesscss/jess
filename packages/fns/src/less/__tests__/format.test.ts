@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   emitValue,
   isValueGroupArray,
+  makeAny,
   makeDimension,
   makeKeyword,
   makeList,
@@ -61,6 +62,10 @@ describe('format() / %()', () => {
       throw new TypeError('Expected a keyword value.');
     }
     expect(result.text).toBe('value=12px');
+  });
+
+  it('keeps an escaped template escaped, with its quote (ledger V3)', async () => {
+    expect(await call(format, makeAny('value=%d', '"'), makeDimension(12, 'px'))).toEqual(makeAny('value=12px', '"'));
   });
 
   it('keeps CSS-form quotes for %a/%d and strips them only for %s', async () => {
