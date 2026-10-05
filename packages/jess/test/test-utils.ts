@@ -164,29 +164,65 @@ const require = createRequire(import.meta.url);
  * The `output.sourceMap` the upstream less.js harness renders a corpus fixture
  * with (`packages/less/test/less-test.js`): an object-form, non-inline
  * `sourceMap` gets `sourceMapOutputFilename: '<fixture path>.css'` and
- * `sourceMapRootpath: 'testweb/'` unless the fixture sets them. The goldens'
- * `sourceMappingURL` annotations were generated under that convention.
+ * `sourceMapRootpath: 'testweb/'` wherever the fixture leaves them falsy. The
+ * goldens' `sourceMappingURL` annotations were generated under that convention.
  * Returns undefined when the fixture's own config needs no override.
  */
 export function upstreamHarnessSourceMap(
   relativeLessPath: string,
   sourceMap: unknown
 ): Record<string, unknown> | undefined {
-  if (sourceMap === null || typeof sourceMap !== 'object' || 'sourceMapFileInline' in sourceMap) {
+  if (sourceMap === null || typeof sourceMap !== 'object') {
     return undefined;
   }
-  return {
-    sourceMapOutputFilename: relativeLessPath.replace(/\.less$/, '.css'),
-    sourceMapRootpath: 'testweb/',
-    ...sourceMap
-  };
+  const options: Record<string, unknown> = { ...sourceMap };
+  if (!options.sourceMapFileInline) {
+    if (!options.sourceMapOutputFilename) {
+      options.sourceMapOutputFilename = relativeLessPath.replace(/\.less$/, '.css');
+    }
+    if (!options.sourceMapRootpath) {
+      options.sourceMapRootpath = 'testweb/';
+    }
+  }
+  return options;
 }
 
-/** The leading token at a 0-based line/column, whitespace-trimmed. */
-export function tokenAt(text: string, line0: number, col0: number): string {
-  const line = text.split('\n')[line0] ?? '';
-  const match = line.slice(col0).match(/^\s*([.#@]?[-\w%]+|\S+?)/);
-  return (match ? match[1]! : line.slice(col0, col0 + 12)).trim();
+/**
+ * The token that starts at a 0-based column of one line. Only a column inside
+ * the line's leading indentation may skip whitespace to reach it.
+ */
+export function tokenAt(line: string, col0: number): string {
+  const rest = /^\s*$/u.test(line.slice(0, col0)) ? line.slice(col0).trimStart() : line.slice(col0);
+  return /^(?:[.#@]?[-\w%]+|\S)/u.exec(rest)?.[0] ?? '';
+}
+
+/**
+ * Why a decoded mapping is correct, or `undefined` when it points anywhere else.
+ * Every kind is judged at the EXACT columns on both sides:
+ *   - `token`: the token at the generated column is the token at the authored one;
+ *   - `computed-value`: both columns open a declaration value (the text before
+ *     each ends in `:`) and the authored value is an expression — `@var`, `$var`,
+ *     `~"…"`, `(…)`, `fn(…)` — so the output is its result, not its spelling;
+ *   - `rule-header`: both columns open a rule header (at a line start, or right
+ *     after `{`, `}` or `;`, running to `{` or to a trailing `,`), where a
+ *     flattened or `&`-composed header leads with an inherited parent rather
+ *     than the authored token.
+ */
+export type MappingKind = 'token' | 'computed-value' | 'rule-header';
+
+const opensHeader = (line: string, col: number): boolean =>
+  /(?:^|[{};])\s*$/u.test(line.slice(0, col)) && /^[^{};]*(?:\{|,\s*$)/u.test(line.slice(col));
+
+export function mappingKind(gen: string, genCol: number, src: string, srcCol: number): MappingKind | undefined {
+  const token = tokenAt(gen, genCol);
+  if (token !== '' && token === tokenAt(src, srcCol)) {
+    return 'token';
+  }
+  if (/:\s*$/u.test(gen.slice(0, genCol)) && /:\s*$/u.test(src.slice(0, srcCol))
+    && /^\s*(?:[@$~(]|[-\w]+\()/u.test(src.slice(srcCol))) {
+    return 'computed-value';
+  }
+  return opensHeader(gen, genCol) && opensHeader(src, srcCol) ? 'rule-header' : undefined;
 }
 
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';

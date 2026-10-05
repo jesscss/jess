@@ -5,6 +5,7 @@ import { Compiler } from '../../src/index.js';
 import { getConfig } from '../../src/config.js';
 import {
   decodeSourceMapMappings,
+  mappingKind,
   resolveLessTestDataRoot,
   tokenAt,
   upstreamHarnessSourceMap
@@ -22,9 +23,10 @@ import {
  * Less 4.x writes one segment per emitted chunk where jess writes one per node,
  * so two correct maps differ in bytes. What must agree:
  *   - `file`, `sources` and `sourcesContent`, exactly (path-variant fixtures);
- *   - every mapping round-trips: the generated token and the authored token it
- *     points at are the same token (a flattened selector header may lead with an
- *     inherited parent, so its mapped token only has to appear on the line);
+ *   - every mapping holds at its exact generated and authored columns: the same
+ *     token on both sides, or one of the named kinds in `mappingKind` (a computed
+ *     value mapped to the expression that produced it, a flattened header mapped
+ *     to the rule that owns it), each judged at both columns;
  *   - where the CSS is byte-identical to the golden, every line Less 4.x maps
  *     is mapped by jess too, to an authored line Less 4.x also attributes to it.
  *
@@ -47,10 +49,11 @@ type Fixture = {
   layout?: 'current' | 'legacy';
 
   /**
-   * The golden's `sourceMappingURL` names a path no harness convention yields,
-   * so only the CSS before the annotation is compared to it.
+   * The golden's `sourceMappingURL` names a path the fixture's config does not
+   * yield; which side is right is an open question for the corpus owner, so
+   * only the CSS before the annotation is compared to it.
    */
-  staleGoldenAnnotation?: true;
+  annotationUnresolved?: true;
 };
 
 const fixtures: Fixture[] = [
@@ -60,9 +63,9 @@ const fixtures: Fixture[] = [
   /*
    * Its golden's annotation names `tests-config/sourcemaps-comprehensive/`; the
    * fixture lives in `tests-config/sourcemaps/comprehensive/` and its config is
-   * `sourceMap: true`, for which Less 4.x writes `comprehensive.css.map`.
+   * `sourceMap: true`, which annotates `comprehensive.css.map`.
    */
-  { file: 'tests-config/sourcemaps/comprehensive/comprehensive.less', kind: 'map', expected: 'sourcemaps/comprehensive.json', layout: 'current', staleGoldenAnnotation: true },
+  { file: 'tests-config/sourcemaps/comprehensive/comprehensive.less', kind: 'map', expected: 'sourcemaps/comprehensive.json', layout: 'current', annotationUnresolved: true },
   { file: 'tests-config/sourcemaps-url/sourcemaps-url.less', kind: 'map', expected: 'sourcemaps/sourcemaps-url.json', layout: 'current' },
   { file: 'tests-config/sourcemaps-rootpath/sourcemaps-rootpath.less', kind: 'map', expected: 'sourcemaps/sourcemaps-rootpath.json', layout: 'current' },
   { file: 'tests-config/sourcemaps-basepath/sourcemaps-basepath.less', kind: 'map', expected: 'sourcemaps/sourcemaps-basepath.json', layout: 'current' },
@@ -118,29 +121,22 @@ function attributionsByLine(map: V3Map): Map<number, Set<string>> {
   return out;
 }
 
-/** Every mapping lands on the same token in the output and in its source. */
+/** Every mapping holds at its exact generated and authored columns (see `mappingKind`). */
 function checkRoundTrip(body: string, map: V3Map, lessDir: string): void {
   const genLines = body.split('\n');
-  const sourceText = map.sources.map(source => readFileSync(path.join(lessDir, path.basename(source)), 'utf8'));
+  const sourceLines = map.sources.map(source => readFileSync(path.join(lessDir, path.basename(source)), 'utf8').split('\n'));
   const segments = decodeSourceMapMappings(map.mappings);
   expect(segments.length).toBeGreaterThan(0);
   for (const [genLine, genCol, src, line, col] of segments) {
-    const text = sourceText[src!];
-    expect(text, `mapping names source #${src}`).toBeDefined();
-    expect(line!, 'mapped line is inside its source').toBeLessThan(text!.split('\n').length);
-    const genToken = tokenAt(body, genLine!, genCol!);
-    const srcToken = tokenAt(text!, line!, col!);
-
-    /*
-     * Computed output maps to the authored expression that produced it: a
-     * variable, call or group, or a selector written against its parent (`&`).
-     */
-    const authored = (text!.split('\n')[line!] ?? '').slice(col!).trimStart();
-    const computed = /^[@$~(&]/u.test(authored) || /^[-\w]+\(/u.test(authored);
+    const lines = sourceLines[src!];
+    expect(lines, `mapping names source #${src}`).toBeDefined();
+    expect(line! >= 0 && line! < lines!.length && col! >= 0, `mapped ${line}:${col} is inside its source`).toBe(true);
+    const gen = genLines[genLine!] ?? '';
+    const authored = lines![line!]!;
     expect(
-      genToken === srcToken || computed || (genLines[genLine!] ?? '').includes(srcToken),
-      `gen ${genLine! + 1}:${genCol} "${genToken}" does not round-trip to ${map.sources[src!]} ${line! + 1}:${col} "${srcToken}"`
-    ).toBe(true);
+      mappingKind(gen, genCol!, authored, col!),
+      `gen ${genLine! + 1}:${genCol} "${tokenAt(gen, genCol!)}" does not map to ${map.sources[src!]} ${line! + 1}:${col} "${tokenAt(authored, col!)}"`
+    ).toBeDefined();
   }
 }
 
@@ -211,13 +207,14 @@ describe('Less source-map fixtures', () => {
         expect(annotation?.[1], 'sourceMappingURL annotation').toBeTruthy();
       }
       if (fixture.kind === 'no-annotation') {
-        expect(result.css).not.toMatch(/\/\*# sourceMappingURL=.+\.css\.map \*\/$/);
+        /* Any trailing annotation, `data:` URIs included; the fixture authors one inside a rule. */
+        expect(result.css).not.toMatch(/\/\*# sourceMappingURL=[^*]*\*\/\s*$/);
       }
 
       const golden = path.join(testData, fixture.file.replace(/\.less$/, '.css'));
       if (existsSync(golden)) {
         const goldenCss = readFileSync(golden, 'utf8');
-        if (fixture.staleGoldenAnnotation) {
+        if (fixture.annotationUnresolved) {
           expect(result.css.replace(ANNOTATION, '')).toBe(goldenCss.replace(ANNOTATION, ''));
         } else {
           expect(result.css).toBe(goldenCss);

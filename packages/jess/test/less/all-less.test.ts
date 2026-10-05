@@ -268,6 +268,10 @@ const skippedFixtures: SkippedFixture[] = (
       reason: 'dumpLineNumbers is not implemented — the golden expects @media-encoded line annotations'
     },
     {
+      file: 'tests-config/sourcemaps/comprehensive/comprehensive.less',
+      reason: 'OPEN (escalated to the corpus owner): the golden annotation names tests-config/sourcemaps-comprehensive/, which the fixture\'s `sourceMap: true` config does not yield; the CSS before the annotation and the map are gated in sourcemaps.test.ts'
+    },
+    {
       file: 'tests-unit/permissive-parse/permissive-parse.less',
       reason: 'INTENDED DIVERGENCE (P7): a bare `@function-name` at-rule prelude is rejected'
     },
@@ -359,10 +363,6 @@ const expectedFailureFixtures = new Map<string, string>([
   [
     'tests-unit/urls/urls.less',
     'INTENDED DIVERGENCE (§12.3b): the fully interpolated target in `.add_an_import("file.css")` is authored as a compile-time StyleImport, so terminal classification does not defer until it evaluates to `file.css`; normal import resolution therefore reports the missing file'
-  ],
-  [
-    'tests-config/sourcemaps/comprehensive/comprehensive.less',
-    'stale golden annotation: it names tests-config/sourcemaps-comprehensive/, but the fixture lives in tests-config/sourcemaps/comprehensive/ and its `sourceMap: true` config annotates `comprehensive.css.map` (as Less 4.x does). The CSS before the annotation and the map are gated in sourcemaps.test.ts'
   ],
 
   /*
