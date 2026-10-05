@@ -6,10 +6,12 @@ including Less `@module.fn()` and Jess `$module.fn()` calls. Member-access
 policy is ledger A8 (SETTLED, owner 2026-10-01). A `@compose` namespace's
 `.name(args)` is a mixin call: in value position it is an error (built); in
 statement position (`@theme.elevate(3px);`) it calls the module's `.elevate`
-mixin in the module's own activation (built). The Less `VarCall` statement reads
-glued `.name` member tails between `@name` and its call, decided forward on the
-`.` after the name, so the at-rule arms never see the statement; a spaced
-`@theme .elevate();` stays an unknown at-rule statement.
+mixin in the module's own activation (built). The Less `VarCall` statement is
+the variable's lookup/call chain ending in a call: it reads the same bracket,
+dot and call tail productions as the value-position chain, glued to `@name`, so
+`@theme.elevate(3px);`, `@map[@key]();` and `@a.b(1)();` are statements decided
+forward on the `.`, `[` or `(` after the name, and the at-rule arms never see
+them. A spaced `@theme .elevate();` stays an unknown at-rule statement.
 
 ## Parseman routing requirement (observed during direct Less implementation)
 

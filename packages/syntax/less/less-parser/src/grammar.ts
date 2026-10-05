@@ -124,6 +124,9 @@ import {
   requireMixinCallArgumentValue,
   requireMixinInteriorItem,
   requireMixinReferenceBaseFact,
+  referenceBracketTailFact,
+  referenceCallTailFact,
+  referenceDotTailFact,
   requireRulesetBody,
   requireSelectorList,
   requireSelectorListWithExtendsFact,
@@ -2878,34 +2881,31 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           })())
     })
   );
-  // A `.name` member step, shared by the value-position chain below and the
-  // statement-position `@ns.member(args);` call (`ReferenceCall`).
+  /*
+   * The steps of the one lookup/call chain (REFERENCE-CALL-PLAN): a `[key]`
+   * lookup, a `.name` member lookup, or an `(args)` call, any following any.
+   * The value-position chain reads them through `ReferenceTail`; the statement
+   * call `@name…(…);` (`ReferenceCall`) reads the same three.
+   */
+  const ReferenceBracketTail = node(
+    'ReferenceBracketTail',
+    g.InterpolationAccessor,
+    referenceBracketTailFact
+  );
   const ReferenceDotTail = node(
     'ReferenceDotTail',
     sequence(literal('.'), g.VariableNameToken),
-    (children): ReferenceTailFact => {
-      const name = requireToken(children[1]).value;
-      return { step: { type: 'LookupStep', kind: 'member', name }, src: `.${name}` };
-    }
+    referenceDotTailFact
+  );
+  const ReferenceCallTail = node(
+    'ReferenceCallTail',
+    sequence(literal('('), optional(g.MixinArguments), literal(')')),
+    referenceCallTailFact
   );
   const ReferenceTail = choice(
-    node(
-      'ReferenceBracketTail',
-      g.InterpolationAccessor,
-      (children): ReferenceTailFact => {
-        const accessor = requireInterpolationAccessorFact(children[0]);
-        return { step: { type: 'LookupStep', kind: accessor.keyKind, name: accessor.key }, src: `[${accessor.src}]` };
-      }
-    ),
+    ReferenceBracketTail,
     ReferenceDotTail,
-    node(
-      'ReferenceCallTail',
-      sequence(literal('('), optional(g.MixinArguments), literal(')')),
-      (children): ReferenceTailFact => {
-        const args = mixinArgumentsFromChildren(children);
-        return { step: { type: 'Call', args }, src: `(${args.map(callArgumentSource).join(', ')})` };
-      }
-    )
+    ReferenceCallTail
   );
   const InterpolationLastAccessorFromRouted = node(
     'InterpolationLastAccessor',
@@ -2977,10 +2977,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const ReferenceLastTailFromRouted = node(
     'ReferenceBracketTail',
     InterpolationLastAccessorFromRouted,
-    (children): ReferenceTailFact => {
-      const accessor = requireInterpolationAccessorFact(children[0]);
-      return { step: { type: 'LookupStep', kind: accessor.keyKind, name: accessor.key }, src: `[${accessor.src}]` };
-    }
+    referenceBracketTailFact
   );
   const ReferenceBracketTailFromRouted = node(
     'ReferenceBracketTail',
@@ -2989,26 +2986,17 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       InterpolationPropertyVariableAccessorFromRouted,
       InterpolationReferenceAccessorFromRouted
     ),
-    (children): ReferenceTailFact => {
-      const accessor = requireInterpolationAccessorFact(children[0]);
-      return { step: { type: 'LookupStep', kind: accessor.keyKind, name: accessor.key }, src: `[${accessor.src}]` };
-    }
+    referenceBracketTailFact
   );
   const ReferenceDotTailFromRouted = node(
     'ReferenceDotTail',
     sequence(routed(), g.VariableNameToken),
-    (children): ReferenceTailFact => {
-      const name = requireToken(children[1]).value;
-      return { step: { type: 'LookupStep', kind: 'member', name }, src: `.${name}` };
-    }
+    referenceDotTailFact
   );
   const ReferenceCallTailFromRouted = node(
     'ReferenceCallTail',
     sequence(routed(), optional(g.MixinArguments), literal(')')),
-    (children): ReferenceTailFact => {
-      const args = mixinArgumentsFromChildren(children);
-      return { step: { type: 'Call', args }, src: `(${args.map(callArgumentSource).join(', ')})` };
-    }
+    referenceCallTailFact
   );
   const ReferenceTailFromDelimiter = dispatch(
     choice(literal('[]'), literal('['), literal('.'), literal('(')),
@@ -3158,13 +3146,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.MixinReferenceChain
   );
   /*
-   * A statement-position call: `@detached();`, or a member of a module
-   * namespace, `@theme.elevate(3px);` — on a `@compose` namespace that is the
-   * module's `.elevate` mixin (ledger A8). The `.member` steps are glued to the
-   * name, so the `.` after `@name` decides the member route on the current
-   * token and the generic at-rule arms never see it; a spaced
-   * `@theme .elevate();` stays an at-rule statement.
+   * A statement-position call: the lookup/call chain of a variable, ending in a
+   * call. `@detached();`, `@theme.elevate(3px);` — on a `@compose` namespace
+   * that is the module's `.elevate` mixin (ledger A8) — or `@map[key]();`. The
+   * lookups are glued to the name, so the `.` or `[` after `@name` decides the
+   * chain on the current token and the generic at-rule arms never see it; a
+   * spaced `@theme .elevate();` stays an at-rule statement. As before, the
+   * first call may follow the name after whitespace (`@detached ();`).
    */
+  const referenceLookupTail = choice(ReferenceBracketTail, ReferenceDotTail);
   const ReferenceCall = node(
     'VarCall',
     sequence(
@@ -3173,21 +3163,15 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           'supports',
           IDENT_BOUNDARY,
           { caseInsensitive: true }
-        )), lessVariableName, many(ReferenceDotTail)
+        )), lessVariableName, many(referenceLookupTail)
       )),
-      literal('('),
-      optional(g.MixinArguments),
-      literal(')'), optional(literal(';'))
+      ReferenceCallTail,
+      noTrivia(many(sequence(many(referenceLookupTail), ReferenceCallTail))),
+      optional(literal(';'))
     ),
     (children, _fields, span) => {
       const name = requireSupportedVariableName(children[1], span.start, span.start + variableNameText(children[1]).length + 1);
-      const members = children.filter(isReferenceTailFact);
-      const args = mixinArgumentsFromChildren(children);
-      return withSourceSpan(reference(
-        variableReference(name, 'scoped'),
-        [...members.map(member => member.step), { type: 'Call', args }],
-        `@${name}${members.map(member => member.src).join('')}()`
-      ), span);
+      return withSourceSpan(referenceWithTails(variableReference(name, 'scoped'), `@${name}`, children.filter(isReferenceTailFact)), span);
     }
   );
   const mixinGuardDefaultOperand = node(

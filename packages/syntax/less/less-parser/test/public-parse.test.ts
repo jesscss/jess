@@ -3359,7 +3359,11 @@ describe('public Less parse()', () => {
     });
   });
 
-  /* Ledger A8: `.name(args)` on a module namespace is a statement call. */
+  /*
+   * Ledger A8: `.name(args)` on a module namespace is a statement call. A
+   * statement call is the variable's lookup/call chain ending in a call, so it
+   * reads the same steps as the value-position chain, in any order.
+   */
   it('reads a statement call through a namespace member', () => {
     expect(parse('.a { @theme.ns.elevate(3px); }')).toMatchObject({
       rules: [{
@@ -3371,13 +3375,36 @@ describe('public Less parse()', () => {
             { type: 'LookupStep', kind: 'member', name: 'elevate' },
             { type: 'Call', args: [{ value: { type: 'Dimension', src: '3px' } }] }
           ],
-          raw: '@theme.ns.elevate()'
+          raw: '@theme.ns.elevate(3px)'
+        }]
+      }]
+    });
+    expect(parse('.a { @map[@key].next(1px)(); }')).toMatchObject({
+      rules: [{
+        rules: [{
+          type: 'Reference',
+          base: { type: 'Lookup', kind: 'var', name: 'map' },
+          steps: [
+            { type: 'LookupStep', kind: 'var' },
+            { type: 'LookupStep', kind: 'member', name: 'next' },
+            { type: 'Call', args: [{ value: { type: 'Dimension', src: '1px' } }] },
+            { type: 'Call', args: [] }
+          ],
+          raw: '@map[@key].next(1px)()'
         }]
       }]
     });
     expect(parse('.a { @theme .elevate(3px); }')).toMatchObject({
       rules: [{ rules: [{ type: 'AtRuleStatement', name: '@theme' }] }]
     });
+    expect(parse('.a { @foo.bar { c: d } }')).toMatchObject({
+      rules: [{ rules: [{ type: 'AtRuleBlock', name: '@foo' }] }]
+    });
+  });
+
+  /* lessc 4.x rejects whitespace inside the variable name of a statement call too. */
+  it('rejects a statement call with whitespace after its `@`', () => {
+    expect(() => parse('@detached: { a: b; }\n.a { @ detached(); }')).toThrow();
   });
 
   it('returns bare function-call statements through the public Stylesheet route', () => {
