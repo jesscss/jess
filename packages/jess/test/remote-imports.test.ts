@@ -95,14 +95,22 @@ describe('remote @import', () => {
     expect(requested).toEqual([]);
   });
 
-  it('keeps an extensionless endpoint a CSS terminal with the plugin configured', async () => {
-    const { fetch, requested } = serve([]);
+  it('fetches an extensionless URL as written: an allowed host inlines it, an off-list host is an error', async () => {
+    const { fetch, requested } = serve([
+      ['https://cdn.example.com/theme/main.less', '@import "vars";\n.main { color: @tone; }\n'],
+      ['https://cdn.example.com/theme/vars', '@tone: red;\n']
+    ]);
 
-    const result = await render(entry('@import url("https://fonts.googleapis.com/css?family=Open+Sans");\n'), fetch);
+    const allowed = await render(entry('@import "https://cdn.example.com/theme/main.less";\n'), fetch);
+    const offList = await render(entry('@import url("https://fonts.googleapis.com/css?family=Open+Sans");\n'), fetch);
 
-    expect(result.errors).toEqual([]);
-    expect(result.css).toBe('@import url("https://fonts.googleapis.com/css?family=Open+Sans");\n');
-    expect(requested).toEqual([]);
+    expect(allowed.errors).toEqual([]);
+    expect(allowed.css).toBe('.main {\n  color: red;\n}\n');
+    expect(offList.errors).toEqual([expect.objectContaining({
+      code: 'import/load-failed',
+      message: expect.stringContaining('fonts.googleapis.com is not on the remote-import allow list')
+    })]);
+    expect(requested).toEqual(['https://cdn.example.com/theme/main.less', 'https://cdn.example.com/theme/vars']);
   });
 
   it('keeps a (css) URL import a CSS @import with the plugin configured, whatever its host', async () => {
@@ -114,6 +122,17 @@ describe('remote @import', () => {
     expect(result.errors).toEqual([]);
     expect(result.css).toBe('@import url("https://fonts.googleapis.com/css?family=Open+Sans");\n');
     expect(requested).toEqual([]);
+  });
+
+  it('skips a remote file the server reports missing under (optional), and reports it missing otherwise', async () => {
+    const { fetch } = serve([]);
+
+    const optional = await render(entry('@import (optional) "https://cdn.example.com/missing.less";\n.a { color: red; }\n'), fetch);
+    const required = await render(entry('@import "https://cdn.example.com/missing.less";\n'), fetch);
+
+    expect(optional.errors).toEqual([]);
+    expect(optional.css).toBe('.a {\n  color: red;\n}\n');
+    expect(required.errors).toEqual([expect.objectContaining({ code: 'import/not-found' })]);
   });
 
   it('reads an (inline) URL through the plugin like a local file, and refuses an off-list host before any request', async () => {

@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { JessError } from '@jesscss/core';
 import { RemoteImportPlugin, type RemoteFetch } from '../src/index.js';
 
 /** A transport over canned routes that records every request; anything unrouted fails the test. */
@@ -41,15 +42,44 @@ describe('RemoteImportPlugin allow list', () => {
     expect(() => new RemoteImportPlugin({ allow: [entry] })).toThrow('is not a host');
   });
 
-  it.each([['127.0.0.1'], ['10.1.2.3'], ['172.20.0.1'], ['192.168.1.1'], ['169.254.169.254'], ['100.100.100.200'], ['0.0.0.0'], ['[::1]'], ['[fd00::1]'], ['[fe80::1]'], ['[::ffff:7f00:1]']])(
+  it.each([
+    ['127.0.0.1'], ['10.1.2.3'], ['172.20.0.1'], ['192.168.1.1'], ['169.254.169.254'], ['100.100.100.200'], ['0.0.0.0'],
+    ['198.18.0.1'], ['224.0.0.1'], ['255.255.255.255'],
+    ['[::]'], ['[::1]'], ['[fd00::1]'], ['[fe80::1]'], ['[fec0::1]'], ['[ff02::1]'], ['[::ffff:7f00:1]'],
+    ['[::a9fe:a9fe]'], ['[64:ff9b::a9fe:a9fe]'], ['[2002:a9fe:a9fe::1]']
+  ])(
     'rejects the private, loopback or link-local address %s',
     (entry) => {
       expect(() => new RemoteImportPlugin({ allow: [entry] })).toThrow('private, loopback or link-local');
     }
   );
 
-  it('keeps hosts as a URL spells them', () => {
-    expect([...new RemoteImportPlugin({ allow: ['CDN.Example.com', '[2001:db8::1]'] }).allow]).toEqual(['cdn.example.com', '[2001:db8::1]']);
+  it('keeps hosts as a URL spells them, a public IPv4 inside IPv6 included', () => {
+    expect([...new RemoteImportPlugin({ allow: ['CDN.Example.com', '[2001:db8::1]', '[64:ff9b::808:808]', '[2002:808:808::1]'] }).allow])
+      .toEqual(['cdn.example.com', '[2001:db8::1]', '[64:ff9b::808:808]', '[2002:808:808::1]']);
+  });
+});
+
+describe('RemoteImportPlugin under Deno', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const denoNet = (state: string) => {
+    vi.stubGlobal('Deno', { permissions: { querySync: (descriptor: { name: string }) => ({ state: descriptor.name === 'net' ? state : 'denied' }) } });
+  };
+
+  it('refuses unrestricted network access, which would leave the allow list unenforced at runtime', () => {
+    denoNet('granted');
+
+    expect(() => new RemoteImportPlugin({ allow: ['cdn.example.com', 'fonts.example.com'] }))
+      .toThrow('unrestricted network access, so the runtime would not enforce the allow list. Start it with --allow-net=cdn.example.com,fonts.example.com.');
+  });
+
+  it('accepts a host-restricted --allow-net', () => {
+    denoNet('prompt');
+
+    expect(() => new RemoteImportPlugin({ allow: ['cdn.example.com'] })).not.toThrow();
   });
 });
 
@@ -57,19 +87,20 @@ describe('RemoteImportPlugin claim', () => {
   const { fetch, requested } = serve([]);
   const plugin = new RemoteImportPlugin({ allow: ['cdn.example.com'], fetch });
 
-  it('claims an https or protocol-relative file URL on an allowed host', () => {
+  it('claims an https or protocol-relative URL on an allowed host, with or without an extension', () => {
     expect(plugin.canResolveImport('https://cdn.example.com/theme.less')).toBe(true);
     expect(plugin.canResolveImport('//cdn.example.com/theme.less?v=2')).toBe(true);
+    expect(plugin.canResolveImport('https://cdn.example.com/css?family=Open+Sans')).toBe(true);
   });
 
-  it('leaves non-URLs and extensionless endpoints to stay CSS terminals, whatever their host', () => {
+  it('leaves anything but an http(s) URL alone', () => {
     expect(plugin.canResolveImport('theme.less')).toBe(false);
     expect(plugin.canResolveImport('C:/styles/theme.less')).toBe(false);
-    expect(plugin.canResolveImport('https://fonts.googleapis.com/css?family=Open+Sans')).toBe(false);
-    expect(plugin.canResolveImport('https://cdn.example.com/')).toBe(false);
+    expect(plugin.canResolveImport('data:text/css,a{}')).toBe(false);
   });
 
   it.each([
+    ['https://fonts.googleapis.com/css?family=Open+Sans', 'fonts.googleapis.com is not on the remote-import allow list'],
     ['https://evil.example/theme.less', 'evil.example is not on the remote-import allow list'],
     ['https://cdn.example.com.evil.example/theme.less', 'cdn.example.com.evil.example is not on the remote-import allow list'],
     ['https://cdn.example.com@evil.example/theme.less', 'evil.example is not on the remote-import allow list'],
@@ -144,10 +175,36 @@ describe('RemoteImportPlugin fetch', () => {
     expect(requested).toHaveLength(6);
   });
 
-  it('reports a failed response', async () => {
-    const { fetch } = serve([['https://cdn.example.com/a.less', () => new Response('missing', { status: 404 })]]);
+  it('reports a 404 or 410 as a missing file and any other failure as a failed load', async () => {
+    const { fetch } = serve([
+      ['https://cdn.example.com/gone.less', () => new Response('gone', { status: 410 })],
+      ['https://cdn.example.com/missing.less', () => new Response('missing', { status: 404 })],
+      ['https://cdn.example.com/broken.less', () => new Response('broken', { status: 500 })]
+    ]);
+    const plugin = new RemoteImportPlugin({ allow, fetch });
 
-    await expect(new RemoteImportPlugin({ allow, fetch }).getSource('https://cdn.example.com/a.less')).rejects.toThrow('failed: HTTP 404');
+    for (const missing of ['https://cdn.example.com/missing.less', 'https://cdn.example.com/gone.less']) {
+      const error: unknown = await plugin.getSource(missing).catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(JessError);
+      expect(error).toMatchObject({ code: 'import/not-found' });
+    }
+    await expect(plugin.getSource('https://cdn.example.com/broken.less')).rejects.toThrow('failed: HTTP 500');
+  });
+
+  it('releases the body of every response it does not read', async () => {
+    const released: string[] = [];
+    const body = (name: string) => new ReadableStream<Uint8Array>({
+      cancel() {
+        released.push(name);
+      }
+    });
+    const { fetch } = serve([
+      ['https://cdn.example.com/a.less', () => new Response(body('redirect'), { status: 302, headers: { location: '/missing.less' } })],
+      ['https://cdn.example.com/missing.less', () => new Response(body('not found'), { status: 404 })]
+    ]);
+
+    await expect(new RemoteImportPlugin({ allow, fetch }).getSource('https://cdn.example.com/a.less')).rejects.toThrow();
+    expect(released).toEqual(['redirect', 'not found']);
   });
 
   it('refuses a body over the size cap, declared or streamed', async () => {
@@ -179,6 +236,17 @@ describe('RemoteImportPlugin fetch', () => {
         signal.addEventListener('abort', () => reject(signal.reason));
       })
     });
+
+    await expect(plugin.getSource('https://cdn.example.com/a.less')).rejects.toThrow('timed out after 10ms');
+  });
+
+  it('gives up at the deadline when the body stalls after the headers, whatever the transport', async () => {
+    const stalled = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('.a {'));
+      }
+    });
+    const plugin = new RemoteImportPlugin({ allow, timeout: 10, fetch: async () => new Response(stalled) });
 
     await expect(plugin.getSource('https://cdn.example.com/a.less')).rejects.toThrow('timed out after 10ms');
   });

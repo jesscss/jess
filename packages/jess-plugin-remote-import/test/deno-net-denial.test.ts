@@ -35,12 +35,14 @@ describe('Deno --allow-net enforces the remote-import allow list', () => {
     return;
   }
 
+  const runScript = (allowNet: string) => spawnSync(deno, ['run', '--no-prompt', allowNet, script], {
+    cwd: path.dirname(script),
+    encoding: 'utf8',
+    timeout: 60_000
+  });
+
   it('denies an off-list host at the runtime with the app-level check out of the way', () => {
-    const run = spawnSync(deno, ['run', '--no-prompt', '--allow-net=allowed.invalid,127.0.0.1', script], {
-      cwd: path.dirname(script),
-      encoding: 'utf8',
-      timeout: 60_000
-    });
+    const run = runScript('--allow-net=allowed.invalid,127.0.0.1');
 
     expect(run.status, run.stderr).toBe(0);
     expect(JSON.parse(run.stdout.trim().split('\n').at(-1)!)).toEqual({
@@ -50,5 +52,14 @@ describe('Deno --allow-net enforces the remote-import allow list', () => {
       guardedAllowed: 'reached-network',
       redirectHop: 'runtime-denied'
     });
+  }, 70_000);
+
+  /** Without a host list the runtime enforces nothing, so the plugin refuses to start before any probe runs. */
+  it('refuses to run under an unrestricted --allow-net', () => {
+    const run = runScript('--allow-net');
+
+    expect(run.status).not.toBe(0);
+    expect(run.stdout).toBe('');
+    expect(run.stderr).toContain('Deno was started with unrestricted network access');
   }, 70_000);
 });
