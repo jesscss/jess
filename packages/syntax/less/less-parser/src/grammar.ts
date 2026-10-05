@@ -1620,8 +1620,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   /*
    * A mixin reference that is the whole value, neither called nor looked up
    * (jess#236): the called and looked-up forms are value arms ahead of this
-   * one, so it only names a reference that ends the value. Less 5 rejects it
-   * today; whether it should is OPEN (ledger P33 leaves `.a` open). A lone `#`
+   * one, so it only names a reference that ends the value. Less 5 rejects it,
+   * in a variable as in a property (owner ruling P33, 2026-09-23). A lone `#`
    * and hex digits there is a mistyped colour (`#fffff`), not a reference, so
    * it keeps the ordinary value failure.
    */

@@ -12,11 +12,11 @@ function failureOf(source: string): unknown {
 }
 
 /*
- * A slash-led value is rejected in Less, in a variable and in a property alike
- * (ledger P33). An uncalled mixin reference is rejected too, but whether it
- * should be is OPEN (P33 leaves `.a` open; jess#236), so those cases pin
- * today's rejection. Either way the diagnostic must sit on the offending token
- * and name the cause, not report a generic failure earlier in the statement.
+ * A punctuation-led value is rejected in Less, in a variable and in a property
+ * alike (owner ruling P33, 2026-09-23): a leading slash (jess#235) and an
+ * uncalled mixin reference such as `.a` (jess#236) both. The diagnostic must sit
+ * on the offending token and name the cause, not report a generic failure
+ * earlier in the statement.
  */
 describe('punctuation-led Less values are rejected at their first token', () => {
   it.each([
@@ -41,7 +41,7 @@ describe('punctuation-led Less values are rejected at their first token', () => 
     ['a hex-letter namespace in a property', '.x { p: #abc.m; }', 8, '#abc.m'],
     ['a property', '.x { p: .a; }', 8, '.a'],
     ['a reference spaced from its semicolon', '@foo: .a ;', 6, '.a']
-  ])('PINNED (P33 `.a` OPEN) — names an uncalled mixin reference in %s (jess#236)', (_label, source, offset, name) => {
+  ])('names an uncalled mixin reference in %s (jess#236)', (_label, source, offset, name) => {
     expect(failureOf(source)).toMatchObject({
       code: 'parse/uncalled-mixin-reference',
       offset,
