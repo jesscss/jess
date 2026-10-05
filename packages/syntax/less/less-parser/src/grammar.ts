@@ -125,6 +125,7 @@ import {
   requireMixinInteriorItem,
   requireMixinReferenceBaseFact,
   requireRulesetBody,
+  mixinBodyStatements,
   requireSelectorList,
   requireSelectorListWithExtendsFact,
   requireStatementArray,
@@ -5282,7 +5283,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         sequence(g.MixinGuard, optional(mixinSignatureGap), literal('{')),
         literal('{')
       ),
-      g.blockBody,
+      // A ruleset body: a body-form `&:extend()` is as legal here as in the
+      // rule the mixin is called into (jess#356).
+      rulesetBody,
       optional(g.Call),
       literal('}'),
       optional(literal(';'))
@@ -5292,7 +5295,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return {
         params: [],
         ...(children.find(isMixinGuard) === undefined ? {} : { guard: children.find(isMixinGuard) }),
-        rules: children.filter(isStatement),
+        rules: mixinBodyStatements(children),
         ...(bodySpan === undefined ? {} : { bodySpan })
       };
     }

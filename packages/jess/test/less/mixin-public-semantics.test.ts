@@ -81,4 +81,15 @@ describe('Less mixin semantic contracts through the public AST route', () => {
     await expect(parseAndRender('.y when (1 + 1 = 2) { a: b }'))
       .resolves.toBe('.y {\n  a: b;\n}\n');
   });
+
+  /*
+   * A body-form `&:extend()` in a mixin definition extends the rule the mixin is
+   * called into, exactly as it would written in that rule's own body (jess#356).
+   */
+  it('applies a body-form extend written directly in a mixin definition', async () => {
+    await expect(parseAndRender('.m() { &:extend(.sm); }\n.x { .m(); }\n.sm { b: 2; }'))
+      .resolves.toBe('.sm,\n.x {\n  b: 2;\n}\n');
+    await expect(parseAndRender('.m() { color: red; &:extend(.sm all); }\n.a { .b { .m(); } }\n.sm { b: 2; }'))
+      .resolves.toBe('.a .b {\n  color: red;\n}\n.sm,\n.a .b {\n  b: 2;\n}\n');
+  });
 });

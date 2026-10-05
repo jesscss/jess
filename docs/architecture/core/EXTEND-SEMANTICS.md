@@ -94,6 +94,7 @@ gate: the extend paths may not name an evaluator entrypoint).
 | Attached to selector (Less) | `.a:extend(.b) {}` | extend clause must be LAST in the selector |
 | Space before clause (Less) | `.a :extend(.b) {}` | whitespace allowed |
 | Inside a ruleset body (Less) | `.a { &:extend(.b); }` | shorthand for attaching to every selector of the ruleset |
+| Inside a mixin definition body (Less) | `.m() { &:extend(.b); }` | extends the rule the mixin is called into; parsed as the body rule `&:extend(.b) {}`, whose `&` resolves at the call site (jess#356) |
 | Multiple targets (Less) | `.a:extend(.b, .c) {}` | == two separate `:extend` clauses |
 | **Jess statement** | `$extend .b;` / `$extend .b !exact;` | Jess-native body statement — see §4 |
 
