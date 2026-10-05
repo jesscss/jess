@@ -427,9 +427,14 @@ fixture status changed.
   `deprecation/dump-line-numbers-option` warning per render and otherwise
   ignored (`packages/compiler/src/index.ts`, `createContextFromResolved`), so the
   `tests-config/debug/*` line-number goldens are intended divergences.
-- **`lint`**, **`insecure`**, **`strictImports`** are accepted by the options
-  type and produce no observable behaviour change in the cases probed. **Not
-  investigated further** — see §7.
+- **`insecure`** has no effect: remote imports are https-only and always verify
+  the certificate. It is accepted with one `deprecation/insecure-option`
+  warning per render (`packages/compiler/src/index.ts`; orchestrator judgment
+  2026-10-05 under owner delegation, `docs/design/REMOTE-IMPORTS-NETWORK-POLICY.md`
+  §8).
+- **`lint`**, **`strictImports`** are accepted by the options type and produce
+  no observable behaviour change in the cases probed. **Not investigated
+  further** — see §7.
 
 ---
 
@@ -498,7 +503,7 @@ at-rule surfaces as enumerated in §3.
 - **Source-map *content*.** Established that no map is produced at all; did not
   evaluate mapping accuracy, `sourceMapRootpath`/`Basepath`/`URL`/
   `OutputFilename` handling, or the annotation comment.
-- **`lint`, `insecure`, `strictImports`, `depends`, `paths`, `globalVars`,
+- **`lint`, `strictImports`, `depends`, `paths`, `globalVars`,
   `modifyVars`, `processImports`, `color`, `quiet`.** Only spot-checked, or not
   at all. `strictImports` in particular has three-valued semantics
   (`false`/`true`/`'error'`, `packages/config/src/types.ts:123`) and none of the

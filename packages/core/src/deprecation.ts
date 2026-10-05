@@ -67,6 +67,9 @@ export class Deprecation {
     }),
     new Deprecation('dump-line-numbers-option', {
       description: 'dumpLineNumbers is deprecated and has no effect: no line-number comments or media queries are emitted. Use source maps instead.'
+    }),
+    new Deprecation('insecure-option', {
+      description: 'insecure is deprecated and has no effect: remote imports are https-only and always verify the server certificate.'
     })
   ];
 

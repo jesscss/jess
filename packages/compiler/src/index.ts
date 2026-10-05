@@ -1088,6 +1088,20 @@ export class Compiler {
         meta: { what: 'dumpLineNumbers', use: 'sourceMap', deprecation }
       }));
     }
+
+    /*
+     * Less 4.x `insecure` let a remote import skip certificate checks. Remote
+     * imports are https-only and always verify the certificate, so the option
+     * is accepted and has no effect; a real request warns.
+     */
+    if (contextOptions.insecure) {
+      const deprecation = Deprecation.fromId('insecure-option') ?? Deprecation.userAuthored;
+      context.warnDeprecation(deprecation, WARN.deprecated({
+        reason: '"insecure" is deprecated and has no effect: remote imports are https-only and always verify the server certificate.',
+        fix: 'Remove the option.',
+        meta: { what: 'insecure', use: 'https', deprecation }
+      }));
+    }
     return context;
   }
 
