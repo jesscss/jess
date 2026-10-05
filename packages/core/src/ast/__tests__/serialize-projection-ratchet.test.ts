@@ -144,10 +144,7 @@ describe('V19 one-evaluator projection ratchet', () => {
     // -1 `new Set` (jess#245): a control-flow body's declarations are spliced
     // into the ordinary source-fold stacks at the `$if`/`$while`, so the set of
     // direct declarations that split those stacks into a prefix is gone.
-    // +1 function (`writtenArguments`, jess#279): a call that names an argument
-    // hands the evaluator its arguments as written, so a call written out as-is
-    // keeps its keywords.
-    expect(occurrences(/^function |^async function /gmu)).toBe(475);
+    expect(occurrences(/^function |^async function /gmu)).toBe(474);
     expect(occurrences(/new Map/gu)).toBe(71);
     expect(occurrences(/new Set/gu)).toBe(39);
     expect(occurrences(/new WeakMap/gu)).toBe(4);

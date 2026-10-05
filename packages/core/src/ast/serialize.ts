@@ -131,6 +131,7 @@ import {
   isElided,
   isLiteral,
   literal,
+  writtenArgument,
   type EvalModes,
   type FnScope,
   type PluginCallCtx,
@@ -6161,7 +6162,7 @@ function evalModuleReferenceCall(
     if (isMixinCallValue(arg.value)) {
       throw new TypeError(`Module function "${selected.name}" cannot receive a mixin call argument.`);
     }
-    args.push(callArg(arg.value, arg.name, arg.spread));
+    args.push(callArg(arg.value, arg.name, arg.spread, arg.sigil));
   }
   if (!e.ev) {
     return literal(node.raw);
@@ -6294,7 +6295,12 @@ function shouldPreserveCssAuthoredCall(node: FunctionCall, lessDocument: boolean
     || DEFERRED_CSS_AUTHORED_CALLS.has(lname);
 }
 
-/** Re-emit a call after resolving variable/interpolation bytes, without invoking its callable. */
+/**
+ * Re-emit a call after resolving variable/interpolation bytes, without invoking
+ * its callable: a deferred CSS-authored call, a failed plugin call, and every
+ * call on the non-evaluating byte lane. Each argument is written as authored,
+ * keyword included ({@link writtenArgument}, ledger P23).
+ */
 function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   if (node.args.length === 0) {
     return literal(`${node.name}()`);
@@ -6305,23 +6311,23 @@ function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): Mayb
    * Disable typed literal canonicalization for this byte lane; variable
    * references still resolve through the same live frame walk.
    */
-  const preserve = e.ev === null ? e : { ...e, ev: null };
+  const preserve = e.ev ? { ...e, ev: null } : e;
   const items = node.args.map(a => evalValueSlot(a.value, frame, preserve));
   return combineAll(items, (vals) => {
     const authored = valueLayoutOf(node.args);
     const glue = node.modern ? ' ' : (e.compress === true ? ',' : ', ');
-    let inner = emitValueC(vals[0]!, e);
+    let inner = writtenArgument(node.args[0]!, emitValueC(vals[0]!, e), e.compress);
     for (let index = 1; index < vals.length; index += 1) {
       const separator = authored?.[index - 1];
 
       /*
        * Comma spacing is minimal-correctness normalized to one space after the
-       * comma (owner rule 2026-08-17), matching the general call/list byte lane
-       * above — it is NOT authorship. The ONLY authored boundaries replayed
-       * verbatim are a newline + its indentation offset and a block comment.
+       * comma (owner rule 2026-08-17) — it is NOT authorship. The ONLY authored
+       * boundaries replayed verbatim are a newline + its indentation offset and
+       * a block comment.
        */
       inner += separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue;
-      inner += emitValueC(vals[index]!, e);
+      inner += writtenArgument(node.args[index]!, emitValueC(vals[index]!, e), e.compress);
     }
     return literal(`${node.name}(${inner})`);
   });
@@ -7241,23 +7247,8 @@ function evalCall(
   if (e.ev && node.args.length === 1 && node.name.toLowerCase() === 'calc') {
     return evalCalc(node, frame, e);
   }
-  const sep = node.modern ? ' ' : ',';
   if (!e.ev) {
-    if (node.args.length === 0) {
-      return literal(`${node.name}()`);
-    }
-    const items = node.args.map(a => evalValueSlot(a.value, frame, e));
-    return combineAll(items, (vals) => {
-      const authored = valueLayoutOf(node.args);
-      const glue = sep === ' ' ? ' ' : (e.compress === true ? ',' : ', ');
-      let inner = emitValueC(vals[0]!, e);
-      for (let index = 1; index < vals.length; index += 1) {
-        const separator = authored?.[index - 1];
-        inner += separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue;
-        inner += emitValueC(vals[index]!, e);
-      }
-      return literal(`${node.name}(${inner})`);
-    });
+    return preserveCall(node, frame, e);
   }
   const lname = node.name.toLowerCase();
 
@@ -7354,7 +7345,16 @@ function dispatchCall(
     }
     const ordered = named ? orderKeywordArgs(node.args, vals, ev, node.name, selected, ambient) : vals;
     const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
-    const written = named ? writtenArguments(node, vals, e) : undefined;
+
+    /*
+     * A call that names an argument also hands over its arguments as written,
+     * read only if the call is written out as-is (P23). The keywords are the
+     * call's own arguments; when nothing was rebound, the order is the authored
+     * one already.
+     */
+    const written: WrittenArguments | undefined = named
+      ? { args: ordered === vals ? args : (sep === ',' ? makeList(vals, ',') : vals), keywords: node.args }
+      : undefined;
     try {
       const result = ev.call(node.name, args, e.modes, null, e.io, selected, ambient, written);
       return isThenable(result)
@@ -7364,21 +7364,6 @@ function dispatchCall(
       return invalidFunctionCall(node, error, e);
     }
   });
-}
-
-/**
- * The arguments of a call that names any of them, in authored order with each
- * keyword spelled in the dialect it was written in (`@amount` in Less, `$amount`
- * in Sass and `.jess`), so a call written out as-is keeps them (jess#279).
- * Only a call with a keyword argument builds one; a positional call's arguments
- * are already as written.
- */
-function writtenArguments(node: FunctionCall, vals: ValueGroup[], e: EvalCtx): WrittenArguments {
-  const sigil = e.context?.sourceContext?.plugin?.supportedExtensions?.includes('.less') === true ? '@' : '$';
-  return {
-    args: makeList(vals, ','),
-    keywords: node.args.map(arg => (arg.name === undefined ? undefined : `${sigil}${arg.name}`))
-  };
 }
 
 /**

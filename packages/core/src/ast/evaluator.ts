@@ -11,7 +11,7 @@
  * HARD MODULE BOUNDARY: imports only the engine value modules.
  */
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { emitValue, isValueGroupArray, type EvalModes, type FnScope, type ValueEvaluator, type ValueGroup, type Value, type WrittenArguments } from './value-eval.js';
+import { emitValue, isValueGroupArray, writtenArgument, type ArgumentKeyword, type EvalModes, type FnScope, type ValueEvaluator, type ValueGroup, type Value, type WrittenArguments } from './value-eval.js';
 import type { Fn, FnIo } from './functions/types.js';
 import { sepGlue } from './value-eval.js';
 import { groupItems, groupSeparator } from './value-list.js';
@@ -25,16 +25,17 @@ import { makeKeyword } from './value-factory.js';
 /** Join an unknown-fn's arg bytes verbatim (per separator). Under compress the
  *  comma list-divider tightens (`,`); space and `/` separators are significant
  *  and kept (v5 keeps `/` spaced). Arg SPELLINGS stay verbatim either way, and a
- *  keyword argument keeps its keyword. */
-function verbatimArgs(args: ValueGroup, modes?: EvalModes, keywords?: readonly (string | undefined)[]): string {
+ *  keyword argument keeps its keyword ({@link writtenArgument}). */
+function verbatimArgs(args: ValueGroup, modes?: EvalModes, keywords?: readonly ArgumentKeyword[]): string {
   const separator = groupSeparator(args);
   const glue = separator === ' '
     ? ' '
     : (separator === ',' && modes?.compress === true ? ',' : sepGlue(separator));
-  return groupItems(args).map((item, index) => {
-    const keyword = keywords?.[index];
-    return keyword === undefined ? emitValue(item) : `${keyword}: ${emitValue(item)}`;
-  }).join(glue);
+  const items = groupItems(args);
+  if (keywords === undefined) {
+    return items.map(emitValue).join(glue);
+  }
+  return items.map((item, index) => writtenArgument(keywords[index]!, emitValue(item), modes?.compress)).join(glue);
 }
 
 /** Preserve an optional CSS call, as written, after name resolution or invocation failed. */

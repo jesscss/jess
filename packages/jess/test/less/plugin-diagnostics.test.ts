@@ -140,6 +140,20 @@ describe('@plugin function failures are never silent', () => {
     expect(result.errors.length + result.warnings.length).toBeGreaterThan(0);
   }, 30000);
 
+  /* Ledger P23: a preserved call is written as authored, keyword included. */
+  it('writes a failed call out as written, keyword arguments included', async () => {
+    const { dir, entry } = makeProject(
+      THROWING_PLUGIN,
+      '@plugin "./p";\n.a {\n  width: boom(@x: 1, 2);\n}\n'
+    );
+    const result = await makeCompiler(dir).renderToResult(entry, {
+      suppressWarnings: true,
+      breakOnError: false
+    });
+
+    expect(result.css).toContain('width: boom(@x: 1, 2);');
+  }, 30000);
+
   it('points the diagnostic at the real call site, not a placeholder position', async () => {
     const { dir, entry } = makeProject(
       THROWING_PLUGIN,

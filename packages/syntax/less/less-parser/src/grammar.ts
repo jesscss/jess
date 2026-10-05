@@ -1782,7 +1782,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       if (value === undefined) {
         throw new TypeError('Less function keyword argument lost its value.');
       }
-      return callArg(value, staticText(requireField(fields, 'key').value).slice(1));
+      return callArg(value, staticText(requireField(fields, 'key').value).slice(1), false, '@');
     }
   );
   const FunctionArgument = node(
@@ -2620,7 +2620,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       sequence(literal('@'), lessVariableName, literal(':'), g.CallArgumentValue),
       (children, _fields, span) => {
         const name = requireSupportedVariableName(children[1], span.start, span.start + variableNameText(children[1]).length + 1);
-        return callArg(requireMixinCallArgumentValue(children[3]), name);
+        return callArg(requireMixinCallArgumentValue(children[3]), name, false, '@');
       }
     ),
     PositionalMixinCallArgument

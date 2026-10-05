@@ -1309,7 +1309,7 @@ const scssFactory = (g: ScssInputRules) => {
         if (isValueSlotArray(left) || left.type !== 'Lookup' || left.kind !== 'var' || typeof left.name !== 'string') {
           throw new TypeError('A named argument must be spelled `$name: value`.');
         }
-        return callArg(requireValueSlot(children[children.length - 1]), left.name);
+        return callArg(requireValueSlot(children[children.length - 1]), left.name, false, '$');
       }
       const operator = requireToken(children.find(child => isToken(child) && COMPARISON_OPERATORS.has(child.value))).value;
       const right = requireValueSlot(children[children.length - 1]);
@@ -2267,7 +2267,8 @@ const scssFactory = (g: ScssInputRules) => {
       return callArg(
         value,
         named ? nameToken.value : undefined,
-        children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === '...')
+        children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === '...'),
+        named ? '$' : undefined
       );
     }
   );

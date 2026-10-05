@@ -624,6 +624,15 @@ export interface CallArg<V extends CallValue = CallValue> {
   /** `[spread]` Less `@args...` — `value` is a list variable to SPLAT into
    *  positional args at the call site before binding. */
   readonly spread: boolean;
+
+  /**
+   * The sigil the keyword was written with — `@` in Less, `$` in Sass and
+   * `.jess` — recorded by the parser, or `undefined` for a positional argument.
+   * `name` is the binding name; this is the rest of the AUTHORED spelling, so a
+   * call written out as-is spells its keywords as written (ledger P23) without
+   * core ever asking which dialect a node came from.
+   */
+  readonly sigil: string | undefined;
 }
 
 /* ---------------------------------------------------------------- selectors */
@@ -1726,8 +1735,8 @@ export const operation = (
  * single hidden class — a caller that "omits" a name passes `undefined`, it does
  * not omit the property.
  */
-export const callArg = <V extends CallValue>(value: V, name?: string, spread = false): CallArg<V> =>
-  ({ value, name, spread });
+export const callArg = <V extends CallValue>(value: V, name?: string, spread = false, sigil?: string): CallArg<V> =>
+  ({ value, name, spread, sigil });
 
 /** Normalize a mixed authored-argument array to {@link CallArg}s. A bare value
  *  slot (node OR nested array) is positional; an already-built `CallArg` passes

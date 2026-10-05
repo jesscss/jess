@@ -572,14 +572,34 @@ export interface PluginHost {
 }
 
 /**
- * A call's arguments in AUTHORED order, each with the keyword it was written
- * with (`@amount`, `$amount`) or `undefined` for a positional one. `args` holds
- * one item per `keywords` entry.
+ * An argument's keyword as the parser recorded it — the `name`/`sigil` pair of a
+ * `CallArg`, which satisfies this shape structurally. `name` is `undefined` for a
+ * positional argument.
+ */
+export interface ArgumentKeyword {
+  readonly name: string | undefined;
+  readonly sigil: string | undefined;
+}
+
+/**
+ * A call's arguments in AUTHORED order, each paired with its keyword at the same
+ * index: `keywords` is the call's own argument list, so building one allocates
+ * nothing per argument.
  */
 export interface WrittenArguments {
   readonly args: ValueGroup;
-  readonly keywords: readonly (string | undefined)[];
+  readonly keywords: readonly ArgumentKeyword[];
 }
+
+/**
+ * The ONE spelling of an argument in a call written out as-is (ledger P23): the
+ * keyword exactly as authored, then the argument's bytes. Under compress the
+ * keyword's colon tightens as every other separator does.
+ */
+export const writtenArgument = (keyword: ArgumentKeyword, bytes: string, compress: boolean | undefined): string =>
+  keyword.name === undefined
+    ? bytes
+    : `${keyword.sigil ?? ''}${keyword.name}${compress === true ? ':' : ': '}${bytes}`;
 
 export interface ValueEvaluator {
   /**
@@ -625,6 +645,7 @@ export interface ValueEvaluator {
      * is written out as-is — an unknown name, or a function that could not
      * produce a value — is written from these, so `darken(@color: red)` keeps its
      * keyword. Omitted for a positional call, whose `args` are already as written.
+     * Only read on that write-out; a call that produces a value never touches it.
      */
     written?: WrittenArguments,
   ): MaybePromise<ValueGroup>;
