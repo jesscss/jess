@@ -798,20 +798,23 @@ export interface Frame {
    * [import-fold] {@link SourceRank} of each published import DECLARATION — the
    * `@import`'s own position extended by the declaration's index in the imported
    * document. Declarations only, because the ordered declaration stack is the only
-   * consumer that must compare two published facts to each other; the ordered
+   * consumer that must compare a published fact to another fact or to a statement
+   * position (the `$if`/`$while` splice in `collectSelectedDeclIndex`); the ordered
    * merges carry a site int per entry instead, and dispatch candidates carry their
    * rank on the candidate. Authored statements are deliberately absent: their rank
-   * IS their index in {@link statements}. Written and read at PUBLICATION time —
-   * no lookup path reaches it.
+   * IS their index in {@link statements}. Written at PUBLICATION time and read
+   * there or when a control-block selection rebuilds the index — no lookup path
+   * reaches it.
    */
   factRanks?: Map<VariableDeclaration, SourceRank>;
 
   /**
    * [import-fold] Authored position of each top-level statement, built ONCE and
-   * only on the two paths that must resolve a position from the statement itself
+   * only on the paths that must resolve a position from the statement itself
    * rather than from a loop cursor: a published declaration colliding with an
-   * existing stack entry, and an import that reaches publication without its
-   * index in hand. Integer values — never a tuple per statement.
+   * existing stack entry, an import that reaches publication without its index in
+   * hand, and a control-block body spliced into the declaration stacks. Integer
+   * values — never a tuple per statement.
    */
   statementIndex?: Map<Statement, number>;
 
@@ -1445,44 +1448,52 @@ function collectDeclIndex(
 }
 
 /**
- * Augment this frame's ordinary declaration index with branches selected by this
- * activation. The ordinary index can contain parameter bindings that do not
- * occur in `statements`; retain those as a prefix while rebuilding authored body
- * declarations around the selected control-flow paths.
+ * Augment this frame's ordinary declaration index with the control-flow bodies
+ * selected by this activation. The ordinary stacks are already in source-fold
+ * order — parameter cells first, then authored declarations with each imported
+ * fact spliced at its `@import` (N10) — so a body's declarations are spliced into
+ * that order at the position of the `$if`/`$while` that holds them, never
+ * appended after a prefix of everything that is not a direct statement.
  */
-function collectSelectedDeclIndex(
-  statements: Statement[],
-  selected: ReadonlyMap<If, Statement[]>,
-  ordinary: DeclIndex | null
-): DeclIndex | null {
+function collectSelectedDeclIndex(frame: Frame, selected: ReadonlyMap<If, Statement[]>): DeclIndex | null {
   const byName = new Map<string, VariableDeclaration[]>();
-  const direct = new Set<VariableDeclaration>();
-  for (const statement of statements) {
-    if (statement.type === 'VariableDeclaration') {
-      direct.add(statement);
+  if (frame.declIndex) {
+    for (const [name, stack] of frame.declIndex.byName) {
+      byName.set(name, stack.slice());
     }
   }
-  if (ordinary) {
-    for (const [name, stack] of ordinary.byName) {
-      const prefix = stack.filter(declaration => !direct.has(declaration));
-      if (prefix.length > 0) {
-        byName.set(name, prefix);
-      }
+  const statements = frame.statements ?? [];
+
+  /*
+   * The authored position of an entry already in a stack, or `-1` when it has
+   * none to compare: a parameter cell, an unranked import, or a declaration this
+   * pass spliced in from an EARLIER control block. Each of those sits at or
+   * before the block being placed, so it stops the backward walk.
+   */
+  const positionOf = (declaration: VariableDeclaration): number => {
+    const rank = frame.factRanks?.get(declaration);
+    return rank === undefined ? frameStatementIndex(frame).get(declaration) ?? -1 : factSite(rank);
+  };
+  const place = (declaration: VariableDeclaration, at: number): void => {
+    const stack = byName.get(declaration.name);
+    if (!stack) {
+      byName.set(declaration.name, [declaration]);
+      return;
     }
-  }
-  const visit = (rules: Statement[]): void => {
+    let slot = stack.length;
+    while (slot > 0 && positionOf(stack[slot - 1]!) > at) {
+      slot--;
+    }
+    stack.splice(slot, 0, declaration);
+  };
+  const visit = (rules: Statement[], at: number): void => {
     for (const statement of rules) {
       if (statement.type === 'VariableDeclaration') {
-        const stack = byName.get(statement.name);
-        if (stack) {
-          stack.push(statement);
-        } else {
-          byName.set(statement.name, [statement]);
-        }
+        place(statement, at);
       } else if (statement.type === 'If') {
         const branch = selected.get(statement);
         if (branch) {
-          visit(branch);
+          visit(branch, at);
         }
       } else if (statement.type === 'While') {
         /*
@@ -1493,11 +1504,21 @@ function collectSelectedDeclIndex(
          * — without it the body's own declaration is invisible here and the
          * recursion guard fires on the first iteration.
          */
-        visit(statement.rules);
+        visit(statement.rules, at);
       }
     }
   };
-  visit(statements);
+  for (let at = 0; at < statements.length; at++) {
+    const statement = statements[at]!;
+    if (statement.type === 'If') {
+      const branch = selected.get(statement);
+      if (branch) {
+        visit(branch, at);
+      }
+    } else if (statement.type === 'While') {
+      visit(statement.rules, at);
+    }
+  }
   return byName.size === 0 ? null : { byName };
 }
 
@@ -1939,7 +1960,7 @@ function publishRankedMixinEvent(frame: Frame, definition: MixinDefinition, rank
 
 /**
  * [import-fold] Authored position of each top-level statement. Built ONCE per
- * frame and ONLY for the two callers that hold a statement but no cursor for it;
+ * frame and ONLY for the callers that hold a statement but no cursor for it;
  * every ordered merge steps a cursor and never comes here.
  */
 function frameStatementIndex(frame: Frame): Map<Statement, number> {
@@ -2071,6 +2092,9 @@ function publishImportedVariableDeclaration(
 ): void {
   const index = frame.declIndex ??= { byName: new Map() };
   const declarations = index.byName.get(declaration.name);
+  if (rank !== null) {
+    (frame.factRanks ??= new Map()).set(declaration, rank);
+  }
   if (!declarations) {
     index.byName.set(declaration.name, [declaration]);
     return;
@@ -2079,7 +2103,6 @@ function publishImportedVariableDeclaration(
     declarations.push(declaration);
     return;
   }
-  (frame.factRanks ??= new Map()).set(declaration, rank);
 
   /*
    * The stack is already rank-sorted (authored declarations in source order,
@@ -11744,11 +11767,7 @@ function runWhile(
    * condition runs. `$if` gets the same index through `selectIfBody`;
    * a `$while` has no arm to select, so it registers its one body directly.
    */
-  frame.selectedDeclIndex = collectSelectedDeclIndex(
-    frame.statements ?? [],
-    frame.selectedIfBodies ?? EMPTY_SELECTED_IF_BODIES,
-    frame.declIndex
-  );
+  frame.selectedDeclIndex = collectSelectedDeclIndex(frame, frame.selectedIfBodies ?? EMPTY_SELECTED_IF_BODIES);
   const step = (start: number): MaybePromise<void> => {
     for (let i = start; i < MAX_WHILE_ITERATIONS; i++) {
       if (!settledGuard(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), '$while condition', node, e)) {
@@ -11779,7 +11798,7 @@ function selectIfBody(node: If, frame: Frame, e: Emit): Statement[] | null {
   const selected = frame.selectedIfBodies ??= new Map();
   if (selected.get(node) !== body) {
     selected.set(node, body);
-    frame.selectedDeclIndex = collectSelectedDeclIndex(frame.statements ?? [], selected, frame.declIndex);
+    frame.selectedDeclIndex = collectSelectedDeclIndex(frame, selected);
   }
   return body;
 }
