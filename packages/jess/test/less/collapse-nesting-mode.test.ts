@@ -60,6 +60,41 @@ describe('collapseNesting native vs compact', () => {
       .resolves.toBe('.t input:-webkit-autofill, .t input:invalid');
     await expect(header('.t { a:foo, a:hover { x: 1 } }')).resolves.toBe('.t a:foo, .t a:hover');
     await expect(header('.t { a:hover, a:focus-visible { x: 1 } }')).resolves.toBe('.t :is(a:hover, a:focus-visible)');
+    await expect(header('.t { a:HOVER, a:focus { x: 1 } }')).resolves.toBe('.t :is(a:HOVER, a:focus)');
+    await expect(header('.t { a:hover(x), b:focus { x: 1 } }')).resolves.toBe('.t a:hover(x), .t b:focus');
+    await expect(header('.t { a:matches(.x), b.y { x: 1 } }')).resolves.toBe('.t a:matches(.x), .t b.y');
+  });
+
+  /*
+   * Inside `@scope`, a selector with no `:scope` gets an implicit `:scope `
+   * prefix; `.t :is(:scope, .x)` contains one, so `.t .x` would lose its prefix.
+   */
+  it(`:scope blocks the 'native' fold`, async () => {
+    await expect(header('.t { :scope, .x { x: 1 } }')).resolves.toBe('.t :scope, .t .x');
+    await expect(header('.t { a:is(:scope), b.x { x: 1 } }')).resolves.toBe('.t a:is(:scope), .t b.x');
+  });
+
+  it(`a namespace prefix or the 's' attribute flag blocks the 'native' fold`, async () => {
+    // `svg|*` is universal (0,0,0); an undeclared prefix invalidates the selector.
+    await expect(header('.t { svg|*, a { x: 1 } }')).resolves.toBe('.t svg|*, .t a');
+    await expect(header('.t { ns|a, b { x: 1 } }')).resolves.toBe('.t ns|a, .t b');
+    await expect(header('.t { *|a, *|b { x: 1 } }')).resolves.toBe('.t *|a, .t *|b');
+    await expect(header('.t { [ns|a], [b] { x: 1 } }')).resolves.toBe('.t [ns|a], .t [b]');
+
+    // Chromium does not implement the `s` flag, so the plain list drops whole.
+    await expect(header('.t { [a="b" s], [c] { x: 1 } }')).resolves.toBe('.t [a="b" s], .t [c]');
+    await expect(header('.t { [a="b"S], [c] { x: 1 } }')).resolves.toBe('.t [a="b"S], .t [c]');
+    await expect(header('.t { [a="b" i], [lang|=en], [d="x|y"], [e=cats] { x: 1 } }'))
+      .resolves.toBe('.t :is([a="b" i], [lang|=en], [d="x|y"], [e=cats])');
+  });
+
+  it(`the universal selector scores zero`, async () => {
+    await expect(header('.t { *, a { x: 1 } }')).resolves.toBe('.t *, .t a');
+    await expect(header('.t { *.a, .b { x: 1 } }')).resolves.toBe('.t :is(*.a, .b)');
+  });
+
+  it(`an interpolated branch stays distributed`, async () => {
+    await expect(header('@s: ~".x"; .t { @{s}, .y { x: 1 } }')).resolves.toBe('.t .x, .t .y');
   });
 
   it(`:where() scores zero`, async () => {
@@ -74,12 +109,26 @@ describe('collapseNesting native vs compact', () => {
     await expect(header('.t { a:not(#y), b.z { x: 1 } }')).resolves.toBe('.t a:not(#y), .t b.z');
   });
 
-  it(`:nth-child(An+B of S) blocks the fold; :nth-of-type() scores as a pseudo-class`, async () => {
-    // The `of S` argument reaches core as joined text, so its specificity is unknown.
+  it(`an invalid selector-function form blocks the 'native' fold`, async () => {
+    // Double-colon spellings are pseudo-element syntax; `:has()` may not nest.
+    await expect(header('.t { a::not(.x), b.y { x: 1 } }')).resolves.toBe('.t a::not(.x), .t b.y');
+    await expect(header('.t { a::is(.x), b.y { x: 1 } }')).resolves.toBe('.t a::is(.x), .t b.y');
+    await expect(header('.t { a::where(.x), b { x: 1 } }')).resolves.toBe('.t a::where(.x), .t b');
+    await expect(header('.t { a:has(:has(.x)), b.c { x: 1 } }')).resolves.toBe('.t a:has(:has(.x)), .t b.c');
+    await expect(header('.t { a:has(:is(:has(.x))), b.c { x: 1 } }')).resolves.toBe('.t a:has(:is(:has(.x))), .t b.c');
+  });
+
+  /*
+   * Their arguments reach core as joined text, so neither the `of S`
+   * specificity nor the argument's validity can be read from the IR.
+   */
+  it(`a functional pseudo-class with a text argument blocks the 'native' fold`, async () => {
     await expect(header('.t { li:nth-child(2n of .x), li.y:first-child { x: 1 } }'))
       .resolves.toBe('.t li:nth-child(2n of .x), .t li.y:first-child');
     await expect(header('.t { li:nth-of-type(2n), li:first-child { x: 1 } }'))
-      .resolves.toBe('.t :is(li:nth-of-type(2n), li:first-child)');
+      .resolves.toBe('.t li:nth-of-type(2n), .t li:first-child');
+    await expect(header('.t { p:lang(en, fr), p:first-child { x: 1 } }'))
+      .resolves.toBe('.t p:lang(en, fr), .t p:first-child');
   });
 
   it(`'compact' folds every descendant run regardless of specificity`, async () => {

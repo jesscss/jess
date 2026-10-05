@@ -15,7 +15,9 @@ one row per combination.
 The child-list folds below are the **`collapseNesting: 'compact'`** style. The default
 flatten style, **`'native'`** (what `collapseNesting: true` means), folds a child list
 only where every folded branch is a single compound of the same specificity, with no
-pseudo-element and only standard pseudo-classes; other branches stay distributed. It
+pseudo-element, namespace prefix or `:scope`, and only standard pseudo-classes that
+take no argument (besides `:is()`, `:not()`, `:has()` and `:where()`); other branches
+stay distributed. It
 reproduces native nesting's specificity, matching and invalid-selector behaviour, not
 its exact bytes. See the Less
 [Selector Compaction](https://lesscss.org/docs/advanced/selector-compaction) page.

@@ -4073,6 +4073,111 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: 2026-10-05 `collapseNesting: 'native'` child-list fold (owner
+  ruling 2026-10-05: fold what keeps native specificity; ledger O10 amendment
+  pending). `'native'` now folds a run of consecutive nested child branches into
+  `:is()` when every branch is a single compound of the same specificity and
+  nothing in it changes matching or invalid-selector behaviour inside `:is()`:
+  no interpolation, pseudo-element, namespace prefix, attribute `s` flag,
+  `:scope`, functional pseudo-class other than `:is()`/`:not()`/`:has()`/
+  `:where()`, nested `:has()`, or pseudo-class outside an allowlist of standard
+  ones every major engine implements. `'compact'` and nested output are
+  unchanged.
+- Architecture surface: `packages/core/src/ast/serialize.ts` only —
+  `opaqueJoin` (one fold loop for both flatten styles, keyed per branch) and the
+  new `tokenFoldSpecificity`/`branchFoldSpecificity` with the module-level
+  `NATIVE_FOLD_PSEUDO_CLASSES`. No parser, evaluator, extend or AST change.
+- Separation/duplication: `'native'` reuses `'compact'`'s fold loop; the only
+  difference is the per-branch key (specificity vs combinator shape), so there is
+  no second fold implementation. Specificity is read from the selector IR the
+  parser built, never from emitted CSS. The language service (postcss parse plus
+  `@csstools/selector-specificity`) and diagnostics-core (`tolerant-cst.ts`) score
+  other representations for hover and lint; extend's `conflict.ts` `classify`
+  answers a different question (which simples can conflict) with a different
+  default for unknown heads.
+- Cumulative node weight: zero AST/CST node kinds or fields.
+- New traversal: [loop/traversal] `branchFoldSpecificity` walks one child
+  branch's compounds and `tokenFoldSpecificity` walks a structured pseudo's
+  argument list, recursing only into `:is()`/`:not()`/`:has()`/`:where()`
+  arguments. Both run only in `opaqueJoin` under `'native'` for a child list of
+  two or more branches, once per branch, over IR already in hand; the fact is
+  not carried by the parser (a SimpleSelector keeps no kind or specificity), so
+  there is no existing edge to read it from. Measured per `benchmark.less`
+  render: 30 joins, 152 branch and 108 token visits; per `bootstrap4.less`: 65
+  joins, 197 and 83.
+- New node/materialization: [node construction] [side map/set] the
+  `NATIVE_FOLD_PSEUDO_CLASSES` `Set`, built once at module load. Per join, the
+  native path allocates the `out` array, one `run` array, the `flushRun` closure,
+  and one `run` array per non-empty run flushed (34 per `benchmark.less` render,
+  35 per `bootstrap4.less`); `'compact'` already allocated the same shapes. The
+  pseudo-class lookup lowercases only on a Set miss (0 per render on both
+  fixtures); the structured-pseudo name lowercase allocates nothing for an
+  already-lowercase short name.
+- Render path: still stringify-only. A folded run is written as
+  `a + ' :is(' + run.join(', ') + ')'`; no node is built to print it.
+- Helper/API surface: two module-private functions, no export.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [loop/traversal] the two IR walks above;
+  [array helper] the `run.join(', ')` that writes a folded run (moved from the
+  compact-only branch, not new work per run); [node construction] and
+  [side map/set] the module-load `Set` above.
+- Behavior evidence: `packages/jess/test/less/collapse-nesting-mode.test.ts`
+  pins every guard; 15 mutations of the guards (each removed or weakened) each
+  turn at least one test red. The all-Less lane renders all 140 recorded cases
+  under the harness config and again with `JESS_FORCE_COLLAPSE_NESTING=true`:
+  only `tests-config/3rd-party/bootstrap4.less` changes against
+  `origin/feat/less-v5-completion` (27 rule headers, registered in
+  `pendingGoldenEdits`).
+- Evidence: `benchmark.less` (collapseNesting true, plugin-less) changes by
+  design from SHA-256
+  `0750e502564808e2f54ddfc9feaf79085cabc1ba693d710fac38e1930e302349` (124,811
+  bytes) to `a27f697180dcb0ad3cf4b3b27385834972c7c3896f7bc05165565440c46b3f84`
+  (123,383 bytes): 11 equal-specificity folds such as
+  `#ad div.footer div.vote_views :is(#login_register_msg, #encourage_vote_msg)`.
+  `'compact'` and `false` output are byte-identical to the base. Op counts above
+  are the cost evidence. `measure:less:hotpath` on `benchmark.less` (Node
+  24.11.1) reported an 86.31 ms median with signal noisy (81.8% RSD, load
+  average about 37); a baseline only, no speed or neutrality claim.
+- Verdict: accepted as a semantic output change with `performanceClaim: none`.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Collection-spread-computed-key-overlay-and-iteration",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "module-callable-explicit-reference-and-css-call-separation",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "The AST serializer joins a nested child list under collapseNesting 'native' by folding runs of branches whose specificity it reads from the selector IR, instead of always distributing them. No evaluator or value change; semantic output work with no cost-cutting or neutrality claim.",
+    "dangerTokensJustification": "The two IR walks run only for a multi-branch child list under 'native', once per branch, bounded by that branch's compounds and its selector-function arguments; the allowlist Set is built once at module load; the join that writes a folded run is the one 'compact' already used.",
+    "behaviorEvidence": "packages/jess/test/less/collapse-nesting-mode.test.ts pins every guard, each red under its mutation; the all-Less lane passes with bootstrap4's 27 folded headers registered in pendingGoldenEdits.",
+    "buildEvidence": "pnpm --filter @jesscss/core build passes; the core suite passes.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 86.31,
+      "outputSha256": "a27f697180dcb0ad3cf4b3b27385834972c7c3896f7bc05165565440c46b3f84",
+      "outputBytes": 123383
+    }
+  }
+]
+```
+
 - Latest pass: 2026-10-05 remote-import follow-up review fixes
   (`docs/design/REMOTE-IMPORTS-NETWORK-POLICY.md` §6/§8). An import the media
   desugar wrapped that stays a CSS terminal is written as one `@import "…" q;`

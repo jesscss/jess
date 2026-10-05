@@ -70,7 +70,9 @@ are expanded to fully-qualified selectors and equivalent blocks are deduplicated
 ```
 
 Use `collapseNesting: true` when you need to support browsers without native CSS
-nesting, or when you want the historical Less 4.x output shape.
+nesting, or when you want the historical Less 4.x output shape. Flattened output can
+still contain `:is()`, so the browser needs `:is()` support (Chrome 88, Firefox 78,
+Safari 14).
 
 `true` means `'native'`: the flattened selectors keep the specificity and matching
 native CSS nesting gives them, though not always its exact bytes — a nested list such

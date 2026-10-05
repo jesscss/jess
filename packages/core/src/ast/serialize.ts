@@ -8522,71 +8522,101 @@ const SPECIFICITY_CLASS = 2 ** 16;
 const SPECIFICITY_TYPE = 1;
 
 /*
- * [nesting] Pseudo-classes a `'native'` fold may carry: standard (Selectors 4/5,
- * HTML) AND implemented by every major engine, with a FIXED `(0,1,0)`
- * specificity. A plain selector list is invalidated by one branch a browser
- * does not understand, while `:is()` is forgiving and only drops that branch,
- * so a vendor-prefixed, unknown, or not-yet-implemented pseudo-class keeps its
- * list distributed. Absent on purpose: pseudo-elements (single- or double-colon),
- * the argument-scored `:is()`/`:not()`/`:has()`/`:where()` (handled as
- * structured pseudos), and `:nth-child()`/`:nth-last-child()`, whose `of S`
- * argument reaches core only as joined text, so their specificity is unknowable
- * here.
+ * [nesting] Pseudo-classes a `'native'` fold may carry, keyed with their colon:
+ * standard (Selectors 4/5, HTML) AND implemented by every major engine, with a
+ * FIXED `(0,1,0)` specificity. A plain selector list is invalidated by one
+ * branch a browser does not understand, while `:is()` is forgiving and only
+ * drops that branch, so a vendor-prefixed, unknown, or not-yet-implemented
+ * pseudo-class keeps its list distributed. Absent on purpose:
+ * - pseudo-elements, single- or double-colon;
+ * - `:scope`: inside `@scope` a selector without `:scope` gains an implicit
+ *   `:scope ` prefix, so `A :is(:scope, .x)` would drop the one `A .x` carries;
+ * - every functional pseudo-class. Its argument reaches core as joined text, so
+ *   neither the `of S` specificity of `:nth-child()` nor the argument's validity
+ *   (`:lang(en, fr)` is invalid in Chromium) can be read here. A functional
+ *   spelling of a name listed here (`:hover(x)`) misses the Set.
+ * The argument-scored `:is()`/`:not()`/`:has()`/`:where()` are structured
+ * pseudos, handled by name in {@link tokenFoldSpecificity}.
  */
 const NATIVE_FOLD_PSEUDO_CLASSES = new Set([
-  'active', 'any-link', 'autofill', 'checked', 'default', 'defined', 'dir',
-  'disabled', 'empty', 'enabled', 'first-child', 'first-of-type', 'focus',
-  'focus-visible', 'focus-within', 'fullscreen', 'hover', 'in-range',
-  'indeterminate', 'invalid', 'lang', 'last-child', 'last-of-type', 'link',
-  'modal', 'nth-last-of-type', 'nth-of-type', 'only-child', 'only-of-type',
-  'optional', 'out-of-range', 'placeholder-shown', 'popover-open', 'read-only',
-  'read-write', 'required', 'root', 'scope', 'target', 'user-invalid',
-  'user-valid', 'valid', 'visited'
+  ':active', ':any-link', ':autofill', ':checked', ':default', ':defined',
+  ':disabled', ':empty', ':enabled', ':first-child', ':first-of-type', ':focus',
+  ':focus-visible', ':focus-within', ':fullscreen', ':hover', ':in-range',
+  ':indeterminate', ':invalid', ':last-child', ':last-of-type', ':link', ':modal',
+  ':only-child', ':only-of-type', ':optional', ':out-of-range',
+  ':placeholder-shown', ':popover-open', ':read-only', ':read-write', ':required',
+  ':root', ':target', ':user-invalid', ':user-valid', ':valid', ':visited'
 ]);
 
-/** Specificity of one simple token, or -1 when it cannot enter a `'native'` fold. */
-function tokenFoldSpecificity(sim: SimpleToken): number {
+/**
+ * Specificity of one simple token, or -1 when it cannot enter a `'native'` fold.
+ * `inHas` is set inside a `:has()` argument, where another `:has()` is invalid.
+ */
+function tokenFoldSpecificity(sim: SimpleToken, inHas: boolean): number {
   if (sim.interp !== null) {
     return -1;
   }
   if (sim.type === 'PseudoSelector') {
+    /* Only the four selector functions: `::not(…)` and `:matches()` stay out. */
     const name = sim.name.toLowerCase();
-    if (sim.args === null || name === ':matches') {
+    if (sim.args === null || (name !== ':is' && name !== ':not' && name !== ':where' && (name !== ':has' || inHas))) {
       return -1;
     }
     let max = 0;
     for (const branch of sim.args.selectors) {
-      const s = branchFoldSpecificity(branch, false);
+      const s = branchFoldSpecificity(branch, false, inHas || name === ':has');
       if (s < 0) {
         return -1;
       }
-      max = Math.max(max, s);
+      if (s > max) {
+        max = s;
+      }
     }
     return name === ':where' ? 0 : max;
   }
   const text = sim.text!;
   const first = text.charCodeAt(0);
-  if (first === 46 /* . */ || first === 91 /* [ */) {
+  if (first === 46 /* . */) {
     return SPECIFICITY_CLASS;
+  }
+  if (first === 91 /* [ */) {
+    /*
+     * The parser keeps an attribute selector as its authored text. Out: a
+     * namespace prefix (`[ns|a]`, invalid when undeclared; `|=` is the dash
+     * operator) and the `s` flag, which Chromium does not implement. A final
+     * `s` after a space may instead be a bare name or value (`[ s ]`, `[a= s]`);
+     * that only loses a fold.
+     */
+    const bar = text.indexOf('|');
+    const eq = text.indexOf('=');
+    let end = text.length - 2;
+    if (text.charCodeAt(end) === 32) {
+      end--;
+    }
+    const beforeFlag = text.charCodeAt(end - 1);
+    return (bar !== -1 && text.charCodeAt(bar + 1) !== 61 /* = */ && (eq === -1 || bar < eq))
+      || ((text.charCodeAt(end) | 32) === 115 /* s */ && (beforeFlag === 32 || beforeFlag === 34 /* " */ || beforeFlag === 39 /* ' */))
+      ? -1
+      : SPECIFICITY_CLASS;
   }
   if (first === 35 /* # */) {
     return SPECIFICITY_ID;
   }
   if (first === 58 /* : */) {
-    const open = text.indexOf('(');
-    return NATIVE_FOLD_PSEUDO_CLASSES.has((open === -1 ? text.slice(1) : text.slice(1, open)).toLowerCase())
-      ? SPECIFICITY_CLASS
-      : -1;
+    return NATIVE_FOLD_PSEUDO_CLASSES.has(text) || NATIVE_FOLD_PSEUDO_CLASSES.has(text.toLowerCase()) ? SPECIFICITY_CLASS : -1;
   }
   if (first === 42 /* * */) {
     return text.length === 1 ? 0 : -1;
   }
   const lower = first | 32;
-  if ((lower >= 97 && lower <= 122) || first === 45 /* - */ || first === 95 /* _ */ || first >= 128) {
+  if (((lower >= 97 && lower <= 122) || first === 45 /* - */ || first === 95 /* _ */ || first >= 128) && !text.includes('|')) {
     return SPECIFICITY_TYPE;
   }
 
-  /* `&`, a placeholder's `\\`, escapes, digits: not a plain type selector. */
+  /*
+   * `&`, a placeholder's `\\`, escapes, digits, and a namespace prefix: `svg|*`
+   * is universal, and `ns|a` is invalid when `ns` is undeclared.
+   */
   return -1;
 }
 
@@ -8598,9 +8628,9 @@ function tokenFoldSpecificity(sim: SimpleToken): number {
  * document), so a combinator inside the group would change which elements
  * match. A selector-function argument may carry combinators.
  */
-function branchFoldSpecificity(branch: SelectorBranch, compoundOnly: boolean): number {
+function branchFoldSpecificity(branch: SelectorBranch, compoundOnly: boolean, inHas: boolean): number {
   if (branch.type === 'SimpleSelector' || branch.type === 'PseudoSelector') {
-    return tokenFoldSpecificity(branch);
+    return tokenFoldSpecificity(branch, inHas);
   }
   if (compoundOnly && branch.type !== 'CompoundSelector') {
     return -1;
@@ -8613,7 +8643,7 @@ function branchFoldSpecificity(branch: SelectorBranch, compoundOnly: boolean): n
       }
       continue;
     }
-    const s = branchFoldSpecificity(part, false);
+    const s = branchFoldSpecificity(part, false, inHas);
     if (s < 0) {
       return -1;
     }
@@ -8657,16 +8687,15 @@ function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: Emit
     let run: string[] = [];
     let runKey = -1;
     const flushRun = (): void => {
-      if (run.length === 1) {
-        out.push(a + ' ' + run[0]!);
-      } else if (run.length > 1) {
-        out.push(a + ' :is(' + run.join(', ') + ')');
+      if (run.length === 0) {
+        return;
       }
+      out.push(run.length === 1 ? a + ' ' + run[0]! : a + ' :is(' + run.join(', ') + ')');
       run = [];
     };
     for (let i = 0; i < values.length; i++) {
       const branch = child.selectors[i]!;
-      const key = native ? branchFoldSpecificity(branch, true) : leadsWithCombinator(branch) ? -1 : 0;
+      const key = native ? branchFoldSpecificity(branch, true, false) : leadsWithCombinator(branch) ? -1 : 0;
       if (key !== runKey) {
         flushRun();
         runKey = key;

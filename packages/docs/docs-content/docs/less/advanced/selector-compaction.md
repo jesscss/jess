@@ -193,12 +193,21 @@ child branches folds when **all** of these hold:
   document. A branch with a combinator therefore stays distributed.
 - **No pseudo-element.** `::before`, `:after` and the rest are not allowed inside
   `:is()`.
-- **Only standard, widely implemented pseudo-classes.** `:is()` is forgiving: it drops
+- **Only standard, widely implemented selectors.** `:is()` is forgiving: it drops
   an argument the browser does not understand and keeps the rest. A plain selector list
-  is not: one unknown branch drops the whole rule. So a vendor-prefixed pseudo-class
-  (`:-webkit-autofill`, `:-moz-focusring`), an unknown one, or one not every engine
-  implements keeps its list distributed. `:nth-child()` and `:nth-last-child()` also
-  stay distributed for now: Jess cannot yet score their `of S` argument.
+  is not: one unknown branch drops the whole rule. So a branch stays distributed when it
+  has a vendor-prefixed pseudo-class (`:-webkit-autofill`, `:-moz-focusring`), an
+  unknown one, or one not every engine implements; a namespace prefix (`svg|a`, invalid
+  without its `@namespace`); or the attribute `s` flag (`[type="a" s]`, which Chromium
+  does not implement).
+- **No functional pseudo-class other than `:is()`, `:not()`, `:has()` and `:where()`.**
+  Jess does not yet read the argument of `:nth-child()`, `:nth-of-type()`, `:lang()`,
+  `:dir()` and the like, so it can neither score `:nth-child(2n of .x)` nor tell
+  whether an argument is one every browser accepts (`:lang(en, fr)` is not, in
+  Chromium). These branches stay distributed for now.
+- **No `:scope`.** Inside `@scope`, a selector that does not mention `:scope` is
+  matched inside the scope root; `.t :is(:scope, .x)` mentions it, so the `.t .x` branch
+  would lose that limit.
 
 Branches that fail a check join the ancestor on their own, and the rest still fold, in
 authored order — no branch moves past another:
@@ -225,6 +234,10 @@ nesting desugaring — `(0,1,1)` for `th`/`td`, `(0,1,2)` for the other two.
 `'native'` reproduces native nesting's **specificity, matching and invalid-selector
 behaviour** — not its exact bytes. The browser's desugaring of `.t { th, td {} }` is
 `.t th, .t td`; `'native'` may print `.t :is(th, td)`, which behaves identically.
+
+The invalid-selector half holds in a browser that implements every pseudo-class in the
+folded branches. An older browser that lacks one — `:has()` before Firefox 121, say —
+drops only that branch from the `:is()`, where it would have dropped the whole rule.
 :::
 
 :::note
