@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { makeDimension } from '@jesscss/core';
+import { JessError, makeDimension } from '@jesscss/core';
 import jsPlugin, { type JsPlugin } from '../src/index.js';
 
 /*
@@ -49,19 +49,27 @@ describe('legacy Less @plugin runtime', () => {
       ['less.environment', 'less.environment.addFileManager({});', '@jesscss/plugin-node-modules']
     ];
 
+    /** The refusal the host reports, never a plain "script threw" load failure. */
+    const refusal = (pending: Promise<unknown>): Promise<JessError> => pending.then(
+      () => {
+        throw new Error('expected the plugin to be refused');
+      },
+      (error: unknown) => {
+        if (error instanceof JessError) {
+          return error;
+        }
+        throw error;
+      }
+    );
+
     it.each(cases)('%s', async (feature, call, replacement) => {
       const { runtime, entry } = project([
         ['root/plugin.js', `registerPlugin({ install: function(less, manager) { ${call} } });`]
       ]);
-      const failure = await runtime.importLessPlugin(entry).then(
-        () => new Error('expected the plugin load to be refused'),
-        (error: unknown) => error
-      );
-      expect(failure).toBeInstanceOf(Error);
-      const message = failure instanceof Error ? failure.message : '';
-      expect(message).toContain(feature);
-      expect(message).toContain('not supported');
-      expect(message).toContain(replacement);
+      const refused = await refusal(runtime.importLessPlugin(entry));
+      expect(refused.code).toBe('plugin/unsupported-feature');
+      expect(refused.message).toBe(`Plugin "plugin.js" uses ${feature}, which is not supported`);
+      expect(refused.fix).toContain(replacement);
     }, 30000);
 
     it('refuses the plugin-preeval visitor shape at its destructured less.visitors', async () => {
@@ -74,7 +82,18 @@ describe('legacy Less @plugin runtime', () => {
           '};'
         ].join('\n')]
       ]);
-      await expect(runtime.importLessPlugin(entry)).rejects.toThrow('less.visitors');
+      const refused = await refusal(runtime.importLessPlugin(entry));
+      expect(refused.message).toContain('less.visitors');
+    }, 30000);
+
+    it('refuses a function that reaches for the hook API when it is called', async () => {
+      const { runtime, entry } = project([
+        ['root/plugin.js', 'functions.add("late", () => less.visitors);']
+      ]);
+      const loaded = await runtime.importLessPlugin(entry);
+      const refused = await refusal(Promise.resolve(loaded.functions.late()));
+      expect(refused.code).toBe('plugin/unsupported-feature');
+      expect(refused.message).toContain('less.visitors');
     }, 30000);
   });
 

@@ -416,7 +416,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/plugin-preeval/plugin-preeval.less',
-    'INTENDED DIVERGENCE (A12): the legacy tree-visitor ABI is a v5 non-goal; loading plugin-preeval.js is refused at its `less.visitors` read with a plugin/load-failed diagnostic naming the missing visitor API (test/less/plugin-diagnostics.test.ts)'
+    'INTENDED DIVERGENCE (A12): the legacy tree-visitor ABI is a v5 non-goal; loading plugin-preeval.js is refused at its `less.visitors` read with a plugin/unsupported-feature diagnostic naming the missing visitor API (test/less/plugin-diagnostics.test.ts)'
   ],
   [
     'tests-unit/plugin/plugin.less',
@@ -490,7 +490,7 @@ const expectedFailureDiagnosticCodes = new Map<string, string>([
    * they still differ from the external golden only on render layout (see the
    * expected-failure reasons), not on a parse error. */
   ['tests-unit/urls/urls.less', 'import/not-found'],
-  ['tests-unit/plugin-preeval/plugin-preeval.less', 'plugin/load-failed'],
+  ['tests-unit/plugin-preeval/plugin-preeval.less', 'plugin/unsupported-feature'],
   ['tests-unit/plugin-module/plugin-module.less', 'plugin/load-failed']
 ]);
 

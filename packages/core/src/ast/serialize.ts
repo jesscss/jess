@@ -1306,7 +1306,7 @@ function activateBodyDependencies(
        */
       const failed = (error: unknown): never => {
         throw error instanceof JessError
-          ? error
+          ? error.attributeTo(callSiteLocation(statement, e))
           : ERR.pluginLoadFailed({
               node: statement,
               ...callSiteLocation(statement, e),
@@ -7582,7 +7582,7 @@ function pluginCallFailure(
   e: EvalCtx
 ): MaybePromise<EvalValue> {
   if (error instanceof JessError) {
-    throw error;
+    throw error.attributeTo(callSiteLocation(node, e));
   }
   const reason = error instanceof JessError
     ? error.message

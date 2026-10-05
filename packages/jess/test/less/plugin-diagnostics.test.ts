@@ -469,13 +469,35 @@ describe('legacy Less plugin-manager hooks in the corpus fixtures', () => {
       }
     }).renderToResult(entry, { suppressWarnings: true, breakOnError: false });
 
+    const refusal = result.errors.find(e => e.code === 'plugin/unsupported-feature');
+    expect(refusal, `expected plugin/unsupported-feature, got ${JSON.stringify(result.errors.map(e => e.code))}`)
+      .toBeDefined();
+    expect(refusal!.message).toBe('Plugin "plugin-preeval.js" uses less.visitors, which is not supported');
+    expect(refusal!.fix).toContain('no visitor API');
+
+    /* The sandbox knows no source; the refusal is attributed to the `@plugin` statement. */
+    expect(refusal!.filePath).toBe(entry);
+    expect(refusal!.line).toBe(1);
+  }, 30000);
+
+  /*
+   * `@plugin "clean-css"` resolves to the clean-css library itself (jess has no
+   * 4.x `less-plugin-` name-prefix lookup). Its relative requires load in the
+   * sandbox; the Node built-in it reaches for next is refused.
+   */
+  it('refuses tests-unit/plugin-module at the clean-css library\'s Node built-in require', async () => {
+    const entry = path.join(testData, 'tests-unit/plugin-module/plugin-module.less');
+    const result = await new Compiler({
+      compile: {
+        plugins: [lessPlugin(), jsPlugin({ jsReadRoot: testData, runtimeApi: 'less' }), lessCompatPlugin()]
+      }
+    }).renderToResult(entry, { suppressWarnings: true, breakOnError: false });
+
     const failure = result.errors.find(e => e.code === 'plugin/load-failed');
     expect(failure, `expected plugin/load-failed, got ${JSON.stringify(result.errors.map(e => e.code))}`)
       .toBeDefined();
-    expect(failure!.reason).toContain('less.visitors is not supported');
-    expect(failure!.reason).toContain('no visitor API');
+    expect(failure!.reason).toContain('require("http") is not supported');
     expect(failure!.filePath).toBe(entry);
-    expect(failure!.line).toBe(1);
   }, 30000);
 
   /*

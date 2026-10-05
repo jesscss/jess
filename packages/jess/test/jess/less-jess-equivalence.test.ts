@@ -784,12 +784,12 @@ const KNOWN = new Map<string, Known>([
   ['all-less:tests-unit/plugin-module/plugin-module.less', {
     cause: 'no-arm-a',
     outcome: 'arm-a-error',
-    reason: 'the Less arm itself does not render: plugin/load-failed: Plugin "clean-css" could not be loaded: Less @plugin function "index.js" threw: Less @plugin require("./lib/clean") is not supported in the Deno sandbox yet.'
+    reason: 'the Less arm itself does not render: plugin/load-failed: Plugin "clean-css" could not be loaded: Less @plugin function "index.js" threw: Less @plugin require("http") is not supported: only relative requires ("./file", "../file") of CommonJS files inside the script root are.'
   }],
   ['all-less:tests-unit/plugin-preeval/plugin-preeval.less', {
     cause: 'no-arm-a',
     outcome: 'arm-a-error',
-    reason: 'the Less arm itself does not render: plugin/load-failed: Plugin "../../plugin/plugin-preeval" could not be loaded: Less @plugin function "plugin-preeval.js" threw: Cannot read properties of undefined (reading \'Visitor\')'
+    reason: 'the Less arm itself does not render: plugin/unsupported-feature: Plugin "plugin-preeval.js" uses less.visitors, which is not supported'
   }],
   ['all-less:tests-unit/plugin/plugin.less', {
     cause: 'no-arm-a',
