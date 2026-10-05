@@ -5,7 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { createHash } from 'node:crypto';
 import { Compiler } from '../../src/index.js';
 import { outputDiagnostics } from '@jesscss/compiler/diagnostics';
-import { getTestCases, resolveLessTestDataRoot, lessFixturePackagesPlugin } from '../test-utils.js';
+import { getTestCases, resolveLessTestDataRoot, lessFixturePackagesPlugin, upstreamHarnessSourceMap } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
@@ -228,13 +228,13 @@ const skippedFixtures: SkippedFixture[] = (
     { file: 'tests-config/root-registry/file.less', reason: 'no expected CSS in upstream fixture' },
     { file: 'tests-config/root-registry/root.less', reason: 'no expected CSS in upstream fixture' },
     { file: 'tests-config/strict-imports/imported.less', reason: 'helper imported by strict-imports fixture; no expected CSS' },
-    { file: 'tests-config/sourcemaps/basic.less', reason: 'source-map output suite needs dedicated output artifact checks' },
-    { file: 'tests-config/sourcemaps/custom-props.less', reason: 'source-map output suite needs dedicated output artifact checks' },
-    { file: 'tests-config/sourcemaps-disable-annotation/basic.less', reason: 'source-map output suite needs dedicated output artifact checks' },
-    { file: 'tests-config/sourcemaps-empty/empty.less', reason: 'source-map output suite needs dedicated output artifact checks' },
-    { file: 'tests-config/sourcemaps-empty/var-defs.less', reason: 'source-map output suite needs dedicated output artifact checks' },
-    { file: 'tests-config/sourcemaps-variable-selector/basic.less', reason: 'source-map output suite needs dedicated output artifact checks' },
-    { file: 'tests-config/sourcemaps-variable-selector/vars.less', reason: 'source-map output suite needs dedicated output artifact checks' },
+    { file: 'tests-config/sourcemaps/basic.less', reason: 'no expected CSS; source map gated in sourcemaps.test.ts' },
+    { file: 'tests-config/sourcemaps/custom-props.less', reason: 'no expected CSS; source map gated in sourcemaps.test.ts' },
+    { file: 'tests-config/sourcemaps-disable-annotation/basic.less', reason: 'no expected CSS; source map gated in sourcemaps.test.ts' },
+    { file: 'tests-config/sourcemaps-empty/empty.less', reason: 'no expected CSS; empty output gated in sourcemaps.test.ts' },
+    { file: 'tests-config/sourcemaps-empty/var-defs.less', reason: 'no expected CSS; empty output gated in sourcemaps.test.ts' },
+    { file: 'tests-config/sourcemaps-variable-selector/basic.less', reason: 'no expected CSS; source map gated in sourcemaps.test.ts' },
+    { file: 'tests-config/sourcemaps-variable-selector/vars.less', reason: 'helper imported by sourcemaps-variable-selector/basic.less; no expected CSS' },
     { file: 'tests-config/visitorPlugin/visitor.less', reason: 'Less visitor plugin API needs scope decision' },
     {
       file: 'tests-unit/import/import-remote.less',
@@ -266,10 +266,6 @@ const skippedFixtures: SkippedFixture[] = (
     {
       file: 'tests-config/debug/mediaquery/linenumbers-mediaquery.less',
       reason: 'dumpLineNumbers is not implemented — the golden expects @media-encoded line annotations'
-    },
-    {
-      file: 'tests-config/sourcemaps/comprehensive/comprehensive.less',
-      reason: 'source-map output suite needs dedicated output artifact checks (same reason as the other sourcemaps fixtures)'
     },
     {
       file: 'tests-unit/permissive-parse/permissive-parse.less',
@@ -365,20 +361,8 @@ const expectedFailureFixtures = new Map<string, string>([
     'INTENDED DIVERGENCE (§12.3b): the fully interpolated target in `.add_an_import("file.css")` is authored as a compile-time StyleImport, so terminal classification does not defer until it evaluates to `file.css`; normal import resolution therefore reports the missing file'
   ],
   [
-    'tests-config/sourcemaps-basepath/sourcemaps-basepath.less',
-    'source-map annotation and artifact output need a dedicated harness'
-  ],
-  [
-    'tests-config/sourcemaps-include-source/sourcemaps-include-source.less',
-    'source-map annotation and artifact output need a dedicated harness'
-  ],
-  [
-    'tests-config/sourcemaps-rootpath/sourcemaps-rootpath.less',
-    'source-map annotation and artifact output need a dedicated harness'
-  ],
-  [
-    'tests-config/sourcemaps-url/sourcemaps-url.less',
-    'source-map annotation and artifact output need a dedicated harness'
+    'tests-config/sourcemaps/comprehensive/comprehensive.less',
+    'stale golden annotation: it names tests-config/sourcemaps-comprehensive/, but the fixture lives in tests-config/sourcemaps/comprehensive/ and its `sourceMap: true` config annotates `comprehensive.css.map` (as Less 4.x does). The CSS before the annotation and the map are gated in sourcemaps.test.ts'
   ],
 
   /*
@@ -559,6 +543,7 @@ describe('Can render Less files to CSS', () => {
             >;
             const { plugins: testCasePlugins = [], ...restCompileConfig } =
               testCompileConfig;
+            const harnessSourceMap = upstreamHarnessSourceMap(file, testCase.config.language?.less?.sourceMap);
             const testCompiler = new Compiler({
               ...baseCompiler.opts,
               ...testCase.config,
@@ -576,7 +561,8 @@ describe('Can render Less files to CSS', () => {
                 ...(collapseNestingTrueFixtures.has(file)
                   ? { collapseNesting: true }
                   : {}),
-                ...(forceCollapseNesting ? { collapseNesting: true } : {})
+                ...(forceCollapseNesting ? { collapseNesting: true } : {}),
+                ...(harnessSourceMap === undefined ? {} : { sourceMap: harnessSourceMap })
               }
             });
 

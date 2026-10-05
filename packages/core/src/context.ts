@@ -323,6 +323,12 @@ export interface DocumentContextOptions extends ContextOptions {
 
     /** Full file contents (recommended for code-frames) */
     source?: string;
+
+    /**
+     * Length of text injected ahead of the authored file in `source` (Less
+     * `banner`/`globalVars`). Source maps subtract it; absent means none.
+     */
+    sourceOffset?: number;
   };
 
   /**
@@ -1289,7 +1295,8 @@ export class Context {
     filePath: string,
     source: string | undefined,
     plugin: PluginInterface,
-    dialectDefaults: Readonly<Partial<ResolvedOptions>> | undefined
+    dialectDefaults: Readonly<Partial<ResolvedOptions>> | undefined,
+    sourceOffset?: number
   ): void {
     this.sessionOptions ??= resolveOptions(this.opts, dialectDefaults);
     const documentContext = new DocumentContext(this.sessionOptions, {
@@ -1297,7 +1304,8 @@ export class Context {
         name: path.basename(filePath),
         path: path.dirname(filePath),
         fullPath: filePath,
-        ...(source === undefined ? {} : { source })
+        ...(source === undefined ? {} : { source }),
+        ...(sourceOffset ? { sourceOffset } : {})
       },
       plugin
     });
@@ -1691,8 +1699,11 @@ export class Context {
     filePath?: string;
     type?: string;
     extension?: string;
+
+    /** See `DocumentContextOptions.file.sourceOffset`. */
+    sourceOffset?: number;
   } = {}) {
-    const { filePath, type, extension } = options;
+    const { filePath, type, extension, sourceOffset } = options;
     const virtualPath = filePath || `virtual.${extension || 'jess'}`;
     const ext = extension || path.extname(virtualPath);
 
@@ -1722,7 +1733,7 @@ export class Context {
     if (!this.document) {
       this.document = document;
     }
-    this.rememberDocumentContext(document, virtualPath, content, plugin, result.dialectDefaults);
+    this.rememberDocumentContext(document, virtualPath, content, plugin, result.dialectDefaults, sourceOffset);
 
     return {
       node: document,

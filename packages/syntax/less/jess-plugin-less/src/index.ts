@@ -117,12 +117,17 @@ function cloneConfiguredPlugin(plugin: PluginInterface): PluginInterface {
   }
 }
 
+/**
+ * Prepend `banner`/`globalVars` and append `modifyVars` to a Less entry source.
+ * `sourceOffset` is the length of the prepended text, so source maps can point
+ * into the file as authored.
+ */
 export function prepareLessRootSource(
   source: string,
   context: LessSourcePreparationContext
-): string {
+): { source: string; sourceOffset: number } {
   if (context.language !== undefined && context.language !== 'less') {
-    return source;
+    return { source, sourceOffset: 0 };
   }
   const prefix = [
     typeof context.activeOptions.banner === 'string' ? context.activeOptions.banner : undefined,
@@ -130,11 +135,14 @@ export function prepareLessRootSource(
   ].filter(Boolean).join('\n');
   const suffix = renderVariableOverrides(getVariableOverrides(context.activeOptions.modifyVars));
 
-  return [
-    prefix,
-    source,
-    suffix
-  ].filter(Boolean).join('\n');
+  return {
+    source: [
+      prefix,
+      source,
+      suffix
+    ].filter(Boolean).join('\n'),
+    sourceOffset: prefix === '' ? 0 : prefix.length + 1
+  };
 }
 
 export class LessPluginResolver {

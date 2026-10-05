@@ -68,7 +68,7 @@ function lineColFromIndex(lineStarts: number[], offset: number): { line: number;
   return { line: low + 1, column: offset - lineStarts[low]! };
 }
 
-/** Less `normalizeFilename`: basepath removal, then rootpath prefix. */
+/** Less `normalizeFilename`: basepath removal, then rootpath prefix (already `/`-terminated). */
 function normalizeFilename(filename: string, rootpath: string, basepath: string | undefined): string {
   let path = filename.replace(/\\/g, '/');
   if (basepath !== undefined && basepath !== '' && path.indexOf(basepath) === 0) {
@@ -92,7 +92,10 @@ export function buildAstSourceMap(
   options: AstSourceMapOptions = {}
 ): EncodedSourceMap {
   const genLineStarts = buildLineStarts(css);
-  const rootpath = options.sourceMapRootpath ?? '';
+  let rootpath = options.sourceMapRootpath?.replace(/\\/g, '/') ?? '';
+  if (rootpath !== '' && !rootpath.endsWith('/')) {
+    rootpath += '/';
+  }
   const basepath = options.sourceMapBasepath?.replace(/\\/g, '/');
   const map = new GenMapping({ file: options.outputFilename });
   const contentAdded = new Set<string>();
@@ -103,8 +106,10 @@ export function buildAstSourceMap(
      * content chunk; emitting it would map the first output byte to the ENTRY
      * file's start even when that byte is spliced-in imported content, shadowing
      * the correct per-chunk mapping. Less 4.x emits no such anchor — skip it.
+     * A chunk blanked after the walk (a dropped or hidden block) emitted
+     * nothing, so it gets no mapping either.
      */
-    if (position.type === 'Stylesheet') {
+    if (position.type === 'Stylesheet' || position.start === position.end) {
       continue;
     }
     const file = position.source;
@@ -113,21 +118,31 @@ export function buildAstSourceMap(
     if (filename === undefined || sourceText === undefined) {
       continue;
     }
-    const sourceOffset = sourceStartOf(position.node);
-    if (sourceOffset === NO_SPAN) {
+    const sourceOffset = position.sourceStart ?? sourceStartOf(position.node);
+    const injected = file?.sourceOffset ?? 0;
+
+    /* Nodes from text injected ahead of the file (Less `globalVars`) have no authored home. */
+    if (sourceOffset === NO_SPAN || sourceOffset < injected) {
       continue;
     }
     const generated = lineColFromIndex(genLineStarts, position.start);
     const original = lineColAt(sourceText, sourceOffset, file);
+    let line = original.line;
+    let column = original.column - 1;
+    if (injected > 0) {
+      const origin = lineColAt(sourceText, injected, file);
+      line -= origin.line - 1;
+      column -= original.line === origin.line ? origin.column - 1 : 0;
+    }
     const source = normalizeFilename(filename, rootpath, basepath);
     maybeAddMapping(map, {
       generated: { line: generated.line, column: generated.column },
-      original: { line: original.line, column: original.column - 1 },
+      original: { line, column },
       source
     });
     if (options.outputSourceFiles === true && !contentAdded.has(source)) {
       contentAdded.add(source);
-      setSourceContent(map, source, sourceText);
+      setSourceContent(map, source, injected > 0 ? sourceText.slice(injected) : sourceText);
     }
   }
 

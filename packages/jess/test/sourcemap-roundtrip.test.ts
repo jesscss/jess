@@ -13,76 +13,39 @@
  *     nested output — different generated positions, same source tokens).
  */
 import { describe, it, expect } from 'vitest';
+import * as fs from 'fs';
 import * as path from 'path';
 import { Compiler } from '../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
-
-const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-
-/** Decode v3 `mappings` into [genLine0, genCol0, srcIndex, srcLine0, srcCol0]. */
-function decodeVLQ(str: string): number[][] {
-  const out: number[][] = [];
-  let srcIdx = 0;
-  let srcLine = 0;
-  let srcCol = 0;
-  str.split(';').forEach((line, genLine) => {
-    let genCol = 0;
-    if (line === '') {
-      return;
-    }
-    for (const seg of line.split(',')) {
-      const nums: number[] = [];
-      let shift = 0;
-      let value = 0;
-      for (const ch of seg) {
-        const d = B64.indexOf(ch);
-        value += (d & 31) << shift;
-        if (d & 32) {
-          shift += 5;
-        } else {
-          const magnitude = value >> 1;
-          nums.push(value & 1 ? -magnitude : magnitude);
-          value = 0;
-          shift = 0;
-        }
-      }
-      if (nums.length >= 4) {
-        genCol += nums[0]!;
-        srcIdx += nums[1]!;
-        srcLine += nums[2]!;
-        srcCol += nums[3]!;
-        out.push([genLine, genCol, srcIdx, srcLine, srcCol]);
-      } else if (nums.length === 1) {
-        genCol += nums[0]!;
-      }
-    }
-  });
-  return out;
-}
-
-/** The leading token at a 0-based line/column, whitespace-trimmed. */
-function tokenAt(text: string, line0: number, col0: number): string {
-  const line = text.split('\n')[line0] ?? '';
-  const match = line.slice(col0).match(/^\s*([.#@]?[-\w%]+|\S+?)/);
-  return (match ? match[1]! : line.slice(col0, col0 + 12)).trim();
-}
+import { decodeSourceMapMappings, tokenAt } from './test-utils.js';
 
 interface AuditResult {
   readonly count: number;
   readonly sourcesSeen: Set<string>;
 }
 
-async function auditRoundTrip(entry: string, collapseNesting: boolean, compress = false): Promise<AuditResult> {
+async function auditRoundTrip(
+  entry: string,
+  collapseNesting: boolean,
+  compress = false,
+  globalVars?: Record<string, string>
+): Promise<AuditResult> {
   const c = new Compiler({
     output: { collapseNesting, compress, sourceMap: { outputSourceFiles: true } },
-    compile: { plugins: [lessPlugin()] }
+    compile: { plugins: [lessPlugin()] },
+    language: globalVars === undefined ? {} : { less: { globalVars } }
   });
   const r = await c.renderToResult(entry, {});
   const css = r.css;
   const map = JSON.parse(r.map!) as { sources: string[]; sourcesContent: string[]; mappings: string };
-  const mappings = decodeVLQ(map.mappings);
+  const mappings = decodeSourceMapMappings(map.mappings);
   const sourcesSeen = new Set<string>();
   const genLines = css.split('\n');
+
+  /* Each embedded source is the file as authored — nothing injected ahead of it. */
+  map.sources.forEach((source, index) => {
+    expect(map.sourcesContent[index]).toBe(fs.readFileSync(path.resolve(path.dirname(entry), source), 'utf8'));
+  });
   for (const [gl, gc, si, sl, sc] of mappings) {
     const genToken = tokenAt(css, gl, gc);
     const srcToken = tokenAt(map.sourcesContent[si] ?? '', sl, sc);
@@ -137,6 +100,27 @@ describe('source map round-trip is mathematically correct', () => {
 
       const reordered = await auditRoundTrip(path.join(fixtures, 'reorder.less'), collapseNesting, true);
       expect(reordered.count).toBeGreaterThanOrEqual(6);
+    });
+
+    /*
+     * An extend found while expanding a mixin rewrites the target's header after
+     * the walk has moved past it, so every mapping recorded later must still
+     * land on its own token once the header has grown.
+     */
+    it(`a header rewritten by a late extend keeps later mappings in place (collapseNesting=${collapseNesting})`, async () => {
+      for (const compress of [false, true]) {
+        const r = await auditRoundTrip(path.join(fixtures, 'late-extend.less'), collapseNesting, compress);
+        expect(r.count).toBeGreaterThanOrEqual(5);
+      }
+    });
+
+    /*
+     * Less `globalVars` are injected ahead of the entry source; the map must
+     * still point into the file as authored, not into the injected prefix.
+     */
+    it(`globalVars do not shift entry-file mappings (collapseNesting=${collapseNesting})`, async () => {
+      const r = await auditRoundTrip(path.join(fixtures, 'reorder.less'), collapseNesting, false, { injectedA: '1px', injectedB: 'red' });
+      expect(r.count).toBeGreaterThanOrEqual(6);
     });
   }
 });

@@ -161,6 +161,80 @@ export function getTestCases(lessFilePath: string): TestCase[] {
 const require = createRequire(import.meta.url);
 
 /**
+ * The `output.sourceMap` the upstream less.js harness renders a corpus fixture
+ * with (`packages/less/test/less-test.js`): an object-form, non-inline
+ * `sourceMap` gets `sourceMapOutputFilename: '<fixture path>.css'` and
+ * `sourceMapRootpath: 'testweb/'` unless the fixture sets them. The goldens'
+ * `sourceMappingURL` annotations were generated under that convention.
+ * Returns undefined when the fixture's own config needs no override.
+ */
+export function upstreamHarnessSourceMap(
+  relativeLessPath: string,
+  sourceMap: unknown
+): Record<string, unknown> | undefined {
+  if (sourceMap === null || typeof sourceMap !== 'object' || 'sourceMapFileInline' in sourceMap) {
+    return undefined;
+  }
+  return {
+    sourceMapOutputFilename: relativeLessPath.replace(/\.less$/, '.css'),
+    sourceMapRootpath: 'testweb/',
+    ...sourceMap
+  };
+}
+
+/** The leading token at a 0-based line/column, whitespace-trimmed. */
+export function tokenAt(text: string, line0: number, col0: number): string {
+  const line = text.split('\n')[line0] ?? '';
+  const match = line.slice(col0).match(/^\s*([.#@]?[-\w%]+|\S+?)/);
+  return (match ? match[1]! : line.slice(col0, col0 + 12)).trim();
+}
+
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+/**
+ * Decode a v3 `mappings` string into absolute
+ * `[genLine0, genCol0, sourceIndex, sourceLine0, sourceCol0]` segments.
+ * Self-contained, so a test never trusts the encoder it is checking.
+ */
+export function decodeSourceMapMappings(mappings: string): number[][] {
+  const out: number[][] = [];
+  let srcIdx = 0;
+  let srcLine = 0;
+  let srcCol = 0;
+  mappings.split(';').forEach((line, genLine) => {
+    let genCol = 0;
+    if (line === '') {
+      return;
+    }
+    for (const seg of line.split(',')) {
+      const nums: number[] = [];
+      let shift = 0;
+      let value = 0;
+      for (const ch of seg) {
+        const d = B64.indexOf(ch);
+        value += (d & 31) << shift;
+        if (d & 32) {
+          shift += 5;
+        } else {
+          const magnitude = value >> 1;
+          nums.push(value & 1 ? -magnitude : magnitude);
+          value = 0;
+          shift = 0;
+        }
+      }
+      genCol += nums[0]!;
+      if (nums.length >= 4) {
+        srcIdx += nums[1]!;
+        srcLine += nums[2]!;
+        srcCol += nums[3]!;
+        out.push([genLine, genCol, srcIdx, srcLine, srcCol]);
+      }
+    }
+  });
+  return out;
+}
+
+/**
  * Resolves the upstream Less.js test-data directory in normal installs,
  * linked workspace installs, and isolated git worktrees.
  */

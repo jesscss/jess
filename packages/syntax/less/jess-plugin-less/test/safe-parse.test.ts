@@ -254,11 +254,14 @@ describe("@jesscss/plugin-less", () => {
         globalVars: { tone: 'red' },
         modifyVars: { tone: 'blue' }
       }
-    })).toBe('/* banner */\n@tone: red;\n.a { color: @tone; }\n@tone: blue;');
+    })).toEqual({
+      source: '/* banner */\n@tone: red;\n.a { color: @tone; }\n@tone: blue;',
+      sourceOffset: '/* banner */\n@tone: red;\n'.length
+    });
 
     expect(prepareLessRootSource('.a { color: $tone; }', {
       language: 'scss',
       activeOptions: { banner: '/* banner */' }
-    })).toBe('.a { color: $tone; }');
+    })).toEqual({ source: '.a { color: $tone; }', sourceOffset: 0 });
   });
 });
