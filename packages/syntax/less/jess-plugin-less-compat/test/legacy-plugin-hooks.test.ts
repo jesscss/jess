@@ -49,9 +49,20 @@ type HookUse = (less: NativeLessApi, manager: NativeLessPluginManager) => unknow
 
 const hookCases: Array<[string, HookUse, string]> = [
   ['pluginManager.addVisitor()', (_less, manager) => manager.addVisitor({}), 'visitor'],
+  ['pluginManager.getVisitors()', (_less, manager) => manager.getVisitors(), 'visitor'],
+  ['pluginManager.visitor()', (_less, manager) => manager.visitor(), 'visitor'],
+  ['pluginManager.visitors', (_less, manager) => manager.visitors, 'visitor'],
+  ['pluginManager.iterator', (_less, manager) => manager.iterator, 'visitor'],
   ['pluginManager.addPreProcessor()', (_less, manager) => manager.addPreProcessor({}), 'before'],
+  ['pluginManager.getPreProcessors()', (_less, manager) => manager.getPreProcessors(), 'before'],
+  ['pluginManager.preProcessors', (_less, manager) => manager.preProcessors, 'before'],
   ['pluginManager.addPostProcessor()', (_less, manager) => manager.addPostProcessor({}), 'output.compress'],
+  ['pluginManager.getPostProcessors()', (_less, manager) => manager.getPostProcessors(), 'output.compress'],
+  ['pluginManager.postProcessors', (_less, manager) => manager.postProcessors, 'output.compress'],
   ['pluginManager.addFileManager()', (_less, manager) => manager.addFileManager({}), '@jesscss/plugin-node-modules'],
+  ['pluginManager.getFileManagers()', (_less, manager) => manager.getFileManagers(), '@jesscss/plugin-node-modules'],
+  ['pluginManager.fileManagers', (_less, manager) => manager.fileManagers, '@jesscss/plugin-node-modules'],
+  ['pluginManager.Loader', (_less, manager) => manager.Loader, 'pluginManager.addPlugin()'],
 
   /* 4.x plugins reach these before the hook call (`new less.visitors.Visitor(this)`). */
   ['less.visitors', less => Reflect.get(less, 'visitors'), 'visitor'],
@@ -137,6 +148,79 @@ describe('legacy Less plugin-manager hooks', () => {
     ]);
     expect(refusalOf(() => bridge.registry.get('late')?.()).message)
       .toContain('Plugin "late-reader" uses less.visitors');
+  });
+
+  it('installs function plugins through pluginManager.addPlugin() and addPlugins(), as 4.x does', () => {
+    const child = (name: string): NativeLessPlugin => ({
+      name,
+      install: (_less, _manager, functions) => functions.add(name, () => 1)
+    });
+    const viaAddPlugin = child('via-add-plugin');
+    let manager: NativeLessPluginManager | undefined;
+    const bridge = new LessApiBridge([{
+      name: 'parent',
+      install(_less, pluginManager) {
+        manager = pluginManager;
+        pluginManager.addPlugin(viaAddPlugin, 'child.js');
+        pluginManager.addPlugins([child('first'), child('second')]);
+        pluginManager.addPlugins(undefined);
+      }
+    }]);
+
+    expect(bridge.registry.get('via-add-plugin')).toBeTypeOf('function');
+    expect(bridge.registry.get('first')).toBeTypeOf('function');
+    expect(bridge.registry.get('second')).toBeTypeOf('function');
+    expect(manager?.get('child.js')).toBe(viaAddPlugin);
+    expect(manager?.get('missing.js')).toBeUndefined();
+    expect(manager?.installedPlugins.map(plugin => plugin.name)).toEqual(['parent', 'via-add-plugin', 'first', 'second']);
+    expect(manager?.less.functions.functionRegistry).toBe(bridge.registry);
+  });
+
+  it('installs from any array-like passed to pluginManager.addPlugins(), as 4.x does', () => {
+    const bridge = new LessApiBridge([{
+      install(_less, manager) {
+        manager.addPlugins({ length: 1, 0: { install: (_l, _m, functions) => functions.add('array-like', () => 1) } });
+      }
+    }]);
+    expect(bridge.registry.get('array-like')).toBeTypeOf('function');
+  });
+
+  it('lets a plugin spread or serialize its manager without tripping the refused fields', () => {
+    let keys: string[] = [];
+    new LessApiBridge([{
+      install(_less, manager) {
+        keys = Object.keys({ ...manager });
+        JSON.stringify(manager);
+      }
+    }]);
+    expect(keys).toEqual(expect.arrayContaining(['less', 'installedPlugins', 'pluginCache', 'addPlugin']));
+    expect(keys).not.toContain('visitors');
+  });
+
+  it('installs into the functionRegistry passed to pluginManager.addPlugin()', () => {
+    const added: string[] = [];
+    const scoped = {
+      add: (name: string) => {
+        added.push(name);
+      },
+      addMultiple: () => undefined,
+      get: () => undefined
+    };
+    const bridge = new LessApiBridge([{
+      install(_less, manager) {
+        manager.addPlugin({ install: (_l, _m, functions) => functions.add('scoped', () => 1) }, undefined, scoped);
+      }
+    }]);
+    expect(added).toEqual(['scoped']);
+    expect(bridge.globalFns).toHaveLength(0);
+  });
+
+  it('names the configured plugin when a plugin it added reaches for a refused hook', () => {
+    const refused = installError({
+      name: 'bundle',
+      install: (_less, manager) => manager.addPlugin({ install: (_l, inner) => inner.addVisitor({}) })
+    });
+    expect(refused.message).toBe('Plugin "bundle" uses pluginManager.addVisitor(), which is not supported');
   });
 
   it('surfaces the refusal from the opt-in compat plugin', () => {
