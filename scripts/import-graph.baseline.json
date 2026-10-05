@@ -5,6 +5,7 @@
       "packages/core/lib/at-rule.js",
       "packages/core/lib/diagnostics2.js",
       "packages/core/lib/index.js",
+      "packages/core/lib/value-eval.js",
       "packages/core/lib/value2.js"
     ],
     "externals": [
@@ -18,15 +19,16 @@
       "chalk",
       "lodash-es"
     ],
-    "bytes": 1488543
+    "bytes": 1499959
   },
   "@jesscss/core/ast": {
     "modules": [
       "packages/core/lib/ast.js",
-      "packages/core/lib/at-rule.js"
+      "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js"
     ],
     "externals": [],
-    "bytes": 37854
+    "bytes": 43396
   },
   "@jesscss/core/diagnostics": {
     "modules": [
@@ -34,20 +36,22 @@
       "packages/core/lib/diagnostics2.js"
     ],
     "externals": [],
-    "bytes": 25613
+    "bytes": 27694
   },
   "@jesscss/core/value": {
     "modules": [
+      "packages/core/lib/value-eval.js",
       "packages/core/lib/value.js",
       "packages/core/lib/value2.js"
     ],
     "externals": [],
-    "bytes": 30546
+    "bytes": 31112
   },
   "@jesscss/css-parser": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/chunks/parse-with.js",
@@ -58,12 +62,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 3311084
+    "bytes": 3630773
   },
   "@jesscss/css-parser/cst": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/chunks/trivia-labels.js",
@@ -74,7 +79,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1781130
+    "bytes": 1819206
   },
   "@jesscss/css-parser/cst-host": {
     "modules": [
@@ -84,12 +89,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 929459
+    "bytes": 938310
   },
   "@jesscss/css-parser/cst/positions": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/chunks/trivia-labels.js",
@@ -100,12 +106,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1781229
+    "bytes": 1819337
   },
   "@jesscss/css-parser/grammar/ast": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/grammar/ast.js"
@@ -113,12 +120,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2522347
+    "bytes": 2833327
   },
   "@jesscss/css-parser/grammar/ast/positions": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/grammar/ast/positions.js"
@@ -126,12 +134,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 989983
+    "bytes": 1019383
   },
   "@jesscss/css-parser/grammar/cst": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/grammar/cst.js"
@@ -139,12 +148,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 990215
+    "bytes": 1019595
   },
   "@jesscss/css-parser/grammar/cst/positions": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/grammar/cst/positions.js"
@@ -152,12 +162,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 990119
+    "bytes": 1019531
   },
   "@jesscss/css-parser/positions": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/chunks/parse-with.js",
@@ -168,12 +179,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1778545
+    "bytes": 1816654
   },
   "@jesscss/jess-parser": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -186,12 +198,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2371429
+    "bytes": 2436387
   },
   "@jesscss/jess-parser/cst": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -205,12 +218,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2372492
+    "bytes": 2437466
   },
   "@jesscss/jess-parser/cst/positions": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -224,12 +238,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2381620
+    "bytes": 2446577
   },
   "@jesscss/jess-parser/grammar/ast": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -239,12 +254,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2362078
+    "bytes": 2427036
   },
   "@jesscss/jess-parser/grammar/ast/positions": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -254,12 +270,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2370949
+    "bytes": 2435890
   },
   "@jesscss/jess-parser/grammar/cst": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -269,12 +286,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2362352
+    "bytes": 2427326
   },
   "@jesscss/jess-parser/grammar/cst/positions": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -284,12 +302,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2371223
+    "bytes": 2436180
   },
   "@jesscss/jess-parser/positions": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -302,7 +321,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2380124
+    "bytes": 2445065
   },
   "@jesscss/less-parser": {
     "modules": [
@@ -310,6 +329,7 @@
       "packages/core/lib/at-rule.js",
       "packages/core/lib/diagnostics.js",
       "packages/core/lib/diagnostics2.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/grammar/base.js",
@@ -322,12 +342,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2588543
+    "bytes": 2710228
   },
   "@jesscss/less-parser/cst": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/chunks/trivia-labels.js",
@@ -341,12 +362,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2564285
+    "bytes": 2683717
   },
   "@jesscss/less-parser/cst/positions": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/chunks/trivia-labels.js",
@@ -360,12 +382,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2566074
+    "bytes": 2685280
   },
   "@jesscss/less-parser/grammar/ast": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/grammar/base.js",
@@ -375,12 +398,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1772411
+    "bytes": 1883133
   },
   "@jesscss/less-parser/grammar/ast/positions": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/grammar/base.js",
@@ -390,12 +414,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1774024
+    "bytes": 1884520
   },
   "@jesscss/less-parser/grammar/cst": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/grammar/base.js",
@@ -405,12 +430,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1772798
+    "bytes": 1883534
   },
   "@jesscss/less-parser/grammar/cst/positions": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/grammar/base.js",
@@ -420,7 +446,7 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1774330
+    "bytes": 1884840
   },
   "@jesscss/less-parser/positions": {
     "modules": [
@@ -428,6 +454,7 @@
       "packages/core/lib/at-rule.js",
       "packages/core/lib/diagnostics.js",
       "packages/core/lib/diagnostics2.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/syntax/css/css-parser/lib/grammar/base.js",
@@ -440,12 +467,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2589855
+    "bytes": 2711314
   },
   "@jesscss/scss-parser": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -458,12 +486,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2319563
+    "bytes": 2380535
   },
   "@jesscss/scss-parser/cst": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -477,12 +506,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2322817
+    "bytes": 2383805
   },
   "@jesscss/scss-parser/cst/positions": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -496,12 +526,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2330217
+    "bytes": 2391173
   },
   "@jesscss/scss-parser/grammar/ast": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -511,12 +542,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1531115
+    "bytes": 1583391
   },
   "@jesscss/scss-parser/grammar/ast/positions": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -526,12 +558,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1538258
+    "bytes": 1590502
   },
   "@jesscss/scss-parser/grammar/cst": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -541,12 +574,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1531350
+    "bytes": 1583642
   },
   "@jesscss/scss-parser/grammar/cst/positions": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -556,12 +590,13 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 1538493
+    "bytes": 1590753
   },
   "@jesscss/scss-parser/positions": {
     "modules": [
       "packages/core/lib/ast.js",
       "packages/core/lib/at-rule.js",
+      "packages/core/lib/value-eval.js",
       "packages/parser-shared/lib/pseudo-consts.js",
       "packages/parser-shared/lib/recognition.js",
       "packages/parser-shared/lib/unknown-at-rule.js",
@@ -574,6 +609,6 @@
     "externals": [
       "parseman"
     ],
-    "bytes": 2326530
+    "bytes": 2387470
   }
 }
