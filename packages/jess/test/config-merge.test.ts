@@ -248,8 +248,11 @@ describe('Config Merging', () => {
     const deprecations = result.warnings.filter(warning =>
       warning.code === 'deprecation/dump-line-numbers-option');
     expect(deprecations).toHaveLength(1);
-    expect(deprecations[0]!.reason).toContain('dumpLineNumbers');
+    expect(deprecations[0]!.reason).toContain('"dumpLineNumbers" is deprecated and has no effect');
     expect(deprecations[0]!.fix).toContain('sourceMap');
+
+    /* It is about the options, not a line of the stylesheet. */
+    expect(deprecations[0]!.filePath).toBeUndefined();
     expect(result.errors).toEqual([]);
     expect(result.css).toBe(plain.css);
     expect(result.css).not.toContain('line ');

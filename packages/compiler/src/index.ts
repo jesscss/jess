@@ -1052,12 +1052,14 @@ export class Compiler {
     /*
      * Less 4.x `dumpLineNumbers` is accepted and otherwise ignored: v5 emits no
      * line-number comments or debug media queries. A falsy value is 4.x's "off"
-     * and requests nothing, so only a real request warns.
+     * and requests nothing, so only a real request warns. The warning is about
+     * the options, not a stylesheet, so it carries no source location.
      */
     if (contextOptions.dumpLineNumbers) {
       const deprecation = Deprecation.fromId('dump-line-numbers-option') ?? Deprecation.userAuthored;
       context.warnDeprecation(deprecation, WARN.deprecated({
-        filePath: resolved.filePath,
+        reason: '"dumpLineNumbers" is deprecated and has no effect: no line-number comments or debug media queries are emitted.',
+        fix: 'Remove the option; use "sourceMap" to map the output back to its source.',
         meta: { what: 'dumpLineNumbers', use: 'sourceMap', deprecation }
       }));
     }

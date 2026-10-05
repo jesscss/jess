@@ -252,22 +252,9 @@ const skippedFixtures: SkippedFixture[] = (
      */
     /*
      * Nested fixtures, visible since the lane started discovering one level
-     * deeper. dumpLineNumbers output is an intended divergence and source maps
-     * need a dedicated harness; these four are the only nested fixtures with
-     * goldens that do not pass.
+     * deeper. Source maps need a dedicated harness; the nested dumpLineNumbers
+     * fixtures are expected failures that assert their deprecation warning.
      */
-    {
-      file: 'tests-config/debug/all/linenumbers-all.less',
-      reason: 'INTENDED DIVERGENCE (owner ruling 2026-10-04): dumpLineNumbers is accepted with a deprecation/dump-line-numbers-option warning and otherwise ignored, so the golden\'s `/* line N, {path} */` annotations are never emitted (warning pinned in test/config-merge.test.ts)'
-    },
-    {
-      file: 'tests-config/debug/comments/linenumbers-comments.less',
-      reason: 'INTENDED DIVERGENCE (owner ruling 2026-10-04): dumpLineNumbers is accepted with a deprecation warning and otherwise ignored — the golden expects `/* line N, {path} */` annotations'
-    },
-    {
-      file: 'tests-config/debug/mediaquery/linenumbers-mediaquery.less',
-      reason: 'INTENDED DIVERGENCE (owner ruling 2026-10-04): dumpLineNumbers is accepted with a deprecation warning and otherwise ignored — the golden expects @media-encoded line annotations'
-    },
     {
       file: 'tests-config/sourcemaps/comprehensive/comprehensive.less',
       reason: 'source-map output suite needs dedicated output artifact checks (same reason as the other sourcemaps fixtures)'
@@ -419,6 +406,18 @@ const expectedFailureFixtures = new Map<string, string>([
     'INTENDED DIVERGENCE (A12): the legacy tree-visitor ABI is a v5 non-goal; loading plugin-preeval.js is refused at its `less.visitors` read with a plugin/unsupported-feature diagnostic naming the missing visitor API (test/less/plugin-diagnostics.test.ts)'
   ],
   [
+    'tests-config/debug/all/linenumbers-all.less',
+    'INTENDED DIVERGENCE (owner ruling 2026-10-04): dumpLineNumbers is accepted with a deprecation/dump-line-numbers-option warning and otherwise ignored, so the golden\'s `/* line N, {path} */` comments and debug media queries are never emitted'
+  ],
+  [
+    'tests-config/debug/comments/linenumbers-comments.less',
+    'same dumpLineNumbers ruling as tests-config/debug/all/linenumbers-all.less'
+  ],
+  [
+    'tests-config/debug/mediaquery/linenumbers-mediaquery.less',
+    'same dumpLineNumbers ruling as tests-config/debug/all/linenumbers-all.less'
+  ],
+  [
     'tests-unit/plugin/plugin.less',
     'INTENDED DIVERGENCE (owner ruling 2026-08-18). Lines 124-135 use `@plugin (option) "…"` with the `registerPlugin({ install, use, setOptions })` lifecycle — a documented Less 4.x plugin-API form, but `@plugin` itself is DEPRECATED in v5 (script integration moves to @use / @-use; see deprecation.ts). The bare, common ABI works: with the harness-loaded @jesscss/plugin-less-compat, `functions.addMultiple`/`tree` @plugin scripts (plugin-global, plugin-transitive) load fine. The `registerPlugin`/`setOptions`/`(option)` plugin-manager lifecycle is deliberately NOT built out in the compat bridge — it is a rarely-used corner of a deprecated feature, so any script-integration effort belongs in the @use path instead. Owner-maintained @less/test-data fixture'
   ],
@@ -491,7 +490,10 @@ const expectedFailureDiagnosticCodes = new Map<string, string>([
    * expected-failure reasons), not on a parse error. */
   ['tests-unit/urls/urls.less', 'import/not-found'],
   ['tests-unit/plugin-preeval/plugin-preeval.less', 'plugin/unsupported-feature'],
-  ['tests-unit/plugin-module/plugin-module.less', 'plugin/load-failed']
+  ['tests-unit/plugin-module/plugin-module.less', 'plugin/load-failed'],
+  ['tests-config/debug/all/linenumbers-all.less', 'deprecation/dump-line-numbers-option'],
+  ['tests-config/debug/comments/linenumbers-comments.less', 'deprecation/dump-line-numbers-option'],
+  ['tests-config/debug/mediaquery/linenumbers-mediaquery.less', 'deprecation/dump-line-numbers-option']
 ]);
 
 type RenderResult = Awaited<ReturnType<Compiler['renderToResult']>>;
