@@ -17,7 +17,7 @@
  */
 
 import { appendCustomValueParts as appendCustomValuePartsIn, cssBaseMathOutsideParens, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, keyword, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueSlot, withValueLayout } from '@jesscss/core/ast';
-import type { CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, Statement, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import type { AtRuleStatement, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 
 export type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
 export type ScssValueTail = { readonly kind: 'space' | 'slash'; readonly value: ValueNode; readonly separator: string };
@@ -124,6 +124,34 @@ export function scssRelativeCombinator(value: unknown): '>' | '+' | '~' {
 
 export function isScssImportTarget(value: unknown): value is Quoted | Url | Interpolation {
   return isQuoted(value) || isUrl(value) || isInterpolation(value);
+}
+
+/**
+ * Sass's own URL rule for an `@import` target, exactly as dart-sass applies it
+ * (`isPlainImportUrl`, `lib/src/parse/stylesheet.dart`): a protocol-relative
+ * `//host/x` or an `http://` / `https://` URL is plain CSS. The tests are
+ * case-sensitive — `HTTP://x` is a partial import there — and a target shorter
+ * than five characters is never plain. The `.css` test is the shared
+ * `importIsCompileTime` rule, not part of this one.
+ */
+export function sassImportUrlIsPlainCss(spelling: string): boolean {
+  return spelling.length >= 5
+    && (spelling.startsWith('//') || spelling.startsWith('http://') || spelling.startsWith('https://'));
+}
+
+/**
+ * `@import "a", "b";` — one at-rule that is several imports (Sass spec
+ * `at-rules/import.md`, `ImportRule ::= '@import' ImportArgument (',' ImportArgument)*`).
+ * Each argument is its own statement, so the list is carried to the enclosing
+ * body as one fact and spread there in source order.
+ */
+export interface ScssImportListFact {
+  readonly kind: 'scss-import-list';
+  readonly statements: ReadonlyArray<StyleImport | AtRuleStatement>;
+}
+
+export function isScssImportListFact(value: unknown): value is ScssImportListFact {
+  return typeof value === 'object' && value !== null && 'kind' in value && value.kind === 'scss-import-list';
 }
 
 export function isVarRef(value: unknown): value is Lookup {
@@ -658,6 +686,10 @@ export function statements(children: readonly unknown[], allowDeclarations = fal
     if (child === null) {
       continue;
     }
+    if (isScssImportListFact(child)) {
+      result.push(...child.statements);
+      continue;
+    }
     if (!isStatementChild(
       child,
       allowDeclarations
@@ -672,7 +704,9 @@ export function statements(children: readonly unknown[], allowDeclarations = fal
 export function statementChildren(children: readonly unknown[], allowDeclarations = false): Statement[] {
   const result: Statement[] = [];
   for (const child of children) {
-    if (isStatementChild(
+    if (isScssImportListFact(child)) {
+      result.push(...child.statements);
+    } else if (isStatementChild(
       child,
       allowDeclarations
     )) {

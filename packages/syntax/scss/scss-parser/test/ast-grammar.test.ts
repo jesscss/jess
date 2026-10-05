@@ -354,14 +354,17 @@ describe('SCSS canonical-AST grammar', () => {
   });
 
   /*
-   * Sass spec `at-rules/import.md`: a URL beginning `http://` or `https://` is a
-   * plain CSS import, quoted or in `url()`, with or without a media query. A
-   * local `url()` target keeps the partial-import classification.
+   * Sass's URL rule, as dart-sass applies it (`isPlainImportUrl`): a
+   * protocol-relative or `http://` / `https://` URL is a plain CSS import,
+   * quoted or in `url()`, with or without a media query. The scheme test is
+   * case-sensitive and a target under five characters is never plain, so those
+   * stay partial imports, as does a local `url()` target.
    */
-  it('classifies an http(s) URL import as a plain CSS AtRuleStatement', () => {
+  it('classifies a protocol-relative or http(s) URL import as a plain CSS AtRuleStatement', () => {
     for (const source of [
       '@import "http://fonts.example/css?family=Roboto";',
-      '@import \'HTTPS://fonts.example/x\';',
+      '@import \'https://fonts.example/x\';',
+      '@import "//cdn.example/theme";',
       '@import url("https://fonts.example/css?family=Roboto");',
       '@import url(https://fonts.example/x);',
       '@import "https://fonts.example/x" screen;'
@@ -372,10 +375,30 @@ describe('SCSS canonical-AST grammar', () => {
       expect(result.value, source).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'AtRuleStatement', name: '@import' }] });
       expect(isStylesheet(result.value) ? serialize(result.value).css : undefined, source).toBe(`${source}\n`);
     }
-    for (const source of ['@import url(theme);', '@import "//cdn.example/theme";', '@import "httpx://theme";']) {
+    for (const source of ['@import url(theme);', '@import \'HTTPS://fonts.example/x\';', '@import "Http://x/y";', '@import "//a";', '@import "httpx://theme";']) {
       const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(result.value, source).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'StyleImport', name: '@import' }] });
     }
+  });
+
+  /* `ImportRule ::= '@import' ImportArgument (',' ImportArgument)*` — each argument is its own import. */
+  it('splits a comma-separated @import into one import per argument', () => {
+    const source = '@import "a.css", "http://x/y", "partial", "b.css" screen;';
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      rules: [
+        { type: 'AtRuleStatement', name: '@import', prelude: { type: 'Quoted', value: 'a.css' } },
+        { type: 'AtRuleStatement', name: '@import', prelude: { type: 'Quoted', value: 'http://x/y' } },
+        { type: 'StyleImport', name: '@import', target: { type: 'Quoted', value: 'partial' } },
+        { type: 'AtRuleStatement', name: '@import', prelude: { type: 'Sequence' } }
+      ]
+    });
+    const plain = '.a { @import "a.css", "//cdn.example/b"; }';
+    const nested = run(scssGrammar.Stylesheet, plain, { trivia: scssGrammar.whitespace });
+    expect(isStylesheet(nested.value) ? serialize(nested.value).css : undefined).toBe('.a {\n  @import "a.css";\n  @import "//cdn.example/b";\n}\n');
   });
 
   it('constructs the public-CST-valid empty SCSS url import target without a fallback', () => {
@@ -510,8 +533,7 @@ describe('SCSS canonical-AST grammar', () => {
     for (const source of [
       '@import "theme.css" #{$media};',
       '@import "theme.css" screen /* no raw/comment tail */ and (color);',
-      '@import "theme.css" screen, #{$media};',
-      '@import "a.css", "b.css" screen;'
+      '@import "theme.css" screen, #{$media};'
     ]) {
       const direct = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(false);

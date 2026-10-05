@@ -1888,16 +1888,6 @@ export const importOptionWords = (options: List | null): string[] => {
  */
 /* ASCII-only patterns: `i` without `u`, so no Unicode case folding (`ſ` is not `s`). */
 const CSS_TARGET = /\.css(?:[?#].*)?$/i;
-const HTTP_URL_TARGET = /^https?:\/\//i;
-
-/**
- * Whether an import target spelling ({@link importTargetSpelling}) is an
- * `http://` / `https://` URL. Sass makes every such import plain CSS
- * (`spec/at-rules/import.md`, "is plain CSS"); Less and Jess do not, so this is
- * a separate fact rather than a branch of {@link importIsCompileTime}.
- */
-export const importSpellingIsHttpUrl = (spelling: string): boolean =>
-  HTTP_URL_TARGET.test(spelling);
 
 /**
  * WHICH of the two import nodes an `@import` becomes — decided from SYNTAX, by

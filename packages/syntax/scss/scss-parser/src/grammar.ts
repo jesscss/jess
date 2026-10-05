@@ -24,10 +24,10 @@ import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { ScssImportPostludeError } from './parse-error.js';
-import { anonymousMixin, any, asDiagnostic, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, importIsCompileTime, importSpellingIsHttpUrl, importTargetSpelling, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
+import { anonymousMixin, any, asDiagnostic, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, importIsCompileTime, importTargetSpelling, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { COMPARISON_OPERATORS, controlBlockStatements, contentArgRaw, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScssImportTarget, isScriptModulePath, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, keywordizeValues, mapKeyValue, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
-import type { ScssArgumentPair, ScssCallArg, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
+import { COMPARISON_OPERATORS, controlBlockStatements, contentArgRaw, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScssImportTarget, isScriptModulePath, sassImportUrlIsPlainCss, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, keywordizeValues, mapKeyValue, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
+import type { ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
   Stylesheet: Combinator<Stylesheet>;
@@ -69,7 +69,7 @@ type ScssRules = {
   Declaration: Combinator<Declaration>;
   NestedPropertyMember: Combinator<CollectionEntry>;
   NestedPropertyDeclaration: Combinator<Declaration>;
-  ImportStatement: Combinator<StyleImport | AtRuleStatement>;
+  ImportStatement: Combinator<StyleImport | AtRuleStatement | ScssImportListFact>;
   UseNamespace: Combinator<string>;
   ModuleDirective: Combinator<[string, StyleImport | ModuleImport]>;
   ImportUrl: Combinator<Url>;
@@ -2004,45 +2004,63 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * There are TWO import nodes and this reducer picks between them. A plain CSS
-   * `@import` — a `.css` file or an `http(s)://` URL — is an ordinary
+   * There are TWO import nodes and this reducer picks between them, per
+   * argument. A plain CSS `@import` — a `.css` file or a URL — is an ordinary
    * `AtRuleStatement`; a Sass partial import is a compile-time `StyleImport`.
    * `importIsCompileTime` is the ONE definition of that split, shared with every
-   * other dialect; Sass adds only its own URL rule (`spec/at-rules/import.md`: a
-   * URL beginning `http://` or `https://` is plain CSS, quoted or in `url()`),
+   * other dialect; Sass adds only its own URL rule (`sassImportUrlIsPlainCss`:
+   * a protocol-relative or `http(s)://` URL is plain CSS, quoted or in `url()`),
    * which Less does not have. Every input is authored syntax, so nothing about
    * the shape defers to eval.
    *
-   * A postlude on the COMPILE-TIME branch is rejected here rather than carried:
-   * a media/layer/supports query describes a linked CSS resource, and a partial's
+   * Sass takes a comma-separated list of arguments, each its own import. A
+   * postlude can only follow the LAST one — the media query list after it would
+   * read any further comma as its own — so it belongs to that argument alone.
+   * On the COMPILE-TIME branch it is rejected here rather than carried: a
+   * media/layer/supports query describes a linked CSS resource, and a partial's
    * rules are spliced into this document instead.
    */
-  const ImportStatement = node<StyleImport | AtRuleStatement>(
+  const ImportStatement = node<StyleImport | AtRuleStatement | ScssImportListFact>(
     'ImportStatement',
     sequence(
       caseInsensitiveWord('@import'),
-      choice(
-        g.Quoted,
-        g.ImportUrl
+      oneOrMoreSep(
+        choice(
+          g.Quoted,
+          g.ImportUrl
+        ),
+        literal(',')
       ),
       optional(g.ImportTail),
       literal(';')
     ),
     (children, _fields, span) => {
-      const targetIndex = children.findIndex(isScssImportTarget);
-      const target = children[targetIndex];
-      if (!isScssImportTarget(target)) {
-        throw new TypeError('SCSS @import requires a typed target.');
-      }
-      const tail = children.slice(targetIndex + 1).find(isScssValue) ?? null;
-      const spelling = importTargetSpelling(target);
-      if (!importSpellingIsHttpUrl(spelling) && importIsCompileTime('@import', target, null, null, spelling)) {
-        if (tail !== null) {
-          throw new ScssImportPostludeError(span.start, span.end);
+      /*
+       * The arguments are the run of targets after the at-keyword; a postlude is
+       * never a quoted string, `url()` or interpolation (`#{$media}` is rejected
+       * there), so the first value after the run is the last argument's tail.
+       */
+      const imports: Array<StyleImport | AtRuleStatement> = [];
+      for (let index = 1; ; index += 1) {
+        const target = children[index];
+        if (!isScssImportTarget(target)) {
+          throw new TypeError('SCSS @import requires a typed target.');
         }
-        return styleImport('@import', target, { mode: 'import' });
+        const last = !isScssImportTarget(children[index + 1]);
+        const tail = last ? children.slice(index + 1).find(isScssValue) ?? null : null;
+        const spelling = importTargetSpelling(target);
+        if (!sassImportUrlIsPlainCss(spelling) && importIsCompileTime('@import', target, null, null, spelling)) {
+          if (tail !== null) {
+            throw new ScssImportPostludeError(span.start, span.end);
+          }
+          imports.push(styleImport('@import', target, { mode: 'import' }));
+        } else {
+          imports.push(atRuleStatement('@import', tail === null ? target : spaced([target, tail])));
+        }
+        if (last) {
+          return imports.length === 1 ? imports[0]! : { kind: 'scss-import-list', statements: imports };
+        }
       }
-      return atRuleStatement('@import', tail === null ? target : spaced([target, tail]));
     }
   );
   const moduleNamespaceName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
