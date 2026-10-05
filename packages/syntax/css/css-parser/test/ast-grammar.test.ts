@@ -530,7 +530,9 @@ describe('CSS canonical-AST grammar', () => {
               value: [
                 { value: [{ text: 'a' }, { text: '.card' }] },
                 '>',
-                { value: [{ text: '[data-kind=primary i]' }, { text: ':hover' }] }
+
+                // A comment inside `[` … `]` is trivia; its gap stays one space (O7).
+                { value: [{ text: '[data-kind = primary i]' }, { text: ':hover' }] }
               ]
             }]
           },
@@ -591,8 +593,8 @@ describe('CSS canonical-AST grammar', () => {
   it('keeps focused public-CST/direct-AST selector closure parity across attribute operators, recursive pseudos, raw balanced args, and percentage simples', () => {
     const cases: readonly [string, readonly string[]][] = [
       ['[data-role] { color: red; }', ['[data-role]']],
-      ['[data-role="button" i] { color: red; }', ['[data-role="button"i]']],
-      ['[lang|=en][data^=pre][data$="end" s] { color: red; }', ['[lang|=en]', '[data^=pre]', '[data$="end"s]']],
+      ['[data-role="button" i] { color: red; }', ['[data-role="button" i]']],
+      ['[lang|=en][data^=pre][data$="end" s] { color: red; }', ['[lang|=en]', '[data^=pre]', '[data$="end" s]']],
       [':is(.card, :not(.disabled), :has(.icon > svg)) { color: red; }', [':is(.card, :not(.disabled), :has(.icon > svg))']],
       [':has(.card > .icon, :is(.badge, .label)) { color: red; }', [':has(.card > .icon, :is(.badge, .label))']],
       [':nth-child(2n + 1 of :is(.card, .tile)) { color: red; }', [':nth-child(2n + 1 of :is(.card, .tile))']],

@@ -25,9 +25,11 @@ import {
   interpolation,
   keyword,
   funcCall,
+  interpolatedSimpleSelector,
   list,
   operation,
   selectorBranchCanonical,
+  simpleSelector,
   spaced,
   selectorTermOf,
   selist
@@ -462,24 +464,53 @@ export function sourceText(child: unknown): string {
  */
 const CSS_NODE_TRIVIA_STRIDE = 4;
 
-export function semanticTextWithTriviaGaps(children: readonly unknown[], triviaLog: readonly number[]): string {
+/**
+ * The children with a `' '` wherever trivia separated two of them (or led or
+ * trailed them). The gap stands for whatever whitespace or comment was there:
+ * one space, never the trivia's own bytes, which stay in the trivia index.
+ */
+export function withTriviaGaps(children: readonly unknown[], triviaLog: readonly number[]): readonly unknown[] {
+  if (triviaLog.length === 0) {
+    return children;
+  }
   const gapBefore = new Set<number>();
   for (let index = 2; index < triviaLog.length; index += CSS_NODE_TRIVIA_STRIDE) {
     gapBefore.add(triviaLog[index] ?? 0);
   }
-
-  let text = '';
-  for (let index = 0; index < children.length; index++) {
+  const gapped: unknown[] = [];
+  for (let index = 0; index <= children.length; index++) {
     if (gapBefore.has(index)) {
-      text += ' ';
+      gapped.push(' ');
     }
-    text += sourceText(children[index]);
+    if (index < children.length) {
+      gapped.push(children[index]);
+    }
   }
-  if (gapBefore.has(children.length)) {
-    text += ' ';
+  return gapped;
+}
+
+export function semanticTextWithTriviaGaps(children: readonly unknown[], triviaLog: readonly number[]): string {
+  return semanticGapText(withTriviaGaps(children, triviaLog).map(sourceText).join(''));
+}
+
+/**
+ * An attribute selector keeps its authored whitespace (ledger O7): the tokens
+ * as written, and one space wherever the author put whitespace or a comment
+ * between two of them — `[ href = "x" i ]`, `[href="x" i]` and `[href="x"i]`
+ * each keep their own spelling. The tokenizer already separates an unquoted
+ * value from its flag only where trivia does, so no space is ever invented.
+ */
+export function attributeSelectorFrom(children: readonly unknown[], triviaLog: readonly number[]): SimpleSelector {
+  const parts = withTriviaGaps(children, triviaLog);
+  if (!children.some(isInterpolation)) {
+    return simpleSelector(parts.map(sourceText).join(''));
   }
 
-  return semanticGapText(text);
+  // A dialect's interpolating slot (SCSS `#{…}`): the rest stays literal text.
+  return interpolatedSimpleSelector(interpolationFromTemplateChildren(
+    parts.map(part => isInterpolation(part) ? part : { value: sourceText(part) }),
+    'CSS'
+  ));
 }
 
 export function isNodeType<T extends string>(value: unknown, type: T): value is { readonly type: T } {

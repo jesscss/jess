@@ -172,7 +172,7 @@ describe('@jesscss/scss-parser public parse API', () => {
       type: 'Stylesheet',
       rules: [{ type: 'Ruleset', selector: { selectors: [compoundComplex(
         simpleSelector('.card'),
-        simpleSelector('[data-state="open"i]')
+        simpleSelector('[data-state="open" i]')
       )] } }]
     });
   });

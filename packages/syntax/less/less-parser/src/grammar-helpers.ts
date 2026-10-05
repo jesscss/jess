@@ -54,7 +54,6 @@ type MixinInteriorFact = {
   readonly trailingSeparator?: ',' | ';';
 };
 type MixinReferenceBaseFact = { readonly call: MixinCall; readonly raw: string };
-type AttributeMatchFact = { readonly operator: string; readonly value: string; readonly modifier: string | null };
 type AttributeNameFact = { readonly namespace: string; readonly name: string };
 type ExtendTargetFact = { readonly target: SelectorList; readonly partial: boolean };
 type BodyExtendFact = { readonly bodyExtensions: readonly ExtendInstruction[] };
@@ -2427,7 +2426,6 @@ export {
 };
 
 export type {
-  AttributeMatchFact,
   AttributeNameFact,
   BareMixinCallFact,
   BodyExtendFact,

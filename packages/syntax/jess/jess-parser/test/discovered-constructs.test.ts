@@ -152,6 +152,24 @@ describe('Jess constructs discovered outside the parser suites', () => {
     expect(() => parse(source)).not.toThrow();
   });
 
+  /*
+   * Ledger O7 (owner ruling): an attribute selector keeps its authored
+   * whitespace in all four dialects — the same table the CSS and Less suites
+   * pin. A gap is one space, whatever whitespace or comment filled it.
+   */
+  it.each([
+    ['a[href="x" i]{c:d}', '[href="x" i]'],
+    ['a[href="x"i]{c:d}', '[href="x"i]'],
+    ['a[ href = "x" i ]{c:d}', '[ href = "x" i ]'],
+    ['a[data-x=y i]{c:d}', '[data-x=y i]'],
+    ['a[href  =\n"x"]{c:d}', '[href = "x"]'],
+    ['a[href/* c */="x"]{c:d}', '[href ="x"]']
+  ])('keeps the authored whitespace inside an attribute selector (%s)', (source, attribute) => {
+    expect(firstRule(source)).toMatchObject({
+      selector: { selectors: [{ value: [{ text: 'a' }, { text: attribute }] }] }
+    });
+  });
+
   it('splits a compound selector on whitespace', () => {
     expect(firstRule('a .b{c:d}')).toMatchObject({
       selector: { selectors: [{ type: 'ComplexSelector', value: [{ text: 'a' }, ' ', { text: '.b' }] }] }

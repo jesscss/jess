@@ -24,7 +24,7 @@ import {
   any,
   atRuleBlock,
   atRuleStatement,
-  attributeSelector,
+  attributeSelectorFrom,
   authoredText,
   block,
   branchRest,
@@ -1071,7 +1071,7 @@ const cssFactory = (g: GrammarSelf) => {
       )),
       literal(']')
     ),
-    children => attributeSelector(children.map(sourceText))
+    (children, _fields, _span, _rawChildren, triviaLog) => attributeSelectorFrom(children, triviaLog)
   );
 
   /*

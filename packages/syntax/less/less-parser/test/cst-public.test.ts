@@ -316,10 +316,13 @@ describe('Less quoted and URL interpolation CST facts', () => {
     expect(result.errors).toHaveLength(0);
     const attribute = findNode(result.tree, 'AttributeSelector');
     expect(attribute).toBeDefined();
-    expect(findNode(attribute!, 'AttributeName')).toBeDefined();
-    expect(findNode(attribute!, 'AttributeMatch')).toBeDefined();
+
+    // The CSS base's flat frame: namespace, name, operator, value, flag.
+    expect(findNode(attribute!, 'AttributeNamespace')).toBeDefined();
     expect(findNode(attribute!, 'Quoted')).toBeDefined();
     for (const legacyLabel of [
+      'AttributeName',
+      'AttributeMatch',
       'StaticAttribute',
       'StaticAttributeName',
       'StaticAttributeMatch',

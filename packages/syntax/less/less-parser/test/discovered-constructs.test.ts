@@ -109,14 +109,30 @@ describe('Less constructs discovered outside the parser suites', () => {
     expect(() => parse(source)).not.toThrow();
   });
 
-  it('PINNED DEFECT — keeps the authored space before the attribute modifier', () => {
-    /*
-     * Cross-dialect divergence: CSS, SCSS and Jess all normalise to
-     * `[href="x"i]`. Both spellings are pinned so unifying them fails loudly
-     * on whichever side moves.
-     */
-    expect(firstRule('a[href="x" i]{c:d}')).toMatchObject({
-      selector: { selectors: [{ value: [{ text: 'a' }, { text: '[href="x" i]' }] }] }
+  /*
+   * Ledger O7 (owner ruling): an attribute selector keeps its authored
+   * whitespace in all four dialects — the same table the CSS suite pins — and
+   * Less accepts the tight modifier, interpolated or not.
+   */
+  it.each([
+    ['a[href="x" i]{c:d}', '[href="x" i]'],
+    ['a[href="x"i]{c:d}', '[href="x"i]'],
+    ['a[ href = "x" i ]{c:d}', '[ href = "x" i ]'],
+    ['a[data-x=y i]{c:d}', '[data-x=y i]'],
+    ['a[href  =\n"x"]{c:d}', '[href = "x"]'],
+    ['a[href/* c */="x"]{c:d}', '[href ="x"]']
+  ])('keeps the authored whitespace inside an attribute selector (%s)', (source, attribute) => {
+    expect(firstRule(source)).toMatchObject({
+      selector: { selectors: [{ value: [{ text: 'a' }, { text: attribute }] }] }
+    });
+  });
+
+  it.each([
+    ['a[@{n}="x"i]{c:d}', [{ lit: '[' }, { ref: { name: 'n' } }, { lit: '="x"i]' }]],
+    ['a[ @{n} = "x" i ]{c:d}', [{ lit: '[ ' }, { ref: { name: 'n' } }, { lit: ' = "x" i ]' }]]
+  ])('keeps the authored whitespace in an interpolated attribute selector (%s)', (source, parts) => {
+    expect(firstRule(source)).toMatchObject({
+      selector: { selectors: [{ value: [{ text: 'a' }, { interp: { parts } }] }] }
     });
   });
 

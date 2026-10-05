@@ -69,6 +69,7 @@ export {
   supportsDeclaration,
   generalEnclosedArgument,
   queryValueRatio,
+  attributeSelectorFrom,
   complexSegments,
   cssRelativeCombinator,
   customValueFromChildren,
@@ -142,7 +143,8 @@ export {
   valueChildren,
   valueSlot,
   valueSlotChildren,
-  withAuthoredSeparators
+  withAuthoredSeparators,
+  withTriviaGaps
 } from './ast/css-grammar-helpers.js';
 export type { GuardNode } from './ast/guard.js';
 export type { CallArg } from './ast/mixin-dispatch.js';

@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, atRuleBlock, atRuleStatement, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, propertyReference, pseudoSelector, quoted, reference, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorCapture, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, propertyReference, pseudoSelector, quoted, reference, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorCapture, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSlashedCombinatorError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -149,7 +149,6 @@ import {
   variableValueSlot
 } from './grammar-helpers.js';
 import type {
-  AttributeMatchFact,
   AttributeNameFact,
   BodyExtendFact,
   CustomValuePart,
@@ -325,7 +324,6 @@ type LessRules = {
   AttributeNamespace: Combinator<string>;
   NamespaceTypeSelector: Combinator<SimpleSelector>;
   AttributeName: Combinator<AttributeNameFact>;
-  AttributeMatch: Combinator<AttributeMatchFact>;
   AttributeSelector: Combinator<SimpleSelector>;
   InterpolatedAttributeToken: Combinator<Interpolation>;
   InterpolatedAttributeValueToken: Combinator<Interpolation>;
@@ -471,7 +469,6 @@ const whitespace = classifiedTrivia({
   lineComment,
   blockComment
 });
-const selectorAttributeModifierSpace = regex(/[ \t\n\r\f]+/);
 /*
  * Where every keyword ends. css-syntax-3 §4.3.11 consumes a valid escape into
  * the identifier it follows, so `@import\61` is the one at-keyword `@importa`:
@@ -4833,29 +4830,19 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     children => interpolation(interpolationPartsFrom(children, true))
   );
-  const AttributeMatch = node(
-    'AttributeMatch',
-    sequence(
-      g.AttributeOperator,
-      choice(staticIdentifier, g.LiteralQuoted),
-      optional(g.AttributeModifier)
-    ),
-    children => ({
-      operator: requireToken(children[0]).value,
-      value: staticText(children[1]),
-      modifier: children.length === 2 ? null : requireToken(children[2]).value
-    })
-  );
   /*
    * Inside `[` … `]` whitespace is trivia, exactly as it is in the CSS base.
    * selectors-4 §6 puts optional whitespace on both sides of the matcher and
    * before the modifier, so `[data-x = y i]` is valid CSS and every superset
-   * must accept it. The separation of the unquoted value from the modifier is
-   * carried by ident tokenization — `[a=yi]` is one greedy `staticIdentifier`,
-   * `[a=y i]` is two — not by a mandatory whitespace terminal, which is what
-   * rejected the spaced spellings. The `[` itself keeps the ambient compound
-   * trivia, so a comment before it still joins one compound and `a [b]` stays
-   * a descendant relation.
+   * must accept it, as it accepts the tight `[a="x"i]`. The separation of the
+   * unquoted value from the modifier is carried by ident tokenization —
+   * `[a=yi]` is one greedy `staticIdentifier`, `[a=y i]` is two. The `[`
+   * itself keeps the ambient compound trivia, so a comment before it still
+   * joins one compound and `a [b]` stays a descendant relation. This is the
+   * CSS base's frame and reduction (`attributeSelectorFrom`, authored
+   * whitespace kept — ledger O7) over Less's static slots: Less's `Identifier`
+   * is a routed value-position rule, so the inherited frame cannot read it
+   * here.
    */
   const AttributeSelector = node(
     'AttributeSelector',
@@ -4863,48 +4850,56 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       literal('['),
       parser(
         { trivia: staticSelectorTrivia },
-        sequence(g.AttributeName, optional(g.AttributeMatch), literal(']'))
+        sequence(
+          optional(g.AttributeNamespace),
+          staticIdentifier,
+          optional(sequence(
+            g.AttributeOperator,
+            choice(staticIdentifier, g.LiteralQuoted),
+            optional(g.AttributeModifier)
+          )),
+          literal(']')
+        )
       )
     ),
-    (children) => {
-      const match = children.find((child): child is AttributeMatchFact =>
-        typeof child === 'object' && child !== null && 'operator' in child && 'value' in child && 'modifier' in child
-      );
-      const name = children.find((child): child is AttributeNameFact =>
-        typeof child === 'object' && child !== null && 'namespace' in child && 'name' in child
-      );
-      if (name === undefined) {
-        throw new TypeError('Less grammar produced an attribute selector without a name.');
-      }
-      return simpleSelector(`[${name.namespace}${name.name}${match === undefined ? '' : `${match.operator}${match.value}${match.modifier === null ? '' : ` ${match.modifier}`}`}]`);
-    }
+    (children, _fields, _span, _rawChildren, triviaLog) => attributeSelectorFrom(children, triviaLog)
   );
+  /*
+   * The interpolated form reads its interior under the same trivia as the
+   * static one, so it keeps the same authored whitespace and accepts the same
+   * tight modifier (ledger O7).
+   */
   const InterpolatedAttributeSelector = node(
     'InterpolatedAttributeSelector',
     sequence(
       literal('['),
-      choice(
+      parser(
+        { trivia: staticSelectorTrivia },
         sequence(
-          optional(g.AttributeNamespace),
-          g.InterpolatedAttributeToken,
-          optional(sequence(
-            g.AttributeOperator,
-            choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted, g.LessIdentifier, g.LiteralQuoted),
-            optional(sequence(selectorAttributeModifierSpace, g.AttributeModifier))
-          ))
-        ),
-        sequence(
-          g.AttributeName,
-          g.AttributeOperator,
-          choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted),
-          optional(sequence(selectorAttributeModifierSpace, g.AttributeModifier))
+          choice(
+            sequence(
+              optional(g.AttributeNamespace),
+              g.InterpolatedAttributeToken,
+              optional(sequence(
+                g.AttributeOperator,
+                choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted, g.LessIdentifier, g.LiteralQuoted),
+                optional(g.AttributeModifier)
+              ))
+            ),
+            sequence(
+              g.AttributeName,
+              g.AttributeOperator,
+              choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted),
+              optional(g.AttributeModifier)
+            )
+          ),
+          literal(']')
         )
-      ),
-      literal(']')
+      )
     ),
-    (children) => {
+    (children, _fields, _span, _rawChildren, triviaLog) => {
       const parts: Interpolation['parts'] = [];
-      for (const child of children) {
+      for (const child of withTriviaGaps(children, triviaLog)) {
         if (isInterp(child)) {
           for (const part of child.parts) {
             if ('lit' in part) {
@@ -5578,7 +5573,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     AttributeNamespace,
     NamespaceTypeSelector,
     AttributeName,
-    AttributeMatch,
     AttributeSelector,
     InterpolatedAttributeToken,
     InterpolatedAttributeValueToken,

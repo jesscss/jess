@@ -93,11 +93,6 @@ correct:
 
 - `at-rule-namespace-url.css` — `@namespace url(…)` is a parse error, though a
   `<url>` prelude is valid per css-namespaces-3 §2.
-- `selector-attribute-case-flag.css` — `[a^="y" i]` emits as `[a^="y"i]`. The
-  string and the flag stay two tokens, so this is a byte difference and not a
-  change of meaning. Its **unquoted** sibling was neither: `[a=y i]` emitted as
-  `[a=yi]`, one fused ident matching a disjoint set of elements. That is fixed,
-  and `selector-attribute-unquoted-flag.css` pins it.
 - `value-slash-separator.css` — `12px/1.5` emits as `12px / 1.5`; a collision
   between two settled v5 rules rather than a suspected defect.
 

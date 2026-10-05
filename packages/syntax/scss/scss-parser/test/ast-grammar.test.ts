@@ -1671,7 +1671,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [
         { type: 'SimpleSelector', text: '.card' },
-        { type: 'SimpleSelector', text: '[data-state="open"i]' },
+        { type: 'SimpleSelector', text: '[data-state="open" i]' },
         { type: 'SimpleSelector', text: '[lang|=en]' }
       ] }] } }]
     });
