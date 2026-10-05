@@ -501,6 +501,14 @@ const diagnosticCodesFor = (result: RenderResult): string[] => [
 // Allow specific fixtures even when they carry a skip reason.
 const forcedIncludes = new Set<string>([]);
 
+/*
+ * Every golden the lane registers a test for, or deliberately skips. The
+ * discovery guard at the bottom of this file checks it against the corpus.
+ */
+const claimedGoldens = new Set<string>(
+  skippedFixtures.map(({ file }) => file.replace(/\.less$/, '.css'))
+);
+
 describe('Can render Less files to CSS', () => {
   // Run all unit fixtures under tests-unit.
   const unitFiles: string[] = glob.sync(
@@ -536,6 +544,7 @@ describe('Can render Less files to CSS', () => {
         const testCases = getTestCases(lessPath);
 
         testCases.forEach((testCase, index) => {
+          claimedGoldens.add(path.relative(testData, testCase.expectedFile));
           const testName =
             testCases.length > 1
               ? `${file} [${index + 1}/${testCases.length}]`
@@ -643,8 +652,9 @@ describe('Can render Less files to CSS', () => {
             ).toBe(true);
           }, 5000); // Short hang sentinel: expected failures must still settle.
         });
-      } catch (error: any) {
+      } catch (error: unknown) {
         // If getTestCases throws (no files found), create a failing test
+        claimedGoldens.add(file.replace(/\.less$/, '.css'));
         it(`${file}`, () => {
           throw error;
         });
@@ -713,6 +723,26 @@ describe('Skipped Less fixtures are still failing', () => {
       ).toBe(false);
     }, 10000);
   }
+});
+
+/*
+ * The globs above decide what runs, so a change that drops fixtures from them
+ * (glob depth, config loading, build state — jess#244) leaves no failing test
+ * behind: the lane just gets smaller. This re-derives the expected set from the
+ * corpus by a different route, every `.less` at any depth with a same-name
+ * `.css` golden, and fails on any golden the lane neither runs nor skips.
+ */
+describe('Less fixture discovery', () => {
+  it('runs or skips every corpus fixture that has a golden', () => {
+    const unclaimed = glob
+      .sync(path.join(testData, 'tests-{unit,config}/**/*.less'))
+      .map(file => path.relative(testData, file))
+      .filter(file => !fixtureFilter || fixtureFilter.test(file))
+      .map(file => file.replace(/\.less$/, '.css'))
+      .filter(golden => existsSync(path.join(testData, golden)) && !claimedGoldens.has(golden))
+      .sort();
+    expect(unclaimed, 'corpus goldens that no Less fixture test claims').toEqual([]);
+  });
 });
 
 describe('Less fixture harness diagnostics', () => {
