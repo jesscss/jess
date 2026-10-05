@@ -37,7 +37,7 @@ const inst = (
   scope: [],
   order,
   extenderHidden,
-  referenceBoundary: null
+  boundary: null
 });
 
 describe('branch-key cache (mkBranch / branchText)', () => {

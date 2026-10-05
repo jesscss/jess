@@ -19,10 +19,9 @@ describe('direct canonical extend', () => {
     const overlay = {
       subjects: new Array(150_000).fill(overlaySubject),
       instructions: [],
-      hiddenReferenceRules: null,
       atRuleScopes: null
     };
-    const plan = collectPlan(stylesheet([rule('.root', [])]), undefined, undefined, overlay);
+    const plan = collectPlan(stylesheet([rule('.root', [])]), overlay);
 
     expect(plan.subjects).toHaveLength(150_001);
     expect(plan.subjects[0]!.rule.selector).toEqual(selist(sel('.root')));

@@ -9,8 +9,8 @@
 import { describe, expect, it } from 'vitest';
 import { Compiler } from '../../src/index.js';
 
-async function render(source: string): Promise<string> {
-  return new Compiler({ output: { collapseNesting: true } }).renderString(source, {
+async function render(source: string, collapseNesting = true): Promise<string> {
+  return new Compiler({ output: { collapseNesting } }).renderString(source, {
     language: 'less',
     filePath: '/virtual/extend-contract.less'
   });
@@ -145,6 +145,58 @@ describe('public direct-AST extend contracts', () => {
     ['[a=y i] { c: d; }\n.x:extend([a=yi]) {}', '[a=y i] {\n  c: d;\n}\n']
   ])('matches an attribute selector whatever its authored whitespace: %j', async (source, expected) => {
     expect(await render(source)).toBe(expected);
+  });
+
+  /*
+   * A rule reached through a mixin call extends and is extended where it lands: inside
+   * the `@media` the call lands in (EXTEND-SEMANTICS §8, jess#360), and as its composed
+   * selector parts, so a compound target can meet it (jess#361). That holds for a ruleset
+   * called as a mixin and for a detached ruleset's call too (EXTEND-SEMANTICS §6).
+   */
+  it.each([
+    [
+      '.sm { b: 2; }\n@media print {\n  .m() { .x { &:extend(.sm); } }\n  .m();\n}',
+      '.sm {\n  b: 2;\n}\n'
+    ],
+    [
+      '.m() { .x { &:extend(.sm); } }\n.sm { b: 2; }\n@media print {\n  .sm { c: 3; }\n  .m();\n}',
+      '.sm {\n  b: 2;\n}\n@media print {\n  .sm,\n  .x {\n    c: 3;\n  }\n}\n'
+    ],
+    [
+      '.m() { .p { &.q, &.r { a: 1; } } }\n.m();\n.x:extend(.p.q) {}',
+      '.p.q,\n.p.r,\n.x {\n  a: 1;\n}\n'
+    ],
+    [
+      '.b { .m(); }\n.m() { .p { .q { a: 1; } } }\n.x:extend(.b .p .q) {}',
+      '.b .p .q,\n.x {\n  a: 1;\n}\n'
+    ],
+    [
+      '.a { .p { a: 1; } }\n.z { .a(); }\n.x:extend(.z .p) {}',
+      '.a .p {\n  a: 1;\n}\n.z .p,\n.x {\n  a: 1;\n}\n'
+    ],
+    [
+      '@dr: { .p { a: 1; } };\n.w { @dr(); }\n.x:extend(.w .p) {}',
+      '.w .p,\n.x {\n  a: 1;\n}\n'
+    ]
+  ])('places a mixin-body rule where the call lands: %j', async (source, expected) => {
+    expect(await render(source)).toBe(expected);
+  });
+
+  /*
+   * Nested output (the v5 default): a mixin-body extender folds in as its selector composed
+   * under the rules the call lands in, once per call.
+   */
+  it.each([
+    [
+      '.sm { b: 2; }\n@media print {\n  .m() { .x { &:extend(.sm); } }\n  .m();\n}',
+      '.sm {\n  b: 2;\n}\n'
+    ],
+    [
+      '.sm { b: 2; }\n.m() { .x { &:extend(.sm); } }\n.a { .m(); }\n.b { .m(); }',
+      '.sm,\n.a .x,\n.b .x {\n  b: 2;\n}\n'
+    ]
+  ])('places a mixin-body extender where the call lands in nested output: %j', async (source, expected) => {
+    expect(await render(source, false)).toBe(expected);
   });
 
   it('rejects a comma-list parent in a non-leading ampersand merge template', async () => {

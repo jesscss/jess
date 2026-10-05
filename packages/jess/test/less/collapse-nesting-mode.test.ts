@@ -49,6 +49,10 @@ describe('collapseNesting native vs compact', () => {
       .resolves.toBe('.a :is(.b, .c) e {\n  y: 2;\n}\n');
     await expect(render('.t { > .b, > .g > .b { i, j { y: 2; } } }', 'native'))
       .resolves.toBe(':is(.t > .b, .t > .g > .b) i,\n:is(.t > .b, .t > .g > .b) j {\n  y: 2;\n}\n');
+
+    // jess#357: relative children of a relative selector list keep every parent branch.
+    await expect(render('.a { > .b, > .c { + .d, + .e { x: 1 } } }', 'native'))
+      .resolves.toBe(':is(.a > .b, .a > .c) + .d,\n:is(.a > .b, .a > .c) + .e {\n  x: 1;\n}\n');
   });
 
   it(`'false' preserves authored nesting (no :is())`, async () => {

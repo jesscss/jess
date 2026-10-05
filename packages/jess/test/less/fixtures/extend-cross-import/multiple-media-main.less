@@ -1,0 +1,8 @@
+@media print {
+  @import "plain-base.less";
+  .x:extend(.sm) {}
+}
+@media screen {
+  @import (multiple) "plain-base.less";
+  .y { c: 1; }
+}

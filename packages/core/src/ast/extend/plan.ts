@@ -38,9 +38,51 @@ export interface PlanInstruction {
    * folded-in branches are HIDDEN. False for the ordinary (visible) extend. */
   extenderHidden: boolean;
 
-  /** Reference-import boundary. Extends never escape the imported document that
-   * defined them, even though its typed facts share the planner's root view. */
-  referenceBoundary: object | null;
+  /** The sheet boundary that confines this extend; see {@link boundaryReaches}. */
+  boundary: ExtendBoundary | null;
+}
+
+/**
+ * A sheet whose extends do not reach the rest of the import graph: a `(reference)`
+ * import placement, or a `@compose`d module. A module is ONE boundary per identity,
+ * however many sheets compose it, so `parents` holds every boundary it was loaded
+ * from (null for the root document's graph): the module graph is a DAG, not a tree.
+ */
+export interface ExtendBoundary {
+  readonly parents: Array<ExtendBoundary | null>;
+}
+
+/**
+ * Whether an extend written inside `inst` reaches a rule placed inside `subject`:
+ * an unconfined extend reaches everything, a confined one reaches its own sheet and
+ * every sheet loaded from it, through any path. So a composing sheet's extend reaches
+ * its composed module's rules, while the module's own extend never reaches the
+ * composing sheet (ledger X14, Sass module semantics); a `(reference)` sheet's extend
+ * stays inside it.
+ */
+export function boundaryReaches(inst: ExtendBoundary | null, subject: ExtendBoundary | null): boolean {
+  if (inst === null || inst === subject) {
+    return true;
+  }
+  if (subject === null) {
+    return false;
+  }
+
+  /* An upward search; `seen` guards a compose cycle (`a` composes `b` composes `a`). */
+  const pending = [subject];
+  const seen = [subject];
+  while (pending.length > 0) {
+    for (const parent of pending.pop()!.parents) {
+      if (parent === inst) {
+        return true;
+      }
+      if (parent !== null && !seen.includes(parent)) {
+        seen.push(parent);
+        pending.push(parent);
+      }
+    }
+  }
+  return false;
 }
 
 export interface PlanSubject {
@@ -54,19 +96,6 @@ export interface PlanSubject {
   /** The enclosing authored subject rule, or null at the top level. */
   parent: PlanSubject | null;
 
-  /** [import:reference] The subject rule came from a `(reference)` import — its own
-   * seed branches are HIDDEN (emit nothing unless a visible extender folds in). */
-  hidden: boolean;
-
-  /** See {@link PlanInstruction.referenceBoundary}. */
-  referenceBoundary: object | null;
-
-  /** Concrete render placement for a repeated canonical body (`$for`/`each`). */
-  placement?: object;
-
-  /** Nearest hidden at-rule occurrence, retaining its concrete placement chain. */
-  referenceAtRule: PlanReferenceAtRule | null;
-
   /**
    * FAST-REJECT: true when some level on this subject's ancestor path (own-local ∪
    * ancestors) contains an atom that is also an instruction-target atom. Computed
@@ -77,6 +106,23 @@ export interface PlanSubject {
    * `targetAtoms` is populated (i.e. the document has extends).
    */
   mayMatch: boolean;
+
+  /** [import:reference] The subject rule came from a `(reference)` import — its own
+   * seed branches are HIDDEN (emit nothing unless a visible extender folds in). */
+  hidden: boolean;
+
+  /** See {@link PlanInstruction.boundary}. */
+  boundary: ExtendBoundary | null;
+
+  /** Nearest hidden at-rule occurrence, retaining its concrete placement chain. */
+  referenceAtRule: PlanReferenceAtRule | null;
+
+  /**
+   * The render placement of one copy of a canonical rule: a loop iteration, a mixin
+   * call, a `(reference)` or `(multiple)` import. Undefined for the static placement.
+   * Every subject literal declares it, so all subjects keep one shape.
+   */
+  placement: object | undefined;
 }
 
 /** One hidden at-rule occurrence in the render-local reference-import plan. */
@@ -103,7 +149,6 @@ export interface Plan {
 export interface PlanOverlay {
   readonly subjects: readonly PlanSubject[];
   readonly instructions: readonly PlanInstruction[];
-  readonly hiddenReferenceRules: ReadonlySet<Ruleset> | null;
 
   /** Render-scoped at-rule scope ids the preflight assigned; see {@link atRuleScope}. */
   readonly atRuleScopes: AtRuleScopes | null;
@@ -131,12 +176,7 @@ export function atRuleScope(scope: number[], node: AtRuleBlock, ids: AtRuleScope
   return [...scope, id];
 }
 
-export function collectPlan(
-  root: Stylesheet,
-  hiddenRules?: ReadonlySet<Ruleset>,
-  referenceBoundaries?: ReadonlyMap<Ruleset, object>,
-  overlay?: PlanOverlay
-): Plan {
+export function collectPlan(root: Stylesheet, overlay?: PlanOverlay): Plan {
   recordAstExtendProfile?.('astExtend.plan.calls');
   const subjects: PlanSubject[] = [];
   const instructions: PlanInstruction[] = [];
@@ -162,9 +202,10 @@ export function collectPlan(
           ownLocal: own,
           parent,
           mayMatch: false,
-          hidden: rule.reference === true || hiddenRules?.has(rule) === true,
-          referenceBoundary: referenceBoundaries?.get(rule) ?? null,
-          referenceAtRule: null
+          hidden: false,
+          boundary: null,
+          referenceAtRule: null,
+          placement: undefined
         };
         subjects.push(subject);
         if (rule.extendInstructions) {
@@ -185,8 +226,8 @@ export function collectPlan(
                 extenderPath,
                 scope,
                 order: order++,
-                extenderHidden: rule.reference === true || hiddenRules?.has(rule) === true,
-                referenceBoundary: referenceBoundaries?.get(rule) ?? null
+                extenderHidden: false,
+                boundary: null
               });
               collectBranchAtoms(targetBranch, targetAtoms);
             }
@@ -225,12 +266,15 @@ export function collectPlan(
   /*
    * FAST-REJECT boolean, computed as an inherited flag over subjects in document
    * (pre-)order — a parent always precedes its descendants, so one forward pass
-   * suffices. `own || parent.mayMatch`: no `composePath`, O(own-local atoms).
+   * suffices. `own || parent.mayMatch`: no `composePath`, O(own-local atoms). A
+   * subject with no parent subject reads its whole path: a rule the render walk
+   * reached through a mixin or loop body carries its ancestors as levels only.
    */
+  const levelShares = (level: Level): boolean => level.some(b => branchSharesAtom(b, targetAtoms));
   for (const s of subjects) {
-    s.mayMatch =
-      (s.parent?.mayMatch === true)
-      || s.ownLocal.some(b => branchSharesAtom(b, targetAtoms));
+    s.mayMatch = s.parent !== null
+      ? s.parent.mayMatch || levelShares(s.ownLocal)
+      : s.path.some(levelShares);
   }
 
   recordAstExtendProfile?.('astExtend.plan.subjects', subjects.length);

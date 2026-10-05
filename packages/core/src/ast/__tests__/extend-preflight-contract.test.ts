@@ -69,6 +69,70 @@ describe('AST extend preflight cost contract', () => {
     expect(counters['astExtend.plan.calls'] ?? 0).toBe(0);
   });
 
+  it('plans and records nothing for an import inside a ruleset when the graph has no extend', async () => {
+    /*
+     * An `@import` inside a ruleset is a placement the walk owns, not an extend: a
+     * graph with no `:extend()` plans no imported sheet and arms no walk recorder.
+     */
+    const big = ast.stylesheet(Array.from({ length: 50 }, (_, index) =>
+      ast.rule(`.r${index}`, [ast.decl('a', ast.color('red'))])));
+    const small = ast.stylesheet([ast.rule('.sm', [ast.decl('b', ast.color('red'))])]);
+    const document = ast.stylesheet([
+      ast.styleImport('@import', ast.quoted('"big.less"', 'big.less', '"', false), { mode: 'import' }),
+      ast.rule('.wrap', [ast.styleImport('@import', ast.quoted('"t.less"', 't.less', '"', false), { mode: 'import' })])
+    ]);
+
+    const { css } = await serialize(document, {
+      importDocument: ({ specifier }) => ({ document: specifier === 'big.less' ? big : small, key: specifier })
+    });
+    expect(css.endsWith('.wrap .sm {\n  b: red;\n}\n')).toBe(true);
+    expect(counters['astExtend.preflight.importsFeatureBearing'] ?? 0).toBe(0);
+    expect(counters['astExtend.plan.calls'] ?? 0).toBe(0);
+    expect(counters['astExtend.documentHasExtend.calls']).toBe(1);
+    expect(counters['astExtend.fold.recordedSubjects']).toBeUndefined();
+  });
+
+  it('re-solves nothing when no rule a mixin call places can meet an extend target', () => {
+    /*
+     * The call arms the walk recorder (a placed rule could be a target), but `.p`
+     * shares no atom with `.r1`, so the deferred fold keeps the static results.
+     */
+    const document = ast.stylesheet([
+      ast.mixinDef('.m', [], [ast.rule('.p', [ast.decl('a', ast.color('red'))])]),
+      ast.rule('.b', [ast.mixinCall('.m')]),
+      ast.rule('.r1', [ast.decl('c', ast.color('red'))]),
+      ast.rule('.x', [], [{ target: ast.selist(ast.sel('.r1')), partial: false }])
+    ]);
+
+    expect(serialize(document)).toEqual({ css: '.b .p {\n  a: red;\n}\n.r1,\n.x {\n  c: red;\n}\n' });
+    expect(counters['astExtend.plan.calls']).toBe(1);
+    expect(counters['astExtend.fold.recordedSubjects']).toBe(1);
+    expect(counters['astExtend.fold.keptSubjects']).toBe(0);
+  });
+
+  it('reserves no hidden reference rule when no walk-recorded extend can reveal it', async () => {
+    /*
+     * A static extend's effect on `(reference)` rules is known before the walk, so a
+     * mixin that arms the recorder without an extend of its own reveals nothing.
+     */
+    const referenced = ast.stylesheet(Array.from({ length: 50 }, (_, index) =>
+      ast.rule(`.v${index}`, [ast.decl('a', ast.color('red'))])));
+    const document = ast.stylesheet([
+      ast.styleImport('@import', ast.quoted('"r.less"', 'r.less', '"', false), {
+        mode: 'import', options: ast.list([ast.keyword('reference')], ',')
+      }),
+      ast.rule('.x', [], [{ target: ast.selist(ast.sel('.v5')), partial: false }]),
+      ast.mixinDef('.m', [], [ast.rule('.q', [ast.decl('b', ast.color('red'))])]),
+      ast.mixinCall('.m')
+    ]);
+
+    await expect(serialize(document, {
+      importDocument: ({ specifier }) => ({ document: referenced, key: specifier })
+    })).resolves.toEqual({ css: '.x {\n  a: red;\n}\n.q {\n  b: red;\n}\n' });
+    expect(counters['astExtend.preflight.revealRules'] ?? 0).toBe(0);
+    expect(counters['astExtend.plan.calls']).toBe(1);
+  });
+
   it('plans no extend facts while only preparing imports', async () => {
     /*
      * The prepare pass loads the import graph for a later render and discards its
