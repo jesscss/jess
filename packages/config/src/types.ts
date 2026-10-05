@@ -200,7 +200,7 @@ export interface LessOptions {
   /**
    * @deprecated Use `mathMode` instead. The Less 4.x boolean alias of `math`:
    * `true` sets `mathMode` to 'parens'; `false` leaves the default
-   * ('parens-division'). An explicit `mathMode` or `math` wins. Setting it warns.
+   * ('parens-division'). An explicit `mathMode` or `math` wins; otherwise it warns.
    * @default undefined
    */
   strictMath?: boolean;
@@ -208,7 +208,7 @@ export interface LessOptions {
   /**
    * @deprecated Use `unitMode` instead. If `true`, sets `unitMode` to 'strict';
    * `false` leaves the default ('preserve'), never the Less 4.x 'loose' fold.
-   * An explicit `unitMode` wins. Setting it warns.
+   * An explicit `unitMode` wins; otherwise it warns.
    * @default undefined
    */
   strictUnits?: boolean;

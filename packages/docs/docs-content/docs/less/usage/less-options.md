@@ -189,7 +189,7 @@ Output:
 |---|---|
 | `lessc -sm=on`<br>`lessc --strict-math=on` | `{ strictMath: true }` |
 
-_This has been replaced by the [`math`](#math) option._ Less 5 still accepts it as an alias: `on` / `true` is `math: 'parens'`, and `off` / `false` leaves the default (`parens-division`). An explicit `math` wins. A deprecation warning naming the mapping is logged whenever it is used.
+_This has been replaced by the [`math`](#math) option._ Less 5 still accepts it as an alias: `on` / `true` is `math: 'parens'`, and `off` / `false` leaves the default (`parens-division`). As in Less 4.x, `lessc` also takes `t`, `y`, `yes`, `f`, `n` and `no`, in any case. An explicit `math` wins. When `strictMath` decides the math mode, that is, when no `math` is set, a deprecation warning names the mapping.
 
 
 
@@ -230,7 +230,7 @@ In this case, things are clearly not right - a length multiplied by a length giv
 |---|---|
 | `lessc -su=on`<br>`lessc --strict-units=on` | `{ strictUnits: true }` |
 
-_Deprecated alias for `unitMode`: `on` / `true` sets `unitMode: 'strict'`; `off` / `false` means "not strict", i.e. the default `preserve` (the Less 4.x fold is only selected by an explicit `unitMode: 'loose'`). A deprecation warning naming the mapping is logged during compile whenever it is used._
+_Deprecated alias for `unitMode`: `on` / `true` sets `unitMode: 'strict'`; `off` / `false` means "not strict", i.e. the default `preserve` (the Less 4.x fold is only selected by an explicit `unitMode: 'loose'`). `lessc` takes the same on/off spellings as `--strict-math`. When `strictUnits` decides the unit mode, that is, when no `unitMode` is set, a deprecation warning names the mapping during compile._
 
 ### Module Mode
 
