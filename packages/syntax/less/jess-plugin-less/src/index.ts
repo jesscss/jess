@@ -289,15 +289,6 @@ function escapeUnquotedUrlPath(pathValue: string): string {
   return escaped;
 }
 
-function jsDelivrPackageSpecifier(candidate: string): string | null {
-  const absolute = candidate.match(/^https?:\/\/cdn\.jsdelivr\.net\/npm\/([^?#]+)(?:[?#].*)?$/i);
-  if (absolute?.[1]) {
-    return absolute[1];
-  }
-  const relative = candidate.match(/^\/\/cdn\.jsdelivr\.net\/npm\/([^?#]+)(?:[?#].*)?$/i);
-  return relative?.[1] ?? null;
-}
-
 export class LessPlugin extends AbstractPlugin {
   name = 'less';
   supportedExtensions = ['.less'];
@@ -488,7 +479,7 @@ export class LessPlugin extends AbstractPlugin {
           return path.join(packagesRoot, 'test-import-module', after);
         }
       }
-      return jsDelivrPackageSpecifier(candidate) ?? candidate;
+      return candidate;
     });
 
     const resolved = super.resolve(mapped, currentDir, searchPaths);
@@ -529,10 +520,6 @@ export class LessPlugin extends AbstractPlugin {
       }
     }
     return out;
-  }
-
-  canResolveImport(specifier: string): boolean {
-    return jsDelivrPackageSpecifier(specifier) !== null;
   }
 
   /**

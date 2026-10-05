@@ -19,8 +19,8 @@ is now set by the decision ledger
 
 - **Phase C** — remote `@import` is built as an opt-in, allowlisted, `https:`-only
   plugin whose host list Deno `--allow-net` also enforces, with a test proving
-  Deno denies an off-list host (ledger **A13**). The network/IO security model
-  the Phase C row was waiting on is decided.
+  Deno denies an off-list host (ledger **A13**). It shipped as
+  `@jesscss/plugin-remote-import`; see the Phase C table below.
 - **Phase D** — source maps ship first, then compress (ledger **O3**). The engine
   already emits v3 maps (`packages/core/src/ast/sourcemap.ts`, assembled in
   `packages/compiler/src/index.ts`) and compress landed in `8460078ff`; what
@@ -116,8 +116,8 @@ The local URL-rewrite portion of this phase has graduated. `rewriteUrls`,
 the typed URL/import transform path. The full corpus now passes the dedicated
 rewrite/rootpath/url-args fixtures; `static-urls/urls` retains only the separately
 recorded authored multiline-value spelling difference. Remote source loading is
-the sole remaining Phase C feature. Its network/IO allowlist and security model
-are decided (ledger **A13**, owner 2026-10-04), so it is now build work.
+implemented as the opt-in `@jesscss/plugin-remote-import` (ledger **A13**, owner
+2026-10-04; `docs/design/REMOTE-IMPORTS-NETWORK-POLICY.md`).
 
 | Fixture                                                    | Feature                                                                                | Current disposition                                      |
 | ---------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------- |
@@ -125,15 +125,16 @@ are decided (ledger **A13**, owner 2026-10-04), so it is now build work.
 | `rootpath-rewrite-urls-all`, `rootpath-rewrite-urls-local` | `rootpath` + `rewriteUrls` combined                                                    | **IMPLEMENTED**                                           |
 | `static-urls/urls`                                         | static `url()` handling under rewrite                                                  | **IMPLEMENTED**; only authored-layout mismatch remains   |
 | `url-args/urls`                                            | `urlArgs` — append a cache-busting arg to every `url()`                                | **IMPLEMENTED**                                           |
-| `import/import-remote`                                     | Remote URL imports that fetch and inline external Less sources                         | **TO BUILD** — opt-in allowlisted plugin, ledger **A13**  |
+| `import/import-remote`                                     | Remote URL imports that fetch and inline external Less sources                         | **IMPLEMENTED** — opt-in allowlisted plugin, ledger **A13** |
 
 The implemented rows are option-plumbing over the URL/import handling that the
 core already owns. They are retained here to keep the original phase inventory
 auditable rather than silently deleting completed commitments.
 `process-imports/google.less` graduated on 2026-07-28: `processImports: false`
 now leaves remote/CSS imports un-inlined in the public alpha fixture lane.
-Remote URL import loading stays out of the alpha fixture lane until the A13
-plugin lands; the allowlist/security model it was waiting on is decided.
+Remote URL import loading is opt-in through `@jesscss/plugin-remote-import`; the
+fixture lane gates `import/import-remote` with that plugin's transport answering
+from the local test-data checkout.
 
 ## Phase D — source maps
 

@@ -91,10 +91,9 @@ identity. Focused core tests pin repeated renders, caller-owned prepared
 imports, option-only import differences, script module reuse, and duplicate
 static imports in one stylesheet: prepare plus repeated render locates/parses
 the shared imported document once. These are local session and
-prepared-static-import fixes; they do not change the remote URL import
-deferral, which remains excluded from the alpha lane until the opt-in
-remote-import plugin is built (its network/security model is now ruled: ledger
-**A13**, owner 2026-10-04).
+prepared-static-import fixes; they do not touch remote URL imports, which are
+handled by the opt-in `@jesscss/plugin-remote-import` (ledger **A13**, owner
+2026-10-04).
 
 Release tooling now has a narrow `pnpm run test:release` gate. The alpha
 publish-set scanner recurses through `packages/**`, so nested syntax packages
@@ -118,8 +117,9 @@ lanes (`tests-unit/`: 79 / 79, `tests-config/`: 29 / 29 — **superseded
 lane at **109 / 110**, and this file also carries a conflicting `80 / 80`
 unit figure below. Do not quote any lane total from this document; take it
 from HANDOFF). The remote URL import
-fixture is deliberately excluded from the alpha lane until the remote-import
-plugin that ledger **A13** (owner 2026-10-04) rules on is built.
+fixture gates in the alpha lane through the opt-in
+`@jesscss/plugin-remote-import` (ledger **A13**, owner 2026-10-04), with its
+transport answering from the local test-data checkout.
 
 Graduated in the current pass:
 

@@ -1,5 +1,5 @@
 import type { Statement, Stylesheet } from './ast/nodes.js';
-import type { ImportOptions } from './import-options.js';
+import { type ImportOptions, EXTERNAL_IMPORT_SPECIFIER } from './import-options.js';
 export type { ImportOptions } from './import-options.js';
 import type { Context, ContextOptions, ResolvedOptions } from './context.js';
 import { join, isAbsolute, resolve } from 'node:path';
@@ -155,10 +155,13 @@ export interface PluginInterface {
 
   /**
    * Explicit opt-in for an external import identifier (a URL or
-   * protocol-relative specifier). Context asks this before it enters the normal
-   * resolve → locate → source → parse pipeline. A positive result does not
+   * protocol-relative specifier). Context asks this before an `@import` (an
+   * `(inline)` one included) enters the normal resolve → locate → source → parse
+   * pipeline. A positive result does not
    * fetch: this plugin must still resolve and locate the source through those
    * ordinary capabilities. Absent means external imports remain CSS terminals.
+   * An import written inside a remote document is rebased onto that document's
+   * URL first, so it is asked here too. Throwing rejects the import as an error.
    */
   canResolveImport?(specifier: string, currentDir: string, searchPaths: string[]): boolean | Promise<boolean>;
 
@@ -168,7 +171,8 @@ export interface PluginInterface {
   locate?(pathCandidates: string[], currentDir: string): null | string | Promise<string | null>;
 
   /**
-   * Get the source code for the file.
+   * Get the source code for the file. Context asks the plugin whose `locate`
+   * returned the path, falling back to the first plugin with this capability.
    */
   getSource?(absoluteFilePath: string): Promise<string>;
 
@@ -229,7 +233,8 @@ export abstract class AbstractPlugin implements PluginInterface {
   abstract name: string;
 
   /**
-   * Does a basic path resolution. Node resolution is in other plugins.
+   * Does a basic path resolution. Node resolution is in other plugins. A URL is
+   * not a path, so it passes through for the plugin that claims it.
    */
   resolve(filePath: string | string[], currentDir: string, searchPaths: string[]) {
     const bases = [currentDir, ...searchPaths];
@@ -239,7 +244,7 @@ export abstract class AbstractPlugin implements PluginInterface {
     for (const base of bases) {
       const baseDir = isAbsolute(base) ? base : join(currentDir, base);
       for (const path of filePath) {
-        const abs = resolve(baseDir, path);
+        const abs = EXTERNAL_IMPORT_SPECIFIER.test(path) ? path : resolve(baseDir, path);
         if (abs && !seen.has(abs)) {
           seen.add(abs);
           out.push(abs);
@@ -254,9 +259,12 @@ export abstract class AbstractPlugin implements PluginInterface {
     return readFile(absoluteFilePath, 'utf8');
   }
 
-  /** Gets the first match using from the filesystem that exists */
+  /** Gets the first match from the filesystem that exists. A URL is not a file, so it is left to the plugin that claims it. */
   locate(pathCandidates: string[], currentDir: string): null | string {
     for (const candidate of pathCandidates) {
+      if (EXTERNAL_IMPORT_SPECIFIER.test(candidate)) {
+        continue;
+      }
       const absolutePath = isAbsolute(candidate) ? candidate : join(currentDir, candidate);
       if (existsSync(absolutePath)) {
         return absolutePath;

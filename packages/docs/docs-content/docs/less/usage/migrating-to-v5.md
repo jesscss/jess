@@ -255,6 +255,10 @@ Prefer explicit Less expressions/functions where possible:
 
 If your project still requires JS evaluation, move that usage behind the optional plugin/runtime policy path and validate behavior in CI before enabling broadly.
 
+### Remote imports are opt-in
+
+Less 4.x downloaded any `@import "https://…"` while compiling. In 5.x nothing is downloaded by default: a URL import stays in the output as a plain CSS `@import`. If you import Less from a CDN, list its host with `@jesscss/plugin-remote-import` — see [Remote Imports](./less-options.md#remote-imports).
+
 ## Deprecations and removals to plan for
 
 These are the migration-impact items that frequently break older workflows:

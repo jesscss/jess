@@ -159,13 +159,13 @@ registry members are not active lane checks.
 
 ### Not a registry entry: `import-remote`
 
-`tests-unit/import/import-remote.less` is **not** in `expectedFailureFixtures`.
-It is a member of the separate `skippedFixtures` array in the same file — remote
-URL imports require an explicit network/IO allowlist, which is not part of the
-alpha harness policy. That allowlist design is now ruled (ledger **A13**, owner
-2026-10-04: opt-in plugin, `https:` only, Deno `--allow-net` enforcement); the
-fixture stays skipped until the plugin is built. It must not be counted in any
-registry disposition.
+`tests-unit/import/import-remote.less` is in neither `expectedFailureFixtures`
+nor `skippedFixtures`: it is an ordinary passing gate. The harness enables the
+opt-in `@jesscss/plugin-remote-import` for `cdn.jsdelivr.net` with a transport
+that answers from the local test-data checkout, so the fixture exercises the
+remote-import route without a network
+(`docs/design/REMOTE-IMPORTS-NETWORK-POLICY.md` §7; ledger **A13**, owner
+2026-10-04).
 
 The named reason beside every entry remains in
 `expectedFailureFixtures`; update that reason and this classification together.
@@ -240,8 +240,9 @@ oracle moves only the two physical copies of the upstream svg-gradient fixture.
 
 The remote import fixture is tracked in
 [`less-v5-release-plan.md`](../process/less-v5-release-plan.md) as the Phase C
-import/security feature (now v5 build work under ledger **A13**), not as a flaky
-expected failure.
+import/security feature (implemented under ledger **A13** as
+`@jesscss/plugin-remote-import`; the fixture is now an ordinary gate), not as a
+flaky expected failure.
 
 ### Post-N10 actionable boundary (2026-08-26)
 

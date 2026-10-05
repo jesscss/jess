@@ -55,6 +55,7 @@ import {
   getTestCases,
   lessFixturePackagesPlugin,
   lessHarnessFunctionsPlugin,
+  lessTestDataRemoteImports,
   resolveLessTestDataRoot
 } from '../test-utils.js';
 
@@ -162,16 +163,17 @@ const CORPORA: Corpus[] = [
 
     /*
      * The upstream checkout layout: the Less plugin maps `@less/test-import-module`
-     * to the `packages/` sibling of `packages/test-data`, and remote jsDelivr
-     * imports name `@less/test-data` itself.
+     * to the `packages/` sibling of `packages/test-data`. Remote jsDelivr imports
+     * of `@less/test-data` are answered from the copy, as in all-less.test.ts.
      */
     layout: 'packages/test-data',
     packages: [['@less/test-data', 'packages/test-data'], ['@less/test-import-module', 'packages/test-import-module']],
     fixtures: allLessFixtures(),
-    plugins: () => [
+    plugins: copy => [
       lessPlugin({ plugins: [lessHarnessFunctionsPlugin] }),
       lessCompatPlugin(),
       lessFixturePackagesPlugin(),
+      lessTestDataRemoteImports(copy),
       jessPlugin()
     ]
   },

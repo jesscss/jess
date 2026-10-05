@@ -206,10 +206,9 @@ expected failures, so the harness *asserts* they fail:
 Both are pending the numeric-precision landing. Because the map asserts the
 failure, fixing precision will trip the entry and demand its own deletion.
 
-`import-remote.less` is excluded from the alpha harness until remote URL import
-loading has an explicit network/IO allowlist. That allowlist is now ruled
-(ledger A13, owner 2026-10-04) and awaits its plugin. It is tracked in
-`docs/process/less-v5-release-plan.md`, not in `known-failures.json`.
+`import-remote.less` is an ordinary gate: the harness enables the opt-in
+`@jesscss/plugin-remote-import` with its transport answering from the local
+test-data checkout (`docs/design/REMOTE-IMPORTS-NETWORK-POLICY.md` §7).
 
 **A Less-corpus number is only meaningful together with the less.js checkout
 SHA** — the fixtures live in `~/git/oss/less.js/packages/test-data`, which this
