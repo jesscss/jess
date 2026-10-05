@@ -60,7 +60,12 @@ function formatOptionValue(value: unknown): string {
   return typeof value === 'string' ? `'${value}'` : String(value);
 }
 
-function checkModeOptions(opts: LessPluginOptions): void {
+/**
+ * Reject a mode option outside its documented set. With a resolver context, a
+ * value the styles.config file sets is reported against that file; a value
+ * passed in code has no file to name.
+ */
+function checkModeOptions(opts: object, context?: LessPluginResolverContext): void {
   for (const [option, values] of Object.entries(MODE_OPTION_VALUES)) {
     const allowed: readonly unknown[] = values;
     const value: unknown = Reflect.get(opts, option);
@@ -68,7 +73,11 @@ function checkModeOptions(opts: LessPluginOptions): void {
       continue;
     }
     const listed = allowed.map(formatOptionValue);
+    const configFilePath = context?.configFilePath;
     throw ERR.pluginInvalidOption({
+      filePath: configFilePath !== undefined && context?.configFileOptionsFor?.('less')[option] === value
+        ? configFilePath
+        : undefined,
       meta: {
         plugin: 'less',
         option,
@@ -96,6 +105,8 @@ export type LessSourcePreparationContext = {
 
 export type LessPluginResolverContext = {
   optionsFor(language?: string): Record<string, unknown>;
+  configFilePath?: string;
+  configFileOptionsFor?(language?: string): Record<string, unknown>;
 };
 
 function stableStringify(value: unknown): string {
@@ -226,13 +237,19 @@ export class LessPluginResolver {
     return `${optionsKey}|native-plugins:${nativePluginKey.join(',')}`;
   }
 
+  /**
+   * The Less plugin for these options. `context`, when the options were
+   * resolved for a render, lets an invalid value name the config file it came from.
+   */
   getOrCreate(
     lessOptions: Record<string, unknown>,
-    nativePlugins: readonly unknown[] = []
+    nativePlugins: readonly unknown[] = [],
+    context?: LessPluginResolverContext
   ): PluginInterface {
     const key = this.getCacheKey(lessOptions, nativePlugins);
     let plugin = this.pluginInstanceCache.get(key);
     if (!plugin) {
+      checkModeOptions(lessOptions, context);
       const pluginOptions: LessPluginInput = {
         ...lessOptions,
         ...(nativePlugins.length === 0 ? {} : { plugins: nativePlugins })
@@ -260,7 +277,7 @@ export class LessPluginResolver {
     return this.getOrCreate({
       ...pluginOptions,
       ...resolvedLessOptions
-    }, nativePlugins);
+    }, nativePlugins, context);
   }
 
   dispose(): void {

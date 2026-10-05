@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { JessError, logger } from '@jesscss/core';
-import lessPlugin, { type LessPluginOptions } from '../src/index.js';
+import lessPlugin, { LessPluginResolver, type LessPluginOptions } from '../src/index.js';
 
 /** Options as a config file or a JavaScript caller can write them, typos included. */
 function untyped(opts: Record<string, unknown>): LessPluginOptions {
@@ -52,6 +52,27 @@ describe('Less plugin mode options', () => {
     expect(dialectDefaults({ math: 0 })?.mathMode).toBe('always');
     expect(dialectDefaults({ math: 'strict-legacy' })?.mathMode).toBe('parens');
   });
+
+  /* A config file names no line, so the diagnostic is located at the file itself. */
+  it('names the config file when the invalid value is set there', () => {
+    const configFilePath = '/project/styles.config.cjs';
+    const resolve = (fileOptions: Record<string, unknown>) => {
+      try {
+        new LessPluginResolver().normalizeConfiguredPlugin(lessPlugin(), {
+          optionsFor: () => ({ unitMode: 'stict' }),
+          configFilePath,
+          configFileOptionsFor: () => fileOptions
+        });
+      } catch (error) {
+        return error;
+      }
+      return undefined;
+    };
+    expect(resolve({ unitMode: 'stict' })).toMatchObject({ code: 'plugin/invalid-option', filePath: configFilePath });
+
+    /* The value came from the render options, not the file. */
+    expect(resolve({ unitMode: 'strict' })).toMatchObject({ code: 'plugin/invalid-option', filePath: undefined });
+  });
 });
 
 describe('Less plugin strictMath', () => {
@@ -81,5 +102,22 @@ describe('Less plugin strictMath', () => {
     expect(dialectDefaults({ strictMath: true, mathMode: 'always' })?.mathMode).toBe('always');
     expect(dialectDefaults({ strictMath: true, math: 'always' })?.mathMode).toBe('always');
     expect(warned).toEqual([]);
+  });
+});
+
+describe('LessPluginResolver cache', () => {
+  it('keys on strictMath, so its value is never served from another plugin', () => {
+    const resolver = new LessPluginResolver();
+    const warn = logger.warn;
+    logger.warn = () => {};
+    try {
+      const strict = resolver.getOrCreate({ strictMath: true });
+      const plain = resolver.getOrCreate({});
+      expect(strict).not.toBe(plain);
+      expect(strict.safeParse!('entry.less', '.entry {}').dialectDefaults?.mathMode).toBe('parens');
+      expect(plain.safeParse!('entry.less', '.entry {}').dialectDefaults?.mathMode).toBe('parens-division');
+    } finally {
+      logger.warn = warn;
+    }
   });
 });
