@@ -7,7 +7,7 @@ origin: less
 ---
 ## Cross-Platform Options
 
-Less 5 also reads a `styles.config.*` file beside (or above) the file it compiles. An option passed to `less.render()` or `lessc` wins over the same option in that file's `language.less` block; the config file applies to the options the call leaves unset.
+Less 5 also reads a `styles.config.*` file beside (or above) the file it compiles. An option passed to `less.render()` or `lessc` wins over the same option in that file's `language.less` block and over a `compile` mode (including the `strict` preset); the config file applies to the options the call leaves unset.
 
 The mode options (`math`, `unitMode`, `moduleMode`) accept only the values listed for them. Any other value is an error, not a fallback to another mode.
 
