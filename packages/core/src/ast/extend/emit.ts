@@ -46,6 +46,7 @@ import {
 } from './ir.js';
 import type { Branch, Compound, Level, SelectorPart, Simple } from './ir.js';
 import { composePath } from './compose.js';
+import { isTypeSelector } from './conflict.js';
 import { extendBranchSpecificity, partitionGroups } from '../is-grouping.js';
 import { branchWholeMatches, matchBoundarySpan } from './match.js';
 import { collectPlan, documentHasExtend, reaches } from './plan.js';
@@ -552,8 +553,7 @@ function spliceMember(b: Branch, k: number, p: number, member: Branch): Branch {
 
 /** True for a text token that must lead its compound: a type or universal selector. */
 function leadsCompound(text: string): boolean {
-  const code = text.charCodeAt(0); // `.`, `#`, `[`, `:` and `&` never lead
-  return text.length > 0 && code !== 0x2E && code !== 0x23 && code !== 0x5B && code !== 0x3A && code !== 0x26;
+  return text.charCodeAt(0) === 0x2A /* * */ || isTypeSelector(text);
 }
 
 /**
