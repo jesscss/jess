@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { makeDimension } from '@jesscss/core';
 import jsPlugin, { type JsPlugin } from '../src/index.js';
 
 /*
@@ -74,6 +75,68 @@ describe('legacy Less @plugin runtime', () => {
         ].join('\n')]
       ]);
       await expect(runtime.importLessPlugin(entry)).rejects.toThrow('less.visitors');
+    }, 30000);
+  });
+
+  describe('relative require() of sibling CommonJS files', () => {
+    it('loads a function plugin split across files', async () => {
+      const { runtime, entry } = project([
+        ['root/plugin.js', [
+          'const { scale } = require("./lib/scale");',
+          'functions.add("double", value => new tree.Dimension(scale(value.value, 2), value.unit));',
+          'functions.add("triple", value => new tree.Dimension(require("./lib/scale.js").scale(value.value, 3), value.unit));'
+        ].join('\n')],
+        ['root/lib/scale.js', 'const { times } = require("../util");\nexports.scale = (n, k) => times(n, k);'],
+        ['root/util/index.js', 'module.exports = { times: (a, b) => a * b };']
+      ]);
+      const loaded = await runtime.importLessPlugin(entry);
+      expect(Object.keys(loaded.functions).sort()).toEqual(['double', 'triple']);
+      await expect(loaded.functions.double(makeDimension(4, 'px'))).resolves.toMatchObject({ number: 8, unit: 'px' });
+      await expect(loaded.functions.triple(makeDimension(4, 'px'))).resolves.toMatchObject({ number: 12, unit: 'px' });
+    }, 30000);
+
+    it('evaluates each required file once and hands a cycle its partial exports', async () => {
+      const { runtime, entry } = project([
+        ['root/plugin.js', [
+          'const a = require("./a");',
+          'functions.add("probe", () => `${a.seenB}:${require("./b").seenA}:${require("./a") === a}`);'
+        ].join('\n')],
+        ['root/a.js', 'exports.early = "a";\nexports.seenB = require("./b").name;'],
+        ['root/b.js', 'exports.name = "b";\nexports.seenA = require("./a").early;']
+      ]);
+      const loaded = await runtime.importLessPlugin(entry);
+      await expect(loaded.functions.probe()).resolves.toBe('b:a:true');
+    }, 30000);
+
+    it('does not widen the read sandbox: a require outside jsReadRoot is denied', async () => {
+      const { runtime, entry } = project([
+        ['root/plugin.js', 'require("../outside/secret.js");'],
+        ['outside/secret.js', 'module.exports = "LEAKED";']
+      ]);
+      const failure = await runtime.importLessPlugin(entry).then(
+        () => new Error('expected the require to be refused'),
+        (error: unknown) => error
+      );
+      expect(failure).toBeInstanceOf(Error);
+      const message = failure instanceof Error ? failure.message : '';
+      expect(message).toContain('require("../outside/secret.js")');
+      expect(message).toContain('was refused: Read access denied by Jess policy.');
+    }, 30000);
+
+    it('refuses package and built-in specifiers with a clear message', async () => {
+      const { runtime, entry } = project([['root/plugin.js', 'require("fs");']]);
+      await expect(runtime.importLessPlugin(entry)).rejects.toThrow(
+        'Less @plugin require("fs") is not supported: only relative requires ("./file", "../file") of CommonJS files inside the script root are.'
+      );
+    }, 30000);
+
+    it('does not hand required files the plugin globals or Node process', async () => {
+      const { runtime, entry } = project([
+        ['root/plugin.js', 'const probe = require("./probe");\nfunctions.add("probe", () => probe);'],
+        ['root/probe.js', 'module.exports = [typeof functions, typeof registerPlugin, typeof process].join(",");']
+      ]);
+      const loaded = await runtime.importLessPlugin(entry);
+      await expect(loaded.functions.probe()).resolves.toBe('undefined,undefined,undefined');
     }, 30000);
   });
 });

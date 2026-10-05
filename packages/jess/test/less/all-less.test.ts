@@ -395,7 +395,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/plugin-module/plugin-module.less',
-    'the clean-css fixture uses a legacy CommonJS @plugin graph with require(\'./lib/clean\'), which the optional jess-plugin-js Deno compatibility runtime does not support'
+    'INTENDED DIVERGENCE (A12): `@plugin "clean-css"` resolves to the clean-css library itself (jess has no Less 4.x `less-plugin-` name-prefix lookup); its relative requires load in the Deno runtime, but it then needs the Node built-in `http`, so the load is refused. As `less-plugin-clean-css` its only act would be `pluginManager.addPostProcessor()`, the A12 non-goal whose native replacement is output.compress; the golden `a{background:0 0}` is clean-css\'s own minification'
   ],
 
   /*
@@ -490,7 +490,8 @@ const expectedFailureDiagnosticCodes = new Map<string, string>([
    * they still differ from the external golden only on render layout (see the
    * expected-failure reasons), not on a parse error. */
   ['tests-unit/urls/urls.less', 'import/not-found'],
-  ['tests-unit/plugin-preeval/plugin-preeval.less', 'plugin/load-failed']
+  ['tests-unit/plugin-preeval/plugin-preeval.less', 'plugin/load-failed'],
+  ['tests-unit/plugin-module/plugin-module.less', 'plugin/load-failed']
 ]);
 
 type RenderResult = Awaited<ReturnType<Compiler['renderToResult']>>;

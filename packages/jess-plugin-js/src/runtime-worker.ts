@@ -1,5 +1,6 @@
 // @ts-nocheck
 /* eslint-disable @typescript-eslint/naming-convention */
+import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const encoder = new TextEncoder();
@@ -807,6 +808,65 @@ const refuseLessPluginApi = (feature, replacement) => {
   throw new UnsupportedLessPluginApiError(feature, replacement);
 };
 
+const REQUIRE_SUFFIXES = ['', '.js', '.cjs', '/index.js'];
+
+const isRequirableFile = (candidate) => {
+  try {
+    return Deno.statSync(candidate).isFile;
+  } catch (err) {
+    if (err instanceof Deno.errors.NotFound) {
+      return false;
+    }
+    throw err;
+  }
+};
+
+/**
+ * `require()` for a legacy `@plugin` file: RELATIVE specifiers only, resolved
+ * against the requiring file as Node resolves a file path. Every stat and read
+ * goes through the same permission broker as the plugin file itself, so a
+ * require can never reach past jsReadRoot. A required file is plain CommonJS —
+ * it gets `module`, `exports`, `require`, `__filename` and `__dirname`, not the
+ * plugin globals, and no Node `process`. Each file evaluates once per load, and
+ * is cached before it runs, so a require cycle sees partial exports (as in Node).
+ */
+const createLegacyRequire = (fromPath, cache) => (specifier) => {
+  const request = String(specifier);
+  if (!request.startsWith('./') && !request.startsWith('../')) {
+    throw new Error(`Less @plugin require("${request}") is not supported: only relative requires ("./file", "../file") of CommonJS files inside the script root are.`);
+  }
+  let resolved;
+  try {
+    /*
+     * Resolve from the requiring file's real path, as Node does: the broker
+     * compares canonical paths, and a candidate that does not exist cannot be
+     * canonicalized, so under a symlinked read root it would read as outside.
+     */
+    const base = resolve(dirname(Deno.realPathSync(fromPath)), request);
+    resolved = REQUIRE_SUFFIXES.map(suffix => base + suffix).find(isRequirableFile);
+  } catch (err) {
+    throw new Error(`Less @plugin require("${request}") from "${fromPath}" was refused: ${err?.message ?? String(err)}`);
+  }
+  if (resolved === undefined) {
+    throw new Error(`Less @plugin require("${request}"): no file found from "${fromPath}".`);
+  }
+  let module = cache.get(resolved);
+  if (!module) {
+    module = { exports: {} };
+    cache.set(resolved, module);
+    const source = Deno.readTextFileSync(resolved);
+    new Function('module', 'exports', 'require', '__filename', '__dirname', 'process', source)(
+      module,
+      module.exports,
+      createLegacyRequire(resolved, cache),
+      resolved,
+      dirname(resolved),
+      undefined
+    );
+  }
+  return module.exports;
+};
+
 /*
  * Deprecated Less @plugin support only. Jess @-use is plain ESM and must not
  * pass through this injected-variable wrapper.
@@ -884,9 +944,6 @@ const createLegacyLessPluginRuntime = (modulePath, options) => {
       candidate.eval(less);
     }
   };
-  const require = (specifier) => {
-    throw new Error(`Less @plugin require("${specifier}") is not supported in the Deno sandbox yet.`);
-  };
   const registerPlugin = (plugin) => {
     installPlugin(plugin);
   };
@@ -896,7 +953,7 @@ const createLegacyLessPluginRuntime = (modulePath, options) => {
     localFunctions,
     less,
     manager,
-    require,
+    require: createLegacyRequire(modulePath, new Map()),
     registerPlugin,
     fileInfo: { filename: modulePath }
   };

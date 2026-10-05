@@ -231,6 +231,15 @@ disables file-based `@plugin`. The old `disablePluginRule` option is still
 recognized for Less compatibility, but it is deprecated and maps to the same
 runtime switch.
 
+A file-based `@plugin` script may `require()` its own sibling CommonJS files
+(`./file`, `../file`) inside that sandbox root; Node built-ins and npm packages
+are not available to it. Plugins that register functions keep working, but the
+Less 4 plugin-manager hooks do not: a plugin that adds a visitor, pre-processor,
+post-processor, or file manager is refused with an error naming the replacement
+(`compress` for minifier plugins such as `less-plugin-clean-css`,
+`@jesscss/plugin-node-modules` for `less-plugin-npm-import`, and running other
+post-processors on the compiled CSS). See [Plugins](../features/plugins).
+
 Example migration path:
 
 ```less
