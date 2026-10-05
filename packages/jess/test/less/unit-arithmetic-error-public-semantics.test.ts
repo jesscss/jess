@@ -42,16 +42,23 @@ describe('Less unit arithmetic errors through the public AST route', () => {
       15
     ],
     [
+      'add-mixed-units2',
+      'tests-error/eval/add-mixed-units2.less',
+      'Incompatible units. Change the units or use the unit function. Bad units: \'px*px\' and \'em*px\'.',
+      2,
+      23
+    ],
+    [
       'divide-mixed-units',
       'tests-error/eval/divide-mixed-units.less',
-      'Multiple units in dimension. Correct the units or use the unit function',
+      'Multiple units in dimension. Correct the units or use the unit function. Bad unit: px/em',
       2,
       15
     ],
     [
       'multiply-mixed-units',
       'tests-error/eval/multiply-mixed-units.less',
-      'Multiple units in dimension. Correct the units or use the unit function',
+      'Multiple units in dimension. Correct the units or use the unit function. Bad unit: em*px',
       6,
       15
     ]

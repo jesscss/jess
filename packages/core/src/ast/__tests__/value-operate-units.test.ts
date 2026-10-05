@@ -216,4 +216,15 @@ describe('cross-unit arithmetic — parens-division (unit algebra vs less@4.6.7;
   it('strict still rejects incompatible additive units immediately', () => {
     expect(() => operate('+', dim(1, 'px'), dim(1, 'em'), STRICT)).toThrow(/Incompatible units/);
   });
+
+  it('a strict diagnostic names the whole unit multiset, not its display unit', () => {
+    const product = operate('*', dim(1, 'px'), dim(1, 'em'), STRICT);
+    expect(() => validateFinalUnits(product, STRICT)).toThrow('Bad unit: em*px');
+    const ratio = operate('/', dim(1, 'px'), dim(3, 'em'), STRICT);
+    expect(() => validateFinalUnits(ratio, STRICT)).toThrow('Bad unit: px/em');
+
+    const squared = operate('*', dim(1, 'px'), dim(2, 'px'), STRICT);
+    const mixed = operate('*', dim(3, 'em'), dim(3, 'px'), STRICT);
+    expect(() => operate('+', squared, mixed, STRICT)).toThrow('Bad units: \'px*px\' and \'em*px\'.');
+  });
 });

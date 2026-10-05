@@ -224,6 +224,19 @@ function displayUnit(u: UnitSet): string {
 }
 
 /**
+ * A unit multiset as a diagnostic names it (`em*px`, `px/em`). {@link displayUnit}
+ * is the CSS spelling and collapses a compound to one unit, which would name the
+ * wrong unit in an error about exactly that compound.
+ */
+function unitName(num: readonly string[], den: readonly string[]): string {
+  let name = num.join('*');
+  for (const unit of den) {
+    name += `/${unit}`;
+  }
+  return name;
+}
+
+/**
  * Validate unit singularity at a final typed-value boundary. Arithmetic keeps
  * compound numerator/denominator facts through the whole operation chain so a
  * later operation can cancel them; only final materialization/emission applies
@@ -250,7 +263,7 @@ export function validateFinalUnits(value: ValueGroup, modes: EvalModes, demandEx
     const numerator = value.numerator ?? (value.unit ? [value.unit] : []);
     const denominator = value.denominator ?? [];
     if (numerator.length > 1 || denominator.length > 0) {
-      throw new UnitArithmeticError('Multiple units in dimension. Correct the units or use the unit function');
+      throw new UnitArithmeticError(`Multiple units in dimension. Correct the units or use the unit function. Bad unit: ${unitName(numerator, denominator)}`);
     }
     return;
   }
@@ -309,7 +322,7 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
        * `+`/`-` is only defined on an identical multiset. Loose keeps the 4.x
        * fold on raw magnitudes under the LHS unit.
        */
-      throw new UnitArithmeticError(`Incompatible units. Change the units or use the unit function. Bad units: '${displayUnit(u)}' and '${displayUnit(bu)}'.`);
+      throw new UnitArithmeticError(`Incompatible units. Change the units or use the unit function. Bad units: '${unitName(u.num, u.den)}' and '${unitName(bu.num, bu.den)}'.`);
     }
   } else if (op === '*' || op === '/') {
     composeUnits(u, bu, op);
