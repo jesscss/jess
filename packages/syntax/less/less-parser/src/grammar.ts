@@ -3183,18 +3183,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     // a bare `default` is an ordinary ident SHAPE and reduces to a Keyword, as
     // less.js does (`@a: default; .m() when (@a = default)` matches there).
     // Whether that comparison means anything is a language-service fact.
+    //
+    // Every other operand is a value-position math run (`g.MathValue`, the
+    // operand of an `if()` condition too), as Less 4's `atomicCondition` reads
+    // an `addition()`: `when (2 * 2 > 1)` and `when (@n - 1 > 0)` compute, and a
+    // bare slash follows the math policy exactly as it does in a value.
     choice(
       mixinGuardDefaultOperand,
-      // Guard operands reuse the ordinary typed access References. The shared
-      // `#`/`.` head is forward-dispatched: a tail-less hex head reduces to a
-      // Color inside the one arm, so ordinary non-accessor colors need no rewind.
-      g.MixinReference,
-      g.VariableReferenceChain,
-      g.Quoted,
-      g.EscapedQuoted,
-      g.Dimension,
-      g.Call,
-      g.Keyword
+      g.MathValue
     ),
     children => requireValueNode(children[0])
   );

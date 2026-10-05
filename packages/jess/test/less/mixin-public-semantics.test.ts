@@ -62,4 +62,23 @@ describe('Less mixin semantic contracts through the public AST route', () => {
       }
     `)).resolves.toBe('.scope .entry {\n  color: inner;\n}\n');
   });
+
+  /*
+   * A guard comparison operand is a math run, as in a value: `*`, `+` and `-`
+   * compute, and a bare slash follows the math policy (parens-division leaves
+   * `4 / 2` uncomputed, so it does not equal `2`).
+   */
+  it('evaluates arithmetic in guard comparison operands', async () => {
+    await expect(parseAndRender('.m() when (2 * 2 > 1) { a: b } .x { .m(); }'))
+      .resolves.toBe('.x {\n  a: b;\n}\n');
+    await expect(parseAndRender(`
+      @a: 3;
+      .m() when (@a + 1 = 4) { a: b }
+      .m() when (4 / 2 = 2) { c: d }
+      .m(@n) when (@n - 1 > 0) and (@n * 2 < 10) { e: @n }
+      .x { .m(); .m(2); .m(9); }
+    `)).resolves.toBe('.x {\n  a: b;\n  e: 2;\n}\n');
+    await expect(parseAndRender('.y when (1 + 1 = 2) { a: b }'))
+      .resolves.toBe('.y {\n  a: b;\n}\n');
+  });
 });

@@ -3348,9 +3348,15 @@ describe('public Less parse()', () => {
         }
       ]
     });
-    expect(() => parse('.x when (@{dynamic}) { color: red; }')).toThrow(
-      SyntaxError
-    );
+
+    /*
+     * A guard operand is a value-position math run (`MathValue`, as in an
+     * `if()` condition), so an interpolated value is an operand like any other
+     * value atom rather than a syntax error.
+     */
+    expect(parse('.x when (@{dynamic}) { color: red; }')).toMatchObject({
+      rules: [{ type: 'Ruleset', guard: { g: 'match', op: '==', left: { type: 'Interpolation' } } }]
+    });
   });
 
   it('returns bare function-call statements through the public Stylesheet route', () => {
