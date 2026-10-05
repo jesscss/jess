@@ -1,5 +1,6 @@
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import {
+  coerceNamedColorKeyword,
   defineFunction,
   emitValue,
   ERR,
@@ -76,6 +77,7 @@ export interface NativeLessApi {
     Dimension: new (value: number, unit?: string) => NativeLessDimension;
     Quoted: new (quote: string, value: string, escaped?: boolean) => NativeLessQuoted;
     Color: new (rgb: string | readonly [number, number, number], alpha?: number) => NativeLessColor;
+    Keyword: new (value: string) => NativeLessKeyword;
     Anonymous: new (value: unknown) => NativeLessAnonymous;
   };
 }
@@ -99,6 +101,12 @@ export interface NativeLessColor {
   readonly type: 'Color';
   readonly rgb: string | readonly [number, number, number];
   readonly alpha: number;
+  readonly value: string;
+  valueOf(): string;
+}
+
+export interface NativeLessKeyword {
+  readonly type: 'Keyword';
   readonly value: string;
   valueOf(): string;
 }
@@ -169,6 +177,16 @@ class LessColor implements NativeLessColor {
       ? (rgb.startsWith('#') ? rgb : `#${rgb}`)
       : `rgb(${rgb.join(', ')})`;
   }
+
+  valueOf(): string {
+    return this.value;
+  }
+}
+
+class LessKeyword implements NativeLessKeyword {
+  readonly type = 'Keyword';
+
+  constructor(readonly value: string) {}
 
   valueOf(): string {
     return this.value;
@@ -281,15 +299,22 @@ export function toNativeLessValue(value: PluginRawArgument | ValueGroup): unknow
   if (isPluginDetached(value)) {
     return new LazyDetachedRuleset(value);
   }
-  switch (value.type) {
-    case 'Dimension': return new LessDimension(value.number, value.unit);
-    case 'Quoted': return new LessQuoted(value.quote, value.value, value.escaped);
-    case 'Color': return { type: 'Color', rgb: value.rgb, alpha: value.alpha, bytes: value.bytes, valueOf: () => value.bytes };
+
+  /*
+   * A named colour (`white`) is a Color to a Less 4.x plugin (`{ rgb: [r, g, b] }`).
+   * A Color's `value` is its CSS text, as the sandboxed bridge's `tree.Color` reports it.
+   */
+  const node = coerceNamedColorKeyword(value);
+  switch (node.type) {
+    case 'Dimension': return new LessDimension(node.number, node.unit);
+    case 'Quoted': return new LessQuoted(node.quote, node.value, node.escaped);
+    case 'Keyword': return new LessKeyword(node.bytes);
+    case 'Color': return { type: 'Color', rgb: node.rgb, alpha: node.alpha, value: node.bytes, bytes: node.bytes, valueOf: () => node.bytes };
     case 'List':
-      return value.sep === ',' || value.sep === '/'
-        ? new LazyValueList(value)
-        : new LessAnonymous(value.bytes);
-    default: return new LessAnonymous(value.bytes);
+      return node.sep === ',' || node.sep === '/'
+        ? new LazyValueList(node)
+        : new LessAnonymous(node.bytes);
+    default: return new LessAnonymous(node.bytes);
   }
 }
 
@@ -418,6 +443,7 @@ export class LessApiBridge {
         Dimension: LessDimension,
         Quoted: LessQuoted,
         Color: LessColor,
+        Keyword: LessKeyword,
         Anonymous: LessAnonymous
       }
     };

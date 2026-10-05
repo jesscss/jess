@@ -79,13 +79,11 @@ export function rgbToHsl(r0: number, g0: number, b0: number): [number, number, n
 }
 
 /**
- * The RAW (unrounded, unclamped) rgb SOURCE of a color — derived from `hsl` when
- * that is the source of truth, else the stored rgb. The single hsl-or-stored-rgb
- * selector that `colorRgb` (rounds/clamps on top) and the value factory both
- * consume; color arithmetic operates on this.
+ * The RAW (unrounded, unclamped) rgb of a color, as a fresh triple. `colorRgb`
+ * rounds/clamps on top; color arithmetic operates on this.
  */
 export function colorSourceRgb(c: Color): [number, number, number] {
-  return c.hsl ? hslToRgb(c.hsl[0], c.hsl[1], c.hsl[2]) : [c.rgb[0], c.rgb[1], c.rgb[2]];
+  return [c.rgb[0], c.rgb[1], c.rgb[2]];
 }
 
 /**

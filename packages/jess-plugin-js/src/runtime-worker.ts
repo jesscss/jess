@@ -200,12 +200,15 @@ class Color extends Node {
    * unmodified (`@white: #fff`), mirroring less.js's Color `value`/originalForm:
    * a pass-through keeps its short form, while a plugin-CONSTRUCTED colour has
    * none and serialises to 6-digit hex.
+   *
+   * An RGB triple keeps its raw channels, as in less.js: a computed colour
+   * reaches the plugin unrounded, and only `toCSS` rounds and clamps.
    */
   constructor(rgb, alpha = 1, originalForm) {
     super();
     this.originalForm = typeof originalForm === 'string' ? originalForm : undefined;
     if (Array.isArray(rgb)) {
-      this.rgb = rgb.slice(0, 3).map(clampByte);
+      this.rgb = rgb.slice(0, 3);
       this.alpha = typeof alpha === 'number' ? alpha : 1;
       return;
     }
@@ -592,23 +595,18 @@ const facadeLogger = {
 
 const lessFacade = {
   tree: treeNamespace,
-  logger: facadeLogger,
-  dimension(value, unit) {
-    return new Dimension(value, unit);
-  },
-  value(values, separator = ',') {
-    return new Value(values, separator);
-  },
-  anonymous(value) {
-    return new Anonymous(value);
-  },
-  color(rgb, alpha) {
-    return new Color(rgb, alpha);
-  },
-  quoted(quote, value, escaped = false) {
-    return new Quoted(quote, value, escaped);
-  }
+  logger: facadeLogger
 };
+
+/*
+ * Less 4.x exposes every `tree` constructor as a lowercase factory on the
+ * plugin's `less` object (`less.dimension(1, 'px')`, `less.keyword('a')`). The
+ * member is read at call time, so an unsupported node (`less.atrule(…)`) fails
+ * with the same attributable error as `tree.AtRule`.
+ */
+for (const name of Object.keys(treeNamespace)) {
+  lessFacade[name.toLowerCase()] = (...args) => new treeNamespace[name](...args);
+}
 
 if (runtimeApi === 'less') {
   globalThis.less ??= lessFacade;
@@ -634,6 +632,8 @@ const decodeBridgeValue = (value) => {
       return new Color(value.rgb, value.alpha ?? 1, value.bytes);
     case 'quoted':
       return new Quoted(value.quote ?? '"', value.value, value.escaped === true);
+    case 'keyword':
+      return new Keyword(value.value);
     case 'anonymous':
       return new Anonymous(value.value);
     case 'list':

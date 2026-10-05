@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/naming-convention -- `__jessBridge` is the fixed cross-worker wire tag. */
 import {
+  coerceNamedColorKeyword,
   makeColorRgb,
   makeDimension,
   makeKeyword,
@@ -19,6 +20,7 @@ export type JsBridgeValue =
   | { __jessBridge: true; kind: 'dimension'; value: number; unit?: string }
   | { __jessBridge: true; kind: 'color'; rgb: [number, number, number]; alpha?: number; bytes?: string }
   | { __jessBridge: true; kind: 'quoted'; value: string; quote?: '"' | '\''; escaped?: boolean }
+  | { __jessBridge: true; kind: 'keyword'; value: string }
   | { __jessBridge: true; kind: 'anonymous'; value: string; raw?: true }
   | { __jessBridge: true; kind: 'list'; items: JsBridgeValue[]; separator: ',' | '/' | ';' }
   | { __jessBridge: true; kind: 'expression'; items: JsBridgeValue[] }
@@ -84,7 +86,7 @@ function encodeFacadeValue(value: BridgeRecord): JsBridgeValue | undefined {
     case 'Anonymous':
     case 'Keyword':
       return typeof value.value === 'string'
-        ? { __jessBridge: true, kind: 'anonymous', value: value.value }
+        ? { __jessBridge: true, kind: value.type === 'Keyword' ? 'keyword' : 'anonymous', value: value.value }
         : undefined;
     case 'Expression':
       return Array.isArray(value.value)
@@ -125,18 +127,19 @@ export function encodeBridgeValue(value: unknown): unknown {
     return { __jessBridge: true, kind: 'expression', items: value.map(encodeBridgeChildValue) } satisfies JsBridgeValue;
   }
   if (isValueNode(value)) {
-    switch (value.type) {
-      case 'Dimension': return { __jessBridge: true, kind: 'dimension', value: value.number, unit: value.unit } satisfies JsBridgeValue;
-      case 'Color': return { __jessBridge: true, kind: 'color', rgb: [value.rgb[0], value.rgb[1], value.rgb[2]], alpha: value.alpha, bytes: value.bytes } satisfies JsBridgeValue;
-      case 'Quoted': return { __jessBridge: true, kind: 'quoted', value: value.value, quote: value.quote === '\'' ? '\'' : '"', escaped: value.escaped } satisfies JsBridgeValue;
+    // A named colour (`white`) is a Color to a Less 4.x plugin (`{ rgb: [r, g, b] }`).
+    const node = coerceNamedColorKeyword(value);
+    switch (node.type) {
+      case 'Dimension': return { __jessBridge: true, kind: 'dimension', value: node.number, unit: node.unit } satisfies JsBridgeValue;
+      case 'Color': return { __jessBridge: true, kind: 'color', rgb: [node.rgb[0], node.rgb[1], node.rgb[2]], alpha: node.alpha, bytes: node.bytes } satisfies JsBridgeValue;
+      case 'Quoted': return { __jessBridge: true, kind: 'quoted', value: node.value, quote: node.quote === '\'' ? '\'' : '"', escaped: node.escaped } satisfies JsBridgeValue;
+      case 'Keyword': return { __jessBridge: true, kind: 'keyword', value: node.bytes } satisfies JsBridgeValue;
       case 'List':
-        return value.sep === ',' || value.sep === '/'
-          ? { __jessBridge: true, kind: 'list', items: value.value.map(encodeBridgeChildValue), separator: value.sep } satisfies JsBridgeValue
-          : { __jessBridge: true, kind: 'anonymous', value: value.bytes } satisfies JsBridgeValue;
-      case 'Block':
-        return { __jessBridge: true, kind: 'anonymous', value: value.bytes } satisfies JsBridgeValue;
+        return node.sep === ',' || node.sep === '/'
+          ? { __jessBridge: true, kind: 'list', items: node.value.map(encodeBridgeChildValue), separator: node.sep } satisfies JsBridgeValue
+          : { __jessBridge: true, kind: 'anonymous', value: node.bytes } satisfies JsBridgeValue;
       default:
-        return { __jessBridge: true, kind: 'anonymous', value: value.bytes } satisfies JsBridgeValue;
+        return { __jessBridge: true, kind: 'anonymous', value: node.bytes } satisfies JsBridgeValue;
     }
   }
   if (isDetached(value)) {
@@ -159,15 +162,13 @@ function decodeValue(value: JsBridgeValue): ValueGroup {
 
     /*
      * A colour that crosses the bridge unmodified (a looked-up `@white: #fff`
-     * returned by `color-yiq`) keeps its authored bytes so the short form
-     * survives, exactly as less.js preserves a passed-through colour's spelling.
-     * A colour the plugin BUILDS or COMPUTES carries its own serialized bytes
-     * too (a 6-digit hex from `makeColorRgb`), so this one path matches less.js
-     * for both. `makeColorRgb` stays the fallback for a pre-`bytes` wire value.
+     * returned by `color-yiq`) keeps its spelling as `src`, so the short form
+     * survives, exactly as less.js preserves a passed-through colour's spelling;
+     * its channels stay the raw ones it crossed with (ledger V5), never a
+     * re-parse of the 8-bit spelling. A colour the plugin BUILDS has no
+     * spelling and serializes from its channels.
      */
-    case 'color': return value.bytes !== undefined
-      ? sniffLiteral(value.bytes)
-      : makeColorRgb(value.rgb, value.alpha ?? 1, HEX);
+    case 'color': return makeColorRgb(value.rgb, value.alpha ?? 1, HEX, value.bytes === undefined ? undefined : { src: value.bytes });
     case 'quoted': return makeQuoted(value.value, value.quote ?? '"', value.escaped === true);
 
     /*
@@ -176,6 +177,7 @@ function decodeValue(value: JsBridgeValue): ValueGroup {
      * colour instead of an opaque keyword — the same materialization the engine
      * performs on any other computed byte string.
      */
+    case 'keyword':
     case 'anonymous': return sniffLiteral(value.value);
     case 'expression': return value.items.map(decodeValue);
     case 'list': return makeList(value.items.map(decodeValue), value.separator === ';' ? ',' : value.separator);

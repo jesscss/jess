@@ -16,7 +16,10 @@ import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
  *    reported as a skipped test so it shows up in the run, and the stale-skip
  *    gate at the bottom of this file fails if one starts matching its golden.
  * 2. `expectedFailureFixtures` — RUN, and asserted to fail. Fixing the cause
- *    fails the entry, which is how a fix gets noticed.
+ *    fails the entry, which is how a fix gets noticed. An entry may also pin
+ *    how it fails: a diagnostic code (`expectedFailureDiagnosticCodes`). A
+ *    golden known to lag a fix is not an expected failure: it keeps its full
+ *    byte gate against the golden plus the exact edits in `pendingGoldenEdits`.
  * 3. no `.css` golden next to the `.less` — a helper or partial, never a fixture.
  *
  * There used to be a fourth: an `invalidLess` array in `@jesscss/shared` that
@@ -157,7 +160,19 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
           `.input-group-${size} > .input-group-prepend > select.btn${tail},`,
           `.input-group-${size} > .input-group-append > select.btn${tail} {\n`
         ].join('\n')];
-      })
+      }),
+
+      /*
+       * jess#348: `color-yiq` received the darkened background as black when the
+       * golden was regenerated, so it records `#fff`; jess (and lessc 4.9.1) emit
+       * `#212529`.
+       */
+      ...[
+        '.btn-warning:hover',
+        '.show > .btn-warning.dropdown-toggle',
+        '.btn-light:hover',
+        '.show > .btn-light.dropdown-toggle'
+      ].map((selector): readonly [string, string] => [`${selector} {\n  color: #fff;`, `${selector} {\n  color: #212529;`])
     ]
   ]
 ]);

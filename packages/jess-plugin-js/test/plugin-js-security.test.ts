@@ -322,6 +322,27 @@ describe('@jesscss/plugin-js security', () => {
     expect(helperValueWithPrimitivesResult.value.map(item => item.bytes)).toEqual(['raw', '2', 'true']);
   });
 
+  it('exposes each tree constructor as a lowercase less.* factory, as Less 4.x does', async () => {
+    const root = makeTmpDir('jess-js-root-');
+    const modulePath = path.join(root, 'factories.ts');
+    fs.writeFileSync(
+      modulePath,
+      [
+        'const less = (globalThis as any).less;',
+        'export function keyword() { return less.keyword("kw"); }',
+        'export function expression() { return less.expression([less.dimension(1, "px"), less.keyword("solid")]); }',
+        'export function atrule() { return less.atrule("@charset", "\\"utf-8\\""); }'
+      ].join('\n'),
+      'utf8'
+    );
+    const plugin = jsPlugin({ jsReadRoot: root, runtimeApi: 'less' }) as JsPlugin;
+    plugins.push(plugin);
+    const mod = await plugin.import(modulePath);
+    expect((await mod.keyword()).bytes).toBe('kw');
+    expect((await mod.expression()).map((item: { bytes: string }) => item.bytes)).toEqual(['1px', 'solid']);
+    await expect(mod.atrule()).rejects.toThrow('"tree.AtRule" is not supported');
+  });
+
   it('loads legacy Less @plugin wrapper files in Deno with injected variables', async () => {
     const root = makeTmpDir('jess-js-root-');
     const modulePath = path.join(root, 'legacy-plugin.js');
