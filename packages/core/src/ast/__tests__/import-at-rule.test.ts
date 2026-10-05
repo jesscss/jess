@@ -648,6 +648,45 @@ describe('StyleImport', () => {
     expect(parsed.map(([filePath]) => filePath)).toEqual([parent, child]);
   });
 
+  /*
+   * A claim is told whether the import could stay a CSS `@import`: one with no
+   * CSS meaning — `(reference)`, `(less)`, `@-import`, `@compose`, `(inline)` —
+   * must load, so a plugin that will not load it can refuse instead of leaving
+   * it a terminal.
+   */
+  it('tells a claiming plugin which external imports must load', async () => {
+    const claims: Array<[string, boolean]> = [];
+    const context = new Context({}, [{
+      name: 'remote',
+      canResolveImport: (specifier: string, _currentDir: string, _searchPaths: string[], mustLoad: boolean) => {
+        claims.push([specifier.slice('https://h.example/'.length), mustLoad]);
+        return false;
+      }
+    }]);
+    const target = (name: string) => quoted(`"https://h.example/${name}"`, `https://h.example/${name}`, '"', false);
+    const document = stylesheet([
+      authoredImport('@import', target('plain')),
+      authoredImport('@import', target('optional'), list([keyword('optional')], ',')),
+      authoredImport('@import', target('reference'), list([keyword('reference')], ',')),
+      authoredImport('@import', target('less'), list([keyword('less')], ',')),
+      authoredImport('@-import', target('source')),
+      styleImport('@compose', target('compose'), { mode: 'compose' })
+    ]);
+
+    await serialize(document, { context });
+    await expect(context.readInlineImport('https://h.example/inline')).rejects.toMatchObject({ code: 'import/not-found' });
+
+    expect(new Map(claims)).toEqual(new Map([
+      ['plain', false],
+      ['optional', false],
+      ['reference', true],
+      ['less', true],
+      ['source', true],
+      ['compose', true],
+      ['inline', true]
+    ]));
+  });
+
   it('does not mistake a Windows drive path for an external specifier', async () => {
     const drivePath = 'C:/styles/tokens.less';
     const imported = stylesheet([]);

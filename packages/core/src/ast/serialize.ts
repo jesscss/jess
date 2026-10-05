@@ -470,12 +470,15 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
     /*
      * Parse-mode selection remains Context/plugin-owned. The typed Less `(less)`
      * flag asks the existing dispatcher for its `less` plugin even when the path
-     * ends in `.css`; core never chooses or invokes a parser itself.
+     * ends in `.css`; core never chooses or invokes a parser itself. An import
+     * with no CSS meaning — `(less)`, `@-import`, `(reference)`, `@compose` —
+     * must load, so a plugin refuses rather than leaves it a CSS terminal.
      */
-    const explicitSourceImport = node.name.toLowerCase() === '@-import';
+    const less = importHasOption(options, 'less') || node.name.toLowerCase() === '@-import';
+    const mustLoad = less || node.mode === 'compose' || importHasOption(options, 'reference');
     let loaded: Awaited<ReturnType<Context['loadImport']>>;
     try {
-      loaded = await context.loadImport(specifier, importHasOption(options, 'less') || explicitSourceImport ? { type: 'less' } : {});
+      loaded = await context.loadImport(specifier, less ? { type: 'less', mustLoad } : { mustLoad });
     } catch (error) {
       /*
        * `(optional)` suppresses ONLY the missing-file diagnostic, and the import

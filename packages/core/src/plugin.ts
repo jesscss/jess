@@ -162,8 +162,12 @@ export interface PluginInterface {
    * ordinary capabilities. Absent means external imports remain CSS terminals.
    * An import written inside a remote document is rebased onto that document's
    * URL first, so it is asked here too. Throwing rejects the import as an error.
+   *
+   * `mustLoad` is true when the import can never stay a CSS `@import` —
+   * `(inline)`, `(reference)`, `(less)`, `@-import`, `@compose` — so a plugin
+   * that will not load it should throw rather than return false.
    */
-  canResolveImport?(specifier: string, currentDir: string, searchPaths: string[]): boolean | Promise<boolean>;
+  canResolveImport?(specifier: string, currentDir: string, searchPaths: string[], mustLoad: boolean): boolean | Promise<boolean>;
 
   /**
    * Pick the first one that exists. Return null to let another plugin handle the path.
