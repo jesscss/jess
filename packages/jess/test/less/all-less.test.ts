@@ -5,7 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { createHash } from 'node:crypto';
 import { Compiler } from '../../src/index.js';
 import { outputDiagnostics } from '@jesscss/compiler/diagnostics';
-import { getTestCases, resolveLessTestDataRoot, lessFixturePackagesPlugin, lessTestDataRemoteImports } from '../test-utils.js';
+import { getTestCases, resolveLessTestDataRoot, lessFixturePackagesPlugin, lessTestDataRemoteImports, upstreamHarnessSourceMap } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
@@ -240,13 +240,13 @@ const skippedFixtures: SkippedFixture[] = (
     { file: 'tests-config/root-registry/file.less', reason: 'no expected CSS in upstream fixture' },
     { file: 'tests-config/root-registry/root.less', reason: 'no expected CSS in upstream fixture' },
     { file: 'tests-config/strict-imports/imported.less', reason: 'helper imported by strict-imports fixture; no expected CSS' },
-    { file: 'tests-config/sourcemaps/basic.less', reason: 'source-map output suite needs dedicated output artifact checks' },
-    { file: 'tests-config/sourcemaps/custom-props.less', reason: 'source-map output suite needs dedicated output artifact checks' },
-    { file: 'tests-config/sourcemaps-disable-annotation/basic.less', reason: 'source-map output suite needs dedicated output artifact checks' },
-    { file: 'tests-config/sourcemaps-empty/empty.less', reason: 'source-map output suite needs dedicated output artifact checks' },
-    { file: 'tests-config/sourcemaps-empty/var-defs.less', reason: 'source-map output suite needs dedicated output artifact checks' },
-    { file: 'tests-config/sourcemaps-variable-selector/basic.less', reason: 'source-map output suite needs dedicated output artifact checks' },
-    { file: 'tests-config/sourcemaps-variable-selector/vars.less', reason: 'source-map output suite needs dedicated output artifact checks' },
+    { file: 'tests-config/sourcemaps/basic.less', reason: 'no expected CSS; source map gated in sourcemaps.test.ts' },
+    { file: 'tests-config/sourcemaps/custom-props.less', reason: 'no expected CSS; source map gated in sourcemaps.test.ts' },
+    { file: 'tests-config/sourcemaps-disable-annotation/basic.less', reason: 'no expected CSS; source map gated in sourcemaps.test.ts' },
+    { file: 'tests-config/sourcemaps-empty/empty.less', reason: 'no expected CSS; empty output gated in sourcemaps.test.ts' },
+    { file: 'tests-config/sourcemaps-empty/var-defs.less', reason: 'no expected CSS; empty output gated in sourcemaps.test.ts' },
+    { file: 'tests-config/sourcemaps-variable-selector/basic.less', reason: 'no expected CSS; source map gated in sourcemaps.test.ts' },
+    { file: 'tests-config/sourcemaps-variable-selector/vars.less', reason: 'helper imported by sourcemaps-variable-selector/basic.less; no expected CSS' },
     { file: 'tests-config/visitorPlugin/visitor.less', reason: 'INTENDED DIVERGENCE (A12): the Less 4 plugin-manager hook ABI is a v5 non-goal. The fixture names its plugin through the lessc `--plugin` path option (`language.less.plugin`), which is not a jess option; passed in-process, the plugin is refused with plugin/unsupported-feature at `less.visitors` (test/less/plugin-diagnostics.test.ts)' },
 
     /*
@@ -257,12 +257,13 @@ const skippedFixtures: SkippedFixture[] = (
      */
     /*
      * Nested fixtures, visible since the lane started discovering one level
-     * deeper. Source maps need a dedicated harness; the nested dumpLineNumbers
-     * fixtures are expected failures that assert their deprecation warning.
+     * deeper. The nested source-map fixture is gated in sourcemaps.test.ts
+     * except for its annotation (below); the nested dumpLineNumbers fixtures are
+     * expected failures that assert their deprecation warning.
      */
     {
       file: 'tests-config/sourcemaps/comprehensive/comprehensive.less',
-      reason: 'source-map output suite needs dedicated output artifact checks (same reason as the other sourcemaps fixtures)'
+      reason: 'OPEN (escalated to the corpus owner): the golden annotation names tests-config/sourcemaps-comprehensive/, which the fixture\'s `sourceMap: true` config does not yield; the CSS before the annotation and the map are gated in sourcemaps.test.ts'
     },
     {
       file: 'tests-unit/permissive-parse/permissive-parse.less',
@@ -356,22 +357,6 @@ const expectedFailureFixtures = new Map<string, string>([
   [
     'tests-unit/urls/urls.less',
     'INTENDED DIVERGENCE (§12.3b): the fully interpolated target in `.add_an_import("file.css")` is authored as a compile-time StyleImport, so terminal classification does not defer until it evaluates to `file.css`; normal import resolution therefore reports the missing file'
-  ],
-  [
-    'tests-config/sourcemaps-basepath/sourcemaps-basepath.less',
-    'source-map annotation and artifact output need a dedicated harness'
-  ],
-  [
-    'tests-config/sourcemaps-include-source/sourcemaps-include-source.less',
-    'source-map annotation and artifact output need a dedicated harness'
-  ],
-  [
-    'tests-config/sourcemaps-rootpath/sourcemaps-rootpath.less',
-    'source-map annotation and artifact output need a dedicated harness'
-  ],
-  [
-    'tests-config/sourcemaps-url/sourcemaps-url.less',
-    'source-map annotation and artifact output need a dedicated harness'
   ],
 
   /*
@@ -569,6 +554,7 @@ describe('Can render Less files to CSS', () => {
             >;
             const { plugins: testCasePlugins = [], ...restCompileConfig } =
               testCompileConfig;
+            const harnessSourceMap = upstreamHarnessSourceMap(file, testCase.config.language?.less?.sourceMap);
             const testCompiler = new Compiler({
               ...baseCompiler.opts,
               ...testCase.config,
@@ -586,7 +572,8 @@ describe('Can render Less files to CSS', () => {
                 ...(collapseNestingTrueFixtures.has(file)
                   ? { collapseNesting: true }
                   : {}),
-                ...(forceCollapseNesting ? { collapseNesting: true } : {})
+                ...(forceCollapseNesting ? { collapseNesting: true } : {}),
+                ...(harnessSourceMap === undefined ? {} : { sourceMap: harnessSourceMap })
               }
             });
 

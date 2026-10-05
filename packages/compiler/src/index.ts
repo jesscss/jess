@@ -127,43 +127,53 @@ export interface RenderedStylesheet {
 /**
  * Assemble the source map + CSS annotation from the render's position stream.
  *
- * Mirrors Less 4.x `SourceMapBuilder.getCSSAppendage`: an explicit
- * `sourceMapURL` wins over `sourceMapFilename`; `sourceMapFileInline` embeds the
- * map as a base64 `data:` URI; `disableSourcemapAnnotation` writes nothing. The
- * external `.map` string is always returned for callers that write it to disk —
- * this compiler has no file-writing CLI, so that is a caller concern.
+ * Sources are relative to the input file's directory unless `sourceMapBasepath`
+ * is given; the map's `file` is the output CSS name (`<input>.css` when none is
+ * known); the annotation URL is `sourceMapURL`, else `sourceMapFilename`, else
+ * that output name + `.map`, appended with no trailing newline;
+ * `sourceMapFileInline` embeds the map as a base64 `data:` URI;
+ * `disableSourcemapAnnotation` writes nothing; and empty output gets neither a
+ * map nor an annotation. The corpus `sourcemaps*` fixtures (goldens and expected
+ * maps) pin these. The annotation URL is not basepath-stripped. The external
+ * `.map` string is returned for callers that write it to disk — this compiler
+ * has no file-writing CLI.
  */
 function assembleSourceMap(
   css: string,
   positions: Position[],
   option: SourceMapConfig,
+  inputFilePath: string | undefined,
   outputFilePath: string | undefined
 ): RenderedStylesheet {
+  if (css.length === 0) {
+    return { css };
+  }
+  const outputFilename = option.sourceMapOutputFilename
+    ?? (outputFilePath === undefined
+      ? (inputFilePath === undefined ? 'output.css' : `${path.basename(inputFilePath, path.extname(inputFilePath))}.css`)
+      : path.basename(outputFilePath));
   const encoded = buildAstSourceMap(css, positions, {
-    /*
-     * The map's `file` is the GENERATED css filename (Less `_outputFilename`),
-     * not the `.map` filename.
-     */
-    outputFilename: option.sourceMapOutputFilename ?? outputFilePath ?? option.sourceMapFullFilename,
+    outputFilename,
     sourceMapRootpath: option.sourceMapRootpath,
-    sourceMapBasepath: option.sourceMapBasepath,
+    sourceMapBasepath: option.sourceMapBasepath ?? (inputFilePath === undefined ? undefined : path.dirname(path.resolve(inputFilePath))),
     outputSourceFiles: option.outputSourceFiles
   });
   const map = JSON.stringify(encoded);
 
-  let sourceMapURL = option.sourceMapURL ?? option.sourceMapFilename;
-  let annotationURL = sourceMapURL;
-  if (option.sourceMapFileInline === true) {
-    annotationURL = `data:application/json;base64,${Buffer.from(map, 'utf8').toString('base64')}`;
-  }
+  const sourceMapURL = option.sourceMapURL
+    ?? option.sourceMapFilename
+    ?? (option.sourceMapFullFilename === undefined ? undefined : path.basename(option.sourceMapFullFilename))
+    ?? (inputFilePath === undefined && outputFilePath === undefined && option.sourceMapOutputFilename === undefined
+      ? undefined
+      : `${outputFilename}.map`);
+  const annotationURL = option.sourceMapFileInline === true
+    ? `data:application/json;base64,${Buffer.from(map, 'utf8').toString('base64')}`
+    : sourceMapURL;
+  const annotatedCss = option.disableSourcemapAnnotation !== true && annotationURL !== undefined
+    ? `${css}/*# sourceMappingURL=${annotationURL} */`
+    : css;
 
-  let annotatedCss = css;
-  if (option.disableSourcemapAnnotation !== true && annotationURL) {
-    const newline = css.length > 0 && !css.endsWith('\n') ? '\n' : '';
-    annotatedCss = `${css}${newline}/*# sourceMappingURL=${annotationURL} */\n`;
-  }
-
-  return { css: annotatedCss, map, sourceMapURL: sourceMapURL ?? undefined };
+  return { css: annotatedCss, map, sourceMapURL };
 }
 
 /**
@@ -250,10 +260,16 @@ export type CompilerPluginContext = {
 export type CompilerHooks = {
   defaultPlugins?(context: CompilerPluginContext): readonly PluginInterface[];
   normalizeConfiguredPlugin?(plugin: PluginInterface, context: CompilerPluginContext): PluginInterface;
+
+  /**
+   * Rewrite the entry source before it is parsed. Text injected AHEAD of the
+   * authored source is reported as `sourceOffset` so source maps still point
+   * into the file as written.
+   */
   prepareSource?(
     source: string,
     context: CompilerPluginContext
-  ): string;
+  ): string | { source: string; sourceOffset: number };
   scriptPluginSpecifier?: string | false;
   scriptPluginResolveFrom?: string | URL;
 };
@@ -275,6 +291,14 @@ type ResolvedRenderConfig = {
   language?: string;
   optionsFor(language?: string): Record<string, unknown>;
 };
+
+const isSourceMapOption = (value: unknown): value is NonNullable<OutputOptions['sourceMap']> =>
+  typeof value === 'boolean' || (typeof value === 'object' && value !== null);
+
+const preparedSourceOf = (
+  prepared: string | { source: string; sourceOffset: number }
+): { source: string; sourceOffset: number } =>
+  typeof prepared === 'string' ? { source: prepared, sourceOffset: 0 } : prepared;
 
 /**
  * Serialize accepts only `false | 'native' | 'compact'`; `collapseNesting: true`
@@ -687,15 +711,16 @@ export class Compiler {
     };
 
     /*
-     * Resolve all three output options here. `compress` also honors the less.js
-     * `language.less.compress` shape surfaced on `activeOptions`; `sourceMap`
-     * keeps its object form so the sub-options survive.
+     * Resolve all three output options here. `compress` and `sourceMap` also
+     * honor the less.js `language.less.*` shape surfaced on `activeOptions`;
+     * `sourceMap` keeps its object form so the sub-options survive.
      */
+    const lessSourceMap: unknown = activeOptions.sourceMap;
     const printOptions = {
       collapseNesting: readOutput('collapseNesting') ?? activeOptions.collapseNesting,
       compress: readOutput('compress')
         ?? (typeof activeOptions.compress === 'boolean' ? activeOptions.compress : undefined),
-      sourceMap: readOutput('sourceMap')
+      sourceMap: readOutput('sourceMap') ?? (isSourceMapOption(lessSourceMap) ? lessSourceMap : undefined)
     };
 
     return {
@@ -1114,12 +1139,13 @@ export class Compiler {
     await measureProfileAsync(profile, 'prewarmPlugins', () => this.prewarmPlugins(context));
 
     if (source != null) {
-      const preparedSource = this.hooks.prepareSource?.(source, pluginContext) ?? source;
+      const prepared = preparedSourceOf(this.hooks.prepareSource?.(source, pluginContext) ?? source);
       const parsed = await measureProfileAsync(profile, 'parseString', () =>
-        context.parseString(preparedSource, {
+        context.parseString(prepared.source, {
           filePath,
           type: language,
-          extension
+          extension,
+          sourceOffset: prepared.sourceOffset
         }));
       return parsed.node;
     }
@@ -1131,14 +1157,15 @@ export class Compiler {
             throw new Error('No source getter found');
           }
           const rootSource = await sourceGetter.getSource(resolvedPath);
-          const preparedSource = this.hooks.prepareSource?.(rootSource, {
+          const prepared = preparedSourceOf(this.hooks.prepareSource?.(rootSource, {
             ...pluginContext,
             filePath: resolvedPath
-          }) ?? rootSource;
-          const parsed = await context.parseString(preparedSource, {
+          }) ?? rootSource);
+          const parsed = await context.parseString(prepared.source, {
             filePath: resolvedPath,
             type: language,
-            extension
+            extension,
+            sourceOffset: prepared.sourceOffset
           });
           if (parsed.node) {
             context.sourceTrees.set(resolvedPath, parsed.node);
@@ -1184,7 +1211,7 @@ export class Compiler {
     context: Context,
     profile?: RenderProfile,
     preparedImports?: PreparedImports,
-    outputFilePath?: string
+    files?: Pick<ResolvedRenderConfig, 'filePath' | 'resolvedOutputFilePath'>
   ): Promise<RenderedStylesheet> {
     const sourceMapOption = context.opts.output?.sourceMap;
     const trackPositions = Boolean(sourceMapOption);
@@ -1219,7 +1246,7 @@ export class Compiler {
      * also built pre-postprocess). Regenerate through postprocessors if needed.
      */
     const option: SourceMapConfig = typeof sourceMapOption === 'object' ? sourceMapOption : {};
-    return assembleSourceMap(css, result.positions, option, outputFilePath);
+    return assembleSourceMap(css, result.positions, option, files?.filePath, files?.resolvedOutputFilePath);
   }
 
   /** @internal AST document preparation; no legacy evaluator tree is exposed. */
@@ -1302,7 +1329,7 @@ export class Compiler {
         context,
         profile,
         undefined,
-        resolved.resolvedOutputFilePath
+        resolved
       );
       context.finalizeWarnings();
       this.reportCollected(context, options);
@@ -1346,7 +1373,7 @@ export class Compiler {
         context,
         profile,
         undefined,
-        resolved.resolvedOutputFilePath
+        resolved
       );
       context.finalizeWarnings();
       this.reportCollected(context, renderOptions);
@@ -1408,7 +1435,7 @@ export class Compiler {
         context,
         profile,
         undefined,
-        resolved.resolvedOutputFilePath
+        resolved
       );
 
       context.finalizeWarnings();
@@ -1551,7 +1578,7 @@ export class Compiler {
         context,
         profile,
         undefined,
-        resolved.resolvedOutputFilePath
+        resolved
       );
 
       finalizeRenderProfile(profile, {

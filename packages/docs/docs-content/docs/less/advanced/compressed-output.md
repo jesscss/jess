@@ -59,7 +59,9 @@ support was built before compression.
 | Empty rule (`.a {}`) | `.a {\n}` | *(removed)* |
 
 Space-separated value lists keep exactly one space (the space *is* the separator —
-`margin: 1px 2px` cannot lose it).
+`margin: 1px 2px` cannot lose it). An authored line break or comment between
+value parts, function arguments or query parts becomes that one space or the
+tightened comma.
 
 ## Comments
 
@@ -77,9 +79,19 @@ lightningcss. `//` line comments are already trivia and never reach output.
 | Trailing zeros | `1.50px` | `1.5px` | already applied to computed numbers; compress extends it to authored literals |
 
 Function-form colors (`rgb()`/`hsl()`/`hwb()`/…) are **not** rewritten to hex —
-`rgb(255,0,0)` stays `rgb(255,0,0)` (whitespace-tightened only). Converting a
+`rgb(255, 0, 0)` becomes `rgb(255,0,0)`, and a color a function computes keeps
+the form it is computed in (`fade(#ff0000, 50%)` → `rgba(255,0,0,.5)`): only
+the comma spaces and leading zeros go. Converting a
 color between representations is a lossy-of-intent optimization that belongs
 behind a finer-grained option, not the default `compress`.
+
+**Interpolated text is never re-spelled.** A value spliced into a selector, a
+string, an escape or a property name becomes part of a larger token, so it keeps
+the spelling pretty output gives it: with `@c: #ffffff`, `.s-@{c}` stays
+`.s-#ffffff` and `content: "@{c}"` stays `"#ffffff"` — folding them would match
+a different element or say something different. The same value in a declaration
+still folds (`color: @c` → `color:#fff`), however it got there — directly, through
+a variable, or as a mixin argument.
 
 **An authored bare color keyword is left verbatim** — `color: white` stays
 `white`. Every fold is driven by the value's **classification**: `#ffffff` is a

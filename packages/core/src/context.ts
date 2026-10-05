@@ -332,6 +332,12 @@ export interface DocumentContextOptions extends ContextOptions {
 
     /** Full file contents (recommended for code-frames) */
     source?: string;
+
+    /**
+     * Length of text injected ahead of the authored file in `source` (Less
+     * `banner`/`globalVars`). Source maps subtract it; absent means none.
+     */
+    sourceOffset?: number;
   };
 
   /**
@@ -1298,7 +1304,8 @@ export class Context {
     filePath: string,
     source: string | undefined,
     plugin: PluginInterface,
-    dialectDefaults: Readonly<Partial<ResolvedOptions>> | undefined
+    dialectDefaults: Readonly<Partial<ResolvedOptions>> | undefined,
+    sourceOffset?: number
   ): void {
     this.sessionOptions ??= resolveOptions(this.opts, dialectDefaults);
     const documentContext = new DocumentContext(this.sessionOptions, {
@@ -1306,7 +1313,8 @@ export class Context {
         name: path.basename(filePath),
         path: path.dirname(filePath),
         fullPath: filePath,
-        ...(source === undefined ? {} : { source })
+        ...(source === undefined ? {} : { source }),
+        ...(sourceOffset ? { sourceOffset } : {})
       },
       plugin
     });
@@ -1729,9 +1737,10 @@ export class Context {
    * The text of an `(inline)` import, read the way `@import` reads a source: an
    * external specifier must be claimed (unclaimed, there is nothing to inline,
    * so it is missing), and the plugin that located the path reads it. A file
-   * path drops its `?query`/`#fragment`; a URL keeps its query.
+   * path drops its `?query`/`#fragment`; a URL keeps its query. Returns the
+   * text with the path it resolved to, which source maps name as its source.
    */
-  async readInlineImport(importPath: string): Promise<string> {
+  async readInlineImport(importPath: string): Promise<{ resolvedPath: string; source: string }> {
     const target = this.importTarget(importPath);
     if (!(await this.isClaimed(target))) {
       throw ERR.importNotFound({
@@ -1739,7 +1748,7 @@ export class Context {
       });
     }
     const { resolvedPath, locator } = await this._getPath(EXTERNAL_IMPORT_SPECIFIER.test(target) ? target : target.split(/[?#]/)[0]!);
-    return this.readSource(resolvedPath, locator);
+    return { resolvedPath, source: await this.readSource(resolvedPath, locator) };
   }
 
   /**
@@ -1778,8 +1787,11 @@ export class Context {
     filePath?: string;
     type?: string;
     extension?: string;
+
+    /** See `DocumentContextOptions.file.sourceOffset`. */
+    sourceOffset?: number;
   } = {}) {
-    const { filePath, type, extension } = options;
+    const { filePath, type, extension, sourceOffset } = options;
     const virtualPath = filePath || `virtual.${extension || 'jess'}`;
     const ext = extension || path.extname(virtualPath);
 
@@ -1809,7 +1821,7 @@ export class Context {
     if (!this.document) {
       this.document = document;
     }
-    this.rememberDocumentContext(document, virtualPath, content, plugin, result.dialectDefaults);
+    this.rememberDocumentContext(document, virtualPath, content, plugin, result.dialectDefaults, sourceOffset);
 
     return {
       node: document,

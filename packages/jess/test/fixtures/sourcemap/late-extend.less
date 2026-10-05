@@ -1,0 +1,13 @@
+.target {
+  color: red;
+}
+.gen() {
+  .late {
+    &:extend(.target);
+    width: 1px;
+  }
+}
+.gen();
+.after {
+  margin: 2px;
+}
