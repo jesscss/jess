@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Compiler } from '../../src/index.js';
 
-async function parseAndRender(source: string): Promise<string> {
-  const compiler = new Compiler({ output: { collapseNesting: true } });
+async function parseAndRender(source: string, collapseNesting = true): Promise<string> {
+  const compiler = new Compiler({ output: { collapseNesting } });
   const context = compiler.createContext('entry.less');
   const parsed = await context.parseString(source, {
     filePath: 'entry.less',
@@ -83,13 +83,20 @@ describe('Less mixin semantic contracts through the public AST route', () => {
   });
 
   /*
-   * A body-form `&:extend()` in a mixin definition extends the rule the mixin is
-   * called into, exactly as it would written in that rule's own body (jess#356).
+   * jess#356: a body-form `&:extend()` written directly in a mixin definition
+   * extends the rule the mixin is called into, in the default nested output as
+   * in collapsed output. It is not parsed yet: the mixin body has no extend
+   * statement, and the core extend recorder cannot yet apply a mixin-level
+   * extend at the call site.
    */
-  it('applies a body-form extend written directly in a mixin definition', async () => {
-    await expect(parseAndRender('.m() { &:extend(.sm); }\n.x { .m(); }\n.sm { b: 2; }'))
-      .resolves.toBe('.sm,\n.x {\n  b: 2;\n}\n');
-    await expect(parseAndRender('.m() { color: red; &:extend(.sm all); }\n.a { .b { .m(); } }\n.sm { b: 2; }'))
-      .resolves.toBe('.a .b {\n  color: red;\n}\n.sm,\n.a .b {\n  b: 2;\n}\n');
+  it.fails('applies a body-form extend written directly in a mixin definition (jess#356)', async () => {
+    for (const collapseNesting of [false, true]) {
+      await expect(parseAndRender('.m() { &:extend(.sm); }\n.x { .m(); }\n.sm { b: 2; }', collapseNesting))
+        .resolves.toBe('.sm,\n.x {\n  b: 2;\n}\n');
+      await expect(parseAndRender('.m() { c: d; &:extend(.sm); e: f; }\n.x { .m(); }\n.sm { b: 2; }', collapseNesting))
+        .resolves.toBe('.x {\n  c: d;\n  e: f;\n}\n.sm,\n.x {\n  b: 2;\n}\n');
+      await expect(parseAndRender('.m() { &:extend(.sm); }\n.m();\n.sm { b: 2; }', collapseNesting))
+        .resolves.toBe('.sm {\n  b: 2;\n}\n');
+    }
   });
 });

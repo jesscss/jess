@@ -20,7 +20,7 @@
  */
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
-import { NO_SPAN, any, callArg, condition, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, rule, selectorBranchCanonical, selectorTermOf, semanticGapText, selist, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, callArg, condition, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessSlashedCombinatorError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -2107,27 +2107,6 @@ function requireRulesetBody(children: readonly unknown[]): Statement[] {
   return statements;
 }
 
-/**
- * A mixin definition's body statements in source order. A body-form
- * `&:extend(…);` written directly in the body extends the rule the mixin is
- * called into, and Less defines that form as the `&` rule carrying the clause
- * (`&:extend(.b);` ≡ `&:extend(.b) {}`, `extend.md`). So it is that rule: the
- * canonical `extendInstructions` field on a `&` ruleset, whose selector the
- * call site composes (jess#356). A mixin definition has no extend field of its
- * own because only the call site gives `&` a meaning.
- */
-function mixinBodyStatements(children: readonly unknown[]): Statement[] {
-  const statements: Statement[] = [];
-  for (const child of children) {
-    if (isStatement(child)) {
-      statements.push(child);
-    } else if (isBodyExtendFact(child)) {
-      statements.push(rule(selist(simpleSelector('&')), [], [...child.bodyExtensions]));
-    }
-  }
-  return statements;
-}
-
 /** Retain every callback body fact except an authored empty statement. */
 function requireCallbackStatements(children: readonly unknown[]): Statement[] {
   const statements: Statement[] = [];
@@ -2496,7 +2475,6 @@ export {
   requireMixinReferenceBaseFact,
   requireReferenceTailFact,
   requireRulesetBody,
-  mixinBodyStatements,
   requireSelectorList,
   rejectSlashedCombinator,
   requireSelectorListWithExtendsFact,
