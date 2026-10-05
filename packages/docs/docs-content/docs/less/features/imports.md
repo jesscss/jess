@@ -179,11 +179,11 @@ Released [v2.3.0](https://github.com/less/less.js/blob/master/CHANGELOG.md)
 In Less 5, an `@import` of an `https://`, `http://` or `//` URL is left in the output as a plain CSS `@import` — nothing is downloaded — unless you opt in to remote imports for specific hosts with the `@jesscss/plugin-remote-import` plugin. See [Remote Imports](../usage/less-options.md#remote-imports) for how to turn it on and the rules it enforces.
 
 ```less
-// Without the plugin, both stay as-is in the output.
-// With the plugin allowing cdn.example.com, the first is downloaded and imported;
-// the second stays as-is because it is marked (css).
-@import "https://cdn.example.com/theme.less";
-@import (css) url("https://fonts.googleapis.com/css?family=Open+Sans");
+// Without the plugin, all three stay as-is in the output.
+// With the plugin allowing cdn.example.com:
+@import "https://cdn.example.com/theme.less";      // downloaded and imported
+@import url("https://fonts.googleapis.com/css?family=Open+Sans"); // stays as-is
+@import "https://other.example.com/theme.less";    // error: not on the allow list
 ```
 
-With the plugin configured, a URL import on a host it doesn't allow is an error. Mark a URL `(css)` to keep it a CSS `@import` whatever its host.
+The allow list says which hosts are downloaded and imported, not which you may link to. With the plugin configured, a URL that Less treats as CSS (a `.css` file, or one marked `(css)`) is never downloaded. A URL without a file extension on a host that isn't allowed — a Google Fonts stylesheet, say — stays a plain CSS `@import`. Anything else that has to be imported but can't be downloaded — a `.less` URL on another host, or an `(inline)`, `(reference)` or `(less)` import — is an error.

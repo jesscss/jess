@@ -4,7 +4,8 @@
 > fetches `@import "https://host/x.less"` from an explicit host allow list. It is
 > opt-in: without it a URL import is a CSS terminal and nothing is fetched. The
 > design was proposed in jesscss/jess#219; the owner's rulings on its open
-> questions (2026-10-04) are folded in below and listed in §8.
+> questions (2026-10-04) and the orchestrator judgments made under the owner's
+> delegation (2026-10-05) are folded in below and listed in §8.
 
 Related code: `packages/core/src/plugin.ts` (the `canResolveImport → resolve →
 locate → getSource` contract), `packages/core/src/context.ts` (`loadImport`,
@@ -44,7 +45,8 @@ jsDelivr URL is a terminal like any other.
 
 **Opt-in:** add the plugin with an allow list through the existing
 `compile.plugins` option — in a `styles.config.*` file (read by the `jess` CLI,
-the `Compiler` API and the Less wrapper alike) or the `Compiler` constructor:
+the `Compiler` API and the Less wrapper alike), the `Compiler` constructor, or
+the `jess` CLI's `--allow-remote-imports <hosts>` flag:
 
 ```js
 // styles.config.mjs
@@ -62,13 +64,20 @@ export default {
 };
 ```
 
-There is no CLI flag; the config file is the one configuration mechanism, as it
-is for every other plugin.
+```sh
+jess entry.less --allow-remote-imports cdn.example.com,design-tokens.example.com
+```
+
+The flag takes a comma-separated list and may repeat; it adds the plugin as
+`compile.plugins` would, replacing one configured in a `styles.config.*`. It
+needs `@jesscss/plugin-remote-import` installed beside `jess` (an optional peer
+dependency) and says so when it is missing. `lessc` gets its own flag separately,
+in the Less repository.
 
 An empty or absent `allow` is a hard error at construction. Each entry is a
-bare host spelled as a URL prints it (lowercase, punycode for an IDN): no
-wildcard (`*` is rejected), no scheme, port, path or credentials, and never a
-private, loopback or link-local IP address.
+bare host name spelled as a URL prints it (lowercase, punycode for an IDN): no
+wildcard (`*` is rejected), no scheme, port, path or credentials, and never an
+IP address (§5).
 
 ## 3. Where it slots into the engine
 
@@ -77,14 +86,18 @@ shape as `plugin-node-modules`:
 
 | Capability | Behavior |
 | --- | --- |
-| `canResolveImport(specifier)` | `false` for anything that is not an `http:`/`https:`/protocol-relative URL. For any such URL — with or without an extension, since Less 4.x fetches a URL exactly as written — `true` when it is `https:` and its host is on `allow`; otherwise it **throws** (§6). No request is made. |
+| `canResolveImport(specifier, …, mustLoad)` | `false` for anything that is not an `http:`/`https:`/protocol-relative URL. For such a URL, `true` when it is `https:` and its host is on `allow`. Otherwise — not fetched — it is `false` (a CSS terminal) for an extensionless URL that may stay CSS, and **throws** for one that has an extension or must load (§6). No request is made. |
 | `resolve` / `expandImport` | Not implemented: a URL passes through unchanged. Core never expands a URL into `.less`/`_partial` candidates — expansion is filesystem probing, and a URL names exactly one resource — and the filesystem `locate` skips URL candidates. |
 | `locate` | Returns the first candidate that is an allowed `https:` URL (protocol-relative normalized to `https:`). Never a request. |
 | `getSource(url)` | The **only** method that touches the network (§5). Context asks the plugin whose `locate` returned the path, so a filesystem plugin's `getSource` is never handed a URL. |
 
-Because `canResolveImport` gates entry to the pipeline, a host off the list is
-rejected *before* resolve/locate/getSource — the fetch code is never reached for
-a disallowed host. That is the app-level check. §4 is what makes it hold on
+Core passes `mustLoad` to every claim: true for an import with no CSS meaning —
+`(inline)`, `(reference)`, `(less)`, `@-import`, `@compose` — which can never be
+left a CSS `@import` (`ImportOptions.mustLoad`, set by the serializer's
+`importThroughContext`; `readInlineImport` always sets it). Because
+`canResolveImport` gates entry to the pipeline, a host off the list is left CSS
+or rejected *before* resolve/locate/getSource — the fetch code is never reached
+for a disallowed host. That is the app-level check. §4 is what makes it hold on
 Deno even if the app-level check is wrong.
 
 Three core rules make the route sound for documents that were themselves
@@ -107,14 +120,30 @@ fetched:
   local bytes only, as in Less 4.x: a path that locates to a URL is reported
   missing, so `data-uri()` keeps its `url()` fallback and nothing is fetched.
   `@use` and `@plugin` load modules — code or data the runtime loads — from
-  local files only: a path that locates to a URL is an error, with no request.
+  local files only: a URL is an error with no request, whether it is written,
+  rebased from a remote document, or located by a plugin, and whether or not
+  the remote-import plugin is configured.
 - **A URL keeps its query.** The query is part of which resource a server
   returns (`theme.less?v=2`), so it stays in the source identity and the
   request; only the `#fragment` is dropped. A file path still drops both. A URL
   without an extension is parsed in the importing document's language.
 
 `@compose` of a URL reaches the same `loadImport` route as `@import`, so it
-passes the same claim gate and allow list; `@use` of a URL is refused (above).
+passes the same claim gate and allow list. It has no CSS meaning, so it always
+loads: off the list it is an error, extensionless included. `@use` of a URL is
+refused (above).
+
+**URL rewriting.** `rewriteUrls` and `rootpath` apply inside a fetched document
+exactly as inside a local import (`packages/syntax/less/jess-plugin-less`,
+`transformUrl`). With `rewriteUrls` off, a relative `url()` keeps its text and
+takes the `rootpath` prefix. When `rewriteUrls` rewrites it (`all`, or `local`
+for `./`/`../` paths), it is rebased onto the document's URL —
+`url(img/a.png)` in `https://cdn.example.com/theme/main.less` becomes
+`url(https://cdn.example.com/theme/img/a.png)` — the remote counterpart of
+prefixing a local import's directory. The result is absolute, so `rootpath` has
+nothing to prefix. Only the leading `./`/`../` segments are resolved as a URL,
+clamped at the host's root; the rest keeps its authored text, escapes included.
+A CSS `@import` written in the document is rewritten the same way.
 
 ## 4. The enforcement boundary — Deno `--allow-net`
 
@@ -154,16 +183,18 @@ offers no way to list its grants); the app-level check still refuses it.
   (`redirect: 'manual'`), at most five, and only while the origin (scheme, host
   and port) stays the same. A redirect to another origin — including another
   allowed host, plain `http:`, or another port — is refused without a request.
-- **Private addresses are never reached.** An allow entry that is a private,
-  loopback, link-local, shared (CGNAT), unspecified, benchmarking, multicast or
-  reserved address is rejected at construction (`0/8`, `10/8`, `100.64/10`,
-  `127/8`, `169.254/16`, `172.16/12`, `192.168/16`, `198.18/15`, `224/4`,
-  `240/4` — broadcast included —, `fc00::/7`, `fe80::/10`, `fec0::/10`,
-  `ff00::/8`, and every IPv6 form that embeds an IPv4 address: IPv4-mapped,
-  IPv4-compatible `::/96` — `::` and `::1` included —, NAT64 `64:ff9b::/96` and
-  6to4 `2002::/16`, each checked by the IPv4 address inside it). The default
-  transport also resolves an allowed hostname before the
-  request and refuses it when any answer is in those ranges. That check runs
+- **IP-literal hosts are never fetched.** An allow entry that is an IP address,
+  public or not, is rejected at construction, with no opt-in, so a URL whose
+  host is an IP literal is always off the list (§6).
+- **Private addresses are never reached.** The default transport resolves an
+  allowed hostname before the request and refuses it when any answer is a
+  private, loopback, link-local, shared (CGNAT), unspecified, benchmarking,
+  multicast or reserved address (`0/8`, `10/8`, `100.64/10`, `127/8`,
+  `169.254/16`, `172.16/12`, `192.168/16`, `198.18/15`, `224/4`, `240/4` —
+  broadcast included —, `fc00::/7`, `fe80::/10`, `fec0::/10`, `ff00::/8`, and
+  every IPv6 form that embeds an IPv4 address: IPv4-mapped, IPv4-compatible
+  `::/96` — `::` and `::1` included —, NAT64 `64:ff9b::/96` and 6to4
+  `2002::/16`, each checked by the IPv4 address inside it). That check runs
   before `fetch` connects, so a DNS answer that changes in between (rebinding)
   is not caught; pinning the socket to the checked address needs a custom
   dispatcher.
@@ -179,18 +210,43 @@ offers no way to list its grants); the app-level check still refuses it.
   address check; the allow list, https, redirect, size and time rules stay with
   the plugin.
 - **Caching.** Each URL is fetched once per compile (Context caches imports by
-  identity). There is no lockfile or integrity pinning (§8, item 4).
+  identity). There is no lockfile or integrity pinning — a known v1 limitation
+  (§8, item 4).
+- **`insecure`.** The Less 4.x option that skipped certificate checks is
+  accepted and has no effect: remote imports are https-only and always verify
+  the certificate. Setting it reports a `deprecation/insecure-option` warning
+  (`packages/compiler/src/index.ts`).
 
-## 6. A blocked host is an error
+## 6. Which URL imports are fetched, left CSS, or refused
 
-With the plugin configured, `@import "https://not-allowed.example/x.less"` is a
-compile error (`import/load-failed`, "… is not on the remote-import allow
-list"), not a CSS terminal: configuring the plugin asks for remote sources to be
-inlined, so a host off the list is a mistake to report. That holds for every
-http(s) URL, extensionless ones included (§8, item 7), and for
-`@import (inline)`. `(optional)` does not suppress it — `optional` covers a
-missing file, not a refused one. `(css)` keeps any URL a CSS terminal, whatever
-its host. Without the plugin, a URL import is a CSS terminal, as before.
+The allow list says which hosts are **fetched and inlined**, not which a
+stylesheet may reference. With the plugin configured, a URL import is decided
+in this order:
+
+1. **Less classifies it first.** A URL Less treats as a CSS import — a `.css`
+   path, `(css)` — is a CSS terminal the parser already made an `@import`
+   at-rule; it never reaches the plugin and is never fetched, on or off the
+   list.
+2. **Fetched:** an `https:` URL on the allow list.
+3. **Left a CSS `@import`:** an extensionless URL that is not fetched (off the
+   list, an IP-literal host, or plain `http:`) and may stay CSS — Google Fonts'
+   `https://fonts.googleapis.com/css?family=…`. Nothing is fetched; the browser
+   loads it.
+4. **Refused:** anything else that is not fetched — a URL with an extension
+   (`.less`, or any other: Less would inline it), or one that must load
+   (`(inline)`, `(reference)`, `(less)`, `@-import`, `@compose`) — is a compile
+   error (`import/load-failed`, "… is not on the remote-import allow list", "…
+   is an IP address …", or "… https-only"). It cannot be a CSS terminal, so it
+   is a mistake to report. `(optional)` does not suppress it — `optional`
+   covers a missing file, not a refused one.
+
+Without the plugin, a URL import is a CSS terminal, as before.
+
+A media query on a compile-time `@import` is desugared at parse time into an
+`@media` block around the import (ledger A10), so an extensionless URL left CSS
+with a media query emits `@media q { @import "…"; }`, which browsers ignore.
+Mark such an import `(css)` to get `@import "…" q;`. Whether the desugared form
+should collapse back when the import stays CSS is open (§8).
 
 A file the server reports missing — HTTP 404 or 410 — is `import/not-found`,
 so `(optional)` skips it exactly as it skips a missing local file. Any other
@@ -222,20 +278,27 @@ the plugin's constructor refuses to start, and no probe runs. Deno is found on
 `@jesscss/plugin-js` uses); the tests are skipped, with that reason, only when
 neither runs.
 
-The Node side — allow/deny at the claim (extensionless URLs included),
-https-only, same- and cross-origin redirects, redirect limit, 404/410 as
-not-found, releasing unread bodies, size cap (declared and streamed), timeout
-(before the headers and in a stalled body), private allow entries (embedded IPv4
-included), the Deno unrestricted-net guard, and a hostname resolving to loopback
-— is covered by `test/remote-import.test.ts` with an injected transport; no test
-makes a real network request.
+The Node side — the claim (fetched, left CSS for an extensionless URL, refused
+for one with an extension or that must load), https-only, IP-literal hosts,
+same- and cross-origin redirects, redirect limit, 404/410 as not-found,
+releasing unread bodies, size cap (declared and streamed), timeout (before the
+headers and in a stalled body), IP allow entries, the Deno unrestricted-net
+guard, and an allowed hostname resolving into each private range (embedded IPv4
+included) — is covered by `test/remote-import.test.ts` with an injected
+transport and an injected DNS answer; no test makes a real network request.
 
 End to end through the `Compiler`, `packages/jess/test/remote-imports.test.ts`
-covers the opt-in default, the claim and allow list, extensionless and `(css)`
-URLs, `(optional)` over a 404, `(inline)` and `data-uri()` of a URL, the `@use`
-refusal, and a remote document naming a real local file by absolute path
-through each of `@import`, `@import (inline)`, `data-uri()`, `@use` and
-`@plugin` — the file's contents never reach the output.
+covers the opt-in default, the claim and allow list, CSS-classified URLs never
+fetched, extensionless URLs off the list left CSS (Google Fonts), every
+must-load form refused off the list, `@compose` of a URL, `(optional)` over a
+404, `(inline)` and `data-uri()` of a URL, the `@use` refusal with and without
+the plugin, `rewriteUrls`/`rootpath` inside a fetched document, and a remote
+document naming a real local file by absolute path through each of `@import`,
+`@import (inline)`, `data-uri()`, `@use` and `@plugin` — the file's contents
+never reach the output. `packages/core/src/ast/__tests__/import-at-rule.test.ts`
+pins which imports reach the claim with `mustLoad`;
+`packages/jess/test/cli.test.ts` covers `--allow-remote-imports`; and
+`packages/jess/test/config-merge.test.ts` the `insecure` warning.
 
 The Less corpus fixture `tests-unit/import/import-remote.less` is a gate: the
 all-less harness configures the plugin with `allow: ['cdn.jsdelivr.net']` and a
@@ -248,37 +311,45 @@ route; it proves nothing about network I/O, which the tests above own.
 
 Owner rulings, 2026-10-04 (applied above):
 
-1. **Blocked host** when the plugin is configured: **error** (§6).
-2. **IP hosts**: private, loopback and link-local addresses are **denied** (§5).
+1. **Blocked host** when the plugin is configured: **error** (§6) — refined by
+   item 7 below: the error is for an import that cannot stay CSS.
+2. **IP hosts**: private, loopback and link-local addresses are **denied** (§5)
+   — extended by item 8 below to every IP literal.
 3. **https only**; **no cross-host redirects**; **size and time caps** with
    defaults of 512 KiB and 5 s (§5).
 
+Orchestrator judgment 2026-10-05 under owner delegation ("most correct / most
+like CSS / best UX"; applied above):
+
+4. **Reproducibility**: a lockfile / SRI-style integrity, or content-addressed
+   caching, is **deferred past v1** and documented as a known limitation (§5).
+5. **CLI**: the `jess` CLI takes `--allow-remote-imports <hosts>` (§2). The
+   `lessc` flag is separate work in the Less repository; the Less wrapper's
+   `plugins` option still takes Less 4.x plugins only.
+6. **Module imports over the network.** `@use` (and `@plugin`) of a URL is
+   **refused** — the compiler never executes network code — with or without the
+   plugin (§3). `@compose` of a URL **follows the `@import` policy** (§3, §6).
+7. **Extensionless URLs on an off-list host.** The allow list says which hosts
+   are fetched and inlined, not which may be referenced. Classification follows
+   Less's import rules first, so a CSS-classified URL is never fetched; an
+   import that must be inlined but is not fetched is an error; an extensionless
+   URL that is not fetched stays a CSS terminal — the Google Fonts case — and on
+   an allowed host it is fetched and parsed in the importing file's language
+   (§6). This replaces the earlier "every http(s) URL is claimed; a blocked host
+   is an error" behaviour.
+8. **IP-literal hosts** are **denied in v1, with no opt-in** (§5).
+9. **Less `insecure`** is accepted with a warning that it has no effect (§5).
+10. **URL rewriting**: `rewriteUrls`/`rootpath` apply inside a fetched document
+    exactly as for local imports, with `url()` values rebased onto the
+    document's URL (§3).
+
 Still open for the owner:
 
-4. **Reproducibility**: a lockfile / SRI-style integrity for remote imports, or
-   content-addressed caching. Not built.
-5. **CLI**: no `--remote-import-host`-style flag; the plugin is configured
-   through `compile.plugins` like every other plugin. The Less wrapper
-   (`less.render`, `lessc`) reads the same `styles.config.*`, but its `plugins`
-   option still takes Less 4.x plugins only.
-6. **Module imports over the network.** `@compose` of a URL reaches the
-   `@import` route, so it passes this allow list and is fetched. `@use` (and
-   `@plugin`) of a URL is refused without a request: those load code or data
-   through the runtime, from local files only (§3). Whether either should get
-   its own network policy is undecided.
-7. **Extensionless URLs on an off-list host.** With the plugin configured, every
-   http(s) URL import is claimed, extensionless ones included, as ruling 1
-   reads. That matches Less 4.x: its `UrlFileManager` fetches a URL exactly as
-   written (it never appends `.less`), and its CSS-import test
-   `/[#.&?]css([?;].*)?$/` does not match `…/css?family=…`, so 4.x fetched a
-   Google Fonts import as Less too. The consequence: adding the plugin turns an
-   unmarked Google-Fonts-style import on a host not on the list into an error,
-   and the author must mark it `(css)` or allow the host. Whether such an import
-   should instead stay a CSS terminal is the owner's call; it would narrow
-   ruling 1.
-8. **IP-host opt-in.** A public literal-IP allow entry is admitted like a
-   hostname, so listing it is the only opt-in. Whether a separate IP-host switch
-   is wanted (the second half of the original IP question) is undecided.
-
-Not built: URL rewriting (`rewriteUrls`/`rootpath`) for `url()` values inside a
-fetched document.
+11. **A media-tailed import left CSS.** The parse-time desugar of a media query
+    on a compile-time `@import` (ledger A10) wraps the import in `@media`, so
+    when the import stays a CSS terminal — no plugin, or an extensionless URL off
+    the list — the output is `@media q { @import "…"; }`, which browsers ignore.
+    `(css)` avoids it. Options: collapse the wrapper back to `@import "…" q;`
+    when its sole import stays CSS (needs a desugar marker, since an authored
+    `@media q { @import "…"; }` has the same shape), or keep the media tail
+    typed on the import for URL targets.

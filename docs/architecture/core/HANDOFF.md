@@ -4073,6 +4073,162 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: 2026-10-05 remote-import follow-ups (orchestrator judgment under
+  owner delegation, `docs/design/REMOTE-IMPORTS-NETWORK-POLICY.md` §8). The
+  allow list now names the hosts that are fetched and inlined, not the ones a
+  stylesheet may reference: Context tells every `canResolveImport` claim
+  whether the import `mustLoad` (`(inline)`, `(reference)`, `(less)`,
+  `@-import`, `@compose`), and the remote-import plugin leaves an extensionless
+  URL it will not fetch a CSS terminal and refuses anything else it will not
+  fetch. IP-literal hosts are never fetched. `@use`/`@plugin` refuse a URL
+  before resolution, so the refusal no longer depends on a plugin locating it.
+  The Less plugin's `transformUrl` rebases a rewritten `url()` in a fetched
+  document onto the document's URL instead of a filesystem-relative path (which
+  leaked the local working directory into the CSS). The compiler warns that
+  Less `insecure` has no effect, and the `jess` CLI gains
+  `--allow-remote-imports`.
+- Architecture surface: `packages/core/src/import-options.ts`
+  (`ImportOptions.mustLoad`), `packages/core/src/plugin.ts` (the
+  `canResolveImport` `mustLoad` argument), `packages/core/src/context.ts`
+  (`isClaimed`, `loadedImportCacheKey`, `loadImportUncached`,
+  `readInlineImport`, `refuseRemoteModule` in `getModuleUncached` and
+  `getPluginModule`), the serializer's `importThroughContext`, the Less plugin's
+  `transformUrl`, `packages/compiler/src/index.ts` (the `insecure` warning) and
+  `packages/core/src/deprecation.ts`. Evaluation, lookup, render and parser code
+  are unchanged.
+- Separation/duplication: one fact (`mustLoad`) is computed once in
+  `importThroughContext` and carried by the existing `ImportOptions`; the
+  plugin, not core, owns which unfetched URLs may stay CSS. The module refusal
+  is one function called at the specifier and at the located path, replacing
+  the shared message helper. The remote rebase reuses `escapeUnquotedUrlPath`
+  and the shared `EXTERNAL_IMPORT_SPECIFIER`, now exported from core so the Less
+  plugin does not copy it.
+- Cumulative node weight: zero AST/CST node kinds or fields.
+- New traversal: none. `rebaseOntoDocumentUrl` walks only the leading `./`/`../`
+  segments of one URL string.
+- New node/materialization: [node construction] the `Error` thrown by
+  `refuseRemoteModule` (a terminal refusal) and the registry's new
+  `Deprecation`, built once at module load; [materialized array/object] the
+  `searchPaths: string[]` in the widened `canResolveImport` signature, a type
+  only. `importThroughContext` still allocates the one `ImportOptions` literal
+  per import it did before.
+- Render path: unchanged for local documents. `transformUrl` adds one string
+  test for a rewritten URL and constructs a `URL` only for a document that was
+  itself fetched.
+- Helper/API surface: `ImportOptions.mustLoad`, the fourth `canResolveImport`
+  argument, the `EXTERNAL_IMPORT_SPECIFIER` export, and the
+  `deprecation/insecure-option` id.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [node construction] and [routine error control]
+  the `refuseRemoteModule` throw and the `insecure-option` `Deprecation` above;
+  [materialized array/object] the signature type above.
+- Behavior evidence: core `import-at-rule.test.ts` pins which imports reach the
+  claim with `mustLoad` (red before: the argument was absent); plugin
+  `remote-import.test.ts` pins fetched / left-CSS / refused claims, IP entries,
+  and every private DNS answer through an injected lookup; jess
+  `remote-imports.test.ts` pins the classification end to end, `@compose`, the
+  `@use` refusal with and without the plugin, and `rewriteUrls`/`rootpath`
+  inside a fetched document (red before: a filesystem path was emitted);
+  `cli.test.ts` the CLI flag; `config-merge.test.ts` the `insecure` warning.
+  All-Less passes 140 with 40 skips, unchanged.
+- Build evidence: `pnpm run build:release` before the change, then
+  dependency-ordered builds of core, plugin-less, compiler and
+  plugin-remote-import; `pnpm run verify:types` passes 25/25.
+- Boundary evidence: core exports `EXTERNAL_IMPORT_SPECIFIER` (the Less plugin
+  reads it) and `PluginInterface.canResolveImport` gains a fourth argument that
+  existing implementations may ignore; `ImportOptions` gains `mustLoad`. The jess
+  API report is unchanged (`pnpm run verify:jess-api`); the `jess` package adds
+  `@jesscss/plugin-remote-import` as an optional peer dependency for its CLI
+  flag.
+- Evidence: the `benchmark.less` render output (collapseNesting true) is
+  byte-identical to the previous pass's baseline (SHA-256
+  `29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8`, 123,223
+  bytes). `measure:less:hotpath` on Node 24.11.1 reported a 48.89 ms median,
+  signal noisy (25.1% RSD) on a shared machine; a baseline only, no speed or
+  neutrality claim.
+- Verdict: accepted as a semantic import-policy change with
+  `performanceClaim: none`.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "context-external-import-dispatch-boundary",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "cases": ["claimed-external-import", "unclaimed-external-terminal", "ordinary-local-import", "import-inside-remote-document"],
+    "why": "Context still owns external-import admission alone. A claim now also learns whether the import can stay a CSS @import (mustLoad), so a plugin that will not fetch a URL can leave an extensionless one a terminal and refuse one that must be inlined. @use and @plugin refuse a URL before resolution as well as after it. Unclaimed URLs remain CSS terminals with no network action; local imports take the same path as before.",
+    "dangerTokensJustification": "mustLoad rides the ImportOptions literal each import already allocated and is passed to the existing claim loop, which runs only for an external specifier; the cache key adds a constant suffix only when it is set. The refuseRemoteModule throw is a terminal refusal, never control flow on a successful load. The string[] token is the widened signature's type, not an allocation.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 48.89,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  },
+  {
+    "id": "core-context-emit-selector-contract",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
+    "cases": [
+      "Context-plugin-source-parser-dispatch",
+      "emit-walk-context-output-option",
+      "Ruleset-interpolated-selector-boundary",
+      "selector-match-string-and-node-combinators",
+      "extend-index-tagged-graft-atoms",
+      "Sequence-subclass-preserving-evaluation",
+      "callable-output-root-property-guard",
+      "serializer-at-rule-and-selector-surface"
+    ],
+    "why": "Context's claim dispatch passes the mustLoad fact to each plugin, keys the loaded-import cache on it, and the module loaders refuse a URL specifier before resolving it. This changes which external imports a plugin may leave as CSS; it is semantic dispatch work with no cost-cutting or neutrality claim.",
+    "dangerTokensJustification": "No traversal or side table is added: the fact is threaded through the existing claim loop and cache key, and the module refusal is one string test at the specifier and one at the located path. The deprecation registry entry is built once at module load.",
+    "behaviorEvidence": "Core import-at-rule.test.ts pins which imports reach the claim with mustLoad (red before); jess remote-imports.test.ts pins the classification, @compose and the @use refusal with and without the plugin; config-merge.test.ts pins the insecure warning; all-Less passes 140 with 40 skips, unchanged.",
+    "buildEvidence": "Dependency-ordered builds of core, plugin-less, compiler and plugin-remote-import pass; pnpm run verify:types passes 25/25.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 48.89,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  },
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Collection-spread-computed-key-overlay-and-iteration",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "module-callable-explicit-reference-and-css-call-separation",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "The serializer's importThroughContext computes mustLoad once per import from facts it already reads — the (less)/@-import parse selection, the compose mode and the (reference) option — and passes it in the ImportOptions it already built. No evaluator, value or render change and no speed claim.",
+    "dangerTokensJustification": "One more option-word test and a mode compare on the cold per-import load path; the ImportOptions literal existed before. No loop, node, array or side table is added to the serializer.",
+    "behaviorEvidence": "Core import-at-rule.test.ts pins the mustLoad facts for plain, (optional), (reference), (less), @-import, @compose and (inline) imports; jess remote-imports.test.ts covers them end to end; all-Less passes 140 with 40 skips, unchanged.",
+    "buildEvidence": "pnpm --filter @jesscss/core build passes and pnpm run verify:types passes 25/25.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 48.89,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  }
+]
+```
+
 - Latest pass: 2026-10-04 remote-import route through Context, with its review
   fixes. The opt-in `@jesscss/plugin-remote-import` needs Context/plugin-contract
   facts that were wrong for a URL: the source of a located path comes from the
