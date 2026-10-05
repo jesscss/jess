@@ -31,8 +31,7 @@ need the exact rule behind a specific output difference.
   nested descendant factors its common ancestor out once, wrapping multi-branch sides
   in `:is(...)` instead of cartesian-expanding.
 - **[Number Precision](./number-precision.md)** — a computed number emits the shortest
-  decimal that is still the same number; un-operated literals stay verbatim; a
-  `round()` tie goes up, toward +∞.
+  decimal that is still the same number; un-operated literals stay verbatim.
 - **[Color Output (Alpha, Hex, Gamut)](./color-output.md)** — computed alpha → `rgba`,
   authored alpha-hex preserved, out-of-range channels clamp.
 - **[String Formatting (`%()`)](./string-format.md)** — the `%()` compat alias and how

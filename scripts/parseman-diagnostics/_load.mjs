@@ -16,7 +16,7 @@
  * it is one of the things being measured (see `GatingReport.unanalysable`).
  */
 import { createServer } from 'vite';
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { workspaceSrcAliases } from '../workspace-src-aliases.mjs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -29,55 +29,12 @@ export const GRAMMARS = [
   { dialect: 'jess', file: 'packages/syntax/jess/jess-parser/src/grammar.ts', exports: { ast: 'jessGrammar', cst: 'jessCstGrammar' } }
 ];
 
-/** Mirror of the vitest config's workspace `src` aliases (see vitest.config.ts). */
-function workspaceSrcAliases() {
-  const alias = [];
-  const walk = (rel) => {
-    for (const d of readdirSync(resolve(ROOT, rel), { withFileTypes: true })) {
-      if (!d.isDirectory()) {
-        continue;
-      }
-      const dir = `${rel}/${d.name}`;
-      const pj = resolve(ROOT, dir, 'package.json');
-      const src = resolve(ROOT, dir, 'src/index.ts');
-      if (existsSync(pj)) {
-        if (existsSync(src)) {
-          let name;
-          try {
-            name = JSON.parse(readFileSync(pj, 'utf8')).name;
-          } catch {
-            continue;
-          }
-          if (name) {
-            alias.push({ find: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`), replacement: src });
-          }
-        }
-      } else {
-        walk(dir);
-      }
-    }
-  };
-  walk('packages');
-
-  /*
-   * parser-shared ships `lib/*` through its exports map. Left alone, the shared
-   * recognition pieces arrive as ALREADY-macro-compiled artifacts, which is what
-   * makes them opaque to the analysis. The macro plugin re-lowers them from
-   * source at build time (see the css-parser `macro-compiled` test, which asserts
-   * the transformed grammar contains no `@jesscss/parser-shared` reference), so
-   * pointing at `src` is the faithful shape, not a cheat.
-   */
-  for (const sub of ['recognition', 'opaque-at-rule', 'pseudo-consts']) {
-    alias.push({
-      find: new RegExp(`^@jesscss/parser-shared/${sub.replace(/-/g, '\\-')}$`),
-      replacement: resolve(ROOT, `packages/parser-shared/src/${sub}.ts`)
-    });
-  }
-  alias.push({ find: /^@jesscss\/css-parser\/grammar$/, replacement: resolve(ROOT, 'packages/syntax/css/css-parser/src/grammar.ts') });
-  alias.push({ find: /^@jesscss\/css-parser\/jess$/, replacement: resolve(ROOT, 'packages/syntax/css/css-parser/src/jess.ts') });
-  return alias;
-}
-
+/*
+ * The same source aliases as the vitest config. They matter most for
+ * `@jesscss/parser-shared/*`: its `lib` ships the recognition pieces already
+ * macro-compiled, which makes them opaque to the analysis, so the interpreted
+ * load must reach the source.
+ */
 async function makeServer(plugins, ssr = {}) {
   return createServer({
     root: ROOT,
@@ -85,7 +42,7 @@ async function makeServer(plugins, ssr = {}) {
     logLevel: 'error',
     plugins,
     ssr,
-    resolve: { alias: workspaceSrcAliases(), mainFields: ['module', 'import', 'exports', 'main'] },
+    resolve: { alias: workspaceSrcAliases(ROOT), mainFields: ['module', 'import', 'exports', 'main'] },
     server: { middlewareMode: true }
   });
 }

@@ -14,14 +14,15 @@ name: CI
 #                  the full 22-package chain. Runs concurrently with `verify` so
 #                  the ~90s test payload leaves the critical path. Add it too.
 #
-# Why the split is safe: vitest source-aliases every `@jesscss/*` to `src` (see
-# vitest.config.ts), so the only BUILT artifacts a source test needs are (1) the
+# Why the split is safe: vitest source-aliases every `@jesscss/*` export, bare
+# name and subpath, to `src` (scripts/workspace-src-aliases.mjs), so the only
+# BUILT artifacts a source test needs are the ones loaded outside vite: (1) the
 # parser-shared macro-fusion pieces parseman's plugin reads at transform, and (2)
-# the handful of core/fns lib subpaths (`core/ast`, `fns/sass/*`) that are not
-# source-aliased — all produced by the cheap prime. The four parser `/positions`
-# and `compiler/diagnostics` subpaths are source-aliased in vitest.config so no
-# parser build is needed. `jess` is the sole genuinely build-bound suite and
-# stays in `verify`.
+# the core/fns libs that native loaders reach — a dialect plugin's provided
+# modules (`#less`, `sass:*`), for one, load through the plugin's own `require`
+# — all produced by the cheap prime. No parser
+# build is needed. `jess` is the sole genuinely build-bound suite and stays in
+# `verify`.
 #
 # Per-dialect suites, all still gated:
 #
@@ -236,15 +237,17 @@ jobs:
   # a cheap prime:
   #
   #   * `@jesscss/parser-shared` — its COMPILED lib carries the macro-fused grammar
-  #     recognition pieces (cssSyntax / opaque-at-rule / pseudo-consts) that
+  #     recognition pieces (recognition / unknown-at-rule / pseudo-consts) that
   #     parseman's plugin reads at transform when it fuses each grammar's
   #     `composeLeaf(...)`. Without this lib the transform cannot fuse and the four
   #     grammars fail at runtime with `composeLeaf() must macro-fuse`. This is the
   #     one artifact the vite src-aliases cannot substitute (the plugin resolves it
   #     itself, compiled-only, ignoring vite aliases).
-  #   * `@jesscss/core` + `@jesscss/fns` — the `core/ast` and `fns/sass/*` lib
-  #     subpaths the parsers import at runtime are not source-aliased, so their
-  #     built libs must exist. Both are fast tsdown bundles; the whole prime is ~3s.
+  #   * `@jesscss/core` + `@jesscss/fns` — for the libs native loaders reach,
+  #     which no vite alias can redirect: a dialect plugin's provided modules
+  #     (`#less`, `sass:*`), for one, load `@jesscss/fns` lib (and that lib's own
+  #     `@jesscss/core`) through the plugin's `require`. Both are fast tsdown
+  #     bundles; the whole prime is ~3s.
   #
   # `pnpm --filter '@jesscss/core...' --filter '@jesscss/fns...'` pulls their shared
   # `awaitable-pipe` dep in too. The parser libs are built only for the
