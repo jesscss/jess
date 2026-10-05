@@ -141,9 +141,12 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +1 function (`evalQueryPreludeParts`): a media/container prelude is built as
     // fragments so a [general-enclosed] group passes the normalizer as written;
     // the supports normalizer became the shared `normalizePreludeParts`.
+    // `new Set` → `new Map` (module identity): the emit-once `loadedImports`
+    // registry also records a shared `@compose`d module's one activation frame,
+    // so a later compose edge binds its namespace there instead of going unbound.
     expect(occurrences(/^function |^async function /gmu)).toBe(474);
-    expect(occurrences(/new Map/gu)).toBe(71);
-    expect(occurrences(/new Set/gu)).toBe(40);
+    expect(occurrences(/new Map/gu)).toBe(72);
+    expect(occurrences(/new Set/gu)).toBe(39);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

@@ -8569,7 +8569,13 @@ interface Emit extends EvalCtx {
    * before a native stack overflow. Threaded through `scratchEmit`.
    */
   mixinDepth: number;
-  loadedImports: Set<string> | null;
+
+  /**
+   * Emit-once registry of loaded module identities. A shared `@compose`d module
+   * maps to its one activation frame, so a later compose edge of the same
+   * identity binds its namespace there instead of evaluating the module again.
+   */
+  loadedImports: Map<string, Frame | null> | null;
 
   /**
    * [module config] Per module IDENTITY (`loaded.key`) `set` configuration, so a
@@ -17435,8 +17441,7 @@ function publishComposedModule(
   children: Statement[],
   importerFrame: Frame,
   bodyFrame: Frame,
-  specifier: string,
-  e: Emit
+  specifier: string
 ): void {
   const namespace = node.namespace ?? deriveModuleNamespace(specifier);
   if (namespace === '*') {
@@ -17561,15 +17566,23 @@ function expandStyleImport(
          * renders its own output.
          */
         const sharedModule = config === null || config.kind === 'set';
-        if (sharedModule && request.options === null && e.multipleImportDepth === 0 && loaded.key !== undefined) {
-          const seen = e.loadedImports ??= new Set();
-          if (seen.has(loaded.key)) {
+        const children = loaded.document?.rules ?? [];
+        const isCompose = node.mode === 'compose';
+        const emitOnceKey = sharedModule && request.options === null && e.multipleImportDepth === 0
+          ? loaded.key
+          : undefined;
+        if (emitOnceKey !== undefined) {
+          const seen = e.loadedImports ??= new Map();
+          if (seen.has(emitOnceKey)) {
+            /* Rendered once already; this compose edge still binds its own namespace to that activation. */
+            const activated = isCompose ? seen.get(emitOnceKey) : null;
+            if (activated) {
+              publishComposedModule(node, children, frame, activated, request.specifier);
+            }
             return;
           }
-          seen.add(loaded.key);
+          seen.set(emitOnceKey, null);
         }
-
-        const children = loaded.document?.rules ?? [];
 
         /*
          * A `@compose` (spec R6 Part E) evaluates the module in its own isolated
@@ -17581,7 +17594,6 @@ function expandStyleImport(
          * unqualified. A CONFIGURED compose additionally overlays its `with`/`set`
          * values in `configuredModuleFrame`.
          */
-        const isCompose = node.mode === 'compose';
         if (config !== null) {
           validateModuleConfig(node, request.specifier, config, children, e);
         }
@@ -17589,7 +17601,10 @@ function expandStyleImport(
           ? (config !== null ? configuredModuleFrame(children, config, frame) : unconfiguredModuleFrame(children))
           : frame;
         if (isCompose) {
-          publishComposedModule(node, children, frame, bodyFrame, request.specifier, e);
+          if (emitOnceKey !== undefined) {
+            e.loadedImports!.set(emitOnceKey, bodyFrame);
+          }
+          publishComposedModule(node, children, frame, bodyFrame, request.specifier);
         }
         const publishChildren = isCompose || hasPrepublishedImportFact(e, node)
           ? undefined

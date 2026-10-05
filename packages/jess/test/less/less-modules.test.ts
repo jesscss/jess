@@ -5,6 +5,8 @@
  *
  * A configured module's members are its outer-scope bindings AFTER configuration
  * (R6 §E.1), so a namespace read sees exactly what the module's own CSS sees.
+ * A shared module (plain or `set`) evaluates once per compilation; every compose
+ * edge still binds its own namespace to that one evaluation.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
@@ -126,6 +128,18 @@ describe('Less @compose stylesheet modules', () => {
       .toBe('.theme-base {\n  color: blue;\n  border-color: #0000cc;\n}\n');
     expect((await render('@compose "./theme.less" with { @primary: red; }\n@compose "./theme.less" as t2 with { @primary: green; }')).css)
       .toBe('.theme-base {\n  color: red;\n  border-color: #cc0000;\n}\n.theme-base {\n  color: green;\n  border-color: #004d00;\n}\n');
+  });
+
+  it('a later compose of a shared module binds its own namespace to the one evaluation', async () => {
+    const { css } = await render('@compose "./theme.less" set { @primary: red; }\n@compose "./theme.less" as again;\n.a { c: @again.primary; e: @again.accent; }');
+    expect(css).toBe('.theme-base {\n  color: red;\n  border-color: #cc0000;\n}\n.a {\n  c: red;\n  e: #cc0000;\n}\n');
+  });
+
+  it('a module composed by a dependency is still reachable from the entry namespace', async () => {
+    const button: SourceFile = ['button.less', '@compose "./theme.less";\n.btn { color: @theme.primary; }\n'];
+    const { css, errors } = await render('@compose "./button.less";\n@compose "./theme.less";\n.x { c: @theme.primary; }', [button]);
+    expect(errors).toEqual([]);
+    expect(css).toBe('.theme-base {\n  color: blue;\n  border-color: #0000cc;\n}\n.btn {\n  color: blue;\n}\n.x {\n  c: blue;\n}\n');
   });
 
   it('rejects a conflicting shared configuration', async () => {
