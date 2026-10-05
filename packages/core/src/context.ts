@@ -8,7 +8,7 @@ import type {
   Selector,
   Nil
 } from './tree/index.js';
-import type { ImportOptions } from './import-options.js';
+import { type ImportOptions, EXTERNAL_IMPORT_SPECIFIER } from './import-options.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './util/calculate.js';
 import type { ISafeParseResult, ParsedDocument, PluginInterface, UrlTransformRequest } from './plugin.js';
@@ -61,7 +61,10 @@ export interface EmitVisitor {
 
 const SCRIPT_MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts']);
 const SCRIPT_MODULES_DISABLED_MESSAGE = 'Script modules are disabled by disableScriptModules.';
-const EXTERNAL_IMPORT_SPECIFIER = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu;
+
+/** Modules and plugins are code or data loaded by the runtime, so they come from local files only. */
+const remoteModuleMessage = (location: string): string =>
+  `Module ${location} is remote; @use and @plugin load modules from local files only.`;
 
 type LoadedImportResult = {
   node: ParsedDocument | null;
@@ -73,6 +76,12 @@ type ResolvedPathResult = {
   triedPaths: string[];
   resolvedPath: string;
   friendlyPath: string;
+
+  /** The file extension that selects a plugin; a URL's comes from its path, not its query. */
+  ext: string;
+
+  /** The plugin whose `locate` returned `resolvedPath`. */
+  locator: PluginInterface;
 };
 
 type LoadedPluginModuleResult = {
@@ -323,6 +332,12 @@ export interface DocumentContextOptions extends ContextOptions {
 
     /** Full file contents (recommended for code-frames) */
     source?: string;
+
+    /**
+     * Length of text injected ahead of the authored file in `source` (Less
+     * `banner`/`globalVars`). Source maps subtract it; absent means none.
+     */
+    sourceOffset?: number;
   };
 
   /**
@@ -1289,7 +1304,8 @@ export class Context {
     filePath: string,
     source: string | undefined,
     plugin: PluginInterface,
-    dialectDefaults: Readonly<Partial<ResolvedOptions>> | undefined
+    dialectDefaults: Readonly<Partial<ResolvedOptions>> | undefined,
+    sourceOffset?: number
   ): void {
     this.sessionOptions ??= resolveOptions(this.opts, dialectDefaults);
     const documentContext = new DocumentContext(this.sessionOptions, {
@@ -1297,7 +1313,8 @@ export class Context {
         name: path.basename(filePath),
         path: path.dirname(filePath),
         fullPath: filePath,
-        ...(source === undefined ? {} : { source })
+        ...(source === undefined ? {} : { source }),
+        ...(sourceOffset ? { sourceOffset } : {})
       },
       plugin
     });
@@ -1397,19 +1414,78 @@ export class Context {
   }
 
   /**
+   * The resource an import path names from the current document. A path written
+   * inside a remote document is relative to that document's URL, never a local
+   * file — `/etc/x.less` in `https://h/a.less` is `https://h/etc/x.less` — so a
+   * fetched document reaches only what its own host serves.
+   */
+  private importTarget(importPath: string): string {
+    const importer = this.sourceContext?.file?.fullPath;
+    if (importer === undefined || !EXTERNAL_IMPORT_SPECIFIER.test(importer) || EXTERNAL_IMPORT_SPECIFIER.test(importPath)) {
+      return importPath;
+    }
+    const target = new URL(importPath, importer);
+
+    /** A one-letter "scheme" (`C:/x.less`) is a drive path, not a relative reference. */
+    if (target.origin !== new URL(importer).origin) {
+      throw new Error(`Import "${importPath}" in ${importer} does not name a resource on its host.`);
+    }
+    return target.href;
+  }
+
+  /**
+   * Whether a plugin opts in to loading this import. Only an external specifier
+   * needs a claim; unclaimed, it stays a CSS terminal. A plugin refuses one by
+   * throwing.
+   */
+  private async isClaimed(importPath: string): Promise<boolean> {
+    if (!EXTERNAL_IMPORT_SPECIFIER.test(importPath)) {
+      return true;
+    }
+    const currentDirectory = this.sourceContext?.file?.path ?? process.cwd();
+    const { searchPaths = [] } = this.opts;
+    for (const plugin of this.plugins) {
+      if (await plugin.canResolveImport?.(importPath, currentDirectory, searchPaths)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** The source text at a located path, read by the plugin that located it; a locate-only plugin defers to the first reader. */
+  private readSource(resolvedPath: string, locator: PluginInterface): Promise<string> {
+    const reader = locator.getSource ? locator : this.plugins.find(plugin => plugin.getSource);
+    if (!reader?.getSource) {
+      throw new Error('No source getter found');
+    }
+    return reader.getSource(resolvedPath);
+  }
+
+  /**
+   * Every path a document names — `@import`, `(inline)`, `data-uri()`, `@use`,
+   * `@plugin` — is resolved here, so the remote-document rebase holds for all.
+   *
    * @param importPath - The bare import path e.g. `@import "foo";` in a .less file.
    */
-  private async _getPath(importPath: string) {
+  private async _getPath(importPath: string): Promise<ResolvedPathResult> {
+    importPath = this.importTarget(importPath);
     const currentDocument = this.sourceContext;
     const currentDirectory = currentDocument?.file?.path ?? process.cwd();
     const { searchPaths = [] } = this.opts;
 
     const plugins = this.plugins;
     let finalPath: string | undefined;
+    let locator: PluginInterface | undefined;
     let currentPlugin = currentDocument?.plugin;
 
-    /** First, expand imports */
-    let paths = currentPlugin?.expandImport?.(importPath, currentDirectory) ?? [importPath];
+    /**
+     * First, expand imports. Expansion is filesystem probing (`foo` → `foo.less`,
+     * `_foo.scss`, …) that `locate` settles by existence; a URL names exactly one
+     * resource, so it is never expanded.
+     */
+    let paths = EXTERNAL_IMPORT_SPECIFIER.test(importPath)
+      ? [importPath]
+      : currentPlugin?.expandImport?.(importPath, currentDirectory) ?? [importPath];
     if (paths.length === 0) {
       throw new Error(`No paths found for import "${importPath}"`);
     }
@@ -1444,19 +1520,33 @@ export class Context {
       const result = await plugin.locate(paths, currentDirectory);
       if (result) {
         finalPath = result;
+        locator = plugin;
         break;
       }
     }
 
-    if (!finalPath) {
+    if (!finalPath || !locator) {
       throw ERR.importNotFound({
         meta: { specifier: importPath, from: currentDirectory }
       });
     }
 
-    const normalizedFinalPath = finalPath.split(/[?#]/)[0]!;
-    const ext = path.extname(normalizedFinalPath);
-    const friendlyPath = path.relative(process.cwd(), normalizedFinalPath);
+    /*
+     * A file path drops its `?query`/`#fragment`. A URL keeps its query: it is
+     * part of which resource the server returns, so it is part of the identity.
+     */
+    const located = EXTERNAL_IMPORT_SPECIFIER.test(finalPath);
+    const normalizedFinalPath = finalPath.split(located ? '#' : /[?#]/)[0]!;
+
+    /*
+     * A URL's extension comes from its path, not its host or query. A URL with
+     * none is fetched as written, as Less 4.x does, and parsed in the importing
+     * document's language.
+     */
+    const ext = located
+      ? path.posix.extname(new URL(normalizedFinalPath, 'file:///').pathname) || (currentPlugin?.supportedExtensions?.[0] ?? '')
+      : path.extname(normalizedFinalPath);
+    const friendlyPath = located ? normalizedFinalPath : path.relative(process.cwd(), normalizedFinalPath);
 
     if (!ext) {
       throw new Error(`File "${friendlyPath}" not supported`);
@@ -1465,7 +1555,9 @@ export class Context {
     return {
       triedPaths: paths,
       resolvedPath: normalizedFinalPath,
-      friendlyPath
+      friendlyPath,
+      ext,
+      locator
     };
   }
 
@@ -1515,7 +1607,7 @@ export class Context {
   }
 
   async getTree(importPath: string, importOptions: ImportOptions = {}) {
-    const { resolvedPath, triedPaths, friendlyPath } = await this._getPath(importPath);
+    const { resolvedPath, triedPaths, friendlyPath, ext, locator } = await this._getPath(importPath);
     const { type } = importOptions;
 
     /**
@@ -1530,9 +1622,6 @@ export class Context {
       };
     }
 
-    const plugins = this.plugins;
-
-    const ext = path.extname(resolvedPath);
     const plugin = this.findParserPlugin(type, ext);
     const parsedSourceKey = this.parsedSourceTreeKey(plugin, resolvedPath);
     const cachedDocument = this.parsedSourceTrees.get(parsedSourceKey);
@@ -1544,12 +1633,7 @@ export class Context {
       };
     }
 
-    const sourceGetter = plugins.find(plugin => plugin.getSource);
-    if (!sourceGetter) {
-      /** If we can't actually load files, bail. */
-      throw new Error('No source getter found');
-    }
-    const source = await sourceGetter.getSource!(resolvedPath);
+    const source = await this.readSource(resolvedPath, locator);
     const parseResult = this.parseSource(plugin, resolvedPath, source, {
       importOptions,
       compilerOptions: this.opts
@@ -1645,21 +1729,26 @@ export class Context {
   }
 
   private async loadImportUncached(importPath: string, importOptions: ImportOptions = {}) {
-    if (EXTERNAL_IMPORT_SPECIFIER.test(importPath)) {
-      const currentDirectory = this.sourceContext?.file?.path ?? process.cwd();
-      const { searchPaths = [] } = this.opts;
-      let claimed = false;
-      for (const plugin of this.plugins) {
-        if (await plugin.canResolveImport?.(importPath, currentDirectory, searchPaths)) {
-          claimed = true;
-          break;
-        }
-      }
-      if (!claimed) {
-        return undefined;
-      }
+    const target = this.importTarget(importPath);
+    return await this.isClaimed(target) ? this.getTree(target, importOptions) : undefined;
+  }
+
+  /**
+   * The text of an `(inline)` import, read the way `@import` reads a source: an
+   * external specifier must be claimed (unclaimed, there is nothing to inline,
+   * so it is missing), and the plugin that located the path reads it. A file
+   * path drops its `?query`/`#fragment`; a URL keeps its query. Returns the
+   * text with the path it resolved to, which source maps name as its source.
+   */
+  async readInlineImport(importPath: string): Promise<{ resolvedPath: string; source: string }> {
+    const target = this.importTarget(importPath);
+    if (!(await this.isClaimed(target))) {
+      throw ERR.importNotFound({
+        meta: { specifier: importPath, from: this.sourceContext?.file?.path ?? process.cwd() }
+      });
     }
-    return this.getTree(importPath, importOptions);
+    const { resolvedPath, locator } = await this._getPath(EXTERNAL_IMPORT_SPECIFIER.test(target) ? target : target.split(/[?#]/)[0]!);
+    return { resolvedPath, source: await this.readSource(resolvedPath, locator) };
   }
 
   /**
@@ -1676,11 +1765,18 @@ export class Context {
    * honoring search paths). Used by file-reading functions like `data-uri()`
    * and `image-size()` so they never touch raw `fs` for path resolution.
    *
-   * A `#fragment` or `?query` suffix is stripped before resolution.
+   * A `#fragment` or `?query` suffix is stripped before resolution. A path that
+   * locates to a URL is never read: as in Less 4.x, these functions read local
+   * files only, so it is missing and `data-uri()` keeps its `url()` fallback.
    */
   async readBinary(importPath: string): Promise<Buffer> {
     const cleanPath = importPath.split(/[?#]/)[0]!;
     const { resolvedPath } = await this._getPath(cleanPath);
+    if (EXTERNAL_IMPORT_SPECIFIER.test(resolvedPath)) {
+      throw ERR.importNotFound({
+        meta: { specifier: importPath, from: this.sourceContext?.file?.path ?? process.cwd() }
+      });
+    }
     return readFile(resolvedPath);
   }
 
@@ -1691,8 +1787,11 @@ export class Context {
     filePath?: string;
     type?: string;
     extension?: string;
+
+    /** See `DocumentContextOptions.file.sourceOffset`. */
+    sourceOffset?: number;
   } = {}) {
-    const { filePath, type, extension } = options;
+    const { filePath, type, extension, sourceOffset } = options;
     const virtualPath = filePath || `virtual.${extension || 'jess'}`;
     const ext = extension || path.extname(virtualPath);
 
@@ -1722,7 +1821,7 @@ export class Context {
     if (!this.document) {
       this.document = document;
     }
-    this.rememberDocumentContext(document, virtualPath, content, plugin, result.dialectDefaults);
+    this.rememberDocumentContext(document, virtualPath, content, plugin, result.dialectDefaults, sourceOffset);
 
     return {
       node: document,
@@ -1754,8 +1853,10 @@ export class Context {
   }
 
   private async getModuleUncached(importPath: string, importOptions: ImportOptions = {}): Promise<LoadedModuleResult> {
-    const { resolvedPath, triedPaths, friendlyPath } = await this._getPath(importPath);
-    const ext = path.extname(resolvedPath);
+    const { resolvedPath, triedPaths, friendlyPath, ext } = await this._getPath(importPath);
+    if (EXTERNAL_IMPORT_SPECIFIER.test(resolvedPath)) {
+      throw new Error(remoteModuleMessage(resolvedPath));
+    }
     const isJsonImport = ext === '.json';
     const isScriptModuleImport = SCRIPT_MODULE_EXTENSIONS.has(ext);
     const { type } = importOptions;
@@ -1869,8 +1970,10 @@ export class Context {
    * interprets the returned module; Context does not know a dialect ABI.
    */
   async getPluginModule(importPath: string, options: string | null = null) {
-    const { resolvedPath, triedPaths, friendlyPath } = await this._getPluginPath(importPath);
-    const ext = path.extname(resolvedPath);
+    const { resolvedPath, triedPaths, friendlyPath, ext } = await this._getPluginPath(importPath);
+    if (EXTERNAL_IMPORT_SPECIFIER.test(resolvedPath)) {
+      throw new Error(remoteModuleMessage(resolvedPath));
+    }
     let plugin = this.plugins.find(candidate =>
       candidate.supportedExtensions?.includes(ext) && candidate.importPlugin);
     if (!plugin) {

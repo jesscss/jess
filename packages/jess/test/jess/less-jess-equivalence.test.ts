@@ -55,6 +55,7 @@ import {
   getTestCases,
   lessFixturePackagesPlugin,
   lessHarnessFunctionsPlugin,
+  lessTestDataRemoteImports,
   resolveLessTestDataRoot
 } from '../test-utils.js';
 
@@ -162,16 +163,17 @@ const CORPORA: Corpus[] = [
 
     /*
      * The upstream checkout layout: the Less plugin maps `@less/test-import-module`
-     * to the `packages/` sibling of `packages/test-data`, and remote jsDelivr
-     * imports name `@less/test-data` itself.
+     * to the `packages/` sibling of `packages/test-data`. Remote jsDelivr imports
+     * of `@less/test-data` are answered from the copy, as in all-less.test.ts.
      */
     layout: 'packages/test-data',
     packages: [['@less/test-data', 'packages/test-data'], ['@less/test-import-module', 'packages/test-import-module']],
     fixtures: allLessFixtures(),
-    plugins: () => [
+    plugins: copy => [
       lessPlugin({ plugins: [lessHarnessFunctionsPlugin] }),
       lessCompatPlugin(),
       lessFixturePackagesPlugin(),
+      lessTestDataRemoteImports(copy),
       jessPlugin()
     ]
   },
@@ -784,12 +786,12 @@ const KNOWN = new Map<string, Known>([
   ['all-less:tests-unit/plugin-module/plugin-module.less', {
     cause: 'no-arm-a',
     outcome: 'arm-a-error',
-    reason: 'the Less arm itself does not render: plugin/load-failed: Plugin "clean-css" could not be loaded: Less @plugin function "index.js" threw: Less @plugin require("./lib/clean") is not supported in the Deno sandbox yet.'
+    reason: 'the Less arm itself does not render: plugin/load-failed: Plugin "clean-css" could not be loaded: Less @plugin function "index.js" threw: Less @plugin require("http") is not supported: only relative requires ("./file", "../file") of CommonJS files inside the script root are.'
   }],
   ['all-less:tests-unit/plugin-preeval/plugin-preeval.less', {
     cause: 'no-arm-a',
     outcome: 'arm-a-error',
-    reason: 'the Less arm itself does not render: plugin/load-failed: Plugin "../../plugin/plugin-preeval" could not be loaded: Less @plugin function "plugin-preeval.js" threw: Cannot read properties of undefined (reading \'Visitor\')'
+    reason: 'the Less arm itself does not render: plugin/unsupported-feature: Plugin "plugin-preeval.js" uses less.visitors, which is not supported'
   }],
   ['all-less:tests-unit/plugin/plugin.less', {
     cause: 'no-arm-a',

@@ -16,9 +16,11 @@ Notable entries:
 - [`DIALECT-TO-JESS-COMPILED-CONVERSION.md`](./DIALECT-TO-JESS-COMPILED-CONVERSION.md)
   — there is no `jess convert` command; this is the design for one.
 - [`REMOTE-IMPORTS-NETWORK-POLICY.md`](./REMOTE-IMPORTS-NETWORK-POLICY.md) —
-  there is no network `@import` today (URL imports are CSS terminals); this is
-  the opt-in design, with a host allowlist enforced by Deno `--allow-net` and a
-  test that proves the runtime *denies* an off-list host.
+  network `@import` through the opt-in `@jesscss/plugin-remote-import` (without
+  it, URL imports are CSS terminals): a host allowlist, https only, no
+  cross-host redirects, private addresses denied, size and time caps, and a
+  test that proves Deno `--allow-net` *denies* an off-list host. Ledger A13
+  (owner 2026-10-04).
 - [`OPAQUE-FAMILY-REMOVAL.md`](./OPAQUE-FAMILY-REMOVAL.md) — the whole `Opaque*`
   family across the four grammars and `parser-shared`, enumerated with
   file:line, and why an unknown at-rule must parse known rules rather than carry

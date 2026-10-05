@@ -105,11 +105,15 @@ describe('source map generation (live AST-v2 render path)', () => {
     expect(map.version).toBe(3);
     expect(map.names).toEqual([]);
 
-    /* both files present; outputSourceFiles embeds their content */
-    expect(map.sources).toContain(importedPath);
-    expect(map.sources).toContain(entry);
+    /*
+     * Both files present, relative to the entry's directory (Less 4.x's default
+     * `sourceMapBasepath`); outputSourceFiles embeds their content.
+     */
+    expect(map.sources).toContain('imported.less');
+    expect(map.sources).toContain('entry.less');
+    expect(map.file).toBe('entry.css');
     expect(map.sourcesContent).toBeDefined();
-    const importedSourceIndex = map.sources.indexOf(importedPath);
+    const importedSourceIndex = map.sources.indexOf('imported.less');
     expect(map.sourcesContent![importedSourceIndex]).toContain('.imported');
 
     /*
@@ -151,11 +155,20 @@ describe('source map generation (live AST-v2 render path)', () => {
     expect(disabled.map).toBeTypeOf('string'); // map still produced for external write
 
     const rooted = await new Compiler().renderToResult(entry, {
-      output: { sourceMap: { sourceMapRootpath: 'assets/', sourceMapBasepath: dir } }
+      output: { sourceMap: { sourceMapRootpath: 'assets', sourceMapBasepath: dir } }
     });
     const rootedMap = JSON.parse(rooted.map!) as V3Map;
     expect(rootedMap.sources).toContain('assets/imported.less');
     expect(rootedMap.sources).toContain('assets/entry.less');
+
+    /* Less 4.x defaults: `<output>.map`, appended with no trailing newline. */
+    const defaulted = await new Compiler().renderToResult(entry, { output: { sourceMap: true } });
+    expect(defaulted.css.endsWith('}\n/*# sourceMappingURL=entry.css.map */')).toBe(true);
+    const fromString = await new Compiler().renderToResult({ source: '.a { color: red; }', language: 'less' }, {
+      output: { sourceMap: true }
+    });
+    expect(fromString.css).not.toContain('sourceMappingURL');
+    expect(JSON.parse(fromString.map!).file).toBe('output.css');
   });
 
   it('is zero-cost when off: no annotation and byte-identical to a bare render', async () => {

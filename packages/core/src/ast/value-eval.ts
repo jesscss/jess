@@ -321,29 +321,24 @@ export const joinGroup = (v: readonly ValueGroup[], glue: string, emit: (item: V
       continue;
     }
     const bytes = emit(item);
-    out = empty ? bytes : out + glueBefore(glue, bytes) + bytes;
+    out = empty ? bytes : out + itemBoundary(undefined, glue, false, bytes) + bytes;
     empty = false;
   }
   return out;
 };
 
-/**
- * The glue before an item. A `;` group the author left empty
- * (`if(media(print): 1px;)`) keeps its delimiter but not the space that would
- * only precede a value.
- */
-export const glueBefore = (glue: string, bytes: string): string =>
-  bytes === '' && glue === '; ' ? ';' : glue;
-
 export const emitValue = (v: EvalValue): string =>
   typeof v === 'string' ? v : isValueGroupArray(v) ? joinGroup(v, ' ', emitValue) : v.bytes;
 
-/** The whitespace glue joining a list's items for its separator (`,`→`, `, `/`→` / `). */
-export const sepGlue = (sep: ListSeparator): string => {
+/**
+ * The glue joining a list's items for its separator (`,`→`, `, `/`→` / `).
+ * Compressed output tightens the comma (`,`); `/` stays spaced in both.
+ */
+export const sepGlue = (sep: ListSeparator, compress = false): string => {
   switch (sep) {
-    case ',': return ', ';
+    case ',': return compress ? ',' : ', ';
     case '/': return ' / ';
-    case ';': return '; ';
+    case ';': return compress ? ';' : '; ';
   }
 };
 
@@ -358,6 +353,17 @@ export const delimiterOpen = (delimiter: Block['delimiter']): string =>
 /** The emitted closer of a `Block` delimiter; see {@link delimiterOpen}. */
 export const delimiterClose = (delimiter: Block['delimiter']): string =>
   delimiter === 'paren' ? ')' : delimiter === 'square' ? ']' : ' }';
+
+/**
+ * The bytes between two items of a list or call: the canonical `glue`, except
+ * that pretty output replays an authored run carrying a line break (with its
+ * indentation) or a block comment. Compressed output always takes the glue. A
+ * `;` group the author left empty (`if(media(print): 1px;)`) keeps its
+ * delimiter but not the space that would only precede a value, so `next` (the
+ * following item's bytes) is consulted when the caller has it.
+ */
+export const itemBoundary = (authored: string | undefined, glue: string, compress: boolean, next?: string): string =>
+  !compress && authored !== undefined && /[\r\n]|\/\*/u.test(authored) ? authored : next === '' && glue === '; ' ? ';' : glue;
 
 /** Whether a value is an internal bare-byte literal leaf. */
 export const isLiteral = (v: EvalValue): v is string => typeof v === 'string';

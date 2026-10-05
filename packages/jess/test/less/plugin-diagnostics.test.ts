@@ -15,12 +15,14 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
+import { createRequire } from 'node:module';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 import jsPlugin from '@jesscss/plugin-js';
-import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
+import { lessCompatPlugin, type NativeLessPlugin } from '@jesscss/plugin-less-compat';
+import { resolveLessTestDataRoot } from '../test-utils.js';
 
 const tempDirs: string[] = [];
 
@@ -448,4 +450,89 @@ describe('the less-compat tree shim', () => {
     expect(result.errors).toEqual([]);
     expect(result.css).toContain('width: 42px');
   }, 30000);
+});
+
+/*
+ * The Less 4 plugin-manager hook ABI (visitors, pre/post-processors, file
+ * managers) is a deliberate v5 non-goal. The corpus fixtures that exercise it
+ * stay skipped or expected-failing in all-less.test.ts; this pins WHY they
+ * fail: the plugin is refused with a diagnostic naming the native replacement.
+ */
+describe('legacy Less plugin-manager hooks in the corpus fixtures', () => {
+  const testData = resolveLessTestDataRoot();
+
+  it('refuses tests-unit/plugin-preeval at its @plugin statement, naming the missing visitor API', async () => {
+    const entry = path.join(testData, 'tests-unit/plugin-preeval/plugin-preeval.less');
+    const result = await new Compiler({
+      compile: {
+        plugins: [lessPlugin(), jsPlugin({ jsReadRoot: testData, runtimeApi: 'less' }), lessCompatPlugin()]
+      }
+    }).renderToResult(entry, { suppressWarnings: true, breakOnError: false });
+
+    const refusal = result.errors.find(e => e.code === 'plugin/unsupported-feature');
+    expect(refusal, `expected plugin/unsupported-feature, got ${JSON.stringify(result.errors.map(e => e.code))}`)
+      .toBeDefined();
+    expect(refusal!.message).toBe('Plugin "plugin-preeval.js" uses less.visitors, which is not supported');
+    expect(refusal!.fix).toContain('no visitor API');
+
+    /* The sandbox knows no source; the refusal is attributed to the `@plugin` statement. */
+    expect(refusal!.filePath).toBe(entry);
+    expect(refusal!.line).toBe(1);
+  }, 30000);
+
+  /*
+   * `@plugin "clean-css"` resolves to the clean-css library itself (jess has no
+   * 4.x `less-plugin-` name-prefix lookup). Its relative requires load in the
+   * sandbox; the Node built-in it reaches for next is refused.
+   */
+  it('refuses tests-unit/plugin-module at the clean-css library\'s Node built-in require', async () => {
+    const entry = path.join(testData, 'tests-unit/plugin-module/plugin-module.less');
+    const result = await new Compiler({
+      compile: {
+        plugins: [lessPlugin(), jsPlugin({ jsReadRoot: testData, runtimeApi: 'less' }), lessCompatPlugin()]
+      }
+    }).renderToResult(entry, { suppressWarnings: true, breakOnError: false });
+
+    const failure = result.errors.find(e => e.code === 'plugin/load-failed');
+    expect(failure, `expected plugin/load-failed, got ${JSON.stringify(result.errors.map(e => e.code))}`)
+      .toBeDefined();
+    expect(failure!.reason).toContain('require("http") is not supported');
+    expect(failure!.filePath).toBe(entry);
+  }, 30000);
+
+  /*
+   * These fixtures name their plugin through the lessc `--plugin` path option
+   * (`language.less.plugin` in styles.config.cjs), which is not a jess option.
+   * The plugin files live beside the corpus in a less.js checkout; passed
+   * in-process — as less.render's `plugins` option passes them — each is refused.
+   */
+  const lessTestPlugins = path.resolve(testData, '../less/test/plugins');
+  const isNativeLessPlugin = (value: unknown): value is NativeLessPlugin =>
+    typeof value === 'object' && value !== null && 'install' in value && typeof value.install === 'function';
+  const hookFixtures: Array<[string, string, string, string]> = [
+    ['tests-config/visitorPlugin/visitor.less', 'visitor', 'less.visitors', 'no visitor API'],
+    ['tests-config/preProcessorPlugin/preProcessor.less', 'preprocess', 'pluginManager.addPreProcessor()', 'pre-processors'],
+    ['tests-config/postProcessorPlugin/postProcessor.less', 'postprocess', 'pluginManager.addPostProcessor()', 'output.compress'],
+    ['tests-config/filemanagerPlugin/filemanager.less', 'filemanager', 'less.environment', '@jesscss/plugin-node-modules']
+  ];
+
+  for (const [fixture, pluginDir, feature, replacement] of hookFixtures) {
+    const pluginFile = path.join(lessTestPlugins, pluginDir, 'index.cjs');
+    it.skipIf(!fs.existsSync(pluginFile))(`refuses the ${fixture} plugin with plugin/unsupported-feature`, async () => {
+      const plugin: unknown = createRequire(import.meta.url)(pluginFile);
+      if (!isNativeLessPlugin(plugin)) {
+        throw new Error(`${pluginFile} does not export a Less plugin`);
+      }
+      const result = await new Compiler({
+        compile: { plugins: [lessPlugin(), lessCompatPlugin({ plugins: [plugin] })] }
+      }).renderToResult(path.join(testData, fixture), { suppressWarnings: true, breakOnError: false });
+
+      const refusal = result.errors.find(e => e.code === 'plugin/unsupported-feature');
+      expect(refusal, `expected plugin/unsupported-feature, got ${JSON.stringify(result.errors.map(e => e.code))}`)
+        .toBeDefined();
+      expect(refusal!.message).toContain(feature);
+      expect(refusal!.fix).toContain(replacement);
+      expect(result.css).toBe('');
+    }, 30000);
+  }
 });

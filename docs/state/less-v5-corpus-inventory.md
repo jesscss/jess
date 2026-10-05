@@ -73,8 +73,8 @@ above:
   active mismatch is only intentional authored multiline-value preservation)
 - `tests-unit/at-rule-variable-deprecated/at-rule-variable-deprecated.less`
 - `tests-unit/color-functions/operations.less`
-- `tests-unit/extract-and-length/extract-and-length.less` (OPEN V17 structural
-  mixin binding is implemented: fixed/rest/default/forwarding/spread and
+- `tests-unit/extract-and-length/extract-and-length.less` (V17 structural
+  mixin binding — ratified by the owner 2026-10-04 — is implemented: fixed/rest/default/forwarding/spread and
   `@arguments` preserve nested list grouping. The active mismatch is only the
   maintained golden's three spaces after `--empty-value:` for
   `extract(~'', 1)`; the current Less v5 public runtime and every neighboring
@@ -91,7 +91,8 @@ above:
   settled v5 selector compaction and direct-self declaration coalescing, explicit
   nested output, the alpha golden's omission of a source-asserted surviving inline
   comment, and invalid-inline indentation)
-- `tests-unit/import/import.less` (OPEN N10 now makes the definition imported at
+- `tests-unit/import/import.less` (N10 — direct-member rule ratified by the
+  owner 2026-10-04 — makes the definition imported at
   line 18 visible to the line-12 mixin call before output evaluation. The sole
   active blocker is the maintained 4.x media-postlude form rejected by v5
   §12.3b.)
@@ -103,9 +104,11 @@ above:
   ampersand mismatch is an INTENDED DIVERGENCE, owner ruling 2026-08-22:
   `collapseNesting:false` preserves the nested boundary; explicit collapse
   matches the flattened golden, and Less `each()` is pinned as explicit rule
-  multiplication. Separate OPEN O8 owner decisions remain for canonical nested
-  selector-list wrapping and leading whitespace from an escaped quoted selector
-  at a header boundary. Owner-maintained fixture corrections are needed for the
+  multiplication. The separate O8 output-policy questions are ruled (owner
+  2026-10-04): an interpolated multi-branch nested header prints one branch per
+  line, and leading whitespace from an escaped quoted selector at a header
+  boundary is canonicalized away; implementation pending. Owner-maintained
+  fixture corrections are needed for the
   flattened final stanza and the golden `foo: bar` whose quoted-case source says
   `foo: baz`.)
 - `tests-unit/plugin/plugin.less`
@@ -156,10 +159,13 @@ registry members are not active lane checks.
 
 ### Not a registry entry: `import-remote`
 
-`tests-unit/import/import-remote.less` is **not** in `expectedFailureFixtures`.
-It is a member of the separate `skippedFixtures` array in the same file — remote
-URL imports require an explicit network/IO allowlist, which is not part of the
-alpha harness policy. It must not be counted in any registry disposition.
+`tests-unit/import/import-remote.less` is in neither `expectedFailureFixtures`
+nor `skippedFixtures`: it is an ordinary passing gate. The harness enables the
+opt-in `@jesscss/plugin-remote-import` for `cdn.jsdelivr.net` with a transport
+that answers from the local test-data checkout, so the fixture exercises the
+remote-import route without a network
+(`docs/design/REMOTE-IMPORTS-NETWORK-POLICY.md` §7; ledger **A13**, owner
+2026-10-04).
 
 The named reason beside every entry remains in
 `expectedFailureFixtures`; update that reason and this classification together.
@@ -233,8 +239,10 @@ oracle moves only the two physical copies of the upstream svg-gradient fixture.
   by the `dev` branch history.
 
 The remote import fixture is tracked in
-[`less-v5-release-plan.md`](../process/less-v5-release-plan.md) as a deferred
-Phase C import/security feature, not as a flaky expected failure.
+[`less-v5-release-plan.md`](../process/less-v5-release-plan.md) as the Phase C
+import/security feature (implemented under ledger **A13** as
+`@jesscss/plugin-remote-import`; the fixture is now an ordinary gate), not as a
+flaky expected failure.
 
 ### Post-N10 actionable boundary (2026-08-26)
 
@@ -254,7 +262,17 @@ This boundary does not reclassify any owner-maintained fixture and does not infe
 selector-list distribution. Less `each()` and Sass `@each` already share the core
 `For` construct as the explicit distribution mechanism.
 
-### OPEN N10 document-root import facts
+**Update (2026-10-04).** Owner rulings since this snapshot move four of those
+boundaries: remote imports are v5 build work behind an opt-in allowlisted plugin
+(ledger **A13**); the source-map engine landed and maps ship before further
+compress work (ledger **O3** sequencing); the legacy host hooks are a deliberate
+non-goal answered by an opt-in compat-plugin diagnostic (ledger **A12**); and
+compressed output is SETTLED (owner 2026-09-10) with its engine implementation
+landed in `8460078ff`. `dumpLineNumbers` is accepted with a deprecation warning
+and otherwise ignored, so its `tests-config/debug/*` fixtures are intended
+divergences (ledger **O11**).
+
+### N10 document-root import facts (direct-member rule ratified 2026-10-04)
 
 - Static planning now publishes direct variables, mixin definitions, and root
   ruleset/namespace facts from the complete document-root import graph before
@@ -303,7 +321,10 @@ they already pass through ordinary Less `@plugin` function registration. The
 deferred Phase E surface in
 [`less-v5-release-plan.md`](../process/less-v5-release-plan.md) includes
 preprocessor, postprocessor, visitor, custom file-manager, legacy CommonJS
-plugin graph, and pre-eval/tree visitor behavior.
+plugin graph, and pre-eval/tree visitor behavior. Ledger **A12** (owner
+2026-09-14, reaffirmed 2026-10-04) is their scope decision: a deliberate
+non-goal, answered by an opt-in `@jesscss/plugin-less-compat` diagnostic that
+names the native replacement, never by a visitor port.
 
 ## Release-note rule
 

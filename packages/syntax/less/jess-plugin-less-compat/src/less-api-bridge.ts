@@ -2,6 +2,7 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   defineFunction,
   emitValue,
+  ERR,
   FunctionDeclined,
   groupItems,
   HEX,
@@ -34,7 +35,33 @@ export type ContextualPluginFunction = (
 export type NativeLessPlugin = {
   readonly name?: string;
   readonly opts?: unknown;
-  install?(less: NativeLessApi, manager: undefined, functions: NativeLessFunctionRegistry): void;
+  install?(less: NativeLessApi, manager: NativeLessPluginManager, functions: NativeLessFunctionRegistry): void;
+};
+
+/**
+ * The Less 4 plugin-manager hooks. v5 does not run any of them: each call is
+ * refused with a `plugin/unsupported-feature` diagnostic naming the native
+ * replacement, so the plugin cannot install half-working.
+ */
+export interface NativeLessPluginManager {
+  addVisitor(visitor: unknown): never;
+  addPreProcessor(processor: unknown, priority?: number): never;
+  addPostProcessor(processor: unknown, priority?: number): never;
+  addFileManager(fileManager: unknown): never;
+}
+
+/**
+ * What a refusal calls the plugin: its `name`, else its class name, else its
+ * position in the `plugins` option. A 4.x plugin built as a constructor with an
+ * object-literal prototype (less-plugin-clean-css) has neither name, and an ESM
+ * namespace or `Object.create(null)` plugin has no `constructor` at all.
+ */
+const pluginLabel = (plugin: NativeLessPlugin, index: number): string => {
+  if (plugin.name) {
+    return plugin.name;
+  }
+  const ctor: unknown = Reflect.get(plugin, 'constructor');
+  return typeof ctor === 'function' && ctor !== Object && ctor.name !== '' ? ctor.name : `plugins[${index}]`;
 };
 
 export interface NativeLessFunctionRegistry {
@@ -394,9 +421,29 @@ export class LessApiBridge {
         Anonymous: LessAnonymous
       }
     };
-    for (const plugin of plugins) {
-      plugin.install?.(this.less, undefined, this.registry);
-    }
+    plugins.forEach((plugin, index) => {
+      /*
+       * Each plugin gets its own manager and `less` view, so a refusal names the
+       * plugin that reached for the hook, even when a function it registered
+       * reads `less.visitors` long after install.
+       */
+      const label = pluginLabel(plugin, index);
+      const refuse = (feature: string): never => {
+        throw ERR.pluginUnsupported({ meta: { plugin: label, feature } });
+      };
+      const manager: NativeLessPluginManager = {
+        addVisitor: () => refuse('pluginManager.addVisitor()'),
+        addPreProcessor: () => refuse('pluginManager.addPreProcessor()'),
+        addPostProcessor: () => refuse('pluginManager.addPostProcessor()'),
+        addFileManager: () => refuse('pluginManager.addFileManager()')
+      };
+      const less = Object.defineProperties({ ...this.less }, {
+        visitors: { get: () => refuse('less.visitors') },
+        FileManager: { get: () => refuse('less.FileManager') },
+        environment: { get: () => refuse('less.environment') }
+      });
+      plugin.install?.(less, manager, this.registry);
+    });
     this.globalFns = this.#fns;
   }
 

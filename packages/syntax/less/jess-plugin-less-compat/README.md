@@ -6,8 +6,15 @@
 and provides the shared Jess-owned bridge for Less-style plugin function
 registration and Less-shaped function values.
 
-The public compiler does **not** support Less 4 visitors, post-processors, file
-manager plugins, or a full Less tree AST adapter.
+The public compiler does **not** support Less 4 visitors, pre/post-processors,
+file manager plugins, or a full Less tree AST adapter. A plugin that calls
+`pluginManager.addVisitor` / `addPreProcessor` / `addPostProcessor` /
+`addFileManager` (or reads `less.visitors`, `less.FileManager`,
+`less.environment`) is refused with a `plugin/unsupported-feature` error that
+names the replacement: `output.compress` instead of a minifier such as
+`less-plugin-clean-css`, `@jesscss/plugin-node-modules` instead of
+`less-plugin-npm-import`, and running other post-processors (e.g. PostCSS with
+autoprefixer) on the compiled CSS.
 
 ## How it works
 
@@ -61,9 +68,11 @@ prototype-patching plugins.
 ## Status
 
 **Alpha / experimental.** The supported public routes are native function
-contribution and Less plugin function bridging. If you need Less visitors,
-post-processors, file managers, or broad Less tree AST mutation support today,
-use Less.js directly.
+contribution and Less plugin function bridging. Less visitors, file managers,
+and broad Less tree AST mutation are a deliberate non-goal for Less 5, not
+pending work: npm-style import resolution is native in
+`@jesscss/plugin-node-modules`, and minification is the `output.compress`
+option. If you depend on a visitor plugin, use Less.js 4.x.
 
 The programmatic plugin/compiler API is **not yet stabilized** — the `jess` CLI
 is the documented public surface for the alpha. Watch the

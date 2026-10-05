@@ -456,9 +456,9 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
   [
     'plugin/unsupported-feature',
     {
-      summary: 'Unsupported feature',
-      reason: 'Plugin "${plugin}" does not implement ${feature}.',
-      fix: 'Use a supported alternative or enable a fallback.'
+      summary: 'Plugin "${plugin}" uses ${feature}, which is not supported',
+      reason: 'Plugin "${plugin}" uses ${feature}, which this compiler does not provide, so the plugin cannot be installed.',
+      fix: '${replacement}'
     }
   ],
 

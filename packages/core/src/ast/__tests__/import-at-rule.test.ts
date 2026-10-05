@@ -567,6 +567,100 @@ describe('StyleImport', () => {
     });
   });
 
+  it('keeps an external specifier intact through the filesystem resolver', () => {
+    const files = new (class extends AbstractPlugin {
+      name = 'files';
+    })();
+
+    expect(files.resolve(['https://h.example/a.less', '//h.example/b.less', 'c.less'], '/base', ['/include'])).toEqual([
+      'https://h.example/a.less',
+      '//h.example/b.less',
+      '/base/c.less',
+      '/include/c.less'
+    ]);
+  });
+
+  /*
+   * A plugin that claims `https://h.example/…` and serves canned sources, next to
+   * a filesystem-shaped parser plugin listed FIRST. The parser's own source getter
+   * must never be asked for a URL: the plugin that located a path supplies it.
+   */
+  const remoteFixture = (documents: Record<string, ReturnType<typeof stylesheet>>) => {
+    const claimed: string[] = [];
+    const parsed: Array<[string, string]> = [];
+    const parser = new (class extends AbstractPlugin {
+      name = 'less';
+      supportedExtensions = ['.less'];
+
+      override async getSource(filePath: string): Promise<string> {
+        throw new Error(`read ${filePath} from disk`);
+      }
+
+      safeParse(filePath: string, source: string) {
+        parsed.push([filePath, source]);
+        return { document: documents[filePath], errors: [], warnings: [] };
+      }
+    })();
+    const remote = {
+      name: 'remote',
+      canResolveImport: (specifier: string) => {
+        claimed.push(specifier);
+        return specifier.startsWith('https://h.example/');
+      },
+      locate: (paths: string[]) => paths.find(candidate => candidate.startsWith('https://h.example/')) ?? null,
+      getSource: async (location: string) => `/* ${location} */`
+    };
+    return { context: new Context({}, [parser, remote]), claimed, parsed };
+  };
+
+  it('sources a claimed external import from the plugin that located it, query included', async () => {
+    const remoteUrl = 'https://h.example/dir/tokens.less?v=2';
+    const { context, parsed } = remoteFixture({
+      [remoteUrl]: stylesheet([variableDeclaration('tone', color('red'), { mode: 'declare' })])
+    });
+    const document = stylesheet([
+      authoredImport('@import', url(quoted(`"${remoteUrl}#frag"`, `${remoteUrl}#frag`, '"', false)), list([keyword('reference')], ',')),
+      rule('.uses-token', [decl('color', variableReference('tone', 'scoped'))])
+    ]);
+
+    await expect(serialize(document, { context })).resolves.toEqual({
+      css: '.uses-token {\n  color: red;\n}\n'
+    });
+    expect(parsed).toEqual([[remoteUrl, `/* ${remoteUrl} */`]]);
+  });
+
+  it('resolves an import inside a remote document against its URL, through the same claim gate', async () => {
+    const parent = 'https://h.example/dir/a.less';
+    const child = 'https://h.example/dir/b.less';
+    const { context, claimed, parsed } = remoteFixture({
+      [parent]: stylesheet([authoredImport('@import', quoted('"b.less"', 'b.less', '"', false))]),
+      [child]: stylesheet([variableDeclaration('tone', color('red'), { mode: 'declare' })])
+    });
+    const document = stylesheet([
+      authoredImport('@import', quoted(`"${parent}"`, parent, '"', false), list([keyword('reference')], ',')),
+      rule('.uses-token', [decl('color', variableReference('tone', 'scoped'))])
+    ]);
+
+    await expect(serialize(document, { context })).resolves.toEqual({
+      css: '.uses-token {\n  color: red;\n}\n'
+    });
+    expect(claimed).toEqual([parent, child]);
+    expect(parsed.map(([filePath]) => filePath)).toEqual([parent, child]);
+  });
+
+  it('does not mistake a Windows drive path for an external specifier', async () => {
+    const drivePath = 'C:/styles/tokens.less';
+    const imported = stylesheet([]);
+    const context = new Context({}, [{
+      name: 'drive',
+      canResolveImport: () => false,
+      locate: paths => paths.includes(drivePath) ? drivePath : null
+    }]);
+    context.sourceTrees.set(drivePath, imported);
+
+    await expect(context.loadImport(drivePath)).resolves.toMatchObject({ node: imported, resolvedPath: drivePath });
+  });
+
   it('renders a composed module with its own variable when it is not configured', async () => {
     const moduleDoc = stylesheet([
       variableDeclaration('x', color('blue'), { mode: 'declare' }),

@@ -117,12 +117,17 @@ function cloneConfiguredPlugin(plugin: PluginInterface): PluginInterface {
   }
 }
 
+/**
+ * Prepend `banner`/`globalVars` and append `modifyVars` to a Less entry source.
+ * `sourceOffset` is the length of the prepended text, so source maps can point
+ * into the file as authored.
+ */
 export function prepareLessRootSource(
   source: string,
   context: LessSourcePreparationContext
-): string {
+): { source: string; sourceOffset: number } {
   if (context.language !== undefined && context.language !== 'less') {
-    return source;
+    return { source, sourceOffset: 0 };
   }
   const prefix = [
     typeof context.activeOptions.banner === 'string' ? context.activeOptions.banner : undefined,
@@ -130,11 +135,14 @@ export function prepareLessRootSource(
   ].filter(Boolean).join('\n');
   const suffix = renderVariableOverrides(getVariableOverrides(context.activeOptions.modifyVars));
 
-  return [
-    prefix,
-    source,
-    suffix
-  ].filter(Boolean).join('\n');
+  return {
+    source: [
+      prefix,
+      source,
+      suffix
+    ].filter(Boolean).join('\n'),
+    sourceOffset: prefix === '' ? 0 : prefix.length + 1
+  };
 }
 
 export class LessPluginResolver {
@@ -287,15 +295,6 @@ function escapeUnquotedUrlPath(pathValue: string): string {
       : char;
   }
   return escaped;
-}
-
-function jsDelivrPackageSpecifier(candidate: string): string | null {
-  const absolute = candidate.match(/^https?:\/\/cdn\.jsdelivr\.net\/npm\/([^?#]+)(?:[?#].*)?$/i);
-  if (absolute?.[1]) {
-    return absolute[1];
-  }
-  const relative = candidate.match(/^\/\/cdn\.jsdelivr\.net\/npm\/([^?#]+)(?:[?#].*)?$/i);
-  return relative?.[1] ?? null;
 }
 
 export class LessPlugin extends AbstractPlugin {
@@ -488,7 +487,7 @@ export class LessPlugin extends AbstractPlugin {
           return path.join(packagesRoot, 'test-import-module', after);
         }
       }
-      return jsDelivrPackageSpecifier(candidate) ?? candidate;
+      return candidate;
     });
 
     const resolved = super.resolve(mapped, currentDir, searchPaths);
@@ -529,10 +528,6 @@ export class LessPlugin extends AbstractPlugin {
       }
     }
     return out;
-  }
-
-  canResolveImport(specifier: string): boolean {
-    return jsDelivrPackageSpecifier(specifier) !== null;
   }
 
   /**

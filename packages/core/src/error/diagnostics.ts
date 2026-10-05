@@ -564,6 +564,28 @@ export function makeJessError(init: JessErrorInit): JessError {
   return new JessError(init);
 }
 
+const NO_VISITORS = 'Less v5 has no visitor API: remove the plugin, or port what it does to a function plugin or to a step that runs on the compiled CSS.';
+const NO_FILE_MANAGERS = 'Less v5 has no custom file managers: for npm imports (less-plugin-npm-import) use @jesscss/plugin-node-modules; other import resolution belongs in a Jess plugin\'s resolve/locate hooks.';
+
+/**
+ * The Less 4 plugin-manager API that Less v5 deliberately does not run, keyed
+ * by the member a plugin reaches for, with the replacement its refusal names.
+ * One table for both Less plugin runtimes: the in-process bridge of
+ * `@jesscss/plugin-less-compat`, and the `@plugin` sandbox of
+ * `@jesscss/plugin-js`, whose worker reports only the member it refused.
+ */
+const UNSUPPORTED_PLUGIN_API_REPLACEMENTS: ReadonlyMap<string, string> = new Map([
+  ['pluginManager.addVisitor()', NO_VISITORS],
+  ['pluginManager.addPreProcessor()', 'Less v5 does not run source pre-processors: transform the source before it reaches the compiler.'],
+  ['pluginManager.addPostProcessor()', 'Less v5 does not run CSS post-processors: for minification (less-plugin-clean-css) set output.compress (`compress` in less.render / lessc); otherwise run the tool, e.g. PostCSS with autoprefixer, on the compiled CSS.'],
+  ['pluginManager.addFileManager()', NO_FILE_MANAGERS],
+
+  /* 4.x plugins reach these before the hook call (`new less.visitors.Visitor(this)`). */
+  ['less.visitors', NO_VISITORS],
+  ['less.FileManager', NO_FILE_MANAGERS],
+  ['less.environment', NO_FILE_MANAGERS]
+]);
+
 export function makeJessErrorFromDiagnostic(
   diagnostic: ErrorDiagnostic
 ): JessError {
@@ -849,13 +871,23 @@ export const ERR = {
   },
 
   // Plugin
+  /**
+   * A plugin reached for an API this compiler deliberately does not provide
+   * (e.g. a Less 4 plugin-manager hook). The fix names the native replacement
+   * from {@link UNSUPPORTED_PLUGIN_API_REPLACEMENTS}.
+   */
   pluginUnsupported(
     args: Common & { meta: { plugin: string; feature: string } }
   ) {
     return makeJessError({
       code: 'plugin/unsupported-feature',
       phase: 'plugin',
-      ...args
+      ...args,
+      meta: {
+        ...args.meta,
+        replacement: UNSUPPORTED_PLUGIN_API_REPLACEMENTS.get(args.meta.feature)
+          ?? 'Remove the plugin, or replace what it does with a supported plugin API.'
+      }
     });
   },
 

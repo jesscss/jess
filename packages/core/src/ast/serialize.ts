@@ -128,13 +128,13 @@ import {
   emitValue,
   delimiterClose,
   delimiterOpen,
-  glueBefore,
-  sepGlue,
   isValueGroup,
   isValueGroupArray,
   isElided,
   isLiteral,
+  itemBoundary,
   literal,
+  sepGlue,
   type EvalModes,
   type FnScope,
   type PluginCallCtx,
@@ -153,8 +153,7 @@ import { defineFunction, FunctionDeclined } from './value-dispatch.js';
 import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
-import { colorRgb, HEX } from './color.js'; // [compress] typed-color channel read + hex-format tag
-import { compressDimensionBytes, compressSelectorHeader, shortestColor, shortestColorFromHex } from './compress.js';
+import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
 import { UnitArithmeticError, calcInner, preservedUnitClashes, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
@@ -228,6 +227,9 @@ export interface Position {
    * lets a multi-file source map attribute each mapping to the right file.
    */
   source?: SourceContext['file'];
+
+  /** The authored offset in `source`, when the chunk has no node of its own (inlined text). */
+  sourceStart?: number;
 }
 
 export interface SerializeOptions {
@@ -351,6 +353,9 @@ export interface ImportDocumentTree {
  */
 export interface ImportDocumentInline {
   readonly inline: string;
+
+  /** The inlined file, so source maps can point each spliced line back into it. */
+  readonly file?: SourceContext['file'];
 }
 
 export type ImportDocument = ImportDocumentTree | ImportDocumentInline;
@@ -453,8 +458,12 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
     const request = { node, specifier, options };
     if (importHasOption(options, 'inline')) {
       try {
-        const bytes = await context.readBinary(specifier);
-        return { inline: bytes.toString() };
+        const { resolvedPath, source: inline } = await context.readInlineImport(specifier);
+        const slash = Math.max(resolvedPath.lastIndexOf('/'), resolvedPath.lastIndexOf('\\'));
+        return {
+          inline,
+          file: { name: resolvedPath.slice(slash + 1), path: resolvedPath.slice(0, Math.max(slash, 0)), fullPath: resolvedPath, source: inline }
+        };
       } catch (error) {
         importError(request, error);
       }
@@ -1310,7 +1319,7 @@ function activateBodyDependencies(
        */
       const failed = (error: unknown): never => {
         throw error instanceof JessError
-          ? error
+          ? error.attributeTo(callSiteLocation(statement, e))
           : ERR.pluginLoadFailed({
               node: statement,
               ...callSiteLocation(statement, e),
@@ -3865,9 +3874,10 @@ function evalValueSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybeP
         continue;
       }
       if (!empty) {
-        bytes += separators === undefined ? ' ' : separators[index - 1] ?? ' ';
+        /* [compress] one space; the authored (possibly multi-line) run is pretty-only. */
+        bytes += e.compress === true ? ' ' : separators?.[index - 1] ?? ' ';
       }
-      bytes += emitValue(item);
+      bytes += emitValueC(item, e);
       empty = false;
     }
 
@@ -4453,8 +4463,21 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'Color':
       return literal(e.compress ? shortestColorFromHex(node.src) : node.src);
 
-    case 'Keyword':
     case 'Any':
+      /*
+       * [compress] A mixin argument binds as its evaluated bytes. When the binding
+       * kept the typed value beside them (a function-form color, a list), that
+       * value folds by its type, as the same value reaching the declaration
+       * directly does.
+       */
+      if (e.compress === true) {
+        const carried = frame?.mixinValueBindings?.get(node) ?? e.mixinValueBindings?.get(node);
+        if (carried !== undefined) {
+          return carried;
+        }
+      }
+      return literal(node.src);
+    case 'Keyword':
     case 'Comment':
 
     /*
@@ -4579,7 +4602,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         return combineAll(values, (resolved) => {
           let bytes = emitValueC(resolved[0]!, e);
           for (let i = 1; i < resolved.length; i++) {
-            const separator = hit.merged![i]!.node.merge === ',' ? (e.compress === true ? ',' : ', ') : ' ';
+            const separator = hit.merged![i]!.node.merge === ',' ? sepGlue(',', e.compress === true) : ' ';
             bytes += separator + emitValueC(resolved[i]!, e);
           }
           return literal(bytes);
@@ -4631,11 +4654,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
           }
         }
 
-        /*
-         * [compress] tighten the comma separator (`, `→`,`); the `/` separator stays
-         * spaced and a space list keeps its single space.
-         */
-        const glue = node.sep === ',' && e.compress === true ? ',' : sepGlue(node.sep);
+        const compress = e.compress === true;
+        const glue = sepGlue(node.sep, compress);
         const authored = valueLayoutOf(node);
 
         /* [null] An elided item takes its separator with it (§4.3): dart-sass
@@ -4649,8 +4669,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
           }
           const bytes = emitValueC(item, e);
           if (!empty) {
-            const separator = authored?.[index - 1];
-            out += e.compress !== true && separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glueBefore(glue, bytes);
+            out += itemBoundary(authored?.[index - 1], glue, compress, bytes);
           }
           out += bytes;
           empty = false;
@@ -5065,9 +5084,11 @@ function evalCollection(
  * so it stays a literal: §4.3 measures `b: "v#{$x}"` as `b: "v"`, not a drop.
  */
 function evalInterp(node: Interpolation, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
+  const lone = node.parts.length === 1 ? node.parts[0]! : undefined;
+  const ei = lone !== undefined && 'ref' in lone && lone.ref.type === 'Expression' ? e : spliceCtx(e);
   const pieces: Array<MaybePromise<EvalValue>> = [];
   for (const part of node.parts) {
-    pieces.push('lit' in part ? part.lit : evalValue(part.ref, frame, e));
+    pieces.push('lit' in part ? part.lit : evalValue(part.ref, frame, ei));
   }
   return combineAll(pieces, (values) => {
     let bytes = '';
@@ -5131,8 +5152,19 @@ function evalInterp(node: Interpolation, frame: Frame | null, e: EvalCtx): Maybe
     }
     return elided && values.length > 0
       ? NULL
-      : literal(resolveEmergentInterp(bytes, frame, e));
+      : literal(resolveEmergentInterp(bytes, frame, ei));
   });
+}
+
+/**
+ * [compress] The context an interpolation splice evaluates in. Spliced bytes
+ * become part of a larger token — a selector, a string, a property name — and
+ * folding them would change that token (`.s-@{c}` with `@c: #ffffff` is not
+ * `.s-#fff`), so compressed output spells them exactly as pretty output does
+ * (ledger O3: safe-only).
+ */
+function spliceCtx(e: EvalCtx): EvalCtx {
+  return e.compress === true ? { ...e, compress: false, modes: { ...e.modes, compress: false } } : e;
 }
 
 /** A Less identifier byte (`@{name}` name class: `-_A-Za-z0-9` + non-ASCII). */
@@ -6336,18 +6368,17 @@ function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): Mayb
   const items = node.args.map(a => evalValueSlot(a.value, frame, preserve));
   return combineAll(items, (vals) => {
     const authored = valueLayoutOf(node.args);
-    const glue = node.modern ? ' ' : (e.compress === true ? ',' : ', ');
+    const compress = e.compress === true;
+
+    /*
+     * Comma spacing is minimal-correctness normalized to one space after the
+     * comma (owner rule 2026-08-17), matching the general call/list byte lane
+     * above — it is NOT authorship.
+     */
+    const glue = node.modern ? ' ' : sepGlue(',', compress);
     let inner = emitValueC(vals[0]!, e);
     for (let index = 1; index < vals.length; index += 1) {
-      const separator = authored?.[index - 1];
-
-      /*
-       * Comma spacing is minimal-correctness normalized to one space after the
-       * comma (owner rule 2026-08-17), matching the general call/list byte lane
-       * above — it is NOT authorship. The ONLY authored boundaries replayed
-       * verbatim are a newline + its indentation offset and a block comment.
-       */
-      inner += separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue;
+      inner += itemBoundary(authored?.[index - 1], glue, compress);
       inner += emitValueC(vals[index]!, e);
     }
     return literal(`${node.name}(${inner})`);
@@ -6573,7 +6604,17 @@ function mixinGroupMode(value: ValueGroup): MixinGroupMode {
   return valueGroupHasUrl(value) ? MIXIN_GROUP_URL : MIXIN_GROUP_VALUE;
 }
 
-/** Construct one candidate-owned eager snapshot from already-derived source facts. */
+/**
+ * Construct one candidate-owned eager snapshot from already-derived source facts.
+ *
+ * TODO(compress-mixin-snapshot): under `output.compress` some callers derive
+ * `bytes` through `evalBytes`, which folds them, so a parameter interpolated
+ * inside the mixin body (`.s-@{a}` with `.m(@c)`, `@c: #ffffff`) prints the
+ * folded `#fff` — a different selector (ledger O3: safe-only). The fix is to
+ * snapshot the uncompressed spelling and carry the typed value for every
+ * snapshot under compress, so declarations still fold it by type. Tracked in
+ * docs/architecture/core/LESS-4X-FEATURE-TRIAGE.md row 5.
+ */
 function snapshotPreparedMixinValue(
   value: ValueGroup,
   mode: MixinGroupMode,
@@ -7268,23 +7309,8 @@ function evalCall(
   if (e.ev && node.args.length === 1 && node.name.toLowerCase() === 'calc') {
     return evalCalc(node, frame, e);
   }
-  const sep = node.modern ? ' ' : ',';
   if (!e.ev) {
-    if (node.args.length === 0) {
-      return literal(`${node.name}()`);
-    }
-    const items = node.args.map(a => evalValueSlot(a.value, frame, e));
-    return combineAll(items, (vals) => {
-      const authored = valueLayoutOf(node.args);
-      const glue = sep === ' ' ? ' ' : (e.compress === true ? ',' : ', ');
-      let inner = emitValueC(vals[0]!, e);
-      for (let index = 1; index < vals.length; index += 1) {
-        const separator = authored?.[index - 1];
-        inner += separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue;
-        inner += emitValueC(vals[index]!, e);
-      }
-      return literal(`${node.name}(${inner})`);
-    });
+    return preserveCall(node, frame, e);
   }
   const lname = node.name.toLowerCase();
 
@@ -7441,7 +7467,7 @@ function writtenBlockBody(
       ? undefined
       : items.find((item): item is Entry => typeof item === 'object' && 'mergeKey' in item && item.mergeKey === key);
     if (prior !== undefined) {
-      prior.parts.push({ separator: rule.merge === ',' ? (compress ? ',' : ', ') : ' ', value, sink });
+      prior.parts.push({ separator: rule.merge === ',' ? sepGlue(',', compress) : ' ', value, sink });
       prior.important ||= important;
       return;
     }
@@ -7633,7 +7659,7 @@ function pluginCallFailure(
   e: EvalCtx
 ): MaybePromise<EvalValue> {
   if (error instanceof JessError) {
-    throw error;
+    throw error.attributeTo(callSiteLocation(node, e));
   }
   const reason = error instanceof JessError
     ? error.message
@@ -7708,7 +7734,7 @@ function joinSpacedBytes(node: Sequence, frame: Frame | null, e: EvalCtx): Maybe
        * [compress] a space list keeps ONE space; the authored (possibly multi-line)
        * boundary run is replayed only in pretty output.
        */
-      out += e.compress === true ? ' ' : (authored?.[index - 1] ?? ' ');
+      out += e.compress === true ? ' ' : authored?.[index - 1] ?? ' ';
       out += emitValueC(values[index]!, e);
     }
     return literal(out);
@@ -7718,35 +7744,10 @@ function joinSpacedBytes(node: Sequence, frame: Frame | null, e: EvalCtx): Maybe
 /**
  * [compress] Compress-aware value emit. Off (or a bare-string literal that was
  * already folded upstream in {@link evalValue}) is exactly {@link emitValue}. On,
- * a typed COMPUTED leaf folds by its RESULT type: a hex-format `Color` to the
- * shortest of {folded hex, named color}, a `Dimension` to its zero-trimmed
- * spelling; a space-group recurses per item. Function-form colors (`rgb()`/`hsl()`,
- * a non-HEX format) are left as their serialized bytes (no representation change).
+ * a typed COMPUTED value folds by its RESULT type ({@link emitCompressed}).
  */
 function emitValueC(v: EvalValue, e: EvalCtx): string {
-  if (e.compress !== true || typeof v === 'string') {
-    return emitValue(v);
-  }
-  if (isValueGroupArray(v)) {
-    let out = '';
-    let empty = true;
-    for (const item of v) {
-      if (isElided(item)) {
-        continue;
-      }
-      out = empty ? emitValueC(item, e) : `${out} ${emitValueC(item, e)}`;
-      empty = false;
-    }
-    return out;
-  }
-  if (v.type === 'Dimension') {
-    return compressDimensionBytes(v.bytes);
-  }
-  if (v.type === 'Color' && v.format === HEX) {
-    const [r, g, b] = colorRgb(v);
-    return shortestColor(r, g, b, v.alpha);
-  }
-  return v.bytes;
+  return e.compress === true ? emitCompressed(v) : emitValue(v);
 }
 
 /** Fold a value node and return its emitted bytes. */
@@ -7788,7 +7789,7 @@ function evalBytes(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromi
  * unit multiset to validate.
  */
 function evalBytesInterp(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
-  return mapMaybe(evalValue(node, frame, e), emitValue);
+  return mapMaybe(evalValue(node, frame, spliceCtx(e)), emitValue);
 }
 
 /** Bytes for a synchronous position (at-rule prelude); async there is out of scope. */
@@ -8505,7 +8506,12 @@ interface DynamicExtendState {
 
 interface Emit extends EvalCtx {
   chunks: string[];
-  off: number;
+
+  /*
+   * Source-map positions. During the walk `start`/`end` are CHUNK indices: async
+   * fills, null drops and late extend headers rewrite chunks after the walk, so
+   * character offsets are resolved once, from the final chunks, in `finalize`.
+   */
   positions: Position[] | null;
 
   /*
@@ -8690,7 +8696,6 @@ function scratchEmit(e: EvalCtx): Emit {
     mixinValueBindings: e.mixinValueBindings,
     io: e.io, // [io] preserve the file-read capability
     chunks: [],
-    off: 0,
     positions: null,
     pending: [],
     drops: [],
@@ -8793,10 +8798,10 @@ function putValue(e: Emit, node: ValueSlot, frame: Frame | null, positionNode?: 
     return null;
   }
   const bytes = finish(b);
-  const valStart = e.off;
+  const valStart = e.chunks.length;
   put(e, bytes);
   if (e.positions && positionNode) {
-    e.positions.push({ node: positionNode, type: positionNode.type, start: valStart, end: e.off, source: srcFile(e) });
+    e.positions.push({ node: positionNode, type: positionNode.type, start: valStart, end: e.chunks.length, source: srcFile(e) });
   }
   return bytes;
 }
@@ -8805,8 +8810,20 @@ function putValue(e: Emit, node: ValueSlot, frame: Frame | null, positionNode?: 
 
 function put(e: Emit, s: string): void {
   e.chunks.push(s);
-  if (e.positions) {
-    e.off += s.length;
+}
+
+/** Turn the walk's chunk-index positions into character offsets of the final output. */
+function resolvePositionOffsets(chunks: readonly string[], positions: Position[]): void {
+  const offsets = new Array<number>(chunks.length + 1);
+  let off = 0;
+  for (let i = 0; i < chunks.length; i++) {
+    offsets[i] = off;
+    off += chunks[i]!.length;
+  }
+  offsets[chunks.length] = off;
+  for (const position of positions) {
+    position.start = offsets[Math.min(position.start, chunks.length)]!;
+    position.end = offsets[Math.min(position.end, chunks.length)]!;
   }
 }
 
@@ -8862,9 +8879,6 @@ function emitBlockClose(e: Emit, idt: string, lb?: Emit['lastBlock']): void {
      */
     if (k >= 0 && c[k] === ';' && e.lastDeclCustom !== true) {
       c[k] = '';
-      if (e.positions) {
-        e.off -= 1;
-      }
       dropped = true;
     }
     if (lb) {
@@ -11031,7 +11045,6 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
   const modules = new Map<ModuleImport, PreparedModule>();
   const e: Emit = {
     chunks: [],
-    off: 0,
     positions: null,
     ev: options?.evaluator ?? options?.context?.evaluator ?? null,
     modes: { ...(options?.modes ?? options?.context?.options ?? DEFAULT_MODES), compress: options?.compress ?? false },
@@ -11123,7 +11136,6 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     : preparedModules(options.preparedImports);
   const e: Emit = {
     chunks: [],
-    off: 0,
     positions: options?.trackPositions ? [] : null,
     ev: options?.evaluator ?? options?.context?.evaluator ?? null, // typed value evaluator
     modes: { ...(options?.modes ?? options?.context?.options ?? DEFAULT_MODES), compress: options?.compress ?? false },
@@ -11238,7 +11250,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
         pendingHeaderIndent: ''
       };
     }
-    const start = e.off;
+    const start = e.chunks.length;
 
     /*
      * [charset] Hoist the first document-level `@charset` ahead of all body
@@ -11287,11 +11299,15 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
           }
         }
       }
-      return e.positions ? { css: e.chunks.join(''), positions: e.positions } : { css: e.chunks.join('') };
+      if (e.positions) {
+        resolvePositionOffsets(e.chunks, e.positions);
+        return { css: e.chunks.join(''), positions: e.positions };
+      }
+      return { css: e.chunks.join('') };
     };
     const finish = (): SerializeReturn => {
       if (e.positions) {
-        e.positions.push({ node: root, type: root.type, start, end: e.off, source: srcFile(e) });
+        e.positions.push({ node: root, type: root.type, start, end: e.chunks.length, source: srcFile(e) });
       }
 
       // lift to async ONLY if a genuinely-async built-in reserved a placeholder.
@@ -16026,7 +16042,7 @@ function flushBlock(
       if (idt) {
         put(e, idt);
       }
-      const selStart = e.off;
+      const selStart = e.chunks.length;
 
       /*
        * [extend/dynamic] The header is its OWN chunk; record its index so the
@@ -16039,7 +16055,7 @@ function flushBlock(
       }
       put(e, header);
       if (e.positions && selNode) {
-        e.positions.push({ node: selNode, type: selNode.type, start: selStart, end: e.off, source: srcFile(e) });
+        e.positions.push({ node: selNode, type: selNode.type, start: selStart, end: e.chunks.length, source: srcFile(e) });
       }
       put(e, blockOpen(e));
     }
@@ -16120,17 +16136,11 @@ function flushBlock(
  * append inside the just-closed block. Only called when `lastBlock.endChunks`
  * proves those chunks are the current tail. */
 function popClose(e: Emit, idt: string): void {
-  const close = e.chunks.pop()!; // '}\n' (pretty) or '}' (compress)
-  if (e.positions) {
-    e.off -= close.length;
-  }
+  e.chunks.pop(); // '}\n' (pretty) or '}' (compress)
 
   // [compress] the close is a bare `}` with no preceding indent chunk.
   if (idt && e.compress !== true) {
-    const ind = e.chunks.pop()!; // the block-indent chunk
-    if (e.positions) {
-      e.off -= ind.length;
-    }
+    e.chunks.pop(); // the block-indent chunk
   }
 }
 
@@ -16646,7 +16656,7 @@ function nestedPropertyDeclarations(node: Declaration): Declaration[] | null {
 
 /** Emit one folded `name: combined[ !important];` line. */
 function emitMergedLine(e: Emit, name: string, combined: string, important: boolean, idt: string): void {
-  const start = e.off;
+  const start = e.chunks.length;
   e.lastDeclCustom = false; // [compress] merged (`+`) declarations are never custom properties
   put(e, idt);
   put(e, name);
@@ -16657,7 +16667,7 @@ function emitMergedLine(e: Emit, name: string, combined: string, important: bool
   }
   put(e, declEnd(e));
   if (e.positions) {
-    e.positions.push({ node: any(combined), type: 'Any', start, end: e.off, source: srcFile(e) });
+    e.positions.push({ node: any(combined), type: 'Any', start, end: e.chunks.length, source: srcFile(e) });
   }
 }
 
@@ -16667,14 +16677,12 @@ function emitMergedLine(e: Emit, name: string, combined: string, important: bool
  */
 interface DropMark {
   readonly chunks: number;
-  readonly off: number;
   readonly positions: number;
   readonly sink: { elided: boolean };
 }
 
 const dropMark = (e: Emit): DropMark => ({
   chunks: e.chunks.length,
-  off: e.off,
   positions: e.positions === null ? 0 : e.positions.length,
   sink: { elided: false }
 });
@@ -16697,7 +16705,6 @@ function finishDrop(e: Emit, mark: DropMark, deferred: boolean): void {
     return;
   }
   e.chunks.length = mark.chunks;
-  e.off = mark.off;
   if (e.positions !== null) {
     e.positions.length = mark.positions;
   }
@@ -16723,7 +16730,7 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
 /** Emit one leaf after its source owner/trivia are already active. */
 function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
   const { node, frame } = leaf;
-  const start = e.off;
+  const start = e.chunks.length;
 
   /*
    * [atrule] a declaration/comment sits one level in from its container's depth.
@@ -16772,14 +16779,14 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
         p: Promise.resolve(mapMaybe(customValue, value => important ? normalizeImportant(value, e.compress === true) : value))
       });
     } else {
-      const valStart = e.off;
+      const valStart = e.chunks.length;
       put(e, important ? normalizeImportant(customValue, e.compress === true) : customValue);
       if (e.positions && !isValueSlotArray(node.value)) {
-        e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.off, source: srcFile(e) });
+        e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.chunks.length, source: srcFile(e) });
       }
     }
     if (e.positions) {
-      e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
+      e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
     }
     emitInlineBlockCommentTriviaAfter(node, e);
     put(e, declEnd(e));
@@ -16792,7 +16799,7 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
     put(e, node.text);
     put(e, nl(e));
     if (e.positions) {
-      e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
+      e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
     }
   } else if (node.type === 'FunctionCall') {
     const bytes = statementCallBytes(node, frame, e);
@@ -16811,7 +16818,7 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
     put(e, bytes);
     put(e, nl(e));
     if (e.positions) {
-      e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
+      e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
     }
   } else if (node.type === 'AtRuleBlock') {
     /*
@@ -16847,7 +16854,7 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
         put(e, asBytes(loaded));
       }
       if (e.positions) {
-        e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
+        e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
       }
     } else {
       e.depth++;
@@ -17193,7 +17200,7 @@ function emitAtRuleStatementRaw(
   e: Emit,
   importTarget: Quoted | Url | null
 ): void {
-  const start = e.off;
+  const start = e.chunks.length;
   e.lastDeclCustom = false; // [compress] an at-rule statement is not a custom property
   const idt = blockIndent(e);
   if (idt) {
@@ -17220,7 +17227,7 @@ function emitAtRuleStatementRaw(
     putValueBoundaryTrivia(e, importBoundary.after, '');
     put(e, ';\n');
     if (e.positions) {
-      e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
+      e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
     }
     return;
   }
@@ -17231,7 +17238,7 @@ function emitAtRuleStatementRaw(
     put(e, authored);
     put(e, '\n');
     if (e.positions) {
-      e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
+      e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
     }
     return;
   }
@@ -17259,7 +17266,7 @@ function emitAtRuleStatementRaw(
   }
   put(e, declEnd(e));
   if (e.positions) {
-    e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
+    e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
   }
 }
 
@@ -17549,7 +17556,7 @@ function expandStyleImport(
       if (loaded !== undefined) {
         if ('inline' in loaded) {
           if (e.referenceImportDepth === 0 && !importHasOption(request.options, 'reference')) {
-            emitRawInline(loaded.inline, e);
+            emitRawInline(loaded, node, e);
           }
           return;
         }
@@ -17783,7 +17790,7 @@ function importSpecifier(node: StyleImport, frame: Frame, e: Emit): string {
  * reader of `node.options`; it never reaches output, matching Less 4.x.
  */
 function emitCssImportAtRule(node: StyleImport, frame: Frame, e: Emit): void {
-  const start = e.off;
+  const start = e.chunks.length;
   if (e.depth > 0) {
     put(e, INDENT.repeat(e.depth));
   }
@@ -17799,7 +17806,7 @@ function emitCssImportAtRule(node: StyleImport, frame: Frame, e: Emit): void {
   }
   put(e, ';\n');
   if (e.positions) {
-    e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
+    e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
   }
 }
 
@@ -17813,7 +17820,7 @@ function emitModuleImport(node: ModuleImport, frame: Frame, e: Emit): void {
   if (e.context) {
     return;
   }
-  const start = e.off;
+  const start = e.chunks.length;
   if (e.depth > 0) {
     put(e, INDENT.repeat(e.depth));
   }
@@ -17860,13 +17867,13 @@ function emitModuleImport(node: ModuleImport, frame: Frame, e: Emit): void {
     put(e, ';\n');
   }
   if (e.positions) {
-    e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
+    e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
   }
 }
 
 /** Write a grammar-owned opaque at-rule body without evaluating or walking it. */
 function emitUnknownAtRuleBlock(node: UnknownAtRuleBlock, e: Emit): void {
-  const start = e.off;
+  const start = e.chunks.length;
   const idt = blockIndent(e);
   if (idt) {
     put(e, idt);
@@ -17880,7 +17887,7 @@ function emitUnknownAtRuleBlock(node: UnknownAtRuleBlock, e: Emit): void {
   put(e, node.rawBody);
   put(e, e.compress === true ? '}' : '}\n');
   if (e.positions) {
-    e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
+    e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
   }
 }
 
@@ -17894,7 +17901,7 @@ function emitUnknownAtRuleBlock(node: UnknownAtRuleBlock, e: Emit): void {
  * a postlude on a compile-time import is a parse error, so the bytes always
  * splice bare.
  */
-function emitRawInline(text: string, e: Emit): void {
+function emitRawInline(loaded: ImportDocumentInline, node: StyleImport, e: Emit): void {
   /*
    * Indent the spliced raw bytes to the current nesting depth, so `(inline)`
    * content inside a bubbleable at-rule lines up with authored at-rule-body
@@ -17903,7 +17910,20 @@ function emitRawInline(text: string, e: Emit): void {
   if (blockIndent(e)) {
     put(e, blockIndent(e));
   }
-  put(e, text);
+  const text = loaded.inline;
+  if (e.positions === null || loaded.file === undefined) {
+    put(e, text);
+  } else {
+    /* Source maps: one chunk per line, each mapped to that line of the inlined file. */
+    for (let at = 0; at < text.length;) {
+      const end = text.indexOf('\n', at);
+      const next = end === -1 ? text.length : end + 1;
+      const start = e.chunks.length;
+      put(e, text.slice(at, next));
+      e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: loaded.file, sourceStart: at });
+      at = next;
+    }
+  }
   put(e, nl(e));
 }
 
@@ -17978,7 +17998,7 @@ function statementCallBytes(node: FunctionCall, frame: Frame, e: Emit): MaybePro
  * text. Emitted at the current indent; an empty result contributes nothing.
  */
 function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precomputed?: string): MaybePromise<void> {
-  const start = e.off;
+  const start = e.chunks.length;
   const emitBytes = (bytes: string): void => {
     if (bytes.length === 0) {
       return;
@@ -17989,7 +18009,7 @@ function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precompute
     put(e, bytes);
     put(e, nl(e));
     if (e.positions) {
-      e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
+      e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
     }
   };
   return precomputed === undefined
@@ -18299,8 +18319,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
     const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
     for (let index = 0; index < node.length; index += 1) {
       if (index > 0) {
-        const separator = authored?.[index - 1];
-        parts.push(plain(separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : ' '));
+        parts.push(plain(itemBoundary(authored?.[index - 1], ' ', e.compress === true)));
       }
       parts.push(evalQueryPreludeParts(node[index]!, frame, e));
     }
@@ -18344,13 +18363,13 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
       return concatPreludeParts(parts);
     }
     case 'List': {
-      const glue = sepGlue(node.sep);
+      const compress = e.compress === true;
+      const glue = sepGlue(node.sep, compress);
       const authored = valueLayoutOf(node);
       const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
       for (let index = 0; index < node.value.length; index += 1) {
         if (index > 0) {
-          const separator = authored?.[index - 1];
-          parts.push(plain(separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue));
+          parts.push(plain(itemBoundary(authored?.[index - 1], glue, compress)));
         }
         parts.push(evalQueryPreludeParts(node.value[index]!, frame, e));
       }
@@ -18575,9 +18594,8 @@ function writeCollapsedAtRuleBlock(
   prelude: string
 ): MaybePromise<void> {
   const markChunks = e.chunks.length;
-  const markOff = e.off;
   const markPos = e.positions ? e.positions.length : 0;
-  const start = e.off;
+  const start = e.chunks.length;
   const idt = blockIndent(e);
   if (idt) {
     put(e, idt);
@@ -18602,7 +18620,6 @@ function writeCollapsedAtRuleBlock(
       } else {
         // Nothing emitted: drop the whole at-rule (rewind chunks/offset/positions).
         e.chunks.length = markChunks;
-        e.off = markOff;
         if (e.positions) {
           e.positions.length = markPos;
         }
@@ -18611,7 +18628,7 @@ function writeCollapsedAtRuleBlock(
     }
     emitBlockClose(e, idt);
     if (e.positions) {
-      e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
+      e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
     }
   };
   return mapMaybe(emitted, () => {
@@ -19384,7 +19401,7 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
 /** Emit one nested leaf after its source owner/trivia are already active. */
 function emitNestedLeafOwned(leaf: Leaf, e: Emit): void {
   const { node, frame } = leaf;
-  const start = e.off;
+  const start = e.chunks.length;
   const idt = blockIndent(e);
   for (const comment of leaf.leadingBlockComments ?? []) {
     putBlockComment(e, idt, comment);
@@ -19404,7 +19421,7 @@ function emitNestedLeafOwned(leaf: Leaf, e: Emit): void {
 
     // [compress] a custom property keeps its `: ` separator verbatim (see emitLeafOwned).
     put(e, (e.compress === true && !isCustom) || onNewLine ? ':' : ': ');
-    const valStart = e.off;
+    const valStart = e.chunks.length;
     const important = node.important === true || leaf.important === true;
     const prevElide = e.elideSink;
     e.elideSink = mark.sink; // [null] this declaration's elision, not an enclosing one
@@ -19413,9 +19430,9 @@ function emitNestedLeafOwned(leaf: Leaf, e: Emit): void {
     markSilentStatementBlockCommentTrivia(node, e);
     if (e.positions) {
       if (!isValueSlotArray(node.value)) {
-        e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.off, source: srcFile(e) });
+        e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.chunks.length, source: srcFile(e) });
       }
-      e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
+      e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
     }
     emitInlineBlockCommentTriviaAfter(node, e);
     put(e, declEnd(e));
@@ -19430,7 +19447,7 @@ function emitNestedLeafOwned(leaf: Leaf, e: Emit): void {
     put(e, node.text);
     put(e, nl(e));
     if (e.positions) {
-      e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
+      e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
     }
   }
 }
@@ -19568,7 +19585,6 @@ function emitTransparentShells(
       const source: NestedHeaderSource = { parent: parentSource, selector: shell.rule.selector, frame };
       const header = nestedSourceStrings(source, e);
       const markChunks = e.chunks.length;
-      const markOff = e.off;
       const markPos = e.positions ? e.positions.length : 0;
       const idt = blockIndent(e);
       if (idt) {
@@ -19582,7 +19598,6 @@ function emitTransparentShells(
         e.depth--;
         if (e.chunks.length === afterHeader) {
           e.chunks.length = markChunks;
-          e.off = markOff;
           if (e.positions) {
             e.positions.length = markPos;
           }
@@ -19646,9 +19661,8 @@ function writeNestedRule(
    * list; children stay literal-nested.
    */
   const markChunks = e.chunks.length;
-  const markOff = e.off;
   const markPos = e.positions ? e.positions.length : 0;
-  const start = e.off;
+  const start = e.chunks.length;
   const idt = blockIndent(e);
 
   /*
@@ -19725,11 +19739,11 @@ function writeNestedRule(
       if (idt) {
         put(e, idt);
       }
-      const selStart = e.off;
+      const selStart = e.chunks.length;
       headerChunkIndex = e.chunks.length;
       put(e, header);
       if (e.positions) {
-        e.positions.push({ node: rule.selector, type: rule.selector.type, start: selStart, end: e.off, source: srcFile(e) });
+        e.positions.push({ node: rule.selector, type: rule.selector.type, start: selStart, end: e.chunks.length, source: srcFile(e) });
       }
       put(e, blockOpen(e));
     }
@@ -19752,7 +19766,6 @@ function writeNestedRule(
         } else {
           // Nothing emitted in the block: drop the header/braces (rewind).
           e.chunks.length = markChunks;
-          e.off = markOff;
           if (e.positions) {
             e.positions.length = markPos;
           }
@@ -19760,7 +19773,7 @@ function writeNestedRule(
       } else {
         emitBlockClose(e, idt, lb);
         if (e.positions) {
-          e.positions.push({ node: rule, type: rule.type, start, end: e.off, source: srcFile(e) });
+          e.positions.push({ node: rule, type: rule.type, start, end: e.chunks.length, source: srcFile(e) });
         }
         if (rootSibling) {
           lb.parentKey = frame;
@@ -19866,9 +19879,8 @@ function writeNestedAtRuleBlock(
   prelude: string
 ): MaybePromise<void> {
   const markChunks = e.chunks.length;
-  const markOff = e.off;
   const markPos = e.positions ? e.positions.length : 0;
-  const start = e.off;
+  const start = e.chunks.length;
   const idt = blockIndent(e);
   if (idt) {
     put(e, idt);
@@ -19888,7 +19900,6 @@ function writeNestedAtRuleBlock(
         emitBodyBlockCommentTrivia(node, e, INDENT.repeat(e.depth + 1));
       } else {
         e.chunks.length = markChunks;
-        e.off = markOff;
         if (e.positions) {
           e.positions.length = markPos;
         }
@@ -19897,7 +19908,7 @@ function writeNestedAtRuleBlock(
     }
     emitBlockClose(e, idt);
     if (e.positions) {
-      e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
+      e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
     }
   };
   return mapMaybe(

@@ -320,6 +320,14 @@ describe('Functions', () => {
       expect(css).toContain('height: 2em');
     });
 
+    it('rounds an exact tie toward +infinity (CSS Values 4 round(nearest))', async () => {
+      const css = await compiler.renderString(
+        '.t { a: round(-0.5); b: round(-1.5); c: round(-2.5); d: round(2.5); e: round(-1.55, 1); f: round(1.55, 1); }',
+        { language: 'less' }
+      );
+      expect(css).toBe('.t {\n  a: 0;\n  b: -1;\n  c: -2;\n  d: 3;\n  e: -1.5;\n  f: 1.6;\n}\n');
+    });
+
     it('should handle ceil function', async () => {
       const lessCode = `
         .test {
