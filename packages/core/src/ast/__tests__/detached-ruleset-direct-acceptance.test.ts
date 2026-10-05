@@ -80,4 +80,14 @@ describe('variable-call canonical AST emission', () => {
     expect(render(document)).toBe(expected);
     expect(render(document, false)).toBe(expected);
   });
+
+  it('raises when the called variable holds no ruleset (jess#350)', () => {
+    const document = stylesheet([
+      variableDeclaration('r', keyword('foo'), { mode: 'declare' }),
+      rule('.a', [reference(variableReference('r', 'scoped'), [{ type: 'Call', args: [] }], '@r()')])
+    ]);
+
+    expect(() => render(document)).toThrow(expect.objectContaining({ code: 'eval/type-mismatch' }));
+    expect(() => render(document, false)).toThrow(expect.objectContaining({ code: 'eval/type-mismatch' }));
+  });
 });

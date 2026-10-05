@@ -14753,10 +14753,15 @@ function expandReferenceCall(
   }
   const dr = resolveValueBlock(resolved.value, resolved.frame, e);
   if (!dr) {
-    if (step.args.length !== 0) {
-      throw new Error('Reference call arguments require a callable mixin target.');
-    }
-    return;
+    throw ERR.typeMismatch({
+      node: call,
+      ...callSiteLocation(call, e),
+      meta: {
+        callee: call.raw,
+        expected: 'detached ruleset or mixin call',
+        got: isValueSlotArray(resolved.value) ? 'a value list' : resolved.value.type
+      }
+    });
   }
 
   /*
