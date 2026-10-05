@@ -4,11 +4,14 @@ import { parseWith, type LessAstGrammar } from '../src/parse-with.js';
 import { commentTriviaLabels } from '../src/trivia-labels.js';
 import {
   assertEnginesAgree,
+  assertNoRuntimeCodegen,
   AST_VARIANTS,
+  COMPOSED_CODEGEN_PINS,
   CSS_FIXTURES,
   CST_VARIANTS,
   cstOutcome,
   fixtureFiles,
+  ENGINES,
   loadEnginePair,
   outcome,
   type Pins,
@@ -44,6 +47,10 @@ const PINNED = new Map<Variant, Pins>([
 describe('Less grammar: macro-compiled and interpreter bundles agree', () => {
   it('has a corpus', () => {
     expect(CORPUS.length).toBeGreaterThan(CSS_FIXTURES.length + 20);
+  });
+
+  it.each(ENGINES)('the %s grammar generates no code at runtime', (engine) => {
+    assertNoRuntimeCodegen(LIB, engine, '.a { b: c; }', COMPOSED_CODEGEN_PINS.get(engine));
   });
 
   it.each(AST_VARIANTS)('AST %s', async (variant) => {

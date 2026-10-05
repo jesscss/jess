@@ -70,6 +70,11 @@ runs on parseman's interpreter instead of a compiled table. It exists to compare
 the two engines; `test/interpreter-parity.test.ts` parses the fixtures with
 both and requires identical AST and CST results.
 
+A browser bundle loads the compiled table too. It generates no code at runtime,
+so a page whose Content-Security-Policy omits `'unsafe-eval'` can load it:
+`test/interpreter-parity.test.ts` loads every variant with code generation
+disallowed and counts every call to `Function` and `eval`.
+
 The CST and grammar entries expose Parseman types and grammar values. Parseman
 ships as a bundled dependency, so it installs with the package automatically.
 

@@ -4,11 +4,14 @@ import { parseWith, type ScssAstGrammar } from '../src/parse-with.js';
 import { commentTriviaLabels } from '../src/trivia-labels.js';
 import {
   assertEnginesAgree,
+  assertNoRuntimeCodegen,
   AST_VARIANTS,
+  COMPOSED_CODEGEN_PINS,
   CSS_FIXTURES,
   CST_VARIANTS,
   cstOutcome,
   fixtureFiles,
+  ENGINES,
   loadEnginePair,
   outcome
 } from '../../../css/css-parser/test/engine-parity.js';
@@ -25,6 +28,10 @@ const CORPUS = [...CSS_FIXTURES, ...fixtureFiles('packages/syntax/scss/scss-pars
 describe('SCSS grammar: macro-compiled and interpreter bundles agree', () => {
   it('has a corpus', () => {
     expect(CORPUS.length).toBeGreaterThan(CSS_FIXTURES.length);
+  });
+
+  it.each(ENGINES)('the %s grammar generates no code at runtime', (engine) => {
+    assertNoRuntimeCodegen(LIB, engine, '.a { b: c; }', COMPOSED_CODEGEN_PINS.get(engine));
   });
 
   it.each(AST_VARIANTS)('AST %s', async (variant) => {
