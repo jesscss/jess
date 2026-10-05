@@ -263,8 +263,8 @@ a blanket optimization exemption or a new active architecture queue.
     "files": ["packages/core/src/context.ts"],
     "semanticBoundary": {
       "trigger": "a stylesheet import has a URL or protocol-relative identifier before Context path dispatch",
-      "scope": "Context alone owns the external-import admission decision. An unclaimed identifier returns to serializer as a CSS terminal without resolver, locator, source getter, parser, cache, or network action. A claiming plugin then uses the existing Context resolve, locate, source, and parser route exactly once; core does not classify a resolver result or implement a second loader.",
-      "cases": ["claimed-external-import", "unclaimed-external-terminal", "ordinary-local-import"],
+      "scope": "Context alone owns the external-import admission decision. An import written inside a remote document is first rebased onto that document's URL, so it meets the same admission. An unclaimed identifier returns to serializer as a CSS terminal without resolver, locator, source getter, parser, cache, or network action. A claiming plugin then uses the existing Context resolve, locate, source, and parser route exactly once: a URL is not expanded and keeps its query, and the plugin that located it supplies its source. Core does not classify a resolver result or implement a second loader.",
+      "cases": ["claimed-external-import", "unclaimed-external-terminal", "ordinary-local-import", "import-inside-remote-document"],
       "baseline": {"fixture": "benchmark.less", "phase": "render"}
     },
     "sourceCheck": {
@@ -272,7 +272,7 @@ a blanket optimization exemption or a new active architecture queue.
       "caller": "async loadImport(",
       "guard": "EXTERNAL_IMPORT_SPECIFIER.test(importPath)",
       "call": "plugin.canResolveImport?.(",
-      "profile": ["const EXTERNAL_IMPORT_SPECIFIER", "plugin.canResolveImport?.("]
+      "profile": ["EXTERNAL_IMPORT_SPECIFIER } from './import-options.js'", "plugin.canResolveImport?.("]
     },
     "evidence": {"command": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run", "src/ast/__tests__/import-at-rule.test.ts"]}
   },

@@ -8,7 +8,7 @@ import type {
   Selector,
   Nil
 } from './tree/index.js';
-import type { ImportOptions } from './import-options.js';
+import { type ImportOptions, EXTERNAL_IMPORT_SPECIFIER } from './import-options.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './util/calculate.js';
 import type { ISafeParseResult, ParsedDocument, PluginInterface, UrlTransformRequest } from './plugin.js';
@@ -61,7 +61,6 @@ export interface EmitVisitor {
 
 const SCRIPT_MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts']);
 const SCRIPT_MODULES_DISABLED_MESSAGE = 'Script modules are disabled by disableScriptModules.';
-const EXTERNAL_IMPORT_SPECIFIER = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu;
 
 type LoadedImportResult = {
   node: ParsedDocument | null;
@@ -73,6 +72,12 @@ type ResolvedPathResult = {
   triedPaths: string[];
   resolvedPath: string;
   friendlyPath: string;
+
+  /** The file extension that selects a plugin; a URL's comes from its path, not its query. */
+  ext: string;
+
+  /** The plugin whose `locate` returned `resolvedPath`. */
+  locator: PluginInterface;
 };
 
 type LoadedPluginModuleResult = {
@@ -1399,17 +1404,24 @@ export class Context {
   /**
    * @param importPath - The bare import path e.g. `@import "foo";` in a .less file.
    */
-  private async _getPath(importPath: string) {
+  private async _getPath(importPath: string): Promise<ResolvedPathResult> {
     const currentDocument = this.sourceContext;
     const currentDirectory = currentDocument?.file?.path ?? process.cwd();
     const { searchPaths = [] } = this.opts;
 
     const plugins = this.plugins;
     let finalPath: string | undefined;
+    let locator: PluginInterface | undefined;
     let currentPlugin = currentDocument?.plugin;
 
-    /** First, expand imports */
-    let paths = currentPlugin?.expandImport?.(importPath, currentDirectory) ?? [importPath];
+    /**
+     * First, expand imports. Expansion is filesystem probing (`foo` → `foo.less`,
+     * `_foo.scss`, …) that `locate` settles by existence; a URL names exactly one
+     * resource, so it is never expanded.
+     */
+    let paths = EXTERNAL_IMPORT_SPECIFIER.test(importPath)
+      ? [importPath]
+      : currentPlugin?.expandImport?.(importPath, currentDirectory) ?? [importPath];
     if (paths.length === 0) {
       throw new Error(`No paths found for import "${importPath}"`);
     }
@@ -1444,19 +1456,25 @@ export class Context {
       const result = await plugin.locate(paths, currentDirectory);
       if (result) {
         finalPath = result;
+        locator = plugin;
         break;
       }
     }
 
-    if (!finalPath) {
+    if (!finalPath || !locator) {
       throw ERR.importNotFound({
         meta: { specifier: importPath, from: currentDirectory }
       });
     }
 
-    const normalizedFinalPath = finalPath.split(/[?#]/)[0]!;
-    const ext = path.extname(normalizedFinalPath);
-    const friendlyPath = path.relative(process.cwd(), normalizedFinalPath);
+    /*
+     * A file path drops its `?query`/`#fragment`. A URL keeps its query: it is
+     * part of which resource the server returns, so it is part of the identity.
+     */
+    const located = EXTERNAL_IMPORT_SPECIFIER.test(finalPath);
+    const normalizedFinalPath = finalPath.split(located ? '#' : /[?#]/)[0]!;
+    const ext = path.extname(located ? normalizedFinalPath.split('?')[0]! : normalizedFinalPath);
+    const friendlyPath = located ? normalizedFinalPath : path.relative(process.cwd(), normalizedFinalPath);
 
     if (!ext) {
       throw new Error(`File "${friendlyPath}" not supported`);
@@ -1465,7 +1483,9 @@ export class Context {
     return {
       triedPaths: paths,
       resolvedPath: normalizedFinalPath,
-      friendlyPath
+      friendlyPath,
+      ext,
+      locator
     };
   }
 
@@ -1515,7 +1535,7 @@ export class Context {
   }
 
   async getTree(importPath: string, importOptions: ImportOptions = {}) {
-    const { resolvedPath, triedPaths, friendlyPath } = await this._getPath(importPath);
+    const { resolvedPath, triedPaths, friendlyPath, ext, locator } = await this._getPath(importPath);
     const { type } = importOptions;
 
     /**
@@ -1532,7 +1552,6 @@ export class Context {
 
     const plugins = this.plugins;
 
-    const ext = path.extname(resolvedPath);
     const plugin = this.findParserPlugin(type, ext);
     const parsedSourceKey = this.parsedSourceTreeKey(plugin, resolvedPath);
     const cachedDocument = this.parsedSourceTrees.get(parsedSourceKey);
@@ -1544,7 +1563,8 @@ export class Context {
       };
     }
 
-    const sourceGetter = plugins.find(plugin => plugin.getSource);
+    /** The plugin that located the path reads it; a locate-only plugin defers to the first reader. */
+    const sourceGetter = locator.getSource ? locator : plugins.find(plugin => plugin.getSource);
     if (!sourceGetter) {
       /** If we can't actually load files, bail. */
       throw new Error('No source getter found');
@@ -1645,6 +1665,15 @@ export class Context {
   }
 
   private async loadImportUncached(importPath: string, importOptions: ImportOptions = {}) {
+    const importer = this.sourceContext?.file?.fullPath;
+    if (importer !== undefined && EXTERNAL_IMPORT_SPECIFIER.test(importer) && !EXTERNAL_IMPORT_SPECIFIER.test(importPath)) {
+      /*
+       * An import written inside a remote document names a resource relative to
+       * that document's URL, never a local file, so it becomes that URL and
+       * passes the same claim gate as any other external import.
+       */
+      importPath = new URL(importPath, importer).href;
+    }
     if (EXTERNAL_IMPORT_SPECIFIER.test(importPath)) {
       const currentDirectory = this.sourceContext?.file?.path ?? process.cwd();
       const { searchPaths = [] } = this.opts;
@@ -1754,8 +1783,7 @@ export class Context {
   }
 
   private async getModuleUncached(importPath: string, importOptions: ImportOptions = {}): Promise<LoadedModuleResult> {
-    const { resolvedPath, triedPaths, friendlyPath } = await this._getPath(importPath);
-    const ext = path.extname(resolvedPath);
+    const { resolvedPath, triedPaths, friendlyPath, ext } = await this._getPath(importPath);
     const isJsonImport = ext === '.json';
     const isScriptModuleImport = SCRIPT_MODULE_EXTENSIONS.has(ext);
     const { type } = importOptions;
@@ -1869,8 +1897,7 @@ export class Context {
    * interprets the returned module; Context does not know a dialect ABI.
    */
   async getPluginModule(importPath: string, options: string | null = null) {
-    const { resolvedPath, triedPaths, friendlyPath } = await this._getPluginPath(importPath);
-    const ext = path.extname(resolvedPath);
+    const { resolvedPath, triedPaths, friendlyPath, ext } = await this._getPluginPath(importPath);
     let plugin = this.plugins.find(candidate =>
       candidate.supportedExtensions?.includes(ext) && candidate.importPlugin);
     if (!plugin) {

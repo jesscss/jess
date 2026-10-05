@@ -4073,6 +4073,114 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: 2026-10-04 remote-import route through Context. The opt-in
+  `@jesscss/plugin-remote-import` needs four Context/plugin-contract facts that
+  were wrong for a URL: the source of a located path now comes from the plugin
+  that located it; a URL is neither expanded into filesystem candidates nor
+  stripped of its query; `AbstractPlugin.resolve` passes a URL through instead
+  of joining it onto a directory; and an import written inside a fetched
+  document is rebased onto that document's URL before the existing claim gate.
+  The shared external-specifier pattern moved to `import-options.ts` and now
+  needs a two-character scheme, so a Windows drive path is a file path.
+  `@jesscss/plugin-less` no longer claims jsDelivr npm URLs.
+- Architecture surface: `packages/core/src/context.ts` (`loadImportUncached`,
+  `_getPath`, `getTree`, `getModuleUncached`, `getPluginModule`),
+  `packages/core/src/plugin.ts` (`AbstractPlugin.resolve`, contract docs),
+  `packages/core/src/import-options.ts`, and the Less plugin's resolver.
+  Evaluation, render, lookup, serializer, and parser code are unchanged.
+- Separation/duplication: one external-specifier pattern serves Context and
+  `AbstractPlugin`; the second copy in `context.ts` is gone. `_getPath` computes
+  the dispatch extension once and its callers read it instead of re-deriving it.
+  No second loader, resolver, or network path exists in core; only the plugin's
+  `getSource` touches the network.
+- Cumulative node weight: zero AST/CST node kinds or fields. The private
+  `ResolvedPathResult` gains `ext` and `locator`.
+- New traversal: none. The locator is recorded inside the existing locate loop;
+  no added loop, walk, or scan.
+- New node/materialization: [node construction] one `URL` per import written
+  inside a fetched (remote) document, to rebase it onto that document's URL.
+  Local documents never construct one: the guard is a string test on the
+  importer's path. No AST node, wrapper, or materialized array is added.
+- Render path: unchanged. Import loading happens before evaluation writes, and
+  render still streams strings.
+- Helper/API surface: no new helper or public export. The pattern constant is
+  internal (`import-options.ts` is not re-exported as a value).
+- Metadata mutations: none. No parent, provenance, or source fact is written.
+- Review-flagged diff tokens: [node construction] the `new URL(importPath,
+  importer)` rebase, reached only for imports inside a fetched document — a
+  cold, per-import path that never runs for local files and adds no per-node
+  or per-render cost.
+- Behavior evidence: core `import-at-rule.test.ts` pins the external-specifier
+  passthrough in `AbstractPlugin.resolve`, sourcing from the locating plugin
+  with the query kept and the fragment dropped, the rebase and claim of an
+  import inside a remote document, and the Windows drive path (each red before
+  the change). The jess `remote-imports.test.ts` suite pins the default stack
+  leaving URL imports (jsDelivr included) as terminals with no fetch, plus the
+  plugin path end to end. Core passes 219 files / 3,348 tests; jess passes
+  125 files / 1,900 tests; all-Less passes 140 with 43 skips, with
+  `tests-unit/import/import-remote.less` now a gate.
+- Build evidence: dependency-ordered `pnpm run build:release` passes;
+  `verify:types` passes 25/25 configs; `verify:jess-api`, `verify:package-exports`,
+  and `check:engines` pass.
+- Boundary evidence: no public type or export change in core. The new package
+  `@jesscss/plugin-remote-import` is added to the alpha allowlist and the
+  publish-set validation passes.
+- Evidence: behavior evidence is tests only. The current `benchmark.less`
+  render output is byte-identical to the previous pass's recorded baseline
+  (SHA-256 `29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8`,
+  123,223 bytes). `measure:less:hotpath` on Node 24.11.1 reported a 62.96 ms
+  median with an unstable signal (19.8% RSD) on a shared machine; it is a
+  baseline only and carries no speed or neutrality claim.
+- Verdict: accepted as a semantic boundary correction with
+  `performanceClaim: none`.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "context-external-import-dispatch-boundary",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "cases": ["claimed-external-import", "unclaimed-external-terminal", "ordinary-local-import", "import-inside-remote-document"],
+    "why": "Context still owns external-import admission alone. A URL now reaches the plugin that claimed it intact: it is not expanded, joined onto a directory, or stripped of its query, and the plugin that located it supplies its source. An import inside a fetched document is rebased onto that document's URL so it meets the same claim gate instead of resolving to a local file. Unclaimed URLs remain CSS terminals with no network action.",
+    "dangerTokensJustification": "The only added construction is one URL per import written inside a fetched document, guarded by a string test on the importer's path, so local documents allocate nothing new. The locator is captured inside the existing locate loop and the extension is computed once where it was already computed; no traversal, side map, or async continuation is added.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 62.96,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  },
+  {
+    "id": "core-context-emit-selector-contract",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
+    "cases": [
+      "Context-plugin-source-parser-dispatch",
+      "emit-walk-context-output-option",
+      "Ruleset-interpolated-selector-boundary",
+      "selector-match-string-and-node-combinators",
+      "extend-index-tagged-graft-atoms",
+      "Sequence-subclass-preserving-evaluation",
+      "callable-output-root-property-guard",
+      "serializer-at-rule-and-selector-surface"
+    ],
+    "why": "Context's plugin source dispatch now asks the plugin that located a path for its source, falling back to the first source getter, and reads the dispatch extension from the one place that computes it. This corrects which plugin reads a located URL; it is semantic dispatch work with no cost-cutting or neutrality claim.",
+    "dangerTokensJustification": "The dispatch change records the locating plugin inside the existing locate loop and replaces three path.extname re-derivations with one computed value; no allocation, traversal, or side table is added. The one URL construction belongs to the external-import boundary record and runs only for imports inside fetched documents.",
+    "behaviorEvidence": "Core vitest 219 files / 3,348 tests pass, including the new locator-source, query, remote-rebase, and drive-path cases in import-at-rule.test.ts; jess 1,900 tests and all-Less 140 pass.",
+    "buildEvidence": "pnpm run build:release and pnpm --filter @jesscss/core build pass; verify:types passes 25/25 configs.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 62.96,
+      "outputSha256": "29f67a4985fa2efaac3149f3ce0fcbd757bd9bdce03d9c5d51e2d20a61b23da8",
+      "outputBytes": 123223
+    }
+  }
+]
+```
+
 - Latest pass: 2026-10-01 explicit imported-callable references. Jess selected,
   default, flat, and namespace function imports now dispatch only through
   `$name(…)` or `$namespace.name(…)`; importing a name cannot change a bare

@@ -1,5 +1,5 @@
 import type { Statement, Stylesheet } from './ast/nodes.js';
-import type { ImportOptions } from './import-options.js';
+import { type ImportOptions, EXTERNAL_IMPORT_SPECIFIER } from './import-options.js';
 export type { ImportOptions } from './import-options.js';
 import type { Context, ContextOptions, ResolvedOptions } from './context.js';
 import { join, isAbsolute, resolve } from 'node:path';
@@ -159,6 +159,8 @@ export interface PluginInterface {
    * resolve → locate → source → parse pipeline. A positive result does not
    * fetch: this plugin must still resolve and locate the source through those
    * ordinary capabilities. Absent means external imports remain CSS terminals.
+   * An import written inside a remote document is rebased onto that document's
+   * URL first, so it is asked here too. Throwing rejects the import as an error.
    */
   canResolveImport?(specifier: string, currentDir: string, searchPaths: string[]): boolean | Promise<boolean>;
 
@@ -168,7 +170,8 @@ export interface PluginInterface {
   locate?(pathCandidates: string[], currentDir: string): null | string | Promise<string | null>;
 
   /**
-   * Get the source code for the file.
+   * Get the source code for the file. Context asks the plugin whose `locate`
+   * returned the path, falling back to the first plugin with this capability.
    */
   getSource?(absoluteFilePath: string): Promise<string>;
 
@@ -229,7 +232,8 @@ export abstract class AbstractPlugin implements PluginInterface {
   abstract name: string;
 
   /**
-   * Does a basic path resolution. Node resolution is in other plugins.
+   * Does a basic path resolution. Node resolution is in other plugins. A URL is
+   * not a path, so it passes through for the plugin that claims it.
    */
   resolve(filePath: string | string[], currentDir: string, searchPaths: string[]) {
     const bases = [currentDir, ...searchPaths];
@@ -239,7 +243,7 @@ export abstract class AbstractPlugin implements PluginInterface {
     for (const base of bases) {
       const baseDir = isAbsolute(base) ? base : join(currentDir, base);
       for (const path of filePath) {
-        const abs = resolve(baseDir, path);
+        const abs = EXTERNAL_IMPORT_SPECIFIER.test(path) ? path : resolve(baseDir, path);
         if (abs && !seen.has(abs)) {
           seen.add(abs);
           out.push(abs);
