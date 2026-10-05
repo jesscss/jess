@@ -214,7 +214,7 @@ class Color extends Node {
     }
     const text = String(rgb).replace(/^#/, '');
     const expanded = text.length >= 6
-      ? [text.slice(0, 2), text.slice(2, 4), text.slice(4, 6), text.slice(6, 8)]
+      ? [text.slice(0, 2), text.slice(2, 4), text.slice(4, 6), text.length >= 8 ? text.slice(6, 8) : undefined]
       : [text[0] + text[0], text[1] + text[1], text[2] + text[2], text[3] ? text[3] + text[3] : undefined];
     const channels = expanded.slice(0, 3).map(pair => parseInt(pair, 16));
     if (channels.some(Number.isNaN)) {
