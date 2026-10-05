@@ -8992,15 +8992,14 @@ function putValue(e: Emit, node: ValueSlot, frame: Frame | null, positionNode?: 
     const r = contIndent !== undefined && e.compress !== true ? reindentContinuations(lead, contIndent) : lead;
     return emitImportant || sink.hit ? normalizeImportant(r, e.compress === true) : r;
   };
-  if (isThenable(b)) {
-    const i = e.chunks.length;
-    e.chunks.push('');
-    e.pending.push({ i, p: Promise.resolve(mapMaybe(b, finish)) });
-    return null;
-  }
-  const bytes = finish(b);
   const valStart = e.chunks.length;
-  put(e, bytes);
+  let bytes: string | null = null;
+  if (isThenable(b)) {
+    putPending(e, mapMaybe(b, finish));
+  } else {
+    bytes = finish(b);
+    put(e, bytes);
+  }
   if (e.positions && positionNode) {
     e.positions.push({ node: positionNode, type: positionNode.type, start: valStart, end: e.chunks.length, source: srcFile(e) });
   }
@@ -9011,6 +9010,16 @@ function putValue(e: Emit, node: ValueSlot, frame: Frame | null, positionNode?: 
 
 function put(e: Emit, s: string): void {
   e.chunks.push(s);
+}
+
+/**
+ * [async] Reserve ONE chunk, in source order, for bytes that settle after the
+ * walk; `finish` fills it before offsets are resolved. A position recorded over
+ * the reserved chunk therefore maps the settled bytes like any written chunk.
+ */
+function putPending(e: Emit, bytes: MaybePromise<string>): void {
+  e.pending.push({ i: e.chunks.length, p: Promise.resolve(bytes) });
+  e.chunks.push('');
 }
 
 /** Turn the walk's chunk-index positions into character offsets of the final output. */
@@ -17119,16 +17128,14 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
       e.elideSink = mark.sink; // [null] this declaration's elision, not an enclosing one
       deferred = putValue(e, node.value, frame, isValueSlotArray(node.value) ? undefined : node.value, idt + INDENT, important, onNewLine) === null; // [whitespace] continuation indent
       e.elideSink = prevElide;
-    } else if (isThenable(customValue)) {
-      const i = e.chunks.length;
-      e.chunks.push('');
-      e.pending.push({
-        i,
-        p: Promise.resolve(mapMaybe(customValue, value => important ? normalizeImportant(value, e.compress === true) : value))
-      });
     } else {
       const valStart = e.chunks.length;
-      put(e, important ? normalizeImportant(customValue, e.compress === true) : customValue);
+      const written = (value: string): string => (important ? normalizeImportant(value, e.compress === true) : value);
+      if (isThenable(customValue)) {
+        putPending(e, mapMaybe(customValue, written));
+      } else {
+        put(e, written(customValue));
+      }
       if (e.positions && !isValueSlotArray(node.value)) {
         e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.chunks.length, source: srcFile(e) });
       }
@@ -17153,15 +17160,12 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
     const bytes = statementCallBytes(node, frame, e);
     const asLine = (b: string): string => (b.length === 0 ? '' : idt + b + nl(e));
     if (isThenable(bytes)) {
-      // [async] reserve the call's slot in source order; its settled line fills it after the walk
-      const i = e.chunks.length;
-      e.chunks.push('');
-      e.pending.push({ i, p: Promise.resolve(mapMaybe(bytes, asLine)) });
+      putPending(e, mapMaybe(bytes, asLine));
     } else if (bytes.length !== 0) {
       put(e, asLine(bytes));
-      if (e.positions) {
-        e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
-      }
+    }
+    if (e.positions) {
+      e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
     }
   } else if (node.type === 'AtRuleBlock') {
     /*
@@ -17190,9 +17194,7 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
       const asBytes = (l: ImportDocument | undefined): string =>
         l !== undefined && 'inline' in l ? idt + l.inline + '\n' : '';
       if (isThenable(loaded)) {
-        const i = e.chunks.length;
-        e.chunks.push('');
-        e.pending.push({ i, p: Promise.resolve(mapMaybe(loaded, asBytes)) });
+        putPending(e, mapMaybe(loaded, asBytes));
       } else {
         put(e, asBytes(loaded));
       }
@@ -19858,7 +19860,6 @@ function emitNestedLeafOwned(leaf: Leaf, e: Emit): void {
 
     // [compress] a custom property keeps its `: ` separator verbatim (see emitLeafOwned).
     put(e, (e.compress === true && !isCustom) || onNewLine ? ':' : ': ');
-    const valStart = e.chunks.length;
     const important = node.important === true || leaf.important === true;
     const prevElide = e.elideSink;
     e.elideSink = mark.sink; // [null] this declaration's elision, not an enclosing one
@@ -19866,9 +19867,6 @@ function emitNestedLeafOwned(leaf: Leaf, e: Emit): void {
     e.elideSink = prevElide;
     markSilentStatementBlockCommentTrivia(node, e);
     if (e.positions) {
-      if (!isValueSlotArray(node.value)) {
-        e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.chunks.length, source: srcFile(e) });
-      }
       e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
     }
     emitInlineBlockCommentTriviaAfter(node, e);

@@ -19,7 +19,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Compiler } from '../src/index.js';
 import { Compiler as BaseCompiler, type ConfigOptions } from '@jesscss/compiler';
-import { defineFunction, makeNull } from '@jesscss/core';
+import { defineFunction, makeAny, makeDimension, makeNull } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 import { decodeSourceMapMappings, mappingKind, tokenAt } from './test-utils.js';
@@ -190,6 +190,52 @@ describe('source map round-trip is mathematically correct', () => {
       const r = audit(entry, await c.renderToResult(entry, {}));
       expect(r.css).not.toContain('gone');
       expect(r.css).toContain('kept');
+    }
+  });
+
+  /*
+   * A declaration value, a custom property value and a statement call whose
+   * bytes settle after the walk each fill a chunk reserved in source order, so
+   * each is mapped over that chunk: at its settled bytes, to its authored start.
+   */
+  it('maps every slot that settles after the walk at its settled bytes', async () => {
+    const settle = async <T>(value: T): Promise<T> => {
+      await new Promise(resolve => setTimeout(resolve, 1));
+      return value;
+    };
+    const adim = defineFunction('adim', { params: [], body: () => settle(makeDimension(2, 'px')) });
+    const astmt = defineFunction('astmt', { params: [], body: () => settle(makeAny('/* from astmt */')) });
+    const entry = path.join(fixtures, 'async-slots.less');
+    for (const collapseNesting of [true, false]) {
+      for (const compress of [false, true]) {
+        const c = new Compiler({
+          output: { collapseNesting, compress, sourceMap: { outputSourceFiles: true } },
+          compile: { plugins: [lessPlugin(), lessCompatPlugin({ functions: [adim, astmt] })] }
+        });
+        const r = await c.renderToResult(entry, {});
+        const map = JSON.parse(r.map!) as { mappings: string };
+        const mappings = decodeSourceMapMappings(map.mappings);
+        const lines = r.css.split('\n');
+
+        /*
+         * The authored [line, column] mapped at the first `text` after `after`.
+         * A mapping at a line's indent covers the token after it (`tokenAt`).
+         */
+        const origin = (text: string, after: string): number[] | undefined => {
+          const line = lines.findIndex(l => l.includes(after) && l.includes(text, l.indexOf(after)));
+          let column = lines[line]!.indexOf(text, lines[line]!.indexOf(after));
+          if (/^\s*$/u.test(lines[line]!.slice(0, column))) {
+            column = 0;
+          }
+          return mappings.find(([gl, gc]) => gl === line && gc === column)?.slice(3);
+        };
+        const label = `collapseNesting=${collapseNesting} compress=${compress}`;
+        expect(r.css, label).not.toContain('adim');
+        expect(origin('2px', 'width'), label).toEqual([2, 9]);
+        expect(origin('2px y', '--x'), label).toEqual([3, 7]);
+        expect(origin('/* from astmt */', '/* from astmt */'), label).toEqual([4, 2]);
+        expect(origin('2px', 'height'), label).toEqual([8, 10]);
+      }
     }
   });
 });
