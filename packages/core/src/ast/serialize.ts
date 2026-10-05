@@ -165,7 +165,7 @@ import { computeExtends, type ExtendPlacementResults, type ExtendResults } from 
 import { documentHasExtend, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
 import type { PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
 import type { Level } from './extend/ir.js';
-import { branchFromSelector, descendantBranch, levelFromSelectorList } from './extend/ir.js';
+import { branchFromSelector, descendantBranch, levelFromSelectorList, textSimple } from './extend/ir.js';
 import { DocumentContext, documentTriviaOf, type Context, type SourceContext } from '../context.js';
 import type { ModuleConfigRejection } from '../plugin.js';
 import { Deprecation } from '../deprecation.js';
@@ -11907,7 +11907,7 @@ const EMPTY_SCOPE: number[] = [];
  * COMPLEX dynamic extender ever has to chain as a match target.
  */
 function opaqueLevel(header: readonly string[]): Level {
-  return header.map(text => descendantBranch([{ t: 'text', text }]));
+  return header.map(text => descendantBranch([textSimple(text)]));
 }
 
 /** [extend/dynamic] The innermost `$for`/mixin placement token on the frame chain, or

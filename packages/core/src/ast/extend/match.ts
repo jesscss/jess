@@ -19,6 +19,7 @@ import {
   mkBranch,
   multisetEqual,
   multisetSubset,
+  opaqueCompound,
   simpleTexts,
   textSimpleTokens
 } from './ir.js';
@@ -902,7 +903,7 @@ function collapseMatchedAtoms(
   extenders: Branch[],
   retainMatched: boolean
 ): Compound {
-  const matchedBranch = descendantBranch([{ t: 'text', text: compoundText(targetCompound) }]);
+  const matchedBranch = descendantBranch([opaqueCompound(targetCompound)]);
   const out: Simple[] = [];
   let placed = false;
   for (const s of compound.value) {

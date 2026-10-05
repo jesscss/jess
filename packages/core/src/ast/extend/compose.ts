@@ -21,7 +21,8 @@ import {
   cloneSimple,
   descendantBranch,
   isSimple,
-  mkBranch
+  mkBranch,
+  textSimple
 } from './ir.js';
 import type { Branch, Level, SelectorPart, Simple } from './ir.js';
 
@@ -134,7 +135,7 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
       }
       if (!wrap) {
         parentStr ??= branchText(parent);
-        value.push({ t: 'text', text: s.text.split('&').join(parentStr) });
+        value.push(textSimple(s.text.split('&').join(parentStr)));
         continue;
       }
 
@@ -142,7 +143,7 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
       const parts = s.text.split('&');
       for (let i = 0; i < parts.length; i++) {
         if (parts[i]!.length > 0) {
-          value.push({ t: 'text', text: parts[i]! });
+          value.push(textSimple(parts[i]!));
         }
         if (i === parts.length - 1) {
           continue;
@@ -228,7 +229,7 @@ function stripRootAmp(b: Branch): Branch | null {
       }
       const text = s.text.split('&').join('');
       if (text.length > 0) {
-        value.push({ t: 'text', text });
+        value.push(text === s.text ? cloneSimple(s) : textSimple(text));
       }
     }
     if (value.length > 0) {
