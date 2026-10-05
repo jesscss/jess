@@ -3281,13 +3281,24 @@ const scssFactory = (g: ScssInputRules) => {
        * through to the media-type / QueryCondition arms.
        */
       g.QueryFunction,
+
+      /*
+       * `[ not ]? <media-type> [ and <media-in-parens> ]*` (media-queries-4
+       * §2.1; `or` is admitted as CSS's clause admits it). Every step reads its
+       * own connective, so `screen and (a) and (b)` and
+       * `not all and (monochrome)` parse; the CSS clause also tolerates a
+       * step with no connective. A `not (…)` condition fails this arm at its
+       * `(` and is the QueryCondition below.
+       */
       sequence(
+        optional(g.QueryNot),
         QueryNonOnlyKeyword,
-        optional(g.QueryAndOr),
-        g.QueryInParens
+        many(sequence(
+          optional(g.QueryAndOr),
+          g.QueryInParens
+        ))
       ),
-      g.QueryCondition,
-      QueryNonOnlyKeyword
+      g.QueryCondition
     ),
     (children) => {
       const values = keywordizeValues(children);

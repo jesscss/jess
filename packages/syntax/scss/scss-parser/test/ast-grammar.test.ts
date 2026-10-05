@@ -518,6 +518,22 @@ describe('SCSS canonical-AST grammar', () => {
     }
   });
 
+  /*
+   * media-queries-4 §2.1: `[ not | only ]? <media-type> [ and <media-condition-without-or> ]?`,
+   * the condition chaining `and <media-in-parens>`. These are valid CSS that css,
+   * less and jess parse; SCSS read only one connective after a media type.
+   */
+  it('parses a media type followed by a chain of connected conditions', () => {
+    for (const query of [
+      'screen and (min-width: 1px) and (max-width: 2px)',
+      'not all and (monochrome)',
+      'screen and (color) or (hover)'
+    ]) {
+      expect(serialize(parse(`@media ${query} { a { b: c; } }`)).css, query)
+        .toBe(`@media ${query} {\n  a {\n    b: c;\n  }\n}\n`);
+    }
+  });
+
   it('constructs interpolated SCSS import targets as parser-owned facts without classifying them', () => {
     for (const source of ['@import "theme-#{$mode}.css";', '@import url("theme-#{$mode}.css");']) {
       const cst = parseScssCst(source);
