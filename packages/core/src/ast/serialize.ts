@@ -751,9 +751,18 @@ export interface Frame {
   selectedIfBodies?: Map<If, Statement[]>;
 
   /**
+   * The direct `if()`/`$if` statements {@link preselectControlFlow} decided for
+   * this activation, each with its arm or `null` for none. Execution reuses a
+   * decision instead of evaluating the condition again. Absent until the frame's
+   * control flow is first selected.
+   */
+  preselectedIfs?: ReadonlyMap<If, Statement[] | null>;
+
+  /**
    * Source-ordered direct + selected-branch declaration index for this
-   * activation; `undefined` until the frame's control flow is first selected
-   * ({@link preselectControlFlow}, {@link selectIfBody}, {@link runWhile}).
+   * activation. `undefined` until the frame's control flow is first selected
+   * ({@link preselectControlFlow}), and again after an imported fact joins the
+   * frame, until the next scoped read rebuilds it ({@link selectControlFlow}).
    */
   selectedDeclIndex?: DeclIndex | null;
 
@@ -2163,11 +2172,13 @@ function publishImportedVariableDeclaration(
 
   /*
    * A frame that has already selected its control-flow bodies reads the stacks
-   * rebuilt around them, so the new fact joins those too. Only a frame with a
-   * `$if`/`if()`/`$while` ever has a selection.
+   * rebuilt around them, so the new fact must join those too. They are rebuilt
+   * once, at the next scoped read ({@link selectControlFlow}), never once per
+   * published fact: an `@import` publishes a whole document. Only a frame with
+   * a direct `$if`/`if()`/`$while` ever has a selection.
    */
   if (frame.selectedDeclIndex !== undefined) {
-    frame.selectedDeclIndex = collectSelectedDeclIndex(frame, frame.selectedIfBodies ?? EMPTY_SELECTED_IF_BODIES);
+    frame.selectedDeclIndex = undefined;
   }
 }
 
@@ -3049,8 +3060,8 @@ function lookupScopedBinding(frame: Frame | null, name: string, e?: EvalCtx): Bi
     if (replacement && (!e?.excluded.has(replacement.value))) {
       return { value: replacement.value, frame: f.bindingValueFrames?.get(replacement.value) ?? f, evaluated: null };
     }
-    if (f.selectedDeclIndex === undefined && f.declIndex?.controlFlow === true && e !== undefined) {
-      preselectControlFlow(f, e);
+    if (f.selectedDeclIndex === undefined && f.declIndex?.controlFlow === true) {
+      selectControlFlow(f, e);
     }
     const stack = (f.selectedDeclIndex ?? f.declIndex)?.byName.get(name);
     if (stack) {
@@ -3264,6 +3275,18 @@ function guardReadsInOrder(guard: GuardNode): boolean {
     case 'default':
       return false;
   }
+}
+
+/** {@link guardReadsInOrder} per `if()`/`$if`, a fact of its source decided once. */
+const ifReadsInOrderCache = new WeakMap<If, boolean>();
+
+function ifReadsInOrder(node: If): boolean {
+  let reads = ifReadsInOrderCache.get(node);
+  if (reads === undefined) {
+    reads = node.branches.some(branch => branch.guard !== null && guardReadsInOrder(branch.guard));
+    ifReadsInOrderCache.set(node, reads);
+  }
+  return reads;
 }
 
 /**
@@ -12272,11 +12295,13 @@ function runWhile(
   emitBody: (rules: Statement[]) => MaybePromise<void>
 ): MaybePromise<void> {
   /*
-   * Publish the body's declarations into this frame's index BEFORE the first
-   * condition runs. `$if` gets the same index through `selectIfBody`;
-   * a `$while` has no arm to select, so it registers its one body directly.
+   * The body's declarations are in this frame's index BEFORE the first
+   * condition runs: a `$while` has no arm to select, so selecting the frame's
+   * control flow registers its one body ({@link collectSelectedDeclIndex}).
    */
-  frame.selectedDeclIndex = collectSelectedDeclIndex(frame, frame.selectedIfBodies ?? EMPTY_SELECTED_IF_BODIES);
+  if (frame.selectedDeclIndex === undefined && frame.declIndex?.controlFlow === true) {
+    selectControlFlow(frame, e);
+  }
   const step = (start: number): MaybePromise<void> => {
     for (let i = start; i < MAX_WHILE_ITERATIONS; i++) {
       if (!settledGuard(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), '$while condition', node, e)) {
@@ -12297,42 +12322,126 @@ function runWhile(
 }
 
 /**
- * Select a frame's control-flow bodies before its first scoped read (ledger
- * N15): a selected arm's declarations are inline declarations at the
+ * Build a frame's selected declaration index: the first time, by deciding its
+ * control flow ({@link preselectControlFlow}); after an imported fact has
+ * joined the frame, by rebuilding the stacks around the decisions already made.
+ * Called only for a frame with a direct `$if`/`if()`/`$while` whose index is
+ * not built. Without an evaluation context nothing can be decided yet, so the
+ * read sees the frame's plain index.
+ */
+function selectControlFlow(frame: Frame, e: EvalCtx | undefined): void {
+  if (frame.preselectedIfs !== undefined) {
+    frame.selectedDeclIndex = collectSelectedDeclIndex(frame, frame.selectedIfBodies ?? EMPTY_SELECTED_IF_BODIES);
+  } else if (e !== undefined) {
+    preselectControlFlow(frame, e);
+  }
+}
+
+/** An arm whose statements can add to the selected declaration index. */
+const armDeclares = (body: readonly Statement[]): boolean =>
+  body.some(statement => statement.type === 'VariableDeclaration' || statement.type === 'While' || statement.type === 'If');
+
+/**
+ * Decide a frame's direct control flow before its first scoped read or its
+ * first control statement, whichever execution reaches first (ledger N15,
+ * ruling J2): a selected arm's declarations are inline declarations at the
  * `if()`/`$if`, and scoped (`@name`, `$^name`) lookup is order-independent and
  * last-wins in the frame, so a scoped read written before it sees the arm too.
- * A `$while` body registers here as well, as {@link runWhile} registers it.
+ * Every `$while` body registers as well ({@link collectSelectedDeclIndex}).
  *
- * Only a condition that reads nothing {@link readsInOrder} is evaluated ahead
- * of execution — every Less `if()`, whose conditions read scoped `@name`
- * bindings, and a `.jess` `$if` over scoped bindings, as a Less `if()` converts
- * to. A condition over a live binding or a property accessor depends on the
- * statements before it, so its arm is still selected when execution reaches
- * it. Arms are selected in source order, each condition seeing the arms
- * selected before it.
+ * Each `if()`/`$if` is decided ONCE per activation, here or, failing that, when
+ * execution reaches it ({@link selectIfBody}): the arm whose declarations are
+ * visible is always the arm that runs, and a condition runs once. Conditions
+ * are decided in source order, each seeing the arms before it and neither its
+ * own arm nor a later one, so `@c: red; if((iscolor(@c)), { @c: 1px; … })`
+ * selects its arm and every other read of `@c` in the frame is `1px`.
+ *
+ * Deciding stops at the first statement that cannot be decided before
+ * execution, and that statement and every one after it are decided when
+ * execution reaches them, so a condition always sees exactly the arms before
+ * it. Such a statement is one whose condition reads a binding
+ * {@link readsInOrder}, or names one that exists only once execution has made
+ * it — a variable a mixin call leaks into the frame.
+ *
+ * The conditions run on a statement-level context: whatever read triggered
+ * this may be mid-way through another value (its exclusions, an optional
+ * probe, a `calc()` or an `!important` sink), none of which is the condition's.
  */
 function preselectControlFlow(frame: Frame, e: EvalCtx): void {
-  frame.selectedDeclIndex = collectSelectedDeclIndex(frame, EMPTY_SELECTED_IF_BODIES);
-  for (const statement of frame.statements ?? []) {
-    if (statement.type === 'If' && unloweredCall(statement) === null
-      && !statement.branches.some(branch => branch.guard !== null && guardReadsInOrder(branch.guard))) {
-      selectIfBody(statement, frame, e);
+  const decided = new Map<If, Statement[] | null>();
+  frame.preselectedIfs = decided;
+  frame.selectedDeclIndex = collectSelectedDeclIndex(frame, frame.selectedIfBodies ?? EMPTY_SELECTED_IF_BODIES);
+  const statements = frame.statements;
+  if (!statements) {
+    return;
+  }
+  let ctx: EvalCtx | undefined;
+  for (const statement of statements) {
+    if (statement.type !== 'If' || unloweredCall(statement) !== null) {
+      continue;
+    }
+    if (ifReadsInOrder(statement)) {
+      return;
+    }
+    ctx ??= {
+      ...e,
+      excluded: new Set(),
+      optional: false,
+      calcDepth: undefined,
+      parenFrames: undefined,
+      exprBoundary: undefined,
+      importantSink: undefined,
+      elideSink: undefined,
+      mergeImportant: undefined,
+      defaultFn: undefined
+    };
+    let body: Statement[] | null;
+    try {
+      body = selectedIfBody(statement, frame, ctx);
+    } catch (error) {
+      if (error instanceof JessError && error.code === 'resolve/name-not-found') {
+        return;
+      }
+      throw error;
+    }
+    decided.set(statement, body);
+    if (body !== null) {
+      (frame.selectedIfBodies ??= new Map()).set(statement, body);
+      if (armDeclares(body)) {
+        frame.selectedDeclIndex = collectSelectedDeclIndex(frame, frame.selectedIfBodies);
+      }
     }
   }
 }
 
-/** Select one `$if` branch and publish only that branch into this activation's scoped index. */
+/**
+ * The arm of an `if()`/`$if` that execution has reached: the decision
+ * {@link preselectControlFlow} made for it, else its condition evaluated now,
+ * with the selected arm published into this activation's scoped index.
+ */
 function selectIfBody(node: If, frame: Frame, e: EvalCtx): Statement[] | null {
   /* [P36] Not lowered where built-ins are not ambient: the body is the ordinary call statement. */
   const unlowered = unloweredCall(node);
-  const body = unlowered === null ? selectedIfBody(node, frame, e) : [unlowered];
+  if (unlowered !== null) {
+    return [unlowered];
+  }
+  if (frame.selectedDeclIndex === undefined && frame.declIndex?.controlFlow === true) {
+    selectControlFlow(frame, e);
+  }
+  const decided = frame.preselectedIfs?.get(node);
+  if (decided !== undefined) {
+    return decided;
+  }
+  const body = selectedIfBody(node, frame, e);
   if (!body) {
     return null;
   }
   const selected = frame.selectedIfBodies ??= new Map();
   if (selected.get(node) !== body) {
     selected.set(node, body);
-    frame.selectedDeclIndex = collectSelectedDeclIndex(frame, selected);
+    if (frame.selectedDeclIndex !== undefined) {
+      frame.selectedDeclIndex = collectSelectedDeclIndex(frame, selected);
+    }
   }
   return body;
 }

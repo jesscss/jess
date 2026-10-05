@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
+import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
 /**
  * `@import` is a SOURCE FOLD: the imported statements belong at the import's
@@ -198,6 +199,61 @@ describe('@import folds imported facts in at the import\'s lexical position', ()
   it('keeps a nested import that follows the if() visible to later reads', async () => {
     await expect(render('.r {\n.x { a: @w; }\nif((true), { @w: B; });\n@import "lib";\n.c { a: @v; }\n}\n', '@v: L;\n'))
       .resolves.toBe('.r {\n  .x {\n    a: B;\n  }\n  .c {\n    a: L;\n  }\n}\n');
+  });
+
+  it('files a nested import published after the if() was decided at the import, ahead of the if()', async () => {
+    await expect(render('.r {\n.x { a: @w; }\n@import "lib";\nif((true), { @w: B; });\n.c { a: @w; }\n}\n', '@w: L;\n'))
+      .resolves.toBe('.r {\n  .x {\n    a: B;\n  }\n  .c {\n    a: B;\n  }\n}\n');
+  });
+
+  /*
+   * Each if() is decided once per activation (ruling J2): the arm whose
+   * declarations are visible is the arm that runs. A condition sees the arms
+   * of the if()s before it, never its own or a later one, so the common
+   * override pattern — a condition reading the name its arm redeclares —
+   * selects its arm, and every other read of that name sees the arm.
+   */
+  it('runs the arm whose declarations a read before the if() saw', async () => {
+    await expect(render('@c: red;\nif((iscolor(@c)), { @c: 1px; .y { c: d; } });\n.x { v: @c; }\n', ''))
+      .resolves.toBe('.y {\n  c: d;\n}\n.x {\n  v: 1px;\n}\n');
+    await expect(render('@c: red;\n.w { v: @c; }\nif((iscolor(@c)), { @c: 1px; .y { c: d; } }, { .z { c: d; } });\n.x { v: @c; }\n', ''))
+      .resolves.toBe('.w {\n  v: 1px;\n}\n.y {\n  c: d;\n}\n.x {\n  v: 1px;\n}\n');
+  });
+
+  it('gives every read of a name one value across two if()s', async () => {
+    await expect(render('@c: red;\n.w { v: @d; }\nif((iscolor(@c)), { @d: A; }, { @d: B; });\nif((true), { @c: 1px; });\n.x { v: @d; }\n', ''))
+      .resolves.toBe('.w {\n  v: A;\n}\n.x {\n  v: A;\n}\n');
+  });
+
+  it('lets a read see an if() that follows another if() execution reached first', async () => {
+    await expect(render('@v: A;\nif((true), { .a { b: c; } });\n.x { v: @v; }\nif((true), { @v: B; });\n.y { v: @v; }\n', ''))
+      .resolves.toBe('.a {\n  b: c;\n}\n.x {\n  v: B;\n}\n.y {\n  v: B;\n}\n');
+  });
+
+  /*
+   * A variable a mixin call leaks into the frame exists only once the call has
+   * run, so a condition that reads one is decided when execution reaches the
+   * if(), and a read before the if() does not see its arm.
+   */
+  it('decides an if() whose condition reads a leaked variable when execution reaches it', async () => {
+    await expect(render('@w: A;\n.x { a: @w; }\n.m() { @c: red; }\n.m();\nif((iscolor(@c)), { .arm { k: v; } @w: B; });\n', ''))
+      .resolves.toBe('.x {\n  a: A;\n}\n.arm {\n  k: v;\n}\n');
+  });
+
+  it('evaluates each if() condition once', async () => {
+    let calls = 0;
+    const plugin = {
+      install(api: { tree: { Keyword: new (value: string) => unknown }; functions: { functionRegistry: { add(name: string, fn: () => unknown): void } } }) {
+        api.functions.functionRegistry.add('tick', () => {
+          calls++;
+          return new api.tree.Keyword('true');
+        });
+      }
+    };
+    const compiler = new Compiler({ compile: { plugins: [lessPlugin(), lessCompatPlugin({ plugins: [plugin] })] } });
+    await expect(compiler.renderString('@v: A;\n.x { a: @v; }\nif((tick()), { @v: B; .arm { k: v; } });\n.y { a: @v; }\n', { language: 'less' }))
+      .resolves.toBe('.x {\n  a: B;\n}\n.arm {\n  k: v;\n}\n.y {\n  a: B;\n}\n');
+    expect(calls).toBe(1);
   });
 
   it('keeps a later-imported plain ruleset ahead of the local one (control: already passing)', async () => {

@@ -188,10 +188,17 @@ describe('V19 one-evaluator projection ratchet', () => {
     // store a member is read through, shared by `@ns.name` and `as *`, whose
     // members bind in both of the importer's stores (`bindingValueFrames`,
     // `cells`), once per name.
-    expect(occurrences(/^function |^async function /gmu)).toBe(484);
-    expect(occurrences(/new Map/gu)).toBe(77);
-    expect(occurrences(/new Set/gu)).toBe(39);
-    expect(occurrences(/new WeakMap/gu)).toBe(4);
+    // +2 functions, +2 `new Map`, +1 `new Set`, +1 `new WeakMap` (ruling J2):
+    // each `if()` is decided once per activation (`preselectedIfs`) and its
+    // decision reused when execution reaches it; `selectControlFlow` rebuilds the
+    // selected index lazily, once after an import publishes a whole document,
+    // instead of once per published fact; the conditions run on a
+    // statement-level context (a fresh exclusion set); `ifReadsInOrder` caches
+    // a per-`if()` source fact.
+    expect(occurrences(/^function |^async function /gmu)).toBe(486);
+    expect(occurrences(/new Map/gu)).toBe(79);
+    expect(occurrences(/new Set/gu)).toBe(40);
+    expect(occurrences(/new WeakMap/gu)).toBe(5);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);
 
@@ -226,8 +233,9 @@ describe('V19 one-evaluator projection ratchet', () => {
     expect(occurrences(/expandNestedFor\(/gu)).toBe(0);
     expect(occurrences(/selectIfBodyForRender\(/gu)).toBe(0);
 
-    /* +1: `preselectControlFlow` selects a frame's Less `if()` arms through the same selector (ledger N15). */
-    expect(occurrences(/selectIfBody\(/gu)).toBe(7);
+    /* `preselectControlFlow` decides arms through the one condition evaluator, `selectedIfBody` (ruling J2). */
+    expect(occurrences(/selectIfBody\(/gu)).toBe(6);
+    expect(occurrences(/selectedIfBody\(/gu)).toBe(3);
     expect(occurrences(/runWhile\(/gu)).toBe(6);
   });
 

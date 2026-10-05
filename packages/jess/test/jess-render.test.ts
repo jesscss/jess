@@ -31,11 +31,15 @@ describe('Jess parser plugin render-through', () => {
   });
 
   /*
-   * Ledger N15: a selected arm's declarations are inline declarations at the
-   * `$if`. A condition that reads only scoped bindings selects the same arm
-   * wherever it is read, so a scoped read before the `$if` sees the arm, as
-   * the Less `if()` it converts from does. A condition that reads a live
-   * binding is selected in execution order, as live reads are.
+   * Ruling J2 (ledger N15): a selected arm's declarations are inline
+   * declarations at the `$if`. A condition that reads only scoped bindings
+   * selects the same arm wherever it is read, so a scoped read before the `$if`
+   * sees the arm, as the Less `if()` it converts from does.
+   *
+   * NOT RULED: a condition that reads a live binding (or a property accessor)
+   * cannot be decided before execution reaches it, so today a scoped read
+   * before such a `$if` does not see its arm. The second expectation pins that
+   * current behaviour until the owner rules on it.
    */
   it('lets a scoped read before a $if see the arm its scoped condition selects', async () => {
     const render = (source: string) => new Compiler().renderString(source, { filePath: 'entry.jess', extension: '.jess' });
