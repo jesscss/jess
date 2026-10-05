@@ -5342,9 +5342,17 @@ function evalToDeclMap(statements: Statement[], frame: Frame | null, e: EvalCtx)
       byProp.set(name, entry); // last-wins
       list.push(entry);
     } else if (s.type === 'VariableDeclaration') {
-      const entry: DeclEntry = {
-        name: s.name, value: s.value, frame, evaluated: null, important: false
-      };
+      /* A configured module's overlay replaces its declared value (spec R6 §E.1). */
+      const replacement = frame?.reassign?.get(s.name);
+      const entry: DeclEntry = replacement === undefined
+        ? { name: s.name, value: s.value, frame, evaluated: null, important: false }
+        : {
+            name: s.name,
+            value: replacement.value,
+            frame: frame!.bindingValueFrames?.get(replacement.value) ?? frame,
+            evaluated: null,
+            important: false
+          };
       byVar.set(s.name, entry); // last-wins
       list.push(entry);
     }
@@ -5505,11 +5513,19 @@ function resolveBaseDeclMap(
   const rs = resolveForRuleset(base, frame, e);
   if (rs) {
     return memoPureDeclMap(base, frame, e, () => {
-      const bodyFrame: Frame = {
-        parent: rs.frame,
-        mixins: collectMixins(rs.rules),
-        declIndex: collectDeclIndex(rs.rules), cells: null, reassign: null
-      };
+      /*
+       * A body whose lexical frame was built over that very body is already
+       * activated — a composed module's namespace (`publishComposedModule`).
+       * Its members are read in that frame, configuration overlay included,
+       * never in a second activation of the module.
+       */
+      const bodyFrame: Frame = rs.frame !== null && rs.frame.statements === rs.rules
+        ? rs.frame
+        : {
+            parent: rs.frame,
+            mixins: collectMixins(rs.rules),
+            declIndex: collectDeclIndex(rs.rules), cells: null, reassign: null
+          };
       return evalToDeclMap(rs.rules, bodyFrame, e);
     });
   }
@@ -17426,12 +17442,13 @@ function publishComposedModule(
   if (namespace === '*') {
     /*
      * `as *`: the module's OWN top-level members merge unqualified into the
-     * importer. Their value-block members still resolve in the isolated
-     * bodyFrame, so redirect each value block's closure there.
+     * importer, a configured member as its configured value (spec R6 §E.1).
+     * Value-block members still resolve in the isolated bodyFrame, so redirect
+     * each value block's closure there.
      */
     for (const child of children) {
       if (child.type === 'VariableDeclaration') {
-        publishImportedVariableDeclaration(importerFrame, child);
+        publishImportedVariableDeclaration(importerFrame, bodyFrame.reassign?.get(child.name) ?? child);
         if (isValueBlockBinding(child.value)) {
           bindDetached(importerFrame, child.value, bodyFrame, bodyFrame.sourceOwner ?? null);
         }

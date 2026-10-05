@@ -24,6 +24,11 @@ describe('jess module configuration (with)', () => {
       .resolves.toBe('.a {\n  color: red;\n}\n');
   });
 
+  it('reads the configured knob through the module namespace', async () => {
+    await expect(render('@-compose "m.jess" with { $x: red; }\n.b { color: $m.x; }', knobModule))
+      .resolves.toBe('.a {\n  color: red;\n}\n.b {\n  color: red;\n}\n');
+  });
+
   it('renders the knob default when the module is composed without configuration', async () => {
     await expect(render('@-compose "m.jess";', knobModule))
       .resolves.toBe('.a {\n  color: blue;\n}\n');
