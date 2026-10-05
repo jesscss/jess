@@ -30,9 +30,7 @@ import { emitCompressed } from './compress.js';
 function verbatimArgs(args: ValueGroup, modes?: EvalModes): string {
   const separator = groupSeparator(args);
   const compress = modes?.compress === true;
-  const glue = separator === ' '
-    ? ' '
-    : (separator === ',' && compress ? ',' : sepGlue(separator));
+  const glue = separator === ' ' ? ' ' : sepGlue(separator, compress);
   return groupItems(args).map(compress ? emitCompressed : emitValue).join(glue);
 }
 

@@ -327,13 +327,24 @@ export const joinGroup = (v: readonly ValueGroup[], glue: string, emit: (item: V
 export const emitValue = (v: EvalValue): string =>
   typeof v === 'string' ? v : isValueGroupArray(v) ? joinGroup(v, ' ', emitValue) : v.bytes;
 
-/** The whitespace glue joining a list's items for its separator (`,`→`, `, `/`→` / `). */
-export const sepGlue = (sep: ListSeparator): string => {
+/**
+ * The glue joining a list's items for its separator (`,`→`, `, `/`→` / `).
+ * Compressed output tightens the comma (`,`); `/` stays spaced in both.
+ */
+export const sepGlue = (sep: ListSeparator, compress = false): string => {
   switch (sep) {
-    case ',': return ', ';
+    case ',': return compress ? ',' : ', ';
     case '/': return ' / ';
   }
 };
+
+/**
+ * The bytes between two items of a list or call: the canonical `glue`, except
+ * that pretty output replays an authored run carrying a line break (with its
+ * indentation) or a block comment. Compressed output always takes the glue.
+ */
+export const itemBoundary = (authored: string | undefined, glue: string, compress: boolean): string =>
+  !compress && authored !== undefined && /[\r\n]|\/\*/u.test(authored) ? authored : glue;
 
 /** Whether a value is an internal bare-byte literal leaf. */
 export const isLiteral = (v: EvalValue): v is string => typeof v === 'string';

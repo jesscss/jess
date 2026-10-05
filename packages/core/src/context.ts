@@ -1687,9 +1687,13 @@ export class Context {
    * A `#fragment` or `?query` suffix is stripped before resolution.
    */
   async readBinary(importPath: string): Promise<Buffer> {
-    const cleanPath = importPath.split(/[?#]/)[0]!;
-    const { resolvedPath } = await this._getPath(cleanPath);
-    return readFile(resolvedPath);
+    return (await this.readResolved(importPath)).bytes;
+  }
+
+  /** As {@link readBinary}, also returning the path the import resolved to. */
+  async readResolved(importPath: string): Promise<{ resolvedPath: string; bytes: Buffer }> {
+    const { resolvedPath } = await this._getPath(importPath.split(/[?#]/)[0]!);
+    return { resolvedPath, bytes: await readFile(resolvedPath) };
   }
 
   /**

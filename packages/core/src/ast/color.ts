@@ -123,9 +123,6 @@ function alphaText(c: Color, a: number, num: (v: number) => string): string {
   return c.alphaPct !== undefined ? `${num(c.alphaPct)}%` : num(a);
 }
 
-/** A number with its leading zero dropped (`0.5`→`.5`, `-0.5`→`-.5`): compressed output only. */
-const compactNumber = (v: number): string => formatNumber(v).replace(/^(-?)0\./u, '$1.');
-
 /**
  * Serialize a color in scalar syntax. A verbatim source literal (`c.src`) wins;
  * else format-based emit (RGB/HSL/HEX). The optional SOURCE-FORMAT state
@@ -133,16 +130,14 @@ const compactNumber = (v: number): string => formatNumber(v).replace(/^(-?)0\./u
  * spelling (`%` channels, `%` alpha, hue unit); when absent the emit is the
  * canonical no-source branch (`${rgb[idx]}` / `${alpha}`).
  *
- * `compact` (compressed output) keeps the same function form and drops only
- * the comma spaces and leading zeros: `rgba(255, 0, 0, 0.5)` → `rgba(255,0,0,.5)`.
+ * `num` spells each channel number and `comma` joins legacy comma-form
+ * arguments; compressed output passes its own (`compress.ts` owns that spelling).
  */
-export function serializeColor(c: Color, compact = false): string {
+export function serializeColor(c: Color, num: (v: number) => string = formatNumber, comma = ', '): string {
   if (c.src !== undefined) {
     return c.src;
   }
   const format = c.format ?? HEX;
-  const comma = compact ? ',' : ', ';
-  const num = compact ? compactNumber : formatNumber;
   if (format === RGB) {
     const rgb = colorRgb(c);
     const pct = c.rgbPct;

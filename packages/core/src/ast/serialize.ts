@@ -130,7 +130,9 @@ import {
   isValueGroupArray,
   isElided,
   isLiteral,
+  itemBoundary,
   literal,
+  sepGlue,
   type EvalModes,
   type FnScope,
   type PluginCallCtx,
@@ -454,8 +456,8 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
     const request = { node, specifier, options };
     if (importHasOption(options, 'inline')) {
       try {
-        const { resolvedPath } = await context.resolveImportPath(specifier.split(/[?#]/u)[0]!);
-        const inline = (await context.readBinary(resolvedPath)).toString();
+        const { resolvedPath, bytes } = await context.readResolved(specifier);
+        const inline = bytes.toString();
         const slash = Math.max(resolvedPath.lastIndexOf('/'), resolvedPath.lastIndexOf('\\'));
         return {
           inline,
@@ -3868,8 +3870,8 @@ function evalValueSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybeP
         continue;
       }
       if (!empty) {
-        const run = separators === undefined ? ' ' : separators[index - 1] ?? ' ';
-        bytes += e.compress === true ? compressedGap(run) : run;
+        /* [compress] one space; the authored (possibly multi-line) run is pretty-only. */
+        bytes += e.compress === true ? ' ' : separators?.[index - 1] ?? ' ';
       }
       bytes += emitValueC(item, e);
       empty = false;
@@ -4565,7 +4567,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         return combineAll(values, (resolved) => {
           let bytes = emitValueC(resolved[0]!, e);
           for (let i = 1; i < resolved.length; i++) {
-            const separator = hit.merged![i]!.node.merge === ',' ? (e.compress === true ? ',' : ', ') : ' ';
+            const separator = hit.merged![i]!.node.merge === ',' ? sepGlue(',', e.compress === true) : ' ';
             bytes += separator + emitValueC(resolved[i]!, e);
           }
           return literal(bytes);
@@ -4617,11 +4619,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
           }
         }
 
-        /*
-         * [compress] tighten the comma separator (`, `→`,`); the `/` separator stays
-         * spaced and a space list keeps its single space.
-         */
-        const glue = node.sep === ',' ? (e.compress === true ? ',' : ', ') : node.sep === '/' ? ' / ' : ' ';
+        const compress = e.compress === true;
+        const glue = sepGlue(node.sep, compress);
         const authored = valueLayoutOf(node);
 
         /* [null] An elided item takes its separator with it (§4.3): dart-sass
@@ -4634,8 +4633,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
             continue;
           }
           if (!empty) {
-            const separator = authored?.[index - 1];
-            out += e.compress !== true && separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue;
+            out += itemBoundary(authored?.[index - 1], glue, compress);
           }
           out += emitValueC(item, e);
           empty = false;
@@ -6296,18 +6294,17 @@ function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): Mayb
   const items = node.args.map(a => evalValueSlot(a.value, frame, preserve));
   return combineAll(items, (vals) => {
     const authored = valueLayoutOf(node.args);
-    const glue = node.modern ? ' ' : (e.compress === true ? ',' : ', ');
+    const compress = e.compress === true;
+
+    /*
+     * Comma spacing is minimal-correctness normalized to one space after the
+     * comma (owner rule 2026-08-17), matching the general call/list byte lane
+     * above — it is NOT authorship.
+     */
+    const glue = node.modern ? ' ' : sepGlue(',', compress);
     let inner = emitValueC(vals[0]!, e);
     for (let index = 1; index < vals.length; index += 1) {
-      const separator = authored?.[index - 1];
-
-      /*
-       * Comma spacing is minimal-correctness normalized to one space after the
-       * comma (owner rule 2026-08-17), matching the general call/list byte lane
-       * above — it is NOT authorship. The ONLY authored boundaries replayed
-       * verbatim are a newline + its indentation offset and a block comment.
-       */
-      inner += e.compress !== true && separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue;
+      inner += itemBoundary(authored?.[index - 1], glue, compress);
       inner += emitValueC(vals[index]!, e);
     }
     return literal(`${node.name}(${inner})`);
@@ -7228,23 +7225,8 @@ function evalCall(
   if (e.ev && node.args.length === 1 && node.name.toLowerCase() === 'calc') {
     return evalCalc(node, frame, e);
   }
-  const sep = node.modern ? ' ' : ',';
   if (!e.ev) {
-    if (node.args.length === 0) {
-      return literal(`${node.name}()`);
-    }
-    const items = node.args.map(a => evalValueSlot(a.value, frame, e));
-    return combineAll(items, (vals) => {
-      const authored = valueLayoutOf(node.args);
-      const glue = sep === ' ' ? ' ' : (e.compress === true ? ',' : ', ');
-      let inner = emitValueC(vals[0]!, e);
-      for (let index = 1; index < vals.length; index += 1) {
-        const separator = authored?.[index - 1];
-        inner += e.compress !== true && separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue;
-        inner += emitValueC(vals[index]!, e);
-      }
-      return literal(`${node.name}(${inner})`);
-    });
+    return preserveCall(node, frame, e);
   }
   const lname = node.name.toLowerCase();
 
@@ -7401,7 +7383,7 @@ function writtenBlockBody(
       ? undefined
       : items.find((item): item is Entry => typeof item === 'object' && 'mergeKey' in item && item.mergeKey === key);
     if (prior !== undefined) {
-      prior.parts.push({ separator: rule.merge === ',' ? (compress ? ',' : ', ') : ' ', value, sink });
+      prior.parts.push({ separator: rule.merge === ',' ? sepGlue(',', compress) : ' ', value, sink });
       prior.important ||= important;
       return;
     }
@@ -7668,8 +7650,7 @@ function joinSpacedBytes(node: Sequence, frame: Frame | null, e: EvalCtx): Maybe
        * [compress] a space list keeps ONE space; the authored (possibly multi-line)
        * boundary run is replayed only in pretty output.
        */
-      const run = authored?.[index - 1] ?? ' ';
-      out += e.compress === true ? compressedGap(run) : run;
+      out += e.compress === true ? ' ' : authored?.[index - 1] ?? ' ';
       out += emitValueC(values[index]!, e);
     }
     return literal(out);
@@ -7682,14 +7663,8 @@ function joinSpacedBytes(node: Sequence, frame: Frame | null, e: EvalCtx): Maybe
  * a typed COMPUTED value folds by its RESULT type ({@link emitCompressed}).
  */
 function emitValueC(v: EvalValue, e: EvalCtx): string {
-  return e.compress !== true || typeof v === 'string' ? emitValue(v) : emitCompressed(v);
+  return e.compress === true ? emitCompressed(v) : emitValue(v);
 }
-
-/**
- * [compress] An authored run between two value parts: glued parts stay glued,
- * and any other run — a line break, a comment, several spaces — is one space.
- */
-const compressedGap = (run: string): string => (run === '' ? '' : ' ');
 
 /** Fold a value node and return its emitted bytes. */
 function evalBytes(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
@@ -18260,8 +18235,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
     const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
     for (let index = 0; index < node.length; index += 1) {
       if (index > 0) {
-        const separator = authored?.[index - 1];
-        parts.push(plain(e.compress !== true && separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : ' '));
+        parts.push(plain(itemBoundary(authored?.[index - 1], ' ', e.compress === true)));
       }
       parts.push(evalQueryPreludeParts(node[index]!, frame, e));
     }
@@ -18305,13 +18279,13 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
       return concatPreludeParts(parts);
     }
     case 'List': {
-      const glue = node.sep === ',' ? (e.compress === true ? ',' : ', ') : node.sep === '/' ? ' / ' : ' ';
+      const compress = e.compress === true;
+      const glue = sepGlue(node.sep, compress);
       const authored = valueLayoutOf(node);
       const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
       for (let index = 0; index < node.value.length; index += 1) {
         if (index > 0) {
-          const separator = authored?.[index - 1];
-          parts.push(plain(e.compress !== true && separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue));
+          parts.push(plain(itemBoundary(authored?.[index - 1], glue, compress)));
         }
         parts.push(evalQueryPreludeParts(node.value[index]!, frame, e));
       }
