@@ -3733,12 +3733,19 @@ const cssFactory = (g: GrammarSelf) => {
     { project: 0 }
   );
 
-  /* A media query's term: a `<media-in-parens>`, or a media type / keyword / function. */
+  /*
+   * A media query's term: a `<media-in-parens>`, or a media type / keyword /
+   * function. `and` / `or` are never a term: they join two of them
+   * (`QueryClause`).
+   */
   const MediaTerm = node(
     'QueryTerm',
     choice(
       g.MediaInParens,
-      queryIdentOrFunctionTerm
+      sequence(
+        not(g.QueryAndOr),
+        queryIdentOrFunctionTerm
+      )
     ),
     { project: 0 }
   );
@@ -3761,6 +3768,12 @@ const cssFactory = (g: GrammarSelf) => {
    * must not be an optional separator here — swallowing it collapsed
    * `screen, print` into a Sequence instead of the List the other three
    * dialects produce.
+   *
+   * `and` / `or` join two terms (`<media-and> = and <media-in-parens>`,
+   * `[ and <media-condition-without-or> ]`), so each is read with the term it
+   * introduces: a connective with nothing after it (`(a) and {`) ends the
+   * clause before it and the prelude fails there, as it does in every
+   * dialect. It stays a `Keyword` part of the clause's Sequence.
    */
   const QueryClause = node(
     'QueryClause',
@@ -3768,11 +3781,14 @@ const cssFactory = (g: GrammarSelf) => {
       QueryOnlyClause,
       sequence(
         g.MediaTerm,
-        many(g.MediaTerm)
+        many(sequence(
+          optional(g.QueryAndOr),
+          g.MediaTerm
+        ))
       )
     ),
     (children) => {
-      const values = valueChildren(children);
+      const values = children.map(child => isValue(child) ? child : keyword(tokenText(child)));
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
