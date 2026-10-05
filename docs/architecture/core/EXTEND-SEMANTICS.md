@@ -210,19 +210,39 @@ the extend engine both call it.
   non-adjacent members (branch order inside one selector list changes neither the
   cascade nor specificity) and emitted in order of first appearance.
 - A member that cannot sit inside `:is()` — a pseudo-element, a pseudo-class outside
-  the standard allowlist, an unscoreable token, or a complex member after a
-  combinator (`.p :is(.x .y)` would let `.x` sit above `.p`) — is written as its own
-  branch: the 4.x expanded form, merged into one valid compound (`div` + `div.b` →
-  `div.b`, where 4.x wrote `divdiv.b`). A group at the head of a top-level selector
-  may hold complex members (`:is(.a, .t .b) .box` matches what
-  `.a .box, .t .b .box` does); a nested header has an implicit `&` before it, so it
-  never leads.
+  the standard allowlist, a token the parser did not build one-to-one (a `&` replaced
+  by its parent's text, a dynamic extender's composed text: its kind would have to be
+  read back out of serialized text), or a complex member the group does not lead
+  with — is written as its own branch in the Less 4.x expanded form: the simples
+  before the group join the member's FIRST compound and those after it its LAST
+  compound (`.a > .m:is(.c, .p .q).n` → `.a > .m.p .q.n`). Each joined compound is made
+  valid: the type selector leads and a repeated type is written once (`div` + `div.b`
+  → `div.b`, where 4.x wrote `divdiv.b`); a member that would need two element types
+  matches no element and is dropped (4.x wrote `divspan`).
+- A group may hold a complex member only where it leads the whole selector: first in
+  the head compound of a top-level header. Only there `:is(.t .b).k .box` matches what
+  the expanded `.t .b.k .box` does; `.p :is(.x .y)` would let `.x` sit above `.p`, and
+  `.m:is(.p .q)` is `.p .m.q` where 4.x's `.m.p .q` is meant. A nested header has an
+  implicit `&` before it, so it never leads.
+- A group nested in a member (a chained extend, `.j.k:extend(.c all)` then
+  `.p .q:extend(.j all)`) is checked as an `:is()` argument first, and again where the
+  member lands when the outer group splits: with `.r .s:extend(.j all)` too,
+  `.a > .c` gives `.a > .p .q.k, .a > .r .s.k`, never `.a > :is(.p .q, .r .s).k`.
 - The solve keeps each group whole (later instructions chain through it as one set of
   alternatives); the split happens once, as a header is emitted (`emit.ts`
-  `groupedBranches`). Only extend-built groups (`Simple.fold`) split; an authored
-  `:is()` and the nesting `:is(parents)` token print as they are, and never take in
-  the alternatives of an extend group that split inside one of their arms — the
-  branch distributes over them instead.
+  `groupedBranches`). Only extend-built groups (`Simple.fold`) split. An authored
+  `:is()` and the nesting `:is(parents)` token keep their arms as one list: an arm whose
+  extend group split keeps its first alternative there (the one holding the matched
+  selector, at the arm's own specificity), and every other alternative replaces the
+  whole `:is()` on its own — returned to the list it would raise elements the extend
+  never touched (`:is(.c.k, .z) .d` + `#b:extend(.c all)` → `:is(.c.k, .z) .d, #b.k .d`).
+  A plain compound alternative is merged in; anything else keeps a one-arm `:is()`.
+- KNOWN GAPS (owner decisions pending): an `all` match of a whole authored `:is()`
+  arm still appends the extender to the authored list (`:is(.c, .z) .d` +
+  `#b:extend(.c all)` → `:is(.c, .z, #b) .d`, raising `.c .d`/`.z .d`); a
+  pseudo-element member written as its own branch makes the whole rule invalid, as
+  in 4.x (the forgiving `:is()` kept the other branches); SCSS `@extend` uses the
+  same Less 4.x expansion, not dart-sass's weave.
 
 ```less
 .a > .c { color: red; }
@@ -362,7 +382,9 @@ STAYS nested and its extend rewrites the local selector in place, with three ref
   flatten's header is the full flat composition, so the rule rises out of EVERY
   enclosing rule block (`hoistBubble` = its nesting depth); rising one block left
   `.a { .b, .c { e } }` + `.d:extend(.a .b e)` as `.a { :is(.a .b, .a .c) e, .d {…} }`,
-  which needs two `.a` ancestors. Only a sub-span match that crosses the `&`
+  which needs two `.a` ancestors. An at-rule it rises out of is not a rule block but
+  goes with it: `.a { @media q { .b, .c { e {…} } } }` emits `@media q { … }` beside
+  `.a` (`serialize.ts` `HoistEntry.wrappers`). Only a sub-span match that crosses the `&`
   (`emit.ts` trigger C, the per-boundary hoist) keeps outer ancestors as wrappers.
   Flatten only when there is no shared prefix to strip and the match crosses;
   otherwise the local rewrite / prefix strip keeps the rule nested.
@@ -392,7 +414,12 @@ sibling branches differing in exactly ONE compound into `:is(...)` at that posit
   output mode: `.button:hover, #submit:hover` stays a comma list, and
   `.arrow::before` / `.arrow::after` never share an `:is()`. A leading extend group on
   either side flattens into the merge; an authored or nesting `:is()` joins it as one
-  member, so emission never splits a selector the author wrote.
+  member, so emission never splits a selector the author wrote. A lead already in
+  the group joins it once (`#b.x` reached twice is one `#b`).
+
+Compaction is not mode-coupled either: a top-level rule the extend changed compacts
+its header the same way in nested output (its `nestedPlan` header) as in flat
+output (`flatByRule`).
 
 ## 8. `@media` scoping — v5 does NOT merge media
 

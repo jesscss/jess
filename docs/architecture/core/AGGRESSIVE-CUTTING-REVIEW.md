@@ -223,6 +223,7 @@ a blanket optimization exemption or a new active architecture queue.
       "packages/core/src/ast/value-guards.ts",
       "packages/core/src/ast/value-list.ts",
       "packages/core/src/ast/extend/compose.ts",
+      "packages/core/src/ast/extend/conflict.ts",
       "packages/core/src/ast/extend/emit.ts",
       "packages/core/src/ast/extend/ir.ts",
       "packages/core/src/ast/extend/match.ts",

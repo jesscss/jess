@@ -133,6 +133,23 @@ whole complex simply flattens. A flatten whose subject still has surviving neste
 children re-nests the corrected subtree under its hoisted header rather than composing
 the children flat.
 
+A flattened rule carries its whole composed selector, so it moves out of every rule it
+was nested in. An at-rule in between (`@media`, `@supports`) moves with it:
+
+```less
+.a { @media screen { .b, .c { e { y: 2; } } } }
+.d:extend(.a .b e) {}
+```
+
+```css
+@media screen {
+  :is(.a .b, .a .c) e,
+  .d {
+    y: 2;
+  }
+}
+```
+
 ## Exact extend into a rule with children
 
 An **exact** extender cannot propagate into a target's sub-parts (only `all` does). If

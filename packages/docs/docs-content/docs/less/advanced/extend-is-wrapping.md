@@ -73,13 +73,17 @@ uses for nested selector lists:
 - none carries a **pseudo-element**, and every pseudo-class is a standard one every
   major browser implements (`:is()` silently drops an argument a browser does not
   understand, where a plain selector list drops the whole rule);
-- an alternative with a **combinator** (`.p .x`) joins an `:is()` only at the start of
-  the selector. After a combinator, `.a > :is(.p .x)` would also match a `.p` that is
-  not inside `.a`.
+- an alternative with a **combinator** (`.p .x`) joins an `:is()` only when the
+  `:is()` starts the selector. After a combinator, `.a > :is(.p .x)` would also match a
+  `.p` that is not inside `.a`; after another simple selector, `.m:is(.p .x)` means
+  `.p .m.x` where 4.x's expansion is `.m.p .x`.
 
 Alternatives that differ in specificity form separate equal-specificity groups, and an
 alternative that cannot join a group is written out as its own selector — the Less 4.x
-expanded form:
+expanded form, where the selector parts before the match attach to the alternative's
+first part and those after it to its last part (`.a > .m.c` extended by `.p .q` gives
+`.a > .m.p .q`). One difference from 4.x: a repeated element type is written once
+(`div.c` extended by `div.b` gives `div.b`, where 4.x wrote `divdiv.b`).
 
 ```less
 .a > .c { color: red; }
@@ -103,6 +107,23 @@ cascade nor specificity. Groups appear in the order their first member appears.
 
 This holds in **every** output mode — nested, `'native'` and `'compact'`. Only the
 nesting fold of `'compact'` groups selectors of different specificity.
+
+A selector you wrote with `:is()` keeps its own list. When an extend inside one of its
+arms adds an alternative of a different specificity, that alternative gets its own
+selector instead of joining your list, so the elements your list already matched keep
+their specificity:
+
+```less
+:is(.c.k, .z) .d { color: red; }
+#b:extend(.c all) {}
+```
+
+```css
+:is(.c.k, .z) .d,
+#b.k .d {
+  color: red;
+}
+```
 
 ## Multi-target `all` and the `!all` flag
 
