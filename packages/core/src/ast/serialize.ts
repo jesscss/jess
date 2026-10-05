@@ -9427,29 +9427,34 @@ class EmittedTrivia {
   }
 
   /**
-   * Open ONE expansion of a callable body: every run from run `from` up to offset
-   * `end` is freed for it, whatever owned it, and every run's prior state is
-   * returned for {@link closeCopy}. Each call or ruleset argument writes its own
-   * copy of the body, so it writes its own copy of the body's comments too.
+   * Open ONE written copy of a body: every run from run `from` up to offset
+   * `end` is freed for it, whatever owned it, and the runs that were owned or
+   * held are returned for {@link closeCopy} (`undefined` when none was). Each
+   * placement of a body — a rule at its place, a call, a ruleset argument, a
+   * loop iteration — writes its own copy of the body's comments.
    */
-  openCopy(table: CommentTable, from: number, end: number): SavedRuns {
-    const owned = this.bitsOf(table);
-    const states = new Uint8Array(firstRunAtOrAfter(table, end) - from);
-    for (let k = 0; k < states.length; k++) {
-      const at = table.canonical[from + k]!;
-      states[k] = owned[at]!;
-      owned[at] = FREE_RUN;
+  openCopy(table: CommentTable, from: number, end: number): SavedRuns | undefined {
+    const owned = this.bits.get(table);
+    if (owned === undefined) {
+      return undefined;
     }
-    return { from, states };
+    let states: Uint8Array | undefined;
+    for (let i = from; i < table.runs.length && table.runStart[i]! < end; i++) {
+      const at = table.canonical[i]!;
+      if (owned[at] !== FREE_RUN) {
+        states ??= new Uint8Array(firstRunAtOrAfter(table, end) - from);
+        states[i - from] = owned[at]!;
+        owned[at] = FREE_RUN;
+      }
+    }
+    return states === undefined ? undefined : { from, states };
   }
 
   /**
-   * Close the expansion a replay opened ({@link openCopy}): every run gets its
-   * prior state back. A definition stays held, and a run the copy wrote stays
-   * free for the body's other copies — a ruleset called as a mixin before it is
-   * written at its own position still writes its comments there. The copy's
-   * leaves carry the comments it took as their leading comments, so the block
-   * that writes them does not replay them again ({@link flushBlock}).
+   * Close the copy a replay opened ({@link openCopy}). A run that was held or
+   * owned before gets that state back, so a definition stays held for its next
+   * expansion. A run that was free keeps what the copy left: the comments it
+   * wrote stay owned, so no later replay of the enclosing body writes them again.
    */
   closeCopy(replay: BodyTriviaReplay | undefined): void {
     const saved = replay?.saved;
@@ -9458,10 +9463,10 @@ class EmittedTrivia {
     }
     const table = replay!.table;
     const owned = this.bitsOf(table);
-
-    /* Backwards: a run listed twice saved its real state at its first position. */
-    for (let k = saved.states.length - 1; k >= 0; k--) {
-      owned[table.canonical[saved.from + k]!] = saved.states[k]!;
+    for (let k = 0; k < saved.states.length; k++) {
+      if (saved.states[k] !== FREE_RUN) {
+        owned[table.canonical[saved.from + k]!] = saved.states[k]!;
+      }
     }
   }
 
@@ -9563,31 +9568,19 @@ function isReplaySpan(span: ReplaySpan | undefined): span is ReplaySpan {
   return span !== undefined;
 }
 
-const NO_REPLAY_SPANS: readonly ReplaySpan[] = [];
-
-/**
- * The spans of the rules nested directly in `rule`'s body, which a collapsed
- * block's comment replay steps over: a nested rule is written as its own block,
- * which writes its own comments. Read only when the body holds a comment.
- */
-function nestedRuleSpans(rule: Ruleset, bodyStart: number, e: Emit): readonly ReplaySpan[] {
-  const table = e.trivia === undefined ? undefined : commentTableOf(e.trivia);
-  const first = table === undefined ? 0 : firstRunAtOrAfter(table, bodyStart);
-  if (table === undefined || first >= table.runs.length || table.runStart[first]! >= bodyEndOf(rule)) {
-    return NO_REPLAY_SPANS;
-  }
-  let spans: ReplaySpan[] | undefined;
-  for (const statement of rule.rules) {
-    if (statement.type !== 'Ruleset') {
-      continue;
-    }
-    const start = statementStartOf(statement);
-    const end = statementEndOf(statement);
-    if (start !== undefined && end !== undefined) {
-      (spans ??= []).push({ start, end });
+/** Whether `[start, end)` lies inside one of `spans` (source-ordered and disjoint): a binary search. */
+function insideSpan(spans: readonly ReplaySpan[], start: number, end: number): boolean {
+  let low = 0;
+  let high = spans.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (spans[middle]!.start <= start) {
+      low = middle + 1;
+    } else {
+      high = middle;
     }
   }
-  return spans ?? NO_REPLAY_SPANS;
+  return low > 0 && end <= spans[low - 1]!.end;
 }
 
 function emitBlockCommentTriviaBetween(
@@ -9624,12 +9617,8 @@ function emitBlockCommentTriviaBetween(
       continue;
     }
 
-    /*
-     * `excludedSpans` is the root replay's statement list. It is bounded and
-     * small (556 span tests across the entire Less corpus, 0 on benchmark.less),
-     * so the linear scan stays as-is rather than growing an index for it.
-     */
-    if (excludedSpans.some(span => runStart >= span.start && runEnd <= span.end)) {
+    /* `excludedSpans` is the root replay's source-ordered statement spans. */
+    if (insideSpan(excludedSpans, runStart, runEnd)) {
       continue;
     }
     const from = table.commentAt[i]!;
@@ -10055,17 +10044,6 @@ function holdBodyTrivia(owner: object, e: Emit): void {
   }
 }
 
-/* The start offset alone, with no object built: this runs per statement inside
- * an at-rule body, and every caller that only needs the start must not pay for
- * a `{ start, end }` the base version got for free from the retained side table. */
-function bodyStartForTriviaReplay(owner: object, e: Emit): number {
-  const bodyStart = bodyStartOf(owner);
-  if (bodyStart !== NO_SPAN) {
-    return bodyStart;
-  }
-  return bodySpanForTriviaReplay(owner, e)?.start ?? NO_SPAN;
-}
-
 function bodySpanForTriviaReplay(owner: object, e: Emit): ReplaySpan | undefined {
   const bodyStart = bodyStartOf(owner);
   if (bodyStart !== NO_SPAN) {
@@ -10115,17 +10093,6 @@ function bodyBlockCommentTexts(owner: object, e: Emit): string[] {
     }
   }
   return out;
-}
-
-function emitBodyBlockCommentTriviaBefore(owner: object, before: object, e: Emit, indent: string, after: number): number {
-  const bodyStart = bodyStartForTriviaReplay(owner, e);
-  const beforeStart = sourceStartOf(before);
-  return emitBlockCommentTriviaBetween(
-    e,
-    Math.max(bodyStart === NO_SPAN ? after : bodyStart, after),
-    beforeStart === NO_SPAN ? undefined : beforeStart,
-    indent
-  );
 }
 
 function emitLeadingDocumentBlockComments(e: Emit, indent = ''): void {
@@ -10554,7 +10521,9 @@ function hasBodyBlockCommentTrivia(owner: object, e: Emit): boolean {
     if (table.runStart[i]! > body.end) {
       break;
     }
-    if (table.runEnd[i]! <= body.end && runHasBlockComment(table, i)) {
+
+    /* A held run belongs to a callable body inside this one, which writes it. */
+    if (table.runEnd[i]! <= body.end && runHasBlockComment(table, i) && !e.emittedBlockTrivia.hasIndex(table, i)) {
       return true;
     }
   }
@@ -10630,6 +10599,7 @@ function evaluateLeafStatement(
     place({ node, frame, important, leadingBlockComments: null, fromApply });
     return;
   }
+  skipBodyTrivia(bodyTrivia, node, e);
 
   const parts = nestedPropertyDeclarations(node);
   if (parts === null) {
@@ -11948,7 +11918,7 @@ function emitDocumentStatements(
     const trailingBlockComments = takePendingLeafBlockComments(e, group);
     if (group.length) {
       return mapMaybe(
-        flushBlock([], group, e, undefined, undefined, undefined, trailingBlockComments),
+        flushBlock([], group, e, undefined, undefined, trailingBlockComments),
         () => {
           group.length = 0;
         }
@@ -12992,7 +12962,7 @@ function flattenWithHeader(
        * and header merge; top-level rules (`parent === null`) never do.
        */
       return mapMaybe(flushBlock(
-        visible, group, e, rule.selector, parent, rule, trailingBlockComments
+        visible, group, e, rule.selector, parent, trailingBlockComments
       ), () => {
         if (!spliced) {
           recordDynExtendSlot(e, rule, frame, visible);
@@ -13014,7 +12984,7 @@ function flattenWithHeader(
   ): MaybePromise<void> => {
     if (leaves.length || trailingBlockComments.length !== 0) {
       return mapMaybe(flushBlock(
-        visible, leaves, e, rule.selector, parent, rule, trailingBlockComments
+        visible, leaves, e, rule.selector, parent, trailingBlockComments
       ), () => {
         if (!spliced) {
           recordDynExtendSlot(e, rule, frame, visible);
@@ -13038,47 +13008,56 @@ function flattenWithHeader(
       }
     };
     if (!partition.encounteredContainer) {
-      if (group.length === 0 && e.pendingLeafBlockCommentOwner !== group && hasBodyBlockCommentTrivia(rule, e)) {
-        return mapMaybe(flushBlock(
-          visible, [], e, rule.selector, parent, rule, EMPTY_LEAF_BLOCK_COMMENTS
-        ), () => {
-          if (!spliced) {
-            recordDynExtendSlot(e, rule, frame, visible);
-          }
-        });
-      }
       return flush();
     }
     queueLeadingGroup(group, partition, e);
     flushPending(partition);
     return runTrailing(0);
   };
-  const executeBody = () => mapMaybe(
-    activateBodyDependencies(rule.rules, childFrame, e),
-    () => walkBody(
-      rule.rules,
-      childComposed,
-      childComposed === null ? null : childAncestor,
-      childFrame,
-      group,
-      flush,
-      partition,
-      e,
-      imp,
-      false,
-      childFrame,
-      false,
-      expandBubbledSelectorList
-    )
-  );
+
+  /*
+   * [G28] The rule's comments are trivia in its body span, replayed by its own
+   * walk: each lands before the leaf that follows it, and one after the last
+   * statement trails the block. Every placement of the rule writes its own copy.
+   */
+  const executeBody = (): MaybePromise<void> => {
+    const bodyTrivia = bodyTriviaReplay(rule, e);
+    return mapMaybe(
+      mapMaybe(
+        activateBodyDependencies(rule.rules, childFrame, e),
+        () => walkBody(
+          rule.rules,
+          childComposed,
+          childComposed === null ? null : childAncestor,
+          childFrame,
+          group,
+          flush,
+          partition,
+          e,
+          imp,
+          false,
+          childFrame,
+          false,
+          expandBubbledSelectorList,
+          bodyTrivia
+        )
+      ),
+      () => {
+        queueBodyTriviaTail(bodyTrivia, group, partition, e);
+        e.emittedBlockTrivia.closeCopy(bodyTrivia);
+        return finish();
+      }
+    );
+  };
 
   /*
    * A Ruleset can be rendered from an imported document before it is later called
    * as a ruleset-mixin. Its canonical body owns the imported document's source
    * identity in both placements, so nested `(inline)` imports resolve from that
-   * document rather than the caller/root document.
+   * document rather than the caller/root document, and its comments are read
+   * from that document's trivia.
    */
-  return mapMaybe(withSourceOwner(e, childFrame.sourceOwner, executeBody), finish);
+  return withSourceOwner(e, childFrame.sourceOwner, executeBody);
 }
 
 /** [partition] Queue the direct leaves preceding a collapsed child as one parent block. */
@@ -13135,20 +13114,28 @@ function addLeaf(
   }
 }
 
-/** Sparse body-comment cursor used only while replaying a callable body. */
+/**
+ * Sparse comment cursor over one body while it is walked. A comment between two
+ * statements is queued, in source order, onto the leaf written next; a comment
+ * inside a statement belongs to that statement's own writer.
+ */
 interface BodyTriviaReplay {
   readonly table: CommentTable;
   readonly end: number;
   index: number;
 
+  /** The end of the last declaration walked: the run starting there is its inline comment. */
+  declarationEnd: number | undefined;
+
   /** The states {@link EmittedTrivia.openCopy} saved, indexed from the body's first run. */
-  readonly saved: SavedRuns;
+  readonly saved: SavedRuns | undefined;
 }
 
 /**
- * Open the comment replay for ONE expansion of a callable body (a mixin call,
- * a detached ruleset call, a ruleset argument): its runs are freed for this
- * copy, and {@link EmittedTrivia.closeCopy} restores them once the body is written.
+ * Open the comment replay for ONE written copy of a body — a rule at its place,
+ * a mixin call, a detached ruleset call, a ruleset argument, a loop iteration:
+ * its runs are freed for this copy, and {@link EmittedTrivia.closeCopy}
+ * restores them once the body is walked.
  */
 function bodyTriviaReplay(owner: object, e: Emit): BodyTriviaReplay | undefined {
   const trivia = e.trivia;
@@ -13173,19 +13160,8 @@ function bodyTriviaReplay(owner: object, e: Emit): BodyTriviaReplay | undefined 
   }
   const low = firstRunAtOrAfter(table, start);
   return low < table.runs.length && table.runStart[low]! < end
-    ? { table, end, index: low, saved: e.emittedBlockTrivia.openCopy(table, low, end) }
+    ? { table, end, index: low, declarationEnd: undefined, saved: e.emittedBlockTrivia.openCopy(table, low, end) }
     : undefined;
-}
-
-/**
- * Write a rule that a callable body's expansion deferred past its own walk
- * inside a copy of the rule's body, as the walk would have: its comments belong
- * to the body, so each expansion writes them where the rule lands
- * ({@link EmittedTrivia.openCopy}).
- */
-function withBodyCopy(owner: object, e: Emit, emit: () => MaybePromise<void>): MaybePromise<void> {
-  const copy = bodyTriviaReplay(owner, e);
-  return mapMaybe(emit(), () => e.emittedBlockTrivia.closeCopy(copy));
 }
 
 /**
@@ -13232,21 +13208,82 @@ function queueBodyTriviaBefore(
   if (end === undefined) {
     return;
   }
-  const previousLeaf = group[group.length - 1];
-  const comments = takeBodyTrivia(replay, end, previousLeaf === undefined ? undefined : statementEndOf(previousLeaf.node), e);
+  const comments = takeBodyTrivia(replay, end, replay.declarationEnd, e);
   if (comments !== undefined) {
     queueLeafBlockComments(e, group, comments);
   }
+}
 
-  /*
-   * A comment inside a declaration or a nested rule belongs to that statement's
-   * own writer — the value's or the rule body's — so the replay steps over it
-   * rather than writing it between statements.
-   */
-  const statementEnd = before.type === 'Declaration' || before.type === 'Ruleset' ? statementEndOf(before) : undefined;
+/**
+ * Queue the comments before `node` onto the next leaf, then step over the
+ * comments `node` writes itself — an at-rule body walk's one replay step.
+ */
+function replayBodyTriviaBefore(replay: BodyTriviaReplay | undefined, node: Statement, group: Leaf[], e: Emit): void {
+  queueBodyTriviaBefore(replay, node, group, e);
+  if (node.type === 'Declaration' || ownsItsComments(node, true)) {
+    skipBodyTrivia(replay, node, e);
+  }
+}
+
+/**
+ * Step the replay over one statement's own span. A comment inside a declaration
+ * value, a nested rule, an at-rule, a call's arguments or a loop body belongs
+ * to that statement's writer, never to the block the statement sits in.
+ */
+function skipBodyTrivia(replay: BodyTriviaReplay | undefined, statement: Statement, e: Emit): void {
+  if (replay === undefined) {
+    return;
+  }
   const table = replay.table;
-  while (statementEnd !== undefined && replay.index < table.runs.length && table.runStart[replay.index]! < statementEnd) {
+  const end = statementEndOf(statement);
+  if (end === undefined) {
+    /*
+     * A custom property is unspanned (its value keeps its comments, and a span
+     * would claim the run after it). The comments inside its value are the
+     * value's own (customPropertyValueWithTrivia): claimed, not stepped over,
+     * so the comments before them stay in place for the next statement.
+     */
+    const value = statement.type === 'Declaration' && !isValueSlotArray(statement.value) ? statement.value : undefined;
+    const valueStart = value === undefined ? NO_SPAN : sourceStartOf(value);
+    if (valueStart !== NO_SPAN) {
+      const valueEnd = sourceEndOf(value!);
+      for (let i = Math.max(replay.index, firstRunAtOrAfter(table, valueStart)); i < table.runs.length && table.runStart[i]! < valueEnd; i++) {
+        if (table.runEnd[i]! <= valueEnd) {
+          e.emittedBlockTrivia.addIndex(table, i);
+        }
+      }
+    }
+    return;
+  }
+  while (replay.index < table.runs.length && table.runStart[replay.index]! < end) {
     replay.index++;
+  }
+  replay.declarationEnd = statement.type === 'Declaration' ? end : undefined;
+}
+
+/**
+ * Whether a statement writes the comments inside its own span (see
+ * {@link skipBodyTrivia}). A collapsed nested rule is decided where it is
+ * placed: one merged into this block (`& { … }`) is walked with this body's
+ * replay, so its comments land between the leaves around them.
+ */
+function ownsItsComments(node: Statement, nested: boolean): boolean {
+  switch (node.type) {
+    case 'Ruleset':
+      return nested;
+    case 'AtRuleBlock':
+    case 'AtRuleStatement':
+    case 'UnknownAtRuleBlock':
+    case 'StyleImport':
+    case 'ModuleImport':
+    case 'MixinCall':
+    case 'Apply':
+    case 'Reference':
+    case 'FunctionCall':
+    case 'For':
+      return true;
+    default:
+      return false;
   }
 }
 
@@ -13276,8 +13313,7 @@ function queueBodyTriviaTail(
   const target = partition?.encounteredContainer === true && partition.lastLeadingGroup !== undefined
     ? partition.lastLeadingGroup
     : group;
-  const previousLeaf = target[target.length - 1];
-  const comments = takeBodyTrivia(replay, replay.end, previousLeaf === undefined ? undefined : statementEndOf(previousLeaf.node), e);
+  const comments = takeBodyTrivia(replay, replay.end, replay.declarationEnd, e);
   if (comments !== undefined) {
     if (target === partition?.lastLeadingGroup && partition.lastLeadingEmission !== undefined) {
       partition.lastLeadingEmission(comments);
@@ -13374,39 +13410,24 @@ function walkBody(
    * a nested projection buffers; the collapsed projection places into `group`.
    */
   const buf: Leaf[] = nested ? (sharedLeaves?.leaves ?? []) : MOOT_LEAVES;
-  let bodyOwner: object | undefined;
-  let bodyTriviaCursor = 0;
+
+  /*
+   * [G28] A nested rule's own body: this walk owns its comment replay
+   * ({@link bodyTriviaReplay}), queued before each statement like every other
+   * body's. A shared or inline walk uses the replay it was handed.
+   */
+  const ownsReplay = nested && sharedLeaves === undefined && owner !== undefined && bodyTrivia === undefined;
+  if (ownsReplay) {
+    bodyTrivia = bodyTriviaReplay(owner, e);
+  }
   let rootTriviaCursor: number | undefined;
   let inlineLeaves: NestedLeafBuffer | undefined;
   let flushBuf: () => void = MOOT_FLUSH;
-  let replayBodyCommentsBefore: (statement: Statement) => void = NOOP_BEFORE_STATEMENT;
   let emitBeforeRootStatement: (node: Statement) => void = NOOP_BEFORE_STATEMENT;
   let markAfterRootStatement: (node: Statement) => void = NOOP_BEFORE_STATEMENT;
   let emitTrailingRootTrivia: () => void = NOOP_TRAILING_TRIVIA;
   let placeLeaf: (leaf: Leaf) => void;
   if (nested) {
-    /*
-     * [G28] Body-interior comment replay, mirroring the walk the collapsed emitter
-     * already performs. Only armed when this call owns the body outright.
-     */
-    bodyOwner = sharedLeaves === undefined ? owner : undefined;
-    const bodyOwnerStart = bodyOwner === undefined ? NO_SPAN : bodyStartOf(bodyOwner);
-    bodyTriviaCursor = bodyOwnerStart === NO_SPAN ? 0 : bodyOwnerStart;
-    replayBodyCommentsBefore = (statement: Statement): void => {
-      if (bodyOwner === undefined) {
-        return;
-      }
-      emitBodyBlockCommentTriviaBefore(bodyOwner, statement, e, INDENT.repeat(e.depth), bodyTriviaCursor);
-      const end = sourceEndOf(statement);
-      bodyTriviaCursor = end === NO_SPAN ? bodyTriviaCursor : end;
-    };
-
-    /* A called body's leaf carries the comments its expansion took (closeCopy). */
-    const replayBeforeLeaf = (leaf: Leaf): void => {
-      if (leaf.frame.mixinSplice !== true) {
-        replayBodyCommentsBefore(leaf.node);
-      }
-    };
     flushBuf = sharedLeaves?.flush ?? (() => {
       if (buf.length === 0 && e.pendingLeafBlockCommentOwner !== buf) {
         return;
@@ -13438,15 +13459,12 @@ function walkBody(
             const start = index;
             settledEmission(withSourceOwner(e, sourceOwner, () => {
               for (let at = start; at < end; at++) {
-                const owned = buf[at]!;
-                replayBeforeLeaf(owned);
-                emitNestedLeafOwned(owned, e);
+                emitNestedLeafOwned(buf[at]!, e);
               }
             }), leaf.node, e);
             index = end;
             continue;
           }
-          replayBeforeLeaf(leaf);
           emitNestedLeafOwned(leaf, e);
           index++;
         }
@@ -13461,9 +13479,15 @@ function walkBody(
     });
     inlineLeaves = sharedLeaves ?? { leaves: buf, flush: flushBuf, propertyScope: frame };
     rootTriviaCursor = frame.parent === null && sharedLeaves === undefined ? 0 : undefined;
+
+    /*
+     * Every root statement of the document, not just this walk's: a document
+     * split at its imports is walked in runs, and each run's replay starts at
+     * the document's start.
+     */
     const rootTriviaExclusions = rootTriviaCursor === undefined
       ? []
-      : statements.map((statement) => {
+      : (frame.statements ?? statements).map((statement) => {
           const start = statementStartOf(statement);
           const end = statementEndOf(statement);
           return start === undefined || end === undefined ? undefined : { start, end };
@@ -13507,6 +13531,9 @@ function walkBody(
       const node = statements[index]!;
       if (node.type !== 'Declaration' && node.type !== 'Comment') {
         queueBodyTriviaBefore(bodyTrivia, node, nested ? buf : group, e);
+        if (ownsItsComments(node, nested)) {
+          skipBodyTrivia(bodyTrivia, node, e);
+        }
       }
 
       /*
@@ -13559,7 +13586,6 @@ function walkBody(
               break;
             }
             flushBuf();
-            replayBodyCommentsBefore(node);
             emitBeforeRootStatement(node);
 
             /*
@@ -13641,16 +13667,14 @@ function walkBody(
                 forceLeading,
                 propertyScope,
                 applyExpansion,
-                expandBubbledSelectorList
+                expandBubbledSelectorList,
+                bodyTrivia
               );
             };
             const passes = ruleGuardPasses(rule, frame, e);
             const emitted = mapMaybe(passes, emitSelf);
             if (isThenable(emitted)) {
-              return emitted.then(() => walkBody(
-                statements.slice(index + 1), rComposedSelf, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope, applyExpansion, expandBubbledSelectorList
-              ));
+              return emitted.then(() => run(index + 1));
             }
             break;
           }
@@ -13664,25 +13688,20 @@ function walkBody(
             queueLeadingGroup(group, partition, e);
             flushPending(partition);
             partition.encounteredContainer = true;
-            const emitRule = (): MaybePromise<void> => expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList);
-            partition.trailing.push(bodyTrivia === undefined ? emitRule : () => withBodyCopy(rule, e, emitRule));
+            skipBodyTrivia(bodyTrivia, rule, e);
+            partition.trailing.push(() => expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList));
           } else {
+            skipBodyTrivia(bodyTrivia, rule, e);
             const flushed = flush();
             if (isThenable(flushed)) {
               return flushed.then(() => mapMaybe(
                 expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList),
-                () => walkBody(
-                  statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                  partition, e, imp, forceLeading, propertyScope, applyExpansion, expandBubbledSelectorList
-                )
+                () => run(index + 1)
               ));
             }
             const emitted = expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList);
             if (isThenable(emitted)) {
-              return emitted.then(() => walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope, applyExpansion, expandBubbledSelectorList
-              ));
+              return emitted.then(() => run(index + 1));
             }
           }
           break;
@@ -13712,10 +13731,7 @@ function walkBody(
           } else {
             const expanded = expandCall(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, undefined, propertyScope, applyExpansion);
             if (isThenable(expanded)) {
-              return expanded.then(() => walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope, applyExpansion
-              ));
+              return expanded.then(() => run(index + 1));
             }
           }
           break;
@@ -13742,10 +13758,7 @@ function walkBody(
           } else {
             const expanded = expandApply(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope);
             if (isThenable(expanded)) {
-              return expanded.then(() => walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope, applyExpansion
-              ));
+              return expanded.then(() => run(index + 1));
             }
           }
           break;
@@ -13773,10 +13786,7 @@ function walkBody(
           } else {
             const expanded = expandReferenceCall(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
             if (isThenable(expanded)) {
-              return expanded.then(() => walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope, applyExpansion
-              ));
+              return expanded.then(() => run(index + 1));
             }
           }
           break;
@@ -13804,10 +13814,7 @@ function walkBody(
           } else {
             const expanded = expandFor(node, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
             if (isThenable(expanded)) {
-              return expanded.then(() => walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope, applyExpansion
-              ));
+              return expanded.then(() => run(index + 1));
             }
           }
           break;
@@ -13816,7 +13823,7 @@ function walkBody(
             flushBuf();
             const body = selectIfBody(node, frame, e);
             if (body) {
-              const emitted = nestedBody(body, frame, e, hoist, imp, source, placement, undefined, applyExpansion);
+              const emitted = nestedBody(body, frame, e, hoist, imp, source, placement, undefined, applyExpansion, undefined, bodyTrivia);
               if (isThenable(emitted)) {
                 return emitted.then(() => run(index + 1));
               }
@@ -13825,12 +13832,9 @@ function walkBody(
           }
           const body = selectIfBody(node, frame, e);
           if (body) {
-            const emitted = walkBody(body, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
+            const emitted = walkBody(body, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion, expandBubbledSelectorList, bodyTrivia);
             if (isThenable(emitted)) {
-              return emitted.then(() => walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope, applyExpansion
-              ));
+              return emitted.then(() => run(index + 1));
             }
           }
           break;
@@ -13838,20 +13842,18 @@ function walkBody(
         case 'While': {
           if (nested) {
             flushBuf();
-            const emitted = runWhile(node, frame, e, rules => nestedBody(rules, frame, e, hoist, imp, source, placement, undefined, applyExpansion));
+            const emitted = runWhile(node, frame, e, rules => nestedBody(rules, frame, e, hoist, imp, source, placement, undefined, applyExpansion, undefined, bodyTrivia));
             if (isThenable(emitted)) {
               return emitted.then(() => run(index + 1));
             }
             break;
           }
           const emitted = runWhile(node, frame, e, rules => walkBody(
-            rules, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion
+            rules, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion,
+            expandBubbledSelectorList, bodyTrivia
           ));
           if (isThenable(emitted)) {
-            return emitted.then(() => walkBody(
-              statements.slice(index + 1), composed, ancestor, frame, group, flush,
-              partition, e, imp, forceLeading, propertyScope, applyExpansion
-            ));
+            return emitted.then(() => run(index + 1));
           }
           break;
         }
@@ -13930,18 +13932,12 @@ function walkBody(
             if (isThenable(flushed)) {
               return flushed.then(() => mapMaybe(
                 emitAt(),
-                () => walkBody(
-                  statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                  partition, e, imp, forceLeading, propertyScope
-                )
+                () => run(index + 1)
               ));
             }
             const emitted = emitAt();
             if (isThenable(emitted)) {
-              return emitted.then(() => walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope
-              ));
+              return emitted.then(() => run(index + 1));
             }
           }
           break;
@@ -13990,10 +13986,7 @@ function walkBody(
             if (isThenable(flushed)) {
               return flushed.then(() => {
                 emitAtRuleStatement(node, frame, e);
-                return walkBody(
-                  statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                  partition, e, imp, forceLeading, propertyScope, applyExpansion
-                );
+                return run(index + 1);
               });
             }
             emitAtRuleStatement(node, frame, e);
@@ -14059,18 +14052,12 @@ function walkBody(
             if (isThenable(flushed)) {
               return flushed.then(() => mapMaybe(
                 expandStyleImport(node, frame, e, e.importDocument),
-                () => walkBody(
-                  statements.slice(index + 1), composed, ancestor, frame, group,
-                  flush, partition, e, imp, forceLeading, propertyScope
-                )
+                () => run(index + 1)
               ));
             }
             const imported = expandStyleImport(node, frame, e, e.importDocument);
             if (isThenable(imported)) {
-              return imported.then(() => walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group,
-                flush, partition, e, imp, forceLeading, propertyScope
-              ));
+              return imported.then(() => run(index + 1));
             }
           } else if (partition !== null && composed !== null) {
             addLeaf(group, partition, evaluatedLeaf(node, frame), forceLeading, e);
@@ -14079,10 +14066,7 @@ function walkBody(
             if (isThenable(flushed)) {
               return flushed.then(() => mapMaybe(
                 expandStyleImport(node, frame, e, e.importDocument),
-                () => walkBody(
-                  statements.slice(index + 1), composed, ancestor, frame, group,
-                  flush, partition, e, imp, forceLeading, propertyScope
-                )
+                () => run(index + 1)
               ));
             }
 
@@ -14093,10 +14077,7 @@ function walkBody(
              */
             const imported = expandStyleImport(node, frame, e, e.importDocument);
             if (isThenable(imported)) {
-              return imported.then(() => walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group,
-                flush, partition, e, imp, forceLeading, propertyScope
-              ));
+              return imported.then(() => run(index + 1));
             }
           }
           break;
@@ -14120,10 +14101,7 @@ function walkBody(
             if (isThenable(flushed)) {
               return flushed.then(() => {
                 emitModuleImport(node, frame, e);
-                return walkBody(
-                  statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                  partition, e, imp, forceLeading, propertyScope, applyExpansion
-                );
+                return run(index + 1);
               });
             }
             emitModuleImport(node, frame, e);
@@ -14149,10 +14127,7 @@ function walkBody(
             if (isThenable(flushed)) {
               return flushed.then(() => {
                 emitUnknownAtRuleBlock(node, e);
-                return walkBody(
-                  statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                  partition, e, imp, forceLeading, propertyScope, applyExpansion
-                );
+                return run(index + 1);
               });
             }
             emitUnknownAtRuleBlock(node, e);
@@ -14184,19 +14159,15 @@ function walkBody(
       }
     }
     if (nested) {
-      queueBodyTriviaTail(bodyTrivia, buf, null, e);
+      if (ownsReplay) {
+        queueBodyTriviaTail(bodyTrivia, buf, null, e);
+      }
       if (!sharedLeaves) {
         flushBuf();
-
-        /*
-         * [G28] Comments after the LAST statement but still inside the block.
-         * The per-statement walk above only reaches comments that precede a
-         * statement, so without this a trailing `a { b: c; /* z *\/ }` is lost.
-         */
-        if (bodyOwner !== undefined) {
-          emitBlockCommentTriviaBetween(e, bodyTriviaCursor, bodyEndOf(bodyOwner), INDENT.repeat(e.depth));
-        }
         emitTrailingRootTrivia();
+      }
+      if (ownsReplay) {
+        e.emittedBlockTrivia.closeCopy(bodyTrivia);
       }
     }
   };
@@ -14645,9 +14616,7 @@ function expandCall(
           const emitted = withSourceOwner(e, callFrame.sourceOwner, executeBody);
           if (isThenable(emitted)) {
             return emitted.then(() => {
-              if (sharedLeaves === undefined) {
-                queueBodyTriviaTail(bodyTrivia, group, partition, e);
-              }
+              queueBodyTriviaTail(bodyTrivia, sharedLeaves?.leaves ?? group, sharedLeaves === undefined ? partition : null, e);
               e.emittedBlockTrivia.closeCopy(bodyTrivia);
               leakBodyVars(frame, def.rules, callFrame, e);
               publishOrderedMixins(frame, frameOrderedMixins(callFrame, e), callFrame);
@@ -14657,9 +14626,7 @@ function expandCall(
               return run(index + 1);
             });
           }
-          if (sharedLeaves === undefined) {
-            queueBodyTriviaTail(bodyTrivia, group, partition, e);
-          }
+          queueBodyTriviaTail(bodyTrivia, sharedLeaves?.leaves ?? group, sharedLeaves === undefined ? partition : null, e);
           e.emittedBlockTrivia.closeCopy(bodyTrivia);
 
           /*
@@ -15071,7 +15038,10 @@ function publishExplicitRulesets(frame: Frame, rules: Statement[], callFrame: Fr
         parent: callFrame,
         mixins: collectMixins(statement.rules),
         declIndex: collectDeclIndex(statement.rules), cells: null, reassign: null,
-        statements: statement.rules
+        statements: statement.rules,
+
+        /* The rule sits in the called body, so it is that body's document's source. */
+        sourceOwner: callFrame.sourceOwner
       };
       (callFrame.rulePlacements ??= new Map()).set(statement, placement);
     }
@@ -15330,9 +15300,7 @@ function expandReferenceCall(
         return walked;
       }
       return mapMaybe(walked, () => {
-        if (sharedLeaves === undefined) {
-          queueBodyTriviaTail(bodyTrivia, group, partition, e);
-        }
+        queueBodyTriviaTail(bodyTrivia, sharedLeaves?.leaves ?? group, sharedLeaves === undefined ? partition : null, e);
         e.emittedBlockTrivia.closeCopy(bodyTrivia);
       });
     };
@@ -15948,9 +15916,7 @@ function expandFor(
               )
         );
         const emitted = mapMaybe(walked, () => {
-          if (sharedLeaves === undefined) {
-            queueBodyTriviaTail(bodyTrivia, group, partition, e);
-          }
+          queueBodyTriviaTail(bodyTrivia, sharedLeaves?.leaves ?? group, sharedLeaves === undefined ? partition : null, e);
           e.emittedBlockTrivia.closeCopy(bodyTrivia);
         });
         if (isThenable(emitted)) {
@@ -16492,7 +16458,6 @@ function flushBlock(
   e: Emit,
   selNode?: SelectorList,
   parentKey?: object | null,
-  owner?: Ruleset,
   trailingBlockComments: readonly string[] = EMPTY_LEAF_BLOCK_COMMENTS
 ): MaybePromise<void> {
   /*
@@ -16515,6 +16480,11 @@ function flushBlock(
     }
   }
   const emit = (kept: Leaf[], mergeMode: MergeGroupMode = MERGE_NONE): void => {
+    /* A block of comments the output drops (compress) writes nothing (ledger O6). */
+    if (kept.length === 0 && !trailingBlockComments.some(comment => keepComment(e, comment))) {
+      return;
+    }
+
     // [atrule] indent by the current block depth (0 at top level == prior behavior).
     const idt = blockIndent(e);
     const authoredHeader = e.compress !== true && parentKey === null && selector.length === selNode?.selectors.length
@@ -16561,17 +16531,9 @@ function flushBlock(
       }
       put(e, blockOpen(e));
     }
-    if (owner !== undefined && kept.length === 0 && trailingBlockComments.length === 0) {
-      emitBodyBlockCommentTrivia(owner, e, e.depth > 0 ? INDENT.repeat(e.depth + 1) : INDENT);
-    }
     if (mergeMode !== MERGE_NONE) {
       mergeFold(kept, e, bodyIndent(e), emitLeaf, mergeMode);
     } else {
-      const bodyOwner = owner;
-      const bodyStart = bodyOwner === undefined ? NO_SPAN : bodyStartOf(bodyOwner);
-      const hasBody = bodyStart !== NO_SPAN;
-      let bodyTriviaCursor = hasBody ? bodyStart : 0;
-      const nestedRules = hasBody ? nestedRuleSpans(bodyOwner!, bodyStart, e) : NO_REPLAY_SPANS;
       for (let index = 0; index < kept.length;) {
         const leaf = kept[index]!;
         const sourceOwner = leaf.frame.sourceOwner;
@@ -16588,49 +16550,20 @@ function flushBlock(
           const start = index;
           settledEmission(withSourceOwner(e, sourceOwner, () => {
             for (let at = start; at < end; at++) {
-              const owned = kept[at]!;
-              if (hasBody && owned.frame.mixinSplice !== true) {
-                emitBlockCommentTriviaBetween(e, bodyTriviaCursor, statementStartOf(owned.node), INDENT.repeat(e.depth + 1), nestedRules);
-                bodyTriviaCursor = statementEndOf(owned.node) ?? bodyTriviaCursor;
-              }
-              for (const comment of owned.leadingBlockComments ?? []) {
-                putBlockComment(e, INDENT.repeat(e.depth + 1), comment);
-              }
-              emitLeafOwned(owned, e);
+              emitLeafOwned(kept[at]!, e);
             }
           }), leaf.node, e);
           index = end;
           continue;
         }
-
-        /* A called body's leaf carries the comments its expansion took (closeCopy). */
-        if (hasBody && leaf.frame.mixinSplice !== true) {
-          emitBlockCommentTriviaBetween(e, bodyTriviaCursor, statementStartOf(leaf.node), INDENT.repeat(e.depth + 1), nestedRules);
-          bodyTriviaCursor = statementEndOf(leaf.node) ?? bodyTriviaCursor;
-        }
-        for (const comment of leaf.leadingBlockComments ?? []) {
-          putBlockComment(e, INDENT.repeat(e.depth + 1), comment);
-        }
         emitLeafOwned(leaf, e);
         index++;
       }
-
-      /*
-       * A trailing comment queued by a statement's expansion (a call's or a loop
-       * body's last comment) precedes the block's own comments after it, as the
-       * nested writer orders them.
-       */
-      for (const comment of trailingBlockComments) {
-        putBlockComment(e, INDENT.repeat(e.depth + 1), comment);
-      }
-      if (hasBody) {
-        emitBlockCommentTriviaBetween(e, bodyTriviaCursor, bodyEndOf(bodyOwner!), INDENT.repeat(e.depth + 1), nestedRules);
-      }
     }
-    if (mergeMode !== MERGE_NONE) {
-      for (const comment of trailingBlockComments) {
-        putBlockComment(e, INDENT.repeat(e.depth + 1), comment);
-      }
+
+    /* The body's comments after its last leaf (queueBodyTriviaTail). */
+    for (const comment of trailingBlockComments) {
+      putBlockComment(e, bodyIndent(e), comment);
     }
     emitBlockClose(e, idt, lb);
 
@@ -17260,10 +17193,45 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
   emitLeafOwned(leaf, e, atRoot);
 }
 
+/**
+ * Write a declaration's value, for both writers. A custom property's value is
+ * its authored text, comments included; any other value is evaluated. Returns
+ * whether the value settles after the walk.
+ */
+function putDeclarationValue(
+  e: Emit,
+  node: Declaration,
+  frame: Frame,
+  continuationIndent: string,
+  important: boolean,
+  onNewLine: boolean,
+  isCustom: boolean,
+  mark: DropMark
+): boolean {
+  const customValue = isCustom ? customPropertyValueWithTrivia(node.value, frame, e) : null;
+  if (customValue === null) {
+    const prevElide = e.elideSink;
+    e.elideSink = mark.sink; // [null] this declaration's elision, not an enclosing one
+    const deferred = putValue(e, node.value, frame, isValueSlotArray(node.value) ? undefined : node.value, continuationIndent, important, onNewLine) === null; // [whitespace] continuation indent
+    e.elideSink = prevElide;
+    return deferred;
+  }
+  const valStart = e.chunks.length;
+  const written = (value: string): string => (important ? normalizeImportant(value, e.compress === true) : value);
+  if (isThenable(customValue)) {
+    putPending(e, mapMaybe(customValue, written));
+  } else {
+    put(e, written(customValue));
+  }
+  if (e.positions && !isValueSlotArray(node.value)) {
+    e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.chunks.length, source: srcFile(e) });
+  }
+  return false;
+}
+
 /** Emit one leaf after its source owner/trivia are already active. */
 function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
   const { node, frame } = leaf;
-  const start = e.chunks.length;
 
   /*
    * [atrule] a declaration/comment sits one level in from its container's depth.
@@ -17271,6 +17239,12 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
    * left at depth 0 rather than one level in.
    */
   const idt = atRoot ? blockIndent(e) : bodyIndent(e);
+
+  /* The comments queued ahead of the leaf precede it, outside its mapped span. */
+  for (const comment of leaf.leadingBlockComments ?? []) {
+    putBlockComment(e, idt, comment);
+  }
+  const start = e.chunks.length;
   if (node.type === 'Declaration') {
     assertDeclarationValueIsNotRuleset(node, frame, e);
     const name = declName(node, frame, e);
@@ -17282,7 +17256,6 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
       });
     }
     const mark = dropMark(e);
-    let deferred = false;
     const isCustom = name.startsWith('--');
     e.lastDeclCustom = isCustom; // [compress] gate the last-`;` drop in emitBlockClose
     put(e, idt);
@@ -17296,26 +17269,7 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
      */
     put(e, (e.compress === true && !isCustom) || onNewLine ? ':' : ': ');
     const important = node.important === true || leaf.important === true;
-    const customValue = isCustom
-      ? customPropertyValueWithTrivia(node.value, frame, e)
-      : null;
-    if (customValue === null) {
-      const prevElide = e.elideSink;
-      e.elideSink = mark.sink; // [null] this declaration's elision, not an enclosing one
-      deferred = putValue(e, node.value, frame, isValueSlotArray(node.value) ? undefined : node.value, idt + INDENT, important, onNewLine) === null; // [whitespace] continuation indent
-      e.elideSink = prevElide;
-    } else {
-      const valStart = e.chunks.length;
-      const written = (value: string): string => (important ? normalizeImportant(value, e.compress === true) : value);
-      if (isThenable(customValue)) {
-        putPending(e, mapMaybe(customValue, written));
-      } else {
-        put(e, written(customValue));
-      }
-      if (e.positions && !isValueSlotArray(node.value)) {
-        e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.chunks.length, source: srcFile(e) });
-      }
-    }
+    const deferred = putDeclarationValue(e, node, frame, idt + INDENT, important, onNewLine, isCustom, mark);
     if (e.positions) {
       e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
     }
@@ -19257,7 +19211,7 @@ function writeCollapsedAtRuleBlock(
        * top-level shape (bare direct decls) but still bubbles nested at-rules out
        * of the body's rulesets.
        */
-      ? emitBubbleBody(node.rules, ctx && ctx.length > 0 ? ctx : null, bodyFrame, e)
+      ? emitBubbleBody(node.rules, ctx && ctx.length > 0 ? ctx : null, bodyFrame, e, node)
       : emitAtRuleBody(node.rules, bodyFrame, e, node);
     return mapMaybe(rendered, () => {
       e.atRuleBodyDepth--;
@@ -19289,16 +19243,18 @@ function settledExpansion(result: MaybePromise<void>, call: MixinCall, e: EvalCt
 /**
  * Emit an at-rule body. Consecutive declarations/comments group as DIRECT block
  * children (no selector wrapper). A nested ruleset / at-rule descends one level.
+ * The body's comments are replayed by this walk when it owns the body (`owner`),
+ * or by the replay of the body it is inlined into (`inlineTrivia`).
  */
 function emitAtRuleBody(
   statements: Statement[],
   frame: Frame,
   e: Emit,
-  owner?: object
+  owner?: object,
+  inlineTrivia?: BodyTriviaReplay
 ): MaybePromise<void> {
   const group: Leaf[] = [];
-  const ownerBodyStart = owner === undefined ? NO_SPAN : bodyStartOf(owner);
-  let bodyTriviaCursor = ownerBodyStart === NO_SPAN ? 0 : ownerBodyStart;
+  const bodyTrivia = owner === undefined ? inlineTrivia : bodyTriviaReplay(owner, e);
   const flushDirect = (): void => {
     const trailingBlockComments = takePendingLeafBlockComments(e, group);
     if (group.length > 0) {
@@ -19307,13 +19263,6 @@ function emitAtRuleBody(
         mergeFold(group, e, bodyIndent(e), emitLeaf, mergeMode);
       } else {
         for (const leaf of group) {
-          if (owner !== undefined) {
-            emitBodyBlockCommentTriviaBefore(owner, leaf.node, e, INDENT.repeat(e.depth + 1), bodyTriviaCursor);
-            {
-              const leafEnd = sourceEndOf(leaf.node);
-              bodyTriviaCursor = leafEnd === NO_SPAN ? bodyTriviaCursor : leafEnd;
-            }
-          }
           emitLeaf(leaf, e);
         }
       }
@@ -19332,13 +19281,6 @@ function emitAtRuleBody(
    */
   const nested = (node: Statement, run: () => MaybePromise<void>): MaybePromise<void> => {
     flushDirect();
-    if (owner !== undefined) {
-      emitBodyBlockCommentTriviaBefore(owner, node, e, INDENT.repeat(e.depth + 1), bodyTriviaCursor);
-      {
-        const nodeEnd = sourceEndOf(node);
-        bodyTriviaCursor = nodeEnd === NO_SPAN ? bodyTriviaCursor : nodeEnd;
-      }
-    }
     e.depth++;
     let out: MaybePromise<void>;
     try {
@@ -19416,11 +19358,11 @@ function emitAtRuleBody(
           return undefined;
         }
         const body = selectIfBody(node, frame, e);
-        return body ? emitAtRuleBody(body, frame, e) : undefined;
+        return body ? emitAtRuleBody(body, frame, e, undefined, bodyTrivia) : undefined;
       }
       case 'While':
         return e.referenceImportDepth === 0
-          ? runWhile(node, frame, e, rules => emitAtRuleBody(rules, frame, e))
+          ? runWhile(node, frame, e, rules => emitAtRuleBody(rules, frame, e, undefined, bodyTrivia))
           : undefined;
 
       case 'MixinDefinition':
@@ -19442,13 +19384,21 @@ function emitAtRuleBody(
    */
   const run = (index: number): MaybePromise<void> => {
     for (; index < statements.length; index++) {
-      const stepped = one(statements[index]!);
+      const node = statements[index]!;
+      replayBodyTriviaBefore(bodyTrivia, node, group, e);
+      const stepped = one(node);
       if (isThenable(stepped)) {
         const at = index;
         return stepped.then(() => run(at + 1));
       }
     }
+    if (owner !== undefined) {
+      queueBodyTriviaTail(bodyTrivia, group, null, e);
+    }
     flushDirect();
+    if (owner !== undefined) {
+      e.emittedBlockTrivia.closeCopy(bodyTrivia);
+    }
     return undefined;
   };
   return run(0);
@@ -19473,8 +19423,12 @@ function emitBubbleBody(
   statements: Statement[],
   ctx: string[] | null,
   frame: Frame,
-  e: Emit
+  e: Emit,
+  owner?: object,
+  inlineTrivia?: BodyTriviaReplay
 ): MaybePromise<void> {
+  /* The body's comments, replayed as {@link emitAtRuleBody} replays them. */
+  const bodyTrivia = owner === undefined ? inlineTrivia : bodyTriviaReplay(owner, e);
   // [nesting] opaque ancestor for `&`-less rules composed inside the bubbled context.
   const ctxAncestor = ctx === null ? null : wrapIsList(ctx);
   const group: Leaf[] = [];
@@ -19504,7 +19458,7 @@ function emitBubbleBody(
       // Wrap the direct declarations in the propagated selector context.
       e.depth++;
       const emitted = flushBlock(
-        ctx, group, e, undefined, undefined, undefined, trailingBlockComments
+        ctx, group, e, undefined, undefined, trailingBlockComments
       );
       if (isThenable(emitted)) {
         return emitted.then(
@@ -19578,6 +19532,7 @@ function emitBubbleBody(
   const run = (start: number): MaybePromise<void> => {
     for (let index = start; index < statements.length; index++) {
       const node = statements[index]!;
+      replayBodyTriviaBefore(bodyTrivia, node, group, e);
       switch (node.type) {
         case 'Declaration':
         case 'Comment':
@@ -19913,7 +19868,7 @@ function emitBubbleBody(
           }
           const body = selectIfBody(node, frame, e);
           if (body) {
-            const emitted = emitBubbleBody(body, ctx, frame, e);
+            const emitted = emitBubbleBody(body, ctx, frame, e, undefined, bodyTrivia);
             if (isThenable(emitted)) {
               return emitted.then(() => run(index + 1));
             }
@@ -19924,7 +19879,7 @@ function emitBubbleBody(
           if (e.referenceImportDepth !== 0) {
             break;
           }
-          const emitted = runWhile(node, frame, e, rules => emitBubbleBody(rules, ctx, frame, e));
+          const emitted = runWhile(node, frame, e, rules => emitBubbleBody(rules, ctx, frame, e, undefined, bodyTrivia));
           if (isThenable(emitted)) {
             return emitted.then(() => run(index + 1));
           }
@@ -19939,6 +19894,10 @@ function emitBubbleBody(
           markSilentStatementBlockCommentTrivia(node, e);
           break;
       }
+    }
+    if (owner !== undefined) {
+      queueBodyTriviaTail(bodyTrivia, group, null, e);
+      e.emittedBlockTrivia.closeCopy(bodyTrivia);
     }
     const flushed = flushDirect();
     if (deferredChildren === null) {
@@ -20016,11 +19975,13 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
 /** Emit one nested leaf after its source owner/trivia are already active. */
 function emitNestedLeafOwned(leaf: Leaf, e: Emit): void {
   const { node, frame } = leaf;
-  const start = e.chunks.length;
   const idt = blockIndent(e);
+
+  /* The comments queued ahead of the leaf precede it, outside its mapped span. */
   for (const comment of leaf.leadingBlockComments ?? []) {
     putBlockComment(e, idt, comment);
   }
+  const start = e.chunks.length;
   if (node.type === 'Declaration') {
     assertDeclarationValueIsNotRuleset(node, frame, e);
     const mark = dropMark(e);
@@ -20037,10 +19998,7 @@ function emitNestedLeafOwned(leaf: Leaf, e: Emit): void {
     // [compress] a custom property keeps its `: ` separator verbatim (see emitLeafOwned).
     put(e, (e.compress === true && !isCustom) || onNewLine ? ':' : ': ');
     const important = node.important === true || leaf.important === true;
-    const prevElide = e.elideSink;
-    e.elideSink = mark.sink; // [null] this declaration's elision, not an enclosing one
-    const deferred = putValue(e, node.value, frame, isValueSlotArray(node.value) ? undefined : node.value, idt + INDENT, important, onNewLine) === null; // [whitespace] continuation indent
-    e.elideSink = prevElide;
+    const deferred = putDeclarationValue(e, node, frame, idt + INDENT, important, onNewLine, isCustom, mark);
     markSilentStatementBlockCommentTrivia(node, e);
     if (e.positions) {
       e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
@@ -20372,14 +20330,13 @@ function writeNestedRule(
     const finish = (): MaybePromise<void> => {
       e.depth--;
       if (e.chunks.length === afterHeader) {
-        if (hasBodyBlockCommentTrivia(rule, e)) {
-          emitBodyBlockCommentTrivia(rule, e, INDENT.repeat(e.depth + 1));
-        } else {
-          // Nothing emitted in the block: drop the header/braces (rewind).
-          e.chunks.length = markChunks;
-          if (e.positions) {
-            e.positions.length = markPos;
-          }
+        /*
+         * Nothing emitted in the block, not even a comment (the walk writes the
+         * body's own): drop the header/braces (rewind, ledger O6).
+         */
+        e.chunks.length = markChunks;
+        if (e.positions) {
+          e.positions.length = markPos;
         }
       } else {
         emitBlockClose(e, idt, lb);
@@ -20507,15 +20464,12 @@ function writeNestedAtRuleBlock(
   const finish = (): void => {
     e.depth--;
     if (e.chunks.length === afterHeader) {
-      if (hasBodyBlockCommentTrivia(node, e)) {
-        emitBodyBlockCommentTrivia(node, e, INDENT.repeat(e.depth + 1));
-      } else {
-        e.chunks.length = markChunks;
-        if (e.positions) {
-          e.positions.length = markPos;
-        }
-        return;
+      /* Nothing emitted, not even a comment (the walk writes the body's own). */
+      e.chunks.length = markChunks;
+      if (e.positions) {
+        e.positions.length = markPos;
       }
+      return;
     }
     emitBlockClose(e, idt);
     if (e.positions) {

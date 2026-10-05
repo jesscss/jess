@@ -178,11 +178,14 @@ describe('V19 one-evaluator projection ratchet', () => {
     // (the render-scoped `compressedBindings`, created once per render entry): a
     // mixin argument is evaluated once and binds as written; under compress it
     // carries the value a declaration folds (ledger O3).
-    // +3 functions (`withBodyCopy`, `nestedRuleSpans`, `holdBodyTrivia`): a rule a
-    // callable body's expansion defers, and each loop iteration, write their own
-    // copy of their body's comments, and a collapsed block's replay steps over
-    // the rules nested in it.
-    expect(occurrences(/^function |^async function /gmu)).toBe(488);
+    // +4 functions (`holdBodyTrivia`, `skipBodyTrivia`, `ownsItsComments`,
+    // `replayBodyTriviaBefore`) against -2 (`emitBodyBlockCommentTriviaBefore`,
+    // `bodyStartForTriviaReplay`): every body's comments are replayed by its
+    // own walk, the one cursor a call's body already used, and a loop body is
+    // held for its iterations. +2 functions (`putDeclarationValue`,
+    // `insideSpan`): both writers write a custom property's value one way, and
+    // the root replay finds a statement span by binary search.
+    expect(occurrences(/^function |^async function /gmu)).toBe(489);
     expect(occurrences(/new Map/gu)).toBe(73);
     expect(occurrences(/new Set/gu)).toBe(37);
     expect(occurrences(/new WeakMap/gu)).toBe(6);
