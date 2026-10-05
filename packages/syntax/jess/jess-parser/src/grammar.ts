@@ -957,14 +957,14 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       const base = withSourceSpan(declarationReference('$'), span);
       const tails = children.filter(isJessReferenceTail);
       const raw = `${sourceRoot}.${name}${tails.map(tail => tail.src).join('')}`;
-      return { value: reference(
+      return { value: withSourceSpan(reference(
         base,
         [
           lookupStep('member', name),
           ...tails.map(tail => tail.step)
         ],
         raw
-      ), src: raw };
+      ), span), src: raw };
     }
   );
   const ExpressionCallArgument = node<JessMixinCallArgument>(
@@ -1081,7 +1081,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       g.NullLiteral,
       g.Keyword
     ),
-    (children) => {
+    (children, _fields, span) => {
       if (isToken(children[0]) && requireToken(children[0]).value === '(') {
         const inner = requireExpressionFact(children[1]);
         return { value: block(inner.value), src: `(${inner.src})` };
@@ -1092,18 +1092,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           throw new TypeError('Jess expression reference base must be a variable or declaration reference.');
         }
         const tails = children.slice(1).map(requireJessReferenceTail);
-        if (base.kind === 'var') {
-          const memberReference = declarationMemberReferenceFromVariableBase(base, tails);
-          if (memberReference) {
-            return { value: memberReference, src: memberReference.raw };
-          }
-        }
-        const raw = `${referenceBaseSource(base)}${tails.map(tail => tail.src).join('')}`;
-        return { value: reference(
+        const memberReference = base.kind === 'var' ? declarationMemberReferenceFromVariableBase(base, tails) : null;
+        const raw = memberReference?.raw ?? `${referenceBaseSource(base)}${tails.map(tail => tail.src).join('')}`;
+        return { value: withSourceSpan(memberReference ?? reference(
           base,
           tails.map(tail => tail.step),
           raw
-        ), src: raw };
+        ), span), src: raw };
       }
       if (isExpressionFact(children[0])) {
         return requireExpressionFact(children[0]);
@@ -5102,16 +5097,16 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       literal(')'),
       optional(literal(';'))
     ),
-    (children) => {
+    (children, _fields, span) => {
       const name = requireToken(children[1]).value;
-      return reference(
-        variableReference(
+      return withSourceSpan(reference(
+        withSourceSpan(variableReference(
           name,
           'live'
-        ),
+        ), { start: span.start, end: span.start + 1 + name.length }),
         [{ type: 'Call', args: [] }],
         `$${name}()`
-      );
+      ), span);
     }
   );
   const MixinDefinition = node<MixinDefinition>(
