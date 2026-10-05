@@ -99,7 +99,7 @@ named ledger row; **BUG** = call-verified divergence with no ruling behind it;
 | `pow` | `(x, y)` | OK / §7-A | `less/pow.ts:6` — `pow(2,3)`→`8`; `pow(-1,0.5)`→`NaN` (bug) |
 | `mod` | `(a, b)` | OK / §7-A | `less/mod.ts:6` — `mod(3,2)`→`1`; `mod(1,0)`→`NaN` (bug) |
 | `percentage` | `(n)` | OK | `less/percentage.ts:6` — `percentage(0.5)`→`50%` |
-| `round` | `(n, f=0)` | OK (V8) | `less/round.ts` → `packages/core/src/ast/round.ts` breaks ties away from zero, as 4.x's `toFixed` does: `round(-0.5)`→`-1`, `round(-1.5)`→`-2`, `round(-2.5)`→`-3`, `round(-1.55, 1)`→`-1.6`, `round(1.55, 1)`→`1.6`, identical to lessc 4.9.1. Owner 2026-10-05 (V8). One unruled difference: `round(1.005, 2)`→jess `1.01`, 4.x `1`. See §6-B. |
+| `round` | `(n, f=0)` | OK / §6-B | `less/round.ts` → `packages/core/src/ast/round.ts` breaks ties away from zero, as 4.x's `toFixed` does: `round(-0.5)`→`-1`, `round(-1.5)`→`-2`, `round(-2.5)`→`-3`, `round(-1.55, 1)`→`-1.6`, `round(1.55, 1)`→`1.6`, identical to lessc 4.9.1. Owner 2026-10-05 (V8). `round(1.005, 2)`→jess `1.01`, 4.x `1`; `round(-1.005, 2)`→jess `-1.01`, 4.x `-1` (bug: no ruling, open with the owner). See §6-B. |
 | `min` | `(...)` | OK | `less/min.ts:5` — `min(5,1,3,2)`→`1`; incomparable units preserved verbatim, matching 4.x |
 | `max` | `(...)` | OK | `less/max.ts:5` — `max(5,1,3,2)`→`5` |
 | `convert` | `(val, unit)` | OK | `less/convert.ts:10` — `convert(9s,"ms")`→`9000ms`; incompatible unit returns input, matching 4.x |
@@ -343,9 +343,11 @@ emits `0` (`round(-0.4)`), as 4.x does. dart-sass `math.round` / `round($n, $ste
 break ties the same way and read the same kernel. This reverts the 2026-10-04
 toward-+∞ change (CSS Values 4 `round(nearest)`).
 
-One difference remains and has no ruling: the kernel's lodash exponential shift rounds
-a *decimally* exact tie that the binary double sits just below, so `round(1.005, 2)` →
-`1.01` where 4.x's `toFixed` gives `1`. V4 is untouched: digits and tie direction are
+One difference remains and has no ruling, so it is open with the owner: the kernel's
+lodash exponential shift rounds a *decimally* exact tie, even when the binary double
+sits just below it, so `round(1.005, 2)` → `1.01` and `round(-1.005, 2)` → `-1.01`,
+where 4.x's `toFixed` gives `1` and `-1`. Following 4.x would mean Less `round()` with
+a precision reads the binary value (`toFixed`) instead of the decimal shift. V4 is untouched: digits and tie direction are
 independent. Colour quantization reads the same kernel; its channels are clamped to
 `[0, 255]` after rounding and alpha is non-negative, so V5 is unaffected.
 

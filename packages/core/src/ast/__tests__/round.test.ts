@@ -3,8 +3,8 @@ import { round } from '../round.js';
 
 /**
  * Tie direction is half-away-from-zero (ledger V8): Less 4.x `round()` and dart-sass
- * `math.round` both break an exact half that way. The tie expectations are lessc 4.9.1
- * output for the same calls.
+ * `math.round` both break an exact half that way. Every expectation except the
+ * decimal-shift block at the end is lessc 4.9.1 output for the same calls.
  */
 describe('round — the rounding kernel', () => {
   it('breaks an exact tie away from zero', () => {
@@ -35,7 +35,11 @@ describe('round — the rounding kernel', () => {
   });
 
   it('keeps the decimal exponential shift for decimally-exact ties', () => {
-    // `toFixed` reads the binary double `1.00499…` and returns `1.00`.
+    /*
+     * NOT 4.x output: `toFixed` reads the binary double `1.00499…` and lessc gives
+     * `1` and `-1`. Whether Less `round()` should follow it is open with the owner
+     * (`docs/state/less-4x-function-triage.md` §6-B); this pins today's kernel.
+     */
     expect(round(1.005, 2)).toBe(1.01);
     expect(round(-1.005, 2)).toBe(-1.01);
   });
