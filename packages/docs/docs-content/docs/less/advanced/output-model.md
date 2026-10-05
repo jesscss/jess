@@ -72,6 +72,12 @@ are expanded to fully-qualified selectors and equivalent blocks are deduplicated
 Use `collapseNesting: true` when you need to support browsers without native CSS
 nesting, or when you want the historical Less 4.x output shape.
 
+`true` means `'native'`: the flattened selectors keep the specificity and matching
+native CSS nesting gives them, though not always its exact bytes — a nested list such
+as `th, td` may print as `.table :is(th, td)` where every folded branch scores the
+same. `'compact'` folds every nested list into `:is()` at the cost of group-maximum
+specificity. See [Selector compaction](./selector-compaction.md).
+
 ## `:is()` selector compaction
 
 When Less produces a rule that would otherwise repeat a selector list across many

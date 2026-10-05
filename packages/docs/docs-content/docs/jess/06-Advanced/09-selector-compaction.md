@@ -11,6 +11,16 @@ the common ancestor out **once** and wraps each multi-branch side in a single
 `:is(...)` — instead of repeating the whole prefix or cartesian-expanding it into
 one row per combination.
 
+:::info Mode
+The child-list folds below are the **`collapseNesting: 'compact'`** style. The default
+flatten style, **`'native'`** (what `collapseNesting: true` means), folds a child list
+only where every folded branch is a single compound of the same specificity, with no
+pseudo-element and only standard pseudo-classes; other branches stay distributed. It
+reproduces native nesting's specificity, matching and invalid-selector behaviour, not
+its exact bytes. See the Less
+[Selector Compaction](https://lesscss.org/docs/advanced/selector-compaction) page.
+:::
+
 ## The rule
 
 Joining a `&`-less descendant onto its ancestor emits the ancestor once, then wraps
@@ -96,6 +106,7 @@ When the grouped branches share specificity (the common all-classes case, `:is(.
 nothing changes — the shift is observable only when branches of **different**
 specificity are grouped, where the lower-specificity branch inherits the group's higher
 score and can flip a close cascade 4.x resolved per-row. The nesting-collapse grouping
-is the flattened-output form (`collapseNesting: true`); the 5.x-default nested output
-keeps the multi-parent header a plain comma list, so this applies to flattened output.
+is the flattened-output form: the multi-parent `:is()` appears in every flattened style,
+while a mixed-specificity child list is grouped only by `'compact'`. The 5.x-default
+nested output keeps the multi-parent header a plain comma list.
 Extend's `:is()` grafting appears in **both** nested and flattened output.

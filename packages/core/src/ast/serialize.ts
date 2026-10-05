@@ -265,10 +265,11 @@ export interface SerializeOptions {
    * mixin bodies splice inline under the call site, and `@media` bodies keep
    * their inner rules nested. Same single walk, second emit form.
    *
-   * When flattening, the STYLE is `'native'` (default) — the CSS Nesting
-   * desugaring, parent `:is()` with child selector lists DISTRIBUTED
-   * (specificity-faithful) — or `'compact'`, which also folds same-combinator
-   * descendant runs into a single `:is(…)` (group-max specificity).
+   * When flattening, the STYLE is `'native'` (default) — parent `:is()`, and a
+   * child selector list folds into `:is(…)` only where every folded branch has
+   * the same specificity (native specificity and matching, not the byte-exact
+   * CSS Nesting desugaring) — or `'compact'`, which folds every same-combinator
+   * descendant run into a single `:is(…)` (group-max specificity).
    */
   collapseNesting?: false | 'native' | 'compact';
 
@@ -8510,38 +8511,151 @@ function leadsWithCombinator(c: SelectorBranch): boolean {
   return comb !== undefined && comb !== ' ' && comb !== '|';
 }
 
+/*
+ * [nesting] Selectors-4 §17 specificity packed as `a·2³² + b·2¹⁶ + c`, so a fold
+ * run compares with `===` and `:is()`'s max-of-arguments is a numeric max.
+ * Each component must stay below 65536 or the packing aliases; no authored
+ * selector gets near that.
+ */
+const SPECIFICITY_ID = 2 ** 32;
+const SPECIFICITY_CLASS = 2 ** 16;
+const SPECIFICITY_TYPE = 1;
+
+/*
+ * [nesting] Pseudo-classes a `'native'` fold may carry: standard (Selectors 4/5,
+ * HTML) AND implemented by every major engine, with a FIXED `(0,1,0)`
+ * specificity. A plain selector list is invalidated by one branch a browser
+ * does not understand, while `:is()` is forgiving and only drops that branch,
+ * so a vendor-prefixed, unknown, or not-yet-implemented pseudo-class keeps its
+ * list distributed. Absent on purpose: pseudo-elements (single- or double-colon),
+ * the argument-scored `:is()`/`:not()`/`:has()`/`:where()` (handled as
+ * structured pseudos), and `:nth-child()`/`:nth-last-child()`, whose `of S`
+ * argument reaches core only as joined text, so their specificity is unknowable
+ * here.
+ */
+const NATIVE_FOLD_PSEUDO_CLASSES = new Set([
+  'active', 'any-link', 'autofill', 'checked', 'default', 'defined', 'dir',
+  'disabled', 'empty', 'enabled', 'first-child', 'first-of-type', 'focus',
+  'focus-visible', 'focus-within', 'fullscreen', 'hover', 'in-range',
+  'indeterminate', 'invalid', 'lang', 'last-child', 'last-of-type', 'link',
+  'modal', 'nth-last-of-type', 'nth-of-type', 'only-child', 'only-of-type',
+  'optional', 'out-of-range', 'placeholder-shown', 'popover-open', 'read-only',
+  'read-write', 'required', 'root', 'scope', 'target', 'user-invalid',
+  'user-valid', 'valid', 'visited'
+]);
+
+/** Specificity of one simple token, or -1 when it cannot enter a `'native'` fold. */
+function tokenFoldSpecificity(sim: SimpleToken): number {
+  if (sim.interp !== null) {
+    return -1;
+  }
+  if (sim.type === 'PseudoSelector') {
+    const name = sim.name.toLowerCase();
+    if (sim.args === null || name === ':matches') {
+      return -1;
+    }
+    let max = 0;
+    for (const branch of sim.args.selectors) {
+      const s = branchFoldSpecificity(branch, false);
+      if (s < 0) {
+        return -1;
+      }
+      max = Math.max(max, s);
+    }
+    return name === ':where' ? 0 : max;
+  }
+  const text = sim.text!;
+  const first = text.charCodeAt(0);
+  if (first === 46 /* . */ || first === 91 /* [ */) {
+    return SPECIFICITY_CLASS;
+  }
+  if (first === 35 /* # */) {
+    return SPECIFICITY_ID;
+  }
+  if (first === 58 /* : */) {
+    const open = text.indexOf('(');
+    return NATIVE_FOLD_PSEUDO_CLASSES.has((open === -1 ? text.slice(1) : text.slice(1, open)).toLowerCase())
+      ? SPECIFICITY_CLASS
+      : -1;
+  }
+  if (first === 42 /* * */) {
+    return text.length === 1 ? 0 : -1;
+  }
+  const lower = first | 32;
+  if ((lower >= 97 && lower <= 122) || first === 45 /* - */ || first === 95 /* _ */ || first >= 128) {
+    return SPECIFICITY_TYPE;
+  }
+
+  /* `&`, a placeholder's `\\`, escapes, digits: not a plain type selector. */
+  return -1;
+}
+
+/**
+ * [nesting] The specificity a selector branch carries into a `'native'` `:is()`
+ * fold, or -1 when it must stay distributed. Read from the selector IR, never
+ * from emitted bytes. A nested child passes `compoundOnly`: `A :is(x y)` lets
+ * `A` match `x` itself (an `:is()` argument matches against the whole
+ * document), so a combinator inside the group would change which elements
+ * match. A selector-function argument may carry combinators.
+ */
+function branchFoldSpecificity(branch: SelectorBranch, compoundOnly: boolean): number {
+  if (branch.type === 'SimpleSelector' || branch.type === 'PseudoSelector') {
+    return tokenFoldSpecificity(branch);
+  }
+  if (compoundOnly && branch.type !== 'CompoundSelector') {
+    return -1;
+  }
+  let sum = 0;
+  for (const part of branch.value) {
+    if (typeof part === 'string') {
+      if (part === '|' || part === '||') {
+        return -1;
+      }
+      continue;
+    }
+    const s = branchFoldSpecificity(part, false);
+    if (s < 0) {
+      return -1;
+    }
+    sum += s;
+  }
+  return sum;
+}
+
 /** [nesting] Join opaque ancestor `A` with an all-`&`-less child list, prefix
- * factored: `A` is emitted ONCE and the multi-branch child list wraps in a single
+ * factored: `A` is emitted ONCE and a run of child branches folds into a single
  * `:is(...)` (never cartesian-distributed, never repeated inside the `:is()`).
  * `#…#deux` + `#fourth,#five,#six` → `#…#deux :is(#fourth, #five, #six)`; a single
  * child joins plainly (`A child`, honouring its leading combinator).
+ *
+ * Each branch gets a fold key: consecutive branches with the same key fold, a key
+ * of -1 joins `A` directly, and no branch moves past another.
+ * - `'compact'`: every descendant branch shares one key, so the run folds at
+ *   group-max specificity.
+ * - `'native'` (default): the key is the branch's specificity
+ *   ({@link branchFoldSpecificity}), so a fold changes neither specificity,
+ *   matching, nor invalid-selector behaviour: `.t` + `th, td, thead th` →
+ *   `.t :is(th, td), .t thead th`.
  *
  * A branch that LEADS WITH A COMBINATOR cannot enter the group ({@link
  * leadsWithCombinator}); it is emitted as its own header branch with the combinator
  * hoisted out — `.no-gutters` + `> .col, > [class*="col-"]` becomes
  * `.no-gutters > .col, .no-gutters > [class*="col-"]`, the CSS-Nesting desugaring.
  * Descendant branches keep the compaction, so a MIXED list splits by shape:
- * `.nav-fill` + `> .nav-link, .nav-item` → `.nav-fill > .nav-link, .nav-fill .nav-item`.
- * Consecutive descendant branches stay one group, preserving authored order. */
+ * `.nav-fill` + `> .nav-link, .nav-item` → `.nav-fill > .nav-link, .nav-fill .nav-item`. */
 function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: Emit): MaybePromise<string[]> {
   const canons = child.selectors.map(c => resolveSelectorBranch(c, frame, e));
   return combineAll(canons, (values) => {
     if (values.length === 1) {
       return [a + ' ' + values[0]!];
     }
-
-    /* [nested] `'native'` (default) DISTRIBUTES the child list — the CSS Nesting
-     * desugaring (`A b1, A b2, …`) — so each branch keeps its own specificity.
-     * Only `'compact'` folds a same-combinator descendant run into one `:is(…)`
-     * (group-max specificity), via the run logic below. */
-    if (e.collapseMode !== 'compact') {
-      return values.map(v => a + ' ' + v);
-    }
-    if (!child.selectors.some(leadsWithCombinator)) {
+    const native = e.collapseMode !== 'compact';
+    if (!native && !child.selectors.some(leadsWithCombinator)) {
       return [a + ' :is(' + values.join(', ') + ')'];
     }
     const out: string[] = [];
     let run: string[] = [];
+    let runKey = -1;
     const flushRun = (): void => {
       if (run.length === 1) {
         out.push(a + ' ' + run[0]!);
@@ -8551,8 +8665,13 @@ function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: Emit
       run = [];
     };
     for (let i = 0; i < values.length; i++) {
-      if (leadsWithCombinator(child.selectors[i]!)) {
+      const branch = child.selectors[i]!;
+      const key = native ? branchFoldSpecificity(branch, true) : leadsWithCombinator(branch) ? -1 : 0;
+      if (key !== runKey) {
         flushRun();
+        runKey = key;
+      }
+      if (key < 0) {
         out.push(a + ' ' + values[i]!);
       } else {
         run.push(values[i]!);
@@ -8725,8 +8844,8 @@ interface Emit extends EvalCtx {
 
   /* [nested] flatten STYLE (only meaningful when `collapse`): `'compact'` folds
    * same-combinator descendant child runs into `:is(…)`; anything else — incl.
-   * unset — is `'native'`, distributing them (CSS Nesting desugaring,
-   * specificity-faithful). Read only via `=== 'compact'`, so unset == native. */
+   * unset — is `'native'`, folding only equal-specificity runs (see `opaqueJoin`).
+   * Read only via `!== 'compact'`, so unset == native. */
   collapseMode?: 'native' | 'compact';
 
   /*
@@ -11531,7 +11650,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     drops: [], // [null] declarations that may still elide on the async lane
     depth: 0, // [atrule]
     collapse: options?.collapseNesting !== false, // [nested/R0] default = flatten
-    collapseMode: options?.collapseNesting === 'compact' ? 'compact' : 'native', // [nested] fold vs distribute
+    collapseMode: options?.collapseNesting === 'compact' ? 'compact' : 'native', // [nested] unguarded vs specificity-guarded fold
     compress: options?.compress ?? false, // [compress] minified output
     extends: null, // [extend] computed below (after selector-interp pre-pass)
     dynamicExtend: null,

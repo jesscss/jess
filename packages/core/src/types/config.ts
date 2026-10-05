@@ -298,10 +298,11 @@ export interface LessOptions {
   /**
    * How to flatten authored nesting into composed selectors.
    * - `false` (default): keep authored nesting (native CSS nested output).
-   * - `'native'`: CSS Nesting desugaring — parent wrapped in `:is()`, child
-   *   selector lists distributed, so each branch keeps its own specificity.
-   * - `'compact'`: like `'native'` but also folds same-combinator descendant
-   *   runs into a single `:is()` (group-max specificity).
+   * - `'native'`: native CSS Nesting specificity and matching — parent wrapped
+   *   in `:is()`; a child selector list folds into `:is()` only where every
+   *   folded branch has the same specificity, and is distributed otherwise.
+   * - `'compact'`: like `'native'` but folds every same-combinator descendant
+   *   run into a single `:is()` (group-max specificity).
    * - `true`: deprecated alias for `'native'`.
    * @default false
    */

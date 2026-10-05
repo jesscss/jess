@@ -321,10 +321,11 @@ export interface LessOptions {
   /**
    * Whether/how to flatten nested selectors.
    * - `false` (default): keep authored nesting, emit no `:is()`.
-   * - `'native'`: flatten like native CSS Nesting — parent wrapped in `:is()`,
-   *   child selector lists DISTRIBUTED (each branch keeps its own specificity).
-   * - `'compact'`: like `'native'`, but also fold same-combinator descendant
-   *   child runs into a single `:is(…)` (group-max specificity).
+   * - `'native'`: flatten with native CSS Nesting specificity and matching —
+   *   parent wrapped in `:is()`; a child selector list folds into `:is(…)` only
+   *   where every folded branch has the same specificity.
+   * - `'compact'`: like `'native'`, but fold every same-combinator descendant
+   *   child run into a single `:is(…)` (group-max specificity).
    * `true` is a deprecated alias for `'native'`.
    * @default false
    */

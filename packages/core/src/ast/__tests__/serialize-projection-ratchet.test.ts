@@ -171,9 +171,13 @@ describe('V19 one-evaluator projection ratchet', () => {
     // desugar wrapped that nothing loads is written as one `@import … q;`.
     // +1 function (`moduleLoadFailed`): a `@use` that cannot load is an
     // `import/load-failed` at the `@use`, as `@plugin` already is.
-    expect(occurrences(/^function |^async function /gmu)).toBe(480);
+    // +2 functions and +1 `new Set` (ledger O10, amended 2026-10-05):
+    // `tokenFoldSpecificity`/`branchFoldSpecificity` read a branch's specificity
+    // from the selector IR so `'native'` folds only equal-specificity child runs;
+    // the Set is the module-level allowlist of standard pseudo-classes.
+    expect(occurrences(/^function |^async function /gmu)).toBe(482);
     expect(occurrences(/new Map/gu)).toBe(73);
-    expect(occurrences(/new Set/gu)).toBe(37);
+    expect(occurrences(/new Set/gu)).toBe(38);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

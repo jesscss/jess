@@ -18,11 +18,13 @@ is nested inside.
 
 :::info Mode
 The examples below show the **`collapseNesting: 'compact'`** flatten style, which folds
-a multi-branch **child** list into a single `:is(…)`. The default flatten,
-**`'native'`**, keeps the parent `:is()` but DISTRIBUTES the child list (`A b1, A b2, …`,
-the CSS Nesting desugaring) so each branch keeps its own specificity. `false` (the
-overall default) preserves authored nesting and emits no `:is()`. See
-[Specificity and `:is()` grouping](#specificity-and-is-grouping-nesting--extend) below.
+every multi-branch **child** list into a single `:is(…)`. The default flatten,
+**`'native'`**, keeps the parent `:is()` and folds a child list only where the fold
+cannot change specificity or matching — see
+[`'native'`: fold only what keeps native specificity](#native-fold-only-what-keeps-native-specificity).
+Every example below whose child branches are single compounds of equal specificity
+(`.c, .d`) prints the same under both. `false` (the overall default) preserves authored
+nesting and emits no `:is()`.
 :::
 
 ## The rule
@@ -170,17 +172,66 @@ A common real-world shape is a table reset that nests several element selectors 
 later `(0,1,1)` rule that used to override `.table-borderless th` no longer wins.
 There is no `:is()`-internal fix — the score is the group maximum by definition.
 
-This child-list fold is the **`'compact'`** flatten style only. The default flatten,
-**`'native'`**, DISTRIBUTES the child list — `.table-borderless th, .table-borderless
-td, .table-borderless thead th, .table-borderless tbody + tbody` — matching the CSS
-Nesting desugaring, so each branch keeps its own specificity. Nested output
-(`collapseNesting: false`) emits no `:is()` at the join at all.
+This unconditional child-list fold is the **`'compact'`** flatten style. The default
+flatten, **`'native'`**, folds only the part that keeps every branch's own specificity
+(next section). Nested output (`collapseNesting: false`) emits no `:is()` at the join
+at all.
+
+## `'native'`: fold only what keeps native specificity
+
+`'native'` folds a nested child list into `:is(…)` only where the result behaves
+exactly like the browser's own nesting: same specificity, same matched elements, and
+the same reaction to a selector the browser does not understand. A run of consecutive
+child branches folds when **all** of these hold:
+
+- **Equal specificity.** Every branch in the run scores the same, so the `:is()` group
+  maximum is each branch's own score. Specificity follows
+  [Selectors Level 4](https://www.w3.org/TR/selectors-4/#specificity-rules): `:is()`,
+  `:not()` and `:has()` score their most specific argument and `:where()` scores zero.
+- **A single compound per branch.** `.a :is(.b .c)` also matches when `.a` sits
+  *between* `.b` and `.c`, because an `:is()` argument is matched against the whole
+  document. A branch with a combinator therefore stays distributed.
+- **No pseudo-element.** `::before`, `:after` and the rest are not allowed inside
+  `:is()`.
+- **Only standard, widely implemented pseudo-classes.** `:is()` is forgiving: it drops
+  an argument the browser does not understand and keeps the rest. A plain selector list
+  is not: one unknown branch drops the whole rule. So a vendor-prefixed pseudo-class
+  (`:-webkit-autofill`, `:-moz-focusring`), an unknown one, or one not every engine
+  implements keeps its list distributed. `:nth-child()` and `:nth-last-child()` also
+  stay distributed for now: Jess cannot yet score their `of S` argument.
+
+Branches that fail a check join the ancestor on their own, and the rest still fold, in
+authored order — no branch moves past another:
+
+```less
+.table-borderless {
+  th, td, thead th, tbody + tbody { border: 0; }
+}
+```
+
+```css
+.table-borderless :is(th, td),
+.table-borderless thead th,
+.table-borderless tbody + tbody {
+  border: 0;
+}
+```
+
+`th` and `td` both score `(0,0,1)` and fold; `thead th` and `tbody + tbody` contain a
+combinator and stay as they were. Every branch keeps the score it has in the native
+nesting desugaring — `(0,1,1)` for `th`/`td`, `(0,1,2)` for the other two.
+
+:::caution What "native" promises
+`'native'` reproduces native nesting's **specificity, matching and invalid-selector
+behaviour** — not its exact bytes. The browser's desugaring of `.t { th, td {} }` is
+`.t th, .t td`; `'native'` may print `.t :is(th, td)`, which behaves identically.
+:::
 
 :::note
 `collapseNesting` selects the flatten STYLE: **`false`** (default) preserves authored
-nesting; **`'native'`** flattens like native CSS nesting — parent `:is()`, child lists
-DISTRIBUTED (specificity-faithful); **`'compact'`** additionally folds same-combinator
-descendant child runs into one `:is(…)` (the group-max specificity shown above). The
+nesting; **`'native'`** flattens with native nesting's specificity and matching, folding
+only the child runs described above; **`'compact'`** folds every same-combinator
+descendant child run into one `:is(…)` (the group-max specificity shown above). The
 **parent** `:is()` (`:is(.a, #b) .c`) is emitted by BOTH `'native'` and `'compact'` —
 it is the native desugaring of a multi-parent header, and its group-max specificity is
 unavoidable. Extend's `:is()` grafting appears in every mode. (`true` is a deprecated

@@ -192,7 +192,43 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
           ':is(.input-group > .form-control, .input-group > .custom-select, .input-group > .custom-file) + .custom-select,',
           ':is(.input-group > .form-control, .input-group > .custom-select, .input-group > .custom-file) + .custom-file {'
         ].join('\n')
-      ]
+      ],
+
+      /*
+       * `collapseNesting: 'native'` now folds a run of equal-specificity child
+       * compounds into `:is()` (ledger O10, amended 2026-10-05); the golden
+       * predates it and keeps every child distributed.
+       */
+      ...([
+        ['.table', ['th', 'td']],
+        ['.table-sm', ['th', 'td']],
+        ['.table-bordered', ['th', 'td']],
+        ['.table-bordered thead', ['th', 'td']],
+        ['.table-borderless', ['th', 'td']],
+        ['.table-dark', ['th', 'td']],
+        ['.form-inline', ['.input-group', '.custom-select'], '  '],
+        ['.btn-group-vertical', ['.btn', '.btn-group']],
+        [':is(.btn-group-toggle > .btn, .btn-group-toggle > .btn-group > .btn)', ['input[type="radio"]', 'input[type="checkbox"]']],
+        ['.input-group-text', ['input[type="radio"]', 'input[type="checkbox"]']],
+        ['.navbar-light .navbar-nav', ['.nav-link.show', '.nav-link.active']],
+        ['.navbar-dark .navbar-nav', ['.nav-link.show', '.nav-link.active']],
+        ...[':first-child', ':last-child', ':only-child'].flatMap((position): Array<readonly [string, readonly string[], string]> => [
+          [`.card-group > .card${position}`, ['.card-img-top', '.card-header'], '  '],
+          [`.card-group > .card${position}`, ['.card-img-bottom', '.card-footer'], '  ']
+        ]),
+        ['.card-group > .card:not(:first-child):not(:last-child):not(:only-child)', ['.card-img-top', '.card-img-bottom', '.card-header', '.card-footer'], '  '],
+        ['.carousel-fade', ['.carousel-item.active', '.carousel-item-next.carousel-item-left', '.carousel-item-prev.carousel-item-right']],
+        ['.carousel-fade', ['.active.carousel-item-left', '.active.carousel-item-right']],
+        ['.carousel-fade', ['.carousel-item-next', '.carousel-item-prev']],
+        ['.carousel-fade', ['.carousel-item.active', '.active.carousel-item-left', '.active.carousel-item-prev']],
+        ['.embed-responsive', ['iframe', 'embed', 'object', 'video']],
+        ['.table', ['td', 'th'], '  '],
+        ['.table-bordered', ['th', 'td'], '  '],
+        ['.table-dark', ['th', 'td'], '  ']
+      ] satisfies Array<readonly [string, readonly string[], string?]>).map(([ancestor, branches, indent = '']): readonly [string, string] => [
+        branches.map(branch => `${ancestor} ${branch}`).join(`,\n${indent}`),
+        `${ancestor} :is(${branches.join(', ')})`
+      ])
     ]
   ]
 ]);
