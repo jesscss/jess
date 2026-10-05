@@ -3831,13 +3831,15 @@ interface EvalCtx {
   mixinValueBindings: Map<Binding, ValueGroup> | null;
 
   /*
-   * [compress] The declaration spelling of an eager argument snapshot whose
-   * compressed spelling differs from its own (ledger O3). The snapshot's bytes
-   * stay the value as authored, which every splice writes; a declaration under
-   * compress writes this instead. Created with the render, so every derived
-   * context shares it; absent when compress is off.
+   * [compress] The typed value an eager argument snapshot was evaluated to, when
+   * compress spells it differently from the snapshot's own bytes (ledger O3).
+   * The bytes stay the value as written, which every splice writes; a
+   * declaration under compress folds this value instead, and a structural
+   * consumer (a function argument, `each()`, a spread) reads its items. Created
+   * with the render, so every derived context shares it; absent when compress
+   * is off.
    */
-  compressedBindings?: Map<Binding, string>;
+  compressedBindings?: WeakMap<Binding, ValueGroup>;
 
 }
 
@@ -4199,7 +4201,8 @@ function evalTyped(
        */
       if (projectMixinValues) {
         const carried = frame?.mixinValueBindings?.get(node)
-          ?? e.mixinValueBindings?.get(node);
+          ?? e.mixinValueBindings?.get(node)
+          ?? e.compressedBindings?.get(node);
         if (carried !== undefined) {
           return carried;
         }
@@ -4517,18 +4520,16 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'Any':
       /*
        * [compress] A mixin argument binds as its evaluated bytes, spelled as
-       * written. When the binding kept the typed value beside them (a
-       * function-form color, a list), that value folds by its type, as the same
-       * value reaching the declaration directly does; otherwise the binding's
-       * recorded declaration spelling is written. A splice evaluates with
-       * compress off, so it writes the bytes as written.
+       * written. When the binding kept the typed value beside them, that value
+       * folds by its type, as the same value reaching the declaration directly
+       * does. A splice evaluates with compress off, so it writes the bytes as
+       * written.
        */
       if (e.compress === true) {
-        const carried = frame?.mixinValueBindings?.get(node) ?? e.mixinValueBindings?.get(node);
+        const carried = frame?.mixinValueBindings?.get(node) ?? e.mixinValueBindings?.get(node) ?? e.compressedBindings?.get(node);
         if (carried !== undefined) {
           return carried;
         }
-        return literal(e.compressedBindings?.get(node) ?? node.src);
       }
       return literal(node.src);
     case 'Keyword':
@@ -6754,8 +6755,8 @@ function mixinGroupMode(value: ValueGroup): MixinGroupMode {
 
 /**
  * Construct one candidate-owned eager snapshot from already-derived source facts.
- * `bytes` is the value's own spelling (see {@link eagerSnapshot}); a scalar that
- * compress folds also records its declaration spelling.
+ * `bytes` is the value's own spelling (see {@link eagerSnapshot}); under compress
+ * the snapshot also carries the value it folds from ({@link carryCompressed}).
  */
 function snapshotPreparedMixinValue(
   value: ValueGroup,
@@ -6771,19 +6772,21 @@ function snapshotPreparedMixinValue(
   } else if (mode === MIXIN_GROUP_VALUE) {
     (e.mixinValueBindings ??= new Map()).set(bound, value);
     retain?.(bound);
-  } else if (e.compressedBindings !== undefined) {
-    noteCompressedSpelling(bound, emitCompressed(value), e);
+  }
+  if (e.compressedBindings !== undefined) {
+    carryCompressed(bound, value, e);
   }
   return bound;
 }
 
 /**
- * [compress] Record the declaration spelling of a snapshot when compress writes
- * it differently from the snapshot's own bytes (EvalCtx.compressedBindings).
+ * [compress] Keep the typed value a snapshot was evaluated to beside it when
+ * compress spells that value differently from the snapshot's bytes
+ * (EvalCtx.compressedBindings).
  */
-function noteCompressedSpelling(bound: Any, folded: string, e: EvalCtx): void {
-  if (folded !== bound.src) {
-    e.compressedBindings!.set(bound, folded);
+function carryCompressed(bound: Any, value: ValueGroup, e: EvalCtx): void {
+  if (emitCompressed(value) !== bound.src) {
+    e.compressedBindings!.set(bound, value);
   }
 }
 
@@ -6791,18 +6794,23 @@ function noteCompressedSpelling(bound: Any, folded: string, e: EvalCtx): void {
  * The eager snapshot of one argument evaluated in `frame`: Less binds an
  * argument as its evaluated bytes. A binding is never re-spelled by the output
  * policy, so the bytes are the value as written and a splice of the parameter
- * writes them unchanged (ledger O3: interpolated text is never re-spelled);
- * under compress the folded spelling a declaration writes is kept beside them.
+ * writes them unchanged (ledger O3: interpolated text is never re-spelled).
+ *
+ * Under compress the argument is evaluated ONCE, typed and spelled as written,
+ * and the snapshot carries that value, which a declaration folds by its type
+ * ({@link carryCompressed}). Evaluating it a second time for the folded bytes
+ * would run its functions twice.
  */
 function eagerSnapshot(source: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<Any> {
-  const spelled = mapMaybe(evalBytes(source, frame, spliceCtx(e)), any);
   if (e.compressedBindings === undefined) {
-    return spelled;
+    return mapMaybe(evalBytes(source, frame, e), any);
   }
-  return mapMaybe(spelled, bound => mapMaybe(evalBytes(source, frame, e), (folded) => {
-    noteCompressedSpelling(bound, folded, e);
+  return mapMaybe(evalTypedSlot(source, frame, spliceCtx(e), true), (value) => {
+    validateValueGroupUnits(value, e.modes, isValueSlotArray(source) ? (source[0] ?? {}) : source, e, false);
+    const bound = any(emitValue(value));
+    carryCompressed(bound, value, e);
     return bound;
-  }));
+  });
 }
 
 /**
@@ -11587,7 +11595,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     pluginRawBindings: null,
     mixinUrlBindings: null,
     mixinValueBindings: null,
-    compressedBindings: options?.compress === true ? new Map() : undefined,
+    compressedBindings: options?.compress === true ? new WeakMap() : undefined,
     io: options?.io
   };
   const rootFrame: Frame = {
@@ -11684,7 +11692,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     pluginRawBindings: null,
     mixinUrlBindings: null,
     mixinValueBindings: null,
-    compressedBindings: options?.compress === true ? new Map() : undefined,
+    compressedBindings: options?.compress === true ? new WeakMap() : undefined,
     io: options?.io // [io] per-render file-read capability for the IO built-ins
   };
   const rootFrame: Frame = {
@@ -15685,6 +15693,11 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Ma
     return base.parts.map(value => ({ value, key: null }));
   }
   if (base.type === 'Any' || base.type === 'Keyword') {
+    /* [compress] A snapshot that carries its value iterates that value's items. */
+    const carried = base.type === 'Any' ? e.compressedBindings?.get(base) : undefined;
+    if (carried !== undefined) {
+      return { evaluatedItems: groupItems(carried) };
+    }
     return splitListBytes(base.src).map(b => ({ value: any(b), key: null }));
   }
 
@@ -16231,10 +16244,12 @@ function expandSpreadArgs(
         throw new Error('A deferred mixin call cannot be used as a spread argument.');
       }
       if (classifyMixinValueSource(source, frame, e) === MIXIN_VALUE_NONE) {
-        const resolved = combineAll(
-          e.compressedBindings === undefined ? [resolveCaller(source)] : [resolveCaller(source), evalBytes(source, frame, e)],
-          ([bytes, folded]) => pushSpread(args, bytes!, e, folded)
-        );
+        /* [compress] Evaluated once, typed, so each piece carries the item it folds from. */
+        const resolved = e.compressedBindings === undefined
+          ? mapMaybe(resolveCaller(source), bytes => pushSpread(args, bytes))
+          : mapMaybe(evalTypedSlot(source, frame, spliceCtx(e), true), (value) => {
+              pushTypedSpread(args, expanded, value, e, undefined, false);
+            });
         if (isThenable(resolved)) {
           const at = index;
           return resolved.then(() => step(at + 1));
@@ -16278,13 +16293,18 @@ function evalTypedSpread(
   return evalTypedSlot(value, frame, e, true);
 }
 
-/** Append one evaluated spread group, retaining typed positional items. */
+/**
+ * Append one evaluated spread group, retaining typed positional items. With
+ * `bearing` off (a plain spread under compress) the items only carry the value
+ * a declaration folds; the call stays an ordinary one.
+ */
 function pushTypedSpread(
   args: CallArg[],
   call: MixinCall,
   value: ValueGroup,
   e: EvalCtx,
-  state?: ValueBearingSpreadCall
+  state?: ValueBearingSpreadCall,
+  bearing = true
 ): ValueBearingSpreadCall | undefined {
   const items = isValueGroupArray(value)
     ? value
@@ -16296,14 +16316,22 @@ function pushTypedSpread(
       if (!isValueGroupArray(value) && value.type === 'List' && value.sep === '/' && index !== 0) {
         args.push(callArg(any('/')));
       }
-      state = pushTypedSpreadItem(args, call, items[index]!, e, state);
+      state = pushTypedSpreadItem(args, call, items[index]!, e, state, bearing);
     }
     return state;
   }
   if (!isValueGroupArray(value) && value.type === 'Url') {
-    return pushTypedSpreadItem(args, call, value, e, state);
+    return pushTypedSpreadItem(args, call, value, e, state, bearing);
   }
-  pushSpread(args, emitValue(value), e, e.compressedBindings === undefined ? undefined : emitCompressed(value));
+
+  /*
+   * One value that is not a list. A value compress folds (a dimension, a
+   * color) is one piece; anything else splits as its bytes always have.
+   */
+  if (e.compressedBindings !== undefined && emitCompressed(value) !== emitValue(value)) {
+    return pushTypedSpreadItem(args, call, value, e, state, bearing);
+  }
+  pushSpread(args, emitValue(value));
   return state;
 }
 
@@ -16313,7 +16341,8 @@ function pushTypedSpreadItem(
   call: MixinCall,
   value: ValueGroup,
   e: EvalCtx,
-  state?: ValueBearingSpreadCall
+  state?: ValueBearingSpreadCall,
+  bearing = true
 ): ValueBearingSpreadCall | undefined {
   const bytes = emitValue(value).trim();
   if (bytes === '') {
@@ -16322,9 +16351,9 @@ function pushTypedSpreadItem(
   const snapshot = any(bytes);
   args.push(callArg(snapshot));
   if (e.compressedBindings !== undefined) {
-    noteCompressedSpelling(snapshot, emitCompressed(value).trim(), e);
+    carryCompressed(snapshot, value, e);
   }
-  if (valueGroupNeedsMixinCarrier(value)) {
+  if (bearing && valueGroupNeedsMixinCarrier(value)) {
     const bindings = state ?? {
       call,
       valueBindings: new Map<Any, ValueGroup>(),
@@ -16339,24 +16368,14 @@ function pushTypedSpreadItem(
   return state;
 }
 
-/**
- * Split one resolved spread argument into the positional args it splats to.
- * Under compress `folded` is the same argument's compressed spelling; each
- * piece records its own when the two split alike (EvalCtx.compressedBindings).
- */
-function pushSpread(args: CallArg[], rawBytes: string, e: EvalCtx, folded?: string): void {
+/** Split one resolved spread argument into the positional args it splats to. */
+function pushSpread(args: CallArg[], rawBytes: string): void {
   const bytes = rawBytes.trim();
   if (bytes === '') {
     return;
   }
-  const pieces = splitListBytes(bytes);
-  const foldedPieces = folded === undefined ? undefined : splitListBytes(folded.trim());
-  for (let index = 0; index < pieces.length; index++) {
-    const snapshot = any(pieces[index]!);
-    args.push(callArg(snapshot));
-    if (foldedPieces?.length === pieces.length) {
-      noteCompressedSpelling(snapshot, foldedPieces[index]!, e);
-    }
+  for (const piece of splitListBytes(bytes)) {
+    args.push(callArg(any(piece)));
   }
 }
 

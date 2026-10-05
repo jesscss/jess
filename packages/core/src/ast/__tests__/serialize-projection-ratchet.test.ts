@@ -173,19 +173,19 @@ describe('V19 one-evaluator projection ratchet', () => {
     // `import/load-failed` at the `@use`, as `@plugin` already is.
     // +1 function (`putPending`): every slot that settles after the walk reserves
     // its chunk through one helper, so each records its source-map position alike.
-    // +4 functions (`eagerSnapshot`, `noteCompressedSpelling`,
-    // `compressedEagerSource`, `compressedEagerSources`) and +2 `new Map` (the
-    // render-scoped `compressedBindings`, created once per render entry): a mixin
-    // argument binds as written, and under compress records the spelling a
-    // declaration folds it to (ledger O3).
+    // +4 functions (`eagerSnapshot`, `carryCompressed`,
+    // `compressedEagerSource`, `compressedEagerSources`) and +2 `new WeakMap`
+    // (the render-scoped `compressedBindings`, created once per render entry): a
+    // mixin argument is evaluated once and binds as written; under compress it
+    // carries the value a declaration folds (ledger O3).
     // +3 functions (`withBodyCopy`, `nestedRuleSpans`, `holdBodyTrivia`): a rule a
     // callable body's expansion defers, and each loop iteration, write their own
     // copy of their body's comments, and a collapsed block's replay steps over
     // the rules nested in it.
     expect(occurrences(/^function |^async function /gmu)).toBe(488);
-    expect(occurrences(/new Map/gu)).toBe(75);
+    expect(occurrences(/new Map/gu)).toBe(73);
     expect(occurrences(/new Set/gu)).toBe(37);
-    expect(occurrences(/new WeakMap/gu)).toBe(4);
+    expect(occurrences(/new WeakMap/gu)).toBe(6);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);
 

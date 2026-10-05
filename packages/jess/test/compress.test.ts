@@ -10,6 +10,9 @@
  * See docs/less/advanced/compressed-output.md for the settled spec.
  */
 import { describe, expect, it } from 'vitest';
+import { defineFunction, makeDimension } from '@jesscss/core';
+import lessPlugin from '@jesscss/plugin-less';
+import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 import { Compiler } from '../src/index.js';
 
 /** Render `src` with `output.compress: true` and return the CSS string. */
@@ -156,6 +159,46 @@ describe('output.compress — value folds (must fold)', () => {
     expect(await min('.m(@a) { b: @a } a { .m(unit(0.5, px)) }')).toBe('a{b:.5px}');
     expect(await min('@d: 0.50px; .m(@a) { b: @a } a { .m(@d) }')).toBe('a{b:.5px}');
     expect(await min('@l: white 0.50px; .m(@a, @b) { b: @a @b } a { .m(@l...) }')).toBe('a{b:white .5px}');
+    expect(await min('@l: 0.50px / 2px; .m(@a, @b, @c) { b: @a @b @c } a { .m(@l...) }')).toBe('a{b:.5px / 2px}');
+    expect(await min('@w: white; .a(@x) { .b(@x 1px) } .b(@y) { b: @y } a { .a(@w) }')).toBe('a{b:white 1px}');
+    expect(await min('@d: #ffffff 0.50px; .a(@x) { .b(@x 1px) } .b(@y) { b: @y } a { .a(@d) }')).toBe('a{b:#fff .5px 1px}');
+  });
+
+  /* A list an argument carries is iterated by its items, each folded. */
+  it('folds the items each() takes from a mixin argument', async () => {
+    expect(await min('@v: 0.50px 1px; .m(@a) { each(@a, { w+_: @value; }); } a { .m(@v); }')).toBe('a{w:.5px 1px}');
+    expect(await min(
+      '@t: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;'
+      + ' .tr(@transition...) { each(@transition, #(@v) { transition+: @v; }); }'
+      + ' a { .tr(transform 0.15s ease-in-out, @t); }'
+    )).toBe('a{transition:transform .15s ease-in-out, background-color .15s ease-in-out,border-color .15s ease-in-out}');
+  });
+
+  /*
+   * An argument is evaluated once whatever the output setting: a function in it
+   * runs once, so its splice and its declaration agree.
+   */
+  it('evaluates a mixin argument once', async () => {
+    const render = async (source: string, compress: boolean): Promise<string> => {
+      let calls = 0;
+      const tick = defineFunction('tick', { params: [], body: () => makeDimension(++calls, 'px') });
+      const css = await new Compiler({
+        output: { compress, collapseNesting: true },
+        compile: { plugins: [lessPlugin(), lessCompatPlugin({ functions: [tick] })] }
+      }).renderString(source, { extension: '.less', suppressWarnings: true });
+      return `${css.replace(/\s+/g, '').replace(/;}/g, '}')} calls=${calls}`;
+    };
+    for (const source of [
+      '.m(@a) { .s-@{a} { x: @a } } .m((tick() + 0));',
+      '.m(@a: (tick() + 0)) { .s-@{a} { x: @a } } .m();',
+      '.m(@a...) { .s-@{a} { x: @a } } .m((tick() + 0), 2px);',
+      '.n(@b) { .t-@{b} { y: @b } } .m(@a) { .n(@a); } .m((tick() + 0));',
+      '.m() { @r: (tick() + 0) 1; } a { .m(); x: @r; y: "@{r}"; }'
+    ]) {
+      const once = await render(source, true);
+      expect(once, source).toMatch(/calls=1$/u);
+      expect(once, source).toBe(await render(source, false));
+    }
   });
 
   /* A guard pattern compares the argument as written, as it does uncompressed. */
