@@ -69,7 +69,7 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
 
       /*
        * `collapseNesting: 'native'` now folds a run of equal-specificity child
-       * compounds into `:is()` (ledger O10, amended 2026-10-05); the golden
+       * compounds into `:is()` (owner ruling 2026-10-05); the golden
        * predates it and keeps every child distributed.
        */
       ...([
@@ -105,7 +105,7 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
 
       /*
        * Extend's own `:is()` groups keep native specificity in every output mode
-       * (owner 2026-10-05, ledger X3/§7c amendment): `.btn-sm` (0,1,0) and
+       * (owner ruling 2026-10-05): `.btn-sm` (0,1,0) and
        * `.btn-group-sm > .btn` (0,2,0), or `.bs-tooltip-top` (0,1,0) and
        * `.bs-tooltip-auto[x-placement^="top"]` (0,2,0), no longer share an
        * `:is()`, so each extender is its own branch.
@@ -139,9 +139,9 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
   ],
 
   /*
-   * Extend's own `:is()` groups keep native specificity (owner 2026-10-05, ledger
-   * X3/§7c amendment): a member of a different specificity, or a complex member
-   * after a combinator, leaves the group.
+   * Extend's own `:is()` groups keep native specificity (owner ruling 2026-10-05):
+   * a member of a different specificity, or a complex member the group does not
+   * lead with, leaves the group.
    */
   ['tests-unit/extend-chaining/extend-chaining.less', [
     // `.g` (0,1,0) and `:is(.i, .k).j` (0,2,0).

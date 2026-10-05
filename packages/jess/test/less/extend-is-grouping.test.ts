@@ -65,6 +65,52 @@ describe('extend :is() grouping keeps native specificity in every output mode', 
       .resolves.toBe('.intrusion .error, .intrusion .type1 .sidebar3');
   });
 
+  it('expands a complex member into a partial compound the way 4.x does', async () => {
+    /*
+     * The simples before the match join the member's first compound and those after it
+     * its last compound. `.a > .p .m.q` (the rest merged into the last compound) would
+     * match a `.m.q` whose `.p` is the child of `.a`, which neither form does.
+     */
+    await expect(extendHeader('.a > .m.c { m: 1 } .p .q:extend(.c all) {}'))
+      .resolves.toBe('.a > .m.c, .a > .m.p .q');
+    await expect(extendHeader('.a > .m.c.n { m: 1 } .p > .r .q:extend(.c all) {}'))
+      .resolves.toBe('.a > .m.c.n, .a > .m.p > .r .q.n');
+
+    // At the head too: `.m:is(.p .q)` is `.p .m.q`, not 4.x's `.m.p .q`.
+    await expect(extendHeader('.m.c .d { m: 1 } .p .q:extend(.c all) {} .y:extend(.c all) {}'))
+      .resolves.toBe('.m:is(.c, .y) .d, .m.p .q .d');
+
+    // Leading the head compound, a complex member is the same selector inside `:is()`.
+    await expect(extendHeader('.c.k .d { m: 1 } .p .q:extend(.c all) {} .r .s:extend(.c all) {}'))
+      .resolves.toBe('.c.k .d, :is(.p .q, .r .s).k .d');
+  });
+
+  it('checks a chained group again where its member is spliced', async () => {
+    // `.a > :is(.p .q, .r .s).k` would match a `.p` above `.a`.
+    await expect(extendHeader('.a > .c { m: 1 } .j.k:extend(.c all) {} .p .q:extend(.j all) {} .r .s:extend(.j all) {}'))
+      .resolves.toBe('.a > .c, .a > .j.k, .a > .p .q.k, .a > .r .s.k');
+  });
+
+  it('never returns a split alternative to an authored :is() list', async () => {
+    /*
+     * `:is(#b.k, .z) .d` would raise every `.z .d` to (1,1,0). The authored list keeps
+     * the alternative holding the matched selector; the other one stands alone.
+     */
+    await expect(extendHeader(':is(.c.k, .z) .d { m: 1 } #b:extend(.c all) {}'))
+      .resolves.toBe(':is(.c.k, .z) .d, #b.k .d');
+    await expect(extendHeader(':is(.c.k, .z) .d { m: 1 } .y:extend(.c all) {}'))
+      .resolves.toBe(':is(:is(.c, .y).k, .z) .d');
+  });
+
+  it('compacts a changed top-level rule\'s siblings in nested output too, each member once', async () => {
+    await expect(extendHeader('.button:hover { m: 1 } .submit:hover:extend(.button:hover) {}'))
+      .resolves.toBe(':is(.button, .submit):hover');
+    await expect(extendHeader('.c.x { m: 1 } #b:extend(.c all) {} .e.x:extend(.c.x) {}'))
+      .resolves.toBe(':is(.c, .e).x, #b.x');
+    await expect(extendHeader('.c.x { m: 1 } #b:extend(.c all) {} #b.x:extend(.c.x) {}'))
+      .resolves.toBe('.c.x, #b.x');
+  });
+
   it('merges a repeated element type instead of writing 4.x\'s invalid `divdiv.b`', async () => {
     await expect(extendHeader('div.a { m: 1 } div.b:extend(.a all) {}')).resolves.toBe('div.a, div.b');
   });
@@ -103,6 +149,17 @@ describe('nested output of an extended nested rule', () => {
   it('emits a deeper flattened rule at the top level', async () => {
     await expect(render('.a { .b, .c { e { y: 2; } } } .d:extend(.a .b e) {}', false))
       .resolves.toBe(':is(.a .b, .a .c) e,\n.d {\n  y: 2;\n}\n');
+  });
+
+  it('takes an at-rule it rises out of along with it', async () => {
+    // Left inside `.a`, the full header would need two `.a` ancestors.
+    const expected = '@media screen {\n  :is(.a .b, .a .c) e,\n  .d {\n    y: 2;\n  }\n}\n';
+    await expect(render('.a { @media screen { .b, .c { e { y: 2; } } } } .d:extend(.a .b e) {}', false))
+      .resolves.toBe(expected);
+    await expect(render('.a { .b, .c { @media screen { e { y: 2; } } } } .d:extend(.a .b e) {}', false))
+      .resolves.toBe(expected);
+    await expect(render('.a { @media screen { .b { y: 1; } } } .d:extend(.a .b all) {}', false))
+      .resolves.toBe('@media screen {\n  .a .b,\n  .d {\n    y: 1;\n  }\n}\n');
   });
 
   it('splits a mixed-specificity hoisted sibling group and keeps an equal one', async () => {

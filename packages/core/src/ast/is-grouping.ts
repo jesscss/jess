@@ -14,8 +14,10 @@
  * most specific argument), no member carries a pseudo-element, every
  * pseudo-class is a standard one every major engine implements (`:is()` is a
  * forgiving list: it drops a branch a browser does not understand, where a plain
- * list drops the whole rule), and — when something precedes the `:is()` — every
- * member is one compound (`A :is(x y)` lets `x` sit above `A`).
+ * list drops the whole rule), and — unless the group leads the whole selector —
+ * every member is one compound (`A :is(x y)` lets `x` sit above `A`; the caller
+ * says which, through `compoundOnly`). A token is scored from the parser token it
+ * was built from, never from serialized text.
  */
 
 import type { SelectorBranch, SimpleToken } from './nodes.js';
@@ -176,40 +178,10 @@ export function nestingGroupKey(branch: SelectorBranch, guarded: boolean): numbe
   return comb !== undefined && comb !== ' ' && comb !== '|' ? -1 : 0;
 }
 
-const isIdentifierCode = (code: number): boolean =>
-  code === 45 /* - */ || code === 95 /* _ */ || code >= 128
-  || (code >= 48 && code <= 57) || ((code | 32) >= 97 && (code | 32) <= 122);
-
-/**
- * Specificity of an extend IR text token the parser did not build one-to-one
- * (a `&` substituted by its parent's text, a dynamic extender's composed text).
- * Its text may hold any run of selector, so only a lone class, id, type,
- * universal or listed pseudo-class scores; anything else stays out of a group.
- */
-function plainTextSpecificity(text: string): number {
-  const first = text.charCodeAt(0);
-  if (first === 58 /* : */) {
-    return pseudoClassSpecificity(text);
-  }
-  if (text === '*') {
-    return 0;
-  }
-  const start = first === 46 /* . */ || first === 35 /* # */ ? 1 : 0;
-  if (text.length === start || (start === 0 && first >= 48 && first <= 57)) {
-    return -1;
-  }
-  for (let i = start; i < text.length; i++) {
-    if (!isIdentifierCode(text.charCodeAt(i))) {
-      return -1;
-    }
-  }
-  return first === 46 ? SPECIFICITY_CLASS : first === 35 ? SPECIFICITY_ID : SPECIFICITY_TYPE;
-}
-
-function irCompoundSpecificity(compound: Compound): number {
+function irCompoundSpecificity(compound: Compound, compoundOnly: boolean): number {
   let sum = 0;
   for (const simple of compound.value) {
-    const s = irSimpleSpecificity(simple);
+    const s = irSimpleSpecificity(simple, compoundOnly);
     if (s < 0) {
       return -1;
     }
@@ -218,11 +190,16 @@ function irCompoundSpecificity(compound: Compound): number {
   return sum;
 }
 
-function irSimpleSpecificity(simple: Simple): number {
+/*
+ * An extend group nested in a member is spliced in with that member when the outer
+ * group splits, so its own members face the outer group's position (`compoundOnly`).
+ * An authored or nesting `:is()` is the author's selector and only adds its score.
+ */
+function irSimpleSpecificity(simple: Simple, compoundOnly: boolean): number {
   if (simple.t === 'is') {
     let max = 0;
     for (const branch of simple.branches) {
-      const s = extendBranchSpecificity(branch, false);
+      const s = extendBranchSpecificity(branch, simple.fold && compoundOnly);
       if (s < 0) {
         return -1;
       }
@@ -232,10 +209,14 @@ function irSimpleSpecificity(simple: Simple): number {
     }
     return max;
   }
+
+  /*
+   * A token the parser did not build one-to-one (a `&` replaced by its parent's text,
+   * a dynamic extender's composed text) has no `src`. Its kind could only be read back
+   * out of serialized text, so it stays out of every group.
+   */
   const src = simple.src;
-  return src === undefined
-    ? plainTextSpecificity(simple.text)
-    : 'value' in src ? irCompoundSpecificity(src) : tokenSpecificity(src, false);
+  return src === undefined ? -1 : 'value' in src ? irCompoundSpecificity(src, false) : tokenSpecificity(src, false);
 }
 
 /**
@@ -255,7 +236,7 @@ export function extendBranchSpecificity(branch: Branch, compoundOnly: boolean): 
     if (k === 0 ? comb !== ' ' : comb === '|' || comb === '||') {
       return -1;
     }
-    const s = irCompoundSpecificity(segment.compound);
+    const s = irCompoundSpecificity(segment.compound, compoundOnly);
     if (s < 0) {
       return -1;
     }

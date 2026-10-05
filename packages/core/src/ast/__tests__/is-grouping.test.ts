@@ -36,13 +36,24 @@ describe('the shared :is() grouping', () => {
     expect(extendBranchSpecificity(ir(relativeSelector('>', [{ term: simpleSelector('.a') }])), false)).toBe(-1);
   });
 
-  it('scores a token without parser provenance only when it is one plain simple', () => {
+  it('never reads a token without parser provenance back out of its text', () => {
     // A `&` substituted by its parent's text, or a dynamic extender's composed text.
-    expect(extendBranchSpecificity(descendantBranch([textSimple('.type2')]), true)).toBe(spec(0, 1, 0));
-    expect(extendBranchSpecificity(descendantBranch([textSimple(':hover')]), true)).toBe(spec(0, 1, 0));
-    expect(extendBranchSpecificity(descendantBranch([textSimple('.p1.p2')]), true)).toBe(-1);
-    expect(extendBranchSpecificity(descendantBranch([textSimple('.parent .col')]), true)).toBe(-1);
-    expect(extendBranchSpecificity(descendantBranch([textSimple('')]), true)).toBe(-1);
+    expect(extendBranchSpecificity(descendantBranch([textSimple('.type2')]), true)).toBe(-1);
+    expect(extendBranchSpecificity(descendantBranch([textSimple(':hover')]), false)).toBe(-1);
+    expect(extendBranchSpecificity(descendantBranch([textSimple('.parent .col')]), false)).toBe(-1);
+  });
+
+  it('holds a nested extend group to the position of the group around it', () => {
+    // `:is(.p .q, .r .s).k` spliced after a combinator would let `.p` sit above it.
+    const inner = (fold: boolean) => descendantBranch([
+      { t: 'is', branches: [ir(descendant('.p', '.q')), ir(descendant('.r', '.s'))], fold },
+      ir(sel('.k')).segments[0]!.compound.value[0]!
+    ]);
+    expect(extendBranchSpecificity(inner(true), false)).toBe(spec(0, 3, 0));
+    expect(extendBranchSpecificity(inner(true), true)).toBe(-1);
+
+    // An authored `:is()` is the author's selector: it only adds its score.
+    expect(extendBranchSpecificity(inner(false), true)).toBe(spec(0, 3, 0));
   });
 
   it('keys the nesting fold by specificity when guarded and by shape when not', () => {

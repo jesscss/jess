@@ -8529,7 +8529,16 @@ function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: Emit
       return [a + ' ' + values[0]!];
     }
     const guarded = e.collapseMode !== 'compact';
-    const groups = child.selectors.map(branch => nestingGroupKey(branch, guarded));
+    const groups: number[] = [];
+    let oneGroup = true;
+    for (const branch of child.selectors) {
+      const key = nestingGroupKey(branch, guarded);
+      oneGroup &&= key >= 0 && key === (groups[0] ?? key);
+      groups.push(key);
+    }
+    if (oneGroup) {
+      return [a + ' :is(' + values.join(', ') + ')'];
+    }
     const sizes = partitionGroups(groups);
     const out: string[] = [];
     for (let i = 0; out.length < sizes.length; i++) {
@@ -12627,7 +12636,7 @@ function expandRule(
     const nestedPlan = extendProjection(frame, e)?.nestedPlan.get(rule);
     if (nestedPlan?.flatten) {
       recordAstExtendProfile?.('astExtend.emit.nestedHoistPlacements');
-      nestedHoist.push({ rule, frame, bubble: nestedPlan.hoistBubble ?? 1 });
+      nestedHoist.push({ rule, frame, bubble: nestedPlan.hoistBubble ?? 1, wrappers: null });
       return;
     }
   }
@@ -13710,7 +13719,7 @@ function walkBody(
           if (nested) {
             flushBuf();
             emitBeforeRootStatement(node);
-            const emitted = expandAtRuleBlock(node, frame, e, null, source);
+            const emitted = expandAtRuleBlock(node, frame, e, null, source, hoist);
             if (isThenable(emitted)) {
               return emitted.then(() => {
                 markAfterRootStatement(node);
@@ -18943,7 +18952,8 @@ function expandAtRuleBlock(
   frame: Frame,
   e: Emit,
   ctx: string[] | null = null,
-  nestedSource?: NestedHeaderSource | null
+  nestedSource?: NestedHeaderSource | null,
+  nestedHoist?: HoistEntry[]
 ): MaybePromise<void> {
   /*
    * The prelude resolves BEFORE any byte is written, so the rewind marks below
@@ -18964,7 +18974,7 @@ function expandAtRuleBlock(
     };
     return nestedSource === undefined
       ? writeCollapsedAtRuleBlock(node, frame, bodyFrame, e, ctx, prelude)
-      : writeNestedAtRuleBlock(node, frame, bodyFrame, e, nestedSource, prelude);
+      : writeNestedAtRuleBlock(node, frame, bodyFrame, e, nestedSource, prelude, nestedHoist);
   }));
 }
 
@@ -19794,6 +19804,31 @@ interface HoistEntry {
   rule: Ruleset;
   frame: Frame;
   bubble: number;
+
+  /**
+   * The at-rules the entry has risen out of, outermost first, or null. An at-rule is
+   * not a rule block (it does not count toward `bubble`), but the rule still belongs
+   * inside it, so it is re-opened around the rule where the rule lands
+   * (`.a { @media q { .b { e } } }` hoists `e` as `@media q { … }` beside `.a`).
+   */
+  wrappers: HoistWrapper[] | null;
+}
+
+interface HoistWrapper {
+  node: AtRuleBlock;
+  prelude: string;
+}
+
+/** Emit a hoisted rule where it lands, inside the at-rules it rose out of. */
+function emitHoistEntry(h: HoistEntry, e: Emit, imp: boolean, wrapper = 0): MaybePromise<void> {
+  const wrappers = h.wrappers;
+  if (wrappers !== null && wrapper < wrappers.length) {
+    const { node, prelude } = wrappers[wrapper]!;
+    return nestedAtRuleShell(node, prelude, e, false, () => emitHoistEntry(h, e, imp, wrapper + 1));
+  }
+  return extendProjection(h.frame, e)?.nestedPlan.get(h.rule)?.hoistNested
+    ? expandRule(h.rule, null, null, h.frame, e, imp, false, null)
+    : emitHoisted(h.rule, h.frame, e);
 }
 
 /** A `name: value;` / comment leaf at exactly the current `e.depth` level. */
@@ -20244,12 +20279,10 @@ function writeNestedRule(
         for (let hoistIndex = index; hoistIndex < hoist.length; hoistIndex++) {
           const h = hoist[hoistIndex]!;
           if (h.bubble > 1 && outerHoist) {
-            outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble - 1 });
+            outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble - 1, wrappers: h.wrappers });
             continue;
           }
-          const emitted = extendProjection(h.frame, e)?.nestedPlan.get(h.rule)?.hoistNested
-            ? expandRule(h.rule, null, null, h.frame, e, imp, false, null)
-            : emitHoisted(h.rule, h.frame, e);
+          const emitted = emitHoistEntry(h, e, imp);
           if (isThenable(emitted)) {
             return emitted.then(() => runHoist(hoistIndex + 1));
           }
@@ -20285,14 +20318,46 @@ function emitHoisted(rule: Ruleset, frame: Frame, e: Emit): MaybePromise<void> {
   return emitted;
 }
 
-/** Write one prelude-resolved at-rule through the authored-nesting projection. */
+/**
+ * Write one prelude-resolved at-rule through the authored-nesting projection. A rule
+ * in its body that must rise out of the enclosing rule (an extend match crossed that
+ * rule's `&`) leaves through `outerHoist`, taking the at-rule with it.
+ */
 function writeNestedAtRuleBlock(
   node: AtRuleBlock,
   frame: Frame,
   bodyFrame: Frame,
   e: Emit,
   source: NestedHeaderSource | null,
-  prelude: string
+  prelude: string,
+  outerHoist?: HoistEntry[]
+): MaybePromise<void> {
+  const hoist: HoistEntry[] | undefined = outerHoist === undefined ? undefined : [];
+  const leave = (): void => {
+    if (outerHoist === undefined || hoist === undefined || hoist.length === 0) {
+      return;
+    }
+    const wrapper: HoistWrapper = { node, prelude };
+    for (const h of hoist) {
+      outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble, wrappers: h.wrappers === null ? [wrapper] : [wrapper, ...h.wrappers] });
+    }
+  };
+  return nestedAtRuleShell(node, prelude, e, true, () => mapMaybe(
+    activateBodyDependencies(node.rules, bodyFrame, e),
+    () => mapMaybe(nestedBody(node.rules, bodyFrame, e, hoist, false, source, null, undefined, false, node), leave)
+  ));
+}
+
+/**
+ * `@name prelude { … }` around `body` at the current depth; dropped when the body
+ * writes nothing, unless `trivia` keeps the at-rule's own body comments.
+ */
+function nestedAtRuleShell(
+  node: AtRuleBlock,
+  prelude: string,
+  e: Emit,
+  trivia: boolean,
+  body: () => MaybePromise<void>
 ): MaybePromise<void> {
   const markChunks = e.chunks.length;
   const markPos = e.positions ? e.positions.length : 0;
@@ -20312,7 +20377,7 @@ function writeNestedAtRuleBlock(
   const finish = (): void => {
     e.depth--;
     if (e.chunks.length === afterHeader) {
-      if (hasBodyBlockCommentTrivia(node, e)) {
+      if (trivia && hasBodyBlockCommentTrivia(node, e)) {
         emitBodyBlockCommentTrivia(node, e, INDENT.repeat(e.depth + 1));
       } else {
         e.chunks.length = markChunks;
@@ -20327,8 +20392,5 @@ function writeNestedAtRuleBlock(
       e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
     }
   };
-  return mapMaybe(
-    activateBodyDependencies(node.rules, bodyFrame, e),
-    () => mapMaybe(nestedBody(node.rules, bodyFrame, e, undefined, false, source, null, undefined, false, node), finish)
-  );
+  return mapMaybe(body(), finish);
 }

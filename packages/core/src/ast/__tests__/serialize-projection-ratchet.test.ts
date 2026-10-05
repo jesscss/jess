@@ -171,15 +171,18 @@ describe('V19 one-evaluator projection ratchet', () => {
     // desugar wrapped that nothing loads is written as one `@import … q;`.
     // +1 function (`moduleLoadFailed`): a `@use` that cannot load is an
     // `import/load-failed` at the `@use`, as `@plugin` already is.
-    // +2 functions and +1 `new Set` (ledger O10, amended 2026-10-05):
+    // +2 functions and +1 `new Set` (owner ruling 2026-10-05):
     // `tokenFoldSpecificity`/`branchFoldSpecificity` read a branch's specificity
     // from the selector IR so `'native'` folds only equal-specificity child runs;
     // the Set is the module-level allowlist of standard pseudo-classes.
-    // -3 functions and -1 `new Set` (ledger X3/O10, owner 2026-10-05): the
-    // specificity, foldability and the pseudo-class allowlist moved to the shared
-    // `:is()` grouping module (`is-grouping.ts`) that extend's groups also use;
+    // -3 functions and -1 `new Set` (owner ruling 2026-10-05): the specificity,
+    // foldability and the pseudo-class allowlist moved to the shared `:is()`
+    // grouping module (`is-grouping.ts`) that extend's groups also use;
     // `leadsWithCombinator` became its `nestingGroupKey`.
-    expect(occurrences(/^function |^async function /gmu)).toBe(479);
+    // +2 functions: a nested rule hoisted out of an enclosing rule re-opens the
+    // at-rules it rose out of (`emitHoistEntry`), through the nested at-rule
+    // writer's shell (`nestedAtRuleShell`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(481);
     expect(occurrences(/new Map/gu)).toBe(73);
     expect(occurrences(/new Set/gu)).toBe(37);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
