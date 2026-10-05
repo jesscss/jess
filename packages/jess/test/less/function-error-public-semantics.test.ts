@@ -107,6 +107,18 @@ describe('Less built-in argument errors through the public AST route', () => {
       .resolves.toContain('color: hsl(198deg, 28%, 50%)');
   });
 
+  /*
+   * A deferred CSS call is inert only itself: its arguments are still values, so
+   * a Less built-in written inside one computes, while the gradient keeps its own
+   * authored bytes (comments, `.5`, a CSS color call left as written).
+   */
+  it('computes a Less built-in written inside a deferred linear-gradient()', async () => {
+    const compiler = new Compiler({ output: { collapseNesting: true } });
+    const source = '@c: red; .entry { a: linear-gradient(to right, fade(@c, 50%), darken(#fff, 10%) 10.0%, rgba(0,0,0,.5) /* stop */, .5turn); }';
+    await expect(compiler.renderString(source, { filePath: 'entry.less', extension: '.less' }))
+      .resolves.toBe('.entry {\n  a: linear-gradient(to right, rgba(255, 0, 0, 0.5), #e6e6e6 10.0%, rgba(0, 0, 0, .5) /* stop */, .5turn);\n}\n');
+  });
+
   it('dispatches Less color overloads instead of leaking CSS-shaped authored bytes', async () => {
     const compiler = new Compiler({ output: { collapseNesting: true } });
     const source = '.entry { color: rgba(#5F59); faded: rgba(#5F59, .5); hue: hsla(#5F59); }';

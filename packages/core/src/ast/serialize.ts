@@ -3699,6 +3699,13 @@ interface EvalCtx {
    */
   calcDepth?: number;
 
+  /*
+   * The evaluator held back while a deferred CSS call's arguments keep their
+   * authored spelling (`ev` is null there). A call written inside those
+   * arguments is still a call: it dispatches through this evaluator.
+   */
+  heldEv?: ValueEvaluator | null;
+
   /**
    * Parenthesized AST value nesting enables Less arithmetic in paren modes.
    *
@@ -6466,8 +6473,12 @@ function shouldPreserveCssAuthoredCall(node: FunctionCall, lessDocument: boolean
  * its callable: a deferred CSS-authored call, a failed plugin call, and every
  * call on the non-evaluating byte lane. Each argument is written as authored,
  * keyword included ({@link writtenArgument}, ledger P23).
+ *
+ * `deferred` marks a deferred CSS-authored call: only the call itself is inert,
+ * so a call written in its arguments (`linear-gradient(fade(red, 50%), blue)`)
+ * still dispatches, through the held evaluator ({@link EvalCtx.heldEv}).
  */
-function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
+function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx, deferred = false): MaybePromise<EvalValue> {
   if (node.args.length === 0) {
     return literal(`${node.name}()`);
   }
@@ -6477,7 +6488,7 @@ function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): Mayb
    * Disable typed literal canonicalization for this byte lane; variable
    * references still resolve through the same live frame walk.
    */
-  const preserve = e.ev ? { ...e, ev: null } : e;
+  const preserve = e.ev ? { ...e, ev: null, heldEv: deferred ? e.ev : null } : e;
   const items = node.args.map(a => evalValueSlot(a.value, frame, preserve));
   return combineAll(items, (vals) => {
     const authored = valueLayoutOf(node.args);
@@ -7438,7 +7449,9 @@ function evalCall(
     return evalCalc(node, frame, e);
   }
   if (!e.ev) {
-    return preserveCall(node, frame, e);
+    return e.heldEv
+      ? evalCall(node, frame, { ...e, ev: e.heldEv, heldEv: null }, demanded)
+      : preserveCall(node, frame, e);
   }
   const lname = node.name.toLowerCase();
 
@@ -7453,7 +7466,7 @@ function evalCall(
    */
   const lessDocument = e.context?.sourceContext?.plugin?.supportedExtensions?.includes('.less') === true;
   if (!demanded && shouldPreserveCssAuthoredCall(node, lessDocument)) {
-    return preserveCall(node, frame, e);
+    return preserveCall(node, frame, e, true);
   }
   const ev = e.ev;
 
