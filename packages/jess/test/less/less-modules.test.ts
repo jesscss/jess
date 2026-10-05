@@ -147,9 +147,52 @@ describe('Less @compose stylesheet modules', () => {
     expect(errors).toEqual(['Module "./theme.less" is already configured with a different set of values; a module can only be configured once.']);
   });
 
-  it('has no member functions: a value-position call on a compose namespace is an error', async () => {
-    expect((await render('@compose "./theme.less";\n.a { v: @theme.scale(4); }')).errors)
-      .toEqual(['Symbol "scale" is undefined in this scope.']);
+  it('has no member functions: a value-position call on any compose member is an error', async () => {
+    const memberCall = (name: string) => `"${name}" cannot be called as a value: a @compose stylesheet module has no member functions `
+      + '(its `.name()` is a mixin call, a statement); functions come from @use script modules.';
+    const scale: SourceFile = ['scale.less', '@scale: 2;\n@box: { width: 1px; }\n.grow(@n) { width: @n; }\n'];
+    for (const member of ['scale', 'box', 'grow']) {
+      const { css, errors } = await render(`@compose "./scale.less";\n.a { v: @scale.${member}(4); }`, [scale]);
+      expect(errors).toEqual([memberCall(member)]);
+      expect(css).toBe('');
+    }
+  });
+
+  /*
+   * Ledger A8: `.name(args)` on a @compose namespace is a MIXIN call in statement
+   * position. Blocked on the grammar, which reads `@theme.elevate(3px);` as an
+   * unknown at-rule (`@theme .elevate(3px);`) — see REFERENCE-CALL-PLAN.md.
+   */
+  it.fails('calls a mixin through the compose namespace in statement position', async () => {
+    const elevate: SourceFile = ['elevate.less', '.lift(@d) { box-shadow: 0 @d 0 black; }\n'];
+    const { css, errors } = await render('@compose "./elevate.less";\n.a { @elevate.lift(3px); }', [elevate]);
+    expect(errors).toEqual([]);
+    expect(css).toBe('.a {\n  box-shadow: 0 3px 0 black;\n}\n');
+  });
+
+  it('a namespace member is the module binding its own CSS sees, nested @import included', async () => {
+    const files: SourceFile[] = [
+      ['m.less', '@x: 1;\n@y: @x;\n@import "./lib.less";\n.m { x: @x; y: @y; }\n'],
+      ['lib.less', '@x: 2;\n']
+    ];
+    expect((await render('@compose "./m.less";\n.a { x: @m.x; y: @m.y; }', files)).css)
+      .toBe('.m {\n  x: 2;\n  y: 2;\n}\n.a {\n  x: 2;\n  y: 2;\n}\n');
+  });
+
+  it('rejects a `set` on a module that was already loaded without one', async () => {
+    const { errors } = await render('@compose "./theme.less";\n@compose "./theme.less" as t2 set { @primary: red; }\n.a { c: @t2.primary; }');
+    expect(errors).toEqual(['Module "./theme.less" was already loaded without configuration; only the first import of a module can configure it with "set".']);
+  });
+
+  it('rejects composing a module that @import already folded into the stylesheet', async () => {
+    const { errors } = await render('@import "./theme.less";\n@compose "./theme.less";\n.a { c: @theme.primary; }');
+    expect(errors).toEqual(['Module "./theme.less" was already loaded by @import, which folds it into the importing scope; it cannot also be composed as an isolated module.']);
+  });
+
+  it('a namespace read before its @compose is an unresolved name, not verbatim text', async () => {
+    const { css, errors } = await render('.a { c: @theme.primary; }\n@compose "./theme.less" with { @primary: red; }');
+    expect(errors).toEqual(['Symbol "@theme" is undefined in this scope.']);
+    expect(css).not.toContain('@theme.primary');
   });
 
   it('reports an unknown member', async () => {

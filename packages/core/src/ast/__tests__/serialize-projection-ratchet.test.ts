@@ -144,7 +144,13 @@ describe('V19 one-evaluator projection ratchet', () => {
     // `new Set` → `new Map` (module identity): the emit-once `loadedImports`
     // registry also records a shared `@compose`d module's one activation frame,
     // so a later compose edge binds its namespace there instead of going unbound.
-    expect(occurrences(/^function |^async function /gmu)).toBe(474);
+    // +4 functions (module namespaces, R6 §E.1 / ledger A8): `composedModuleFrame`
+    // names the one fact that a namespace block is its module's activation,
+    // `activatedMemberLookup` picks the store a member is read through,
+    // `rejectComposedMemberCall` turns a call on a @compose member into an error
+    // instead of a dropped call, and `unresolvedReference` makes an unbound
+    // reference head a miss in both value evaluators.
+    expect(occurrences(/^function |^async function /gmu)).toBe(478);
     expect(occurrences(/new Map/gu)).toBe(72);
     expect(occurrences(/new Set/gu)).toBe(39);
     expect(occurrences(/new WeakMap/gu)).toBe(4);

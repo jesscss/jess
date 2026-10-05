@@ -111,6 +111,7 @@ import type {
   ValueNode,
   ValueSlot,
   VariableDeclaration,
+  VariableLookup,
   Lookup,
   Url
 } from './nodes.js';
@@ -3268,11 +3269,13 @@ function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e:
   }
   if (node.write.mode === 'reassign') {
     if (node.write.scope === 'live') {
-      const found = lookupLiveCell(frame, node.name);
-      if (!found) {
+      /* The cell's OWNER frame, not the frame its value evaluates in: a module
+       * configuration seeds a cell whose value belongs to the importer. */
+      const owner = liveCellOwnerFrame(frame, node.name, e);
+      if (!owner) {
         throw new ReferenceError(`live variable $${node.name} is undefined`);
       }
-      const cells = found.frame.cells!;
+      const cells = owner.cells!;
       cells.set(node.name, {
         declaration: node, value: node.value, valueFrame: null, evaluated: null,
         prev: liveCellPredecessor(cells, node)
@@ -4196,7 +4199,7 @@ function evalTyped(
        */
       const resolved = resolveReferenceResult(node, frame, e);
       if (resolved === null) {
-        return force(e, literal(node.raw));
+        return force(e, unresolvedReference(node, frame, e));
       }
       return isMixinCallValue(resolved.value)
         ? force(e, literal(node.raw))
@@ -5191,6 +5194,13 @@ interface DeclMap {
    * are in candidate/source order; last match wins (Less per-name last-declaration).
    */
   varFrames: Frame[] | null;
+
+  /**
+   * [module namespace] The activation a composed module's members live in. Its
+   * `byVar` entries name the members (the module's own declarations); the one a
+   * reference selects is then read in this activation ({@link activatedVarMember}).
+   */
+  activation: Frame | null;
 }
 
 /** Pick the member map an accessor key targets (`var` vs `prop`), per its kind. */
@@ -5322,7 +5332,7 @@ function resolveDeclarationMember(
 }
 
 /** Collect a body's declarations into name→value maps (+ ordered list). */
-function evalToDeclMap(statements: Statement[], frame: Frame | null, e: EvalCtx): DeclMap {
+function evalToDeclMap(statements: Statement[], frame: Frame | null, e: EvalCtx, activation: Frame | null = null): DeclMap {
   recordMapPropertyTimeline(statements, frame);
   const byVar = new Map<string, DeclEntry>();
   const byProp = new Map<string, DeclEntry>();
@@ -5342,22 +5352,37 @@ function evalToDeclMap(statements: Statement[], frame: Frame | null, e: EvalCtx)
       byProp.set(name, entry); // last-wins
       list.push(entry);
     } else if (s.type === 'VariableDeclaration') {
-      /* A configured module's overlay replaces its declared value (spec R6 §E.1). */
-      const replacement = frame?.reassign?.get(s.name);
-      const entry: DeclEntry = replacement === undefined
-        ? { name: s.name, value: s.value, frame, evaluated: null, important: false }
-        : {
-            name: s.name,
-            value: replacement.value,
-            frame: frame!.bindingValueFrames?.get(replacement.value) ?? frame,
-            evaluated: null,
-            important: false
-          };
+      const entry: DeclEntry = {
+        name: s.name, value: s.value, frame, evaluated: null, important: false
+      };
       byVar.set(s.name, entry); // last-wins
       list.push(entry);
     }
   }
-  return { byVar, byProp, list, unified: false, valueEntries: null, varFrames: null };
+  return { byVar, byProp, list, unified: false, valueEntries: null, varFrames: null, activation };
+}
+
+/**
+ * A composed module's variable member: whatever the module's activation binds
+ * the name to — configuration overlay, nested `@import` facts and later writes
+ * included (spec R6 §E.1) — never the authored value re-read. A name the module
+ * writes conditionally or reassigns through the live store (`$x ?: v`, `$x := v`,
+ * `!default`) is a live variable, read from the activation's final cell, which a
+ * configuration seeds and a later hard write replaces. Every other name is read
+ * through the scoped store, where a configuration overlays the declared binding.
+ * For a plain declaration both stores agree.
+ */
+function activatedVarMember(activation: Frame, name: string, e: EvalCtx): DeclEntry | undefined {
+  let lookup: VariableLookup = 'scoped';
+  for (const declaration of activation.declIndex?.byName.get(name) ?? []) {
+    if (declaration.write.mode !== 'declare' && declaration.write.scope === 'live') {
+      lookup = 'live';
+    }
+  }
+  const bound = resolveVarRef(activation, name, lookup, e);
+  return bound === undefined
+    ? undefined
+    : { name, value: bound.value, frame: bound.frame, evaluated: bound.evaluated, important: false };
 }
 
 function valueCollectionToDeclMap(value: ValueCollection, parent: Frame | null): DeclMap {
@@ -5388,7 +5413,8 @@ function valueCollectionToDeclMap(value: ValueCollection, parent: Frame | null):
     list: valueEntries.items,
     unified: true,
     valueEntries,
-    varFrames: null
+    varFrames: null,
+    activation: null
   };
 }
 
@@ -5512,20 +5538,24 @@ function resolveBaseDeclMap(
    */
   const rs = resolveForRuleset(base, frame, e);
   if (rs) {
+    /*
+     * A composed module's namespace reads its members in the module's own
+     * activation, never a second one, and builds that member map once per
+     * activation however many compose edges and importers share it.
+     * ponytail: the member map is O(own members), built once per activation
+     * that is read; a per-name occurrence read needs the activation's declIndex
+     * to tell the module's own declarations from facts published into it.
+     */
+    const module = composedModuleFrame(rs.rules, rs.frame);
+    if (module !== null) {
+      return memoPureDeclMap(rs.rules, module, e, () => evalToDeclMap(rs.rules, module, e, module));
+    }
     return memoPureDeclMap(base, frame, e, () => {
-      /*
-       * A body whose lexical frame was built over that very body is already
-       * activated — a composed module's namespace (`publishComposedModule`).
-       * Its members are read in that frame, configuration overlay included,
-       * never in a second activation of the module.
-       */
-      const bodyFrame: Frame = rs.frame !== null && rs.frame.statements === rs.rules
-        ? rs.frame
-        : {
-            parent: rs.frame,
-            mixins: collectMixins(rs.rules),
-            declIndex: collectDeclIndex(rs.rules), cells: null, reassign: null
-          };
+      const bodyFrame: Frame = {
+        parent: rs.frame,
+        mixins: collectMixins(rs.rules),
+        declIndex: collectDeclIndex(rs.rules), cells: null, reassign: null
+      };
       return evalToDeclMap(rs.rules, bodyFrame, e);
     });
   }
@@ -5608,7 +5638,7 @@ function declMapFromMixinCall(
     into.set(name, entry);
     list.push(entry);
   }
-  return { byVar, byProp, list, unified: false, valueEntries: null, varFrames };
+  return { byVar, byProp, list, unified: false, valueEntries: null, varFrames, activation: null };
 }
 
 /** The value yielded by a called value-lambda: the LAST top-level `result:`
@@ -5718,10 +5748,12 @@ function invokeValueLambda(
   return { value: result, frame: activation };
 }
 
+/** `statementCall`: the reference is a statement-position call ({@link rejectComposedMemberCall}). */
 function resolveReferenceResult(
   node: Reference,
   frame: Frame | null,
-  e: EvalCtx
+  e: EvalCtx,
+  statementCall = false
 ): {
   value: ValueSlot | MixinCall;
   frame: Frame | null;
@@ -6059,6 +6091,14 @@ function resolveReferenceResult(
     if (!matched && looseKey !== undefined && looseKind !== undefined) {
       matched = looseMemberLookup(map, looseKey, looseKind, e, looseValueKey);
     }
+    if (map.activation !== null) {
+      if (matched && map.byVar.get(matched.name) === matched) {
+        matched = activatedVarMember(map.activation, matched.name, e);
+      }
+      if (!statementCall && node.steps[stepIndex + 1]?.type === 'Call') {
+        rejectComposedMemberCall(node, matched, missingSymbol);
+      }
+    }
     if (!matched) {
       unresolvedSymbol(node, missingSymbol, e);
     }
@@ -6161,6 +6201,20 @@ function evalModuleReferenceCall(
   return dispatchCall(funcCall(selected.name, args), frame, e, e.ev, selected.fn, false);
 }
 
+/**
+ * A value reference that resolved to nothing. An unbound head (`@nope.x`, a
+ * namespace read before its `@compose`) is a failed resolution, so an eval error
+ * unless the read is optional; any other unresolvable chain keeps its authored text.
+ */
+function unresolvedReference(node: Reference, frame: Frame | null, e: EvalCtx): EvalValue {
+  const base = node.base;
+  if (!e.optional && !isValueSlotArray(base) && base.type === 'Lookup' && base.kind === 'var'
+    && typeof base.name === 'string' && resolveVarRef(frame, base.name, base.scope, e) === undefined) {
+    unresolvedSymbol(node, `@${base.name}`, e);
+  }
+  return literal(node.raw);
+}
+
 function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   const moduleCall = evalModuleReferenceCall(node, frame, e);
   if (moduleCall !== undefined) {
@@ -6168,7 +6222,7 @@ function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybeP
   }
   const resolved = resolveReferenceResult(node, frame, e);
   if (resolved === null) {
-    return literal(node.raw);
+    return unresolvedReference(node, frame, e);
   }
   return isMixinCallValue(resolved.value)
     ? literal(node.raw)
@@ -14739,7 +14793,7 @@ function expandReferenceCall(
   if (step?.type !== 'Call') {
     return;
   }
-  const resolved = resolveReferenceResult(call, frame, e);
+  const resolved = resolveReferenceResult(call, frame, e, true);
   if (!resolved) {
     /*
      * [content] `@content` / `$content()` with no block bound to THIS mixin's own
@@ -17401,6 +17455,41 @@ function unconfiguredModuleFrame(statements: Statement[]): Frame {
   };
 }
 
+/**
+ * The activation a value block's members live in when the block is a composed
+ * module's namespace, else `null`. {@link publishComposedModule} binds the
+ * namespace block over its module frame's own `statements`, so a block whose
+ * lexical frame was built over that very body IS the module, already activated.
+ */
+function composedModuleFrame(rules: readonly Statement[], lexicalFrame: Frame | null): Frame | null {
+  return lexicalFrame !== null && lexicalFrame.statements === rules ? lexicalFrame : null;
+}
+
+/**
+ * A `@compose` stylesheet module exports no functions: `.name(args)` on its
+ * namespace is a mixin call, which is a statement (ledger A8, R6 §D.3). So a
+ * call on one of its members outside a statement is an error, never a silently
+ * dropped call — unless the member is a value lambda (a block yielding
+ * `result:`, which is what a dialect function lowers to).
+ */
+function rejectComposedMemberCall(node: Reference, member: DeclEntry | undefined, symbol: string): void {
+  const value = member?.value;
+  if (value !== undefined && !isValueSlotArray(value) && value.type === 'AnonymousMixin'
+    && lambdaResultValue(value.rules) !== undefined) {
+    return;
+  }
+  const reason = `"${symbol}" cannot be called as a value: a @compose stylesheet module has no member functions `
+    + '(its `.name()` is a mixin call, a statement); functions come from @use script modules.';
+  throw new JessError({
+    code: 'eval/invalid-function',
+    phase: 'eval',
+    node,
+    summary: 'Invalid function call',
+    reason,
+    meta: { name: symbol, reason }
+  });
+}
+
 /* A usable module namespace identifier (the same ident shape the grammars use). */
 const MODULE_NAMESPACE_IDENT = /^-?[_a-zA-Z\u0080-\uFFFF][-_a-zA-Z0-9\u0080-\uFFFF]*$/;
 
@@ -17431,29 +17520,34 @@ function deriveModuleNamespace(specifier: string): string | null {
  * convention: `'*'` merges members unqualified, a name binds them under
  * `@<name>`, and `null` auto-derives from the specifier.
  *
- * A named module binds `@<ns>` to a value block over the module's rules whose
- * member lookups resolve in the isolated `bodyFrame` — so `@ns.member` (and the
- * chained `@ns.map.key` from the forward member-access chain) reaches the
- * module's own facts and nothing its sub-modules composed.
+ * A named module binds `@<ns>` to a value block over the activation's OWN body
+ * (`bodyFrame.statements`, never a re-loaded copy of the document), so member
+ * lookups resolve in the isolated `bodyFrame` ({@link composedModuleFrame}) —
+ * `@ns.member` (and the chained `@ns.map.key` from the forward member-access
+ * chain) reaches the module's own facts and nothing its sub-modules composed.
  */
 function publishComposedModule(
   node: StyleImport,
-  children: Statement[],
   importerFrame: Frame,
   bodyFrame: Frame,
+  config: StyleImportConfig | null,
   specifier: string
 ): void {
+  const children = bodyFrame.statements!;
   const namespace = node.namespace ?? deriveModuleNamespace(specifier);
   if (namespace === '*') {
     /*
      * `as *`: the module's OWN top-level members merge unqualified into the
-     * importer, a configured member as its configured value (spec R6 §E.1).
+     * importer, a configured member as its configured binding (spec R6 §E.1).
      * Value-block members still resolve in the isolated bodyFrame, so redirect
      * each value block's closure there.
      */
     for (const child of children) {
       if (child.type === 'VariableDeclaration') {
-        publishImportedVariableDeclaration(importerFrame, bodyFrame.reassign?.get(child.name) ?? child);
+        publishImportedVariableDeclaration(
+          importerFrame,
+          config?.bindings.find(binding => binding.name === child.name) ?? child
+        );
         if (isValueBlockBinding(child.value)) {
           bindDetached(importerFrame, child.value, bodyFrame, bodyFrame.sourceOwner ?? null);
         }
@@ -17548,6 +17642,18 @@ function expandStyleImport(
               );
             }
             if (recorded === null) {
+              /*
+               * A shared module renders once, under the configuration of the
+               * first edge that loads it. One already loaded without a `set` is
+               * already rendered, so a later `set` would be silently ignored.
+               */
+              if (e.loadedImports?.has(loaded.key)) {
+                throw moduleConfigRejected(
+                  node,
+                  `Module "${request.specifier}" was already loaded without configuration; only the first import of a module can configure it with "set".`,
+                  request.specifier
+                );
+              }
               (e.moduleConfigs ??= new Map()).set(loaded.key, authoredConfig);
             }
           } else if (authoredConfig === null && recorded !== null) {
@@ -17574,10 +17680,17 @@ function expandStyleImport(
         if (emitOnceKey !== undefined) {
           const seen = e.loadedImports ??= new Map();
           if (seen.has(emitOnceKey)) {
-            /* Rendered once already; this compose edge still binds its own namespace to that activation. */
-            const activated = isCompose ? seen.get(emitOnceKey) : null;
-            if (activated) {
-              publishComposedModule(node, children, frame, activated, request.specifier);
+            if (isCompose) {
+              /* Rendered once already; this compose edge still binds its own namespace to that activation. */
+              const activated = seen.get(emitOnceKey);
+              if (!activated) {
+                throw moduleConfigRejected(
+                  node,
+                  `Module "${request.specifier}" was already loaded by @import, which folds it into the importing scope; it cannot also be composed as an isolated module.`,
+                  request.specifier
+                );
+              }
+              publishComposedModule(node, frame, activated, config, request.specifier);
             }
             return;
           }
@@ -17604,7 +17717,7 @@ function expandStyleImport(
           if (emitOnceKey !== undefined) {
             e.loadedImports!.set(emitOnceKey, bodyFrame);
           }
-          publishComposedModule(node, children, frame, bodyFrame, request.specifier);
+          publishComposedModule(node, frame, bodyFrame, config, request.specifier);
         }
         const publishChildren = isCompose || hasPrepublishedImportFact(e, node)
           ? undefined
