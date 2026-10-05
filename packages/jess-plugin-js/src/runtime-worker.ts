@@ -591,23 +591,18 @@ const facadeLogger = {
 
 const lessFacade = {
   tree: treeNamespace,
-  logger: facadeLogger,
-  dimension(value, unit) {
-    return new Dimension(value, unit);
-  },
-  value(values, separator = ',') {
-    return new Value(values, separator);
-  },
-  anonymous(value) {
-    return new Anonymous(value);
-  },
-  color(rgb, alpha) {
-    return new Color(rgb, alpha);
-  },
-  quoted(quote, value, escaped = false) {
-    return new Quoted(quote, value, escaped);
-  }
+  logger: facadeLogger
 };
+
+/*
+ * Less 4.x exposes every `tree` constructor as a lowercase factory on the
+ * plugin's `less` object (`less.dimension(1, 'px')`, `less.keyword('a')`). The
+ * member is read at call time, so an unsupported node (`less.atrule(…)`) fails
+ * with the same attributable error as `tree.AtRule`.
+ */
+for (const name of Object.keys(treeNamespace)) {
+  lessFacade[name.toLowerCase()] = (...args) => new treeNamespace[name](...args);
+}
 
 if (runtimeApi === 'less') {
   globalThis.less ??= lessFacade;
