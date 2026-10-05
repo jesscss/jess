@@ -173,6 +173,19 @@ export function artifactFallbacks(code) {
     const specifier = statement.source.value;
     const line = statement.loc.start.line;
 
+    /*
+     * `import 'parseman'` binds nothing but still loads the module: the whole
+     * combinator/interpreter runtime ships with a grammar that needs none of it.
+     * It is what a source `import {} from 'parseman'` compiles to.
+     */
+    if (statement.specifiers.length === 0) {
+      findings.push({
+        kind: 'combinator',
+        line,
+        detail: `side-effect import of '${specifier}' — loads the macro runtime while binding nothing`
+      });
+    }
+
     for (const imported of statement.specifiers) {
       /*
        * `import * as pm` and `import pm` defeat name-level reasoning: any
@@ -205,6 +218,51 @@ export function artifactFallbacks(code) {
   return findings;
 }
 
+/** Visits every ESTree node under `root`, in no particular order. */
+function walk(root, visit) {
+  const pending = [root];
+  while (pending.length > 0) {
+    const node = pending.pop();
+    visit(node);
+    for (const key in node) {
+      const child = node[key];
+      if (Array.isArray(child)) {
+        for (const item of child) {
+          if (item !== null && typeof item?.type === 'string') {
+            pending.push(item);
+          }
+        }
+      } else if (child !== null && typeof child?.type === 'string') {
+        pending.push(child);
+      }
+    }
+  }
+}
+
+/** The name a call's callee resolves to: `f(`, `ns.f(`, or CommonJS's `(0, ns.f)(`. */
+function calleeName(callee) {
+  const target = callee.type === 'SequenceExpression' ? callee.expressions.at(-1) : callee;
+  if (target.type === 'Identifier') {
+    return target.name;
+  }
+  return target.type === 'MemberExpression' && !target.computed ? target.property.name : null;
+}
+
+/**
+ * How many times one built module CALLS any of `names`, read from its syntax
+ * rather than its text: a doc comment that spells `compose([…])` is not a call.
+ * Throws on a module it cannot parse.
+ */
+export function callCount(code, ...names) {
+  let count = 0;
+  walk(espree.parse(code, { ecmaVersion: 'latest', sourceType: 'module' }), (node) => {
+    if (node.type === 'CallExpression' && names.includes(calleeName(node.callee))) {
+      count++;
+    }
+  });
+  return count;
+}
+
 /**
  * The package whose recognition leaves the macro FUSES into a dialect's table.
  *
@@ -231,10 +289,35 @@ function isComposedPiecesKey(node) {
     && node.arguments[0].value === COMPOSED_PIECES;
 }
 
+function isRecognitionSpecifier(specifier) {
+  return typeof specifier === 'string'
+    && (specifier === RECOGNITION_PACKAGE || specifier.startsWith(`${RECOGNITION_PACKAGE}/`));
+}
+
+/** The specifier of a `require('@jesscss/parser-shared…')` call, else `null`. */
+function requiredRecognition(node) {
+  return node?.type === 'CallExpression'
+    && node.callee.type === 'Identifier'
+    && node.callee.name === 'require'
+    && node.arguments.length === 1
+    && node.arguments[0].type === 'Literal'
+    && isRecognitionSpecifier(node.arguments[0].value)
+    ? node.arguments[0].value
+    : null;
+}
+
 /**
- * Reads of `@jesscss/parser-shared` in one built grammar module other than its
- * compose metadata. Each finding is `{ kind: 'recognition', line, detail }`; a
- * parse failure is a finding, as in {@link artifactFallbacks}.
+ * Reads of `@jesscss/parser-shared` in one built grammar module, ESM or
+ * CommonJS, other than its compose metadata. Each finding is
+ * `{ kind: 'recognition', line, detail }`; a parse failure is a finding, as in
+ * {@link artifactFallbacks}.
+ *
+ * The one allowed read is `x[Symbol.for('parseman.composedPieces')]` on a named
+ * import, or `ns.x[Symbol.for(…)]` on a namespace (`import * as ns`, or the
+ * `let ns = require(…)` binding a CommonJS build emits). Every other way to
+ * reach the package is a finding, so a shape this scan does not model fails
+ * closed: a side-effect import, a re-export, a dynamic `import()`, a
+ * `require()` not bound to a module-scope name.
  */
 export function recognitionReads(code) {
   let ast;
@@ -244,48 +327,64 @@ export function recognitionReads(code) {
     return [{ kind: 'unparsable', line: 0, detail: error.message }];
   }
 
-  /* The member expression each identifier is the object of, if any. */
+  const findings = [];
+  const found = (node, detail) => {
+    findings.push({ kind: 'recognition', line: node.loc.start.line, detail });
+  };
+
+  /* The member expression each node is the object of, and every `require()` of the package. */
   const memberOf = new Map();
-  const pending = [ast];
-  while (pending.length > 0) {
-    const node = pending.pop();
-    if (node.type === 'MemberExpression' && node.object.type === 'Identifier') {
+  const requires = new Set();
+  walk(ast, (node) => {
+    const source = node.source?.value;
+    if (node.type === 'MemberExpression') {
       memberOf.set(node.object, node);
+    } else if (requiredRecognition(node) !== null) {
+      requires.add(node);
+    } else if (node.type === 'ImportExpression' && isRecognitionSpecifier(source)) {
+      found(node, `dynamic import() of '${source}': loads its grammar at parse time`);
+    } else if ((node.type === 'ExportNamedDeclaration' || node.type === 'ExportAllDeclaration') && isRecognitionSpecifier(source)) {
+      found(node, `re-exports '${source}': hands its grammar to every importer`);
+    } else if (node.type === 'ImportDeclaration' && node.specifiers.length === 0 && isRecognitionSpecifier(source)) {
+      found(node, `side-effect import of '${source}': loads it for nothing a fused table reads`);
     }
-    for (const key in node) {
-      const child = node[key];
-      if (Array.isArray(child)) {
-        for (const item of child) {
-          if (item !== null && typeof item?.type === 'string') {
-            pending.push(item);
-          }
-        }
-      } else if (child !== null && typeof child?.type === 'string') {
-        pending.push(child);
-      }
+  });
+
+  const isComposedPiecesRead = (identifier, namespace) => {
+    const read = memberOf.get(identifier);
+    if (read?.computed && isComposedPiecesKey(read.property)) {
+      return true;
     }
-  }
+    const key = namespace && read !== undefined && !read.computed ? memberOf.get(read) : undefined;
+    return key?.computed === true && isComposedPiecesKey(key.property);
+  };
 
   const moduleScope = eslintScope.analyze(ast, { ecmaVersion: 2025, sourceType: 'module' }).acquire(ast, true);
-  const findings = [];
   for (const variable of moduleScope.variables) {
     const def = variable.defs[0];
-    const specifier = def?.type === 'ImportBinding' ? def.parent.source.value : '';
-    if (specifier !== RECOGNITION_PACKAGE && !specifier.startsWith(`${RECOGNITION_PACKAGE}/`)) {
+    let specifier = null;
+    let namespace = false;
+    if (def?.type === 'ImportBinding') {
+      specifier = def.parent.source.value;
+      namespace = def.node.type !== 'ImportSpecifier';
+    } else if (def?.type === 'Variable' && def.node.id.type === 'Identifier' && requires.delete(def.node.init)) {
+      specifier = requiredRecognition(def.node.init);
+      namespace = true;
+    }
+    if (!isRecognitionSpecifier(specifier)) {
       continue;
     }
     for (const reference of variable.references) {
-      const member = memberOf.get(reference.identifier);
-      if (member?.computed && isComposedPiecesKey(member.property)) {
+      if (reference.init || isComposedPiecesRead(reference.identifier, namespace)) {
         continue;
       }
-      findings.push({
-        kind: 'recognition',
-        line: reference.identifier.loc.start.line,
-        detail: `reads '${variable.name}' from '${specifier}' as grammar, not as its ${COMPOSED_PIECES} metadata: `
-          + 'a recognition leaf was not fused into the table'
-      });
+      const detail = `reads '${variable.name}' from '${specifier}' as grammar, not as its ${COMPOSED_PIECES} metadata: `
+        + 'a recognition leaf was not fused into the table';
+      found(reference.identifier, detail);
     }
+  }
+  for (const call of requires) {
+    found(call, `require('${requiredRecognition(call)}') is not bound to a module-scope name: its use cannot be checked`);
   }
   return findings;
 }

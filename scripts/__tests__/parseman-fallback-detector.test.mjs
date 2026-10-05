@@ -20,6 +20,7 @@ import {
   RUNTIME_DRIVERS,
   TABLE_DRIVER_SPECIFIER,
   artifactFallbacks,
+  callCount,
   recognitionReads,
   scanBuildLog
 } from '../parseman-fallback-detector.mjs';
@@ -185,4 +186,48 @@ test('a fused grammar may read parser-shared only for its compose metadata', () 
     recognitionReads('import { cssBaseRules } from "@jesscss/css-parser/grammar/base";\nexport const g = cssBaseRules.Rule;'),
     []
   );
+});
+
+test('a side-effect parseman import is a finding — it loads the runtime for nothing', () => {
+  /* What a source `import {} from 'parseman'` compiles to in a fused grammar. */
+  const findings = artifactFallbacks('import "parseman";\nexport const g = 1;');
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].kind, 'combinator');
+});
+
+test('the CommonJS build may read parser-shared only for its compose metadata, too', () => {
+  /* The binding and trailer `<css|less|scss|jess>-parser/lib/grammar/ast.cjs` really ship. */
+  const binding = 'let shared = require("@jesscss/parser-shared/recognition");\n';
+  assert.deepEqual(
+    recognitionReads(`${binding}exports.pieces = [...shared.lessSyntax[Symbol.for("parseman.composedPieces")] ?? []];`),
+    []
+  );
+  for (const read of ['shared.lessSyntax.Ident', 'shared.lessSyntax', 'shared[Symbol.for("parseman.other")]']) {
+    const findings = recognitionReads(`${binding}exports.leak = ${read};`);
+    assert.equal(findings.length, 1, read);
+    assert.equal(findings[0].kind, 'recognition');
+  }
+});
+
+test('every other way to reach parser-shared is a finding', () => {
+  for (const source of [
+    'export { lessSyntax } from "@jesscss/parser-shared/recognition";',
+    'export * from "@jesscss/parser-shared/recognition";',
+    'import "@jesscss/parser-shared/recognition";',
+    'export const later = () => import("@jesscss/parser-shared/recognition");',
+    'require("@jesscss/parser-shared/recognition");',
+    'const { lessSyntax } = require("@jesscss/parser-shared/recognition");\nexports.p = lessSyntax[Symbol.for("parseman.composedPieces")];'
+  ]) {
+    const findings = recognitionReads(source);
+    assert.equal(findings.length, 1, source);
+    assert.equal(findings[0].kind, 'recognition');
+  }
+});
+
+test('callCount counts calls, not spellings', () => {
+  const code = '/** compose([cssBaseRules, rules(delta)]) */\n'
+    + 'let table = require("parseman/table");\n'
+    + 'exports.g = (0, table.tableRules)({ c: [] });\nexports.h = tableRules({ c: [] });';
+  assert.equal(callCount(code, 'compose', 'composeLeaf'), 0);
+  assert.equal(callCount(code, 'tableRules'), 2);
 });

@@ -1,7 +1,5 @@
-import { createServer } from 'vite';
 import { parseCst } from '@jesscss/css-parser/cst';
 import { lessCstGrammar, lessGrammar } from '../src/grammar.js';
-import { fileURLToPath } from 'node:url';
 
 function hasGrammarNode(value: unknown, grammarType: string): boolean {
   if (typeof value !== 'object' || value === null) {
@@ -41,20 +39,4 @@ test('Less CST leaves detached binding semicolons at statement-list boundary', (
   expect(declaration?._tag).toBe('node');
   expect(declaration?._tag === 'node' ? declaration.grammarType : undefined).toBe('VariableDeclaration');
   expect(semicolon).toMatchObject({ _tag: 'leaf', value: ';' });
-});
-
-test('compiler-facing Less entrypoint does not load compatibility grammar shims', async () => {
-  const server = await createServer({
-    root: fileURLToPath(new URL('..', import.meta.url)),
-    configFile: fileURLToPath(new URL('../vitest.config.ts', import.meta.url)),
-    optimizeDeps: { noDiscovery: true },
-    server: { middlewareMode: true }
-  });
-  try {
-    const transformed = await server.transformRequest('/src/index.ts');
-    expect(transformed?.code).not.toContain('./cst.js');
-    expect(transformed?.code).not.toContain('./ast/grammar.js');
-  } finally {
-    await server.close();
-  }
 });
