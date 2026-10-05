@@ -583,6 +583,7 @@ const UNSUPPORTED_PLUGIN_API_REPLACEMENTS: ReadonlyMap<string, string> = new Map
   ['pluginManager.getVisitors()', NO_VISITORS],
   ['pluginManager.visitor()', NO_VISITORS],
   ['pluginManager.visitors', NO_VISITORS],
+  ['pluginManager.iterator', NO_VISITORS],
   ['pluginManager.addPreProcessor()', NO_PRE_PROCESSORS],
   ['pluginManager.getPreProcessors()', NO_PRE_PROCESSORS],
   ['pluginManager.preProcessors', NO_PRE_PROCESSORS],

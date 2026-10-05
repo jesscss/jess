@@ -43,29 +43,31 @@ export type NativeLessPlugin = {
  * plugins works as in 4.x. v5 runs no visitors, pre/post-processors or file
  * managers, so every member that adds, lists or exposes them is refused with a
  * `plugin/unsupported-feature` diagnostic naming the native replacement, and
- * the plugin cannot install half-working.
+ * the plugin cannot install half-working. The refused fields are
+ * non-enumerable getters, so spreading or serializing the manager skips them.
  */
 export interface NativeLessPluginManager {
   readonly less: NativeLessApi;
   readonly installedPlugins: NativeLessPlugin[];
   readonly pluginCache: Record<string, NativeLessPlugin>;
-  addPlugins(plugins?: readonly NativeLessPlugin[]): void;
+  addPlugins(plugins?: ArrayLike<NativeLessPlugin>): void;
   addPlugin(plugin: NativeLessPlugin, filename?: string, functionRegistry?: NativeLessFunctionRegistry): void;
   get(filename: string): NativeLessPlugin | undefined;
   addVisitor(visitor: unknown): never;
   getVisitors(): never;
   visitor(): never;
-  readonly visitors: never;
+  readonly visitors?: never;
+  readonly iterator?: never;
   addPreProcessor(processor: unknown, priority?: number): never;
   getPreProcessors(): never;
-  readonly preProcessors: never;
+  readonly preProcessors?: never;
   addPostProcessor(processor: unknown, priority?: number): never;
   getPostProcessors(): never;
-  readonly postProcessors: never;
+  readonly postProcessors?: never;
   addFileManager(fileManager: unknown): never;
   getFileManagers(): never;
-  readonly fileManagers: never;
-  readonly Loader: never;
+  readonly fileManagers?: never;
+  readonly Loader?: never;
 }
 
 /**
@@ -453,17 +455,19 @@ export class LessApiBridge {
       const refuse = (feature: string): never => {
         throw ERR.pluginUnsupported({ meta: { plugin: label, feature } });
       };
-      const less = Object.defineProperties({ ...this.less }, {
-        visitors: { get: () => refuse('less.visitors') },
-        FileManager: { get: () => refuse('less.FileManager') },
-        environment: { get: () => refuse('less.environment') }
-      });
+      const refusedGetters = (owner: string, members: readonly string[]): PropertyDescriptorMap =>
+        Object.fromEntries(members.map(member => [member, { get: () => refuse(`${owner}.${member}`) }]));
+
+      /* 4.x plugins reach these before the hook call (`new less.visitors.Visitor(this)`). */
+      const less = Object.defineProperties({ ...this.less }, refusedGetters('less', ['visitors', 'FileManager', 'environment']));
       const manager: NativeLessPluginManager = {
         less,
         installedPlugins,
         pluginCache,
         addPlugins: (more) => {
-          more?.forEach(added => manager.addPlugin(added));
+          for (const added of Array.from(more ?? [])) {
+            manager.addPlugin(added);
+          }
         },
         addPlugin: (added, filename, functionRegistry) => {
           installedPlugins.push(added);
@@ -476,28 +480,14 @@ export class LessApiBridge {
         addVisitor: () => refuse('pluginManager.addVisitor()'),
         getVisitors: () => refuse('pluginManager.getVisitors()'),
         visitor: () => refuse('pluginManager.visitor()'),
-        get visitors() {
-          return refuse('pluginManager.visitors');
-        },
         addPreProcessor: () => refuse('pluginManager.addPreProcessor()'),
         getPreProcessors: () => refuse('pluginManager.getPreProcessors()'),
-        get preProcessors() {
-          return refuse('pluginManager.preProcessors');
-        },
         addPostProcessor: () => refuse('pluginManager.addPostProcessor()'),
         getPostProcessors: () => refuse('pluginManager.getPostProcessors()'),
-        get postProcessors() {
-          return refuse('pluginManager.postProcessors');
-        },
         addFileManager: () => refuse('pluginManager.addFileManager()'),
-        getFileManagers: () => refuse('pluginManager.getFileManagers()'),
-        get fileManagers() {
-          return refuse('pluginManager.fileManagers');
-        },
-        get Loader() {
-          return refuse('pluginManager.Loader');
-        }
+        getFileManagers: () => refuse('pluginManager.getFileManagers()')
       };
+      Object.defineProperties(manager, refusedGetters('pluginManager', ['visitors', 'iterator', 'preProcessors', 'postProcessors', 'fileManagers', 'Loader']));
       manager.addPlugin(plugin);
     });
     this.globalFns = this.#fns;

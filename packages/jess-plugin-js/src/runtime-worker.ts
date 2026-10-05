@@ -804,8 +804,13 @@ const refuseLessPluginApi = (feature) => {
 const refusedGetters = (owner, members) => Object.fromEntries(members.map(member =>
   [member, { get: () => refuseLessPluginApi(`${owner}.${member}`) }]));
 
-/* 4.x plugins reach these before the hook call (`new less.visitors.Visitor(this)`). */
+/*
+ * 4.x plugins reach these before the hook call (`new less.visitors.Visitor(this)`).
+ * The worker-global `less` / `Less` refuses them too, so every view of the
+ * facade does. The getters are non-enumerable, so spreading the facade skips them.
+ */
 const REFUSED_LESS_MEMBERS = refusedGetters('less', ['visitors', 'FileManager', 'environment']);
+Object.defineProperties(lessFacade, REFUSED_LESS_MEMBERS);
 
 /** The `less` a plugin, and every file it requires, sees: the facade plus its function registry. */
 const createPluginLess = functionRegistry =>
@@ -818,7 +823,7 @@ const REFUSED_MANAGER_METHODS = [
   'addPostProcessor', 'getPostProcessors',
   'addFileManager', 'getFileManagers'
 ];
-const REFUSED_MANAGER_FIELDS = refusedGetters('pluginManager', ['visitors', 'preProcessors', 'postProcessors', 'fileManagers', 'Loader']);
+const REFUSED_MANAGER_FIELDS = refusedGetters('pluginManager', ['visitors', 'iterator', 'preProcessors', 'postProcessors', 'fileManagers', 'Loader']);
 
 /**
  * The Less 4 `PluginManager` (`less/lib/less/plugin-manager.js`): installing
@@ -831,7 +836,7 @@ const createPluginManager = (less) => {
     installedPlugins: [],
     pluginCache,
     addPlugins(plugins) {
-      for (const plugin of plugins ?? []) {
+      for (const plugin of Array.from(plugins ?? [])) {
         manager.addPlugin(plugin);
       }
     },
@@ -1046,7 +1051,15 @@ class HostFactNeeded {
   }
 }
 
-const hostCallKey = (name, args) => `${String(name).toLowerCase()} ${JSON.stringify(args)}`;
+/*
+ * The host learns a plugin's function names when the plugin loads, so a
+ * function or plugin added from inside a function body would never be callable.
+ */
+const refuseRegistrationInBody = () => {
+  throw new Error('Less @plugin: functions and plugins can only be added while the plugin loads, not from inside a function body.');
+};
+
+const hostCallKey = (name, args) => `${String(name).toLowerCase()}\u0000${JSON.stringify(args)}`;
 
 /**
  * Builds the `this` a Less 4 plugin function body expects: `this.context` with
@@ -1097,12 +1110,14 @@ const createPluginCallContext = (facts, manager) => {
         return decodeBridgeValue(answer);
       };
     },
-    add() {
-      throw new Error('Less @plugin: functions cannot be registered from inside a function body.');
-    }
+    add: refuseRegistrationInBody
   };
 
-  const pluginManager = Object.create(manager, { less: { value: createPluginLess(functionRegistry) } });
+  const pluginManager = Object.create(manager, {
+    less: { value: createPluginLess(functionRegistry) },
+    addPlugin: { value: refuseRegistrationInBody },
+    addPlugins: { value: refuseRegistrationInBody }
+  });
 
   const context = {
     frames: [frame],

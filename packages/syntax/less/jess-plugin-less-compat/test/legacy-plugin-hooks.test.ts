@@ -52,6 +52,7 @@ const hookCases: Array<[string, HookUse, string]> = [
   ['pluginManager.getVisitors()', (_less, manager) => manager.getVisitors(), 'visitor'],
   ['pluginManager.visitor()', (_less, manager) => manager.visitor(), 'visitor'],
   ['pluginManager.visitors', (_less, manager) => manager.visitors, 'visitor'],
+  ['pluginManager.iterator', (_less, manager) => manager.iterator, 'visitor'],
   ['pluginManager.addPreProcessor()', (_less, manager) => manager.addPreProcessor({}), 'before'],
   ['pluginManager.getPreProcessors()', (_less, manager) => manager.getPreProcessors(), 'before'],
   ['pluginManager.preProcessors', (_less, manager) => manager.preProcessors, 'before'],
@@ -173,6 +174,27 @@ describe('legacy Less plugin-manager hooks', () => {
     expect(manager?.get('missing.js')).toBeUndefined();
     expect(manager?.installedPlugins.map(plugin => plugin.name)).toEqual(['parent', 'via-add-plugin', 'first', 'second']);
     expect(manager?.less.functions.functionRegistry).toBe(bridge.registry);
+  });
+
+  it('installs from any array-like passed to pluginManager.addPlugins(), as 4.x does', () => {
+    const bridge = new LessApiBridge([{
+      install(_less, manager) {
+        manager.addPlugins({ length: 1, 0: { install: (_l, _m, functions) => functions.add('array-like', () => 1) } });
+      }
+    }]);
+    expect(bridge.registry.get('array-like')).toBeTypeOf('function');
+  });
+
+  it('lets a plugin spread or serialize its manager without tripping the refused fields', () => {
+    let keys: string[] = [];
+    new LessApiBridge([{
+      install(_less, manager) {
+        keys = Object.keys({ ...manager });
+        JSON.stringify(manager);
+      }
+    }]);
+    expect(keys).toEqual(expect.arrayContaining(['less', 'installedPlugins', 'pluginCache', 'addPlugin']));
+    expect(keys).not.toContain('visitors');
   });
 
   it('installs into the functionRegistry passed to pluginManager.addPlugin()', () => {

@@ -44,6 +44,7 @@ describe('legacy Less @plugin runtime', () => {
       ['pluginManager.getVisitors()', 'manager.getVisitors();', 'visitor API'],
       ['pluginManager.visitor()', 'manager.visitor().first();', 'visitor API'],
       ['pluginManager.visitors', 'manager.visitors.push({});', 'visitor API'],
+      ['pluginManager.iterator', 'void manager.iterator;', 'visitor API'],
       ['pluginManager.addPreProcessor()', 'manager.addPreProcessor({});', 'before it reaches the compiler'],
       ['pluginManager.getPreProcessors()', 'manager.getPreProcessors();', 'before it reaches the compiler'],
       ['pluginManager.preProcessors', 'manager.preProcessors.push({});', 'before it reaches the compiler'],
@@ -115,13 +116,27 @@ describe('legacy Less @plugin runtime', () => {
       expect(refused.message).toBe('Plugin "plugin.js" uses pluginManager.getVisitors(), which is not supported');
     }, 30000);
 
-    it('refuses the hook API reached from a required file', async () => {
+    it.each([
+      ['less', 'new less.visitors.Visitor({})'],
+      ['globalThis.less', 'new globalThis.less.visitors.Visitor({})'],
+      ['Less', 'new Less.visitors.Visitor({})']
+    ])('refuses the hook API reached from a required file through %s', async (_view, use) => {
       const { runtime, entry } = project([
         ['root/plugin.js', 'require("./visitor");'],
-        ['root/visitor.js', 'module.exports = new less.visitors.Visitor({});']
+        ['root/visitor.js', `module.exports = ${use};`]
       ]);
       const refused = await refusal(runtime.importLessPlugin(entry));
       expect(refused.message).toBe('Plugin "plugin.js" uses less.visitors, which is not supported');
+    }, 30000);
+
+    it.each([
+      ['less.visitors', 'new Less.visitors.Visitor({});'],
+      ['less.FileManager', 'new globalThis.less.FileManager();'],
+      ['less.environment', 'globalThis.Less.environment.addFileManager({});']
+    ])('refuses %s on the worker-global facade too', async (feature, use) => {
+      const { runtime, entry } = project([['root/plugin.js', use]]);
+      const refused = await refusal(runtime.importLessPlugin(entry));
+      expect(refused.message).toBe(`Plugin "plugin.js" uses ${feature}, which is not supported`);
     }, 30000);
   });
 
@@ -166,6 +181,47 @@ describe('legacy Less @plugin runtime', () => {
       ]);
       const loaded = await runtime.importLessPlugin(entry);
       await expect(loaded.functions.child()).resolves.toBe('child');
+    }, 30000);
+
+    it('installs from any array-like passed to addPlugins(), as 4.x does', async () => {
+      const { runtime, entry } = project([
+        ['root/plugin.js', [
+          'registerPlugin({',
+          '  install(less, manager) {',
+          '    manager.addPlugins({ length: 1, 0: { install(l, m, registry) { registry.add("three", () => new tree.Dimension(3)); } } });',
+          '  }',
+          '});'
+        ].join('\n')]
+      ]);
+      const loaded = await runtime.importLessPlugin(entry);
+      await expect(loaded.functions.three()).resolves.toMatchObject({ number: 3 });
+    }, 30000);
+
+    it('lets a plugin spread its manager and less without tripping the refused fields', async () => {
+      const { runtime, entry } = project([
+        ['root/plugin.js', [
+          'registerPlugin({',
+          '  install(less, manager) {',
+          '    const keys = Object.keys({ ...manager, ...less }).filter(key => key === "visitors" || key === "FileManager");',
+          '    functions.add("keys", () => keys.join(","));',
+          '  }',
+          '});'
+        ].join('\n')]
+      ]);
+      const loaded = await runtime.importLessPlugin(entry);
+      await expect(loaded.functions.keys()).resolves.toBe('');
+    }, 30000);
+
+    it('refuses installing a plugin from inside a function body, whose functions the host would never learn', async () => {
+      const { runtime, entry } = project([
+        ['root/plugin.js', [
+          'functions.add("late", function() {',
+          '  this.context.pluginManager.addPlugin({ install(l, m, registry) { registry.add("never", () => 1); } });',
+          '});'
+        ].join('\n')]
+      ]);
+      const loaded = await runtime.importLessPlugin(entry);
+      await expect(Promise.resolve(loaded.functions.late())).rejects.toThrow('not from inside a function body');
     }, 30000);
   });
 
