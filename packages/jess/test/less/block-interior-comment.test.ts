@@ -142,9 +142,30 @@ describe('Less block comments at a statement boundary inside a block', () => {
     await bothEmitters('.m() { b: 1; @d: { /* keep */ v: 1; }; c: 2; @d(); } x { .m(); }', 'x { b: 1; c: 2; /* keep */ v: 1; }');
   });
 
+  /*
+   * Each expansion writes its own copy of the body, so it writes its own copy of
+   * the body's comments: the definition HOLDS them, a call frees them for its
+   * walk only, and a call made before the definition is reached writes them once.
+   */
+  it('keeps a callable body\'s comments on every call, not only the first', async () => {
+    await bothEmitters('@d: { /* k */ v: 1; }; a { @d(); } b { @d(); }', 'a { /* k */ v: 1; } b { /* k */ v: 1; }');
+    await bothEmitters('.m() { /* k */ v: 1; } a { .m(); } b { .m(); }', 'a { /* k */ v: 1; } b { /* k */ v: 1; }');
+    await bothEmitters('.m() { v: 1; /* t */ } a { .m(); } b { .m(); }', 'a { v: 1; /* t */ } b { v: 1; /* t */ }');
+    await bothEmitters('.r(@i) when (@i > 0) { /* c */ v: @i; .r(@i - 1); } a { .r(2); }', 'a { /* c */ v: 2; /* c */ v: 1; }');
+    await bothEmitters('a { .m(); } .m() { /* c */ v: 1; }', 'a { /* c */ v: 1; }');
+    await bothEmitters('.m { /* c */ v: 1; } a { .m(); }', '.m { /* c */ v: 1; } a { /* c */ v: 1; }');
+  });
+
+  it('does not write an uncalled mixin definition\'s comments where it is declared', async () => {
+    await bothEmitters('a { b: 1; .m() { /* m */ w: 2; } c: 2; }', 'a { b: 1; c: 2; }');
+  });
+
   it('keeps the comments of a ruleset passed to a function', async () => {
     await bothEmitters('@d: { /* keep */ v: 1; }; a { x: foo(@d); }', 'a { x: foo({ /* keep */ v: 1; }); }');
+    await bothEmitters('@d: { /* k */ v: 1; }; a { x: foo(@d); y: foo(@d); }', 'a { x: foo({ /* k */ v: 1; }); y: foo({ /* k */ v: 1; }); }');
     await bothEmitters('a { x: foo({ /* inline */ w: 2; .n { /* inner */ q: 1; } }); }', 'a { x: foo({ /* inline */ w: 2; .n { /* inner */ q: 1; } }); }');
+    await bothEmitters('a { x: foo({ @media print { /* m */ q: 1; } w: 2; }); }', 'a { x: foo({ @media print { /* m */ q: 1; } w: 2; }); }');
+    await bothEmitters('.m() { /* mm */ z: 1; } a { x: foo({ .m(); /* after */ w: 2; }); }', 'a { x: foo({ /* mm */ z: 1; /* after */ w: 2; }); }');
   });
 
   it('keeps the comments of a detached ruleset declared in an imported file', async () => {

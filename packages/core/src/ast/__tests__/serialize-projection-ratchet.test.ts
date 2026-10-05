@@ -144,7 +144,10 @@ describe('V19 one-evaluator projection ratchet', () => {
     // -1 `new Set` (jess#245): a control-flow body's declarations are spliced
     // into the ordinary source-fold stacks at the `$if`/`$while`, so the set of
     // direct declarations that split those stacks into a prefix is gone.
-    expect(occurrences(/^function |^async function /gmu)).toBe(474);
+    // +1 function (`takeBodyTrivia`, jess#301): the one comment cursor of a
+    // callable body, shared by a call's replay and a ruleset argument's writer;
+    // the two cursor loops it replaced in `queueBodyTriviaBefore`/`Tail` are gone.
+    expect(occurrences(/^function |^async function /gmu)).toBe(475);
     expect(occurrences(/new Map/gu)).toBe(71);
     expect(occurrences(/new Set/gu)).toBe(39);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
