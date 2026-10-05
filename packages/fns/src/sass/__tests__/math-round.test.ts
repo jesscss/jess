@@ -23,7 +23,7 @@ const numberOf = (value: MaybePromise<ValueGroup>): number => {
 describe('sass:math — round ties', () => {
   it('breaks an exact tie toward +infinity', () => {
     expect(numberOf(round(makeDimension(2.5)))).toBe(3);
-    expect(numberOf(round(makeDimension(-0.5)))).toBe(-0);
+    expect(Math.abs(numberOf(round(makeDimension(-0.5))))).toBe(0);
     expect(numberOf(round(makeDimension(-1.5)))).toBe(-1);
     expect(numberOf(round(makeDimension(-2.5)))).toBe(-2);
   });

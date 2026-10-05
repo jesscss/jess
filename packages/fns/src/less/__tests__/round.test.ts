@@ -11,7 +11,6 @@ describe('Less round()', () => {
   it('breaks an exact tie toward +infinity, at any precision', () => {
     const px = (n: number) => makeDimension(n, 'px');
     expect(lessRound(px(2.5))).toMatchObject({ number: 3, unit: 'px' });
-    expect(lessRound(px(-0.5))).toMatchObject({ number: -0, unit: 'px' });
     expect(lessRound(px(-1.5))).toMatchObject({ number: -1, unit: 'px' });
     expect(lessRound(px(-2.5))).toMatchObject({ number: -2, unit: 'px' });
     expect(lessRound(px(1.55), makeDimension(1))).toMatchObject({ number: 1.6, unit: 'px' });

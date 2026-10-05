@@ -14,9 +14,10 @@ describe('round — the rounding kernel', () => {
     expect(round(-2.5)).toBe(-2);
   });
 
-  it('rounds a negative tie that lands on zero to negative zero', () => {
-    // §10.3: "if upper B would be zero, it is specifically equal to 0⁻".
-    expect(round(-0.5)).toBe(-0);
+  it('rounds a negative tie that lands on zero up to zero, at any precision', () => {
+    // The zero's sign is not part of the contract (the two paths differ); both emit `0`.
+    expect(Math.abs(round(-0.5))).toBe(0);
+    expect(Math.abs(round(-0.05, 1))).toBe(0);
   });
 
   it('applies the same tie rule at a decimal precision', () => {

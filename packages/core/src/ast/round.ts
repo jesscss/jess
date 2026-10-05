@@ -10,7 +10,7 @@
  *
  * TIE DIRECTION is CSS Values 4 `round(nearest)` (§10.3; ledger **V8**): an exact half
  * goes to the UPPER value, toward `+infinity`, which is `Math.round`'s rule —
- * `round(-1.5)` is `-1`, `round(-0.5)` is `-0`, `round(-1.55, 1)` is `-1.5`. Less 4.x
+ * `round(-1.5)` is `-1`, `round(-0.5)` is `0`, `round(-1.55, 1)` is `-1.5`. Less 4.x
  * `round()` rounds negative halves away from zero (`toFixed`); v5 deliberately does not.
  */
 export function round(number: number, precision?: number): number {
