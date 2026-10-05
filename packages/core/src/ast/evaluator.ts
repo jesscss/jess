@@ -11,7 +11,7 @@
  * HARD MODULE BOUNDARY: imports only the engine value modules.
  */
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { emitValue, isValueGroupArray, writtenArgument, type ArgumentKeyword, type EvalModes, type FnScope, type ValueEvaluator, type ValueGroup, type Value, type WrittenArguments } from './value-eval.js';
+import { emitValue, isValueGroupArray, itemBoundary, joinGroup, writtenArgument, type EvalModes, type FnScope, type ValueEvaluator, type ValueGroup, type Value, type WrittenArguments } from './value-eval.js';
 import type { Fn, FnIo } from './functions/types.js';
 import { sepGlue } from './value-eval.js';
 import { groupItems, groupSeparator } from './value-list.js';
@@ -27,24 +27,37 @@ import { emitCompressed } from './compress.js';
  *  comma list-divider tightens (`,`) and each arg folds by its type, as in any
  *  other value position; space and `/` separators are significant and kept
  *  (v5 keeps `/` spaced). A keyword argument keeps its keyword
- *  ({@link writtenArgument}). */
-function verbatimArgs(args: ValueGroup, modes?: EvalModes, keywords?: readonly ArgumentKeyword[]): string {
+ *  ({@link writtenArgument}), and pretty output keeps the comments and line
+ *  breaks written between the arguments (ledger F11). */
+function verbatimArgs(args: ValueGroup, modes?: EvalModes, written?: WrittenArguments): string {
   const separator = groupSeparator(args);
   const compress = modes?.compress === true;
   const glue = separator === ' ' ? ' ' : sepGlue(separator, compress);
   const emit = compress ? emitCompressed : emitValue;
   const items = groupItems(args);
-  if (keywords === undefined) {
+  if (written === undefined) {
     return items.map(emit).join(glue);
   }
-  return items.map((item, index) => writtenArgument(keywords[index]!, emit(item), compress)).join(glue);
+  const members = written.memberSeparators;
+  let out = '';
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index]!;
+    const authored = members?.[index];
+    const bytes = authored !== undefined && isValueGroupArray(item)
+      ? joinGroup(item, ' ', emit, authored, compress)
+      : emit(item);
+    out += index === 0
+      ? writtenArgument(written.keywords[index]!, bytes, compress)
+      : itemBoundary(written.separators?.[index - 1], glue, compress) + writtenArgument(written.keywords[index]!, bytes, compress);
+  }
+  return out;
 }
 
 /** Preserve an optional CSS call, as written, after name resolution or invocation failed. */
 function fallbackCall(name: string, args: ValueGroup, modes?: EvalModes, written?: WrittenArguments): Value {
   return makeKeyword(`${name}(${written === undefined
     ? verbatimArgs(args, modes)
-    : verbatimArgs(written.args, modes, written.keywords)})`);
+    : verbatimArgs(written.args, modes, written)})`);
 }
 
 /**
@@ -173,5 +186,5 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     return typeCheckValues(name, values);
   };
 
-  return { materialize, operate, call, paramNames, compare, compareMatch, typeCheck };
+  return { materialize, operate, call, paramNames, has: name => registry.has(name), compare, compareMatch, typeCheck };
 }

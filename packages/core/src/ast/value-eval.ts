@@ -322,8 +322,16 @@ export const isElided = (v: ValueGroup): boolean =>
  * Join a group's members with `glue`, DROPPING each elided member along with the
  * separator it would have carried. Written as a loop rather than
  * `filter().map().join()` so the common (no-`null`) path allocates nothing.
+ * `authored` holds the run written before each member, replayed by
+ * {@link itemBoundary} (a call written out as-is, ledger F11).
  */
-export const joinGroup = (v: readonly ValueGroup[], glue: string, emit: (item: ValueGroup) => string): string => {
+export const joinGroup = (
+  v: readonly ValueGroup[],
+  glue: string,
+  emit: (item: ValueGroup) => string,
+  authored?: readonly (string | undefined)[],
+  compress = false
+): string => {
   let out = '';
   let empty = true;
   for (let i = 0; i < v.length; i++) {
@@ -332,7 +340,7 @@ export const joinGroup = (v: readonly ValueGroup[], glue: string, emit: (item: V
       continue;
     }
     const bytes = emit(item);
-    out = empty ? bytes : out + itemBoundary(undefined, glue, false, bytes) + bytes;
+    out = empty ? bytes : out + itemBoundary(authored?.[i - 1], glue, compress, bytes) + bytes;
     empty = false;
   }
   return out;
@@ -645,10 +653,17 @@ export interface ArgumentKeyword {
  * A call's arguments in AUTHORED order, each paired with its keyword at the same
  * index: `keywords` is the call's own argument list, so building one allocates
  * nothing per argument.
+ *
+ * A call written out keeps the comments and line breaks written between its
+ * arguments (ledger F11): `separators` holds the run before each argument after
+ * the first, `memberSeparators` the runs inside each space-separated argument.
+ * Both replay in pretty output only ({@link itemBoundary}).
  */
 export interface WrittenArguments {
   readonly args: ValueGroup;
   readonly keywords: readonly ArgumentKeyword[];
+  readonly separators?: readonly (string | undefined)[];
+  readonly memberSeparators?: readonly ((readonly (string | undefined)[]) | undefined)[];
 }
 
 /**
@@ -701,11 +716,13 @@ export interface ValueEvaluator {
     ambient?: boolean,
 
     /**
-     * The arguments as written, for a call that names any of them. A call that
-     * is written out as-is — an unknown name, or a function that could not
-     * produce a value — is written from these, so `darken(@color: red)` keeps its
-     * keyword. Omitted for a positional call, whose `args` are already as written.
-     * Only read on that write-out; a call that produces a value never touches it.
+     * The arguments as written, for a call that names any of them or writes a
+     * comment or line break between them. A call that is written out as-is — an
+     * unknown name, or a function that could not produce a value — is written
+     * from these, so `darken(@color: red)` keeps its keyword and
+     * `radial-gradient(#333 /*c*&#47;, #111)` its comment. Omitted otherwise, when
+     * `args` are already as written. Only read on that write-out; a call that
+     * produces a value never touches it.
      */
     written?: WrittenArguments,
   ): MaybePromise<ValueGroup>;
@@ -722,6 +739,13 @@ export interface ValueEvaluator {
    * {@link ValueEvaluator.call}.
    */
   paramNames(name: string, scopedFn?: Fn, ambient?: boolean): readonly (string | undefined)[] | undefined;
+
+  /**
+   * Whether the registry defines a built-in named `name`. A call with no scoped
+   * function and no built-in is written out as-is, so its arguments are values,
+   * not inputs to a callable (ledger F11).
+   */
+  has(name: string): boolean;
 
   /** Comparison leaf in VALUE position (`if(@a > 0, …)`) on typed operands -> boolean. */
   compare(op: string, left: ValueGroup, right: ValueGroup, modes: EvalModes): boolean;

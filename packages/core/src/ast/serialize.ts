@@ -3740,6 +3740,15 @@ interface EvalCtx {
   modes: EvalModes;
 
   /**
+   * Set on the non-evaluating byte lane of an F5 color call
+   * ({@link preserveCall}): the evaluating context that lane was derived from.
+   * The call's arguments keep their authored bytes, but a condition written in
+   * them is still decided — `rgb(if((true), 1, 2), 2, 3)` is `rgb(1, 2, 3)` — so
+   * {@link guardDeps} evaluates it here.
+   */
+  writtenFrom?: EvalCtx;
+
+  /**
    * [compress] `output.compress` — minified output. Read on both the value lane
    * (folds Color/Dimension to shortest form; tightens list commas) and the
    * structural lane (drops whitespace/comments). Optional so every non-compress
@@ -4039,12 +4048,12 @@ function evalTypedSlot(
   frame: Frame | null,
   e: EvalCtx,
   projectMixinValues = false,
-  writeRulesets = false
+  argument: ArgumentMode = ARG_NONE
 ): MaybePromise<ValueGroup> {
   if (!isValueSlotArray(slot)) {
-    return evalTyped(slot, frame, e, projectMixinValues, writeRulesets);
+    return evalTyped(slot, frame, e, projectMixinValues, argument);
   }
-  const values = slot.map(value => evalTypedSlot(value, frame, e, projectMixinValues, writeRulesets));
+  const values = slot.map(value => evalTypedSlot(value, frame, e, projectMixinValues, argument));
   return combineAll(values, resolved => resolved);
 }
 
@@ -4254,12 +4263,26 @@ function validateValueGroupUnits(
   }
 }
 
+/** A typed value that is no function argument. */
+const ARG_NONE = 0;
+
+/** An argument handed to a callable: a call in it yields its value. */
+const ARG_INPUT = 1;
+
+/**
+ * An argument of a call written out as-is, which has no callable (ledger F11):
+ * only the call is inert, the argument is a value like a declaration value, so
+ * an F5 color call in it keeps its authored bytes.
+ */
+const ARG_WRITTEN = 2;
+type ArgumentMode = typeof ARG_NONE | typeof ARG_INPUT | typeof ARG_WRITTEN;
+
 function evalTyped(
   node: ValueNode,
   frame: Frame | null,
   e: EvalCtx,
   projectMixinValues = false,
-  writeRulesets = false
+  argument: ArgumentMode = ARG_NONE
 ): MaybePromise<ValueGroup> {
   switch (node.type) {
     case 'AnonymousMixin':
@@ -4269,7 +4292,7 @@ function evalTyped(
        * as-is (unknown, not in scope, or failed and preserved) never loses it.
        * Anywhere else it has no value, exactly as before.
        */
-      return writeRulesets
+      return argument !== ARG_NONE
         ? writtenRulesetArgument(node, frame, e)
         : mapMaybe(evalValue(node, frame, e), v => force(e, v));
 
@@ -4344,7 +4367,7 @@ function evalTyped(
         return hit.evaluated ?? withExcluded(e, bound, () =>
           isMixinCallValue(bound)
             ? force(e, literal(''))
-            : evalTypedSlot(bound, hit.frame, e, projectMixinValues, writeRulesets));
+            : evalTypedSlot(bound, hit.frame, e, projectMixinValues, argument));
       });
     case 'Reference': {
       const moduleCall = evalModuleReferenceCall(node, frame, e);
@@ -4427,7 +4450,7 @@ function evalTyped(
        * `extract`, counted by `length`, or compared). The structure the parser owns
        * is handed to the value layer directly — no re-splitting a joined string.
        */
-      const typed = node.value.map(it => evalTypedSlot(it, frame, e, projectMixinValues, writeRulesets));
+      const typed = node.value.map(it => evalTypedSlot(it, frame, e, projectMixinValues, argument));
       return combineAll(typed, vals => makeList(vals, node.sep));
     }
     case 'Branch':
@@ -4437,8 +4460,8 @@ function evalTyped(
        * a ruleset argument is — and the branch is its authored `cond: value`.
        */
       return combineAll([
-        evalTypedSlot(node.condition, frame, e, projectMixinValues, writeRulesets),
-        evalTypedSlot(node.value, frame, e, projectMixinValues, writeRulesets)
+        evalTypedSlot(node.condition, frame, e, projectMixinValues, argument),
+        evalTypedSlot(node.value, frame, e, projectMixinValues, argument)
       ], (parts) => {
         const condition = emitValueC(parts[0]!, e);
         const value = emitValueC(parts[1]!, e);
@@ -4459,9 +4482,10 @@ function evalTyped(
       /*
        * Typed consumers deliberately bypass any direct-output preservation
        * policy. An operation or typed function argument needs the callable's
-       * result, not its authored bytes.
+       * result, not its authored bytes. An argument of a call written out as-is
+       * feeds no callable, so it keeps that policy (ledger F11).
        */
-      return mapMaybe(evalCall(node, frame, e, true), v => force(e, v));
+      return mapMaybe(evalCall(node, frame, e, argument !== ARG_WRITTEN), v => force(e, v));
     case 'Condition':
       return mapMaybe(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), makeBool);
     case 'IfValue': {
@@ -4474,7 +4498,7 @@ function evalTyped(
        * branch value, not on its bytes. An unmatched chain has no value. */
       return mapMaybe(pickIfValue(node, frame, e), taken => taken === undefined
         ? NULL
-        : evalTypedSlot(taken, frame, e, projectMixinValues));
+        : evalTypedSlot(taken, frame, e, projectMixinValues, argument));
     }
     case 'Range':
       /*
@@ -6585,13 +6609,6 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
 /** CSS color constructors whose authored call is inert until a value consumer demands it (ledger F5). */
 const DEFERRED_COLOR_CALLS = new Set(['rgb', 'rgba', 'hsl', 'hsla']);
 
-/*
- * CSS functions Less does not define, written out as a call without dispatch:
- * only the call is inert, its arguments are values (see preserveCall). An F5
- * color constructor, by contrast, is written out whole.
- */
-const DEFERRED_CSS_AUTHORED_CALLS = new Set(['linear-gradient']);
-
 /**
  * Recognize the CSS-shaped arities that are safe to leave as authored bytes.
  *
@@ -6614,27 +6631,16 @@ function hasCssColorCallShape(node: FunctionCall): boolean {
 }
 
 function shouldPreserveCssAuthoredCall(node: FunctionCall, lessDocument: boolean): boolean {
-  if (!lessDocument) {
-    return false;
-  }
-  const lname = node.name.toLowerCase();
-  return (DEFERRED_COLOR_CALLS.has(lname) && hasCssColorCallShape(node))
-    || DEFERRED_CSS_AUTHORED_CALLS.has(lname);
+  return lessDocument && DEFERRED_COLOR_CALLS.has(node.name.toLowerCase()) && hasCssColorCallShape(node);
 }
 
 /**
  * Re-emit a call after resolving variable/interpolation bytes, without invoking
- * its callable: a deferred CSS-authored call, a failed plugin call, and every
- * call on the non-evaluating byte lane. Each argument is written as authored,
- * keyword included ({@link writtenArgument}, ledger P23).
- *
- * `argumentsAreValues` marks a CSS function Less does not define
- * (`DEFERRED_CSS_AUTHORED_CALLS`): only the call itself is inert, and each
- * argument is a value like any declaration value — a call, a condition or an
- * operation written in it is evaluated (ledger P37), a unit error in it raises,
- * and a literal is spelled as it is everywhere else (ledger V4).
+ * its callable: an F5 color call and every call on the non-evaluating byte
+ * lane. Each argument is written as authored, keyword included
+ * ({@link writtenArgument}, ledger P23).
  */
-function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx, argumentsAreValues = false): MaybePromise<EvalValue> {
+function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   if (node.args.length === 0) {
     return literal(`${node.name}()`);
   }
@@ -6643,22 +6649,14 @@ function preserveCall(node: FunctionCall, frame: Frame | null, e: EvalCtx, argum
    * An F5 color call (and the non-evaluating byte lane) retains literal
    * spellings (`.5`, hue units) exactly: typed literal canonicalization is off
    * for its arguments; variable references still resolve through the same live
-   * frame walk.
+   * frame walk, and a condition is still decided in the evaluating context
+   * ({@link EvalCtx.writtenFrom}).
    */
-  const preserve = e.ev && !argumentsAreValues ? { ...e, ev: null } : e;
+  const preserve = e.ev ? { ...e, ev: null, writtenFrom: e } : e;
   const items = node.args.map(a => evalValueSlot(a.value, frame, preserve));
   return combineAll(items, (vals) => {
     const authored = valueLayoutOf(node.args);
     const compress = e.compress === true;
-    if (argumentsAreValues) {
-      for (let index = 0; index < vals.length; index += 1) {
-        const value = vals[index]!;
-        if (!isLiteral(value)) {
-          const slot = node.args[index]!.value;
-          validateValueGroupUnits(value, e.modes, isValueSlotArray(slot) ? (slot[0] ?? node) : slot, e, false);
-        }
-      }
-    }
 
     /*
      * Comma spacing is minimal-correctness normalized to one space after the
@@ -6687,13 +6685,15 @@ function unloweredCall(node: AuthoredCallSlot): FunctionCall | null {
   return call !== null && !hasAmbientFunctions(call) ? call : null;
 }
 
-/** Evaluate a function call: materialize the modeled arg list, then `ev.call`. */
 /** Guard-eval deps sourced from an evaluation context (a value-position condition,
- *  like a CSS ruleset guard, never depends on a mixin `default()` decision). */
+ *  like a CSS ruleset guard, never depends on a mixin `default()` decision). A
+ *  condition on the written lane of an F5 call is decided in the context that
+ *  lane came from ({@link EvalCtx.writtenFrom}). */
 function guardDeps(frame: Frame | null, e: EvalCtx): {
   resolveTyped: TypedResolver; ev: ValueEvaluator | null; modes: EvalModes; isDefault: () => boolean;
 } {
-  return { resolveTyped: makeTypedResolver(frame, e), ev: e.ev, modes: e.modes, isDefault: () => false };
+  const decide = e.writtenFrom ?? e;
+  return { resolveTyped: makeTypedResolver(frame, decide), ev: decide.ev, modes: decide.modes, isDefault: () => false };
 }
 
 /**
@@ -7677,7 +7677,7 @@ function evalCall(
    */
   const lessDocument = e.context?.sourceContext?.plugin?.supportedExtensions?.includes('.less') === true;
   if (!demanded && shouldPreserveCssAuthoredCall(node, lessDocument)) {
-    return preserveCall(node, frame, e, DEFERRED_CSS_AUTHORED_CALLS.has(lname));
+    return preserveCall(node, frame, e);
   }
   const ev = e.ev;
 
@@ -7765,8 +7765,13 @@ function dispatchCall(
   const modes = namespaced && e.modes.functionMode !== 'error' ? erroringModes(e.modes) : e.modes;
   const sep = node.modern ? ' ' : ',';
 
-  // Args are materialized TYPED (each arg's tag sourced from its parse node).
-  const typed = node.args.map(a => evalTypedSlot(a.value, frame, e, true, true));
+  /*
+   * Args are materialized TYPED (each arg's tag sourced from its parse node). A
+   * call with no callable is written out as-is, so its arguments are values
+   * (ledger F11) rather than inputs.
+   */
+  const argument = selected === undefined && !(ambient && ev.has(node.name)) ? ARG_WRITTEN : ARG_INPUT;
+  const typed = node.args.map(a => evalTypedSlot(a.value, frame, e, true, argument));
   return combineAll(typed, (vals) => {
     let named = false;
     for (let i = 0; i < node.args.length; i++) {
@@ -7779,13 +7784,31 @@ function dispatchCall(
     const args: ValueGroup = sep === ',' ? makeList(ordered, ',') : ordered;
 
     /*
-     * A call that names an argument also hands over its arguments as written,
-     * read only if the call is written out as-is (P23). The keywords are the
-     * call's own arguments; when nothing was rebound, the order is the authored
-     * one already.
+     * A call that names an argument, or writes a comment or line break between
+     * them, also hands over its arguments as written, read only if the call is
+     * written out as-is (P23, F11). The keywords are the call's own arguments;
+     * when nothing was rebound, the order is the authored one already. Authored
+     * runs replay in pretty output only, so compress never looks them up.
      */
-    const written: WrittenArguments | undefined = named
-      ? { args: ordered === vals ? args : (sep === ',' ? makeList(vals, ',') : vals), keywords: node.args }
+    let separators: readonly (string | undefined)[] | undefined;
+    let memberSeparators: Array<readonly (string | undefined)[] | undefined> | undefined;
+    if (e.compress !== true) {
+      separators = valueLayoutOf(node.args);
+      for (let i = 0; i < node.args.length; i++) {
+        const slot = node.args[i]!.value;
+        const layout = isValueSlotArray(slot) ? valueLayoutOf(slot) : undefined;
+        if (layout !== undefined) {
+          (memberSeparators ??= new Array<readonly (string | undefined)[] | undefined>(node.args.length))[i] = layout;
+        }
+      }
+    }
+    const written: WrittenArguments | undefined = named || separators !== undefined || memberSeparators !== undefined
+      ? {
+          args: ordered === vals ? args : (sep === ',' ? makeList(vals, ',') : vals),
+          keywords: node.args,
+          separators,
+          memberSeparators
+        }
       : undefined;
     try {
       const result = ev.call(node.name, args, modes, null, e.io, selected, ambient, written);
