@@ -118,13 +118,17 @@ describe('source map round-trip is mathematically correct', () => {
     });
 
     /*
-     * Less `globalVars` and `banner` are injected ahead of the entry source; the
-     * map must still point into the file as authored. The banner is emitted but
-     * has no authored home, so it is left unmapped rather than pointed at line 1.
+     * Less `globalVars` and `banner` are injected ahead of the entry source and
+     * `modifyVars` after it; the map must still point into the file as authored,
+     * and embed it as authored. The banner is emitted but has no authored home,
+     * so it is left unmapped rather than pointed at line 1.
      */
-    it(`injected globalVars and banner do not shift entry-file mappings (collapseNesting=${collapseNesting})`, async () => {
+    it(`injected globalVars, modifyVars and banner do not shift entry-file mappings (collapseNesting=${collapseNesting})`, async () => {
       const entry = path.join(fixtures, 'reorder.less');
-      const vars = await auditRoundTrip(entry, collapseNesting, false, { globalVars: { injectedA: '1px', injectedB: 'red' } });
+      const vars = await auditRoundTrip(entry, collapseNesting, false, {
+        globalVars: { injectedA: '1px', injectedB: 'red' },
+        modifyVars: { injectedC: '2px' }
+      });
       expect(vars.count).toBeGreaterThanOrEqual(6);
       for (const compress of [false, true]) {
         const banner = await auditRoundTrip(entry, collapseNesting, compress, { banner: '/*! injected banner */', globalVars: { injectedA: '1px' } });

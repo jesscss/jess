@@ -30,9 +30,9 @@ import type { Position } from './serialize.js';
  * Less 4.x maps each part to the rule that wrote it. `sources` are normalized as Less
  * `normalizeFilename` does (basepath strip, then rootpath prefix);
  * `outputSourceFiles` embeds the content of each source a mapping names. Text a
- * host injected ahead of the entry file (`DocumentContextOptions.file.sourceOffset`)
- * has no authored position and is left unmapped. These three choices are ledger
- * row O12.
+ * host injected ahead of or after the entry file (`DocumentContextOptions.file`
+ * `sourceOffset` / `sourceEnd`) has no authored position: it is left unmapped
+ * and not embedded. These three choices are ledger row O12.
  */
 export interface AstSourceMapOptions {
   /** Recorded as the map's `file` (the generated output filename). */
@@ -136,9 +136,10 @@ export function buildAstSourceMap(
     }
     const sourceOffset = position.sourceStart ?? sourceStartOf(position.node);
     const injected = file?.sourceOffset ?? 0;
+    const authoredEnd = file?.sourceEnd ?? sourceText.length;
 
-    /* Nodes from text injected ahead of the file (Less `globalVars`) have no authored home. */
-    if (sourceOffset === NO_SPAN || sourceOffset < injected) {
+    /* Nodes from text injected around the file (Less `globalVars`, `modifyVars`) have no authored home. */
+    if (sourceOffset === NO_SPAN || sourceOffset < injected || sourceOffset >= authoredEnd) {
       continue;
     }
     const generated = lineColFromIndex(genLineStarts, position.start);
@@ -158,7 +159,7 @@ export function buildAstSourceMap(
     });
     if (options.outputSourceFiles === true && !contentAdded.has(source)) {
       contentAdded.add(source);
-      setSourceContent(map, source, injected > 0 ? sourceText.slice(injected) : sourceText);
+      setSourceContent(map, source, sourceText.slice(injected, authoredEnd));
     }
   }
 
