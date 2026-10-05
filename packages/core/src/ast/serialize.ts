@@ -12921,23 +12921,24 @@ function flattenResolved(
     childAncestor = null;
   }
   return mapMaybe(headerComposed, (headerComposed) => {
-    const flatten = () => flattenWithHeader(
-      rule,
-      parent,
-      frame,
-      e,
-      imp,
-      childComposed,
-      headerComposed,
-      childAncestor ?? wrapIsList(headerComposed),
-      expandBubbledSelectorList
-    );
     const dyn = e.dynamicExtend;
+    const ancestorOfChildren = childAncestor ?? wrapIsList(headerComposed);
+    if (dyn === null) {
+      return flattenWithHeader(
+        rule, parent, frame, e, imp, childComposed, headerComposed, ancestorOfChildren, expandBubbledSelectorList
+      );
+    }
 
     /* [extend/dynamic] The rule is open on the recorder's path while its body emits. */
-    return dyn === null
-      ? flatten()
-      : withDynamicPlacement(dyn, openDynamicPath(dyn, rule, parent, headerComposed), dyn.scope, dyn.boundary, flatten);
+    return withDynamicPlacement(
+      dyn,
+      openDynamicPath(dyn, rule, parent, headerComposed),
+      dyn.scope,
+      dyn.boundary,
+      () => flattenWithHeader(
+        rule, parent, frame, e, imp, childComposed, headerComposed, ancestorOfChildren, expandBubbledSelectorList
+      )
+    );
   });
 }
 
@@ -14445,8 +14446,8 @@ function expandReferenceAncestorFor(
           reassign: null,
           statements: node.rules,
           sourceOwner: frame.sourceOwner ?? null,
-          ...(bindingValueFrames ? { bindingValueFrames } : {}),
-          ...(e.dynamicExtend ? { extendPlacement: {} } : {})
+          extendPlacement: e.dynamicExtend === null ? undefined : {},
+          ...(bindingValueFrames ? { bindingValueFrames } : {})
         };
         if (item !== null) {
           bindForDetached(loopFrame, bindings, item);
@@ -14653,10 +14654,13 @@ function expandCall(
             mixinUrlBindings: undefined,
             mixinValueBindings: undefined,
             mixinSplice: true,
-            ...(namespaced || homeFrame === frame ? {} : { fallback: frame, callerFallback: true }),
 
-            /* [extend/dynamic] Each call places its body's rules apart (see Frame.extendPlacement). */
-            ...(e.dynamicExtend ? { extendPlacement: {} } : {})
+            /*
+             * [extend/dynamic] Each call places its body's rules apart (see
+             * Frame.extendPlacement). Always declared, so every call frame keeps one shape.
+             */
+            extendPlacement: e.dynamicExtend === null ? undefined : {},
+            ...(namespaced || homeFrame === frame ? {} : { fallback: frame, callerFallback: true })
           };
           takeMixinValueBindings(boundSourceKeys, e, callFrame);
           captureArgDefFrames(bindings, frame, callFrame);
@@ -15988,8 +15992,8 @@ function expandFor(
           declIndex: collectDeclIndex(node.rules, bindings, cells), cells, reassign: null,
           statements: node.rules,
           sourceOwner: frame.sourceOwner ?? null,
-          ...(bindingValueFrames ? { bindingValueFrames } : {}),
-          ...(e.dynamicExtend ? { extendPlacement: {} } : {})
+          extendPlacement: e.dynamicExtend === null ? undefined : {},
+          ...(bindingValueFrames ? { bindingValueFrames } : {})
         };
         if (item !== null) {
           bindForDetached(loopFrame, bindings, item);
@@ -19203,18 +19207,19 @@ function expandAtRuleBlock(
       declIndex: collectDeclIndex(node.rules), cells: null, reassign: null,
       statements: node.rules
     };
-    const write = () => nestedSource === undefined
-      ? writeCollapsedAtRuleBlock(node, frame, bodyFrame, e, ctx, prelude)
-      : writeNestedAtRuleBlock(node, frame, bodyFrame, e, nestedSource, prelude);
     const dyn = e.dynamicExtend;
     if (dyn === null) {
-      return write();
+      return nestedSource === undefined
+        ? writeCollapsedAtRuleBlock(node, frame, bodyFrame, e, ctx, prelude)
+        : writeNestedAtRuleBlock(node, frame, bodyFrame, e, nestedSource, prelude);
     }
 
     /* [extend/dynamic] Facts recorded in the body take this block's scope (§8). */
     const scope = dyn.scope;
     dyn.scope = atRuleScope(scope, node, dyn.atRuleScopes);
-    return withDynamicPlacement(dyn, dyn.pathRules.length, scope, dyn.boundary, write);
+    return withDynamicPlacement(dyn, dyn.pathRules.length, scope, dyn.boundary, () => nestedSource === undefined
+      ? writeCollapsedAtRuleBlock(node, frame, bodyFrame, e, ctx, prelude)
+      : writeNestedAtRuleBlock(node, frame, bodyFrame, e, nestedSource, prelude));
   }));
 }
 
