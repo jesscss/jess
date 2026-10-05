@@ -114,6 +114,23 @@ describe('legacy Less @plugin runtime', () => {
       await expect(loaded.functions.triple(makeDimension(4, 'px'))).resolves.toMatchObject({ number: 12, unit: 'px' });
     }, 30000);
 
+    it('resolves as Node does: .json is parsed, a directory reaches its index, .cjs is not guessed', async () => {
+      const { runtime, entry } = project([
+        ['root/plugin.js', [
+          'const data = require("./data");',
+          'const sub = require("./sub");',
+          'let cjs;',
+          'try { require("./only-cjs"); cjs = "found"; } catch (e) { cjs = "missing"; }',
+          'functions.add("probe", () => [data.size, sub, cjs].join(","));'
+        ].join('\n')],
+        ['root/data.json', '{ "size": 3 }'],
+        ['root/sub/index.json', '"sub-index"'],
+        ['root/only-cjs.cjs', 'module.exports = 1;']
+      ]);
+      const loaded = await runtime.importLessPlugin(entry);
+      await expect(loaded.functions.probe()).resolves.toBe('3,sub-index,missing');
+    }, 30000);
+
     it('evaluates each required file once and hands a cycle its partial exports', async () => {
       const { runtime, entry } = project([
         ['root/plugin.js', [

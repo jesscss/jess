@@ -801,7 +801,8 @@ const refuseLessPluginApi = (feature) => {
   throw new UnsupportedLessPluginApiError(feature);
 };
 
-const REQUIRE_SUFFIXES = ['', '.js', '.cjs', '/index.js'];
+/* Node's file and directory lookup, minus `.node` addons and package.json `main`. */
+const REQUIRE_SUFFIXES = ['', '.js', '.json', '/index.js', '/index.json'];
 
 const isRequirableFile = (candidate) => {
   try {
@@ -818,10 +819,11 @@ const isRequirableFile = (candidate) => {
  * `require()` for a legacy `@plugin` file: RELATIVE specifiers only, resolved
  * against the requiring file as Node resolves a file path. Every stat and read
  * goes through the same permission broker as the plugin file itself, so a
- * require can never reach past jsReadRoot. A required file is plain CommonJS —
- * it gets `module`, `exports`, `require`, `__filename` and `__dirname`, not the
- * plugin globals, and no Node `process`. Each file evaluates once per load, and
- * is cached before it runs, so a require cycle sees partial exports (as in Node).
+ * require can never reach past jsReadRoot. A `.json` file is parsed. Any other
+ * required file is plain CommonJS: it gets `module`, `exports`, `require`,
+ * `__filename` and `__dirname`, not the plugin globals, and no Node `process`.
+ * Each file evaluates once per load, and is cached before it runs, so a require
+ * cycle sees partial exports (as in Node).
  */
 const createLegacyRequire = (fromPath, cache) => (specifier) => {
   const request = String(specifier);
@@ -848,6 +850,10 @@ const createLegacyRequire = (fromPath, cache) => (specifier) => {
     module = { exports: {} };
     cache.set(resolved, module);
     const source = Deno.readTextFileSync(resolved);
+    if (resolved.endsWith('.json')) {
+      module.exports = JSON.parse(source);
+      return module.exports;
+    }
     new Function('module', 'exports', 'require', '__filename', '__dirname', 'process', source)(
       module,
       module.exports,
