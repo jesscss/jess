@@ -259,8 +259,16 @@ describe('V19 one-evaluator projection ratchet', () => {
     // -1 `new Set` (ledger F11): the `DEFERRED_CSS_AUTHORED_CALLS` name set is
     // retired; every call with no callable is written out with its arguments as
     // values and its comments kept.
-    expect(occurrences(/^function |^async function /gmu)).toBe(515);
-    expect(occurrences(/new Map/gu)).toBe(85);
+    // +4 functions: `alignedItems` (compress splits a carried argument the way
+    // the pretty output does), and module configuration as an activation
+    // snapshot (`seedModuleConfig`, `snapshotModuleConfig`) that a `set` nested
+    // before a planned document-root compose may configure (`plannedAhead`,
+    // ruling J6c).
+    // +2 functions, -1 `new Map`: a structural mixin argument is evaluated once,
+    // its bound bytes written from that evaluation (`writtenBytes`,
+    // `emitAsWritten`) instead of a second evaluation memoized per source.
+    expect(occurrences(/^function |^async function /gmu)).toBe(521);
+    expect(occurrences(/new Map/gu)).toBe(84);
     expect(occurrences(/new Set/gu)).toBe(40);
     expect(occurrences(/new WeakMap/gu)).toBe(8);
     expect(occurrences(/new WeakSet/gu)).toBe(0);

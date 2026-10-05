@@ -174,6 +174,11 @@ describe('output.compress — value folds (must fold)', () => {
     )).toBe('a{transition:transform .15s ease-in-out, background-color .15s ease-in-out,border-color .15s ease-in-out}');
   });
 
+  /* Compress takes an argument apart where the pretty output does (`w: a, b c`). */
+  it('splits the argument each() iterates as the pretty output does', async () => {
+    expect(await min('@l: ~"a,b" c; .e(@v) { each(@v, { w+: @value; }); } a { .e(@l); }')).toBe('a{w:a, b c}');
+  });
+
   /*
    * An argument is evaluated once whatever the output setting: a function in it
    * runs once, so its splice and its declaration agree.

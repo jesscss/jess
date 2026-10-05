@@ -1753,9 +1753,9 @@ export class Context {
    * external specifier must be claimed (unclaimed, there is nothing to inline,
    * so it is missing), and the plugin that located the path reads it. A file
    * path drops its `?query`/`#fragment`; a URL keeps its query. Returns the
-   * text with the path it resolved to, which source maps name as its source.
+   * text as the file it resolved to, which source maps name as its source.
    */
-  async readInlineImport(importPath: string): Promise<{ resolvedPath: string; source: string }> {
+  async readInlineImport(importPath: string): Promise<{ name: string; path: string; fullPath: string; source: string }> {
     const target = this.importTarget(importPath);
     if (!(await this.isClaimed(target, true))) {
       throw ERR.importNotFound({
@@ -1763,7 +1763,12 @@ export class Context {
       });
     }
     const { resolvedPath, locator } = await this._getPath(EXTERNAL_IMPORT_SPECIFIER.test(target) ? target : target.split(/[?#]/)[0]!);
-    return { resolvedPath, source: await this.readSource(resolvedPath, locator) };
+    return {
+      name: path.basename(resolvedPath),
+      path: path.dirname(resolvedPath),
+      fullPath: resolvedPath,
+      source: await this.readSource(resolvedPath, locator)
+    };
   }
 
   /**

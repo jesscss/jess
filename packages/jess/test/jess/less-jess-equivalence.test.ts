@@ -568,10 +568,25 @@ const KNOWN = new Map<string, Known>([
     outcome: 'cannot-express',
     reason: 'AtRuleStatement: `@charset` after another statement: `Charset` is only the first statement (+1 more)'
   }],
+  ['all-less:tests-unit/color-functions/modern-syntax.less', {
+    cause: 'lost-info',
+    outcome: 'arm-b-error',
+    reason: 'a built-in call Less writes out as CSS when it cannot compute it (`rgb(0 128 255)`) converts to a call through its imported binding (`$rgb(…)`), which ruling J1 makes an eval error'
+  }],
+  ['all-less:tests-unit/color-functions/modern.less', {
+    cause: 'lost-info',
+    outcome: 'arm-b-error',
+    reason: 'a built-in call Less writes out as CSS when it cannot compute it converts to a call through its imported binding, which ruling J1 makes an eval error'
+  }],
   ['all-less:tests-unit/color-functions/operations.less', {
     cause: 'cannot-express',
     outcome: 'css-mismatch',
     reason: 'the `.jess` arm clamps rgba() channels the Less arm keeps out of range (`rgba(-99.9, 31.4159, 321, 0.42)` vs `rgba(0, 31, 255, 0.42)`)'
+  }],
+  ['all-less:tests-unit/color-functions/rgba.less', {
+    cause: 'lost-info',
+    outcome: 'arm-b-error',
+    reason: 'a built-in call Less writes out as CSS when it cannot compute it (`rgba(var(--color-accent), 0.2)`) converts to a call through its imported binding (`$rgba(…)`), which ruling J1 makes an eval error'
   }],
   ['all-less:tests-unit/comments/comments.less', {
     cause: 'cannot-express',
@@ -697,6 +712,11 @@ const KNOWN = new Map<string, Known>([
     cause: 'cannot-express',
     outcome: 'cannot-express',
     reason: 'StyleImport: an import inside a block: `.jess` imports are `Stylesheet`-level statements (+2 more)'
+  }],
+  ['all-less:tests-unit/math-css-vars/math-css-vars.less', {
+    cause: 'lost-info',
+    outcome: 'arm-b-error',
+    reason: 'a built-in call Less writes out as CSS when it cannot compute it (`sin(var(--angle))`) converts to a call through its imported binding (`$sin(…)`), which ruling J1 makes an eval error'
   }],
   ['all-less:tests-unit/media/media.less', {
     cause: 'cannot-express',
@@ -944,6 +964,13 @@ describe('converted function imports', () => {
       '@-from "#less" import (dataUri as data-uri, lighten, rgba);'
     ]);
     expect(printed).toContain('.a {\n  b: $lighten(#00f, 10%);\n  c: $data-uri("x.png");\n  d: $rgba(1, 2, 3, 0.5);\n  e: unknown(1);\n}');
+  });
+});
+
+describe('converted custom properties', () => {
+  it('prints a custom property\'s value comments in the value, once', () => {
+    expect(emitJess(parseLess('.a { --x: /* c */ red; --y: a /* d */ b; /* e */ z: 1; }')))
+      .toBe('.a {\n  --x: /* c */ red;\n  --y: a /* d */ b;\n  /* e */\n  z: 1;\n}\n');
   });
 });
 

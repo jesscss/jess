@@ -242,6 +242,29 @@ describe('Less @compose stylesheet modules', () => {
     }
   });
 
+  it('reports a rejected configuration at the compose that wrote it', async () => {
+    const directory = project([['theme.less', THEME], ['entry.less', '@compose "./theme.less";\n\n.wrap {\n  @compose "./theme.less" as t2 set { @primary: red; }\n}\n']]);
+    const compiler = new Compiler();
+    try {
+      const result = await compiler.renderToResult(path.join(directory, 'entry.less'));
+      const errors = (result as { errors?: { code?: string; line?: number; column?: number }[] }).errors ?? [];
+      expect(errors.map(error => [error.code, error.line, error.column])).toEqual([['eval/module-config-rejected', 4, 3]]);
+    } finally {
+      compiler.dispose();
+    }
+  });
+
+  /*
+   * Ruling J6(c): publishing a document-root compose's namespace early does not
+   * load the module early. A `set` nested before it in source comes first, so it
+   * configures the module, and the root compose inherits it.
+   */
+  it('lets a nested `set` before a document-root plain compose configure the module', async () => {
+    const { css, errors } = await render('.wrap { @compose "./theme.less" set { @primary: red; } c: @theme.primary; }\n@compose "./theme.less";\n.a { c: @theme.primary; }\n');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.wrap {\n  .theme-base {\n    color: red;\n    border-color: #cc0000;\n  }\n  c: red;\n}\n.a {\n  c: red;\n}\n');
+  });
+
   it('lets a nested plain compose after a document-root `set` inherit it', async () => {
     const { css, errors } = await render('@compose "./theme.less" set { @primary: red; }\n.wrap { @compose "./theme.less"; c: @theme.primary; }\n');
     expect(errors).toEqual([]);

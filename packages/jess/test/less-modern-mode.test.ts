@@ -84,9 +84,18 @@ describe('Less modern mode (P36)', () => {
       }));
     });
 
-    it('is an eval error in .jess', async () => {
-      await expect(compiler().renderString('@-use "#less";\na { color: $less.darken(rgb(10 20 30), 10%); }', { extension: '.jess' }))
-        .rejects.toThrow(expect.objectContaining({ code: 'eval/invalid-function' }));
+    it('is an eval error in .jess, named where it was written', async () => {
+      await expect(compiler().renderString('@-use "#less";\na {\n  color: $less.darken(rgb(10 20 30), 10%);\n}\n', { extension: '.jess' }))
+        .rejects.toThrow(expect.objectContaining({ code: 'eval/invalid-function', line: 3, column: 10 }));
+    });
+
+    /* Ruling J1 extended: a bare imported function is no CSS function either. */
+    it.each(['preserve', 'error'] as const)('is an eval error through a bare imported binding under functionMode %s', async (functionMode) => {
+      const rendered = compiler().renderString('@-from "#less" import (darken);\na {\n  color: $darken(rgb(10 20 30), 10%);\n}\n', {
+        extension: '.jess',
+        config: { compile: { functionMode } }
+      });
+      await expect(rendered).rejects.toThrow(expect.objectContaining({ code: 'eval/invalid-function', line: 3, column: 10 }));
     });
 
     it('is an eval error for a declined argument shape that a CSS call would keep', async () => {
