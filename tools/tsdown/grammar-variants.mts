@@ -191,12 +191,16 @@ const interpreterPlugin = {
  * A grammar source declares all four variants at top level, each a
  * `compose()`/`composeLeaf()` call. The macro replaces those initializers with
  * table literals, but here they stay calls, so a variant entry that exports one
- * grammar would still create the other three on import. Declaring the two pure
- * lets rolldown drop the unexported ones. `rules()` is deliberately NOT listed:
- * dropping the recognition maps no variant composes changes the Less AST
- * (`interpreter-parity.test.ts` fails), so its calls are not side-effect free.
+ * grammar would still create the other three on import. Declaring them pure lets
+ * rolldown drop the unexported variants, the `rules()` maps passed only to those,
+ * and recognition maps no variant composes.
+ *
+ * rolldown matches these by NAME, member calls included: any local binding called
+ * `rules`, `compose` or `composeLeaf` in a bundled module has its `.push(…)` and
+ * other method calls dropped as well. Don't give a local one of these names;
+ * `interpreter-parity.test.ts` fails if one is dropped this way.
  */
-const INTERPRETER_TREESHAKE = { manualPureFunctions: ['compose', 'composeLeaf'] };
+const INTERPRETER_TREESHAKE = { manualPureFunctions: ['compose', 'composeLeaf', 'rules'] };
 
 function interpreterExternal(patterns: readonly (string | RegExp)[]) {
   return (id: string): boolean => !PARSER_SHARED.test(id)

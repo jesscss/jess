@@ -2002,14 +2002,14 @@ function isFor(value: unknown): value is For {
 }
 
 function requireRulesetBody(children: readonly unknown[]): Statement[] {
-  const rules: Statement[] = [];
+  const statements: Statement[] = [];
   for (const child of children) {
     if (!isStatement(child)) {
       throw new TypeError('Less grammar produced a non-ruleset-body child.');
     }
-    rules.push(child);
+    statements.push(child);
   }
-  return rules;
+  return statements;
 }
 
 /** Retain every callback body fact except an authored empty statement. */
