@@ -43,3 +43,33 @@
     color: red;
   }
 }
+@media screen and(color) {
+  a {
+    color: red;
+  }
+}
+@media and(max-width: 1280px) {
+  a {
+    color: red;
+  }
+}
+@media (a) and(b) {
+  a {
+    color: red;
+  }
+}
+@media screen or(color) {
+  a {
+    color: red;
+  }
+}
+@media ((a) and(b)) {
+  a {
+    color: red;
+  }
+}
+@media only screen and(color) {
+  a {
+    color: red;
+  }
+}

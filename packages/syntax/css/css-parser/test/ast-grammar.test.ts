@@ -836,6 +836,28 @@ describe('CSS canonical-AST grammar', () => {
     expect(preludeOf('@media ((a) and) { a { b: c } }')).toMatchObject({ type: 'Block' });
   });
 
+  /*
+   * A glued `and(` / `or(` is a `<function-token>` (CSS Syntax §4.3.4), so it is
+   * a `<general-enclosed>` term, never the connective (media-queries-4 §3).
+   */
+  it('keeps a glued `and(` / `or(` media term as a function', () => {
+    const preludeOf = (source: string): unknown => {
+      const rule = parseAst(source).rules[0];
+      return rule?.type === 'AtRuleBlock' ? rule.prelude : rule;
+    };
+    const fn = (name: string) => ({ type: 'FunctionCall', name });
+    expect(preludeOf('@media screen and(color) { a { b: c } }')).toMatchObject({
+      type: 'Sequence', parts: [{ type: 'Keyword', src: 'screen' }, fn('and')]
+    });
+    expect(preludeOf('@media screen or(color) { a { b: c } }')).toMatchObject({
+      type: 'Sequence', parts: [{ type: 'Keyword', src: 'screen' }, fn('or')]
+    });
+    expect(preludeOf('@media and(max-width: 1280px) { a { b: c } }')).toMatchObject(fn('and'));
+    expect(preludeOf('@media only screen and(color) { a { b: c } }')).toMatchObject({
+      type: 'Sequence', parts: [{ type: 'Keyword', src: 'only' }, { type: 'Keyword', src: 'screen' }, fn('and')]
+    });
+  });
+
   it('uses a supports-condition branch rather than the media/container query fallback', () => {
     for (const source of [
       '@supports (display: grid) { .grid { display: grid; } }',

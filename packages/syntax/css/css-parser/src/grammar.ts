@@ -3628,6 +3628,16 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * A media connective is an `<ident-token>`. A glued `and(` / `or(` is a
+   * `<function-token>` (CSS Syntax §4.3.4), so it is a `<general-enclosed>`
+   * term, never `and` followed by a group (media-queries-4 §2.1, §3).
+   */
+  const mediaAndOr = noTrivia(sequence(
+    g.QueryAndOr,
+    not(literal('('))
+  ));
+
+  /*
    * `<media-in-parens> [ and | or <media-in-parens> ]*`, opening on a `(`. The
    * operand after `and`/`or` is optional, so the word is never given back: a
    * missing or non-parenthesized operand ends the condition, and what follows
@@ -3638,7 +3648,7 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       g.MediaInParens,
       many(sequence(
-        g.QueryAndOr,
+        mediaAndOr,
         optional(g.MediaInParens)
       ))
     ),
@@ -3743,21 +3753,27 @@ const cssFactory = (g: GrammarSelf) => {
     choice(
       g.MediaInParens,
       sequence(
-        not(g.QueryAndOr),
+        not(mediaAndOr),
         queryIdentOrFunctionTerm
       )
     ),
     { project: 0 }
   );
+
+  /*
+   * The terms after a clause's first: each read with the connective that
+   * introduces it, if any.
+   */
+  const mediaTermSteps = many(sequence(
+    optional(mediaAndOr),
+    g.MediaTerm
+  ));
   const QueryOnlyClause = node(
     'QueryOnlyClause',
     sequence(
       g.QueryOnly,
       QueryNonOnlyKeyword,
-      many(sequence(
-        g.QueryAndOr,
-        g.MediaTerm
-      ))
+      mediaTermSteps
     ),
     children => spaced(children.map(child => isValue(child) ? child : keyword(tokenText(child))))
   );
@@ -3772,8 +3788,8 @@ const cssFactory = (g: GrammarSelf) => {
    * `and` / `or` join two terms (`<media-and> = and <media-in-parens>`,
    * `[ and <media-condition-without-or> ]`), so each is read with the term it
    * introduces: a connective with nothing after it (`(a) and {`) ends the
-   * clause before it and the prelude fails there, as it does in every
-   * dialect. It stays a `Keyword` part of the clause's Sequence.
+   * clause before it and the prelude fails there, as it does in Less. It stays
+   * a `Keyword` part of the clause's Sequence, as in `MediaCondition`.
    */
   const QueryClause = node(
     'QueryClause',
@@ -3781,16 +3797,10 @@ const cssFactory = (g: GrammarSelf) => {
       QueryOnlyClause,
       sequence(
         g.MediaTerm,
-        many(sequence(
-          optional(g.QueryAndOr),
-          g.MediaTerm
-        ))
+        mediaTermSteps
       )
     ),
-    (children) => {
-      const values = children.map(child => isValue(child) ? child : keyword(tokenText(child)));
-      return values.length === 1 ? values[0]! : spaced(values);
-    }
+    children => queryConditionChain(children)
   );
   const QueryPrelude = node(
     'QueryPrelude',
