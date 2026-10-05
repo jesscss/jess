@@ -4,7 +4,6 @@
     "noEmit": true,
     "outDir": "./lib",
     "rootDir": ".",
-    "composite": true,
     "declaration": true,
     "declarationMap": true
   },
