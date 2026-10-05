@@ -353,6 +353,31 @@ describe('SCSS canonical-AST grammar', () => {
     }
   });
 
+  /*
+   * Sass spec `at-rules/import.md`: a URL beginning `http://` or `https://` is a
+   * plain CSS import, quoted or in `url()`, with or without a media query. A
+   * local `url()` target keeps the partial-import classification.
+   */
+  it('classifies an http(s) URL import as a plain CSS AtRuleStatement', () => {
+    for (const source of [
+      '@import "http://fonts.example/css?family=Roboto";',
+      '@import \'HTTPS://fonts.example/x\';',
+      '@import url("https://fonts.example/css?family=Roboto");',
+      '@import url(https://fonts.example/x);',
+      '@import "https://fonts.example/x" screen;'
+    ]) {
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
+      expect(result.ok, source).toBe(true);
+      expect(result.unconsumedFrom, source).toBeNull();
+      expect(result.value, source).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'AtRuleStatement', name: '@import' }] });
+      expect(isStylesheet(result.value) ? serialize(result.value).css : undefined, source).toBe(`${source}\n`);
+    }
+    for (const source of ['@import url(theme);', '@import "//cdn.example/theme";', '@import "httpx://theme";']) {
+      const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
+      expect(result.value, source).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'StyleImport', name: '@import' }] });
+    }
+  });
+
   it('constructs the public-CST-valid empty SCSS url import target without a fallback', () => {
     const source = '@import url();';
     const cst = parseScssCst(source);
@@ -490,6 +515,22 @@ describe('SCSS canonical-AST grammar', () => {
     ]) {
       const direct = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(false);
+    }
+  });
+
+  /*
+   * media-queries-4 §2.1: `[ not | only ]? <media-type> [ and <media-condition-without-or> ]?`,
+   * the condition chaining `and <media-in-parens>`. These are valid CSS that css,
+   * less and jess parse; SCSS read only one connective after a media type.
+   */
+  it('parses a media type followed by a chain of connected conditions', () => {
+    for (const query of [
+      'screen and (min-width: 1px) and (max-width: 2px)',
+      'not all and (monochrome)',
+      'screen and (color) or (hover)'
+    ]) {
+      expect(serialize(parse(`@media ${query} { a { b: c; } }`)).css, query)
+        .toBe(`@media ${query} {\n  a {\n    b: c;\n  }\n}\n`);
     }
   });
 

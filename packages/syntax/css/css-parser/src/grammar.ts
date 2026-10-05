@@ -108,6 +108,7 @@ type GrammarRuleName =
   | 'AtRulePreludeSegments'
   | 'AtRuleStatement'
   | 'AttributeModifier'
+  | 'AttributeNamespace'
   | 'AttributeOperator'
   | 'AttributeSelector'
   | 'BasicSelector'
@@ -1039,6 +1040,12 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * The namespace prefix as a rule, so a dialect composes this one terminal
+   * instead of restating it (both of CSS's own uses read it through `g`).
+   */
+  const AttributeNamespace = attributeNamespace;
+
+  /*
    * `ns|E` / `*|E` / `|E` is ONE type selector with a namespace prefix
    * (selectors-4 §5.1), not two compounds joined by a `|` combinator. It leads
    * the compound choice because its prefix shares a first char with a plain type
@@ -1050,7 +1057,7 @@ const cssFactory = (g: GrammarSelf) => {
   const NamespaceTypeSelector = node(
     'NamespaceTypeSelector',
     noTrivia(sequence(
-      attributeNamespace,
+      g.AttributeNamespace,
       choice(g.Identifier, literal('*'))
     )),
     children => simpleSelector(children.map(tokenText).join(''))
@@ -1059,7 +1066,7 @@ const cssFactory = (g: GrammarSelf) => {
     'AttributeSelector',
     sequence(
       literal('['),
-      optional(attributeNamespace),
+      optional(g.AttributeNamespace),
       g.Identifier,
       optional(sequence(
         g.AttributeOperator,
@@ -3622,6 +3629,16 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * A media connective is an `<ident-token>`. A glued `and(` / `or(` is a
+   * `<function-token>` (CSS Syntax §4.3.4), so it is a `<general-enclosed>`
+   * term, never `and` followed by a group (media-queries-4 §2.1, §3).
+   */
+  const mediaAndOr = noTrivia(sequence(
+    g.QueryAndOr,
+    not(literal('('))
+  ));
+
+  /*
    * `<media-in-parens> [ and | or <media-in-parens> ]*`, opening on a `(`. The
    * operand after `and`/`or` is optional, so the word is never given back: a
    * missing or non-parenthesized operand ends the condition, and what follows
@@ -3632,7 +3649,7 @@ const cssFactory = (g: GrammarSelf) => {
     sequence(
       g.MediaInParens,
       many(sequence(
-        g.QueryAndOr,
+        mediaAndOr,
         optional(g.MediaInParens)
       ))
     ),
@@ -3727,22 +3744,35 @@ const cssFactory = (g: GrammarSelf) => {
     { project: 0 }
   );
 
-  /* A media query's term: a `<media-in-parens>`, or a media type / keyword / function. */
+  /*
+   * A media query's term: a `<media-in-parens>`, or a media type / keyword /
+   * function. `and` / `or` are never a term: they join two of them
+   * (`QueryClause`).
+   */
   const MediaTerm = node(
     'QueryTerm',
     choice(
       g.MediaInParens,
-      queryIdentOrFunctionTerm
+      sequence(
+        not(mediaAndOr),
+        queryIdentOrFunctionTerm
+      )
     ),
     { project: 0 }
   );
+
+  /*
+   * `only <media-type> [ and <media-condition-without-or> ]`: after the type,
+   * every term is introduced by a connective. A glued `and(` is no connective,
+   * so `only screen and(color)` is rejected like any other malformed query.
+   */
   const QueryOnlyClause = node(
     'QueryOnlyClause',
     sequence(
       g.QueryOnly,
       QueryNonOnlyKeyword,
       many(sequence(
-        g.QueryAndOr,
+        mediaAndOr,
         g.MediaTerm
       ))
     ),
@@ -3755,6 +3785,12 @@ const cssFactory = (g: GrammarSelf) => {
    * must not be an optional separator here — swallowing it collapsed
    * `screen, print` into a Sequence instead of the List the other three
    * dialects produce.
+   *
+   * `and` / `or` join two terms (`<media-and> = and <media-in-parens>`,
+   * `[ and <media-condition-without-or> ]`), so each is read with the term it
+   * introduces: a connective with nothing after it (`(a) and {`) ends the
+   * clause before it and the prelude fails there, as it does in Less. It stays
+   * a `Keyword` part of the clause's Sequence, as in `MediaCondition`.
    */
   const QueryClause = node(
     'QueryClause',
@@ -3762,13 +3798,13 @@ const cssFactory = (g: GrammarSelf) => {
       QueryOnlyClause,
       sequence(
         g.MediaTerm,
-        many(g.MediaTerm)
+        many(sequence(
+          optional(mediaAndOr),
+          g.MediaTerm
+        ))
       )
     ),
-    (children) => {
-      const values = valueChildren(children);
-      return values.length === 1 ? values[0]! : spaced(values);
-    }
+    children => queryConditionChain(children)
   );
   const QueryPrelude = node(
     'QueryPrelude',
@@ -4881,6 +4917,7 @@ const cssFactory = (g: GrammarSelf) => {
     CompoundSelector,
     simpleSelectorAtom,
     BasicSelector,
+    AttributeNamespace,
     NamespaceTypeSelector,
     AttributeSelector,
     PseudoSelector,

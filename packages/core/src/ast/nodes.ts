@@ -1896,7 +1896,18 @@ export const importOptionWords = (options: List | null): string[] => {
  * one is declined and printed. Only the authored `.css` extension is a fact the
  * parser can read.
  */
-const CSS_TARGET = /\.css(?:[?#].*)?$/iu;
+/* ASCII-only patterns: `i` without `u`, so no Unicode case folding (`ſ` is not `s`). */
+const CSS_TARGET = /\.css(?:[?#].*)?$/i;
+const HTTP_URL_TARGET = /^https?:\/\//i;
+
+/**
+ * Whether an import target spelling ({@link importTargetSpelling}) is an
+ * `http://` / `https://` URL. Sass makes every such import plain CSS
+ * (`spec/at-rules/import.md`, "is plain CSS"); Less and Jess do not, so this is
+ * a separate fact rather than a branch of {@link importIsCompileTime}.
+ */
+export const importSpellingIsHttpUrl = (spelling: string): boolean =>
+  HTTP_URL_TARGET.test(spelling);
 
 /**
  * WHICH of the two import nodes an `@import` becomes — decided from SYNTAX, by
@@ -1910,12 +1921,15 @@ const CSS_TARGET = /\.css(?:[?#].*)?$/iu;
  * `(optional)` is deliberately NOT terminal: it selects what happens when the
  * load FAILS, so an optional import must still be attempted and resolve normally
  * when the file exists.
+ *
+ * A caller that already derived the target's spelling passes it as `spelling`.
  */
 export const importIsCompileTime = (
   name: string,
   target: Quoted | Url | Interpolation,
   options: List | null = null,
-  alias: ValueNode | null = null
+  alias: ValueNode | null = null,
+  spelling?: string
 ): boolean => {
   const words = importOptionWords(options);
   if (words.includes('inline')) {
@@ -1927,7 +1941,7 @@ export const importIsCompileTime = (
   if (words.includes('less') || name.toLowerCase() === '@-import') {
     return true;
   }
-  return !CSS_TARGET.test(importTargetSpelling(target));
+  return !CSS_TARGET.test(spelling ?? importTargetSpelling(target));
 };
 
 export const styleImport = (

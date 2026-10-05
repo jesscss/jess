@@ -160,14 +160,35 @@ describe('Less @compose stylesheet modules', () => {
 
   /*
    * Ledger A8: `.name(args)` on a @compose namespace is a MIXIN call in statement
-   * position. Blocked on the grammar, which reads `@theme.elevate(3px);` as an
-   * unknown at-rule (`@theme .elevate(3px);`) — see REFERENCE-CALL-PLAN.md.
+   * position, dispatched in the module's own activation.
    */
-  it.fails('calls a mixin through the compose namespace in statement position', async () => {
-    const elevate: SourceFile = ['elevate.less', '.lift(@d) { box-shadow: 0 @d 0 black; }\n'];
+  it('calls a mixin through the compose namespace in statement position', async () => {
+    const elevate: SourceFile = ['elevate.less', '@depth: black;\n.lift(@d) { box-shadow: 0 @d 0 @depth; }\n'];
     const { css, errors } = await render('@compose "./elevate.less";\n.a { @elevate.lift(3px); }', [elevate]);
     expect(errors).toEqual([]);
     expect(css).toBe('.a {\n  box-shadow: 0 3px 0 black;\n}\n');
+  });
+
+  it('reports a failed member mixin call at its call site', async () => {
+    const elevate: SourceFile = ['elevate.less', '.lift(@d) { box-shadow: 0 @d 0 black; }\n'];
+    const directory = project([elevate, ['entry.less', '@compose "./elevate.less";\n.a {\n  @elevate.lift(1px, 2px, 3px);\n}\n']]);
+    const compiler = new Compiler();
+    try {
+      const result = await compiler.renderToResult(path.join(directory, 'entry.less'));
+      const errors = (result as { errors?: { reason?: string; line?: number; column?: number }[] }).errors ?? [];
+      expect(errors.map(error => [error.reason, error.line, error.column]))
+        .toEqual([['Symbol ".lift()" is undefined in this scope.', 3, 3]]);
+    } finally {
+      compiler.dispose();
+    }
+  });
+
+  it('keeps a spaced `@name .member(…);` an at-rule, and an unknown member an error', async () => {
+    const elevate: SourceFile = ['elevate.less', '.lift(@d) { box-shadow: 0 @d 0 black; }\n'];
+    expect((await render('@compose "./elevate.less";\n.a { @elevate.sink(3px); }', [elevate])).errors)
+      .toEqual(['Symbol "sink" is undefined in this scope.']);
+    expect((await render('.a { @elevate .lift(3px); }')).css)
+      .toBe('.a {\n  @elevate .lift(3px);\n}\n');
   });
 
   it('a namespace member is the module binding its own CSS sees, nested @import included', async () => {

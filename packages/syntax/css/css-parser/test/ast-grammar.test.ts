@@ -799,6 +799,65 @@ describe('CSS canonical-AST grammar', () => {
     });
   });
 
+  /*
+   * media-queries-4 §2.1: `and`/`or` join two operands — `<media-and> = and
+   * <media-in-parens>`, `[ and <media-condition-without-or> ]`. A connective
+   * missing an operand on either side is malformed (Less already rejects it).
+   * Inside a group, what follows a condition is `<general-enclosed>`, so the
+   * nested `((a) and)` stays accepted.
+   */
+  it('rejects a dangling `and`/`or` in a top-level media query', () => {
+    const preludeOf = (source: string): unknown => {
+      const rule = parseAst(source).rules[0];
+      return rule?.type === 'AtRuleBlock' ? rule.prelude : rule;
+    };
+    const paren = (value: unknown) => ({ type: 'Block', delimiter: 'paren', value });
+    const kw = (src: string) => ({ type: 'Keyword', src });
+    for (const source of [
+      '@media (a) and { b { c: d } }',
+      '@media screen and { b { c: d } }',
+      '@media (a) or { b { c: d } }',
+      '@media (a) and, print { b { c: d } }',
+      '@media only screen and { b { c: d } }',
+      '@media and (a) { b { c: d } }'
+    ]) {
+      expect(() => parseAst(source), source).toThrow();
+    }
+    expect(preludeOf('@media screen and (color), print and (hover) { a { b: c } }')).toMatchObject({
+      type: 'List',
+      value: [
+        { type: 'Sequence', parts: [kw('screen'), kw('and'), paren(kw('color'))] },
+        { type: 'Sequence', parts: [kw('print'), kw('and'), paren(kw('hover'))] }
+      ]
+    });
+    expect(preludeOf('@media (a) or (b) { a { b: c } }')).toMatchObject({
+      type: 'Sequence', parts: [paren(kw('a')), kw('or'), paren(kw('b'))]
+    });
+    expect(preludeOf('@media ((a) and) { a { b: c } }')).toMatchObject({ type: 'Block' });
+  });
+
+  /*
+   * A glued `and(` / `or(` is a `<function-token>` (CSS Syntax §4.3.4), so it is
+   * a `<general-enclosed>` term, never the connective (media-queries-4 §3).
+   */
+  it('keeps a glued `and(` / `or(` media term as a function', () => {
+    const preludeOf = (source: string): unknown => {
+      const rule = parseAst(source).rules[0];
+      return rule?.type === 'AtRuleBlock' ? rule.prelude : rule;
+    };
+    const fn = (name: string) => ({ type: 'FunctionCall', name });
+    expect(preludeOf('@media screen and(color) { a { b: c } }')).toMatchObject({
+      type: 'Sequence', parts: [{ type: 'Keyword', src: 'screen' }, fn('and')]
+    });
+    expect(preludeOf('@media screen or(color) { a { b: c } }')).toMatchObject({
+      type: 'Sequence', parts: [{ type: 'Keyword', src: 'screen' }, fn('or')]
+    });
+    expect(preludeOf('@media and(max-width: 1280px) { a { b: c } }')).toMatchObject(fn('and'));
+
+    /* `only <type>` must be followed by the connective; a glued `and(` is not one. */
+    expect(() => parseAst('@media only screen and(color) { a { b: c } }')).toThrow();
+  });
+
   it('uses a supports-condition branch rather than the media/container query fallback', () => {
     for (const source of [
       '@supports (display: grid) { .grid { display: grid; } }',

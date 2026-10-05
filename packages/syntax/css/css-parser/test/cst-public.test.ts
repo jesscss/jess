@@ -200,7 +200,9 @@ describe('@jesscss/css-parser/cst', () => {
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
-    expect(nodesByGrammarType(result.tree, 'QueryNonOnlyKeyword')).toHaveLength(2);
+
+    // `screen` is the one keyword term; `and` is the clause's connective leaf.
+    expect(nodesByGrammarType(result.tree, 'QueryNonOnlyKeyword')).toHaveLength(1);
     expect(nodesByGrammarType(result.tree, 'QueryFunction')).toHaveLength(1);
     expect(nodesByGrammarType(result.tree, 'QueryIdentOrFunction')).toHaveLength(0);
     expect(queryFunction?.rules[0]).toMatchObject({

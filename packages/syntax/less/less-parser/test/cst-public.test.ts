@@ -317,8 +317,13 @@ describe('Less quoted and URL interpolation CST facts', () => {
     const attribute = findNode(result.tree, 'AttributeSelector');
     expect(attribute).toBeDefined();
 
-    // The CSS base's flat frame: namespace, name, operator, value, flag.
-    expect(findNode(attribute!, 'AttributeNamespace')).toBeDefined();
+    /*
+     * The CSS base's flat frame: namespace, name, operator, value, flag. The
+     * namespace prefix is the CSS base's own terminal, one `svg|` leaf, as in
+     * every dialect — Less no longer restates it as a node of its own.
+     */
+    expect(attribute!.rules.some(child => child._tag === 'leaf' && child.value === 'svg|')).toBe(true);
+    expect(findNode(attribute!, 'AttributeNamespace')).toBeUndefined();
     expect(findNode(attribute!, 'Quoted')).toBeDefined();
     for (const legacyLabel of [
       'AttributeName',

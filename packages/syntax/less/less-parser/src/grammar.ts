@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, reference, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorCapture, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorCapture, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -118,12 +118,14 @@ import {
   requireCombinator,
   requireField,
   requireFields,
-  requireInterpolationAccessorFact,
   requireInterpolationFact,
   requireKeyword,
   requireMixinCallArgumentValue,
   requireMixinInteriorItem,
   requireMixinReferenceBaseFact,
+  referenceBracketTailFact,
+  referenceCallTailFact,
+  referenceDotTailFact,
   requireRulesetBody,
   requireSelectorList,
   requireSelectorListWithExtendsFact,
@@ -254,7 +256,6 @@ type LessRules = {
   FlatMixinCall: Combinator<MixinCall>;
   NamespacedMixinCall: Combinator<MixinCall>;
   NamespacedMixinValue: Combinator<MixinCall>;
-  HexColorValue: Combinator<ValueNode>;
   MixinReference: Combinator<ValueNode>;
   MixinReferenceChain: Combinator<Reference>;
   ReferenceCall: Combinator<Reference>;
@@ -321,7 +322,6 @@ type LessRules = {
   PseudoArgumentComplex: Combinator<SelectorBranch>;
   PseudoArgumentSelectorTail: Combinator<SelectorBranch>;
   PseudoArgumentSelector: Combinator<SelectorList>;
-  AttributeNamespace: Combinator<string>;
   NamespaceTypeSelector: Combinator<SimpleSelector>;
   AttributeSelector: Combinator<SimpleSelector>;
   InterpolatedAttributeToken: Combinator<Interpolation>;
@@ -378,6 +378,8 @@ type LessRules = {
 type LessInputRules = LessRules & typeof lessSyntax;
 
 type SharedSyntax = {
+  // Inherited from the CSS base: the glued `ns|` / `*|` / `|` prefix terminal.
+  AttributeNamespace: Combinator<unknown>;
   // Inherited from the CSS base: an only-clause or a chain of QueryTerm (Less's).
   QueryClause: Combinator<ValueNode>;
   // Inherited from the CSS base: ( <container-condition> ), whose atoms reach Less's QueryFeature and ContainerStyleQuery leaves.
@@ -393,8 +395,8 @@ type SharedSyntax = {
   AttributeModifier: Combinator<unknown>;
   AttributeOperator: Combinator<unknown>;
   HexColor: Combinator<string>;
-  // Converged to the CSS base (inherited via compose): shared HexColor token,
-  // reducer differs only requireToken().value vs tokenText() over one token.
+  // Overrides the CSS base: a Less `#` head is shared with namespace references,
+  // so a hex run continued by `.`/`[`/`(` is a reference, never a colour.
   Color: Combinator<ValueNode>;
   UnicodeRangeToken: Combinator<string>;
   // Converged to the CSS base (inherited via compose): same named
@@ -1617,8 +1619,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   /*
    * A mixin reference that is the whole value, neither called nor looked up
    * (jess#236): the called and looked-up forms are value arms ahead of this
-   * one, so it only names a reference that ends the value. Less 5 rejects it
-   * today; whether it should is OPEN (ledger P33 leaves `.a` open). A lone `#`
+   * one, so it only names a reference that ends the value. Less 5 rejects it,
+   * in a variable as in a property (owner ruling P33, 2026-09-23). A lone `#`
    * and hex digits there is a mistyped colour (`#fffff`), not a reference, so
    * it keeps the ordinary value failure.
    */
@@ -2228,7 +2230,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.VariableReferenceChain,
     g.PropertyReference,
     g.Dimension,
-    g.Color,
     g.FormatFunction,
     IdentifierOrFunction,
     g.CalcParen,
@@ -2259,7 +2260,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       g.VariableReferenceChain,
       g.PropertyReference,
       g.Dimension,
-      g.Color,
       g.FormatFunction,
       IdentifierOrFunction,
       g.SelectorCapture,
@@ -2880,31 +2880,31 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           })())
     })
   );
+  /*
+   * The steps of the one lookup/call chain (REFERENCE-CALL-PLAN): a `[key]`
+   * lookup, a `.name` member lookup, or an `(args)` call, any following any.
+   * The value-position chain reads them through `ReferenceTail`; the statement
+   * call `@name…(…);` (`ReferenceCall`) reads the same three.
+   */
+  const ReferenceBracketTail = node(
+    'ReferenceBracketTail',
+    g.InterpolationAccessor,
+    referenceBracketTailFact
+  );
+  const ReferenceDotTail = node(
+    'ReferenceDotTail',
+    sequence(literal('.'), g.VariableNameToken),
+    referenceDotTailFact
+  );
+  const ReferenceCallTail = node(
+    'ReferenceCallTail',
+    sequence(literal('('), optional(g.MixinArguments), literal(')')),
+    referenceCallTailFact
+  );
   const ReferenceTail = choice(
-    node(
-      'ReferenceBracketTail',
-      g.InterpolationAccessor,
-      (children): ReferenceTailFact => {
-        const accessor = requireInterpolationAccessorFact(children[0]);
-        return { step: { type: 'LookupStep', kind: accessor.keyKind, name: accessor.key }, src: `[${accessor.src}]` };
-      }
-    ),
-    node(
-      'ReferenceDotTail',
-      sequence(literal('.'), g.VariableNameToken),
-      (children): ReferenceTailFact => {
-        const name = requireToken(children[1]).value;
-        return { step: { type: 'LookupStep', kind: 'member', name }, src: `.${name}` };
-      }
-    ),
-    node(
-      'ReferenceCallTail',
-      sequence(literal('('), optional(g.MixinArguments), literal(')')),
-      (children): ReferenceTailFact => {
-        const args = mixinArgumentsFromChildren(children);
-        return { step: { type: 'Call', args }, src: `(${args.map(callArgumentSource).join(', ')})` };
-      }
-    )
+    ReferenceBracketTail,
+    ReferenceDotTail,
+    ReferenceCallTail
   );
   const InterpolationLastAccessorFromRouted = node(
     'InterpolationLastAccessor',
@@ -2976,10 +2976,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const ReferenceLastTailFromRouted = node(
     'ReferenceBracketTail',
     InterpolationLastAccessorFromRouted,
-    (children): ReferenceTailFact => {
-      const accessor = requireInterpolationAccessorFact(children[0]);
-      return { step: { type: 'LookupStep', kind: accessor.keyKind, name: accessor.key }, src: `[${accessor.src}]` };
-    }
+    referenceBracketTailFact
   );
   const ReferenceBracketTailFromRouted = node(
     'ReferenceBracketTail',
@@ -2988,26 +2985,17 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       InterpolationPropertyVariableAccessorFromRouted,
       InterpolationReferenceAccessorFromRouted
     ),
-    (children): ReferenceTailFact => {
-      const accessor = requireInterpolationAccessorFact(children[0]);
-      return { step: { type: 'LookupStep', kind: accessor.keyKind, name: accessor.key }, src: `[${accessor.src}]` };
-    }
+    referenceBracketTailFact
   );
   const ReferenceDotTailFromRouted = node(
     'ReferenceDotTail',
     sequence(routed(), g.VariableNameToken),
-    (children): ReferenceTailFact => {
-      const name = requireToken(children[1]).value;
-      return { step: { type: 'LookupStep', kind: 'member', name }, src: `.${name}` };
-    }
+    referenceDotTailFact
   );
   const ReferenceCallTailFromRouted = node(
     'ReferenceCallTail',
     sequence(routed(), optional(g.MixinArguments), literal(')')),
-    (children): ReferenceTailFact => {
-      const args = mixinArgumentsFromChildren(children);
-      return { step: { type: 'Call', args }, src: `(${args.map(callArgumentSource).join(', ')})` };
-    }
+    referenceCallTailFact
   );
   const ReferenceTailFromDelimiter = dispatch(
     choice(literal('[]'), literal('['), literal('.'), literal('(')),
@@ -3110,19 +3098,20 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return { call: withPath, raw };
     }
   );
-  // A `#`-headed value that spells a complete hex color and is NOT continued by
-  // a reference opener (`.`/`[`/`(`) is a Color, recognized FORWARD. This leads
-  // the shared-head arm so the ubiquitous `#fff` never enters the reference
-  // chain, fails a required accessor, and rewinds — the exact `attempt` cost the
-  // old ordering paid on every hex color. The negative lookahead also excludes a
-  // trailing hex digit, so a longer run (`#fffff`) declines here and falls to the
-  // chain like any other non-color head.
-  const HexColorValue = node(
+  /*
+   * Overrides the CSS base `Color`. In Less a `#` head is shared with namespace
+   * references (`#ns.m()`, `#ns[key]`), so a hex run continued by a reference
+   * opener (`.`/`[`/`(`) is decided FORWARD as a reference head, never a colour:
+   * `@x: #add.m;` is the namespace `#add`, and it gets the reference's own
+   * diagnostic instead of a colour followed by stray bytes. The negative
+   * lookahead also excludes a trailing hex digit, so a longer run (`#fffff`)
+   * declines here. CSS keeps its plain hash colour: it has no `#name.` path.
+   * Leading the shared-head arm (`MixinReference`) with it keeps the ubiquitous
+   * `#fff` out of the reference chain, so no colour enters it and rewinds.
+   */
+  const Color = node(
     'Color',
     regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F.[(])/),
-    // Byte-identical to the shared `g.Color` reducer this arm precedes (a plain
-    // `color(text)`, no span), so a hex color reduces to the exact same node
-    // whether it is reached here or through the ordinary Color arm.
     children => color(requireToken(children[0]).value)
   );
   // A static namespace/mixin invocation remains the existing typed MixinCall
@@ -3145,31 +3134,43 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     }
   );
   // The value-atom reference arm: a forward hex color OR a Reference chain, first
-  // set `[.#]`, no rewind on the hot path. `HexColorValue` recognizes `#fff`
+  // set `[.#]`, no rewind on the hot path. `Color` recognizes `#fff`
   // outright; a head continued by an accessor declines that lookahead and routes
   // to the chain (`#ns[key]`, `#library.add(1)[result]`). A tail-less non-color
   // head (`.class`, `#ns`, `.mixin()`) matches NEITHER and fails cleanly — the
   // enclosing choice then falls to its selector/color siblings, exactly as the
   // old `attempt(MixinReference)` did after rewinding, but without throwing.
   const MixinReference = choice(
-    HexColorValue,
+    g.Color,
     g.MixinReferenceChain
   );
+  /*
+   * A statement-position call: the lookup/call chain of a variable, ending in a
+   * call. `@detached();`, `@theme.elevate(3px);` — on a `@compose` namespace
+   * that is the module's `.elevate` mixin (ledger A8) — or `@map[key]();`. The
+   * lookups are glued to the name, so the `.` or `[` after `@name` decides the
+   * chain on the current token and the generic at-rule arms never see it; a
+   * spaced `@theme .elevate();` stays an at-rule statement. As before, the
+   * first call may follow the name after whitespace (`@detached ();`).
+   */
+  const referenceLookupTail = choice(ReferenceBracketTail, ReferenceDotTail);
   const ReferenceCall = node(
     'VarCall',
     sequence(
-      literal('@'), not(word(
-        'supports',
-        IDENT_BOUNDARY,
-        { caseInsensitive: true }
-      )), lessVariableName, literal('('),
-      optional(g.MixinArguments),
-      literal(')'), optional(literal(';'))
+      noTrivia(sequence(
+        literal('@'), not(word(
+          'supports',
+          IDENT_BOUNDARY,
+          { caseInsensitive: true }
+        )), lessVariableName, many(referenceLookupTail)
+      )),
+      ReferenceCallTail,
+      noTrivia(many(sequence(many(referenceLookupTail), ReferenceCallTail))),
+      optional(literal(';'))
     ),
     (children, _fields, span) => {
       const name = requireSupportedVariableName(children[1], span.start, span.start + variableNameText(children[1]).length + 1);
-      const args = mixinArgumentsFromChildren(children);
-      return withSourceSpan(reference(variableReference(name, 'scoped'), [{ type: 'Call', args }], `@${name}()`), span);
+      return withSourceSpan(referenceWithTails(variableReference(name, 'scoped'), `@${name}`, children.filter(isReferenceTailFact)), span);
     }
   );
   const mixinGuardDefaultOperand = node(
@@ -3185,19 +3186,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     // a bare `default` is an ordinary ident SHAPE and reduces to a Keyword, as
     // less.js does (`@a: default; .m() when (@a = default)` matches there).
     // Whether that comparison means anything is a language-service fact.
+    //
+    // Every other operand is a value-position math run (`g.MathValue`, the
+    // operand of an `if()` condition too), as Less 4's `atomicCondition` reads
+    // an `addition()`: `when (2 * 2 > 1)` and `when (@n - 1 > 0)` compute, and a
+    // bare slash follows the math policy exactly as it does in a value.
     choice(
       mixinGuardDefaultOperand,
-      // Guard operands reuse the ordinary typed access References. The shared
-      // `#`/`.` head is forward-dispatched: a tail-less hex head reduces to a
-      // Color inside the one arm, so ordinary non-accessor colors need no rewind.
-      g.MixinReference,
-      g.VariableReferenceChain,
-      g.Quoted,
-      g.EscapedQuoted,
-      g.Dimension,
-      g.Color,
-      g.Call,
-      g.Keyword
+      g.MathValue
     ),
     children => requireValueNode(children[0])
   );
@@ -3282,9 +3278,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   );
   const MixinGuardTopTerm = node(
     'MixinGuardTopTerm',
+    // The parenthesized term leads: a guard operand is a math run whose atoms
+    // include a math group, so the unparenthesized diagnostic arm would
+    // otherwise read every `(` as a math group first, fail at the comparison,
+    // and leave the group to be read again.
     choice(
-      unparenthesizedMixinGuard,
       sequence(optional(lessWord('not')), literal('('), g.MixinGuardOr, literal(')')),
+      unparenthesizedMixinGuard,
       sequence(lessWord('not'), g.MixinGuardTerm)
     ),
     (children): MixinGuard => {
@@ -4652,6 +4652,27 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     parser({ trivia: staticSelectorTrivia }, g.PseudoArgumentSelector),
     children => requireSelectorList(children[0])
   );
+  /*
+   * `/deep/` and `/shadow/` (Less 4 took any `/word/`) were Shadow DOM v0
+   * combinators that never became CSS; Less 5 rejects them (ledger G37). The
+   * shape is recognized only so the diagnostic names it (jess#247), wherever a
+   * combinator can stand: between two selectors of a ruleset's list, inside a
+   * selector pseudo's argument, and inside an `:extend()` target. In a ruleset
+   * list it is only a fact until the ruleset's `{` commits, because the ruleset
+   * arm is tried first on a glued declaration (`grid-area:a /b/ c;`), which then
+   * fails at its `;` and leaves the declaration arm to read the `/`s as
+   * slashes. Inside a pseudo argument or an extend target the complex selector
+   * rejects it as soon as it folds its segments (`complexSegmentsFrom`). That
+   * also rejects a glued declaration whose value spells a selector pseudo with a
+   * `/word/` in it (`a:is(b /c/ d);`, `src:local(Foo/Bar/Baz);`), which failed
+   * generically before and is pinned as an expected failure. The tolerant CST
+   * keeps the node and the rule around it.
+   */
+  const SlashedCombinator = node(
+    'SlashedCombinator',
+    regex(/\/[a-zA-Z]+\//),
+    (children, _fields, span) => ({ slashedCombinator: requireToken(children[0]).value, start: span.start, end: span.end })
+  );
   // This selector family is private to functional pseudo arguments.  A block
   // comment immediately between two simple selectors is lexical trivia, not a
   // descendant relation (`.a/*x*/.b` is one compound); actual whitespace still
@@ -4677,7 +4698,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(
       optional(relativeSelectorCombinator),
       g.PseudoArgumentCompound,
-      many(sequence(not(whenGuardAhead), optional(staticCombinator), parser({ trivia: staticSelectorTrivia }, g.PseudoArgumentCompound)))
+      many(sequence(
+        choice(SlashedCombinator, sequence(not(whenGuardAhead), optional(staticCombinator))),
+        parser({ trivia: staticSelectorTrivia }, g.PseudoArgumentCompound)
+      ))
     ),
     (children) => {
       const first = children[0];
@@ -4802,18 +4826,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       ]));
     }
   );
-  const AttributeNamespace = node(
-    'AttributeNamespace',
-    choice(
-      // `|=` is the CSS attribute operator, not a namespace separator. Guard
-      // the namespace arm before consuming `|` so a quoted interpolation after
-      // `prop|=` remains on the ordinary attribute-value route.
-      sequence(staticIdentifier, literal('|'), not(literal('='))),
-      literal('*|'),
-      literal('|')
-    ),
-    children => children.map(requireToken).map(token => token.value).join('')
-  );
   const NamespaceTypeSelector = node(
     'NamespaceTypeSelector',
     sequence(g.AttributeNamespace, choice(staticIdentifier, literal('*'))),
@@ -4855,9 +4867,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * before the modifier, so `[data-x = y i]` is valid CSS and every superset
    * must accept it, as it accepts the tight `[a="x"i]`. The separation of the
    * unquoted value from the modifier is carried by ident tokenization —
-   * `[a=yi]` is one greedy `staticIdentifier`, `[a=y i]` is two. The `[`
-   * itself keeps the ambient compound trivia, so a comment before it still
-   * joins one compound and `a [b]` stays a descendant relation. This is the
+   * `[a=yi]` is one greedy `staticIdentifier`, `[a=y i]` is two. The `[` is
+   * the bracket block's first token, so the block reads trivia only AFTER it
+   * (`[ ns|x]`, as in the CSS base); what precedes it is the ambient compound
+   * trivia's, so a comment before it still joins one compound and `a [b]`
+   * stays a descendant relation. The namespace prefix is the CSS base's own
+   * `AttributeNamespace` terminal. This is the
    * CSS base's frame and reduction (`attributeSelectorFrom`, authored
    * whitespace kept — ledger O7) over Less's static slots: Less's `Identifier`
    * is a routed value-position rule, so the inherited frame cannot read it
@@ -4865,20 +4880,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    */
   const AttributeSelector = node(
     'AttributeSelector',
-    sequence(
-      literal('['),
-      parser(
-        { trivia: staticSelectorTrivia },
-        sequence(
-          optional(g.AttributeNamespace),
-          staticIdentifier,
-          optional(sequence(
-            g.AttributeOperator,
-            choice(staticIdentifier, g.LiteralQuoted),
-            optional(g.AttributeModifier)
-          )),
-          literal(']')
-        )
+    parser(
+      { trivia: staticSelectorTrivia },
+      sequence(
+        literal('['),
+        optional(g.AttributeNamespace),
+        staticIdentifier,
+        optional(sequence(
+          g.AttributeOperator,
+          choice(staticIdentifier, g.LiteralQuoted),
+          optional(g.AttributeModifier)
+        )),
+        literal(']')
       )
     ),
     (children, _fields, _span, _rawChildren, triviaLog) => attributeSelectorFrom(children, triviaLog)
@@ -4890,31 +4903,29 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    */
   const InterpolatedAttributeSelector = node(
     'InterpolatedAttributeSelector',
-    sequence(
-      literal('['),
-      parser(
-        { trivia: staticSelectorTrivia },
-        sequence(
-          choice(
-            sequence(
-              optional(g.AttributeNamespace),
-              g.InterpolatedAttributeToken,
-              optional(sequence(
-                g.AttributeOperator,
-                choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted, g.LessIdentifier, g.LiteralQuoted),
-                optional(g.AttributeModifier)
-              ))
-            ),
-            sequence(
-              optional(g.AttributeNamespace),
-              staticIdentifier,
+    parser(
+      { trivia: staticSelectorTrivia },
+      sequence(
+        literal('['),
+        choice(
+          sequence(
+            optional(g.AttributeNamespace),
+            g.InterpolatedAttributeToken,
+            optional(sequence(
               g.AttributeOperator,
-              choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted),
+              choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted, g.LessIdentifier, g.LiteralQuoted),
               optional(g.AttributeModifier)
-            )
+            ))
           ),
-          literal(']')
-        )
+          sequence(
+            optional(g.AttributeNamespace),
+            staticIdentifier,
+            g.AttributeOperator,
+            choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted),
+            optional(g.AttributeModifier)
+          )
+        ),
+        literal(']')
       )
     ),
     (children, _fields, _span, _rawChildren, triviaLog) => {
@@ -5110,7 +5121,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       // An extend target can carry a typed selector interpolation, unlike its
       // inline subject. Keep `.@{name}` in the AST rather than rescanning it.
       g.CompoundSelector,
-      many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), optional(staticCombinator), g.CompoundSelector))
+      many(sequence(
+        choice(SlashedCombinator, sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), optional(staticCombinator))),
+        g.CompoundSelector
+      ))
     ),
     (children, _fields, span) => withSourceSpan(selectorBranchOf(complexSegmentsFrom(children)), span)
   );
@@ -5183,21 +5197,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       }
       return branch;
     }
-  );
-  /*
-   * `/deep/` and `/shadow/` (Less 4 took any `/word/`) were Shadow DOM v0
-   * combinators that never became CSS; Less 5 rejects them (ledger G37). The
-   * shape is recognized only so the diagnostic names it (jess#247): it joins
-   * two selectors of a ruleset's list, and the ruleset rejects it once its `{`
-   * commits. Until then it is only a fact, because the ruleset arm is tried
-   * first on a glued declaration (`grid-area:a /b/ c;`), which then fails at
-   * its `;` and leaves the declaration arm to read the `/`s as slashes. The
-   * tolerant CST keeps the node and the rule around it.
-   */
-  const SlashedCombinator = node(
-    'SlashedCombinator',
-    regex(/\/[a-zA-Z]+\//),
-    (children, _fields, span) => ({ slashedCombinator: requireToken(children[0]).value, start: span.start, end: span.end })
   );
   const slashedBranchTail = many(sequence(SlashedCombinator, selectorBranch));
   const selectorListWithExtends = node(
@@ -5527,7 +5526,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     FlatMixinCall,
     NamespacedMixinCall,
     NamespacedMixinValue,
-    HexColorValue,
+    Color,
     MixinReference,
     MixinReferenceChain,
     ReferenceCall,
@@ -5590,7 +5589,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     PseudoArgumentComplex,
     PseudoArgumentSelectorTail,
     PseudoArgumentSelector,
-    AttributeNamespace,
     NamespaceTypeSelector,
     AttributeSelector,
     InterpolatedAttributeToken,

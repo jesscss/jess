@@ -541,6 +541,26 @@ function mixinArgumentSource(value: CallValue): string {
  * Fold only already-reduced grammar facts into a public Reference.  In
  * particular, this never re-reads the source to discover chain structure.
  */
+/*
+ * The three steps of the one lookup/call chain, shared by the tails read after
+ * a variable and the tails a delimiter dispatch has already routed: a `[key]`
+ * lookup, a `.name` member lookup, an `(args)` call.
+ */
+function referenceBracketTailFact(children: readonly unknown[]): ReferenceTailFact {
+  const accessor = requireInterpolationAccessorFact(children[0]);
+  return { step: { type: 'LookupStep', kind: accessor.keyKind, name: accessor.key }, src: `[${accessor.src}]` };
+}
+
+function referenceDotTailFact(children: readonly unknown[]): ReferenceTailFact {
+  const name = requireToken(children[1]).value;
+  return { step: { type: 'LookupStep', kind: 'member', name }, src: `.${name}` };
+}
+
+function referenceCallTailFact(children: readonly unknown[]): ReferenceTailFact {
+  const args = mixinArgumentsFromChildren(children);
+  return { step: { type: 'Call', args }, src: `(${args.map(callArgumentSource).join(', ')})` };
+}
+
 function referenceWithTails(base: ValueNode | MixinCall, baseRaw: string, tails: readonly unknown[]): Reference {
   const steps: ReferenceStep[] = [];
   let raw = baseRaw;
@@ -1044,6 +1064,9 @@ function complexSegmentsFrom(
     if (isSelectorTerm(child)) {
       segments.push(segments.length === 0 ? { term: child } : { combinator, term: child });
       combinator = ' ';
+    } else if (isSlashedCombinatorFact(child)) {
+      /* A removed slashed combinator (ledger G37) inside a pseudo argument or an `:extend()` target. */
+      throw new LessSlashedCombinatorError(child.start, child.end, child.slashedCombinator);
     } else {
       combinator = requireCombinator(child);
     }
@@ -1681,11 +1704,12 @@ function isMixinCall(value: unknown): value is MixinCall {
     && 'important' in value && typeof value.important === 'boolean';
 }
 
+/** A statement call `@name…(…);`: a variable's lookup/call chain ending in a call. */
 function isReferenceCall(value: unknown): value is Reference {
   return typeof value === 'object' && value !== null && 'type' in value
     && value.type === 'Reference' && 'base' in value && isVarRef(value.base)
     && 'steps' in value && Array.isArray(value.steps)
-    && value.steps.length === 1 && value.steps[0]?.type === 'Call';
+    && value.steps.length > 0 && value.steps[value.steps.length - 1]?.type === 'Call';
 }
 
 function isParam(value: unknown): value is Param {
@@ -2447,6 +2471,9 @@ export {
   requireMixinCallArgumentValue,
   requireMixinInteriorItem,
   requireMixinReferenceBaseFact,
+  referenceBracketTailFact,
+  referenceCallTailFact,
+  referenceDotTailFact,
   requireReferenceTailFact,
   requireRulesetBody,
   requireSelectorList,
