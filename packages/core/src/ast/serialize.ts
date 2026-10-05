@@ -20058,19 +20058,18 @@ function expandAtRuleBlock(
       declIndex: collectDeclIndex(node.rules), cells: null, reassign: null,
       statements: node.rules
     };
+    const write = (): MaybePromise<void> => nestedSource === undefined
+      ? writeCollapsedAtRuleBlock(node, frame, bodyFrame, e, ctx, prelude)
+      : writeNestedAtRuleBlock(node, frame, bodyFrame, e, nestedSource, prelude, nestedHoist);
     const dyn = e.dynamicExtend;
     if (dyn === null) {
-      return nestedSource === undefined
-        ? writeCollapsedAtRuleBlock(node, frame, bodyFrame, e, ctx, prelude)
-        : writeNestedAtRuleBlock(node, frame, bodyFrame, e, nestedSource, prelude);
+      return write();
     }
 
     /* [extend/dynamic] Facts recorded in the body take this block's scope (§8). */
     const scope = dyn.scope;
     dyn.scope = atRuleScope(scope, node, dyn.atRuleScopes);
-    return withDynamicPlacement(dyn, dyn.pathRules.length, scope, dyn.boundary, () => nestedSource === undefined
-      ? writeCollapsedAtRuleBlock(node, frame, bodyFrame, e, ctx, prelude)
-      : writeNestedAtRuleBlock(node, frame, bodyFrame, e, nestedSource, prelude, nestedHoist));
+    return withDynamicPlacement(dyn, dyn.pathRules.length, scope, dyn.boundary, write);
   }));
 }
 
