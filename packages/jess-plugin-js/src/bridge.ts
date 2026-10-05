@@ -160,15 +160,13 @@ function decodeValue(value: JsBridgeValue): ValueGroup {
 
     /*
      * A colour that crosses the bridge unmodified (a looked-up `@white: #fff`
-     * returned by `color-yiq`) keeps its authored bytes so the short form
-     * survives, exactly as less.js preserves a passed-through colour's spelling.
-     * A colour the plugin BUILDS or COMPUTES carries its own serialized bytes
-     * too (a 6-digit hex from `makeColorRgb`), so this one path matches less.js
-     * for both. `makeColorRgb` stays the fallback for a pre-`bytes` wire value.
+     * returned by `color-yiq`) keeps its spelling as `src`, so the short form
+     * survives, exactly as less.js preserves a passed-through colour's spelling;
+     * its channels stay the raw ones it crossed with (ledger V5), never a
+     * re-parse of the 8-bit spelling. A colour the plugin BUILDS has no
+     * spelling and serializes from its channels.
      */
-    case 'color': return value.bytes !== undefined
-      ? sniffLiteral(value.bytes)
-      : makeColorRgb(value.rgb, value.alpha ?? 1, HEX);
+    case 'color': return makeColorRgb(value.rgb, value.alpha ?? 1, HEX, value.bytes === undefined ? undefined : { src: value.bytes });
     case 'quoted': return makeQuoted(value.value, value.quote ?? '"', value.escaped === true);
 
     /*

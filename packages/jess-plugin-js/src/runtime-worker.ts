@@ -199,12 +199,15 @@ class Color extends Node {
    * unmodified (`@white: #fff`), mirroring less.js's Color `value`/originalForm:
    * a pass-through keeps its short form, while a plugin-CONSTRUCTED colour has
    * none and serialises to 6-digit hex.
+   *
+   * An RGB triple keeps its raw channels, as in less.js: a computed colour
+   * reaches the plugin unrounded, and only `toCSS` rounds and clamps.
    */
   constructor(rgb, alpha = 1, originalForm) {
     super();
     this.originalForm = typeof originalForm === 'string' ? originalForm : undefined;
     if (Array.isArray(rgb)) {
-      this.rgb = rgb.slice(0, 3).map(clampByte);
+      this.rgb = rgb.slice(0, 3);
       this.alpha = typeof alpha === 'number' ? alpha : 1;
       return;
     }
