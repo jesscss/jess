@@ -68,6 +68,14 @@ const lessHarnessFunctionsPlugin = {
 
 const testData = resolveLessTestDataRoot();
 
+/*
+ * A fixture's golden is the `.css` beside it, except in the three math-mode
+ * directories: the corpus keeps `tests-config/math-<mode>/<name>.less`'s golden
+ * at `tests-config/math/<mode>/<name>.css`.
+ */
+const goldenFor = (file: string): string =>
+  file.replace(/^tests-config\/math-([^/]+)\//, 'tests-config/math/$1/').replace(/\.less$/, '.css');
+
 const baseCompiler = new Compiler({
   output: { collapseNesting: true }, // Default for most files
   compile: {
@@ -224,16 +232,6 @@ const skippedFixtures: SkippedFixture[] = (
     { file: 'tests-config/include-path/import-test-e.less', reason: 'helper imported by include-path fixture; no expected CSS' },
     { file: 'tests-config/import-redirect/import-redirect.less', reason: 'no expected CSS in upstream fixture' },
     { file: 'tests-config/js-type-errors/js-type-error.less', reason: 'expected error fixture, not render-to-CSS fixture' },
-    { file: 'tests-config/math-always/mixins-guards.less', reason: 'no expected CSS in upstream fixture' },
-    { file: 'tests-config/math-always/no-sm-operations.less', reason: 'no expected CSS in upstream fixture' },
-    { file: 'tests-config/math-parens-division/media-math.less', reason: 'no expected CSS in upstream fixture' },
-    { file: 'tests-config/math-parens-division/mixins-args.less', reason: 'no expected CSS in upstream fixture' },
-    { file: 'tests-config/math-parens-division/new-division.less', reason: 'no expected CSS in upstream fixture' },
-    { file: 'tests-config/math-parens-division/parens.less', reason: 'no expected CSS in upstream fixture' },
-    { file: 'tests-config/math-strict/css.less', reason: 'no expected CSS in upstream fixture' },
-    { file: 'tests-config/math-strict/media-math.less', reason: 'no expected CSS in upstream fixture' },
-    { file: 'tests-config/math-strict/mixins-args.less', reason: 'no expected CSS in upstream fixture' },
-    { file: 'tests-config/math-strict/parens.less', reason: 'no expected CSS in upstream fixture' },
     { file: 'tests-config/no-js-errors/no-js-errors.less', reason: 'expected error fixture, not render-to-CSS fixture' },
     { file: 'tests-config/postProcessorPlugin/postProcessor.less', reason: 'INTENDED DIVERGENCE (A12): the Less 4 plugin-manager hook ABI is a v5 non-goal. The fixture names its plugin through the lessc `--plugin` path option (`language.less.plugin`), which is not a jess option; passed in-process, the plugin is refused with plugin/unsupported-feature at `pluginManager.addPostProcessor()`, naming output.compress (test/less/plugin-diagnostics.test.ts)' },
     { file: 'tests-config/preProcessorPlugin/preProcessor.less', reason: 'INTENDED DIVERGENCE (A12): the Less 4 plugin-manager hook ABI is a v5 non-goal. The fixture names its plugin through the lessc `--plugin` path option (`language.less.plugin`), which is not a jess option; passed in-process, the plugin is refused with plugin/unsupported-feature at `pluginManager.addPreProcessor()` (test/less/plugin-diagnostics.test.ts)' },
@@ -296,14 +294,6 @@ const skippedFixtures: SkippedFixture[] = (
     {
       file: 'tests-config/no-js-errors/no-js-errors.less',
       reason: 'inline backtick JavaScript is intentionally unsupported in v5'
-    },
-    {
-      file: 'tests-config/math-parens-division/new-division.less',
-      reason: 'the deprecated `./` dot-slash division operator was removed in v5; it is now a parse error'
-    },
-    {
-      file: 'tests-config/math-always/no-sm-operations.less',
-      reason: 'no reason was recorded when this entry was added; not re-measured'
     }
   ] as Array<string | SkippedFixture>
 ).map((entry): SkippedFixture => {
@@ -438,7 +428,21 @@ const expectedFailureFixtures = new Map<string, string>([
   [
     'tests-unit/media/media.less',
     'top-level bare @var at-rule preludes are rejected (@media @smartphone / @media @all and @tv)'
-  ]
+  ],
+
+  /*
+   * The math-mode fixtures (see goldenFor). They ran for the first time when
+   * the lane started pairing them with their goldens, and are untriaged:
+   * jess#351 says what each one does.
+   */
+  ['tests-config/math-always/mixins-guards.less', 'untriaged (jess#351): the unspaced guard `when ((8+4) < 13)` is a parse error'],
+  ['tests-config/math-always/no-sm-operations.less', 'untriaged (jess#351): the digit-led variable name `@3` is rejected'],
+  ['tests-config/math-parens-division/mixins-args.less', 'untriaged (jess#351): a mixin call is rejected for mixing comma-list argument groups with named arguments'],
+  ['tests-config/math-strict/mixins-args.less', 'untriaged (jess#351): a mixin call is rejected for mixing comma-list argument groups with named arguments'],
+  ['tests-config/math-parens-division/new-division.less', 'the `./` division operator was removed in v5, so the `.math` rule is a parse error'],
+  ['tests-config/math-parens-division/parens.less', 'untriaged (jess#351): `calc(100% + (25vh - 20px))` loses its parens, and `4px * (1 + 1) / @var + 3px` renders `8px / 7px` where the golden has `8px / 4 + 3px`'],
+  ['tests-config/math-strict/parens.less', 'untriaged (jess#351): `calc(100% + (25vh - 20px))` loses its parens'],
+  ['tests-config/math-strict/css.less', 'untriaged (jess#351): unary `+2.2em` is kept, `!important` spacing is normalised and the `.misc` rules print in a different order']
 
   /*
    * Previously-uncategorized hard failures — render but mismatch Less.
@@ -483,7 +487,12 @@ const expectedFailureDiagnosticCodes = new Map<string, string>([
   ['tests-unit/plugin-module/plugin-module.less', 'plugin/load-failed'],
   ['tests-config/debug/all/linenumbers-all.less', 'deprecation/dump-line-numbers-option'],
   ['tests-config/debug/comments/linenumbers-comments.less', 'deprecation/dump-line-numbers-option'],
-  ['tests-config/debug/mediaquery/linenumbers-mediaquery.less', 'deprecation/dump-line-numbers-option']
+  ['tests-config/debug/mediaquery/linenumbers-mediaquery.less', 'deprecation/dump-line-numbers-option'],
+  ['tests-config/math-always/mixins-guards.less', 'parse/syntax-error'],
+  ['tests-config/math-always/no-sm-operations.less', 'parse/unsupported-variable-name'],
+  ['tests-config/math-parens-division/mixins-args.less', 'parse/syntax-error'],
+  ['tests-config/math-strict/mixins-args.less', 'parse/syntax-error'],
+  ['tests-config/math-parens-division/new-division.less', 'parse/syntax-error']
 ]);
 
 type RenderResult = Awaited<ReturnType<Compiler['renderToResult']>>;
@@ -495,6 +504,12 @@ const diagnosticCodesFor = (result: RenderResult): string[] => [
 
 // Allow specific fixtures even when they carry a skip reason.
 const forcedIncludes = new Set<string>([]);
+
+/*
+ * Every golden the lane registers a test for, or deliberately skips. The
+ * discovery guard at the bottom of this file checks it against the corpus.
+ */
+const claimedGoldens = new Set<string>(skippedFixtures.map(({ file }) => goldenFor(file)));
 
 describe('Can render Less files to CSS', () => {
   // Run all unit fixtures under tests-unit.
@@ -528,9 +543,10 @@ describe('Can render Less files to CSS', () => {
       const lessPath = path.join(testData, file);
 
       try {
-        const testCases = getTestCases(lessPath);
+        const testCases = getTestCases(lessPath, path.join(testData, goldenFor(file)));
 
         testCases.forEach((testCase, index) => {
+          claimedGoldens.add(path.relative(testData, testCase.expectedFile));
           const testName =
             testCases.length > 1
               ? `${file} [${index + 1}/${testCases.length}]`
@@ -640,8 +656,9 @@ describe('Can render Less files to CSS', () => {
             ).toBe(true);
           }, 5000); // Short hang sentinel: expected failures must still settle.
         });
-      } catch (error: any) {
+      } catch (error: unknown) {
         // If getTestCases throws (no files found), create a failing test
+        claimedGoldens.add(goldenFor(file));
         it(`${file}`, () => {
           throw error;
         });
@@ -676,7 +693,7 @@ describe('Skipped Less fixtures are still failing', () => {
       return false;
     }
     try {
-      return getTestCases(path.join(testData, file)).length > 0;
+      return getTestCases(path.join(testData, file), path.join(testData, goldenFor(file))).length > 0;
     } catch {
       return false;
     }
@@ -685,7 +702,7 @@ describe('Skipped Less fixtures are still failing', () => {
   for (const { file, reason } of measurable) {
     it(`${file} still differs from its golden`, async () => {
       const lessPath = path.join(testData, file);
-      const [testCase] = getTestCases(lessPath);
+      const [testCase] = getTestCases(lessPath, path.join(testData, goldenFor(file)));
       let matched = false;
       try {
         const expectedCss = readFileSync(testCase.expectedFile, 'utf8');
@@ -710,6 +727,42 @@ describe('Skipped Less fixtures are still failing', () => {
       ).toBe(false);
     }, 10000);
   }
+});
+
+/*
+ * The globs above decide what runs, so a change that drops fixtures from them
+ * (glob depth, styles.config outputs, golden pairing, build state — jess#244)
+ * leaves no failing test behind: the lane just gets smaller. This starts from
+ * the other end, every `.css` in the corpus, and fails on any golden the lane
+ * neither runs nor skips. Two kinds of `.css` are not goldens: a `legacy/` 4.x
+ * output with no `.less` of its own (the oracle for the fixture one level up),
+ * and the files listed here.
+ */
+const corpusCssThatIsNotAGolden = new Map<string, string>([
+  ['tests-config/sourcemaps/imported.css', 'inlined by tests-config/sourcemaps/basic.less'],
+  ['tests-unit/import/import-reference-issues/simple-mixin.css', 'imported by import-reference-issues.less'],
+  ['tests-unit/import/import/import-test-d.css', 'imported by import.less and import-inline.less'],
+  ['tests-unit/import/import/layer-import-2.css', 'imported by tests-unit/layer/layer.less'],
+  ['tests-unit/import/import/layer-import-3.css', 'imported by tests-unit/layer/layer.less'],
+  ['tests-unit/import/import/layer-import-4.css', 'imported by tests-unit/layer/layer.less'],
+  ['tests-unit/import/import/layer-import-5.css', 'imported by tests-unit/layer/layer.less'],
+  ['tests-unit/urls/css/background.css', 'imported by tests-unit/urls/import/import-and-relative-paths-test.less'],
+  ['tests-unit/urls/import/import-test-d.css', 'imported by tests-unit/urls/import/import-and-relative-paths-test.less'],
+  ['tests-unit/urls/actual.css', 'a stray render of urls.less committed with the corpus; urls.css is the golden'],
+  ['tests-unit/directives-bubbling/directives-bubbling.css', 'left behind when less.js 937d1e44 deleted directives-bubbling.less']
+]);
+
+describe('Less fixture discovery', () => {
+  it.skipIf(fixtureFilter !== undefined)('runs or skips every golden in the corpus', () => {
+    const isLegacyOracle = (css: string): boolean =>
+      /(^|\/)legacy\/[^/]+\.css$/.test(css) && !existsSync(path.join(testData, css.replace(/\.css$/, '.less')));
+    const unclaimed = glob
+      .sync(path.join(testData, 'tests-{unit,config}/**/*.css'))
+      .map(file => path.relative(testData, file))
+      .filter(css => !claimedGoldens.has(css) && !corpusCssThatIsNotAGolden.has(css) && !isLegacyOracle(css))
+      .sort();
+    expect(unclaimed, 'corpus goldens that no Less fixture test claims').toEqual([]);
+  });
 });
 
 describe('Less fixture harness diagnostics', () => {

@@ -1,6 +1,8 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { builtinModules } from 'node:module';
 import path from 'node:path';
+import { initSync as initModuleLexer, parse as parseModule } from 'es-module-lexer';
 
 const RUNTIME_DEP_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies'];
 const WORKSPACE_SCAN_SKIP_DIRS = new Set(['node_modules', 'lib', 'dist', '.cache']);
@@ -81,6 +83,64 @@ export function getRuntimeWorkspaceDeps(manifest) {
     }
   }
   return [...deps].sort();
+}
+
+/*
+ * `require()` of a literal specifier: quoted or a template without `${}`,
+ * including rolldown's `__require` shim. es-module-lexer reads every ES
+ * `import`/`export … from`/`import()`, minified or not, but not CommonJS.
+ */
+const REQUIRE_CALL = /\b(?:__)?require\(\s*(['"`])([^'"`$\s]+)\1\s*\)/gu;
+
+function bareSpecifiers(source) {
+  const [imports] = parseModule(source);
+  return [
+    ...imports.flatMap(({ n }) => n === undefined ? [] : [n]),
+    ...[...source.matchAll(REQUIRE_CALL)].map(match => match[2])
+  ].filter(specifier => !/^[./#]/u.test(specifier)
+    && !specifier.startsWith('node:')
+    && !builtinModules.includes(specifier));
+}
+
+/**
+ * Bare imports in a package's shipped JavaScript that its manifest does not
+ * declare as a runtime dependency, as a map of package name → files. A flat
+ * (hoisted) install still resolves these, so loading the package proves
+ * nothing; a strict install fails on them.
+ */
+export function findUndeclaredRuntimeImports(packageDir, manifest) {
+  initModuleLexer();
+  const declared = new Set([
+    manifest.name,
+    ...RUNTIME_DEP_FIELDS.flatMap(field => Object.keys(manifest[field] ?? {}))
+  ]);
+  const undeclared = new Map();
+  const pending = [packageDir];
+  while (pending.length > 0) {
+    const dir = pending.pop();
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== 'node_modules') {
+          pending.push(file);
+        }
+        continue;
+      }
+      if (!/\.[cm]?js$/u.test(entry.name)) {
+        continue;
+      }
+      for (const specifier of bareSpecifiers(readFileSync(file, 'utf8'))) {
+        const [first, second] = specifier.split('/');
+        const name = first.startsWith('@') ? `${first}/${second}` : first;
+        if (!declared.has(name)) {
+          const files = undeclared.get(name) ?? new Set();
+          files.add(path.relative(packageDir, file));
+          undeclared.set(name, files);
+        }
+      }
+    }
+  }
+  return new Map([...undeclared].map(([name, files]) => [name, [...files].sort()]));
 }
 
 function topoSortAllowlist(allowlist, byName) {

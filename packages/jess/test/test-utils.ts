@@ -23,28 +23,6 @@ export type StringLike = {
   valueOf?: () => unknown;
 };
 
-export const lessTestDataAdditionalSkips = [
-  'tests-unit/variables/variable-advanced.less',
-  'tests-unit/merge/merge.less',
-  'tests-unit/selectors/selectors.less',
-  'tests-unit/detached-rulesets/detached-rulesets.less',
-  'tests-unit/functions-each/functions-each.less',
-  'tests-unit/layer/layer.less',
-  'tests-unit/lazy-eval/lazy-eval.less',
-  'tests-unit/mixins/mixins.less',
-  'tests-unit/mixins-important/mixins-important.less',
-  'tests-unit/property-name-interp/property-name-interp.less',
-  'tests-unit/strings/strings.less',
-  'tests-unit/variables/variables.less',
-  'tests-unit/variables-in-at-rules/variables-in-at-rules.less',
-  'tests-unit/plugin/plugin.less',
-  'tests-unit/parse-interpolation/parse-interpolation.less',
-  'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less',
-  'tests-unit/permissive-parse/permissive-parse.less'
-];
-
-export const lessTestDataForcedIncludes = new Set<string>([]);
-
 export const lessHarnessFunctionsPlugin = {
   install(less: {
     functions: {
@@ -101,12 +79,15 @@ export function readStringFunctionArg(value: StringLike): string {
  * 3. If no files exist at all → throw an error
  *
  * @param lessFilePath - Path to the LESS file
+ * @param goldenPath - Where the corpus keeps the `{name}.css` golden, when that
+ *   is not next to the `.less`
  * @returns Array of test cases, each with expected file and config to use
  */
-export function getTestCases(lessFilePath: string): TestCase[] {
+export function getTestCases(lessFilePath: string, goldenPath?: string): TestCase[] {
   const dir = path.dirname(lessFilePath);
   const name = path.basename(lessFilePath, path.extname(lessFilePath));
-  const defaultCssPath = path.join(dir, `${name}.css`);
+  const siblingCssPath = path.join(dir, `${name}.css`);
+  const defaultCssPath = goldenPath ?? siblingCssPath;
 
   const outputConfigs = getExpectedOutputFiles(lessFilePath);
   const configs: OutputTestConfig[] = Array.isArray(outputConfigs) ? outputConfigs : [outputConfigs];
@@ -120,7 +101,7 @@ export function getTestCases(lessFilePath: string): TestCase[] {
         expectedFile: outputConfig.file,
         config: outputConfig.config
       });
-    } else if (outputConfig.file !== defaultCssPath) {
+    } else if (outputConfig.file !== siblingCssPath) {
       throw new Error(`Expected output file ${outputConfig.file} does not exist`);
     } else {
       // Fall back to {name}.css with merged config options

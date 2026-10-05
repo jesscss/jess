@@ -137,6 +137,11 @@ jobs:
       - name: Node-engines guard
         run: node scripts/check-node-engines.mjs
 
+      # The release gates (packed-consumer import scan, alpha source-sync,
+      # version resolution) run only at release time; test their logic here.
+      - name: Release script tests
+        run: pnpm run test:release --run
+
       # Every dialect grammar's reducers must reference only IMPORTED helpers, never
       # a module-scope helper defined in grammar.ts. This is a NECESSARY (not
       # sufficient) condition for cross-package compose() fusion — it is a static
