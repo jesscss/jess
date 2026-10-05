@@ -118,25 +118,8 @@ function attributionsByLine(map: V3Map): Map<number, Set<string>> {
   return out;
 }
 
-function checkMap(fixture: Fixture, css: string, mapJson: string): void {
-  const lessDir = path.dirname(fixturePath(fixture.file));
-  const map = JSON.parse(mapJson) as V3Map;
-  const expected = JSON.parse(readFileSync(path.join(upstreamTestDir, fixture.expected!), 'utf8')) as V3Map;
-  expect(map.version).toBe(3);
-
-  if (fixture.layout === 'current') {
-    expect(map.file).toBe(expected.file);
-    expect(map.sources).toEqual(expected.sources);
-    if (expected.sourcesContent !== undefined) {
-      expect(map.sourcesContent).toEqual(expected.sourcesContent);
-    }
-  } else {
-    expect(path.basename(map.file ?? '')).toBe(path.basename(expected.file ?? ''));
-    expect(map.sources.map(source => path.basename(source))).toEqual(expected.sources.map(source => path.basename(source)));
-  }
-
-  /* Every mapping lands on the same token in the output and in its source. */
-  const body = css.replace(ANNOTATION, '');
+/** Every mapping lands on the same token in the output and in its source. */
+function checkRoundTrip(body: string, map: V3Map, lessDir: string): void {
   const genLines = body.split('\n');
   const sourceText = map.sources.map(source => readFileSync(path.join(lessDir, path.basename(source)), 'utf8'));
   const segments = decodeSourceMapMappings(map.mappings);
@@ -159,6 +142,28 @@ function checkMap(fixture: Fixture, css: string, mapJson: string): void {
       `gen ${genLine! + 1}:${genCol} "${genToken}" does not round-trip to ${map.sources[src!]} ${line! + 1}:${col} "${srcToken}"`
     ).toBe(true);
   }
+}
+
+function checkMap(fixture: Fixture, css: string, mapJson: string): void {
+  const lessDir = path.dirname(fixturePath(fixture.file));
+  const map = JSON.parse(mapJson) as V3Map;
+  const expected = JSON.parse(readFileSync(path.join(upstreamTestDir, fixture.expected!), 'utf8')) as V3Map;
+  expect(map.version).toBe(3);
+
+  if (fixture.layout === 'current') {
+    expect(map.file).toBe(expected.file);
+    expect(map.sources).toEqual(expected.sources);
+    if (expected.sourcesContent !== undefined) {
+      expect(map.sourcesContent).toEqual(expected.sourcesContent);
+    }
+  } else {
+    expect(path.basename(map.file ?? '')).toBe(path.basename(expected.file ?? ''));
+    expect(map.sources.map(source => path.basename(source))).toEqual(expected.sources.map(source => path.basename(source)));
+  }
+
+  const body = css.replace(ANNOTATION, '');
+  const genLines = body.split('\n');
+  checkRoundTrip(body, map, lessDir);
 
   /* Line attribution against Less 4.x, where the CSS is the golden's. */
   const golden = path.join(lessDir, `${path.basename(fixture.file, '.less')}.css`);
@@ -219,6 +224,32 @@ describe('Less source-map fixtures', () => {
         }
       }
       checkMap(fixture, result.css, result.map!);
+    });
+  }
+});
+
+/*
+ * Compressed output writes whole rules on one line; its map must still point
+ * every token at its authored place. The compression fixtures carry no map
+ * expectations upstream, so only the round trip is checked.
+ */
+describe('Less compression fixtures with a source map', () => {
+  for (const file of [
+    'tests-config/compression/compression.less',
+    'tests-config/at-rules-compressed/at-rules-compressed.less',
+    'tests-config/at-rules-compressed-evaluation/at-rules-compressed-evaluation.less'
+  ]) {
+    it(file, async () => {
+      const lessPath = fixturePath(file);
+      const config = getConfig(path.dirname(lessPath));
+      const result = await new Compiler({
+        ...config,
+        output: { collapseNesting: true, ...(config.output ?? {}), sourceMap: true }
+      }).renderToResult(lessPath, {});
+      expect(result.errors).toEqual([]);
+      const golden = readFileSync(lessPath.replace(/\.less$/, '.css'), 'utf8');
+      expect(result.css).toBe(`${golden}/*# sourceMappingURL=${path.basename(file, '.less')}.css.map */`);
+      checkRoundTrip(golden, JSON.parse(result.map!) as V3Map, path.dirname(lessPath));
     });
   }
 });
