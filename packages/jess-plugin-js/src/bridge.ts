@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/naming-convention -- `__jessBridge` is the fixed cross-worker wire tag. */
 import {
+  coerceNamedColorKeyword,
   makeColorRgb,
   makeDimension,
   makeKeyword,
@@ -125,18 +126,18 @@ export function encodeBridgeValue(value: unknown): unknown {
     return { __jessBridge: true, kind: 'expression', items: value.map(encodeBridgeChildValue) } satisfies JsBridgeValue;
   }
   if (isValueNode(value)) {
-    switch (value.type) {
-      case 'Dimension': return { __jessBridge: true, kind: 'dimension', value: value.number, unit: value.unit } satisfies JsBridgeValue;
-      case 'Color': return { __jessBridge: true, kind: 'color', rgb: [value.rgb[0], value.rgb[1], value.rgb[2]], alpha: value.alpha, bytes: value.bytes } satisfies JsBridgeValue;
-      case 'Quoted': return { __jessBridge: true, kind: 'quoted', value: value.value, quote: value.quote === '\'' ? '\'' : '"', escaped: value.escaped } satisfies JsBridgeValue;
+    // A named colour (`white`) is a Color to a Less 4.x plugin (`{ rgb: [r, g, b] }`).
+    const node = coerceNamedColorKeyword(value);
+    switch (node.type) {
+      case 'Dimension': return { __jessBridge: true, kind: 'dimension', value: node.number, unit: node.unit } satisfies JsBridgeValue;
+      case 'Color': return { __jessBridge: true, kind: 'color', rgb: [node.rgb[0], node.rgb[1], node.rgb[2]], alpha: node.alpha, bytes: node.bytes } satisfies JsBridgeValue;
+      case 'Quoted': return { __jessBridge: true, kind: 'quoted', value: node.value, quote: node.quote === '\'' ? '\'' : '"', escaped: node.escaped } satisfies JsBridgeValue;
       case 'List':
-        return value.sep === ',' || value.sep === '/'
-          ? { __jessBridge: true, kind: 'list', items: value.value.map(encodeBridgeChildValue), separator: value.sep } satisfies JsBridgeValue
-          : { __jessBridge: true, kind: 'anonymous', value: value.bytes } satisfies JsBridgeValue;
-      case 'Block':
-        return { __jessBridge: true, kind: 'anonymous', value: value.bytes } satisfies JsBridgeValue;
+        return node.sep === ',' || node.sep === '/'
+          ? { __jessBridge: true, kind: 'list', items: node.value.map(encodeBridgeChildValue), separator: node.sep } satisfies JsBridgeValue
+          : { __jessBridge: true, kind: 'anonymous', value: node.bytes } satisfies JsBridgeValue;
       default:
-        return { __jessBridge: true, kind: 'anonymous', value: value.bytes } satisfies JsBridgeValue;
+        return { __jessBridge: true, kind: 'anonymous', value: node.bytes } satisfies JsBridgeValue;
     }
   }
   if (isDetached(value)) {

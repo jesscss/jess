@@ -86,6 +86,8 @@ export interface Dimension {
 /** A color result. `format`/`modernSyntax`/`src` preserve output spelling. */
 export interface Color {
   readonly type: 'Color';
+
+  /** RAW (unrounded, unclamped) channels; derived from `hsl` when that is present. */
   readonly rgb: readonly [number, number, number];
   readonly alpha: number;
 

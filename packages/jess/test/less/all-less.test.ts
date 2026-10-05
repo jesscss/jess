@@ -482,6 +482,38 @@ const expectedFailureFixtures = new Map<string, string>([
    */
 ]);
 
+/*
+ * Owner goldens shown wrong against the oracle, awaiting the owner's update.
+ * The fixture stays gated byte-for-byte against its golden with these
+ * replacements applied; once the golden is fixed, the entry fails and must go.
+ */
+const pendingGoldenFixes = new Map<string, readonly (readonly [string, string])[]>([
+  [
+    /*
+     * jess#348: `color-yiq` received the darkened background as black, so the
+     * golden records `#fff`; lessc 4.x and jess now emit `#212529`.
+     */
+    'tests-config/3rd-party/bootstrap4.less',
+    [
+      '.btn-warning:hover',
+      '.show > .btn-warning.dropdown-toggle',
+      '.btn-light:hover',
+      '.show > .btn-light.dropdown-toggle'
+    ].map(selector => [`${selector} {\n  color: #fff;`, `${selector} {\n  color: #212529;`] as const)
+  ]
+]);
+
+function readExpectedCss(file: string, expectedFile: string): string {
+  let css = readFileSync(expectedFile, 'utf8');
+  for (const [from, to] of pendingGoldenFixes.get(file) ?? []) {
+    if (!css.includes(from)) {
+      throw new Error(`${file}: the golden no longer contains \`${from}\`; remove its pendingGoldenFixes entry`);
+    }
+    css = css.replace(from, to);
+  }
+  return css;
+}
+
 const expectedFailureDiagnosticCodes = new Map<string, string>([
   /* Owner 2026-09-02 restored the 4.x wrap: a media query on a legacy
    * compile-time `@import` now desugars to `@media <query>` instead of raising a
@@ -546,7 +578,7 @@ describe('Can render Less files to CSS', () => {
               : '';
           const expectedFailureReason = expectedFailureFixtures.get(file);
           const renderFixture = async () => {
-            const expectedCss = readFileSync(testCase.expectedFile, 'utf8');
+            const expectedCss = readExpectedCss(file, testCase.expectedFile);
 
             /*
              * Merge test case config with base compiler config

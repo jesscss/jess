@@ -1,5 +1,6 @@
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import {
+  coerceNamedColorKeyword,
   defineFunction,
   emitValue,
   FunctionDeclined,
@@ -254,15 +255,18 @@ export function toNativeLessValue(value: PluginRawArgument | ValueGroup): unknow
   if (isPluginDetached(value)) {
     return new LazyDetachedRuleset(value);
   }
-  switch (value.type) {
-    case 'Dimension': return new LessDimension(value.number, value.unit);
-    case 'Quoted': return new LessQuoted(value.quote, value.value, value.escaped);
-    case 'Color': return { type: 'Color', rgb: value.rgb, alpha: value.alpha, bytes: value.bytes, valueOf: () => value.bytes };
+
+  // A named colour (`white`) is a Color to a Less 4.x plugin (`{ rgb: [r, g, b] }`).
+  const node = coerceNamedColorKeyword(value);
+  switch (node.type) {
+    case 'Dimension': return new LessDimension(node.number, node.unit);
+    case 'Quoted': return new LessQuoted(node.quote, node.value, node.escaped);
+    case 'Color': return { type: 'Color', rgb: node.rgb, alpha: node.alpha, bytes: node.bytes, valueOf: () => node.bytes };
     case 'List':
-      return value.sep === ',' || value.sep === '/'
-        ? new LazyValueList(value)
-        : new LessAnonymous(value.bytes);
-    default: return new LessAnonymous(value.bytes);
+      return node.sep === ',' || node.sep === '/'
+        ? new LazyValueList(node)
+        : new LessAnonymous(node.bytes);
+    default: return new LessAnonymous(node.bytes);
   }
 }
 
