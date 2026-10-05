@@ -13,7 +13,7 @@ import {
   type ValueGroup,
   type Value
 } from './value-eval.js';
-import { unify } from './value-units.js';
+import { unify, unitMultisetKey } from './value-units.js';
 import { namedColor } from './color-names.js';
 import type { UnitMode } from '../types/modes.js';
 
@@ -102,19 +102,15 @@ function dimensionCompare(
    * raw magnitude against any unit. That is the whole of what makes `=` loose,
    * and it is unconditional now — the unit distinction is not retained by an
    * ambient mode but DECLINED by the operator, in `sameType`, which `==` and the
-   * numeric arm of {@link SASS_EQUAL} apply on top of this ground. Between two
-   * plain dimensions a unitless one (the common guard, `@i > 0`) is decided
-   * before either side is measured; a compound operand is unitless when its
-   * units cancel, and then compares as the number it measures.
+   * numeric arm of {@link SASS_EQUAL} apply on top of this ground. It is decided
+   * before either side is measured, so the common guard (`@i > 0`) allocates
+   * nothing.
    */
-  if (a.numerator === undefined && b.numerator === undefined && (!a.unit || !b.unit)) {
+  if (isUnitless(a) || isUnitless(b)) {
     return numericCompare(a.number, b.number);
   }
   const au = numericGround(a);
   const bu = numericGround(b);
-  if (au.unit === '' || bu.unit === '') {
-    return numericCompare(au.unit === '' ? au.number : a.number, bu.unit === '' ? bu.number : b.number);
-  }
   if (au.unit !== bu.unit) {
     if (unitMode === 'strict') {
       throw incompatibleUnits(a, b);
@@ -125,48 +121,32 @@ function dimensionCompare(
 }
 
 /**
- * A dimension on numeric ground: its magnitude in canonical units, and the unit
- * it is measured in — the canonical unit, or for a compound operand (an
- * arithmetic result carrying a numerator/denominator multiset, `2px * 3px`) the
- * whole canonical multiset spelled `px*px/s`, cancelled after conversion so
- * `in*px/px` is `px`. `''` is unitless.
+ * A unitless number: no unit, and no unit multiset. A compound value whose
+ * units all cancelled (`6px / 2px`) is one; a unit product (`2px * 3px`) is not,
+ * even when it carries no display unit.
+ */
+const isUnitless = (d: Dimension): boolean =>
+  !d.unit && !d.numerator?.length && !d.denominator?.length;
+
+/**
+ * A dimension on numeric ground: its magnitude and the unit it is measured in.
+ * A plain dimension (the hot case) is one {@link unify} call to its group's
+ * canonical unit. A compound operand (an arithmetic result carrying a unit
+ * multiset with more than one numerator or any denominator, `2px * 3px`,
+ * `1 / 2px`) is measured in its whole multiset, the identity `+`/`-` require
+ * of it ({@link unitMultisetKey}, ledger V18).
  *
  * The display `unit` is NOT the unit of a compound operand — it is only how
  * less.js spells one (the backup unit, else the first denominator), so
- * comparing on it equated `px*px` and `1/px` with `px`. A plain dimension (the
- * hot case) stays one {@link unify} call.
+ * comparing on it equated `px*px` and `1/px` with `px`.
  */
-const isPlainUnitless = (d: Dimension): boolean => d.numerator === undefined && !d.unit;
-
 function numericGround(d: Dimension): { number: number; unit: string } {
   const numerator = d.numerator;
-  if (numerator === undefined) {
-    return unify(d.number, d.unit);
+  const denominator = d.denominator;
+  if (numerator === undefined || (numerator.length <= 1 && !denominator?.length)) {
+    return unify(d.number, numerator?.[0] ?? d.unit);
   }
-  let number = d.number;
-  const counts = new Map<string, number>();
-  for (const unit of numerator) {
-    const canonical = unify(1, unit);
-    number *= canonical.number;
-    counts.set(canonical.unit, (counts.get(canonical.unit) ?? 0) + 1);
-  }
-  for (const unit of d.denominator ?? []) {
-    const canonical = unify(1, unit);
-    number /= canonical.number;
-    counts.set(canonical.unit, (counts.get(canonical.unit) ?? 0) - 1);
-  }
-  const num: string[] = [];
-  const den: string[] = [];
-  for (const [unit, count] of counts) {
-    for (let i = 0; i < count; i++) {
-      num.push(unit);
-    }
-    for (let i = 0; i < -count; i++) {
-      den.push(unit);
-    }
-  }
-  const spelled = num.sort().join('*');
-  return { number, unit: den.length === 0 ? spelled : `${spelled}/${den.sort().join('*')}` };
+  return { number: d.number, unit: unitMultisetKey(numerator, denominator ?? []) };
 }
 
 /** 3-way compare over primitives (`<`/`>` are lexical on strings); `!=` → undefined. */
@@ -475,7 +455,10 @@ function sameType(a: ValueGroup, b: ValueGroup): boolean {
     return asColor(a) !== undefined && asColor(b) !== undefined;
   }
   if (a.type === 'Dimension' && b.type === 'Dimension') {
-    return (isPlainUnitless(a) && isPlainUnitless(b)) || numericGround(a).unit === numericGround(b).unit;
+    if (isUnitless(a) || isUnitless(b)) {
+      return isUnitless(a) && isUnitless(b);
+    }
+    return numericGround(a).unit === numericGround(b).unit;
   }
   return true;
 }
@@ -509,13 +492,12 @@ function pushScalarSassEqualityCandidateKeys(
 ): void {
   into.push(`${path}:spelling:${type === 'Quoted' && 'quote' in value ? value.value : value.bytes}`);
   if (type === 'Dimension' && 'number' in value && 'unit' in value) {
-    const { number: normalizedNumber, unit: normalizedUnit } = numericGround(value);
-    pushNumericCandidateKeys(
-      into,
-      path,
-      normalizedNumber,
-      normalizedUnit === '' ? '<unitless>' : normalizedUnit
-    );
+    if (isUnitless(value)) {
+      pushNumericCandidateKeys(into, path, value.number, '<unitless>');
+    } else {
+      const ground = numericGround(value);
+      pushNumericCandidateKeys(into, path, ground.number, ground.unit);
+    }
     if (Math.abs(value.number) <= COMPARE_TOLERANCE) {
       into.push(`${path}:null-zero`);
     }

@@ -15,7 +15,7 @@ import { DivisionByZeroError, EmptyOperandError, UnitArithmeticError, incompatib
 import { HEX } from './color.js';
 import { colorRawRgb, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword } from './value-factory.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
-import { convertValue, convertible } from './value-units.js';
+import { convertValue, convertible, unitMultisetKey } from './value-units.js';
 
 /* --------------------------------------------------------- arithmetic */
 
@@ -345,9 +345,7 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
 const singular = (u: UnitSet): boolean => u.num.length === 1 && u.den.length === 0;
 
 const sameMultiset = (u: UnitSet, bu: UnitSet): boolean =>
-  u.num.length === bu.num.length && u.den.length === bu.den.length
-  && [...u.num].sort().every((x, i) => x === [...bu.num].sort()[i])
-  && [...u.den].sort().every((x, i) => x === [...bu.den].sort()[i]);
+  unitMultisetKey(u.num, u.den) === unitMultisetKey(bu.num, bu.den);
 
 function preservedSpelling(a: Dimension, op: string, b: Dimension): string {
   const right = b.preserved !== undefined && op === '/' ? `(${b.preserved})` : b.preserved ?? b.bytes;
