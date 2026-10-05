@@ -249,16 +249,24 @@ describe('the less-compat tree shim', () => {
     }
   });
 
-  /* A six-digit hex has no alpha pair: it is opaque, not `parseInt('', 16)` (NaN). */
+  /*
+   * A six-digit hex has no alpha pair: it is opaque, not `parseInt('', 16)`
+   * (NaN). The alpha is read inside the plugin, where the engine's own handling
+   * of a NaN result cannot hide it.
+   */
   it('builds an opaque tree.Color from six- and three-digit hex', async () => {
     const { dir, entry } = makeProject(
-      'functions.add(\'six\', () => new tree.Color(\'b8daff\'));\nfunctions.add(\'three\', () => new tree.Color(\'fc0\'));',
-      '@plugin "./p";\n.a { b: six(); c: three(); }\n'
+      [
+        'functions.add(\'six\', () => new tree.Color(\'b8daff\'));',
+        'functions.add(\'three\', () => new tree.Color(\'fc0\'));',
+        'functions.add(\'alphas\', () => `${new tree.Color(\'b8daff\').alpha} ${new tree.Color(\'fc0\').alpha} ${new tree.Color(\'b8daff80\').alpha}`);'
+      ].join('\n'),
+      '@plugin "./p";\n.a { b: six(); c: three(); d: alphas(); }\n'
     );
     const result = await makeCompiler(dir).renderToResult(entry, { suppressWarnings: true, breakOnError: true });
 
     expect(result.errors).toEqual([]);
-    expect(result.css).toBe('.a {\n  b: #b8daff;\n  c: #ffcc00;\n}\n');
+    expect(result.css).toBe('.a {\n  b: #b8daff;\n  c: #ffcc00;\n  d: 1 1 0.5019607843137255;\n}\n');
   }, 30000);
 
   it('exposes tree.Variable.prototype.find and a real this.context', async () => {
