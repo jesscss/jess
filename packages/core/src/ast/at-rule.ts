@@ -99,7 +99,7 @@ export interface UnknownAtRuleBlock extends SpanSlots {
  * `@plugin`, but core owns only the structural Plugin fact and its lexical
  * scope semantics; it owns neither module resolution nor a dialect runtime.
  */
-export interface Plugin {
+export interface Plugin extends SpanSlots {
   readonly type: 'Plugin';
 
   /** Quoted/URL/template target, matching the typed import-target family. */
@@ -197,4 +197,4 @@ export const unknownAtRuleBlock = (
 export const plugin = (
   target: Quoted | Url | Interpolation,
   options: Interpolation | null = null
-): Plugin => ({ type: 'Plugin', target, options });
+): Plugin => ({ type: 'Plugin', target, options, _s: NO_SPAN, _e: NO_SPAN });
