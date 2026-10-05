@@ -34,7 +34,7 @@ export default defineConfig({
      * Compiles grammars that import parseman `with { type: 'macro' }` at build
      * time. No-op for files without the macro attribute, so it's safe globally.
      */
-    parseman.vite(),
+    parseman.vite({}),
 
     /*
      * Circular-import detection is a CI/pre-push guardrail, not a per-run need:

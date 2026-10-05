@@ -23,10 +23,11 @@ function lessTestDataRoot(): string | undefined {
 
 /**
  * RUNG 8 SWEEP — whole core extend suite through real renders with the differential sink installed.
- * Single fork so one accumulator (sweep-sink.ts module Map) spans every extend test file.
+ * One fork with one module registry (`maxWorkers: 1`, `isolate: false` — vitest 4's replacement for
+ * `poolOptions.forks.singleFork`) so one accumulator (sweep-sink.ts module Map) spans every extend test file.
  */
 export default defineConfig({
-  plugins: [parseman.vite()],
+  plugins: [parseman.vite({})],
   resolve: {
     alias: workspaceSrcAliases(root),
     mainFields: ['module', 'import', 'exports', 'main']
@@ -41,7 +42,8 @@ export default defineConfig({
     },
     testTimeout: 60_000,
     pool: 'forks',
-    poolOptions: { forks: { singleFork: true } },
+    maxWorkers: 1,
+    isolate: false,
     setupFiles: [
       resolve(root, './test/setup.ts'),
       resolve(root, './packages/core/src/tree/extend/__tests__/sweep-sink.ts')

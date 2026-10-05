@@ -37,11 +37,11 @@ export default defineConfig([
       [CST_HOST]: './src/cst-host.ts'
     },
     external: PARSER_SHARED_EXTERNAL,
-    plugins: [parseman.rolldown()]
+    plugins: [parseman.rolldown({})]
   }),
   ...grammarVariantBuilds({
     extraEntries: ['base'],
     external: PARSER_SHARED_EXTERNAL,
-    plugins: [parseman.rolldown()]
+    plugins: [parseman.rolldown({})]
   })
 ]);
