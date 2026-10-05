@@ -196,7 +196,8 @@ export function parseWith(
   const state: LessParseState = {
     source: input,
     mathMode: options.mathMode ?? DEFAULT_LESS_MATH_MODE,
-    functions
+    functions,
+    slashed: []
   };
   const result = run(entry, input, {
     trivia,

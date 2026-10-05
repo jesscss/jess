@@ -22,7 +22,7 @@
 import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { NO_SPAN, any, callArg, condition, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
-import { functionScopeOf, requireLessParseState } from './parse-state.js';
+import { functionScopeOf, heldSlashedCombinatorsOf, requireLessParseState } from './parse-state.js';
 import { LessSlashedCombinatorError, LessUnsupportedVariableNameError } from './parse-error.js';
 
 type VarRef = Lookup & { readonly name: string };
@@ -1065,13 +1065,64 @@ function complexSegmentsFrom(
       segments.push(segments.length === 0 ? { term: child } : { combinator, term: child });
       combinator = ' ';
     } else if (isSlashedCombinatorFact(child)) {
-      /* A removed slashed combinator (ledger G37) inside a pseudo argument or an `:extend()` target. */
+      /* A removed slashed combinator (ledger G37) inside an `:extend()` target. */
       throw new LessSlashedCombinatorError(child.start, child.end, child.slashedCombinator);
     } else {
       combinator = requireCombinator(child);
     }
   }
   return [segments[0]!, ...segments.slice(1)];
+}
+
+/**
+ * {@link complexSegmentsFrom} for a functional pseudo's argument, where a
+ * removed `/word/` combinator is HELD in the parse state rather than rejected:
+ * the selector may still turn out to be a glued declaration's value
+ * (`a:is(b /c/ d);`). The selector that commits reads it back with
+ * {@link rejectHeldSlashedCombinator}. With no holder (a raw `run()`), it is
+ * rejected here.
+ */
+function pseudoArgumentSegmentsFrom(
+  children: readonly unknown[],
+  state: unknown
+): ReturnType<typeof complexSegmentsFrom> {
+  const held = heldSlashedCombinatorsOf(state);
+  if (held === null || !children.some(isSlashedCombinatorFact)) {
+    return complexSegmentsFrom(children);
+  }
+  const rest: unknown[] = [];
+  for (const child of children) {
+    if (isSlashedCombinatorFact(child)) {
+      held.push(child);
+    } else {
+      rest.push(child);
+    }
+  }
+  return complexSegmentsFrom(rest);
+}
+
+/**
+ * A selector committed from `start` to `end` — a ruleset at its `{` (the end
+ * is read off the raw children only when something is held), a body
+ * `&:extend()` — rejects the first held `/word/` combinator inside it.
+ */
+function rejectHeldSlashedCombinator(state: unknown, start: number, end: number | readonly unknown[]): void {
+  const held = heldSlashedCombinatorsOf(state);
+  if (held === null || held.length === 0) {
+    return;
+  }
+  if (typeof end !== 'number') {
+    end = requiredTokenStart(end, '{');
+  }
+  let first: SlashedCombinatorFact | undefined;
+  for (const fact of held) {
+    if (fact.start >= start && fact.end <= end && (first === undefined || fact.start < first.start)) {
+      first = fact;
+    }
+  }
+  if (first !== undefined) {
+    throw new LessSlashedCombinatorError(first.start, first.end, first.slashedCombinator);
+  }
 }
 
 /** Space-separated query clause reduction: keyword/value children join into a
@@ -2455,6 +2506,7 @@ export {
   mixinDefinitionNameFromSelectorBranch,
   mixinParamsFromInterior,
   mixinPrefixFromSelectorBranch,
+  pseudoArgumentSegmentsFrom,
   pseudoNameFromHead,
   queryClauseReducer,
   lessQueryComparisonOperators,
@@ -2478,6 +2530,7 @@ export {
   requireRulesetBody,
   requireSelectorList,
   requireSelectorListWithExtendsFact,
+  rejectHeldSlashedCombinator,
   requireStatementArray,
   requireString,
   requireSupportedVariableName,

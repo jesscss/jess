@@ -38,6 +38,23 @@ export interface LessParseState {
    * reference carries a write back to the calls built before the directive.
    */
   readonly functions?: FunctionScope;
+
+  /**
+   * Removed `/word/` combinators (ledger G37) read inside a functional pseudo's
+   * argument, held until a selector that contains them commits — a ruleset at
+   * its `{`, a body `&:extend()` at its end. They cannot be rejected where they
+   * are read: a glued declaration is tried as a ruleset first, and
+   * `a:is(b /c/ d);` is a valid CSS declaration. Shared by reference, like
+   * `functions`.
+   */
+  readonly slashed?: HeldSlashedCombinator[];
+}
+
+/** A removed `/word/` combinator and its source range. */
+export interface HeldSlashedCombinator {
+  readonly slashedCombinator: string;
+  readonly start: number;
+  readonly end: number;
 }
 
 /** The public Less default, shared by wrapper and raw-grammar entry points. */
@@ -91,6 +108,15 @@ export function requireLessParseState(state: unknown): LessParseState {
 export function functionScopeOf(state: unknown): FunctionScope | null {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the state is parseWith's LessParseState or absent; parseman types it `unknown`.
   return (state as LessParseState | undefined)?.functions ?? null;
+}
+
+/**
+ * The held `/word/` combinators, or `null` for a state without a holder (a raw
+ * `run()` with no state), where a pseudo argument rejects one where it reads it.
+ */
+export function heldSlashedCombinatorsOf(state: unknown): HeldSlashedCombinator[] | null {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the state is parseWith's LessParseState or absent; parseman types it `unknown`.
+  return (state as LessParseState | undefined)?.slashed ?? null;
 }
 
 /** A module directive (`@use`/`@compose`) puts the document in modern mode (ledger P36). */

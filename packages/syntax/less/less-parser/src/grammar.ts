@@ -129,6 +129,8 @@ import {
   requireRulesetBody,
   requireSelectorList,
   requireSelectorListWithExtendsFact,
+  rejectHeldSlashedCombinator,
+  pseudoArgumentSegmentsFrom,
   requireStatementArray,
   requireString,
   requireSupportedVariableName,
@@ -4666,12 +4668,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * list it is only a fact until the ruleset's `{` commits, because the ruleset
    * arm is tried first on a glued declaration (`grid-area:a /b/ c;`), which then
    * fails at its `;` and leaves the declaration arm to read the `/`s as
-   * slashes. Inside a pseudo argument or an extend target the complex selector
-   * rejects it as soon as it folds its segments (`complexSegmentsFrom`). That
-   * also rejects a glued declaration whose value spells a selector pseudo with a
-   * `/word/` in it (`a:is(b /c/ d);`, `src:local(Foo/Bar/Baz);`), which failed
-   * generically before and is pinned as an expected failure. The tolerant CST
-   * keeps the node and the rule around it.
+   * slashes. Inside a pseudo argument it is held the same way, in the parse
+   * state (`pseudoArgumentSegmentsFrom`), and the selector that commits rejects
+   * it — a ruleset at its `{`, a body `&:extend()` — so a glued declaration
+   * whose value spells a selector pseudo with a `/word/` in it
+   * (`a:is(b /c/ d);`, `src:local(Foo/Bar/Baz);`) stays a declaration. An extend
+   * target rejects it as soon as it folds its segments (`complexSegmentsFrom`).
+   * The tolerant CST keeps the node and the rule around it.
    */
   const SlashedCombinator = node(
     'SlashedCombinator',
@@ -4708,10 +4711,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         parser({ trivia: staticSelectorTrivia }, g.PseudoArgumentCompound)
       ))
     ),
-    (children) => {
+    (children, _fields, _span, _rawChildren, _triviaLog, state) => {
       const first = children[0];
       const leading = (isLessTerminalText(first, '>') || isLessTerminalText(first, '+') || isLessTerminalText(first, '~')) ? first : undefined;
-      const branch = selectorBranchOf(complexSegmentsFrom(children));
+      const branch = selectorBranchOf(pseudoArgumentSegmentsFrom(children, state));
       return leading === undefined ? branch : relativeSelector(requireCombinator(leading), lessBranchSegments(branch));
     }
   );
@@ -5164,11 +5167,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const ExtendStatement = node(
     'ExtendStatement',
     sequence(literal('&'), ExtendPseudo, optional(literal(';'))),
-    children => ({
-      bodyExtensions: children
-        .flatMap(child => Array.isArray(child) ? child.filter(isExtendTargetFact) : [])
-        .map(target => ({ target: target.target, partial: target.partial }))
-    })
+    (children, _fields, span, _rawChildren, _triviaLog, state) => {
+      rejectHeldSlashedCombinator(state, span.start, span.end);
+      return {
+        bodyExtensions: children
+          .flatMap(child => Array.isArray(child) ? child.filter(isExtendTargetFact) : [])
+          .map(target => ({ target: target.target, partial: target.partial }))
+      };
+    }
   );
   const selectorBranchContinuation = choice(
     sequence(ExtendPseudo, selectorBranchBoundary),
@@ -5248,8 +5254,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const RulesetWithExtends = node(
     'Ruleset',
     sequence(selectorListWithExtends, optional(g.MixinGuard), literal('{'), rulesetBody, optional(g.Call), literal('}'), optional(literal(';'))),
-    (children, _fields, span, rawChildren) => {
+    (children, _fields, span, rawChildren, _triviaLog, state) => {
       const selectorFact = requireSelectorListWithExtendsFact(children[0]);
+      rejectHeldSlashedCombinator(state, span.start, rawChildren);
       const bodyExtensions = children.filter(isBodyExtendFact).flatMap(fact => fact.bodyExtensions);
       const extensions = [...selectorFact.extensions, ...bodyExtensions];
       const node = withBlockBody(
@@ -5269,8 +5276,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const NestedRulesetWithExtends = node(
     'Ruleset',
     sequence(relativeSelectorListWithExtends, optional(g.MixinGuard), literal('{'), rulesetBody, optional(g.Call), literal('}'), optional(literal(';'))),
-    (children, _fields, span, rawChildren) => {
+    (children, _fields, span, rawChildren, _triviaLog, state) => {
       const selectorFact = requireSelectorListWithExtendsFact(children[0]);
+      rejectHeldSlashedCombinator(state, span.start, rawChildren);
       const bodyExtensions = children.filter(isBodyExtendFact).flatMap(fact => fact.bodyExtensions);
       const extensions = [...selectorFact.extensions, ...bodyExtensions];
       const node = withBlockBody(
@@ -5385,7 +5393,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         RulesetTail
       )
     ),
-    (children, _fields, span) => {
+    (children, _fields, span, _rawChildren, _triviaLog, state) => {
       const prefix = children.find(isSelectorBranchFact);
       if (prefix === undefined) {
         throw new TypeError('Less class/id statement lost its selector prefix.');
@@ -5415,6 +5423,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       if (ruleset === undefined) {
         throw new TypeError('Less class/id statement lost its continuation.');
       }
+      rejectHeldSlashedCombinator(state, span.start, ruleset.selectorEnd);
       const prefixSpan = sourceSpanOf(prefix.selector);
       const guardSpan = ruleset.guard === undefined ? undefined : sourceSpanOf(ruleset.guard);
       const selector = prefixSpan === undefined
