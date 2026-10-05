@@ -103,23 +103,21 @@ export function getTestCases(lessFilePath: string, goldenPath?: string): TestCas
       });
     } else if (outputConfig.file !== siblingCssPath) {
       throw new Error(`Expected output file ${outputConfig.file} does not exist`);
-    } else {
-      // Fall back to {name}.css with merged config options
-      if (fs.existsSync(defaultCssPath)) {
-        // Only add if we haven't already added this exact test case
-        const alreadyAdded = testCases.some(
-          tc => tc.expectedFile === defaultCssPath
-            && JSON.stringify(tc.config) === JSON.stringify(outputConfig.config)
-        );
-        if (!alreadyAdded) {
-          testCases.push({
-            expectedFile: defaultCssPath,
-            config: outputConfig.config
-          });
-        }
+    } else if (fs.existsSync(defaultCssPath)) {
+      // Fall back to {name}.css with merged config options; only add if we haven't already added this exact test case
+      const alreadyAdded = testCases.some(
+        tc => tc.expectedFile === defaultCssPath
+          && JSON.stringify(tc.config) === JSON.stringify(outputConfig.config)
+      );
+      if (!alreadyAdded) {
+        testCases.push({
+          expectedFile: defaultCssPath,
+          config: outputConfig.config
+        });
       }
-      // If default doesn't exist either, we'll check at the end
     }
+
+    // If default doesn't exist either, we'll check at the end
   }
 
   // If no test cases were found, check if default exists
@@ -377,6 +375,62 @@ export function lessTestDataRemoteImports(testDataRoot: string): PluginInterface
         : new Response('not found', { status: 404 });
     }
   });
+}
+
+export class FixtureTimeoutError extends Error {
+  constructor(file: string, reason: string) {
+    super(`${file} timed out before surfacing a diagnostic or render result: ${reason}.`);
+    this.name = 'FixtureTimeoutError';
+  }
+}
+
+export type FixtureBudget = {
+  /** CPU the fixture may burn without settling: catches runaway work. */
+  cpuMs: number;
+
+  /** Wall time the fixture may sit unsettled: catches a promise nothing settles, which burns no CPU. */
+  wallMs: number;
+};
+
+/**
+ * The corpus hang sentinel: rejects with `FixtureTimeoutError` when `work` runs
+ * away or stalls, so a hang fails the fixture by name instead of passing as an
+ * expected failure.
+ *
+ * Runaway work is measured in CPU time, not wall time, because wall time is
+ * mostly machine load: bootstrap4.less renders in about 1.5 s alone and blew a
+ * 4.5 s wall budget whenever the ratchet ran it beside other suites. Load stops
+ * the process from running; it does not make the process burn more CPU. The
+ * stalled case burns none, so it keeps a wall ceiling, set under vitest's 30 s
+ * `testTimeout` so this error, which names the fixture, fires first.
+ *
+ * `process.cpuUsage()` is the fixture's own CPU because vitest's default `forks`
+ * pool runs each test file in its own process, one test at a time.
+ */
+export async function withFixtureTimeout<T>(
+  file: string,
+  work: () => Promise<T>,
+  budget: FixtureBudget = { cpuMs: 4500, wallMs: 25_000 }
+): Promise<T> {
+  const cpuStart = process.cpuUsage();
+  const wallStart = performance.now();
+  let poll: ReturnType<typeof setInterval> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    poll = setInterval(() => {
+      const { user, system } = process.cpuUsage(cpuStart);
+      const cpuMs = (user + system) / 1000;
+      if (cpuMs > budget.cpuMs) {
+        reject(new FixtureTimeoutError(file, `it burned ${Math.round(cpuMs)} ms of CPU, over its ${budget.cpuMs} ms budget`));
+      } else if (performance.now() - wallStart > budget.wallMs) {
+        reject(new FixtureTimeoutError(file, `it was still unsettled after ${budget.wallMs} ms`));
+      }
+    }, 25);
+  });
+  try {
+    return await Promise.race([work(), timeout]);
+  } finally {
+    clearInterval(poll);
+  }
 }
 
 function existingDirectory(value: string | undefined): string | undefined {

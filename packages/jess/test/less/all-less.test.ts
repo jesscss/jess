@@ -5,7 +5,16 @@ import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { createHash } from 'node:crypto';
 import { Compiler } from '../../src/index.js';
 import { outputDiagnostics } from '@jesscss/compiler/diagnostics';
-import { getTestCases, resolveLessTestDataRoot, lessFixturePackagesPlugin, lessTestDataRemoteImports, upstreamHarnessSourceMap } from '../test-utils.js';
+import {
+  FixtureTimeoutError,
+  getTestCases,
+  lessFixturePackagesPlugin,
+  lessHarnessFunctionsPlugin,
+  lessTestDataRemoteImports,
+  resolveLessTestDataRoot,
+  upstreamHarnessSourceMap,
+  withFixtureTimeout
+} from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
@@ -27,47 +36,6 @@ import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
  * and were passing unnoticed, so it is gone and its contents live in (1).
  * Do not add another list. If a fixture must not run, give it a reason here.
  */
-
-const readNumericFunctionArg = (value: any): number => {
-  if (typeof value?.value === 'number') {
-    return value.value;
-  }
-  if (typeof value?.value?.number === 'number') {
-    return value.value.number;
-  }
-  const primitive = value?.valueOf?.() ?? value;
-  return Number(primitive);
-};
-
-const readStringFunctionArg = (value: any): string => {
-  if (typeof value?.value === 'string') {
-    return value.value.replace(/^(['"])(.*)\1$/, '$2');
-  }
-  if (typeof value?.value?.value === 'string') {
-    return value.value.value.replace(/^(['"])(.*)\1$/, '$2');
-  }
-  const primitive = value?.valueOf?.() ?? value;
-  return String(primitive).replace(/^(['"])(.*)\1$/, '$2');
-};
-
-const lessHarnessFunctionsPlugin = {
-  install(less: any) {
-    less.functions.functionRegistry.addMultiple({
-      add(a: any, b: any) {
-        return readNumericFunctionArg(a) + readNumericFunctionArg(b);
-      },
-      increment(a: any) {
-        return readNumericFunctionArg(a) + 1;
-      },
-      _color(str: any) {
-        if (readStringFunctionArg(str) === 'evil red') {
-          return '#660000';
-        }
-        return undefined;
-      }
-    });
-  }
-};
 
 const testData = resolveLessTestDataRoot();
 
@@ -256,33 +224,6 @@ afterAll(() => {
     writeFileSync(manifestOut, `${JSON.stringify(manifestRecords, null, 2)}\n`, 'utf8');
   }
 });
-
-const fixtureTimeoutMs = 4500;
-
-class FixtureTimeoutError extends Error {
-  constructor(file: string) {
-    super(`${file} timed out before surfacing a diagnostic or render result.`);
-    this.name = 'FixtureTimeoutError';
-  }
-}
-
-async function withFixtureTimeout<T>(
-  file: string,
-  work: () => Promise<T>,
-  timeoutMs = fixtureTimeoutMs
-): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => reject(new FixtureTimeoutError(file)), timeoutMs);
-  });
-  try {
-    return await Promise.race([work(), timeout]);
-  } finally {
-    if (timer !== undefined) {
-      clearTimeout(timer);
-    }
-  }
-}
 
 type SkippedFixture = {
   file: string;
@@ -740,7 +681,7 @@ describe('Can render Less files to CSS', () => {
               failed,
               `${file} is expected to fail until: ${expectedFailureReason}`
             ).toBe(true);
-          }, 5000); // Short hang sentinel: expected failures must still settle.
+          });
         });
       } catch (error: unknown) {
         // If getTestCases throws (no files found), create a failing test
@@ -811,7 +752,7 @@ describe('Skipped Less fixtures are still failing', () => {
         `${file} now matches its golden, so its skip is stale — remove it from `
         + `skippedFixtures and let it gate. Recorded reason: ${reason}`
       ).toBe(false);
-    }, 10000);
+    });
   }
 });
 
@@ -852,18 +793,50 @@ describe('Less fixture discovery', () => {
 });
 
 describe('Less fixture harness diagnostics', () => {
-  it('surfaces fixture timeouts as harness failures', async () => {
+  const file = 'tests-unit/import/import.less';
+
+  it('fails a fixture that never settles once it passes the wall ceiling', async () => {
     await expect(
       withFixtureTimeout(
-        'tests-unit/import/import.less',
+        file,
         () => new Promise<never>(() => {
-          // Deliberately unsettled to exercise the harness timeout branch.
+          // Deliberately unsettled: nothing settles it, and it burns no CPU.
         }),
-        1
+        { cpuMs: 60_000, wallMs: 50 }
       )
     ).rejects.toMatchObject({
       name: 'FixtureTimeoutError',
-      message: 'tests-unit/import/import.less timed out before surfacing a diagnostic or render result.'
+      message: `${file} timed out before surfacing a diagnostic or render result: it was still unsettled after 50 ms.`
     });
+  });
+
+  it('fails runaway work on its CPU budget, long before the wall ceiling', async () => {
+    let running = true;
+    const runaway = async (): Promise<void> => {
+      while (running) {
+        const slice = performance.now() + 5;
+        while (performance.now() < slice) {
+          // Burn CPU the way a runaway eval loop does, yielding between slices.
+        }
+        await new Promise(resolve => setImmediate(resolve));
+      }
+    };
+    try {
+      await expect(withFixtureTimeout(file, runaway, { cpuMs: 50, wallMs: 60_000 })).rejects.toMatchObject({
+        name: 'FixtureTimeoutError',
+        message: expect.stringMatching(/of CPU, over its 50 ms budget\.$/)
+      });
+    } finally {
+      running = false;
+    }
+  });
+
+  it('does not charge a fixture for time spent off the CPU', async () => {
+    /*
+     * On a loaded machine a fixture waits for a core; on its CPU clock that is
+     * the same as this sleep. A wall budget of 100 ms would fail it.
+     */
+    const offCpu = () => new Promise<string>(resolve => setTimeout(() => resolve('rendered'), 500));
+    await expect(withFixtureTimeout(file, offCpu, { cpuMs: 100, wallMs: 60_000 })).resolves.toBe('rendered');
   });
 });
