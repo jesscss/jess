@@ -11,7 +11,7 @@
  * units table.
  */
 import Big from 'big.js';
-import { DivisionByZeroError, EmptyOperandError, UnitArithmeticError, isValueGroupArray, type Color, type Dimension, type EvalModes, type ValueGroup, type Value } from './value-eval.js';
+import { DivisionByZeroError, EmptyOperandError, UnitArithmeticError, incompatibleUnits, isValueGroupArray, unitName, type Color, type Dimension, type EvalModes, type ValueGroup, type Value } from './value-eval.js';
 import { HEX } from './color.js';
 import { colorRawRgb, makeColorRgb, makeCompoundDimension, makeDimension, makeKeyword } from './value-factory.js';
 import { coerceNamedColorKeyword } from './literal-tag.js';
@@ -247,10 +247,8 @@ export function validateFinalUnits(value: ValueGroup, modes: EvalModes, demandEx
     return;
   }
   if (value.type === 'Dimension') {
-    const numerator = value.numerator ?? (value.unit ? [value.unit] : []);
-    const denominator = value.denominator ?? [];
-    if (numerator.length > 1 || denominator.length > 0) {
-      throw new UnitArithmeticError('Multiple units in dimension. Correct the units or use the unit function');
+    if ((value.numerator?.length ?? 0) > 1 || (value.denominator?.length ?? 0) > 0) {
+      throw new UnitArithmeticError(`Multiple units in dimension. Correct the units or use the unit function. Bad unit: ${unitName(value)}`);
     }
     return;
   }
@@ -300,7 +298,7 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
       const from = bu.num[0] ?? '';
       const bVal = convertValue(b.number, from, target);
       if ((isStrict || modes.unitMode === 'preserve') && !convertible(from, target)) {
-        throw new UnitArithmeticError(`Incompatible units. Change the units or use the unit function. Bad units: '${target}' and '${from}'.`);
+        throw incompatibleUnits(a, b);
       }
       value = calculate(a.number, op, bVal);
     } else if ((isStrict || modes.unitMode === 'preserve') && !sameMultiset(u, bu)) {
@@ -309,7 +307,7 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
        * `+`/`-` is only defined on an identical multiset. Loose keeps the 4.x
        * fold on raw magnitudes under the LHS unit.
        */
-      throw new UnitArithmeticError(`Incompatible units. Change the units or use the unit function. Bad units: '${displayUnit(u)}' and '${displayUnit(bu)}'.`);
+      throw incompatibleUnits(a, b);
     }
   } else if (op === '*' || op === '/') {
     composeUnits(u, bu, op);

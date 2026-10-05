@@ -7,7 +7,7 @@
  */
 import {
   IncomparableOperandsError,
-  UnitArithmeticError,
+  incompatibleUnits,
   isValueGroupArray,
   type Dimension,
   type ValueGroup,
@@ -111,9 +111,7 @@ function dimensionCompare(
   const bu = unify(b.number, b.unit);
   if (au.unit !== bu.unit) {
     if (unitMode === 'strict') {
-      throw new UnitArithmeticError(
-        `Incompatible units. Change the units or use the unit function. Bad units: '${a.unit}' and '${b.unit}'.`
-      );
+      throw incompatibleUnits(a, b);
     }
     return undefined;
   }

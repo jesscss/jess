@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as glob from 'glob';
 import * as path from 'path';
+import { readFileSync } from 'fs';
 import { Compiler } from '../../src/index.js';
 import { resolveLessTestDataRoot, lessHarnessFunctionsPlugin } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
@@ -8,9 +9,10 @@ import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
 /**
  * Less error corpus (`tests-error` — parse + eval). Each fixture is input Less
- * that Less 4.x REJECTS (there's a golden `.txt` error). Per the alpha plan this
- * is a CLASSIFY-only lane: Jess must ALSO error (produce ≥1 diagnostic or throw)
- * — we do not match Less's exact message/line/column (Jess's parser is its own).
+ * that Less 4.x REJECTS (there's a golden `.txt` error). Jess must ALSO error
+ * (produce ≥1 diagnostic or throw). Messages are never compared; the code and
+ * the `.txt` location are compared only for `callSiteErrorFixtures` (parse
+ * locations differ, since Jess's parser is its own).
  *
  * `acceptedDivergences` are the fixtures Jess currently ACCEPTS where Less errors
  * — a known gap or an intentional v5 repair. They're asserted to keep accepting
@@ -45,33 +47,14 @@ async function withFixtureTimeout<T>(
   }
 }
 
-// With Less-4-parity error surfacing ON (functionMode:'error', unitMode:'strict'
-// — see makeCompiler), the function/unit "divergences" now ERROR like Less, so
-// they're gone from this list. What remains is: genuine v5 behavior that no
-// option changes, plus REAL gaps where Jess still fails to error.
 const acceptedDivergences = new Map<string, string>([
-  // Intentional v5 behavior even under error-surfacing options — a color fn whose
-  // argument is a runtime `var()` can't be evaluated at build, so v5 preserves it.
-  ['tests-error/eval/color-func-invalid-color-2.less', 'v5 preserves darken(var(--x), …): a runtime var() arg is un-evaluable at build'],
-
-  // Real should-error GAPS — Jess still ACCEPTS these with error options on;
-  // each asserts KEEP-accepting, so a fix that closes it trips the test.
-  // (property-in-root / property-in-root2 / detached-ruleset-3 GRADUATED — they
-  //  now error via checkValidNodes' root property-in-root check.)
-  // detached-ruleset-1/-2 GRADUATED — a detached ruleset (Mixin/Rules) used as a
-  // property value now throws eval/ruleset-on-property (declaration.ts).
-  // multiple-guards-on-css-selectors2 GRADUATED — guarded selector lists now throw
-  // eval/guarded-selector-list from the public AST serializer.
-  // root-func-undefined-1 GRADUATED — a statement-position call whose result is a
-  // value (including a call left as a plain CSS call) throws eval/invalid-statement
-  // (ledger P37; Less 4.x `checkValidNodes`). The plugin tree-node scalar
-  // fixtures throw it too: a statement call may print raw text, but typed value
-  // results are not statements.
-  // ampersand-merge-template-invalid GRADUATED — its parent `@{list-quoted}` is a
-  // comma-list value in selector position, so it now throws selector/comma-list-interpolation
-  // (interpolated.ts). `.foo-&` itself is a plain compound; the old merge-template throw
-  // (assertNotCommaMergeTemplate) was removed with the merge surface.
-  // invalid-color-with-comment GRADUATED — colorHex now only matches 3/4/6/8-digit hex.
+  /*
+   * Intentional v5 behavior even under the error-surfacing options in
+   * makeCompiler: regular variables are lazy (ledger R1) and `@base-color` is
+   * never referenced, so its failing `darken()` never runs. Referenced, it
+   * rejects (function-mode.test.ts).
+   */
+  ['tests-error/eval/color-func-invalid-color-2.less', 'lazy variables (R1): the failing call sits in an unreferenced variable']
 ]);
 
 const rootCallFunctionFixtures = new Set([
@@ -82,21 +65,71 @@ const rootCallFunctionFixtures = new Set([
   'tests-error/eval/functions-15-value.less'
 ]);
 
+/*
+ * Fixtures Less 4.x rejects in a built-in's argument check or in unit
+ * arithmetic. Under the v5 defaults they render — the failing call kept as a
+ * call with evaluated, canonically spaced arguments (functionMode 'preserve',
+ * ledger C17; pinned per fixture in function-mode.test.ts), the unit clash as
+ * `calc()` (unitMode 'preserve', V18) — so they reject only with the options in
+ * makeCompiler. They must then reject where Less does: the line and column of
+ * the fixture's `.txt`. A unit-arithmetic diagnostic points at the failing
+ * operator rather than the declaration start Less reports, so only its line is
+ * compared.
+ *
+ * Wording is not asserted. Known differences: the argument binder reports
+ * `percentage: arg 0 expected Dimension, got List` where Less says `argument must
+ * be a number` (`unit()` likewise drops Less's parenthesis hint), and
+ * `svg-gradient(black, orange)` reports the stop-list message because the stops
+ * are counted structurally; Less counted the characters of `orange` and so
+ * reached its direction message instead.
+ */
+const callSiteErrorFixtures = new Map<string, string>([
+  ['tests-error/eval/add-mixed-units.less', 'eval/invalid-unit-arithmetic'],
+  ['tests-error/eval/add-mixed-units2.less', 'eval/invalid-unit-arithmetic'],
+  ['tests-error/eval/divide-mixed-units.less', 'eval/invalid-unit-arithmetic'],
+  ['tests-error/eval/multiply-mixed-units.less', 'eval/invalid-unit-arithmetic'],
+  ['tests-error/eval/color-func-invalid-color.less', 'eval/invalid-function'],
+  ['tests-error/eval/percentage-css-var.less', 'eval/invalid-function'],
+  ['tests-error/eval/percentage-non-number-argument.less', 'eval/invalid-function'],
+  ['tests-error/eval/svg-gradient1.less', 'eval/invalid-function'],
+  ['tests-error/eval/svg-gradient2.less', 'eval/invalid-function'],
+  ['tests-error/eval/svg-gradient3.less', 'eval/invalid-function'],
+  ['tests-error/eval/svg-gradient4.less', 'eval/invalid-function'],
+  ['tests-error/eval/svg-gradient5.less', 'eval/invalid-function'],
+  ['tests-error/eval/svg-gradient6.less', 'eval/invalid-function'],
+  ['tests-error/eval/unit-function.less', 'eval/invalid-function']
+]);
+
+/** The `on line N, column M` location in a fixture's expected Less error. */
+function lessErrorLocation(file: string): { line: number; column: number } {
+  const txt = readFileSync(path.join(TD, file.replace(/\.less$/, '.txt')), 'utf8');
+  const match = / on line (\d+), column (\d+):/.exec(txt);
+  if (!match) {
+    throw new Error(`${file}: no location in the expected error`);
+  }
+  return { line: Number(match[1]), column: Number(match[2]) };
+}
+
 function makeCompiler() {
   return new Compiler({
     output: { collapseNesting: true },
     compile: {
-      // Upstream plugin fixtures resolve scripts from the test-data root rather
-      // than their `tests-error/eval` directory.  Exercise the actual plugin
-      // lifecycle failure here, not an incidental missing-file diagnostic.
+      /*
+       * Upstream plugin fixtures resolve scripts from the test-data root rather
+       * than their `tests-error/eval` directory.  Exercise the actual plugin
+       * lifecycle failure here, not an incidental missing-file diagnostic.
+       */
       jsReadRoot: TD,
       plugins: [lessPlugin(), lessCompatPlugin({ plugins: [lessHarnessFunctionsPlugin] })],
-      // Less 4.x-parity error surfacing: this corpus asks "does Jess error where
-      // Less 4.x errors". Under the v5-lenient defaults (functionMode/unitMode
-      // 'preserve') Jess would render bad-function / mixed-unit input as-is —
-      // that's option-controlled, not a gap. Turn the options that gate those
-      // errors ON so what remains accepting is a REAL gap. (leakyScope stays at
-      // the Less-4 default: Less 4.x is leaky.)
+
+      /*
+       * Less 4.x-parity error surfacing: this corpus asks "does Jess error where
+       * Less 4.x errors". Under the v5-lenient defaults (functionMode/unitMode
+       * 'preserve') Jess would render bad-function / mixed-unit input as-is —
+       * that's option-controlled, not a gap. Turn the options that gate those
+       * errors ON so what remains accepting is a REAL gap. (leakyScope stays at
+       * the Less-4 default: Less 4.x is leaky.)
+       */
       functionMode: 'error',
       unitMode: 'strict'
     }
@@ -111,6 +144,7 @@ async function renderErrors(lessPath: string): Promise<Array<{ code?: string; ph
     if (error instanceof FixtureTimeoutError) {
       throw error;
     }
+
     // A thrown JessError is also a structured error result for this corpus.
     return [error as { code?: string; phase?: string }];
   }
@@ -119,8 +153,11 @@ async function renderErrors(lessPath: string): Promise<Array<{ code?: string; ph
 describe('Less error corpus (Jess must error where Less errors)', () => {
   const files = glob.sync(path.join(TD, 'tests-error/**/*.less'))
     .map(f => path.relative(TD, f))
-    // `imports/` subdirs are helper files pulled in by other fixtures, not
-    // standalone error cases — Less's own runner doesn't test them directly.
+
+    /*
+     * `imports/` subdirs are helper files pulled in by other fixtures, not
+     * standalone error cases — Less's own runner doesn't test them directly.
+     */
     .filter(f => !f.includes(`${path.sep}imports${path.sep}`))
     .sort();
 
@@ -144,6 +181,15 @@ describe('Less error corpus (Jess must error where Less errors)', () => {
           expect.objectContaining({ phase: 'eval', code: 'eval/invalid-statement' })
         ]));
         expect(errors.some(error => error.code === 'eval/async-in-sync-position'), `${file} must not leak the async render lane`).toBe(false);
+      }
+      const callSiteCode = callSiteErrorFixtures.get(file);
+      if (callSiteCode) {
+        const { line, column } = lessErrorLocation(file);
+        expect(errors[0], `${file} should reject at the Less call site`).toMatchObject({
+          code: callSiteCode,
+          line,
+          ...(callSiteCode === 'eval/invalid-unit-arithmetic' ? {} : { column })
+        });
       }
       if (divergence) {
         expect(errored, `${file} now errors — remove from acceptedDivergences`).toBe(false);
