@@ -196,8 +196,9 @@ Two compaction behaviors:
 .badError { border-width: 3px; }
 ```
 
-**Guarded grouping (owner 2026-10-05).** Extend's own `:is()` groups — the `all`
-graft and sibling compaction (§7c) — keep native specificity, matching and
+**Guarded grouping (ledger X3 and O10, both amended by the owner 2026-10-05).**
+Extend's own `:is()` groups — the `all` graft and sibling compaction (§7c) — keep
+native specificity, matching and
 invalid-selector behaviour, by the SAME rule `collapseNesting: 'native'` folds a
 nested child list by, and in EVERY output mode (nested, `'native'` and `'compact'`;
 extend grouping is not mode-coupled). One module owns that rule:
@@ -237,12 +238,15 @@ the extend engine both call it.
   whole `:is()` on its own — returned to the list it would raise elements the extend
   never touched (`:is(.c.k, .z) .d` + `#b:extend(.c all)` → `:is(.c.k, .z) .d, #b.k .d`).
   A plain compound alternative is merged in; anything else keeps a one-arm `:is()`.
-- KNOWN GAPS (owner decisions pending): an `all` match of a whole authored `:is()`
-  arm still appends the extender to the authored list (`:is(.c, .z) .d` +
-  `#b:extend(.c all)` → `:is(.c, .z, #b) .d`, raising `.c .d`/`.z .d`); a
-  pseudo-element member written as its own branch makes the whole rule invalid, as
-  in 4.x (the forgiving `:is()` kept the other branches); SCSS `@extend` uses the
-  same Less 4.x expansion, not dart-sass's weave.
+- KNOWN GAPS: an `all` match of a whole authored `:is()` arm still appends the
+  extender to the authored list (`:is(.c, .z) .d` + `#b:extend(.c all)` →
+  `:is(.c, .z, #b) .d`, raising `.c .d`/`.z .d`); orchestrator judgment
+  2026-10-05 treats that append as extend's own grouping under the same guard
+  (`:is(.c, .z) .d, #b .d`), not yet implemented. A pseudo-element member written
+  as its own branch makes the whole rule invalid, as in 4.x (the forgiving `:is()`
+  kept the other branches). SCSS `@extend` uses the same Less 4.x expansion, not
+  dart-sass's weave — deferred Sass-parity work, tracked with its repro in
+  `docs/state/PINNED-DEFECTS-AUDIT.md` ("Deferred, not pinned").
 
 ```less
 .a > .c { color: red; }
@@ -444,8 +448,8 @@ sibling branches differing in exactly ONE compound into `:is(...)` at that posit
 - Multi-segment (descendant-complex) rows compact only under a shared parent-composition
   prefix (`allowMultiSeg`, a flattened nested rule's hoisted header); a TOP-LEVEL rule's
   own header keeps `.foo .bar, .foo .baz` as a comma list (never `:is()`-collapsed).
-- The merged group is an extend group, so it follows §5's guarded grouping in every
-  output mode: `.button:hover, #submit:hover` stays a comma list, and
+- The merged group is an extend group, so it follows §5's guarded grouping (ledger
+  X3, amended by the owner 2026-10-05) in every output mode: `.button:hover, #submit:hover` stays a comma list, and
   `.arrow::before` / `.arrow::after` never share an `:is()`. A leading extend group on
   either side flattens into the merge; an authored or nesting `:is()` joins it as one
   member, so emission never splits a selector the author wrote. A lead already in
@@ -533,12 +537,15 @@ adjacent/child targets each match their respective combinator form.
   [data], .attribute-test2 { extend: attributes2; }
   [data="test3"], .attribute-test { extend: attributes2; }
   ```
-- **Interpolated extender selector** — an `:extend` ATTACHED to an interpolated
-  selector works (`@{variable}:extend(.bucket)`), but an interpolated selector as
-  a match target/subject matches nothing (`extend.md`, "Selector Interpolation
-  with Extend"): "Extend is not able to match selectors with variables." (See
-  §12 — the interpolated-attribute extend in `extend-selector` is currently a
-  DEFERRED engine gap.)
+- **Interpolated selectors** — an `:extend` ATTACHED to an interpolated selector
+  works (`@{variable}:extend(.bucket)`), and a rule whose selector is interpolated
+  (`.@{v} {}`, `.c-@{n} {}`) IS an extend target once resolved, at the root, in
+  imported sheets and in mixin/loop bodies alike (ledger X7, amended by the owner
+  2026-10-05, as lessc 4.9.1 behaves; it closes X15). 4.x `extend.md`'s "Extend is
+  not able to match selectors with variables" is superseded. Imported sheets are
+  not yet covered: they are planned from unresolved IR (`planImportedStaticExtend`),
+  so an imported `.@{v}` rule is still missed. (See §12 for the
+  interpolated-attribute extend in `extend-selector`.)
 
 ## 11. Reference-mode (`@import (reference)`) visibility
 

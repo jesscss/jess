@@ -50,8 +50,9 @@ Use `!exact` to require a whole-selector match — the equivalent of Less's plai
 
 - Matching runs on **compiled** selectors (after nesting/parent resolution), never
   on source text.
-- An interpolated selector as a match *target* matches nothing; an interpolated
-  *extender* works.
+- An interpolated selector inside the extend target matches nothing; a rule whose
+  selector is interpolated is matched once resolved, and an interpolated *extender*
+  works.
 - Extend is **selector-level** — it shares a rule's whole declaration block and cannot
   pull in a single property.
 - Target matching is **exact** apart from attribute-quote normalization: a leading

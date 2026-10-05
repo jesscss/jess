@@ -4223,8 +4223,7 @@ involved.
 ```
 
 - Latest pass: 2026-10-05 `collapseNesting: 'native'` child-list fold (owner
-  ruling 2026-10-05: fold what keeps native specificity; ledger O10 amendment
-  pending). `'native'` now folds a run of consecutive nested child branches into
+  ruling 2026-10-05: fold what keeps native specificity; ledger O10 amended). `'native'` now folds a run of consecutive nested child branches into
   `:is()` when every branch is a single compound of the same specificity and
   nothing in it changes matching or invalid-selector behaviour inside `:is()`:
   no interpolation, pseudo-element, namespace prefix, attribute `s` flag,

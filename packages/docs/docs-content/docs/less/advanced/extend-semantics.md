@@ -198,10 +198,10 @@ an `:is(a, b)` group is visible if *either* member is visible.
 
 - **No partial-property extend.** Extend is selector-level only — it shares a rule's
   whole declaration block. It cannot pull in a single property.
-- **No variable-target matching.** An interpolated selector as a match *target*
-  matches nothing (`:extend(@{variable})` finds nothing, and a `@{variable}` rule is
-  never matched *by* an extend). An interpolated selector as the *extender* — i.e.
-  `@{variable}:extend(.target)` — does work.
+- **No variable in the extend target.** `:extend(@{variable})` matches nothing. A
+  rule whose selector is interpolated (`@{variable} { … }`, `.c-@{n} { … }`) IS
+  matched once resolved, and an interpolated selector as the *extender* —
+  `@{variable}:extend(.target)` — works.
 - **No normalization of the target form.** Matching is byte-exact: a leading star
   (`*.class` ≠ `.class`), pseudo-class order (`:hover:visited` ≠ `:visited:hover`),
   and `nth` form (`1n+3` ≠ `n+3`) all matter. The one exception is attribute-selector
