@@ -1,0 +1,60 @@
+import { describe, expect, it } from 'vitest';
+import { buildEvaluator, serialize } from '@jesscss/core';
+import { makeLessRegistry } from '@jesscss/fns';
+import { parse } from '@jesscss/less-parser';
+import { LessApiBridge, type NativeLessPlugin } from '../src/less-api-bridge.js';
+
+/*
+ * An escaped string (`~"…"`, `~'…'`, `e()`) is an escaped `tree.Quoted` to a
+ * Less 4.x plugin, both as an argument and as a result; raw text such as
+ * `escape()`'s is a `tree.Anonymous`.
+ */
+async function render(source: string, plugin: NativeLessPlugin): Promise<string> {
+  const host = new LessApiBridge([plugin]).createPluginHost();
+  const result = await serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()), pluginHost: host });
+  return result.css ?? '';
+}
+
+const describeArg = (arg: unknown): string => {
+  if (typeof arg !== 'object' || arg === null) {
+    return String(arg);
+  }
+  const { type, quote, value, escaped } = arg as { type?: unknown; quote?: unknown; value?: unknown; escaped?: unknown };
+  return type === 'Quoted'
+    ? `Quoted(${String(quote)}${String(value)}${String(quote)}, escaped=${String(escaped)})`
+    : `${String(type)}(${String(value)})`;
+};
+
+describe('escaped strings at the Less plugin boundary', () => {
+  it('hands a plugin an escaped string as an escaped tree.Quoted, and raw text as tree.Anonymous', async () => {
+    const seen: string[] = [];
+    await render(
+      '@v: ~"a b";\n@w: e("c");\n.x { a: probe(~"x", ~\'q\', e("y"), @v, @w, escape("z")); }',
+      {
+        install(_less, _manager, functions) {
+          functions.add('probe', (...args: unknown[]) => {
+            seen.push(...args.map(describeArg));
+            return 'ok';
+          });
+        }
+      }
+    );
+    expect(seen).toEqual([
+      'Quoted("x", escaped=true)',
+      'Quoted(\'q\', escaped=true)',
+      'Quoted("y", escaped=true)',
+      'Quoted("a b", escaped=true)',
+      'Quoted("c", escaped=true)',
+      'Anonymous(z)'
+    ]);
+  });
+
+  it('writes an escaped tree.Quoted result unquoted, as Less does', async () => {
+    const css = await render('.x { a: wrap(1); }', {
+      install(less, _manager, functions) {
+        functions.add('wrap', () => new less.tree.Quoted('"', 'text', true));
+      }
+    });
+    expect(css).toContain('a: text;');
+  });
+});

@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, RGB } from '@jesscss/core';
+import { makeAny, makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, RGB } from '@jesscss/core';
 import jsPlugin, { JsPlugin, sanitizeSpawnEnv } from '../src/index.js';
 
 const makeTmpDir = (prefix: string) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -320,6 +320,32 @@ describe('@jesscss/plugin-js security', () => {
     expect(helperValueWithPrimitivesResult.type).toBe('List');
     expect(helperValueWithPrimitivesResult.sep).toBe('/');
     expect(helperValueWithPrimitivesResult.value.map(item => item.bytes)).toEqual(['raw', '2', 'true']);
+  });
+
+  it('bridges an escaped string as an escaped tree.Quoted, both ways, and raw text as tree.Anonymous', async () => {
+    const root = makeTmpDir('jess-js-root-');
+    const modulePath = path.join(root, 'escaped.ts');
+    fs.writeFileSync(
+      modulePath,
+      [
+        'const tree = (globalThis as any).less.tree;',
+        'export function describe(value: any) {',
+        '  return value instanceof tree.Quoted',
+        '    ? `Quoted(${value.quote}${value.value}${value.quote}, escaped=${value.escaped})`',
+        '    : `${value.type}(${value.value})`;',
+        '}',
+        'export function escaped() {',
+        '  return new tree.Quoted(\'"\', "text", true);',
+        '}'
+      ].join('\n'),
+      'utf8'
+    );
+    const plugin = jsPlugin({ jsReadRoot: root, runtimeApi: 'less' }) as JsPlugin;
+    plugins.push(plugin);
+    const mod = await plugin.import(modulePath);
+    await expect(mod.describe(makeAny('x', '\''))).resolves.toBe('Quoted(\'x\', escaped=true)');
+    await expect(mod.describe(makeAny('z'))).resolves.toBe('Anonymous(z)');
+    expect(await mod.escaped()).toEqual(makeAny('text', '"'));
   });
 
   it('exposes each tree constructor as a lowercase less.* factory, as Less 4.x does', async () => {

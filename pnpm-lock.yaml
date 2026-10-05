@@ -846,6 +846,9 @@ importers:
         specifier: workspace:*
         version: link:../../../jess-plugin-node-modules
     devDependencies:
+      '@jesscss/fns':
+        specifier: workspace:*
+        version: link:../../../fns
       less-plugin-autoprefix:
         specifier: ^2.0.0
         version: 2.0.0

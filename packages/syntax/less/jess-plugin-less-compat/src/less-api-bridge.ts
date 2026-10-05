@@ -328,6 +328,9 @@ export function toNativeLessValue(value: PluginRawArgument | ValueGroup): unknow
   switch (node.type) {
     case 'Dimension': return new LessDimension(node.number, node.unit);
     case 'Quoted': return new LessQuoted(node.quote, node.value, node.escaped);
+
+    /* An escaped string (`~"…"`, `e()`) is an escaped Quoted to a 4.x plugin. */
+    case 'Any': return node.escapedQuote === '' ? new LessAnonymous(node.bytes) : new LessQuoted(node.escapedQuote, node.bytes, true);
     case 'Keyword': return new LessKeyword(node.bytes);
     case 'Color': return { type: 'Color', rgb: node.rgb, alpha: node.alpha, value: node.bytes, bytes: node.bytes, valueOf: () => node.bytes };
     case 'List':
@@ -407,7 +410,8 @@ export function fromNativeLessValue(value: unknown): ValueGroup {
       return makeDimension(candidate.value, typeof candidate.unit === 'string' ? candidate.unit : '');
     }
     if (candidate.type === 'Quoted' && typeof candidate.value === 'string') {
-      return makeQuoted(candidate.value, candidate.quote === '\'' ? '\'' : '"', candidate.escaped === true);
+      const quote = candidate.quote === '\'' ? '\'' : '"';
+      return candidate.escaped === true ? makeAny(candidate.value, quote) : makeQuoted(candidate.value, quote, false);
     }
     if (candidate.type === 'Color') {
       if (Array.isArray(candidate.rgb)) {

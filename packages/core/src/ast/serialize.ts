@@ -4208,9 +4208,10 @@ function evalTyped(
        * model (§4.1): an unquoted string carries a STRING ground against any
        * operand, while a `Keyword` is a bare identifier that shares no ground
        * with a number or a colour. Lowering `~"4"` to a Keyword made `5 > ~"4"`
-       * and `1px > red` the same pair, and they are not.
+       * and `1px > red` the same pair, and they are not. The quote rides along
+       * as provenance only, for a legacy plugin's `tree.Quoted`.
        */
-      return node.escaped ? makeAny(node.value) : materializeNode(node, e);
+      return node.escaped ? makeAny(node.value, node.quote) : materializeNode(node, e);
     case 'Url':
       /*
        * A URL becomes a typed value only when a typed consumer asks for it.
