@@ -1290,7 +1290,7 @@ describe('Jess AST grammar facts', () => {
      */
     for (const [source, text] of [
       ['.x:totally-made-up(1) { color: red; }', ':totally-made-up(1)'],
-      ['.x:lang("en-US") { color: red; }', ':lang("en-US")'],
+      ['.x:totally-made-up("en-US") { color: red; }', ':totally-made-up("en-US")'],
 
       /*
        * The scan is delimiter-aware: a `)` inside a string or a bracket group is
@@ -1333,13 +1333,15 @@ describe('Jess AST grammar facts', () => {
      * Valid CSS is valid .jess: Selectors-4 §6.6.2 permits OPTIONAL whitespace
      * around the `+`/`-` sign, and CSS permits insignificant whitespace
      * surrounding any functional pseudo's argument inside the parens
-     * (https://www.w3.org/TR/selectors-4/#anb-microsyntax). Sign whitespace is
-     * preserved verbatim; surrounding paren whitespace is normalized away exactly
-     * as the canonical CSS grammar and the other dialects do.
+     * (https://www.w3.org/TR/selectors-4/#anb-microsyntax). Neither carries
+     * meaning: the An+B emits unspaced (ledger F2) and surrounding paren
+     * whitespace is normalized away, exactly as the canonical CSS grammar and
+     * the other dialects do.
      */
     for (const [source, expected] of [
-      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n + 1) {\n  color: red;\n}\n'],
-      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n - 3) {\n  color: red;\n}\n'],
+      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
+      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n-3) {\n  color: red;\n}\n'],
+      ['a:lang( en , "fr" ):dir( rtl ) { color: red; }', 'a:lang(en, "fr"):dir(rtl) {\n  color: red;\n}\n'],
       ['a:nth-child(2n+1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
       ['a:nth-child( 2n+1 ) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
       ['a:not( .b ) { color: red; }', 'a:not(.b) {\n  color: red;\n}\n']

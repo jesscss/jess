@@ -1978,7 +1978,7 @@ describe('SCSS canonical-AST grammar', () => {
     }
   });
 
-  it('constructs static non-selector pseudo arguments as existing SimpleSelector text', () => {
+  it('constructs :lang() and :nth-*() arguments structured, and other static pseudo arguments as SimpleSelector text', () => {
     const source = '.card:lang(en-US):nth-child(-n+2 of .item)::part(icon) { color: blue; }';
     const cst = parseScssCst(source);
     expect(cst.errors).toHaveLength(0);
@@ -1990,8 +1990,8 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [
         { type: 'SimpleSelector', text: '.card' },
-        { type: 'SimpleSelector', text: ':lang(en-US)' },
-        { type: 'SimpleSelector', text: ':nth-child(-n+2 of .item)' },
+        { type: 'PseudoSelector', name: ':lang', text: null, arg: { type: 'List', value: [{ type: 'Keyword', src: 'en-US' }] } },
+        { type: 'PseudoSelector', name: ':nth-child', text: null, arg: { type: 'AnPlusB', a: -1, b: 2, src: '-n+2' }, args: { selectors: [{ text: '.item' }] } },
         { type: 'SimpleSelector', text: '::part(icon)' }
       ] }] } }]
     });
@@ -2019,13 +2019,13 @@ describe('SCSS canonical-AST grammar', () => {
     /*
      * Selectors-4 §6.6.2 permits OPTIONAL whitespace around the `+`/`-` sign and
      * surrounding the argument inside the parens
-     * (https://www.w3.org/TR/selectors-4/#anb-microsyntax). Sign whitespace is
-     * preserved verbatim; insignificant space surrounding the argument is
-     * normalized away, matching the canonical CSS grammar and the other dialects.
+     * (https://www.w3.org/TR/selectors-4/#anb-microsyntax). Neither carries
+     * meaning, so the An+B emits unspaced (ledger F2), matching the canonical
+     * CSS grammar and the other dialects.
      */
     for (const [source, expected] of [
-      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n + 1) {\n  color: red;\n}\n'],
-      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n - 3) {\n  color: red;\n}\n'],
+      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
+      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n-3) {\n  color: red;\n}\n'],
       ['a:nth-child(2n+1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
       ['a:nth-child( 2n+1 ) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n']
     ] as const) {

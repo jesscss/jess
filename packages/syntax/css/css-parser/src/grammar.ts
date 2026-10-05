@@ -60,7 +60,10 @@ import {
   isKeyword,
   isNodeType,
   isSelectorBranch,
+  isNthArgument,
   isSelectorList,
+  languageRangeList,
+  nthArgument,
   isSimpleToken,
   isValue,
   isValueSlotValue,
@@ -70,7 +73,6 @@ import {
   unknownAtRuleBlock,
   optionalValue,
   parenGroupBlock,
-  pseudoSelector,
   quoted,
   relativeSelector,
   rule,
@@ -86,7 +88,7 @@ import {
   spaceRun,
   sourceText,
   spaced,
-  STRUCTURED_PSEUDOS,
+  structuredPseudoFrom,
   stylesheet,
   tokenText,
   url,
@@ -207,6 +209,9 @@ type GrammarRuleName =
   | 'LeadingDashOfTypePseudoArgument'
   | 'LeadingDashPseudoArgument'
   | 'LeadingDashRawPseudoArgument'
+  | 'LangPseudoArgument'
+  | 'DirPseudoArgument'
+  | 'LiteralQuoted'
   | 'MarginAtRule'
   | 'NestedConditionalBlock'
   | 'NestedLayerBlock'
@@ -1104,11 +1109,7 @@ const cssFactory = (g: GrammarSelf) => {
         g.PseudoSelectorCloseAhead
       )
     ),
-    (children) => {
-      const nth = `-${tokenText(children[1])}`;
-      const selector = children.find(isSelectorList);
-      return selector === undefined ? nth : `${nth} of ${selectorArgumentText(selector)}`;
-    }
+    children => nthArgument(`-${tokenText(children[1])}`, children.find(isSelectorList) ?? null)
   );
   const LeadingDashRawPseudoArgument = node(
     'LeadingDashRawPseudoArgument',
@@ -1169,11 +1170,7 @@ const cssFactory = (g: GrammarSelf) => {
         g.PseudoSelectorCloseAhead
       )
     ),
-    (children) => {
-      const nth = tokenText(children[0]);
-      const selector = children.find(isSelectorList);
-      return selector === undefined ? nth : `${nth} of ${selectorArgumentText(selector)}`;
-    }
+    children => nthArgument(tokenText(children[0]), children.find(isSelectorList) ?? null)
   );
 
   /*
@@ -1195,7 +1192,7 @@ const cssFactory = (g: GrammarSelf) => {
         g.PseudoSelectorCloseAhead
       )
     ),
-    children => `-${tokenText(children[1])}`
+    children => nthArgument(`-${tokenText(children[1])}`)
   );
   const TypedOfTypePseudoArgument = node(
     'TypedOfTypePseudoArgument',
@@ -1206,7 +1203,7 @@ const cssFactory = (g: GrammarSelf) => {
         g.PseudoSelectorCloseAhead
       )
     ),
-    children => tokenText(children[0])
+    children => nthArgument(tokenText(children[0]))
   );
   const PseudoArgument = node(
     'PseudoArgument',
@@ -1223,7 +1220,7 @@ const cssFactory = (g: GrammarSelf) => {
         g.pseudoArgumentContent
       )
     ),
-    children => selectorArgumentText(children[0])
+    children => isNthArgument(children[0]) ? children[0] : selectorArgumentText(children[0])
   );
 
   /*
@@ -1263,7 +1260,61 @@ const cssFactory = (g: GrammarSelf) => {
         )
       )
     ),
-    children => selectorArgumentText(children[0])
+    children => isNthArgument(children[0]) ? children[0] : selectorArgumentText(children[0])
+  );
+
+  /*
+   * A string token (css-syntax-3 §4.3.5) read as a static fact, where a
+   * dialect's string forms (interpolation, `~"…"`) do not belong: a `:lang()`
+   * language range. Less, SCSS and Jess override it with their own static
+   * spelling of the same token.
+   */
+  const LiteralQuoted = node(
+    'Quoted',
+    choice(
+      noTrivia(sequence(
+        literal('"'),
+        g.DoubleQuotedText,
+        literal('"')
+      )),
+      noTrivia(sequence(
+        literal('\''),
+        g.SingleQuotedText,
+        literal('\'')
+      ))
+    ),
+    (children) => {
+      const quote = tokenText(children[0]);
+      const value = children.length === 3 ? tokenText(children[1]) : '';
+      return quoted(`${quote}${value}${quote}`, value, quote, false);
+    }
+  );
+
+  /*
+   * `:lang( <ident> | <string> # )` (Selectors-4 §7.2) and `:dir( <ident> )`
+   * (§7.1). Their arguments are structured, never kept as text: a language
+   * range list is a comma `List` of `Keyword`s and `Quoted`s, a direction a
+   * `Keyword`. Any other argument shape fails the pseudo, as a malformed
+   * `An+B` does.
+   */
+  const LangPseudoArgument = node(
+    'LangPseudoArgument',
+    parser(
+      { trivia: whitespace },
+      oneOrMoreSep(
+        choice(
+          token(genericIdentifier),
+          g.LiteralQuoted
+        ),
+        literal(',')
+      )
+    ),
+    children => languageRangeList(children)
+  );
+  const DirPseudoArgument = node(
+    'DirPseudoArgument',
+    token(genericIdentifier),
+    children => keyword(tokenText(children[0]))
   );
 
   /*
@@ -1366,6 +1417,22 @@ const cssFactory = (g: GrammarSelf) => {
             literal(')')
           )
         ),
+        cssCase(
+          'lang(',
+          sequence(
+            routed(),
+            g.LangPseudoArgument,
+            literal(')')
+          )
+        ),
+        cssCase(
+          'dir(',
+          sequence(
+            routed(),
+            g.DirPseudoArgument,
+            literal(')')
+          )
+        ),
         when(
           endsWith('('),
           sequence(
@@ -1387,19 +1454,14 @@ const cssFactory = (g: GrammarSelf) => {
       }
 
       /*
-       * Parser = STRUCTURE + trivia only. A whitelisted selector-function pseudo
-       * keeps the parsed `args` (SelectorList) and does NOT join: core serialize
-       * owns the inline `:is(a, b)` rule (`pseudoCanonical`). The opaque/nth/raw
-       * path still collapses to SimpleSelector text via `selectorArgumentText`.
+       * Parser = STRUCTURE + trivia only. A selector-function pseudo keeps its
+       * parsed `args`, an `:nth-*()` its `An+B` (and `of S` list), a `:lang()` /
+       * `:dir()` its ranges / direction, and none of them is joined: core
+       * serialize owns their spelling (`pseudoCanonical`). Only an opaque or
+       * malformed argument collapses to SimpleSelector text.
        */
       const arg = children[2];
-      if (isSelectorList(arg) && STRUCTURED_PSEUDOS.has(pseudoName.toLowerCase())) {
-        return pseudoSelector(
-          head,
-          arg
-        );
-      }
-      return simpleSelector(`${head}(${selectorArgumentText(arg)})`);
+      return structuredPseudoFrom(head, pseudoName, arg) ?? simpleSelector(`${head}(${selectorArgumentText(arg)})`);
     }
   );
 
@@ -4928,6 +4990,9 @@ const cssFactory = (g: GrammarSelf) => {
     LeadingDashOfTypePseudoArgument,
     TypedOfTypePseudoArgument,
     LeadingDashRawPseudoArgument,
+    LiteralQuoted,
+    LangPseudoArgument,
+    DirPseudoArgument,
     NestingSelector,
     Property,
     CustomProperty,

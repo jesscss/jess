@@ -2646,7 +2646,7 @@ describe('public Less parse()', () => {
             selectors: [
               compoundComplex(
                 simpleSelector('.card'),
-                simpleSelector(':lang(en-US)'),
+                { type: 'PseudoSelector', name: ':lang', text: null, arg: { type: 'List', value: [{ type: 'Keyword', src: 'en-US' }] } },
                 simpleSelector('::part(icon)'),
                 simpleSelector(':state(foo[bar])')
               )
@@ -3014,7 +3014,7 @@ describe('public Less parse()', () => {
                   text: null,
                   crossable: false
                 },
-                simpleSelector(':nth-child(2n + 1)')
+                { type: 'PseudoSelector', name: ':nth-child', text: null, arg: { type: 'AnPlusB', a: 2, b: 1, src: '2n+1' } }
               )
             ]
           }
@@ -3024,7 +3024,7 @@ describe('public Less parse()', () => {
     expect(
       serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css
     ).toBe(
-      '.card:not(.disabled, .muted, .a > .b):nth-child(2n + 1) {\n  color: red;\n}\n'
+      '.card:not(.disabled, .muted, .a > .b):nth-child(2n+1) {\n  color: red;\n}\n'
     );
   });
 

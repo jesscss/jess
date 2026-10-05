@@ -40,7 +40,7 @@ import type {
   MixinDefinition, Param, PseudoSelector, Reference, RelativeSelector, Ruleset, SelectorBranch, SelectorList,
   SelectorTerm, SimpleSelector, Statement, StyleImport, Stylesheet, ValueNode, ValueSlot, VariableDeclaration
 } from './nodes.js';
-import { selectorBranchCanonical } from './nodes.js';
+import { pseudoArgumentText, selectorBranchCanonical } from './nodes.js';
 import type { AtRuleBlock, AtRuleStatement } from './at-rule.js';
 import type { GuardNode } from './guard.js';
 import { renderCombinator } from './node.js';
@@ -632,6 +632,9 @@ class JessPrinter {
   pseudo(node: PseudoSelector): string {
     if (node.interp !== null) {
       return this.template(node.interp, 'selector');
+    }
+    if (node.arg !== null) {
+      return `${node.name}(${pseudoArgumentText(node.arg)}${node.args === null ? '' : ` of ${this.selectorList(node.args)}`})`;
     }
     return node.args === null ? (node.text ?? '') : `${node.name}(${this.selectorList(node.args)})`;
   }

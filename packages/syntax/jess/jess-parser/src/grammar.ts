@@ -30,8 +30,8 @@ import type { Combinator } from 'parseman';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, STRUCTURED_PSEUDOS, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
-import type { Token, AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
+import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, quoted, range, reference, relativeSelector, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isNthArgument, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
+import type { Token, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 import {
   requireToken,
   requireFields,
@@ -301,6 +301,10 @@ type JessRules = {
 type SharedSyntax = {
   /* Inherited from the CSS base: the glued `ns|` / `*|` / `|` prefix terminal. */
   AttributeNamespace: Combinator<unknown>;
+
+  /* Inherited from the CSS base: `:lang()` / `:dir()`'s structured arguments. */
+  LangPseudoArgument: Combinator<List>;
+  DirPseudoArgument: Combinator<Keyword>;
 
   /*
    * Converged to the CSS base (inherited via compose): same token rule
@@ -2012,7 +2016,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * accepted as before; typed An+B is tried first so `-n+2` is not claimed as a
    * static `-n` selector.
    */
-  const NthChildArgument = node<SelectorList | string>(
+  const NthChildArgument = node<SelectorList | NthArgument>(
     'NthChildArgument',
     sequence(
       not(noTrivia(sequence(
@@ -2050,7 +2054,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         }
         return selector;
       }
-      return selector === undefined ? nth.value : `${nth.value} of ${staticSelectorText(selector)}`;
+      return nthArgument(nth.value, selector ?? null);
     }
   );
 
@@ -2063,7 +2067,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * `n of .a`, `-n+3 of .a` fail rather than being re-captured as a descendant
    * selector — the CSS-aligned owner decision (PSEUDO-ARGUMENT-CONSOLIDATION §7.1).
    */
-  const NthTypeArgument = node<SelectorList | string>(
+  const NthTypeArgument = node<SelectorList | NthArgument>(
     'NthTypeArgument',
     choice(
       sequence(
@@ -2100,7 +2104,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         }
         return selector;
       }
-      return nth.value;
+      return nthArgument(nth.value);
     }
   );
   const PseudoSelector = node<SimpleToken>(
@@ -2151,6 +2155,26 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           )
         ),
         caseInsensitiveWhen(
+          ['lang('],
+          sequence(
+            routed(),
+            optional(rawWhitespace),
+            g.LangPseudoArgument,
+            optional(rawWhitespace),
+            literal(')')
+          )
+        ),
+        caseInsensitiveWhen(
+          ['dir('],
+          sequence(
+            routed(),
+            optional(rawWhitespace),
+            g.DirPseudoArgument,
+            optional(rawWhitespace),
+            literal(')')
+          )
+        ),
+        caseInsensitiveWhen(
           [
             'nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type',
             'is', 'where', 'not', 'has', 'matches'
@@ -2170,22 +2194,21 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     (children) => {
       const pseudoName = jessFunctionOpenName(children[1]);
       const head = `${requireToken(children[0]).value}${pseudoName}`;
-      const arg = children.find((child): child is SelectorList | string => isSelectorList(child) || typeof child === 'string');
+      const arg = children.find(child => isSelectorList(child) || typeof child === 'string' || isNthArgument(child) || isList(child) || isKeyword(child));
       if (arg === undefined) {
         return simpleSelector(head);
       }
 
       /*
-       * Parser = STRUCTURE + trivia only. A whitelisted selector-function pseudo
-       * keeps the parsed `args` (SelectorList) and does NOT join: core serialize
-       * owns the inline `:is(a, b)` rule (`pseudoCanonical`). The nth/opaque path
-       * still collapses to canonical SimpleSelector text via `staticSelectorText`.
+       * Parser = STRUCTURE + trivia only. A selector-function pseudo keeps its
+       * parsed `args`, an `:nth-*()` its `An+B` (and `of S` list), a `:lang()` /
+       * `:dir()` its ranges / direction, and none of them is joined: core
+       * serialize owns their spelling (`pseudoCanonical`). Only an opaque
+       * argument collapses to canonical SimpleSelector text.
        */
-      if (isSelectorList(arg) && STRUCTURED_PSEUDOS.has(pseudoName.toLowerCase())) {
-        return pseudoSelector(
-          head,
-          arg
-        );
+      const structured = structuredPseudoFrom(head, pseudoName, arg);
+      if (structured !== null) {
+        return structured;
       }
       const argText = isSelectorList(arg) ? staticSelectorText(arg) : requireString(arg);
       return simpleSelector(`${head}(${argText})`);

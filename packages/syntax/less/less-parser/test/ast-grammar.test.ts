@@ -762,9 +762,11 @@ describe('Less AST grammar facts', () => {
           selector: {
             selectors: [
               {
-                type: 'SimpleSelector',
-                text: ':lang(en)',
-                interp: null
+                type: 'PseudoSelector',
+                name: ':lang',
+                text: null,
+                interp: null,
+                arg: { type: 'List', value: [{ type: 'Keyword', src: 'en' }] }
               }
             ]
           }
@@ -9301,12 +9303,12 @@ describe('Less AST grammar facts', () => {
       findCstNodes(cst.tree, 'GenericPseudo').map(
         cstLeafValues
       )
-    ).toEqual([[':hover'], [':lang(', 'en', ')']]);
+    ).toEqual([[':hover']]);
     expect(
-      findCstNodes(cst.tree, 'PseudoArgumentText').map(
+      findCstNodes(cst.tree, 'LangPseudo').map(
         cstLeafValues
       )
-    ).toEqual([['en']]);
+    ).toEqual([[':lang(', 'en', ')']]);
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
@@ -9327,7 +9329,7 @@ describe('Less AST grammar facts', () => {
                     text: null,
                     crossable: false
                   },
-                  { type: 'SimpleSelector', text: ':lang(en)' }
+                  { type: 'PseudoSelector', name: ':lang', text: null, arg: { type: 'List' } }
                 ]
               }
             ]
@@ -9350,7 +9352,7 @@ describe('Less AST grammar facts', () => {
     }
   });
 
-  it('constructs macro-fused static An+B pseudos as existing SimpleSelector text', () => {
+  it('constructs macro-fused static An+B pseudos as structured pseudos', () => {
     const source =
       '.card:nth-child(odd):nth-last-child(2n + 1), .note:nth-child(even) { color: red; }';
     const cst = parseLessCst(source);
@@ -9374,15 +9376,15 @@ describe('Less AST grammar facts', () => {
                 type: 'CompoundSelector',
                 value: [
                   { type: 'SimpleSelector', text: '.card' },
-                  { type: 'SimpleSelector', text: ':nth-child(odd)' },
-                  { type: 'SimpleSelector', text: ':nth-last-child(2n + 1)' }
+                  { type: 'PseudoSelector', name: ':nth-child', text: null, args: null, arg: { type: 'AnPlusB', a: 2, b: 1, src: 'odd' } },
+                  { type: 'PseudoSelector', name: ':nth-last-child', text: null, args: null, arg: { type: 'AnPlusB', a: 2, b: 1, src: '2n+1' } }
                 ]
               },
               {
                 type: 'CompoundSelector',
                 value: [
                   { type: 'SimpleSelector', text: '.note' },
-                  { type: 'SimpleSelector', text: ':nth-child(even)' }
+                  { type: 'PseudoSelector', name: ':nth-child', arg: { a: 2, b: 0, src: 'even' } }
                 ]
               }
             ]
@@ -9396,18 +9398,18 @@ describe('Less AST grammar facts', () => {
     /*
      * Selectors-4 §6.6.2 permits OPTIONAL whitespace around the `+`/`-` sign and
      * surrounding the argument inside the parens
-     * (https://www.w3.org/TR/selectors-4/#anb-microsyntax). Sign whitespace is
-     * preserved verbatim; insignificant space surrounding the argument is
-     * normalized away, matching the canonical CSS grammar and the other dialects.
+     * (https://www.w3.org/TR/selectors-4/#anb-microsyntax). Neither carries
+     * meaning, so the An+B emits unspaced (ledger F2), matching the canonical
+     * CSS grammar and the other dialects.
      */
     for (const [source, expected] of [
       [
         'a:nth-child(2n + 1) { color: red; }',
-        'a:nth-child(2n + 1) {\n  color: red;\n}\n'
+        'a:nth-child(2n+1) {\n  color: red;\n}\n'
       ],
       [
         'a:nth-last-child(n - 3) { color: red; }',
-        'a:nth-last-child(n - 3) {\n  color: red;\n}\n'
+        'a:nth-last-child(n-3) {\n  color: red;\n}\n'
       ],
       [
         'a:nth-child(2n+1) { color: red; }',
@@ -9638,7 +9640,7 @@ describe('Less AST grammar facts', () => {
     );
   });
 
-  it('constructs static non-selector functional pseudos as existing SimpleSelector text', () => {
+  it('constructs :lang() structured and other static non-selector functional pseudos as SimpleSelector text', () => {
     const source =
       '.card:lang(en-US)::part(icon):state(foo /* note */ [bar]) { color: blue; }';
     const cst = parseLessCst(source);
@@ -9661,7 +9663,7 @@ describe('Less AST grammar facts', () => {
                 type: 'CompoundSelector',
                 value: [
                   { type: 'SimpleSelector', text: '.card' },
-                  { type: 'SimpleSelector', text: ':lang(en-US)' },
+                  { type: 'PseudoSelector', name: ':lang', text: null, arg: { type: 'List', value: [{ type: 'Keyword', src: 'en-US' }] } },
                   { type: 'SimpleSelector', text: '::part(icon)' },
                   { type: 'SimpleSelector', text: ':state(foo [bar])' }
                 ]
@@ -9752,16 +9754,16 @@ describe('Less AST grammar facts', () => {
                 type: 'CompoundSelector',
                 value: [
                   { text: '.child' },
-                  { text: ':nth-child(-n+2 of .item)' },
-                  { text: ':nth-last-child(2n + 1)' }
+                  { name: ':nth-child', arg: { a: -1, b: 2, src: '-n+2' }, args: { selectors: [{ text: '.item' }] } },
+                  { name: ':nth-last-child', arg: { a: 2, b: 1, src: '2n+1' }, args: null }
                 ]
               },
               {
                 type: 'CompoundSelector',
                 value: [
                   { text: '.type' },
-                  { text: ':nth-of-type(odd)' },
-                  { text: ':nth-last-of-type(3n)' }
+                  { name: ':nth-of-type', arg: { src: 'odd' } },
+                  { name: ':nth-last-of-type', arg: { a: 3, b: 0, src: '3n' } }
                 ]
               }
             ]
@@ -9879,7 +9881,7 @@ describe('Less AST grammar facts', () => {
                     text: null,
                     crossable: false
                   },
-                  { type: 'SimpleSelector', text: ':nth-child(2n + 1)' }
+                  { type: 'PseudoSelector', name: ':nth-child', arg: { src: '2n+1' } }
                 ]
               }
             ]

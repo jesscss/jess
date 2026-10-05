@@ -16,8 +16,8 @@
  * parameterised by.
  */
 
-import { appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, keyword, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueSlot, withValueLayout } from '@jesscss/core/ast';
-import type { AtRuleStatement, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, isNthArgument, pseudoSelector, simpleSelector, structuredPseudoFrom, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, keyword, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueSlot, withValueLayout } from '@jesscss/core/ast';
+import type { AtRuleStatement, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { ScssImportPostludeError } from './parse-error.js';
 
 export type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
@@ -138,6 +138,31 @@ export function isScssImportTarget(value: unknown): value is Quoted | Url | Inte
 export function sassImportUrlIsPlainCss(spelling: string): boolean {
   return spelling.length >= 5
     && (spelling.startsWith('//') || spelling.startsWith('http://') || spelling.startsWith('https://'));
+}
+
+/**
+ * An `:nth-*()` pseudo from its glued opener (`:nth-child(`) and reduced
+ * argument: structured when the argument is an `An+B`, the opaque raw text it
+ * always was otherwise.
+ */
+export function nthPseudoFrom(opener: string, arg: unknown): SimpleToken {
+  if (isNthArgument(arg)) {
+    return pseudoSelector(opener.slice(0, -1), arg.of, null, null, arg.nth);
+  }
+  if (typeof arg !== 'string') {
+    throw new TypeError('SCSS nth pseudo lost its argument.');
+  }
+  return simpleSelector(`${opener}${arg.trim()})`);
+}
+
+/** A `:lang()` / `:dir()` pseudo from its glued opener and structured argument. */
+export function requireStructuredPseudo(opener: string, arg: unknown): SimpleToken {
+  const name = opener.slice(0, -1);
+  const pseudo = structuredPseudoFrom(name, name.slice(name.startsWith('::') ? 2 : 1), arg);
+  if (pseudo === null) {
+    throw new TypeError('SCSS pseudo lost its structured argument.');
+  }
+  return pseudo;
 }
 
 /**

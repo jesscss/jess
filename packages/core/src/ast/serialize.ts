@@ -2622,6 +2622,10 @@ function termIsBareAmp(term: SelectorTerm): boolean {
  * contributes nothing, matching `simpleTokenText`'s `''`.
  */
 function pushTokenAtoms(sim: SimpleToken, out: string[]): void {
+  if (sim.type === 'PseudoSelector' && sim.arg !== null) {
+    pushLeafAtoms(pseudoCanonical(sim), out);
+    return;
+  }
   if (sim.type === 'PseudoSelector' && sim.args !== null) {
     pushLeafAtoms(sim.name, out);
     for (const branch of sim.args.selectors) {
@@ -2702,6 +2706,10 @@ function resolvedBranchAtoms(c: SelectorBranch, frame: Frame | null, e: EvalCtx)
  * loss the emit path had.
  */
 function pushResolvedTokenAtoms(sim: SimpleToken, frame: Frame | null, e: EvalCtx, out: string[]): void {
+  if (sim.type === 'PseudoSelector' && sim.arg !== null) {
+    pushLeafAtoms(resolveSimpleTextSync(sim, frame, e), out);
+    return;
+  }
   if (sim.type === 'PseudoSelector' && sim.args !== null) {
     pushLeafAtoms(sim.name, out);
     for (const branch of sim.args.selectors) {
@@ -8392,7 +8400,7 @@ function resolveSimpleText(sim: SimpleToken, frame: Frame | null, e: EvalCtx): M
     }
     return combineAll(
       args.selectors.map(branch => resolveSelectorBranch(branch, frame, e)),
-      values => pseudoJoin(sim.name, values)
+      values => pseudoJoin(sim, values)
     );
   }
   const interp = sim.interp;
@@ -8568,7 +8576,7 @@ function resolveTokenAmp(sim: SimpleToken, parents: string[], sub: string, first
   if (sim.type === 'PseudoSelector' && sim.args !== null && selectorListHasAmpersand(sim.args)) {
     return mapMaybe(
       resolveSelectorListAmp(sim.args, parents, frame, e),
-      branches => [pseudoJoin(sim.name, branches)]
+      branches => [pseudoJoin(sim, branches)]
     );
   }
   return mapMaybe(resolveSimpleText(sim, frame, e), (text) => {

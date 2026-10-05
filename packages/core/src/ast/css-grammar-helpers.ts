@@ -18,6 +18,7 @@
  * the CSS base inherits them through the base rather than redeclaring them.
  */
 import {
+  anPlusB,
   any,
   branch,
   block,
@@ -28,6 +29,7 @@ import {
   interpolatedSimpleSelector,
   list,
   operation,
+  pseudoSelector,
   selectorBranchCanonical,
   simpleSelector,
   spaced,
@@ -37,6 +39,7 @@ import {
 import { generalEnclosedSourceOf, valueLayoutOf, withGeneralEnclosedSource, withGeneralEnclosedTemplate, withValueLayout } from './provenance.js';
 import { isForBinding, isToken, semanticGapText } from './grammar-helpers.js';
 import type {
+  AnPlusB,
   AnonymousMixin,
   CompoundSelector,
   Block,
@@ -567,6 +570,57 @@ export function isSimpleToken(value: unknown): value is SimpleToken {
  * so it stays opaque text. `crossable` (a narrower set) is decided in core.
  */
 export const STRUCTURED_PSEUDOS = new Set(['is', 'where', 'not', 'has', 'matches']);
+
+/**
+ * A reduced `:nth-*()` argument: its `An+B` and, on the child-indexed pseudos,
+ * the `of S` selector list (Selectors-4 §6.6.2).
+ */
+export interface NthArgument {
+  readonly nth: AnPlusB;
+  readonly of: SelectorList | null;
+}
+
+/** An `:nth-*()` argument from the text of a recognized `<an+b>` and its `of S` list. */
+export function nthArgument(text: string, of: SelectorList | null = null): NthArgument {
+  return { nth: anPlusB(text), of };
+}
+
+export function isNthArgument(value: unknown): value is NthArgument {
+  return typeof value === 'object' && value !== null && 'nth' in value && 'of' in value;
+}
+
+/**
+ * The structured pseudo a functional pseudo's reduced argument makes, or
+ * `null` when the argument has no structure of its own (an opaque or
+ * malformed one, which the caller keeps as text): an `:nth-*()` `An+B`, a
+ * `:lang()` range list, a `:dir()` direction, or a selector-function pseudo's
+ * selector list.
+ */
+export function structuredPseudoFrom(head: string, name: string, arg: unknown): SimpleToken | null {
+  if (isNthArgument(arg)) {
+    return pseudoSelector(head, arg.of, null, null, arg.nth);
+  }
+  if (isList(arg) || isKeyword(arg)) {
+    return pseudoSelector(head, null, null, null, arg);
+  }
+  if (isSelectorList(arg) && STRUCTURED_PSEUDOS.has(name.toLowerCase())) {
+    return pseudoSelector(head, arg);
+  }
+  return null;
+}
+
+/** A `:lang()` argument (Selectors-4 §7.2): identifiers and strings in a comma list. */
+export function languageRangeList(children: readonly unknown[]): List {
+  const ranges: Array<Keyword | Quoted> = [];
+  for (const child of children) {
+    if (isQuoted(child)) {
+      ranges.push(child);
+    } else if (isToken(child) && child.value !== ',') {
+      ranges.push(keyword(child.value));
+    }
+  }
+  return list(ranges, ',');
+}
 
 export function isCompound(value: unknown): value is CompoundSelector {
   return isNodeType(
@@ -1195,6 +1249,13 @@ export function isReference(value: unknown): value is Reference {
   return isNodeType(
     value,
     'Reference'
+  );
+}
+
+export function isList(value: unknown): value is List {
+  return isNodeType(
+    value,
+    'List'
   );
 }
 

@@ -158,8 +158,47 @@ describe('CSS canonical-AST grammar', () => {
       css: '.card:hover::before {\n  color: red;\n}\n'
     });
     expect(parseAst('.card:nth-child(2) { color: red; }').rules[0]).toMatchObject({
-      type: 'Ruleset', selector: { selectors: [{ value: [{ text: '.card' }, { text: ':nth-child(2)' }] }] }
+      type: 'Ruleset',
+      selector: { selectors: [{ value: [
+        { text: '.card' },
+        { type: 'PseudoSelector', text: null, name: ':nth-child', args: null, arg: { type: 'AnPlusB', a: 0, b: 2, src: '2' } }
+      ] }] }
     });
+  });
+
+  /*
+   * Pseudo-class arguments are structured, never joined text (Selectors-4
+   * §6.6.2, §7.1, §7.2): an `:nth-*()` keeps its An+B as `arg` (value and
+   * unspaced form, ledger F2/X6) and its `of S` list as `args`; `:lang()` keeps
+   * its language ranges as a comma `List`; `:dir()` its direction `Keyword`.
+   */
+  it('structures :nth-*(), :lang() and :dir() arguments', () => {
+    const pseudo = (source: string) => {
+      const rule = parseAst(`${source} { color: red; }`).rules[0];
+      if (rule?.type !== 'Ruleset') {
+        throw new Error(`Expected a rule for ${source}`);
+      }
+      return rule.selector.selectors[0];
+    };
+    expect(pseudo(':nth-child(odd)')).toMatchObject({ arg: { a: 2, b: 1, src: 'odd' }, args: null });
+    expect(pseudo(':nth-last-child(-n + 3 of .a, .b)')).toMatchObject({
+      name: ':nth-last-child',
+      arg: { type: 'AnPlusB', a: -1, b: 3, src: '-n+3' },
+      args: { type: 'SelectorList', selectors: [{ text: '.a' }, { text: '.b' }] }
+    });
+    expect(pseudo(':nth-of-type(+5)')).toMatchObject({ arg: { a: 0, b: 5, src: '+5' } });
+    expect(pseudo(':lang(en, "fr-*")')).toMatchObject({
+      name: ':lang',
+      args: null,
+      arg: { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'en' }, { type: 'Quoted', src: '"fr-*"' }] }
+    });
+    expect(pseudo(':dir(rtl)')).toMatchObject({ name: ':dir', args: null, arg: { type: 'Keyword', src: 'rtl' } });
+    expect(serialize(parseAst(':nth-child(2n - 1 of .a,.b), :lang( en ,"fr" ), :dir( ltr ) { color: red; }')).css)
+      .toBe(':nth-child(2n-1 of .a, .b),\n:lang(en, "fr"),\n:dir(ltr) {\n  color: red;\n}\n');
+
+    for (const source of [':lang(1.5)', ':lang(*-CH)', ':lang()', ':dir(foo bar)', ':dir("rtl")', ':dir()']) {
+      expect(() => parseAst(`${source} { color: red; }`), source).toThrow();
+    }
   });
 
   it('constructs a namespaced type selector as ONE SimpleSelector, not two compounds split on `|`', () => {
@@ -371,7 +410,7 @@ describe('CSS canonical-AST grammar', () => {
 
   it('keeps malformed-An+B rejection scoped to nth pseudo families', () => {
     for (const source of [
-      ':lang(1.5) { color: red; }',
+      ':state(1.5) { color: red; }',
       ':custom-state(2n+x) { color: red; }',
       '::-vendor-part(2n +) { color: red; }'
     ]) {
@@ -482,17 +521,16 @@ describe('CSS canonical-AST grammar', () => {
     /*
      * Selectors-4 §6.6.2 permits OPTIONAL whitespace around the `+`/`-` sign in
      * the `<An+B>` microsyntax (https://www.w3.org/TR/selectors-4/#anb-microsyntax);
-     * the sign whitespace is preserved verbatim, while insignificant whitespace
-     * surrounding the argument inside the parens is normalized away — matching
-     * the existing `2n+1` handling, which emits the An+B expression as authored.
+     * that whitespace carries no meaning, so the An+B emits unspaced (ledger F2),
+     * as does insignificant whitespace surrounding the argument inside the parens.
      */
     for (const [source, expected] of [
-      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n + 1) {\n  color: red;\n}\n'],
-      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n - 3) {\n  color: red;\n}\n'],
-      ['a:nth-child(n + 3) { color: red; }', 'a:nth-child(n + 3) {\n  color: red;\n}\n'],
+      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
+      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n-3) {\n  color: red;\n}\n'],
+      ['a:nth-child(n + 3) { color: red; }', 'a:nth-child(n+3) {\n  color: red;\n}\n'],
       ['a:nth-child(2n+1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
       ['a:nth-child( 2n+1 ) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
-      ['a:nth-child(2n + 1 of .item) { color: red; }', 'a:nth-child(2n + 1 of .item) {\n  color: red;\n}\n']
+      ['a:nth-child(2n + 1 of .item) { color: red; }', 'a:nth-child(2n+1 of .item) {\n  color: red;\n}\n']
     ] as const) {
       expect(serialize(parseAst(source)).css, source).toEqual(expected);
     }
@@ -597,7 +635,7 @@ describe('CSS canonical-AST grammar', () => {
       ['[lang|=en][data^=pre][data$="end" s] { color: red; }', ['[lang|=en]', '[data^=pre]', '[data$="end" s]']],
       [':is(.card, :not(.disabled), :has(.icon > svg)) { color: red; }', [':is(.card, :not(.disabled), :has(.icon > svg))']],
       [':has(.card > .icon, :is(.badge, .label)) { color: red; }', [':has(.card > .icon, :is(.badge, .label))']],
-      [':nth-child(2n + 1 of :is(.card, .tile)) { color: red; }', [':nth-child(2n + 1 of :is(.card, .tile))']],
+      [':nth-child(2n + 1 of :is(.card, .tile)) { color: red; }', [':nth-child(2n+1 of :is(.card, .tile))']],
       [':nth-child(-n+2 of .item) { color: red; }', [':nth-child(-n+2 of .item)']],
       [':nth-last-of-type(-5n) { color: red; }', [':nth-last-of-type(-5n)']],
       [':nth-child(-n+2/* preserve */ of .item) { color: red; }', [':nth-child(-n+2 of .item)']],
@@ -617,9 +655,10 @@ describe('CSS canonical-AST grammar', () => {
       }
 
       /*
-       * A structured pseudo has `text: null` (structure in `args`); its canonical
-       * inline spelling is produced by core serialization (`simpleTokenText`), not
-       * the parser. Opaque simples/nth pseudos still carry verbatim `text`.
+       * A structured pseudo has `text: null` (structure in `args` / `arg`); its
+       * canonical inline spelling is produced by core serialization
+       * (`simpleTokenText`), not the parser. Opaque simples still carry verbatim
+       * `text`.
        */
       const selector = first.selector.selectors[0];
       expect(selector ? leadingSelectorTexts(selector) : [], source).toEqual(expectedSimples);
