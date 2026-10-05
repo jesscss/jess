@@ -9411,34 +9411,28 @@ class EmittedTrivia {
 
   /**
    * Open ONE expansion of a callable body: every run from run `from` up to offset
-   * `end` is freed for it, whatever owned it, and the runs that were owned or
-   * held are returned for {@link closeCopy} (`undefined` when none was). Each
-   * call or ruleset argument writes its own copy of the body, so it writes its
-   * own copy of the body's comments too.
+   * `end` is freed for it, whatever owned it, and every run's prior state is
+   * returned for {@link closeCopy}. Each call or ruleset argument writes its own
+   * copy of the body, so it writes its own copy of the body's comments too.
    */
-  openCopy(table: CommentTable, from: number, end: number): SavedRuns | undefined {
-    const owned = this.bits.get(table);
-    if (owned === undefined) {
-      return undefined;
+  openCopy(table: CommentTable, from: number, end: number): SavedRuns {
+    const owned = this.bitsOf(table);
+    const states = new Uint8Array(firstRunAtOrAfter(table, end) - from);
+    for (let k = 0; k < states.length; k++) {
+      const at = table.canonical[from + k]!;
+      states[k] = owned[at]!;
+      owned[at] = FREE_RUN;
     }
-    let states: Uint8Array | undefined;
-    for (let i = from; i < table.runs.length && table.runStart[i]! < end; i++) {
-      const at = table.canonical[i]!;
-      if (owned[at] !== FREE_RUN) {
-        states ??= new Uint8Array(firstRunAtOrAfter(table, end) - from);
-        states[i - from] = owned[at]!;
-        owned[at] = FREE_RUN;
-      }
-    }
-    return states === undefined ? undefined : { from, states };
+    return { from, states };
   }
 
   /**
-   * Close the expansion a replay opened ({@link openCopy}). A run that was held
-   * or owned before it gets that state back, so a definition stays held. A run
-   * that was free keeps what the expansion left: the comments it wrote stay
-   * owned, so the writers that run when its leaves are emitted do not write
-   * them a second time.
+   * Close the expansion a replay opened ({@link openCopy}): every run gets its
+   * prior state back. A definition stays held, and a run the copy wrote stays
+   * free for the body's other copies — a ruleset called as a mixin before it is
+   * written at its own position still writes its comments there. The copy's
+   * leaves carry the comments it took as their leading comments, so the block
+   * that writes them does not replay them again ({@link flushBlock}).
    */
   closeCopy(replay: BodyTriviaReplay | undefined): void {
     const saved = replay?.saved;
@@ -9447,10 +9441,10 @@ class EmittedTrivia {
     }
     const table = replay!.table;
     const owned = this.bitsOf(table);
-    for (let k = 0; k < saved.states.length; k++) {
-      if (saved.states[k] !== FREE_RUN) {
-        owned[table.canonical[saved.from + k]!] = saved.states[k]!;
-      }
+
+    /* Backwards: a run listed twice saved its real state at its first position. */
+    for (let k = saved.states.length - 1; k >= 0; k--) {
+      owned[table.canonical[saved.from + k]!] = saved.states[k]!;
     }
   }
 
@@ -9550,6 +9544,33 @@ interface ReplaySpan {
 
 function isReplaySpan(span: ReplaySpan | undefined): span is ReplaySpan {
   return span !== undefined;
+}
+
+const NO_REPLAY_SPANS: readonly ReplaySpan[] = [];
+
+/**
+ * The spans of the rules nested directly in `rule`'s body, which a collapsed
+ * block's comment replay steps over: a nested rule is written as its own block,
+ * which writes its own comments. Read only when the body holds a comment.
+ */
+function nestedRuleSpans(rule: Ruleset, bodyStart: number, e: Emit): readonly ReplaySpan[] {
+  const table = e.trivia === undefined ? undefined : commentTableOf(e.trivia);
+  const first = table === undefined ? 0 : firstRunAtOrAfter(table, bodyStart);
+  if (table === undefined || first >= table.runs.length || table.runStart[first]! >= bodyEndOf(rule)) {
+    return NO_REPLAY_SPANS;
+  }
+  let spans: ReplaySpan[] | undefined;
+  for (const statement of rule.rules) {
+    if (statement.type !== 'Ruleset') {
+      continue;
+    }
+    const start = statementStartOf(statement);
+    const end = statementEndOf(statement);
+    if (start !== undefined && end !== undefined) {
+      (spans ??= []).push({ start, end });
+    }
+  }
+  return spans ?? NO_REPLAY_SPANS;
 }
 
 function emitBlockCommentTriviaBetween(
@@ -9965,28 +9986,25 @@ function markSilentStatementBlockCommentTrivia(node: Statement, e: Emit): void {
   if (trivia === undefined) {
     return;
   }
+  const body = node.type === 'MixinDefinition'
+    ? node
+    : node.type === 'VariableDeclaration' && !isValueSlotArray(node.value) && node.value.type === 'AnonymousMixin'
+      ? node.value
+      : undefined;
+
+  /* The body's own span holds its comments even when the statement records none. */
+  if (body !== undefined) {
+    holdBodyTrivia(body, e);
+  }
   const spanStart = sourceStartOf(node);
   if (spanStart === NO_SPAN) {
     return;
   }
   const spanEnd = sourceEndOf(node);
   const table = commentTableOf(trivia);
-  const body = node.type === 'MixinDefinition'
-    ? node
-    : node.type === 'VariableDeclaration' && !isValueSlotArray(node.value) && node.value.type === 'AnonymousMixin'
-      ? node.value
-      : undefined;
-  let bodyStart = NO_SPAN;
-  let bodyEnd = NO_SPAN;
-  if (body !== undefined) {
-    bodyStart = bodyStartOf(body);
-    bodyEnd = bodyEndOf(body);
-    if (bodyStart === NO_SPAN) {
-      /* No recorded body span: hold all of it rather than claim the body's comments. */
-      bodyStart = spanStart;
-      bodyEnd = spanEnd;
-    }
-  }
+
+  /* No recorded body span: hold all of it rather than claim the body's comments. */
+  const holdAll = body !== undefined && bodyStartOf(body) === NO_SPAN;
   for (let i = firstRunAtOrAfter(table, spanStart); i < table.runs.length; i++) {
     if (table.runStart[i]! > spanEnd) {
       break;
@@ -9994,10 +10012,28 @@ function markSilentStatementBlockCommentTrivia(node: Statement, e: Emit): void {
     if (table.runEnd[i]! > spanEnd || !runHasBlockComment(table, i)) {
       continue;
     }
-    if (bodyStart !== NO_SPAN && table.runStart[i]! >= bodyStart && table.runEnd[i]! <= bodyEnd) {
+    if (holdAll) {
       e.emittedBlockTrivia.holdIndex(table, i);
     } else {
-      e.emittedBlockTrivia.addIndex(table, i);
+      e.emittedBlockTrivia.addIndex(table, i); // a held body run stays held
+    }
+  }
+}
+
+/**
+ * HOLD the comment runs of a body that only its expansions write — a loop body,
+ * written once per iteration ({@link EmittedTrivia.holdIndex}).
+ */
+function holdBodyTrivia(owner: object, e: Emit): void {
+  const start = bodyStartOf(owner);
+  if (e.trivia === undefined || start === NO_SPAN) {
+    return;
+  }
+  const table = commentTableOf(e.trivia);
+  const end = bodyEndOf(owner);
+  for (let i = firstRunAtOrAfter(table, start); i < table.runs.length && table.runStart[i]! <= end; i++) {
+    if (table.runEnd[i]! <= end && runHasBlockComment(table, i)) {
+      e.emittedBlockTrivia.holdIndex(table, i);
     }
   }
 }
@@ -10595,17 +10631,13 @@ function evaluateSilentStatement(
   node: MixinDefinition | VariableDeclaration,
   frame: Frame,
   e: Emit
-): boolean {
+): void {
   if (node.type === 'MixinDefinition') {
     publishSelectedMixinDefinition(frame, node);
-    markSilentStatementBlockCommentTrivia(node, e);
-    return true;
+  } else {
+    activateVariableDeclaration(node, frame, e);
   }
-  activateVariableDeclaration(node, frame, e);
   markSilentStatementBlockCommentTrivia(node, e);
-  return !isValueSlotArray(node.value)
-    && 'type' in node.value
-    && isValueBlock(node.value);
 }
 
 /** The resolved property name of a declaration (interp names resolve sync). */
@@ -11885,16 +11917,9 @@ function emitDocumentStatements(
   const deferredImports: StyleImport[] = [];
   const delayedStatements: Statement[] = [];
   let documentTriviaCursor = 0;
-  let documentTriviaSuppressedByDefinition = false;
   const emitBeforeDocumentStatement = (child: Statement): void => {
     if (e.referenceImportDepth !== 0) {
       documentTriviaCursor = statementStartOf(child) ?? documentTriviaCursor;
-      documentTriviaSuppressedByDefinition = false;
-      return;
-    }
-    if (documentTriviaSuppressedByDefinition) {
-      documentTriviaCursor = statementStartOf(child) ?? documentTriviaCursor;
-      documentTriviaSuppressedByDefinition = false;
       return;
     }
     emitBlockCommentTriviaBetween(e, documentTriviaCursor, statementStartOf(child), '');
@@ -11961,14 +11986,10 @@ function emitDocumentStatements(
           publishSelectedMixinDefinition(frame, child);
         }
         markSilentStatementBlockCommentTrivia(child, e);
-        documentTriviaSuppressedByDefinition = true;
         break;
       case 'VariableDeclaration':
         activateVariableDeclaration(child, frame, e);
         markSilentStatementBlockCommentTrivia(child, e);
-        if (!isValueSlotArray(child.value) && 'type' in child.value && isValueBlock(child.value)) {
-          documentTriviaSuppressedByDefinition = true;
-        }
         break;
       case 'MixinCall': {
         if (e.referenceImportDepth !== 0) {
@@ -13104,7 +13125,7 @@ interface BodyTriviaReplay {
   index: number;
 
   /** The states {@link EmittedTrivia.openCopy} saved, indexed from the body's first run. */
-  readonly saved: SavedRuns | undefined;
+  readonly saved: SavedRuns;
 }
 
 /**
@@ -13137,6 +13158,17 @@ function bodyTriviaReplay(owner: object, e: Emit): BodyTriviaReplay | undefined 
   return low < table.runs.length && table.runStart[low]! < end
     ? { table, end, index: low, saved: e.emittedBlockTrivia.openCopy(table, low, end) }
     : undefined;
+}
+
+/**
+ * Write a rule that a callable body's expansion deferred past its own walk
+ * inside a copy of the rule's body, as the walk would have: its comments belong
+ * to the body, so each expansion writes them where the rule lands
+ * ({@link EmittedTrivia.openCopy}).
+ */
+function withBodyCopy(owner: object, e: Emit, emit: () => MaybePromise<void>): MaybePromise<void> {
+  const copy = bodyTriviaReplay(owner, e);
+  return mapMaybe(emit(), () => e.emittedBlockTrivia.closeCopy(copy));
 }
 
 /**
@@ -13187,6 +13219,17 @@ function queueBodyTriviaBefore(
   const comments = takeBodyTrivia(replay, end, previousLeaf === undefined ? undefined : statementEndOf(previousLeaf.node), e);
   if (comments !== undefined) {
     queueLeafBlockComments(e, group, comments);
+  }
+
+  /*
+   * A comment inside a declaration or a nested rule belongs to that statement's
+   * own writer — the value's or the rule body's — so the replay steps over it
+   * rather than writing it between statements.
+   */
+  const statementEnd = before.type === 'Declaration' || before.type === 'Ruleset' ? statementEndOf(before) : undefined;
+  const table = replay.table;
+  while (statementEnd !== undefined && replay.index < table.runs.length && table.runStart[replay.index]! < statementEnd) {
+    replay.index++;
   }
 }
 
@@ -13317,7 +13360,6 @@ function walkBody(
   let bodyOwner: object | undefined;
   let bodyTriviaCursor = 0;
   let rootTriviaCursor: number | undefined;
-  let rootTriviaSuppressedByDefinition = false;
   let inlineLeaves: NestedLeafBuffer | undefined;
   let flushBuf: () => void = MOOT_FLUSH;
   let replayBodyCommentsBefore: (statement: Statement) => void = NOOP_BEFORE_STATEMENT;
@@ -13340,6 +13382,13 @@ function walkBody(
       emitBodyBlockCommentTriviaBefore(bodyOwner, statement, e, INDENT.repeat(e.depth), bodyTriviaCursor);
       const end = sourceEndOf(statement);
       bodyTriviaCursor = end === NO_SPAN ? bodyTriviaCursor : end;
+    };
+
+    /* A called body's leaf carries the comments its expansion took (closeCopy). */
+    const replayBeforeLeaf = (leaf: Leaf): void => {
+      if (leaf.frame.mixinSplice !== true) {
+        replayBodyCommentsBefore(leaf.node);
+      }
     };
     flushBuf = sharedLeaves?.flush ?? (() => {
       if (buf.length === 0 && e.pendingLeafBlockCommentOwner !== buf) {
@@ -13373,14 +13422,14 @@ function walkBody(
             settledEmission(withSourceOwner(e, sourceOwner, () => {
               for (let at = start; at < end; at++) {
                 const owned = buf[at]!;
-                replayBodyCommentsBefore(owned.node);
+                replayBeforeLeaf(owned);
                 emitNestedLeafOwned(owned, e);
               }
             }), leaf.node, e);
             index = end;
             continue;
           }
-          replayBodyCommentsBefore(leaf.node);
+          replayBeforeLeaf(leaf);
           emitNestedLeafOwned(leaf, e);
           index++;
         }
@@ -13404,11 +13453,6 @@ function walkBody(
         }).filter(isReplaySpan);
     emitBeforeRootStatement = (node: Statement): void => {
       if (rootTriviaCursor === undefined) {
-        return;
-      }
-      if (rootTriviaSuppressedByDefinition) {
-        rootTriviaCursor = statementStartOf(node) ?? rootTriviaCursor;
-        rootTriviaSuppressedByDefinition = false;
         return;
       }
       emitBlockCommentTriviaBetween(e, rootTriviaCursor, statementStartOf(node), '', rootTriviaExclusions);
@@ -13603,7 +13647,8 @@ function walkBody(
             queueLeadingGroup(group, partition, e);
             flushPending(partition);
             partition.encounteredContainer = true;
-            partition.trailing.push(() => expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList));
+            const emitRule = (): MaybePromise<void> => expandRule(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList);
+            partition.trailing.push(bodyTrivia === undefined ? emitRule : () => withBodyCopy(rule, e, emitRule));
           } else {
             const flushed = flush();
             if (isThenable(flushed)) {
@@ -14116,22 +14161,8 @@ function walkBody(
           break;
         }
         case 'MixinDefinition':
-          if (nested) {
-            if (evaluateSilentStatement(node, frame, e) && rootTriviaCursor !== undefined) {
-              rootTriviaSuppressedByDefinition = true;
-            }
-          } else {
-            evaluateSilentStatement(node, frame, e);
-          }
-          break;
         case 'VariableDeclaration':
-          if (nested) {
-            if (evaluateSilentStatement(node, frame, e) && rootTriviaCursor !== undefined) {
-              rootTriviaSuppressedByDefinition = true;
-            }
-          } else {
-            evaluateSilentStatement(node, frame, e);
-          }
+          evaluateSilentStatement(node, frame, e);
           break;
       }
     }
@@ -15802,6 +15833,9 @@ function expandFor(
       ? walkBody([unlowered], composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion)
       : nestedBody([unlowered], frame, e, undefined, imp, source, null, sharedLeaves, applyExpansion);
   }
+
+  /* Each iteration writes its own copy of the body, comments included. */
+  holdBodyTrivia(node, e);
   return mapMaybe(forItems(node.iterable, frame, e), (items) => {
     const run = (start: number): MaybePromise<void> => {
       const collectionEntries = Array.isArray(items)
@@ -15857,7 +15891,8 @@ function expandFor(
         if (item !== null) {
           bindForDetached(loopFrame, bindings, item);
         }
-        const emitted = mapMaybe(
+        const bodyTrivia = bodyTriviaReplay(node, e);
+        const walked = mapMaybe(
           activateBodyDependencies(node.rules, loopFrame, e),
           () => sharedLeaves === undefined
             ? walkBody(
@@ -15872,7 +15907,9 @@ function expandFor(
                 imp,
                 forceLeading,
                 propertyScope,
-                applyExpansion
+                applyExpansion,
+                false,
+                bodyTrivia
               )
             : nestedBody(
                 node.rules,
@@ -15883,9 +15920,17 @@ function expandFor(
                 source,
                 null,
                 sharedLeaves,
-                applyExpansion
+                applyExpansion,
+                undefined,
+                bodyTrivia
               )
         );
+        const emitted = mapMaybe(walked, () => {
+          if (sharedLeaves === undefined) {
+            queueBodyTriviaTail(bodyTrivia, group, partition, e);
+          }
+          e.emittedBlockTrivia.closeCopy(bodyTrivia);
+        });
         if (isThenable(emitted)) {
           return emitted.then(() => run(i + 1));
         }
@@ -16419,7 +16464,7 @@ function flushBlock(
   e: Emit,
   selNode?: SelectorList,
   parentKey?: object | null,
-  owner?: object,
+  owner?: Ruleset,
   trailingBlockComments: readonly string[] = EMPTY_LEAF_BLOCK_COMMENTS
 ): MaybePromise<void> {
   /*
@@ -16498,6 +16543,7 @@ function flushBlock(
       const bodyStart = bodyOwner === undefined ? NO_SPAN : bodyStartOf(bodyOwner);
       const hasBody = bodyStart !== NO_SPAN;
       let bodyTriviaCursor = hasBody ? bodyStart : 0;
+      const nestedRules = hasBody ? nestedRuleSpans(bodyOwner!, bodyStart, e) : NO_REPLAY_SPANS;
       for (let index = 0; index < kept.length;) {
         const leaf = kept[index]!;
         const sourceOwner = leaf.frame.sourceOwner;
@@ -16515,8 +16561,8 @@ function flushBlock(
           settledEmission(withSourceOwner(e, sourceOwner, () => {
             for (let at = start; at < end; at++) {
               const owned = kept[at]!;
-              if (hasBody) {
-                emitBlockCommentTriviaBetween(e, bodyTriviaCursor, statementStartOf(owned.node), INDENT.repeat(e.depth + 1));
+              if (hasBody && owned.frame.mixinSplice !== true) {
+                emitBlockCommentTriviaBetween(e, bodyTriviaCursor, statementStartOf(owned.node), INDENT.repeat(e.depth + 1), nestedRules);
                 bodyTriviaCursor = statementEndOf(owned.node) ?? bodyTriviaCursor;
               }
               for (const comment of owned.leadingBlockComments ?? []) {
@@ -16528,8 +16574,10 @@ function flushBlock(
           index = end;
           continue;
         }
-        if (hasBody) {
-          emitBlockCommentTriviaBetween(e, bodyTriviaCursor, statementStartOf(leaf.node), INDENT.repeat(e.depth + 1));
+
+        /* A called body's leaf carries the comments its expansion took (closeCopy). */
+        if (hasBody && leaf.frame.mixinSplice !== true) {
+          emitBlockCommentTriviaBetween(e, bodyTriviaCursor, statementStartOf(leaf.node), INDENT.repeat(e.depth + 1), nestedRules);
           bodyTriviaCursor = statementEndOf(leaf.node) ?? bodyTriviaCursor;
         }
         for (const comment of leaf.leadingBlockComments ?? []) {
@@ -16538,12 +16586,23 @@ function flushBlock(
         emitLeafOwned(leaf, e);
         index++;
       }
+
+      /*
+       * A trailing comment queued by a statement's expansion (a call's or a loop
+       * body's last comment) precedes the block's own comments after it, as the
+       * nested writer orders them.
+       */
+      for (const comment of trailingBlockComments) {
+        putBlockComment(e, INDENT.repeat(e.depth + 1), comment);
+      }
       if (hasBody) {
-        emitBlockCommentTriviaBetween(e, bodyTriviaCursor, bodyOwner === undefined ? bodyTriviaCursor : bodyEndOf(bodyOwner), INDENT.repeat(e.depth + 1));
+        emitBlockCommentTriviaBetween(e, bodyTriviaCursor, bodyEndOf(bodyOwner!), INDENT.repeat(e.depth + 1), nestedRules);
       }
     }
-    for (const comment of trailingBlockComments) {
-      putBlockComment(e, INDENT.repeat(e.depth + 1), comment);
+    if (mergeMode !== MERGE_NONE) {
+      for (const comment of trailingBlockComments) {
+        putBlockComment(e, INDENT.repeat(e.depth + 1), comment);
+      }
     }
     emitBlockClose(e, idt, lb);
 
@@ -16620,11 +16679,28 @@ function dedupGroup(group: Leaf[], e: Emit): MaybePromise<Leaf[]> {
     if (!suppressed) {
       return group;
     }
+
+    /*
+     * A dropped duplicate's leading comments are trivia, not part of the
+     * declaration: they stay, ahead of the next declaration kept (the later
+     * occurrence always is).
+     */
     const out: Leaf[] = [];
+    let carried: string[] | null = null;
     for (let i = 0; i < group.length; i++) {
-      if (!suppressed.has(i)) {
-        out.push(group[i]!);
+      const leaf = group[i]!;
+      if (suppressed.has(i)) {
+        if (leaf.leadingBlockComments !== null && leaf.leadingBlockComments.length !== 0) {
+          (carried ??= []).push(...leaf.leadingBlockComments);
+        }
+        continue;
       }
+      if (carried !== null) {
+        out.push({ ...leaf, leadingBlockComments: [...carried, ...leaf.leadingBlockComments ?? []] });
+        carried = null;
+        continue;
+      }
+      out.push(leaf);
     }
     return out;
   };

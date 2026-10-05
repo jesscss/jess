@@ -187,6 +187,57 @@ describe('Less block comments at a statement boundary inside a block', () => {
     }
   });
 
+  /*
+   * A comment belongs to the body it is written in. A callable body's comments
+   * are written once per expansion, where that expansion lands; a comment
+   * inside a statement belongs to the statement's own writer; a comment between
+   * statements of the caller stays where it was written.
+   */
+  it('writes a nested rule\'s comment in that rule, per expansion', async () => {
+    const source = '.m() { .n { /* in */ q: 1; } } a { .m(); } b { .m(); }';
+    await expect(render(source, true))
+      .resolves.toBe('a .n { /* in */ q: 1; } b .n { /* in */ q: 1; }');
+    await expect(render(source, false))
+      .resolves.toBe('a { .n { /* in */ q: 1; } } b { .n { /* in */ q: 1; } }');
+    await expect(render('a { b: 0; .n { /* in */ q: 1; } c: 2; }', true))
+      .resolves.toBe('a { b: 0; } a .n { /* in */ q: 1; } a { c: 2; }');
+  });
+
+  it('writes a value\'s comment once in a callable body', async () => {
+    await bothEmitters('.m() { w: 1 /* mid */ 2; } a { .m(); }', 'a { w: 1 /* mid */ 2; }');
+  });
+
+  it('keeps the comment of a declaration dropped as a duplicate', async () => {
+    await expect(render('@d: { /* k */ v: 1; }; a { @d(); @d(); }', true))
+      .resolves.toBe('a { /* k */ /* k */ v: 1; }');
+    await expect(render('@d: { /* k */ v: 1; }; a { @d(); @d(); }', false))
+      .resolves.toBe('a { /* k */ v: 1; /* k */ v: 1; }');
+  });
+
+  it('keeps a ruleset\'s comments at its own position when it is called before it is written', async () => {
+    await bothEmitters('a { .m(); } .m { /* c */ v: 1; }', 'a { /* c */ v: 1; } .m { /* c */ v: 1; }');
+    await bothEmitters('a { .m(); } .m { v: 1; /* t */ w: 2; }', 'a { v: 1; /* t */ w: 2; } .m { v: 1; /* t */ w: 2; }');
+    await expect(render('a { .n(); .n { /* c */ x: 1; } }', true))
+      .resolves.toBe('a { /* c */ x: 1; } a .n { /* c */ x: 1; }');
+  });
+
+  it('writes a root comment after a callable definition at the root', async () => {
+    await bothEmitters('.m() { v: 1; } /* root */ a { .m(); }', '/* root */ a { v: 1; }');
+    await bothEmitters('@d: { /* k */ v: 1; }; /* root */ a { @d(); }', '/* root */ a { /* k */ v: 1; }');
+  });
+
+  it('writes a call\'s trailing comment before the caller\'s comment after the call', async () => {
+    await bothEmitters('.m() { v: 1; /* t */ } a { .m(); /* after */ }', 'a { v: 1; /* t */ /* after */ }');
+  });
+
+  it('writes an each() callback\'s comments once per iteration', async () => {
+    await bothEmitters(
+      '@l: 1 2; a { b: 0; each(@l, .(@v) { /* c */ v: @v; /* t */ }); /* after */ }',
+      'a { b: 0; /* c */ v: 1; /* t */ /* c */ v: 2; /* t */ /* after */ }'
+    );
+    await bothEmitters('@l: 1 2; a { each(@l, { /* c */ v: @value; }); }', 'a { /* c */ v: 1; /* c */ v: 2; }');
+  });
+
   it('places the comment correctly when the nested ruleset IS terminated', async () => {
     await expect(render('a { b: c; /* z */ .n { d: e; }; }', false))
       .resolves.toBe('a { b: c; /* z */ .n { d: e; } }');

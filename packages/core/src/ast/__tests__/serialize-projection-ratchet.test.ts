@@ -171,8 +171,19 @@ describe('V19 one-evaluator projection ratchet', () => {
     // desugar wrapped that nothing loads is written as one `@import … q;`.
     // +1 function (`moduleLoadFailed`): a `@use` that cannot load is an
     // `import/load-failed` at the `@use`, as `@plugin` already is.
-    expect(occurrences(/^function |^async function /gmu)).toBe(480);
-    expect(occurrences(/new Map/gu)).toBe(73);
+    // +1 function (`putPending`): every slot that settles after the walk reserves
+    // its chunk through one helper, so each records its source-map position alike.
+    // +4 functions (`eagerSnapshot`, `noteCompressedSpelling`,
+    // `compressedEagerSource`, `compressedEagerSources`) and +2 `new Map` (the
+    // render-scoped `compressedBindings`, created once per render entry): a mixin
+    // argument binds as written, and under compress records the spelling a
+    // declaration folds it to (ledger O3).
+    // +3 functions (`withBodyCopy`, `nestedRuleSpans`, `holdBodyTrivia`): a rule a
+    // callable body's expansion defers, and each loop iteration, write their own
+    // copy of their body's comments, and a collapsed block's replay steps over
+    // the rules nested in it.
+    expect(occurrences(/^function |^async function /gmu)).toBe(488);
+    expect(occurrences(/new Map/gu)).toBe(75);
     expect(occurrences(/new Set/gu)).toBe(37);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
@@ -184,7 +195,7 @@ describe('V19 one-evaluator projection ratchet', () => {
      */
     expect(occurrences(/const buf: Leaf\[\] = nested \? \(sharedLeaves\?\.leaves \?\? \[\]\) : MOOT_LEAVES/gu)).toBe(1);
     expect(occurrences(/evaluateLeafStatement\(/gu)).toBe(3);
-    expect(occurrences(/evaluateSilentStatement\(/gu)).toBe(5);
+    expect(occurrences(/evaluateSilentStatement\(/gu)).toBe(2);
   });
 
   it('keeps one evaluator for callable expansion', () => {

@@ -35,7 +35,7 @@ type InterpolationAccessorFact = { readonly key: ValueNode | number; readonly ke
 type ReferenceTailFact = { readonly step: Reference['steps'][number]; readonly src: string };
 type ComplexTailFact = { readonly combinator: ' ' | '>' | '+' | '~' | '|' | '||'; readonly term: SelectorTerm };
 type MixinPathSegmentFact = { readonly combinator: ' ' | '>'; readonly selector: string };
-type LessEachCallback = { readonly binding: ForBinding; readonly rules: Statement[] };
+type LessEachCallback = { readonly binding: ForBinding; readonly rules: Statement[]; readonly bodySpan: SourceSpan | undefined };
 type MixinGuard = NonNullable<MixinDefinition['guard']>;
 type MixinCallArgument = MixinCall['args'][number];
 
