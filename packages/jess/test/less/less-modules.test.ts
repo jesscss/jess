@@ -200,20 +200,66 @@ describe('Less @compose stylesheet modules', () => {
       .toBe('.m {\n  x: 2;\n  y: 2;\n}\n.a {\n  x: 2;\n  y: 2;\n}\n');
   });
 
+  /* Ledger A15(a): a `set` cannot reconfigure a module identity already loaded without one (as Sass). */
   it('rejects a `set` on a module that was already loaded without one', async () => {
     const { errors } = await render('@compose "./theme.less";\n@compose "./theme.less" as t2 set { @primary: red; }\n.a { c: @t2.primary; }');
     expect(errors).toEqual(['Module "./theme.less" was already loaded without configuration; only the first import of a module can configure it with "set".']);
   });
 
+  /* Ledger A15(b): an identity an @import folded into the stylesheet cannot also be composed. */
   it('rejects composing a module that @import already folded into the stylesheet', async () => {
-    const { errors } = await render('@import "./theme.less";\n@compose "./theme.less";\n.a { c: @theme.primary; }');
-    expect(errors).toEqual(['Module "./theme.less" was already loaded by @import, which folds it into the importing scope; it cannot also be composed as an isolated module.']);
+    for (const entry of [
+      '@import "./theme.less";\n@compose "./theme.less";\n.a { c: @theme.primary; }',
+      '.wrap { @import "./theme.less"; }\n@compose "./theme.less";\n'
+    ]) {
+      const { errors } = await render(entry);
+      expect(errors).toEqual(['Module "./theme.less" was already loaded by @import, which folds it into the importing scope; it cannot also be composed as an isolated module.']);
+    }
   });
 
-  it('a namespace read before its @compose is an unresolved name, not verbatim text', async () => {
-    const { css, errors } = await render('.a { c: @theme.primary; }\n@compose "./theme.less" with { @primary: red; }');
-    expect(errors).toEqual(['Symbol "@theme" is undefined in this scope.']);
-    expect(css).not.toContain('@theme.primary');
+  /*
+   * Ledger A15(c): Less lookups are order-independent, so a document-root
+   * compose publishes its namespace before any output, as an @import publishes
+   * its facts (N10). A local binding written after the @compose outranks it.
+   */
+  it('resolves a namespace read placed before its @compose', async () => {
+    const { css, errors } = await render('.a { c: @theme.primary; e: @theme.accent; }\n@compose "./theme.less" with { @primary: red; }');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.a {\n  c: red;\n  e: #cc0000;\n}\n.theme-base {\n  color: red;\n  border-color: #cc0000;\n}\n');
+  });
+
+  it('resolves an `as *` member read placed before its @compose, and lets a later local win', async () => {
+    const { css, errors } = await render('.a { c: @primary; s: @spacing[normal]; }\n@compose "./theme.less" as *;\n@primary: green;\n');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.a {\n  c: green;\n  s: 8px;\n}\n.theme-base {\n  color: blue;\n  border-color: #0000cc;\n}\n');
+  });
+
+  it('binds an early-read namespace to the one activation a shared module renders under', async () => {
+    const { css, errors } = await render('.a { c: @again.primary; }\n@compose "./theme.less" set { @primary: red; }\n@compose "./theme.less" as again;\n');
+    expect(errors).toEqual([]);
+    expect(css).toBe('.a {\n  c: red;\n}\n.theme-base {\n  color: red;\n  border-color: #cc0000;\n}\n');
+  });
+
+  it('still reports a namespace that is bound nowhere', async () => {
+    const { css, errors } = await render('.a { c: @nope.primary; }\n@compose "./theme.less";');
+    expect(errors).toEqual(['Symbol "@nope" is undefined in this scope.']);
+    expect(css).not.toContain('@nope.primary');
+  });
+
+  /*
+   * A document that writes @compose is in modern mode, where each() is an
+   * unimported call (ledger P36); a legacy document reaches a namespace a
+   * modern partial composed. The loop reads each member once, as `@ns.name`
+   * does: through the module activation, configuration included.
+   */
+  it('each() over a namespace iterates its members as the activation binds them', async () => {
+    const files: SourceFile[] = [
+      ['partial.less', '@compose "./tokens.less" with { @a: 5; }\n'],
+      ['tokens.less', '@a: 1;\n@b: 2;\n@b: 3;\n']
+    ];
+    const { css, errors } = await render('@import "./partial.less";\n.a { each(@tokens, { k-@{key}: @value; }); }', files);
+    expect(errors).toEqual([]);
+    expect(css).toBe('.a {\n  k-a: 5;\n  k-b: 3;\n}\n');
   });
 
   it('reports an unknown member', async () => {

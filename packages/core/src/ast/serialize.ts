@@ -43,6 +43,7 @@ import {
   NULL_NODE,
   spaced,
   variableDeclaration,
+  variableReference,
   anonymousMixin,
   isLiteralNode,
   isTypedLiteral,
@@ -5500,24 +5501,31 @@ function evalToDeclMap(statements: Statement[], frame: Frame | null, e: EvalCtx,
 /**
  * A composed module's variable member: whatever the module's activation binds
  * the name to — configuration overlay, nested `@import` facts and later writes
- * included (spec R6 §E.1) — never the authored value re-read. A name the module
- * writes conditionally or reassigns through the live store (`$x ?: v`, `$x := v`,
- * `!default`) is a live variable, read from the activation's final cell, which a
- * configuration seeds and a later hard write replaces. Every other name is read
- * through the scoped store, where a configuration overlays the declared binding.
- * For a plain declaration both stores agree.
+ * included (spec R6 §E.1) — never the authored value re-read. The store it is
+ * read through is {@link memberLookup}'s.
  */
 function activatedVarMember(activation: Frame, name: string, e: EvalCtx): DeclEntry | undefined {
-  let lookup: VariableLookup = 'scoped';
-  for (const declaration of activation.declIndex?.byName.get(name) ?? []) {
-    if (declaration.write.mode !== 'declare' && declaration.write.scope === 'live') {
-      lookup = 'live';
-    }
-  }
-  const bound = resolveVarRef(activation, name, lookup, e);
+  const bound = resolveVarRef(activation, name, memberLookup(activation, name), e);
   return bound === undefined
     ? undefined
     : { name, value: bound.value, frame: bound.frame, evaluated: bound.evaluated, important: false };
+}
+
+/**
+ * The store a composed module's member is read through. A name the module
+ * writes conditionally or reassigns through the live store (`$x ?: v`,
+ * `$x := v`, `!default`) is a live variable, read from the activation's final
+ * cell, which a configuration seeds and a later hard write replaces. Every
+ * other name is read through the scoped store, where a configuration overlays
+ * the declared binding. For a plain declaration both stores agree.
+ */
+function memberLookup(activation: Frame, name: string): VariableLookup {
+  for (const declaration of activation.declIndex?.byName.get(name) ?? []) {
+    if (declaration.write.mode !== 'declare' && declaration.write.scope === 'live') {
+      return 'live';
+    }
+  }
+  return 'scoped';
 }
 
 function valueCollectionToDeclMap(value: ValueCollection, parent: Frame | null): DeclMap {
@@ -8824,11 +8832,17 @@ interface Emit extends EvalCtx {
   mixinDepth: number;
 
   /**
-   * Emit-once registry of loaded module identities. A shared `@compose`d module
-   * maps to its one activation frame, so a later compose edge of the same
-   * identity binds its namespace there instead of evaluating the module again.
+   * Emit-once registry of loaded module identities, filled as each import or
+   * compose renders: `null` for a module an `@import` folded in, the activation
+   * frame for a shared `@compose`d module.
    */
   loadedImports: Map<string, Frame | null> | null;
+
+  /** The one activation of each shared `@compose`d module identity ({@link activateComposeEdge}). */
+  moduleActivations?: Map<string, Frame> | null;
+
+  /** Document-root `@compose` edges the import planner activated ahead of output. */
+  composeActivations?: Map<StyleImport, ComposeActivation> | null;
 
   /**
    * [module config] Per module IDENTITY (`loaded.key`) `set` configuration, so a
@@ -11260,6 +11274,12 @@ function planImportedFacts(
         return;
       }
       recordAstExtendProfile?.('astExtend.preflight.importsLoaded');
+      if (st.mode === 'compose' && publishFrame !== null && publishRank === null && rank !== null) {
+        (e.composeActivations ??= new Map()).set(
+          st,
+          activateComposeEdge(st, loaded.key, loaded.document.rules, specifier, publishFrame, e, [...rank, at])
+        );
+      }
       if (options === null && !multipleImportDepth && loaded.key !== undefined) {
         if (seen.has(loaded.key)) {
           return;
@@ -15569,6 +15589,29 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Ma
   }
   const map = resolveForRuleset(node, frame, e);
   if (map) {
+    /*
+     * A composed module's namespace is its members, not its authored body: each
+     * name once, at its first declaration, read through the activation as
+     * `@ns.name` reads it ({@link activatedVarMember}), so configuration,
+     * reassignment and the module's last same-name declaration are what the
+     * loop sees.
+     */
+    const activation = composedModuleFrame(map.rules, map.frame);
+    if (activation !== null) {
+      const items: ForItem[] = [];
+      const seen = new Set<string>();
+      for (const s of map.rules) {
+        if (s.type !== 'VariableDeclaration' || seen.has(s.name)) {
+          continue;
+        }
+        seen.add(s.name);
+        const member = activatedVarMember(activation, s.name, e);
+        if (member !== undefined && !isMixinCallValue(member.value)) {
+          items.push({ value: member.value, key: any(s.name), valueFrame: member.frame ?? activation });
+        }
+      }
+      return items;
+    }
     const mapFrame: Frame = {
       parent: map.frame,
       mixins: collectMixins(map.rules),
@@ -17895,29 +17938,39 @@ function publishComposedModule(
   node: StyleImport,
   importerFrame: Frame,
   bodyFrame: Frame,
-  config: StyleImportConfig | null,
-  specifier: string
+  specifier: string,
+  rank: SourceRank | null
 ): void {
   const children = bodyFrame.statements!;
   const namespace = node.namespace ?? deriveModuleNamespace(specifier);
   if (namespace === '*') {
     /*
      * `as *`: the module's OWN top-level members merge unqualified into the
-     * importer, a configured member as its configured binding (spec R6 §E.1).
-     * Value-block members still resolve in the isolated bodyFrame, so redirect
-     * each value block's closure there.
+     * importer. Each variable member binds, in both of the importer's stores,
+     * to a read of that member in the activation through the store a
+     * namespace member is read through ({@link memberLookup}), so a scoped and
+     * a live read alike see what `@ns.name` sees: the configured binding, and
+     * after the module has run, its final one (spec R6 §E.1).
      */
-    for (const child of children) {
+    const seen = new Set<string>();
+    for (let index = 0; index < children.length; index++) {
+      const child = children[index]!;
       if (child.type === 'VariableDeclaration') {
-        publishImportedVariableDeclaration(
-          importerFrame,
-          config?.bindings.find(binding => binding.name === child.name) ?? child
-        );
-        if (isValueBlockBinding(child.value)) {
-          bindDetached(importerFrame, child.value, bodyFrame, bodyFrame.sourceOwner ?? null);
+        if (seen.has(child.name)) {
+          continue;
         }
+        seen.add(child.name);
+        const read = variableReference(child.name, memberLookup(bodyFrame, child.name));
+        const member = variableDeclaration(child.name, read, { mode: 'declare' });
+        publishImportedVariableDeclaration(importerFrame, member, importedFactRank(rank, index));
+        (importerFrame.bindingValueFrames ??= new Map()).set(read, bodyFrame);
+        const cells = importerFrame.cells ??= new Map();
+        cells.set(child.name, {
+          declaration: member, value: read, valueFrame: bodyFrame, evaluated: null,
+          prev: liveCellPredecessor(cells, member)
+        });
       } else if (child.type === 'MixinDefinition') {
-        publishImportedMixinDefinition(importerFrame, child);
+        publishImportedMixinDefinition(importerFrame, child, true, importedFactRank(rank, index));
       } else if (child.type === 'Ruleset') {
         /*
          * ponytail: publishes the ruleset for namespace descent + reference, but NOT
@@ -17925,7 +17978,7 @@ function publishComposedModule(
          * (publishImportedDocumentFacts). `as *` is the discouraged path; wire the
          * ordered-mixin publish here if a bare `.name()` call across `as *` is needed.
          */
-        publishImportedRuleset(importerFrame, child);
+        publishImportedRuleset(importerFrame, child, importedFactRank(rank, index));
       }
     }
     return;
@@ -17938,8 +17991,87 @@ function publishComposedModule(
     );
   }
   const block = anonymousMixin(children);
-  publishImportedVariableDeclaration(importerFrame, variableDeclaration(namespace, block, { mode: 'declare' }));
+  publishImportedVariableDeclaration(importerFrame, variableDeclaration(namespace, block, { mode: 'declare' }), rank);
   bindDetached(importerFrame, block, bodyFrame, bodyFrame.sourceOwner ?? null);
+}
+
+/** One `@compose` edge's activation: the frame its module evaluates in, and the identity it renders once under. */
+interface ComposeActivation {
+  readonly frame: Frame;
+  readonly emitOnceKey: string | undefined;
+}
+
+/**
+ * Activate one `@compose` edge and bind its namespace (or `as *` members) in
+ * `importerFrame` at `rank` (spec R6 Part E).
+ *
+ * The EFFECTIVE configuration (§E.2/E-d): a SHARED config (`set`, and scss
+ * `@use … with` lowered to `set`) persists per module IDENTITY (`key`), so a
+ * later plain `@compose` of the same module inherits it, and a second SHARED
+ * config whose values differ conflicts and rejects (an identical restatement
+ * does not). A PER-EDGE `with { … }` (less/jess) is an independent mixin-like
+ * instantiation: it uses only its own values, never inherits a recorded shared
+ * config, and never conflicts with one. A shared module has ONE activation per
+ * identity, which every later edge binds its namespace to.
+ *
+ * A document-root compose runs this from the import planner, before any output
+ * statement, so its namespace is published early like an `@import`'s facts
+ * (ledger N10): Less lookups are order-independent, and a read placed before the
+ * `@compose` resolves. Any other compose runs it when execution reaches it.
+ */
+function activateComposeEdge(
+  node: StyleImport,
+  key: string | undefined,
+  children: Statement[],
+  specifier: string,
+  importerFrame: Frame,
+  e: Emit,
+  rank: SourceRank | null
+): ComposeActivation {
+  const authoredConfig = node.config ?? null;
+  let config = authoredConfig;
+  if (key !== undefined) {
+    const recorded = e.moduleConfigs?.get(key) ?? null;
+    if (authoredConfig !== null && authoredConfig.kind === 'set') {
+      if (recorded !== null && !sameModuleConfig(recorded, authoredConfig)) {
+        throw moduleConfigRejected(
+          node,
+          `Module "${specifier}" is already configured with a different set of values; a module can only be configured once.`,
+          specifier
+        );
+      }
+      if (recorded === null) {
+        /*
+         * A shared module renders once, under the configuration of the first
+         * edge that loads it. One already loaded without a `set` is already
+         * activated, so a later `set` would be silently ignored.
+         */
+        if (e.loadedImports?.has(key) || e.moduleActivations?.has(key)) {
+          throw moduleConfigRejected(
+            node,
+            `Module "${specifier}" was already loaded without configuration; only the first import of a module can configure it with "set".`,
+            specifier
+          );
+        }
+        (e.moduleConfigs ??= new Map()).set(key, authoredConfig);
+      }
+    } else if (authoredConfig === null && recorded !== null) {
+      config = recorded;
+    }
+  }
+  const emitOnceKey = (config === null || config.kind === 'set') && e.multipleImportDepth === 0 ? key : undefined;
+  let frame = emitOnceKey === undefined ? undefined : e.moduleActivations?.get(emitOnceKey);
+  if (frame === undefined) {
+    if (config !== null) {
+      validateModuleConfig(node, specifier, config, children, e);
+    }
+    frame = config !== null ? configuredModuleFrame(children, config, importerFrame) : unconfiguredModuleFrame(children);
+    if (emitOnceKey !== undefined) {
+      (e.moduleActivations ??= new Map()).set(emitOnceKey, frame);
+    }
+  }
+  publishComposedModule(node, importerFrame, frame, specifier, rank);
+  return { frame, emitOnceKey };
 }
 
 /**
@@ -17985,104 +18117,44 @@ function expandStyleImport(
         }
 
         /*
-         * [module config] Resolve the EFFECTIVE configuration for this compose edge
-         * (spec R6 Part E §E.2/E-d). A SHARED config (`set`, and scss `@use … with`
-         * lowered to `set`) persists per module IDENTITY (`loaded.key`): it is
-         * recorded so a LATER plain `@compose` of the same module inherits it, and a
-         * second SHARED config whose values differ conflicts and rejects (an
-         * identical restatement does not). A PER-EDGE `with { … }` (less/jess) is an
-         * INDEPENDENT mixin-like instantiation: it uses only its own values, never
-         * inherits a recorded shared config, and never conflicts with one.
-         */
-        const authoredConfig = node.mode === 'compose' ? node.config ?? null : null;
-        let config = authoredConfig;
-        if (node.mode === 'compose' && loaded.key !== undefined) {
-          const recorded = e.moduleConfigs?.get(loaded.key) ?? null;
-          if (authoredConfig !== null && authoredConfig.kind === 'set') {
-            if (recorded !== null && !sameModuleConfig(recorded, authoredConfig)) {
-              throw moduleConfigRejected(
-                node,
-                `Module "${request.specifier}" is already configured with a different set of values; a module can only be configured once.`,
-                request.specifier
-              );
-            }
-            if (recorded === null) {
-              /*
-               * A shared module renders once, under the configuration of the
-               * first edge that loads it. One already loaded without a `set` is
-               * already rendered, so a later `set` would be silently ignored.
-               */
-              if (e.loadedImports?.has(loaded.key)) {
-                throw moduleConfigRejected(
-                  node,
-                  `Module "${request.specifier}" was already loaded without configuration; only the first import of a module can configure it with "set".`,
-                  request.specifier
-                );
-              }
-              (e.moduleConfigs ??= new Map()).set(loaded.key, authoredConfig);
-            }
-          } else if (authoredConfig === null && recorded !== null) {
-            config = recorded;
-          }
-        }
-
-        /*
-         * Emit-once dedup keyed on module IDENTITY for SHARED modules — a plain
-         * import/compose, an inherited `set`, or an authored `set` (jess/.less
-         * `set { … }` and SCSS `@use … with (…)`, which the scss grammar lowers to
-         * the shared `set` kind). A shared module is a singleton: it renders ONCE,
-         * and a later plain/inherited import of the same identity does NOT re-emit.
-         * A PER-EDGE `with { … }` (less/jess only) is a distinct instantiation — like
-         * a mixin call with its own params — so it bypasses the dedup and each edge
-         * renders its own output.
-         */
-        const sharedModule = config === null || config.kind === 'set';
-        const children = loaded.document?.rules ?? [];
-        const isCompose = node.mode === 'compose';
-        const emitOnceKey = sharedModule && request.options === null && e.multipleImportDepth === 0
-          ? loaded.key
-          : undefined;
-        if (emitOnceKey !== undefined) {
-          const seen = e.loadedImports ??= new Map();
-          if (seen.has(emitOnceKey)) {
-            if (isCompose) {
-              /* Rendered once already; this compose edge still binds its own namespace to that activation. */
-              const activated = seen.get(emitOnceKey);
-              if (!activated) {
-                throw moduleConfigRejected(
-                  node,
-                  `Module "${request.specifier}" was already loaded by @import, which folds it into the importing scope; it cannot also be composed as an isolated module.`,
-                  request.specifier
-                );
-              }
-              publishComposedModule(node, frame, activated, config, request.specifier);
-            }
-            return;
-          }
-          seen.set(emitOnceKey, null);
-        }
-
-        /*
          * A `@compose` (spec R6 Part E) evaluates the module in its own isolated
          * overlay frame (like a mixin-call body), NOT spliced into the importing
          * frame: its own nested `@compose`/`@import` stay local, so `@compose` is
-         * non-transitive (unlike the transitively-leaky `@import`). Its facts never
-         * flat-publish into the importer; instead its OWN top-level members are
-         * exposed through a namespace binding (`@ns.member`) or, with `as *`, merged
-         * unqualified. A CONFIGURED compose additionally overlays its `with`/`set`
-         * values in `configuredModuleFrame`.
+         * non-transitive (unlike the transitively-leaky `@import`). A
+         * document-root compose was activated, and its namespace bound, by the
+         * import planner ({@link activateComposeEdge}); any other is activated here.
+         *
+         * Emit-once dedup keyed on module IDENTITY for SHARED modules — a plain
+         * import/compose, an inherited `set`, or an authored `set`. A shared module
+         * is a singleton: it renders ONCE, and a later plain/inherited import of the
+         * same identity does NOT re-emit. A PER-EDGE `with { … }` (less/jess only)
+         * is a distinct instantiation — like a mixin call with its own params — so
+         * it bypasses the dedup and each edge renders its own output.
          */
-        if (config !== null) {
-          validateModuleConfig(node, request.specifier, config, children, e);
-        }
-        const bodyFrame = isCompose
-          ? (config !== null ? configuredModuleFrame(children, config, frame) : unconfiguredModuleFrame(children))
-          : frame;
-        if (isCompose) {
-          if (emitOnceKey !== undefined) {
-            e.loadedImports!.set(emitOnceKey, bodyFrame);
+        const children = loaded.document?.rules ?? [];
+        const isCompose = node.mode === 'compose';
+        const activation = isCompose
+          ? e.composeActivations?.get(node) ?? activateComposeEdge(
+            node, loaded.key, children, request.specifier, frame, e, importSiteRank(frame, node)
+          )
+          : undefined;
+        const bodyFrame = activation?.frame ?? frame;
+        const emitOnceKey = request.options !== null || e.multipleImportDepth !== 0
+          ? undefined
+          : activation === undefined ? loaded.key : activation.emitOnceKey;
+        if (emitOnceKey !== undefined) {
+          const seen = e.loadedImports ??= new Map();
+          if (seen.has(emitOnceKey)) {
+            if (isCompose && seen.get(emitOnceKey) === null) {
+              throw moduleConfigRejected(
+                node,
+                `Module "${request.specifier}" was already loaded by @import, which folds it into the importing scope; it cannot also be composed as an isolated module.`,
+                request.specifier
+              );
+            }
+            return;
           }
-          publishComposedModule(node, frame, bodyFrame, config, request.specifier);
+          seen.set(emitOnceKey, isCompose ? bodyFrame : null);
         }
         const publishChildren = isCompose || hasPrepublishedImportFact(e, node)
           ? undefined

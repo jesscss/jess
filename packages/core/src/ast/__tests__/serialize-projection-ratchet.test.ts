@@ -174,9 +174,20 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +1 function (`preselectControlFlow`, ledger N15): a frame's Less `if()`
     // arms are selected at its first scoped read, so a read before the `if()`
     // sees the selected branch as an inline declaration.
-    expect(occurrences(/^function |^async function /gmu)).toBe(481);
-    expect(occurrences(/new Map/gu)).toBe(73);
-    expect(occurrences(/new Set/gu)).toBe(37);
+    // +1 `new Set` (module namespaces, ledger A8): a loop over a composed
+    // module's namespace iterates each member name once, through its activation.
+    // +2 functions, +4 `new Map`, +1 `new Set` (module activations, ledger A15):
+    // `activateComposeEdge` is the one place a compose edge resolves its
+    // configuration and shared activation (`moduleActivations`, per identity) and
+    // binds its namespace — run by the import planner for a document-root compose
+    // (`composeActivations`), so the namespace is published early like an
+    // import's facts, else when execution reaches it; `memberLookup` names the
+    // store a member is read through, shared by `@ns.name` and `as *`, whose
+    // members bind in both of the importer's stores (`bindingValueFrames`,
+    // `cells`), once per name.
+    expect(occurrences(/^function |^async function /gmu)).toBe(483);
+    expect(occurrences(/new Map/gu)).toBe(77);
+    expect(occurrences(/new Set/gu)).toBe(39);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);
