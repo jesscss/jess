@@ -3353,7 +3353,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const ValueBlock = node(
     'ValueBlock',
     sequence(literal('{'), many(g.BodyStatement), optional(g.Call), literal('}')),
-    children => classifyValueBlock(requireValueBlockBody(children))
+    (children, _fields, _span, rawChildren) => withBlockBody(classifyValueBlock(requireValueBlockBody(children)), rawChildren)
   );
   const CallArgumentValue = node(
     'CallArgumentValue',

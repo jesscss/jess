@@ -421,8 +421,12 @@ export interface Interpolation extends SpanSlots {
  * user `@function f($n) { @return … }`. The field is OMITTED for the plain,
  * parameterless block so that shape stays monomorphic. A call binds args→params
  * (positional/named/default) and yields the value of the rules' `result:` entry.
+ *
+ * Its body span (the source inside its braces) is where its comments live: they
+ * are trivia, so a block written out away from its own position — called, or
+ * passed to a function — replays them from that span.
  */
-export interface AnonymousMixin {
+export interface AnonymousMixin extends BodySpanSlots {
   readonly type: 'AnonymousMixin';
   readonly rules: Statement[];
   readonly params?: Param[];
@@ -1544,7 +1548,9 @@ export const pseudoSelector = (
 ): PseudoSelector => ({ type: 'PseudoSelector', text: args !== null ? null : text, interp, name, args, crossable: crossable(name), _s: NO_SPAN, _e: NO_SPAN });
 export const interpolation = (parts: InterpPart[]): Interpolation => ({ type: 'Interpolation', parts, _s: NO_SPAN, _e: NO_SPAN });
 export const anonymousMixin = (rules: Statement[], params?: Param[]): AnonymousMixin =>
-  params === undefined ? { type: 'AnonymousMixin', rules } : { type: 'AnonymousMixin', rules, params };
+  params === undefined
+    ? { type: 'AnonymousMixin', rules, _bs: NO_SPAN, _be: NO_SPAN }
+    : { type: 'AnonymousMixin', rules, params, _bs: NO_SPAN, _be: NO_SPAN };
 
 /** Less-style `{ … }` blocks are executable anonymous mixins. Jess and Sass
  * data collections are constructed by their dedicated collection grammars. */

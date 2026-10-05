@@ -7399,8 +7399,11 @@ function writtenRulesetArgument(block: AnonymousMixin, frame: Frame | null, e: E
   if (block.params !== undefined) {
     rejectRulesetArgument(block, 'parameters', e);
   }
-  const lexical = frame === null ? null : detachedBinding(frame, block)?.lexicalFrame ?? frame;
-  return mapMaybe(writtenBlockBody(block, block.rules, lexical, e), makeAny);
+  const binding = frame === null ? undefined : detachedBinding(frame, block);
+  const lexical = binding?.lexicalFrame ?? frame;
+
+  /* Under the block's own document, so its comments read that document's trivia. */
+  return withSourceOwner(e, binding?.sourceOwner, () => mapMaybe(writtenBlockBody(block, block, lexical, e), makeAny));
 }
 
 function rejectRulesetArgument(block: AnonymousMixin, what: string, e: EvalCtx): never {
@@ -7411,13 +7414,15 @@ function rejectRulesetArgument(block: AnonymousMixin, what: string, e: EvalCtx):
   });
 }
 
-/** One block body of a ruleset argument, braces included (see {@link writtenRulesetArgument}). */
+/** One block body of a ruleset argument, braces included (see {@link writtenRulesetArgument}).
+ *  `owner` is the block itself or a rule nested in it: the node whose body is written. */
 function writtenBlockBody(
   block: AnonymousMixin,
-  rules: Statement[],
+  owner: AnonymousMixin | Ruleset | AtRuleBlock,
   parent: Frame | null,
   e: EvalCtx
 ): MaybePromise<string> {
+  const rules = owner.rules;
   const bodyFrame: Frame = {
     parent,
     mixins: collectMixins(rules),
@@ -7450,7 +7455,49 @@ function writtenBlockBody(
       important
     });
   };
+
+  /*
+   * The body's comments are trivia in its body span (jess#301): each is written
+   * where it sits between two statements, and a run inside a statement belongs to
+   * that statement. Read, not claimed — a ruleset argument is a copy of its block.
+   */
+  const table = e.trivia === undefined ? undefined : commentTableOf(e.trivia);
+  const bodyStart = bodyStartOf(owner);
+  const bodyEnd = bodyEndOf(owner);
+  let run = table === undefined || bodyStart === NO_SPAN ? -1 : firstRunAtOrAfter(table, bodyStart);
+  const commentsBefore = (limit: number): void => {
+    if (run < 0 || table === undefined) {
+      return;
+    }
+    for (; run < table.runs.length && table.runStart[run]! < limit; run++) {
+      if (table.runEnd[run]! > bodyEnd) {
+        continue;
+      }
+      for (let c = table.commentAt[run]!; c < table.commentAt[run + 1]!; c++) {
+        const text = table.src!.slice(table.commentStart[c]!, table.commentEnd[c]!);
+        if (keepComment(e, text)) {
+          items.push(text);
+        }
+      }
+    }
+  };
+  const skipPast = (end: number): void => {
+    if (run < 0 || table === undefined) {
+      return;
+    }
+    while (run < table.runs.length && table.runStart[run]! < end) {
+      run++;
+    }
+  };
   for (const rule of rules) {
+    const start = rule.type === 'VariableDeclaration' ? sourceStartOf(rule) : statementStartOf(rule) ?? NO_SPAN;
+    if (start !== NO_SPAN) {
+      commentsBefore(start);
+    }
+    const end = rule.type === 'VariableDeclaration' ? sourceEndOf(rule) : statementEndOf(rule) ?? NO_SPAN;
+    if (end !== NO_SPAN) {
+      skipPast(end);
+    }
     switch (rule.type) {
       case 'VariableDeclaration':
       case 'MixinDefinition':
@@ -7472,7 +7519,7 @@ function writtenBlockBody(
           : withUnitErrors(rule, e, () => evalGuard(guard, guardDeps(bodyFrame, e)));
         items.push(mapMaybe(holds, guarded => guarded
           ? mapMaybe(selector, header => mapMaybe(
-              writtenBlockBody(block, rule.rules, bodyFrame, e),
+              writtenBlockBody(block, rule, bodyFrame, e),
               body => `${header}${compress ? '' : ' '}${body}`
             ))
           : ''));
@@ -7480,7 +7527,7 @@ function writtenBlockBody(
       }
       case 'AtRuleBlock':
         items.push(mapMaybe(atRulePreludeBytes(rule, bodyFrame, scratchEmit(e)), prelude =>
-          mapMaybe(writtenBlockBody(block, rule.rules, bodyFrame, e), body =>
+          mapMaybe(writtenBlockBody(block, rule, bodyFrame, e), body =>
             `${rule.name}${prelude === '' ? '' : ` ${prelude}`}${compress ? '' : ' '}${body}`)));
         break;
       case 'MixinCall': {
@@ -7507,6 +7554,7 @@ function writtenBlockBody(
         rejectRulesetArgument(block, `a ${rule.type}`, e);
     }
   }
+  commentsBefore(bodyEnd);
   const written = items.map((item) => {
     if (typeof item !== 'object' || !('mergeKey' in item)) {
       return mapMaybe(item, bytes => ({ bytes, declaration: false }));
@@ -8882,7 +8930,7 @@ function emitBlockClose(e: Emit, idt: string, lb?: Emit['lastBlock']): void {
  * compress keeps only `/*! … *&#47;` bang comments (license headers), matching
  * Less 4.x / dart-sass / cssnano / lightningcss.
  */
-function keepComment(e: Emit, text: string): boolean {
+function keepComment(e: EvalCtx, text: string): boolean {
   return e.compress !== true || text.startsWith('/*!');
 }
 
@@ -9073,27 +9121,72 @@ function firstRunAtOrAfter(table: CommentTable, offset: number): number {
 class EmittedTrivia {
   private readonly bits = new Map<CommentTable, Uint8Array>();
 
-  /** Read-only: never allocates. An absent bitset means nothing is owned yet. */
+  /** Read-only: never allocates. An absent bitset means nothing is owned yet.
+   *  A HELD run counts as owned: no replay may write it. */
   hasIndex(table: CommentTable, i: number): boolean {
     if (i < 0) {
       return false;
     }
     const owned = this.bits.get(table);
-    return owned?.[table.canonical[i]!] === 1;
+    return (owned?.[table.canonical[i]!] ?? 0) !== 0;
   }
 
   addIndex(table: CommentTable, i: number): void {
     if (i < 0) {
       return;
     }
+    this.bitsOf(table)[table.canonical[i]!] = OWNED_RUN;
+  }
+
+  /**
+   * HOLD every comment run inside a detached block's body span that nothing has
+   * written yet. The comments belong to the block, not to the statement list it
+   * is declared in, so every replay skips them until a call of the block
+   * releases them ({@link releaseRange}).
+   */
+  holdRange(table: CommentTable, from: number, end: number): void {
+    let owned: Uint8Array | undefined;
+    for (let i = from; i < table.runs.length && table.runStart[i]! < end; i++) {
+      if (table.runEnd[i]! <= end && runHasBlockComment(table, i)) {
+        owned ??= this.bitsOf(table);
+        const at = table.canonical[i]!;
+        if (owned[at] === FREE_RUN) {
+          owned[at] = HELD_RUN;
+        }
+      }
+    }
+  }
+
+  /** Free the HELD runs from run `from` up to offset `end` for the call of their
+   *  block that is about to write its body; a run that call does not write is
+   *  held again after it. */
+  releaseRange(table: CommentTable, from: number, end: number): void {
+    const owned = this.bits.get(table);
+    if (owned === undefined) {
+      return;
+    }
+    for (let i = from; i < table.runs.length && table.runStart[i]! < end; i++) {
+      const at = table.canonical[i]!;
+      if (owned[at] === HELD_RUN) {
+        owned[at] = FREE_RUN;
+      }
+    }
+  }
+
+  private bitsOf(table: CommentTable): Uint8Array {
     let owned = this.bits.get(table);
     if (owned === undefined) {
       owned = new Uint8Array(table.runs.length);
       this.bits.set(table, owned);
     }
-    owned[table.canonical[i]!] = 1;
+    return owned;
   }
 }
+
+/** {@link EmittedTrivia} run states. */
+const FREE_RUN = 0;
+const OWNED_RUN = 1;
+const HELD_RUN = 2;
 
 function inlineBlockCommentText(
   table: CommentTable,
@@ -9587,9 +9680,22 @@ function markSilentStatementBlockCommentTrivia(node: Statement, e: Emit): void {
   }
   const span = { start: spanStart, end: sourceEndOf(node) };
   const table = commentTableOf(trivia);
+
+  /* A detached block's own comments are HELD for its calls, not dropped. */
+  const block = node.type === 'VariableDeclaration' && !isValueSlotArray(node.value) && node.value.type === 'AnonymousMixin'
+    ? node.value
+    : undefined;
+  const blockStart = block === undefined ? NO_SPAN : bodyStartOf(block);
+  const blockEnd = block === undefined ? NO_SPAN : bodyEndOf(block);
+  if (blockStart !== NO_SPAN) {
+    e.emittedBlockTrivia.holdRange(table, firstRunAtOrAfter(table, blockStart), blockEnd);
+  }
   for (let i = firstRunAtOrAfter(table, span.start); i < table.runs.length; i++) {
     if (table.runStart[i]! > span.end) {
       break;
+    }
+    if (blockStart !== NO_SPAN && table.runStart[i]! >= blockStart && table.runEnd[i]! <= blockEnd) {
+      continue;
     }
     if (table.runEnd[i]! <= span.end && runHasBlockComment(table, i)) {
       e.emittedBlockTrivia.addIndex(table, i);
@@ -14822,35 +14928,63 @@ function expandReferenceCall(
       bindings
     );
     const drBody = valueBlockBody(r.dr);
-    const executeBody = () => mapMaybe(
-      activateBodyDependencies(drBody, r.callFrame, e),
-      () => sharedLeaves === undefined
-        ? walkBody(
-            drBody,
-            composed,
-            ancestor,
-            r.callFrame,
-            group,
-            flush,
-            partition,
-            e,
-            imp,
-            forceLeading,
-            propertyScope,
-            applyExpansion
-          )
-        : nestedBody(
-            drBody,
-            r.callFrame,
-            e,
-            undefined,
-            imp,
-            source,
-            null,
-            sharedLeaves,
-            applyExpansion
-          )
-    );
+
+    /*
+     * The block's comments are trivia inside its body span, replayed exactly as
+     * a mixin body's are. Its declaration HELD them so nothing else writes them;
+     * this call releases them for the walk and holds whatever it did not write.
+     * The replay is opened under the block's own source owner, so a block bound
+     * in an imported document reads that document's trivia.
+     */
+    const executeBody = () => {
+      const bodyTrivia = drBody.length === 0 ? undefined : bodyTriviaReplay(r.dr, e);
+      const firstRun = bodyTrivia?.index ?? 0;
+      if (bodyTrivia !== undefined) {
+        e.emittedBlockTrivia.releaseRange(bodyTrivia.table, firstRun, bodyTrivia.end);
+      }
+      const walked = mapMaybe(
+        activateBodyDependencies(drBody, r.callFrame, e),
+        () => sharedLeaves === undefined
+          ? walkBody(
+              drBody,
+              composed,
+              ancestor,
+              r.callFrame,
+              group,
+              flush,
+              partition,
+              e,
+              imp,
+              forceLeading,
+              propertyScope,
+              applyExpansion,
+              false,
+              bodyTrivia
+            )
+          : nestedBody(
+              drBody,
+              r.callFrame,
+              e,
+              undefined,
+              imp,
+              source,
+              null,
+              sharedLeaves,
+              applyExpansion,
+              undefined,
+              bodyTrivia
+            )
+      );
+      if (bodyTrivia === undefined) {
+        return walked;
+      }
+      return mapMaybe(walked, () => {
+        if (sharedLeaves === undefined) {
+          queueBodyTriviaTail(bodyTrivia, group, partition, e);
+        }
+        e.emittedBlockTrivia.holdRange(bodyTrivia.table, firstRun, bodyTrivia.end);
+      });
+    };
     return withSourceOwner(e, r.callFrame.sourceOwner, executeBody);
   };
 

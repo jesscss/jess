@@ -36,8 +36,12 @@
  * fixed, the pin fails — flip the assertion and drop the marker.
  */
 import { describe, expect, it } from 'vitest';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
+import jessPlugin from '@jesscss/plugin-jess';
 
 const render = async (source: string, collapseNesting: boolean) =>
   (await new Compiler({
@@ -120,6 +124,46 @@ describe('Less block comments at a statement boundary inside a block', () => {
   it('PINNED DEFECT — moves a comment past an UNTERMINATED nested ruleset', async () => {
     await expect(render('a { b: c; /* z */ .n { d: e; } }', false))
       .resolves.toBe('a { b: c; .n { d: e; } /* z */ }');
+  });
+
+  /*
+   * jess#301: a detached ruleset's comments are trivia in its body span, so a
+   * call writes them where the body lands, as a mixin call does.
+   */
+  it('keeps the comments of a called detached ruleset', async () => {
+    await bothEmitters('@d: { /* keep */ v: 1; }; a { @d(); }', 'a { /* keep */ v: 1; }');
+    await bothEmitters('@d: { v: 1; /* tail */ }; a { @d(); }', 'a { v: 1; /* tail */ }');
+    await bothEmitters('a { @d: { /* keep */ v: 1; }; @d(); }', 'a { /* keep */ v: 1; }');
+    await bothEmitters('a { @d(); @d: { /* keep */ v: 1; }; }', 'a { /* keep */ v: 1; }');
+  });
+
+  it('does not write a detached ruleset\'s comments where it is declared', async () => {
+    await bothEmitters('a { b: 1; @d: { /* keep */ v: 1; }; c: 2; }', 'a { b: 1; c: 2; }');
+    await bothEmitters('.m() { b: 1; @d: { /* keep */ v: 1; }; c: 2; @d(); } x { .m(); }', 'x { b: 1; c: 2; /* keep */ v: 1; }');
+  });
+
+  it('keeps the comments of a ruleset passed to a function', async () => {
+    await bothEmitters('@d: { /* keep */ v: 1; }; a { x: foo(@d); }', 'a { x: foo({ /* keep */ v: 1; }); }');
+    await bothEmitters('a { x: foo({ /* inline */ w: 2; .n { /* inner */ q: 1; } }); }', 'a { x: foo({ /* inline */ w: 2; .n { /* inner */ q: 1; } }); }');
+  });
+
+  it('keeps the comments of a detached ruleset declared in an imported file', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'jess-detached-comment-'));
+    writeFileSync(join(dir, 'lib.less'), '@d: {\n  /* from lib */\n  v: 1;\n};\n');
+    writeFileSync(join(dir, 'entry.less'), '@import "lib";\na { @d(); x: foo(@d); }\n');
+    for (const collapseNesting of [false, true]) {
+      const css = await new Compiler({ output: { collapseNesting }, compile: { plugins: [lessPlugin()] } })
+        .render(join(dir, 'entry.less'));
+      expect(css.replace(/\s+/g, ' ').trim()).toBe('a { /* from lib */ v: 1; x: foo({ /* from lib */ v: 1; }); }');
+    }
+  });
+
+  it('keeps the comments of a called .jess detached ruleset (.less -> .jess equivalence)', async () => {
+    for (const collapseNesting of [false, true]) {
+      const css = await new Compiler({ output: { collapseNesting }, compile: { plugins: [jessPlugin()] } })
+        .renderString('$d: @{ /* keep */ v: 1; };\na { $d(); }', { language: 'jess' });
+      expect(css.replace(/\s+/g, ' ').trim()).toBe('a { /* keep */ v: 1; }');
+    }
   });
 
   it('places the comment correctly when the nested ruleset IS terminated', async () => {
