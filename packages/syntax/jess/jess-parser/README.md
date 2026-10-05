@@ -108,16 +108,14 @@ collects `result.errors` on either CST variant.
 Each variant also ships uncompiled under `@jesscss/jess-parser/grammar/interpreter/…`
 (`/grammar/interpreter` aliases `/grammar/interpreter/ast`): the same grammar
 source and export, built without the parseman macro, so the combinator graph
-runs on parseman's interpreter instead of a compiled table. Tests use it to compare
+runs on parseman's interpreter instead of a compiled table. It exists to compare
 the two engines; `test/interpreter-parity.test.ts` parses the fixtures with
 both and requires identical AST and CST results.
 
-Browser bundlers pick it up automatically: the package's `browser` field maps
-each `lib/grammar/<variant>` file to its interpreter twin, so a browser bundle
-carries the combinator graph instead of the compiled table, while Node keeps the
-table. The interpreter grammar links its composed pieces without generating any
-code, so it loads under a Content-Security-Policy that omits `'unsafe-eval'`;
-`test/interpreter-parity.test.ts` parses with code generation disallowed.
+A browser bundle loads the compiled table too. It generates no code at runtime,
+so a page whose Content-Security-Policy omits `'unsafe-eval'` can load it:
+`test/interpreter-parity.test.ts` loads every variant with code generation
+disallowed and counts every call to `Function` and `eval`.
 
 ## Default CST shape
 
