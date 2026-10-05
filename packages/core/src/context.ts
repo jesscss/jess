@@ -59,7 +59,9 @@ export interface EmitVisitor {
   exit?: EmitVisitorExit;
 }
 
+/** Extensions of script modules and executable `@plugin` scripts. */
 const SCRIPT_MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts']);
+const SCRIPT_RUNTIME_MISSING_MESSAGE = 'Feature not supported. Install @jesscss/plugin-js to enable script execution features.';
 const SCRIPT_MODULES_DISABLED_MESSAGE = 'Script modules are disabled by disableScriptModules.';
 const EXTERNAL_IMPORT_SPECIFIER = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu;
 
@@ -473,13 +475,6 @@ export class TreeContext extends DocumentContext {
  * Most of context represents "state" while evaluating.
  * There should only ever be one Context singleton per parse & evaluation.
  */
-/**
- * Extensions an executable `@plugin` script may carry. Used only to expand an
- * extensionless plugin specifier; the actual runtime dispatch still goes through
- * a plugin that declares the resolved extension.
- */
-const PLUGIN_SCRIPT_EXTENSIONS = ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'];
-
 export class Context {
   readonly plugins: PluginInterface[];
   readonly opts: Omit<ContextOptions, keyof ResolvedOptions>
@@ -1800,7 +1795,7 @@ export class Context {
       }
       if (!plugin) {
         if (isScriptModuleImport) {
-          throw new Error('Feature not supported. Install @jesscss/plugin-js to enable script execution features.');
+          throw new Error(SCRIPT_RUNTIME_MISSING_MESSAGE);
         }
         throw new Error(`File "${friendlyPath}" not supported`);
       }
@@ -1845,7 +1840,7 @@ export class Context {
 
   private async getPluginPathUncached(importPath: string): Promise<ResolvedPathResult> {
     const candidates = path.extname(importPath) === ''
-      ? [...PLUGIN_SCRIPT_EXTENSIONS.map(ext => importPath + ext), importPath]
+      ? [...Array.from(SCRIPT_MODULE_EXTENSIONS, ext => importPath + ext), importPath]
       : [importPath];
     const tried: string[] = [];
     let lastError: unknown;
@@ -1883,6 +1878,9 @@ export class Context {
       }
     }
     if (!plugin?.importPlugin) {
+      if (SCRIPT_MODULE_EXTENSIONS.has(ext)) {
+        throw new Error(SCRIPT_RUNTIME_MISSING_MESSAGE);
+      }
       throw new Error(`File "${friendlyPath}" is not supported as an executable plugin module.`);
     }
     const cacheKey = this.pluginModuleCacheKey(plugin, resolvedPath, options);
