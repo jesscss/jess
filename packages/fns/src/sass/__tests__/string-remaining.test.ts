@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { node } from '../../__tests__/harness.js';
 import {
   makeDimension,
   makeKeyword,
@@ -25,9 +26,8 @@ function expectDimension(value: unknown): Dimension {
 describe('Sass remaining string functions', () => {
   describe('unique-id()', () => {
     it('returns a unique unquoted string', () => {
-      const result = uniqueId();
-      expect(result.type).toBe('Keyword');
-      expect((result as Keyword).text).toMatch(/^u[0-9a-z]{6}$/);
+      const result = node(uniqueId(), 'Keyword');
+      expect(result.text).toMatch(/^u[0-9a-z]{6}$/);
     });
 
     it('returns different IDs on subsequent calls', () => {

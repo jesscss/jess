@@ -8,7 +8,7 @@ import {
   makeList,
   makeQuoted
 } from '@jesscss/core';
-import type { Fn, FnCtx, List, ValueGroup } from '@jesscss/core';
+import type { Fn, FnCtx, List, Quoted, ValueGroup } from '@jesscss/core';
 import format, { format as stringFormat, formatPercent } from '../format.js';
 import { lessFns } from '../registry.js';
 
@@ -23,7 +23,7 @@ function call(fn: Fn, ...args: ValueGroup[]): ValueGroup | Promise<ValueGroup> {
   return fn(makeList(args, ',') as List, ctx);
 }
 
-function quotedValue(value: ValueGroup): { readonly type: 'Quoted'; readonly value: string; readonly quote: string } {
+function quotedValue(value: ValueGroup): Quoted {
   if (isValueGroupArray(value) || value.type !== 'Quoted') {
     throw new TypeError('Expected a quoted value.');
   }

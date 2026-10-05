@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { invoke, node } from '../../__tests__/harness.js';
 import {
   colorRawRgb,
   colorRgbRounded,
@@ -20,6 +21,9 @@ import { hsvsaturation } from '../hsvsaturation.js';
 import { hsvvalue } from '../hsvvalue.js';
 import { toHsv } from '../color-helper.js';
 
+/** A channel reader's direct call on `color`, as the synchronous Dimension it returns. */
+const dimension = (fn: unknown, color: Color) => node(invoke(fn, color), 'Dimension');
+
 function legacyLuminanceOracle(color: Color): { number: number; bytes: string } {
   const [r, g, b] = colorRgbRounded(color);
   const luminance =
@@ -34,8 +38,8 @@ describe('luma/luminance/hsv channels', () => {
   it('computes luma and luminance as percentages', () => {
     const color = makeColorRgb([255, 0, 0], 0.5, RGB);
 
-    const lumaResult = luma(color);
-    const luminanceResult = luminance(color);
+    const lumaResult = dimension(luma, color);
+    const luminanceResult = dimension(luminance, color);
     const expected = legacyLuminanceOracle(color);
 
     expect(lumaResult.unit).toBe('%');
@@ -50,9 +54,9 @@ describe('luma/luminance/hsv channels', () => {
   it('extracts hsv hue/saturation/value channels', () => {
     const color = makeColorRgb([0, 255, 0], 1, RGB);
 
-    const hueResult = hsvhue(color);
-    const saturationResult = hsvsaturation(color);
-    const value = hsvvalue(color);
+    const hueResult = dimension(hsvhue, color);
+    const saturationResult = dimension(hsvsaturation, color);
+    const value = dimension(hsvvalue, color);
 
     expect(hueResult.number).toBe(120);
     expect(saturationResult.number).toBe(100);
@@ -60,9 +64,9 @@ describe('luma/luminance/hsv channels', () => {
     expect(value.number).toBe(100);
     expect(value.unit).toBe('%');
 
-    expect(hue(color)).toMatchObject({ type: 'Dimension', number: 120, unit: '' });
-    expect(saturation(color)).toMatchObject({ type: 'Dimension', number: 100, unit: '%' });
-    expect(lightness(color)).toMatchObject({ type: 'Dimension', number: 50, unit: '%' });
+    expect(dimension(hue, color)).toMatchObject({ type: 'Dimension', number: 120, unit: '' });
+    expect(dimension(saturation, color)).toMatchObject({ type: 'Dimension', number: 100, unit: '%' });
+    expect(dimension(lightness, color)).toMatchObject({ type: 'Dimension', number: 50, unit: '%' });
   });
 
   it('uses the canonical implementations registered for Less', () => {
@@ -86,7 +90,7 @@ describe('luma/luminance/hsv channels', () => {
 
     for (const color of vectors) {
       const expected = legacyLuminanceOracle(color);
-      const result = luminance(color);
+      const result = dimension(luminance, color);
       expect(result.number).toBe(expected.number);
       expect(result.bytes).toBe(expected.bytes);
       expect(result.unit).toBe('%');
@@ -113,7 +117,7 @@ describe('luma/luminance/hsv channels', () => {
             HSL
           );
       const expected = legacyLuminanceOracle(color);
-      const result = luminance(color);
+      const result = dimension(luminance, color);
       expect(result.number).toBe(expected.number);
       expect(result.bytes).toBe(expected.bytes);
     }
@@ -139,9 +143,9 @@ describe('luma/luminance/hsv channels', () => {
       const expectedSaturation = makeDimension(s * 100, '%').bytes;
       const expectedValue = makeDimension(v * 100, '%').bytes;
 
-      expect(hsvhue(typedColor).bytes).toBe(expectedHue);
-      expect(hsvsaturation(typedColor).bytes).toBe(expectedSaturation);
-      expect(hsvvalue(typedColor).bytes).toBe(expectedValue);
+      expect(dimension(hsvhue, typedColor).bytes).toBe(expectedHue);
+      expect(dimension(hsvsaturation, typedColor).bytes).toBe(expectedSaturation);
+      expect(dimension(hsvvalue, typedColor).bytes).toBe(expectedValue);
     }
   });
 

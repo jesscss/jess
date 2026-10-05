@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildEvaluator } from '@jesscss/core';
-import { makeDimension, makeKeyword, makeList, type Value } from '@jesscss/core';
+import { ctx } from '../../__tests__/harness.js';
+import { buildEvaluator, makeDimension, makeKeyword, makeList } from '@jesscss/core';
 import { makeLessRegistry } from '../registry.js';
 
 const evaluator = buildEvaluator(makeLessRegistry());
@@ -10,10 +10,7 @@ describe('built-in call failures', () => {
     const registry = makeLessRegistry();
     const args = makeList([makeKeyword('not-a-color')], ',');
 
-    expect(() => registry.dispatch('rgb', args, {
-      modes: { unitMode: 'preserve' },
-      stringify: value => value.bytes
-    })).toThrow('Invalid arguments for rgb function');
+    expect(() => registry.dispatch('rgb', args, ctx)).toThrow('Invalid arguments for rgb function');
   });
 
   it('centralizes resolved-call preservation and error policy at the evaluator boundary', () => {
@@ -24,7 +21,7 @@ describe('built-in call failures', () => {
     if (preserved instanceof Promise) {
       throw new Error('Expected preserved rgb() to resolve synchronously.');
     }
-    expect(preserved.bytes).toBe('rgb(not-a-color)');
+    expect(preserved).toMatchObject({ bytes: 'rgb(not-a-color)' });
 
     expect(() => evaluator.call('rgb', args, {
       unitMode: 'preserve',
@@ -42,10 +39,7 @@ describe('built-in call failures', () => {
      * and the evaluator decides — and `unitMode` was never the right lever.
      */
     for (const unitMode of ['preserve', 'strict'] as const) {
-      expect(() => registry.dispatch('min', args, {
-        modes: { unitMode },
-        stringify: value => value.bytes
-      })).toThrow('min() arguments have incompatible units');
+      expect(() => registry.dispatch('min', args, { ...ctx, modes: { unitMode } })).toThrow('min() arguments have incompatible units');
     }
   });
 
@@ -93,20 +87,15 @@ describe('built-in call failures', () => {
     const registry = makeLessRegistry();
     const extractArgs = makeList([makeKeyword('one'), makeDimension(2)], ',');
     const emptyArgs = makeList([], ',');
-    const context = {
-      modes: { unitMode: 'preserve' as const },
-      stringify: (value: Value) => value.bytes
-    };
-
-    expect(() => registry.dispatch('extract', extractArgs, context)).toThrow('extract() index 2 out of range for length 1');
-    expect(() => registry.dispatch('data-uri', emptyArgs, context)).toThrow('data-uri() requires a path');
-    const extractResult = evaluator.call('extract', extractArgs, context.modes);
-    const dataUriResult = evaluator.call('data-uri', emptyArgs, context.modes);
+    expect(() => registry.dispatch('extract', extractArgs, ctx)).toThrow('extract() index 2 out of range for length 1');
+    expect(() => registry.dispatch('data-uri', emptyArgs, ctx)).toThrow('data-uri() requires a path');
+    const extractResult = evaluator.call('extract', extractArgs, ctx.modes);
+    const dataUriResult = evaluator.call('data-uri', emptyArgs, ctx.modes);
     if (extractResult instanceof Promise || dataUriResult instanceof Promise) {
       throw new Error('Expected preserved calls to resolve synchronously.');
     }
-    expect(extractResult.bytes).toBe('extract(one, 2)');
-    expect(dataUriResult.bytes).toBe('data-uri()');
+    expect(extractResult).toMatchObject({ bytes: 'extract(one, 2)' });
+    expect(dataUriResult).toMatchObject({ bytes: 'data-uri()' });
   });
 
   /*

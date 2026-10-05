@@ -1,13 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { makeDimension, type Dimension as ValueDimension } from '@jesscss/core';
+import { invoke } from '../../__tests__/harness.js';
+import { makeDimension, type Dimension as ValueDimension, type FunctionArgs } from '@jesscss/core';
 import acos, { acos as namedAcos } from '../acos.js';
-
-function invoke(fn: unknown, ...args: unknown[]): unknown {
-  if (typeof fn !== 'function') {
-    throw new TypeError('Expected a callable function.');
-  }
-  return Reflect.apply(fn, undefined, args);
-}
 
 describe('acos canonical AST-v2 parity', () => {
   it('directly reduces the typed Dimension to the exact canonical node shape', () => {
@@ -15,7 +9,7 @@ describe('acos canonical AST-v2 parity', () => {
     expect(namedAcos).toBe(acos);
     expect(acos.name).toBe('acos');
     expect(acos.params).toEqual([{ name: 'value', type: 'Dimension' }]);
-    expectTypeOf(acos).parameter(0).toEqualTypeOf<ValueDimension>();
+    expectTypeOf<FunctionArgs<typeof acos.params>>().toEqualTypeOf<[ValueDimension]>();
 
     expect(acos(makeDimension(0.5, 'px'))).toEqual({
       type: 'Dimension',

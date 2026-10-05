@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeAny, makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, RGB } from '@jesscss/core';
 import jsPlugin, { JsPlugin, sanitizeSpawnEnv } from '../src/index.js';
+import { registered } from './registered.js';
 
 const makeTmpDir = (prefix: string) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 
@@ -319,7 +320,7 @@ describe('@jesscss/plugin-js security', () => {
     const helperValueWithPrimitivesResult = await mod.helperValueWithPrimitives();
     expect(helperValueWithPrimitivesResult.type).toBe('List');
     expect(helperValueWithPrimitivesResult.sep).toBe('/');
-    expect(helperValueWithPrimitivesResult.value.map(item => item.bytes)).toEqual(['raw', '2', 'true']);
+    expect(helperValueWithPrimitivesResult.value.map((item: { bytes: string }) => item.bytes)).toEqual(['raw', '2', 'true']);
   });
 
   it('bridges an escaped string as an escaped tree.Quoted, both ways, and raw text as tree.Anonymous', async () => {
@@ -396,11 +397,8 @@ describe('@jesscss/plugin-js security', () => {
     const loaded = await plugin.importLessPlugin(modulePath);
     expect(Object.keys(loaded.functions).sort()).toEqual(['probeprocess', 'triple']);
 
-    const dimensionResult = await loaded.functions.triple(makeDimension(2, 'px'));
-    expect(dimensionResult.type).toBe('Dimension');
-    expect(dimensionResult.number).toBe(6);
-    expect(dimensionResult.unit).toBe('px');
-    await expect(loaded.functions.probeprocess()).resolves.toBe('DENIED');
+    await expect(registered(loaded, 'triple')(makeDimension(2, 'px'))).resolves.toMatchObject({ type: 'Dimension', number: 6, unit: 'px' });
+    await expect(registered(loaded, 'probeprocess')()).resolves.toBe('DENIED');
   });
 
   it('keeps executable Plugin options instance-local in the Deno runtime', async () => {
@@ -424,8 +422,8 @@ describe('@jesscss/plugin-js security', () => {
 
     const first = await runtime.importPlugin(modulePath, 'first=value');
     const second = await runtime.importPlugin(modulePath, 'second=value');
-    await expect(first.functions['plugin-option']()).resolves.toBe('first=value');
-    await expect(second.functions['plugin-option']()).resolves.toBe('second=value');
+    await expect(registered(first, 'plugin-option')()).resolves.toBe('first=value');
+    await expect(registered(second, 'plugin-option')()).resolves.toBe('second=value');
   });
 
   it('does not treat arbitrary "#less/#sass" filesystem paths as pass-through', async () => {
