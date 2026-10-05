@@ -9,7 +9,10 @@ import {
   type PluginInterface,
   type SafeParseOptions,
   buildEvaluator,
+  MATH_MODES,
+  MODULE_MODES,
   ProvidedModules,
+  UNIT_MODES,
   logger, type PluginHost } from '@jesscss/core';
 import { makeLessRegistry } from '@jesscss/fns/less/registry';
 import { LessApiBridge, type NativeLessPlugin } from '@jesscss/plugin-less-compat';
@@ -50,10 +53,10 @@ const lessValueEvaluator = buildEvaluator(makeLessRegistry());
  * as some other mode, a typo would silently change the output.
  */
 const MODE_OPTION_VALUES = {
-  mathMode: ['always', 'parens-division', 'parens', 'strict'],
-  math: [0, 1, 2, 3, 'always', 'parens-division', 'parens', 'strict', 'strict-legacy'],
-  unitMode: ['loose', 'preserve', 'strict'],
-  moduleMode: ['auto', 'modern']
+  mathMode: MATH_MODES,
+  math: [0, 1, 2, 3, ...MATH_MODES, 'strict-legacy'],
+  unitMode: UNIT_MODES,
+  moduleMode: MODULE_MODES
 } as const;
 
 function formatOptionValue(value: unknown): string {
