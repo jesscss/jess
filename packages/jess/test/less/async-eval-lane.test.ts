@@ -1,10 +1,8 @@
 /**
  * The awaitable evaluation lane, exercised through a NATIVE async `Fn`.
  *
- * Deliberately not through `@plugin`: legacy plugin calls are served on a
- * blocking channel so their results never reach the engine as promises, which
- * means a `@plugin`-based test passes without the async lane being involved at
- * all. A config-injected `Fn` with real latency is the honest probe.
+ * A config-injected `Fn` with real latency is the probe: it is genuinely async
+ * without depending on the `@plugin` sandbox (whose calls take this same lane).
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';

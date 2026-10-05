@@ -16745,22 +16745,17 @@ function emitLeafOwned(leaf: Leaf, e: Emit, atRoot = false): void {
     }
   } else if (node.type === 'FunctionCall') {
     const bytes = statementCallBytes(node, frame, e);
+    const asLine = (b: string): string => (b.length === 0 ? '' : idt + b + nl(e));
     if (isThenable(bytes)) {
-      observeRejectedThenable(bytes);
-      throw ERR.asyncInSyncPosition({
-        node,
-        ...callSiteLocation(node, e),
-        meta: { where: 'declaration-list call statement' }
-      });
-    }
-    if (bytes.length === 0) {
-      return;
-    }
-    put(e, idt);
-    put(e, bytes);
-    put(e, nl(e));
-    if (e.positions) {
-      e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
+      // [async] reserve the call's slot in source order; its settled line fills it after the walk
+      const i = e.chunks.length;
+      e.chunks.push('');
+      e.pending.push({ i, p: Promise.resolve(mapMaybe(bytes, asLine)) });
+    } else if (bytes.length !== 0) {
+      put(e, asLine(bytes));
+      if (e.positions) {
+        e.positions.push({ node, type: node.type, start, end: e.off, source: srcFile(e) });
+      }
     }
   } else if (node.type === 'AtRuleBlock') {
     /*
@@ -17902,8 +17897,9 @@ const STATEMENT_RESULT_POSITIONS: Readonly<Record<Value['type'], readonly [root:
  * here as a `FunctionCall`.
  */
 function evalStatementCall(node: FunctionCall, frame: Frame, e: Emit): MaybePromise<ValueGroup> {
+  const position = e.depth === 0 ? 0 : 1; // read now: an async result settles after the walk has moved on
   return mapMaybe(evalTyped(node, frame, e), (value) => {
-    const legal = !isValueGroupArray(value) && STATEMENT_RESULT_POSITIONS[value.type][e.depth === 0 ? 0 : 1];
+    const legal = !isValueGroupArray(value) && STATEMENT_RESULT_POSITIONS[value.type][position];
     if (!legal) {
       throw ERR.invalidStatement({
         node,

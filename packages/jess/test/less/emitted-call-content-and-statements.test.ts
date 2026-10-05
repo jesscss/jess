@@ -203,6 +203,18 @@ describe('a call standing alone in statement position (P37)', () => {
       await expect(withFilePlugin.render(entry)).resolves.toBe('/* raw */\na {\n  b: word;\n}\n');
       fs.writeFileSync(entry, '@plugin "./p.js";\nword();\n', 'utf8');
       await expect(withFilePlugin.render(entry)).rejects.toThrow(notAStatement);
+
+      /* A sandboxed call resolves asynchronously in a declaration list too, in source order (jess#300). */
+      for (const collapseNesting of [false, true]) {
+        const compiler = new Compiler({
+          output: { collapseNesting },
+          compile: { plugins: [lessPlugin(), jsPlugin({ jsReadRoot: dir, runtimeApi: 'less' }), lessCompatPlugin()] }
+        });
+        fs.writeFileSync(entry, '@plugin "./p.js";\na { b: c; nothing(); raw(); d: e; }\n', 'utf8');
+        await expect(compiler.render(entry)).resolves.toBe('a {\n  b: c;\n  /* raw */\n  d: e;\n}\n');
+        fs.writeFileSync(entry, '@plugin "./p.js";\na { b: c; word(); }\n', 'utf8');
+        await expect(compiler.render(entry)).rejects.toThrow(notAStatement);
+      }
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
