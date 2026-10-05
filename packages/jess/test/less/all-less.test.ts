@@ -5,7 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { createHash } from 'node:crypto';
 import { Compiler } from '../../src/index.js';
 import { outputDiagnostics } from '@jesscss/compiler/diagnostics';
-import { getTestCases, resolveLessTestDataRoot, lessFixturePackagesPlugin } from '../test-utils.js';
+import { getTestCases, resolveLessTestDataRoot, lessFixturePackagesPlugin, lessTestDataRemoteImports } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
@@ -98,7 +98,19 @@ const baseCompiler = new Compiler({
        * Pins the third-party packages that fixtures `@import` by bare specifier
        * (tests-config/3rd-party/bootstrap4.less) — see lessFixturePackagesPlugin.
        */
-      lessFixturePackagesPlugin()
+      lessFixturePackagesPlugin(),
+
+      /*
+       * Opt-in remote imports, as a user enables them: `tests-unit/import/import-remote.less`
+       * imports the published test-data from cdn.jsdelivr.net, and that runs the
+       * real path — allow-list claim, locate, the plugin's transport, parse —
+       * with the transport answering from the local checkout. So the fixture
+       * proves remote `(reference)` imports (query included) render like 4.x; it
+       * proves nothing about network I/O. The network boundary (https-only,
+       * redirects, private addresses, size and time caps, Deno `--allow-net`
+       * denial) is proven in @jesscss/plugin-remote-import's own tests.
+       */
+      lessTestDataRemoteImports(testData)
     ]
   }
 });
@@ -236,13 +248,6 @@ const skippedFixtures: SkippedFixture[] = (
     { file: 'tests-config/sourcemaps-variable-selector/basic.less', reason: 'source-map output suite needs dedicated output artifact checks' },
     { file: 'tests-config/sourcemaps-variable-selector/vars.less', reason: 'source-map output suite needs dedicated output artifact checks' },
     { file: 'tests-config/visitorPlugin/visitor.less', reason: 'Less visitor plugin API needs scope decision' },
-    {
-      file: 'tests-unit/import/import-remote.less',
-      reason:
-        'remote URL imports require an explicit network/IO allowlist, which is not part of the alpha harness policy',
-      gateExempt:
-        'matches its golden OFFLINE only because the harness fixture-package plugin maps those cdn.jsdelivr.net URLs onto the local corpus. That is not evidence that remote imports work — jess#219 decides the network policy, and Phase C of the release plan gates on it.'
-    },
 
     /*
      * CARRIED OVER from the former `invalidLess` list in `@jesscss/shared`,

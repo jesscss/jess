@@ -4,6 +4,7 @@ import { execFileSync } from 'child_process';
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import type { PluginInterface } from '@jesscss/core';
+import { remoteImportPlugin } from '@jesscss/plugin-remote-import';
 import { getExpectedOutputFiles, type OutputTestConfig } from '../src/config.js';
 import type { StylesConfig } from 'styles-config';
 
@@ -263,6 +264,28 @@ export function lessFixturePackagesPlugin(): PluginInterface {
       });
     }
   };
+}
+
+/**
+ * The opt-in remote-import plugin, allowing `cdn.jsdelivr.net`, with its
+ * transport routed to the local test-data checkout: a request for
+ * `https://cdn.jsdelivr.net/npm/@less/test-data/<file>` is answered with `<file>`
+ * under `testDataRoot`, anything else with a 404. Corpus fixtures that import
+ * the published test-data over https (`tests-unit/import/import-remote.less`)
+ * so run the real claim → locate → fetch → parse path without a network.
+ */
+export function lessTestDataRemoteImports(testDataRoot: string): PluginInterface {
+  const published = '/npm/@less/test-data/';
+  return remoteImportPlugin({
+    allow: ['cdn.jsdelivr.net'],
+    fetch: async (url) => {
+      const { pathname } = new URL(url);
+      const file = pathname.startsWith(published) ? path.join(testDataRoot, pathname.slice(published.length)) : undefined;
+      return file !== undefined && fs.existsSync(file)
+        ? new Response(fs.readFileSync(file, 'utf8'))
+        : new Response('not found', { status: 404 });
+    }
+  });
 }
 
 function existingDirectory(value: string | undefined): string | undefined {
