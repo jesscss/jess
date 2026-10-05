@@ -24,9 +24,9 @@ import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { ScssImportPostludeError } from './parse-error.js';
-import { anonymousMixin, any, asDiagnostic, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, importIsCompileTime, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
+import { anonymousMixin, any, asDiagnostic, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, importIsCompileTime, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { COMPARISON_OPERATORS, controlBlockStatements, contentArgRaw, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScssImportTarget, isScriptModulePath, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, keywordizeValues, mapKeyValue, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, scssSourceText, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
+import { COMPARISON_OPERATORS, controlBlockStatements, contentArgRaw, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScssImportTarget, isScriptModulePath, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, keywordizeValues, mapKeyValue, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
 import type { ScssArgumentPair, ScssCallArg, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
@@ -154,7 +154,6 @@ type ScssRules = {
   NestedLayerBlock: Combinator<AtRuleBlock>;
   InterpolatedSimple: Combinator<SimpleSelector>;
   Placeholder: Combinator<SimpleSelector>;
-  AttributeSelector: Combinator<SimpleSelector>;
   PseudoArgument: Combinator<string>;
   PseudoArgumentGroup: Combinator<string>;
   PseudoSelector: Combinator<SimpleToken>;
@@ -213,6 +212,13 @@ type ScssSharedSyntax = {
    * token children this rule produces.
    */
   NamespaceTypeSelector: Combinator<SimpleSelector>;
+
+  /*
+   * Inherited from the CSS base: the same frame SCSS spelled out, over SCSS's
+   * own `Quoted` slot, so `[data="#{$state}"]` reduces to the
+   * interpolation-backed SimpleSelector through the base reducer.
+   */
+  AttributeSelector: Combinator<SimpleSelector>;
 
   /*
    * Converged to the CSS base (inherited via compose): same recognizer
@@ -353,16 +359,6 @@ const valueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
  */
 const IDENT_BOUNDARY = '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\';
 const caseInsensitiveWord = makeWord(IDENT_BOUNDARY, { caseInsensitive: true });
-
-/*
- * A CSS-namespaces prefix: `<ident>|`, `*|`, or bare `|`, glued (no whitespace
- * around `|` \u2014 CSS Namespaces \u00a72, selectors-4 \u00a75.1). It prefixes a type/universal
- * selector (`svg|circle`, `*|a`, `|a`) and an attribute name (`[svg|attr]`), so
- * one recognizer serves both \u2014 the same shape the CSS base and the other dialects
- * use (one representation per construct). `(?!=)` keeps the attribute operator
- * `|=` (selectors-4 \u00a76.3) on its own route so `[a|=b]` is `a` matched by `|=`.
- */
-const attributeNamespace = regex(/(?:-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)?\|(?!=)/);
 
 /*
  * Keep the static SCSS slice aligned with the shared CSS keyframe-selector
@@ -4298,45 +4294,6 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * `ns|E` / `*|E` / `|E` is ONE type selector with a namespace prefix
-   * (selectors-4 §5.1), not two compounds joined by a `|` combinator — SCSS's
-   * combinator set already excludes `|`, so before this arm the whole selector
-   * was rejected. It leads the compound choice because its prefix shares a first
-   * char with a plain type selector; `noTrivia` keeps the prefix glued. The
-   * reduced value is a plain `SimpleSelector` carrying the whole `svg|circle`
-   * text, matching the CSS base and the other dialects (one representation per
-   * construct).
-   */
-
-  /*
-   * CSS owns the attribute frame. SCSS overrides only its universal `Quoted`
-   * slot, so `[data="#{$state}"]` becomes the existing interpolation-backed
-   * SimpleSelector rather than inventing an attribute-specific string rule.
-   * A namespaced attribute name (`[svg|attr]`, `[*|attr]`, `[|attr]`) takes the
-   * same glued `attributeNamespace` prefix the CSS base uses.
-   */
-  const AttributeSelector = node<SimpleSelector>(
-    'AttributeSelector',
-    sequence(
-      literal('['),
-      optional(attributeNamespace),
-      g.Identifier,
-      optional(sequence(
-        g.AttributeOperator,
-        choice(
-          g.Quoted,
-          g.Identifier
-        ),
-        optional(g.AttributeModifier)
-      )),
-      literal(']')
-    ),
-    children => children.some(isInterpolation)
-      ? interpolatedSimpleSelector(interpolationFromTemplateChildren(children))
-      : attributeSelector(children.map(scssSourceText))
-  );
-
-  /*
    * A static functional pseudo is still a canonical SimpleSelector leaf. Its
    * argument is grammar-recognized (including balanced groups, brackets,
    * strings, and comments) rather than post-parse text recovery. Every chunk
@@ -4977,7 +4934,6 @@ const scssFactory = (g: ScssInputRules) => {
     UnknownAtRuleBlock,
     InterpolatedSimple,
     Placeholder,
-    AttributeSelector,
     PseudoArgument,
     PseudoArgumentGroup,
     PseudoSelector,

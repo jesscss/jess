@@ -120,4 +120,14 @@ describe('scss plugin render-through', () => {
     const css = await compiler.renderString(src, { extension: '.scss' });
     expect(css).toContain('y: foo(z, { a: 1; b: 2 })');
   });
+
+  /*
+   * An attribute selector keeps its authored whitespace (ledger O7); `@extend`
+   * still matches it against the same selector spelled without it.
+   */
+  it('extends an attribute selector across authored whitespace', async () => {
+    const compiler = new Compiler();
+    const css = await compiler.renderString('[ b ] { c: d; }\n.x { @extend [b]; }', { extension: '.scss' });
+    expect(css).toBe('[ b ],\n.x {\n  c: d;\n}\n');
+  });
 });

@@ -4706,22 +4706,24 @@ describe('Less AST grammar facts', () => {
       ]
     });
 
-    for (const dynamic of [
-      '@custom @{query} { .card { color: red; } }',
-      '@custom foo@{query} { .card { color: red; } }',
-      '@custom foo @{query} { .card { color: red; } }',
-      '@custom foo@{query};',
-      '@custom foo @{query};'
-    ]) {
-      const rejected = run(lessGrammar.Document, dynamic, {
+    /*
+     * The one thing Less evaluates in an unknown at-rule's prelude is `@{…}`
+     * (ledger P2): the prelude is an interpolation over its bytes.
+     */
+    for (const [dynamic, parts] of [
+      ['@custom @{query} { .card { color: red; } }', [{ ref: { name: 'query' } }]],
+      ['@custom foo@{query} { .card { color: red; } }', [{ lit: 'foo' }, { ref: { name: 'query' } }]],
+      ['@custom foo @{query} { .card { color: red; } }', [{ lit: 'foo ' }, { ref: { name: 'query' } }]],
+      ['@custom foo@{query};', [{ lit: 'foo' }, { ref: { name: 'query' } }]],
+      ['@custom foo @{query};', [{ lit: 'foo ' }, { ref: { name: 'query' } }]]
+    ] as const) {
+      const interpolated = run(lessGrammar.Document, dynamic, {
         trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
       });
-      expect(
-        rejected.ok
-        && rejected.unconsumedFrom === null
-        && isStylesheet(rejected.value),
-        dynamic
-      ).toBe(false);
+      expect(interpolated.ok && interpolated.unconsumedFrom === null, dynamic).toBe(true);
+      expect(interpolated.value, dynamic).toMatchObject({
+        rules: [{ name: '@custom', prelude: { type: 'Interpolation', parts } }]
+      });
     }
   });
 
@@ -4851,15 +4853,6 @@ describe('Less AST grammar facts', () => {
         { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
       )
     ).toThrow(LessDynamicCharsetError);
-
-    const rejected = run(lessGrammar.Document, '@custom foo@{name};', {
-      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
-    });
-    expect(
-      rejected.ok
-      && rejected.unconsumedFrom === null
-      && isStylesheet(rejected.value)
-    ).toBe(false);
   });
 
   /*

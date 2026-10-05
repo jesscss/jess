@@ -444,7 +444,7 @@ describe('public Less parse()', () => {
 
   it('keeps direct parse error messages free of raw Parseman expected tokens', () => {
     const source =
-      '.theme(){foo:bar;} .val { @alias: .theme; foo: @alias[foo]; }';
+      '.theme(){foo:bar;} .val { @alias: ~; foo: @alias[foo]; }';
     let thrown: unknown;
 
     try {
@@ -459,15 +459,11 @@ describe('public Less parse()', () => {
     }
 
     /*
-     * The failure lands on the `:` in `@alias:`. Under parseman 0.48.1's honest
-     * narrowing the deepest frame is a rule/selector position — a block,
-     * combinator, class/id selector, or mixin call could continue — not a value
-     * position; it only reported "Expected a Less value" while the 0.46.0
-     * OP_CHOICE union bug widened the expected set into the value-atom
-     * signature. The direct-parse message summary has no selector-context
-     * branch, so it falls to the bare-generic form. That is clean (the point of
-     * this test); a nicer selector summary lives on the core-classifier path and
-     * is a consistency follow-up, not a regression.
+     * The failure lands on the `:` in `@alias:`, and its expected set mixes the
+     * selector-context and value-atom facts. The direct-parse message summary
+     * names neither, so it falls to the bare-generic form. That is clean (the
+     * point of this test). `@alias: .theme;` used to be the input here; it now
+     * reports its own uncalled-mixin-reference diagnostic (jess#236).
      */
     expect(thrown.message).toBe(
       'Unexpected Less syntax. Expected valid Less syntax here.'
@@ -1587,17 +1583,21 @@ describe('public Less parse()', () => {
       '@import url(theme.css);\n.asset {\n  image: url(icons/path.svg);\n  template: url(theme/icon.svg);\n}\n@media screen {\n  .media {\n    color: red;\n  }\n}\n@supports (display: grid) {\n  .supports {\n    display: grid;\n  }\n}\n@keyframes fade {\n  from {\n    opacity: 0;\n  }\n}\n'
     );
 
-    for (const invalid of [
-      '@media @{query} screen { .media { color: red; } }',
-      '@container @{query} { .media { color: red; } }',
-      '@custom @{query} { .media { color: red; } }',
-      '@custom foo@{query} { .media { color: red; } }',
-      '@custom foo @{query} { .media { color: red; } }',
-      '@custom foo@{query};',
-      '@custom foo @{query};'
-    ]) {
-      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
-    }
+    /*
+     * `@container @a` is the bare-variable diagnostic, and its advice is
+     * `@{a}`, so the interpolated container name parses as a static one does
+     * (jess#319).
+     */
+    expect(
+      serialize(parse('@query: card; @container @{query} { .c { color: red; } }'), { evaluator: buildEvaluator(makeLessRegistry()) }).css
+    ).toBe('@container card {\n  .c {\n    color: red;\n  }\n}\n');
+
+    expect(() => parse('@media @{query} screen { .media { color: red; } }')).toThrow(SyntaxError);
+
+    /* An unknown at-rule's prelude interpolates `@{…}` (ledger P2). */
+    expect(
+      serialize(parse('@query: card; @custom @{query} { .m { color: red; } } @custom foo@{query}; @custom foo @{query};'), { evaluator: buildEvaluator(makeLessRegistry()) }).css
+    ).toBe('@custom card {\n  .m {\n    color: red;\n  }\n}\n@custom foocard;\n@custom foo card;\n');
   });
 
   it('keeps invalid interpolation-shaped quoted import text literal', () => {
@@ -2840,7 +2840,8 @@ describe('public Less parse()', () => {
       '@supports (@cond) { .card { color: red; } }',
       '@container @name (inline-size > 30em) { .card { color: red; } }',
       '@layer @name;',
-      '@keyframes @name { from { opacity: 0; } }'
+      '@keyframes @name { from { opacity: 0; } }',
+      '.card { color: supports(@cond); }'
     ]) {
       expect(() => parse(source), source).toThrow(
         LessBareVariableInterpolationError

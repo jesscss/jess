@@ -109,14 +109,32 @@ describe('Less constructs discovered outside the parser suites', () => {
     expect(() => parse(source)).not.toThrow();
   });
 
-  it('PINNED DEFECT — keeps the authored space before the attribute modifier', () => {
-    /*
-     * Cross-dialect divergence: CSS, SCSS and Jess all normalise to
-     * `[href="x"i]`. Both spellings are pinned so unifying them fails loudly
-     * on whichever side moves.
-     */
-    expect(firstRule('a[href="x" i]{c:d}')).toMatchObject({
-      selector: { selectors: [{ value: [{ text: 'a' }, { text: '[href="x" i]' }] }] }
+  /*
+   * Ledger O7 (owner ruling): an attribute selector keeps its authored
+   * whitespace in all four dialects — the same table the CSS suite pins — and
+   * Less accepts the tight modifier, interpolated or not.
+   */
+  it.each([
+    ['a[href="x" i]{c:d}', '[href="x" i]'],
+    ['a[href="x"i]{c:d}', '[href="x"i]'],
+    ['a[ href = "x" i ]{c:d}', '[ href = "x" i ]'],
+    ['a[data-x=y i]{c:d}', '[data-x=y i]'],
+    ['a[href  =\n"x"]{c:d}', '[href = "x"]'],
+    ['a[href/* c */="x"]{c:d}', '[href ="x"]']
+  ])('keeps the authored whitespace inside an attribute selector (%s)', (source, attribute) => {
+    expect(firstRule(source)).toMatchObject({
+      selector: { selectors: [{ value: [{ text: 'a' }, { text: attribute }] }] }
+    });
+  });
+
+  it.each([
+    ['a[@{n}="x"i]{c:d}', [{ lit: '[' }, { ref: { name: 'n' } }, { lit: '="x"i]' }]],
+    ['a[ @{n} = "x" i ]{c:d}', [{ lit: '[ ' }, { ref: { name: 'n' } }, { lit: ' = "x" i ]' }]],
+    ['a[ data-x = "@{s}" i ]{c:d}', [{ lit: '[ data-x = "' }, { ref: { name: 's' } }, { lit: '" i ]' }]],
+    ['a[ data-x = @{s} i ]{c:d}', [{ lit: '[ data-x = ' }, { ref: { name: 's' } }, { lit: ' i ]' }]]
+  ])('keeps the authored whitespace in an interpolated attribute selector (%s)', (source, parts) => {
+    expect(firstRule(source)).toMatchObject({
+      selector: { selectors: [{ value: [{ text: 'a' }, { interp: { parts } }] }] }
     });
   });
 
@@ -255,8 +273,16 @@ describe('Less constructs discovered outside the parser suites', () => {
 
   it('does not read a colon as a keyword argument when no variable precedes it', () => {
     /* The key regex carries the operator lookahead, so only `@name:` opens the
-     * keyword arm — `f(name: 1)` is no more accepted than it was before. */
-    expect(() => parse('a { b: f(name: 1) }')).toThrow();
+     * keyword arm. Without the `@`, `f(name: 1)` is a BRANCH argument (ledger
+     * P38, owner 2026-09-25: function arguments may be `condition: value`
+     * branches), not a keyword argument. */
+    const rule = parse('a { b: f(name: 1) }').rules[0];
+    const declaration = rule?.type === 'Ruleset' ? rule.rules[0] : undefined;
+    expect(declaration?.type === 'Declaration' ? declaration.value : null).toMatchObject({
+      type: 'FunctionCall',
+      name: 'f',
+      args: [{ name: undefined, value: { type: 'Branch', condition: { src: 'name' }, value: { src: '1' } } }]
+    });
   });
 });
 
@@ -270,7 +296,9 @@ describe('Less constructs discovered outside the parser suites', () => {
  *
  * The rejection is EMERGENT: nothing checks first position. The one division
  * operator in `MathSum` sits between two operands by construction (P34), so a
- * leading slash simply has no production to enter.
+ * leading slash simply has no production to enter. Once every value reading
+ * has failed, the `LeadingSeparatorValue` diagnostic recognizes the shape so
+ * the error sits on the slash (jess#235); it accepts nothing.
  */
 describe('the value slash needs a left operand (P33)', () => {
   it.each([
@@ -278,14 +306,17 @@ describe('the value slash needs a left operand (P33)', () => {
     ['bare number', 'a { p: /1 }'],
     ['spaced from its operand', 'a { p: / 1 }']
   ])('rejects a value whose slash has no left operand (%s)', (_label, source) => {
-    const failure = failureOf(source);
-    expect(failure.message).toBe('Unexpected Less syntax.');
-    expect(failure.offset).toBe(0);
+    expect(failureOf(source)).toMatchObject({
+      code: 'parse/leading-separator-value',
+      offset: source.indexOf('/')
+    });
   });
 
   it('rejects a punctuation-led Less variable value', () => {
-    const failure = failureOf('@p: /img;');
-    expect(failure.offset).toBe(2);
+    expect(failureOf('@p: /img;')).toMatchObject({
+      code: 'parse/leading-separator-value',
+      offset: 4
+    });
   });
 
   /*

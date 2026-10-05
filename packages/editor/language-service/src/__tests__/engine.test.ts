@@ -343,6 +343,27 @@ describe('JessLanguageServiceEngine', () => {
       expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
     });
 
+    it.each([
+      ['parse/leading-separator-value', '@p: /img/icon.svg;\n.after { color: red; }', '/img/icon.svg'],
+      ['parse/uncalled-mixin-reference', '.legacy { p: .a; }\n.after { color: red; }', '.a'],
+      ['parse/unsupported-slashed-combinator', '.legacy /deep/ .b { color: red; }\n.after { color: red; }', '/deep/']
+    ])('underlines a rejected Less construct (%s) without losing the document', (code, input, underlined) => {
+      const engine = createEngine();
+      const doc = createDocument('less', input);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const diagnostics = engine.getDiagnostics(doc.uri);
+      const diagnostic = diagnostics.find(item => item.code === code);
+
+      expect(diagnostic).toMatchObject({ source: 'jess', severity: DiagnosticSeverity.Error });
+      expect(input.slice(
+        doc.offsetAt(diagnostic!.range.start),
+        doc.offsetAt(diagnostic!.range.end)
+      )).toBe(underlined);
+      expect(diagnostics.some(item => item.code === 'parse/parser')).toBe(false);
+      expect(engine.getDocumentSymbols(doc.uri).some(symbol => symbol.name === '.after')).toBe(true);
+    });
+
     it('recovers an unfinished Less backtick value at the declaration boundary', () => {
       const engine = createEngine();
       const input = '.legacy { value: `1 + 1; }\n.after { color: red; }';

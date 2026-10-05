@@ -5471,6 +5471,53 @@ export function cstLintDiagnostics(
         }
       );
     }
+
+    /*
+     * Shapes the strict Less AST rejects by name — a slash-led value (ledger
+     * P33), an uncalled mixin reference (rejected today; ruling OPEN under
+     * P33) and the slashed combinators (ledger G37) — are kept as nodes in the
+     * tolerant CST, so their twin is reported from the node.
+     */
+    if (language === 'less' && gt === 'LeadingSeparatorValue') {
+      pushDiagnostic(
+        'parse/leading-separator-value',
+        'error',
+        'A Less value cannot start with "/".',
+        node.span,
+        {
+          phase: 'parse',
+          reason: 'A slash separates two values, so it needs a value before it. A path is a value only inside url() or a string.',
+          fix: 'Write the path as url(/path) or as an escaped string such as ~"/path".'
+        }
+      );
+    }
+    if (language === 'less' && gt === 'SlashedCombinator') {
+      pushDiagnostic(
+        'parse/unsupported-slashed-combinator',
+        'error',
+        `The ${source.slice(start, end)} combinator was removed in Less v5.`,
+        node.span,
+        {
+          phase: 'parse',
+          reason: 'Slashed combinators were Shadow DOM proposals that never became CSS, and browsers removed them.',
+          fix: 'Use a descendant combinator (a space), or ::part() or ::slotted() to style across a shadow boundary.'
+        }
+      );
+    }
+    if (language === 'less' && gt === 'UncalledMixinReference') {
+      const name = source.slice(start, end);
+      pushDiagnostic(
+        'parse/uncalled-mixin-reference',
+        'error',
+        'A mixin reference is not a value.',
+        node.span,
+        {
+          phase: 'parse',
+          reason: 'In a value, a mixin reference must be called or looked up; on its own it has no value.',
+          fix: `Call it as ${name}() to use its result, or write ~"${name}" to keep it as text.`
+        }
+      );
+    }
     const isImageSetFunction = functionName !== null && unprefixedName(functionName) === 'image-set';
     const descriptorAtRuleName = gt === 'DescriptorBlock' ? atRuleNameOf(source, start, end) : null;
     const pageDescriptorContext = gt === 'MarginAtRule' && context.pageDescriptorContext === 'page'

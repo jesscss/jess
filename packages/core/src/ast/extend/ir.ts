@@ -14,8 +14,21 @@ import type { SelectorBranch, SelectorList, SelectorTerm, SimpleToken } from '..
 
 /* --------------------------------------------------------------------- types */
 
-/** A simple-selector token: plain text (`.a`, `&`, `[x]`) or an `:is()` group. */
-export type Simple = { t: 'text'; text: string } | { t: 'is'; branches: Branch[] };
+/**
+ * A simple-selector token: plain text (`.a`, `&`, `[x]`) or an `:is()` group.
+ *
+ * A text token's `text` is its IDENTITY — what every match, atom and key reads.
+ * `out` is its authored spelling where that differs, read only when a header is
+ * emitted: an attribute selector keeps its authored whitespace (ledger O7), yet
+ * `[ b ]` and `[b]` are one selector. Built by {@link textSimple} so every text
+ * token has the same three fields.
+ */
+export type Simple = { t: 'text'; text: string; out?: string } | { t: 'is'; branches: Branch[] };
+
+/** The sole text-token factory; `out` is omitted (undefined) unless it differs from `text`. */
+export function textSimple(text: string, out?: string): Simple {
+  return { t: 'text', text, out };
+}
 
 /** A run of simple tokens with no separator (`.a.b`). */
 export interface Compound {
@@ -102,10 +115,7 @@ export function compoundText(c: Compound): string {
   return out;
 }
 
-export function branchText(b: Branch): string {
-  if (b.key !== undefined) {
-    return b.key;
-  }
+function joinSegments(b: Branch, compound: (c: Compound) => string): string {
   let out = '';
   for (let i = 0; i < b.segments.length; i++) {
     const seg = b.segments[i]!;
@@ -113,13 +123,60 @@ export function branchText(b: Branch): string {
       if (seg.combinator !== ' ') {
         out += renderCombinator(seg.combinator).trimStart();
       }
-      out += compoundText(seg.compound);
+      out += compound(seg.compound);
     } else {
-      out += renderCombinator(seg.combinator) + compoundText(seg.compound);
+      out += renderCombinator(seg.combinator) + compound(seg.compound);
     }
   }
+  return out;
+}
+
+/** A branch's identity text — the key matching, dedup and solve compare. */
+export function branchText(b: Branch): string {
+  if (b.key !== undefined) {
+    return b.key;
+  }
+  const out = joinSegments(b, compoundText);
   b.key = out;
   return out;
+}
+
+function hasAuthoredSpelling(b: Branch): boolean {
+  for (const seg of b.segments) {
+    for (const s of seg.compound.value) {
+      if (s.t === 'text' ? s.out !== undefined : s.branches.some(hasAuthoredSpelling)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function simpleOut(s: Simple): string {
+  return s.t === 'text' ? s.out ?? s.text : `:is(${s.branches.map(branchOut).join(', ')})`;
+}
+
+function compoundOut(c: Compound): string {
+  let out = '';
+  for (const s of c.value) {
+    out += simpleOut(s);
+  }
+  return out;
+}
+
+/** A compound held as ONE opaque text token, keeping its authored spelling. */
+export function opaqueCompound(c: Compound): Simple {
+  const text = compoundText(c);
+  const out = compoundOut(c);
+  return textSimple(text, out === text ? undefined : out);
+}
+
+/**
+ * A branch as it is EMITTED: its identity text, except that a token keeps its
+ * authored spelling (`[ b ]`). Header emission reads this; nothing compares it.
+ */
+export function branchOut(b: Branch): string {
+  return hasAuthoredSpelling(b) ? joinSegments(b, compoundOut) : branchText(b);
 }
 
 /* ---------------------------------------------------------------- construct */
@@ -162,7 +219,7 @@ export function isOrPlainSimpleTokens(branches: Branch[]): Simple[] {
 /* --------------------------------------------------------------------- clone */
 
 export function cloneSimple(s: Simple): Simple {
-  return s.t === 'text' ? { t: 'text', text: s.text } : { t: 'is', branches: s.branches.map(cloneBranch) };
+  return s.t === 'text' ? textSimple(s.text, s.out) : { t: 'is', branches: s.branches.map(cloneBranch) };
 }
 
 export function cloneSeg(seg: SelectorPart): SelectorPart {
@@ -225,13 +282,63 @@ export function cloneBranch(b: Branch): Branch {
 function simpleFromToken(sim: SimpleToken): Simple {
   if (sim.type === 'PseudoSelector' && sim.args !== null) {
     if (pseudoHasInterp(sim)) {
-      return { t: 'text', text: '' };
+      return textSimple('');
     }
     if (sim.crossable) {
       return { t: 'is', branches: levelFromSelectorList(sim.args) };
     }
   }
-  return { t: 'text', text: simpleTokenText(sim) };
+  const text = simpleTokenText(sim);
+  if (text.charCodeAt(0) === 0x5B) {
+    const identity = attributeSelectorIdentity(text);
+    return textSimple(identity, identity === text ? undefined : text);
+  }
+  return textSimple(text);
+}
+
+const isIdentifierCode = (code: number): boolean =>
+  code === 0x2D || code === 0x5F || code >= 0x80
+  || (code >= 0x30 && code <= 0x39) || (code >= 0x41 && code <= 0x5A) || (code >= 0x61 && code <= 0x7A);
+
+const isWhitespaceCode = (code: number): boolean =>
+  code === 0x20 || code === 0x09 || code === 0x0A || code === 0x0C || code === 0x0D;
+
+/**
+ * An attribute selector's identity: its authored spelling (ledger O7 keeps the
+ * whitespace) with every gap dropped except one that separates two identifier
+ * characters, since `[a=y i]` (a value and its flag) is not `[a=yi]`. Strings
+ * and escapes are kept as written. So `[ b ]` and `[b]`, or `[href="x" i]` and
+ * `[href="x"i]`, are one selector to extend.
+ *
+ * ponytail: rescans the attribute token's text, which only an extend document's
+ * IR does, once per token. A parser-built identity on the node is the upgrade
+ * if a hot consumer ever needs it.
+ */
+function attributeSelectorIdentity(text: string): string {
+  let out = '';
+  let quote = 0;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code === 0x5C) {
+      out += text.slice(i, i + 2);
+      i++;
+    } else if (quote !== 0 || code === 0x22 || code === 0x27) {
+      quote = quote === 0 ? code : code === quote ? 0 : quote;
+      out += text[i];
+    } else if (isWhitespaceCode(code)) {
+      let next = i + 1;
+      while (next < text.length && isWhitespaceCode(text.charCodeAt(next))) {
+        next++;
+      }
+      if (isIdentifierCode(out.charCodeAt(out.length - 1)) && isIdentifierCode(text.charCodeAt(next))) {
+        out += ' ';
+      }
+      i = next - 1;
+    } else {
+      out += text[i];
+    }
+  }
+  return out;
 }
 
 function compoundFromTokens(value: SimpleToken[]): Compound {

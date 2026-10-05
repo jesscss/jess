@@ -2518,7 +2518,7 @@ describe('Jess AST grammar facts', () => {
           type: 'SelectorList',
           selectors: [
             { type: 'SimpleSelector', text: '[role]' },
-            { type: 'SimpleSelector', text: '[data-kind="primary"i]' },
+            { type: 'SimpleSelector', text: '[data-kind="primary" i]' },
             { type: 'SimpleSelector', text: '[lang|=en]' }
           ]
         }

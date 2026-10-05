@@ -452,7 +452,7 @@ describe('SCSS canonical-AST grammar', () => {
       }]
     });
     expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
-      '@import "theme.css" layer(tokens) supports((display : grid)) only screen and (min-width: 1px), (color), not (color: red);\n'
+      '@import "theme.css" layer(tokens) supports((display: grid)) only screen and (min-width: 1px), (color), not (color: red);\n'
     );
 
     for (const source of [
@@ -1671,7 +1671,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [
         { type: 'SimpleSelector', text: '.card' },
-        { type: 'SimpleSelector', text: '[data-state="open"i]' },
+        { type: 'SimpleSelector', text: '[data-state="open" i]' },
         { type: 'SimpleSelector', text: '[lang|=en]' }
       ] }] } }]
     });

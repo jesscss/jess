@@ -157,12 +157,19 @@ export interface Sequence {
  * `value`; a consumer never re-splits joined source bytes. `sep` is the one
  * canonical separator fact. Delimiters are represented by the separate `Block`
  * wrapper, not by a second list flag.
+ *
+ * `;` only occurs inside a function body, where it separates the branches of
+ * css-values-5 §8.3 `if()`. An empty entry `[]` is a group the author left
+ * empty (`if(media(print): 1px;)`).
  */
 export interface List {
   readonly type: 'List';
   readonly value: ValueSlot[];
-  readonly sep: ',' | '/';
+  readonly sep: ListSeparator;
 }
+
+/** The separators a {@link List} can carry. */
+export type ListSeparator = ',' | '/' | ';';
 
 /** The binding store a variable operation addresses. */
 export type VariableLookup = 'live' | 'scoped';
@@ -302,15 +309,35 @@ export interface FunctionCall extends SpanSlots, FunctionScopeSlot {
   readonly modern: boolean;
 }
 
-/** A delimiter-bearing value, e.g. `(#aaa * 3)` or `[a, b]`. */
+/**
+ * A delimiter-bearing value, e.g. `(#aaa * 3)`, `[a, b]` or the css-values-5
+ * §3.1.1 `{}`-wrapped argument `{a, b}` (`curly`).
+ */
 export interface Block extends SpanSlots {
   readonly type: 'Block';
   readonly value: ValueSlot;
-  readonly delimiter: 'paren' | 'square';
+  readonly delimiter: BlockDelimiter;
 
   /** Less `~(...)` emits without the authored delimiters. */
   readonly escaped?: boolean;
 }
+
+/**
+ * One branch of a function argument list (ledger P38) — css-values-5 §8.3's
+ * "statement ... consisting of a condition followed by a colon followed by a
+ * value", parsed as `<if-args-branch> = <declaration-value> : <declaration-value>?`
+ * (`if(style(--scheme: dark): white; else: black)`). The colon is this node's
+ * own syntax. A call's branches are one `;` List argument, or the Branch itself
+ * when there is one. `value` is the empty slot `[]` when omitted.
+ */
+export interface Branch {
+  readonly type: 'Branch';
+  readonly condition: ValueSlot;
+  readonly value: ValueSlot;
+}
+
+/** The delimiter pairs a {@link Block} can carry. */
+export type BlockDelimiter = 'paren' | 'square' | 'curly';
 
 /**
  * A COMPUTATION BOUNDARY — jess's `$( … )`. The `$(` and `)` are the marker that
@@ -566,6 +593,7 @@ export type ValueNode =
   | Operation
   | FunctionCall
   | Block
+  | Branch
   | Expression
   | Condition
   | IfValue
@@ -1486,40 +1514,6 @@ export const list = (
 
 export const simpleSelector = (text: string): SimpleSelector => ({ type: 'SimpleSelector', text, interp: null, _s: NO_SPAN, _e: NO_SPAN });
 
-/** An `<ident-token>` code point — the continue set, which is all that matters at a join. */
-const identCode = (code: number): boolean =>
-  code === 0x2d /* - */ || code === 0x5f /* _ */ || code === 0x5c /* \ */
-  || (code >= 0x30 && code <= 0x39)
-  || (code >= 0x41 && code <= 0x5a)
-  || (code >= 0x61 && code <= 0x7a)
-  || code > 0x7f;
-
-/**
- * `[`, name, operator, value, flag, `]` joined into one attribute selector.
- *
- * The parts carry no authored whitespace, so two adjacent `<ident-token>`s
- * would FUSE: `[data-x=y i]` emitting as `[data-x=yi]` is still valid CSS and
- * still parses, so nothing rejects it — but selectors-4 §6.3 makes the unquoted
- * value and the case-sensitivity flag two separate `<ident-token>`s, and the
- * fused spelling matches a DISJOINT set of elements. One space is emitted at
- * exactly the boundaries where omitting it would fuse and at no other, so a
- * quoted value (`"y"i`) and every delimiter-adjacent boundary keep their bytes.
- */
-export const attributeSelector = (parts: readonly string[]): SimpleSelector => {
-  let text = '';
-  for (const part of parts) {
-    if (
-      text.length !== 0 && part.length !== 0
-      && identCode(text.charCodeAt(text.length - 1))
-      && identCode(part.charCodeAt(0))
-    ) {
-      text += ' ';
-    }
-    text += part;
-  }
-  return simpleSelector(text);
-};
-
 /** An interpolated simple token, e.g. `.icon-@{type}`. */
 export const interpolatedSimpleSelector = (interp: Interpolation): SimpleSelector => ({ type: 'SimpleSelector', text: null, interp, _s: NO_SPAN, _e: NO_SPAN });
 
@@ -1759,6 +1753,7 @@ export const funcCall = (
 };
 export const block = (value: ValueSlot, delimiter: Block['delimiter'] = 'paren', escaped = false): Block =>
   escaped ? { type: 'Block', value, delimiter, escaped: true, _s: NO_SPAN, _e: NO_SPAN } : { type: 'Block', value, delimiter, _s: NO_SPAN, _e: NO_SPAN };
+export const branch = (condition: ValueSlot, value: ValueSlot): Branch => ({ type: 'Branch', condition, value });
 
 /** The `$( … )` computation boundary — see {@link Expression}. */
 export const expression = (value: ValueSlot, asCall: FunctionCall | null = null): Expression =>

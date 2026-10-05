@@ -163,6 +163,29 @@ describe('JessError diagnostics', () => {
     expect(diagnostic.reason).not.toContain('not(regex)');
   });
 
+  it('summarizes a selector-context expected set without printing the selector regex', () => {
+    const source = '.a .b ~;';
+    const diagnostic = parserDiagnostic({
+      dialect: 'Less',
+      error: {
+        code: 'parse/syntax-error',
+        offset: source.indexOf('~'),
+        expected: ['"{"', '/>/', '/[.#]-?(?:[_a-zA-Z\\u0080-\\uffff])*/', '"("']
+      },
+      filePath: 'entry.less',
+      source
+    });
+
+    expect(diagnostic).toMatchObject({
+      code: 'parse/syntax-error',
+      message: 'Expected a selector, mixin call, or block.',
+      reason: 'Less expected a selector, mixin call, or block to continue here, but this token starts none of them.',
+      line: 1,
+      column: 7
+    });
+    expect(diagnostic.reason).not.toContain('[.#]');
+  });
+
   it('deduplicates expected tokens before summarizing parser diagnostics', () => {
     const source = '@unknown url( {\n  width: 20px;\n}';
     const diagnostic = parserDiagnostic({

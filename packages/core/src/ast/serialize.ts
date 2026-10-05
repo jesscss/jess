@@ -126,6 +126,8 @@ import {
   EmptyOperandError,
   IncomparableOperandsError,
   emitValue,
+  delimiterClose,
+  delimiterOpen,
   isValueGroup,
   isValueGroupArray,
   isElided,
@@ -163,7 +165,7 @@ import { computeExtends, type ExtendPlacementResults, type ExtendResults } from 
 import { documentHasExtend, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
 import type { PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
 import type { Level } from './extend/ir.js';
-import { branchFromSelector, descendantBranch, levelFromSelectorList } from './extend/ir.js';
+import { branchFromSelector, descendantBranch, levelFromSelectorList, textSimple } from './extend/ir.js';
 import { DocumentContext, documentTriviaOf, type Context, type SourceContext } from '../context.js';
 import type { ModuleConfigRejection } from '../plugin.js';
 import { Deprecation } from '../deprecation.js';
@@ -3139,6 +3141,9 @@ function callValueContainsVarRef(value: CallValue, name: string, lookup: 'live' 
       return value.parts.some(part => callValueContainsVarRef(part, name, lookup));
     case 'List':
       return value.value.some(part => callValueContainsVarRef(part, name, lookup));
+    case 'Branch':
+      return callValueContainsVarRef(value.condition, name, lookup)
+        || callValueContainsVarRef(value.value, name, lookup);
     case 'Important':
       return callValueContainsVarRef(value.value, name, lookup);
     case 'Operation':
@@ -4223,10 +4228,10 @@ function evalTyped(
        * operations look like top-level parens-division math and left the whole
        * registered function call verbatim after its typed signature rejected it.
        */
-      if (node.delimiter === 'square') {
+      if (node.delimiter !== 'paren') {
         return mapMaybe(
           evalTypedSlot(node.value, frame, e, projectMixinValues),
-          value => makeBlock(value, 'square', node.escaped)
+          value => makeBlock(value, node.delimiter, node.escaped)
         );
       }
 
@@ -4276,9 +4281,23 @@ function evalTyped(
        * `extract`, counted by `length`, or compared). The structure the parser owns
        * is handed to the value layer directly — no re-splitting a joined string.
        */
-      const typed = node.value.map(it => evalTypedSlot(it, frame, e, projectMixinValues));
+      const typed = node.value.map(it => evalTypedSlot(it, frame, e, projectMixinValues, writeRulesets));
       return combineAll(typed, vals => makeList(vals, node.sep));
     }
+    case 'Branch':
+      /*
+       * [P38] A branch argument, typed: its condition and value are materialized
+       * like any argument — a ruleset value (`if(c: { v: 1; })`) written out as
+       * a ruleset argument is — and the branch is its authored `cond: value`.
+       */
+      return combineAll([
+        evalTypedSlot(node.condition, frame, e, projectMixinValues, writeRulesets),
+        evalTypedSlot(node.value, frame, e, projectMixinValues, writeRulesets)
+      ], (parts) => {
+        const condition = emitValueC(parts[0]!, e);
+        const value = emitValueC(parts[1]!, e);
+        return makeAny(value === '' ? `${condition}:` : `${condition}: ${value}`);
+      });
     case 'Sequence': {
       /*
        * A structured SPACE-list (`@v: a b c` / `1px solid @c`) materializes to the
@@ -4374,6 +4393,10 @@ function isAuthoredGroupExpression(node: Expression): boolean {
   const start = sourceStartOf(node);
   return start !== NO_SPAN && !isValueSlotArray(node.value) && start < sourceStartOf(node.value);
 }
+
+/** The relations a query grammar builds as `Operation`s: a feature `name: value` and a range comparison. */
+const isQueryRelation = (operator: string): boolean =>
+  operator === ':' || operator === '<' || operator === '>' || operator === '<=' || operator === '>=' || operator === '=';
 
 /**
  * `and` / `or` in VALUE position (§4.5.5). They are NATIVE operators, not `fns/`
@@ -4644,15 +4667,27 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
           if (!isLiteral(item) && isElided(item)) {
             continue;
           }
+          const bytes = emitValueC(item, e);
           if (!empty) {
-            out += itemBoundary(authored?.[index - 1], glue, compress);
+            out += itemBoundary(authored?.[index - 1], glue, compress, bytes);
           }
-          out += emitValueC(item, e);
+          out += bytes;
           empty = false;
         }
         return empty && vals.length > 0 ? NULL : literal(out);
       });
     }
+    case 'Branch':
+      /*
+       * [P38] A branch argument (`style(--x: @v): @c`) keeps its shape: the
+       * condition and value are evaluated like any value, and the colon is the
+       * branch's own syntax. An omitted value keeps the bare colon (`cond:`).
+       */
+      return combineAll([evalValueSlot(node.condition, frame, e), evalValueSlot(node.value, frame, e)], (parts) => {
+        const condition = emitValueC(parts[0]!, e);
+        const value = emitValueC(parts[1]!, e);
+        return literal(value === '' ? `${condition}:` : `${condition}: ${value}`);
+      });
     case 'Block': {
       /*
        * Less `~(...)` retains its typed inner value for list operations but
@@ -4679,11 +4714,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        */
       return mapMaybe(inner, (v) => {
         if (isLiteral(v)) {
-          const open = node.delimiter === 'square' ? '[' : '(';
-          const close = node.delimiter === 'square' ? ']' : ')';
-          return literal(`${open}${v}${close}`);
+          return literal(`${delimiterOpen(node.delimiter)}${v}${delimiterClose(node.delimiter)}`);
         }
-        return node.delimiter === 'square' ? makeBlock(v, 'square', node.escaped) : v;
+        return node.delimiter === 'paren' ? v : makeBlock(v, node.delimiter, node.escaped);
       });
     }
     case 'Expression': {
@@ -4732,6 +4765,22 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'Operation': {
       if (node.operator === 'and' || node.operator === 'or') {
         return evalLogicalOperation(node, frame, e);
+      }
+
+      /*
+       * [P38] A query RELATION — `width > 600px`, `display: grid` — reaches a
+       * value position only inside an `<if-test>` call (`media()`,
+       * `supports()`, `style()`), where the query grammar built it. It is a
+       * condition the browser evaluates, never math or a comparison to fold:
+       * its operands are evaluated (a Less variable substitutes) and the
+       * relation is emitted as written, spelled as a query prelude spells it.
+       * A value comparison is a `Condition`, never an `Operation`.
+       */
+      if (isQueryRelation(node.operator)) {
+        const l = evalValue(node.left, frame, e);
+        const r = evalValue(node.right, frame, e);
+        return combineAll([l, r], values =>
+          literal(`${emitValue(values[0]!)}${node.operator === ':' ? ': ' : ` ${node.operator} `}${emitValue(values[1]!)}`));
       }
 
       /*
@@ -11858,7 +11907,7 @@ const EMPTY_SCOPE: number[] = [];
  * COMPLEX dynamic extender ever has to chain as a match target.
  */
 function opaqueLevel(header: readonly string[]): Level {
-  return header.map(text => descendantBranch([{ t: 'text', text }]));
+  return header.map(text => descendantBranch([textSimple(text)]));
 }
 
 /** [extend/dynamic] The innermost `$for`/mixin placement token on the frame chain, or
@@ -17105,12 +17154,12 @@ function putImportTail(node: ValueNode, frame: Frame, e: Emit): void {
     put(e, evalQueryPreludeSync(node, frame, e));
     return;
   }
-  put(e, node.delimiter === 'square' ? '[' : '(');
+  put(e, delimiterOpen(node.delimiter));
   put(e, evalQueryPreludeSync(node.value.left, frame, e));
   put(e, ': ');
   putValueBoundaryTrivia(e, boundary, '');
   put(e, evalQueryPreludeSync(node.value.right, frame, e));
-  put(e, node.delimiter === 'square' ? ']' : ')');
+  put(e, delimiterClose(node.delimiter));
 }
 
 /** Write one direct import target plus its typed, parser-laid-out tail. */
@@ -18176,8 +18225,8 @@ function evalSupportsPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): 
         [{ bytes: `${node.name}(${content})`, protected: true }]);
     }
     case 'Block': {
-      const open = node.delimiter === 'square' ? '[' : '(';
-      const close = node.delimiter === 'square' ? ']' : ')';
+      const open = delimiterOpen(node.delimiter);
+      const close = delimiterClose(node.delimiter);
       if (!isValueSlotArray(node.value) && node.value.type === 'Interpolation') {
         return mapMaybe(evalBytes(node.value, frame, e), content =>
           [{ bytes: `${open}${content}${close}`, protected: true }]);
@@ -18293,8 +18342,8 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
         [{ bytes: `${node.name}(${content})`, protected: true }]);
     }
     case 'Block': {
-      const open = node.delimiter === 'square' ? '[' : '(';
-      const close = node.delimiter === 'square' ? ']' : ')';
+      const open = delimiterOpen(node.delimiter);
+      const close = delimiterClose(node.delimiter);
       return concatPreludeParts([plain(open), evalQueryPreludeParts(node.value, frame, e), plain(close)]);
     }
     case 'Operation':

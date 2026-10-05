@@ -281,7 +281,7 @@ const skippedFixtures: SkippedFixture[] = (
     },
     {
       file: 'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less',
-      reason: 'every case in the upstream fixture is commented out, so it renders to nothing while its golden is a stray newline. The cases are commented out because `/deep/` and `/shadow/` do not parse in jess — RULED (G37): slashed combinators are not selectors (Selectors 4 §14 lists neither) and v5 rejects them deliberately, so the fixture belongs in tests-error with its cases restored, or deleted — jess#247'
+      reason: 'MOVED: slashed combinators are rejected by design (G37) with a named diagnostic (`parse/unsupported-slashed-combinator`), so the fixture now lives in tests-error/parse/parser-slashed-combinator.less with its cases restored, where all-less-error.test.ts asserts the rejection. This entry only covers a corpus that predates the move, whose copy here is all commented out and renders nothing against a stray-newline golden; delete it once the corpus carries the move — jess#247'
     },
     {
       file: 'tests-unit/javascript/javascript.less',

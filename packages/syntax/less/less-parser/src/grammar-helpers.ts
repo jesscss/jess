@@ -20,10 +20,10 @@
  */
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
-import { NO_SPAN, any, callArg, condition, dimension, expression, funcCall, ifNode, ifValue, important, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, quoted, reference, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, callArg, condition, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, dimension, expression, funcCall, ifNode, ifValue, important, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, quoted, reference, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, Operation, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorCapture, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { functionScopeOf, requireLessParseState } from './parse-state.js';
-import { LessUnsupportedVariableNameError } from './parse-error.js';
+import { LessSlashedCombinatorError, LessUnsupportedVariableNameError } from './parse-error.js';
 
 type VarRef = Lookup & { readonly name: string };
 /** A `Lookup` whose target is named by a nested node — Less `@@name`. */
@@ -54,12 +54,16 @@ type MixinInteriorFact = {
   readonly trailingSeparator?: ',' | ';';
 };
 type MixinReferenceBaseFact = { readonly call: MixinCall; readonly raw: string };
-type AttributeMatchFact = { readonly operator: string; readonly value: string; readonly modifier: string | null };
-type AttributeNameFact = { readonly namespace: string; readonly name: string };
 type ExtendTargetFact = { readonly target: SelectorList; readonly partial: boolean };
 type BodyExtendFact = { readonly bodyExtensions: readonly ExtendInstruction[] };
 type SelectorBranchFact = { readonly selector: SelectorBranch; readonly extensions: readonly ExtendInstruction[] };
-type SelectorListWithExtendsFact = { readonly selector: SelectorList; readonly extensions: readonly ExtendInstruction[] };
+/** A removed `/word/` combinator, carried until a ruleset commits at its `{`. */
+type SlashedCombinatorFact = { readonly slashedCombinator: string; readonly start: number; readonly end: number };
+type SelectorListWithExtendsFact = {
+  readonly selector: SelectorList;
+  readonly extensions: readonly ExtendInstruction[];
+  readonly slashed: SlashedCombinatorFact | undefined;
+};
 type MixinDefinitionFact = {
   readonly params: readonly Param[];
   readonly guard?: MixinGuard;
@@ -323,6 +327,49 @@ function staticTextWithTriviaGaps(children: readonly unknown[], triviaLog: reado
   return semanticGapText(text);
 }
 
+/**
+ * A generic at-rule prelude: its tokens with one space per gap, trimmed, as
+ * bytes. A `@{…}` in it makes the prelude an interpolation over those bytes, as
+ * `@{…}` is in every other Less prelude.
+ */
+function atRulePreludeFrom(children: readonly unknown[], triviaLog: readonly number[]): Any | Interpolation | null {
+  if (!children.some(isInterpolationFact)) {
+    const text = staticTextWithTriviaGaps(children, triviaLog).trim();
+    return text === '' ? null : any(text);
+  }
+  const gapBefore = new Set<number>();
+  for (let index = 0; index < lessTriviaEntryCount(triviaLog); index += 1) {
+    gapBefore.add(lessTriviaEntryInsertIndex(triviaLog, index));
+  }
+  const parts: Interpolation['parts'] = [];
+  for (let index = 0; index < children.length; index++) {
+    if (gapBefore.has(index)) {
+      appendInterpolationLiteral(parts, ' ');
+    }
+    const child = children[index];
+    if (isInterpolationFact(child)) {
+      parts.push({ ref: child.ref, unquote: true });
+    } else {
+      appendInterpolationLiteral(parts, staticText(child));
+    }
+  }
+  const trimmed: Interpolation['parts'] = [];
+  for (let index = 0; index < parts.length; index++) {
+    const part = parts[index]!;
+    if (!('lit' in part)) {
+      trimmed.push(part);
+      continue;
+    }
+    let lit = semanticGapText(part.lit);
+    lit = index === 0 ? lit.trimStart() : lit;
+    lit = index === parts.length - 1 ? lit.trimEnd() : lit;
+    if (lit !== '') {
+      trimmed.push({ lit });
+    }
+  }
+  return interpolation(trimmed);
+}
+
 function isQuoted(value: unknown): value is Quoted {
   return typeof value === 'object'
     && value !== null
@@ -480,10 +527,11 @@ function mixinArgumentSource(value: CallValue): string {
       : node.raw;
     case 'Reference': return node.raw;
     case 'FunctionCall': return `${node.name}(${node.args.map(callArgumentSource).join(', ')})`;
-    case 'Block': return `${node.escaped ? '~' : ''}${node.delimiter === 'square' ? '[' : '('}${mixinArgumentSource(node.value)}${node.delimiter === 'square' ? ']' : ')'}`;
+    case 'Block': return `${node.escaped ? '~' : ''}${delimiterOpen(node.delimiter)}${mixinArgumentSource(node.value)}${delimiterClose(node.delimiter)}`;
+    case 'Branch': return `${mixinArgumentSource(node.condition)}:${Array.isArray(node.value) && node.value.length === 0 ? '' : ` ${mixinArgumentSource(node.value)}`}`;
     case 'Operation': return `${mixinArgumentSource(node.left)} ${node.operator} ${mixinArgumentSource(node.right)}`;
     case 'Sequence': return node.parts.map(mixinArgumentSource).join(' ');
-    case 'List': return node.value.map(mixinArgumentSource).join(node.sep === ',' ? ', ' : node.sep === '/' ? ' / ' : ' ');
+    case 'List': return node.value.map(mixinArgumentSource).join(sepGlue(node.sep));
     case 'Important': return `${mixinArgumentSource(node.value)} !important`;
     default: throw new TypeError(`Less mixin-reference raw source cannot represent ${node.type}.`);
   }
@@ -1138,6 +1186,7 @@ function isValueNode(value: unknown): value is ValueNode {
     case 'Operation':
     case 'Condition':
     case 'Block':
+    case 'Branch':
     case 'Expression':
     case 'Lookup':
     case 'Reference':
@@ -1328,6 +1377,17 @@ function functionCallFromChildren(
   for (const child of children.slice(1, -1)) {
     if (isLessCallArg(child) || isLessValueSlotValue(child)) {
       args.push(child);
+    }
+  }
+  /* [P38] `[condition, BranchRest]` is one branch-list argument. */
+  const [condition, rest] = args;
+  if (args.length === 2 && condition !== undefined && rest !== undefined && !isLessCallArg(rest)) {
+    const branches = withFirstBranchCondition(isLessCallArg(condition) ? [] : condition, rest);
+    if (branches !== undefined) {
+      if (isLessCallArg(condition)) {
+        throw new SyntaxError('A keyword argument cannot be a branch condition.');
+      }
+      return callWithLayout(name, [branches], [], false, span, state);
     }
   }
   const separators = functionSeparatorsFromFields(fields, rawChildren, triviaLog, state);
@@ -1633,12 +1693,6 @@ function isParam(value: unknown): value is Param {
     && ('name' in value || 'pattern' in value || 'rest' in value);
 }
 
-function isAttributeNameFact(value: unknown): value is AttributeNameFact {
-  return typeof value === 'object' && value !== null
-    && 'namespace' in value && typeof value.namespace === 'string'
-    && 'name' in value && typeof value.name === 'string';
-}
-
 function isExtendInstruction(value: unknown): value is ExtendInstruction {
   return typeof value === 'object' && value !== null
     && 'target' in value && isLessSelectorList(value.target)
@@ -1662,6 +1716,10 @@ function isSelectorBranchFact(value: unknown): value is SelectorBranchFact {
     && 'selector' in value && isLessSelectorBranch(value.selector)
     && 'extensions' in value && Array.isArray(value.extensions)
     && value.extensions.every(isExtendInstruction);
+}
+
+function isSlashedCombinatorFact(value: unknown): value is SlashedCombinatorFact {
+  return typeof value === 'object' && value !== null && 'slashedCombinator' in value;
 }
 
 function isSelectorListWithExtendsFact(value: unknown): value is SelectorListWithExtendsFact {
@@ -1696,9 +1754,18 @@ function isRulesetTailFact(value: unknown): value is RulesetTailFact {
     && 'extensions' in value && Array.isArray(value.extensions) && value.extensions.every(isExtendInstruction);
 }
 
+/**
+ * A committed ruleset's selector list. Called once the ruleset's `{` has
+ * committed, so this is where a removed slashed combinator in the list is
+ * rejected (ledger G37).
+ */
 function requireSelectorListWithExtendsFact(value: unknown): SelectorListWithExtendsFact {
   if (!isSelectorListWithExtendsFact(value)) {
     throw new TypeError('Less grammar produced a ruleset selector without selector facts.');
+  }
+  const slashed = value.slashed;
+  if (slashed !== undefined) {
+    throw new LessSlashedCombinatorError(slashed.start, slashed.end, slashed.slashedCombinator);
   }
   return value;
 }
@@ -1892,8 +1959,10 @@ function functionConditionSource(value: ValueSlot): string {
       ? `@${typeof node.name === 'string' ? node.name : functionConditionSource(node.name)}`
       : node.raw;
     case 'FunctionCall': return `${node.name}(${node.args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${functionConditionSource(argument.value)}`).join(', ')})`;
-    case 'Operation': return `${functionConditionSource(node.left)} ${node.operator} ${functionConditionSource(node.right)}`;
-    case 'Block': return `${node.delimiter === 'square' ? '[' : '('}${functionConditionSource(node.value)}${node.delimiter === 'square' ? ']' : ')'}`;
+    /* A query's `name: value` (an if-test's `supports(x: y)`) is spelled as a query spells it. */
+    case 'Operation': return `${functionConditionSource(node.left)}${node.operator === ':' ? '' : ' '}${node.operator} ${functionConditionSource(node.right)}`;
+    case 'Block': return `${delimiterOpen(node.delimiter)}${functionConditionSource(node.value)}${delimiterClose(node.delimiter)}`;
+    case 'Branch': return `${functionConditionSource(node.condition)}:${Array.isArray(node.value) && node.value.length === 0 ? '' : ` ${functionConditionSource(node.value)}`}`;
     /*
      * An `Expression` owns no delimiters of its own. A nested `boolean(…)`/
      * `if(…)` condition is replayed with the enclosing group's `(inner)`, as
@@ -1909,7 +1978,7 @@ function functionConditionSource(value: ValueSlot): string {
         ? inner
         : `(${inner})`;
     }
-    case 'List': return node.value.map(functionConditionSource).join(node.sep === ',' ? ', ' : ` ${node.sep} `);
+    case 'List': return node.value.map(functionConditionSource).join(sepGlue(node.sep));
     case 'Sequence': return node.parts.map(functionConditionSource).join(' ');
     case 'Condition': return node.src;
     default: throw new TypeError(`Less function condition cannot preserve ${node.type}.`);
@@ -2284,7 +2353,6 @@ export {
   isAny,
   isAtRuleBlock,
   isAtRuleStatement,
-  isAttributeNameFact,
   isBareMixinCallFact,
   isBodyExtendFact,
   isComplex,
@@ -2324,6 +2392,7 @@ export {
   isSelectorBranchFact,
   isLessSelectorList,
   isSelectorListWithExtendsFact,
+  isSlashedCombinatorFact,
   isSelectorTerm,
   isSequence,
   isSimpleSelector,
@@ -2402,6 +2471,7 @@ export {
   staticSelectorPseudoFrom,
   staticText,
   staticTextWithTriviaGaps,
+  atRulePreludeFrom,
   triviaTextAtInsertIndex,
   unsupportedVariableNameFrom,
   valuePieceReducerWithTrivia,
@@ -2412,8 +2482,6 @@ export {
 };
 
 export type {
-  AttributeMatchFact,
-  AttributeNameFact,
   BareMixinCallFact,
   BodyExtendFact,
   CallValue,
@@ -2442,6 +2510,7 @@ export type {
   RulesetTailFact,
   SelectorBranchFact,
   SelectorListWithExtendsFact,
+  SlashedCombinatorFact,
   LessMathRun,
   UnsupportedVariableNameFact,
   VarRef

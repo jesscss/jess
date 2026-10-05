@@ -31,6 +31,7 @@
  */
 
 import {
+  branchOut,
   branchText,
   cloneBranch,
   cloneSeg,
@@ -239,7 +240,7 @@ function dedupBranchTexts(list: Branch[]): string[] {
     const k = branchText(b);
     if (!seen.has(k)) {
       seen.add(k);
-      out.push(k);
+      out.push(branchOut(b));
     }
   }
   return out;
@@ -639,7 +640,7 @@ export function computeExtends(
       const headerTexts: string[] = [];
       for (let index = 0; index < compacted.length; index++) {
         const branch = compacted[index]!;
-        headerTexts.push(branchText(branch));
+        headerTexts.push(branchOut(branch));
         if (branch.hidden === true) {
           if (hiddenMask === null) {
             hiddenMask = [];
@@ -880,7 +881,7 @@ export function computeExtends(
       if (s.parent !== null) {
         projectionFor(s).nestedPlan.set(s.rule, {
           flatten: false,
-          header: s.ownLocal.map(branchText),
+          header: s.ownLocal.map(branchOut),
           splits: []
         });
       }
@@ -894,7 +895,7 @@ export function computeExtends(
        * prefix, so a child comma-list under one parent DOES compact across segments
        * (extend-exact `:is(<parent>) :is(.replace, .c)`).
        */
-      const hoisted = siblingCompact(flatBySubject.get(s)!, true).map(branchText);
+      const hoisted = siblingCompact(flatBySubject.get(s)!, true).map(branchOut);
       projectionFor(s).hoistHeader.set(s.rule, hoisted);
       if (mode === 'renest') {
         /*
@@ -920,7 +921,7 @@ export function computeExtends(
        */
       const solved = flatBySubject.get(s)!;
       const subPath = cross.drop > 0 ? solved.map(b => dropLeadingSegs(b, cross.drop)) : solved;
-      const header = siblingCompact(subPath, true).map(branchText);
+      const header = siblingCompact(subPath, true).map(branchOut);
       projectionFor(s).nestedPlan.set(s.rule, {
         flatten: true, hoistNested: true, header, splits: [], hoistBubble: cross.bubble
       });
@@ -983,7 +984,7 @@ export function computeExtends(
     }
     projectionFor(s).nestedPlan.set(s.rule, {
       flatten: false,
-      header: header.map(branchText),
+      header: header.map(branchOut),
       splits: dedupBranchTexts(splits).map(t => [t]),
       collapseTransparent: collapsedParent.has(s.rule)
     });

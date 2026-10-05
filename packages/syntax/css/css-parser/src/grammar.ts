@@ -16,7 +16,7 @@
  * - SCSS: ../../../scss/scss-parser/src/grammar.ts
  * - Jess: ../../../jess/jess-parser/src/grammar.ts
  */
-import { balanced, classifiedTrivia, choice, compose, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, startsWith, token, when } from 'parseman' with { type: 'macro' };
+import { balanced, classifiedTrivia, choice, compose, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, startsWith, token, when } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -24,15 +24,21 @@ import {
   any,
   atRuleBlock,
   atRuleStatement,
-  attributeSelector,
+  attributeSelectorFrom,
   authoredText,
   block,
+  branchRest,
+  fallbackCall,
+  ifTestCall,
   blockStatements,
   branchSegments,
   queryConditionChain,
   queryFeatureBlock,
   generalEnclosedGroup,
   queryFeatureContents,
+  enclosedCall,
+  styleFeature,
+  supportsDeclaration,
   queryValueRatio,
   color,
   complexSegments,
@@ -56,7 +62,6 @@ import {
   isSelectorBranch,
   isSelectorList,
   isSimpleToken,
-  isTerminalText,
   isValue,
   isValueSlotValue,
   keyframeSelectorList,
@@ -64,6 +69,7 @@ import {
   list,
   unknownAtRuleBlock,
   optionalValue,
+  parenGroupBlock,
   pseudoSelector,
   quoted,
   relativeSelector,
@@ -75,7 +81,9 @@ import {
   selectorTermFromTokens,
   selist,
   semanticTextWithTriviaGaps,
+  semicolonGroupedCall,
   simpleSelector,
+  spaceRun,
   sourceText,
   spaced,
   STRUCTURED_PSEUDOS,
@@ -92,7 +100,6 @@ import {
 import type {
   AtRuleBlock,
   Declaration,
-  Interpolation,
   ValueNode
 } from '@jesscss/core/ast';
 
@@ -113,7 +120,6 @@ type GrammarRuleName =
   | 'CalcSum'
   | 'CalcValue'
   | 'MathFunction'
-  | 'Call'
   | 'CharsetPrelude'
   | 'CharsetStatement'
   | 'Color'
@@ -131,6 +137,7 @@ type GrammarRuleName =
   | 'ConditionalAtKeyword'
   | 'ContainerAtKeyword'
   | 'CustomPropertyName'
+  | 'IdentToken'
   | 'DescriptorAtKeyword'
   | 'DocumentAtKeyword'
   | 'DoubleQuotedText'
@@ -235,11 +242,13 @@ type GrammarRuleName =
   | 'Url'
   | 'Value'
   | 'ValueList'
+  | 'ValueSequenceBeforeColon'
+  | 'BranchRest'
+  | 'BranchValues'
+  | 'CurlyValue'
   | 'ValueSequence'
   | 'ValueTerm'
   | 'TypedValue'
-  | 'TypedValueList'
-  | 'TypedValueSequence'
   | 'VarCall'
   | 'VarFallback'
   | 'VarFallbackBrace'
@@ -263,7 +272,12 @@ type GrammarRuleName =
   | 'AtRulePreludeText'
   | 'MediaInParens'
   | 'MediaCondition'
-  | 'MediaNot'
+  | 'MediaFeatureContents'
+  | 'queryUrlBound'
+  | 'queryMathBound'
+  | 'queryVarBound'
+  | 'queryUnicodeBound'
+  | 'queryFunctionBound'
   | 'MediaTerm'
   | 'QueryFeatureContents'
   | 'keyframeSelector'
@@ -284,8 +298,22 @@ type GrammarRuleName =
   | 'stylesheetBodyItem'
   | 'routedStylesheetBody'
   | 'routedDeclarationListBody'
-  | 'valueFunctionArguments'
-  | 'calcFunctionArguments';
+  | 'calcFunctionArguments'
+  | 'functionArgument'
+  | 'branchLead'
+  | 'VarFallbackOpener'
+  | 'VarFallbackLead'
+  | 'MediaTest'
+  | 'MediaTestBody'
+  | 'StyleTestBody'
+  | 'StyleFeature'
+  | 'StyleInParens'
+  | 'StyleCondition'
+  | 'RoutedCustomPropertyValue'
+  | 'SupportsTestBody'
+  | 'SupportsTest'
+  | 'StyleTest'
+  | 'SupportsDeclaration';
 
 /*
  * Rules that the shared recognition library defines keep its concrete
@@ -303,7 +331,7 @@ type GrammarSelf = {
  * The expected-set atom a refused `@charset` prelude reports, and the one public
  * spelling of it. `CharsetStatement` below is what emits it; the three
  * dialects' `expectedMessage` helpers recognize it by this exact string, the way
- * they already recognize `'")"'` and `'CustomPropertyName'` — those helpers
+ * they already recognize `'")"'` and `'IdentToken'` — those helpers
  * deliberately hold no grammar import, and the parseman macro cannot read a
  * cross-module constant inside a combinator argument (it needs a literal), so
  * the less grammar spells the same string rather than importing this one. Each
@@ -411,11 +439,6 @@ const CSS_MATH_FUNCTION_OPENERS = [
  * identifier (`-webkit-foo`) is not this shape and stays a run item.
  */
 const signedNumericStart = regex(/[-+](?=[.0-9])/);
-const genericFunctionIdentifier = regex(/(?!(?:calc|url|var)(?=\())-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
-const genericFunctionOpen = noTrivia(sequence(
-  genericFunctionIdentifier,
-  literal('(')
-));
 const customEscape = regex(/\\[^\n\r\f]/);
 
 /*
@@ -796,12 +819,12 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * An argument comma also admits padding BEFORE it, which the value-list comma
-   * must not: at the top level `a , b` is a space-separated run whose middle
-   * component is the punctuation `,`, and widening `authoredValueComma` would
-   * re-cut every such value that parses today. Inside an argument list there is
-   * no competing punctuation reading, so `f(c , d)` and `f(c /* z *\/, d)` are
-   * plain padded separators.
+   * A `calc()` argument comma also admits padding BEFORE it, which the
+   * value-list comma must not: at the top level `a , b` is a space-separated
+   * run whose middle component is the punctuation `,`, and widening
+   * `authoredValueComma` would re-cut every such value that parses today. (A
+   * generic function's arguments own their padding instead; see
+   * `functionArgumentGap`.)
    */
   const authoredArgumentComma = field(
     'separator',
@@ -811,21 +834,203 @@ const cssFactory = (g: GrammarSelf) => {
       optional(cssValueTrivia)
     ))
   );
-  const valueFunctionArguments = sepBy(
-    g.TypedValueSequence,
-    authoredArgumentComma
+
+  /*
+   * An unknown function's contents are component values up to the matching `)`
+   * (css-syntax-3 §5.4.9, "consume a function"), so its body is the value
+   * ladder plus the two delimiters a function body can carry that a declaration
+   * value cannot:
+   *
+   * - `;` groups arguments. css-values-5 §8.3 spells `if()` as
+   *   `if( [ <if-branch> ; ]* <if-branch> ;? )`, so a group may be empty after
+   *   the last `;`. Nested in a function, `;` is an ordinary token, not a
+   *   declaration terminator.
+   * - A `{}` block is a whole argument: css-values-5 §3.1.1 lets a free-form
+   *   argument be wrapped in braces so it can hold commas
+   *   (`random-item(--x, {a, b}, c)`, css-mixins-1 `--f({1px, 2px}, 3px)`).
+   *
+   * Any other argument is a whole space group whose items may be slash groups:
+   * the modern colour syntaxes separate their alpha component with a slash
+   * (`rgb(15 23 42 / .22)`, css-color-4 §5), and that slash is the same
+   * separator rung a declaration value uses, so this points at `ValueSequence`
+   * rather than re-spelling it here. `{` is the block's own first token, so the
+   * two arms are decided there. A named slot: Less reads its own argument here
+   * (a `{` is a detached ruleset in Less).
+   */
+  const functionArgument = choice(
+    g.CurlyValue,
+    g.ValueSequence
   );
 
   /*
-   * A function argument is a whole space group whose items may be slash groups:
-   * the modern colour syntaxes separate their alpha component with a slash
-   * (`rgb(15 23 42 / .22)`, css-color-4 §5), and `grid-template` tracks carry
-   * one too. That slash is the same separator rung a declaration value uses, so
-   * this points at `ValueSequence` rather than re-spelling a slash here.
+   * TRIVIA OWNERSHIP. Each argument owns the padding after it, read once by
+   * `functionArgumentGap`, and each delimiter — `,`, `;`, a branch `:`, the
+   * closing `)` — starts at its own character and owns only the padding after
+   * it. So the token after an argument is decided on one character, and no
+   * delimiter re-reads the padding before it. The padding is still read twice
+   * before the gap keeps it: the value ladder's slash boundary and the argument
+   * run's own loop (`ValueSequence`, `ValueSequenceBeforeColon`, and a var()
+   * fallback's `VarFallbackTerm`) each try it and give it back, because a run
+   * does not own its trailing padding. None of
+   * these is a field capture: the call's reducer
+   * reads the terminals between two arguments (gap, delimiter, padding) as that
+   * boundary's authored layout, and needs the `;` among its children to tell an
+   * empty group from a full one.
    */
-  const genericFunctionArguments = sepBy(
-    g.ValueSequence,
-    authoredArgumentComma
+  const functionArgumentGap = optional(cssValueTrivia);
+  const functionArgumentComma = noTrivia(sequence(
+    literal(','),
+    optional(cssValueTrivia)
+  ));
+  const functionArgumentSemicolon = noTrivia(sequence(
+    literal(';'),
+    optional(cssValueTrivia)
+  ));
+
+  /* The rest of a comma group once its first argument has been read. */
+  const functionArgumentCommaRest = many(sequence(
+    functionArgumentComma,
+    g.functionArgument,
+    functionArgumentGap
+  ));
+
+  /*
+   * The comma-separated arguments between two `;`s. It may be empty: `if()`
+   * allows a trailing `;`.
+   */
+  const functionArgumentGroup = optional(sequence(
+    g.functionArgument,
+    functionArgumentGap,
+    functionArgumentCommaRest
+  ));
+
+  /*
+   * Everything after a plain first argument: the rest of its comma group, then
+   * any further `;` groups (`foo(a; b)`).
+   */
+  const plainArgumentsAfterFirst = sequence(
+    functionArgumentCommaRest,
+    many(sequence(
+      functionArgumentSemicolon,
+      functionArgumentGroup
+    ))
+  );
+
+  /*
+   * The body, LEFT-FACTORED on its first argument (ledger P38). css-values-5
+   * §8.3 parses `if()` as `[ <if-args-branch> ; ]* <if-args-branch> ;?`,
+   * `<if-args-branch> = <declaration-value> : <declaration-value>?`, the first
+   * `<declaration-value>` excluding top-level colons. So the first argument is
+   * read once, by `branchLead` (a value run that stops at a top-level `:`, or
+   * a `{}`-wrapped argument), and the token after it decides: `:` makes
+   * the body a branch list (`BranchRest`), anything else continues the plain
+   * arguments. Every other opening is decided by its own first token: `;` an
+   * empty first group (`foo(; a)`), `)` no arguments.
+   */
+  const genericFunctionArguments = optional(choice(
+    sequence(
+      g.branchLead,
+      functionArgumentGap,
+      choice(
+        g.BranchRest,
+        plainArgumentsAfterFirst
+      )
+    ),
+    oneOrMore(sequence(
+      functionArgumentSemicolon,
+      functionArgumentGroup
+    ))
+  ));
+
+  /*
+   * css-values-5 §8.3's `<declaration-value>` with no top-level colon: a
+   * branch's condition, and — since the body is left-factored on it — every
+   * generic call's first argument. It is `ValueSequence` with one guard: a run
+   * item after the first never begins on a `:` (in a declaration value a `:` is
+   * punctuation and would be swallowed into the run). The guard is the one
+   * character the parser is on. It keeps the `ValueSequence` node label and
+   * reducer, so a plain first argument's tree is the one it always was.
+   */
+  const ValueSequenceBeforeColon = node(
+    'ValueSequence',
+    noTrivia(sequence(
+      g.ValueTerm,
+      many(choice(
+        sequence(
+          field('separator', cssValueTrivia),
+          not(literal(':')),
+          g.ValueTerm
+        ),
+        sequence(
+          not(literal(':')),
+          g.ValueTerm
+        )
+      ))
+    )),
+    (children, fields) => spaceRun(children, fields)
+  );
+  const branchColon = noTrivia(sequence(
+    literal(':'),
+    optional(cssValueTrivia)
+  ));
+
+  /*
+   * The argument that may lead a branch: a body's first argument, and the first
+   * argument of each later `;` group. A css-values-5 §8.3 condition is a
+   * `<declaration-value>` with no top-level colon, of which a `{}` block is a
+   * component; the lead is the colon-free value run or, as a whole argument, a
+   * `{}`-wrapped one, decided at the `{`. A named slot: Less leads with
+   * its own argument (where a `{` is a detached ruleset).
+   */
+  const branchLead = choice(
+    g.ValueSequenceBeforeColon,
+    g.CurlyValue
+  );
+
+  /*
+   * The rest of a branch list once its first condition has been read: the
+   * colon, then `BranchValues`. The colon stands outside the node so a call
+   * with no branch fails on the one character instead of entering a node.
+   */
+  const BranchRest = sequence(
+    branchColon,
+    g.BranchValues
+  );
+
+  /*
+   * A later `;` group of a branch list, left-factored exactly like the first
+   * argument: its first argument is read once, and a `:` after it makes the
+   * group a branch whose value is the rest; otherwise the group is a plain
+   * comma group. A malformed `if(a: 1; b)` is invalid at computed-value time,
+   * not a parse error (css-values-5 §8.3), so a group with no colon parses.
+   */
+  const branchListGroup = optional(sequence(
+    g.branchLead,
+    functionArgumentGap,
+    choice(
+      sequence(
+        branchColon,
+        functionArgumentGroup
+      ),
+      functionArgumentCommaRest
+    )
+  ));
+
+  /*
+   * A branch list after its first colon: the first value, then `;` groups. The
+   * `;`s and the spec's trailing `;` are preserved in every dialect (P38). The
+   * call's reducer puts the first condition into the first branch.
+   */
+  const BranchValues = node(
+    'BranchValues',
+    sequence(
+      functionArgumentGroup,
+      many(sequence(
+        functionArgumentSemicolon,
+        branchListGroup
+      ))
+    ),
+    children => branchRest(children)
   );
   const BasicSelector = node(
     'BasicSelector',
@@ -866,7 +1071,7 @@ const cssFactory = (g: GrammarSelf) => {
       )),
       literal(']')
     ),
-    children => attributeSelector(children.map(sourceText))
+    (children, _fields, _span, _rawChildren, triviaLog) => attributeSelectorFrom(children, triviaLog)
   );
 
   /*
@@ -1453,31 +1658,6 @@ const cssFactory = (g: GrammarSelf) => {
       return url(body ?? any(''));
     }
   );
-  const Call = node(
-    'Call',
-    sequence(
-      genericFunctionOpen,
-      optional(cssValueTrivia),
-      g.valueFunctionArguments,
-      optional(cssValueTrivia),
-      literal(')')
-    ),
-    (children, fields) => {
-      const name = functionOpenName(children[0]);
-      const args = children.slice(1).filter(isValueSlotValue);
-      return funcCall(
-        name,
-        withAuthoredSeparators(
-          args,
-          fields,
-          Math.max(
-            0,
-            args.length - 1
-          )
-        )
-      );
-    }
-  );
 
   /*
    * CSS arithmetic parentheses are structural only inside calc(), where they
@@ -1616,6 +1796,13 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     literal(')')
   );
+
+  /*
+   * A parenthesized fallback group. A `<declaration-value>` forbids only a
+   * TOP-LEVEL `;` (css-syntax-3 §5.4.7), so one nested in the group is an
+   * ordinary token: `var(--x, (a; b))` is `(` a `;` List `)`, with the same
+   * separator run the function body uses.
+   */
   const VarFallbackParen = node(
     'VarFallbackParen',
     sequence(
@@ -1626,10 +1813,24 @@ const cssFactory = (g: GrammarSelf) => {
       literal('('),
       optional(cssValueTrivia),
       optional(g.VarFallback),
-      optional(cssValueTrivia),
+      functionArgumentGap,
+      many(sequence(
+        functionArgumentSemicolon,
+
+        /*
+         * A part the author left empty before the `)` is the empty slot, like
+         * every other empty part — not the `var(--x,)` empty FALLBACK, which is
+         * what `VarFallback` reads at a `)`.
+         */
+        optional(sequence(
+          not(literal(')')),
+          g.VarFallback,
+          functionArgumentGap
+        ))
+      )),
       literal(')')
     ),
-    children => block(valueSlotChildren(children)[0] ?? any(''))
+    children => parenGroupBlock(children)
   );
 
   /*
@@ -1676,18 +1877,15 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * A nested var() needs its own first separator and trailing fallback commas
-   * preserved exactly as the outer var does. It must therefore win before the
-   * generic function-call component arm in every fallback component position.
-   * This is a dispatch-adjacent hotspot, but not a blind rewrite target:
-   * fallback generic functions use fallback comma semantics, while ordinary
-   * typed values use CSS value-list separators. A future routed shape must keep
-   * that fallback-specific function body instead of merely reusing
-   * TypedIdentOrFunction.
+   * A fallback component. A unicode range (`U+0-7F`) is its own token, read
+   * before the identifier it starts like. An identifier-shaped component is read
+   * once by `VarFallbackOpener` and routed by what it read; every other one is
+   * decided by its own first character (a `TypedValue` atom, a group, a bracket
+   * or brace leaf, punctuation).
    */
   const varFallbackComponent = choice(
-    g.VarCall,
-    g.VarFallbackCall,
+    g.UnicodeRange,
+    g.VarFallbackOpener,
     g.TypedValue,
     g.VarFallbackParen,
     g.VarFallbackBracket,
@@ -1701,6 +1899,30 @@ const cssFactory = (g: GrammarSelf) => {
       varFallbackComponent,
       many(sequence(
         optional(cssValueTrivia),
+        varFallbackComponent
+      ))
+    ),
+    (children) => {
+      const values = valueSlotChildren(children);
+      return values.length === 1 ? values[0]! : values;
+    }
+  );
+
+  /*
+   * The first item of a group in a fallback's function: `VarFallbackTerm` with
+   * one guard, as `ValueSequenceBeforeColon` is `ValueSequence` with one — a
+   * component after the first never begins on a `:`, so a top-level `:` after
+   * the item is left for the branch colon (ledger P38). The guard is the one
+   * character the parser is on. It keeps the `VarFallbackTerm` label and
+   * reducer.
+   */
+  const VarFallbackLead = node(
+    'VarFallbackTerm',
+    sequence(
+      varFallbackComponent,
+      many(sequence(
+        optional(cssValueTrivia),
+        not(literal(':')),
         varFallbackComponent
       ))
     ),
@@ -1745,23 +1967,73 @@ const cssFactory = (g: GrammarSelf) => {
           );
     }
   );
+
+  /*
+   * A fallback's function body, read by the fallback's own permissive items
+   * (ledger P2: fallback comma semantics — an empty item between commas is the
+   * empty `Any` — and raw bracket and brace leaves). A `;` separates groups as
+   * in any function body (`var(--x, foo(a; b))`, a branch list's `;`), so such
+   * a body is read here, never refused and read again as a generic call; a
+   * group left empty before a `;` is the empty slot. The padding is owned as a
+   * generic body owns it: after the opener, then a gap after each item.
+   */
+  const fallbackItemCommaRest = many(sequence(
+    varFallbackComma,
+    optional(g.VarFallbackItem),
+    functionArgumentGap
+  ));
+
+  /*
+   * One `;` group of a fallback's function, left-factored on its first item as
+   * a generic body's group is: the item is read once, and a `:` after it makes
+   * the group a branch whose value is the comma items after the colon — the
+   * same `Branch` a generic call builds. A group opening on a comma starts with
+   * the empty item (`foo(,a)`).
+   */
+  const fallbackGroup = choice(
+    sequence(
+      g.VarFallbackLead,
+      functionArgumentGap,
+      choice(
+        sequence(
+          branchColon,
+          optional(g.VarFallbackItem),
+          functionArgumentGap,
+          fallbackItemCommaRest
+        ),
+        fallbackItemCommaRest
+      )
+    ),
+    sequence(
+      g.VarFallbackEmpty,
+      fallbackItemCommaRest
+    )
+  );
   const VarFallbackCall = node(
     'VarFallbackCall',
     sequence(
-      genericFunctionOpen,
+      routed(),
+      optional(cssValueTrivia),
       optional(sequence(
         not(literal(')')),
-        oneOrMoreSep(
-          g.VarFallbackItem,
-          varFallbackComma
-        )
+        optional(fallbackGroup),
+        many(sequence(
+          functionArgumentSemicolon,
+
+          /*
+           * A group left empty after a `;` — before another `;` or the `)` —
+           * is the empty slot, as in `VarFallbackParen`; the empty `Any` is the
+           * comma's fallback semantics only.
+           */
+          optional(sequence(
+            not(literal(')')),
+            fallbackGroup
+          ))
+        ))
       )),
       literal(')')
     ),
-    children => funcCall(
-      functionOpenName(children[0]),
-      children.filter(isValueSlotValue)
-    )
+    children => fallbackCall(children)
   );
   const VarCall = node(
     'VarCall',
@@ -1817,8 +2089,7 @@ const cssFactory = (g: GrammarSelf) => {
     g.UnicodeRange,
     g.CalcIdentOrFunction,
     g.CalcParen,
-    g.Quoted,
-    g.CustomPropertyValue
+    g.Quoted
   );
   const CalcValue = node(
     'CalcValue',
@@ -1927,12 +2198,6 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * Preserve the public declaration component-value language without letting
-   * its permissive forms leak into query preludes or dedicated function
-   * productions. url()/var()/calc() stay owned by their strict branches;
-   * genericFunctionOpen excludes those glued openers.
-   */
-  /*
    * The padding is spelled for the same reason `GenericFunction` spells it: this
    * interior runs with trivia cleared, so without these terms `( c )` — and every
    * comment form of it — was rejected as hard as `(/* c *\/ e)` was.
@@ -2034,9 +2299,17 @@ const cssFactory = (g: GrammarSelf) => {
       1
     )
   );
+
+  /*
+   * The opener is one css-syntax-3 §4.3.9 identifier token, which may start
+   * with `--`; css-mixins-1 calls a dashed ident glued to `(` a
+   * `<dashed-function>` (`--*( <declaration-value>#? )`). Both dispatches route
+   * `--f(` to the generic call tail and a bare `--x` (by its `--` prefix) to its
+   * `CustomPropertyValue` node.
+   */
   const identOrFunction = token(noTrivia(
     sequence(
-      genericIdentifier,
+      g.IdentToken,
       optional(literal('('))
     )
   ));
@@ -2067,24 +2340,9 @@ const cssFactory = (g: GrammarSelf) => {
       routed(),
       optional(cssValueTrivia),
       genericFunctionArguments,
-      optional(cssValueTrivia),
       literal(')')
     ),
-    (children, fields) => {
-      const name = functionOpenName(children[0]);
-      const args = children.filter(isValueSlotValue);
-      return funcCall(
-        name,
-        withAuthoredSeparators(
-          args,
-          fields,
-          Math.max(
-            0,
-            args.length - 1
-          )
-        )
-      );
-    }
+    children => semicolonGroupedCall(children)
   );
   const UrlFunction = node(
     'Url',
@@ -2178,6 +2436,17 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * The bare dashed ident routed by the identifier/function dispatch keeps its
+   * own node, so a stray `--x` in a value is still the `CustomPropertyValue`
+   * the language service flags as a missing `var()`.
+   */
+  const RoutedCustomPropertyValue = node(
+    'CustomPropertyValue',
+    routed(),
+    children => keyword(tokenText(children[0]))
+  );
+
+  /*
    * Declaration identifiers and glued function openers share one lexical shape.
    * Parse it once, then route the complete opener to the dedicated URL, calc(),
    * var(), generic-call, or keyword tail. `foo (` remains a keyword followed by
@@ -2211,6 +2480,18 @@ const cssFactory = (g: GrammarSelf) => {
       'var(',
       VarFunction
     ),
+    cssCase(
+      'media(',
+      g.MediaTest
+    ),
+    cssCase(
+      'supports(',
+      g.SupportsTest
+    ),
+    cssCase(
+      'style(',
+      g.StyleTest
+    ),
 
     /*
      * A trailing escaped paren is a value ident, not a function opener: `\(` and
@@ -2224,32 +2505,8 @@ const cssFactory = (g: GrammarSelf) => {
       endsWith('('),
       GenericFunction
     ),
+    when(startsWith('--'), RoutedCustomPropertyValue),
     otherwise(IdentBlockOrKeyword)
-  );
-  const TypedGenericFunction = node(
-    'Call',
-    sequence(
-      routed(),
-      optional(cssValueTrivia),
-      g.valueFunctionArguments,
-      optional(cssValueTrivia),
-      literal(')')
-    ),
-    (children, fields) => {
-      const name = functionOpenName(children[0]);
-      const args = children.slice(1).filter(isValueSlotValue);
-      return funcCall(
-        name,
-        withAuthoredSeparators(
-          args,
-          fields,
-          Math.max(
-            0,
-            args.length - 1
-          )
-        )
-      );
-    }
   );
   const typedIdentOrFunction = dispatch(
     identOrFunction,
@@ -2285,20 +2542,62 @@ const cssFactory = (g: GrammarSelf) => {
      * Both css ladders carry this arm so the typed and non-typed routes agree.
      */
     when(endsWith('\\('), g.RoutedKeyword),
+
+    /*
+     * An unknown function's contents are the same component values in a typed
+     * position as in a declaration (css-syntax-3 §5.4.9): a `calc()` operand
+     * reaches the same `GenericFunction` tail, so `calc(if(media(print): 1px;
+     * else: 0px) + 1px)` and `calc(foo(1px / 2) + 1px)` parse their function
+     * exactly as a declaration value does. (A `var()` fallback routes its own
+     * openers through `VarFallbackOpener`.)
+     */
     when(
       endsWith('('),
-      TypedGenericFunction
+      GenericFunction
     ),
+    when(startsWith('--'), RoutedCustomPropertyValue),
     otherwise(g.RoutedKeyword)
   );
   const CalcIdentOrFunction = typedIdentOrFunction;
+
+  /*
+   * The identifier-or-opener token of a var() fallback component, read once and
+   * routed by its text, as a fallback has always routed it: a nested var()
+   * keeps its own first separator and trailing fallback commas, as the outer var
+   * does; `url(` and `calc(` keep their strict tails; a dashed function
+   * (css-mixins-1) takes the generic call tail; any other function takes the
+   * fallback's own permissive body (`VarFallbackCall`, ledger P2).
+   */
+  const VarFallbackOpener = dispatch(
+    identOrFunction,
+    cssCase(
+      'url(',
+      UrlFunction
+    ),
+    cssCase(
+      'calc(',
+      g.MathFunction
+    ),
+    cssCase(
+      'var(',
+      VarFunction
+    ),
+    when(endsWith('\\('), g.RoutedKeyword),
+    when(matches(/^--[\s\S]*\($/), GenericFunction),
+    when(
+      endsWith('('),
+      g.VarFallbackCall
+    ),
+    when(startsWith('--'), RoutedCustomPropertyValue),
+    otherwise(g.RoutedKeyword)
+  );
   const TypedIdentOrFunction = typedIdentOrFunction;
 
   /*
    * Identifier-shaped atoms are routed by `IdentOrFunction`: known glued
    * functions keep their dedicated tails, other glued functions use the
-   * generic call tail, and an identifier with no glued `(` is either the
-   * spaced paren bridge (`foo (bar)`, which preserves its authored separator
+   * generic call tail, and an identifier with no glued `(` is a dashed ident,
+   * the spaced paren bridge (`foo (bar)`, which preserves its authored separator
    * as a value boundary) or a keyword. One route means the identifier is
    * scanned once. The final punctuation fallback needs no negative identifier
    * preflight: every identifier-shaped start has already been consumed by
@@ -2312,7 +2611,6 @@ const cssFactory = (g: GrammarSelf) => {
     g.ParenValue,
     g.SquareValue,
     g.Quoted,
-    g.CustomPropertyValue,
     g.PunctuationValue
   );
   const Value = node(
@@ -2367,17 +2665,36 @@ const cssFactory = (g: GrammarSelf) => {
         g.ValueTerm
       ))
     )),
-    (children, fields) => {
-      const values = valueSlotChildren(children);
-      if (values.length === 1) {
-        return values[0]!;
-      }
-      return withAuthoredSeparators(
-        values,
-        fields,
-        values.length - 1
-      );
-    }
+    (children, fields) => spaceRun(children, fields)
+  );
+
+  /*
+   * A `{}`-wrapped free-form argument (css-values-5 §3.1.1): "the production
+   * matches just the {} block that the '{' token opens". CSS Syntax calls it a
+   * `{}-block`; the contents are one or more comma-separated values — the
+   * `ValueList` a declaration value is — and the result is the same `Block`
+   * fact the paren and square siblings produce, with the `curly` delimiter. The
+   * interior runs with trivia cleared, as `ValueSequence` does, so the padding
+   * in `{a , b}` is spelled by the list's own comma rather than skipped
+   * ambiently.
+   *
+   * It is reachable only as a whole function argument or a branch value, never
+   * as a declaration value atom: a top-level `{` in a declaration is where a
+   * nested rule's body starts.
+   */
+  const CurlyValue = node(
+    'Block',
+    noTrivia(sequence(
+      literal('{'),
+      optional(cssValueTrivia),
+      g.ValueList,
+      optional(cssValueTrivia),
+      literal('}')
+    )),
+    children => block(
+      valueSlotChildren(children)[0]!,
+      'curly'
+    )
   );
   const ValueList = node(
     'ValueList',
@@ -2406,59 +2723,10 @@ const cssFactory = (g: GrammarSelf) => {
       g.Dimension,
       g.Color,
       g.Quoted,
-      g.CustomPropertyValue,
       g.UnicodeRange,
       TypedIdentOrFunction
     ),
     { project: 0 }
-  );
-  const TypedValueSequence = node(
-    'TypedValueSequence',
-    noTrivia(sequence(
-      g.TypedValue,
-      many(choice(
-        sequence(
-          field(
-            'separator',
-            cssValueTrivia
-          ),
-          g.TypedValue
-        ),
-        g.TypedValue
-      ))
-    )),
-    (children, fields) => {
-      const values = valueSlotChildren(children);
-      if (values.length === 1) {
-        return values[0]!;
-      }
-      return withAuthoredSeparators(
-        values,
-        fields,
-        values.length - 1
-      );
-    }
-  );
-  const TypedValueList = node(
-    'TypedValueList',
-    oneOrMoreSep(
-      g.TypedValueSequence,
-      authoredValueComma
-    ),
-    (children, fields) => {
-      const terms = valueSlotChildren(children);
-      if (terms.length === 1) {
-        return terms[0]!;
-      }
-      return withAuthoredSeparators(
-        list(
-          terms,
-          ','
-        ),
-        fields,
-        terms.length - 1
-      );
-    }
   );
 
   /*
@@ -2951,6 +3219,31 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * The same name tail where `<general-enclosed>` may follow (a media feature,
+   * an if-test): each part after its token is optional, so the tail never
+   * gives a token back, and a colon or comparison with no value leaves a shape
+   * the contents reducer builds as `<general-enclosed>`. `@container` and
+   * `@supports` features keep the strict tail above: their general-enclosed
+   * input still takes the `Enclosed` text fallback, so loosening their tail
+   * would move their trees. TODO(jess#306): one tail (and one feature dispatch)
+   * once those features read general-enclosed as structure.
+   */
+  const generalFeatureNameTail = optional(choice(
+    sequence(
+      literal(':'),
+      optional(g.QueryValue)
+    ),
+    sequence(
+      g.QueryComparisonOperator,
+      optional(g.QueryValue),
+      optional(sequence(
+        g.QueryComparisonOperator,
+        optional(g.QueryValue)
+      ))
+    )
+  ));
+
+  /*
    * The feature name the opener dispatch already read, kept a `Property` node
    * as it always was. It is a routed twin of `Property` rather than
    * `routed(g.Identifier)`, whose any-character first set would take first-set
@@ -2965,6 +3258,99 @@ const cssFactory = (g: GrammarSelf) => {
     RoutedProperty,
     queryFeatureNameTail
   );
+  const generalFeatureName = sequence(
+    RoutedProperty,
+    generalFeatureNameTail
+  );
+
+  /*
+   * The component values of a `<general-enclosed>` or an if-test's contents
+   * after its query part: comma-separated value runs, and the tokens a value
+   * run cannot start with (`/`, `!`, `;`, a `{}` block), each read once.
+   */
+  const generalValue = choice(
+    literal(','),
+    g.ValueSequence,
+    literal('/'),
+    literal('!'),
+    literal(';'),
+    g.CurlyValue
+  );
+  const generalRest = many(generalValue);
+
+  /*
+   * The component values after a value-first bound: comma-separated value runs.
+   * The tokens a value run cannot start with stay out, so a `@container` or
+   * `@supports` feature holding them keeps its `Enclosed` fallback (jess#306);
+   * a media feature and an if-test read them as their general rest.
+   */
+  const boundValues = oneOrMore(choice(
+    literal(','),
+    g.ValueSequence
+  ));
+
+  /*
+   * A feature's head is a unicode range, or a CSS identifier or function
+   * opener — not a dashed ident: `(--x: 1)` is no media feature, so it reaches
+   * the value arm and, in `@supports`, the general-enclosed fallback, as it
+   * always has.
+   */
+  const queryFeatureHead = token(noTrivia(sequence(
+    genericIdentifier,
+    optional(literal('('))
+  )));
+  const queryFeatureOpenerHead = choice(
+    g.UnicodeRangeToken,
+    queryFeatureHead
+  );
+
+  /*
+   * The range name after a value-first bound's comparison, owning the
+   * identifier the dispatch below read, and an optional second comparison.
+   */
+  const queryRangeName = sequence(
+    RoutedProperty,
+    optional(sequence(
+      g.QueryComparisonOperator,
+      optional(g.QueryValue)
+    ))
+  );
+
+  /*
+   * The head after a value-first bound's comparison, read once with the
+   * feature head and routed as `queryFeatureOpener` routes it: an identifier
+   * is the range name, and a function or unicode range is another bound with
+   * its own tail, so `1px < foo(x)` keeps `foo(x)` one function. Any other
+   * value fails the head at its start and is read as the bound's values.
+   */
+  const queryComparedHead = dispatch(
+    queryFeatureOpenerHead,
+    cssCase(
+      'url(',
+      g.queryUrlBound
+    ),
+    cssCase(
+      CSS_MATH_FUNCTION_OPENERS,
+      g.queryMathBound
+    ),
+    cssCase(
+      'var(',
+      g.queryVarBound
+    ),
+    when(
+      startsWith('u+'),
+      g.queryUnicodeBound,
+      { caseInsensitive: true }
+    ),
+    when(
+      matches(/(?:\\\(|[^(])$/),
+      queryRangeName
+    ),
+    when(
+      endsWith('('),
+      g.queryFunctionBound
+    )
+  );
 
   /*
    * What follows a value-first bound: a range (`< width`, `< width < 2px`), or
@@ -2973,24 +3359,19 @@ const cssFactory = (g: GrammarSelf) => {
    * once before either the range name or the rest, so this tail never fails
    * after its head; the contents reducer builds the range or the enclosed
    * sequence from what was read. The rest is the ordinary declaration-value
-   * list, so contents it does not read (`{…}`, `!`, a leading comma, or more
-   * values after a range name) leave the feature's `)` unmatched.
+   * values, so only more values after a range name leave a `@container` or
+   * `@supports` feature's `)` unmatched (jess#306); a media feature and an
+   * if-test read those as their rest.
    */
   const queryBoundTail = optional(choice(
     sequence(
       g.QueryComparisonOperator,
       optional(choice(
-        sequence(
-          g.Property,
-          optional(sequence(
-            g.QueryComparisonOperator,
-            g.QueryValue
-          ))
-        ),
-        g.ValueList
+        queryComparedHead,
+        boundValues
       ))
     ),
-    g.ValueList
+    boundValues
   ));
 
   /*
@@ -3046,56 +3427,61 @@ const cssFactory = (g: GrammarSelf) => {
   const RoutedFunctionQueryValue = node(
     'QueryValue',
     sequence(
-      node('TypedValue', TypedGenericFunction, { project: 0 }),
+      node('TypedValue', GenericFunction, { project: 0 }),
       queryRatioTail
     ),
     children => queryValueRatio(children)
   );
 
   /*
-   * The first token of a feature's contents is read once and routed:
-   *
-   * - a unicode range or a function is a value-first bound, owned by its arm
-   *   through `routed()`, followed by `queryBoundTail`;
-   * - any other identifier is the feature name (an escaped `\(` ends a name,
-   *   not a function), followed by nothing, `: value`, or a comparison and one
-   *   or two values.
-   *
-   * A function arm fails after its head only when the function's own
-   * arguments do, as a function-valued bound always has.
+   * Each value-first bound the feature-contents dispatches route to, with the
+   * tail that follows it. Named so the feature and media dispatches share them.
+   */
+  const queryUrlBound = sequence(
+    RoutedUrlQueryValue,
+    g.queryBoundTail
+  );
+  const queryMathBound = sequence(
+    RoutedMathQueryValue,
+    g.queryBoundTail
+  );
+  const queryVarBound = sequence(
+    RoutedVarQueryValue,
+    g.queryBoundTail
+  );
+  const queryUnicodeBound = sequence(
+    RoutedUnicodeRangeQueryValue,
+    g.queryBoundTail
+  );
+  const queryFunctionBound = sequence(
+    RoutedFunctionQueryValue,
+    g.queryBoundTail
+  );
+
+  /*
+   * The first token of a feature's contents is read once and routed: a unicode
+   * range or a function is a value-first bound, owned by its arm through
+   * `routed()`; any other identifier is the feature name (an escaped `\(` ends
+   * a name, not a function). A function arm fails after its head only when the
+   * function's own arguments do, as a function-valued bound always has.
    */
   const queryFeatureOpener = dispatch(
-    choice(
-      g.UnicodeRangeToken,
-      identOrFunction
-    ),
+    queryFeatureOpenerHead,
     cssCase(
       'url(',
-      sequence(
-        RoutedUrlQueryValue,
-        g.queryBoundTail
-      )
+      g.queryUrlBound
     ),
     cssCase(
       CSS_MATH_FUNCTION_OPENERS,
-      sequence(
-        RoutedMathQueryValue,
-        g.queryBoundTail
-      )
+      g.queryMathBound
     ),
     cssCase(
       'var(',
-      sequence(
-        RoutedVarQueryValue,
-        g.queryBoundTail
-      )
+      g.queryVarBound
     ),
     when(
       startsWith('u+'),
-      sequence(
-        RoutedUnicodeRangeQueryValue,
-        g.queryBoundTail
-      ),
+      g.queryUnicodeBound,
       { caseInsensitive: true }
     ),
     when(
@@ -3104,10 +3490,7 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     when(
       endsWith('('),
-      sequence(
-        RoutedFunctionQueryValue,
-        g.queryBoundTail
-      )
+      g.queryFunctionBound
     )
   );
 
@@ -3144,64 +3527,116 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * A media feature's contents: the feature contents, where `<general-enclosed>`
+   * may follow any head (media-queries-4 §3.1), with `not` routed by the
+   * same head read — `not <media-in-parens>` when a `(` follows it, otherwise
+   * the feature named `not`. A glued `not(` is a function token (css-syntax-3
+   * §4.3.4) and takes the function arm. Only media reads it, so `@container`
+   * and `@supports` keep `(not …)` for their own `( <condition> )` owners.
+   */
+  const mediaFeatureOpener = dispatch(
+    queryFeatureOpenerHead,
+    cssCase(
+      'not',
+      sequence(
+        RoutedProperty,
+        choice(
+          g.MediaInParens,
+          generalFeatureNameTail
+        )
+      )
+    ),
+    cssCase(
+      'url(',
+      g.queryUrlBound
+    ),
+    cssCase(
+      CSS_MATH_FUNCTION_OPENERS,
+      g.queryMathBound
+    ),
+    cssCase(
+      'var(',
+      g.queryVarBound
+    ),
+    when(
+      startsWith('u+'),
+      g.queryUnicodeBound,
+      { caseInsensitive: true }
+    ),
+    when(
+      matches(/(?:\\\(|[^(])$/),
+      generalFeatureName
+    ),
+    when(
+      endsWith('('),
+      g.queryFunctionBound
+    )
+  );
+  const MediaFeatureContents = node(
+    'QueryFeatureContents',
+    choice(
+      mediaFeatureOpener,
+      sequence(
+        g.QueryValue,
+        g.queryBoundTail
+      )
+    ),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureContents(children, span, state)
+  );
+
+  /*
    * A media query's `<media-in-parens>` (media-queries-4 §3): `( <media-condition> )`
    * or a `<media-feature>`. It opens its `(` once and decides on the next
-   * token: an inner `(` starts a `MediaCondition`, `not` a `MediaNot`, and
-   * anything else is a feature's contents, so a plain feature is the
-   * `QueryFeature > QueryFeatureContents` it always was.
+   * token: an inner `(` starts a `MediaCondition`, anything else is a media
+   * feature's contents, so a plain feature is the `QueryFeature >
+   * QueryFeatureContents` it always was. Whatever follows the query inside
+   * the parentheses is `<general-enclosed>` component values (`(a b)`,
+   * `((a) and (b c))`), so the group never fails after its `(`.
    *
    * These are MEDIA rules, reached only from a media query's terms and the
    * `media()` if-test. `@container` and `@supports` read the shared
    * `QueryFeature` from their own conditions, whose `( <condition> )` is
    * owned by `ContainerQueryInParens` / `SupportsInParens`, so a nested group
    * there has one owner, as it always had.
+   *
+   * The `(` is read once by a dispatch and owned by the group through
+   * `routed()`, so a group that fails after its `(` fails the parse: no
+   * enclosing value run reads the same `(` again.
    */
-  const MediaInParens = node(
+  const RoutedMediaInParens = node(
     'QueryFeature',
     sequence(
-      literal('('),
-      choice(
+      routed(),
+      optional(choice(
         g.MediaCondition,
-        g.MediaNot,
-        g.QueryFeatureContents
-      ),
+        g.MediaFeatureContents
+      )),
+      generalRest,
       literal(')')
     ),
     (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureBlock(children, span, state)
   );
+  const MediaInParens = dispatch(
+    literal('('),
+    otherwise(RoutedMediaInParens)
+  );
 
-  /* `<media-in-parens> [ and | or <media-in-parens> ]*`, opening on a `(`. */
+  /*
+   * `<media-in-parens> [ and | or <media-in-parens> ]*`, opening on a `(`. The
+   * operand after `and`/`or` is optional, so the word is never given back: a
+   * missing or non-parenthesized operand ends the condition, and what follows
+   * is the enclosing group's `<general-enclosed>` rest.
+   */
   const MediaCondition = node(
     'MediaCondition',
     sequence(
       g.MediaInParens,
       many(sequence(
         g.QueryAndOr,
-        g.MediaInParens
+        optional(g.MediaInParens)
       ))
     ),
     children => queryConditionChain(children)
-  );
-
-  /*
-   * `not <media-in-parens>`, or — with no `(` after it — a feature named
-   * `not`, read by the same name tail any feature name takes. The `not` word
-   * is read once either way. A `(` glued to it makes `not(` a function token
-   * (css-syntax-3 §4.3.4), which is a feature's contents, not a negation.
-   */
-  const MediaNot = node(
-    'MediaNot',
-    sequence(
-      noTrivia(sequence(
-        g.QueryNot,
-        not(literal('('))
-      )),
-      choice(
-        g.MediaInParens,
-        queryFeatureNameTail
-      )
-    ),
-    (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureContents(children, span, state)
   );
 
   const mediaTypeKeywordReserved = keywords(
@@ -3562,26 +3997,7 @@ const cssFactory = (g: GrammarSelf) => {
         literal(')')
       ))
     ),
-    (children, _fields, span, _rawChildren, _triviaLog, state) => {
-      const content = children.find((child): child is Interpolation => isNodeType(
-        child,
-        'Interpolation'
-      ));
-      if (content === undefined) {
-        throw new TypeError('CSS general-enclosed lost its grammar-owned content.');
-      }
-      const head = children[0];
-      return generalEnclosedGroup(
-        isTerminalText(head) && tokenText(head) !== '('
-          ? funcCall(
-              tokenText(head),
-              [content]
-            )
-          : block(content),
-        span,
-        state
-      );
-    }
+    (children, _fields, span, _rawChildren, _triviaLog, state) => generalEnclosedGroup(enclosedCall(children), span, state)
   );
   const QueryFunction = node(
     'QueryFunction',
@@ -3639,6 +4055,300 @@ const cssFactory = (g: GrammarSelf) => {
       )
     ),
     children => queryConditionChain(children)
+  );
+
+  /*
+   * An `<if-test>` (css-values-5 §8.3): `media( <media-feature> |
+   * <media-condition> )`, `supports( [ <ident> : <declaration-value> ] |
+   * <supports-condition> )`, `style( <style-query> )`. Their contents are CSS
+   * QUERY syntax, not values — `>` in `media(width > 600px)` is a range
+   * comparison, never math — so they are read with the query grammar
+   * `@media`, `@supports` and `@container` use.
+   *
+   * Each is an arm of the value identifier/function dispatch: the opener
+   * (`media(`, `supports(`, `style(`) is read once there and owned here
+   * through `routed()`, so the call's `(` is already consumed and its contents
+   * are the paren-less query contents the `@`-rule features hold inside their
+   * own parentheses. A value runs with trivia cleared, so the contents run
+   * under the padding a query prelude takes.
+   *
+   * An `if()` condition is `<declaration-value>` when it is parsed and is
+   * only read as an `<if-condition>` at substitution (css-values-5 §8.3,
+   * `<if-args-branch> = <declaration-value> : <declaration-value>?`), so a test
+   * whose contents are no query is still valid: `media(a, b)`, `media(1px)`,
+   * `supports()`. Each body reads an optional query part, decided on its first
+   * token, and then its general rest of component values. The
+   * call's argument is the same structured `<general-enclosed>` sequence a
+   * query feature builds (a comma makes it a comma `List`).
+   */
+
+  /*
+   * `media()` holds what a media query's `<media-in-parens>` holds inside its
+   * parentheses: a `MediaCondition` or a media feature's contents.
+   */
+  const MediaTestBody = parser(
+    { trivia: interstitialTrivia },
+    sequence(
+      optional(choice(
+        g.MediaCondition,
+        g.MediaFeatureContents
+      )),
+      generalRest,
+      literal(')')
+    )
+  );
+
+  /* `media(` and its body, the opener owned through `routed()`. */
+  const MediaTest = node(
+    'Call',
+    sequence(
+      routed(),
+      g.MediaTestBody
+    ),
+    children => ifTestCall(children)
+  );
+
+  /*
+   * A style query's `<style-feature>` value (css-conditional-5 §3): the custom
+   * property's value, read to the style query's own `)` over balanced groups
+   * and strings and never computed, as a `--x:` declaration's value is. A
+   * dialect with its own custom-property value binds its own `StyleFeature`.
+   */
+  const StyleFeatureValue = node(
+    'CustomValue',
+    parser(
+      { trivia: whitespace, rootCapture: 'opaque' },
+      scanTo(
+        literal(')'),
+        { skip: [balancedParens, balancedBrackets, balancedBraces] }
+      )
+    ),
+    children => any(children.length === 0 ? '' : tokenText(children[0]))
+  );
+
+  /* A `<style-feature>`: a custom property, alone or with `:` and its value. */
+  const StyleFeature = node(
+    'StyleFeature',
+    sequence(
+      g.RoutedCustomPropertyValue,
+      optional(sequence(
+        literal(':'),
+        StyleFeatureValue
+      ))
+    ),
+    children => styleFeature(children)
+  );
+
+  /* A feature name a style query's dispatch read, as any feature's contents. */
+  const styleNamedFeature = node(
+    'QueryFeatureContents',
+    generalFeatureName,
+    (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureContents(children, span, state)
+  );
+
+  /* A function a style query's dispatch read: a value-first bound, as in any feature. */
+  const styleFunctionFeature = node(
+    'QueryFeatureContents',
+    g.queryFunctionBound,
+    (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureContents(children, span, state)
+  );
+
+  /*
+   * A `style()` query's contents (css-conditional-5 §3): a `(` opens a
+   * `<style-condition>`; otherwise the first identifier or opener is read once
+   * and routed — a function is a value-first bound, a custom property a
+   * `<style-feature>`, `not` negates the `<style-in-parens>` after it, and any
+   * other identifier is a feature name. Anything else is the general rest that
+   * follows it.
+   */
+  const styleQueryContents = choice(
+    dispatch(
+      identOrFunction,
+      cssCase(
+        'not',
+        sequence(
+          g.RoutedKeyword,
+          optional(g.StyleInParens)
+        )
+      ),
+      when(
+        endsWith('\\('),
+        styleNamedFeature
+      ),
+      when(
+        endsWith('('),
+        styleFunctionFeature
+      ),
+      when(
+        startsWith('--'),
+        g.StyleFeature
+      ),
+      otherwise(styleNamedFeature)
+    ),
+    g.StyleCondition
+  );
+
+  /*
+   * `( <style-query> )`, or a parenthesized `<general-enclosed>`; its `(` is
+   * read once and owned through `routed()`, as `MediaInParens`'s is.
+   */
+  const RoutedStyleInParens = node(
+    'StyleInParens',
+    sequence(
+      routed(),
+      optional(styleQueryContents),
+      generalRest,
+      literal(')')
+    ),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureBlock(children, span, state)
+  );
+  const StyleInParens = dispatch(
+    literal('('),
+    otherwise(RoutedStyleInParens)
+  );
+
+  /* `<style-in-parens> [ and | or <style-in-parens> ]*`, as `MediaCondition`. */
+  const StyleCondition = node(
+    'StyleCondition',
+    sequence(
+      g.StyleInParens,
+      many(sequence(
+        g.QueryAndOr,
+        optional(g.StyleInParens)
+      ))
+    ),
+    children => queryConditionChain(children)
+  );
+
+  /* The body of `style()`: a style query, then the rest of its contents. */
+  const StyleTestBody = parser(
+    { trivia: interstitialTrivia },
+    sequence(
+      optional(styleQueryContents),
+      generalRest,
+      literal(')')
+    )
+  );
+
+  /* `style(` and its body, the opener owned through `routed()`. */
+  const StyleTest = node(
+    'Call',
+    sequence(
+      routed(),
+      g.StyleTestBody
+    ),
+    children => ifTestCall(children)
+  );
+
+  /*
+   * The `<ident> : <declaration-value>` of `supports()`, after the name the
+   * contents dispatch read: the name alone, or `:` and the declaration's value
+   * run — the Operation Less's supports declaration builds; a comma after it
+   * belongs to the test's rest. A dialect binds its own.
+   */
+  const SupportsDeclaration = node(
+    'SupportsDeclaration',
+    sequence(
+      RoutedProperty,
+      optional(sequence(
+        literal(':'),
+        optional(g.ValueSequence)
+      ))
+    ),
+    children => supportsDeclaration(children)
+  );
+
+  /* A function-form `<general-enclosed>`, owning the opener the dispatch read. */
+  const RoutedEnclosed = node(
+    'Enclosed',
+    noTrivia(sequence(
+      routed(),
+      g.EnclosedContent,
+      literal(')')
+    )),
+    (children, _fields, span, _rawChildren, _triviaLog, state) => generalEnclosedGroup(enclosedCall(children), span, state)
+  );
+
+  /*
+   * An operand after `not`, `and` or `or` in `supports()`: a function is a
+   * `<general-enclosed>` call, an identifier a keyword, and a `(` a
+   * `<supports-in-parens>` — decided at the first token, so the `and` is never
+   * given back. Anything else ends the condition and is the test's rest.
+   */
+  const supportsTestOperand = choice(
+    dispatch(
+      identOrFunction,
+      when(
+        endsWith('\\('),
+        g.RoutedKeyword
+      ),
+      when(
+        endsWith('('),
+        RoutedEnclosed
+      ),
+      otherwise(g.RoutedKeyword)
+    ),
+    g.SupportsInParens
+  );
+  const supportsTestChain = many(sequence(
+    g.QueryAndOr,
+    optional(supportsTestOperand)
+  ));
+
+  /*
+   * `supports()` contents: the first identifier or opener is read once and
+   * routed — `not` negates the operand after it, a function is a
+   * `<general-enclosed>` that may start an `and`/`or` chain, and any other
+   * identifier is the declaration's name. A `(` opens a `<supports-in-parens>`
+   * chain, and anything else is the general rest that follows.
+   */
+  const supportsTestContents = choice(
+    dispatch(
+      identOrFunction,
+      cssCase(
+        'not',
+        sequence(
+          g.RoutedKeyword,
+          optional(supportsTestOperand)
+        )
+      ),
+      when(
+        endsWith('\\('),
+        g.SupportsDeclaration
+      ),
+      when(
+        endsWith('('),
+        sequence(
+          RoutedEnclosed,
+          supportsTestChain
+        )
+      ),
+      otherwise(g.SupportsDeclaration)
+    ),
+    sequence(
+      g.SupportsInParens,
+      supportsTestChain
+    )
+  );
+
+  /* The body of `supports()`: its contents, then the rest of its component values. */
+  const SupportsTestBody = parser(
+    { trivia: interstitialTrivia },
+    sequence(
+      optional(supportsTestContents),
+      generalRest,
+      literal(')')
+    )
+  );
+
+  /* `supports(` and its body, the opener owned through `routed()`. */
+  const SupportsTest = node(
+    'Call',
+    sequence(
+      routed(),
+      g.SupportsTestBody
+    ),
+    children => ifTestCall(children)
   );
 
   /*
@@ -4193,7 +4903,6 @@ const cssFactory = (g: GrammarSelf) => {
     Dimension,
     Quoted,
     Url,
-    Call,
     CalcCall,
     VarFallbackPunctuation,
     VarFallbackParen,
@@ -4213,7 +4922,11 @@ const cssFactory = (g: GrammarSelf) => {
     PunctuationValue,
     ValueSequence,
     ValueTerm,
+    CurlyValue,
     ValueList,
+    ValueSequenceBeforeColon,
+    BranchRest,
+    BranchValues,
     calcValueAtom,
     CalcValue,
     CalcProduct,
@@ -4224,8 +4937,6 @@ const cssFactory = (g: GrammarSelf) => {
     valueAtom,
     Value,
     TypedValue,
-    TypedValueSequence,
-    TypedValueList,
     Important,
     Declaration,
     ImportStatement,
@@ -4262,7 +4973,12 @@ const cssFactory = (g: GrammarSelf) => {
     ConditionalGroupAtRule,
     MediaInParens,
     MediaCondition,
-    MediaNot,
+    MediaFeatureContents,
+    queryUrlBound,
+    queryMathBound,
+    queryVarBound,
+    queryUnicodeBound,
+    queryFunctionBound,
     MediaTerm,
     QueryFeatureContents,
     queryBoundTail,
@@ -4306,7 +5022,21 @@ const cssFactory = (g: GrammarSelf) => {
     stylesheetBodyItem,
     routedStylesheetBody,
     routedDeclarationListBody,
-    valueFunctionArguments,
+    MediaTest,
+    MediaTestBody,
+    StyleTestBody,
+    StyleFeature,
+    StyleInParens,
+    StyleCondition,
+    RoutedCustomPropertyValue,
+    SupportsTest,
+    SupportsTestBody,
+    StyleTest,
+    SupportsDeclaration,
+    functionArgument,
+    branchLead,
+    VarFallbackOpener,
+    VarFallbackLead,
     whitespace,
     rw: whitespace
   };

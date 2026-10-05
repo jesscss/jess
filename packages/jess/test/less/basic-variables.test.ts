@@ -68,24 +68,29 @@ describe('Less variable references through the public AST route', () => {
   });
 
   /*
-   * PINNED DEFECT (jess#236). A variable holding a bare mixin reference is only
-   * a problem when it is CALLED: lessc 4.9.1 compiles `@foo: .a;` and only
-   * raises on `@foo()`. Less 5 rejects the DECLARATION at parse time, and the
-   * caret lands on the value's `.` with a selector/mixin-call/block message, so
-   * the diagnostic does not name the real cause either.
-   *
-   * This asserts the current, wrong behaviour; fixing the defect fails the pin.
-   * Kept here because it is an absence-of-diagnostics case that no render
-   * fixture can express — the corpus only covers the lookup and with-parens
-   * forms.
+   * PINNED (jess#236). lessc 4.9.1 keeps `@foo: .a;` as permissive text and
+   * only raises on `@foo()`. Less 5 rejects the declaration at parse time, and
+   * whether it should is OPEN: ledger P33 settles the leading `/` but leaves
+   * `.a` open. Until that is ruled this pins today's rejection; what is fixed
+   * is the diagnostic, which names the uncalled mixin reference on its own
+   * token, with the called and escaped spellings as the fix. Kept here because
+   * it is an absence-of-diagnostics case that no render fixture can express.
    */
-  it('PINNED DEFECT — rejects an uncalled variable holding a mixin reference', async () => {
+  it('PINNED (P33 `.a` OPEN) — rejects an uncalled mixin reference held in a variable, naming it', async () => {
     const result = await new Compiler().renderToResult(
       { source: '@foo: .a;\n.bar { color: red; }', filePath: 'entry.less', extension: '.less' },
       { breakOnError: false }
     );
 
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]).toMatchObject({ code: 'parse/syntax-error', line: 1, column: 5 });
+    expect(result.errors[0]).toMatchObject({
+      code: 'parse/uncalled-mixin-reference',
+      message: 'A mixin reference is not a value.',
+      fix: 'Call it as .a() to use its result, or write ~".a" to keep it as text.',
+      line: 1,
+      column: 7,
+      endLine: 1,
+      endColumn: 9
+    });
   });
 });

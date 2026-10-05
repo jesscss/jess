@@ -60,6 +60,12 @@ describe('CSS leftover-input errors', () => {
     expect(failure.fix).toBeTruthy();
   });
 
+  it('names a value position that holds no value', () => {
+    for (const source of ['.a { x: calc() }', '.a { x: calc(+) }']) {
+      expect(failureOf(source).message).toBe('Unexpected CSS syntax. Expected a CSS value.');
+    }
+  });
+
   it('does not claim a complete stylesheet when nothing was parsed', () => {
     /*
      * Leading trivia advances the consumed span without producing a single

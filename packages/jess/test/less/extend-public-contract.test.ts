@@ -132,6 +132,21 @@ describe('public direct-AST extend contracts', () => {
     ].join('\n'));
   });
 
+  /*
+   * An attribute selector keeps its authored whitespace (ledger O7), but the
+   * whitespace is not part of which selector it is: `[ b ]` and `[b]` match
+   * each other, while `[a=y i]` (a value and its flag) is not `[a=yi]`.
+   */
+  it.each([
+    ['[ b ] { c: d; }\n.x:extend([b]) {}', '[ b ],\n.x {\n  c: d;\n}\n'],
+    ['[b] { c: d; }\n.x:extend([ b ]) {}', '[b],\n.x {\n  c: d;\n}\n'],
+    ['a[href="x" i] { c: d; }\n.x:extend(a[href="x"i]) {}', 'a[href="x" i],\n.x {\n  c: d;\n}\n'],
+    ['[ b ].k { c: d; }\n.x:extend([b] all) {}', ':is([ b ], .x).k {\n  c: d;\n}\n'],
+    ['[a=y i] { c: d; }\n.x:extend([a=yi]) {}', '[a=y i] {\n  c: d;\n}\n']
+  ])('matches an attribute selector whatever its authored whitespace: %j', async (source, expected) => {
+    expect(await render(source)).toBe(expected);
+  });
+
   it('rejects a comma-list parent in a non-leading ampersand merge template', async () => {
     await expect(render([
       '@list-quoted: ~\'apple, satsuma, banana, pear\';',

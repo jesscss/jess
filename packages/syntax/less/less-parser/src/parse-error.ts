@@ -172,6 +172,55 @@ export class LessUnsupportedMixinNameError extends SyntaxError {
   }
 }
 
+/** A removed `/deep/`-style combinator is recognized so the diagnostic can name it. */
+export class LessSlashedCombinatorError extends SyntaxError {
+  readonly code = 'parse/unsupported-slashed-combinator' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = 'Slashed combinators were Shadow DOM proposals that never became CSS, and browsers removed them.';
+  readonly fix = 'Use a descendant combinator (a space), or ::part() or ::slotted() to style across a shadow boundary.';
+
+  constructor(offset: number, endOffset: number, combinator: string) {
+    super(`The ${combinator} combinator was removed in Less v5.`);
+    this.name = 'LessSlashedCombinatorError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+  }
+}
+
+/** A value led by `/` is recognized so the diagnostic can sit on the slash. */
+export class LessLeadingSeparatorValueError extends SyntaxError {
+  readonly code = 'parse/leading-separator-value' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = 'A slash separates two values, so it needs a value before it. A path is a value only inside url() or a string.';
+  readonly fix = 'Write the path as url(/path) or as an escaped string such as ~"/path".';
+
+  constructor(offset: number, endOffset: number) {
+    super('A Less value cannot start with "/".');
+    this.name = 'LessLeadingSeparatorValueError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+  }
+}
+
+/** A mixin reference in a value that is neither called nor looked up. */
+export class LessUncalledMixinReferenceError extends SyntaxError {
+  readonly code = 'parse/uncalled-mixin-reference' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = 'In a value, a mixin reference must be called or looked up; on its own it has no value.';
+  readonly fix: string;
+
+  constructor(offset: number, endOffset: number, name: string) {
+    super('A mixin reference is not a value.');
+    this.name = 'LessUncalledMixinReferenceError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.fix = `Call it as ${name}() to use its result, or write ~"${name}" to keep it as text.`;
+  }
+}
+
 /** Ungrouped Less mixin guards are recognized so diagnostics can point at the guard. */
 export class LessUnparenthesizedMixinGuardError extends SyntaxError {
   readonly code = 'parse/unparenthesized-mixin-guard' as const;

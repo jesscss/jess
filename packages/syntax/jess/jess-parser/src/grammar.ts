@@ -30,7 +30,7 @@ import type { Combinator } from 'parseman';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, attributeSelector, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, STRUCTURED_PSEUDOS, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
+import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, STRUCTURED_PSEUDOS, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 import {
   requireToken,
@@ -1975,10 +1975,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * construct).
    */
   /*
-   * CSS owns the attribute frame. Its quoted value is static selector syntax,
-   * so the Jess-specific string override is the restricted LiteralQuoted slot.
-   * A namespaced attribute name (`[svg|attr]`, `[*|attr]`, `[|attr]`) takes the
-   * same glued `attributeNamespace` prefix the CSS base uses.
+   * CSS owns the attribute frame and its reduction (`attributeSelectorFrom`,
+   * authored whitespace kept — ledger O7). Its quoted value is static selector
+   * syntax, so Jess restates the frame only to put the restricted
+   * LiteralQuoted slot where CSS reads `g.Quoted`; Jess's own `Quoted`
+   * interpolates. A namespaced attribute name (`[svg|attr]`, `[*|attr]`,
+   * `[|attr]`) takes the same glued `attributeNamespace` prefix the CSS base
+   * uses.
    */
   const AttributeSelector = node<SimpleSelector>(
     'AttributeSelector',
@@ -1996,7 +1999,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       )),
       literal(']')
     ),
-    children => attributeSelector(children.map(child => isQuoted(child) ? child.src : requireToken(child).value))
+    (children, _fields, _span, _rawChildren, triviaLog) => attributeSelectorFrom(children, triviaLog)
   );
 
   /*

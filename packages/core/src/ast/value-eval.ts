@@ -157,11 +157,12 @@ export interface Any {
 /**
  * The separator fact carried by a materialized list value.
  *
- * A List is only an explicit comma or slash boundary. Adjacent terms are the
- * raw recursive {@link ValueGroup} array and emit with spaces by default;
- * semicolon groups lower to comma at the grammar boundary.
+ * A List is an explicit comma, slash or semicolon boundary. Adjacent terms are
+ * the raw recursive {@link ValueGroup} array and emit with spaces by default.
+ * Less semicolon argument groups lower to comma at the grammar boundary; a `;`
+ * List only comes from a CSS function body (`if(style(--x: y): a; else: b)`).
  */
-export type ListSeparator = ',' | '/';
+export type ListSeparator = ',' | '/' | ';';
 
 /** A list result with an explicit separator fact. Delimiters are `Block` values. */
 export interface List {
@@ -175,14 +176,15 @@ export interface List {
 
 /**
  * A delimiter-preserving value wrapper. Square `Block`s are Sass bracketed
- * lists around any structural value group; paren `Block`s preserve ordinary grouping.
+ * lists around any structural value group; paren `Block`s preserve ordinary
+ * grouping; curly `Block`s are css-values-5 §3.1.1 `{}`-wrapped arguments.
  * Delimiters are intentionally not folded into List, so a list can be reused
  * with or without brackets by a universal list function.
  */
 export interface Block {
   readonly type: 'Block';
   readonly value: ValueGroup;
-  readonly delimiter: 'paren' | 'square';
+  readonly delimiter: 'paren' | 'square' | 'curly';
   readonly escaped?: boolean;
   readonly bytes: string;
 }
@@ -318,7 +320,8 @@ export const joinGroup = (v: readonly ValueGroup[], glue: string, emit: (item: V
     if (isElided(item)) {
       continue;
     }
-    out = empty ? emit(item) : out + glue + emit(item);
+    const bytes = emit(item);
+    out = empty ? bytes : out + itemBoundary(undefined, glue, false, bytes) + bytes;
     empty = false;
   }
   return out;
@@ -335,16 +338,32 @@ export const sepGlue = (sep: ListSeparator, compress = false): string => {
   switch (sep) {
     case ',': return compress ? ',' : ', ';
     case '/': return ' / ';
+    case ';': return compress ? ';' : '; ';
   }
 };
 
 /**
+ * The emitted opener of a `Block` delimiter. A curly block is padded inside its
+ * braces (`{ a, b }`), the spelling css-values-5 §3.1.1 and css-mixins-1 write
+ * it in.
+ */
+export const delimiterOpen = (delimiter: Block['delimiter']): string =>
+  delimiter === 'paren' ? '(' : delimiter === 'square' ? '[' : '{ ';
+
+/** The emitted closer of a `Block` delimiter; see {@link delimiterOpen}. */
+export const delimiterClose = (delimiter: Block['delimiter']): string =>
+  delimiter === 'paren' ? ')' : delimiter === 'square' ? ']' : ' }';
+
+/**
  * The bytes between two items of a list or call: the canonical `glue`, except
  * that pretty output replays an authored run carrying a line break (with its
- * indentation) or a block comment. Compressed output always takes the glue.
+ * indentation) or a block comment. Compressed output always takes the glue. A
+ * `;` group the author left empty (`if(media(print): 1px;)`) keeps its
+ * delimiter but not the space that would only precede a value, so `next` (the
+ * following item's bytes) is consulted when the caller has it.
  */
-export const itemBoundary = (authored: string | undefined, glue: string, compress: boolean): string =>
-  !compress && authored !== undefined && /[\r\n]|\/\*/u.test(authored) ? authored : glue;
+export const itemBoundary = (authored: string | undefined, glue: string, compress: boolean, next?: string): string =>
+  !compress && authored !== undefined && /[\r\n]|\/\*/u.test(authored) ? authored : next === '' && glue === '; ' ? ';' : glue;
 
 /** Whether a value is an internal bare-byte literal leaf. */
 export const isLiteral = (v: EvalValue): v is string => typeof v === 'string';

@@ -8,7 +8,7 @@
  * (`format-number`) + `color`.
  */
 import type { CollectionEntry, Dimension, Quoted, ValueGroup } from './value-eval.js';
-import { emitValue, isValueGroupArray, joinGroup, sepGlue } from './value-eval.js';
+import { delimiterClose, delimiterOpen, emitValue, isValueGroupArray, joinGroup, sepGlue } from './value-eval.js';
 import { formatNumber } from './format-number.js';
 import { serializeColor } from './color.js';
 
@@ -85,8 +85,8 @@ export function serializeValue(v: ValueGroup): string {
     case 'Null': return v.bytes;
     case 'List': return joinGroup(v.value, sepGlue(v.sep), serializeValue);
     case 'Block': {
-      const open = v.delimiter === 'square' ? '[' : '(';
-      const close = v.delimiter === 'square' ? ']' : ')';
+      const open = delimiterOpen(v.delimiter);
+      const close = delimiterClose(v.delimiter);
       return `${v.escaped ? '~' : ''}${open}${serializeValue(v.value)}${close}`;
     }
     case 'Collection': {
