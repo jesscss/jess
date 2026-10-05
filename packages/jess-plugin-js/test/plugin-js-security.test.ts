@@ -570,8 +570,10 @@ describe('@jesscss/plugin-js security', () => {
     expect(cleaned.NODE_OPTIONS).toBeUndefined();
     expect(cleaned.NODE_INSPECT_RESUME_ON_START).toBeUndefined();
     expect(cleaned.VSCODE_INSPECTOR_OPTIONS).toBeUndefined();
+
     // Stripped because its value references js-debug even though the key is benign.
     expect(cleaned.SOME_TOOL_PATH).toBeUndefined();
+
     // The original env object is not mutated.
     expect(poisoned.NODE_OPTIONS).toBe('--require /path/to/ms-vscode.js-debug/bootloader.js');
   });
@@ -583,6 +585,7 @@ describe('@jesscss/plugin-js security', () => {
 
     const savedNodeOptions = process.env.NODE_OPTIONS;
     const savedInspectorOptions = process.env.VSCODE_INSPECTOR_OPTIONS;
+
     // Simulate VS Code / Cursor "Auto Attach" poisoning the parent environment.
     process.env.NODE_OPTIONS =
       '--require /nonexistent/ms-vscode.js-debug/bootloader.js';

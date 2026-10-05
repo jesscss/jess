@@ -57,4 +57,15 @@ describe('escaped strings at the Less plugin boundary', () => {
     });
     expect(css).toContain('a: text;');
   });
+
+  it('writes a tree.Quoted with an empty quote as raw text, as Less and the @plugin sandbox do', async () => {
+    /* less.js's raw-text spelling, e.g. bootstrap's escape-svg. */
+    const css = await render('.x { a: wrap(1); b: wrap(2); }', {
+      install(less, _manager, functions) {
+        functions.add('wrap', n => new less.tree.Quoted('', 'abc', typeof n === 'object' && n !== null && 'value' in n && n.value === 2));
+      }
+    });
+    expect(css).toContain('a: abc;');
+    expect(css).toContain('b: abc;');
+  });
 });

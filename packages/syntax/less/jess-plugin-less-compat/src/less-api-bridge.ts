@@ -410,6 +410,14 @@ export function fromNativeLessValue(value: unknown): ValueGroup {
       return makeDimension(candidate.value, typeof candidate.unit === 'string' ? candidate.unit : '');
     }
     if (candidate.type === 'Quoted' && typeof candidate.value === 'string') {
+      /*
+       * An empty quote character is less.js's raw-text spelling (bootstrap's
+       * escape-svg returns `new tree.Quoted('', str)`): it is never re-quoted,
+       * exactly as the @plugin sandbox bridge reads it.
+       */
+      if (candidate.quote === '') {
+        return sniffLiteral(candidate.value);
+      }
       const quote = candidate.quote === '\'' ? '\'' : '"';
       return candidate.escaped === true ? makeAny(candidate.value, quote) : makeQuoted(candidate.value, quote, false);
     }
