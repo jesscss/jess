@@ -5,6 +5,7 @@ import {
   compoundSelectorOf, complexSelector, decl, keyword, stylesheet, rule, sel, selist, simpleSelector, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
+import { parse as parseLess } from '../../../../syntax/less/less-parser/src/index.js';
 
 const evaluator = buildEvaluator(makeLessRegistry());
 const render = (document: Stylesheet, collapseNesting = true): string | undefined =>
@@ -178,6 +179,26 @@ describe('extend element/id conflict guard', () => {
     expect(render(document)).toBe('div:is(.y, .a, .z) {\n'
       + '  color: red;\n'
       + '}\n');
+  });
+
+  /*
+   * A complex extender that cannot sit in the group is written in the Less 4.x placement
+   * (ledger X3): the simples before the match join its FIRST compound, those after it
+   * its LAST. So the guard checks each side against the compound it lands in.
+   */
+  it('checks a complex extender\'s first compound against the simples before the match', () => {
+    const renderLess = (src: string): string | undefined =>
+      serialize(parseLess(src), { evaluator, collapseNesting: true }).css;
+
+    // `div` joins `.p`: lessc 4.9.1 writes `div.p span`, a valid selector.
+    expect(renderLess('div.c { m: 1 } .p span:extend(.c all) {}'))
+      .toBe('div.c,\ndiv.p span {\n  m: 1;\n}\n');
+    expect(renderLess('#a.c .d { m: 1 } .q #b:extend(.c all) {}'))
+      .toBe('#a.c .d,\n#a.q #b .d {\n  m: 1;\n}\n');
+
+    // Still rejected where the simples meet a conflicting compound on either side.
+    expect(renderLess('div.c { m: 1 } span.p .q:extend(.c all) {}')).toBe('div.c {\n  m: 1;\n}\n');
+    expect(renderLess('.c#a { m: 1 } .q #b:extend(.c all) {}')).toBe('.c#a {\n  m: 1;\n}\n');
   });
 
   it('allows extending #foo#foo.class with .bar (single distinct id → no conflict)', () => {

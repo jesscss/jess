@@ -1,10 +1,11 @@
 /**
  * Element/ID conflict guard for partial `:is()`-wrap substitution.
  *
- * A partial extend wraps a matched compound in place as `S:is(matched, extender…)`,
- * where `S` is the compound's SURROUNDING simple tokens (the ones left outside the `:is`).
- * On serialization each `:is()` branch distributes back over `S`, so extender `e`
- * yields the compound `S · terminal(e)`. That compound is INVALID CSS when it holds
+ * A partial extend wraps a matched compound in place as `B:is(matched, extender…)A`,
+ * where `B` and `A` are the compound's SURROUNDING simple tokens before and after the
+ * `:is`. Each extender is written with `B` joining its first compound and `A` its last
+ * (the Less 4.x placement, ledger X3), so extender `e` yields the compounds
+ * `B · first(e)` and `last(e) · A`. Such a compound is INVALID CSS when it holds
  * two distinct element TYPE selectors (`a` + `div` → `adiv…`) or two distinct IDs
  * (`#a` + `#b`). less.js / tree-v1 REJECT such an extend and leave the branch as
  * authored; this module reproduces that decision for the AST-v2 matcher.
@@ -20,9 +21,9 @@
  *      selector. Type/id atoms sitting in a different compound (a different combinator
  *      context, e.g. `a > .x` extended at `.x`) never share a compound with the wrap
  *      and so never conflict.
- *   2. The extender contributes only its TERMINAL compound (the compound that merges
- *      into the wrap slot); an ancestor part of a complex extender (`a > .foo`) lands
- *      in its own compound and cannot conflict.
+ *   2. Each side meets only the extender compound it joins: `B` its first compound,
+ *      `A` its last. `div.c` + `.p span:extend(.c all)` is `div.p span`, valid, while
+ *      `span.p .q` would put `div` and `span` in one compound.
  *
  * Both refinements only ever REMOVE spurious rejections relative to tree-v1; every
  * genuinely-invalid-CSS case tree-v1 rejects is still rejected here.
@@ -83,14 +84,14 @@ function collect(text: string, types: Set<string>, ids: Set<string>): void {
 }
 
 /**
- * True when wrapping the matched compound and merging ONE extender's terminal
- * compound would place >1 distinct element type OR >1 distinct id into a single
+ * True when merging the simples on one side of the wrap into the ONE extender compound
+ * they join would place >1 distinct element type OR >1 distinct id into a single
  * compound — the invalid-CSS shape extend must reject.
  *
  * `surrounding` are the matched compound's text simple tokens left OUTSIDE the `:is()`
- * (the wrapped/matched atoms excluded). `extenderTerminal` are the text simple tokens of
- * the extender branch's terminal compound. Pure and allocation-light: two tiny Sets
- * over O(surrounding + extender) atoms, no serialization.
+ * on one side (the wrapped/matched atoms excluded). `extenderTerminal` are the text
+ * simple tokens of the extender compound that side joins. Pure and allocation-light: two
+ * tiny Sets over O(surrounding + extender) atoms, no serialization.
  */
 export function wouldConflict(surrounding: readonly string[], extenderTerminal: readonly string[]): boolean {
   /*
