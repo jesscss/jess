@@ -328,17 +328,16 @@ pinned the old spelling.
 
 ### 6-B. `round()` rounds negative halves the other way
 
-`packages/core/src/ast/round.ts:12` uses `Math.round`, which is half-toward-`+∞`. 4.x
-uses `Number.prototype.toFixed`, which is half-away-from-zero. Diverges only on exact
+`packages/core/src/ast/round.ts` breaks ties toward `+∞`. 4.x uses
+`Number.prototype.toFixed`, which is half-away-from-zero. Diverges only on exact
 negative halves: `round(-1.5)` → `-1` vs `-2`; `round(-2.5)` → `-2` vs `-3`;
 `round(-1.55, 1)` → `-1.5` vs `-1.6`. Positive values agree everywhere tested.
 
 Not a precision-policy question — V4 governs *how many digits* a computed number gets,
-not *which way a tie breaks*. Ledger has no row. **Needs an owner call**: CSS has no
-opinion, Sass's `math.round` is half-away-from-zero, and `Math.round`'s asymmetry is a
-JS artifact rather than a decision. jess's own `round.ts` header calls itself "the
-ROUNDING KERNEL, not the output policy", which is exactly the right framing for
-putting a tie rule in it.
+not *which way a tie breaks*. The tie rule lives in the rounding kernel, which the
+`round.ts` header already frames as "the ROUNDING KERNEL, not the output policy".
+(The first triage pass claimed CSS has no opinion here. It does: CSS Values 4
+`round(nearest)`, §10.3, which is what decided it below.)
 
 **RESOLVED — ledger V8, owner ruling 2026-10-04.** CSS Values 4 `round(nearest)`
 (§10.3): an exact tie goes to the UPPER value, toward +∞. `round(-1.5)` → `-1`,
