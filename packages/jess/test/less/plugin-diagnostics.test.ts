@@ -217,6 +217,28 @@ describe('the less-compat tree shim', () => {
     }
   });
 
+  it('hands a sandboxed @plugin an escaped string as an escaped tree.Quoted and writes one back unquoted', async () => {
+    const { dir, entry } = makeProject(
+      [
+        'functions.add(\'describe\', function (...args) {',
+        '  return args.map(({ type, quote, value, escaped }) => type === \'Quoted\'',
+        '    ? `Quoted(${quote}${value}${quote} escaped=${escaped})`',
+        '    : `${type}(${value})`).join(\' \');',
+        '});',
+        'functions.add(\'wrap\', function ({ value }) { return new tree.Quoted(\'"\', value, true); });'
+      ].join('\n'),
+      '@plugin "./p";\n@v: ~"a b";\n.a { x: describe(~"x", ~\'q\', e("y"), @v, escape("z")); y: wrap(z); }\n'
+    );
+    const result = await makeCompiler(dir).renderToResult(entry, {
+      suppressWarnings: true,
+      breakOnError: true
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.css).toContain('x: Quoted("x" escaped=true) Quoted(\'q\' escaped=true) Quoted("y" escaped=true) Quoted("a b" escaped=true) Anonymous(z);');
+    expect(result.css).toContain('y: z;');
+  }, 30000);
+
   it('exposes tree.Variable.prototype.find and a real this.context', async () => {
     const { dir, entry } = makeProject(
       [

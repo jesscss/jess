@@ -4,12 +4,12 @@ import { lessFns } from '../registry.js';
 import { e } from '../e.js';
 
 describe('e()', () => {
-  it('returns raw anonymous bytes for quoted and unquoted values', () => {
+  it('returns an escaped string, written with ", for quoted and unquoted values', () => {
     const quoted = makeQuoted('hello');
     const ident = makeKeyword('world');
 
-    expect(e(quoted)).toMatchObject({ type: 'Any', bytes: 'hello' });
-    expect(e(ident)).toMatchObject({ type: 'Any', bytes: 'world' });
+    expect(e(quoted)).toEqual({ type: 'Any', bytes: 'hello', escapedQuote: '"' });
+    expect(e(ident)).toEqual({ type: 'Any', bytes: 'world', escapedQuote: '"' });
   });
 
   it('uses the canonical implementation registered for Less', () => {

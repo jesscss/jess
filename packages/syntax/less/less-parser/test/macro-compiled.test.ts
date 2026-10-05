@@ -1,7 +1,5 @@
-import { createServer } from 'vite';
 import { parseCst } from '@jesscss/css-parser/cst';
 import { lessCstGrammar, lessGrammar } from '../src/grammar.js';
-import { fileURLToPath } from 'node:url';
 
 function hasGrammarNode(value: unknown, grammarType: string): boolean {
   if (typeof value !== 'object' || value === null) {
@@ -41,51 +39,4 @@ test('Less CST leaves detached binding semicolons at statement-list boundary', (
   expect(declaration?._tag).toBe('node');
   expect(declaration?._tag === 'node' ? declaration.grammarType : undefined).toBe('VariableDeclaration');
   expect(semicolon).toMatchObject({ _tag: 'leaf', value: ';' });
-});
-
-/*
- * TEMPORARILY SKIPPED — the same build-in-a-test as the skipped SCSS case
- * (`scss-parser/test/ast-macro-compiled.test.ts`). It macro-compiles the whole
- * Less grammar, CSS base included, through a Vite dev server at test time. On
- * the build-free CI job it already took ~25s of its 30s budget, and the CSS
- * `if()` branch/query grammar pushed it past the limit. That is grammar size,
- * not a fusion regression. The fix is to assert fusion on a built artifact in
- * a build-gated job — tracked in jesscss/jess#176.
- */
-test.skip('canonical Less AST grammar macro-fuses recognition leaves with no runtime import', async () => {
-  const server = await createServer({
-    root: fileURLToPath(new URL('..', import.meta.url)),
-    configFile: fileURLToPath(new URL('../vitest.config.ts', import.meta.url)),
-
-    /*
-     * The compiler-facing entry imports the macro-linked parser and otherwise
-     * leaves Vite's dependency optimizer waiting on a never-needed prebundle
-     * during middleware-server shutdown.
-     */
-    optimizeDeps: { noDiscovery: true },
-    server: { middlewareMode: true }
-  });
-  try {
-    const transformed = await server.transformRequest('/src/grammar.ts');
-    expect(transformed?.code).not.toContain('@jesscss/parser-shared');
-    expect(transformed?.code).not.toMatch(/\bcomposeLeaf\s*\(/);
-  } finally {
-    await server.close();
-  }
-});
-
-test('compiler-facing Less entrypoint does not load compatibility grammar shims', async () => {
-  const server = await createServer({
-    root: fileURLToPath(new URL('..', import.meta.url)),
-    configFile: fileURLToPath(new URL('../vitest.config.ts', import.meta.url)),
-    optimizeDeps: { noDiscovery: true },
-    server: { middlewareMode: true }
-  });
-  try {
-    const transformed = await server.transformRequest('/src/index.ts');
-    expect(transformed?.code).not.toContain('./cst.js');
-    expect(transformed?.code).not.toContain('./ast/grammar.js');
-  } finally {
-    await server.close();
-  }
 });

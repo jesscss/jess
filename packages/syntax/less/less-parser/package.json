@@ -97,7 +97,7 @@
     "prepublishOnly": "pnpm build",
     "build": "pnpm --filter @jesscss/parser-shared build && pnpm compile",
     "compile": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\" && tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
-    "dev": "tsdown --tsconfig tsconfig.build.json --watch",
+    "dev": "tsdown --tsconfig tsconfig.build.json --no-dts --watch",
     "test": "cross-env TEST=true vitest --watch=false",
     "test:coverage": "cross-env TEST=true vitest --coverage",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
@@ -107,6 +107,7 @@
   },
   "dependencies": {
     "@jesscss/css-parser": "workspace:*",
+    "@jesscss/parser-shared": "workspace:*",
     "known-css-properties": "~0.37.0",
     "parseman": "^0.51.2"
   },
@@ -120,7 +121,6 @@
   },
   "devDependencies": {
     "@jesscss/core": "workspace:*",
-    "@jesscss/parser-shared": "workspace:*",
     "@jesscss/shared": "workspace:*",
     "@types/node": "^18.19.31",
     "less": "^4.6.3",

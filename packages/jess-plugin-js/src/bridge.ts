@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/naming-convention -- `__jessBridge` is the fixed cross-worker wire tag. */
 import {
   coerceNamedColorKeyword,
+  makeAny,
   makeColorRgb,
   makeDimension,
   makeKeyword,
@@ -133,6 +134,12 @@ export function encodeBridgeValue(value: unknown): unknown {
       case 'Dimension': return { __jessBridge: true, kind: 'dimension', value: node.number, unit: node.unit } satisfies JsBridgeValue;
       case 'Color': return { __jessBridge: true, kind: 'color', rgb: [node.rgb[0], node.rgb[1], node.rgb[2]], alpha: node.alpha, bytes: node.bytes } satisfies JsBridgeValue;
       case 'Quoted': return { __jessBridge: true, kind: 'quoted', value: node.value, quote: node.quote === '\'' ? '\'' : '"', escaped: node.escaped } satisfies JsBridgeValue;
+
+      /* An escaped string (`~"…"`, `e()`) is an escaped Quoted to a 4.x plugin. */
+      case 'Any':
+        return node.escapedQuote === ''
+          ? { __jessBridge: true, kind: 'anonymous', value: node.bytes } satisfies JsBridgeValue
+          : { __jessBridge: true, kind: 'quoted', value: node.bytes, quote: node.escapedQuote === '\'' ? '\'' : '"', escaped: true } satisfies JsBridgeValue;
       case 'Keyword': return { __jessBridge: true, kind: 'keyword', value: node.bytes } satisfies JsBridgeValue;
       case 'List':
         return node.sep === ',' || node.sep === '/'
@@ -169,7 +176,7 @@ function decodeValue(value: JsBridgeValue): ValueGroup {
      * spelling and serializes from its channels.
      */
     case 'color': return makeColorRgb(value.rgb, value.alpha ?? 1, HEX, value.bytes === undefined ? undefined : { src: value.bytes });
-    case 'quoted': return makeQuoted(value.value, value.quote ?? '"', value.escaped === true);
+    case 'quoted': return value.escaped === true ? makeAny(value.value, value.quote ?? '"') : makeQuoted(value.value, value.quote ?? '"', false);
 
     /*
      * A Less `Anonymous`/`Keyword` result is BYTES. Sniffing them back into a

@@ -12,9 +12,10 @@ describe('escape()', () => {
   it('URL-encodes a typed value using the canonical value callable', () => {
     const result = escape(makeList([makeQuoted('a b=x:y#z;()')], ','), context);
 
-    expect(result).toMatchObject({
+    expect(result).toEqual({
       type: 'Any',
-      bytes: 'a%20b%3Dx%3Ay%23z%3B%28%29'
+      bytes: 'a%20b%3Dx%3Ay%23z%3B%28%29',
+      escapedQuote: ''
     });
   });
 

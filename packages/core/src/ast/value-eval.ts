@@ -154,6 +154,15 @@ export interface Keyword {
 export interface Any {
   readonly type: 'Any';
   readonly bytes: string;
+
+  /**
+   * PROVENANCE, not a second value: the quote an escaped string (`~"…"`,
+   * `~'…'`, `e()`) was written with, `''` for any other opaque text. Nothing in
+   * the value domain reads it; it is what lets a legacy plugin receive the
+   * escaped `tree.Quoted` Less 4.x hands it. Non-optional and
+   * factory-defaulted, so every `Any` realizes one hidden class.
+   */
+  readonly escapedQuote: string;
 }
 
 /**

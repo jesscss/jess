@@ -1,12 +1,6 @@
 import type { Fn, FnCtx, ValueGroup, Value } from '@jesscss/core';
-import {
-  defineFunction,
-  emitValue,
-  groupItems,
-  isValueGroupArray,
-  makeKeyword,
-  makeQuoted
-} from '@jesscss/core';
+import { defineFunction, emitValue, groupItems } from '@jesscss/core';
+import { sameStringKind } from './string-result.js';
 
 /** The selected token's Less string or CSS form, with uppercase URL encoding. */
 function tokenValue(token: string, value: ValueGroup, ctx: FnCtx): string {
@@ -35,20 +29,15 @@ function formatKernel(list: ValueGroup, ctx: FnCtx): Value {
     }
     result = `${result.slice(0, match.index)}${tokenValue(match[0], value, ctx)}${result.slice(match.index + match[0].length)}`;
   }
-  result = result.replace(/%%/g, '%');
-
-  if (!isValueGroupArray(template) && template.type === 'Quoted' && !template.escaped) {
-    return makeQuoted(result, template.quote, false);
-  }
-  return makeKeyword(result);
+  return sameStringKind(template, result.replace(/%%/g, '%'));
 }
 
 /**
  * The `%()` string-format function (registered as `%`; public alias
  * `string-format`). Substitutes `%s`/`%d`/`%a` tokens in `template` with the
  * following arguments — uppercase (`%S`/`%D`/`%A`) URL-encodes the value, and `%%`
- * emits a literal `%`. A quoted template keeps its quote; otherwise an unquoted
- * keyword is returned.
+ * emits a literal `%`. The result is the template's kind of string
+ * ({@link sameStringKind}).
  * @param template the format string
  * @param arg1 substituted for the first token
  * @param arg2 substituted for the second token

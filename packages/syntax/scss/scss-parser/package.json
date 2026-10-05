@@ -96,7 +96,7 @@
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
     "build": "pnpm --filter @jesscss/parser-shared build && pnpm compile",
-    "compile": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\" && tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
+    "compile": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\" && tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "dev": "tsdown --tsconfig tsconfig.build.json --no-dts --watch",
     "sass-spec:cache": "node ./scripts/materialize-sass-spec-cache.cjs",
     "test": "vitest --run --passWithNoTests",
@@ -105,6 +105,7 @@
   },
   "dependencies": {
     "@jesscss/css-parser": "workspace:*",
+    "@jesscss/parser-shared": "workspace:*",
     "parseman": "^0.51.2"
   },
   "peerDependencies": {
@@ -117,7 +118,6 @@
   },
   "devDependencies": {
     "@jesscss/core": "workspace:*",
-    "@jesscss/parser-shared": "workspace:*",
     "sass-spec": "github:sass/sass-spec#67c3b83a26fd3f9772dd0d3e318fe32aefb38eef"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
