@@ -44,8 +44,9 @@ import {
   simpleText,
   textSimpleTokens
 } from './ir.js';
-import type { Branch, Compound, Level, Simple } from './ir.js';
+import type { Branch, Compound, Level, SelectorPart, Simple } from './ir.js';
 import { composePath } from './compose.js';
+import { extendBranchSpecificity, partitionGroups } from '../is-grouping.js';
 import { branchWholeMatches, matchBoundarySpan } from './match.js';
 import { collectPlan, documentHasExtend, reaches } from './plan.js';
 import type { PlanInstruction, PlanOverlay, PlanSubject } from './plan.js';
@@ -340,7 +341,9 @@ function tryMergeSiblings(a: Branch, b: Branch, allowMultiSeg: boolean): Branch 
  * Merge two compounds that share a common suffix into `:is(<lead-a>, <lead-b>)<suffix>`.
  * `.button` / `.submit` (no shared suffix) → `:is(.button, .submit)`.
  * `.replace` / `.c` → `:is(.replace, .c)`.
- * An existing leading `:is(...)` on either side is flattened into the new group.
+ * A leading extend group (`fold`) on either side is flattened into the new group;
+ * an authored or nesting `:is()` joins it as one member, so regrouping at emission
+ * ({@link groupedBranches}) never splits a selector the author wrote.
  */
 function mergeCompoundsToIs(a: Compound, b: Compound, allowNoSuffix: boolean): Compound | null {
   // Find the longest shared trailing simple run (by text).
@@ -363,15 +366,235 @@ function mergeCompoundsToIs(a: Compound, b: Compound, allowNoSuffix: boolean): C
     return null;
   }
   const leadBranch = (lead: Simple[]): Branch[] => {
-    // A single leading `:is(...)` flattens into the merged group.
-    if (lead.length === 1 && lead[0]!.t === 'is') {
-      return lead[0]!.branches.map(cloneBranch);
+    // A single leading extend group flattens into the merged group.
+    const only = lead.length === 1 ? lead[0]! : null;
+    if (only !== null && only.t === 'is' && only.fold) {
+      return only.branches.map(cloneBranch);
     }
     return [descendantBranch(lead.map(cloneSimple))];
   };
-  const isGroup = isSimple([...leadBranch(aLead), ...leadBranch(bLead)]);
+  const isGroup = isSimple([...leadBranch(aLead), ...leadBranch(bLead)], true);
   const suffixTokens = as.slice(as.length - suffix).map(cloneSimple);
   return { value: [isGroup, ...suffixTokens] };
+}
+
+/* --------------------------------------------- guarded `:is()` group emission */
+
+/**
+ * [X3/§7c] Regroup extend's own `:is()` groups (`fold`) for output under the shared
+ * `:is()` grouping (`../is-grouping.ts`) — the rule `collapseNesting: 'native'`
+ * folds by — in EVERY output mode. The solve keeps each group whole, because later
+ * instructions chain through it as one set of alternatives, so the split happens
+ * once, here, as a header is emitted. A group whose members differ in specificity
+ * splits into equal-specificity groups, and a member that cannot sit inside `:is()`
+ * (a pseudo-element, an unlisted pseudo-class, a complex member after a combinator)
+ * is spliced back into its branch — the 4.x expanded form. Groups keep their order
+ * of first appearance.
+ *
+ * `root` is set for a top-level header: nothing precedes its head compound, so a
+ * group there may hold complex members (`:is(.a, .t .b) .box` matches what
+ * `.a .box, .t .b .box` does). A nested header has an implicit `&` before it.
+ * Returns `list` itself when no branch holds an extend group.
+ */
+function groupedBranches(list: Branch[], root: boolean): Branch[] {
+  let out: Branch[] | null = null;
+  for (let i = 0; i < list.length; i++) {
+    const regrouped = regroupBranch(list[i]!, root);
+    if (regrouped !== null) {
+      out ??= list.slice(0, i);
+      for (const branch of regrouped) {
+        out.push(branch);
+      }
+    } else if (out !== null) {
+      out.push(list[i]!);
+    }
+  }
+  return out ?? list;
+}
+
+/** `b` with its first extend group split (and each alternative regrouped in
+ * turn), or null when `b` holds no extend group at any depth. */
+function regroupBranch(b: Branch, root: boolean): Branch[] | null {
+  for (let k = 0; k < b.segments.length; k++) {
+    const value = b.segments[k]!.compound.value;
+    for (let p = 0; p < value.length; p++) {
+      const s = value[p]!;
+      if (s.t !== 'is') {
+        continue;
+      }
+
+      /* An `:is()` argument has nothing before it, so its own groups regroup as `root`. */
+      if (s.fold) {
+        const split = splitGroup(b, k, p, s.branches, groupedBranches(s.branches, true), root);
+        if (split !== null) {
+          return split;
+        }
+        continue;
+      }
+
+      /*
+       * An authored or nesting `:is()` keeps its own arms together, but never takes
+       * in the alternatives of an extend group that split inside one arm — that
+       * would rebuild a mixed group. The branch distributes over them instead.
+       */
+      for (let a = 0; a < s.branches.length; a++) {
+        const alternatives = regroupBranch(s.branches[a]!, true);
+        if (alternatives === null) {
+          continue;
+        }
+        const out: Branch[] = [];
+        for (const alternative of alternatives) {
+          const arms = s.branches.slice();
+          arms[a] = alternative;
+          pushRegrouped(out, withSimple(b, k, p, { t: 'is', branches: arms, fold: false }), root);
+        }
+        return out;
+      }
+    }
+  }
+  return null;
+}
+
+/** One alternative per group of the extend group at `b.segments[k]`, value `p`, or
+ * null when the group stays whole (`members` is its `original` arms, and all join one
+ * group): the branch is then emitted as it is. */
+function splitGroup(b: Branch, k: number, p: number, original: Branch[], members: Branch[], root: boolean): Branch[] | null {
+  const compoundOnly = !(root && k === 0 && b.segments[0]!.combinator === ' ');
+  if (members === original) {
+    /* The common case keeps the whole group, so test that before allocating. */
+    const first = extendBranchSpecificity(members[0]!, compoundOnly);
+    let whole = first >= 0;
+    for (let i = 1; whole && i < members.length; i++) {
+      whole = extendBranchSpecificity(members[i]!, compoundOnly) === first;
+    }
+    if (whole) {
+      return null;
+    }
+  }
+  const groups = members.map(member => extendBranchSpecificity(member, compoundOnly));
+  const sizes = partitionGroups(groups);
+  const out: Branch[] = [];
+  for (let i = 0, group = 0; group < sizes.length; i++) {
+    if (groups[i] !== group) {
+      continue;
+    }
+    let alternative: Branch;
+    if (sizes[group] === 1) {
+      alternative = spliceMember(b, k, p, members[i]!);
+    } else {
+      const arms: Branch[] = [];
+      for (let j = i; arms.length < sizes[group]!; j++) {
+        if (groups[j] === group) {
+          arms.push(members[j]!);
+        }
+      }
+      alternative = withSimple(b, k, p, { t: 'is', branches: arms, fold: false });
+    }
+    group++;
+    pushRegrouped(out, alternative, root);
+  }
+  return out;
+}
+
+/** Push `b`, regrouping any extend group it still holds (a later one in the branch). */
+function pushRegrouped(out: Branch[], b: Branch, root: boolean): void {
+  const regrouped = regroupBranch(b, root);
+  if (regrouped === null) {
+    out.push(b);
+    return;
+  }
+  for (const branch of regrouped) {
+    out.push(branch);
+  }
+}
+
+/** A regrouped branch keeps its source's visibility; `bnd` is not carried, since
+ * emission reads only text. */
+function withSegments(b: Branch, segments: SelectorPart[]): Branch {
+  const out = mkBranch(segments);
+  if (b.hidden === true) {
+    out.hidden = true;
+  }
+  return out;
+}
+
+function withSimple(b: Branch, k: number, p: number, simple: Simple): Branch {
+  const segments = b.segments.slice();
+  const segment = segments[k]!;
+  const value = segment.compound.value.slice();
+  value[p] = simple;
+  segments[k] = { combinator: segment.combinator, compound: { value } };
+  return withSegments(b, segments);
+}
+
+/** `b` with the group at `b.segments[k]`, value `p`, replaced by one member: the
+ * member's leading segments go before that compound and its last compound merges
+ * into it (`.p:is(.x .y).q` → `.x .p.y.q`). A merge that cannot be one compound
+ * (two different element types) keeps the member as a one-arm `:is()`. */
+function spliceMember(b: Branch, k: number, p: number, member: Branch): Branch {
+  const segment = b.segments[k]!;
+  const arm = member.segments;
+  const last = arm[arm.length - 1]!;
+  const value = mergeCompound(segment.compound.value, p, last.compound.value);
+  if (value === null) {
+    return withSimple(b, k, p, { t: 'is', branches: [member], fold: false });
+  }
+  const head = k === 0 && segment.combinator === ' ' ? arm[0]!.combinator : segment.combinator;
+  const segments = b.segments.slice(0, k);
+  for (let j = 0; j < arm.length - 1; j++) {
+    segments.push(j === 0 ? { combinator: head, compound: arm[0]!.compound } : arm[j]!);
+  }
+  segments.push({ combinator: arm.length === 1 ? head : last.combinator, compound: { value } });
+  for (let j = k + 1; j < b.segments.length; j++) {
+    segments.push(b.segments[j]!);
+  }
+  return withSegments(b, segments);
+}
+
+/** True for a text token that must lead its compound: a type or universal selector. */
+function leadsCompound(text: string): boolean {
+  const code = text.charCodeAt(0); // `.`, `#`, `[`, `:` and `&` never lead
+  return text.length > 0 && code !== 0x2E && code !== 0x23 && code !== 0x5B && code !== 0x3A && code !== 0x26;
+}
+
+/**
+ * `value` with its simple at `p` replaced by `member`, as one valid compound: the
+ * type (or universal) selector leads, a repeated type or a universal beside a type
+ * is dropped (`div` + `div.b` → `div.b`, never 4.x's `divdiv.b`). Null when two
+ * different element types meet; no element matches both.
+ */
+function mergeCompound(value: readonly Simple[], p: number, member: readonly Simple[]): Simple[] | null {
+  const merged: Simple[] = [];
+  for (let i = 0; i < value.length; i++) {
+    if (i !== p) {
+      merged.push(value[i]!);
+      continue;
+    }
+    for (const s of member) {
+      merged.push(s);
+    }
+  }
+  let lead: Extract<Simple, { t: 'text' }> | null = null;
+  for (const s of merged) {
+    if (s.t !== 'text' || !leadsCompound(s.text)) {
+      continue;
+    }
+    if (lead === null || lead.text === '*') {
+      lead = s;
+    } else if (s.text !== '*' && s.text.toLowerCase() !== lead.text.toLowerCase()) {
+      return null;
+    }
+  }
+  if (lead === null) {
+    return merged;
+  }
+  const out: Simple[] = [lead];
+  for (const s of merged) {
+    if (s.t !== 'text' || !leadsCompound(s.text)) {
+      out.push(s);
+    }
+  }
+  return out;
 }
 
 /* ------------------------------------------------- relative extender folding */
@@ -628,7 +851,7 @@ export function computeExtends(
      * nested rules render through `nestedPlan`/`hoistHeader`.
      */
     if (changed) {
-      const compacted = siblingCompact(flat, false);
+      const compacted = groupedBranches(siblingCompact(flat, false), true);
       const projection = projectionFor(s);
 
       /*
@@ -895,7 +1118,7 @@ export function computeExtends(
        * prefix, so a child comma-list under one parent DOES compact across segments
        * (extend-exact `:is(<parent>) :is(.replace, .c)`).
        */
-      const hoisted = siblingCompact(flatBySubject.get(s)!, true).map(branchOut);
+      const hoisted = groupedBranches(siblingCompact(flatBySubject.get(s)!, true), true).map(branchOut);
       projectionFor(s).hoistHeader.set(s.rule, hoisted);
       if (mode === 'renest') {
         /*
@@ -921,7 +1144,7 @@ export function computeExtends(
        */
       const solved = flatBySubject.get(s)!;
       const subPath = cross.drop > 0 ? solved.map(b => dropLeadingSegs(b, cross.drop)) : solved;
-      const header = siblingCompact(subPath, true).map(branchOut);
+      const header = groupedBranches(siblingCompact(subPath, true), cross.drop === 0).map(branchOut);
       projectionFor(s).nestedPlan.set(s.rule, {
         flatten: true, hoistNested: true, header, splits: [], hoistBubble: cross.bubble
       });
@@ -984,7 +1207,7 @@ export function computeExtends(
     }
     projectionFor(s).nestedPlan.set(s.rule, {
       flatten: false,
-      header: header.map(branchOut),
+      header: groupedBranches(header, s.parent === null).map(branchOut),
       splits: dedupBranchTexts(splits).map(t => [t]),
       collapseTransparent: collapsedParent.has(s.rule)
     });

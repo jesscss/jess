@@ -194,6 +194,49 @@ Two compaction behaviors:
 .badError { border-width: 3px; }
 ```
 
+**Guarded grouping (owner 2026-10-05).** Extend's own `:is()` groups — the `all`
+graft and sibling compaction (§7c) — keep native specificity, matching and
+invalid-selector behaviour, by the SAME rule `collapseNesting: 'native'` folds a
+nested child list by, and in EVERY output mode (nested, `'native'` and `'compact'`;
+extend grouping is not mode-coupled). One module owns that rule:
+`packages/core/src/ast/is-grouping.ts` (specificity, the "may this branch sit inside
+`:is()`" check, and the partition into groups); the serializer's `opaqueJoin` and
+the extend engine both call it.
+
+- Members of one `:is()` share one Selectors-4 §17 specificity. A group that would
+  mix specificities splits into equal-specificity groups, gathered across
+  non-adjacent members (branch order inside one selector list changes neither the
+  cascade nor specificity) and emitted in order of first appearance.
+- A member that cannot sit inside `:is()` — a pseudo-element, a pseudo-class outside
+  the standard allowlist, an unscoreable token, or a complex member after a
+  combinator (`.p :is(.x .y)` would let `.x` sit above `.p`) — is written as its own
+  branch: the 4.x expanded form, merged into one valid compound (`div` + `div.b` →
+  `div.b`, where 4.x wrote `divdiv.b`). A group at the head of a top-level selector
+  may hold complex members (`:is(.a, .t .b) .box` matches what
+  `.a .box, .t .b .box` does); a nested header has an implicit `&` before it, so it
+  never leads.
+- The solve keeps each group whole (later instructions chain through it as one set of
+  alternatives); the split happens once, as a header is emitted (`emit.ts`
+  `groupedBranches`). Only extend-built groups (`Simple.fold`) split; an authored
+  `:is()` and the nesting `:is(parents)` token print as they are, and never take in
+  the alternatives of an extend group that split inside one of their arms — the
+  branch distributes over them instead.
+
+```less
+.a > .c { color: red; }
+.x:extend(.c all) {}
+#b:extend(.c all) {}
+.y:extend(.c all) {}
+.p .q:extend(.c all) {}
+```
+```css
+.a > :is(.c, .x, .y),
+.a > #b,
+.a > .p .q {
+  color: red;
+}
+```
+
 **Sibling compaction** — exact extenders that append identical trailing parts are
 compacted. `extend-nest.less`:
 
@@ -276,7 +319,7 @@ depth. `extend-nest.less`:
 ```
 ```css
 .sidebar, .sidebar2, .type1 .sidebar3, .type2.sidebar4 { width: 300px; background: red; }
-:is(.sidebar, .sidebar2, .type1 .sidebar3, .type2.sidebar4) .box { … }
+:is(.sidebar, .sidebar2) .box, :is(.type1 .sidebar3, .type2.sidebar4) .box { … }
 .sidebar2 { background: blue; }
 .type1 .sidebar3 { background: green; }
 .type2.sidebar4 { background: red; }
@@ -284,7 +327,9 @@ depth. `extend-nest.less`:
 
 The extenders' compiled complex selectors (`.type1 .sidebar3`,
 `.type2.sidebar4`) join both the header list and the nested `.box` rule's `:is()`
-graft.
+graft — in their own group, since they score `(0,2,0)` where `.sidebar` and
+`.sidebar2` score `(0,1,0)` (§5 guarded grouping). The graft leads the selector, so
+the complex member keeps its matching inside `:is()`.
 
 ### 7a. NESTED-mode re-nesting, shared-prefix strip, flatten triggers (LANDED)
 
@@ -329,13 +374,18 @@ hand-converted leak (see §12.1).
 
 `siblingCompact` / `tryMergeSiblings` / `mergeCompoundsToIs` (`emit.ts`) compact whole
 sibling branches differing in exactly ONE compound into `:is(...)` at that position
-(`.button:hover, .submit:hover` → `:is(.button, .submit):hover`), with two guards:
+(`.button:hover, .submit:hover` → `:is(.button, .submit):hover`), with three guards:
 
 - Single-compound rows merge only when they share a trailing suffix — two whole
   branches sharing NOTHING (`.ext8.ext9` / `.fuu`) stay a comma list.
 - Multi-segment (descendant-complex) rows compact only under a shared parent-composition
   prefix (`allowMultiSeg`, a flattened nested rule's hoisted header); a TOP-LEVEL rule's
   own header keeps `.foo .bar, .foo .baz` as a comma list (never `:is()`-collapsed).
+- The merged group is an extend group, so it follows §5's guarded grouping in every
+  output mode: `.button:hover, #submit:hover` stays a comma list, and
+  `.arrow::before` / `.arrow::after` never share an `:is()`. A leading extend group on
+  either side flattens into the merge; an authored or nesting `:is()` joins it as one
+  member, so emission never splits a selector the author wrote.
 
 ## 8. `@media` scoping — v5 does NOT merge media
 

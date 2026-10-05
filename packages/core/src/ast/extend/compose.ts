@@ -135,7 +135,11 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
       }
       if (!wrap) {
         parentStr ??= branchText(parent);
-        value.push(textSimple(s.text.split('&').join(parentStr)));
+
+        /* A lone `&` under a one-compound parent stands for that compound. */
+        value.push(s.text === '&' && !parentMultiSeg
+          ? textSimple(parentStr, undefined, parent.segments[0]!.compound)
+          : textSimple(s.text.split('&').join(parentStr)));
         continue;
       }
 
@@ -148,7 +152,7 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
         if (i === parts.length - 1) {
           continue;
         }
-        value.push(isSimple([parent]));
+        value.push(isSimple([parent], false));
       }
     }
 
@@ -173,7 +177,7 @@ function parentToken(parents: Branch[]): Branch {
    * branches keep their own boundary provenance, but as a single top-level segment
    * it is one origin unit (own-local `0` here — the composeOne `+1` lifts it).
    */
-  return descendantBranch([isSimple(parents)]);
+  return descendantBranch([isSimple(parents, false)]);
 }
 
 /** Compose one child branch under a parent token branch (mirrors serialize). */

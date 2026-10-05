@@ -87,17 +87,19 @@ expanded selectors, 5.x can compact those into a single `:is(...)` selector. Thi
 keeps flattened output smaller and matches what modern CSS engines do.
 
 Compaction most commonly shows up alongside `extend ... all` in nested or
-selector-list cases. Several selectors that all need the same descendant rule
-collapse to one:
+selector-list cases. Several selectors of the same specificity that all need the same
+descendant rule collapse to one:
 
 ```css
-:is(.sidebar, .sidebar2, .type1 .sidebar3) .box {
+:is(.sidebar, .sidebar2, .sidebar3) .box {
   margin: 10px 0;
 }
 ```
 
-instead of three separate `.sidebar .box`, `.sidebar2 .box`, and
-`.type1 .sidebar3 .box` rules. See [Extend and `:is()` wrapping](./extend-is-wrapping.md)
+instead of three separate `.sidebar .box`, `.sidebar2 .box`, and `.sidebar3 .box`
+rules. Extend never groups selectors of different specificity: `.type1 .sidebar3`
+scores `(0,2,0)`, so it would join a separate group. See
+[Extend and `:is()` wrapping](./extend-is-wrapping.md#grouping-keeps-each-selectors-specificity)
 for the details of how extend feeds this compaction.
 
 ## Migration notes

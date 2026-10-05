@@ -120,7 +120,9 @@ its group specificity into the join:
 `.a .c` match now carries ID-level weight it would not have on its own.
 
 **Extend.** A partial-match extender grafts `:is(...)` into the compound (see
-[Extend and `:is()` Wrapping](./extend-is-wrapping.md)), with the same effect:
+[Extend and `:is()` Wrapping](./extend-is-wrapping.md)), but only alongside
+alternatives of the same specificity, in every output mode. An ID extender of a class
+target is written as its own selector:
 
 ```less
 .a > .c { color: red; }
@@ -128,23 +130,22 @@ its group specificity into the join:
 ```
 
 ```css
-.a > :is(.c, #b) {
+.a > .c,
+.a > #b {
   color: red;
 }
 ```
 
-`:is(.c, #b)` scores `(1,0,0)`; the whole selector scores **`(1,1,0)`** — the original
-`.c` match is now scored as though it were the ID `#b`.
-
 ### Migration note vs. Less 4.x
 
-Less 4.x expanded both of these into a comma-separated cascade, each row keeping its
-**own** specificity. 5.x groups them into one `:is()` scored at the group maximum:
+Less 4.x expanded the nesting case into a comma-separated cascade, each row keeping its
+**own** specificity. 5.x groups a multi-parent header into one `:is()` scored at the
+group maximum:
 
-| Source | 4.x output (per-row specificity) | 5.x output (group specificity) |
+| Source | 4.x output (per-row specificity) | 5.x output |
 |---|---|---|
 | `.a, #b { .c {} }` | `.a .c` `(0,2,0)`, `#b .c` `(1,1,0)` | `:is(.a, #b) .c` — both `(1,1,0)` |
-| `.a > .c {}` + `#b:extend(.c all)` | `.a > .c` `(0,2,0)`, `.a > #b` `(1,1,0)` | `.a > :is(.c, #b)` — both `(1,1,0)` |
+| `.a > .c {}` + `#b:extend(.c all)` | `.a > .c` `(0,2,0)`, `.a > #b` `(1,1,0)` | `.a > .c`, `.a > #b` — per-row, as 4.x |
 
 When the grouped branches have **equal** specificity — the common case, e.g. all
 classes (`:is(.a, .b)`) — nothing changes. The shift is observable only when branches
@@ -181,10 +182,10 @@ at all.
 
 `'native'` folds a nested child list into `:is(…)` only where the result behaves
 exactly like the browser's own nesting: same specificity, same matched elements, and
-the same reaction to a selector the browser does not understand. A run of consecutive
-child branches folds when **all** of these hold:
+the same reaction to a selector the browser does not understand. Child branches share
+an `:is()` when **all** of these hold:
 
-- **Equal specificity.** Every branch in the run scores the same, so the `:is()` group
+- **Equal specificity.** Every branch in the group scores the same, so the `:is()` group
   maximum is each branch's own score. Specificity follows
   [Selectors Level 4](https://www.w3.org/TR/selectors-4/#specificity-rules): `:is()`,
   `:not()` and `:has()` score their most specific argument and `:where()` scores zero.
@@ -209,8 +210,7 @@ child branches folds when **all** of these hold:
   matched inside the scope root; `.t :is(:scope, .x)` mentions it, so the `.t .x` branch
   would lose that limit.
 
-Branches that fail a check join the ancestor on their own, and the rest still fold, in
-authored order — no branch moves past another:
+Branches that fail a check join the ancestor on their own, and the rest still fold:
 
 ```less
 .table-borderless {
@@ -230,6 +230,27 @@ authored order — no branch moves past another:
 combinator and stay as they were. Every branch keeps the score it has in the native
 nesting desugaring — `(0,1,1)` for `th`/`td`, `(0,1,2)` for the other two.
 
+Equal-specificity branches fold even when other branches sit between them: the order
+of selectors inside one rule changes neither the cascade nor specificity. Groups
+appear in the order their first branch appears:
+
+```less
+.t {
+  th, .x, td, .y { border: 0; }
+}
+```
+
+```css
+.t :is(th, td),
+.t :is(.x, .y) {
+  border: 0;
+}
+```
+
+The same rule decides which alternatives extend's own `:is()` groups hold, in every
+output mode — see
+[Extend and `:is()` Wrapping](./extend-is-wrapping.md#grouping-keeps-each-selectors-specificity).
+
 :::caution What "native" promises
 `'native'` reproduces native nesting's **specificity, matching and invalid-selector
 behaviour** — not its exact bytes. The browser's desugaring of `.t { th, td {} }` is
@@ -243,12 +264,13 @@ drops only that branch from the `:is()`, where it would have dropped the whole r
 :::note
 `collapseNesting` selects the flatten STYLE: **`false`** (default) preserves authored
 nesting; **`'native'`** flattens with native nesting's specificity and matching, folding
-only the child runs described above; **`'compact'`** folds every same-combinator
-descendant child run into one `:is(…)` (the group-max specificity shown above). The
+only the child branches described above; **`'compact'`** folds every descendant child
+branch into one `:is(…)` (the group-max specificity shown above). The
 **parent** `:is()` (`:is(.a, #b) .c`) is emitted by BOTH `'native'` and `'compact'` —
 it is the native desugaring of a multi-parent header, and its group-max specificity is
-unavoidable. Extend's `:is()` grafting appears in every mode. (`true` is a deprecated
-alias for `'native'`.)
+unavoidable. Extend's `:is()` grafting appears in every mode and keeps the `'native'`
+guard in every mode, `'compact'` included. (`true` is a deprecated alias for
+`'native'`.)
 :::
 
 See also: [Output Model](./output-model.md) ·

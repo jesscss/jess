@@ -1,8 +1,8 @@
 /**
  * `collapseNesting` flatten styles: `false` (nested, default), `'native'` (parent
- * `:is()`; a child selector list folds into `:is()` only where that keeps native
+ * `:is()`; child branches share an `:is()` only where that keeps native
  * specificity, matching and invalid-selector behaviour), and `'compact'` (folds
- * every same-combinator descendant run, group-max specificity).
+ * every descendant child branch, group-max specificity).
  */
 import { describe, expect, it } from 'vitest';
 import { Compiler } from '../../src/index.js';
@@ -39,10 +39,16 @@ describe('collapseNesting native vs compact', () => {
       .resolves.toBe('.table-borderless :is(th, td), .table-borderless thead th, .table-borderless tbody + tbody');
   });
 
-  it(`'native' folds only consecutive equal-specificity runs, never reordering branches`, async () => {
+  /*
+   * Order inside one selector list changes neither the cascade nor specificity
+   * (owner 2026-10-05), so equal-specificity branches group however far apart they
+   * are; groups come out in order of first appearance.
+   */
+  it(`'native' groups non-adjacent equal-specificity branches, in order of first appearance`, async () => {
     await expect(header('.t { .a, .b, #c, .d, .e { x: 1 } }'))
-      .resolves.toBe('.t :is(.a, .b), .t #c, .t :is(.d, .e)');
-    await expect(header('.t { th, .x, td { x: 1 } }')).resolves.toBe('.t th, .t .x, .t td');
+      .resolves.toBe('.t :is(.a, .b, .d, .e), .t #c');
+    await expect(header('.t { th, .x, td { x: 1 } }')).resolves.toBe('.t :is(th, td), .t .x');
+    await expect(header('.t { > .a, .b, > .c, .d { x: 1 } }')).resolves.toBe('.t > .a, .t :is(.b, .d), .t > .c');
   });
 
   it(`'native' hoists a leading combinator and folds the descendant run`, async () => {
@@ -131,10 +137,11 @@ describe('collapseNesting native vs compact', () => {
       .resolves.toBe('.t p:lang(en, fr), .t p:first-child');
   });
 
-  it(`'compact' folds every descendant run regardless of specificity`, async () => {
+  it(`'compact' folds every descendant branch regardless of specificity`, async () => {
     await expect(header('.a, .b { .c, .d { x: 1 } }', 'compact')).resolves.toBe(':is(.a, .b) :is(.c, .d)');
     await expect(header('.tb { th, td, thead th { x: 1 } }', 'compact')).resolves.toBe('.tb :is(th, td, thead th)');
     await expect(header('.t { .a::before, #b { x: 1 } }', 'compact')).resolves.toBe('.t :is(.a::before, #b)');
+    await expect(header('.t { > .a, .b, > .c, #d { x: 1 } }', 'compact')).resolves.toBe('.t > .a, .t :is(.b, #d), .t > .c');
   });
 
   /*

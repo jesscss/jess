@@ -175,9 +175,13 @@ describe('V19 one-evaluator projection ratchet', () => {
     // `tokenFoldSpecificity`/`branchFoldSpecificity` read a branch's specificity
     // from the selector IR so `'native'` folds only equal-specificity child runs;
     // the Set is the module-level allowlist of standard pseudo-classes.
-    expect(occurrences(/^function |^async function /gmu)).toBe(482);
+    // -3 functions and -1 `new Set` (ledger X3/O10, owner 2026-10-05): the
+    // specificity, foldability and the pseudo-class allowlist moved to the shared
+    // `:is()` grouping module (`is-grouping.ts`) that extend's groups also use;
+    // `leadsWithCombinator` became its `nestingGroupKey`.
+    expect(occurrences(/^function |^async function /gmu)).toBe(479);
     expect(occurrences(/new Map/gu)).toBe(73);
-    expect(occurrences(/new Set/gu)).toBe(38);
+    expect(occurrences(/new Set/gu)).toBe(37);
     expect(occurrences(/new WeakMap/gu)).toBe(4);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

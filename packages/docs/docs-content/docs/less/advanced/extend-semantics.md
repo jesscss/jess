@@ -69,7 +69,7 @@ into a single `:is(...)` at that position, rather than left as a comma list.
 `.button:hover, .submit:hover` share every part except the leading compound, so they
 compact to `:is(.button, .submit):hover`.
 
-Two guard rails on this compaction:
+Three guard rails on this compaction:
 
 - **Single-compound rows** only merge when they share a trailing suffix. Two whole
   branches that share *nothing* (`.ext8.ext9` and `.fuu`) stay a plain comma list —
@@ -78,6 +78,13 @@ Two guard rails on this compaction:
   shared parent-composition prefix (a flattened nested rule's hoisted header). A
   top-level rule's own header keeps `.foo .bar, .foo .baz` as a comma list — 5.x
   does not `:is()`-collapse authored complex rows.
+- **Specificity is kept.** Rows join one `:is()` only when the grouped parts have the
+  same specificity and may sit inside `:is()` — the rule every extend `:is()` group
+  follows, in every output mode (see
+  [Grouping keeps each selector's specificity](./extend-is-wrapping.md#grouping-keeps-each-selectors-specificity)).
+  `#submit` in place of `.submit` above gives `.button:hover, #submit:hover`, and
+  `.arrow::before` / `.arrow::after` never share an `:is()`, since a pseudo-element
+  is not allowed inside one.
 
 ## Nested output: re-nesting and its flatten triggers
 

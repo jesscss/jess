@@ -228,9 +228,73 @@ const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string,
       ] satisfies Array<readonly [string, readonly string[], string?]>).map(([ancestor, branches, indent = '']): readonly [string, string] => [
         branches.map(branch => `${ancestor} ${branch}`).join(`,\n${indent}`),
         `${ancestor} :is(${branches.join(', ')})`
-      ])
+      ]),
+
+      /*
+       * Extend's own `:is()` groups keep native specificity in every output mode
+       * (owner 2026-10-05, ledger X3/§7c amendment): `.btn-sm` (0,1,0) and
+       * `.btn-group-sm > .btn` (0,2,0), or `.bs-tooltip-top` (0,1,0) and
+       * `.bs-tooltip-auto[x-placement^="top"]` (0,2,0), no longer share an
+       * `:is()`, so each extender is its own branch.
+       */
+      ...['sm', 'lg'].map((size): readonly [string, string] => [
+        `:is(.btn-${size}, .btn-group-${size} > .btn) + .dropdown-toggle-split {`,
+        `.btn-${size} + .dropdown-toggle-split,\n.btn-group-${size} > .btn + .dropdown-toggle-split {`
+      ]),
+      ...(['top', 'right', 'bottom', 'left'] as const).flatMap((side): Array<readonly [string, string]> => {
+        const tooltip = [`.bs-tooltip-${side}`, `.bs-tooltip-auto[x-placement^="${side}"]`];
+        const popover = [`.bs-popover-${side}`, `.bs-popover-auto[x-placement^="${side}"]`];
+        const grouped = (pair: string[], tail: string): string => `:is(${pair.join(', ')})${tail}`;
+        const split = (pair: string[], tail: string): string => pair.map(owner => `${owner}${tail}`).join(',\n');
+        const afterOffset = { top: 'bottom', right: 'left', bottom: 'top', left: 'right' }[side];
+        return [
+          [`${grouped(tooltip, ' .arrow')} {`, `${split(tooltip, ' .arrow')} {`],
+          [`:is(${grouped(tooltip, ' .arrow')})::before {`, `${tooltip.map(owner => `:is(${owner} .arrow)::before`).join(',\n')} {`],
+          [`${grouped(popover, ' .arrow')} {`, `${split(popover, ' .arrow')} {`],
+          [
+            `${grouped(popover, ' .arrow::before')},\n${grouped(popover, ' .arrow::after')} {`,
+            `${split(popover, ' .arrow::before')},\n${split(popover, ' .arrow::after')} {`
+          ],
+          [`${grouped(popover, ' .arrow::before')} {`, `${split(popover, ' .arrow::before')} {`],
+          [`${grouped(popover, ' .arrow::after')} {\n  ${afterOffset}: 1px;`, `${split(popover, ' .arrow::after')} {\n  ${afterOffset}: 1px;`],
+          ...(side === 'bottom'
+            ? [[`${grouped(popover, ' .popover-header::before')} {`, `${split(popover, ' .popover-header::before')} {`] as const]
+            : [])
+        ];
+      })
     ]
-  ]
+  ],
+
+  /*
+   * Extend's own `:is()` groups keep native specificity (owner 2026-10-05, ledger
+   * X3/§7c amendment): a member of a different specificity, or a complex member
+   * after a combinator, leaves the group.
+   */
+  ['tests-unit/extend-chaining/extend-chaining.less', [
+    // `.g` (0,1,0) and `:is(.i, .k).j` (0,2,0).
+    [':is(.g, :is(.i, .k).j).h {', '.g.h,\n:is(.i, .k).j.h {']
+  ]],
+  ['tests-unit/extend-nest/extend-nest.less', [
+    // `.sidebar`, `.sidebar2` (0,1,0); `.type1 .sidebar3`, `.type2.sidebar4` (0,2,0).
+    [
+      ':is(.sidebar, .sidebar2, .type1 .sidebar3, .type2.sidebar4) .box {',
+      ':is(.sidebar, .sidebar2) .box,\n:is(.type1 .sidebar3, .type2.sidebar4) .box {'
+    ]
+  ]],
+  ['tests-unit/extend-selector/extend-selector.less', [
+    // `.foo`, `.ext3`, `.ext4` (0,1,0); `.ext1 .ext2` (0,2,0).
+    [
+      ':is(.foo, .ext1 .ext2, .ext3, .ext4) .bar,\n:is(.foo, .ext1 .ext2, .ext3, .ext4) .baz {',
+      ':is(.foo, .ext3, .ext4) .bar,\n.ext1 .ext2 .bar,\n:is(.foo, .ext3, .ext4) .baz,\n.ext1 .ext2 .baz {'
+    ]
+  ]],
+  ['tests-unit/extend/extend.less', [
+    // `.foo`, `.ext3`, `.ext4` (0,1,0); `.ext1 .ext2` (0,2,0).
+    [
+      ':is(.foo, .ext1 .ext2, .ext3, .ext4) :is(.bar, .ext3, .ext4),\n:is(.foo, .ext1 .ext2, .ext3, .ext4) .baz {',
+      ':is(.foo, .ext3, .ext4) :is(.bar, .ext3, .ext4),\n.ext1 .ext2 :is(.bar, .ext3, .ext4),\n:is(.foo, .ext3, .ext4) .baz,\n.ext1 .ext2 .baz {'
+    ]
+  ]]
 ]);
 
 function applyPendingGoldenEdits(file: string, golden: string): string {

@@ -4073,6 +4073,131 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: 2026-10-05 shared `:is()` grouping (owner rulings 2026-10-05:
+  extend's own `:is()` groups follow the same keep-native-specificity rule as
+  the `'native'` nesting fold, in every output mode; branch order inside one
+  selector list may change, so equal-specificity branches group across
+  non-adjacent positions). One module, `packages/core/src/ast/is-grouping.ts`,
+  owns specificity, the "may this branch sit inside `:is()`" check and the
+  partition into groups; the serializer's `opaqueJoin` and extend emission both
+  call it. Extend splits a mixed group into equal-specificity groups and writes
+  an unfoldable member (pseudo-element, unlisted pseudo-class, complex member
+  after a combinator) as its own branch.
+- Architecture surface: new `packages/core/src/ast/is-grouping.ts`;
+  `serialize.ts` `opaqueJoin` (the fold loop now partitions instead of
+  scanning runs; `leadsWithCombinator`/`tokenFoldSpecificity`/
+  `branchFoldSpecificity`/`NATIVE_FOLD_PSEUDO_CLASSES` moved to the module);
+  `extend/emit.ts` header emission (`groupedBranches`/`regroupBranch`/
+  `splitGroup`/`spliceMember`/`mergeCompound`);
+  `extend/ir.ts` (`Simple.src` on text tokens, `Simple.fold` on `:is()`
+  grafts); `extend/compose.ts` and `extend/match.ts` carry the two fields.
+- Separation/duplication: one owner for specificity and foldability. The
+  module walks two representations — the parsed selector AST (nesting fold)
+  and extend's selector IR — through one token scorer: an IR text token keeps
+  the AST token it was built from (`src`) and is scored by the same
+  `tokenSpecificity`. Extend's `conflict.ts` `classify` stays separate: it
+  answers which simples can make an invalid compound (type/id), treats every
+  unknown head as a type, and scores nothing; folding it into the specificity
+  scorer would change which extends it rejects.
+- Cumulative node weight: zero AST/CST node kinds or fields. The extend IR (not
+  an AST node) gains `src` on text simples and `fold` on `:is()` simples, both
+  set by their one factory (`textSimple`/`isSimple`) so every IR simple of a
+  kind has one shape.
+- New traversal: [loop/traversal] `extendBranchSpecificity` walks an extend
+  group member's segments and simples; `regroupBranch` scans a header branch's
+  compounds for extend groups; `groupedBranches` scans a header list;
+  `partitionGroups` scans its keys against the distinct-key table. All run only
+  on extend-touched headers (the candidate set the fast reject admits) and on
+  `opaqueJoin` child lists; the matcher's work is unchanged. Per render
+  (`benchmark.less`, collapseNesting true / false): 358 / 358 `groupedBranches`,
+  702 / 702 `regroupBranch`, 115 / 115 groups scored, 339 / 339 member scores, 30
+  / 0 partitions; `bootstrap4.less`: 352 / 353, 1118 / 1119, 142 / 142, 516 / 516,
+  203 / 124. Extend matcher counters are identical before and after on every
+  measured fixture (`astExtend.match.branchComparisons` 5492 benchmark, 7225 /
+  7242 bootstrap4, 647 extend, 3224 extend-chaining, 137 extend-nest, 305
+  extend-selector; `astExtend.plan.subjects` likewise unchanged).
+- New node/materialization: [materialized array/object] a group that stays
+  whole (every group on `benchmark.less`) allocates nothing: `splitGroup`
+  scores its members before allocating. A group that splits allocates its keys,
+  the group sizes, the output list and one branch (segment array, compound
+  value array) per alternative; `groupedBranches` copies the header list only
+  when a branch split. `opaqueJoin` allocates canons, keys, sizes and out per
+  multi-branch child list where it used canons, out and one run array per run.
+  Counted arrays per render: `benchmark.less` 124 → 120 (collapseNesting true),
+  0 → 0 (false); `bootstrap4.less` 267 → 796 and 0 → 480, all on headers whose
+  output changes; the extend fixtures 0 → 0-32. [array spread/materialization]
+  `mergeCompoundsToIs`'s existing spread gained an argument; the merged compound
+  of a spliced member is built by one loop. The distinct-key table of
+  `partitionGroups` is one module-level array reused by every call.
+- Render path: still stringify-only. Groups are emitted through `branchOut`; no
+  node is built to print them.
+- Helper/API surface: `is-grouping.ts` exports `nestingGroupKey`,
+  `extendBranchSpecificity` and `partitionGroups` inside core (no package
+  export); emit-private helpers listed above.
+- Metadata mutations: none. [parent/source mutation] flagged
+  `groupedBranches(header, s.parent === null)` reads the plan subject's parent;
+  nothing is assigned.
+- Review-flagged diff tokens: [loop/traversal] the walks above;
+  [array helper] `members.map(...)`, `child.selectors.map(...)` for keys,
+  `slice()` copies in `withSimple`/`spliceMember`/`groupedBranches`, the
+  `split('&').join(...)` text path kept in `compose.ts`;
+  [array spread/materialization] and [materialized array/object] as above;
+  [side map/set] the pseudo-class allowlist `Set` moved from `serialize.ts`
+  into the module, still built once at load.
+- Evidence: core suite 221 files / 3370 tests green; the Less fixture lane 151
+  passed / 28 skipped with the extend goldens' new groups registered in
+  `pendingGoldenEdits`; `extend-is-grouping.test.ts` and the updated
+  `collapse-nesting-mode.test.ts` fail on the base
+  (`origin/lane/v5-native-is-fold`) and pass here. `benchmark.less`
+  (collapseNesting true, `Compiler` defaults) changes by design from SHA-256
+  `a27f697180dcb0ad3cf4b3b27385834972c7c3896f7bc05165565440c46b3f84` (123,383
+  bytes) to `ac5ea0650e8339dd405c49746523b663eb1d2b2fa6a6e469639c19fdc2d9669e`
+  (123,303 bytes): two child lists now group non-adjacent equal-specificity
+  branches. Nested and `'compact'` output of `benchmark.less` are byte-identical
+  to the base. `measure:less:hotpath` on `benchmark.less` interleaved with the
+  base, three rounds of 60: lane medians 60.87 / 82.02 / 65.55 ms, base 64.51 /
+  75.78 / 73.28 ms, every round signal noisy (load average about 30); no speed
+  or neutrality claim.
+- Verdict: accepted as a semantic output change with `performanceClaim: none`.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Collection-spread-computed-key-overlay-and-iteration",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "module-callable-explicit-reference-and-css-call-separation",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "Extend's own :is() groups and the nesting fold share one grouping module; extend splits a group whose members differ in specificity at header emission, in every output mode. No evaluator, value or matcher change; semantic output work with no cost-cutting or neutrality claim.",
+    "dangerTokensJustification": "The new walks run only on extend-touched headers and multi-branch nesting child lists, once per branch or group member; a group that stays whole allocates nothing; matcher and planner counters are identical before and after.",
+    "behaviorEvidence": "packages/jess/test/less/extend-is-grouping.test.ts, packages/core/src/ast/__tests__/is-grouping.test.ts and the updated collapse-nesting-mode.test.ts pin the rule, red on origin/lane/v5-native-is-fold; the all-Less lane passes with the extend goldens' new groups registered in pendingGoldenEdits.",
+    "buildEvidence": "pnpm --filter @jesscss/core build passes; the core suite passes.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 65.55,
+      "outputSha256": "ac5ea0650e8339dd405c49746523b663eb1d2b2fa6a6e469639c19fdc2d9669e",
+      "outputBytes": 123303
+    }
+  }
+]
+```
+
 - Latest pass: 2026-10-05 `collapseNesting: 'native'` child-list fold (owner
   ruling 2026-10-05: fold what keeps native specificity; ledger O10 amendment
   pending). `'native'` now folds a run of consecutive nested child branches into
