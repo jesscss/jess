@@ -61,10 +61,9 @@ describe('a ruleset argument to a call emitted as written (P37, jess#290)', () =
   });
 
   /*
-   * #294 asked whether a ruleset argument follows the output's formatting or
-   * keeps its authored layout; no ledger row rules it yet. This pins what the
-   * writer does today — the block follows the output's formatting, in both
-   * modes alike — so a change to either mode is seen, not a decided rule.
+   * Ledger N16 (jess#294): a ruleset argument written out as-is follows the
+   * output's formatting, not its authored layout — one line in pretty output,
+   * compressed with compressed output.
    */
   it('writes an authored multi-line block on one line, comments included, compressed with the output', async () => {
     const source = 'a { x: foo({\n    v: 1;\n      /* c */ /*! k */\n    .n {\n      w: 2;\n    }\n  }); }';
