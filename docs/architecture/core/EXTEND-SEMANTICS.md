@@ -260,28 +260,42 @@ in the import graph, whether or not that sheet has an `:extend()` of its own
 (`@import "t.less"; .x:extend(.sm) {}` with `.sm` in `t.less` → `.sm, .x { … }`), subject
 to the same `@media` scoping as inlined rules (§8). An extend inside a mixin or loop body
 counts like any other. The zero-extend fast-reject is per import GRAPH, never per
-document: a graph with no extend plans nothing (jess#349). Interpolated selectors are
-covered by §10.
+document: a graph with no extend plans nothing and records nothing in the render walk
+(jess#349), and when no rule the walk recorded can meet an extend target the deferred
+fold re-solves nothing. Interpolated selectors are covered by §10.
 
-A rule a mixin call or loop body places — or an `@import` inside a ruleset, which runs
-as that ruleset's body (`.wrap { @import "t.less"; }` → `.wrap .sm`) — extends and is
-extended where it lands: as its selector composed under the rules it is placed in, in
-the `@media` scope it is placed in (§8), once per placement:
+A rule a mixin call places (a ruleset called as a mixin and a detached ruleset's call
+included), or a loop or `$if`/`$while` body places — or an `@import` inside a ruleset,
+which runs as that ruleset's body (`.wrap { @import "t.less"; }` → `.wrap .sm`; ledger
+A2's source fold, N10's splice at the import position) — extends and is extended where
+it lands: as its selector composed under the rules it is placed in, in the `@media`
+scope it is placed in (§8), once per placement:
 
 ```less
 .m() { .p { &.q, &.r { a: 1; } } }
 .m();
 .x:extend(.p.q) {}
 // → .p.q, .p.r, .x { a: 1; }
+
+.a { .p { a: 1; } }
+.z { .a(); }
+.x:extend(.z .p) {}
+// → .a .p { a: 1; }  .z .p, .x { a: 1; }
 ```
 
-An interpolated selector in such a body is held as its composed text, so a compound
-target cannot meet it part by part.
+Two gaps remain. An interpolated selector in such a body is held as its composed text,
+matched whole and never part by part; ledger X7 says an interpolated selector matches
+nothing as a target, and X15 records the open inconsistency, so this awaits an owner
+ruling. In nested output (`collapseNesting: false`) a placed EXTENDER folds in as its
+composed selector (`.a { .m(); } .b { .m(); }` → `.sm, .a .x, .b .x`), but a placed
+TARGET written inside a parent block is not rewritten when its extender lies outside that
+parent: moving the extender out is restructuring, not a header rewrite (§1a).
 
 Extend across `@compose` follows Sass module semantics (ledger X14): the composing
 sheet's extend reaches the composed module's rules, and a module's extend reaches only
-the module and what it composes — never the composing sheet's rules
-(`extend-cross-import.test.ts`).
+the module and what it composes — never the composing sheet's rules. A module is one
+module however many sheets compose it, so the extends of every sheet that composes it
+reach it, whichever loaded it first (`extend-cross-import.test.ts`).
 
 ## 7. Nested / ruleset-scoped extends
 
@@ -456,11 +470,14 @@ EXTENDER's selector only — the referenced target header never surfaces on its 
 // `.target` never appears in output
 ```
 
-Hiding follows the import placement, not the rule: a sheet imported both plainly and as
-`(reference)` keeps its plain copy's own selector, and a reference sheet's rule called as
-a mixin from outside the import renders as normal. A hidden rule an extend recorded by
-the render walk (in a mixin or loop body) may still reveal renders as a reserved block
-that the deferred fold rewrites to the extender, or blanks.
+Hiding follows the import placement, not the rule. Each `(reference)` or `(multiple)`
+import is its own placement of the sheet's rules: a sheet imported both plainly and as
+`(reference)` keeps its plain copy's own selector, and an extend inside one `@media`
+block reaches only that block's copy. A sheet a `(reference)` sheet imports is
+referenced too, and a reference sheet's rule called as a mixin from outside the import
+renders as normal. A hidden rule that an extend in a mixin or loop body (recorded by the
+render walk) may still reveal renders as a reserved block, which the deferred fold
+rewrites to the extender, or blanks when nothing reveals it.
 
 ---
 
