@@ -37,6 +37,20 @@ describe('collapseNesting native vs compact', () => {
     expect(out).toContain(':is(th, td, thead th)');
   });
 
+  /*
+   * A child under a NESTED multi-branch rule keeps every branch of that rule as
+   * its ancestor. It used to keep only the first, silently dropping selectors
+   * (bootstrap's `.btn-group-toggle > .btn-group > .btn input[type="radio"]`).
+   */
+  it('keeps every branch of a nested multi-branch rule as the ancestor of its children', async () => {
+    await expect(render('.a { .b, .c { e { y: 2; } } }', 'native'))
+      .resolves.toBe(':is(.a .b, .a .c) e {\n  y: 2;\n}\n');
+    await expect(render('.a { .b, .c { e { y: 2; } } }', 'compact'))
+      .resolves.toBe('.a :is(.b, .c) e {\n  y: 2;\n}\n');
+    await expect(render('.t { > .b, > .g > .b { i, j { y: 2; } } }', 'native'))
+      .resolves.toBe(':is(.t > .b, .t > .g > .b) i,\n:is(.t > .b, .t > .g > .b) j {\n  y: 2;\n}\n');
+  });
+
   it(`'false' preserves authored nesting (no :is())`, async () => {
     const out = await render('.a, .b { .c, .d { x: 1 } }', false);
     expect(out).not.toContain(':is(');

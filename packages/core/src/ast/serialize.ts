@@ -12403,7 +12403,7 @@ function flattenResolved(
    * onto (a multi-branch header collapses to `:is(...)`).
    */
   let headerComposed: MaybePromise<string[]>;
-  let childAncestor: string;
+  let childAncestor: string | null;
 
   /*
    * [nesting] At a ROOT context `rootStrings` resolves a parentless `&` to EMPTY.
@@ -12435,7 +12435,10 @@ function flattenResolved(
     childAncestor = wrapIsList(rawComposed);
   } else {
     headerComposed = opaqueJoin(ancestor ?? wrapIsList(parent), rule.selector, frame, e);
-    childAncestor = rawComposed[0] ?? '';
+
+    /* The header itself, once resolved, as ONE unit: every branch of it is an
+     * ancestor of the children (`.a { .b, .c { e {} } }` → `:is(.a .b, .a .c) e`). */
+    childAncestor = null;
   }
   return mapMaybe(headerComposed, headerComposed =>
     flattenWithHeader(
@@ -12446,7 +12449,7 @@ function flattenResolved(
       imp,
       childComposed,
       headerComposed,
-      childAncestor,
+      childAncestor ?? wrapIsList(headerComposed),
       expandBubbledSelectorList
     ));
 }

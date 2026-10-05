@@ -361,6 +361,10 @@ const expectedFailureFixtures = new Map<string, string>([
    * itself is the OPEN N11 spec argument, not an owner placement ruling.
    */
   [
+    'tests-config/3rd-party/bootstrap4.less',
+    'GOLDEN PENDING: the golden encodes a fixed composition bug — a child of a nested multi-branch `&`-less rule kept only the first parent branch, dropping `.btn-group-toggle > .btn-group > .btn input[…]` and six `.input-group > … + …` selectors. Proposed golden: less.js branch lane/v5-eval-serialize-goldens'
+  ],
+  [
     'tests-unit/urls/urls.less',
     'INTENDED DIVERGENCE (§12.3b): the fully interpolated target in `.add_an_import("file.css")` is authored as a compile-time StyleImport, so terminal classification does not defer until it evaluates to `file.css`; normal import resolution therefore reports the missing file'
   ],
