@@ -23,7 +23,7 @@ import type { FieldCapture, FieldMap, Span } from 'parseman';
 import { NO_SPAN, any, callArg, condition, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, dimension, expression, funcCall, ifNode, ifValue, important, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, quoted, reference, rule, selectorBranchCanonical, selectorBranchOf, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, Operation, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorCapture, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { functionScopeOf, requireLessParseState } from './parse-state.js';
-import { LessUnsupportedVariableNameError } from './parse-error.js';
+import { LessSlashedCombinatorError, LessUnsupportedVariableNameError } from './parse-error.js';
 
 type VarRef = Lookup & { readonly name: string };
 /** A `Lookup` whose target is named by a nested node — Less `@@name`. */
@@ -58,7 +58,13 @@ type AttributeNameFact = { readonly namespace: string; readonly name: string };
 type ExtendTargetFact = { readonly target: SelectorList; readonly partial: boolean };
 type BodyExtendFact = { readonly bodyExtensions: readonly ExtendInstruction[] };
 type SelectorBranchFact = { readonly selector: SelectorBranch; readonly extensions: readonly ExtendInstruction[] };
-type SelectorListWithExtendsFact = { readonly selector: SelectorList; readonly extensions: readonly ExtendInstruction[] };
+/** A removed `/word/` combinator, carried until a ruleset commits at its `{`. */
+type SlashedCombinatorFact = { readonly slashedCombinator: string; readonly start: number; readonly end: number };
+type SelectorListWithExtendsFact = {
+  readonly selector: SelectorList;
+  readonly extensions: readonly ExtendInstruction[];
+  readonly slashed: SlashedCombinatorFact | undefined;
+};
 type MixinDefinitionFact = {
   readonly params: readonly Param[];
   readonly guard?: MixinGuard;
@@ -1676,6 +1682,10 @@ function isSelectorBranchFact(value: unknown): value is SelectorBranchFact {
     && value.extensions.every(isExtendInstruction);
 }
 
+function isSlashedCombinatorFact(value: unknown): value is SlashedCombinatorFact {
+  return typeof value === 'object' && value !== null && 'slashedCombinator' in value;
+}
+
 function isSelectorListWithExtendsFact(value: unknown): value is SelectorListWithExtendsFact {
   return typeof value === 'object' && value !== null
     && 'selector' in value && isLessSelectorList(value.selector)
@@ -1708,9 +1718,18 @@ function isRulesetTailFact(value: unknown): value is RulesetTailFact {
     && 'extensions' in value && Array.isArray(value.extensions) && value.extensions.every(isExtendInstruction);
 }
 
+/**
+ * A committed ruleset's selector list. Called once the ruleset's `{` has
+ * committed, so this is where a removed slashed combinator in the list is
+ * rejected (ledger G37).
+ */
 function requireSelectorListWithExtendsFact(value: unknown): SelectorListWithExtendsFact {
   if (!isSelectorListWithExtendsFact(value)) {
     throw new TypeError('Less grammar produced a ruleset selector without selector facts.');
+  }
+  const slashed = value.slashed;
+  if (slashed !== undefined) {
+    throw new LessSlashedCombinatorError(slashed.start, slashed.end, slashed.slashedCombinator);
   }
   return value;
 }
@@ -2338,6 +2357,7 @@ export {
   isSelectorBranchFact,
   isLessSelectorList,
   isSelectorListWithExtendsFact,
+  isSlashedCombinatorFact,
   isSelectorTerm,
   isSequence,
   isSimpleSelector,
@@ -2455,6 +2475,7 @@ export type {
   RulesetTailFact,
   SelectorBranchFact,
   SelectorListWithExtendsFact,
+  SlashedCombinatorFact,
   LessMathRun,
   UnsupportedVariableNameFact,
   VarRef

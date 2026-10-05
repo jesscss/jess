@@ -32,7 +32,9 @@ describe('slashed combinators are rejected by name', () => {
     ['/shadow/ after a class', '.container /shadow/ .content { background: blue; }', 11, '/shadow/'],
     ['the first of two', '.wrapper /deep/ .inner /deep/ .deepest { padding: 10px; }', 9, '/deep/'],
     ['any /word/ after a type selector', 'div /wat/ span { color: red; }', 4, '/wat/'],
-    ['a nested rule', '.a {\n  .b /deep/ .c { x: y; }\n}', 10, '/deep/']
+    ['a nested rule', '.a {\n  .b /deep/ .c { x: y; }\n}', 10, '/deep/'],
+    ['glued to its neighbours', '.a/deep/.b { c: d; }', 2, '/deep/'],
+    ['after a later branch of a list', '.a, .b /deep/ .c { d: e; }', 7, '/deep/']
   ])('%s', (_label, source, offset, combinator) => {
     const failure = failureOf(source);
     expect(failure).toBeInstanceOf(LessSlashedCombinatorError);
@@ -55,9 +57,24 @@ describe('slashed combinators are rejected by name', () => {
     '.x { grid-area: a / b / c / d; }',
     '.x { font:12px/1.5 a; }',
     '.x { a: b /c/ d; }',
+
+    /*
+     * A glued colon sends the declaration down the ruleset arm first; the
+     * `/word/` there is only a fact until a `{` would commit a ruleset.
+     */
+    '.x { a:b /c/ d; }',
+    '.x { a:b /c/ d }',
+    '.x { a:b /c/ d !important; }',
+    '.x { a:b c /d/ e; }',
+    '.x { grid-area:a /b/ c; }',
+    '.x { grid-area:auto /span/ 2; }',
+    '.x { grid-row:span /x/ y }',
     '.x { background: url(/deep/a.png); }',
     '.a /* deep */ .b { c: d; }'
   ])('still parses the valid neighbour %j', (source) => {
     expect(failureOf(source)).toBeUndefined();
+    const result = parseLessCst(source);
+    expect(result.ok).toBe(true);
+    expect(hasNode(result.tree, 'SlashedCombinator')).toBe(false);
   });
 });

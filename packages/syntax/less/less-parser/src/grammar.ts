@@ -32,7 +32,7 @@ import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
 import { any, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, propertyReference, pseudoSelector, quoted, reference, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorCapture, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, requireLessParseState } from './parse-state.js';
-import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSlashedCombinatorError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
+import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 import {
   appendInterpolationLiteral,
   argumentFunctionFromChildren,
@@ -83,6 +83,7 @@ import {
   isRulesetTailFact,
   isLessSelectorBranch,
   isSelectorBranchFact,
+  isSlashedCombinatorFact,
   isLessSelectorList,
   isSelectorTerm,
   isSequence,
@@ -4994,24 +4995,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.InterpolatedAttributeSelector
   );
   /*
-   * `/deep/` and `/shadow/` (Less 4 took any `/word/`) were Shadow DOM v0
-   * combinators that never became CSS; Less 5 rejects them (ledger G37). The
-   * shape is recognized only so the diagnostic names it (jess#247), and the
-   * tolerant CST keeps the rule around it. It must stand between spaces: this
-   * node reports as soon as it matches, and the ruleset arm is tried first on
-   * an unspaced declaration, where a glued `/b/` is a slash value
-   * (`grid-area:a/b/c`). The leading-space check follows the `/`, so the
-   * pattern still opens on `/` for first-set gating.
-   */
-  const SlashedCombinator = node(
-    'SlashedCombinator',
-    regex(/\/(?<=[ \t\n\r\f]\/)[a-zA-Z]+\/(?=[ \t\n\r\f])/),
-    (children, _fields, span) => {
-      throw new LessSlashedCombinatorError(span.start, span.end, requireToken(children[0]).value);
-    }
-  );
-  const selectorCombinator = choice(staticCombinator, SlashedCombinator);
-  /*
    * Statement-position class/id starts share their parsed selector prefix with
    * mixin paths. `(` and `;` later select the mixin tails; selector punctuation
    * continues from this same branch. The first simple is deliberately the
@@ -5029,7 +5012,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'SelectorBranch',
     sequence(
       ClassIdCompound,
-      many(sequence(not(whenGuardAhead), optional(selectorCombinator), g.CompoundSelector))
+      many(sequence(not(whenGuardAhead), optional(staticCombinator), g.CompoundSelector))
     ),
     (children, _fields, span) => ({
       selector: withSourceSpan(selectorBranchOf(complexSegmentsFrom(children)), span),
@@ -5056,7 +5039,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     'ComplexSelector',
     sequence(
       g.CompoundSelector,
-      many(sequence(not(whenGuardAhead), optional(selectorCombinator), g.CompoundSelector))
+      many(sequence(not(whenGuardAhead), optional(staticCombinator), g.CompoundSelector))
     ),
     (children, _fields, span) => withSourceSpan(selectorBranchOf(complexSegmentsFrom(children)), span)
   );
@@ -5185,12 +5168,28 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return branch;
     }
   );
+  /*
+   * `/deep/` and `/shadow/` (Less 4 took any `/word/`) were Shadow DOM v0
+   * combinators that never became CSS; Less 5 rejects them (ledger G37). The
+   * shape is recognized only so the diagnostic names it (jess#247): it joins
+   * two selectors of a ruleset's list, and the ruleset rejects it once its `{`
+   * commits. Until then it is only a fact, because the ruleset arm is tried
+   * first on a glued declaration (`grid-area:a /b/ c;`), which then fails at
+   * its `;` and leaves the declaration arm to read the `/`s as slashes. The
+   * tolerant CST keeps the node and the rule around it.
+   */
+  const SlashedCombinator = node(
+    'SlashedCombinator',
+    regex(/\/[a-zA-Z]+\//),
+    (children, _fields, span) => ({ slashedCombinator: requireToken(children[0]).value, start: span.start, end: span.end })
+  );
+  const slashedBranchTail = many(sequence(SlashedCombinator, selectorBranch));
   const selectorListWithExtends = node(
     'SelectorListWithExtends',
     parser(
       { trivia: outerSelectorTrivia },
       oneOrMoreSep(
-        selectorBranch,
+        sequence(selectorBranch, slashedBranchTail),
         literal(',')
       )
     ),
@@ -5198,7 +5197,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       selector: withSourceSpan(selist(...children.flatMap(child => isSelectorBranchFact(child)
         ? [child.selector]
         : [])), span),
-      extensions: children.filter(isSelectorBranchFact).flatMap(branch => branch.extensions)
+      extensions: children.filter(isSelectorBranchFact).flatMap(branch => branch.extensions),
+      slashed: children.find(isSlashedCombinatorFact)
     })
   );
   const relativeSelectorListWithExtends = node(
@@ -5206,11 +5206,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     parser(
       { trivia: outerSelectorTrivia },
       oneOrMoreSep(
-        choice(SelectorBranch, node(
-          'SelectorBranch',
-          g.RelativeSelector,
-          children => ({ selector: children.find(isLessSelectorBranch)!, extensions: [] })
-        )),
+        sequence(
+          choice(SelectorBranch, node(
+            'SelectorBranch',
+            g.RelativeSelector,
+            children => ({ selector: children.find(isLessSelectorBranch)!, extensions: [] })
+          )),
+          slashedBranchTail
+        ),
         literal(',')
       )
     ),
@@ -5218,7 +5221,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       selector: withSourceSpan(selist(...children.flatMap(child => isSelectorBranchFact(child)
         ? [child.selector]
         : [])), span),
-      extensions: children.filter(isSelectorBranchFact).flatMap(branch => branch.extensions)
+      extensions: children.filter(isSelectorBranchFact).flatMap(branch => branch.extensions),
+      slashed: children.find(isSlashedCombinatorFact)
     })
   );
   const RulesetWithExtends = node(
