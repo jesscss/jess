@@ -311,9 +311,16 @@ describe('V19 one-evaluator projection ratchet', () => {
     // eager argument snapshot's typed value beside it (`snapshotValues`, one per
     // render entry, filled by `carrySnapshot`), so an argument is never re-typed
     // from its bytes across a mixin boundary.
-    expect(occurrences(/^function |^async function /gmu)).toBe(538);
+    // -2 `new Set`, ±0 functions (owner ruling 2026-10-06): a paren group inside a
+    // math function is written back as authored (`unconsumedParens` replaces
+    // `arithmeticTier`), so the operator-tier sets that decided which parens
+    // carried precedence are gone.
+    // +1 function: a paren group around kept math or raw bytes keeps its own
+    // parens in both value lanes (`isInertGroup`), so a group that is a whole
+    // function argument inside a math function is no longer dropped.
+    expect(occurrences(/^function |^async function /gmu)).toBe(539);
     expect(occurrences(/new Map/gu)).toBe(85);
-    expect(occurrences(/new Set/gu)).toBe(41);
+    expect(occurrences(/new Set/gu)).toBe(39);
     expect(occurrences(/new WeakMap/gu)).toBe(10);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

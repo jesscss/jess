@@ -216,12 +216,17 @@ You can change the [Math](./usage/less-options#math) setting to a more eager mod
 _Released [v3.0.0](https://github.com/less/less.js/blob/master/CHANGELOG.md)_
 
 For CSS compatibility, `calc()` does not evaluate math expressions, but will evaluate variables
-and math in nested functions.
+and math in nested functions. Parentheses written inside `calc()` are kept as written.
 
 ```less
 @var: 50vh/2;
-width: calc(50% + (@var - 20px));  // result is calc(50% + (25vh - 20px))
+width: calc(50% + (@var - 20px));  // result is calc(50% + (50vh / 2 - 20px))
+height: calc((@var));              // result is calc((50vh / 2))
 ```
+
+Under the default `parens-division` math, `50vh/2` is not divided, so `@var` is
+substituted as written. With `math: always` it is `25vh`, and the first line
+gives `calc(50% + (25vh - 20px))`.
 
 
 # Interpolation

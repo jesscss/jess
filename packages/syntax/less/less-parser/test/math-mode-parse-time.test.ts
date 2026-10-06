@@ -81,10 +81,15 @@ describe('Less `math:` resolves at PARSE time onto Operation.mathOutsideParens',
     }
   });
 
-  it('unary minus answers to the mode too', () => {
+  /*
+   * A sign is not an operator the mode governs: `-@x` and `-(@x)` negate in
+   * every mode (`neg-var: -1` in tests-config/math/strict/parens.css), never
+   * `-1 * 1`.
+   */
+  it('unary minus computes in every mode', () => {
     const answers = MODES.map(mathMode =>
       parseOperation('@x: 3px; .a { k: -@x; }', mathMode).mathOutsideParens);
-    expect(answers).toEqual([true, true, false, false]);
+    expect(answers).toEqual([true, true, true, true]);
   });
 
   /*
