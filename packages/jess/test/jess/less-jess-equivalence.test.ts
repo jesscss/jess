@@ -992,6 +992,27 @@ describe('spellings the emitter names instead of printing', () => {
       'FunctionCall: an IE-style `name=value` argument (`alpha(opacity=100)`): no `.jess` `CallArgument` spelling reads it back'
     ]);
   });
+
+  /* A body-form extend the render walk applies where a body lands (X16, X19) has no `.jess` spelling: printing the body without it would drop it. */
+  it('names a body-form extend in a mixin definition, an at-rule block, a detached ruleset and an each() callback', () => {
+    for (const [source, owner] of [
+      ['.m() { &:extend(.z); }', 'a mixin definition (ledger X16)'],
+      ['.y { @media print { &:extend(.z); } }', 'an at-rule block (ledger X19)'],
+      ['@r: { &:extend(.z); };', 'a detached ruleset (ledger X19)'],
+      ['@l: a; .y { each(@l, { &:extend(.z); }); }', 'an `each()` callback (ledger X19)']
+    ] as const) {
+      let gaps: string[] = [];
+      try {
+        emitJess(parseLess(source), { functions: LESS_FUNCTIONS });
+      } catch (error) {
+        if (!(error instanceof NoJessSpelling)) {
+          throw error;
+        }
+        gaps = error.gaps.map(g => `${g.nodeType}: ${g.reason}`);
+      }
+      expect(gaps, source).toContain(`ExtendInstruction: a body-form extend in ${owner} has no \`.jess\` spelling yet`);
+    }
+  });
 });
 
 describe('equivalence ratchet', () => {

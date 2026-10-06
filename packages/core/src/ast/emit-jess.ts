@@ -510,6 +510,9 @@ class JessPrinter {
     if (!MIXIN_NAME.test(node.name)) {
       gap('MixinDefinition', 'a mixin name outside `mixinNameToken` (e.g. an escaped or `!`-bearing name)');
     }
+    if (node.extendInstructions !== undefined) {
+      gap('ExtendInstruction', 'a body-form extend in a mixin definition (ledger X16) has no `.jess` spelling yet');
+    }
     const guard = node.guard === undefined ? '' : ` when (${this.guard(node.guard, true, true)})`;
     return `${node.name}${this.params(node.params)}${guard} ${this.block(node.rules, 'nested', node, indent)}`;
   }
