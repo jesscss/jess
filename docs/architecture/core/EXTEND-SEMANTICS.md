@@ -387,7 +387,10 @@ template did not write is still held as its composed text and matched whole.
 One gap remains. In nested output (`collapseNesting: false`) a placed EXTENDER folds in as its
 composed selector (`.a { .m(); } .b { .m(); }` → `.sm, .a .x, .b .x`), but a placed
 TARGET written inside a parent block is not rewritten when its extender lies outside that
-parent: moving the extender out is restructuring, not a header rewrite (§1a).
+parent: moving the extender out is restructuring, not a header rewrite (§1a). The same
+holds for a rule of a `(reference)` sheet imported inside a ruleset, which flat output
+reveals under its extender (`.wrap { @import (reference) "t.less"; }` +
+`.x:extend(.wrap .sm) {}` → `.x { b: 2; }`) and nested output leaves hidden.
 
 Extend across `@compose` follows Sass module semantics (ledger X14): the composing
 sheet's extend reaches the composed module's rules, and a module's extend reaches only

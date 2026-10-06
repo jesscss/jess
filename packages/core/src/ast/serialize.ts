@@ -15179,12 +15179,23 @@ function walkBody(
              * An import that is itself `(reference)` keeps the reference dispatcher,
              * which hides the sheet's own declarations as well.
              */
-            const emitLoaded = composed === null || importOptionWords(node.options).includes('reference')
+            const emitLoaded = composed === null
               ? undefined
-              : (document: Stylesheet, importFrame: Frame) => walkBody(
-                  document.rules, composed, ancestor, importFrame, group,
-                  flush, partition, e, imp, forceLeading, propertyScope
-                );
+              : importOptionWords(node.options).includes('reference')
+
+                /*
+                 * A `(reference)` sheet runs as this rule's body too, so its rules nest
+                 * under it, hidden unless an extend reveals them; its own declarations
+                 * stay hidden in a leaf group nothing writes.
+                 */
+                ? (document: Stylesheet, importFrame: Frame) => walkBody(
+                    document.rules, composed, ancestor, importFrame, [],
+                    MOOT_FLUSH, null, e, imp, forceLeading, propertyScope
+                  )
+                : (document: Stylesheet, importFrame: Frame) => walkBody(
+                    document.rules, composed, ancestor, importFrame, group,
+                    flush, partition, e, imp, forceLeading, propertyScope
+                  );
             const flushed = flush();
             if (isThenable(flushed)) {
               return flushed.then(() => mapMaybe(

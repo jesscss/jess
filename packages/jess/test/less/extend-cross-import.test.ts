@@ -294,6 +294,17 @@ describe('extend across @import', () => {
       );
     });
 
+    /*
+     * A `(reference)` import inside a ruleset runs as that ruleset's body too: its rules
+     * nest under the ruleset, hidden unless an extend reveals them. Nested output does
+     * not yet move a revealed rule out of the ruleset's block (EXTEND-SEMANTICS §6).
+     */
+    it('a (reference) import inside a ruleset nests its rules under the ruleset', async () => {
+      expect(await renderFile('ref-in-ruleset-main.less')).toBe(
+        ['.wrap {', '  a: 1;', '}', '.x {', '  b: 2;', '}'].join('\n')
+      );
+    });
+
     // The only extend in the graph sits in a sheet imported inside a ruleset.
     it('carries an extend that is only in the imported sheet', async () => {
       const expected = ['.sm,', '.wrap .x {', '  b: 2;', '}'].join('\n');
