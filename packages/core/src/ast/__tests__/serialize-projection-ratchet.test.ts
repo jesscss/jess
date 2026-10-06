@@ -256,9 +256,13 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +2 functions: a nested rule hoisted out of an enclosing rule re-opens the
     // at-rules it rose out of (`emitHoistEntry`), through the nested at-rule
     // writer's shell (`nestedAtRuleShell`).
+    // -2 `new Set`, ±0 functions (owner ruling 2026-10-06): a paren group inside a
+    // math function is written back as authored (`unconsumedParens` replaces
+    // `arithmeticTier`), so the operator-tier sets that decided which parens
+    // carried precedence are gone.
     expect(occurrences(/^function |^async function /gmu)).toBe(515);
     expect(occurrences(/new Map/gu)).toBe(85);
-    expect(occurrences(/new Set/gu)).toBe(41);
+    expect(occurrences(/new Set/gu)).toBe(39);
     expect(occurrences(/new WeakMap/gu)).toBe(8);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

@@ -4492,42 +4492,36 @@ function evalTyped(
   }
 }
 
-const PRODUCT_TIER: ReadonlySet<string> = new Set(['*', '/', '%']);
-const SUM_TIER: ReadonlySet<string> = new Set(['+', '-']);
-
-function arithmeticTier(operator: string): number {
-  return PRODUCT_TIER.has(operator) ? 2 : SUM_TIER.has(operator) ? 1 : 0;
+/**
+ * How many paren levels the author wrote around `slot` that no computation
+ * consumed, or 0 when `slot` is not a paren group. Nothing computes inside a
+ * math function (ledger P35), so a group written there keeps every paren as
+ * written, redundant or not (`calc(100% - ((a)))`, owner 2026-10-06). A group
+ * whose operation computes — math outside a math function — is consumed by it.
+ */
+function unconsumedParens(slot: ValueSlot): number {
+  let depth = 0;
+  let inner = slot;
+  while (!isValueSlotArray(inner) && inner.type === 'Block' && inner.delimiter === 'paren' && !inner.escaped) {
+    inner = inner.value;
+    depth += 1;
+  }
+  return !isValueSlotArray(inner) && inner.type === 'Operation' && !inner.inMathFunction ? 0 : depth;
 }
+
+const wrapParens = (bytes: string, depth: number): string => depth === 0 ? bytes : `${'('.repeat(depth)}${bytes}${')'.repeat(depth)}`;
 
 /**
  * The bytes of one operand of an operation that is kept as written. A paren
- * group that is not evaluated drops its parens when its inner value is not a
- * literal (a kept math-function operation is a `Keyword`), which is right for a
- * redundant group (`calc(((10vh)) + …)`) but changes the value when the group
- * carried precedence: `calc(100% - (a + b))` is not `calc(100% - a + b)`. So the
- * group is re-spelled exactly when the tree needs it — a lower-tier operation
- * under a higher-tier one, or an equal-tier one on the right of `-`, `/` or `%`.
+ * group drops its parens when its inner value is not a literal (a kept
+ * math-function operation is a `Keyword`), so inside a math function the group
+ * is written back exactly as authored ({@link unconsumedParens}). Outside one,
+ * a paren group's operation computed and the group is one value with no
+ * precedence left to protect.
  */
-function preservedOperand(parent: Operation, child: ValueNode, value: EvalValue, onRight: boolean): string {
+function preservedOperand(parent: Operation, child: ValueNode, value: EvalValue): string {
   const bytes = emitValue(value);
-  if (isLiteral(value) || child.type !== 'Block' || child.delimiter !== 'paren') {
-    return bytes;
-  }
-  let inner: ValueSlot = child.value;
-  while (!isValueSlotArray(inner) && inner.type === 'Block' && inner.delimiter === 'paren') {
-    inner = inner.value;
-  }
-  if (isValueSlotArray(inner) || inner.type !== 'Operation') {
-    return bytes;
-  }
-  const outerTier = arithmeticTier(parent.operator);
-  const innerTier = arithmeticTier(inner.operator);
-  if (outerTier === 0 || innerTier === 0) {
-    return bytes;
-  }
-  const needed = innerTier < outerTier
-    || (onRight && innerTier === outerTier && parent.operator !== '+' && parent.operator !== '*');
-  return needed ? `(${bytes})` : bytes;
+  return isLiteral(value) || !parent.inMathFunction ? bytes : wrapParens(bytes, unconsumedParens(child));
 }
 
 /**
@@ -4999,8 +4993,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         const l = evalValue(node.left, frame, e);
         const r = evalValue(node.right, frame, e);
         return combineAll([l, r], (values) => {
-          const left = preservedOperand(node, node.left, values[0]!, false);
-          const right = preservedOperand(node, node.right, values[1]!, true);
+          const left = preservedOperand(node, node.left, values[0]!);
+          const right = preservedOperand(node, node.right, values[1]!);
           const bytes = `${left} ${node.operator} ${right}`;
 
           /*
@@ -6560,11 +6554,18 @@ function evalIntrospection(node: FunctionCall, frame: Frame | null, e: EvalCtx):
  * wrapper. A cross-unit sub-expression arrives already `calc(…)`-wrapped (kept
  * as-is); a preserved non-calc keyword op (`100% - 3`) is wrapped; a fully
  * computed value (`10px * 2` → `20px`) drops the wrapper (less.js `calc()`
- * collapse to a bare Dimension).
+ * collapse to a bare Dimension). An argument written as a paren group keeps
+ * its parens and so its wrapper (`calc((10vh))`, {@link unconsumedParens}) —
+ * unless a typed consumer `demanded` the value, which has no use for its spelling.
  */
-function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
+function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx, demanded: boolean): MaybePromise<EvalValue> {
   const ce: EvalCtx = { ...e, calcDepth: (e.calcDepth ?? 0) + 1 };
-  return mapMaybe(evalTypedSlot(node.args[0]!.value, frame, ce), (v) => {
+  const arg = node.args[0]!.value;
+  const authored = demanded ? 0 : unconsumedParens(arg);
+  return mapMaybe(evalTypedSlot(arg, frame, ce), (v) => {
+    if (authored > 0) {
+      return makeKeyword(`calc(${wrapParens(emitValueC(v, e), authored)})`);
+    }
     if (!isValueGroupArray(v) && v.type === 'Keyword') {
       return calcInner(v.bytes) !== null ? v : makeKeyword(`calc(${v.bytes})`);
     }
@@ -7659,7 +7660,7 @@ function evalCall(
     return intro;
   }
   if (e.ev && node.args.length === 1 && node.name.toLowerCase() === 'calc') {
-    return evalCalc(node, frame, e);
+    return evalCalc(node, frame, e, demanded);
   }
   if (!e.ev) {
     return preserveCall(node, frame, e);
