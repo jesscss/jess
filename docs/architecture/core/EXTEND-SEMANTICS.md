@@ -362,10 +362,13 @@ scope it is placed in (§8), once per placement:
 // → .a .p { a: 1; }  .z .p, .x { a: 1; }
 ```
 
-Two gaps remain. An interpolated selector in such a body is held as its composed text,
-matched whole and never part by part; ledger X7 says an interpolated selector matches
-nothing as a target, and X15 records the open inconsistency, so this awaits an owner
-ruling. In nested output (`collapseNesting: false`) a placed EXTENDER folds in as its
+An interpolated selector in such a body is a target part by part, like any other (ledger
+X7 as amended): with recording armed the walk resolves it once, structurally, and both the
+header and the recorder read that resolution (`serialize.ts` `resolvedSelectorList`). A
+lone `@{name}` selector (it may expand to a captured selector list) or a resolved `&` the
+template did not write is still held as its composed text and matched whole.
+
+One gap remains. In nested output (`collapseNesting: false`) a placed EXTENDER folds in as its
 composed selector (`.a { .m(); } .b { .m(); }` → `.sm, .a .x, .b .x`), but a placed
 TARGET written inside a parent block is not rewritten when its extender lies outside that
 parent: moving the extender out is restructuring, not a header rewrite (§1a).
@@ -557,15 +560,21 @@ adjacent/child targets each match their respective combinator form.
   [data], .attribute-test2 { extend: attributes2; }
   [data="test3"], .attribute-test { extend: attributes2; }
   ```
-- **Interpolated selectors** — an `:extend` ATTACHED to an interpolated selector
-  works (`@{variable}:extend(.bucket)`), and a rule whose selector is interpolated
-  (`.@{v} {}`, `.c-@{n} {}`) IS an extend target once resolved, at the root, in
-  imported sheets and in mixin/loop bodies alike (ledger X7, amended by the owner
-  2026-10-05, as lessc 4.9.1 behaves; it closes X15). 4.x `extend.md`'s "Extend is
-  not able to match selectors with variables" is superseded. Imported sheets are
-  not yet covered: they are planned from unresolved IR (`planImportedStaticExtend`),
-  so an imported `.@{v}` rule is still missed. (See §12 for the
-  interpolated-attribute extend in `extend-selector`.)
+- **Interpolated selectors** — a rule whose selector is interpolated (`.@{v} {}`,
+  `.c-@{n} {}`) IS an extend target once resolved, at the root, in imported sheets and
+  in mixin/loop bodies alike (ledger X7, amended by the owner 2026-10-05, as lessc 4.9.1
+  behaves; it closes X15). 4.x `extend.md`'s "Extend is not able to match selectors
+  with variables" is superseded. The root's rules are resolved before planning whenever
+  the import graph has an extend; an imported sheet's interpolated rule, and the rules
+  nested in it, are recorded by the render walk where they land. An interpolation glued
+  onto a class or id name continues that name: `.c-@{n}` with `@n: 1` is the one class
+  `.c-1`, as the parser keeps `.a.c-@{n}`'s `.c-@{n}` one token.
+  KNOWN GAPS: a resolved interpolation is one token, so a simple the parser folded into
+  the interpolation is not a part of its own — `.c-@{n}.k` and `@{n}.k` at the head of a
+  rule's selector resolve to the one token `.c-1.k` (mid-compound `.a.c-@{n}.k` keeps
+  `.k` apart), and `.x:extend(.c-1 all)` misses it where lessc 4.9.1 matches. An
+  `:extend` attached to an interpolated selector (`.@{v}:extend(.b) {}`) does not parse.
+  (See §12 for the interpolated-attribute extend in `extend-selector`.)
 
 ## 11. Reference-mode (`@import (reference)`) visibility
 

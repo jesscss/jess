@@ -60,3 +60,30 @@ describe('extend from mixin-call and loop bodies', () => {
     expect(render(src)).toBe('.grid-column,\n.parent .col-x {\n  width: 1px;\n}\n');
   });
 });
+
+/*
+ * Ledger X7 (amended by the owner 2026-10-05): a rule with an interpolated selector is
+ * an extend target once resolved, at the root and in mixin and loop bodies alike, part
+ * by part like any other rule (lessc 4.9.1 behaves the same). An interpolation glued
+ * onto a class name continues that name (`.c-@{n}` is the one class `.c-1`).
+ */
+describe('interpolated rules are extend targets once resolved', () => {
+  it('at the root, the glued name included', () => {
+    expect(render('@n: 1; .c-@{n} { a: 1; } .x:extend(.c-1) {}')).toBe('.c-1,\n.x {\n  a: 1;\n}\n');
+    expect(render('@n: 1; .k.c-@{n} { a: 1; } .x:extend(.c-1 all) {}')).toBe('.k:is(.c-1, .x) {\n  a: 1;\n}\n');
+  });
+
+  it('in a mixin body, part by part', () => {
+    expect(render('.m(@n) { .k.c-@{n} { a: 1; } } .m(1); .x:extend(.c-1 all) {}'))
+      .toBe('.k:is(.c-1, .x) {\n  a: 1;\n}\n');
+    expect(render('.m(@n) { .w { .c-@{n} { a: 1; } } } .m(1); .x:extend(.c-1 all) {}'))
+      .toBe('.w :is(.c-1, .x) {\n  a: 1;\n}\n');
+    expect(render('@v: foo; .m() { .@{v} { a: 1; } } .m(); .x:extend(.foo) {}'))
+      .toBe('.foo,\n.x {\n  a: 1;\n}\n');
+  });
+
+  it('in a loop body, per iteration', () => {
+    expect(render('each(range(2), { .k.c-@{value} { a: @value; } }); .x:extend(.c-2 all) {}'))
+      .toBe('.k.c-1 {\n  a: 1;\n}\n.k:is(.c-2, .x) {\n  a: 2;\n}\n');
+  });
+});

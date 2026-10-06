@@ -55,14 +55,20 @@ import {
   complexHasInterp,
   complexHasAmpersand,
   pseudoCanonical,
+  pseudoHasAmpersand,
   pseudoHasInterp,
   pseudoJoin,
+  relativeSelector,
   selectorBranchCanonical,
   selectorBranchHasAmpersand,
   selectorBranchHasInterp,
+  selectorBranchOf,
   selectorTermCanonical,
   selectorTermHasInterp,
+  selectorTermOf,
+  selist,
   simpleSelector,
+  simpleTokenHasInterp,
   branchTextIsPlaceholder
 } from './nodes.js';
 import type {
@@ -8941,6 +8947,10 @@ interface DynamicExtendState {
   pathKinds: number[];
   pathMemo: Array<Level[] | undefined>;
 
+  /** The walk's one resolution of an open rule's interpolated selector, when it has one
+   * ({@link resolvedSelectorList}); its selector IR is built from it. */
+  pathSelectors: Array<SelectorList | undefined>;
+
   /** Selector IR built once per canonical node, however often the walk places it: a
    * rule's own level, and an `:extend()`'s target branches. */
   ownLevels: Map<Ruleset, Level>;
@@ -10945,10 +10955,11 @@ function resolveCompoundInterpInPlace(comp: CompoundSelector, frame: Frame | nul
    * state that is neither the authored selector nor the resolved one, and the
    * caller's recovery path would then serialize that corruption.
    */
-  const resolved: Array<{ index: number; text: string }> = [];
+  const texts: Array<string | undefined> = [];
   const pseudos: PseudoSelector[] = [];
   for (let i = 0; i < comp.value.length; i++) {
     const sim = comp.value[i]!;
+    texts.push(undefined);
     if (sim.type === 'PseudoSelector' && sim.args !== null) {
       if (pseudoHasInterp(sim)) {
         probePseudoInterp(sim, frame, e);
@@ -10957,17 +10968,127 @@ function resolveCompoundInterpInPlace(comp: CompoundSelector, frame: Frame | nul
       continue;
     }
     if (sim.interp !== null) {
-      resolved.push({ index: i, text: resolveSimpleTextSync(sim, frame, e) });
+      texts[i] = resolveSimpleTextSync(sim, frame, e);
     }
   }
-  for (const { index, text } of resolved) {
-    comp.value[index] = simpleSelector(text);
+  const tokens = resolvedCompoundTokens(comp.value, texts);
+  comp.value.length = 0;
+  for (const token of tokens) {
+    comp.value.push(token);
   }
   for (const p of pseudos) {
     resolvePseudoInterpInPlace(p, frame, e);
   }
   comp._hasInterp = false;
   comp._canon = undefined;
+}
+
+/**
+ * The tokens of a compound once its interpolated simples resolved to `texts` (undefined
+ * for a token that is not one). Less interpolation is textual: an interpolation glued
+ * straight onto a class or id name (`.c-@{n}`) continues that name, as the parser keeps
+ * `.c-@{n}` one token everywhere but at the head of a statement-position compound
+ * (`.a.c-@{n}`), so the resolved text joins the name (`.c-1`) instead of standing as a
+ * token of its own (`1`), which no extend target could name. Emitted bytes are the same.
+ */
+function resolvedCompoundTokens(value: readonly SimpleToken[], texts: ReadonlyArray<string | undefined>): SimpleToken[] {
+  const out: SimpleToken[] = [];
+  for (let i = 0; i < value.length; i++) {
+    const text = texts[i];
+    if (text === undefined) {
+      out.push(value[i]!);
+      continue;
+    }
+    const parts = value[i]!.interp?.parts;
+    const prev = out[out.length - 1];
+    if (prev !== undefined && prev.type === 'SimpleSelector' && prev.interp === null && prev.text !== null
+      && (prev.text.charCodeAt(0) === 0x2E /* . */ || prev.text.charCodeAt(0) === 0x23 /* # */)
+      && parts !== undefined && parts.length > 0 && 'ref' in parts[0]!) {
+      out[out.length - 1] = simpleSelector(prev.text + text);
+    } else {
+      out.push(simpleSelector(text));
+    }
+  }
+  return out;
+}
+
+/**
+ * [extend/dynamic] `list` with every interpolated token resolved in `frame`: the ONE
+ * resolution the walk makes of a rule's selector while extend recording is armed. The
+ * writer composes the header from it and the recorder reads it as the rule's selector
+ * structure, so an interpolated rule a mixin call, loop or import places is an extend
+ * target part by part (ledger X7 as amended 2026-10-05) and nothing is resolved twice
+ * (ledger X12). A resolved token is plain text, a glued name merged into the name it
+ * continues ({@link resolvedCompoundTokens}). Null when the copy would not compose the
+ * bytes the authored list does: a lone `@{name}` branch, which may expand to a captured
+ * selector list, or a resolved `&` the template did not write (the authored list keeps
+ * it literal text; the copy would compose it).
+ */
+function resolvedSelectorList(list: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<SelectorList | null> {
+  const branches: Array<MaybePromise<SelectorBranch | null>> = [];
+  for (const c of list.selectors) {
+    branches.push(selectorBranchHasInterp(c) ? resolvedSelectorBranch(c, frame, e) : c);
+  }
+  return combineAll(branches, (values) => {
+    const out: SelectorBranch[] = [];
+    for (const value of values) {
+      if (value === null) {
+        return null;
+      }
+      out.push(value);
+    }
+    return selist(...out);
+  });
+}
+
+function resolvedSelectorBranch(c: SelectorBranch, frame: Frame | null, e: EvalCtx): MaybePromise<SelectorBranch | null> {
+  const terms = selectorBranchTerms(c);
+  const combinators = selectorBranchCombinators(c);
+  if (c.type !== 'RelativeSelector' && terms.length === 1) {
+    const tokens = termTokens(terms[0]!);
+    const parts = tokens.length === 1 ? tokens[0]!.interp?.parts : undefined;
+    if (parts?.length === 1 && 'ref' in parts[0]!) {
+      return null;
+    }
+  }
+  return combineAll(terms.map(term => resolvedSelectorTerm(term, frame, e)), (resolved) => {
+    const segments: Array<{ combinator?: Combinator; term: SelectorTerm }> = [];
+    for (let i = 0; i < resolved.length; i++) {
+      const term = resolved[i];
+      if (term === null || term === undefined) {
+        return null;
+      }
+      segments.push(i === 0 ? { term } : { combinator: combinators[c.type === 'RelativeSelector' ? i : i - 1]!, term });
+    }
+    const [head, ...tail] = segments;
+    return c.type === 'RelativeSelector'
+      ? relativeSelector(combinators[0]!, [head!, ...tail])
+      : selectorBranchOf([head!, ...tail]);
+  });
+}
+
+function resolvedSelectorTerm(term: SelectorTerm, frame: Frame | null, e: EvalCtx): MaybePromise<SelectorTerm | null> {
+  if (!selectorTermHasInterp(term)) {
+    return term;
+  }
+  const tokens = termTokens(term);
+  const texts: Array<MaybePromise<string | undefined>> = [];
+  for (const sim of tokens) {
+    texts.push(simpleTokenHasInterp(sim) ? resolveSimpleText(sim, frame, e) : undefined);
+  }
+  return combineAll(texts, (resolved) => {
+    for (let i = 0; i < tokens.length; i++) {
+      const text = resolved[i];
+      const sim = tokens[i]!;
+      if (text !== undefined && text.includes('&') && !(sim.type === 'PseudoSelector'
+        ? pseudoHasAmpersand(sim)
+        : sim.interp?.parts.some(part => 'lit' in part && part.lit.includes('&')) === true)) {
+        return null;
+      }
+    }
+    const out = resolvedCompoundTokens(tokens, resolved);
+    return selectorTermOf([out[0]!, ...out.slice(1)]);
+  });
 }
 
 /**
@@ -11021,7 +11142,9 @@ function resolvePseudoInterpInPlace(p: PseudoSelector, frame: Frame | null, e: E
 function resolveSelectorTermInterpInPlace(term: SelectorTerm, frame: Frame | null, e: EvalCtx): SelectorTerm {
   if (term.type === 'CompoundSelector') {
     resolveCompoundInterpInPlace(term, frame, e);
-    return term;
+
+    /* A glued name merged into one token is no longer a compound. */
+    return term.value.length === 1 ? term.value[0]! : term;
   }
   if (term.type === 'PseudoSelector' && term.args !== null) {
     if (pseudoHasInterp(term)) {
@@ -11390,7 +11513,15 @@ function planImportedStaticExtend(
   placement: object | undefined
 ): void {
   for (const statement of statements) {
-    if (statement.type === 'Ruleset') {
+    if (statement.type === 'Ruleset' && statement.selector.selectors.some(selectorBranchHasInterp)) {
+      /*
+       * An interpolated selector resolves only in the frame the walk emits it in, so
+       * the rule and every rule nested in it are left to the walk recorder, which reads
+       * the walk's one resolution of it (ledger X7 as amended 2026-10-05).
+       */
+      e.importedWalkPlacement = true;
+      collectBodyExtendAtoms([statement], overlay.dynamicTargetAtoms ??= new Set());
+    } else if (statement.type === 'Ruleset') {
       const own = levelFromSelectorList(statement.selector);
       const rulePath = [...path, own];
       const subject: PlanSubject = {
@@ -12168,10 +12299,12 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
 
     /*
      * [extend/selector-interp] Resolve interpolated selectors to static text BEFORE the
-     * extend planner reads their IR — only when the document has a STATIC `:extend()`
-     * (the pre-walk planner's surface), exactly as `documentHasExtend` gated before.
+     * extend planner reads their IR — whenever the import graph has an `:extend()`, so
+     * an extend a mixin, loop or imported sheet holds meets a root `.@{v}` rule as
+     * well (ledger X7 as amended).
      */
-    if (extendClass.static) {
+    if (extendClass.static || extendClass.dynamic || planned.overlay.instructions.length > 0
+      || (planned.imports?.dynamicTargetAtoms?.size ?? 0) > 0) {
       resolveSelectorInterpForExtend(plannedRoot.rules, rootFrame, e);
     }
     e.extends = computeExtends(plannedRoot, planned.overlay, e.collapseMode !== 'compact'); // [extend] null when no `:extend()` anywhere
@@ -12207,6 +12340,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
         pathHeaders: [],
         pathKinds: [],
         pathMemo: [],
+        pathSelectors: [],
         ownLevels: new Map(),
         targetBranches: new Map(),
         revealRules: reveal?.rules ?? null,
@@ -12964,11 +13098,10 @@ const EMPTY_SCOPE: number[] = [];
  * exact, and for a simple-class rule (`.col-1`) it is token-identical to the
  * AST-derived IR. A compound or complex header is held as one opaque compound: it
  * serializes and folds correctly, but a compound target cannot match one of its parts.
- * ponytail: used only where the selector IR is not known — an interpolated selector
- * (its resolved tokens live only in the composed text) or a header composed against
- * a placement the recorder never opened. Upgrade path: keep the resolved
- * interpolation tokens from the walk's composition if a compound target ever has to
- * meet such a rule.
+ * ponytail: used only where the selector IR is not known — a header composed against
+ * a placement the recorder never opened, or an interpolated selector the walk could
+ * not resolve as structure ({@link resolvedSelectorList}: a lone `@{name}` that may be
+ * a captured list, a resolved `&`, an interpolated ruleset-mixin placement).
  */
 function opaqueLevel(header: readonly string[]): Level {
   return header.map(text => descendantBranch([textSimple(text)]));
@@ -12985,8 +13118,9 @@ const PATH_ROOT_GUARD = 4; // a root `&` guard block: its own selector alone; it
  * [extend/dynamic] Open `rule` on the recorder's path, written with `header`: the
  * flat writer's composed header, or the nested writer's own-local one (`local`).
  * `rooted` — written at a root context; `opaque` — composed against a placement the
- * recorder cannot see (a nested ruleset-mixin placement). Returns the open-rule depth
- * to restore.
+ * recorder cannot see (a nested ruleset-mixin placement); `resolved` — the walk's one
+ * resolution of an interpolated selector ({@link resolvedSelectorList}), read in place
+ * of the rule's own. Returns the open-rule depth to restore.
  */
 function openDynamicPath(
   dyn: DynamicExtendState,
@@ -12994,7 +13128,8 @@ function openDynamicPath(
   rooted: boolean,
   header: string[],
   local: boolean,
-  opaque = false
+  opaque = false,
+  resolved: SelectorList | undefined = undefined
 ): number {
   const depth = dyn.pathRules.length;
 
@@ -13010,13 +13145,14 @@ function openDynamicPath(
     kind = PATH_ROOT_GUARD;
   } else if (opaque || (!rooted && depth === 0)) {
     kind = PATH_OPAQUE;
-  } else if (rule.selector.selectors.some(selectorBranchHasInterp)) {
+  } else if (resolved === undefined && rule.selector.selectors.some(selectorBranchHasInterp)) {
     kind = local && !rooted ? PATH_OPAQUE_NESTED : PATH_OPAQUE;
   }
   dyn.pathRules.push(rule);
   dyn.pathHeaders.push(header);
   dyn.pathKinds.push(kind);
   dyn.pathMemo.push(undefined);
+  dyn.pathSelectors.push(resolved);
   return depth;
 }
 
@@ -13030,9 +13166,10 @@ function dynamicPathAt(dyn: DynamicExtendState, index: number): Level[] {
   let path = dyn.pathMemo[index];
   if (path === undefined) {
     const kind = dyn.pathKinds[index]!;
+    const resolved = dyn.pathSelectors[index];
     const own = kind === PATH_OPAQUE || kind === PATH_OPAQUE_NESTED
       ? opaqueLevel(dyn.pathHeaders[index]!)
-      : ownLevelOf(dyn, dyn.pathRules[index]!);
+      : resolved !== undefined ? levelFromSelectorList(resolved) : ownLevelOf(dyn, dyn.pathRules[index]!);
     path = kind === PATH_ROOT || kind === PATH_ROOT_GUARD || kind === PATH_OPAQUE ? [own] : [...dynamicPathAt(dyn, index - 1), own];
     dyn.pathMemo[index] = path;
   }
@@ -13051,7 +13188,8 @@ function recordOpenRule(dyn: DynamicExtendState, rule: Ruleset, frame: Frame, e:
   const kind = dyn.pathKinds[open]!;
   recordDynamicExtendFacts(
     dyn, rule, innermostExtendPlacement(frame, e), e.referenceImportDepth > 0,
-    dynamicPathAt(dyn, open), kind === PATH_ROOT || kind === PATH_ROOT_GUARD || kind === PATH_NESTED, target
+    dynamicPathAt(dyn, open), kind === PATH_ROOT || kind === PATH_ROOT_GUARD || kind === PATH_NESTED, target,
+    dyn.pathSelectors[open]
   );
 }
 
@@ -13084,6 +13222,7 @@ function withDynamicPlacement<T>(
     dyn.pathHeaders.length = depth;
     dyn.pathKinds.length = depth;
     dyn.pathMemo.length = depth;
+    dyn.pathSelectors.length = depth;
   });
 }
 
@@ -13188,7 +13327,8 @@ function recordDynamicExtendFacts(
   hidden: boolean,
   path: Level[],
   structured: boolean,
-  target: boolean
+  target: boolean,
+  resolved: SelectorList | undefined
 ): void {
   const scope = dyn.scope;
   const boundary = dyn.boundary;
@@ -13208,9 +13348,13 @@ function recordDynamicExtendFacts(
   }
   if (rule.extendInstructions) {
     for (const inst of rule.extendInstructions) {
-      /* An inline extend binds to its own branch, as `collectPlan` reads it. */
+      /*
+       * An inline extend binds to its own branch, as `collectPlan` reads it: in the
+       * walk's resolution of the rule's selector when there is one.
+       */
+      const at = inst.subject && resolved !== undefined ? rule.selector.selectors.indexOf(inst.subject.selectors[0]!) : -1;
       const extenderPath = inst.subject && structured
-        ? [...path.slice(0, -1), levelFromSelectorList(inst.subject)]
+        ? [...path.slice(0, -1), at >= 0 ? [branchFromSelector(resolved!.selectors[at]!)] : levelFromSelectorList(inst.subject)]
         : path;
       let targets = dyn.targetBranches.get(inst);
       if (targets === undefined) {
@@ -13529,18 +13673,32 @@ function expandRule(
             nestedHoist
           )));
     }
-    const rawComposed =
-      parent === null ? rootStrings(rule.selector, frame, e) : compose(parent, rule.selector, frame, e);
-    return mapMaybe(rawComposed, rawComposed =>
-      flattenResolved(rule, parent, ancestor, frame, e, imp, rawComposed, expandBubbledSelectorList));
+
+    /*
+     * [extend/dynamic] With recording armed, an interpolated selector is resolved once,
+     * structurally, and both the header and the recorder read that one resolution.
+     */
+    const resolved = e.dynamicExtend !== null && rule.selector.selectors.some(selectorBranchHasInterp)
+      ? resolvedSelectorList(rule.selector, frame, e)
+      : null;
+    return mapMaybe(resolved, (resolved) => {
+      const selector = resolved ?? rule.selector;
+      const rawComposed =
+        parent === null ? rootStrings(selector, frame, e) : compose(parent, selector, frame, e);
+      return mapMaybe(rawComposed, rawComposed =>
+        flattenResolved(rule, selector, resolved !== null, parent, ancestor, frame, e, imp, rawComposed, expandBubbledSelectorList));
+    });
   });
 }
 
 /** Continue a flatten after its selector interpolation has resolved. Keeping this
  * separate preserves the static selector fast path: `mapMaybe` invokes it inline
- * when the selector has no async slot. */
+ * when the selector has no async slot. `selector` is the rule's selector, or its
+ * one resolution when extend recording is armed (`resolved`). */
 function flattenResolved(
   rule: Ruleset,
+  selector: SelectorList,
+  resolved: boolean,
   parent: string[] | null,
   ancestor: string | null,
   frame: Frame,
@@ -13582,8 +13740,8 @@ function flattenResolved(
       childComposed = kept.length > 0 ? kept : null;
     }
     childAncestor = childComposed === null ? '' : wrapIsList(childComposed);
-  } else if (selectorListHasAmpersand(rule.selector)) {
-    headerComposed = parent.length < 2 ? rawComposed : composeHeader(parent, rule.selector, frame, e);
+  } else if (selectorListHasAmpersand(selector)) {
+    headerComposed = parent.length < 2 ? rawComposed : composeHeader(parent, selector, frame, e);
 
     /*
      * `headerComposed` can be pending only for an interpolated selector. The
@@ -13594,7 +13752,7 @@ function flattenResolved(
     headerComposed = rawComposed;
     childAncestor = wrapIsList(rawComposed);
   } else {
-    headerComposed = opaqueJoin(ancestor ?? wrapIsList(parent), rule.selector, frame, e);
+    headerComposed = opaqueJoin(ancestor ?? wrapIsList(parent), selector, frame, e);
 
     /* The header itself, once resolved, as ONE unit: every branch of it is an
      * ancestor of the children (`.a { .b, .c { e {} } }` → `:is(.a .b, .a .c) e`). */
@@ -13612,7 +13770,7 @@ function flattenResolved(
     /* [extend/dynamic] The rule is open on the recorder's path while its body emits. */
     return withDynamicPlacement(
       dyn,
-      openDynamicPath(dyn, rule, parent === null, headerComposed, false),
+      openDynamicPath(dyn, rule, parent === null, headerComposed, false, false, resolved ? selector : undefined),
       dyn.scope,
       dyn.boundary,
       () => flattenWithHeader(
@@ -21273,20 +21431,35 @@ function writeNestedRule(
    * selector built from an async function). Nested output is the v5 DEFAULT, so
    * this path carries the plugin corpus and cannot be a synchronous island.
    */
-  const ownMaybe = plan
-    ? plan.header
-    : placement === null
-      ? source === null
+  /*
+   * [extend/dynamic] With recording armed, an interpolated selector is resolved once,
+   * structurally ({@link resolvedSelectorList}), for the header, the children's source
+   * and the recorder alike.
+   */
+  let resolved: SelectorList | null = null;
+  const ownMaybe = mapMaybe(
+    plan === undefined && placement === null && e.dynamicExtend !== null && rule.selector.selectors.some(selectorBranchHasInterp)
+      ? resolvedSelectorList(rule.selector, frame, e)
+      : null,
+    (copy) => {
+      resolved = copy;
+      const selector = copy ?? rule.selector;
+      return plan
+        ? plan.header
+        : placement === null
+          ? source === null
 
-        /*
-         * [nesting] ROOT context (no enclosing selector, incl. a bubbled at-rule
-         * body top): a parentless `&` followed by other content drops to that
-         * content; a LONE `&` is preserved (`rootStringsNested`). A real parent
-         * keeps `&` verbatim (`ownStrings`).
-         */
-        ? rootStringsNested(rule.selector, frame, e)
-        : ownStrings(rule.selector, frame, e)
-      : compose(nestedSourceStrings(placement.source, e), rule.selector, placement.callFrame, e);
+            /*
+             * [nesting] ROOT context (no enclosing selector, incl. a bubbled at-rule
+             * body top): a parentless `&` followed by other content drops to that
+             * content; a LONE `&` is preserved (`rootStringsNested`). A real parent
+             * keeps `&` verbatim (`ownStrings`).
+             */
+            ? rootStringsNested(selector, frame, e)
+            : ownStrings(selector, frame, e)
+          : compose(nestedSourceStrings(placement.source, e), rule.selector, placement.callFrame, e);
+    }
+  );
   return mapMaybe(ownMaybe, (ownAll) => {
     /*
      * [placeholder] Nested output is the v5 DEFAULT and never reaches
@@ -21309,7 +21482,7 @@ function writeNestedRule(
      * the flat writer. No evaluation is re-driven (ledger X12).
      */
     const dyn = e.dynamicExtend;
-    const depth = dyn === null ? -1 : openDynamicPath(dyn, rule, source === null, own, true, placement !== null);
+    const depth = dyn === null ? -1 : openDynamicPath(dyn, rule, source === null, own, true, placement !== null, resolved ?? undefined);
     const recorded = dyn !== null && (!dyn.staticRules.has(rule) || reachedViaMixinSplice(frame));
 
     /*
@@ -21357,7 +21530,7 @@ function writeNestedRule(
     }
     const afterHeader = e.chunks.length;
     const childFrame = activateRuleFrame(rule, frame, e);
-    const childSource: NestedHeaderSource = { parent: source, selector: rule.selector, frame };
+    const childSource: NestedHeaderSource = { parent: source, selector: resolved ?? rule.selector, frame };
 
     /*
      * [extend] children that flatten (extend crossed the `&`) bubble out to this

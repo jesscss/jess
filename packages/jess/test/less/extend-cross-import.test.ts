@@ -107,6 +107,16 @@ describe('extend across @import', () => {
       expect(await renderFile('multiple-main.less')).toBe(`${smX}\n${smX}`);
     });
 
+    // Ledger X7 (amended by the owner 2026-10-05): an interpolated rule is a target once resolved.
+    it('interpolated rules of an imported sheet', async () => {
+      expect(await renderFile('interp-main.less')).toBe(
+        ['.foo,', '.x {', '  a: 1;', '}', '.k:is(.c-foo, .y) {', '  b: 2;', '}'].join('\n')
+      );
+      expect(await renderFile('interp-main.less', false)).toBe(
+        ['.foo,', '.x {', '  a: 1;', '}', '.k:is(.c-foo, .y) {', '  b: 2;', '}'].join('\n')
+      );
+    });
+
     it('nested import chain', async () => {
       expect(await renderFile('chain-main.less')).toBe(smX);
     });
