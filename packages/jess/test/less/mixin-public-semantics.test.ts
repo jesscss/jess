@@ -83,6 +83,56 @@ describe('Less mixin semantic contracts through the public AST route', () => {
   });
 
   /*
+   * A `(` in a guard is read once, as a group; what follows its `)` decides
+   * whether it was a grouped guard or a math group in an operand. As a math
+   * group its slash divides, exactly as `(4 / 2)` does in a value.
+   */
+  it('reads a parenthesized math group as a guard operand', async () => {
+    await expect(parseAndRender(`
+      @a: 5;
+      @b: 6;
+      .m() when ((1 + 1) = 2) { a: 1 }
+      .m() when ((@a + @b) > 10) { b: 2 }
+      .m() when ((@a + @b) > 20) { c: 3 }
+      .m() when ((1 + 1) * 2 = 4) and (true) { d: 4 }
+      .m() when (((1 + 1)) = 2) { e: 5 }
+      .m() when ((4 / 2) = 2) { f: 6 }
+      .m() when not ((1 + 1) = 3) { g: 7 }
+      .m() when (2 = (1 + 1)) { h: 8 }
+      .x { .m(); }
+    `)).resolves.toBe('.x {\n  a: 1;\n  b: 2;\n  d: 4;\n  e: 5;\n  f: 6;\n  g: 7;\n  h: 8;\n}\n');
+  });
+
+  it('reads a parenthesized math group as an if() condition operand, in value and statement position', async () => {
+    await expect(parseAndRender(`
+      .x {
+        a: if(((1 + 1) = 2), y, n);
+        b: if((2 = (1 + 1)), y, n);
+        c: if(((1 + 1) * 2 = 4), y, n);
+        d: if(not ((1 + 1) = 3), y, n);
+        if((1 = 1), { e: y; });
+        if(((1 + 1) > 3), { f: y; }, { f: n; });
+      }
+    `)).resolves.toBe('.x {\n  a: y;\n  b: y;\n  c: y;\n  d: y;\n  e: y;\n  f: n;\n}\n');
+  });
+
+  /*
+   * A group holding a condition is that condition's truth as an operand, in a
+   * guard as in an `if()` (ledger P42: the parser keeps the shape, which was a
+   * located-nowhere parse error). What the operand then does is evaluation's
+   * call: compared, it compares; in math it is not a number, so the run is not
+   * `true` and the condition does not hold.
+   */
+  it('reads a condition group as an operand alike in a guard and in if()', async () => {
+    await expect(parseAndRender(`
+      .m() when ((1 = 1) = true) { a: 1 }
+      .m() when ((1 = 2) = true) { b: 2 }
+      .m() when ((1 = 1) + 1) { c: 3 }
+      .x { .m(); d: if(((1 = 1) = true), y, n); e: if(((1 = 1) + 1), y, n); }
+    `)).resolves.toBe('.x {\n  a: 1;\n  d: y;\n  e: n;\n}\n');
+  });
+
+  /*
    * jess#356: a body-form `&:extend()` written directly in a mixin definition
    * extends the rule the mixin is called into, in the default nested output as
    * in collapsed output. It is not parsed yet: the mixin body has no extend

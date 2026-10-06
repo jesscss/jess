@@ -60,7 +60,13 @@ import {
   isKeyword,
   isNodeType,
   isSelectorBranch,
+  anPlusBFrom,
+  directionKeyword,
+  isAnPlusB,
+  isNthArgument,
   isSelectorList,
+  languageRangeList,
+  nthArgument,
   isSimpleToken,
   isValue,
   isValueSlotValue,
@@ -70,7 +76,6 @@ import {
   unknownAtRuleBlock,
   optionalValue,
   parenGroupBlock,
-  pseudoSelector,
   quoted,
   relativeSelector,
   rule,
@@ -86,7 +91,7 @@ import {
   spaceRun,
   sourceText,
   spaced,
-  STRUCTURED_PSEUDOS,
+  structuredPseudoFrom,
   stylesheet,
   tokenText,
   url,
@@ -204,9 +209,11 @@ type GrammarRuleName =
   | 'Keyword'
   | 'LayerBlock'
   | 'LayerStatement'
-  | 'LeadingDashOfTypePseudoArgument'
-  | 'LeadingDashPseudoArgument'
   | 'LeadingDashRawPseudoArgument'
+  | 'LangPseudoArgument'
+  | 'MediaGeneralValue'
+  | 'DirPseudoArgument'
+  | 'AnPlusB'
   | 'MarginAtRule'
   | 'NestedConditionalBlock'
   | 'NestedLayerBlock'
@@ -1082,33 +1089,15 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * A leading dash in a valid contiguous negative An+B argument must not be
-   * greedily consumed as a selector token. The zero-width close check makes
-   * this a complete argument recognition, so malformed `-n+` and generic raw
-   * `-` arguments still reach the existing raw branch. Parser trivia owns
-   * comments before `of`; semantic pseudo text keeps only `of <selector>`.
+   * `<an+b>` (css-syntax-3 §6.1) as its AST fact, the one slot every dialect's
+   * `:nth-*()` argument reads. The shared recognizer owns the whole shape, its
+   * sign included (`-n+3`), and the optional whitespace around the `+`/`-`
+   * (`2n + 1`), which is not part of the form (ledger F2).
    */
-  const LeadingDashPseudoArgument = node(
-    'LeadingDashPseudoArgument',
-    parser(
-      { trivia: whitespace },
-      sequence(
-        noTrivia(sequence(
-          literal('-'),
-          g.NthExpression
-        )),
-        optional(sequence(
-          g.NthOfKeyword,
-          g.SelectorList
-        )),
-        g.PseudoSelectorCloseAhead
-      )
-    ),
-    (children) => {
-      const nth = `-${tokenText(children[1])}`;
-      const selector = children.find(isSelectorList);
-      return selector === undefined ? nth : `${nth} of ${selectorArgumentText(selector)}`;
-    }
+  const AnPlusB = node(
+    'AnPlusB',
+    g.NthExpression,
+    children => anPlusBFrom(children[0])
   );
   const LeadingDashRawPseudoArgument = node(
     'LeadingDashRawPseudoArgument',
@@ -1116,7 +1105,7 @@ const cssFactory = (g: GrammarSelf) => {
     /*
      * Preserve only dash-led raw forms that cannot begin a contiguous An+B
      * attempt. A `-` followed by `n`/digits belongs to the complete typed arm
-     * above; if that arm cannot close, the public grammar rejects it rather
+     * below; if that arm cannot close, the public grammar rejects it rather
      * than accepting malformed An+B bytes as a generic pseudo argument.
      */
     choice(
@@ -1144,74 +1133,62 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * A non-dash-led An+B argument (`2n+1`, `n+3`, `n - 3`, `even`). Selectors-4
-   * defines the `<An+B>` microsyntax with OPTIONAL whitespace around the `+`/`-`
-   * sign — `2n + 1` and `n - 3` are as valid as `2n+1`
-   * (https://www.w3.org/TR/selectors-4/#anb-microsyntax; the equivalent grammar
-   * note is https://www.w3.org/TR/css-syntax-3/#the-anb-type). The shared `nth`
-   * recognition already spans that whitespace; recognize the complete typed form
-   * here so a bare-`n`-led argument (`n+3`) is not first claimed by the selector
-   * arm below as a lone type selector `n` and then left unable to close. This
-   * mirrors the negative `LeadingDashPseudoArgument` arm for the positive
-   * and unsigned cases; the trailing `(?=\))` keeps malformed forms (`2n +`,
+   * An An+B argument (`2n+1`, `-n+3`, `n - 3`, `even`), with the `of S` tail of
+   * the child-indexed pseudos. Selectors-4 defines the `<An+B>` microsyntax with
+   * OPTIONAL whitespace around the `+`/`-` sign — `2n + 1` and `n - 3` are as
+   * valid as `2n+1` (https://www.w3.org/TR/selectors-4/#anb-microsyntax; the
+   * equivalent grammar note is https://www.w3.org/TR/css-syntax-3/#the-anb-type).
+   * Recognize the complete typed form so a bare-`n`-led argument (`n+3`) is not
+   * first claimed by the selector arm below as a lone type selector `n` and then
+   * left unable to close; the trailing `(?=\))` keeps malformed forms (`2n +`,
    * `2n+1x`) on their existing rejecting path.
+   *
+   * The argument owns the padding inside the parens, comments included
+   * (`( 2n+1 /* c *\/ )`): a dialect whose selector whitespace is significant
+   * composes this rule and gets the same argument CSS reads. A sequence skips
+   * no trivia before its first term and gives back trivia before a zero-width
+   * last one, so both pads are spelled, as `CalcCall` spells its own.
    */
   const TypedNthPseudoArgument = node(
     'TypedNthPseudoArgument',
-    parser(
-      { trivia: whitespace },
-      sequence(
-        g.NthExpression,
-        optional(sequence(
-          g.NthOfKeyword,
-          g.SelectorList
-        )),
-        g.PseudoSelectorCloseAhead
-      )
-    ),
-    (children) => {
-      const nth = tokenText(children[0]);
-      const selector = children.find(isSelectorList);
-      return selector === undefined ? nth : `${nth} of ${selectorArgumentText(selector)}`;
-    }
+    noTrivia(sequence(
+      optional(cssValueTrivia),
+      parser(
+        { trivia: whitespace },
+        sequence(
+          g.AnPlusB,
+          optional(sequence(
+            g.NthOfKeyword,
+            g.SelectorList
+          ))
+        )
+      ),
+      optional(cssValueTrivia),
+      g.PseudoSelectorCloseAhead
+    )),
+    children => nthArgument(children.find(isAnPlusB)!, children.find(isSelectorList) ?? null)
   );
 
   /*
-   * `:nth-of-type`/`:nth-last-of-type` accept only a BARE `<An+B>` — Selectors-4
-   * §6.6.2 does not define an `of S` tail for the type-index families. These arms
-   * mirror the child arms above but omit the optional `of <selector>` clause, so
-   * a `... of ...` argument no longer matches here and falls to the raw/reject
+   * `:nth-of-type`/`:nth-last-of-type` (and `:nth-col`/`:nth-last-col`) accept only a BARE `<An+B>` — Selectors-4
+   * §6.6.2 does not define an `of S` tail for the type-index families. This arm
+   * is the child arm above without the optional `of <selector>` clause, so a
+   * `... of ...` argument no longer matches here and falls to the raw/reject
    * path (the CSS-aligned owner decision, §7.1).
    */
-  const LeadingDashOfTypePseudoArgument = node(
-    'LeadingDashOfTypePseudoArgument',
-    parser(
-      { trivia: whitespace },
-      sequence(
-        noTrivia(sequence(
-          literal('-'),
-          g.NthExpression
-        )),
-        g.PseudoSelectorCloseAhead
-      )
-    ),
-    children => `-${tokenText(children[1])}`
-  );
   const TypedOfTypePseudoArgument = node(
     'TypedOfTypePseudoArgument',
-    parser(
-      { trivia: whitespace },
-      sequence(
-        g.NthExpression,
-        g.PseudoSelectorCloseAhead
-      )
-    ),
-    children => tokenText(children[0])
+    noTrivia(sequence(
+      optional(cssValueTrivia),
+      g.AnPlusB,
+      optional(cssValueTrivia),
+      g.PseudoSelectorCloseAhead
+    )),
+    children => nthArgument(children.find(isAnPlusB)!)
   );
   const PseudoArgument = node(
     'PseudoArgument',
     choice(
-      g.LeadingDashPseudoArgument,
       g.LeadingDashRawPseudoArgument,
       g.TypedNthPseudoArgument,
       parser(
@@ -1223,13 +1200,13 @@ const cssFactory = (g: GrammarSelf) => {
         g.pseudoArgumentContent
       )
     ),
-    children => selectorArgumentText(children[0])
+    children => isNthArgument(children[0]) ? children[0] : selectorArgumentText(children[0])
   );
 
   /*
    * The `:nth-of-type` family's argument: identical to `PseudoArgument`
-   * except the An+B arms are the bare (no-`of`) variants. The two bare An+B arms
-   * reject an `of` tail via their close-ahead, but the selector and raw fallbacks
+   * except the An+B arm is the bare (no-`of`) variant. The bare An+B arm
+   * rejects an `of` tail via its close-ahead, but the selector and raw fallbacks
    * would otherwise re-capture `<An+B> of …` as opaque text (the selector arm as a
    * compound selector, the raw arm as a scanned span). A negative lookahead for an
    * `<An+B>` immediately followed by `of` closes both leaks so the whole of-type
@@ -1240,7 +1217,6 @@ const cssFactory = (g: GrammarSelf) => {
   const OfTypePseudoArgument = node(
     'OfTypePseudoArgument',
     choice(
-      g.LeadingDashOfTypePseudoArgument,
       g.LeadingDashRawPseudoArgument,
       g.TypedOfTypePseudoArgument,
       sequence(
@@ -1263,7 +1239,54 @@ const cssFactory = (g: GrammarSelf) => {
         )
       )
     ),
-    children => selectorArgumentText(children[0])
+    children => isNthArgument(children[0]) ? children[0] : selectorArgumentText(children[0])
+  );
+
+  /*
+   * `:lang( <ident> | <string> # )` (Selectors-4 §7.2). The argument is
+   * structured, never kept as text: a comma `List` of language ranges, each a
+   * `Keyword` or the dialect's own `Quoted` (a string that interpolates leaves
+   * the argument a template). Any other argument shape fails the pseudo, as a
+   * malformed `An+B` does. The padding inside the parens is the argument's
+   * own, as `TypedNthPseudoArgument` spells it.
+   */
+  const LangPseudoArgument = node(
+    'LangPseudoArgument',
+    noTrivia(sequence(
+      optional(cssValueTrivia),
+      parser(
+        { trivia: whitespace },
+        oneOrMoreSep(
+          field(
+            'range',
+            choice(
+              token(genericIdentifier),
+              g.Quoted
+            )
+          ),
+          literal(',')
+        )
+      ),
+      optional(cssValueTrivia)
+    )),
+    (_children, fields) => languageRangeList(fields)
+  );
+
+  /*
+   * `:dir( <ident> )` (Selectors-4 §7.1): the direction as a `Keyword`, its
+   * padding the argument's own.
+   */
+  const DirPseudoArgument = node(
+    'DirPseudoArgument',
+    noTrivia(sequence(
+      optional(cssValueTrivia),
+      field(
+        'direction',
+        token(genericIdentifier)
+      ),
+      optional(cssValueTrivia)
+    )),
+    (_children, fields) => directionKeyword(fields)
   );
 
   /*
@@ -1307,9 +1330,11 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
-   * The selector-argument pseudos (`:is`/`:where`/`:not`/`:has`/`:matches`) take a
-   * selector-ONLY argument: a (relative) selector list with no general-any text
-   * fallback, so `:not(2n+1)` fails the selector and rejects the whole pseudo. The
+   * The selector-argument pseudos (`:is`/`:where`/`:not`/`:has`/`:matches`, and
+   * the shadow-tree `:host()`/`:host-context()`/`::slotted()`, whose argument is
+   * a compound selector) take a selector-ONLY argument: a (relative) selector
+   * list with no general-any text fallback, so `:not(2n+1)` fails the selector
+   * and rejects the whole pseudo. The
    * non-relative shape reduces byte-identically to `SelectorList` (both assemble
    * `selist(...selectorBranches(children))`); the retained `SelectorList` becomes
    * structured `PseudoSelector.args` in `PseudoSelector`, never joined at parse.
@@ -1351,7 +1376,7 @@ const cssFactory = (g: GrammarSelf) => {
           )
         ),
         cssCase(
-          ['nth-of-type(', 'nth-last-of-type('],
+          ['nth-of-type(', 'nth-last-of-type(', 'nth-col(', 'nth-last-col('],
           sequence(
             routed(),
             g.OfTypePseudoArgument,
@@ -1359,10 +1384,26 @@ const cssFactory = (g: GrammarSelf) => {
           )
         ),
         cssCase(
-          ['is(', 'where(', 'not(', 'has(', 'matches('],
+          ['is(', 'where(', 'not(', 'has(', 'matches(', 'host(', 'host-context(', 'slotted('],
           sequence(
             routed(),
             SelectorOnlyPseudoArgument,
+            literal(')')
+          )
+        ),
+        cssCase(
+          'lang(',
+          sequence(
+            routed(),
+            g.LangPseudoArgument,
+            literal(')')
+          )
+        ),
+        cssCase(
+          'dir(',
+          sequence(
+            routed(),
+            g.DirPseudoArgument,
             literal(')')
           )
         ),
@@ -1387,19 +1428,14 @@ const cssFactory = (g: GrammarSelf) => {
       }
 
       /*
-       * Parser = STRUCTURE + trivia only. A whitelisted selector-function pseudo
-       * keeps the parsed `args` (SelectorList) and does NOT join: core serialize
-       * owns the inline `:is(a, b)` rule (`pseudoCanonical`). The opaque/nth/raw
-       * path still collapses to SimpleSelector text via `selectorArgumentText`.
+       * Parser = STRUCTURE + trivia only. A selector-function pseudo keeps its
+       * parsed `args`, an `:nth-*()` its `An+B` (and `of S` list), a `:lang()` /
+       * `:dir()` its ranges / direction, and none of them is joined: core
+       * serialize owns their spelling (`pseudoCanonical`). Only an opaque or
+       * malformed argument collapses to SimpleSelector text.
        */
       const arg = children[2];
-      if (isSelectorList(arg) && STRUCTURED_PSEUDOS.has(pseudoName.toLowerCase())) {
-        return pseudoSelector(
-          head,
-          arg
-        );
-      }
-      return simpleSelector(`${head}(${selectorArgumentText(arg)})`);
+      return structuredPseudoFrom(head, pseudoName, arg) ?? simpleSelector(`${head}(${selectorArgumentText(arg)})`);
     }
   );
 
@@ -3273,17 +3309,19 @@ const cssFactory = (g: GrammarSelf) => {
   /*
    * The component values of a `<general-enclosed>` or an if-test's contents
    * after its query part: comma-separated value runs, and the tokens a value
-   * run cannot start with (`/`, `!`, `;`, a `{}` block), each read once.
+   * run cannot start with (`,`, `/`, `!`, `;`, a `{}` block), each read once.
    */
-  const generalValue = choice(
+  const generalPunctuation = choice(
     literal(','),
-    g.ValueSequence,
     literal('/'),
     literal('!'),
     literal(';'),
     g.CurlyValue
   );
-  const generalRest = many(generalValue);
+  const generalRest = many(choice(
+    g.ValueSequence,
+    generalPunctuation
+  ));
 
   /*
    * The component values after a value-first bound: comma-separated value runs.
@@ -3592,6 +3630,19 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * A media group's `<general-enclosed>` component values: the general rest,
+   * with its value runs read through `MediaGeneralValue`. In css that slot is
+   * the value run every general rest reads; it is named so a superset whose
+   * prelude is an identifier position — `.jess`, where a prelude takes `${…}`
+   * only (ledger P13/P16) — reads it with its own header terms instead of its
+   * value reader.
+   */
+  const mediaGeneralRest = many(choice(
+    g.MediaGeneralValue,
+    generalPunctuation
+  ));
+
+  /*
    * A media query's `<media-in-parens>` (media-queries-4 §3): `( <media-condition> )`
    * or a `<media-feature>`. It opens its `(` once and decides on the next
    * token: an inner `(` starts a `MediaCondition`, anything else is a media
@@ -3618,7 +3669,7 @@ const cssFactory = (g: GrammarSelf) => {
         g.MediaCondition,
         g.MediaFeatureContents
       )),
-      generalRest,
+      mediaGeneralRest,
       literal(')')
     ),
     (children, _fields, span, _rawChildren, _triviaLog, state) => queryFeatureBlock(children, span, state)
@@ -4923,11 +4974,12 @@ const cssFactory = (g: GrammarSelf) => {
     PseudoSelector,
     PseudoArgument,
     OfTypePseudoArgument,
-    LeadingDashPseudoArgument,
+    AnPlusB,
     TypedNthPseudoArgument,
-    LeadingDashOfTypePseudoArgument,
     TypedOfTypePseudoArgument,
     LeadingDashRawPseudoArgument,
+    LangPseudoArgument,
+    DirPseudoArgument,
     NestingSelector,
     Property,
     CustomProperty,
@@ -5011,6 +5063,7 @@ const cssFactory = (g: GrammarSelf) => {
     MediaInParens,
     MediaCondition,
     MediaFeatureContents,
+    MediaGeneralValue: g.ValueSequence,
     queryUrlBound,
     queryMathBound,
     queryVarBound,

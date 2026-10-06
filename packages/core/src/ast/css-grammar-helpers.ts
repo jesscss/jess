@@ -18,6 +18,7 @@
  * the CSS base inherits them through the base rather than redeclaring them.
  */
 import {
+  anPlusB,
   any,
   branch,
   block,
@@ -28,6 +29,7 @@ import {
   interpolatedSimpleSelector,
   list,
   operation,
+  pseudoSelector,
   selectorBranchCanonical,
   simpleSelector,
   spaced,
@@ -37,6 +39,7 @@ import {
 import { generalEnclosedSourceOf, valueLayoutOf, withGeneralEnclosedSource, withGeneralEnclosedTemplate, withValueLayout } from './provenance.js';
 import { isForBinding, isToken, semanticGapText } from './grammar-helpers.js';
 import type {
+  AnPlusB,
   AnonymousMixin,
   CompoundSelector,
   Block,
@@ -562,11 +565,120 @@ export function isSimpleToken(value: unknown): value is SimpleToken {
 
 /*
  * Selector-function pseudos whose argument is retained as a structured
- * `SelectorList` (P0). Gated on the pseudo NAME (lowercased, colon-stripped),
- * never on colon count — `::slotted()` takes selector args but is absent here,
- * so it stays opaque text. `crossable` (a narrower set) is decided in core.
+ * `SelectorList` (P0): the logical combinations and the shadow-tree
+ * `:host()` / `:host-context()` / `::slotted()`. Gated on the pseudo NAME
+ * (lowercased, colon-stripped), never on colon count. `crossable` (a narrower
+ * set) is decided in core, so the shadow-tree pseudos stay sealed to extend.
  */
-export const STRUCTURED_PSEUDOS = new Set(['is', 'where', 'not', 'has', 'matches']);
+export const STRUCTURED_PSEUDOS = new Set(['is', 'where', 'not', 'has', 'matches', 'host', 'host-context', 'slotted']);
+
+/**
+ * A reduced `:nth-*()` argument: its `An+B` and, on the child-indexed pseudos,
+ * the `of S` selector list (Selectors-4 §6.6.2).
+ */
+export interface NthArgument {
+  readonly nth: AnPlusB;
+  readonly of: SelectorList | null;
+}
+
+/** An `:nth-*()` argument from its `An+B` and its `of S` list. */
+export function nthArgument(nth: AnPlusB, of: SelectorList | null = null): NthArgument {
+  return { nth, of };
+}
+
+/** The `<an+b>` fact a grammar recognized (css-syntax-3 §6.1). */
+export function anPlusBFrom(child: unknown): AnPlusB {
+  return anPlusB(tokenText(child));
+}
+
+export function isAnPlusB(value: unknown): value is AnPlusB {
+  return isNodeType(
+    value,
+    'AnPlusB'
+  );
+}
+
+export function isNthArgument(value: unknown): value is NthArgument {
+  return typeof value === 'object' && value !== null && 'nth' in value && 'of' in value;
+}
+
+/**
+ * The structured pseudo a functional pseudo's reduced argument makes, or
+ * `null` when the argument has no structure of its own (an opaque or
+ * malformed one, which the caller keeps as text): an `:nth-*()` `An+B`, a
+ * `:lang()` range list, a `:dir()` direction, or a selector-function pseudo's
+ * selector list. A `:lang()` range that interpolates leaves the argument a
+ * template, so the pseudo is an interpolated selector like any other whose
+ * bytes do not exist until evaluation.
+ */
+export function structuredPseudoFrom(head: string, name: string, arg: unknown): SimpleToken | null {
+  if (isNthArgument(arg)) {
+    return pseudoSelector(head, arg.of, null, null, arg.nth);
+  }
+  if (isList(arg) || isKeyword(arg)) {
+    return pseudoSelector(head, null, null, null, arg);
+  }
+  if (isInterpolation(arg)) {
+    return interpolatedSimpleSelector(interpolationFromTemplateChildren([{ value: `${head}(` }, arg, { value: ')' }], 'CSS'));
+  }
+  if (isSelectorList(arg) && STRUCTURED_PSEUDOS.has(name.toLowerCase())) {
+    return pseudoSelector(head, arg);
+  }
+  return null;
+}
+
+/**
+ * The structured pseudo of a dialect's glued `:name(` opener and its reduced
+ * argument, for a pseudo whose argument grammar admits only structured shapes.
+ */
+export function requireStructuredPseudo(opener: string, arg: unknown): SimpleToken {
+  const head = opener.slice(0, -1);
+  const pseudo = structuredPseudoFrom(head, head.slice(head.startsWith('::') ? 2 : 1), arg);
+  if (pseudo === null) {
+    throw new TypeError('A structured pseudo lost its argument.');
+  }
+  return pseudo;
+}
+
+/**
+ * A `:lang()` argument (Selectors-4 §7.2) from its `range` fields: identifiers
+ * and strings in a comma `List`. A dialect string that interpolates makes the
+ * whole argument a template, its ranges `, `-joined.
+ */
+export function languageRangeList(fields: ReducerFields | undefined): List | Interpolation {
+  const capture = fields?.range;
+  const captures = capture === undefined ? [] : Array.isArray(capture) ? capture : [capture];
+  const ranges: Array<Keyword | Quoted | Interpolation> = [];
+  let interpolated = false;
+  for (const { value } of captures) {
+    if (isInterpolation(value)) {
+      interpolated = true;
+      ranges.push(value);
+    } else {
+      ranges.push(isQuoted(value) ? value : keyword(tokenText(value)));
+    }
+  }
+  if (!interpolated) {
+    return list(ranges, ',');
+  }
+  const template: unknown[] = [];
+  for (const range of ranges) {
+    if (template.length > 0) {
+      template.push({ value: ', ' });
+    }
+    template.push(range.type === 'Interpolation' ? range : { value: range.src });
+  }
+  return interpolationFromTemplateChildren(template, 'CSS');
+}
+
+/** A `:dir()` argument (Selectors-4 §7.1): its `direction` field as a `Keyword`. */
+export function directionKeyword(fields: ReducerFields | undefined): Keyword {
+  const capture = fields?.direction;
+  if (capture === undefined || !('value' in capture)) {
+    throw new TypeError('A :dir() argument lost its direction.');
+  }
+  return keyword(tokenText(capture.value));
+}
 
 export function isCompound(value: unknown): value is CompoundSelector {
   return isNodeType(
@@ -818,9 +930,13 @@ export function queryFeatureBlock(children: readonly unknown[], span: AstSourceS
   }
   const group = block(generalEnclosedArgument(children) ?? []);
 
-  /* Only the group whose own contents are general-enclosed; a group around a marked group is a condition. */
+  /*
+   * Only the group whose own contents are general-enclosed; a group around a
+   * marked group is a condition. One whose contents are the dialect's
+   * interpolation (SCSS `(#{$q})`) is a template, substituted then printed.
+   */
   const isQuery = count === 1 && isValue(only) && (generalEnclosedSourceOf(only) === undefined || only.type === 'Block');
-  return isQuery ? group : withAuthoredGeneralEnclosed(group, span, state);
+  return isQuery ? group : generalEnclosedGroup(group, span, state);
 }
 
 /*
@@ -860,10 +976,32 @@ export function generalEnclosedGroup<T extends ValueNode>(value: T, span: AstSou
  * to normalized, evaluated output.
  */
 function withAuthoredGeneralEnclosed<T extends object>(value: T, span: AstSourceSpan, state: unknown): T {
+  /*
+   * Contents that carry the dialect's interpolation (SCSS `(#{$q})`) have no
+   * authored bytes to print: P16 evaluates the interpolation, so the value
+   * stays structured and the emitter substitutes it.
+   */
+  if (hasInterpolationRef(value)) {
+    return value;
+  }
   if (typeof state !== 'object' || state === null || !('source' in state) || typeof state.source !== 'string') {
     throw new TypeError('A general-enclosed query group needs the parse input in its parse state to be emitted as written.');
   }
   return withGeneralEnclosedSource(value, state.source.slice(span.start, span.end));
+}
+
+/** Whether general-enclosed contents hold an interpolation that reads a binding. */
+function hasInterpolationRef(value: unknown): boolean {
+  if (isInterpolation(value)) {
+    return value.parts.some(part => 'ref' in part);
+  }
+  if (isNodeType(value, 'Sequence') && 'parts' in value && Array.isArray(value.parts)) {
+    return value.parts.some(hasInterpolationRef);
+  }
+  if (isList(value)) {
+    return value.value.some(hasInterpolationRef);
+  }
+  return isNodeType(value, 'Block') && 'value' in value && hasInterpolationRef(value.value);
 }
 
 /*
@@ -1195,6 +1333,13 @@ export function isReference(value: unknown): value is Reference {
   return isNodeType(
     value,
     'Reference'
+  );
+}
+
+export function isList(value: unknown): value is List {
+  return isNodeType(
+    value,
+    'List'
   );
 }
 

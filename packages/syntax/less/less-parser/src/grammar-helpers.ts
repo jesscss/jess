@@ -20,9 +20,9 @@
  */
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
-import { NO_SPAN, any, callArg, condition, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, callArg, condition, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
-import { functionScopeOf, requireLessParseState } from './parse-state.js';
+import { functionScopeOf, heldSlashedCombinatorsOf, requireLessParseState } from './parse-state.js';
 import { LessSlashedCombinatorError, LessUnsupportedVariableNameError } from './parse-error.js';
 
 type VarRef = Lookup & { readonly name: string };
@@ -95,6 +95,13 @@ type FunctionConditionFact = {
   /** The operand a BARE condition was built from, kept so a following comparison
    *  operator can reclaim it rather than unpick the {@link lessTruth} lowering. */
   readonly bare?: ValueNode;
+
+  /**
+   * What an enclosing group folds when IT is read as an operand: a bare
+   * condition's operand still unfolded, or, on a group of one value, that
+   * group's math group (see {@link LessGuardOperand}).
+   */
+  readonly raw?: ValueNode | LessMathRun;
 };
 type UnsupportedVariableNameFact = { readonly unsupportedVariableName: string };
 type VariableNameFact = {
@@ -1065,13 +1072,75 @@ function complexSegmentsFrom(
       segments.push(segments.length === 0 ? { term: child } : { combinator, term: child });
       combinator = ' ';
     } else if (isSlashedCombinatorFact(child)) {
-      /* A removed slashed combinator (ledger G37) inside a pseudo argument or an `:extend()` target. */
+      /* A removed slashed combinator (ledger G37) inside an `:extend()` target. */
       throw new LessSlashedCombinatorError(child.start, child.end, child.slashedCombinator);
     } else {
       combinator = requireCombinator(child);
     }
   }
   return [segments[0]!, ...segments.slice(1)];
+}
+
+/**
+ * {@link complexSegmentsFrom} for a functional pseudo's argument, where a
+ * removed `/word/` combinator is HELD in the parse state rather than rejected:
+ * the selector may still turn out to be a glued declaration's value
+ * (`a:is(b /c/ d);`). The selector that commits reads it back with
+ * {@link rejectHeldSlashedCombinator}. With no holder (a raw `run()`), it is
+ * rejected here.
+ */
+function pseudoArgumentSegmentsFrom(
+  children: readonly unknown[],
+  state: unknown
+): ReturnType<typeof complexSegmentsFrom> {
+  const held = heldSlashedCombinatorsOf(state);
+  if (held === null || !children.some(isSlashedCombinatorFact)) {
+    return complexSegmentsFrom(children);
+  }
+  const rest: unknown[] = [];
+  for (const child of children) {
+    if (isSlashedCombinatorFact(child)) {
+      held.push(child);
+    } else {
+      rest.push(child);
+    }
+  }
+  return complexSegmentsFrom(rest);
+}
+
+/**
+ * A selector committed from `start` to `end` — a ruleset at its `{` (the end
+ * is read off the raw children only when something is held), a body
+ * `&:extend()` — rejects the first held `/word/` combinator inside it.
+ *
+ * A commit runs once its statement is complete, so every fact from `start` on
+ * is now settled: inside the selector it is rejected here, and after it (in a
+ * ruleset's body) it belonged to a nested selector that already committed or to
+ * a declaration that never was a selector. Only the facts before `start` — an
+ * enclosing selector's, still uncommitted — are kept, so the held list stays as
+ * short as the open selectors and a commit never rescans settled facts.
+ */
+function rejectHeldSlashedCombinator(state: unknown, start: number, end: number | readonly unknown[]): void {
+  const held = heldSlashedCombinatorsOf(state);
+  if (held === null || held.length === 0) {
+    return;
+  }
+  if (typeof end !== 'number') {
+    end = requiredTokenStart(end, '{');
+  }
+  let first: SlashedCombinatorFact | undefined;
+  let kept = 0;
+  for (const fact of held) {
+    if (fact.start < start) {
+      held[kept++] = fact;
+    } else if (fact.end <= end && (first === undefined || fact.start < first.start)) {
+      first = fact;
+    }
+  }
+  if (first !== undefined) {
+    throw new LessSlashedCombinatorError(first.start, first.end, first.slashedCombinator);
+  }
+  held.length = kept;
 }
 
 /** Space-separated query clause reduction: keyword/value children join into a
@@ -1959,15 +2028,171 @@ function guardOperatorText(value: unknown): string | null {
   }
 }
 
-function foldMixinGuards(kind: 'and' | 'or', children: readonly unknown[]): MixinGuard {
-  const guards = children.filter(isMixinGuard);
-  const head = guards[0];
+/**
+ * A bare guard operand, NOT YET FOLDED. A `(` in a guard opens a group that is
+ * read once: its content is a guard, and whether the group stays that guard or
+ * is a math group in an operand (`((1 + 1) = 2)`) is decided by the token after
+ * its `)`. The two fold the same run differently — a math group by
+ * {@link lessMathInGroup}, where a slash divides; an operand by
+ * {@link lessMathInValue}, under the math policy — so a bare operand stays a run
+ * until whatever consumes it decides.
+ */
+interface LessGuardOperand {
+  readonly kind: 'less-guard-operand';
+  readonly run: ValueNode | LessMathRun;
+
+  /** A parenthesized group's own guard: the group read as a condition. */
+  readonly guard?: MixinGuard;
+}
+
+function isLessGuardOperand(value: unknown): value is LessGuardOperand {
+  return typeof value === 'object' && value !== null && 'kind' in value && value.kind === 'less-guard-operand';
+}
+
+/** A bare operand read as a condition: `default()`, a guard call, or its truth. */
+function bareOperandGuard(value: ValueNode): MixinGuard {
+  if (isFunctionCall(value)) {
+    return isDefaultGuardCall(value)
+      ? { g: 'default' }
+      : { g: 'call', name: value.name, args: value.args.map(arg => requireValueNode(arg.value)) };
+  }
+  return lessGuardTruth(value);
+}
+
+/** A guard term read as a guard. */
+function requireGuardTerm(value: unknown, state: unknown): MixinGuard {
+  if (isLessGuardOperand(value)) {
+    return value.guard ?? bareOperandGuard(lessMathInValue(value.run, state));
+  }
+  if (isMixinGuard(value)) {
+    return value;
+  }
+  throw new TypeError('Less grammar produced a guard term without a guard.');
+}
+
+/**
+ * A guard group read as an operand. One value is folded as a math group
+ * (`( <run> )`), exactly as a value-position `Paren`; a condition
+ * (`((1 = 1) = true)`) is the condition's truth, as the `if()` twin reads it.
+ * The parser keeps the shape and evaluation decides whether the operand
+ * compares or computes (ledger P42).
+ */
+function guardGroupValue(inner: unknown, span: SourceSpan, state: unknown): ValueNode {
+  if (isLessGuardOperand(inner)) {
+    return withSourceSpan(block(lessMathInGroup(inner.run, state)), span);
+  }
+  const source = sourceFromState(state);
+  if (source === undefined) {
+    throw new TypeError('Less guard group lost its source.');
+  }
+  return withSourceSpan(condition(requireGuardTerm(inner, state), source.slice(span.start, span.end)), span);
+}
+
+/**
+ * Continue a math run from `head` — a group read as an operand — over the
+ * `<operator> <atom>` pairs after its `)` (`(1 + 1) * 2`), up to a comparison
+ * operator, whose index is returned with the unfolded run.
+ */
+function continueGuardMathRun(
+  head: ValueNode,
+  children: readonly unknown[],
+  rawChildren: readonly unknown[],
+  from: number
+): { readonly run: ValueNode | LessMathRun; readonly next: number } {
+  let next = from;
+  while (next < children.length && guardOperatorText(children[next]) === null) {
+    next += 2;
+  }
+  if (next === from) {
+    return { run: head, next };
+  }
+  return { run: mathRunFrom(head, sourceSpanOf(head), children, rawChildren, from, next), next };
+}
+
+/**
+ * `MixinGuardTerm`'s reduction: `not`? then a `(`-led group — a guard, or, when
+ * a math tail or a comparison follows its `)`, an operand — or an operand,
+ * then an optional comparison. A bare operand stays a {@link LessGuardOperand}
+ * so an enclosing group can still read it as a value.
+ */
+function mixinGuardTermFrom(
+  children: readonly unknown[],
+  rawChildren: readonly unknown[],
+  state: unknown
+): MixinGuard | LessGuardOperand {
+  const negated = isLessTerminalText(children[0], 'not');
+  let index = negated ? 1 : 0;
+  let left: ValueNode | LessMathRun;
+  let term: MixinGuard | LessGuardOperand | undefined;
+  if (isLessTerminalText(children[index], '(')) {
+    const open = rawChildren[index];
+    const close = rawChildren[index + 2];
+    if (!isSpannedToken(open) || !isSpannedToken(close)) {
+      throw new TypeError('Less guard group lost its delimiter provenance.');
+    }
+    const inner = children[index + 1];
+    const span = { start: open.span.start, end: close.span.end };
+    if (index + 3 === children.length) {
+      /* A lone group is transparent as a guard and a math group as a value. */
+      term = isLessGuardOperand(inner)
+        ? { kind: 'less-guard-operand', run: guardGroupValue(inner, span, state), guard: requireGuardTerm(inner, state) }
+        : requireGuardTerm(inner, state);
+      return negated ? { g: 'not', inner: requireGuardTerm(term, state) } : term;
+    }
+    const operand = continueGuardMathRun(guardGroupValue(inner, span, state), children, rawChildren, index + 3);
+    left = operand.run;
+    index = operand.next;
+  } else {
+    left = requireMathOperand(children[index]);
+    index += 1;
+  }
+  const operator = guardOperatorText(children[index]);
+  if (operator === null) {
+    term = { kind: 'less-guard-operand', run: left };
+  } else {
+    /*
+     * GUARD position, so the comparison lowers to the MATCH test (§4.2a).
+     * This production family is reached only from `g.MixinGuard` — the
+     * `when` clause of a mixin definition or a CSS guard — and both ask
+     * whether a definition APPLIES. `.generic(1, true) when (@a < @b)`
+     * has no ordering and therefore does not match; lessc 4.6.3 agrees,
+     * and so does the owner-maintained expected CSS. Value position keeps
+     * the assertion, built separately in `FunctionConditionTerm`.
+     */
+    term = {
+      g: 'match',
+      op: operator,
+      left: lessMathInValue(left, state),
+      right: lessMathInValue(requireMathOperand(children[index + 1]), state)
+    };
+  }
+  return negated ? { g: 'not', inner: requireGuardTerm(term, state) } : term;
+}
+
+/** One `MathSum` reduction: an operand, or an unfolded run. */
+function requireMathOperand(value: unknown): ValueNode | LessMathRun {
+  if (isValueNode(value) || isLessMathRun(value)) {
+    return value;
+  }
+  throw new TypeError('Less guard lost its operand.');
+}
+
+/**
+ * Fold an `and` / `or` chain. A lone term passes through unconverted, so a
+ * bare operand reaches an enclosing group still able to be read as a value.
+ */
+function foldMixinGuards(kind: 'and' | 'or', children: readonly unknown[], state: unknown): MixinGuard | LessGuardOperand {
+  const terms = children.filter(child => isMixinGuard(child) || isLessGuardOperand(child));
+  const head = terms[0];
   if (head === undefined) {
     throw new TypeError('Less grammar produced an empty logical guard.');
   }
-  let result = head;
-  for (let index = 1; index < guards.length; index++) {
-    result = { g: kind, left: result, right: guards[index]! };
+  if (terms.length === 1) {
+    return head;
+  }
+  let result = requireGuardTerm(head, state);
+  for (let index = 1; index < terms.length; index++) {
+    result = { g: kind, left: result, right: requireGuardTerm(terms[index], state) };
   }
   return result;
 }
@@ -2009,15 +2234,118 @@ function functionConditionSource(value: ValueSlot): string {
   }
 }
 
+/** A `FunctionConditionOperand`'s reduction: one run stays unfolded, a space list is a value. */
+function functionConditionOperandFrom(children: readonly unknown[], state: unknown): LessGuardOperand | ValueNode {
+  const runs = children.filter(isMathOperand);
+  if (runs.length === 1) {
+    return { kind: 'less-guard-operand', run: runs[0]! };
+  }
+  if (runs.length === 0) {
+    throw new TypeError('Less function condition lost its operand.');
+  }
+  return spaced(runs.map(run => lessMathInValue(run, state)));
+}
+
+/** A `FunctionConditionParen`'s reduction: the inner condition, grouped. */
+function functionConditionParenFrom(children: readonly unknown[], span: SourceSpan, state: unknown): FunctionConditionFact {
+  const inner = children.find(isFunctionConditionFact);
+  if (inner === undefined) {
+    throw new TypeError('Less function condition lost its parenthesized operand.');
+  }
+  const fact = { guard: inner.guard, src: `(${inner.src})`, grouped: true, hasComparison: inner.hasComparison };
+  return inner.raw === undefined || inner.hasComparison
+    ? fact
+    : { ...fact, raw: guardGroupValue({ kind: 'less-guard-operand', run: inner.raw }, span, state) };
+}
+
+/** One side of a value-position comparison, as the value it compares. */
+function functionConditionValue(fact: FunctionConditionFact, state: unknown): ValueNode {
+  if (fact.bare !== undefined) {
+    return fact.bare;
+  }
+  return fact.raw === undefined || fact.hasComparison ? condition(fact.guard, fact.src) : lessMathInValue(fact.raw, state);
+}
+
+/** A condition operand — a `FunctionConditionParen` fact, or an operand reduction — as a fact. */
+function functionConditionOperandFact(value: unknown, state: unknown): FunctionConditionFact {
+  if (isFunctionConditionFact(value)) {
+    return value;
+  }
+  const bare = isLessGuardOperand(value) ? lessMathInValue(value.run, state) : requireValueNode(value);
+  const fact = { guard: lessTruth(bare), src: functionConditionSource(bare), grouped: false, hasComparison: false, bare };
+  return isLessGuardOperand(value) ? { ...fact, raw: value.run } : fact;
+}
+
+/**
+ * `FunctionConditionTerm`'s reduction, the value-position twin of
+ * {@link mixinGuardTermFrom}: `not`? then a group — continued by the rest of a
+ * math run after its `)` (`((1 + 1) * 2 = 4)`), which makes it an operand — or
+ * an operand, then an optional comparison whose sides may be either.
+ */
+function functionConditionTermFrom(
+  children: readonly unknown[],
+  rawChildren: readonly unknown[],
+  state: unknown
+): FunctionConditionFact {
+  const negated = isFunctionConditionNot(children[0]);
+  let index = negated ? 1 : 0;
+  let left = functionConditionOperandFact(children[index], state);
+  const groupLed = left.grouped;
+  index += 1;
+  if (groupLed && index < children.length && guardOperatorText(children[index]) === null) {
+    /* A group holding a condition heads the run as the condition's truth (ledger P42). */
+    const head = left.raw === undefined || left.hasComparison ? condition(left.guard, left.src) : requireValueNode(left.raw);
+    const operand = continueGuardMathRun(head, children, rawChildren, index);
+    let src = left.src;
+    for (let at = index; at < operand.next; at += 2) {
+      src += ` ${requireTerminalText(children[at]).trim()} ${functionConditionSource(requireValueNode(children[at + 1]))}`;
+    }
+    const bare = lessMathInValue(operand.run, state);
+    left = { guard: lessTruth(bare), src, grouped: false, hasComparison: false, bare };
+    index = operand.next;
+  }
+  const operator = guardOperatorText(children[index]);
+  if (operator === null) {
+    const grouped = left.grouped;
+    if (negated) {
+      return { guard: { g: 'not', inner: left.guard }, src: `not(${left.src})`, grouped, hasComparison: left.hasComparison };
+    }
+    return { ...left, grouped };
+  }
+  if (negated && !groupLed) {
+    throw new TypeError('Less function condition `not` requires a grouped condition operand.');
+  }
+  const right = functionConditionOperandFact(children[index + 1], state);
+  const guard: MixinGuard = { g: 'cmp', op: operator, left: functionConditionValue(left, state), right: functionConditionValue(right, state) };
+  const src = `${left.src} ${operator} ${right.src}`;
+  return negated
+    ? { guard: { g: 'not', inner: guard }, src: `not(${src})`, grouped: false, hasComparison: true }
+    : { guard, src, grouped: false, hasComparison: true };
+}
+
+function isFunctionConditionNot(value: unknown): boolean {
+  return typeof value === 'object' && value !== null && 'value' in value && value.value === 'not';
+}
+
+/** One `MathSum` reduction among other children. */
+function isMathOperand(value: unknown): value is ValueNode | LessMathRun {
+  return isValueNode(value) || isLessMathRun(value);
+}
+
 function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[]): FunctionConditionFact {
   const facts = children.filter(isFunctionConditionFact);
   const first = facts[0];
   if (first === undefined) {
     throw new TypeError('Less function condition lost its first term.');
   }
+  if (facts.length === 1) {
+    return first.raw === undefined
+      ? { guard: first.guard, src: first.src, grouped: false, hasComparison: first.hasComparison }
+      : { guard: first.guard, src: first.src, grouped: false, hasComparison: first.hasComparison, raw: first.raw };
+  }
   let guard = first.guard;
   let src = first.src;
-  if (facts.length > 1 && facts.some(fact => fact.hasComparison && !fact.grouped)) {
+  if (facts.some(fact => fact.hasComparison && !fact.grouped)) {
     throw new TypeError('Less function condition comparisons must be grouped before logical operators.');
   }
   let hasComparison = first.hasComparison;
@@ -2164,23 +2492,36 @@ function lessMathRun(
   _span: Span,
   rawChildren: readonly unknown[]
 ): ValueNode | LessMathRun {
+  const head = requireValueNode(children[0]);
   if (children.length === 1) {
-    return requireValueNode(children[0]);
+    return head;
   }
-  const operands: ValueNode[] = [];
+  const raw = rawChildren[0];
+  return mathRunFrom(head, isSpannedToken(raw) ? raw.span : sourceSpanOf(head), children, rawChildren, 1, children.length);
+}
+
+/**
+ * A math run from its first operand and the `<operator> <operand>` pairs
+ * `children[from..to)` — the ONE assembly of a run, for a `MathSum` and for the
+ * run a guard group heads. In AST mode Parseman supplies the original spanned
+ * children in `rawChildren`, which gives each folded operation its authored
+ * range without retaining one span per standalone dimension.
+ */
+function mathRunFrom(
+  head: ValueNode,
+  headSpan: SourceSpan | undefined,
+  children: readonly unknown[],
+  rawChildren: readonly unknown[],
+  from: number,
+  to: number
+): LessMathRun {
+  const operands: ValueNode[] = [head];
   const operators: string[] = [];
-  const spans: Array<SourceSpan | undefined> = [];
-  for (let index = 0; index < children.length; index += 1) {
-    const child = children[index];
-    if (index % 2 === 1) {
-      operators.push(requireTerminalText(child).trim());
-      continue;
-    }
-    const operand = requireValueNode(child);
-    const raw = rawChildren[index];
-    // In AST mode Parseman supplies the original spanned children here, which
-    // gives each folded operation its authored range without retaining one span
-    // per standalone dimension.
+  const spans: Array<SourceSpan | undefined> = [headSpan];
+  for (let index = from; index < to; index += 2) {
+    operators.push(requireTerminalText(children[index]).trim());
+    const operand = requireValueNode(children[index + 1]);
+    const raw = rawChildren[index + 1];
     operands.push(operand);
     spans.push(isSpannedToken(raw) ? raw.span : sourceSpanOf(operand));
   }
@@ -2358,16 +2699,20 @@ export {
   enclosedInterpolationFromChildren,
   foldFunctionCondition,
   foldMixinGuards,
+  functionConditionOperandFrom,
+  functionConditionParenFrom,
+  functionConditionTermFrom,
+  isLessGuardOperand,
+  mixinGuardTermFrom,
+  requireGuardTerm,
   isLessMathRun,
   lessMathInGroup,
   lessMathInValue,
   lessMathRun,
   requireMathSum,
   functionCallFromChildren,
-  functionConditionSource,
   functionNameFromOpener,
   functionSeparatorsFromFields,
-  guardOperatorText,
   hasChildren,
   hasField,
   hasGrammarType,
@@ -2382,7 +2727,6 @@ export {
   isComplex,
   isComplexTailFact,
   isLessDeclaration,
-  isDefaultGuardCall,
   isExtendInstruction,
   isExtendTargetFact,
   isFor,
@@ -2434,7 +2778,6 @@ export {
   keywordOrValue,
   layoutFromTriviaBoundaries,
   lessConditionGuard,
-  lessGuardTruth,
   lessMathOutsideParens,
   lessTriviaEntryCount,
   lessTriviaEntryEnd,
@@ -2444,7 +2787,6 @@ export {
   lessTriviaEntryStart,
   lessTriviaEntryText,
   lessTriviaKindLabels,
-  lessTruth,
   lowerLogicalCall,
   lowerLogicalCallStatement,
   mixinArgumentSource,
@@ -2455,6 +2797,7 @@ export {
   mixinDefinitionNameFromSelectorBranch,
   mixinParamsFromInterior,
   mixinPrefixFromSelectorBranch,
+  pseudoArgumentSegmentsFrom,
   pseudoNameFromHead,
   queryClauseReducer,
   lessQueryComparisonOperators,
@@ -2478,6 +2821,7 @@ export {
   requireRulesetBody,
   requireSelectorList,
   requireSelectorListWithExtendsFact,
+  rejectHeldSlashedCombinator,
   requireStatementArray,
   requireString,
   requireSupportedVariableName,
@@ -2538,6 +2882,7 @@ export type {
   SelectorBranchFact,
   SelectorListWithExtendsFact,
   SlashedCombinatorFact,
+  LessGuardOperand,
   LessMathRun,
   UnsupportedVariableNameFact,
   VarRef

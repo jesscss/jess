@@ -16,8 +16,9 @@
  * parameterised by.
  */
 
-import { appendCustomValueParts as appendCustomValuePartsIn, cssBaseMathOutsideParens, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, keyword, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueSlot, withValueLayout } from '@jesscss/core/ast';
-import type { CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, Statement, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueSlot, withValueLayout } from '@jesscss/core/ast';
+import type { AtRuleStatement, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { ScssImportPostludeError } from './parse-error.js';
 
 export type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
 export type ScssValueTail = { readonly kind: 'space' | 'slash'; readonly value: ValueNode; readonly separator: string };
@@ -69,12 +70,6 @@ export function scssSourceText(value: unknown): string {
   return requireToken(value).value;
 }
 
-/** Map query/media-prelude children to value nodes, coercing bare keyword tokens
- *  (`and`/`or`/media types) to `Keyword`s while passing structured values through. */
-export function keywordizeValues(children: readonly unknown[]): ValueNode[] {
-  return children.map(child => isScssValue(child) ? child : keyword(requireToken(child).value));
-}
-
 /** Concatenate the authored spelling of every child. The canonical opaque
  *  representation for attribute selectors and non-structured pseudo arguments. */
 export function joinSourceText(children: readonly unknown[]): string {
@@ -124,6 +119,87 @@ export function scssRelativeCombinator(value: unknown): '>' | '+' | '~' {
 
 export function isScssImportTarget(value: unknown): value is Quoted | Url | Interpolation {
   return isQuoted(value) || isUrl(value) || isInterpolation(value);
+}
+
+/**
+ * Sass's own URL rule for an `@import` target, exactly as dart-sass applies it
+ * (`isPlainImportUrl`, `lib/src/parse/stylesheet.dart`): a protocol-relative
+ * `//host/x` or an `http://` / `https://` URL is plain CSS. The tests are
+ * case-sensitive — `HTTP://x` is a partial import there — and a target shorter
+ * than five characters is never plain. The `.css` test is the shared
+ * `importIsCompileTime` rule, not part of this one.
+ */
+export function sassImportUrlIsPlainCss(spelling: string): boolean {
+  return spelling.length >= 5
+    && (spelling.startsWith('//') || spelling.startsWith('http://') || spelling.startsWith('https://'));
+}
+
+/**
+ * An `:nth-*()` pseudo from its glued opener (`:nth-child(`) and reduced
+ * argument: structured when the argument is an `An+B`, the opaque raw text it
+ * always was otherwise.
+ */
+export function nthPseudoFrom(opener: string, arg: unknown): SimpleToken {
+  if (isNthArgument(arg)) {
+    return pseudoSelector(opener.slice(0, -1), arg.of, null, null, arg.nth);
+  }
+  if (typeof arg !== 'string') {
+    throw new TypeError('SCSS nth pseudo lost its argument.');
+  }
+  return simpleSelector(`${opener}${arg.trim()})`);
+}
+
+/**
+ * `@import "a", "b";` — one at-rule that is several imports (Sass spec
+ * `at-rules/import.md`, `ImportRule ::= '@import' ImportArgument (',' ImportArgument)*`).
+ * Each argument is its own statement, so the list is carried to the enclosing
+ * body as one fact and spread there in source order.
+ */
+export interface ScssImportListFact {
+  readonly kind: 'scss-import-list';
+  readonly statements: ReadonlyArray<StyleImport | AtRuleStatement>;
+}
+
+export function isScssImportListFact(value: unknown): value is ScssImportListFact {
+  return typeof value === 'object' && value !== null && 'kind' in value && value.kind === 'scss-import-list';
+}
+
+/**
+ * `ImportStatement`'s reduction: one import per target. The targets are the
+ * run after the at-keyword; a postlude is never a quoted string, `url()` or
+ * interpolation (`#{$media}` is rejected there), so the first value after the
+ * run is the last target's tail.
+ */
+export function scssImportStatementFrom(
+  children: readonly unknown[],
+  span: { readonly start: number; readonly end: number }
+): StyleImport | AtRuleStatement | ScssImportListFact {
+  let end = 1;
+  while (isScssImportTarget(children[end])) {
+    end += 1;
+  }
+  if (end === 1) {
+    throw new TypeError('SCSS @import requires a typed target.');
+  }
+  const tail = children.slice(end).find(isScssValue) ?? null;
+  const imports: Array<StyleImport | AtRuleStatement> = [];
+  for (let index = 1; index < end; index += 1) {
+    const target = children[index];
+    if (!isScssImportTarget(target)) {
+      continue;
+    }
+    const postlude = index === end - 1 ? tail : null;
+    const spelling = importTargetSpelling(target);
+    if (!sassImportUrlIsPlainCss(spelling) && importIsCompileTime('@import', target, null, null, spelling)) {
+      if (postlude !== null) {
+        throw new ScssImportPostludeError(span.start, span.end);
+      }
+      imports.push(styleImport('@import', target, { mode: 'import' }));
+    } else {
+      imports.push(atRuleStatement('@import', postlude === null ? target : spaced([target, postlude])));
+    }
+  }
+  return imports.length === 1 ? imports[0]! : { kind: 'scss-import-list', statements: imports };
 }
 
 export function isVarRef(value: unknown): value is Lookup {
@@ -658,6 +734,10 @@ export function statements(children: readonly unknown[], allowDeclarations = fal
     if (child === null) {
       continue;
     }
+    if (isScssImportListFact(child)) {
+      result.push(...child.statements);
+      continue;
+    }
     if (!isStatementChild(
       child,
       allowDeclarations
@@ -672,7 +752,9 @@ export function statements(children: readonly unknown[], allowDeclarations = fal
 export function statementChildren(children: readonly unknown[], allowDeclarations = false): Statement[] {
   const result: Statement[] = [];
   for (const child of children) {
-    if (isStatementChild(
+    if (isScssImportListFact(child)) {
+      result.push(...child.statements);
+    } else if (isStatementChild(
       child,
       allowDeclarations
     )) {

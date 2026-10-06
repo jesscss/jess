@@ -447,8 +447,7 @@ describe('@jesscss/scss-parser public parse API', () => {
      * neighbouring sass-spec `error/wrong_order/*` cases before this change.
      */
     for (const unsupported of [
-      '@import "theme.css" layer(#{$name}) screen;',
-      '@import "a.css", "b.css";'
+      '@import "theme.css" layer(#{$name}) screen;'
     ]) {
       expect(() => parse(unsupported), unsupported).toThrow(SyntaxError);
     }
@@ -545,11 +544,13 @@ describe('@jesscss/scss-parser public parse API', () => {
     for (const source of [
       '@import "theme.css" #{$media};',
       '@import "theme.css" screen /* no raw/comment tail */ and (color);',
-      '@import "theme.css" screen, #{$media};',
-      '@import "a.css", "b.css" screen;'
+      '@import "theme.css" screen, #{$media};'
     ]) {
       expect(() => parse(source), source).toThrow(SyntaxError);
     }
+
+    /* A comma-separated `@import` is one import per argument; the tail belongs to the last. */
+    expect(serialize(parse('@import "a.css", "b.css" screen;')).css).toBe('@import "a.css";\n@import "b.css" screen;\n');
   });
 
   it('classifies static SCSS module directives through the public Stylesheet route', () => {

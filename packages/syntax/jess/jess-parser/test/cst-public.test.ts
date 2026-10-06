@@ -144,11 +144,12 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(grammarTypes.get('QueryValue')).toBeGreaterThan(0);
 
     /*
-     * Two from the `@media` list, one from the `@unknown` prelude: a generic
-     * at-rule prelude is a `<media-query-list>`, so its clause is the same
-     * production and carries the same label.
+     * Two from the `@media` list, which is the CSS base's media query list,
+     * and one header clause from the `@unknown` prelude, which has no media
+     * connectives to read.
      */
-    expect(grammarTypes.get('QueryClause')).toBe(3);
+    expect(grammarTypes.get('QueryClause')).toBe(2);
+    expect(grammarTypes.get('AtRulePreludeClause')).toBe(1);
     expect(grammarTypes.get('QueryPrelude')).toBeGreaterThan(0);
     expect(grammarTypes.get('ContainerQueryClause')).toBe(2);
     expect(grammarTypes.get('ContainerQueryPrelude')).toBe(1);

@@ -100,7 +100,7 @@ describe('@jesscss/scss-parser/cst', () => {
   });
 
   it('uses one semantic group label for nested generic pseudo arguments', () => {
-    const result = parseScssCst('.a:lang(([wide])) { color: red; }');
+    const result = parseScssCst('.a:state(([wide])) { color: red; }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
@@ -128,7 +128,7 @@ describe('@jesscss/scss-parser/cst', () => {
     expect(grammarTypes.get('ForwardRule')).toBe(1);
     expect(grammarTypes.get('AttributeSelector')).toBeGreaterThan(1);
     expect(grammarTypes.get('Interpolation')).toBeGreaterThan(0);
-    expect(grammarTypes.get('PseudoArgument')).toBeGreaterThan(0);
+    expect(grammarTypes.get('TypedNthPseudoArgument')).toBeGreaterThan(0);
     expect(grammarTypes.get('SelectorOnlyPseudoArgument')).toBeGreaterThan(0);
     expect(grammarTypes.get('IfBodyRule')).toBeGreaterThan(0);
     expect(grammarTypes.get('IfBodyConditionalBlock')).toBe(1);

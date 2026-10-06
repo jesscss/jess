@@ -80,7 +80,7 @@ describe('@jesscss/less-parser/cst', () => {
   });
 
   it('uses one semantic group label for nested generic pseudo arguments', () => {
-    const result = parseLessCst('.a:lang(([wide])) { color: red; }');
+    const result = parseLessCst('.a:state(([wide])) { color: red; }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();

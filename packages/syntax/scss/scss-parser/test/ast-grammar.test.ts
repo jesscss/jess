@@ -354,14 +354,17 @@ describe('SCSS canonical-AST grammar', () => {
   });
 
   /*
-   * Sass spec `at-rules/import.md`: a URL beginning `http://` or `https://` is a
-   * plain CSS import, quoted or in `url()`, with or without a media query. A
-   * local `url()` target keeps the partial-import classification.
+   * Sass's URL rule, as dart-sass applies it (`isPlainImportUrl`): a
+   * protocol-relative or `http://` / `https://` URL is a plain CSS import,
+   * quoted or in `url()`, with or without a media query. The scheme test is
+   * case-sensitive and a target under five characters is never plain, so those
+   * stay partial imports, as does a local `url()` target.
    */
-  it('classifies an http(s) URL import as a plain CSS AtRuleStatement', () => {
+  it('classifies a protocol-relative or http(s) URL import as a plain CSS AtRuleStatement', () => {
     for (const source of [
       '@import "http://fonts.example/css?family=Roboto";',
-      '@import \'HTTPS://fonts.example/x\';',
+      '@import \'https://fonts.example/x\';',
+      '@import "//cdn.example/theme";',
       '@import url("https://fonts.example/css?family=Roboto");',
       '@import url(https://fonts.example/x);',
       '@import "https://fonts.example/x" screen;'
@@ -372,10 +375,30 @@ describe('SCSS canonical-AST grammar', () => {
       expect(result.value, source).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'AtRuleStatement', name: '@import' }] });
       expect(isStylesheet(result.value) ? serialize(result.value).css : undefined, source).toBe(`${source}\n`);
     }
-    for (const source of ['@import url(theme);', '@import "//cdn.example/theme";', '@import "httpx://theme";']) {
+    for (const source of ['@import url(theme);', '@import \'HTTPS://fonts.example/x\';', '@import "Http://x/y";', '@import "//a";', '@import "httpx://theme";']) {
       const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(result.value, source).toMatchObject({ type: 'Stylesheet', rules: [{ type: 'StyleImport', name: '@import' }] });
     }
+  });
+
+  /* `ImportRule ::= '@import' ImportArgument (',' ImportArgument)*` — each argument is its own import. */
+  it('splits a comma-separated @import into one import per argument', () => {
+    const source = '@import "a.css", "http://x/y", "partial", "b.css" screen;';
+    const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      rules: [
+        { type: 'AtRuleStatement', name: '@import', prelude: { type: 'Quoted', value: 'a.css' } },
+        { type: 'AtRuleStatement', name: '@import', prelude: { type: 'Quoted', value: 'http://x/y' } },
+        { type: 'StyleImport', name: '@import', target: { type: 'Quoted', value: 'partial' } },
+        { type: 'AtRuleStatement', name: '@import', prelude: { type: 'Sequence' } }
+      ]
+    });
+    const plain = '.a { @import "a.css", "//cdn.example/b"; }';
+    const nested = run(scssGrammar.Stylesheet, plain, { trivia: scssGrammar.whitespace });
+    expect(isStylesheet(nested.value) ? serialize(nested.value).css : undefined).toBe('.a {\n  @import "a.css";\n  @import "//cdn.example/b";\n}\n');
   });
 
   it('constructs the public-CST-valid empty SCSS url import target without a fallback', () => {
@@ -510,8 +533,7 @@ describe('SCSS canonical-AST grammar', () => {
     for (const source of [
       '@import "theme.css" #{$media};',
       '@import "theme.css" screen /* no raw/comment tail */ and (color);',
-      '@import "theme.css" screen, #{$media};',
-      '@import "a.css", "b.css" screen;'
+      '@import "theme.css" screen, #{$media};'
     ]) {
       const direct = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(false);
@@ -804,7 +826,7 @@ describe('SCSS canonical-AST grammar', () => {
       '.card { value: -- theme; }',
       '@media (width: --#{$value}) { .bad { color: red; } }'
     ]) {
-      const direct = run(scssGrammar.Stylesheet, malformed, { trivia: scssGrammar.whitespace });
+      const direct = run(scssGrammar.Stylesheet, malformed, { trivia: scssGrammar.whitespace, state: { source: malformed } });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), malformed).toBe(false);
     }
   });
@@ -1956,7 +1978,7 @@ describe('SCSS canonical-AST grammar', () => {
     }
   });
 
-  it('constructs static non-selector pseudo arguments as existing SimpleSelector text', () => {
+  it('constructs :lang() and :nth-*() arguments structured, and other static pseudo arguments as SimpleSelector text', () => {
     const source = '.card:lang(en-US):nth-child(-n+2 of .item)::part(icon) { color: blue; }';
     const cst = parseScssCst(source);
     expect(cst.errors).toHaveLength(0);
@@ -1968,8 +1990,8 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [
         { type: 'SimpleSelector', text: '.card' },
-        { type: 'SimpleSelector', text: ':lang(en-US)' },
-        { type: 'SimpleSelector', text: ':nth-child(-n+2 of .item)' },
+        { type: 'PseudoSelector', name: ':lang', text: null, arg: { type: 'List', value: [{ type: 'Keyword', src: 'en-US' }] } },
+        { type: 'PseudoSelector', name: ':nth-child', text: null, arg: { type: 'AnPlusB', src: '-n+2' }, args: { selectors: [{ text: '.item' }] } },
         { type: 'SimpleSelector', text: '::part(icon)' }
       ] }] } }]
     });
@@ -1997,18 +2019,48 @@ describe('SCSS canonical-AST grammar', () => {
     /*
      * Selectors-4 §6.6.2 permits OPTIONAL whitespace around the `+`/`-` sign and
      * surrounding the argument inside the parens
-     * (https://www.w3.org/TR/selectors-4/#anb-microsyntax). Sign whitespace is
-     * preserved verbatim; insignificant space surrounding the argument is
-     * normalized away, matching the canonical CSS grammar and the other dialects.
+     * (https://www.w3.org/TR/selectors-4/#anb-microsyntax). Neither carries
+     * meaning, so the An+B emits unspaced (ledger F2), matching the canonical
+     * CSS grammar and the other dialects.
      */
     for (const [source, expected] of [
-      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n + 1) {\n  color: red;\n}\n'],
-      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n - 3) {\n  color: red;\n}\n'],
+      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
+      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n-3) {\n  color: red;\n}\n'],
       ['a:nth-child(2n+1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
       ['a:nth-child( 2n+1 ) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n']
     ] as const) {
       expect(serialize(parse(source)).css, source).toEqual(expected);
     }
+  });
+
+  /*
+   * Whitespace and comments inside a `:lang()` / `:dir()` / `:nth-*()` paren are
+   * insignificant in CSS, so valid CSS stays valid here although SCSS selector
+   * whitespace is a combinator: the CSS base's arguments own that padding, and
+   * a comment there is trivia, never part of a structured argument. A quoted
+   * range that interpolates keeps the argument a template.
+   */
+  it('accepts the padding CSS allows inside structured pseudo arguments', () => {
+    for (const [source, css] of [
+      ['a:lang( en ) { x: y; }', 'a:lang(en)'],
+      ['a:lang(en ) { x: y; }', 'a:lang(en)'],
+      ['a:lang(en /* c */) { x: y; }', 'a:lang(en)'],
+      ['a:lang(/* c */en) { x: y; }', 'a:lang(en)'],
+      ['a:lang( en , "fr" ) { x: y; }', 'a:lang(en, "fr")'],
+      ['a:dir( ltr ) { x: y; }', 'a:dir(ltr)'],
+      ['a:dir(/* c */ltr) { x: y; }', 'a:dir(ltr)'],
+      ['a:nth-child(2n + 1 /* c */) { x: y; }', 'a:nth-child(2n+1)'],
+      ['a:nth-child(/* c */ 2n+1) { x: y; }', 'a:nth-child(2n+1)'],
+      ['a:nth-child(2n+1 of .b /* c */) { x: y; }', 'a:nth-child(2n+1 of .b)'],
+      ['a:nth-of-type( -n+2 /* c */ ) { x: y; }', 'a:nth-of-type(-n+2)'],
+      ['$l: en; a:lang("#{$l}", fr) { x: y; }', 'a:lang("en", fr)']
+    ] as const) {
+      expect(parseScssCst(source).errors, source).toHaveLength(0);
+      expect(serialize(parse(source)).css, source).toBe(`${css} {\n  x: y;\n}\n`);
+    }
+    expect(parse('a:nth-child(/* c */ 2n+1) { x: y; }').rules[0]).toMatchObject({
+      selector: { selectors: [{ value: [{ text: 'a' }, { type: 'PseudoSelector', arg: { type: 'AnPlusB', src: '2n+1' } }] }] }
+    });
   });
 
   it('constructs ordinary SCSS interpolated simple selectors as existing typed SimpleSelector facts', () => {

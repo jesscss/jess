@@ -747,6 +747,10 @@ export function branchTextIsPlaceholder(text: string): boolean {
  * the token behaves like a plain `SimpleSelector`. `crossable` is true iff the
  * name is a boundary a selector may cross for extend (`:is`/`:matches`); every
  * other name (`:not`/`:where`/`:has`/…) is sealed.
+ *
+ * A pseudo whose argument is not a selector list keeps that argument in `arg`:
+ * an `:nth-*()` pseudo its `An+B` (and its `of S` list, if any, in `args`), a
+ * `:lang()` its language ranges, a `:dir()` its direction.
  */
 export interface PseudoSelector extends SpanSlots {
   readonly type: 'PseudoSelector';
@@ -754,11 +758,30 @@ export interface PseudoSelector extends SpanSlots {
   readonly interp: Interpolation | null;
   readonly name: string;
   readonly args: SelectorList | null;
+  readonly arg: PseudoArgument | null;
   readonly crossable: boolean;
 
   /** Serializer-owned memo of the args-carry-interpolation flag (lazy). */
   _hasInterp?: boolean;
 }
+
+/**
+ * The `An+B` microsyntax of an `:nth-*()` argument (css-syntax-3 §6), held as
+ * the authored form without whitespace. The form is significant (ledger X6:
+ * `:nth-child(odd)` is not `:nth-child(2n+1)` to extend) and is emitted
+ * unspaced (F2). Nothing reads its numeric value, so none is computed.
+ */
+export interface AnPlusB {
+  readonly type: 'AnPlusB';
+  readonly src: string;
+}
+
+/**
+ * A non-selector pseudo argument: an `An+B`, `:lang()`'s comma list of
+ * language ranges (identifiers and strings, Selectors-4 §7.2), or `:dir()`'s
+ * direction identifier.
+ */
+export type PseudoArgument = AnPlusB | List | Keyword;
 
 /** A single token inside a compound — a plain simple or a structured pseudo. */
 export type SimpleToken = SimpleSelector | PseudoSelector;
@@ -956,12 +979,39 @@ export const selectorBranchCanonical = (branch: SelectorBranch): string =>
       ? relativeCanonical(branch)
       : selectorTermCanonical(branch);
 
+/** A non-selector pseudo argument's spelling: `An+B` unspaced, a `:lang()` list `, `-joined. */
+export const pseudoArgumentText = (arg: PseudoArgument): string => {
+  if (arg.type !== 'List') {
+    return arg.src;
+  }
+  let text = '';
+  for (const range of arg.value) {
+    const src = isLanguageRange(range) ? range.src : '';
+    text += text === '' ? src : `, ${src}`;
+  }
+  return text;
+};
+
+/** A `:lang()` list member: an identifier or a string range (Selectors-4 §7.2). */
+export const isLanguageRange = (slot: ValueSlot): slot is Keyword | Quoted =>
+  'type' in slot && (slot.type === 'Keyword' || slot.type === 'Quoted');
+
+/**
+ * The ONE spelling of the structured-pseudo argument join, over already-rendered
+ * branches: `:is(a, b)`, `:nth-child(2n of a, b)`. Both the static path
+ * ({@link pseudoCanonical}) and the per-frame resolving path in `serialize.ts`
+ * go through here, so the `, ` glue has a single owner and the two cannot
+ * drift — the failure mode SEMANTIC-INVARIANTS incident S3 is named for.
+ */
+export const pseudoJoin = (p: PseudoSelector, branches: readonly string[]): string =>
+  `${p.name}(${p.arg === null ? '' : `${pseudoArgumentText(p.arg)} of `}${branches.join(', ')})`;
+
 /**
  * The inline canonical spelling of a structured pseudo, e.g. `:is(.a, .b)`. This
  * is the SINGLE core serialization site for the pseudo-arg join: branches join
  * with `, ` (normalized WS, one line) via the core-owned branch canonicalizer. The
- * grammar NEVER computes this — it only supplies `args` (structure) + trivia. The
- * degrade-to-opaque case (`args: null`) falls back to the retained `text`.
+ * grammar NEVER computes this — it only supplies `args` / `arg` (structure) and
+ * trivia. The degrade-to-opaque case falls back to the retained `text`.
  *
  * STATIC ONLY: an interpolated member has `text: null` and contributes `''` here,
  * so this join is correct only when {@link pseudoHasInterp} is false. Every EMIT
@@ -970,20 +1020,12 @@ export const selectorBranchCanonical = (branch: SelectorBranch): string =>
  * where an unresolvable interpolation contributing nothing is the existing,
  * symmetric behaviour of every other interpolated token.
  */
-/**
- * The ONE spelling of the structured-pseudo argument join, over already-rendered
- * branches. Both the static path ({@link pseudoCanonical}) and the per-frame
- * resolving path in `serialize.ts` go through here, so the `, ` glue has a
- * single owner and the two cannot drift — the failure mode SEMANTIC-INVARIANTS
- * incident S3 is named for.
- */
-export const pseudoJoin = (name: string, branches: readonly string[]): string =>
-  `${name}(${branches.join(', ')})`;
-
-export const pseudoCanonical = (p: PseudoSelector): string =>
-  p.args !== null
-    ? pseudoJoin(p.name, p.args.selectors.map(selectorBranchCanonical))
-    : p.text ?? '';
+export const pseudoCanonical = (p: PseudoSelector): string => {
+  if (p.args !== null) {
+    return pseudoJoin(p, p.args.selectors.map(selectorBranchCanonical));
+  }
+  return p.arg !== null ? `${p.name}(${pseudoArgumentText(p.arg)})` : p.text ?? '';
+};
 
 /** The canonical contributed text of one simple token: a structured pseudo emits
  *  its inline `:is(a, b)` form, a plain simple emits its literal (`''` when the
@@ -1537,8 +1579,16 @@ export const pseudoSelector = (
   name: string,
   args: SelectorList | null,
   text: string | null = null,
-  interp: Interpolation | null = null
-): PseudoSelector => ({ type: 'PseudoSelector', text: args !== null ? null : text, interp, name, args, crossable: crossable(name), _s: NO_SPAN, _e: NO_SPAN });
+  interp: Interpolation | null = null,
+  arg: PseudoArgument | null = null
+): PseudoSelector => ({ type: 'PseudoSelector', text: args !== null || arg !== null ? null : text, interp, name, args, arg, crossable: crossable(name), _s: NO_SPAN, _e: NO_SPAN });
+
+/**
+ * An `An+B` from the text of a recognized `<an+b>` (css-syntax-3 §6.1): the
+ * recognizer owns the shape. Whitespace (which the microsyntax permits around
+ * the sign) is not part of the form (F2).
+ */
+export const anPlusB = (text: string): AnPlusB => ({ type: 'AnPlusB', src: text.replace(/[ \t\n\r\f]+/g, '') });
 export const interpolation = (parts: InterpPart[]): Interpolation => ({ type: 'Interpolation', parts, _s: NO_SPAN, _e: NO_SPAN });
 export const anonymousMixin = (rules: Statement[], params?: Param[]): AnonymousMixin =>
   params === undefined
@@ -1888,16 +1938,6 @@ export const importOptionWords = (options: List | null): string[] => {
  */
 /* ASCII-only patterns: `i` without `u`, so no Unicode case folding (`ſ` is not `s`). */
 const CSS_TARGET = /\.css(?:[?#].*)?$/i;
-const HTTP_URL_TARGET = /^https?:\/\//i;
-
-/**
- * Whether an import target spelling ({@link importTargetSpelling}) is an
- * `http://` / `https://` URL. Sass makes every such import plain CSS
- * (`spec/at-rules/import.md`, "is plain CSS"); Less and Jess do not, so this is
- * a separate fact rather than a branch of {@link importIsCompileTime}.
- */
-export const importSpellingIsHttpUrl = (spelling: string): boolean =>
-  HTTP_URL_TARGET.test(spelling);
 
 /**
  * WHICH of the two import nodes an `@import` becomes — decided from SYNTAX, by

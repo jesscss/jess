@@ -9,7 +9,7 @@
   span::before {
     content: "x";
   }
-  p:nth-child(2n + 1) {
+  p:nth-child(2n+1) {
     color: teal;
   }
 }

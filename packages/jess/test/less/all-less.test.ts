@@ -383,7 +383,6 @@ const expectedFailureFixtures = new Map<string, string>([
    * the lane started pairing them with their goldens, and are untriaged:
    * jess#351 says what each one does.
    */
-  ['tests-config/math-always/mixins-guards.less', 'untriaged (jess#351): the unspaced guard `when ((8+4) < 13)` is a parse error'],
   ['tests-config/math-always/no-sm-operations.less', 'untriaged (jess#351): the digit-led variable name `@3` is rejected'],
   ['tests-config/math-parens-division/mixins-args.less', 'untriaged (jess#351): a mixin call is rejected for mixing comma-list argument groups with named arguments'],
   ['tests-config/math-strict/mixins-args.less', 'untriaged (jess#351): a mixin call is rejected for mixing comma-list argument groups with named arguments'],

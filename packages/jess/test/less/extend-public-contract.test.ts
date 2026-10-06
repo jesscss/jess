@@ -205,4 +205,18 @@ describe('public direct-AST extend contracts', () => {
       '@{list-quoted} { .fruit-quoted-& { content: "Quoted"; } }'
     ].join('\n'))).rejects.toMatchObject({ code: 'selector/comma-list-interpolation' });
   });
+
+  /*
+   * An `:nth-*()` argument is a structured `An+B`, compared by its form (ledger
+   * X6: `odd` is not `2n+1`) and spelled unspaced (F2), so the whitespace an
+   * author put around its sign does not decide a match.
+   */
+  it('matches an :nth-*() target by its An+B form, not its authored whitespace', async () => {
+    expect(await render('.x:nth-child(2n + 1) { c: d; }\n.b:extend(.x:nth-child(2n+1)) {}')).toBe(
+      '.x:nth-child(2n+1),\n.b {\n  c: d;\n}\n'
+    );
+    expect(await render('.x:nth-child(odd) { c: d; }\n.b:extend(.x:nth-child(2n+1)) {}')).toBe(
+      '.x:nth-child(odd) {\n  c: d;\n}\n'
+    );
+  });
 });

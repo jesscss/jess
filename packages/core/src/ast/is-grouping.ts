@@ -40,10 +40,11 @@ const SPECIFICITY_TYPE = 1;
  * - pseudo-elements, single- or double-colon;
  * - `:scope`: inside `@scope` a selector without `:scope` gains an implicit
  *   `:scope ` prefix, so `A :is(:scope, .x)` would drop the one `A .x` carries;
- * - every functional pseudo-class. Its argument reaches core as joined text, so
- *   neither the `of S` specificity of `:nth-child()` nor the argument's validity
- *   (`:lang(en, fr)` is invalid in Chromium) can be read here. A functional
- *   spelling of a name listed here (`:hover(x)`) misses the Set.
+ * - every functional pseudo-class. `:nth-*()`, `:lang()` and `:dir()` reach
+ *   core structured (`PseudoSelector.arg`, and `args` for an `of S` list), but
+ *   nothing here scores them yet, so {@link tokenSpecificity} keeps them out
+ *   with every other pseudo that is not one of the four selector functions.
+ *   A functional spelling of a name listed here (`:hover(x)`) misses the Set.
  * The argument-scored `:is()`/`:not()`/`:has()`/`:where()` are structured
  * pseudos, handled by name in {@link tokenSpecificity}.
  */

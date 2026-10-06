@@ -20,7 +20,7 @@
  */
 
 import type { FieldCapture, FieldMap } from 'parseman';
-import { any, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, selectorBranchCanonical, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isExtendInstruction, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isParamArray, isQuoted, isReference, isRuleset, isSelectorBranch, isSimpleToken, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotOf, isWhile, keyword, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withBlockBody, withSourceSpan } from '@jesscss/core/ast';
+import { any, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, selectorBranchCanonical, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isExtendInstruction, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isParamArray, isQuoted, isReference, isRuleset, isSelectorBranch, isSimpleToken, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotOf, isWhile, keyword, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withBlockBody, sourceSpanOf, withSourceSpan } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, Apply, Declaration, CollectionItem, ExtendInstruction, ForBinding, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, Quoted, Reference, SelectorBranch, SelectorTerm, SelectorList, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode } from '@jesscss/core/ast';
 
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
@@ -302,8 +302,12 @@ function declarationMemberReferenceFromVariableBase(
   if (base.scope !== 'live' || base.name === 'type' || !isMemberStep(tails[0]?.step)) {
     return null;
   }
+
+  /* The `$ns` the author wrote is the base's source: a failed member read reports there. */
+  const span = sourceSpanOf(base);
+  const root = declarationReference('$');
   return reference(
-    declarationReference('$'),
+    span === undefined ? root : withSourceSpan(root, span),
     [
       lookupStep('member', base.name),
       ...tails.map(tail => tail.step)
@@ -805,7 +809,11 @@ function reduceSelectorList(children: readonly unknown[]): SelectorList {
  * than a fixed stride — and a pad can hold a comment whose own `/` and `*` would
  * defeat any attempt to recover the operator from the padded text.
  */
-function dollarValueFromChildren(children: readonly unknown[]): ValueNode {
+function dollarValueFromChildren(
+  children: readonly unknown[],
+  _fields: unknown,
+  span: { readonly start: number; readonly end: number }
+): ValueNode {
   const base = requireValueNode(children[0]);
   if (children.length === 1) {
     if (base.type !== 'Lookup' || base.kind !== 'var') {
@@ -817,14 +825,14 @@ function dollarValueFromChildren(children: readonly unknown[]): ValueNode {
   if (base.type === 'Lookup' && base.kind === 'entry') {
     const name = requireToken(rest[0]).value;
     const tails = rest.slice(1).map(requireJessReferenceTail);
-    return reference(
+    return withSourceSpan(reference(
       base,
       [
         lookupStep('member', name),
         ...tails.map(tail => tail.step)
       ],
       `${base.raw}.${name}${tails.map(tail => tail.src).join('')}`
-    );
+    ), span);
   }
   if (base.type !== 'Lookup' || base.kind !== 'var') {
     throw new TypeError('Jess reference base must be a variable reference.');
@@ -832,14 +840,11 @@ function dollarValueFromChildren(children: readonly unknown[]): ValueNode {
   if (isJessReferenceTail(rest[0])) {
     const tails = rest.map(requireJessReferenceTail);
     const memberReference = declarationMemberReferenceFromVariableBase(base, tails);
-    if (memberReference) {
-      return memberReference;
-    }
-    return reference(
+    return withSourceSpan(memberReference ?? reference(
       base,
       tails.map(tail => tail.step),
       `${base.scope === 'scoped' ? '$^' : '$'}${lookupNameSource(base.name)}${tails.map(tail => tail.src).join('')}`
-    );
+    ), span);
   }
   if (rest.some(child => isToken(child) && child.value === '/')) {
     return list(

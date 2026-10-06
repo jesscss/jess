@@ -23,11 +23,10 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { ScssImportPostludeError } from './parse-error.js';
-import { anonymousMixin, any, asDiagnostic, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, importIsCompileTime, importSpellingIsHttpUrl, importTargetSpelling, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
-import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { COMPARISON_OPERATORS, controlBlockStatements, contentArgRaw, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScssImportTarget, isScriptModulePath, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, keywordizeValues, mapKeyValue, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
-import type { ScssArgumentPair, ScssCallArg, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
+import { anonymousMixin, any, asDiagnostic, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
+import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
+import { COMPARISON_OPERATORS, controlBlockStatements, contentArgRaw, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
+import type { ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
   Stylesheet: Combinator<Stylesheet>;
@@ -69,7 +68,7 @@ type ScssRules = {
   Declaration: Combinator<Declaration>;
   NestedPropertyMember: Combinator<CollectionEntry>;
   NestedPropertyDeclaration: Combinator<Declaration>;
-  ImportStatement: Combinator<StyleImport | AtRuleStatement>;
+  ImportStatement: Combinator<StyleImport | AtRuleStatement | ScssImportListFact>;
   UseNamespace: Combinator<string>;
   ModuleDirective: Combinator<[string, StyleImport | ModuleImport]>;
   ImportUrl: Combinator<Url>;
@@ -103,10 +102,6 @@ type ScssRules = {
   QueryValue: Combinator<ValueNode>;
   QueryFeature: Combinator<ValueNode>;
   QueryFunction: Combinator<FunctionCall>;
-  QueryInParens: Combinator<ValueNode>;
-  QueryCondition: Combinator<ValueNode>;
-  QueryClause: Combinator<ValueNode>;
-  QueryPrelude: Combinator<ValueNode>;
   SupportsAtom: Combinator<ValueNode>;
   GeneralTemplate: Combinator<Interpolation>;
   GeneralTemplateGroup: Combinator<Interpolation>;
@@ -118,7 +113,6 @@ type ScssRules = {
   SupportsAndOrKeyword: Combinator<Keyword>;
   SupportsCondition: Combinator<ValueNode>;
   SupportsPrelude: Combinator<ValueNode>;
-  MediaPrelude: Combinator<ValueNode>;
 
   /** CSS-compatible generic header capture for known passthrough blocks. */
   AtRulePrelude: Combinator<ValueNode | null>;
@@ -182,6 +176,20 @@ type ScssRules = {
  * here, mirroring less-parser's `SharedSyntax`.
  */
 type ScssSharedSyntax = {
+  /* Inherited from the CSS base: the media query list and the container prelude. */
+  QueryPrelude: Combinator<ValueNode>;
+  ContainerPrelude: Combinator<ValueNode>;
+
+  /*
+   * Inherited from the CSS base: the typed `An+B` arguments of the `:nth-*()`
+   * pseudos (their `of S` list reads this dialect's `SelectorList`) and
+   * `:lang()` / `:dir()`'s structured arguments.
+   */
+  TypedNthPseudoArgument: Combinator<NthArgument>;
+  TypedOfTypePseudoArgument: Combinator<NthArgument>;
+  LangPseudoArgument: Combinator<List | Interpolation>;
+  DirPseudoArgument: Combinator<Keyword>;
+
   /*
    * Converged to the CSS base (inherited via compose): same token rule
    * token(noTrivia(sequence(<number>, '%'))), used only by keyframeSelector.
@@ -1874,7 +1882,10 @@ const scssFactory = (g: ScssInputRules) => {
         g.Keyword,
         literal(')')
       )),
-      noTrivia(caseInsensitiveWord('layer'))
+      noTrivia(sequence(
+        caseInsensitiveWord('layer'),
+        not(literal('('))
+      ))
     ),
     children => children.length === 1
       ? keyword(requireToken(children[0]).value)
@@ -1985,11 +1996,22 @@ const scssFactory = (g: ScssInputRules) => {
     caseInsensitiveWord('supports'),
     literal('(')
   ));
+
+  /*
+   * The same positional fact for `layer(`: css-cascade-5 §3.1 puts the
+   * `layer()` slot before `<media-query-list>` too, so a `layer(` whose name
+   * `ImportLayer` rejects (`layer(#{$name})`, `layer(a b)`) fails rather than
+   * being recovered as a `<general-enclosed>` media query term.
+   */
+  const importLayerOpen = noTrivia(sequence(
+    caseInsensitiveWord('layer'),
+    literal('(')
+  ));
   const ImportTail = node<ValueNode>(
     'ImportTail',
     choice(
       sequence(g.ImportQualifier, optional(g.QueryPrelude)),
-      sequence(not(importSupportsOpen), g.QueryPrelude)
+      sequence(not(importSupportsOpen), not(importLayerOpen), g.QueryPrelude)
     ),
     (children) => {
       const values = children.filter(isScssValue).flatMap(value =>
@@ -2004,46 +2026,37 @@ const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * There are TWO import nodes and this reducer picks between them. A plain CSS
-   * `@import` — a `.css` file or an `http(s)://` URL — is an ordinary
+   * There are TWO import nodes and this reducer picks between them, per
+   * argument. A plain CSS `@import` — a `.css` file or a URL — is an ordinary
    * `AtRuleStatement`; a Sass partial import is a compile-time `StyleImport`.
    * `importIsCompileTime` is the ONE definition of that split, shared with every
-   * other dialect; Sass adds only its own URL rule (`spec/at-rules/import.md`: a
-   * URL beginning `http://` or `https://` is plain CSS, quoted or in `url()`),
+   * other dialect; Sass adds only its own URL rule (`sassImportUrlIsPlainCss`:
+   * a protocol-relative or `http(s)://` URL is plain CSS, quoted or in `url()`),
    * which Less does not have. Every input is authored syntax, so nothing about
    * the shape defers to eval.
    *
-   * A postlude on the COMPILE-TIME branch is rejected here rather than carried:
-   * a media/layer/supports query describes a linked CSS resource, and a partial's
+   * Sass takes a comma-separated list of arguments, each its own import. A
+   * postlude can only follow the LAST one — the media query list after it would
+   * read any further comma as its own — so it belongs to that argument alone.
+   * On the COMPILE-TIME branch it is rejected here rather than carried: a
+   * media/layer/supports query describes a linked CSS resource, and a partial's
    * rules are spliced into this document instead.
    */
-  const ImportStatement = node<StyleImport | AtRuleStatement>(
+  const ImportStatement = node<StyleImport | AtRuleStatement | ScssImportListFact>(
     'ImportStatement',
     sequence(
       caseInsensitiveWord('@import'),
-      choice(
-        g.Quoted,
-        g.ImportUrl
+      oneOrMoreSep(
+        choice(
+          g.Quoted,
+          g.ImportUrl
+        ),
+        literal(',')
       ),
       optional(g.ImportTail),
       literal(';')
     ),
-    (children, _fields, span) => {
-      const targetIndex = children.findIndex(isScssImportTarget);
-      const target = children[targetIndex];
-      if (!isScssImportTarget(target)) {
-        throw new TypeError('SCSS @import requires a typed target.');
-      }
-      const tail = children.slice(targetIndex + 1).find(isScssValue) ?? null;
-      const spelling = importTargetSpelling(target);
-      if (!importSpellingIsHttpUrl(spelling) && importIsCompileTime('@import', target, null, null, spelling)) {
-        if (tail !== null) {
-          throw new ScssImportPostludeError(span.start, span.end);
-        }
-        return styleImport('@import', target, { mode: 'import' });
-      }
-      return atRuleStatement('@import', tail === null ? target : spaced([target, tail]));
-    }
+    (children, _fields, span) => scssImportStatementFrom(children, span)
   );
   const moduleNamespaceName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const UseNamespace = node<string>(
@@ -2899,25 +2912,13 @@ const scssFactory = (g: ScssInputRules) => {
         g.IfBody
       ),
       sequence(
-        choice(
-          g.MediaAtKeyword,
-          sequence(
-            g.ContainerAtKeyword,
-            not(g.QueryOnly)
-          )
-        ),
+        g.MediaAtKeyword,
         g.QueryPrelude,
         g.IfBody
       ),
       sequence(
-        choice(
-          g.MediaAtKeyword,
-          sequence(
-            g.ContainerAtKeyword,
-            not(g.QueryOnly)
-          )
-        ),
-        g.MediaPrelude,
+        g.ContainerAtKeyword,
+        g.ContainerPrelude,
         g.IfBody
       ),
       sequence(
@@ -3203,123 +3204,15 @@ const scssFactory = (g: ScssInputRules) => {
       [any(children.length > 2 ? requireToken(children[2]).value : '')]
     )
   );
-  const QueryInParens = node<ValueNode>(
-    'QueryInParens',
-    choice(
-      sequence(
-        literal('('),
-        g.QueryCondition,
-        literal(')')
-      ),
-      g.QueryFeature,
-      g.QueryFunction
-    ),
-    children => children.length === 1
-      ? requireValue(children[0])
-      : block(requireValue(children[1]))
-  );
-  const QueryCondition = node<ValueNode>(
-    'QueryCondition',
-    choice(
-      sequence(
-        g.QueryNot,
-        g.QueryInParens
-      ),
-      sequence(
-        g.QueryInParens,
-        many(sequence(
-          g.QueryAndOr,
-          g.QueryInParens
-        ))
-      )
-    ),
-    (children) => {
-      const values = keywordizeValues(children);
-      return values.length === 1 ? values[0]! : spaced(values);
-    }
-  );
 
   /*
-   * `only` modifies a media type; it cannot introduce a parenthesized query
-   * condition. Keep `not (...)` in QueryCondition, where that form
-   * is structurally valid.
+   * `@media` and `@container` read the CSS base's preludes: its media query
+   * list (`QueryPrelude`: the `and`/`or` connective read with the term it
+   * introduces, a glued `and(` a `<general-enclosed>` term) and its container
+   * prelude. SCSS overrides only their leaves (`QueryValue`, `QueryFeature`,
+   * `QueryFunction`), so a dangling connective (`screen and {`, `and (a)`) is
+   * the same parse error it is in CSS.
    */
-  const QueryNonOnlyKeyword = node<Keyword>(
-    'QueryNonOnlyKeyword',
-    sequence(
-      not(g.QueryOnly),
-      g.Keyword
-    ),
-    children => requireKeyword(children.at(-1))
-  );
-  const QueryOnlyClause = node<ValueNode>(
-    'QueryOnlyClause',
-    sequence(
-      g.QueryOnly,
-      QueryNonOnlyKeyword,
-      many(sequence(
-        g.QueryAndOr,
-        g.QueryInParens
-      ))
-    ),
-    children => spaced(keywordizeValues(children))
-  );
-  const QueryClause = node<ValueNode>(
-    'QueryClause',
-    choice(
-      QueryOnlyClause,
-
-      /*
-       * A leading `<general-enclosed>` function term — media-queries-5 §2.1/§3.1
-       * (`<function-token> <any-value> )`), e.g. `@media foo(bar)`. This reuses
-       * the SAME general-enclosed node `QueryInParens` already carries; the
-       * arm only has to move earlier. Without it the media-type arm below reads
-       * `foo` as a keyword and `(bar)` as a separate feature, rendering
-       * `foo (bar)` with a stray space while css/less/jess render `foo(bar)`.
-       * `QueryFunction` opens on `QueryFunctionName`, whose `(?=\()` lookahead
-       * matches only a name glued to `(`, so a bare `( … )` group still falls
-       * through to the media-type / QueryCondition arms.
-       */
-      g.QueryFunction,
-
-      /*
-       * `[ not ]? <media-type> [ and <media-in-parens> ]*` (media-queries-4
-       * §2.1; `or` is admitted as CSS's clause admits it). Every step reads its
-       * own connective, so `screen and (a) and (b)` and
-       * `not all and (monochrome)` parse; the CSS clause also tolerates a
-       * step with no connective. A `not (…)` condition fails this arm at its
-       * `(` and is the QueryCondition below.
-       */
-      sequence(
-        optional(g.QueryNot),
-        QueryNonOnlyKeyword,
-        many(sequence(
-          optional(g.QueryAndOr),
-          g.QueryInParens
-        ))
-      ),
-      g.QueryCondition
-    ),
-    (children) => {
-      const values = keywordizeValues(children);
-      return values.length === 1 ? values[0]! : spaced(values);
-    }
-  );
-
-  /* CSS owns this unchanged comma-separated query-list frame. */
-  const QueryPrelude = node<ValueNode>(
-    'QueryPrelude',
-    oneOrMoreSep(g.QueryClause, literal(',')),
-    (children) => {
-      const values = children.filter(isScssValue);
-      return values.length === 1
-        ? values[0]!
-        : list(
-            values,
-            ','
-          );
-    }
-  );
 
   /*
    * `@supports` is not the media/container query grammar: a general-enclosed
@@ -3479,11 +3372,6 @@ const scssFactory = (g: ScssInputRules) => {
     'SupportsPrelude',
     g.SupportsCondition,
     children => requireValue(children[0])
-  );
-  const MediaPrelude = node<ValueNode>(
-    'MediaPrelude',
-    noTrivia(oneOrMore(g.MediaModifier)),
-    children => any(children.map(requireToken).map(token => token.value).join('').trim())
   );
 
   /*
@@ -3756,27 +3644,15 @@ const scssFactory = (g: ScssInputRules) => {
         literal('}')
       ),
       sequence(
-        choice(
-          g.MediaAtKeyword,
-          sequence(
-            g.ContainerAtKeyword,
-            not(g.QueryOnly)
-          )
-        ),
+        g.MediaAtKeyword,
         g.QueryPrelude,
         literal('{'),
         conditionalBlockBody,
         literal('}')
       ),
       sequence(
-        choice(
-          g.MediaAtKeyword,
-          sequence(
-            g.ContainerAtKeyword,
-            not(g.QueryOnly)
-          )
-        ),
-        g.MediaPrelude,
+        g.ContainerAtKeyword,
+        g.ContainerPrelude,
         literal('{'),
         conditionalBlockBody,
         literal('}')
@@ -3988,27 +3864,15 @@ const scssFactory = (g: ScssInputRules) => {
         literal('}')
       ),
       sequence(
-        choice(
-          g.MediaAtKeyword,
-          sequence(
-            g.ContainerAtKeyword,
-            not(g.QueryOnly)
-          )
-        ),
+        g.MediaAtKeyword,
         g.QueryPrelude,
         literal('{'),
         nestedKeyframesBody,
         literal('}')
       ),
       sequence(
-        choice(
-          g.MediaAtKeyword,
-          sequence(
-            g.ContainerAtKeyword,
-            not(g.QueryOnly)
-          )
-        ),
-        g.MediaPrelude,
+        g.ContainerAtKeyword,
+        g.ContainerPrelude,
         literal('{'),
         nestedKeyframesBody,
         literal('}')
@@ -4413,7 +4277,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     children => selist(...children.filter(isSelectorBranch))
   );
-  const NthPseudo = node<SimpleSelector>(
+  const NthPseudo = node<SimpleToken>(
     'NthPseudo',
 
     /*
@@ -4427,25 +4291,30 @@ const scssFactory = (g: ScssInputRules) => {
        */
     sequence(
       routed(),
-      not(g.MalformedPseudoSelectorNumericArgument),
-      g.PseudoArgument,
+      choice(
+        g.TypedNthPseudoArgument,
+        sequence(
+          not(g.MalformedPseudoSelectorNumericArgument),
+          g.PseudoArgument
+        )
+      ),
       literal(')')
     ),
 
     /*
-       * Insignificant whitespace surrounding the `<An+B>` argument inside the
-       * parens (`:nth-child( 2n+1 )`) is normalized away, matching the other
-       * dialects; sign whitespace inside the argument (`2n + 1`, `n - 3`) stays
-       * verbatim in the captured chunk. Selectors-4 §6.6.2 permits both
-       * (https://www.w3.org/TR/selectors-4/#anb-microsyntax).
+       * The CSS base's typed An+B arm (`TypedNthPseudoArgument`) reads a
+       * well-formed argument with its padding, its `of S` list through this
+       * dialect's `SelectorList`, so the pseudo keeps it structured (`arg` /
+       * `args`) and core spells it, unspaced (ledger F2). Any other argument
+       * is the opaque raw text it always was.
        */
-    children => simpleSelector(`${requireToken(children[0]).value}${requireString(children.find(child => typeof child === 'string')).trim()})`)
+    children => nthPseudoFrom(requireToken(children[0]).value, children[1])
   );
-  const NthTypePseudo = node<SimpleSelector>(
+  const NthTypePseudo = node<SimpleToken>(
     'NthTypePseudo',
 
     /*
-       * `:nth-of-type`/`:nth-last-of-type`: a BARE `<An+B>` only — Selectors-4
+       * `:nth-of-type`/`:nth-last-of-type` (and `:nth-col`/`:nth-last-col`): a BARE `<An+B>` only — Selectors-4
        * §6.6.2 defines no `of S` tail for the type-index families. The
        * `not(sequence(g.NthExpression, g.NthOfKeyword))` guard rejects
        * an `<An+B> of …` argument so `:nth-of-type(2n of .a)` fails rather than
@@ -4454,18 +4323,49 @@ const scssFactory = (g: ScssInputRules) => {
        */
     sequence(
       routed(),
-      not(g.MalformedPseudoSelectorNumericArgument),
-      not(parser(
-        { trivia: whitespace },
+      choice(
+        g.TypedOfTypePseudoArgument,
         sequence(
-          g.NthExpression,
-          g.NthOfKeyword
+          not(g.MalformedPseudoSelectorNumericArgument),
+          not(parser(
+            { trivia: whitespace },
+            sequence(
+              g.NthExpression,
+              g.NthOfKeyword
+            )
+          )),
+          g.PseudoArgument
         )
-      )),
-      g.PseudoArgument,
+      ),
       literal(')')
     ),
-    children => simpleSelector(`${requireToken(children[0]).value}${requireString(children.find(child => typeof child === 'string')).trim()})`)
+    children => nthPseudoFrom(requireToken(children[0]).value, children[1])
+  );
+
+  /*
+   * `:lang()` / `:dir()`: the CSS base's structured arguments (a language
+   * range `List`, a direction `Keyword`), never kept as text. Each owns the
+   * padding inside its parens.
+   */
+  const LangPseudo = node<SimpleToken>(
+    'LangPseudo',
+    sequence(
+      routed(),
+      g.LangPseudoArgument,
+      literal(')')
+    ),
+    children => requireStructuredPseudo(requireToken(children[0]).value, children[1])
+  );
+
+  /* `:dir( <ident> )`, the CSS base's argument. */
+  const DirPseudo = node<SimpleToken>(
+    'DirPseudo',
+    sequence(
+      routed(),
+      g.DirPseudoArgument,
+      literal(')')
+    ),
+    children => requireStructuredPseudo(requireToken(children[0]).value, children[1])
   );
   const StructuredPseudo = node<SimpleToken>(
     'StructuredPseudo',
@@ -4530,14 +4430,18 @@ const scssFactory = (g: ScssInputRules) => {
   const PseudoSelectorDispatch = dispatch(
     pseudoIdentOrFunction,
     caseInsensitive([':nth-child(', ':nth-last-child('], NthPseudo),
-    caseInsensitive([':nth-of-type(', ':nth-last-of-type('], NthTypePseudo),
-    caseInsensitive([':is(', ':where(', ':not(', ':has(', ':matches('], StructuredPseudo),
+    caseInsensitive([':nth-of-type(', ':nth-last-of-type(', ':nth-col(', ':nth-last-col('], NthTypePseudo),
+    caseInsensitive([':is(', ':where(', ':not(', ':has(', ':matches(', ':host(', ':host-context(', '::slotted('], StructuredPseudo),
     caseInsensitive([':global(', ':local('], GlobalLocalPseudo),
+    caseInsensitive(':lang(', LangPseudo),
+    caseInsensitive(':dir(', DirPseudo),
     caseInsensitive([
       ':nth-child',
       ':nth-last-child',
       ':nth-of-type',
       ':nth-last-of-type',
+      ':nth-col',
+      ':nth-last-col',
       ':is',
       ':where',
       ':not',
@@ -4901,10 +4805,6 @@ const scssFactory = (g: ScssInputRules) => {
     QueryValue,
     QueryFeature,
     QueryFunction,
-    QueryInParens,
-    QueryCondition,
-    QueryClause,
-    QueryPrelude,
     SupportsAtom,
     GeneralTemplate,
     GeneralTemplateGroup,
@@ -4916,7 +4816,6 @@ const scssFactory = (g: ScssInputRules) => {
     SupportsAndOrKeyword,
     SupportsCondition,
     SupportsPrelude,
-    MediaPrelude,
     AtRulePrelude,
     AtRulePreludeAtom,
     AtRulePreludeGroup,

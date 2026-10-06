@@ -154,7 +154,12 @@ describe('public CSS parse()', () => {
       type: 'Stylesheet',
       rules: [{
         type: 'Ruleset',
-        selector: { selectors: [simpleComplex(':nth-child(-n+2 of .item)')] }
+        selector: { selectors: [{
+          type: 'PseudoSelector',
+          name: ':nth-child',
+          arg: { type: 'AnPlusB', src: '-n+2' },
+          args: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: '.item' }] }
+        }] }
       }]
     });
   });

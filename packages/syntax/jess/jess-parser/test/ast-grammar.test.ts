@@ -1290,7 +1290,7 @@ describe('Jess AST grammar facts', () => {
      */
     for (const [source, text] of [
       ['.x:totally-made-up(1) { color: red; }', ':totally-made-up(1)'],
-      ['.x:lang("en-US") { color: red; }', ':lang("en-US")'],
+      ['.x:totally-made-up("en-US") { color: red; }', ':totally-made-up("en-US")'],
 
       /*
        * The scan is delimiter-aware: a `)` inside a string or a bracket group is
@@ -1333,13 +1333,15 @@ describe('Jess AST grammar facts', () => {
      * Valid CSS is valid .jess: Selectors-4 §6.6.2 permits OPTIONAL whitespace
      * around the `+`/`-` sign, and CSS permits insignificant whitespace
      * surrounding any functional pseudo's argument inside the parens
-     * (https://www.w3.org/TR/selectors-4/#anb-microsyntax). Sign whitespace is
-     * preserved verbatim; surrounding paren whitespace is normalized away exactly
-     * as the canonical CSS grammar and the other dialects do.
+     * (https://www.w3.org/TR/selectors-4/#anb-microsyntax). Neither carries
+     * meaning: the An+B emits unspaced (ledger F2) and surrounding paren
+     * whitespace is normalized away, exactly as the canonical CSS grammar and
+     * the other dialects do.
      */
     for (const [source, expected] of [
-      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n + 1) {\n  color: red;\n}\n'],
-      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n - 3) {\n  color: red;\n}\n'],
+      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
+      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n-3) {\n  color: red;\n}\n'],
+      ['a:lang( en , "fr" ):dir( rtl ) { color: red; }', 'a:lang(en, "fr"):dir(rtl) {\n  color: red;\n}\n'],
       ['a:nth-child(2n+1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
       ['a:nth-child( 2n+1 ) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
       ['a:not( .b ) { color: red; }', 'a:not(.b) {\n  color: red;\n}\n']
@@ -1433,7 +1435,7 @@ describe('Jess AST grammar facts', () => {
       '.card { @media screen { color: blue; } }',
       '.card { @media screen { @supports (display: grid) { display: grid; } } }'
     ]) {
-      const result = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
+      const result = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace, state: { source } });
       expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
     }
     const source = [
@@ -1448,7 +1450,7 @@ describe('Jess AST grammar facts', () => {
       '}'
     ].join('\n');
     const cst = parseJessCst(source);
-    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace });
+    const direct = run(jessGrammar.Stylesheet, source, { trivia: jessGrammar.whitespace, state: { source } });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
@@ -1481,7 +1483,7 @@ describe('Jess AST grammar facts', () => {
     });
 
     const compilerBeforeLiteral = '@-import "legacy.less"; @import url(theme.css);';
-    const compilerBeforeLiteralDirect = run(jessGrammar.Stylesheet, compilerBeforeLiteral, { trivia: jessGrammar.whitespace });
+    const compilerBeforeLiteralDirect = run(jessGrammar.Stylesheet, compilerBeforeLiteral, { trivia: jessGrammar.whitespace, state: { source: compilerBeforeLiteral } });
     expect(compilerBeforeLiteralDirect.ok).toBe(true);
     expect(compilerBeforeLiteralDirect.unconsumedFrom).toBeNull();
     expect(parse(compilerBeforeLiteral)).toMatchObject({
@@ -1506,7 +1508,7 @@ describe('Jess AST grammar facts', () => {
       '@import url($path);',
       '@import "theme.css" $media;'
     ]) {
-      const rejected = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace });
+      const rejected = run(jessGrammar.Stylesheet, invalid, { trivia: jessGrammar.whitespace, state: { source: invalid } });
       expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
@@ -1769,12 +1771,17 @@ describe('Jess AST grammar facts', () => {
     expect(serialize(parse('@container sidebar (30rem < width < 80rem) { .card { color: blue; } }'))).toEqual({
       css: '@container sidebar (30rem < width < 80rem) {\n  .card {\n    color: blue;\n  }\n}\n'
     });
-    for (const rejected of [
-      '@media (width >= $limit) { .card { color: blue; } }',
-      '@media (width < 80rem < 100rem) { .card { color: blue; } }'
-    ]) {
-      expect(() => parse(rejected), rejected).toThrow(SyntaxError);
-    }
+
+    /*
+     * `@media` reads the CSS base's media query list, so a group that is no
+     * `<mf-range>` is `<general-enclosed>` (media-queries-4 §3.1): valid CSS,
+     * emitted as written. Its component values are header terms, so a bare
+     * `$limit` — no `.jess` form in a prelude, where `${…}` is the only one
+     * (ledger P13/P16) — is still rejected.
+     */
+    const generalEnclosed = '@media (width < 80rem < 100rem) {\n  .card {\n    color: blue;\n  }\n}\n';
+    expect(serialize(parse(generalEnclosed)).css).toBe(generalEnclosed);
+    expect(() => parse('@media (width >= $limit) { .card { color: blue; } }')).toThrow(SyntaxError);
 
     /*
      * css-contain-3 §3.3 `<style-query>`: a typed container-header function, the

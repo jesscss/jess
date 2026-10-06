@@ -84,18 +84,32 @@ describe('slashed combinators are rejected by name', () => {
   });
 
   /*
-   * KNOWN GAP: a glued declaration is read as a ruleset first, and a pseudo
-   * argument rejects a `/word/` as soon as it folds, so a declaration whose
-   * value spells a selector pseudo function with a `/word/` inside it is
-   * rejected. Both are valid CSS declarations: css and scss parse them, and
-   * lessc 4.x emits `a: is(b / c / d)` and `src: local(Foo / Bar / Baz)`. They
-   * failed with a generic syntax error before the pseudo argument read the
-   * slashed combinator; now they get the G37 diagnostic.
+   * A glued declaration is read as a ruleset first, so a `/word/` inside a
+   * pseudo argument is held until a selector commits rather than rejected where
+   * it is read. A declaration whose value spells a selector pseudo function with
+   * a `/word/` inside it is valid CSS — css and scss parse it, and lessc 4.x
+   * emits `a: is(b / c / d)` and `src: local(Foo / Bar / Baz)`.
    */
-  it.fails.each([
+  it.each([
     '.x { a:is(b /c/ d); }',
-    '@font-face { src:local(Foo/Bar/Baz); }'
+    '@font-face { src:local(Foo/Bar/Baz); }',
+    '.x { a:is(b /c/ d) }',
+    '.x { a:not(b, c /d/ e); f: g; }'
   ])('parses the glued declaration %j', (source) => {
     expect(failureOf(source)).toBeUndefined();
+  });
+
+  it.each([
+    ['a nested ruleset', '.x { .y:is(.a /deep/ .b) { c: d; } }', 14, '/deep/'],
+    ['a ruleset after a held declaration', '.x { a:is(b /c/ d); }\n:is(.a /deep/ .b) { c: d; }', 29, '/deep/'],
+    ['a pseudo inside an inline :extend() target', '.x:extend(:is(.a /deep/ .b)) { c: d; }', 17, '/deep/'],
+    ['a pseudo inside a body :extend() target', '.x { &:extend(:is(.a /deep/ .b)); }', 21, '/deep/'],
+    ['a mixin call\'s selector path', '.a:is(b /c/ d);', 8, '/c/'],
+    ['an outer ruleset whose body committed first', '.o:is(.a /deep/ .b) { .i { c: d; } }', 9, '/deep/'],
+    ['a nested ruleset after a held declaration', '.o { a:is(b /c/ d); .i:is(.x /deep/ .y) { e: f; } }', 29, '/deep/']
+  ])('still rejects a held combinator once %s commits', (_label, source, offset, combinator) => {
+    const failure = failureOf(source);
+    expect(failure).toBeInstanceOf(LessSlashedCombinatorError);
+    expect(failure).toMatchObject({ offset, endOffset: offset + combinator.length });
   });
 });

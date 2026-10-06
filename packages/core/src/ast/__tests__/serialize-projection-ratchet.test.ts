@@ -256,7 +256,10 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +2 functions: a nested rule hoisted out of an enclosing rule re-opens the
     // at-rules it rose out of (`emitHoistEntry`), through the nested at-rule
     // writer's shell (`nestedAtRuleShell`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(515);
+    // +1 function: a structured `:nth-*()` / `:lang()` / `:dir()` pseudo reaches
+    // its mixin-match atoms through its argument's parsed leaves
+    // (`pushArgumentAtoms`) instead of re-splitting its canonical spelling.
+    expect(occurrences(/^function |^async function /gmu)).toBe(516);
     expect(occurrences(/new Map/gu)).toBe(85);
     expect(occurrences(/new Set/gu)).toBe(41);
     expect(occurrences(/new WeakMap/gu)).toBe(8);
