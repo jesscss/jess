@@ -203,11 +203,17 @@ function astBranchSpecificity(branch: SelectorBranch, compoundOnly: boolean, inH
 /* The pseudo-elements CSS 2 spelled with one colon, which keep that spelling (css-pseudo-4 §2). */
 const LEGACY_PSEUDO_ELEMENTS = new Set([':before', ':after', ':first-line', ':first-letter']);
 
-/** Whether a parsed simple token is a pseudo-element, read from the parser token. */
+/**
+ * Whether a parsed simple token is a pseudo-element, read from the parser token.
+ * Only a one-colon name of a legacy pseudo-element's length is lowercased.
+ */
 function isPseudoElement(sim: SimpleToken): boolean {
   const text = sim.type === 'PseudoSelector' ? sim.name : sim.text;
-  return text !== null && text.charCodeAt(0) === 58 /* : */
-    && (text.charCodeAt(1) === 58 || LEGACY_PSEUDO_ELEMENTS.has(text.toLowerCase()));
+  if (text === null || text.charCodeAt(0) !== 58 /* : */) {
+    return false;
+  }
+  const n = text.length;
+  return text.charCodeAt(1) === 58 || ((n === 6 || n === 7 || n === 11 || n === 13) && LEGACY_PSEUDO_ELEMENTS.has(text.toLowerCase()));
 }
 
 /** Whether a parsed branch carries a pseudo-element in one of its own compounds. */
