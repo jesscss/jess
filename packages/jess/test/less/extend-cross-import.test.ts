@@ -165,6 +165,19 @@ describe('extend across @import', () => {
     });
 
     /*
+     * An import inside a ruleset loads the sheet too, so a later import of it is a no-op
+     * everywhere: it neither renders (the extend finds no root `.sm`) nor publishes the
+     * mixins the walk never renders there. One before the ruleset is the one that counts.
+     */
+    it('an import of a sheet an import inside a ruleset already loaded is a no-op', async () => {
+      for (const main of ['ruleset-ref-then-ref-main.less', 'ruleset-plain-then-plain-main.less']) {
+        const result = await mkCompiler(true).safeRender(path.join(fixtures, main));
+        expect(result.errors.map(error => error.code), main).toEqual(['resolve/name-not-found']);
+      }
+      expect(await renderFile('ref-then-ruleset-ref-main.less')).toBe(['.x {', '  b: 2;', '}', '.y {', '  m: 1;', '}'].join('\n'));
+    });
+
+    /*
      * Each copy of a `(multiple)` sheet places the `(reference)` import inside it on its own,
      * so the extend in `@media print` reveals only the print copy.
      */

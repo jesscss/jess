@@ -445,8 +445,8 @@ function importHasOption(options: string | null, option: string): boolean {
  * dropped, so the sheet is placed once and stays as visible as it was. A plain import after
  * a `(reference)` one is not a re-import: it renders the sheet the author asked to see. A
  * `(multiple)` import, or one inside a `(multiple)` sheet, places its own copy and is never
- * dropped. The import planner and the render walk both ask this, so they agree on which
- * imports place a sheet.
+ * dropped. The import planner and the render walk both ask this, in document order, an
+ * import inside a ruleset included, so they agree on which imports place a sheet.
  */
 function isReferenceReimport(node: StyleImport, options: string | null, inMultiple: boolean, placed: boolean): boolean {
   return placed && !inMultiple && node.mode !== 'compose'
@@ -12345,6 +12345,57 @@ function planImportedFacts(
 
   /* Every document an `@import` of any kind placed, for {@link isReferenceReimport}. */
   const placed = new Set<string>();
+
+  /*
+   * The sheets an `@import` nested in a ruleset places, and everything they import, are
+   * loaded only where the walk renders that ruleset, but they count toward import-once
+   * here in document order too (ledgers J14, X18): a later `@import` of a sheet one of
+   * them placed is dropped here as the walk drops it, so it publishes no facts the walk
+   * never renders. A guarded ruleset may never render, and a path the walk interpolates
+   * is known only there, so neither counts.
+   *
+   * ponytail: a guard that holds still leaves a later import of the same sheet dropped
+   * by the walk with its facts published here; evaluating the guard here would close it.
+   */
+  const countRulesetImports = async (rules: readonly Statement[], multiple: boolean): Promise<void> => {
+    for (const st of rules) {
+      if (st.type === 'Ruleset' || st.type === 'AtRuleBlock') {
+        if (st.type === 'AtRuleBlock' || st.guard === undefined) {
+          await countRulesetImports(st.rules, multiple);
+        }
+        continue;
+      }
+      if (st.type !== 'StyleImport' || st.mode === 'compose') {
+        continue;
+      }
+      const target = st.target.type === 'Url' ? st.target.value : st.target;
+      const options = importRequestOptions(st.options);
+      if (!isStaticQuoted(target) || importHasOption(options, 'inline')) {
+        continue;
+      }
+      const prepared = e.plannedImportDocuments?.get(st);
+      const request: ImportDocumentRequest = prepared?.request ?? { node: st, specifier: target.value, options };
+      const loaded = prepared === undefined ? await importDocument(request) : prepared.loaded;
+      if (prepared === undefined) {
+        e.plannedImportDocuments?.set(st, { request, loaded });
+      }
+      if (loaded === undefined || 'inline' in loaded || loaded.document === null || loaded.key === undefined) {
+        continue;
+      }
+      if (options === null && !multiple) {
+        if (seen.has(loaded.key)) {
+          continue;
+        }
+        seen.set(loaded.key, true);
+      } else if (isReferenceReimport(st, options, multiple, placed.has(loaded.key))) {
+        continue;
+      }
+      placed.add(loaded.key);
+      const sheet = loaded.document.rules;
+      const count = (): Promise<void> => countRulesetImports(sheet, multiple || importHasOption(options, 'multiple'));
+      await (loaded.withinDocument ? loaded.withinDocument(count) : count());
+    }
+  };
   const overlay: ImportPlanOverlay = {
     subjects: [],
     instructions: [],
@@ -12664,6 +12715,8 @@ function planImportedFacts(
             (deferredAnchors ??= []).push(anchor);
           }
         }
+      } else if (st.type === 'Ruleset' && st.guard === undefined) {
+        await countRulesetImports(st.rules, multipleImportDepth);
       } else if (st.type === 'ModuleImport' && e.context) {
         const { module } = await e.context.getModule(st.path.value).catch(moduleLoadFailed(st, e));
         e.plannedModuleImports?.set(st, module);
