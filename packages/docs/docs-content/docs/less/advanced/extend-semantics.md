@@ -69,7 +69,7 @@ into a single `:is(...)` at that position, rather than left as a comma list.
 `.button:hover, .submit:hover` share every part except the leading compound, so they
 compact to `:is(.button, .submit):hover`.
 
-Two guard rails on this compaction:
+Three guard rails on this compaction:
 
 - **Single-compound rows** only merge when they share a trailing suffix. Two whole
   branches that share *nothing* (`.ext8.ext9` and `.fuu`) stay a plain comma list —
@@ -78,6 +78,13 @@ Two guard rails on this compaction:
   shared parent-composition prefix (a flattened nested rule's hoisted header). A
   top-level rule's own header keeps `.foo .bar, .foo .baz` as a comma list — 5.x
   does not `:is()`-collapse authored complex rows.
+- **Specificity is kept.** Rows join one `:is()` only when the grouped parts have the
+  same specificity and may sit inside `:is()` — the rule every extend `:is()` group
+  follows, in every output mode (see
+  [Grouping keeps each selector's specificity](./extend-is-wrapping.md#grouping-keeps-each-selectors-specificity)).
+  `#submit` in place of `.submit` above gives `.button:hover, #submit:hover`, and
+  `.arrow::before` / `.arrow::after` never share an `:is()`, since a pseudo-element
+  is not allowed inside one.
 
 ## Nested output: re-nesting and its flatten triggers
 
@@ -125,6 +132,23 @@ When there is **no** shared prefix to strip and the match does not cross the `&`
 whole complex simply flattens. A flatten whose subject still has surviving nested
 children re-nests the corrected subtree under its hoisted header rather than composing
 the children flat.
+
+A flattened rule carries its whole composed selector, so it moves out of every rule it
+was nested in. An at-rule in between (`@media`, `@supports`) moves with it:
+
+```less
+.a { @media screen { .b, .c { e { y: 2; } } } }
+.d:extend(.a .b e) {}
+```
+
+```css
+@media screen {
+  :is(.a .b, .a .c) e,
+  .d {
+    y: 2;
+  }
+}
+```
 
 ## Exact extend into a rule with children
 
@@ -174,10 +198,10 @@ an `:is(a, b)` group is visible if *either* member is visible.
 
 - **No partial-property extend.** Extend is selector-level only — it shares a rule's
   whole declaration block. It cannot pull in a single property.
-- **No variable-target matching.** An interpolated selector as a match *target*
-  matches nothing (`:extend(@{variable})` finds nothing, and a `@{variable}` rule is
-  never matched *by* an extend). An interpolated selector as the *extender* — i.e.
-  `@{variable}:extend(.target)` — does work.
+- **No variable in the extend target.** `:extend(@{variable})` matches nothing. A
+  rule whose selector is interpolated (`@{variable} { … }`, `.c-@{n} { … }`) IS
+  matched once resolved, and an interpolated selector as the *extender* —
+  `@{variable}:extend(.target)` — works.
 - **No normalization of the target form.** Matching is byte-exact: a leading star
   (`*.class` ≠ `.class`), pseudo-class order (`:hover:visited` ≠ `:visited:hover`),
   and `nth` form (`1n+3` ≠ `n+3`) all matter. The one exception is attribute-selector

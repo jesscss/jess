@@ -197,6 +197,15 @@ Pinned through `<dialect>-parser/test/css-superset-constructs.test.ts:58`
 | D37 | Attribute-flag spacing | json "open": `selector-attribute-case-flag.css` (retired) | see D12 | see D12 | MEDIUM | FIXED | see D12 | see D12 |
 | D38 | Empty-block elision | json "settled": `empty-blocks.css` | all | `.empty {}` / `@media screen {}` → dropped → by design (TREE2-DESIGN-SPEC invariant #4) | LOW (not a defect) | holds | SETTLED (cited in the json) | none |
 
+## Deferred, not pinned
+
+Known divergences recorded here so they stay tracked; no test pins them yet,
+and they are not counted in the rows above.
+
+| # | Defect | Repro | Current output | Expected | Owner record | Fix area |
+| --- | --- | --- | --- | --- | --- | --- |
+| DF1 | SCSS `@extend` does not weave a complex extender into a complex target | `.x %c, .x .a { m: 1 } .p .q { @extend %c; }` (`.scss`) | `.x .p .q, .x .a` (the Less 4.x expansion, every output mode) | `.x .p .q, .p .x .q, .x .a` (dart-sass 1.101.7 weaves the two ancestor sequences) | Sass-parity work, deferred (orchestrator ruling 2026-10-05); not in the extend `:is()` grouping lane; `EXTEND-SEMANTICS.md` §5 known gaps | `packages/core/src/ast/extend/emit.ts` header emission, SCSS dialect only |
+
 ## Counting notes
 
 - D12 and D37 are one defect recorded in two places; counted once.

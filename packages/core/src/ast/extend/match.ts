@@ -749,7 +749,7 @@ function recurseIntoGrafts(
               return s;
             }
             const inner = applyInstruction(s.branches, target, extenders, partial, extenderKeys, targetAtoms, false, graftOuter);
-            return inner === null ? s : { t: 'is', branches: inner };
+            return inner === null ? s : { t: 'is', branches: inner, fold: s.fold };
           })
         }
       };
@@ -789,7 +789,7 @@ function recurseIntoGrafts(
           value.push(visibleValue[simple]!);
         }
       } else if (visibleCount > 0) {
-        value.push({ t: 'is', branches: inner });
+        value.push({ t: 'is', branches: inner, fold: s.fold });
       }
     }
     return {

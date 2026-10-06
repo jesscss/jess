@@ -308,21 +308,26 @@ _You can think of this mode of operation as essentially doing a non-destructive 
 
 
 ### Selector Interpolation with Extend
-> Extend is **not** able to match selectors with variables. If selector contains variable, extend will ignore it.
-
-However, extend can be attached to interpolated selector.
-
-Selector with variable will not be matched:
+A rule whose selector is interpolated is matched once its selector is resolved:
 
 ```less
 @variable: .bucket;
 @{variable} { // interpolated selector
   color: blue;
 }
-.some-class:extend(.bucket) {} // does nothing, no match is found
+.some-class:extend(.bucket) {}
 ```
 
-and extend with variable in target selector matches nothing:
+compiles to:
+
+```less
+.bucket,
+.some-class {
+  color: blue;
+}
+```
+
+An extend with a variable in its target selector matches nothing:
 
 ```less
 .bucket {
@@ -332,7 +337,7 @@ and extend with variable in target selector matches nothing:
 @variable: .bucket;
 ```
 
-Both of the above examples compile into:
+compiles to:
 
 ```less
 .bucket {

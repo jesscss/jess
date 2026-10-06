@@ -62,6 +62,11 @@ function classify(text: string): Kind {
   }
 }
 
+/** True when a simple's text is an element type selector, the one a compound may hold. */
+export function isTypeSelector(text: string): boolean {
+  return classify(text) === Kind.Type;
+}
+
 /** Add a simple's type value (case-folded) or id value (verbatim) into the sets. */
 function collect(text: string, types: Set<string>, ids: Set<string>): void {
   switch (classify(text)) {

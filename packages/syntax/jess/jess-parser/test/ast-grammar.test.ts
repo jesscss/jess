@@ -2753,11 +2753,15 @@ describe('Jess AST grammar facts', () => {
       ]
     };
 
+    /* A complex extender cannot join an `:is()` group after a combinator, so each
+     * is written in the Less 4.x expanded placement (ledger X3, owner 2026-10-05). */
     expect(serialize(document).css).toBe(
       '.scope {\n'
       + '  tone: quoted;\n'
       + '}\n'
-      + '.scope :is(.target, .scope .bare-bare, .scope .quoted-quoted) {\n'
+      + '.scope .target,\n'
+      + '.scope .scope .bare-bare,\n'
+      + '.scope .scope .quoted-quoted {\n'
       + '  color: blue;\n'
       + '}\n'
     );

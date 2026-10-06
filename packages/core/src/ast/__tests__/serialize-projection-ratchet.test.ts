@@ -245,7 +245,18 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +1 function, +1 `new WeakMap` (ruling J1): `erroringModes` keeps one
     // error-mode copy of a render's modes for namespaced calls instead of
     // spreading the modes on every call.
-    expect(occurrences(/^function |^async function /gmu)).toBe(514);
+    // +2 functions and +1 `new Set` (owner ruling 2026-10-05):
+    // `tokenFoldSpecificity`/`branchFoldSpecificity` read a branch's specificity
+    // from the selector IR so `'native'` folds only equal-specificity child runs;
+    // the Set is the module-level allowlist of standard pseudo-classes.
+    // -3 functions and -1 `new Set` (owner ruling 2026-10-05): the specificity,
+    // foldability and the pseudo-class allowlist moved to the shared `:is()`
+    // grouping module (`is-grouping.ts`) that extend's groups also use;
+    // `leadsWithCombinator` became its `nestingGroupKey`.
+    // +2 functions: a nested rule hoisted out of an enclosing rule re-opens the
+    // at-rules it rose out of (`emitHoistEntry`), through the nested at-rule
+    // writer's shell (`nestedAtRuleShell`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(515);
     expect(occurrences(/new Map/gu)).toBe(85);
     expect(occurrences(/new Set/gu)).toBe(41);
     expect(occurrences(/new WeakMap/gu)).toBe(8);

@@ -17,13 +17,17 @@ import { serialize } from '../serialize.js';
  * strictly-outer ancestors it does NOT reach — not blindly one level, not always root.
  *
  * The correctness bar these pin (verified against the flat solve as the semantic oracle):
- *   - crossing at 1 level: hoists to root (the crossed ancestor is absorbed into `:is`);
+ *   - crossing at 1 level: hoists to root;
  *   - crossing 2 levels deep (Case G): hoists ONE level, preserving the outer wrapper —
  *     it must NOT double-compose that wrapper (`.outer { .outer :is(…) }` was the bug);
  *   - crossing 2 BOUNDARIES (bubble = 2): re-hoists two levels via the serializer queue;
  *   - within-ampersand: the parent carries the extend, the child inherits in place;
  *   - local: substituted in place, no hoist;
  *   - multiple / interior `&`: crosses correctly across a spliced multi-segment parent.
+ *
+ * The matched span is complex and never leads its header, so it cannot share an
+ * `:is()` with `.z` (`.a :is(.p .leaf)` would let `.p` sit above `.a`): each crossing
+ * header lists the span and its extender as separate branches.
  */
 
 const evaluator = buildEvaluator(makeLessRegistry());
@@ -64,7 +68,8 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
       rule('.z', [], [{ target: selist(descendant('.p', '.leaf')), partial: true }])
     ]);
 
-    expect(nested(document())).toBe('.a :is(.p .leaf, .z) {\n'
+    expect(nested(document())).toBe('.a .p .leaf,\n'
+      + '.a .z {\n'
       + '  c: d;\n'
       + '}\n');
 
@@ -76,7 +81,7 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
     /*
      * `.outer { .mid { & .leaf { … } } }` composes to `.outer .mid .leaf` (origins 2,1,0).
      * `.z:extend(.mid .leaf all)` crosses `.mid`(anc)+`.leaf`(own): maxBnd 1, so the rule
-     * hoists out of ONLY `.mid` and re-nests under `.outer` — `.outer :is(.mid .leaf, .z)`.
+     * hoists out of ONLY `.mid` and re-nests under `.outer` — `.outer { .mid .leaf, .z }`.
      * The naive one-level-up hoist double-composed `.outer` (`.outer { .outer :is(…) }`);
      * the per-boundary header STRIPS the preserved `.outer` prefix.
      */
@@ -86,11 +91,12 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
     ]);
 
     expect(nested(document())).toBe('.outer {\n'
-      + '  :is(.mid .leaf, .z) {\n'
+      + '  .mid .leaf,\n'
+      + '  .z {\n'
       + '    c: d;\n'
       + '  }\n'
       + '}\n');
-    expect(nested(document())).not.toContain('.outer :is'); // the double-compose regression guard
+    expect(nested(document())).not.toContain('.outer .mid'); // the double-compose regression guard
   });
 
   it('CROSSING two BOUNDARIES re-hoists two levels, preserving only the un-crossed outermost', () => {
@@ -106,13 +112,15 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
     ]);
 
     expect(nested(document())).toBe('.top {\n'
-      + '  :is(.outer .mid .leaf, .z) {\n'
+      + '  .outer .mid .leaf,\n'
+      + '  .z {\n'
       + '    c: d;\n'
       + '  }\n'
       + '}\n');
 
     // Same selectors as flat, just with `.top` kept as a nesting wrapper.
-    expect(flat(document())).toBe('.top :is(.outer .mid .leaf, .z) {\n'
+    expect(flat(document())).toBe('.top .outer .mid .leaf,\n'
+      + '.top .z {\n'
       + '  c: d;\n'
       + '}\n');
   });
@@ -134,7 +142,8 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
       rule('.z', [], [{ target: selist(descendant('.p', '.b', '.p')), partial: true }])
     ]);
 
-    expect(nested(document())).toBe('.a :is(.p .b .p, .z) {\n'
+    expect(nested(document())).toBe('.a .p .b .p,\n'
+      + '.a .z {\n'
       + '  c: d;\n'
       + '}\n');
     expect(flat(document())).toBe(nested(document()));
@@ -160,7 +169,8 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
       + '      e: f;\n'
       + '    }\n'
       + '  }\n'
-      + '  :is(.mid .leaf, .z) {\n'
+      + '  .mid .leaf,\n'
+      + '  .z {\n'
       + '    c: d;\n'
       + '  }\n'
       + '}\n');

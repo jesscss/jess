@@ -10,8 +10,10 @@ The behavior below is anchored on two references, NOT on the current engine:
 
 1. **The extend fixtures** in less.js `alpha`
    (`packages/test-data/tests-unit/<fixture>/{<fixture>.less,<fixture>.css}`),
-   read read-only via `oracle-source.ts` and gated by
-   `packages/core/src/ast/parse-host/__tests__/extend-byte-identity.test.ts`.
+   rendered and gated by the Less fixture lane
+   (`packages/jess/test/less/all-less.test.ts`) and
+   `packages/jess/test/less/extend-exact-oracle.test.ts`, both applying the pending
+   golden edits in `packages/jess/test/less/pending-golden-edits.ts`.
    The `alpha` TOP-LEVEL `.css` (with `:is()` compaction) is the intended v5
    output.
 2. **Owner-confirmed corrections** in
@@ -172,7 +174,7 @@ compound position.
 
 `extend-clearfix` again: 4.x `legacy` emits `.clearfix:after, .foo:after,
 .bar:after`; v5 emits `:is(.clearfix, .foo, .bar):after`. This is why
-`legacy/*.css` is NOT a v5 reference (see `oracle-source.ts`).
+`legacy/*.css` is NOT a v5 reference.
 
 Two compaction behaviors:
 
@@ -192,6 +194,73 @@ Two compaction behaviors:
 :is(.error, .badError).intrusion { font-size: 1.3em; font-weight: bold; }
 .intrusion :is(.error, .badError) { display: none; }
 .badError { border-width: 3px; }
+```
+
+**Guarded grouping (ledger X3 and O10, both amended by the owner 2026-10-05).**
+Extend's own `:is()` groups — the `all` graft and sibling compaction (§7c) — keep
+native specificity, matching and
+invalid-selector behaviour, by the SAME rule `collapseNesting: 'native'` folds a
+nested child list by, and in EVERY output mode (nested, `'native'` and `'compact'`;
+extend grouping is not mode-coupled). One module owns that rule:
+`packages/core/src/ast/is-grouping.ts` (specificity, the "may this branch sit inside
+`:is()`" check, and the partition into groups); the serializer's `opaqueJoin` and
+the extend engine both call it.
+
+- Members of one `:is()` share one Selectors-4 §17 specificity. A group that would
+  mix specificities splits into equal-specificity groups, gathered across
+  non-adjacent members (branch order inside one selector list changes neither the
+  cascade nor specificity) and emitted in order of first appearance.
+- A member that cannot sit inside `:is()` — a pseudo-element, a pseudo-class outside
+  the standard allowlist, a token the parser did not build one-to-one (a `&` replaced
+  by its parent's text, a dynamic extender's composed text: its kind would have to be
+  read back out of serialized text), or a complex member the group does not lead
+  with — is written as its own branch in the Less 4.x expanded form: the simples
+  before the group join the member's FIRST compound and those after it its LAST
+  compound (`.a > .m:is(.c, .p .q).n` → `.a > .m.p .q.n`). Each joined compound is made
+  valid: the type selector leads and a repeated type is written once (`div` + `div.b`
+  → `div.b`, where 4.x wrote `divdiv.b`); a member that would need two element types
+  matches no element and is dropped (4.x wrote `divspan`).
+- A group may hold a complex member only where it leads the whole selector: first in
+  the head compound of a top-level header. Only there `:is(.t .b).k .box` matches what
+  the expanded `.t .b.k .box` does; `.p :is(.x .y)` would let `.x` sit above `.p`, and
+  `.m:is(.p .q)` is `.p .m.q` where 4.x's `.m.p .q` is meant. A nested header has an
+  implicit `&` before it, so it never leads.
+- A group nested in a member (a chained extend, `.j.k:extend(.c all)` then
+  `.p .q:extend(.j all)`) is checked as an `:is()` argument first, and again where the
+  member lands when the outer group splits: with `.r .s:extend(.j all)` too,
+  `.a > .c` gives `.a > .p .q.k, .a > .r .s.k`, never `.a > :is(.p .q, .r .s).k`.
+- The solve keeps each group whole (later instructions chain through it as one set of
+  alternatives); the split happens once, as a header is emitted (`emit.ts`
+  `groupedBranches`). Only extend-built groups (`Simple.fold`) split. An authored
+  `:is()` and the nesting `:is(parents)` token keep their arms as one list: an arm whose
+  extend group split keeps its first alternative there (the one holding the matched
+  selector, at the arm's own specificity), and every other alternative replaces the
+  whole `:is()` on its own — returned to the list it would raise elements the extend
+  never touched (`:is(.c.k, .z) .d` + `#b:extend(.c all)` → `:is(.c.k, .z) .d, #b.k .d`).
+  A plain compound alternative is merged in; anything else keeps a one-arm `:is()`.
+- KNOWN GAPS: an `all` match of a whole authored `:is()` arm still appends the
+  extender to the authored list (`:is(.c, .z) .d` + `#b:extend(.c all)` →
+  `:is(.c, .z, #b) .d`, raising `.c .d`/`.z .d`); orchestrator judgment
+  2026-10-05 treats that append as extend's own grouping under the same guard
+  (`:is(.c, .z) .d, #b .d`), not yet implemented. A pseudo-element member written
+  as its own branch makes the whole rule invalid, as in 4.x (the forgiving `:is()`
+  kept the other branches). SCSS `@extend` uses the same Less 4.x expansion, not
+  dart-sass's weave — deferred Sass-parity work, tracked with its repro in
+  `docs/state/PINNED-DEFECTS-AUDIT.md` ("Deferred, not pinned").
+
+```less
+.a > .c { color: red; }
+.x:extend(.c all) {}
+#b:extend(.c all) {}
+.y:extend(.c all) {}
+.p .q:extend(.c all) {}
+```
+```css
+.a > :is(.c, .x, .y),
+.a > #b,
+.a > .p .q {
+  color: red;
+}
 ```
 
 **Sibling compaction** — exact extenders that append identical trailing parts are
@@ -310,7 +379,7 @@ depth. `extend-nest.less`:
 ```
 ```css
 .sidebar, .sidebar2, .type1 .sidebar3, .type2.sidebar4 { width: 300px; background: red; }
-:is(.sidebar, .sidebar2, .type1 .sidebar3, .type2.sidebar4) .box { … }
+:is(.sidebar, .sidebar2) .box, :is(.type1 .sidebar3, .type2.sidebar4) .box { … }
 .sidebar2 { background: blue; }
 .type1 .sidebar3 { background: green; }
 .type2.sidebar4 { background: red; }
@@ -318,7 +387,9 @@ depth. `extend-nest.less`:
 
 The extenders' compiled complex selectors (`.type1 .sidebar3`,
 `.type2.sidebar4`) join both the header list and the nested `.box` rule's `:is()`
-graft.
+graft — in their own group, since they score `(0,2,0)` where `.sidebar` and
+`.sidebar2` score `(0,1,0)` (§5 guarded grouping). The graft leads the selector, so
+the complex member keeps its matching inside `:is()`.
 
 ### 7a. NESTED-mode re-nesting, shared-prefix strip, flatten triggers (LANDED)
 
@@ -345,9 +416,16 @@ STAYS nested and its extend rewrites the local selector in place, with three ref
     extender that does not descend from its parent (hoisted whole-complex sibling).
   A flatten whose subject STILL HAS surviving nested children RE-NESTS the corrected
   subtree under its hoisted header (`emit.ts` `'renest'` mode) rather than composing
-  the children flat (`'collapse'`, which cascades to descendants). Flatten only when
-  there is no shared prefix to strip and the match crosses; otherwise the local
-  rewrite / prefix strip keeps the rule nested.
+  the children flat (`'collapse'`, which cascades to descendants). A trigger-P/X
+  flatten's header is the full flat composition, so the rule rises out of EVERY
+  enclosing rule block (`hoistBubble` = its nesting depth); rising one block left
+  `.a { .b, .c { e } }` + `.d:extend(.a .b e)` as `.a { :is(.a .b, .a .c) e, .d {…} }`,
+  which needs two `.a` ancestors. An at-rule it rises out of is not a rule block but
+  goes with it: `.a { @media q { .b, .c { e {…} } } }` emits `@media q { … }` beside
+  `.a` (`serialize.ts` `HoistEntry.wrappers`). Only a sub-span match that crosses the `&`
+  (`emit.ts` trigger C, the per-boundary hoist) keeps outer ancestors as wrappers.
+  Flatten only when there is no shared prefix to strip and the match crosses;
+  otherwise the local rewrite / prefix strip keeps the rule nested.
 
 ### 7b. Exact-extender-into-children SPLIT (LANDED)
 
@@ -363,13 +441,23 @@ hand-converted leak (see §12.1).
 
 `siblingCompact` / `tryMergeSiblings` / `mergeCompoundsToIs` (`emit.ts`) compact whole
 sibling branches differing in exactly ONE compound into `:is(...)` at that position
-(`.button:hover, .submit:hover` → `:is(.button, .submit):hover`), with two guards:
+(`.button:hover, .submit:hover` → `:is(.button, .submit):hover`), with three guards:
 
 - Single-compound rows merge only when they share a trailing suffix — two whole
   branches sharing NOTHING (`.ext8.ext9` / `.fuu`) stay a comma list.
 - Multi-segment (descendant-complex) rows compact only under a shared parent-composition
   prefix (`allowMultiSeg`, a flattened nested rule's hoisted header); a TOP-LEVEL rule's
   own header keeps `.foo .bar, .foo .baz` as a comma list (never `:is()`-collapsed).
+- The merged group is an extend group, so it follows §5's guarded grouping (ledger
+  X3, amended by the owner 2026-10-05) in every output mode: `.button:hover, #submit:hover` stays a comma list, and
+  `.arrow::before` / `.arrow::after` never share an `:is()`. A leading extend group on
+  either side flattens into the merge; an authored or nesting `:is()` joins it as one
+  member, so emission never splits a selector the author wrote. A lead already in
+  the group joins it once (`#b.x` reached twice is one `#b`).
+
+Compaction is not mode-coupled either: a top-level rule the extend changed compacts
+its header the same way in nested output (its `nestedPlan` header) as in flat
+output (`flatByRule`).
 
 ## 8. `@media` scoping — v5 does NOT merge media
 
@@ -449,12 +537,15 @@ adjacent/child targets each match their respective combinator form.
   [data], .attribute-test2 { extend: attributes2; }
   [data="test3"], .attribute-test { extend: attributes2; }
   ```
-- **Interpolated extender selector** — an `:extend` ATTACHED to an interpolated
-  selector works (`@{variable}:extend(.bucket)`), but an interpolated selector as
-  a match target/subject matches nothing (`extend.md`, "Selector Interpolation
-  with Extend"): "Extend is not able to match selectors with variables." (See
-  §12 — the interpolated-attribute extend in `extend-selector` is currently a
-  DEFERRED engine gap.)
+- **Interpolated selectors** — an `:extend` ATTACHED to an interpolated selector
+  works (`@{variable}:extend(.bucket)`), and a rule whose selector is interpolated
+  (`.@{v} {}`, `.c-@{n} {}`) IS an extend target once resolved, at the root, in
+  imported sheets and in mixin/loop bodies alike (ledger X7, amended by the owner
+  2026-10-05, as lessc 4.9.1 behaves; it closes X15). 4.x `extend.md`'s "Extend is
+  not able to match selectors with variables" is superseded. Imported sheets are
+  not yet covered: they are planned from unresolved IR (`planImportedStaticExtend`),
+  so an imported `.@{v}` rule is still missed. (See §12 for the
+  interpolated-attribute extend in `extend-selector`.)
 
 ## 11. Reference-mode (`@import (reference)`) visibility
 
@@ -533,11 +624,10 @@ a fixture. These are the owner questions:
 
 - Engine: `packages/core/src/ast/extend/` (clean-room `ir`/`compose`/`match`/`plan`/`solve`/`emit`; barrel `packages/core/src/ast/extend.ts`).
 - Legacy (dying, NOT a reference): `packages/core/src/tree/extend/{plan,solve,emit,pipeline,extend-index}.ts`.
-- Reference plumbing: `packages/core/src/ast/parse-host/__tests__/oracle-source.ts`, `docs/architecture/core/REFERENCE.md`.
-- Byte-identity gate: `packages/core/src/ast/parse-host/__tests__/extend-byte-identity.test.ts`.
+- Reference plumbing: `docs/architecture/core/REFERENCE.md`.
+- Byte-identity gates: `packages/jess/test/less/all-less.test.ts`, `packages/jess/test/less/extend-exact-oracle.test.ts` (pending golden edits: `packages/jess/test/less/pending-golden-edits.ts`).
 - Corrections: `docs/architecture/core/proposed-alpha-corrections/{README.md,extend.css,extend-exact.css}`.
 - Handoff / status: `docs/architecture/core/R1-EXTEND-HANDOFF.md`.
-- Kill-list (extend cleanup): `docs/architecture/core/TREE2-KILL-LIST.md`.
 - User-facing pages (canonical source `packages/docs-content/`):
   - Less: `docs/less/features/extend.md` (syntax), `docs/less/advanced/extend-is-wrapping.md` (`:is()` grafting), `docs/less/advanced/extend-semantics.md` (full behavior + nuances).
   - Jess: `docs/jess/02-Language/05a-advanced-extend.mdx`, `docs/jess/06-Advanced/05-extend.md`.

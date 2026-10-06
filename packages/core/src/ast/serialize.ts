@@ -171,6 +171,7 @@ import { atRuleScope, recordAstExtendProfile } from './extend/plan.js'; // [exte
 import type { AtRuleScopes, ExtendBoundary, PlanInstruction, PlanOverlay, PlanReferenceAtRule, PlanSubject } from './extend/plan.js';
 import type { Branch, Level } from './extend/ir.js';
 import { branchFromSelector, branchSharesAtom, collectBranchAtoms, descendantBranch, levelFromSelectorList, textSimple } from './extend/ir.js';
+import { nestingGroupKey, partitionGroups } from './is-grouping.js'; // [nesting] the shared `:is()` grouping
 import { DocumentContext, documentTriviaOf, type Context, type SourceContext } from '../context.js';
 import type { ModuleConfigRejection } from '../plugin.js';
 import { Deprecation } from '../deprecation.js';
@@ -267,10 +268,12 @@ export interface SerializeOptions {
    * mixin bodies splice inline under the call site, and `@media` bodies keep
    * their inner rules nested. Same single walk, second emit form.
    *
-   * When flattening, the STYLE is `'native'` (default) — the CSS Nesting
-   * desugaring, parent `:is()` with child selector lists DISTRIBUTED
-   * (specificity-faithful) — or `'compact'`, which also folds same-combinator
-   * descendant runs into a single `:is(…)` (group-max specificity).
+   * When flattening, the STYLE is `'native'` (default) — parent `:is()`, and
+   * child branches of equal specificity fold into one `:is(…)` (native
+   * specificity and matching, not the byte-exact CSS Nesting desugaring) — or
+   * `'compact'`, which folds every descendant child branch into a single `:is(…)`
+   * (group-max specificity). Extend's own `:is()` groups are guarded like
+   * `'native'` in every mode.
    */
   collapseNesting?: false | 'native' | 'compact';
 
@@ -8747,65 +8750,63 @@ function wrapIsList(branches: string[]): string {
   return branches.length === 1 ? branches[0]! : `:is(${branches.join(', ')})`;
 }
 
-/** [nesting] A branch that opens with a real combinator (`> .col`) is a RELATIVE
- * selector. `:is()` takes a `<forgiving-selector-list>` of COMPLEX selectors, so a
- * relative branch is invalid there and every browser drops it — the compacted group
- * then matches nothing. Such a branch must join the ancestor directly. The namespace
- * pipe (`|h1`) is part of the compound, not a combinator, so it stays groupable. */
-function leadsWithCombinator(c: SelectorBranch): boolean {
-  const comb = c.type === 'RelativeSelector' ? c.value[0] : undefined;
-  return comb !== undefined && comb !== ' ' && comb !== '|';
-}
-
 /** [nesting] Join opaque ancestor `A` with an all-`&`-less child list, prefix
- * factored: `A` is emitted ONCE and the multi-branch child list wraps in a single
- * `:is(...)` (never cartesian-distributed, never repeated inside the `:is()`).
- * `#…#deux` + `#fourth,#five,#six` → `#…#deux :is(#fourth, #five, #six)`; a single
- * child joins plainly (`A child`, honouring its leading combinator).
+ * factored: `A` is emitted ONCE and each group of child branches folds into a
+ * single `:is(...)` (never repeated inside the `:is()`). `#…#deux` +
+ * `#fourth,#five,#six` → `#…#deux :is(#fourth, #five, #six)`; a single child
+ * joins plainly (`A child`, honouring its leading combinator).
  *
- * A branch that LEADS WITH A COMBINATOR cannot enter the group ({@link
- * leadsWithCombinator}); it is emitted as its own header branch with the combinator
- * hoisted out — `.no-gutters` + `> .col, > [class*="col-"]` becomes
- * `.no-gutters > .col, .no-gutters > [class*="col-"]`, the CSS-Nesting desugaring.
- * Descendant branches keep the compaction, so a MIXED list splits by shape:
- * `.nav-fill` + `> .nav-link, .nav-item` → `.nav-fill > .nav-link, .nav-fill .nav-item`.
- * Consecutive descendant branches stay one group, preserving authored order. */
+ * The groups come from the shared `:is()` grouping ({@link nestingGroupKey},
+ * {@link partitionGroups}), in order of first appearance:
+ * - `'native'` (default) groups branches of equal specificity that may sit inside
+ *   `:is()`, so a fold changes neither specificity, matching, nor
+ *   invalid-selector behaviour: `.t` + `th, .x, td, thead th` →
+ *   `.t :is(th, td), .t .x, .t thead th`.
+ * - `'compact'` puts every descendant branch in one group (group-max
+ *   specificity).
+ *
+ * A branch that LEADS WITH A COMBINATOR is never grouped; it is emitted as its
+ * own header branch with the combinator hoisted out — `.no-gutters` +
+ * `> .col, > [class*="col-"]` becomes `.no-gutters > .col, .no-gutters >
+ * [class*="col-"]`, the CSS-Nesting desugaring. */
 function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: Emit): MaybePromise<string[]> {
   const canons = child.selectors.map(c => resolveSelectorBranch(c, frame, e));
   return combineAll(canons, (values) => {
     if (values.length === 1) {
       return [a + ' ' + values[0]!];
     }
-
-    /* [nested] `'native'` (default) DISTRIBUTES the child list — the CSS Nesting
-     * desugaring (`A b1, A b2, …`) — so each branch keeps its own specificity.
-     * Only `'compact'` folds a same-combinator descendant run into one `:is(…)`
-     * (group-max specificity), via the run logic below. */
-    if (e.collapseMode !== 'compact') {
-      return values.map(v => a + ' ' + v);
+    const guarded = e.collapseMode !== 'compact';
+    const groups: number[] = [];
+    let oneGroup = true;
+    for (const branch of child.selectors) {
+      const key = nestingGroupKey(branch, guarded);
+      oneGroup &&= key >= 0 && key === (groups[0] ?? key);
+      groups.push(key);
     }
-    if (!child.selectors.some(leadsWithCombinator)) {
+    if (oneGroup) {
       return [a + ' :is(' + values.join(', ') + ')'];
     }
+    const sizes = partitionGroups(groups);
     const out: string[] = [];
-    let run: string[] = [];
-    const flushRun = (): void => {
-      if (run.length === 1) {
-        out.push(a + ' ' + run[0]!);
-      } else if (run.length > 1) {
-        out.push(a + ' :is(' + run.join(', ') + ')');
+    for (let i = 0; out.length < sizes.length; i++) {
+      const group = groups[i]!;
+      if (group !== out.length) {
+        continue;
       }
-      run = [];
-    };
-    for (let i = 0; i < values.length; i++) {
-      if (leadsWithCombinator(child.selectors[i]!)) {
-        flushRun();
+      let left = sizes[group]! - 1;
+      if (left === 0) {
         out.push(a + ' ' + values[i]!);
-      } else {
-        run.push(values[i]!);
+        continue;
       }
+      let list = values[i]!;
+      for (let j = i + 1; left > 0; j++) {
+        if (groups[j] === group) {
+          list += ', ' + values[j]!;
+          left--;
+        }
+      }
+      out.push(a + ' :is(' + list + ')');
     }
-    flushRun();
     return out;
   });
 }
@@ -9000,9 +9001,9 @@ interface Emit extends EvalCtx {
   collapse: boolean;
 
   /* [nested] flatten STYLE (only meaningful when `collapse`): `'compact'` folds
-   * same-combinator descendant child runs into `:is(…)`; anything else — incl.
-   * unset — is `'native'`, distributing them (CSS Nesting desugaring,
-   * specificity-faithful). Read only via `=== 'compact'`, so unset == native. */
+   * every descendant child branch into one `:is(…)`; anything else — incl. unset
+   * — is `'native'`, folding only equal-specificity branches (see `opaqueJoin`).
+   * Read only via `!== 'compact'`, so unset == native. */
   collapseMode?: 'native' | 'compact';
 
   /*
@@ -12073,7 +12074,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     drops: [], // [null] declarations that may still elide on the async lane
     depth: 0, // [atrule]
     collapse: options?.collapseNesting !== false, // [nested/R0] default = flatten
-    collapseMode: options?.collapseNesting === 'compact' ? 'compact' : 'native', // [nested] fold vs distribute
+    collapseMode: options?.collapseNesting === 'compact' ? 'compact' : 'native', // [nested] unguarded vs specificity-guarded fold
     compress: options?.compress ?? false, // [compress] minified output
     extends: null, // [extend] computed below (after selector-interp pre-pass)
     dynamicExtend: null,
@@ -13474,7 +13475,7 @@ function expandRule(
     const nestedPlan = extendProjection(e)?.nestedPlan.get(rule);
     if (nestedPlan?.flatten) {
       recordAstExtendProfile?.('astExtend.emit.nestedHoistPlacements');
-      nestedHoist.push({ rule, frame, bubble: nestedPlan.hoistBubble ?? 1 });
+      nestedHoist.push({ rule, frame, bubble: nestedPlan.hoistBubble ?? 1, wrappers: null });
       return;
     }
   }
@@ -14625,7 +14626,7 @@ function walkBody(
           if (nested) {
             flushBuf();
             emitBeforeRootStatement(node);
-            const emitted = expandAtRuleBlock(node, frame, e, null, source);
+            const emitted = expandAtRuleBlock(node, frame, e, null, source, hoist);
             if (isThenable(emitted)) {
               return emitted.then(() => {
                 markAfterRootStatement(node);
@@ -20045,7 +20046,8 @@ function expandAtRuleBlock(
   frame: Frame,
   e: Emit,
   ctx: string[] | null = null,
-  nestedSource?: NestedHeaderSource | null
+  nestedSource?: NestedHeaderSource | null,
+  nestedHoist?: HoistEntry[]
 ): MaybePromise<void> {
   /*
    * The prelude resolves BEFORE any byte is written, so the rewind marks below
@@ -20064,19 +20066,18 @@ function expandAtRuleBlock(
       declIndex: collectDeclIndex(node.rules), cells: null, reassign: null,
       statements: node.rules
     };
+    const write = (): MaybePromise<void> => nestedSource === undefined
+      ? writeCollapsedAtRuleBlock(node, frame, bodyFrame, e, ctx, prelude)
+      : writeNestedAtRuleBlock(node, frame, bodyFrame, e, nestedSource, prelude, nestedHoist);
     const dyn = e.dynamicExtend;
     if (dyn === null) {
-      return nestedSource === undefined
-        ? writeCollapsedAtRuleBlock(node, frame, bodyFrame, e, ctx, prelude)
-        : writeNestedAtRuleBlock(node, frame, bodyFrame, e, nestedSource, prelude);
+      return write();
     }
 
     /* [extend/dynamic] Facts recorded in the body take this block's scope (§8). */
     const scope = dyn.scope;
     dyn.scope = atRuleScope(scope, node, dyn.atRuleScopes);
-    return withDynamicPlacement(dyn, dyn.pathRules.length, scope, dyn.boundary, () => nestedSource === undefined
-      ? writeCollapsedAtRuleBlock(node, frame, bodyFrame, e, ctx, prelude)
-      : writeNestedAtRuleBlock(node, frame, bodyFrame, e, nestedSource, prelude));
+    return withDynamicPlacement(dyn, dyn.pathRules.length, scope, dyn.boundary, write);
   }));
 }
 
@@ -20924,6 +20925,31 @@ interface HoistEntry {
   rule: Ruleset;
   frame: Frame;
   bubble: number;
+
+  /**
+   * The at-rules the entry has risen out of, outermost first, or null. An at-rule is
+   * not a rule block (it does not count toward `bubble`), but the rule still belongs
+   * inside it, so it is re-opened around the rule where the rule lands
+   * (`.a { @media q { .b { e } } }` hoists `e` as `@media q { … }` beside `.a`).
+   */
+  wrappers: HoistWrapper[] | null;
+}
+
+interface HoistWrapper {
+  node: AtRuleBlock;
+  prelude: string;
+}
+
+/** Emit a hoisted rule where it lands, inside the at-rules it rose out of. */
+function emitHoistEntry(h: HoistEntry, e: Emit, imp: boolean, wrapper = 0): MaybePromise<void> {
+  const wrappers = h.wrappers;
+  if (wrappers !== null && wrapper < wrappers.length) {
+    const { node, prelude } = wrappers[wrapper]!;
+    return nestedAtRuleShell(node, prelude, e, () => emitHoistEntry(h, e, imp, wrapper + 1));
+  }
+  return extendProjection(e)?.nestedPlan.get(h.rule)?.hoistNested
+    ? expandRule(h.rule, null, null, h.frame, e, imp, false, null)
+    : emitHoisted(h.rule, h.frame, e);
 }
 
 /** A `name: value;` / comment leaf at exactly the current `e.depth` level. */
@@ -21378,12 +21404,10 @@ function writeNestedRule(
         for (let hoistIndex = index; hoistIndex < hoist.length; hoistIndex++) {
           const h = hoist[hoistIndex]!;
           if (h.bubble > 1 && outerHoist) {
-            outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble - 1 });
+            outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble - 1, wrappers: h.wrappers });
             continue;
           }
-          const emitted = extendProjection(e)?.nestedPlan.get(h.rule)?.hoistNested
-            ? expandRule(h.rule, null, null, h.frame, e, imp, false, null)
-            : emitHoisted(h.rule, h.frame, e);
+          const emitted = emitHoistEntry(h, e, imp);
           if (isThenable(emitted)) {
             return emitted.then(() => runHoist(hoistIndex + 1));
           }
@@ -21420,14 +21444,42 @@ function emitHoisted(rule: Ruleset, frame: Frame, e: Emit): MaybePromise<void> {
   return emitted;
 }
 
-/** Write one prelude-resolved at-rule through the authored-nesting projection. */
+/**
+ * Write one prelude-resolved at-rule through the authored-nesting projection. A rule
+ * in its body that must rise out of the enclosing rule (an extend match crossed that
+ * rule's `&`) leaves through `outerHoist`, taking the at-rule with it.
+ */
 function writeNestedAtRuleBlock(
   node: AtRuleBlock,
   frame: Frame,
   bodyFrame: Frame,
   e: Emit,
   source: NestedHeaderSource | null,
-  prelude: string
+  prelude: string,
+  outerHoist?: HoistEntry[]
+): MaybePromise<void> {
+  const hoist: HoistEntry[] | undefined = outerHoist === undefined ? undefined : [];
+  const leave = (): void => {
+    if (outerHoist === undefined || hoist === undefined || hoist.length === 0) {
+      return;
+    }
+    const wrapper: HoistWrapper = { node, prelude };
+    for (const h of hoist) {
+      outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble, wrappers: h.wrappers === null ? [wrapper] : [wrapper, ...h.wrappers] });
+    }
+  };
+  return nestedAtRuleShell(node, prelude, e, () => mapMaybe(
+    activateBodyDependencies(node.rules, bodyFrame, e),
+    () => mapMaybe(nestedBody(node.rules, bodyFrame, e, hoist, false, source, null, undefined, false, node), leave)
+  ));
+}
+
+/** `@name prelude { … }` around `body` at the current depth; dropped when the body writes nothing. */
+function nestedAtRuleShell(
+  node: AtRuleBlock,
+  prelude: string,
+  e: Emit,
+  body: () => MaybePromise<void>
 ): MaybePromise<void> {
   const markChunks = e.chunks.length;
   const markPos = e.positions ? e.positions.length : 0;
@@ -21459,8 +21511,5 @@ function writeNestedAtRuleBlock(
       e.positions.push({ node, type: node.type, start, end: e.chunks.length, source: srcFile(e) });
     }
   };
-  return mapMaybe(
-    activateBodyDependencies(node.rules, bodyFrame, e),
-    () => mapMaybe(nestedBody(node.rules, bodyFrame, e, undefined, false, source, null, undefined, false, node), finish)
-  );
+  return mapMaybe(body(), finish);
 }

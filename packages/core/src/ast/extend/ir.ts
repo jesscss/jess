@@ -20,14 +20,24 @@ import type { SelectorBranch, SelectorList, SelectorTerm, SimpleToken } from '..
  * A text token's `text` is its IDENTITY — what every match, atom and key reads.
  * `out` is its authored spelling where that differs, read only when a header is
  * emitted: an attribute selector keeps its authored whitespace (ledger O7), yet
- * `[ b ]` and `[b]` are one selector. Built by {@link textSimple} so every text
- * token has the same three fields.
+ * `[ b ]` and `[b]` are one selector. `src` is what the token stands for when
+ * the parser built it (the token itself) or when it holds a whole compound's
+ * text (that compound): the `:is()` grouping scores specificity from it, never
+ * from `text`. Built by {@link textSimple} so every text token has the same
+ * four fields.
+ *
+ * An `:is()` group's `fold` is true when extend built it (the `all` graft or
+ * sibling compaction): emission regroups it under the shared guard
+ * (`../is-grouping.ts`). An authored `:is()` and the nesting `:is(parents)`
+ * token are false and print as they are.
  */
-export type Simple = { t: 'text'; text: string; out?: string } | { t: 'is'; branches: Branch[] };
+export type Simple =
+  | { t: 'text'; text: string; out: string | undefined; src: SimpleToken | Compound | undefined }
+  | { t: 'is'; branches: Branch[]; fold: boolean };
 
-/** The sole text-token factory; `out` is omitted (undefined) unless it differs from `text`. */
-export function textSimple(text: string, out?: string): Simple {
-  return { t: 'text', text, out };
+/** The sole text-token factory; `out` is undefined unless it differs from `text`. */
+export function textSimple(text: string, out?: string, src?: SimpleToken | Compound): Simple {
+  return { t: 'text', text, out, src };
 }
 
 /** A run of simple tokens with no separator (`.a.b`). */
@@ -168,7 +178,7 @@ function compoundOut(c: Compound): string {
 export function opaqueCompound(c: Compound): Simple {
   const text = compoundText(c);
   const out = compoundOut(c);
-  return textSimple(text, out === text ? undefined : out);
+  return textSimple(text, out === text ? undefined : out, c);
 }
 
 /**
@@ -186,9 +196,9 @@ export function descendantBranch(value: Simple[]): Branch {
   return mkBranch([{ combinator: ' ', compound: { value } }]);
 }
 
-/** An `:is(...)` simple wrapping the given branches. */
-export function isSimple(branches: Branch[]): Simple {
-  return { t: 'is', branches: branches.map(cloneBranch) };
+/** An `:is(...)` simple wrapping clones of the given branches. */
+export function isSimple(branches: Branch[], fold: boolean): Simple {
+  return { t: 'is', branches: branches.map(cloneBranch), fold };
 }
 
 /**
@@ -213,13 +223,13 @@ export function isOrPlainSimpleTokens(branches: Branch[]): Simple[] {
   if (uniq.length === 1 && uniq[0]!.segments.length === 1) {
     return uniq[0]!.segments[0]!.compound.value.map(cloneSimple);
   }
-  return [isSimple(uniq)];
+  return [isSimple(uniq, true)];
 }
 
 /* --------------------------------------------------------------------- clone */
 
 export function cloneSimple(s: Simple): Simple {
-  return s.t === 'text' ? textSimple(s.text, s.out) : { t: 'is', branches: s.branches.map(cloneBranch) };
+  return s.t === 'text' ? textSimple(s.text, s.out, s.src) : isSimple(s.branches, s.fold);
 }
 
 export function cloneSeg(seg: SelectorPart): SelectorPart {
@@ -285,15 +295,15 @@ function simpleFromToken(sim: SimpleToken): Simple {
       return textSimple('');
     }
     if (sim.crossable) {
-      return { t: 'is', branches: levelFromSelectorList(sim.args) };
+      return { t: 'is', branches: levelFromSelectorList(sim.args), fold: false };
     }
   }
   const text = simpleTokenText(sim);
   if (text.charCodeAt(0) === 0x5B) {
     const identity = attributeSelectorIdentity(text);
-    return textSimple(identity, identity === text ? undefined : text);
+    return textSimple(identity, identity === text ? undefined : text, sim);
   }
-  return textSimple(text);
+  return textSimple(text, undefined, sim);
 }
 
 const isIdentifierCode = (code: number): boolean =>

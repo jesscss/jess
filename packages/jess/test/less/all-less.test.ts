@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { Compiler } from '../../src/index.js';
 import { outputDiagnostics } from '@jesscss/compiler/diagnostics';
 import { getTestCases, resolveLessTestDataRoot, lessFixturePackagesPlugin, lessTestDataRemoteImports, upstreamHarnessSourceMap } from '../test-utils.js';
+import { applyPendingGoldenEdits } from './pending-golden-edits.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
@@ -19,7 +20,8 @@ import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
  *    fails the entry, which is how a fix gets noticed. An entry may also pin
  *    how it fails: a diagnostic code (`expectedFailureDiagnosticCodes`). A
  *    golden known to lag a fix is not an expected failure: it keeps its full
- *    byte gate against the golden plus the exact edits in `pendingGoldenEdits`.
+ *    byte gate against the golden plus the exact edits in `pendingGoldenEdits`
+ *    (`pending-golden-edits.ts`, shared with every test that reads a golden).
  * 3. no `.css` golden next to the `.less` — a helper or partial, never a fixture.
  *
  * There used to be a fourth: an `invalidLess` array in `@jesscss/shared` that
@@ -125,89 +127,6 @@ const baseCompiler = new Compiler({
     ]
   }
 });
-
-/*
- * A golden known to lag a fix, with the exact edit the owner has been asked to make.
- * The fixture keeps its full byte gate against the edited golden. Each `from` must
- * occur exactly once in the golden, so the entry fails — and must be removed — once
- * the owner applies the edit.
- */
-const pendingGoldenEdits = new Map<string, ReadonlyArray<readonly [from: string, to: string]>>([
-  [
-    /*
-     * The golden was re-cut from jess output while jess#349 dropped cross-import
-     * extenders: it lacks the `.input-group-sm/lg > ...` extenders.
-     */
-    'tests-config/3rd-party/bootstrap4.less',
-    [
-      ['.form-control-plaintext.form-control-lg {\n', [
-        '.form-control-plaintext.form-control-lg,',
-        ...['sm', 'lg'].flatMap(size => [
-          `.input-group-${size} > .form-control-plaintext.form-control,`,
-          `.input-group-${size} > .input-group-prepend > .form-control-plaintext.input-group-text,`,
-          `.input-group-${size} > .input-group-append > .form-control-plaintext.input-group-text,`,
-          `.input-group-${size} > .input-group-prepend > .form-control-plaintext.btn,`,
-          `.input-group-${size} > .input-group-append > .form-control-plaintext.btn,`
-        ])
-      ].join('\n').slice(0, -1) + ' {\n'],
-      ...['sm', 'lg'].map((size): readonly [string, string] => {
-        const tail = ':not([size]):not([multiple])';
-        return [`select.form-control-${size}${tail} {\n`, [
-          `select.form-control-${size}${tail},`,
-          `.input-group-${size} > select.form-control${tail},`,
-          `.input-group-${size} > .input-group-prepend > select.input-group-text${tail},`,
-          `.input-group-${size} > .input-group-append > select.input-group-text${tail},`,
-          `.input-group-${size} > .input-group-prepend > select.btn${tail},`,
-          `.input-group-${size} > .input-group-append > select.btn${tail} {\n`
-        ].join('\n')];
-      }),
-
-      /*
-       * jess#348: `color-yiq` received the darkened background as black when the
-       * golden was regenerated, so it records `#fff`; jess (and lessc 4.9.1) emit
-       * `#212529`.
-       */
-      ...[
-        '.btn-warning:hover',
-        '.show > .btn-warning.dropdown-toggle',
-        '.btn-light:hover',
-        '.show > .btn-light.dropdown-toggle'
-      ].map((selector): readonly [string, string] => [`${selector} {\n  color: #fff;`, `${selector} {\n  color: #212529;`]),
-
-      /*
-       * The golden encodes a fixed composition bug: a child of a nested
-       * multi-branch `&`-less rule kept only the first parent branch, dropping
-       * `.btn-group-toggle > .btn-group > .btn input[…]` and six
-       * `.input-group > … + …` selectors. Proposed golden: less.js branch
-       * lane/v5-eval-serialize-goldens.
-       */
-      [
-        '.btn-group-toggle > .btn input[type="radio"],\n.btn-group-toggle > .btn input[type="checkbox"] {',
-        ':is(.btn-group-toggle > .btn, .btn-group-toggle > .btn-group > .btn) input[type="radio"],\n:is(.btn-group-toggle > .btn, .btn-group-toggle > .btn-group > .btn) input[type="checkbox"] {'
-      ],
-      [
-        '.input-group > .form-control + .form-control,\n.input-group > .form-control + .custom-select,\n.input-group > .form-control + .custom-file {',
-        [
-          ':is(.input-group > .form-control, .input-group > .custom-select, .input-group > .custom-file) + .form-control,',
-          ':is(.input-group > .form-control, .input-group > .custom-select, .input-group > .custom-file) + .custom-select,',
-          ':is(.input-group > .form-control, .input-group > .custom-select, .input-group > .custom-file) + .custom-file {'
-        ].join('\n')
-      ]
-    ]
-  ]
-]);
-
-function applyPendingGoldenEdits(file: string, golden: string): string {
-  let edited = golden;
-  for (const [from, to] of pendingGoldenEdits.get(file) ?? []) {
-    const at = edited.indexOf(from);
-    if (at === -1 || edited.indexOf(from, at + 1) !== -1) {
-      throw new Error(`${file}: the pending golden edit no longer applies; remove its pendingGoldenEdits entry`);
-    }
-    edited = edited.slice(0, at) + to + edited.slice(at + from.length);
-  }
-  return edited;
-}
 
 const envFixturePattern = process.env.JESS_LESS_FIXTURE;
 const fixtureFilter = envFixturePattern
