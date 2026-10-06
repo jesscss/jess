@@ -3309,17 +3309,19 @@ const cssFactory = (g: GrammarSelf) => {
   /*
    * The component values of a `<general-enclosed>` or an if-test's contents
    * after its query part: comma-separated value runs, and the tokens a value
-   * run cannot start with (`/`, `!`, `;`, a `{}` block), each read once.
+   * run cannot start with (`,`, `/`, `!`, `;`, a `{}` block), each read once.
    */
-  const generalValue = choice(
+  const generalPunctuation = choice(
     literal(','),
-    g.ValueSequence,
     literal('/'),
     literal('!'),
     literal(';'),
     g.CurlyValue
   );
-  const generalRest = many(generalValue);
+  const generalRest = many(choice(
+    g.ValueSequence,
+    generalPunctuation
+  ));
 
   /*
    * The component values after a value-first bound: comma-separated value runs.
@@ -3628,6 +3630,19 @@ const cssFactory = (g: GrammarSelf) => {
   );
 
   /*
+   * A media group's `<general-enclosed>` component values: the general rest,
+   * with its value runs read through `MediaGeneralValue`. In css that slot is
+   * the value run every general rest reads; it is named so a superset whose
+   * prelude is an identifier position — `.jess`, where a prelude takes `${…}`
+   * only (ledger P13/P16) — reads it with its own header terms instead of its
+   * value reader.
+   */
+  const mediaGeneralRest = many(choice(
+    g.MediaGeneralValue,
+    generalPunctuation
+  ));
+
+  /*
    * A media query's `<media-in-parens>` (media-queries-4 §3): `( <media-condition> )`
    * or a `<media-feature>`. It opens its `(` once and decides on the next
    * token: an inner `(` starts a `MediaCondition`, anything else is a media
@@ -3646,21 +3661,6 @@ const cssFactory = (g: GrammarSelf) => {
    * `routed()`, so a group that fails after its `(` fails the parse: no
    * enclosing value run reads the same `(` again.
    */
-  /*
-   * A media group's `<general-enclosed>` component values. In css they are the
-   * value runs every general rest reads; `MediaGeneralValue` names that slot so
-   * a superset whose prelude is an identifier position — `.jess`, where a
-   * prelude takes `${…}` only (ledger P13/P16) — reads it with its own header
-   * terms instead of its value reader.
-   */
-  const mediaGeneralRest = many(choice(
-    literal(','),
-    g.MediaGeneralValue,
-    literal('/'),
-    literal('!'),
-    literal(';'),
-    g.CurlyValue
-  ));
   const RoutedMediaInParens = node(
     'QueryFeature',
     sequence(
