@@ -350,7 +350,11 @@ describe('V19 one-evaluator projection ratchet', () => {
     // evaluation uses — a variable, an `@@name`, a property, a member — so every
     // way of reading a value consumes the group alike (`slotComputation`,
     // `lookupBinding`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(549);
+    // +2 functions (owner 2026-10-04 compress near-parity): a list in a query
+    // prelude is joined by the walker's own glue, so compress tightens a ratio
+    // written directly, through a variable or through a mixin argument
+    // (`listBoundaryPart`, `typedPreludeParts`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(551);
     expect(occurrences(/new Map/gu)).toBe(85);
     expect(occurrences(/new Set/gu)).toBe(41);
     expect(occurrences(/new WeakMap/gu)).toBe(10);

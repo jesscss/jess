@@ -74,6 +74,16 @@ describe('typed reads, not byte scans', () => {
       .toBe('.x { a: url(a.png); a: url(b.png); n: 2; } .y { a: url(a.png); a: url(b.png); n: 2; }');
   });
 
+  /* A list's separator is the walker's glue, so compress tightens a ratio however the list gets there. */
+  it('compresses a ratio in a query prelude, written directly or through a variable or argument', async () => {
+    const source = '@r: 16/9; .m(@q) { @container (aspect-ratio: @q) { .b { c: d; } } } '
+      + '@media (aspect-ratio: 16/9) { .a { b: c; } } @media (aspect-ratio: @r) { .a { b: c; } } .k { .m(16/9); }';
+    expect(await new Compiler({ output: { compress: true } }).renderString(source, { language: 'less', extension: '.less' }))
+      .toBe('@media(aspect-ratio:16/9){.a{b:c}}@media(aspect-ratio:16/9){.a{b:c}}.k{@container(aspect-ratio:16/9){.b{c:d}}}');
+    expect(await render(source)).toBe('@media (aspect-ratio: 16 / 9) { .a { b: c; } } @media (aspect-ratio: 16 / 9) { .a { b: c; } } '
+      + '.k { @container (aspect-ratio: 16 / 9) { .b { c: d; } } }');
+  });
+
   it('writes an escaped string in a query prelude as written, however it gets there', async () => {
     expect(await render('@r: ~"16/9"; .m(@x) { @media (aspect-ratio: @x) { .b { c: d; } } } @media (aspect-ratio: @r) { .a { b: c; } } .k { .m(@r); }'))
       .toBe('@media (aspect-ratio: 16/9) { .a { b: c; } } .k { @media (aspect-ratio: 16/9) { .b { c: d; } } }');

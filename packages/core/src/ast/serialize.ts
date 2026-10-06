@@ -20591,14 +20591,50 @@ type SupportsPreludePart = { bytes: string; protected: boolean };
 const leaf = (bytes: string): SupportsPreludePart[] => [{ bytes, protected: true }];
 
 /**
+ * The separator before a list's item `index` in a prelude: the walker's own
+ * glue, spaced as glue is (a ratio's `/` tightens under compress), or the
+ * authored run written there, as written.
+ */
+function listBoundaryPart(authored: readonly (string | undefined)[] | undefined, index: number, glue: string, compress: boolean): SupportsPreludePart[] {
+  const run = itemBoundary(authored?.[index - 1], glue, compress);
+  return [{ bytes: run, protected: run !== glue }];
+}
+
+/** A value evaluated before the walk reached it: a list's items as written, joined as an authored list is ({@link listBoundaryPart}). */
+function typedPreludeParts(value: ValueGroup, compress: boolean): SupportsPreludePart[] {
+  if (isValueGroupArray(value) || value.type !== 'List') {
+    return leaf(emitValue(value));
+  }
+  const glue = sepGlue(value.sep, compress);
+  const authored = valueLayoutOf(value);
+  const parts: SupportsPreludePart[] = [];
+  for (let index = 0; index < value.value.length; index += 1) {
+    if (index > 0) {
+      parts.push(...listBoundaryPart(authored, index, glue, compress));
+    }
+    parts.push(...leaf(emitValue(value.value[index]!)));
+  }
+  return parts;
+}
+
+/**
  * One leaf of a prelude. An `Any` the parser left as a raw prelude fragment is
  * source text nothing structured, so it is spaced like glue; an `Any` that is a
- * mixin argument's snapshot, a list included, holds the value the argument was
- * evaluated to ({@link carrySnapshot}).
+ * mixin argument's snapshot holds the value the argument was evaluated to
+ * ({@link carrySnapshot}), and a list it bound as written is joined as the
+ * list written directly is.
  */
 function preludeLeaf(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<SupportsPreludePart[]> {
-  const raw = !isValueSlotArray(node) && node.type === 'Any' && e.snapshotValues?.has(node) !== true;
-  return mapMaybe(evalBytes(node, frame, e), bytes => [{ bytes, protected: !raw }]);
+  if (!isValueSlotArray(node) && node.type === 'Any') {
+    const carried = e.snapshotValues?.get(node);
+    if (carried === undefined) {
+      return mapMaybe(evalBytes(node, frame, e), bytes => [{ bytes, protected: false }]);
+    }
+    if (!isValueGroupArray(carried) && carried.type === 'List' && emitAsWritten(carried) === node.src) {
+      return typedPreludeParts(carried, e.compress === true);
+    }
+  }
+  return mapMaybe(evalBytes(node, frame, e), leaf);
 }
 
 /**
@@ -20872,7 +20908,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
       const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
       for (let index = 0; index < node.value.length; index += 1) {
         if (index > 0) {
-          parts.push(leaf(itemBoundary(authored?.[index - 1], glue, compress)));
+          parts.push(listBoundaryPart(authored, index, glue, compress));
         }
         parts.push(evalQueryPreludeParts(node.value[index]!, frame, e));
       }
@@ -20896,7 +20932,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
           return mapMaybe(evalBytes(node, frame, e), leaf);
         }
         if (hit.evaluated !== null) {
-          return leaf(emitValue(hit.evaluated));
+          return typedPreludeParts(hit.evaluated, e.compress === true);
         }
         return withExcluded(e, value, () => evalQueryPreludeParts(value, hit.frame, e));
       });
@@ -20906,7 +20942,7 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
         return mapMaybe(evalBytes(node, frame, e), leaf);
       }
       return resolved.evaluated !== null
-        ? leaf(emitValue(resolved.evaluated))
+        ? typedPreludeParts(resolved.evaluated, e.compress === true)
         : evalQueryPreludeParts(resolved.value, resolved.frame, e);
     }
     default:
