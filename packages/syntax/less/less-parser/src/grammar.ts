@@ -1990,13 +1990,17 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
    * value call's reader (`FunctionArguments`), so its condition is the same
    * `FunctionCondition` a value-position `if()` reads, a comparison
    * (`if((@a = 1), { … });`) included. The generic statement lane's argument
-   * reader takes values and calls only.
+   * reader takes values and calls only. It is `GenericFunction`'s reader with
+   * the statement lane's reducer: the value reducer would lower the call to a
+   * value-position `if()`, where the statement lowers it to a statement.
    */
   const IfFunctionCall = node(
     'Call',
     parser({ trivia: functionTrivia }, sequence(routed(), g.FunctionArguments, literal(')'))),
     argumentFunctionFromChildren
   );
+
+  /* A statement-position `if(…)` and its terminator, lowered to the statement it chooses. */
   const IfFunctionStatement = node(
     'Call',
     sequence(IfFunctionCall, choice(literal(';'), terminalFunctionBoundary)),
