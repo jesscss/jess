@@ -211,4 +211,10 @@ describe('Less custom properties', () => {
     expect(rule.rules[1]).toMatchObject({ type: 'Declaration', value: { type: 'Any', src: 'blue' } });
     expect(serialize(document).css).toBe('.x {\n  --a: /* c */ red;\n  --b: /* d */ blue;\n  --c: green;\n}\n');
   });
+
+  /* U+00A0 is an ident code point (css-syntax-3 §4.2), not whitespace, so a value keeps it at either edge. */
+  it('keeps a non-CSS space at a custom-property value edge', () => {
+    expect(serialize(parse('.x { --a:\u00a0red; --b: (\u00a0red\u00a0); --c: var(--y, red\u00a0); }')).css)
+      .toBe('.x {\n  --a: \u00a0red;\n  --b: (\u00a0red\u00a0);\n  --c: var(--y, red\u00a0);\n}\n');
+  });
 });
