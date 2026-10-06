@@ -59,15 +59,26 @@ not real CSS functions.
 
 ### Grouping parens dissolve after evaluation
 `keyword (expr)` — a **space** then parens — is math grouping. Once the
-expression computes, the parens do not survive to output. (A no-space
-`keyword(expr)` is the function shape above and stays verbatim.)
+expression computes — math, or a function that runs — the parens do not survive
+to output. (A no-space `keyword(expr)` is the function shape above and stays
+verbatim.) Parens around something that computes nothing — one value, a CSS
+function such as `var()`, math kept as written — stay as you wrote them, as they
+do in plain CSS.
 
 ```jess
 $a: #a80000; $b: #00000b;
-.a { border: 1px solid ($a * .66 + $b * .33); }
+.a { border: 1px solid ($($a * .66 + $b * .33)); }
 ```
 ```css
-.a { border: 1px solid #a8000b; }
+.a { border: 1px solid #6f0004; }
+```
+
+```jess
+$w: 10vh;
+.a { height: ($w); width: ($(1px + 2px)); top: var(--top, (10px)); }
+```
+```css
+.a { height: (10vh); width: 3px; top: var(--top, (10px)); }
 ```
 
 ### Color functions pass through un-operated

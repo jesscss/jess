@@ -175,7 +175,7 @@ import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
-import { UnitArithmeticError, calcInner, groupAsWritten, preservedUnitClashes, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
+import { UnitArithmeticError, calcInner, groupAsWritten, keepAsWritten, preservedUnitClashes, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
@@ -4570,16 +4570,20 @@ function evalTyped(
        * An inert group has nothing for the frame to compute, so it is not
        * consumed and keeps its parens ({@link isInertGroup}); nor is a group in
        * an argument of a call written out as-is, which no callable reads, unless
-       * math in it computes ({@link groupComputes}).
+       * what it holds computes ({@link groupComputes}). Such an argument keeps
+       * the written-out policy inside a group that computes, so an F5 color
+       * call there is still written as authored.
        */
-      return isInertGroup(node) || (argument === ARG_WRITTEN && !groupComputes(node))
-        ? mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues, argument), v => makeKeyword(`(${emitValue(v)})`))
-        : mapMaybe(evalTypedSlot(
-            node.value,
-            frame,
-            { ...e, parenFrames: pushParenFrame(e, true) },
-            projectMixinValues
-          ), keepAuthoredGroup);
+      if (isInertGroup(node) || (argument === ARG_WRITTEN && !groupComputes(node, frame, e))) {
+        return mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues, argument), v => makeKeyword(`(${emitValue(v)})`));
+      }
+      return mapMaybe(evalTypedSlot(
+        node.value,
+        frame,
+        { ...e, parenFrames: pushParenFrame(e, true) },
+        projectMixinValues,
+        argument === ARG_WRITTEN ? ARG_WRITTEN : ARG_NONE
+      ), keepAuthoredGroup);
     case 'Collection':
       /*
        * A map reaching a TYPED position (a function argument, an operation) is
@@ -4633,9 +4637,11 @@ function evalTyped(
        * Typed consumers deliberately bypass any direct-output preservation
        * policy. An operation or typed function argument needs the callable's
        * result, not its authored bytes. An argument of a call written out as-is
-       * feeds no callable, so it keeps that policy (ledger F11).
+       * feeds no callable, so it keeps that policy (ledger F11). A call that
+       * comes back as the bytes it was written with is kept as written, so a
+       * group around it keeps its parens ({@link groupComputation}).
        */
-      return mapMaybe(evalCall(node, frame, e, argument !== ARG_WRITTEN), v => force(v));
+      return mapMaybe(evalCall(node, frame, e, argument !== ARG_WRITTEN), v => isLiteral(v) ? keepAsWritten(makeKeyword(v)) : v);
     case 'Condition':
       return mapMaybe(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), makeBool);
     case 'IfValue': {
@@ -4706,23 +4712,96 @@ const isParenGroup = (slot: ValueSlot): slot is Block =>
   !isValueSlotArray(slot) && slot.type === 'Block' && slot.delimiter === 'paren' && slot.escaped !== true;
 
 /*
- * A paren group is consumed only by math that computes inside it: `(1px + 2px)`
- * is `3px`. Every other group keeps its parens wherever it is written — around
- * one value (`c: (10vh)`, `var(--a, (10px))`), around math kept as written, or
- * around raw bytes — in every dialect, so valid CSS emits the bytes css does
- * (SEMANTIC-INVARIANTS 4; ledger P35, owner 2026-10-06: "no reason to drop
- * parens. the user wanted to write it that way for a reason."). A computing
- * consumer — an operand of math that operates, an argument a callable reads —
- * still reads the value inside the group, through the typed lane.
+ * A paren group is consumed when what it holds computes — math (`(1px + 2px)` is
+ * `3px`), a `.jess` `$( … )`, a call a callable computes (`(percentage(0.5))` is
+ * `50%`), or a variable or mixin parameter bound to one of those (ledger F4:
+ * once computed, the parens do not survive). Every other group keeps its parens
+ * wherever it is written — around one value (`c: (10vh)`, `(@w)` with `@w:
+ * 10px`), around a call written out as-is (`(var(--a))`) or a CSS colour call
+ * (`(rgb(1, 2, 3))`), around math kept as written, or around raw bytes — in
+ * every dialect, so valid CSS emits the bytes css does
+ * (SEMANTIC-INVARIANTS 4; orchestrator judgment under owner delegation
+ * 2026-10-06). Inside a math function every authored paren is kept (ledger
+ * P35). A computing consumer — an operand of math that operates, an argument a
+ * callable reads — still reads the value inside the group, through the typed
+ * lane, and an operand of math kept as written keeps the group's spelling
+ * ({@link spelledOperand}).
  */
 
-/** Whether math inside the group computes, which consumes its parens (see above). */
-function groupComputes(node: Block): boolean {
+/**
+ * What computes in the group (see above), or `null`: the operation, `$( … )`,
+ * call or conditional it holds, directly or through the variables it names. A
+ * call counts here, and one no callable computed comes back marked as written
+ * out as-is, which {@link keepAuthoredGroup} keeps in its parens.
+ */
+function groupComputation(node: Block, frame: Frame | null, e: EvalCtx): ValueNode | null {
+  if ((e.calcDepth ?? 0) > 0) {
+    return null;
+  }
   let inner: ValueSlot = node.value;
+  let scope = frame;
+
+  /* ponytail: a reference cycle raises when the group evaluates; the cap only bounds this walk. */
+  for (let hops = 0; hops < 32; hops += 1) {
+    while (isParenGroup(inner)) {
+      inner = inner.value;
+    }
+    if (isValueSlotArray(inner) || inner.type !== 'Lookup') {
+      return computationIn(inner);
+    }
+    if (inner.kind !== 'var' || typeof inner.name !== 'string') {
+      return null;
+    }
+    const hit = resolveVarRef(scope, inner.name, inner.scope, e);
+    if (hit === undefined || isMixinCallValue(hit.value)) {
+      return null;
+    }
+    inner = hit.value;
+    scope = hit.frame;
+  }
+  return null;
+}
+
+const groupComputes = (node: Block, frame: Frame | null, e: EvalCtx): boolean => groupComputation(node, frame, e) !== null;
+
+/**
+ * The mixin arguments whose authored value computed ({@link eagerSnapshot}): a
+ * parameter stands for its argument, so a group around it is consumed exactly
+ * as a group around the argument would be.
+ */
+const computedArguments = new WeakSet<Any>();
+
+/** The node in `slot`, past its parens, that computes when it is evaluated, or `null` (see {@link groupComputation}). */
+function computationIn(slot: ValueSlot): ValueNode | null {
+  let inner = slot;
   while (isParenGroup(inner)) {
     inner = inner.value;
   }
-  return !isValueSlotArray(inner) && inner.type === 'Operation' && !inner.inMathFunction;
+  if (isValueSlotArray(inner)) {
+    return null;
+  }
+  switch (inner.type) {
+    case 'Operation':
+      return inner.inMathFunction ? null : inner;
+    case 'Interpolation':
+      return isComputationSplice(inner) ? inner : null;
+    case 'FunctionCall':
+      /* A CSS colour written as a call is one CSS value in every dialect (ledger F5, SEMANTIC-INVARIANTS 4). */
+      return isCssColorCall(inner) ? null : inner;
+    case 'Expression':
+    case 'IfValue':
+      return inner;
+    case 'Any':
+      return computedArguments.has(inner) ? inner : null;
+    default:
+      return null;
+  }
+}
+
+/** A `.jess` `$( … )` in a value: a template that splices one computation. */
+function isComputationSplice(node: Interpolation): boolean {
+  const first = node.parts[0];
+  return node.parts.length === 1 && first !== undefined && 'ref' in first && first.ref.type === 'Expression';
 }
 
 /** A paren group around math kept as written or around raw bytes: nothing in it computes. */
@@ -4751,6 +4830,29 @@ function unconsumedParens(slot: ValueSlot): number {
 }
 
 const wrapParens = (bytes: string, depth: number): string => depth === 0 ? bytes : `${'('.repeat(depth)}${bytes}${')'.repeat(depth)}`;
+
+/**
+ * How many paren levels the author wrote around `slot` when it is a group that
+ * nothing in computes ({@link groupComputes}), or 0. The typed lane hands a
+ * consumer the value inside; this is the spelling it keeps when nothing
+ * computes it.
+ */
+function writtenParens(slot: ValueSlot, frame: Frame | null, e: EvalCtx): number {
+  return isParenGroup(slot) && !groupComputes(slot, frame, e) ? unconsumedParens(slot) : 0;
+}
+
+/**
+ * An operand as `operate` sees it: a group around one value keeps its spelling,
+ * so math kept as written keeps the parens (`(10px) + 1` under `unitMode:
+ * 'preserve'`), while math that computes reads only the value. A named-colour
+ * keyword stays bare, since `operate` reads it as a colour.
+ */
+function spelledOperand(node: ValueNode, value: Value, frame: Frame | null, e: EvalCtx): Value {
+  const depth = writtenParens(node, frame, e);
+  return depth === 0 || (value.type === 'Keyword' && namedColor(value.bytes) !== undefined)
+    ? value
+    : { ...value, bytes: wrapParens(value.bytes, depth) };
+}
 
 /**
  * An `Expression` the author spelled as a paren group — its span opens at the
@@ -5056,27 +5158,35 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         : e);
 
       /*
-       * A group is consumed only by math that computes inside it: `(1px + 2px)`
-       * is `3px`, while math `operate` kept as written keeps them
-       * ({@link keepAuthoredGroup}). Every other group keeps its parens — around
-       * one value, kept math, or raw bytes ({@link groupComputes}).
-       */
-      /*
        * §12.6c: a bracketed value emits VERBATIM. Balanced `[ … ]` is a valid
        * CSS simple block in any declaration value (css-syntax-3), so the emitter
        * never rejects one — grid `<line-names>` validity (`'[' <custom-ident>* ']'`,
        * the one property-value grammar that gives `[ … ]` meaning) is a
        * PROPERTY-specific concern that belongs in the lint/diagnostic layer, not
        * here where the property is unknown.
+       *
+       * A paren group is consumed only by what computes in it
+       * ({@link groupComputation}): `(1px + 2px)` is `3px`, while math `operate`
+       * kept and a call written out as-is keep the parens
+       * ({@link keepAuthoredGroup}), and so does every group nothing computes in.
+       * Bytes from a call or an operation are what nothing computed — a call
+       * re-emitted as written, math on the non-evaluating lane; a conditional,
+       * a `.jess` `$( … )` splice or a computed mixin argument computes to its
+       * bytes.
        */
       return mapMaybe(inner, (v) => {
-        if (isLiteral(v)) {
-          return literal(`${delimiterOpen(node.delimiter)}${v}${delimiterClose(node.delimiter)}`);
-        }
         if (node.delimiter !== 'paren') {
-          return makeBlock(v, node.delimiter, node.escaped);
+          return isLiteral(v)
+            ? literal(`${delimiterOpen(node.delimiter)}${v}${delimiterClose(node.delimiter)}`)
+            : makeBlock(v, node.delimiter, node.escaped);
         }
-        return groupComputes(node) ? keepAuthoredGroup(v) : makeKeyword(`(${emitValue(v)})`);
+        const computation = groupComputation(node, frame, e);
+        if (isLiteral(v)) {
+          return computation === null || !e.ev || computation.type === 'FunctionCall' || computation.type === 'Operation'
+            ? literal(`(${v})`)
+            : v;
+        }
+        return computation === null ? makeKeyword(`(${emitValue(v)})`) : keepAuthoredGroup(v);
       });
     }
     case 'Expression': {
@@ -5236,8 +5346,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       // Inside `calc(…)`, flag the modes so cross-unit math preserves (guard 3).
       const m: EvalModes = (e.calcDepth ?? 0) > 0 ? { ...e.modes, inCalc: true } : e.modes;
       return combineAll([l, r], (values) => {
-        const lv = requireScalarValue(values[0]!, `operator ${node.operator}`);
-        const rv = requireScalarValue(values[1]!, `operator ${node.operator}`);
+        const lv = spelledOperand(node.left, requireScalarValue(values[0]!, `operator ${node.operator}`), frame, e);
+        const rv = spelledOperand(node.right, requireScalarValue(values[1]!, `operator ${node.operator}`), frame, e);
         try {
           return rememberUnitOwner(ev.operate(node.operator, lv, rv, m), node);
         } catch (error) {
@@ -6786,7 +6896,9 @@ function evalIntrospection(node: FunctionCall, frame: Frame | null, e: EvalCtx):
  * one value keeps its parens and so its wrapper ({@link unconsumedParens}): a
  * dimension carries them as its spelling (`calc((10vh))` is `10vh` spelled
  * `(10vh)`), so every position prints the same bytes and a typed consumer still
- * reads `10vh`; any other value is the kept `calc(…)` expression.
+ * reads `10vh`; any other value is the kept `calc(…)` expression. A kept
+ * `calc(…)` is written out as-is, so a group around it keeps its parens
+ * ({@link groupComputation}).
  */
 function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   const ce: EvalCtx = { ...e, calcDepth: (e.calcDepth ?? 0) + 1 };
@@ -6797,10 +6909,10 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
       if (!isValueGroupArray(v) && v.type === 'Dimension') {
         return makeSpelledDimension(v, wrapParens(v.preserved ?? v.bytes, authored));
       }
-      return makeKeyword(`calc(${wrapParens(emitValue(v), authored)})`);
+      return keepAsWritten(makeKeyword(`calc(${wrapParens(emitValue(v), authored)})`));
     }
     if (!isValueGroupArray(v) && v.type === 'Keyword') {
-      return calcInner(v.bytes) !== null ? v : makeKeyword(`calc(${v.bytes})`);
+      return keepAsWritten(calcInner(v.bytes) !== null ? v : makeKeyword(`calc(${v.bytes})`));
     }
 
     /*
@@ -6810,7 +6922,7 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
      * `50vh / 2` as the property value — no longer a calculation at all.
      */
     if (isValueGroupArray(v) || v.type === 'List') {
-      return makeKeyword(`calc(${emitValueC(v, e)})`);
+      return keepAsWritten(makeKeyword(`calc(${emitValueC(v, e)})`));
     }
     return v;
   });
@@ -7089,9 +7201,11 @@ function snapshotPreparedMixinValue(
   mode: MixinGroupMode,
   bytes: string,
   e: EvalCtx,
-  retain?: (key: Binding) => void
+  retain?: (key: Binding) => void,
+  source?: ValueSlot,
+  frame: Frame | null = null
 ): Any {
-  const bound = any(bytes);
+  const bound = argumentSnapshot(bytes, source, frame, e);
   if (mode === MIXIN_GROUP_URL) {
     (e.mixinUrlBindings ??= new Map()).set(bound, value);
     retain?.(bound);
@@ -7099,7 +7213,24 @@ function snapshotPreparedMixinValue(
     (e.mixinValueBindings ??= new Map()).set(bound, value);
     retain?.(bound);
   }
-  carrySnapshot(bound, value, e);
+  carrySnapshot(bound, value, e, bound.src !== bytes);
+  return bound;
+}
+
+/**
+ * The snapshot an argument binds as: its evaluated bytes, spelled with the
+ * parens of a group around one value nothing computes ({@link writtenParens}),
+ * as the same group written in a declaration is, and marked when the argument
+ * computed ({@link computedArguments}). `source` is the argument as written.
+ */
+function argumentSnapshot(bytes: string, source: ValueSlot | undefined, frame: Frame | null, e: EvalCtx): Any {
+  if (source === undefined) {
+    return any(bytes);
+  }
+  const bound = any(wrapParens(bytes, writtenParens(source, frame, e)));
+  if (computationIn(source) !== null) {
+    computedArguments.add(bound);
+  }
   return bound;
 }
 
@@ -7109,13 +7240,14 @@ function snapshotPreparedMixinValue(
  * a url — is what a typed position reads (`snapshotValues`); a structured one
  * (a list, a block, a map) reads there as its opaque bytes and reaches a
  * function or plugin through `mixinValueBindings`. Under compress the value a
- * declaration folds rides too ({@link carryCompressed}).
+ * declaration folds rides too ({@link carryCompressed}), unless the bytes are
+ * the authored spelling of a paren group, which is written as it is anywhere.
  */
-function carrySnapshot(bound: Any, value: ValueGroup, e: EvalCtx): void {
+function carrySnapshot(bound: Any, value: ValueGroup, e: EvalCtx, spelled = false): void {
   if (!isValueGroupArray(value) && value.type !== 'List' && value.type !== 'Block' && value.type !== 'Collection') {
     e.snapshotValues?.set(bound, value);
   }
-  if (e.compressedBindings !== undefined) {
+  if (e.compressedBindings !== undefined && !spelled) {
     carryCompressed(bound, value, e);
   }
 }
@@ -7137,7 +7269,9 @@ function carryCompressed(bound: Any, value: ValueGroup, e: EvalCtx): void {
  * policy, so its bytes are the value as written and a splice of the parameter
  * writes them unchanged (ledger O3: interpolated text is never re-spelled).
  *
- * The argument is evaluated ONCE, typed, and spelled as written. A scalar's
+ * The argument is evaluated ONCE, typed, and spelled as written — a group
+ * around one value nothing computes keeps its parens ({@link writtenParens}),
+ * as it does written directly in a declaration. A scalar's
  * typed value rides beside the snapshot (EvalCtx.snapshotValues), so a typed
  * position reads the type the parser gave it — an escaped string stays opaque
  * (ledger V3), a number stays a number — instead of re-reading the bytes. Under
@@ -7148,8 +7282,9 @@ function carryCompressed(bound: Any, value: ValueGroup, e: EvalCtx): void {
 function eagerSnapshot(source: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<Any> {
   return mapMaybe(evalTypedSlot(source, frame, spliceCtx(e), true), (value) => {
     validateValueGroupUnits(value, e.modes, isValueSlotArray(source) ? (source[0] ?? {}) : source, e, false);
-    const bound = any(emitValue(value));
-    carrySnapshot(bound, value, e);
+    const bytes = emitValue(value);
+    const bound = argumentSnapshot(bytes, source, frame, e);
+    carrySnapshot(bound, value, e, bound.src !== bytes);
     return bound;
   });
 }
@@ -7216,7 +7351,7 @@ function resolveAuthoredMixinValue(
 ): MaybePromise<CallValue> {
   return mapMaybe(evalTypedSlot(source, frame, e, true, ARG_BINDING), (value) => {
     const mode = mixinGroupMode(value);
-    return snapshotPreparedMixinValue(value, mode, mode === MIXIN_GROUP_VALUE ? writtenBytes(value, source, e) : emitValue(value), e, retain);
+    return snapshotPreparedMixinValue(value, mode, mode === MIXIN_GROUP_VALUE ? writtenBytes(value, source, e) : emitValue(value), e, retain, source, frame);
   });
 }
 
@@ -7500,7 +7635,7 @@ function boundSourceTracker(
         const bytes = mode === MIXIN_VALUE_AUTHORED && groupMode === MIXIN_GROUP_VALUE
           ? writtenBytes(group, value, e)
           : preparedBytes!(group);
-        return snapshotPreparedMixinValue(group, groupMode, bytes, e, retain);
+        return snapshotPreparedMixinValue(group, groupMode, bytes, e, retain, value, frame);
       });
     }
     if (!pluginEligible || isValueSlotArray(value) || isMixinCallValue(value)

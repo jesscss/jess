@@ -328,11 +328,20 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +1 function (owner ruling 2026-10-06, ledger P35): an authored paren group
     // around an operation kept as written (`(4 + 3px)` under `preserve`) keeps its
     // parens in both value lanes (`keepAuthoredGroup`), so precedence survives.
-    expect(occurrences(/^function |^async function /gmu)).toBe(540);
+    // +5 functions, +1 `new WeakSet` (ledger F4; orchestrator judgment under owner
+    // delegation 2026-10-06): a paren group is consumed only by what computes in
+    // it — math, a `$( … )`, a call a callable computes, or a variable or mixin
+    // argument bound to one (`groupComputation`, `computationIn`,
+    // `isComputationSplice`, and `computedArguments` for the argument a mixin
+    // parameter stands for); a group around one value keeps its spelling as an
+    // operand of math kept as written and as a mixin argument (`writtenParens`,
+    // `spelledOperand`, `argumentSnapshot`); `groupComputes` became a one-line
+    // arrow.
+    expect(occurrences(/^function |^async function /gmu)).toBe(545);
     expect(occurrences(/new Map/gu)).toBe(85);
     expect(occurrences(/new Set/gu)).toBe(41);
     expect(occurrences(/new WeakMap/gu)).toBe(10);
-    expect(occurrences(/new WeakSet/gu)).toBe(0);
+    expect(occurrences(/new WeakSet/gu)).toBe(1);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);
 
     /*

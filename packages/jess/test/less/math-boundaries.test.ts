@@ -118,21 +118,59 @@ describe('Less math boundaries', () => {
   });
 
   /*
-   * A group is consumed only by math that computes in it or with it; a group
-   * around one value nothing computes keeps its parens, in every dialect
-   * (SEMANTIC-INVARIANTS 4; DESIGN-DECISIONS P35, orchestrator judgment under
-   * owner delegation 2026-10-06).
+   * A group is consumed only by what computes in it; a group around one value
+   * nothing computes keeps its parens, in every dialect (SEMANTIC-INVARIANTS 4;
+   * orchestrator judgment under owner delegation 2026-10-06).
    */
   it('emits a paren group around one value identically in every dialect', async () => {
-    const src = '.x { c: (10vh); d: var(--a, (10px)); e: calc(var(--a, ((5vh)))); f: (red) (1px); g: (10px) / 2; }';
+    const src = '.x { c: (10vh); d: var(--a, (10px)); e: calc(var(--a, ((5vh)))); f: (red) (1px); g: (10px) / 2; '
+      + 'h: (var(--x)); i: (calc(1px + 1vw)); j: (foo(1)); k: var(--a, (rgb(1, 2, 3))); l: (rgb(1, 2, 3)); }';
     const css = await renderCss(src);
-    expect(css).toBe('.x { c: (10vh); d: var(--a, (10px)); e: calc(var(--a, ((5vh)))); f: (red) (1px); g: (10px) / 2; }');
+    expect(css).toBe('.x { c: (10vh); d: var(--a, (10px)); e: calc(var(--a, ((5vh)))); f: (red) (1px); g: (10px) / 2; '
+      + 'h: (var(--x)); i: (calc(1px + 1vw)); j: (foo(1)); k: var(--a, (rgb(1, 2, 3))); l: (rgb(1, 2, 3)); }');
     for (const extension of ['.less', '.scss', '.jess'] as const) {
       expect(await renderIn(extension, src), extension).toBe(css);
     }
     expect(await renderJess('.x { w: min((10px), 1px); }')).toBe('.x { w: min((10px), 1px); }');
-    expect(await render('@w: 10px; .x { a: (@w); b: ((10px)); c: (percentage(0.5)); d: (10px) * 2; e: percentage((0.5)); }'))
-      .toBe('.x { a: (10px); b: ((10px)); c: (50%); d: 20px; e: 50%; }');
+    expect(await render('@w: 10px; @c: foo(1); .x { a: (@w); b: ((10px)); c: (@c); d: (10px) * 2; e: percentage((0.5)); }'))
+      .toBe('.x { a: (10px); b: ((10px)); c: (foo(1)); d: 20px; e: 50%; }');
+  });
+
+  /*
+   * Once something computes, the parens do not survive (DESIGN-DECISIONS F4): a
+   * call a callable computes, a `.jess` `$( … )`, and a variable or mixin
+   * parameter bound to math, exactly as a group around the math itself.
+   */
+  it('consumes a paren group around anything that computes', async () => {
+    expect(await render('.a { b: 1px solid (darken(red, 10%)); w: (percentage(0.5)); u: (unit(5, px)); e: (e("x")); f: (if(true, a, b)); }'))
+      .toBe('.a { b: 1px solid #cc0000; w: 50%; u: 5px; e: x; f: a; }');
+    expect(await renderIn('.scss', '.a { w: (percentage(0.5)); b: solid (darken(red, 10%)); }'))
+      .toBe('.a { w: 50%; b: solid #cc0000; }');
+    expect(await renderJess('.a { a: ($(1px + 2px)); }')).toBe('.a { a: 3px; }');
+    expect(await render('@a: 1px + 2px; .x { b: (@a); }')).toBe('.x { b: 3px; }');
+    expect(await render('@a: 1px + 2px; .x { b: (@a); c: @a; }', { mathMode: 'parens' }))
+      .toBe('.x { b: 3px; c: 1px + 2px; }');
+    expect(await render('.m(@x) { b: (@x); } .x { .m(1px + 2px); } .y { .m(percentage(0.5)); }'))
+      .toBe('.x { b: 3px; } .y { b: 50%; }');
+  });
+
+  /*
+   * Math kept as written computes nothing, so a group written as one of its
+   * operands keeps its parens (DESIGN-DECISIONS P35, unitless ± unit, owner
+   * 2026-10-06), while math that computes reads the value inside.
+   */
+  it('keeps the parens of an operand of math kept as written', async () => {
+    expect(await render('.x { a: (10px) + 1; c: 1 + (10px); d: ((10px)) + 1; e: foo + (1px); f: (1px) + foo; }'))
+      .toBe('.x { a: (10px) + 1; c: 1 + (10px); d: ((10px)) + 1; e: foo + (1px); f: (1px) + foo; }');
+    expect(await render('.x { a: (10px) + 1; }', { unitMode: 'loose' })).toBe('.x { a: 11px; }');
+  });
+
+  /* A parameter stands for its argument as written, as a variable does (SEMANTIC-INVARIANTS 2). */
+  it('binds a mixin argument written as a group with its parens', async () => {
+    expect(await render('@g: (10px); .m(@x) { a: @x; b: @x * 2; } .d(@x: (10px)) { a: @x; } .x { a: @g; .m((10px)); .d(); }'))
+      .toBe('.x { a: (10px); a: (10px); b: 20px; a: (10px); }');
+    expect(await renderIn('.scss', '@mixin m($x) { a: $x; } .x { @include m((10px)); }')).toBe('.x { a: (10px); }');
+    expect(await renderIn('.less', '.m(@x) { b: @x; } .x { .m((0.5px)); c: (0.5px); }', true)).toBe('.x{b:(0.5px);c:(0.5px)}');
   });
 
   it('still consumes the parens of Less math outside a math function', async () => {

@@ -497,14 +497,21 @@ function calcSafe(op: string, a: Dimension, b: Dimension): boolean {
 export const preservedUnitClashes = new WeakSet<Value>();
 
 /**
- * The keywords `operate` returns for an operation it KEPT AS WRITTEN — neither
- * computed nor spelled as a self-delimiting `calc(…)`: an un-operable keyword
- * operand (`foo + 1`) and a `preserve`d unitless `+`/`-` (`4 + 3px`). Such a
- * keyword is an expression, not one value, so an authored paren group around
- * it keeps its parens ({@link groupAsWritten}): `(4 + 3px) * 2` must not print
- * as `4 + 3px * 2`, nor `1px (1px + 2) 3` as `1px 1px + 2 3`.
+ * The keywords kept AS WRITTEN — neither computed nor spelled as a
+ * self-delimiting `calc(…)`: an operation `operate` kept (an un-operable keyword
+ * operand, `foo + 1`, and a `preserve`d unitless `+`/`-`, `4 + 3px`), and a call
+ * no callable computed, written out as-is ({@link keepAsWritten}). Nothing in
+ * an authored paren group around one computed, so it keeps its parens
+ * ({@link groupAsWritten}): `(4 + 3px) * 2` must not print as `4 + 3px * 2`,
+ * nor `1px (1px + 2) 3` as `1px 1px + 2 3`, nor `(var(--a))` as `var(--a)`.
  */
-const operationsAsWritten = new WeakSet<Value>();
+const keptAsWritten = new WeakSet<Value>();
+
+/** `v`, marked as written out as-is rather than computed (see {@link keptAsWritten}). */
+export function keepAsWritten<T extends Value>(v: T): T {
+  keptAsWritten.add(v);
+  return v;
+}
 
 /**
  * A keyword `op` composed from `left` and `right`. A preserved clash in either
@@ -514,7 +521,7 @@ const operationsAsWritten = new WeakSet<Value>();
 function composedKeyword(bytes: string, left: Value, right: Value, asWritten: boolean): Value {
   const out = makeKeyword(bytes);
   if (asWritten) {
-    operationsAsWritten.add(out);
+    keptAsWritten.add(out);
   }
   if (preservedUnitClashes.has(left) || preservedUnitClashes.has(right)) {
     preservedUnitClashes.add(out);
@@ -523,12 +530,13 @@ function composedKeyword(bytes: string, left: Value, right: Value, asWritten: bo
 }
 
 /**
- * The value of an authored paren group: an operation kept as written keeps the
- * author's parens, and anything else (a computed value, a `calc(…)` spelling)
- * is one value the parens no longer delimit.
+ * The value of an authored paren group whose content computes or was kept: a
+ * value kept as written keeps the author's parens, and anything else (a
+ * computed value, a `calc(…)` spelling) is one value the parens no longer
+ * delimit.
  */
 export function groupAsWritten(v: Value): Value {
-  return v.type === 'Keyword' && operationsAsWritten.has(v) ? composedKeyword(`(${v.bytes})`, v, v, true) : v;
+  return v.type === 'Keyword' && keptAsWritten.has(v) ? composedKeyword(`(${v.bytes})`, v, v, true) : v;
 }
 
 /**

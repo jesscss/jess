@@ -18,7 +18,7 @@ import { valueLayoutOf } from './provenance.js';
 import type { Fn, FnIo } from './functions/types.js';
 import { sepGlue } from './value-eval.js';
 import { groupItems, groupSeparator } from './value-list.js';
-import { operate } from './value-operate.js';
+import { keepAsWritten, operate } from './value-operate.js';
 import { compare as compareValues, compareMatch as compareMatchValues, typeCheck as typeCheckValues } from './value-guards.js';
 import type { FnRegistry } from './value-dispatch.js';
 import { dispatchFn, FunctionDeclined } from './value-dispatch.js';
@@ -58,7 +58,7 @@ function verbatimArgs(args: ValueGroup, modes?: EvalModes, authored?: readonly A
 
 /** Preserve an optional CSS call, as written, after name resolution or invocation failed. */
 function fallbackCall(name: string, args: ValueGroup, modes?: EvalModes, written?: WrittenArguments, authored?: readonly ArgumentKeyword[]): Value {
-  return makeKeyword(`${name}(${verbatimArgs(written?.args ?? args, modes, written?.keywords ?? authored)})`);
+  return keepAsWritten(makeKeyword(`${name}(${verbatimArgs(written?.args ?? args, modes, written?.keywords ?? authored)})`));
 }
 
 /**

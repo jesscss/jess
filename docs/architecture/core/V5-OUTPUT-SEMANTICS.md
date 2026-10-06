@@ -103,7 +103,12 @@ Corollary for `ast/`: a **space** before `(` must stay grouping — `solid (x)`
 must **not** collapse into the no-space function shape `solid(x)` (A4).
 **Why.** Grouping-parens exist only to control evaluation order; they are not
 part of the computed result's spelling. Symmetric with the plain
-`(2px+3px) → 5px` case.
+`(2px+3px) → 5px` case. "Computes" covers math, a call a callable runs
+(`(percentage(0.5))` → `50%`), and a variable bound to either. A group around
+something that computes nothing — one value (`(10vh)`), a call written out as-is
+(`(var(--a))`), math kept as written — keeps its parens in every dialect, as css
+does (SEMANTIC-INVARIANTS 4; orchestrator judgment under owner delegation
+2026-10-06); inside a math function every authored paren is kept (DD `P35`).
 **Status.** SETTLED — owner-confirmed (2026-07-18), demonstrated by operation
 tests + `.less` fixtures. Distinct from A4.
 **Ref.** DD `F4`
