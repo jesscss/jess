@@ -102,4 +102,13 @@ describe('typed reads, not byte scans', () => {
     expect(await render('@a: 3; @container style(--x: @a) { .a { b: c; } } @container style(--y: ~"a/b") or style(--z: ~\'a b\') { .a { b: c; } }'))
       .toBe('@container style(--x: 3) { .a { b: c; } } @container style(--y: ~"a/b") or style(--z: ~\'a b\') { .a { b: c; } }');
   });
+
+  /* A condition call's feature is walked as the feature in parens is, so a value spliced into it is never re-spaced. */
+  it('writes a value spliced into a style() query as it evaluated', async () => {
+    const source = '@v: ~\'a:b\'; @w: ~\'a  /  b\'; @container style(--x: @{v}) and style(--y:1) and style(--z: @{w}) { .a { b: c; } }';
+    expect(await new Compiler().renderString(source, { language: 'less', extension: '.less' }))
+      .toBe('@container style(--x: a:b) and style(--y: 1) and style(--z: a  /  b) {\n  .a {\n    b: c;\n  }\n}\n');
+    expect(await new Compiler({ output: { compress: true } }).renderString(source, { language: 'less', extension: '.less' }))
+      .toBe('@container style(--x:a:b) and style(--y:1) and style(--z:a  /  b){.a{b:c}}');
+  });
 });

@@ -20635,11 +20635,18 @@ type SupportsPreludePart = { bytes: string; protected: boolean };
 
 /*
  * A value the prelude walker evaluated is written as evaluated: a string, a
- * resolved variable, a list's authored separators and their comments are
- * protected parts, never scanned for the quotes or comments they hold. The
- * normalizers below space only the walker's own glue (parens, a feature colon,
- * an operator, a sequence space), the bytes of a condition call the walker
- * writes whole (`style(--x: @{v})`), and a raw fragment ({@link preludeLeaf}).
+ * resolved variable, a splice, an authored run between list items are protected
+ * parts, never scanned for the quotes or comments they hold. The normalizers
+ * below space the walker's own glue (parens, a feature colon, an operator, a
+ * list separator, a sequence space) and two inputs the grammar leaves
+ * unstructured, which they scan for quotes and comments:
+ * - a raw fragment ({@link preludeLeaf}): css builds a `style()` query's
+ *   argument as one (`--responsive: true`, where Less builds a feature), and
+ *   every dialect a custom-property value in a `style()` feature;
+ * - a call other than a condition call ({@link conditionFeature}), written as
+ *   its evaluated bytes: a value call in a feature value (`calc()`, `env()`) and
+ *   a `style()` whose argument is not one feature (`style((--a: 1) and (--b:
+ *   2))`), which the grammar does not mark as query syntax.
  */
 const leaf = (bytes: string): SupportsPreludePart[] => [{ bytes, protected: true }];
 
@@ -20715,9 +20722,8 @@ function generalEnclosedPayload(args: readonly CallArg<ValueSlot>[]): Interpolat
  * `(` nor right before `)` stays). All other corpus `@supports` preludes are
  * already compact, so this is a no-op there.
  *
- * A string or comment it meets is copied as written. Only a condition call the
- * walker writes as bytes (it does not descend into a call's arguments) or a raw
- * fragment can still hold one ({@link preludeLeaf}).
+ * A string or comment it meets is copied as written. Only a call the walker
+ * writes as bytes or a raw fragment can still hold one ({@link leaf}).
  */
 function normalizeSupportsBytes(p: string, compress = false): string {
   let out = '';
@@ -20927,11 +20933,16 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
      */
     case 'FunctionCall': {
       const payload = isGeneralEnclosedTemplate(node) ? generalEnclosedPayload(node.args) : null;
-      if (payload === null) {
-        return mapMaybe(evalBytes(node, frame, e), plain);
+      if (payload !== null) {
+        return mapMaybe(evalBytes(payload, frame, e), content =>
+          [{ bytes: `${node.name}(${content})`, protected: true }]);
       }
-      return mapMaybe(evalBytes(payload, frame, e), content =>
-        [{ bytes: `${node.name}(${content})`, protected: true }]);
+
+      /* A condition call (`style(--x: @v)`) holds a feature: it is walked as the feature in parens is. */
+      const feature = conditionFeature(node);
+      return feature === null
+        ? mapMaybe(evalBytes(node, frame, e), plain)
+        : concatPreludeParts([plain(`${node.name}(`), evalQueryPreludeParts(feature, frame, e), plain(')')]);
     }
     case 'Block': {
       const open = delimiterOpen(node.delimiter);
@@ -21010,6 +21021,17 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
 }
 
 /**
+ * The feature a condition call holds — `style(--x: @v)`, `scroll-state(stuck:
+ * top)` — when the grammar built it as one query relation, or `null`.
+ */
+function conditionFeature(node: FunctionCall): Operation | null {
+  const only = node.args.length === 1 && !node.args[0]!.spread ? node.args[0]!.value : undefined;
+  return only !== undefined && !isValueSlotArray(only) && only.type === 'Operation' && !only.inMathFunction && isQueryRelation(only.operator)
+    ? only
+    : null;
+}
+
+/**
  * [atrule-prelude] v5 normalizes a `@media` / `@container` query prelude's
  * SPACING (a serialization concern — evaluating a `@var` / operation / escaped
  * string in a prelude is a SEPARATE, not-yet-wired capability, so those pass
@@ -21025,9 +21047,9 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
  *   - a logical `and` / `or` / `not` keeps a space before its `(` (`and(…)` →
  *     `and (…)`).
  * A quoted run (`"…"`, `'…'`) or a `/* … *\/` comment passes through untouched.
- * Only a condition call the walker writes as bytes or a raw fragment can still
- * hold one ({@link preludeLeaf}): a string, a resolved variable and a list's
- * authored separators reach here as protected parts. Every transform is idempotent on an already-canonical
+ * Only a call the walker writes as bytes or a raw fragment can still hold one
+ * ({@link leaf}): a string, a resolved variable, a splice and an authored run
+ * between list items reach here as protected parts. Every transform is idempotent on an already-canonical
  * prelude (`(min-width: 1024px)`, `screen, print, handheld`, `(a) or (b)`), so
  * already-matching goldens are unaffected.
  */

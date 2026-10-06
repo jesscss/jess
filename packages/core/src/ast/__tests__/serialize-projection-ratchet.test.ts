@@ -354,7 +354,10 @@ describe('V19 one-evaluator projection ratchet', () => {
     // prelude is joined by the walker's own glue, so compress tightens a ratio
     // written directly, through a variable or through a mixin argument
     // (`listBoundaryPart`, `typedPreludeParts`).
-    expect(occurrences(/^function |^async function /gmu)).toBe(551);
+    // +1 function (ledger D22: never re-read parser output): a condition call in a
+    // query prelude (`style(--x: @{v})`) is walked as its feature, so a value
+    // spliced into it is never scanned or re-spaced (`conditionFeature`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(552);
     expect(occurrences(/new Map/gu)).toBe(85);
     expect(occurrences(/new Set/gu)).toBe(41);
     expect(occurrences(/new WeakMap/gu)).toBe(10);
