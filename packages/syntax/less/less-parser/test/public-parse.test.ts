@@ -2831,9 +2831,15 @@ describe('public Less parse()', () => {
     ['@media (foo: bar baz) { a { b: c; } }', '@media (foo: bar baz) {\n  a {\n    b: c;\n  }\n}\n'],
     ['@media ((a) and (b c)) { a { b: c; } }', '@media ((a) and (b c)) {\n  a {\n    b: c;\n  }\n}\n'],
     ['@media screen and(color) { a { b: c; } }', '@media screen and(color) {\n  a {\n    b: c;\n  }\n}\n'],
+    ['@media (min-width:1px)and(max-width:2px) { a { b: c; } }', '@media (min-width: 1px) and(max-width:2px) {\n  a {\n    b: c;\n  }\n}\n'],
     ['@media screen print { a { b: c; } }', '@media screen print {\n  a {\n    b: c;\n  }\n}\n']
   ])('writes the CSS media query %j as written', (source, css) => {
     expect(serialize(parse(source)).css).toBe(css);
+  });
+
+  /* Media Queries excludes `layer` from `<media-type>` (it is `@import`'s keyword); the CSS base rejects it too. */
+  it('rejects `layer` as a media type', () => {
+    expect(() => parse('@media layer { a { b: c; } }')).toThrow();
   });
 
   it('returns and renders structural media/container query preludes from the public route', () => {

@@ -57,6 +57,7 @@ import {
   functionCallFromChildren,
   functionNameFromOpener,
   hasRulesetTerminator,
+  enclosedFrom,
   interpolationFactFromChildren,
   interpolationPartsFrom,
   isAny,
@@ -286,7 +287,8 @@ type LessRules = {
   QueryValue: Combinator<ValueNode>;
   QueryColonFeature: Combinator<ValueNode>;
   /** A media query's term outside parentheses: the CSS base's slot, with Less's `@{…}` / `@name` terms. */
-  MediaTypeTerm: Combinator<unknown>;
+  MediaTypeTerm: Combinator<ValueNode>;
+  RoutedQueryFunction: Combinator<FunctionCall | Block>;
   QueryFeature: Combinator<ValueNode>;
   ContainerStyleQuery: Combinator<FunctionCall>;
   ContainerScrollStateQuery: Combinator<FunctionCall>;
@@ -3635,19 +3637,24 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       noTrivia(sequence(g.EnclosedFunctionName, g.EnclosedContent, literal(')'))),
       noTrivia(sequence(literal('('), g.EnclosedContent, literal(')')))
     ),
-    (children, _fields, span, _rawChildren, _triviaLog, state) => {
-      const content = children.find((child): child is Interpolation => typeof child === 'object' && child !== null && 'type' in child && child.type === 'Interpolation');
-      if (content === undefined) {
-        throw new TypeError('Less general-enclosed lost its grammar-owned content.');
-      }
-      const name = children.find((child): child is EnclosedNameFact => typeof child === 'object' && child !== null && 'name' in child);
-      // Records its source bytes, as the css base's does, unless it carries @{…}.
-      return generalEnclosedGroup(
-        name === undefined ? block(content) : withFunctionScope(funcCall(name.name, [content]), functionScopeOf(state)),
-        span,
-        state
-      );
-    }
+    (children, _fields, span, _rawChildren, _triviaLog, state) => enclosedFrom(
+      children.find((child): child is EnclosedNameFact => typeof child === 'object' && child !== null && 'name' in child)?.name,
+      children,
+      span,
+      state
+    )
+  );
+
+  /*
+   * The CSS base's media type function, reached through its ident/function
+   * dispatch, with the payload read as `Enclosed` content (`foo(bar @{x})`)
+   * where css keeps it opaque.
+   */
+  const RoutedQueryFunction = node(
+    'QueryFunction',
+    noTrivia(sequence(routed(), g.EnclosedContent, literal(')'))),
+    (children, _fields, span, _rawChildren, _triviaLog, state) =>
+      enclosedFrom(functionNameFromOpener(children[0]), children, span, state)
   );
   // `@supports` has its own typed condition grammar. Keep this narrower than
   // ordinary Less values: feature values are static leaf facts, logical terms
@@ -3812,20 +3819,18 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   /*
    * `@media` reads the CSS base's media query list (`QueryPrelude`, with its
    * `<media-in-parens>` groups and `and`/`or` connectives). Less adds its own
-   * terms at the one slot CSS names for them: a `@{…}` interpolation, a bare
-   * `@name` (rejected by name, ledger P7), a namespace/map read, and a
-   * `<general-enclosed>` function whose payload interpolates (`foo(bar @{x})`,
-   * the same `Enclosed` node `@supports` reads), ahead of the CSS term, whose
-   * function payload is opaque bytes. A read is a whole term only through the
-   * tail-required chain: a term has no Color alternative, so the merged hex arm
-   * would over-accept a bare `#fff`; the `attempt` localizes the shared-head
-   * rollback to that arm.
+   * terms at the one slot CSS names for them, ahead of the CSS term (a media
+   * type, keyword or function, whose payload Less reads as `Enclosed` content,
+   * `RoutedQueryFunction`): a `@{…}` interpolation, a bare `@name` (rejected by
+   * name, ledger P7) and a namespace/map read. A read is a whole term only
+   * through the tail-required chain: a term has no Color alternative, so the
+   * merged hex arm would over-accept a bare `#fff`; the `attempt` localizes the
+   * shared-head rollback to that arm.
    */
   const MediaTypeTerm = choice(
     g.AtRuleInterpolation,
     g.BareVariableInterpolation,
     attempt(g.MixinReferenceChain),
-    sequence(peek(g.EnclosedFunctionName), g.Enclosed),
     g.QueryIdentOrFunctionTerm
   );
 
@@ -5526,6 +5531,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     QueryValue,
     QueryColonFeature,
     MediaTypeTerm,
+    RoutedQueryFunction,
     QueryFeature,
     ContainerStyleQuery,
     ContainerScrollStateQuery,

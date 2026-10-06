@@ -231,6 +231,7 @@ type GrammarRuleName =
   | 'QueryClause'
   | 'QueryFeature'
   | 'QueryFunction'
+  | 'RoutedQueryFunction'
   | 'QueryPrelude'
   | 'Quoted'
   | 'Ruleset'
@@ -3783,7 +3784,9 @@ const cssFactory = (g: GrammarSelf) => {
    * A generic query function keeps its component payload opaque, but both the
    * direct `QueryFunction` entry and the identifier/function dispatch consume
    * the same CSS-owned tail. Only the opener differs: `routed()` preserves the
-   * token already consumed by the dispatch route.
+   * token already consumed by the dispatch route. The routed one is a named
+   * slot: Less reads its payload as `Enclosed` content, so a `@{…}` in a media
+   * type function (`foo(bar @{x})`) interpolates.
    */
   const queryFunctionTail = sequence(
     scanTo(
@@ -3819,7 +3822,7 @@ const cssFactory = (g: GrammarSelf) => {
     queryIdentOrFunction,
     when(
       endsWith('('),
-      RoutedQueryFunction
+      g.RoutedQueryFunction
     ),
     otherwise(RoutedQueryNonOnlyKeyword)
   );
@@ -5111,6 +5114,7 @@ const cssFactory = (g: GrammarSelf) => {
     queryFunctionBound,
     MediaTerm,
     MediaTypeTerm,
+    RoutedQueryFunction,
     QueryIdentOrFunctionTerm: queryIdentOrFunctionTerm,
     QueryFeatureContents,
     queryBoundTail,

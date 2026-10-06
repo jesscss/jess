@@ -20,7 +20,7 @@
  */
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
-import { NO_SPAN, any, block, callArg, quoted, condition, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, triviaTextAt, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, callArg, generalEnclosedGroup, quoted, condition, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, triviaTextAt, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessUnsupportedVariableNameError } from './parse-error.js';
@@ -2345,6 +2345,23 @@ function requireRulesetBody(children: readonly unknown[]): Statement[] {
   return statements;
 }
 
+/**
+ * A `<general-enclosed>` group from its `Enclosed` content: a call when it has a
+ * name, else a paren block. It records its source bytes, as the css base's does,
+ * unless it carries `@{…}`.
+ */
+function enclosedFrom(name: string | undefined, children: readonly unknown[], span: Span, state: unknown): FunctionCall | Block {
+  const content = children.find((child): child is Interpolation => typeof child === 'object' && child !== null && 'type' in child && child.type === 'Interpolation');
+  if (content === undefined) {
+    throw new TypeError('Less general-enclosed lost its grammar-owned content.');
+  }
+  return generalEnclosedGroup(
+    name === undefined ? block(content) : withFunctionScope(funcCall(name, [content]), functionScopeOf(state)),
+    span,
+    state
+  );
+}
+
 /** Retain every callback body fact except an authored empty statement. */
 function requireCallbackStatements(children: readonly unknown[]): Statement[] {
   const statements: Statement[] = [];
@@ -2650,6 +2667,7 @@ export {
   isInterpolationAccessorFact,
   isInterpolationFact,
   isLessCallArg,
+  enclosedFrom,
   isLessEachCallback,
   isMixinCall,
   isMixinCallArgument,
