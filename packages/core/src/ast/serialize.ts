@@ -12765,7 +12765,7 @@ function emitDocumentStatements(
       case 'AtRuleBlock':
         if (e.referenceImportDepth === 0 || referenceAtRuleShown(child, e)) {
           emitBeforeDocumentStatement(child);
-          const emitted = reserveRevealContainer(child, e, () => expandAtRuleBlock(child, frame, e));
+          const emitted = endRevealContainer(revealContainerStart(child, e), e, expandAtRuleBlock(child, frame, e));
           markAfterDocumentStatement(child);
           return emitted;
         }
@@ -13375,7 +13375,7 @@ function hiddenRulesToReveal(
 /**
  * [import:reference] Whether a hidden `(reference)` at-rule block renders: the extend
  * plan revealed a rule in it, or a walk-recorded extend may (a RESERVED container,
- * {@link reserveRevealContainer}).
+ * {@link revealContainerStart}).
  */
 function referenceAtRuleShown(node: AtRuleBlock, e: Emit): boolean {
   return extendProjection(e)?.visibleReferenceAtRules?.has(node) === true
@@ -13383,17 +13383,25 @@ function referenceAtRuleShown(node: AtRuleBlock, e: Emit): boolean {
 }
 
 /**
- * [import:reference] Emit a hidden at-rule block `run` writes; when only a walk-recorded
- * extend may reveal a rule in it, record its chunk range so the deferred fold blanks it
- * if nothing in it is revealed after all.
+ * [import:reference] Where a hidden at-rule block about to be written starts, when only a
+ * walk-recorded extend may reveal a rule in it (a RESERVED container); else -1.
+ * {@link endRevealContainer} records the range, so the deferred fold blanks it if
+ * nothing in it is revealed after all.
  */
-function reserveRevealContainer(node: AtRuleBlock, e: Emit, run: () => MaybePromise<void>): MaybePromise<void> {
+function revealContainerStart(node: AtRuleBlock, e: Emit): number {
+  return e.dynamicExtend === null || e.referenceImportDepth === 0
+    || extendProjection(e)?.visibleReferenceAtRules?.has(node) === true
+    ? -1
+    : e.chunks.length;
+}
+
+/** [import:reference] Close the reserved container {@link revealContainerStart} opened. */
+function endRevealContainer(start: number, e: Emit, written: MaybePromise<void>): MaybePromise<void> {
   const dyn = e.dynamicExtend;
-  if (dyn === null || e.referenceImportDepth === 0 || extendProjection(e)?.visibleReferenceAtRules?.has(node) === true) {
-    return run();
+  if (start < 0 || dyn === null) {
+    return written;
   }
-  const start = e.chunks.length;
-  return mapMaybe(run(), () => {
+  return mapMaybe(written, () => {
     dyn.containerStarts.push(start);
     dyn.containerEnds.push(e.chunks.length);
   });
@@ -14973,10 +14981,20 @@ function walkBody(
           break;
         }
         case 'AtRuleBlock': {
+          /*
+           * [import:reference] A hidden `(reference)` at-rule in a body — a reserved
+           * rule's, or a `(reference)` sheet's imported inside a ruleset — renders only
+           * where an extend may reveal a rule in it: one the plan revealed, or any while
+           * the walk records extends (a reserved container the deferred fold blanks
+           * when nothing in it is revealed).
+           */
+          if (e.referenceImportDepth !== 0 && e.dynamicExtend === null && !referenceAtRuleShown(node, e)) {
+            break;
+          }
           if (nested) {
             flushBuf();
             emitBeforeRootStatement(node);
-            const emitted = expandAtRuleBlock(node, frame, e, null, source, hoist);
+            const emitted = endRevealContainer(revealContainerStart(node, e), e, expandAtRuleBlock(node, frame, e, null, source, hoist));
             if (isThenable(emitted)) {
               return emitted.then(() => {
                 markAfterRootStatement(node);
@@ -15019,15 +15037,16 @@ function walkBody(
            */
           const targetDepth = e.atRuleBodyDepth;
           const emitAt = (): MaybePromise<void> => {
+            const reserved = revealContainerStart(atNode, e);
             if (targetDepth === e.depth) {
-              return expandAtRuleBlock(atNode, atFrame, e, atComposed);
+              return endRevealContainer(reserved, e, expandAtRuleBlock(atNode, atFrame, e, atComposed));
             }
             const savedDepth = e.depth;
             e.depth = targetDepth;
             const restore = (): void => {
               e.depth = savedDepth;
             };
-            const r = expandAtRuleBlock(atNode, atFrame, e, atComposed);
+            const r = endRevealContainer(reserved, e, expandAtRuleBlock(atNode, atFrame, e, atComposed));
             if (isThenable(r)) {
               return r.then(restore, (err) => {
                 restore();
@@ -15377,7 +15396,7 @@ function walkReferenceAncestorBody(
           break;
         case 'AtRuleBlock':
           emitted = referenceAtRuleShown(node, e)
-            ? reserveRevealContainer(node, e, () => expandAtRuleBlock(node, frame, e, composed))
+            ? endRevealContainer(revealContainerStart(node, e), e, expandAtRuleBlock(node, frame, e, composed))
             : undefined;
           break;
         case 'For':
@@ -20659,7 +20678,7 @@ function emitAtRuleBody(
         return nested(node, () => expandRule(node, null, null, frame, e));
       case 'AtRuleBlock':
         return e.referenceImportDepth === 0 || referenceAtRuleShown(node, e)
-          ? nested(node, () => reserveRevealContainer(node, e, () => expandAtRuleBlock(node, frame, e)))
+          ? nested(node, () => endRevealContainer(revealContainerStart(node, e), e, expandAtRuleBlock(node, frame, e)))
           : undefined;
       case 'AtRuleStatement':
         return e.referenceImportDepth === 0
@@ -20959,7 +20978,7 @@ function emitBubbleBody(
           if (deferStaticChildren) {
             deferredChildren!.push(() => {
               e.depth++;
-              const nested = reserveRevealContainer(node, e, () => expandAtRuleBlock(node, frame, e, ctx));
+              const nested = endRevealContainer(revealContainerStart(node, e), e, expandAtRuleBlock(node, frame, e, ctx));
               if (isThenable(nested)) {
                 return nested.then(() => {
                   e.depth--;
@@ -20975,7 +20994,7 @@ function emitBubbleBody(
             if (isThenable(flushed)) {
               return flushed.then(() => {
                 e.depth++;
-                const nested = reserveRevealContainer(node, e, () => expandAtRuleBlock(node, frame, e, ctx));
+                const nested = endRevealContainer(revealContainerStart(node, e), e, expandAtRuleBlock(node, frame, e, ctx));
                 if (isThenable(nested)) {
                   return nested.then(
                     () => {
@@ -20993,7 +21012,7 @@ function emitBubbleBody(
               });
             }
             e.depth++;
-            const nested = reserveRevealContainer(node, e, () => expandAtRuleBlock(node, frame, e, ctx)); // directly-nested at-rule inherits ctx
+            const nested = endRevealContainer(revealContainerStart(node, e), e, expandAtRuleBlock(node, frame, e, ctx)); // directly-nested at-rule inherits ctx
             if (isThenable(nested)) {
               return nested.then(
                 () => {

@@ -165,6 +165,12 @@ describe('extend across @import', () => {
       expect(await renderFile('ref-media-unrevealed-main.less', false)).toBe(['.own {', '  a: 1;', '}'].join('\n'));
     });
 
+    it('(reference) import, the hidden at-rules of a rule an extender in a mixin body reveals', async () => {
+      const expected = ['.y {', '  c: 1;', '}'].join('\n');
+      expect(await renderFile('ref-atrules-nested-main.less')).toBe(expected);
+      expect(await renderFile('ref-atrules-nested-main.less', false)).toBe(expected);
+    });
+
     it('(reference) import, exact extend that misses a nested rule', async () => {
       expect(await renderFile('ref-nested-main.less')).toBe('');
     });
@@ -302,6 +308,19 @@ describe('extend across @import', () => {
     it('a (reference) import inside a ruleset nests its rules under the ruleset', async () => {
       expect(await renderFile('ref-in-ruleset-main.less')).toBe(
         ['.wrap {', '  a: 1;', '}', '.x {', '  b: 2;', '}'].join('\n')
+      );
+    });
+
+    /*
+     * Its hidden at-rules stay hidden whatever else the graph extends; one an extend
+     * reveals a rule in renders around that rule alone.
+     */
+    it('a (reference) import inside a ruleset keeps its at-rules hidden', async () => {
+      const expected = ['.zz,', '.x {', '  z: 1;', '}'].join('\n');
+      expect(await renderFile('ref-atrules-in-ruleset-main.less')).toBe(expected);
+      expect(await renderFile('ref-atrules-in-ruleset-main.less', false)).toBe(expected);
+      expect(await renderFile('ref-atrules-reveal-main.less')).toBe(
+        ['@media print {', '  .x {', '    p: 1;', '  }', '}'].join('\n')
       );
     });
 
