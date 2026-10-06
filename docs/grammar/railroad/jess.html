@@ -218,6 +218,7 @@ svg.railroad-diagram rect {
     <a href="#rule-MediaCondition">MediaCondition</a>
     <a href="#rule-MediaFeatureContents">MediaFeatureContents</a>
     <a href="#rule-Keyword">Keyword</a>
+    <a href="#rule-RoutedQueryFunction">RoutedQueryFunction</a>
     <a href="#rule-QueryFeature">QueryFeature</a>
     <a href="#rule-QueryIdentOrFunctionTerm">QueryIdentOrFunctionTerm</a>
     <a href="#rule-MediaTypeTerm">MediaTypeTerm</a>
@@ -848,7 +849,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-LangPseudoArgument">
     <h2><a href="#rule-LangPseudoArgument">§</a> LangPseudoArgument</h2>
     <div class="diagram" data-rule="LangPseudoArgument"></div>
-    <div class="ebnf">LangPseudoArgument ::= WHITESPACE or COMMENT? (IDENT (escapes allowed) | Quoted) (&quot;,&quot; (IDENT (escapes allowed) | Quoted))* WHITESPACE or COMMENT?</div>
+    <div class="ebnf">LangPseudoArgument ::= WHITESPACE or COMMENT? (!&quot;~&quot; (IDENT (escapes allowed) | Quoted)) (&quot;,&quot; (!&quot;~&quot; (IDENT (escapes allowed) | Quoted)))* WHITESPACE or COMMENT?</div>
   </section>
   <section class="rule" id="rule-DirPseudoArgument">
     <h2><a href="#rule-DirPseudoArgument">§</a> DirPseudoArgument</h2>
@@ -1220,6 +1221,11 @@ svg.railroad-diagram rect {
     <div class="diagram" data-rule="Keyword"></div>
     <div class="ebnf">Keyword ::= Identifier</div>
   </section>
+  <section class="rule" id="rule-RoutedQueryFunction">
+    <h2><a href="#rule-RoutedQueryFunction">§</a> RoutedQueryFunction</h2>
+    <div class="diagram" data-rule="RoutedQueryFunction"></div>
+    <div class="ebnf">RoutedQueryFunction ::= /* … */ &quot;)&quot;</div>
+  </section>
   <section class="rule" id="rule-QueryFeature">
     <h2><a href="#rule-QueryFeature">§</a> QueryFeature</h2>
     <div class="diagram" data-rule="QueryFeature"></div>
@@ -1228,7 +1234,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-QueryIdentOrFunctionTerm">
     <h2><a href="#rule-QueryIdentOrFunctionTerm">§</a> QueryIdentOrFunctionTerm</h2>
     <div class="diagram" data-rule="QueryIdentOrFunctionTerm"></div>
-    <div class="ebnf">QueryIdentOrFunctionTerm ::= !((&quot;layer&quot; | &quot;only&quot;) !&quot;(&quot;) IDENT (escapes allowed) &quot;(&quot;? (/* … */ &quot;)&quot; | /* empty */)</div>
+    <div class="ebnf">QueryIdentOrFunctionTerm ::= !((&quot;layer&quot; | &quot;only&quot;) !&quot;(&quot;) IDENT (escapes allowed) &quot;(&quot;? (RoutedQueryFunction | /* empty */)</div>
   </section>
   <section class="rule" id="rule-MediaTypeTerm">
     <h2><a href="#rule-MediaTypeTerm">§</a> MediaTypeTerm</h2>
@@ -1548,7 +1554,7 @@ svg.railroad-diagram rect {
   <section class="rule" id="rule-QueryPrelude">
     <h2><a href="#rule-QueryPrelude">§</a> QueryPrelude</h2>
     <div class="diagram" data-rule="QueryPrelude"></div>
-    <div class="ebnf">QueryPrelude ::= QueryClause (&quot;,&quot; QueryClause)*</div>
+    <div class="ebnf">QueryPrelude ::= QueryClause (/,[ \t\n\r\f]*/ QueryClause)*</div>
   </section>
   <section class="rule" id="rule-ContainerPrelude">
     <h2><a href="#rule-ContainerPrelude">§</a> ContainerPrelude</h2>
@@ -2888,7 +2894,7 @@ At runtime, these constants can be found on the Diagram class.
   { name: "ComplexSelector", dsl: function(){ return Diagram(Sequence(NonTerminal("CompoundSelector"), ZeroOrMore(Sequence(Optional(Choice(0, Terminal("||"), Terminal(">"), Terminal("+"), Terminal("~"))), NonTerminal("CompoundSelector"))))); } },
   { name: "PseudoArgument", dsl: function(){ return Diagram(Choice(0, NonTerminal("LeadingDashRawPseudoArgument"), NonTerminal("TypedNthPseudoArgument"), NonTerminal("SelectorList"), Sequence(Sequence(Comment("not"), NonTerminal("MalformedPseudoSelectorNumericArgument")), NonTerminal("pseudoArgumentContent")))); } },
   { name: "OfTypePseudoArgument", dsl: function(){ return Diagram(Choice(0, NonTerminal("LeadingDashRawPseudoArgument"), NonTerminal("TypedOfTypePseudoArgument"), Sequence(Sequence(Comment("not"), Sequence(NonTerminal("NthExpression"), NonTerminal("NthOfKeyword"))), Choice(0, NonTerminal("SelectorList"), Sequence(Sequence(Comment("not"), NonTerminal("MalformedPseudoSelectorNumericArgument")), NonTerminal("pseudoArgumentContent")))))); } },
-  { name: "LangPseudoArgument", dsl: function(){ return Diagram(Sequence(Optional(Terminal("WHITESPACE or COMMENT")), OneOrMore(Choice(0, Terminal("IDENT (escapes allowed)"), NonTerminal("Quoted")), Terminal(",")), Optional(Terminal("WHITESPACE or COMMENT")))); } },
+  { name: "LangPseudoArgument", dsl: function(){ return Diagram(Sequence(Optional(Terminal("WHITESPACE or COMMENT")), OneOrMore(Sequence(Sequence(Comment("not"), Terminal("~")), Choice(0, Terminal("IDENT (escapes allowed)"), NonTerminal("Quoted"))), Terminal(",")), Optional(Terminal("WHITESPACE or COMMENT")))); } },
   { name: "DirPseudoArgument", dsl: function(){ return Diagram(Sequence(Optional(Terminal("WHITESPACE or COMMENT")), Terminal("IDENT (escapes allowed)"), Optional(Terminal("WHITESPACE or COMMENT")))); } },
   { name: "AttributeSelector", dsl: function(){ return Diagram(Sequence(Terminal("["), Optional(NonTerminal("AttributeNamespace")), NonTerminal("Identifier"), Optional(Sequence(NonTerminal("AttributeOperator"), Choice(0, NonTerminal("LiteralQuoted"), NonTerminal("Identifier")), Optional(NonTerminal("AttributeModifier")))), Terminal("]"))); } },
   { name: "PseudoSelector", dsl: function(){ return Diagram(Sequence(NonTerminal("PseudoSelectorColon"), NonTerminal("identifierOrFunction"), Choice(0, Sequence(Optional(Terminal("WHITESPACE")), Sequence(Comment("not"), Sequence(NonTerminal("NthExpression"), NonTerminal("NthOfKeyword"))), Choice(0, Sequence(NonTerminal("AnPlusB"), Optional(Sequence(NonTerminal("NthOfKeyword"), NonTerminal("PseudoSelectorList"))), NonTerminal("PseudoSelectorCloseAhead")), Sequence(Sequence(Comment("not"), Choice(0, Terminal(">"), Terminal("+"), Terminal("~"))), NonTerminal("PseudoSelectorList"))), Optional(Terminal("WHITESPACE")), Terminal(")")), Sequence(Optional(Terminal("WHITESPACE")), Choice(0, NonTerminal("TypedOfTypePseudoArgument"), Sequence(Sequence(Comment("not"), Sequence(NonTerminal("NthExpression"), NonTerminal("NthOfKeyword"))), Sequence(Comment("not"), Choice(0, Terminal(">"), Terminal("+"), Terminal("~"))), NonTerminal("PseudoSelectorList"))), Optional(Terminal("WHITESPACE")), Terminal(")")), Sequence(Optional(Terminal("WHITESPACE")), NonTerminal("PseudoSelectorArgument"), Optional(Terminal("WHITESPACE")), Terminal(")")), Sequence(NonTerminal("LangPseudoArgument"), Terminal(")")), Sequence(NonTerminal("DirPseudoArgument"), Terminal(")")), Sequence(Comment("not"), Skip()), NonTerminal("GenericPseudoArgument"), Skip()))); } },
@@ -2963,8 +2969,9 @@ At runtime, these constants can be found on the Diagram class.
   { name: "MediaCondition", dsl: function(){ return Diagram(Sequence(NonTerminal("MediaInParens"), ZeroOrMore(Sequence(NonTerminal("QueryAndOr"), Sequence(Comment("not"), Terminal("(")), Optional(NonTerminal("MediaInParens")))))); } },
   { name: "MediaFeatureContents", dsl: function(){ return Diagram(Choice(0, Sequence(Choice(0, NonTerminal("UnicodeRangeToken"), Sequence(Terminal("IDENT (escapes allowed)"), Optional(Terminal("(")))), Choice(0, NonTerminal("MediaInParens"), Optional(Choice(0, Sequence(Terminal(":"), Optional(NonTerminal("QueryValue"))), Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue")), Optional(Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue"))))))), NonTerminal("queryUrlBound"), NonTerminal("queryMathBound"), NonTerminal("queryVarBound"), NonTerminal("queryUnicodeBound"), NonTerminal("queryUnicodeBound"), Optional(Choice(0, Sequence(Terminal(":"), Optional(NonTerminal("QueryValue"))), Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue")), Optional(Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue"))))))), NonTerminal("queryFunctionBound"), Optional(Choice(0, Sequence(Terminal(":"), Optional(NonTerminal("QueryValue"))), Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue")), Optional(Sequence(NonTerminal("QueryComparisonOperator"), Optional(NonTerminal("QueryValue"))))))))), Sequence(NonTerminal("QueryValue"), NonTerminal("queryBoundTail")))); } },
   { name: "Keyword", dsl: function(){ return Diagram(NonTerminal("Identifier")); } },
+  { name: "RoutedQueryFunction", dsl: function(){ return Diagram(Sequence(Comment("…"), Terminal(")"))); } },
   { name: "QueryFeature", dsl: function(){ return Diagram(Choice(0, NonTerminal("QueryComparisonFeature"), Sequence(Terminal("("), Optional(Terminal("WHITESPACE")), NonTerminal("Identifier"), Optional(Terminal("WHITESPACE")), Terminal(":"), Optional(Terminal("WHITESPACE")), NonTerminal("QueryValue"), Optional(Terminal("WHITESPACE")), Terminal(")")), Sequence(Terminal("("), Optional(Terminal("WHITESPACE")), NonTerminal("Identifier"), Optional(Terminal("WHITESPACE")), Terminal(")")))); } },
-  { name: "QueryIdentOrFunctionTerm", dsl: function(){ return Diagram(Sequence(Sequence(Comment("not"), Sequence(Choice(0, Terminal("layer"), Terminal("only")), Sequence(Comment("not"), Terminal("(")))), Terminal("IDENT (escapes allowed)"), Optional(Terminal("(")), Choice(0, Sequence(Comment("…"), Terminal(")")), Skip()))); } },
+  { name: "QueryIdentOrFunctionTerm", dsl: function(){ return Diagram(Sequence(Sequence(Comment("not"), Sequence(Choice(0, Terminal("layer"), Terminal("only")), Sequence(Comment("not"), Terminal("(")))), Terminal("IDENT (escapes allowed)"), Optional(Terminal("(")), Choice(0, NonTerminal("RoutedQueryFunction"), Skip()))); } },
   { name: "MediaTypeTerm", dsl: function(){ return Diagram(NonTerminal("QueryIdentOrFunctionTerm")); } },
   { name: "MediaTerm", dsl: function(){ return Diagram(Choice(0, NonTerminal("MediaInParens"), Sequence(Sequence(Comment("not"), Sequence(NonTerminal("QueryAndOr"), Sequence(Comment("not"), Terminal("(")))), NonTerminal("MediaTypeTerm")))); } },
   { name: "QueryClause", dsl: function(){ return Diagram(Choice(0, Sequence(NonTerminal("QueryOnly"), Sequence(Comment("not"), Choice(0, Terminal("layer"), Terminal("only"))), NonTerminal("Keyword"), ZeroOrMore(Sequence(NonTerminal("QueryAndOr"), Sequence(Comment("not"), Terminal("(")), NonTerminal("MediaTerm")))), Sequence(NonTerminal("MediaTerm"), ZeroOrMore(Sequence(Optional(Sequence(NonTerminal("QueryAndOr"), Sequence(Comment("not"), Terminal("(")))), NonTerminal("MediaTerm")))))); } },
@@ -3028,7 +3035,7 @@ At runtime, these constants can be found on the Diagram class.
   { name: "keyframeSelector", dsl: function(){ return Diagram(Choice(0, Terminal("from"), Terminal("to"), NonTerminal("Percentage"))); } },
   { name: "TopLevelSelectorList", dsl: function(){ return Diagram(OneOrMore(NonTerminal("ComplexSelector"), Terminal(","))); } },
   { name: "SupportsPrelude", dsl: function(){ return Diagram(OneOrMore(NonTerminal("SupportsCondition"), Terminal(","))); } },
-  { name: "QueryPrelude", dsl: function(){ return Diagram(OneOrMore(NonTerminal("QueryClause"), Terminal(","))); } },
+  { name: "QueryPrelude", dsl: function(){ return Diagram(OneOrMore(NonTerminal("QueryClause"), Terminal("/,[ \\t\\n\\r\\f]*/"))); } },
   { name: "ContainerPrelude", dsl: function(){ return Diagram(Choice(0, Sequence(Sequence(Comment("not"), Sequence(NonTerminal("Identifier"), Terminal("("))), Sequence(Comment("not"), Terminal("none")), NonTerminal("Keyword"), Optional(NonTerminal("ContainerQueryPrelude"))), NonTerminal("ContainerQueryPrelude"))); } },
   { name: "ImportStatement", dsl: function(){ return Diagram(Sequence(Terminal("@import"), Choice(0, NonTerminal("LiteralQuoted"), NonTerminal("Url")), NonTerminal("PreprocessorUnknownAtRulePreludeCapture"), Terminal(";"))); } },
   { name: "LayerStatement", dsl: function(){ return Diagram(Sequence(NonTerminal("LayerAtKeyword"), NonTerminal("AtRulePrelude"), Terminal(";"))); } },
