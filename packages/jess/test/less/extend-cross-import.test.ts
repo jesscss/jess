@@ -107,6 +107,28 @@ describe('extend across @import', () => {
       expect(await renderFile('multiple-main.less')).toBe(`${smX}\n${smX}`);
     });
 
+    // Ledger X7 (amended by the owner 2026-10-05): an interpolated rule is a target once resolved.
+    it('interpolated rules of an imported sheet', async () => {
+      expect(await renderFile('interp-main.less')).toBe(
+        ['.foo,', '.x {', '  a: 1;', '}', '.k:is(.c-foo, .y) {', '  b: 2;', '}'].join('\n')
+      );
+      expect(await renderFile('interp-main.less', false)).toBe(
+        ['.foo,', '.x {', '  a: 1;', '}', '.k:is(.c-foo, .y) {', '  b: 2;', '}'].join('\n')
+      );
+    });
+
+    // Rules nested in an interpolated rule, and an interpolated rule nested in a static one.
+    it('rules nested in and around interpolated rules of an imported sheet', async () => {
+      const expected = [
+        '.foo :is(.c, .x),', '.z {', '  a: 1;', '}', '.p .foo.k,', '.y.k {', '  b: 2;', '}'
+      ].join('\n');
+      expect(await renderFile('interp-nested-main.less')).toBe(expected);
+      expect(await renderFile('interp-nested-main.less', false)).toBe(expected);
+      expect(await renderFile('interp-child-main.less', false)).toBe(
+        ['.foo {', '  .c,', '  .x {', '    a: 1;', '  }', '}'].join('\n')
+      );
+    });
+
     it('nested import chain', async () => {
       expect(await renderFile('chain-main.less')).toBe(smX);
     });
@@ -116,13 +138,21 @@ describe('extend across @import', () => {
     });
 
     /*
-     * Hiding follows the import, not the shared rule (jess#359): the plain copy keeps its
-     * selector, and the extend reaches the hidden copy as it reaches any referenced rule
-     * (ledger X13). less 4.x renders only `smX`: its import-once also swallows an import
-     * that carries options, which jess's does not — a ruling there shows up here.
+     * Import-once drops a `(reference)` re-import of a sheet already imported plainly, as
+     * Less 4.x does (orchestrator judgment 2026-10-05, jess#359): the sheet is placed once.
      */
-    it('plain and (reference) import of one sheet keep the plain copy visible', async () => {
-      expect(await renderFile('plain-and-ref-main.less')).toBe(`${smX}\n.x {\n  b: 2;\n}`);
+    it('a (reference) re-import of a sheet imported plainly is dropped', async () => {
+      expect(await renderFile('plain-and-ref-main.less')).toBe(smX);
+    });
+
+    /*
+     * Each copy of a `(multiple)` sheet places the `(reference)` import inside it on its own,
+     * so the extend in `@media print` reveals only the print copy.
+     */
+    it('a (reference) import inside a sheet imported (multiple) twice is placed per copy', async () => {
+      expect(await renderFile('multiple-ref-media-main.less')).toBe(
+        ['@media print {', '  .x {', '    b: 2;', '  }', '}', '@media screen {', '  .y {', '    c: 1;', '  }', '}'].join('\n')
+      );
     });
 
     // A referenced rule an extend reaches surfaces under the extender only (ledger X13, jess#355).
@@ -133,6 +163,24 @@ describe('extend across @import', () => {
     // Referenced rules no extend reaches stay hidden (ledger X13).
     it('(reference) import, extender in a mixin body that is never called', async () => {
       expect(await renderFile('ref-uncalled-main.less')).toBe(['.own {', '  a: 1;', '}'].join('\n'));
+    });
+
+    /*
+     * A hidden rule inside a hidden `@media` that only a walk-recorded extend reveals
+     * surfaces in its `@media`; the `@media` goes when nothing in it is revealed.
+     */
+    it('(reference) import, @media rule revealed by an extender in a mixin body', async () => {
+      const revealed = ['@media print {', '  .x {', '    b: 2;', '  }', '}'].join('\n');
+      expect(await renderFile('ref-media-reveal-main.less')).toBe(revealed);
+      expect(await renderFile('ref-media-reveal-main.less', false)).toBe(revealed);
+      expect(await renderFile('ref-media-unrevealed-main.less')).toBe(['.own {', '  a: 1;', '}'].join('\n'));
+      expect(await renderFile('ref-media-unrevealed-main.less', false)).toBe(['.own {', '  a: 1;', '}'].join('\n'));
+    });
+
+    it('(reference) import, the hidden at-rules of a rule an extender in a mixin body reveals', async () => {
+      const expected = ['.y {', '  c: 1;', '}'].join('\n');
+      expect(await renderFile('ref-atrules-nested-main.less')).toBe(expected);
+      expect(await renderFile('ref-atrules-nested-main.less', false)).toBe(expected);
     });
 
     it('(reference) import, exact extend that misses a nested rule', async () => {
@@ -186,6 +234,13 @@ describe('extend across @import', () => {
    * An extend reached only through a mixin or loop body of the ROOT still makes the import
    * graph extend-bearing, so a compound target in a plain import keeps its extender.
    */
+  // Ledger X16, J15: an imported definition's own body-form extend applies at the call.
+  it('a body-form extend in an imported mixin definition extends the calling rule', async () => {
+    const expected = ['.sm,', '.x {', '  b: 2;', '}', '.x {', '  c: d;', '}'].join('\n');
+    expect(await renderFile('def-extend-main.less')).toBe(expected);
+    expect(await renderFile('def-extend-main.less', false)).toBe(expected);
+  });
+
   describe('extender in a root mixin or loop body', () => {
     const pqX = (...extenders: string[]) =>
       ['.p.q,', '.p.r,', ...extenders.map((x, i) => (i === extenders.length - 1 ? `${x} {` : `${x},`)), '  a: 1;', '}'].join('\n');
@@ -255,6 +310,48 @@ describe('extend across @import', () => {
       expect(await renderFile('ruleset-import-extend-main.less')).toBe(
         ['.wrap .sm,', '.x {', '  b: 2;', '}'].join('\n')
       );
+    });
+
+    /*
+     * A `(reference)` import inside a ruleset runs as that ruleset's body too: its rules
+     * nest under the ruleset, hidden unless an extend reveals them. Nested output does
+     * not yet move a revealed rule out of the ruleset's block (EXTEND-SEMANTICS §6).
+     */
+    it('a (reference) import inside a ruleset nests its rules under the ruleset', async () => {
+      expect(await renderFile('ref-in-ruleset-main.less')).toBe(
+        ['.wrap {', '  a: 1;', '}', '.x {', '  b: 2;', '}'].join('\n')
+      );
+    });
+
+    /*
+     * Its hidden at-rules stay hidden whatever else the graph extends; one an extend
+     * reveals a rule in renders around that rule alone.
+     */
+    it('a (reference) import inside a ruleset keeps its at-rules hidden', async () => {
+      const expected = ['.zz,', '.x {', '  z: 1;', '}'].join('\n');
+      expect(await renderFile('ref-atrules-in-ruleset-main.less')).toBe(expected);
+      expect(await renderFile('ref-atrules-in-ruleset-main.less', false)).toBe(expected);
+      expect(await renderFile('ref-atrules-reveal-main.less')).toBe(
+        ['@media print {', '  .x {', '    p: 1;', '  }', '}'].join('\n')
+      );
+    });
+
+    // The only extend in the graph sits in a sheet imported inside a ruleset.
+    it('carries an extend that is only in the imported sheet', async () => {
+      const expected = ['.sm,', '.wrap .x {', '  b: 2;', '}'].join('\n');
+      expect(await renderFile('ruleset-import-extender-main.less')).toBe(expected);
+      expect(await renderFile('ruleset-import-extender-main.less', false)).toBe(expected);
+    });
+
+    /*
+     * The sheet's path is interpolated, so it is known only where the walk resolves it:
+     * the walk records what it places. (Nested output does not yet rewrite a target
+     * inside a parent block, EXTEND-SEMANTICS §6.)
+     */
+    it('carries an extend that is only in a sheet imported through an interpolated path', async () => {
+      const expected = ['.w .k,', '.w .y {', '  k: 1;', '}'].join('\n');
+      expect(await renderFile('ruleset-interp-path-main.less')).toBe(expected);
+      expect(await renderFile('ruleset-local-interp-path-main.less')).toBe(expected);
     });
 
     it('inside a (reference) sheet, is an extend target at its nested placement', async () => {

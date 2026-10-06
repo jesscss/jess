@@ -100,6 +100,31 @@ describe('extend :is() grouping keeps native specificity in every output mode', 
       .resolves.toBe(':is(.c.k, .z) .d, #b.k .d');
     await expect(extendHeader(':is(.c.k, .z) .d { m: 1 } .y:extend(.c all) {}'))
       .resolves.toBe(':is(:is(.c, .y).k, .z) .d');
+
+    // A complex alternative is written in place too, never as a one-arm `:is()`.
+    await expect(extendHeader(':is(.c.k, .z) .d { m: 1 } .p .q:extend(.c all) {}'))
+      .resolves.toBe(':is(.c.k, .z) .d, .p .q.k .d');
+  });
+
+  it('appends an extender that matches a whole authored :is() arm only under the guard', async () => {
+    // `#b` would raise `.c .d` and `.z .d` to (1,0,1): the authored list keeps (0,1,1).
+    await expect(extendHeader(':is(.c, .z) .d { m: 1 } #b:extend(.c all) {}'))
+      .resolves.toBe(':is(.c, .z) .d, #b .d');
+    await expect(extendHeader(':is(.c, .z) .d { m: 1 } .y:extend(.c all) {}'))
+      .resolves.toBe(':is(.c, .z, .y) .d');
+
+    // `.a :is(.c, .z, .p .q)` would let `.p` sit above `.a`.
+    await expect(extendHeader('.a :is(.c, .z) { m: 1 } .p .q:extend(.c all) {}'))
+      .resolves.toBe('.a :is(.c, .z), .a .p .q');
+  });
+
+  it('appends to the nesting :is(parents) under the guard too', async () => {
+    for (const mode of ['native', 'compact'] as const) {
+      expect(headerOf(await render('.b, .c { .p { m: 1 } } #x:extend(.b all) {}', mode), 'm: 1'))
+        .toBe(':is(.b, .c) .p, #x .p');
+      expect(headerOf(await render('.b, .c { .p { m: 1 } } .x:extend(.b all) {}', mode), 'm: 1'))
+        .toBe(':is(.b, .c, .x) .p');
+    }
   });
 
   it('compacts a changed top-level rule\'s siblings in nested output too, each member once', async () => {
@@ -125,6 +150,29 @@ describe('extend :is() grouping keeps native specificity in every output mode', 
   it('is guarded under collapseNesting \'compact\' too (only the nesting fold is unguarded)', async () => {
     const css = await render('.error.intrusion { m: 1 } #bad:extend(.error all) {} .worse:extend(.error all) {}', 'compact');
     expect(headerOf(css, 'm: 1')).toBe(':is(.error, .worse).intrusion, #bad.intrusion');
+  });
+
+  it('folds an extended header\'s nesting branches by the nesting mode and its extenders by the guard', async () => {
+    // Orchestrator judgment 2026-10-05: `'compact'` folds the child list unguarded.
+    const mixed = '.t { th, .x { m: 1 } } .foo:extend(.t th) {}';
+    expect(headerOf(await render(mixed, 'compact'), 'm: 1')).toBe('.t :is(th, .x), .foo');
+    expect(headerOf(await render(mixed, 'native'), 'm: 1')).toBe('.t th, .t .x, .foo');
+    for (const mode of MODES) {
+      expect(headerOf(await render('.t { th, td { m: 1 } } .foo:extend(.t th) {}', mode), 'm: 1'))
+        .toBe('.t :is(th, td), .foo');
+    }
+
+    // A child the extend grouped joins the folded list as its members, in place.
+    for (const mode of ['native', 'compact'] as const) {
+      expect(headerOf(await render('.t { .a, .c { m: 1 } } .y:extend(.a all) {}', mode), 'm: 1'))
+        .toBe('.t :is(.a, .y, .c)');
+    }
+
+    // What the extend adds keeps to the guard under `'compact'` too.
+    expect(headerOf(await render('.t { th, .x { m: 1 } } #y:extend(.x all) {}', 'compact'), 'm: 1'))
+      .toBe('.t :is(th, .x), .t #y');
+    expect(headerOf(await render('.t { th, .x { m: 1 } } #y:extend(.x all) {}', 'native'), 'm: 1'))
+      .toBe('.t th, .t .x, .t #y');
   });
 
   it('keeps a pseudo-element out of a sibling group', async () => {

@@ -4073,6 +4073,202 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: 2026-10-05 extend follow-ups (the `lane/v5-extend-followups`
+  integration). Owner rulings 2026-10-05 (O10 and X3 amended, X7 amended) and
+  orchestrator judgments J11-J15 under the owner's delegation: an `all` match of
+  an authored or nesting `:is()` arm appends the extender only under the
+  grouping guard; an extended header keeps its nesting fold; a fused `&` under a
+  multi-compound parent composes as the parent spliced in place (no one-arm
+  `:is()`); an interpolated rule is an extend target wherever it is placed; a
+  mixin definition's body-form `&:extend()` is carried on the definition and
+  applied at each call site; import-once drops a `(reference)` re-import of a
+  plainly imported sheet. Also: detached-ruleset calls and `$apply` are their
+  own extend placements, hidden `(reference)` at-rules around a revealable rule
+  render as reserved containers, a sheet imported inside a ruleset (static or
+  interpolated path) arms the walk recorder when it alone extends, an `all`
+  match of several compounds keeps the span's extra simples on the extender, a
+  parent `&` and a composed token's kind are read from the token, not its text.
+  Open questions are ledger X17-X19 and O14; nested-output gaps are
+  `PINNED-DEFECTS-AUDIT.md` DF4-DF6.
+- Architecture surface: `packages/core/src/ast/serialize.ts` (import planner:
+  `isReferenceReimport`, per-placement `ImportPlacements`, interpolated-rule
+  resolution before planning, the ruleset-placed import admission scan and the
+  interpolated-path arm; walk: `resolvedSelectorList`/`resolvedCompoundTokens`,
+  `recordCalledExtends` in `expandCall`, `referenceAtRuleShown` and the reserved
+  at-rule containers, detached-ruleset/`$apply` `extendPlacement`);
+  `extend/compose.ts` (`spliceFusedAmp`, `joinedSimple`); `extend/match.ts`
+  (first/last-compound guard, multi-compound `all` span); `extend/emit.ts`
+  (`splitArms` guard, `nestingFold`); `extend/conflict.ts` (`mergeCompound`,
+  allocation-free `wouldConflict`); `is-grouping.ts` (`isName`); `nodes.ts`
+  (`MixinDefinition.extendInstructions`, `textHoldsParentRef`); Less parser
+  `MixinDefinitionContinuation` reads `rulesetBody`, `bodyExtensionsOf` in
+  `grammar-helpers.ts`.
+- Separation/duplication: the import planner and the render walk ask one
+  question (`isReferenceReimport`) about which imports place a sheet; the
+  statement-keyed boundary map is replaced by the placement-keyed one; every
+  writer's hidden at-rule gate reads `referenceAtRuleShown`; the body-extend
+  reducer expression spelled four times in the Less grammar has one owner
+  (`bodyExtensionsOf`); the compound merge that leads with the type selector is
+  shared by the match splice and emission (`conflict.ts`); the private
+  `textOfSimples` duplicate of `textSimpleTokens` and the one-caller
+  `plannedImportPlacement` wrapper are deleted. GRAMMAR-DEDUP-LOG #59 records
+  the remaining four-fold ruleset-body tail.
+- Cumulative node weight: one AST field, `MixinDefinition.extendInstructions`,
+  declared right after `rules` by every constructor (undefined when empty), so
+  the parser's arms stay two (`verify:shape-stability` allowlist names both).
+  No CST field and no new `Emit`/`Frame` field: `Emit.importPlacements` is now
+  keyed by placement, then statement, and the statement-keyed `importBoundaries`
+  map is deleted. Render-local state: `DynamicExtendState` gains
+  `pathSelectors`, `revealAtRules` and two parallel chunk-range arrays;
+  `ExtendClass` gains `placedImports` and `placesUnaddressedImport`.
+- New traversal: [loop/traversal] a sheet with no interpolated rule selector
+  pays one allocation-free boolean walk before planning; a statically addressed
+  sheet imported inside a ruleset is scanned once for an extend only when
+  nothing else in the graph extends (the walk reuses the loaded document;
+  `extend-preflight-contract` pins one scan, nothing planned, nothing recorded);
+  `hiddenRulesToReveal` climbs each revealed rule's reference at-rule chain once;
+  the match guard reads the simples around a match once per match. On
+  `benchmark.less` (both collapse modes) every planner, matcher and solver
+  counter is unchanged (17 of 19 `astExtend.*` counters identical, among them
+  `plan.subjects` 1360 and `match.branchComparisons` 5492);
+  `emit.regroupWalks` 702 -> 690 and `emit.groupMemberScores` 339 -> 321.
+- New node/materialization: the placement-keyed `ImportPlacements` map (one
+  inner Map per placement that holds a `(reference)`/`(multiple)` import),
+  `hiddenRulesToReveal`'s `atRules` Set, and the existing `dynamicTargetAtoms`
+  Set now also filled from a definition-level extend, each allocated lazily on
+  the first entry and dropped with the render.
+  `wouldConflict` no longer allocates (was up to 8 Sets per extender per matched
+  compound). The interpolation-resolution closure in both writers is allocated
+  only when the resolution runs.
+- Render path: one walk; the deferred fold is unchanged in shape. Recording
+  still runs only when `e.dynamicExtend` is allocated (`recorded` in both
+  writers, `e.dynamicExtend !== null` in `expandCall`); the
+  `ast-extend-dynamic-fold` source anchor now names that guard
+  (`flattenWithHeader` / `recorded` / `recordOpenRule(`), since the walk's
+  recording moved out of `foldDynamicExtends` before this lane.
+- Helper/API surface: no package export. Internal: `mergeCompound`,
+  `NO_SIMPLES` (`extend/conflict.ts`), `textHoldsParentRef` (`nodes.ts`),
+  `bodyExtensionsOf` (less-parser `grammar-helpers.ts`); the serializer surface
+  ratchet (`serialize-projection-ratchet.test.ts`) records each added function.
+- Metadata mutations: only render-local planner and recorder state; the
+  planner resolves an interpolated rule selector in place before planning so
+  the walk writes that same resolution (ledger X12: nothing resolved twice).
+- Review-flagged diff tokens: [loop/traversal] the loops are over one compound's
+  simples, one header's branches or one rule's at-rule chain, run only on
+  extend-touched headers or with recording armed. [array helper] the `.slice`/
+  `.map` calls build a split member or an emitted branch once per header; the
+  `split('&').join` runs only for a token that holds a parent reference.
+  [array spread/materialization] `mergeCompound` builds one merged compound per
+  placed extender; the `extendInstructions` copy happens only when the list is
+  non-empty; the `[head, ...tail]` forms rebuild one branch once. [node
+  construction] the `new Map()`/`new Set()` calls are the lazy render-scoped
+  containers above. [side map/set] `ImportPlacements`, `dynamicTargetAtoms`,
+  `atRules` and the planner's `seen` (now remembering whether an `@import`
+  loaded the document) are strong, render-scoped and dropped wholesale, not
+  per-node weak side tables (invariant 11). [materialized array/object]
+  `NO_SIMPLES` is a shared empty constant; the `Simple[]` outputs are the
+  emitted compounds themselves; `nestingFold`'s keys array is one per extended
+  header.
+- Evidence: clean `pnpm run build:release`; core 3403 passed / 10 skipped / 2
+  todo; fns 729; css-parser 712, less-parser 936 (2 expected fail, 8 todo),
+  scss-parser 691, jess-parser 631; plugins green; language-service 276;
+  `verify:jess-suite-ratchet` 2272 tests, 0 failing, matches its baseline;
+  `test:jess-ast-v2-ratchet` 4/4; all-Less lane 151 passed / 28 skipped;
+  `check:macro` 0 interpreter fallbacks. `benchmark.less` rendered through the
+  `measure:less:hotpath` Compiler (plugin-less + plugin-less-compat): flat
+  (collapseNesting true) SHA-256
+  `ec0196947fb844faf55ca7c8c5f605cd16930c73f9c4c452823fe65dd8cb61d9` (123,316
+  bytes; the base `def29ef87` gives `11aca08c…`, 123,571 bytes — six headers
+  whose extended rule keeps its equal-specificity nesting fold, ledger J12);
+  nested output identical to the base (`f095836c…`, 132,977 bytes).
+  `measure:less:hotpath` on `benchmark.less`, bracketed head/base/head: 58.31 /
+  53.75 / 53.16 ms medians, every run `signal=unstable` (load average 11-15);
+  no speed or neutrality claim.
+- Behavior evidence: less-parser AST/CST tests pin `MixinDefinition`'s key list
+  with and without an extend (guarded too) and the `ExtendStatement` under a
+  mixin definition; `is-grouping.test.ts` pins how `nestingGroupKey` scores the `.\31 0` escape;
+  `extend-root-ampersand.test.ts` pins `textHoldsParentRef` (a `&` inside an
+  attribute value is text); `mixin-public-semantics` flips jess#356 to passing.
+- Build evidence: clean `pnpm run build:release`; `check:macro` 0 interpreter
+  fallbacks in parser-shared, css, less, scss and jess; `verify:types` and
+  `verify:import-graph` pass; `pnpm run lint` 0 errors.
+- Boundary evidence: Less parser oracle before/after on one build of each side
+  (base `def29ef87` digest vs head, 827 shared entries): CST 0 entries moved;
+  AST 113 moved, every one a file holding a mixin definition (the
+  always-declared `extendInstructions` key), threw 113 -> 113; 24 entries are
+  the lane's new fixtures. `verify:shape-stability` 8/8 with both
+  `MixinDefinition` signatures allowlisted. No package export changes.
+- Verdict: accepted as semantic output work with `performanceClaim: none`.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-extend-dynamic-fold",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "why": "The walk recorder is the only carrier for extend facts the planner cannot see: a mixin definition's body-form extend applies to whichever rule a call lands in, a detached-ruleset call or $apply is a placement of its own, and a sheet imported inside a ruleset (or through an interpolated path) is only addressed by the walk. Each is recorded once, at the moment the one walk places it, from the shape it already composed; nothing re-evaluates (ledger X12).",
+    "dangerTokensJustification": "Recording stays behind the e.dynamicExtend admission (recorded in both writers, e.dynamicExtend !== null in expandCall). The new containers (placement-keyed ImportPlacements, dynamicTargetAtoms, the reserved at-rule set) are allocated on first use, render-scoped and dropped wholesale. A graph with no extend plans nothing and records nothing; a ruleset-placed import costs one admission scan only when nothing else extends.",
+    "falsePath": {
+      "fixture": "extend-preflight-contract:no-extend",
+      "counters": {
+        "calls": 1,
+        "preflight.collectCalls": 0,
+        "preflight.overlaySubjects": 0,
+        "preflight.overlayInstructions": 0,
+        "preflight.loopPlacements": 0
+      }
+    },
+    "featurePath": {
+      "fixture": "extend-preflight-contract:imported-loop",
+      "counters": {
+        "preflight.importsVisited": 1,
+        "preflight.importsFeatureBearing": 1
+      }
+    },
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "parse-render",
+      "currentMedianMs": 53.16,
+      "outputSha256": "ec0196947fb844faf55ca7c8c5f605cd16930c73f9c4c452823fe65dd8cb61d9",
+      "outputBytes": 123316
+    }
+  },
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Collection-spread-computed-key-overlay-and-iteration",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "module-callable-explicit-reference-and-css-call-separation",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "Extend composition, matching and emission follow the owner's 2026-10-05 rulings and the J11-J15 judgments: the guarded append to an authored :is(), the nesting fold kept in an extended header, the spliced fused &, interpolated targets wherever placed, call-site application of a definition's body-form extend, and import-once for a (reference) re-import. Semantic output work with no cost-cutting or neutrality claim.",
+    "dangerTokensJustification": "The added loops walk one compound, one header's branches or one at-rule chain, only on extend-touched headers or with recording armed; wouldConflict and the match guard now allocate less than the base, and on benchmark.less every planner, matcher and solver counter is unchanged while regroup walks fall 702 -> 690.",
+    "behaviorEvidence": "extend-root-ampersand, extend-mixin-loop-body, extend-nested-boundary, extend-conflict-acceptance, extend-preflight-contract and is-grouping in core; extend-cross-import, extend-is-grouping and mixin-public-semantics in jess; the all-Less lane with the bootstrap4, extend-nest and selectors edits registered in pending-golden-edits.ts.",
+    "buildEvidence": "pnpm run build:release passes from clean; check:macro reports 0 interpreter fallbacks; verify:types passes.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 53.16,
+      "outputSha256": "ec0196947fb844faf55ca7c8c5f605cd16930c73f9c4c452823fe65dd8cb61d9",
+      "outputBytes": 123316
+    }
+  }
+]
+```
+
 - Latest pass: 2026-10-05 shared `:is()` grouping (owner rulings 2026-10-05:
   extend's own `:is()` groups follow the same keep-native-specificity rule as
   the `'native'` nesting fold, in every output mode; a member that cannot fold

@@ -2385,6 +2385,50 @@ describe('Less AST grammar facts', () => {
     }
   });
 
+  /*
+   * Ledger X16: a body-form `&:extend()` written directly in a mixin definition is
+   * carried on the definition, with no subject, for its call sites to apply. The
+   * body keeps only its statements; no synthetic `&` rule stands for the extend.
+   */
+  it('carries a body-form extend written directly in a mixin definition on the definition', () => {
+    const source = '.m() { c: d; &:extend(.sm all); e: f; }';
+    const result = run(lessGrammar.Document!, source, {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    const [definition] = stylesheet(result.value).rules;
+    expect(definition).toMatchObject({
+      type: 'MixinDefinition',
+      rules: [{ type: 'Declaration' }, { type: 'Declaration' }],
+      extendInstructions: [{ target: { type: 'SelectorList' }, partial: true }]
+    });
+    expect((definition as { extendInstructions: Array<{ subject?: unknown }> }).extendInstructions[0]!.subject).toBeUndefined();
+
+    /* Declared either way, so a definition with an extend shares one without's shape. */
+    const plain = stylesheet(run(lessGrammar.Document!, '.m() { c: d; }', {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    }).value).rules[0];
+    expect(Object.keys(plain!)).toEqual(Object.keys(definition!));
+    expect(plain).toMatchObject({ type: 'MixinDefinition', extendInstructions: undefined });
+  });
+
+  it('carries a body-form extend written in a guarded mixin definition on the definition', () => {
+    const result = run(lessGrammar.Document!, '.m() when (@a = 1) { &:extend(.sm, .t all); c: d; }', {
+      trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(stylesheet(result.value).rules[0]).toMatchObject({
+      type: 'MixinDefinition',
+      guard: expect.anything(),
+      rules: [{ type: 'Declaration' }],
+      extendInstructions: [{ partial: false }, { partial: true }]
+    });
+  });
+
   it('parses a leading-combinator nested rule inside a detached ruleset body', () => {
     const source = '@r: { ~ .a { x: 1; } };';
     const result = run(lessGrammar.Document, source, {

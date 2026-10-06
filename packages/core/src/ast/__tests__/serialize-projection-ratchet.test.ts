@@ -272,9 +272,35 @@ describe('V19 one-evaluator projection ratchet', () => {
     // -1 function, -1 `new Set` (ledger F5): the CSS color-call shape test
     // moved to `isCssColorCall` in `nodes.ts`, which the `.jess` converter
     // shares.
-    expect(occurrences(/^function |^async function /gmu)).toBe(521);
-    expect(occurrences(/new Map/gu)).toBe(84);
-    expect(occurrences(/new Set/gu)).toBe(39);
+    // +2 functions, +1 `new Map`, -1 `new Set` (jess#359, ledger J14): the
+    // planner and the render walk share the import-once test for a `(reference)`
+    // re-import (`isReferenceReimport`); a planned import placement is keyed by
+    // the placement its statement is reached in (`plannedImportPlacement`, one
+    // map per placement); the planner's import-once identities became a map that
+    // records whether an `@import` loaded the document.
+    // +4 functions, +1 `new Set` (ledger X7 as amended 2026-10-05): with extend
+    // recording armed the walk resolves an interpolated selector once,
+    // structurally (`resolvedSelectorList`/`Branch`/`Term`), a glued name joining
+    // the name it continues (`resolvedCompoundTokens`), and an imported
+    // interpolated rule adds its extend targets to the walk's target atoms.
+    // +2 functions, +1 `new Set` (ledger X16, J15): a called definition's
+    // body-form extend is recorded for the rule the call lands in
+    // (`recordCalledExtends`, sharing `recordDynamicInstruction` with the walk's
+    // other extends); an imported definition carrying one adds its targets to
+    // the walk's target atoms.
+    // +2 functions, +1 `new Set`: a hidden `(reference)` at-rule around a rule a
+    // walk-recorded extend may reveal renders as a reserved container
+    // (`referenceAtRuleShown`, `reserveRevealContainer`), collected with the
+    // rules to reveal.
+    // +2 functions, net: the reserved container opens and closes in two calls
+    // (`revealContainerStart`/`endRevealContainer`, no closure per at-rule);
+    // the import planner resolves an imported sheet's interpolated rules only
+    // when it has one (`bodyHasInterpRule`); a branch whose attribute token
+    // holds a `&` takes the token walk (`branchHasAttributeAmp`); the one-line
+    // `plannedImportPlacement` wrapper is inlined.
+    expect(occurrences(/^function |^async function /gmu)).toBe(533);
+    expect(occurrences(/new Map/gu)).toBe(85);
+    expect(occurrences(/new Set/gu)).toBe(41);
     expect(occurrences(/new WeakMap/gu)).toBe(8);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

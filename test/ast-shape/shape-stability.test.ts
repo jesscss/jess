@@ -69,6 +69,7 @@ const lessSources: CorpusSource[] = [
   s('var-indirect', '.vi { color: @@name; }'),
   s('url', '.u { background: url(foo.png); }'),
   s('mixin-call', '.mx() { a: 1; } .use { .mx(); }'),
+  s('mixin-def-extend', '.mde() { &:extend(.a); c: d; } .mdg() when (true) { &:extend(.a); }'),
   s('at-statement', '@charset "utf-8";')
 ];
 

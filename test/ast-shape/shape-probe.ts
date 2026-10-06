@@ -162,9 +162,10 @@ export const SHAPE_DEBT_ALLOWLIST: Readonly<Record<string, readonly string[]>> =
   // no divergence — verified: each arm below carries the identical slot tail.
 
   // TODO(shape-debt): MixinDefinition omits `guard` for unguarded definitions.
+  // `extendInstructions` is always declared (undefined when the body has no extend).
   MixinDefinition: [
-    'type,name,params,rules,_s,_e,_bs,_be',
-    'type,name,params,rules,guard,_s,_e,_bs,_be'
+    'type,name,params,rules,extendInstructions,_s,_e,_bs,_be',
+    'type,name,params,rules,extendInstructions,guard,_s,_e,_bs,_be'
   ],
 
   // TODO(shape-debt): Ruleset omits `extendInstructions` unless the rule carries

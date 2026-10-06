@@ -133,13 +133,13 @@ describe('Less mixin semantic contracts through the public AST route', () => {
   });
 
   /*
-   * jess#356: a body-form `&:extend()` written directly in a mixin definition
-   * extends the rule the mixin is called into, in the default nested output as
-   * in collapsed output. It is not parsed yet: the mixin body has no extend
-   * statement, and the core extend recorder cannot yet apply a mixin-level
-   * extend at the call site.
+   * jess#356 (ledger X16, J15): a body-form `&:extend()` written directly in a mixin
+   * definition is carried on the definition and extends the rule the mixin is called
+   * into, as if written in that rule's own body (lessc copies the Extend into the
+   * caller), in the default nested output as in collapsed output. A call outside every
+   * rule extends nothing.
    */
-  it.fails('applies a body-form extend written directly in a mixin definition (jess#356)', async () => {
+  it('applies a body-form extend written directly in a mixin definition (jess#356)', async () => {
     for (const collapseNesting of [false, true]) {
       await expect(parseAndRender('.m() { &:extend(.sm); }\n.x { .m(); }\n.sm { b: 2; }', collapseNesting))
         .resolves.toBe('.sm,\n.x {\n  b: 2;\n}\n');
@@ -147,6 +147,34 @@ describe('Less mixin semantic contracts through the public AST route', () => {
         .resolves.toBe('.x {\n  c: d;\n  e: f;\n}\n.sm,\n.x {\n  b: 2;\n}\n');
       await expect(parseAndRender('.m() { &:extend(.sm); }\n.m();\n.sm { b: 2; }', collapseNesting))
         .resolves.toBe('.sm {\n  b: 2;\n}\n');
+      await expect(parseAndRender('.n() { &:extend(.sm); }\n.m() { .n(); }\n.x { .m(); }\n.sm { b: 2; }', collapseNesting))
+        .resolves.toBe('.sm,\n.x {\n  b: 2;\n}\n');
+    }
+    await expect(parseAndRender('.m() { &:extend(.sm); }\n.a { .b { .m(); } }\n.sm { b: 2; }'))
+      .resolves.toBe('.sm,\n.a .b {\n  b: 2;\n}\n');
+  });
+
+  /*
+   * A ruleset called as a mixin, with or without parentheses, carries its body-form
+   * extend into the caller the same way; an inline `:extend()` on its selector stays
+   * its own (lessc 4.9.1 gives the same output).
+   */
+  it('applies a called ruleset\'s body-form extend to the caller', async () => {
+    for (const collapseNesting of [false, true]) {
+      for (const call of ['.m;', '.m();']) {
+        await expect(parseAndRender(`.m { &:extend(.sm); c: d; }\n.sm { b: 2; }\n.x { ${call} }`, collapseNesting))
+          .resolves.toBe('.m {\n  c: d;\n}\n.sm,\n.m,\n.x {\n  b: 2;\n}\n.x {\n  c: d;\n}\n');
+      }
+      await expect(parseAndRender('.m:extend(.sm) { c: d; }\n.sm { b: 2; }\n.x { .m; }', collapseNesting))
+        .resolves.toBe('.m {\n  c: d;\n}\n.sm,\n.m {\n  b: 2;\n}\n.x {\n  c: d;\n}\n');
+    }
+  });
+
+  // A deeper rule a mixin body places extends as its composed selector.
+  it('extends from a rule nested in a mixin body as the composed selector', async () => {
+    for (const collapseNesting of [false, true]) {
+      await expect(parseAndRender('.m() { .y { &:extend(.sm); } }\n.sm { b: 2; }\n.x { .m(); }', collapseNesting))
+        .resolves.toBe('.sm,\n.x .y {\n  b: 2;\n}\n');
     }
   });
 });

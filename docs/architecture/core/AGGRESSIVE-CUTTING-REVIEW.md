@@ -98,7 +98,7 @@ a blanket optimization exemption or a new active architecture queue.
     "coverage": "owner-plus-named-carry-forward-support",
     "necessity": {
       "status": "proven",
-      "factSource": "A dynamic extend placement (an extend inside a $for/each loop body or a mixin-definition body, in the main document or an import) is only resolved by the ONE render walk that expands it; its extender selector is recorded from the already-composed shape at that moment (recordDynamicExtendFacts, guarded by e.dynamicExtend).",
+      "factSource": "A dynamic extend placement (an extend inside a $for/each loop body or a mixin-definition body, in the main document or an import) is only resolved by the ONE render walk that expands it; its extender selector is recorded from the already-composed shape at that moment. Both writers (flattenWithHeader, writeNestedRule) call recordOpenRule -> recordDynamicExtendFacts only when `recorded` (`dyn !== null && …`, dyn = e.dynamicExtend) holds, and expandCall records a called definition's body-form extends (recordCalledExtends) only when e.dynamicExtend !== null.",
       "rediscovery": "Without walk-time recording the renderer would need a second, re-evaluating pass over loops/mixins/imports to discover those placements — the cold twin the owner ruled illegal and unsound (ledger X12); it is deleted.",
       "carryForward": "Each dynamic extender's fact is recorded inline as its rule emits, keyed to the emitted header slot; after the single walk foldDynamicExtends re-runs computeExtends over static + dynamic facts and rewrites only the target header slots whose complete selector changed.",
       "whyNotCarried": "A target can be emitted before the extender that augments it, so the complete selector is unknown at emit time; the deferred rewrite over addressable render-buffer slots resolves the forward reference without a second evaluation.",
@@ -119,10 +119,10 @@ a blanket optimization exemption or a new active architecture queue.
     },
     "sourceCheck": {
       "file": "packages/core/src/ast/serialize.ts",
-      "caller": "function foldDynamicExtends(",
-      "guard": "e.dynamicExtend",
-      "call": "recordDynamicExtendFacts",
-      "profile": "recordAstExtendProfile"
+      "caller": "function flattenWithHeader(",
+      "guard": "recorded",
+      "call": "recordOpenRule(",
+      "profile": ["recordAstExtendProfile", "e.dynamicExtend", "recordDynamicExtendFacts", "function foldDynamicExtends("]
     },
     "evidence": {"command":["pnpm","--filter","@jesscss/core","test","--","--run","src/ast/__tests__/extend-preflight-contract.test.ts"]}
   },

@@ -45,9 +45,9 @@ import {
   textSimpleTokens
 } from './ir.js';
 import type { Branch, Compound, Level, SelectorPart, Simple } from './ir.js';
-import { composePath } from './compose.js';
-import { isTypeSelector } from './conflict.js';
-import { extendBranchSpecificity, partitionGroups } from '../is-grouping.js';
+import { branchHasAmp, composePath } from './compose.js';
+import { mergeCompound, NO_SIMPLES } from './conflict.js';
+import { extendBranchSpecificity, nestingGroupKey, partitionGroups } from '../is-grouping.js';
 import { branchWholeMatches, matchBoundarySpan } from './match.js';
 import { boundaryReaches, collectPlan, documentHasExtend, reaches, recordAstExtendProfile } from './plan.js';
 import type { PlanInstruction, PlanOverlay, PlanSubject } from './plan.js';
@@ -388,6 +388,125 @@ function mergeCompoundsToIs(a: Compound, b: Compound, allowNoSuffix: boolean): C
   return { value: [isGroup, ...suffixTokens] };
 }
 
+/* ------------------------------------------------- nesting fold of a header */
+
+/**
+ * [O10, orchestrator judgment 2026-10-05] Fold the branches NESTING produced in a nested
+ * rule's extended, flattened header by the nesting mode, exactly as the serializer folds
+ * the child list of an unextended rule (`opaqueJoin`, keyed by {@link nestingGroupKey}):
+ * `'compact'` folds every descendant child branch unguarded, `'native'` (and the nested
+ * output's flattened headers) only equal-specificity ones. The branches the extend added
+ * are left to extend's guarded grouping. `.t { th, .x {} }` + `.foo:extend(.t th)` under
+ * `'compact'` is `.t :is(th, .x), .foo`.
+ *
+ * The fixpoint rewrites each seed in place and appends extenders after them, so the
+ * first `raw.length` branches are the seeds in authored order; a seed whose segments no
+ * longer line up with its raw composition (a span collapsed across the parent) joins no
+ * group. Returns `list` itself when nothing folds.
+ */
+function nestingFold(list: Branch[], s: PlanSubject, raw: Branch[], guarded: boolean): Branch[] {
+  const own = s.ownLocal;
+  const authored = s.rule.selector.selectors;
+  if (own.length < 2 || raw.length !== own.length || authored.length !== own.length || list.length < raw.length) {
+    return list;
+  }
+  const keys: number[] = [];
+  let first: Branch | undefined;
+  let groupable = 0;
+  for (let i = 0; i < raw.length; i++) {
+    const seed = list[i]!;
+    const cut = raw[i]!.segments.length - own[i]!.segments.length;
+    if (seed.ext === true || seed.hidden === true || branchHasAmp(own[i]!)) {
+      return list;
+    }
+    let key = -1;
+    if (cut > 0 && seed.segments.length === raw[i]!.segments.length && seed.segments[cut]!.combinator === ' '
+      && (first === undefined || samePrefix(first, seed, cut))) {
+      first ??= seed;
+      key = nestingGroupKey(authored[i]!, guarded);
+    }
+    keys.push(key);
+    if (key >= 0) {
+      groupable++;
+    }
+  }
+  if (groupable < 2) {
+    return list;
+  }
+  const sizes = partitionGroups(keys);
+  if (sizes.length === raw.length) {
+    return list;
+  }
+  const out: Branch[] = [];
+  for (let i = 0; out.length < sizes.length; i++) {
+    const group = keys[i]!;
+    if (group !== out.length) {
+      continue;
+    }
+    if (sizes[group] === 1) {
+      out.push(list[i]!);
+      continue;
+    }
+    const cut = raw[i]!.segments.length - own[i]!.segments.length;
+    const members: Branch[] = [];
+    for (let j = i, taken = 0; taken < sizes[group]!; j++) {
+      if (keys[j] !== group) {
+        continue;
+      }
+      taken++;
+
+      /* A child the extend grouped joins the list as its members, never `:is(:is(…))`. */
+      const own = list[j]!.segments;
+      const only = own.length === cut + 1 && own[cut]!.compound.value.length === 1 ? own[cut]!.compound.value[0]! : null;
+      if (only !== null && only.t === 'is' && only.fold) {
+        for (const member of only.branches) {
+          members.push(member);
+        }
+      } else {
+        members.push(mkBranch(own.slice(cut)));
+      }
+    }
+    const segments = list[i]!.segments.slice(0, cut);
+    segments.push({ combinator: ' ', compound: { value: [{ t: 'is', branches: members, fold: false }] } });
+    out.push(mkBranch(segments));
+  }
+  for (let i = raw.length; i < list.length; i++) {
+    out.push(list[i]!);
+  }
+  return out;
+}
+
+/** True when `a` and `b` agree on their first `cut` segments (the parent they nest in;
+ * `a` is at least that long). */
+function samePrefix(a: Branch, b: Branch, cut: number): boolean {
+  if (a.segments.length < cut) {
+    return false;
+  }
+  for (let k = 0; k < cut; k++) {
+    const as = a.segments[k]!;
+    const bs = b.segments[k]!;
+    if (as.combinator !== bs.combinator || !sameCompound(as.compound.value, bs.compound.value)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Simple-by-simple compound equality; builds no text for plain tokens. */
+function sameCompound(a: readonly Simple[], b: readonly Simple[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]!;
+    const y = b[i]!;
+    if (x.t === 'text' ? y.t !== 'text' || x.text !== y.text : y.t !== 'is' || simpleText(x) !== simpleText(y)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /* --------------------------------------------- guarded `:is()` group emission */
 
 /**
@@ -577,19 +696,36 @@ function splitGroup(b: Branch, k: number, p: number, group: Simple & { t: 'is' }
 
 /**
  * An authored or nesting `:is()` at `b.segments[k]`, simple `p`, with an extend group
- * inside an arm that splits; null when none does. The arms stay one list, each taking
- * its first alternative — the group holding the matched selector, at the arm's own
- * specificity. Every other alternative replaces the whole `:is()` on its own: put back
- * among the other arms it would raise the specificity of elements the extend never
- * touched (`:is(.c.k, .z) .d` + `#b:extend(.c all)` → `:is(.c.k, .z) .d, #b.k .d`).
+ * inside an arm that splits, or an arm an `all` extend appended; null when neither. The
+ * arms stay one list, each taking its first alternative — the group holding the matched
+ * selector, at the arm's own specificity. Every other alternative replaces the whole
+ * `:is()` on its own: put back among the other arms it would raise the specificity of
+ * elements the extend never touched (`:is(.c.k, .z) .d` + `#b:extend(.c all)` →
+ * `:is(.c.k, .z) .d, #b.k .d`).
+ *
+ * An arm an extend appended (an extender matched a whole arm: `ext`) is extend's own
+ * grouping, so it follows the same guard (orchestrator judgment 2026-10-05): it joins the
+ * list only at the list's specificity, where its shape may sit in the `:is()`, and
+ * otherwise replaces the whole `:is()` on its own (`:is(.c, .z) .d` +
+ * `#b:extend(.c all)` → `:is(.c, .z) .d, #b .d`), so the authored list keeps its
+ * specificity and the extender keeps its own.
  */
 function splitArms(b: Branch, k: number, p: number, arms: Branch[], root: boolean): Branch[] | null {
-  let kept: Branch[] | null = null;
+  /* `null` holds an appended arm's place until the guard has judged it. */
+  let kept: Array<Branch | null> | null = null;
   let alone: Branch[] | null = null;
+  let added: Branch[] | null = null;
   for (let a = 0; a < arms.length; a++) {
-    const alternatives = regroupBranch(arms[a]!, true, 0, 0);
+    const arm = arms[a]!;
+    if (arm.ext === true) {
+      kept ??= arms.slice(0, a);
+      kept.push(null);
+      (added ??= []).push(arm);
+      continue;
+    }
+    const alternatives = regroupBranch(arm, true, 0, 0);
     if (alternatives === null) {
-      kept?.push(arms[a]!);
+      kept?.push(arm);
       continue;
     }
     kept ??= arms.slice(0, a);
@@ -601,17 +737,46 @@ function splitArms(b: Branch, k: number, p: number, arms: Branch[], root: boolea
   if (kept === null) {
     return null;
   }
-  const out: Branch[] = [];
-  pushRegrouped(out, withSimple(b, k, p, { t: 'is', branches: kept, fold: false }), root, k, p + 1);
-  for (const alternative of alone ?? []) {
-    /* A plain compound is the same selector merged in; anything else keeps its `:is()`. */
-    if (alternative.segments.length === 1 && alternative.segments[0]!.compound.value.every(s => s.t === 'text')) {
-      const spliced = spliceMember(b, k, p, alternative);
-      if (spliced !== null) {
-        pushRegrouped(out, spliced, root, k, p);
+  const list: Branch[] = [];
+  if (added === null) {
+    for (const arm of kept) {
+      list.push(arm!);
+    }
+  } else {
+    let listSpecificity = 0;
+    for (const arm of kept) {
+      const s = arm === null ? 0 : extendBranchSpecificity(arm, false);
+      if (s < 0) {
+        listSpecificity = -1;
+        break;
       }
-    } else {
-      pushRegrouped(out, withSimple(b, k, p, { t: 'is', branches: [alternative], fold: false }), root, k, p + 1);
+      listSpecificity = Math.max(listSpecificity, s);
+    }
+    const compoundOnly = !(root && k === 0 && p === 0 && b.segments[0]!.combinator === ' ');
+    let next = 0;
+    for (const arm of kept) {
+      if (arm !== null) {
+        list.push(arm);
+        continue;
+      }
+      const appended = added[next++]!;
+      for (const alternative of regroupBranch(appended, true, 0, 0) ?? [appended]) {
+        recordAstExtendProfile?.('astExtend.emit.groupMemberScores');
+        if (listSpecificity >= 0 && extendBranchSpecificity(alternative, compoundOnly) === listSpecificity) {
+          list.push(alternative);
+        } else {
+          (alone ??= []).push(alternative);
+        }
+      }
+    }
+  }
+  const out: Branch[] = [];
+  pushRegrouped(out, withSimple(b, k, p, { t: 'is', branches: list, fold: false }), root, k, p + 1);
+  for (const alternative of alone ?? []) {
+    /* Written in place, never as a one-arm `:is()` (ledger X3's 4.x placement). */
+    const spliced = spliceMember(b, k, p, alternative);
+    if (spliced !== null) {
+      pushRegrouped(out, spliced, root, k, p);
     }
   }
   return out;
@@ -673,44 +838,6 @@ function spliceMember(b: Branch, k: number, p: number, member: Branch): Branch |
   return withSegments(b, segments);
 }
 
-/** True for a text token that must lead its compound: a type or universal selector. */
-function leadsCompound(text: string): boolean {
-  return text.charCodeAt(0) === 0x2A /* * */ || isTypeSelector(text);
-}
-
-const NO_SIMPLES: readonly Simple[] = [];
-
-/**
- * `before`, `member` and `after` as one valid compound: the type (or universal)
- * selector leads, and a repeated type or a universal beside a type is dropped
- * (`div` + `div.b` → `div.b`, never 4.x's `divdiv.b`). Null when two different
- * element types meet.
- */
-function mergeCompound(before: readonly Simple[], member: readonly Simple[], after: readonly Simple[]): Simple[] | null {
-  const merged = [...before, ...member, ...after];
-  let lead: Extract<Simple, { t: 'text' }> | null = null;
-  for (const s of merged) {
-    if (s.t !== 'text' || !leadsCompound(s.text)) {
-      continue;
-    }
-    if (lead === null || lead.text === '*') {
-      lead = s;
-    } else if (s.text !== '*' && s.text.toLowerCase() !== lead.text.toLowerCase()) {
-      return null;
-    }
-  }
-  if (lead === null) {
-    return merged;
-  }
-  const out: Simple[] = [lead];
-  for (const s of merged) {
-    if (s.t !== 'text' || !leadsCompound(s.text)) {
-      out.push(s);
-    }
-  }
-  return out;
-}
-
 /* ------------------------------------------------- relative extender folding */
 
 /** Number of leading ancestor levels two paths share BY REFERENCE (the plan walk
@@ -747,8 +874,11 @@ function relativizeExtender(inst: PlanInstruction, subject: PlanSubject): PlanIn
 /**
  * Compute extend results for a parsed AST root. Returns `null` when the
  * document has NO `:extend()` at all (the serializer's zero-cost gate).
+ * `guardedNesting` is false under `collapseNesting: 'compact'`, whose nesting fold
+ * an extended header keeps ({@link nestingFold}); extend's own groups are guarded in
+ * every mode.
  */
-export function computeExtends(root: Stylesheet, overlay?: PlanOverlay): ExtendResults | null {
+export function computeExtends(root: Stylesheet, overlay?: PlanOverlay, guardedNesting = true): ExtendResults | null {
   /*
    * Zero-cost gate: an allocation-free pre-scan short-circuits the common case (no
    * `:extend()` anywhere) before any subject/instruction plan is built.
@@ -957,7 +1087,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay): ExtendR
      * nested rules render through `nestedPlan`/`hoistHeader`.
      */
     if (changed) {
-      const compacted = groupedBranches(siblingCompact(flat, false), true);
+      const compacted = groupedBranches(siblingCompact(nestingFold(flat, s, rawOf(s), guardedNesting), false), true);
       const projection = projectionFor(s);
 
       /*
@@ -1224,7 +1354,7 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay): ExtendR
        * prefix, so a child comma-list under one parent DOES compact across segments
        * (extend-exact `:is(<parent>) :is(.replace, .c)`).
        */
-      const hoisted = groupedBranches(siblingCompact(flatBySubject.get(s)!, true), true).map(branchOut);
+      const hoisted = groupedBranches(siblingCompact(nestingFold(flatBySubject.get(s)!, s, rawOf(s), guardedNesting), true), true).map(branchOut);
       projectionFor(s).hoistHeader.set(s.rule, hoisted);
 
       /*
@@ -1326,6 +1456,28 @@ export function computeExtends(root: Stylesheet, overlay?: PlanOverlay): ExtendR
          */
         .map(inst => relativizeExtender(inst, s));
       header = runFixpoint(s.ownLocal.map(cloneBranch), applied, buildContribs(applied)).list;
+
+      /*
+       * A match of the rule's whole composed selector by an extender nested under the
+       * same parent (`.w { .y { &:extend(.w .k); } .k {} }`; trigger X kept it here,
+       * since it descends from the parent) folds in as that extender's own-local
+       * remainder, `.y` beside `.k` (an exact one SPLITS when the rule has children).
+       * An extender that shares no parent level is not foldable here.
+       */
+      const raw = rawOf(s);
+      for (const inst of reaching) {
+        if (!raw.some(b => branchWholeMatches(b, inst.target, inst.partial))) {
+          continue;
+        }
+        const rel = relativizeExtender(inst, s);
+        if (rel === inst) {
+          continue;
+        }
+        const into = !inst.partial && survivors ? splits : header;
+        for (const e of composePath(rel.extenderPath)) {
+          into.push(e);
+        }
+      }
     }
     projectionFor(s).nestedPlan.set(s.rule, {
       flatten: false,

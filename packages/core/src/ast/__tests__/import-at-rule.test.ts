@@ -1393,10 +1393,17 @@ describe('StyleImport', () => {
         ? { document: imported, key: 'reference.less' }
         : undefined)
     });
+
+    /*
+     * A `&` inside an attribute value is attribute text, not a parent reference, so
+     * `[title="&"]` nests as a descendant and the `all` extend reaches it (lessc 4.9.1
+     * writes the same).
+     */
     const expected = {
       css: '.visible {\n  color: green;\n}\n'
         + '.visible:hover {\n  color: darkgreen;\n}\n'
         + '.visible:is(.enabled, .focused) {\n  color: purple;\n}\n'
+        + '.visible [title="&"] {\n  color: red;\n}\n'
     };
 
     await expect(render(true)).resolves.toEqual(expected);

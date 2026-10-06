@@ -58,6 +58,20 @@ describe('Jess parser plugin render-through', () => {
     expect(css).toBe('.paint {\n  color: red;\n}\n.entry {\n  color: red;\n  color: red;\n}\n');
   });
 
+  /*
+   * An applied body places the ruleset's own nested rules at the apply site, so an
+   * extend reaches them there, written at the composed apply-site selector (never the
+   * extended header of the ruleset's own copy).
+   */
+  it('extends the rules an $apply places where they land', async () => {
+    const css = await new Compiler({ output: { collapseNesting: 'native' } }).renderString(
+      '.u { .c { a: 1; } } .x { $apply .u; } .y { $extend .c; }',
+      { filePath: 'entry.jess', extension: '.jess' }
+    );
+
+    expect(css).toBe('.u :is(.c, .y) {\n  a: 1;\n}\n.x :is(.c, .y) {\n  a: 1;\n}\n');
+  });
+
   it('merges every matching plain ruleset without entering parameterized mixin dispatch', async () => {
     const css = await new Compiler().renderString(
       '.paint { color: red; } .paint { background: blue; } paint() { border: 1px solid; } .entry { $apply .paint; }',
