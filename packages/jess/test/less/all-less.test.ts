@@ -387,7 +387,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ['tests-config/math-parens-division/mixins-args.less', 'untriaged (jess#351): a mixin call is rejected for mixing comma-list argument groups with named arguments'],
   ['tests-config/math-strict/mixins-args.less', 'untriaged (jess#351): a mixin call is rejected for mixing comma-list argument groups with named arguments'],
   ['tests-config/math-parens-division/new-division.less', 'the `./` division operator was removed in v5, so the `.math` rule is a parse error'],
-  ['tests-config/math-parens-division/parens.less', 'jess#351: `border-radius-keep: 4px * (1 + 1) / @var + 3px` (`@var` is a unitless 4) renders `8px / 7px` where the golden has `8px / 4 + 3px`. The slash does not divide, so each side computes (P35), and `4 + 3px` is 7px in every unitMode today, as P35\'s owner-confirmed `4 / 2 + 5em` -> `4 / 7em` requires. Pending the owner\'s answer on whether a unitless number may be added to a length outside `unitMode: loose`; neither answer gives the golden\'s uncomputed `4 + 3px`'],
+  ['tests-config/math-parens-division/parens.less', 'jess#351: `border-radius-keep: 4px * (1 + 1) / @var + 3px` (`@var` is a unitless 4) renders `8px / 7px` where the golden has `8px / 4 + 3px`. The slash does not divide, so each side is its own math (P35), but `4 + 3px` computes to 7px in every unitMode today. Owner 2026-10-06 (P35): a unitless number added to a length computes only under `unitMode: loose`; under the default `preserve` it is kept as written with the V18 warning, which is the golden\'s `8px / 4 + 3px`'],
   ['tests-config/math-strict/css.less', 'untriaged (jess#351): unary `+2.2em` is kept, `!important` spacing is normalised and the `.misc` rules print in a different order']
 
   /*
@@ -695,7 +695,15 @@ const corpusCssThatIsNotAGolden = new Map<string, string>([
   ['tests-unit/urls/css/background.css', 'imported by tests-unit/urls/import/import-and-relative-paths-test.less'],
   ['tests-unit/urls/import/import-test-d.css', 'imported by tests-unit/urls/import/import-and-relative-paths-test.less'],
   ['tests-unit/urls/actual.css', 'a stray render of urls.less committed with the corpus; urls.css is the golden'],
-  ['tests-unit/directives-bubbling/directives-bubbling.css', 'byte-identical to tests-unit/at-rules-bubbling/at-rules-bubbling.css: less.js 937d1e44 moved directives-bubbling.less to at-rules-bubbling/ and left this copy behind. Restored as a fixture on less.js branch lane/v5-directives-bubbling']
+
+  /*
+   * Lockstep with the less.js fork: this orphan is to be deleted there, since
+   * tests-unit/at-rules-bubbling covers it. The change that picks up the
+   * deletion removes this entry (the check below fails until it does) and
+   * re-baselines less-parser's test/oracle-byte-identity.baseline.json, which
+   * digests the file.
+   */
+  ['tests-unit/directives-bubbling/directives-bubbling.css', 'byte-identical to tests-unit/at-rules-bubbling/at-rules-bubbling.css: less.js 937d1e44 moved directives-bubbling.less to at-rules-bubbling/ and left this copy behind']
 ]);
 
 describe('Less fixture discovery', () => {
@@ -710,6 +718,8 @@ describe('Less fixture discovery', () => {
     expect(unclaimed, 'corpus goldens that no Less fixture test claims').toEqual([]);
     const claimedAnyway = [...corpusCssThatIsNotAGolden.keys()].filter(css => claimedGoldens.has(css));
     expect(claimedAnyway, 'listed in corpusCssThatIsNotAGolden, but a fixture now claims it: remove the entry').toEqual([]);
+    const gone = [...corpusCssThatIsNotAGolden.keys()].filter(css => !existsSync(path.join(testData, css)));
+    expect(gone, 'listed in corpusCssThatIsNotAGolden, but the corpus no longer has it: remove the entry').toEqual([]);
   });
 });
 
