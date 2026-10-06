@@ -62,6 +62,25 @@ function pseudoClassSpecificity(text: string): number {
 }
 
 /**
+ * True when `text` from `from` on is the rest of ONE class, id or type name: name
+ * characters and escapes only. A parser-built token always is; a token whose text a
+ * resolved interpolation or an `&` concatenation produced may hold several simples
+ * (`.a.b`), whose specificity no single kind gives, so it stays out of a group.
+ */
+function isName(text: string, from: number): boolean {
+  for (let i = from; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code === 92 /* \ */) {
+      i++;
+    } else if (!(code === 45 /* - */ || code === 95 /* _ */ || code >= 128
+      || (code >= 48 && code <= 57) || ((code | 32) >= 97 && (code | 32) <= 122))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Specificity of one parsed simple token, or -1 when it cannot sit in a group.
  * `inHas` is set inside a `:has()` argument, where another `:has()` is invalid.
  */
@@ -90,7 +109,7 @@ function tokenSpecificity(sim: SimpleToken, inHas: boolean): number {
   const text = sim.text!;
   const first = text.charCodeAt(0);
   if (first === 46 /* . */) {
-    return SPECIFICITY_CLASS;
+    return isName(text, 1) ? SPECIFICITY_CLASS : -1;
   }
   if (first === 91 /* [ */) {
     /*
@@ -113,7 +132,7 @@ function tokenSpecificity(sim: SimpleToken, inHas: boolean): number {
       : SPECIFICITY_CLASS;
   }
   if (first === 35 /* # */) {
-    return SPECIFICITY_ID;
+    return isName(text, 1) ? SPECIFICITY_ID : -1;
   }
   if (first === 58 /* : */) {
     return pseudoClassSpecificity(text);
@@ -122,7 +141,7 @@ function tokenSpecificity(sim: SimpleToken, inHas: boolean): number {
     return text.length === 1 ? 0 : -1;
   }
   const lower = first | 32;
-  if (((lower >= 97 && lower <= 122) || first === 45 /* - */ || first === 95 /* _ */ || first >= 128) && !text.includes('|')) {
+  if (((lower >= 97 && lower <= 122) || first === 45 /* - */ || first === 95 /* _ */ || first >= 128) && isName(text, 1)) {
     return SPECIFICITY_TYPE;
   }
 
@@ -211,9 +230,11 @@ function irSimpleSpecificity(simple: Simple, compoundOnly: boolean): number {
   }
 
   /*
-   * A token the parser did not build one-to-one (a `&` replaced by its parent's text,
-   * a dynamic extender's composed text) has no `src`. Its kind could only be read back
-   * out of serialized text, so it stays out of every group.
+   * A token held as composed header text (a rule the walk recorded opaquely) has no
+   * `src`: its kind could only be read back out of serialized text, so it stays out of
+   * every group. A token an `&` concatenation or a resolved interpolation produced
+   * stands for the selector token written for it, and scores only when that is one
+   * simple ({@link isName}).
    */
   const src = simple.src;
   return src === undefined ? -1 : 'value' in src ? irCompoundSpecificity(src, false) : tokenSpecificity(src, false);

@@ -212,10 +212,10 @@ the extend engine both call it.
   non-adjacent members (branch order inside one selector list changes neither the
   cascade nor specificity) and emitted in order of first appearance.
 - A member that cannot sit inside `:is()` — a pseudo-element, a pseudo-class outside
-  the standard allowlist, a token the parser did not build one-to-one (a `&` replaced
-  by its parent's text, a dynamic extender's composed text: its kind would have to be
-  read back out of serialized text), or a complex member the group does not lead
-  with — is written as its own branch in the Less 4.x expanded form: the simples
+  the standard allowlist, a token held as composed header text (its kind would have to
+  be read back out of serialized text), a token an `&` concatenation or a resolved
+  interpolation produced that holds more than one simple (`@v: ~"x.y"; .@{v}`), or a
+  complex member the group does not lead with — is written as its own branch in the Less 4.x expanded form: the simples
   before the group join the member's FIRST compound and those after it its LAST
   compound (`.a > .m:is(.c, .p .q).n` → `.a > .m.p .q.n`). Each joined compound is made
   valid: the type selector leads and a repeated type is written once (`div` + `div.b`

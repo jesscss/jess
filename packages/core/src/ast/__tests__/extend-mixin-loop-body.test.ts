@@ -82,6 +82,20 @@ describe('interpolated rules are extend targets once resolved', () => {
       .toBe('.foo,\n.x {\n  a: 1;\n}\n');
   });
 
+  /*
+   * An extender a mixin, loop, interpolation or `&` concatenation composes groups like
+   * any other where its token is one simple selector; one that holds several simples
+   * keeps its own specificity outside the group (ledger X3 guard).
+   */
+  it('groups a composed extender by the selector token it composes', () => {
+    expect(render('.base.k { m: 1 } .btn { &-primary:extend(.base all) {} }'))
+      .toBe(':is(.base, .btn-primary).k {\n  m: 1;\n}\n');
+    expect(render('.base.k { m: 1 } each(range(2), { .col-@{value} { &:extend(.base all); } });'))
+      .toBe(':is(.base, .col-1, .col-2).k {\n  m: 1;\n}\n');
+    expect(render('@v: ~"x.y"; .base.k { m: 1 } .@{v} { &:extend(.base all); }'))
+      .toBe('.base.k,\n.x.y.k {\n  m: 1;\n}\n');
+  });
+
   it('in a loop body, per iteration', () => {
     expect(render('each(range(2), { .k.c-@{value} { a: @value; } }); .x:extend(.c-2 all) {}'))
       .toBe('.k.c-1 {\n  a: 1;\n}\n.k:is(.c-2, .x) {\n  a: 2;\n}\n');

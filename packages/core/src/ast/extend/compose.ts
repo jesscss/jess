@@ -26,6 +26,17 @@ import {
   textSimple
 } from './ir.js';
 import type { Branch, Level, SelectorPart, Simple } from './ir.js';
+import { simpleSelector } from '../nodes.js';
+
+/**
+ * The token an `&` concatenation composes (`&-x` under `.btn` is `.btn-x`), standing
+ * for the selector token the serializer writes for it, so the `:is()` grouping scores
+ * it like the class it is; a join that holds several simples (`.a.b-x`) still scores
+ * none (`../is-grouping.ts`).
+ */
+function joinedSimple(text: string): Simple {
+  return textSimple(text, undefined, simpleSelector(text));
+}
 
 export function branchHasAmp(b: Branch): boolean {
   for (const seg of b.segments) {
@@ -140,7 +151,7 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
       /* A lone `&` under a one-compound parent stands for that compound. */
       value.push(s.text === '&'
         ? textSimple(parentStr, undefined, parent.segments[0]!.compound)
-        : textSimple(s.text.split('&').join(parentStr)));
+        : joinedSimple(s.text.split('&').join(parentStr)));
     }
 
     /* A fused/own segment is the ruleset's own element target, own-local (`bnd = 0`). */
@@ -202,7 +213,7 @@ function spliceFusedAmp(seg: SelectorPart, parent: Branch, outSegs: SelectorPart
       const suffix = parts[i]!;
       if (suffix.length > 0) {
         const tail = value[value.length - 1]!;
-        value[value.length - 1] = textSimple(simpleText(tail) + suffix);
+        value[value.length - 1] = joinedSimple(simpleText(tail) + suffix);
         own = true;
       }
     }
