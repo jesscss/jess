@@ -1,25 +1,28 @@
 import { describe, it, expect } from 'vitest';
+import { ctx } from '../../__tests__/harness.js';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { makeList, makeQuoted, type FnCtx, type Value } from '@jesscss/core';
+import { isValueGroupArray, makeList, makeQuoted, type FnCtx, type Value } from '@jesscss/core';
 import dataUri from '../data-uri.js';
 
 const DATA_DIR = path.resolve(__dirname, 'assets');
 
 const contextForDataDir = (): FnCtx => ({
-  modes: { unitMode: 'preserve' },
-  stringify: value => value.type === 'Quoted' ? value.value : value.bytes,
+  ...ctx,
   io: {
     readFile: specifier => readFile(path.join(DATA_DIR, specifier)).catch(() => null)
   }
 });
 
 const callDataUri = async (...args: string[]): Promise<Value> => {
-  const result = dataUri(
+  const result = await dataUri(
     makeList(args.map(value => makeQuoted(value, '\'', false)), ','),
     contextForDataDir()
   );
-  return Promise.resolve(result);
+  if (isValueGroupArray(result)) {
+    throw new TypeError('Expected data-uri() to return one value.');
+  }
+  return result;
 };
 
 describe('data-uri()', () => {
@@ -53,8 +56,7 @@ describe('data-uri()', () => {
     const result = dataUri(
       makeList([makeQuoted('asset.png', '\'', false)], ','),
       {
-        modes: { unitMode: 'preserve' },
-        stringify: value => value.type === 'Quoted' ? value.value : value.bytes,
+        ...ctx,
         io: {
           readFile: () => Promise.reject(new Error('file loader timed out'))
         }

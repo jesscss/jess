@@ -15,22 +15,16 @@
  * puts the sole quantization at output).
  */
 import { describe, it, expect } from 'vitest';
-import { makeColorRgb, makeDimension, makeList, RGB } from '@jesscss/core';
-import type { Color, Dimension, Keyword } from '@jesscss/core';
+import { call as evaluate, node } from '../../__tests__/harness.js';
+import { makeColorRgb, makeDimension, RGB } from '@jesscss/core';
+import type { Color, Dimension, Fn, Keyword, ValueGroup } from '@jesscss/core';
 import { fade as fadeFn } from '../fade.js';
 import { fadein as fadeinFn } from '../fadein.js';
 import { fadeout as fadeoutFn } from '../fadeout.js';
 import { fadeOut as sassFadeOut } from '../../sass/color/fade-out.js';
 import { fadeIn as sassFadeIn } from '../../sass/color/fade-in.js';
 
-const ctx = { modes: { unitMode: 'preserve' as const }, stringify: (value: { bytes: string }) => value.bytes };
-const call = (fn: (args: ReturnType<typeof makeList>, context: typeof ctx) => unknown, ...args: Parameters<typeof makeList>[0]): Color => {
-  const value = fn(makeList(args, ','), ctx);
-  if (value === null || typeof value !== 'object' || !('type' in value) || value.type !== 'Color') {
-    throw new TypeError('Expected a Color result.');
-  }
-  return value;
-};
+const call = (fn: Fn, ...args: ValueGroup[]): Color => node(evaluate(fn, ...args), 'Color');
 
 const red = (alpha: number): Color => makeColorRgb([255, 0, 0], alpha, RGB);
 const pct = (n: number): Dimension => makeDimension(n, '%');

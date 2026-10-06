@@ -153,7 +153,7 @@ const DIRECTION_1_ALLOWLIST: readonly Allowed[] = [
    */
   {
     name: 'breadth:fixture/calc-at-rule-prelude.css',
-    accepted: ['css', 'less'],
+    accepted: ['css', 'less', 'scss'],
     validCss: 'n/a — whole file',
     reason: 'Whole-file breadth row; construct not isolated by this channel.'
   },

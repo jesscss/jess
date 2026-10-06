@@ -14,12 +14,12 @@ export interface TestCase {
 }
 
 export type NumericLike = {
-  value?: number | { number?: number };
+  value?: number | { number?: number } | null;
   valueOf?: () => unknown;
 };
 
 export type StringLike = {
-  value?: string | { value?: string };
+  value?: string | { value?: string } | null;
   valueOf?: () => unknown;
 };
 
@@ -52,7 +52,7 @@ export function readNumericFunctionArg(value: NumericLike): number {
   if (typeof value?.value === 'number') {
     return value.value;
   }
-  if (typeof value?.value === 'object' && typeof value.value.number === 'number') {
+  if (typeof value?.value === 'object' && typeof value.value?.number === 'number') {
     return value.value.number;
   }
   const primitive = value?.valueOf?.() ?? value;
@@ -63,7 +63,7 @@ export function readStringFunctionArg(value: StringLike): string {
   if (typeof value?.value === 'string') {
     return value.value.replace(/^(['"])(.*)\1$/, '$2');
   }
-  if (typeof value?.value === 'object' && typeof value.value.value === 'string') {
+  if (typeof value?.value === 'object' && typeof value.value?.value === 'string') {
     return value.value.value.replace(/^(['"])(.*)\1$/, '$2');
   }
   const primitive = value?.valueOf?.() ?? value;
@@ -103,23 +103,21 @@ export function getTestCases(lessFilePath: string, goldenPath?: string): TestCas
       });
     } else if (outputConfig.file !== siblingCssPath) {
       throw new Error(`Expected output file ${outputConfig.file} does not exist`);
-    } else {
-      // Fall back to {name}.css with merged config options
-      if (fs.existsSync(defaultCssPath)) {
-        // Only add if we haven't already added this exact test case
-        const alreadyAdded = testCases.some(
-          tc => tc.expectedFile === defaultCssPath
-            && JSON.stringify(tc.config) === JSON.stringify(outputConfig.config)
-        );
-        if (!alreadyAdded) {
-          testCases.push({
-            expectedFile: defaultCssPath,
-            config: outputConfig.config
-          });
-        }
+    } else if (fs.existsSync(defaultCssPath)) {
+      // Fall back to {name}.css with merged config options; only add if we haven't already added this exact test case
+      const alreadyAdded = testCases.some(
+        tc => tc.expectedFile === defaultCssPath
+          && JSON.stringify(tc.config) === JSON.stringify(outputConfig.config)
+      );
+      if (!alreadyAdded) {
+        testCases.push({
+          expectedFile: defaultCssPath,
+          config: outputConfig.config
+        });
       }
-      // If default doesn't exist either, we'll check at the end
     }
+
+    // If default doesn't exist either, we'll check at the end
   }
 
   // If no test cases were found, check if default exists
@@ -377,6 +375,85 @@ export function lessTestDataRemoteImports(testDataRoot: string): PluginInterface
         : new Response('not found', { status: 404 });
     }
   });
+}
+
+export class FixtureTimeoutError extends Error {
+  constructor(file: string, reason: string) {
+    super(`${file} timed out before surfacing a diagnostic or render result: ${reason}.`);
+    this.name = 'FixtureTimeoutError';
+  }
+}
+
+export type FixtureBudget = {
+  /** CPU the fixture may burn without settling: catches runaway work. */
+  cpuMs: number;
+
+  /** Wall time the fixture may sit unsettled: catches a promise nothing settles, which burns no CPU. */
+  wallMs: number;
+};
+
+/**
+ * The corpus hang sentinel: rejects with `FixtureTimeoutError` when `work` runs
+ * away or stalls, so a hang fails the fixture by name instead of passing as an
+ * expected failure.
+ *
+ * Runaway work is measured in CPU time, not wall time, because wall time is
+ * mostly machine load: bootstrap4.less renders in about 1.5 s alone and blew a
+ * 4.5 s wall budget whenever the ratchet ran it beside other suites. Load stops
+ * the process from running; it does not make the process burn more CPU. The
+ * stalled case burns none, so it keeps a wall ceiling, set under vitest's 30 s
+ * `testTimeout` so this error, which names the fixture, fires first.
+ *
+ * The CPU budget is checked twice. A poll cuts off work that yields to the
+ * event loop. A render that never yields (synchronous eval, microtask chains)
+ * starves the poll, so the budget is checked again when `work` settles: a
+ * runaway that finishes still fails. One that never finishes and never yields
+ * cannot be stopped from inside its own thread; it hangs the worker.
+ *
+ * The budget is absolute, sized with about 3x headroom over bootstrap4.less on
+ * Apple Silicon; a slower runner has less. `process.cpuUsage()` is this process
+ * only: vitest runs one test at a time per fork (the root config shares forks
+ * across files, so async work an earlier test left running is charged here),
+ * and CPU spent in child processes, such as plugin-js's Deno worker, is not
+ * counted, which leaves those to the wall ceiling.
+ */
+export async function withFixtureTimeout<T>(
+  file: string,
+  work: () => Promise<T>,
+  budget: FixtureBudget = { cpuMs: 4500, wallMs: 25_000 }
+): Promise<T> {
+  const cpuStart = process.cpuUsage();
+  const wallStart = performance.now();
+  const overBudget = (): FixtureTimeoutError | undefined => {
+    const { user, system } = process.cpuUsage(cpuStart);
+    const cpuMs = (user + system) / 1000;
+    return cpuMs > budget.cpuMs
+      ? new FixtureTimeoutError(file, `it burned ${Math.round(cpuMs)} ms of CPU, over its ${budget.cpuMs} ms budget`)
+      : undefined;
+  };
+  let poll: ReturnType<typeof setInterval> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    poll = setInterval(() => {
+      const error = overBudget()
+        ?? (performance.now() - wallStart > budget.wallMs
+          ? new FixtureTimeoutError(file, `it was still unsettled after ${budget.wallMs} ms`)
+          : undefined);
+      if (error) {
+        reject(error);
+      }
+    }, 25);
+  });
+  try {
+    const settled = work().finally(() => {
+      const error = overBudget();
+      if (error) {
+        throw error;
+      }
+    });
+    return await Promise.race([settled, timeout]);
+  } finally {
+    clearInterval(poll);
+  }
 }
 
 function existingDirectory(value: string | undefined): string | undefined {

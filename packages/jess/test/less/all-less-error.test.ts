@@ -3,7 +3,7 @@ import * as glob from 'glob';
 import * as path from 'path';
 import { readFileSync } from 'fs';
 import { Compiler } from '../../src/index.js';
-import { resolveLessTestDataRoot, lessHarnessFunctionsPlugin } from '../test-utils.js';
+import { FixtureTimeoutError, lessHarnessFunctionsPlugin, resolveLessTestDataRoot, withFixtureTimeout } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
@@ -20,33 +20,6 @@ import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
  * and each carries a reason. Everything else must error.
  */
 const TD = resolveLessTestDataRoot();
-const fixtureTimeoutMs = 8000;
-
-class FixtureTimeoutError extends Error {
-  constructor(file: string) {
-    super(`${file} timed out before surfacing a diagnostic or render result.`);
-    this.name = 'FixtureTimeoutError';
-  }
-}
-
-async function withFixtureTimeout<T>(
-  file: string,
-  work: () => Promise<T>,
-  timeoutMs = fixtureTimeoutMs
-): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => reject(new FixtureTimeoutError(file)), timeoutMs);
-  });
-  try {
-    return await Promise.race([work(), timeout]);
-  } finally {
-    if (timer !== undefined) {
-      clearTimeout(timer);
-    }
-  }
-}
-
 const acceptedDivergences = new Map<string, string>([
   /*
    * Intentional v5 behavior even under the error-surfacing options in
@@ -196,23 +169,6 @@ describe('Less error corpus (Jess must error where Less errors)', () => {
       } else {
         expect(errored, `${file} should error (Less rejects it)`).toBe(true);
       }
-    }, 8000);
-  });
-});
-
-describe('Less error corpus harness diagnostics', () => {
-  it('surfaces fixture timeouts as harness failures', async () => {
-    await expect(
-      withFixtureTimeout(
-        'tests-error/eval/import-timeout.less',
-        () => new Promise<never>(() => {
-          // Deliberately unsettled to exercise the harness timeout branch.
-        }),
-        1
-      )
-    ).rejects.toMatchObject({
-      name: 'FixtureTimeoutError',
-      message: 'tests-error/eval/import-timeout.less timed out before surfacing a diagnostic or render result.'
     });
   });
 });

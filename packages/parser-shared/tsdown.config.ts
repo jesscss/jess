@@ -17,7 +17,7 @@ export default defineConfig({
   fixedExtension: false,
   hash: false,
   deps: { onlyBundle: false },
-  plugins: [parseman.rolldown()],
+  plugins: [parseman.rolldown({})],
   outputOptions(options, format) {
     return format === 'cjs' ? { ...options, exports: 'named' } : options;
   }

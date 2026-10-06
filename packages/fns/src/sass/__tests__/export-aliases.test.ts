@@ -33,13 +33,15 @@ import {
 import lessRound from '../../less/round.js';
 
 describe('Sass export aliases', () => {
-  // These previously asserted the OPPOSITE — that the Sass globals simply WERE
-  // the Less callables. That was the bug, not the contract: `fade-in`/`fade-out`
-  // use a 0-1 amount where Less's `fadein`/`fadeout` use a percentage, and
-  // `ie-hex-str` emits upper-case hex where `argb` emits lower case
-  // (see `color-wrappers.test.ts` for the disproofs). `grayscale`/`adjust-hue`
-  // do share a computation with `greyscale`/`spin`, but a fn IS its dispatch
-  // name, so a Sass module still owns its own definition.
+  /*
+   * These previously asserted the OPPOSITE — that the Sass globals simply WERE
+   * the Less callables. That was the bug, not the contract: `fade-in`/`fade-out`
+   * use a 0-1 amount where Less's `fadein`/`fadeout` use a percentage, and
+   * `ie-hex-str` emits upper-case hex where `argb` emits lower case
+   * (see `color-wrappers.test.ts` for the disproofs). `grayscale`/`adjust-hue`
+   * do share a computation with `greyscale`/`spin`, but a fn IS its dispatch
+   * name, so a Sass module still owns its own definition.
+   */
   it('never borrows a Less colour implementation', () => {
     for (const fn of [globalOpacify, globalFadeIn]) {
       expect(fn).not.toBe(fadeinLess);
@@ -67,8 +69,11 @@ describe('Sass export aliases', () => {
   it('serves the sass:color module and the global surface the same callables', () => {
     expect(colorModuleGrayscale).toBe(globalGrayscale);
     expect(colorModuleIeHexStr).toBe(globalIeHexStr);
-    // `red`/`green`/`blue`/`alpha` DO stay shared: under the colour-precision
-    // ruling the two dialects' channel readers are the same function.
+
+    /*
+     * `red`/`green`/`blue`/`alpha` DO stay shared: under the colour-precision
+     * ruling the two dialects' channel readers are the same function.
+     */
     expect(colorModuleRed).toBe(sharedRed);
   });
 
