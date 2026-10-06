@@ -730,9 +730,8 @@ describe('Jess AST grammar facts', () => {
     );
 
     /*
-     * The static reduction must not claim an escaped string that carries
-     * interpolation: dropping the quotes makes that value exactly the
-     * Interpolation of its content parts, with no `Quoted` wrapper.
+     * An escaped string that carries interpolation is the same escaped
+     * `Quoted`, its content template in `interp` (owner 2026-10-06, ledger V3).
      */
     expect(parse('$theme: dark; .asset { value: ~"${theme}"; }')).toMatchObject({
       rules: [
@@ -740,22 +739,29 @@ describe('Jess AST grammar facts', () => {
         { type: 'Ruleset', rules: [{
           type: 'Declaration',
           name: 'value',
-          value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme' }, unquote: true }] }
+          value: {
+            type: 'Quoted',
+            src: '~"${theme}"',
+            value: '${theme}',
+            quote: '"',
+            escaped: true,
+            interp: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme' }, unquote: true }] }
+          }
         }] }
       ]
     });
   });
 
   // Documented at docs/jess/02-Language/08-interpolation.mdx ("Any plain output").
-  it('constructs escaped Jess strings that carry interpolation as unwrapped Interpolation values', () => {
+  it('constructs escaped Jess strings that carry interpolation as escaped Quoted templates', () => {
     const source = '$color-name: "red"; $w: 4px; .container { color: ~"${color-name}"; tone: ~\'$($w * 2)\'; }';
     expect(parse(source)).toMatchObject({
       rules: [
         { type: 'VariableDeclaration', name: 'color-name' },
         { type: 'VariableDeclaration', name: 'w' },
         { type: 'Ruleset', rules: [
-          { name: 'color', value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'color-name', raw: '@color-name' }, unquote: true }] } },
-          { name: 'tone', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression' }, unquote: true }] } }
+          { name: 'color', value: { type: 'Quoted', escaped: true, quote: '"', interp: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'color-name', raw: '@color-name' }, unquote: true }] } } },
+          { name: 'tone', value: { type: 'Quoted', escaped: true, quote: '\'', interp: { type: 'Interpolation', parts: [{ ref: { type: 'Expression' }, unquote: true }] } } }
         ] }
       ]
     });
@@ -2226,7 +2232,7 @@ describe('Jess AST grammar facts', () => {
     expect(bare(result.value)).toEqual({
       type: 'Stylesheet',
       rules: [
-        { type: 'VariableDeclaration', name: 'base', value: { type: 'Quoted', src: '"dark"', value: 'dark', quote: '"', escaped: false }, write: { mode: 'declare' } },
+        { type: 'VariableDeclaration', name: 'base', value: { type: 'Quoted', src: '"dark"', value: 'dark', quote: '"', escaped: false, interp: null }, write: { mode: 'declare' } },
         { type: 'VariableDeclaration', name: 'tone', value: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base', scope: 'live' }, write: { mode: 'declare' } },
         { type: 'VariableDeclaration', name: 'accent', value: { type: 'Keyword', src: 'blue' }, write: { mode: 'declare' } },
         { type: 'VariableDeclaration', name: 'hex', value: { type: 'Color', src: '#0a1B2c' }, write: { mode: 'declare' } },
@@ -2362,7 +2368,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'Ruleset', rules: [
           { type: 'Declaration', name: 'direct', value: { type: 'Url', value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'path', raw: '@path' }, unquote: true }] } } },
           { type: 'Declaration', name: 'joined', value: { type: 'Url', value: { type: 'Interpolation', parts: [{ lit: 'images/' }, { ref: { type: 'Lookup', kind: 'var', name: 'file', raw: '@file' }, unquote: true }, { lit: '.svg' }] } } },
-          { type: 'Declaration', name: 'quoted', value: { type: 'Url', value: { type: 'Interpolation' } } }
+          { type: 'Declaration', name: 'quoted', value: { type: 'Url', value: { type: 'Quoted', src: '"assets/${file}.svg"', interp: { type: 'Interpolation', parts: [{ lit: 'assets/' }, { ref: { type: 'Lookup', kind: 'var', name: 'file', raw: '@file' }, unquote: true }, { lit: '.svg' }] } } } }
         ] }
       ]
     });
@@ -2448,7 +2454,7 @@ describe('Jess AST grammar facts', () => {
       type: 'Ruleset',
       rules: [{
         type: 'Declaration', name: 'image',
-        value: { type: 'Url', value: { type: 'Interpolation' } }
+        value: { type: 'Url', value: { type: 'Quoted', src: '"${file}/$(.path).svg"', interp: { type: 'Interpolation' } } }
       }]
     });
     for (const [source, urlText] of [
@@ -2787,7 +2793,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'VariableDeclaration', name: 'math', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Operation', operator: '+' } }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '1  +  2 = 3' } }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'quoted-compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression', value: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '"a-${tone}" = foo' } }, unquote: true }] } },
-        { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'content', value: { type: 'Interpolation' } }, { type: 'Declaration', name: 'color', value: { type: 'FunctionCall', args: [{ value: { type: 'Interpolation' } }, { value: { type: 'Interpolation' } }, { value: { type: 'Keyword', src: 'blue' } }] } }] }
+        { type: 'Ruleset', rules: [{ type: 'Declaration', name: 'content', value: { type: 'Quoted', src: '"tone-${tone}-$(1 + 2)"', interp: { type: 'Interpolation' } } }, { type: 'Declaration', name: 'color', value: { type: 'FunctionCall', args: [{ value: { type: 'Interpolation' } }, { value: { type: 'Interpolation' } }, { value: { type: 'Keyword', src: 'blue' } }] } }] }
       ]
     });
   });

@@ -35,7 +35,7 @@ function parseOptionsFromSafeParse(options?: SafeParseOptions): JessParseOptions
  *
  * What the evaluator is needed for is everything ELSE it carries: `operate`
  * (the `$( … )` expression form — ledger P13(d) — is the only arithmetic
- * spelling in `.jess`), `materialize`, `compare` and `typeCheck`. Without a
+ * spelling in `.jess`), `compare` and `typeCheck`. Without a
  * registered evaluator `serialize.ts` takes its `!e.ev` fallback branches and
  * re-emits operand bytes unevaluated (`packages/core/src/ast/serialize.ts:3191`),
  * so `$(1 + 2)` rendered as `1 + 2`.

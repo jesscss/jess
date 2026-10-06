@@ -205,21 +205,22 @@ describe('@jesscss/jess-parser/cst', () => {
   /*
    * A `${…}` inside a quoted string has to break the string into structured
    * parts — otherwise the fast flat-string path swallows it as literal bytes and
-   * the editor shows no interpolation at all.
+   * the editor shows no interpolation at all. A string's hole is the
+   * source-fact form `ExpressionDollarBrace`, the one both quoted families share.
    */
   it('structures ${…} inside a quoted string without disturbing plain strings', () => {
     const interpolated = parseJessCst('.a { content: "font-${family}.woff"; }');
 
     expect(interpolated.errors).toHaveLength(0);
     expect(interpolated.unconsumedFrom).toBeNull();
-    expect(stats(interpolated.tree).grammarTypes.get('DollarBrace')).toBe(1);
+    expect(stats(interpolated.tree).grammarTypes.get('ExpressionDollarBrace')).toBe(1);
 
     // A lone `$` that opens nothing stays literal text inside the flat string.
     const plain = parseJessCst('.a { content: "costs $5 and $x too"; }');
 
     expect(plain.errors).toHaveLength(0);
     expect(plain.unconsumedFrom).toBeNull();
-    expect(stats(plain.tree).grammarTypes.get('DollarBrace')).toBeUndefined();
+    expect(stats(plain.tree).grammarTypes.get('ExpressionDollarBrace')).toBeUndefined();
   });
 
   it('keeps CSS import targets static while unquoted value URLs retain ${…} templates', () => {

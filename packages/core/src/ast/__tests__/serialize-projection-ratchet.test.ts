@@ -298,10 +298,23 @@ describe('V19 one-evaluator projection ratchet', () => {
     // when it has one (`bodyHasInterpRule`); a branch whose attribute token
     // holds a `&` takes the token walk (`branchHasAttributeAmp`); the one-line
     // `plannedImportPlacement` wrapper is inlined.
-    expect(occurrences(/^function |^async function /gmu)).toBe(533);
+    // +2 functions (owner ruling 2026-10-06, ledger V3): a `$name` property
+    // accessor in a typed position reads the declaration's parsed value, as a
+    // variable does, instead of re-reading its bytes, so its resolution
+    // (`resolvePropAccessor`) is shared by the byte and typed lanes, and a
+    // merged property's join (`mergedPropertyBytes`) left the byte lane.
+    // +2 functions (ledger V3, C2): a merged property accessor's typed value is
+    // its members' parsed values (`mergedPropertyValue`), and a string's content
+    // for a path request or a diagnostic message is read from the node
+    // (`quotedContentSync`), never by stripping quotes from its bytes.
+    // +1 function and +2 `new WeakMap` (ledger V3, C2): every render keeps an
+    // eager argument snapshot's typed value beside it (`snapshotValues`, one per
+    // render entry, filled by `carrySnapshot`), so an argument is never re-typed
+    // from its bytes across a mixin boundary.
+    expect(occurrences(/^function |^async function /gmu)).toBe(538);
     expect(occurrences(/new Map/gu)).toBe(85);
     expect(occurrences(/new Set/gu)).toBe(41);
-    expect(occurrences(/new WeakMap/gu)).toBe(8);
+    expect(occurrences(/new WeakMap/gu)).toBe(10);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);
 

@@ -83,14 +83,28 @@ export interface Color {
   readonly src: string;
 }
 
-/** A quoted string literal leaf, e.g. `"x"`, `'y'`. Pre-split fields ride so a
- *  forced literal materializes by reading them, never re-scanning `src`. */
+/**
+ * A quoted string, e.g. `"x"`, `'y'`, and the escaped Less / `.jess` `~"x"`.
+ * Pre-split fields ride so a forced literal materializes by reading them, never
+ * re-scanning `src`.
+ *
+ * A string that interpolates (`"a@{x}"`, `~"@{x}"`, `.jess` `"x$(1 + 1)y"`,
+ * SCSS `"#{$x}"`) is the SAME node as one that does not, carrying the same
+ * `quote` / `escaped` facts (ledger V3, C2): `interp` holds its content
+ * template, without the delimiters, and evaluation splices it. `src` and
+ * `value` stay the authored spelling and the authored content (holes as
+ * written), so a source replay reads what the author wrote; anything that needs
+ * the string's CONTENT evaluates `interp` ({@link isStaticQuoted} tells the two
+ * apart). `interp` is `null` for a string that does not interpolate, and is
+ * always present so the node keeps one shape.
+ */
 export interface Quoted {
   readonly type: 'Quoted';
   readonly src: string;
   readonly value: string;
   readonly quote: string;
   readonly escaped: boolean;
+  readonly interp: Interpolation | null;
 }
 
 /** Arbitrary / opaque value bytes (raw prelude fragment, computed/joined
@@ -1580,16 +1594,20 @@ export const url = (value: ValueNode): Url => ({ type: 'Url', value });
 export const selectorCapture = (branches: readonly string[], src: string): SelectorCapture =>
   ({ type: 'SelectorCapture', branches, src });
 export const color = (src: string): Color => ({ type: 'Color', src });
-export const quoted = (src: string, value: string, quote: string, escaped: boolean): Quoted =>
-  ({ type: 'Quoted', src, value, quote, escaped });
+export const quoted = (src: string, value: string, quote: string, escaped: boolean, interp: Interpolation | null = null): Quoted =>
+  ({ type: 'Quoted', src, value, quote, escaped, interp });
+
+/** A string whose content is its authored `value` — one that does not interpolate. */
+export const isStaticQuoted = (n: ValueNode): n is Quoted => n.type === 'Quoted' && n.interp === null;
 export const dimension = (number: number, unit = '', src = `${number}${unit}`): Dimension =>
   ({ type: 'Dimension', number, unit, src });
 
 /** A value literal that emits its `src` verbatim when inert (all five literal
- *  types). Narrows a `ValueNode` to the leaf union. */
+ *  types). Narrows a `ValueNode` to the leaf union. A string that interpolates is
+ *  not a literal: its content is read from the frame it is evaluated in. */
 export const isLiteralNode = (n: ValueNode): n is Keyword | Color | Dimension | Quoted | Any =>
   n.type === 'Keyword' || n.type === 'Color' || n.type === 'Dimension'
-  || n.type === 'Quoted' || n.type === 'Any';
+  || (n.type === 'Quoted' && n.interp === null) || n.type === 'Any';
 
 /** A literal whose VALUE TYPE the parser knows (every literal except opaque `Any`).
  *  Such a literal binds BY REFERENCE across a mixin boundary (its type survives). */
@@ -1948,30 +1966,22 @@ export const rule = (
  * of it, because the extension is authored plainly and only the stem substitutes.
  */
 export const importTargetSpelling = (target: Quoted | Url | Interpolation): string => {
-  if (target.type === 'Quoted') {
-    return target.value;
-  }
   const inner = target.type === 'Url' ? target.value : target;
   if (inner.type === 'Quoted') {
-    return inner.value;
+    return inner.interp === null ? inner.value : templateLiteralText(inner.interp);
   }
   if (inner.type === 'Any') {
     return inner.src;
   }
-  if (inner.type !== 'Interpolation') {
-    return '';
-  }
+  return inner.type === 'Interpolation' ? templateLiteralText(inner) : '';
+};
+
+/** A template's literal text, every hole read as empty. */
+const templateLiteralText = (interp: Interpolation): string => {
   let bytes = '';
-  for (const part of inner.parts) {
+  for (const part of interp.parts) {
     if ('lit' in part) {
       bytes += part.lit;
-    }
-  }
-  const quote = bytes[0];
-  if (quote === '"' || quote === '\'') {
-    bytes = bytes.slice(1);
-    if (bytes.endsWith(quote)) {
-      bytes = bytes.slice(0, -1);
     }
   }
   return bytes;

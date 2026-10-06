@@ -2967,6 +2967,14 @@ function staticJessCollectionKey(source: string, entry: CssCstNode): StaticColle
     || cssNumberValue(raw) !== null
     || cssPercentageValue(raw) !== null
     || cssDimensionUnit(raw) !== null) {
+    /*
+     * ESCALATED, not a kept site: this text IS parser output — a slice of the
+     * tolerant CST key's span — classified here by scanning it, because a CST
+     * leaf carries no typed value and this path may have no AST. The fix is a
+     * value-typed CST leaf (the grammar's own classification), a language-
+     * tooling change outside this sniff audit. Diagnostics only; CSS output
+     * never reaches here.
+     */
     return { value: sniffLiteral(raw), display: raw, span };
   }
   return null;

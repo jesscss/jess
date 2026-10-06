@@ -272,6 +272,34 @@ describe('the less-compat tree shim', () => {
   }, 30000);
 
   /*
+   * A map declaration reaches a sandboxed plugin as the `tree.Anonymous` reading
+   * aid legacy helpers expect (`.value` is its CSS text), but handing it back
+   * unchanged returns the typed value it stands for: bootstrap's `theme-color`
+   * returns a map colour that `darken()` and `color-yiq` then read as a colour.
+   * It came back as raw text, so `darken(theme-color(primary), 15%)` was written
+   * out uncomputed.
+   */
+  it('hands back a map value a sandboxed @plugin returns unchanged as the typed value it carried', async () => {
+    const { dir, entry } = makeProject(
+      [
+        'functions.add(\'pick\', function (map, { value: key }) {',
+        '  const rule = map.ruleset.rules.find(r => r.name === key);',
+        '  return rule.eval(this.context).value;',
+        '});',
+        'functions.add(\'text\', function (map, { value: key }) {',
+        '  const rule = map.ruleset.rules.find(r => r.name === key);',
+        '  return `${rule.value.type}:${rule.value.value}`;',
+        '});'
+      ].join('\n'),
+      '@plugin "./p";\n@blue: #007bff;\n@colors: { primary: @blue; gap: 576px; };\n.a { b: darken(pick(@colors, primary), 15%); c: pick(@colors, gap) * 2; d: text(@colors, gap); }\n'
+    );
+    const result = await makeCompiler(dir).renderToResult(entry, { suppressWarnings: true, breakOnError: true });
+
+    expect(result.errors).toEqual([]);
+    expect(result.css).toBe('.a {\n  b: #0056b3;\n  c: 1152px;\n  d: Anonymous:576px;\n}\n');
+  }, 30000);
+
+  /*
    * A six-digit hex has no alpha pair: it is opaque, not `parseInt('', 16)`
    * (NaN). The alpha is read inside the plugin, where the engine's own handling
    * of a NaN result cannot hide it.

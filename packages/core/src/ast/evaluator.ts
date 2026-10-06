@@ -1,7 +1,7 @@
 /**
  * The `ValueEvaluator` seam implementation — boundary-clean, synchronous on the
  * ordinary path and awaitable only when an injected fn capability needs it,
- * built entirely on the value domain (materialize + operate + kind-dispatch + free
+ * built entirely on the value domain (operate + kind-dispatch + free
  * serializer): no legacy `../tree` node, no reparse, no `render()` walk, no async
  * record/replay.
  *
@@ -20,7 +20,6 @@ import { sepGlue } from './value-eval.js';
 import { groupItems, groupSeparator } from './value-list.js';
 import { operate } from './value-operate.js';
 import { compare as compareValues, compareMatch as compareMatchValues, typeCheck as typeCheckValues } from './value-guards.js';
-import { sniffLiteral } from './literal-tag.js';
 import type { FnRegistry } from './value-dispatch.js';
 import { dispatchFn, FunctionDeclined } from './value-dispatch.js';
 import { makeKeyword } from './value-factory.js';
@@ -99,7 +98,7 @@ function recoverAsyncCall(
 /**
  * The value→string hook supplied to Tier-B fns: a Quoted's INNER text (unquoted;
  * escaped `~"…"` already
- * arrives as a `Keyword` whose bytes ARE the inner text), any other value its
+ * arrives as an `Any` whose bytes ARE the inner text), any other value its
  * canonical emitted bytes. Boundary-clean (operates on the value domain only).
  */
 const stringify = (v: ValueGroup): string =>
@@ -113,8 +112,6 @@ const stringify = (v: ValueGroup): string =>
  * Core imports no fn bodies here.
  */
 export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
-  const materialize = (bytes: string): Value => sniffLiteral(bytes);
-
   const call = (
     name: string,
     args: ValueGroup,
@@ -191,5 +188,5 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     return typeCheckValues(name, values);
   };
 
-  return { materialize, operate, call, paramNames, has: name => registry.has(name), compare, compareMatch, typeCheck };
+  return { operate, call, paramNames, has: name => registry.has(name), compare, compareMatch, typeCheck };
 }

@@ -4073,6 +4073,180 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
+- Latest pass: 2026-10-06 a string is one string, and text the parser typed is
+  never re-read from its bytes (owner ruling 2026-10-06 on PINNED-DEFECTS-AUDIT
+  D22; ledger V3 and C2). Every string — escaped or not, interpolating or not,
+  in Less, `.jess` and SCSS — is one `Quoted`: `interp: Interpolation | null`
+  holds the content template (the quotes stay on the node), and `src` / `value`
+  are the authored spelling and content. An escaped string lands as the same
+  `Any` (with its quote) in every typed position, a plain one as the same quoted
+  string. The evaluator's byte sniff is gone from every parser-produced input:
+  `ValueEvaluator.materialize` and `materializeAny` are deleted, an opaque `Any`
+  leaf is opaque bytes (V3), and an eager mixin-argument snapshot carries the
+  value it was evaluated to (`snapshotValues`) — so `@d: ~"0.5"; .m(@d)` stays
+  `percentage(0.5)`. Fixes from review of the first two commits: a prelude's
+  escaped string is a protected part (spliced quotes no longer corrupt it;
+  `@import (css) ~"a.css"` writes `a.css`), a comma-grouped selector string
+  groups the same interpolating or not, a merged `+:` accessor is its members'
+  typed values (`length` 2 for two members, as lessc), the `@plugin` sandbox
+  hands back a map value it returns unchanged as the typed value it carried.
+- Architecture surface: `nodes.ts` (`Quoted.interp`; `escapedTemplate`
+  deleted; `importTargetSpelling` reads a template's literal parts); the Less
+  `Quoted` / `EscapedQuoted` / `LiteralQuoted` reducers (`quotedFromChildren`),
+  the jess `Quoted` / `ExpressionQuoted` reducers (`quotedFromChildren` over the
+  source-fact holes `ExpressionDollarBrace` / `ExpressionInterpolation`), the
+  SCSS `Quoted` (`LiteralQuoted` | `InterpolatedQuoted`; the latter reads the
+  parse input, now in SCSS parse state, through `authoredSource`) and
+  `ScssParseError` (an expected set names each token once); `css-grammar-helpers.ts` (`attributeTemplate`, `authoredSource`);
+  `serialize.ts` (`evalTyped` `Quoted` / `Interpolation` / `Lookup` `prop` /
+  `Any`, `evalValue` `Quoted` / `Url`, the query-prelude `Quoted`, the CSS
+  import writer, `refGroupInterp`, `mergedPropertyValue`, `quotedContentSync`,
+  `eagerSnapshot` / `carrySnapshot` / `eagerSource(s)`, the typed spread,
+  `force`, `looseMemberLookup`, `diagnosticMessage`); `mixin-dispatch.ts`
+  (`selectDefinitions` takes the untracked eager adapter); `emit-jess.ts`;
+  `traversal.ts`; `literal-tag.ts`; the `@plugin` sandbox map facade.
+- Separation/duplication: one string node and one reducer per dialect for
+  static and interpolating, escaped and plain strings. The Less string body is
+  written once per quote character (`doubleQuotedContent` /
+  `singleQuotedContent`, shared by `Quoted` and `EscapedQuoted`); the jess
+  interpolating body once (shared by the value and expression families); the
+  SCSS static arms once (`Quoted` is `LiteralQuoted` | `InterpolatedQuoted`, no
+  longer a copy of `LiteralQuoted`'s arms plus the template arms). The eager
+  snapshot is one implementation (`eagerSnapshot`), the compressed route no
+  longer a parallel one; `mixin-dispatch`'s escaped-string copy is deleted.
+- Cumulative node weight: one field on `Quoted`, set by its one factory, so
+  every `Quoted` has one shape (`type,src,value,quote,escaped,interp`); the
+  shape gate's corpus now holds Less and `.jess` templates and catches a split
+  (control: a reordered template shape fails it). No new node kind; a string
+  template is one `Quoted` around its template instead of a bare `Interpolation`.
+- New traversal: [loop/traversal] `quotedFromChildren` (Less, jess) reads a
+  string's children once at parse time; the SCSS reducer's part loop is the
+  existing one; `mergedPropertyValue` walks a merged property's members once, as
+  the byte join does; `templateLiteralText` walks a template's parts for an
+  import extension check only; the emit-jess gap check walks a template's parts
+  once. No new walk on the render path.
+- New node/materialization: [materialized array/object] the typed merged
+  property builds one list of its members (`eval-to-immediate-value`, consumed
+  by the typed position); `attributeTemplate` builds one template with the quote
+  literals at parse time (SCSS attribute selectors only); the jess reducer
+  builds a template's parts with `flatMap` once at parse time. [side map/set]
+  `snapshotValues` is one `WeakMap` per render entry (`semantic placement
+  state`): it replaces the sniff of every typed snapshot read — 745 sniffs per
+  `benchmark.less` render to 0.
+- Render path: still stringify-only. A typed snapshot read is a `WeakMap` get
+  instead of a regex/hex/number scan; an eager argument is evaluated once,
+  typed, and spelled from that value (the compressed route's existing shape).
+- Helper/API surface: added `quotedFromChildren` (Less, jess — replaces two
+  reducers each), `authoredSource` (shared with general-enclosed),
+  `attributeTemplate`, `templateLiteralText`, `mergedPropertyValue`,
+  `quotedContentSync`, `carrySnapshot`; deleted `escapedTemplate`,
+  `materializeAny`, `ValueEvaluator.materialize`, `resolveEagerBytes`,
+  `quotedInterpolationFromChildren`, `escapedInterpolationFromChildren`,
+  `quotedExpressionParser`, the jess `ExpressionQuoted` escaped branch, the
+  quote-stripping branch of `importSpecifier`, `diagnosticMessage`'s
+  quote-wrapped scan, the evaluator's quote-delimiter arm, and
+  `expandSpreadArgs`' unused resolver.
+- Metadata mutations: none. The SCSS parse passes `state: { source }` (as CSS
+  does); only `InterpolatedQuoted` reads it, so a static string pays nothing
+  (reading it in one combined reducer cost ~1% of SCSS parse instructions, the
+  per-match state copy; measured and rejected).
+- Review-flagged diff tokens: [loop/traversal] as above; [array helper]
+  `children.slice` in the reducers (the existing reducer shape), the template
+  `flatMap` / `map(...).join('')` (parse time / emit-jess), `merged.map` (the
+  member values); [array spread/materialization] the attribute template's
+  `...child.interp.parts`, the existing `{ ...e, … }` frames; [side map/set]
+  `snapshotValues` (one `WeakMap` per render), the sandbox `facadeValues`
+  `WeakMap` (one per worker); [materialized array/object] the merged-property
+  item array and run, the `state: { source }` parse state; [node
+  construction] the two `new WeakMap()` that create `snapshotValues` (one per
+  render entry) and the `new TypeError` of `authoredSource` and the Less
+  `staticText` / `@use` checks (recognition defects, not output); [routine
+  error control] `authoredSource` throws when a run has no input in its state
+  (a wiring defect, as general-enclosed already does).
+- Behavior evidence: `packages/core/src/ast/__tests__/escaped-string-one-shape.test.ts`
+  (23 tests; 8 red on 2af229534 and 18 red on def29ef87, all green here;
+  disabling the `snapshotValues` read turns 3 red); the Less/jess/SCSS parser
+  shape tests, the Less `public-parse` replay / static-slot / every-slot tests,
+  the jess `discovered-constructs` replay tests; the sandbox facade test
+  (`plugin-diagnostics.test.ts`, red on 2af229534); the compat forwarded
+  escaped-string test. Core 3,407 passed / 10 skipped / 2 todo.
+- Build evidence: serial core, parser-shared and four-parser builds;
+  `check:macro`, `verify:compose-integrity`, `verify:shape-stability`,
+  `verify:types` (25/25) and `check:guardrails` pass.
+- Boundary evidence: the Less byte-identity oracle against def29ef87 leaves the
+  CST byte-identical (aggregate `1e282ab4c77b9a66…`, also at 2af229534) and
+  moves the AST in 329 of 827 entries (rejects 113 → 113); folding the one
+  `Quoted` back to the old shapes makes every one of the 539 Less corpus files
+  parse-identical to def29ef87. Corpus renders against def29ef87: Less (214
+  files × nested/flat × compress) changes only `functions.less`
+  `length($list-1)` (proposal), compressed `media.less` (an escaped prelude is
+  an opaque run, like its literal) and the sandboxed `bootstrap-less-port`
+  render (map colours now compute, as the `bootstrap4` golden and lessc 4.x);
+  SCSS (2,404 sass-spec inputs × 2) and `.jess` (22 files × 4) are unchanged.
+- Evidence: behavior as above; no speed claim. Counts: typed-snapshot byte
+  sniffs 745 → 0 per `benchmark.less` render and 101 → 0 over the 136
+  tests-unit renders; Less parse, marginal instructions retired per
+  `benchmark.less` AST parse (median of 3, interleaved): 571.70M (def29ef87),
+  572.23M (2af229534), 571.45M (here); SCSS, per pass over 400 sass-spec
+  inputs: 197.34M / 197.72M / 198.01M; `.jess`, per pass over the 22-file
+  corpus: 31.51M / 31.52M / 31.55M — all inside the run-to-run spread.
+  `benchmark.less` render (parse + eval + emit), marginal instructions per
+  render, median of 5: 1.2496G (2af229534) → 1.2164G (here).
+- Verdict: accepted as a semantic change with `performanceClaim: none`.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Collection-spread-computed-key-overlay-and-iteration",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "module-callable-explicit-reference-and-css-call-separation",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "A string is one Quoted node whether or not it interpolates or is escaped (owner ruling 2026-10-06, V3/C2), and the evaluator no longer types parser-produced text by sniffing it: an opaque Any leaf is opaque bytes, templates and property accessors are typed by what the parser built, and an eager mixin-argument snapshot carries the value it was evaluated to. Semantic output work with no cost-cutting or neutrality claim.",
+    "dangerTokensJustification": "One field on Quoted set by its one factory keeps the node monomorphic; the snapshot's typed value rides in one per-render WeakMap that replaces a regex sniff on every typed read, the eager argument is evaluated once typed (the compressed route's existing shape), and the typed lanes reuse the frames and joins the byte lane already builds; no render-path walk is added.",
+    "behaviorEvidence": "packages/core/src/ast/__tests__/escaped-string-one-shape.test.ts, the Less/jess/SCSS parser shape tests, the sandbox facade test and the compat forwarded-escape test pass; the core suite and the all-Less lane pass with the functions.less edit registered.",
+    "buildEvidence": "Serial core, parser-shared and four-parser builds pass; check:macro, verify:compose-integrity and verify:types pass.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 55.19,
+      "outputSha256": "11aca08c8c25ed09c5eb2620cc010baa7f5f2e322d5977409a2767341dbcf1e8",
+      "outputBytes": 123571
+    }
+  },
+  {
+    "id": "ast-evaluator-function-call-boundary",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "cases": ["unresolved-optional-function-call", "registered-sync-call-failure", "registered-async-call-failure"],
+    "why": "The evaluator loses its materialize member, whose only body was the byte sniff of a computed string; the call path, registry lookup, optional-call bytes and synchronous/asynchronous recovery are untouched, so the boundary's three cases behave as before.",
+    "dangerTokensJustification": "The change only deletes a closure and its import from buildEvaluator; it adds no allocation, Error construction, recovery path or lookup to the call path, and async recovery still attaches only to a genuine thenable.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 55.19,
+      "outputSha256": "11aca08c8c25ed09c5eb2620cc010baa7f5f2e322d5977409a2767341dbcf1e8",
+      "outputBytes": 123571
+    }
+  }
+]
+```
+
 - Latest pass: 2026-10-05 extend follow-ups (the `lane/v5-extend-followups`
   integration). Owner rulings 2026-10-05 (O10 and X3 amended, X7 amended) and
   orchestrator judgments J11-J15 under the owner's delegation: an `all` match of

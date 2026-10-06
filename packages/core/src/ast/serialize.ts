@@ -47,6 +47,8 @@ import {
   anonymousMixin,
   isLiteralNode,
   isTypedLiteral,
+  isStaticQuoted,
+  quoted,
   isValueBlock,
   valueBlockBody,
   compoundCanonical,
@@ -169,11 +171,11 @@ import {
 import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
 import { defineFunction, FunctionDeclined } from './value-dispatch.js';
 import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
-import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny, sniffLiteral } from './literal-tag.js'; // [value node model]
+import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
 import { UnitArithmeticError, calcInner, preservedUnitClashes, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
-import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeUrlValue, NULL } from './value-factory.js'; // [calc]
+import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
@@ -1101,6 +1103,7 @@ function moduleFunctionResult(value: unknown, name: string): ValueGroup {
     return makeDimension(value);
   }
   if (typeof value === 'string') {
+    // A JS module function's plain string never passed through a parser; its text is its only fact.
     return sniffLiteral(value);
   }
   if (typeof value === 'boolean') {
@@ -1339,11 +1342,10 @@ function activateBodyDependencies(
       if (!load) {
         continue;
       }
-      const specifier = statement.target.type === 'Quoted'
-        ? statement.target.value
-        : statement.target.type === 'Url' && statement.target.value.type === 'Quoted'
-          ? statement.target.value.value
-          : evalBytesSync(statement.target, frame, e);
+      const targetString = statement.target.type === 'Url' ? statement.target.value : statement.target;
+      const specifier = targetString.type === 'Quoted'
+        ? quotedContentSync(targetString, frame, e)
+        : evalBytesSync(statement.target, frame, e);
       const options = statement.options === null ? null : evalBytesSync(statement.options, frame, e);
       const deprecation = Deprecation.fromId('less-plugin') ?? Deprecation.userAuthored;
       e.context?.warnAtNode(
@@ -3275,6 +3277,8 @@ function callValueHasLookup<C>(value: CallValue, test: (node: Lookup, context: C
       return callValueHasLookup(value.value, test, context);
     case 'Interpolation':
       return value.parts.some(part => 'ref' in part && callValueHasLookup(part.ref, test, context));
+    case 'Quoted':
+      return value.interp !== null && callValueHasLookup(value.interp, test, context);
     case 'Reference':
       return callValueHasLookup(value.base, test, context)
         || value.steps.some((step) => {
@@ -3529,6 +3533,77 @@ function recordPropertyDeclaration(scope: Frame, node: Declaration, frame: Frame
   const fact = { node, frame };
   timeline.push(fact);
   return fact;
+}
+
+/**
+ * A `$name` property accessor resolves the winning declaration. Its
+ * declaration-level `!important` is carried through the caller's existing
+ * importance sink, so `$color` of `color: red !important` yields
+ * `red !important` only at a declaration emission site. A miss is a Less
+ * semantic error. `functionMode` applies only after a registered function has
+ * actually been invoked and failed.
+ */
+function resolvePropAccessor(node: Lookup, frame: Frame | null, e: EvalCtx): NonNullable<ReturnType<typeof resolvePropRef>> {
+  const propName = typeof node.name === 'string' ? node.name : '';
+  const hit = resolvePropRef(frame, propName, e);
+  if (!hit) {
+    if (hasExcludedPropRef(frame, propName, e)) {
+      recursiveReference(node, `$${propName}`, 'Property', e);
+    }
+    unresolvedSymbol(node, `$${propName}`, e);
+  }
+  if (hit.important) {
+    if (e.importantSink) {
+      e.importantSink.hit = true;
+    } else if (e.mergeImportant !== undefined) {
+      e.mergeImportant = true;
+    }
+  }
+  return hit;
+}
+
+/** The bytes of a merged (`+:` / `+_:`) property: its members joined by their merge separators. */
+function mergedPropertyBytes(merged: readonly PropertyDeclarationFact[], e: EvalCtx): MaybePromise<EvalValue> {
+  const values = merged.map(member =>
+    withExcluded(e, member.node.value, () => evalValueSlot(member.node.value, member.frame, e)));
+  return combineAll(values, (resolved) => {
+    let bytes = emitValueC(resolved[0]!, e);
+    for (let i = 1; i < resolved.length; i++) {
+      const separator = merged[i]!.node.merge === ',' ? sepGlue(',', e.compress === true) : ' ';
+      bytes += separator + emitValueC(resolved[i]!, e);
+    }
+    return literal(bytes);
+  });
+}
+
+/**
+ * The typed value of a merged (`+:` / `+_:`) property: its members' own parsed
+ * values. One member is its value; several are listed — a `+:` member opens a
+ * comma item, a `+_:` member joins the current space run — the structure
+ * {@link mergedPropertyBytes} spells.
+ */
+function mergedPropertyValue(
+  merged: readonly PropertyDeclarationFact[],
+  e: EvalCtx,
+  projectMixinValues: boolean,
+  argument: ArgumentMode
+): MaybePromise<ValueGroup> {
+  const values = merged.map(member => withExcluded(e, member.node.value,
+    () => evalTypedSlot(member.node.value, member.frame, e, projectMixinValues, argument)));
+  return combineAll(values, (resolved) => {
+    const items: ValueGroup[] = [];
+    let run: ValueGroup[] = [resolved[0]!];
+    for (let i = 1; i < resolved.length; i++) {
+      if (merged[i]!.node.merge === ',') {
+        items.push(run.length === 1 ? run[0]! : run);
+        run = [resolved[i]!];
+      } else {
+        run.push(resolved[i]!);
+      }
+    }
+    items.push(run.length === 1 ? run[0]! : run);
+    return items.length === 1 ? items[0]! : makeList(items, ',');
+  });
 }
 
 function resolvePropRef(
@@ -3975,18 +4050,28 @@ interface EvalCtx {
    */
   compressedBindings?: WeakMap<Binding, ValueGroup>;
 
+  /**
+   * The typed value a scalar eager argument snapshot was evaluated to
+   * ({@link eagerSnapshot}). A typed position reads it instead of re-reading
+   * the snapshot's bytes, so an argument keeps the type the parser gave it
+   * across the mixin boundary. Created with the render, so every derived
+   * context shares it.
+   */
+  snapshotValues?: WeakMap<Binding, ValueGroup>;
+
 }
 
-/** Force an internal eval value to a typed value node/group. A computed STRING carries no parse
- * tag → the evaluator sniffs (untagged fallback); an already-typed value passes through. */
-function force(e: EvalCtx, v: EvalValue): ValueGroup {
-  if (!isLiteral(v)) {
-    return v;
-  }
-  if (!e.ev) {
-    return { type: 'Keyword', text: v, bytes: v };
-  }
-  return e.ev.materialize(v);
+/**
+ * Force an internal eval value to a typed value node/group; an already-typed
+ * value passes through. A bare string here is bytes something was KEPT as —
+ * a preserved call or computation, a joined property value, an unresolved
+ * reference's spelling — so it is a keyword of those bytes. It is never re-read
+ * as a number, colour or boolean: whatever the parser typed was typed through
+ * {@link evalTyped}, and reading the bytes again would re-derive it (ledger V3;
+ * SEMANTIC-INVARIANTS P0).
+ */
+function force(v: EvalValue): ValueGroup {
+  return isLiteral(v) ? makeKeyword(v) : v;
 }
 
 function requireScalarValue(value: ValueGroup, reason: string): Value {
@@ -3999,9 +4084,11 @@ function requireScalarValue(value: ValueGroup, reason: string): Value {
 /**
  * Materialize a value-literal LEAF node to a typed value node, driven by the node
  * `type` (task #44 — no side-car tag). Each typed leaf builds from its own fields
- * (`Color`/`Dimension`/`Quoted`), never re-classifying `src`; the opaque `Any` leaf
- * (alone) sniffs its bytes. When no evaluator is injected every leaf degrades to a
- * bare keyword of its `src` (the former `forceLiteral` no-`ev` behavior).
+ * (`Color`/`Dimension`/`Quoted`), never re-classifying `src`; the `Any` leaf is
+ * opaque bytes (ledger V3) — an eager mixin-argument snapshot's typed value is
+ * read before this, from `snapshotValues`. When no evaluator is injected every
+ * leaf degrades to a bare keyword of its `src` (the former `forceLiteral` no-`ev`
+ * behavior).
  */
 function materializeNode(node: Keyword | Color | Dimension | Quoted | Any | Comment, e: EvalCtx): Value {
   const src = node.type === 'Comment' ? node.text : node.src;
@@ -4026,7 +4113,7 @@ function materializeNode(node: Keyword | Color | Dimension | Quoted | Any | Comm
     case 'Color': return colorFromSrc(node.src);
     case 'Dimension': return dimensionFromFields(node.number, node.unit, node.src);
     case 'Quoted': return quotedFromFields(node.value, node.quote, node.escaped, node.src);
-    case 'Any': return materializeAny(node.src);
+    case 'Any': return makeAny(node.src);
     case 'Comment': return { type: 'Keyword', text: node.text, bytes: node.text };
   }
 }
@@ -4359,7 +4446,7 @@ function evalTyped(
        */
       return argument === ARG_INPUT || argument === ARG_WRITTEN
         ? writtenRulesetArgument(node, frame, e)
-        : mapMaybe(evalValue(node, frame, e), v => force(e, v));
+        : mapMaybe(evalValue(node, frame, e), v => force(v));
 
     /* An AUTHORED `null` — provenance explicit, so `null` and an unbound value
      * stay distinguishable downstream while remaining the same value. */
@@ -4373,10 +4460,12 @@ function evalTyped(
     case 'Any':
       /*
        * Eager mixin binding stores evaluated bytes in the canonical Any
-       * snapshot. URL-bearing activations keep the typed value beside that exact
-       * identity for OPEN V15. Other retained grouping is exposed only by the
-       * function/plugin argument projections, so guards and declarations retain
-       * their established eager-byte semantics.
+       * snapshot, with a scalar's typed value beside it (`snapshotValues`), so
+       * the argument keeps the type it was evaluated to. URL-bearing activations
+       * keep the typed value beside that exact identity for OPEN V15. Other
+       * retained grouping is exposed only by the function/plugin argument
+       * projections, so guards and declarations retain their established
+       * eager-byte semantics.
        */
       if (projectMixinValues) {
         const carried = frame?.mixinValueBindings?.get(node)
@@ -4386,7 +4475,8 @@ function evalTyped(
           return carried;
         }
       }
-      return frame?.mixinUrlBindings?.get(node)
+      return e.snapshotValues?.get(node)
+        ?? frame?.mixinUrlBindings?.get(node)
         ?? e.mixinUrlBindings?.get(node)
         ?? materializeNode(node, e);
     case 'Quoted':
@@ -4402,7 +4492,17 @@ function evalTyped(
        * with a number or a colour. Lowering `~"4"` to a Keyword made `5 > ~"4"`
        * and `1px > red` the same pair, and they are not. The quote rides along
        * as provenance only, for a legacy plugin's `tree.Quoted`.
+       *
+       * A string that interpolates is the same string (ledger V3, owner
+       * 2026-10-06): its spliced content lands as the same `Any` when escaped,
+       * the same quoted string otherwise — never re-read as a number, colour or
+       * keyword.
        */
+      if (node.interp !== null) {
+        return mapMaybe(evalInterp(node.interp, frame, e), content => !isLiteral(content)
+          ? content
+          : node.escaped ? makeAny(content, node.quote) : makeQuoted(content, node.quote, false));
+      }
       return node.escaped ? makeAny(node.value, node.quote) : materializeNode(node, e);
     case 'Url':
       /*
@@ -4413,12 +4513,19 @@ function evalTyped(
       return mapMaybe(evalValue(node, frame, e), v => makeUrlValue(emitValue(v)));
     case 'Lookup':
       /*
-       * Only a VAR lookup resolves here. A `prop`/`entry` lookup falls through
-       * to the default byte path, exactly as `PropertyReference` and
-       * `DeclarationReference` did before they shared this kind.
+       * A `$name` property accessor is the declaration's own value, typed as the
+       * parser typed it — the same reading a variable gets — not its joined
+       * bytes read back; a merged (`+:`) property is its members' typed values.
+       * An `entry` lookup keeps its authored spelling.
        */
+      if (node.kind === 'prop') {
+        const hit = resolvePropAccessor(node, frame, e);
+        return hit.merged
+          ? mergedPropertyValue(hit.merged, e, projectMixinValues, argument)
+          : withExcluded(e, hit.value, () => evalTypedSlot(hit.value, hit.frame, e, projectMixinValues, argument));
+      }
       if (node.kind !== 'var') {
-        return mapMaybe(evalValue(node, frame, e), v => force(e, v));
+        return mapMaybe(evalValue(node, frame, e), v => force(v));
       }
       return mapMaybe(lookupName(node, frame, e), (nm) => {
         const hit = resolveVarRef(frame, nm, node.scope, e);
@@ -4426,18 +4533,18 @@ function evalTyped(
           if (hasExcludedVarRef(frame, nm, node.scope, e)) {
             recursiveReference(node, `@${nm}`, 'Variable', e);
           }
-          return force(e, unresolvedRef(node, nm, e));
+          return force(unresolvedRef(node, nm, e));
         }
         const bound = hit.value;
         return hit.evaluated ?? withExcluded(e, bound, () =>
           isMixinCallValue(bound)
-            ? force(e, literal(''))
+            ? force(literal(''))
             : evalTypedSlot(bound, hit.frame, e, projectMixinValues, argument));
       });
     case 'Reference': {
       const moduleCall = evalModuleReferenceCall(node, frame, e);
       if (moduleCall !== undefined) {
-        return mapMaybe(moduleCall, value => force(e, value));
+        return mapMaybe(moduleCall, value => force(value));
       }
 
       /*
@@ -4447,10 +4554,10 @@ function evalTyped(
        */
       const resolved = resolveReferenceResult(node, frame, e);
       if (resolved === null) {
-        return force(e, unresolvedReference(node, frame, e));
+        return force(unresolvedReference(node, frame, e));
       }
       return isMixinCallValue(resolved.value)
-        ? force(e, literal(node.raw))
+        ? force(literal(node.raw))
         : resolved.evaluated
           ?? evalTypedSlot(resolved.value, resolved.frame, e, projectMixinValues);
     }
@@ -4506,7 +4613,7 @@ function evalTyped(
       return evalCollection(node, frame, e, projectMixinValues);
     case 'NestedPropertyBlock':
       return node.base === null
-        ? force(e, literal(''))
+        ? force(literal(''))
         : evalTypedSlot(node.base, frame, e, projectMixinValues);
     case 'List': {
       /*
@@ -4551,13 +4658,13 @@ function evalTyped(
        * result, not its authored bytes. An argument of a call written out as-is
        * feeds no callable, so it keeps that policy (ledger F11).
        */
-      return mapMaybe(evalCall(node, frame, e, argument !== ARG_WRITTEN), v => force(e, v));
+      return mapMaybe(evalCall(node, frame, e, argument !== ARG_WRITTEN), v => force(v));
     case 'Condition':
       return mapMaybe(withUnitErrors(node, e, () => evalGuard(node.guard, guardDeps(frame, e))), makeBool);
     case 'IfValue': {
       const unlowered = unloweredCall(node);
       if (unlowered !== null) {
-        return mapMaybe(evalCall(unlowered, frame, e, true), v => force(e, v));
+        return mapMaybe(evalCall(unlowered, frame, e, true), v => force(v));
       }
 
       /* The taken arm is consumed TYPED — `if(@c, 1px, 2px) * 2` operates on the
@@ -4571,14 +4678,49 @@ function evalTyped(
        * Ranges are consumed structurally by `forItems`; a value-position use
        * retains authored range syntax rather than inventing a flattened list.
        */
-      return mapMaybe(evalValue(node, frame, e), v => force(e, v));
+      return mapMaybe(evalValue(node, frame, e), v => force(v));
+    case 'Expression': {
+      /*
+       * A computation boundary opens the math context and hands on its value as
+       * the parser typed it — `$(#fff)` is a colour, `$("a")` a string — the same
+       * frame `evalValue` opens, without folding the value to bytes first.
+       */
+      const unlowered = unloweredCall(node);
+      if (unlowered !== null) {
+        return mapMaybe(evalCall(unlowered, frame, e, true), v => force(v));
+      }
+      if (!e.ev) {
+        return mapMaybe(evalValue(node, frame, e), v => force(v));
+      }
+      return evalTypedSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true }, projectMixinValues, argument);
+    }
+    case 'Interpolation': {
+      /*
+       * A template in a typed position is typed by what the parser built, never
+       * by re-reading the bytes it splices to. A string is never one: every
+       * quoted template is a `Quoted` (see above).
+       * - `.jess` `$( … )` (a lone `Expression` ref) is the computation's own
+       *   value — unquoted, as the splice is, so a string result is opaque text
+       *   (ledger V3);
+       * - any other template (Less `@{n}px`, an interpolated custom-property
+       *   value) is opaque bytes, exactly as its `.jess` spelling `~"…"` is (V3).
+       */
+      const first = node.parts[0];
+      if (node.parts.length === 1 && first !== undefined && 'ref' in first && first.ref.type === 'Expression') {
+        const ref = first.ref;
+        return mapMaybe(evalTyped(ref, frame, e), (value) => {
+          validateValueGroupUnits(value, e.modes, ref, e, true);
+          return first.unquote && !isValueGroupArray(value) && value.type === 'Quoted' ? makeAny(value.value) : value;
+        });
+      }
+      return mapMaybe(evalInterp(node, frame, e), bytes => isLiteral(bytes) ? makeAny(bytes) : bytes);
+    }
     default:
       /*
-       * Computed / joined shapes (Operation, FunctionCall, Sequence,
-       * Interpolation, VarIndirect, Reference, …): fold to a Value then force. A
-       * computed string has no parse tag → the evaluator sniffs.
+       * Computed / joined shapes (Operation, Expression, …): fold to a Value,
+       * then force the bytes a preserved computation was kept as (see `force`).
        */
-      return mapMaybe(evalValue(node, frame, e), v => force(e, v));
+      return mapMaybe(evalValue(node, frame, e), v => force(v));
   }
 }
 
@@ -4738,15 +4880,24 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         ? dimensionFromFields(node.number, node.unit, node.src)
         : literal(e.compress === true ? compressDimensionBytes(node.src) : node.src);
     case 'Quoted':
+      if (node.interp !== null) {
+        return mapMaybe(evalInterp(node.interp, frame, e), content => isLiteral(content) && !node.escaped
+          ? literal(`${node.quote}${content}${node.quote}`)
+          : content);
+      }
       return literal(node.escaped ? node.value : node.src);
-    case 'Url':
-      return mapMaybe(evalValue(node.value, frame, e), (value) => {
-        /*
-         * Quoting is syntax, not a URL-path inference problem. Preserve it
-         * structurally while giving the owning plugin only the target bytes.
-         */
-        if (node.value.type === 'Quoted') {
-          const target = e.context?.transformUrl(node.value.value, true) ?? node.value.value;
+    case 'Url': {
+      /*
+       * Quoting is syntax, not a URL-path inference problem. Preserve it
+       * structurally while giving the owning plugin only the target bytes.
+       */
+      const body = node.value;
+      if (body.type === 'Quoted') {
+        return mapMaybe(body.interp === null ? body.value : evalInterp(body.interp, frame, e), (content) => {
+          if (!isLiteral(content)) {
+            return content;
+          }
+          const target = e.context?.transformUrl(content, true) ?? content;
 
           /*
            * Less `~"…"` / `~'…'` is an escaped string value: inside a URL it
@@ -4754,16 +4905,17 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
            * Keep that distinction on the existing typed Quoted node rather
            * than reconstructing or classifying its source bytes.
            */
-          if (node.value.escaped) {
+          if (body.escaped) {
             return literal(`url(${target})`);
           }
-          return literal(`url(${node.value.quote}${target}${node.value.quote})`);
-        }
-        if (node.value.type === 'Any') {
-          const target = e.context?.transformUrl(node.value.src, false) ?? node.value.src;
-          return literal(`url(${target})`);
-        }
-
+          return literal(`url(${body.quote}${target}${body.quote})`);
+        });
+      }
+      if (body.type === 'Any') {
+        const target = e.context?.transformUrl(body.src, false) ?? body.src;
+        return literal(`url(${target})`);
+      }
+      return mapMaybe(evalValue(body, frame, e), (value) => {
         /*
          * Dynamic URL content — `url(@var)` / any non-literal — resolves at eval
          * time to fully-emitted bytes, so the authored node is neither Quoted nor
@@ -4783,6 +4935,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         const target = e.context?.transformUrl(raw, false) ?? raw;
         return literal(`url(${target})`);
       });
+    }
     case 'Lookup': {
       /*
        * All four old reference kinds land here. `kind` is the discriminator that
@@ -4810,42 +4963,10 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         });
       }
 
-      /*
-       * A `$name` property accessor resolves the winning declaration and folds
-       * its value. Its declaration-level `!important` is carried through the
-       * caller's existing importance sink, so `$color` of `color: red !important`
-       * yields `red !important` only at a declaration emission site.
-       * A miss is a Less semantic error. `functionMode` applies only after a
-       * registered function has actually been invoked and failed.
-       */
-      const propName = typeof node.name === 'string' ? node.name : '';
-      const hit = resolvePropRef(frame, propName, e);
-      if (!hit) {
-        if (hasExcludedPropRef(frame, propName, e)) {
-          recursiveReference(node, `$${propName}`, 'Property', e);
-        }
-        unresolvedSymbol(node, `$${propName}`, e);
-      }
-      if (hit.important) {
-        if (e.importantSink) {
-          e.importantSink.hit = true;
-        } else if (e.mergeImportant !== undefined) {
-          e.mergeImportant = true;
-        }
-      }
-      if (hit.merged) {
-        const values = hit.merged.map(member =>
-          withExcluded(e, member.node.value, () => evalValueSlot(member.node.value, member.frame, e)));
-        return combineAll(values, (resolved) => {
-          let bytes = emitValueC(resolved[0]!, e);
-          for (let i = 1; i < resolved.length; i++) {
-            const separator = hit.merged![i]!.node.merge === ',' ? sepGlue(',', e.compress === true) : ' ';
-            bytes += separator + emitValueC(resolved[i]!, e);
-          }
-          return literal(bytes);
-        });
-      }
-      return withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
+      const hit = resolvePropAccessor(node, frame, e);
+      return hit.merged
+        ? mergedPropertyBytes(hit.merged, e)
+        : withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
     }
     case 'Important':
       /*
@@ -5262,7 +5383,7 @@ function evalCollectionEntries(
       if (isThenable(key)) {
         return key.then((resolvedKey) => {
           const value = isMixinCallValue(valueSlot)
-            ? force(e, literal(''))
+            ? force(literal(''))
             : projectMixinValues && node.type === 'AnonymousMixin'
               && !isValueSlotArray(valueSlot) && valueSlot.type === 'AnonymousMixin'
               ? evalCollection(valueSlot, frame, e, true)
@@ -5274,7 +5395,7 @@ function evalCollectionEntries(
         });
       }
       const value = isMixinCallValue(valueSlot)
-        ? force(e, literal(''))
+        ? force(literal(''))
         : projectMixinValues && node.type === 'AnonymousMixin'
           && !isValueSlotArray(valueSlot) && valueSlot.type === 'AnonymousMixin'
           ? evalCollection(valueSlot, frame, e, true)
@@ -5602,18 +5723,21 @@ function looseMemberLookup(
   e: EvalCtx,
   valueKey?: ValueGroup
 ): DeclEntry | undefined {
+  /*
+   * The key is the caller's typed key; a member NAME is an identifier the
+   * parser read as a name. Neither is re-read from its bytes.
+   */
+  const wanted = valueKey ?? makeKeyword(key);
   if (map.valueEntries !== null) {
-    const wanted = valueKey ?? (e.ev?.materialize(key) ?? makeKeyword(key));
     return map.valueEntries.get(wanted);
   }
   const ev = e.ev;
   if (!ev) {
     return undefined;
   }
-  const wanted = ev.materialize(key);
   const scan = (candidates: Map<string, DeclEntry>): DeclEntry | undefined => {
     for (const [name, entry] of candidates) {
-      if (name !== key && ev.compare('=', ev.materialize(name), wanted, e.modes)) {
+      if (name !== key && ev.compare('=', makeKeyword(name), wanted, e.modes)) {
         return entry;
       }
     }
@@ -6031,7 +6155,7 @@ function invokeValueLambda(
     preparedArgs,
     resolveCaller,
     resolveDefault,
-    compressedEagerSources(callerFrame, e)
+    eagerSources(callerFrame, e)
   );
   if (isThenable(boundArgs)) {
     /*
@@ -6955,10 +7079,25 @@ function snapshotPreparedMixinValue(
     (e.mixinValueBindings ??= new Map()).set(bound, value);
     retain?.(bound);
   }
+  carrySnapshot(bound, value, e);
+  return bound;
+}
+
+/**
+ * Keep the typed value a snapshot was evaluated to beside it, so nothing reads
+ * the snapshot's bytes back. One value — a number, a colour, an escaped string,
+ * a url — is what a typed position reads (`snapshotValues`); a structured one
+ * (a list, a block, a map) reads there as its opaque bytes and reaches a
+ * function or plugin through `mixinValueBindings`. Under compress the value a
+ * declaration folds rides too ({@link carryCompressed}).
+ */
+function carrySnapshot(bound: Any, value: ValueGroup, e: EvalCtx): void {
+  if (!isValueGroupArray(value) && value.type !== 'List' && value.type !== 'Block' && value.type !== 'Collection') {
+    e.snapshotValues?.set(bound, value);
+  }
   if (e.compressedBindings !== undefined) {
     carryCompressed(bound, value, e);
   }
-  return bound;
 }
 
 /**
@@ -6974,42 +7113,42 @@ function carryCompressed(bound: Any, value: ValueGroup, e: EvalCtx): void {
 
 /**
  * The eager snapshot of one argument evaluated in `frame`: Less binds an
- * argument as its evaluated bytes. A binding is never re-spelled by the output
- * policy, so the bytes are the value as written and a splice of the parameter
+ * argument as its evaluated value. A binding is never re-spelled by the output
+ * policy, so its bytes are the value as written and a splice of the parameter
  * writes them unchanged (ledger O3: interpolated text is never re-spelled).
  *
- * Under compress the argument is evaluated ONCE, typed and spelled as written,
- * and the snapshot carries that value, which a declaration folds by its type
- * ({@link carryCompressed}). Evaluating it a second time for the folded bytes
- * would run its functions twice.
+ * The argument is evaluated ONCE, typed, and spelled as written. A scalar's
+ * typed value rides beside the snapshot (EvalCtx.snapshotValues), so a typed
+ * position reads the type the parser gave it — an escaped string stays opaque
+ * (ledger V3), a number stays a number — instead of re-reading the bytes. Under
+ * compress the snapshot also carries the value a declaration folds by its type
+ * ({@link carryCompressed}). Evaluating it a second time would run its functions
+ * twice.
  */
 function eagerSnapshot(source: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<Any> {
-  if (e.compressedBindings === undefined) {
-    return mapMaybe(evalBytes(source, frame, e), any);
-  }
   return mapMaybe(evalTypedSlot(source, frame, spliceCtx(e), true), (value) => {
     validateValueGroupUnits(value, e.modes, isValueSlotArray(source) ? (source[0] ?? {}) : source, e, false);
     const bound = any(emitValue(value));
-    carryCompressed(bound, value, e);
+    carrySnapshot(bound, value, e);
     return bound;
   });
 }
 
 /**
- * [compress] The binding adapter for an argument the ordinary eager route would
- * snapshot ({@link eagerSnapshot}), so it also records its declaration spelling.
- * A ruleset, a mixin call or a typed literal binds by reference, as before.
+ * The binding adapter for an argument the ordinary eager route snapshots
+ * ({@link eagerSnapshot}). A ruleset, a mixin call or a typed literal binds by
+ * reference, as before.
  */
-function compressedEagerSource(value: CallValue, frame: Frame | null, e: EvalCtx): MaybePromise<CallValue> | undefined {
-  return e.compressedBindings === undefined || isMixinCallValue(value) || isTypedCallValue(value)
+function eagerSource(value: CallValue, frame: Frame | null, e: EvalCtx): MaybePromise<CallValue> | undefined {
+  return isMixinCallValue(value) || isTypedCallValue(value)
     || (!isValueSlotArray(value) && isValueBlock(value))
     ? undefined
     : eagerSnapshot(value, frame, e);
 }
 
-/** [compress] {@link compressedEagerSource} as the adapter of a call that tracks no other source. */
-function compressedEagerSources(frame: Frame | null, e: EvalCtx): BoundSourceResolvers | undefined {
-  return e.compressedBindings === undefined ? undefined : { resolve: value => compressedEagerSource(value, frame, e) };
+/** {@link eagerSource} as the adapter of a call that tracks no other source. */
+function eagerSources(frame: Frame | null, e: EvalCtx): BoundSourceResolvers {
+  return { resolve: value => eagerSource(value, frame, e) };
 }
 
 /** Snapshot one canonical result while retaining structure only when bytes would erase it. */
@@ -7321,7 +7460,7 @@ function boundSourceTracker(
     const pluginEligible = trackPlugin && !isValueSlotArray(value) && !isMixinCallValue(value)
       && value.type === 'Lookup' && value.kind === 'var' && typeof value.name === 'string';
     if (spreadValue === undefined && mode === MIXIN_VALUE_NONE && !pluginEligible) {
-      return compressedEagerSource(value, frame, e);
+      return eagerSource(value, frame, e);
     }
     if (trackValue && (spreadValue !== undefined || mode !== MIXIN_VALUE_NONE)) {
       if (spreadValue !== undefined) {
@@ -8297,6 +8436,11 @@ function evalBytesSync(node: ValueSlot, frame: Frame | null, e: EvalCtx): string
   return b;
 }
 
+/** A string's content — its authored value, or its template spliced in `frame` — for a path request. */
+function quotedContentSync(node: Quoted, frame: Frame | null, e: EvalCtx): string {
+  return node.interp === null ? node.value : evalBytesSync(node.interp, frame, e);
+}
+
 /** As {@link evalBytesSync}, for the media tail of an import request. */
 function evalQueryPreludeSync(node: ValueSlot, frame: Frame | null, e: EvalCtx): string {
   const value = evalQueryPrelude(node, frame, e);
@@ -8372,9 +8516,22 @@ function refGroupInterp(ref: ValueNode, frame: Frame | null, e: EvalCtx): GroupI
     const branches = bound.branches.slice();
     return { branches, multi: branches.length > 1, capture: true };
   }
-  if (bound.type === 'Quoted' && bound.escaped && hasTopLevelComma(bound.value)) {
-    /* The whitespace an escaped selector opens or closes with is canonicalized away (ledger O8(b)). */
-    return { branches: [bound.value.trim()], multi: true, capture: false };
+  if (bound.type === 'Quoted' && bound.escaped) {
+    /*
+     * One escaped string, interpolating or not: its content decides the group.
+     * A comma-less string returns null and splices on the byte path, which
+     * evaluates an interpolating one again there.
+     */
+    const content = bound.interp === null ? bound.value : withExcluded(e, bound, () => evalBytes(bound, hit.frame, e));
+    if (isThenable(content)) {
+      // ponytail: an async hole in a selector string falls back to the byte splice, without grouping.
+      observeRejectedThenable(content);
+      return null;
+    }
+    if (hasTopLevelComma(content)) {
+      /* The whitespace an escaped selector opens or closes with is canonicalized away (ledger O8(b)). */
+      return { branches: [content.trim()], multi: true, capture: false };
+    }
   }
   return null;
 }
@@ -9271,6 +9428,7 @@ function scratchEmit(e: EvalCtx): Emit {
     mixinValueBindings: e.mixinValueBindings,
     compressedBindings: e.compressedBindings,
     writtenFrom: undefined,
+    snapshotValues: e.snapshotValues,
     io: e.io, // [io] preserve the file-read capability
     chunks: [],
     positions: null,
@@ -12359,6 +12517,7 @@ export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticIm
     mixinValueBindings: null,
     compressedBindings: options?.compress === true ? new WeakMap() : undefined,
     writtenFrom: undefined,
+    snapshotValues: new WeakMap(),
     io: options?.io
   };
   const rootFrame: Frame = {
@@ -12463,6 +12622,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     mixinValueBindings: null,
     compressedBindings: options?.compress === true ? new WeakMap() : undefined,
     writtenFrom: undefined, // set only on an F5 call's written lane (one shape for every spread)
+    snapshotValues: new WeakMap(),
     io: options?.io // [io] per-render file-read capability for the IO built-ins
   };
   const rootFrame: Frame = {
@@ -12665,8 +12825,8 @@ function emitDocumentStatements(
    * mixin definitions, and nested imports still establish lookup facts.
    */
   const hasDynamicImportTarget = rules.some(child => child.type === 'StyleImport'
-    && child.target.type !== 'Quoted'
-    && !(child.target.type === 'Url' && child.target.value.type === 'Quoted'));
+    && !isStaticQuoted(child.target)
+    && !(child.target.type === 'Url' && isStaticQuoted(child.target.value)));
   if (!e.collapse && e.referenceImportDepth === 0 && !hasDynamicImportTarget) {
     /*
      * Keep the nested emitter's merge behavior for contiguous authored runs,
@@ -16626,7 +16786,7 @@ function bindContentArgs(
     return eagerSnapshot(v, overlay, e);
   };
   const prepared = substituteClosureVarArgs(call, callerFrame, e, false);
-  return bindArgs(syntheticDef, prepared, resolveCaller, resolveDefault, compressedEagerSources(callerFrame, e));
+  return bindArgs(syntheticDef, prepared, resolveCaller, resolveDefault, eagerSources(callerFrame, e));
 }
 
 /* --------------------------------------------------------------- [each/For] */
@@ -17359,7 +17519,7 @@ function dispatch(
    * call site (Less variadic forwarding) BEFORE binding, so overloads select on the
    * splatted arity.
   */
-  return mapMaybe(expandSpreadArgs(dropEmptyVariadicArgs(call, frame), resolveCaller, frame, e), (expanded) => {
+  return mapMaybe(expandSpreadArgs(dropEmptyVariadicArgs(call, frame), frame, e), (expanded) => {
     const valueSpread = isValueBearingSpreadCall(expanded);
     const spreadValueBindings = valueSpread ? expanded.valueBindings : undefined;
     const call1 = valueSpread ? expanded.call : expanded;
@@ -17416,7 +17576,8 @@ function dispatch(
         e.modes,
         resolveDefault,
         errorOnNoViable ? () => unresolvedMixinCall(call2, e) : undefined,
-        boundSources
+        boundSources,
+        boundSources === undefined ? eagerSources(frame, e) : undefined
       );
 
       /*
@@ -17493,7 +17654,6 @@ function dropEmptyVariadicArgs(call: MixinCall, frame: Frame): MixinCall {
 
 function expandSpreadArgs(
   call: MixinCall,
-  resolveCaller: ValueResolver,
   frame: Frame,
   e: EvalCtx
 ): MaybePromise<ExpandedSpreadArgs> {
@@ -17519,12 +17679,10 @@ function expandSpreadArgs(
         throw new Error('A deferred mixin call cannot be used as a spread argument.');
       }
       if (classifyMixinValueSource(source, frame, e) === MIXIN_VALUE_NONE) {
-        /* [compress] Evaluated once, typed, so each piece carries the item it folds from. */
-        const resolved = e.compressedBindings === undefined
-          ? mapMaybe(resolveCaller(source), bytes => pushSpread(args, bytes))
-          : mapMaybe(evalTypedSlot(source, frame, spliceCtx(e), true), (value) => {
-              pushTypedSpread(args, expanded, value, e, undefined, false);
-            });
+        /* Evaluated once, typed, so each piece carries the item it is (and, under compress, folds from). */
+        const resolved = mapMaybe(evalTypedSlot(source, frame, spliceCtx(e), true), (value) => {
+          pushTypedSpread(args, expanded, value, e, undefined, false);
+        });
         if (isThenable(resolved)) {
           const at = index;
           return resolved.then(() => step(at + 1));
@@ -17625,9 +17783,7 @@ function pushTypedSpreadItem(
   }
   const snapshot = any(bytes);
   args.push(callArg(snapshot));
-  if (e.compressedBindings !== undefined) {
-    carryCompressed(snapshot, value, e);
-  }
+  carrySnapshot(snapshot, value, e);
   if (bearing && valueGroupNeedsMixinCarrier(value)) {
     const bindings = state ?? {
       call,
@@ -18391,7 +18547,7 @@ function collectNestedProperty(
       ? null
       : key.type === 'Keyword' || key.type === 'Color' || key.type === 'Dimension' || key.type === 'Any'
         ? key.src
-        : key.type === 'Quoted' ? key.value : key.type === 'Interpolation' ? key : null;
+        : key.type === 'Quoted' ? key.interp ?? key.value : key.type === 'Interpolation' ? key : null;
     if (leaf === null) {
       continue;
     }
@@ -18734,7 +18890,7 @@ function cssImportKey(node: AtRuleStatement, target: Quoted | Url): string | nul
   let emittedTarget: string;
   if (target.type === 'Quoted') {
     emittedTarget = target.src;
-  } else if (target.value.type === 'Quoted' || target.value.type === 'Any') {
+  } else if (isStaticQuoted(target.value) || target.value.type === 'Any') {
     emittedTarget = `url(${target.value.src})`;
   } else {
     return null;
@@ -18843,19 +18999,11 @@ function emitHoistedCssImports(rules: Statement[], frame: Frame, e: Emit): void 
  * would wrongly unwrap the list `"a", "b"` to `a", "b`, whereas testing the
  * node keeps the list intact.
  *
- * A string literal is either a static `Quoted` node, or — when it carries
- * `#{…}` — an `Interpolation` whose FIRST part is the opening-quote literal (the
- * grammar's `Quoted` reducer bakes the delimiters in as literal parts). A bare
- * `#{x}` has a `ref` first part, so it is not a string literal. Because that
- * shape guarantees the outer bytes ARE the author's quote delimiters,
- * `stripOuterQuotes` removes exactly them.
+ * A string literal is a `Quoted` node, whether or not it carries `#{…}`; its
+ * message is its content. A bare `#{x}` is not a string literal.
  */
 function diagnosticMessage(prelude: ValueNode, frame: Frame, e: Emit): string {
-  const bytes = evalBytesSync(prelude, frame, e);
-  const first = prelude.type === 'Interpolation' ? prelude.parts[0] : undefined;
-  const quoteWrapped = first !== undefined && 'lit' in first
-    && (first.lit.startsWith('"') || first.lit.startsWith('\''));
-  return prelude.type === 'Quoted' || quoteWrapped ? stripOuterQuotes(bytes) : bytes;
+  return prelude.type === 'Quoted' ? quotedContentSync(prelude, frame, e) : evalBytesSync(prelude, frame, e);
 }
 function emitDiagnosticDirective(node: AtRuleStatement, frame: Frame, e: Emit): void {
   const message = node.prelude === null ? '' : diagnosticMessage(node.prelude, frame, e);
@@ -18916,7 +19064,7 @@ function cssImportTarget(node: AtRuleStatement): Quoted | Url | null {
     return null;
   }
   const target = node.prelude.type === 'Sequence' ? node.prelude.parts[0] : node.prelude;
-  return target?.type === 'Quoted' || target?.type === 'Url' ? target : null;
+  return target !== undefined && (isStaticQuoted(target) || target.type === 'Url') ? target : null;
 }
 
 /**
@@ -19011,7 +19159,12 @@ function emitAtRuleStatementRaw(
     }
     return;
   }
-  const authored = e.compress === true || (importTarget?.type === 'Quoted' && transformedImport !== importTarget.value)
+
+  /*
+   * An escaped target is Less syntax, not CSS: it is written as its content
+   * (`@import (css) ~"a.css"` → `@import a.css`), never as authored.
+   */
+  const authored = e.compress === true || (importTarget?.type === 'Quoted' && (importTarget.escaped || transformedImport !== importTarget.value))
     ? null
     : authoredStatementWithTrivia(node, e);
   if (authored !== null) {
@@ -19810,20 +19963,12 @@ class ImportPathNotReady extends Error {
 /** Extract the resolver-facing specifier without reproducing parser recognition. */
 function importSpecifier(node: StyleImport, frame: Frame, e: Emit): string {
   try {
-    if (node.target.type === 'Quoted') {
-      return node.target.value;
-    }
-    if (node.target.type === 'Url' && node.target.value.type === 'Quoted') {
-      return node.target.value.value;
+    const target = node.target.type === 'Url' ? node.target.value : node.target;
+    if (target.type === 'Quoted') {
+      return quotedContentSync(target, frame, e);
     }
     const bytes = evalBytesSync(node.target, frame, e);
-    if (bytes.startsWith('url(') && bytes.endsWith(')')) {
-      return bytes.slice(4, -1);
-    }
-    if (bytes.length >= 2 && (bytes[0] === '"' || bytes[0] === '\'') && bytes.at(-1) === bytes[0]) {
-      return bytes.slice(1, -1);
-    }
-    return bytes;
+    return bytes.startsWith('url(') && bytes.endsWith(')') ? bytes.slice(4, -1) : bytes;
   } catch (error) {
     if (
       error instanceof ReferenceError
@@ -20445,15 +20590,16 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
     }
     case 'Quoted':
       /*
-       * Keep the `~"…"` / `~'…'` wrapper so `normalizeQueryPrelude` treats the
-       * value as an OPAQUE run and prints it verbatim — a ratio `~"2/1"` stays
-       * tight (`2/1`), not ` / `-spaced by the plain-run rules. `evalBytes`
-       * unwraps an escaped string to its inner bytes, which would drop the marker
-       * and expose the value to plain-run spacing. A plain quoted string already
-       * keeps its quotes through `evalBytes` (`node.src`), so only the escaped
-       * form needs re-wrapping here.
+       * An escaped string (`~"…"` / `~'…'`, interpolating or not) is one OPAQUE
+       * run: its content is a protected part, so a ratio `~"2/1"` stays tight
+       * (`2/1`) rather than ` / `-spaced by the plain-run rules, and spliced
+       * content is never scanned again for a closing quote. A plain quoted
+       * string keeps its quotes through `evalBytes`, which `normalizeQueryPrelude`
+       * already passes through verbatim.
        */
-      return node.escaped ? plain(`~${node.quote}${node.value}${node.quote}`) : mapMaybe(evalBytes(node, frame, e), plain);
+      return node.escaped
+        ? mapMaybe(evalBytes(node, frame, e), content => [{ bytes: content, protected: true }])
+        : mapMaybe(evalBytes(node, frame, e), plain);
     default:
       return mapMaybe(evalBytes(node, frame, e), plain);
   }

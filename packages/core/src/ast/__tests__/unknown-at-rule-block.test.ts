@@ -23,7 +23,6 @@ describe('UnknownAtRuleBlock', () => {
       throw 'opaque rawBody reached evaluator';
     };
     const evaluator: ValueEvaluator = {
-      materialize: rejectCall,
       operate: rejectCall,
       call: rejectCall,
       paramNames: rejectCall,

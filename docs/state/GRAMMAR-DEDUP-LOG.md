@@ -182,6 +182,22 @@ not count) before anything is pushed.
 
 ## Lanes (done)
 
+### `lane/v5-escaped-string-no-sniff` — one `Quoted` per string, string bodies written once (2026-10-06)
+
+Every string is one `Quoted` (`interp: Interpolation | null`) in Less, `.jess`
+and SCSS (ledger V3, C2). Dedup on the touched consts: Less `Quoted` /
+`EscapedQuoted` share `doubleQuotedContent` / `singleQuotedContent` and one
+reducer (`quotedFromChildren`, also `LiteralQuoted`'s); jess `Quoted` /
+`ExpressionQuoted` share `interpolated{Double,Single}QuotedContent` (holes are the
+source-fact `ExpressionDollarBrace` / `ExpressionInterpolation`, so the CST
+names a string's hole `ExpressionDollarBrace`; `quotedExpressionParser` deleted);
+SCSS `Quoted` is `LiteralQuoted` | `InterpolatedQuoted` (the static arms written
+once; only the interpolating node reads the parse input, so a static string
+pays no state copy).
+Evidence: Less oracle CST aggregate unchanged (`1e282ab4c77b9a66…`), AST moved in
+329/827 entries and folds back to def29ef87 on all 539 Less corpus files;
+`check:macro` and `verify:compose-integrity` green.
+
 ### Batch 1 / Lane 7 — NamedColor→Keyword + eval coercion — ✅ LANDED + INDEPENDENTLY VERIFIED
 
 **PUSHED: `origin/dev` fast-forwarded `bbda2ec9f..411733b9d` (FF-only, no force).**

@@ -30,6 +30,18 @@ function failureOf(source: string, entry: typeof parse = parse): ScssParseError 
   throw new Error(`Expected ${JSON.stringify(source)} to fail to parse.`);
 }
 
+describe('SCSS expected sets', () => {
+  /*
+   * A string is `LiteralQuoted` or `InterpolatedQuoted`, both opening on a
+   * quote, so both fail on the same opener; the expected set names it once.
+   */
+  it('names each expected token once', () => {
+    const failure = failureOf('@use foo;');
+    expect(failure.expected).toEqual(['"\\""', '"\'"']);
+    expect(failure.message).toBe('SCSS parser error. Expected: "\\"", "\'".');
+  });
+});
+
 describe('SCSS leftover-input errors', () => {
   it.each([
     ['offsets-only entry', parse],

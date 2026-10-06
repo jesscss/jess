@@ -100,6 +100,7 @@ export type AstEdge =
   | 'value.branch.value'
   | 'value.function.arg'
   | 'value.interpolation.ref'
+  | 'value.quoted.interp'
   | 'value.general.content'
   | 'value.lookup.name'
   | 'value.condition.guard'
@@ -660,10 +661,14 @@ function walkNode(
         walkNode(node.rules[i]!, hooks, 'value.anonymous-mixin.rules', node, i, depth + 1);
       }
       break;
+    case 'Quoted':
+      if (node.interp !== null) {
+        walkNode(node.interp, hooks, 'value.quoted.interp', node, 0, depth + 1);
+      }
+      break;
     case 'Keyword':
     case 'Null':
     case 'Color':
-    case 'Quoted':
     case 'Any':
     case 'Comment':
     case 'SelectorCapture':

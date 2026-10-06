@@ -420,6 +420,12 @@ function resolveEager(v: CallValue, resolveCaller: ValueResolver): MaybePromise<
   if (isTypedCallValue(v)) {
     return v;
   }
+
+  /*
+   * The bytes-only fallback for a caller that supplies no source resolver. The
+   * serializer always supplies one (its typed eager snapshot), so an argument
+   * keeps its type across the boundary there.
+   */
   return mapMaybe(resolveCaller(v), any);
 }
 
@@ -490,7 +496,8 @@ export function selectDefinitions(
   modes: EvalModes,
   resolveDefault?: DefaultResolver,
   onNoViable?: () => void,
-  boundSources?: BoundSourceTracker
+  boundSources?: BoundSourceTracker,
+  untrackedSources?: BoundSourceResolvers
 ): MaybePromise<Selection[]> {
   type Viable = {
     def: MixinDefinition;
@@ -556,7 +563,7 @@ export function selectDefinitions(
     if (boundSources === undefined) {
       for (; index < candidates.length; index++) {
         const def = candidates[index]!;
-        const bound = bindArgs(def, call, resolveCaller, resolveDefault);
+        const bound = bindArgs(def, call, resolveCaller, resolveDefault, untrackedSources);
         if (isThenable(bound)) {
           const at = index;
           return bound.then((bindings) => {

@@ -23,7 +23,7 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { anonymousMixin, any, asDiagnostic, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
+import { anonymousMixin, any, asDiagnostic, authoredSource, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
 import { COMPARISON_OPERATORS, controlBlockStatements, contentArgRaw, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
 import type { ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
@@ -34,7 +34,8 @@ type ScssRules = {
   Comment: Combinator<Comment>;
   VariableReference: Combinator<Lookup>;
   SassInterpolation: Combinator<Interpolation>;
-  Quoted: Combinator<Quoted | Interpolation>;
+  Quoted: Combinator<Quoted>;
+  InterpolatedQuoted: Combinator<Quoted>;
   LiteralQuoted: Combinator<Quoted>;
   CustomPropertyValue: Combinator<Keyword>;
   InterpolatedUrlValue: Combinator<Interpolation>;
@@ -573,7 +574,16 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     children => interpolation([{ ref: requireValue(children[1]), unquote: true }])
   );
-  const Quoted = node<Quoted | Interpolation>(
+
+  /*
+   * The *static-only* quoted string: a string with no `#{…}`. It stands alone
+   * so that a real `#{` opener is left unconsumed and the caller can fall
+   * through to an arm that owns the dynamic form — `SupportsAtom` to
+   * `Enclosed`'s template, and `PseudoArgument` to the structured interpolated
+   * pseudo-argument. `noTrivia`: these are literal bytes, not a place the
+   * ambient `//` trivia arm may reach.
+   */
+  const LiteralQuoted = node<Quoted>(
     'Quoted',
     choice(
       noTrivia(sequence(
@@ -585,7 +595,22 @@ const scssFactory = (g: ScssInputRules) => {
         literal('\''),
         singleQuotedText,
         literal('\'')
-      )),
+      ))
+    ),
+    staticQuoted
+  );
+
+  /*
+   * A string with `#{…}` holes is the same `Quoted` as a static one (ledger
+   * C2): `interp` carries its content template, the quotes left on the node,
+   * and `src` is the authored bytes the span covers — a hole holds a full
+   * value with no spelling of its own, so the parse input is the only honest
+   * source of it. Tried after `LiteralQuoted`, so only an interpolating
+   * string pays for the parse-state read.
+   */
+  const InterpolatedQuoted = node<Quoted>(
+    'Quoted',
+    choice(
       sequence(
         literal('"'),
         many(choice(
@@ -603,12 +628,9 @@ const scssFactory = (g: ScssInputRules) => {
         literal('\'')
       )
     ),
-    (children) => {
-      const quote = requireToken(children[0]).value;
-      if (children.length === 3 && !isInterpolation(children[1])) {
-        return staticQuoted(children);
-      }
-      const parts: Interpolation['parts'] = [{ lit: quote }];
+    (children, _fields, span, _rawChildren, _triviaLog, state) => {
+      const src = authoredSource(span, state, 'An interpolated SCSS string');
+      const parts: Interpolation['parts'] = [];
       for (const child of children.slice(
         1,
         -1
@@ -622,41 +644,18 @@ const scssFactory = (g: ScssInputRules) => {
           );
         }
       }
-      appendInterpolationLiteral(
-        parts,
-        quote
+      return quoted(
+        src,
+        src.slice(1, -1),
+        requireToken(children[0]).value,
+        false,
+        parts.some(part => 'ref' in part) ? interpolation(parts) : null
       );
-      return interpolation(parts);
     }
   );
-
-  /*
-   * NOT a copy of `Quoted`: this is the *static-only* quoted string, `Quoted`
-   * minus its two interpolation arms. It exists so that a real `#{` opener is
-   * left unconsumed and the caller can fall through to an arm that owns the
-   * dynamic form — `SupportsAtom` to `Enclosed`'s template, and
-   * `PseudoArgument` to the structured interpolated pseudo-argument. Reduced
-   * through the same `staticQuoted` fact and the same escape-bearing text
-   * regexes as `Quoted`, so the accepted string language is identical; only
-   * the interpolation arms differ.
-   * `noTrivia`: these are literal bytes, not a place the ambient `//` trivia
-   * arm may reach. Closed regex/literal arms, so nothing shared is affected.
-   */
-  const LiteralQuoted = node<Quoted>(
-    'Quoted',
-    choice(
-      noTrivia(sequence(
-        literal('"'),
-        doubleQuotedText,
-        literal('"')
-      )),
-      noTrivia(sequence(
-        literal('\''),
-        singleQuotedText,
-        literal('\'')
-      ))
-    ),
-    staticQuoted
+  const Quoted = choice(
+    g.LiteralQuoted,
+    g.InterpolatedQuoted
   );
 
   /*
@@ -2117,7 +2116,7 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     (children) => {
       const path = children[1];
-      if (!isQuoted(path)) {
+      if (!isQuoted(path) || path.interp !== null) {
         throw new TypeError('SCSS @use requires a quoted module path.');
       }
       const namespace = children.find((child): child is string => typeof child === 'string') ?? null;
@@ -2182,7 +2181,7 @@ const scssFactory = (g: ScssInputRules) => {
       literal(';')
     ),
     (children) => {
-      if (!isQuoted(children[1])) {
+      if (!isQuoted(children[1]) || children[1].interp !== null) {
         throw new TypeError('SCSS @forward requires a quoted module path.');
       }
       return styleImport('@-export', children[1], { mode: 'compose', forward: true });
@@ -4739,6 +4738,7 @@ const scssFactory = (g: ScssInputRules) => {
     SassInterpolation,
     Quoted,
     LiteralQuoted,
+    InterpolatedQuoted,
     CustomPropertyValue,
     InterpolatedUrlValue,
     InterpolatedValue,

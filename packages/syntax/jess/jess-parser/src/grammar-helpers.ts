@@ -461,74 +461,48 @@ function sourceFromState(state: unknown): string | undefined {
     : undefined;
 }
 
-function interpolationValue(child: unknown): Interpolation {
-  if (isInterpolation(child)) {
-    return child;
-  }
-  const fact = requireExpressionFact(child);
+function interpolationValue(fact: ExpressionFact): Interpolation {
   if (!isInterpolation(fact.value)) {
     throw new TypeError('Jess quoted expression produced a non-interpolation fact.');
   }
   return fact.value;
 }
 
-function quotedInterpolationFromChildren(children: readonly unknown[]): Quoted | Interpolation {
-  const open = requireToken(children[0]);
-  if (children.length === 3 && !isInterpolation(children[1])) {
-    const content = requireToken(children[1]);
-    return quoted(
-      `${open.value}${content.value}${open.value}`,
-      content.value,
-      open.value,
-      false
-    );
-  }
-  const parts: Interpolation['parts'] = [{ lit: open.value }];
-  for (const child of children.slice(
-    1,
-    -1
-  )) {
-    if (isInterpolation(child) || isExpressionFact(child)) {
-      parts.push(...interpolationValue(child).parts);
-    } else {
-      parts.push({ lit: requireToken(child).value });
-    }
-  }
-  parts.push({ lit: open.value });
-  return interpolation(parts);
-}
-
-/*
- * `~"…"` drops its quotes, so an escaped string that carries interpolation is
- * exactly the Interpolation of its content — the `~` and both quote tokens are
- * authored escape syntax, not output bytes, and never become literal parts.
+/**
+ * One `.jess` string — `"…"`, `'…'`, optionally escaped `~"…"` — whether or
+ * not it interpolates (ledger V3, C2). The `~` and the quotes are syntax, not
+ * content: `src`/`value` are the authored spelling and content, each `${…}` /
+ * `$(…)` hole spelled by its source fact, and an interpolating string also
+ * carries its content as a template.
  */
-function escapedInterpolationFromChildren(children: readonly unknown[]): Interpolation {
-  const parts: Interpolation['parts'] = [];
-  for (const child of children.slice(
-    2,
-    -1
-  )) {
-    if (isInterpolation(child)) {
-      parts.push(...child.parts);
+function quotedFromChildren(children: readonly unknown[]): Quoted {
+  const escaped = requireToken(children[0]).value === '~';
+  const quote = requireToken(children[escaped ? 1 : 0]).value;
+  const content = children.slice(escaped ? 2 : 1, -1);
+  let value = '';
+  let interpolates = false;
+  for (const child of content) {
+    if (isExpressionFact(child)) {
+      value += child.src;
+      interpolates = true;
     } else {
-      parts.push({ lit: requireToken(child).value });
+      value += requireToken(child).value;
     }
   }
-  return interpolation(parts);
+  return quoted(
+    `${escaped ? '~' : ''}${quote}${value}${quote}`,
+    value,
+    quote,
+    escaped,
+    interpolates
+      ? interpolation(content.flatMap(child => isExpressionFact(child) ? interpolationValue(child).parts : [{ lit: requireToken(child).value }]))
+      : null
+  );
 }
 
 function quotedExpressionFact(children: readonly unknown[]): ExpressionFact {
-  const value = quotedInterpolationFromChildren(children);
-  const src = children.map(child =>
-    isExpressionFact(child)
-      ? requireExpressionFact(child).src
-      : isInterpolation(child)
-        ? (() => {
-            throw new TypeError('Jess expression quote lost interpolation source.');
-          })()
-        : requireToken(child).value).join('');
-  return { value, src };
+  const value = quotedFromChildren(children);
+  return { value, src: value.src };
 }
 
 function reduceColonFeature(children: readonly unknown[], lostMessage: string): ValueNode {
@@ -649,7 +623,7 @@ function urlFromChildren(children: readonly unknown[]): Url {
 }
 
 function requireLiteralQuoted(value: unknown): Quoted {
-  if (!isQuoted(value)) {
+  if (!isQuoted(value) || value.interp !== null) {
     throw new TypeError('Jess module syntax requires a literal quoted path.');
   }
   return value;
@@ -953,8 +927,7 @@ export {
   tokenSource,
   sourceFromState,
   interpolationValue,
-  quotedInterpolationFromChildren,
-  escapedInterpolationFromChildren,
+  quotedFromChildren,
   quotedExpressionFact,
   reduceColonFeature,
   jessFunctionOpenName,

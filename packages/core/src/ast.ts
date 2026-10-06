@@ -63,6 +63,7 @@ export {
   queryConditionChain,
   queryFeatureBlock,
   generalEnclosedGroup,
+  authoredSource,
   queryFeatureContents,
   enclosedCall,
   styleFeature,

@@ -113,6 +113,7 @@ import {
   mixinDefinitionNameFromSelectorBranch,
   mixinParamsFromInterior,
   queryClauseReducer,
+  quotedFromChildren,
   lessQueryComparisonOperators,
   referenceWithTails,
   requireCallbackStatements,
@@ -346,9 +347,9 @@ type LessRules = {
   ExtendStatement: Combinator<BodyExtendFact>;
   RulesetWithExtends: Combinator<Ruleset>;
   NestedRulesetWithExtends: Combinator<Ruleset>;
-  Quoted: Combinator<Quoted | Interpolation>;
+  Quoted: Combinator<Quoted>;
   LiteralQuoted: Combinator<Quoted>;
-  EscapedQuoted: Combinator<Quoted | Interpolation>;
+  EscapedQuoted: Combinator<Quoted>;
   PlainUrl: Combinator<Url>;
   UrlInterpolation: Combinator<Interpolation>;
   VariableUrl: Combinator<Url>;
@@ -1095,25 +1096,27 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     )),
     children => interpolation(interpolationPartsFrom(children, true))
   );
+  /** A double-quoted string's content: text, `@{…}` / `${…}` holes, and a lone `@` / `$`. */
+  const doubleQuotedContent = many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.QuotedDoubleText, literal('@'), literal('$')));
+  /** A single-quoted string's content, as {@link doubleQuotedContent}. */
+  const singleQuotedContent = many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.QuotedSingleText, literal('@'), literal('$')));
+  /**
+   * A Less string, `"…"` / `'…'`: one `Quoted` whether or not it interpolates
+   * (ledger C2 — that it is a string is the parser's fact, not a reading of
+   * its delimiters later).
+   */
   const Quoted = node(
     'Quoted',
     choice(
-      noTrivia(sequence(literal('"'), many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.QuotedDoubleText, literal('@'), literal('$'))), literal('"'))),
-      noTrivia(sequence(literal('\''), many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.QuotedSingleText, literal('@'), literal('$'))), literal('\'')))
+      noTrivia(sequence(literal('"'), doubleQuotedContent, literal('"'))),
+      noTrivia(sequence(literal('\''), singleQuotedContent, literal('\'')))
     ),
-    (children) => {
-      const open = requireToken(children[0]);
-      if (!children.some(isInterpolationFact)) {
-        const value = children.slice(1, -1).map(requireToken).map(token => token.value).join('');
-        return quoted(`${open.value}${value}${open.value}`, value, open.value, false);
-      }
-      const parts = interpolationPartsFrom(children.slice(1, -1), true, open.value);
-      appendInterpolationLiteral(parts, open.value);
-      return interpolation(parts);
-    }
+    children => quotedFromChildren(children, false)
   );
-  // Plain (interpolation-free) single/double-quoted body shared by the quoted
-  // value, functional-pseudo, and attribute-selector static grammars.
+  /*
+   * Plain (interpolation-free) single/double-quoted body shared by the quoted
+   * value, functional-pseudo, and attribute-selector static grammars.
+   */
   const staticQuotedBody = choice(
     noTrivia(sequence(literal('"'), many(choice(g.QuotedDoubleText, sequence(not(noTrivia(literal('@{'))), literal('@')), literal('$'))), literal('"'))),
     noTrivia(sequence(literal('\''), many(choice(g.QuotedSingleText, sequence(not(noTrivia(literal('@{'))), literal('@')), literal('$'))), literal('\'')))
@@ -1121,33 +1124,19 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const LiteralQuoted = node(
     'Quoted',
     staticQuotedBody,
-    (children) => {
-      const open = requireToken(children[0]);
-      const value = children.slice(1, -1).map(requireToken).map(token => token.value).join('');
-      return quoted(`${open.value}${value}${open.value}`, value, open.value, false);
-    }
+    children => quotedFromChildren(children, false)
   );
-  // A non-interpolated Less `~"…"` / `~'…'` is an ordinary quoted value with the
-  // existing escaped flag. Its interpolation-bearing form is a structural,
-  // unquoted template—never a recovered source string.
+  /**
+   * A Less escaped string, `~"…"` / `~'…'`: the {@link Quoted} body with its
+   * escaped fact set — one `Quoted` whether or not it interpolates (ledger V3).
+   */
   const EscapedQuoted = node(
     'Quoted',
     choice(
-      noTrivia(sequence(literal('~"'), many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.QuotedDoubleText, literal('@'), literal('$'))), literal('"'))),
-      noTrivia(sequence(literal('~\''), many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.QuotedSingleText, literal('@'), literal('$'))), literal('\'')))
+      noTrivia(sequence(literal('~"'), doubleQuotedContent, literal('"'))),
+      noTrivia(sequence(literal('~\''), singleQuotedContent, literal('\'')))
     ),
-    (children) => {
-      const opener = requireToken(children[0]).value;
-      const quote = opener[1];
-      if (quote !== '"' && quote !== '\'') {
-        throw new TypeError('Less escaped quote lost its quote delimiter.');
-      }
-      if (children.some(isInterpolationFact)) {
-        return interpolation(interpolationPartsFrom(children.slice(1, -1), true));
-      }
-      const value = children.slice(1, -1).map(requireToken).map(token => token.value).join('');
-      return quoted(`${opener}${value}${quote}`, value, quote, true);
-    }
+    children => quotedFromChildren(children, true)
   );
   const PlainUrl = node(
     'Url',
@@ -1400,7 +1389,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(useKeyword, g.Quoted, optional(literal(';'))),
     (children, _fields, _span, _rawChildren, _triviaLog, state) => {
       const path = children[1];
-      if (!isQuoted(path)) {
+      if (!isQuoted(path) || path.interp !== null) {
         throw new TypeError('Less @use requires a quoted module path.');
       }
       closeAmbientFunctions(state);
@@ -1456,9 +1445,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           // Upgrade path: a typed `ImportTail` split (media-query vs
           // supports/layer), the same gap the tail comment above records; then
           // this branches on `.type`. A typed Block tail bypasses it.
+          const tailTemplate = isInterp(tail) ? tail : isQuoted(tail) ? tail.interp : null;
           const tailText = isAny(tail)
             ? tail.src.toLowerCase()
-            : isInterp(tail) ? tail.parts.map(part => 'lit' in part ? part.lit : '').join('').toLowerCase() : '';
+            : tailTemplate !== null ? tailTemplate.parts.map(part => 'lit' in part ? part.lit : '').join('').toLowerCase() : '';
           const tailHasSupportsOrLayer = tailText.includes('supports') || tailText.includes('layer');
           if (!isLegacyImport || tailHasSupportsOrLayer) {
             throw new LessImportPostludeError(span.start, span.end);
@@ -4486,7 +4476,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     (children, _fields, span) => {
       const prelude = children.find(isValueNode);
-      if (prelude?.type === 'Interpolation') {
+      if (prelude?.type === 'Interpolation' || (prelude?.type === 'Quoted' && prelude.interp !== null)) {
         throw new LessDynamicCharsetError(span.start, span.end);
       }
       return atRuleStatement(requireToken(children[0]).value, prelude ?? null);
