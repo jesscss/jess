@@ -3222,7 +3222,7 @@ describe('Less AST grammar facts', () => {
             {
               type: 'Declaration',
               name: '--x',
-              value: { type: 'Any', src: 'red @media all {x:y} ' }
+              value: { type: 'Any', src: 'red @media all {x:y}' }
             }
           ]
         }

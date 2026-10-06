@@ -513,6 +513,12 @@ const compoundTrivia = classifiedTrivia({ comment: blockComment });
 const customValueBlockCommentRun = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const customValueCommentTrivia = classifiedTrivia({ comment: customValueBlockCommentRun });
 
+/* The gap between a custom property's `:` and its value: whitespace and `//` comments, never a block comment (ledger F12). */
+const customValueGapTrivia = classifiedTrivia({
+  whitespace: rawWhitespace,
+  comment: regex(/\/\/[^\n\r]*/)
+});
+
 /*
  * Comments are Jess trivia. Block comments can still survive through the AST
  * trivia map for rendering/source consumers; line comments are lexical-only and
@@ -4739,10 +4745,21 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     g.CustomDoubleQuoted,
     g.CustomGroup
   );
-  const CustomValue = node<ValueNode>(
-    'CustomValue',
-    parser({ trivia: customValueCommentTrivia }, many(g.CustomPart)),
-    (children, _fields, span) => withSourceSpan(customValueFromChildren(children), span)
+
+  /*
+   * The value runs under comment-only trivia, and its node takes the comments
+   * written after its last part as trailing trivia: a comment written last
+   * (`--x: red /* c *\/;`, `--x: /* c *\/;`) is inside the value's span and is
+   * replayed in place (ledger F12), as a comment written first is.
+   */
+  const CustomValue = parser(
+    { trivia: customValueCommentTrivia },
+    node<ValueNode>(
+      'CustomValue',
+      many(g.CustomPart),
+      (children, _fields, span) => withSourceSpan(customValueFromChildren(children), span),
+      { trailingTrivia: true }
+    )
   );
   const CustomDeclaration = node<Declaration>(
     'CustomDeclaration',
@@ -4756,8 +4773,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
      */
     sequence(
       g.InterpolatedCustomPropertyName,
-      literal(':'),
-      g.CustomValue,
+
+      /*
+       * Only whitespace and `//` comments are trivia between the colon and the
+       * value, so a block comment written before the value's first part starts
+       * the value and stays in place (ledger F12), as in css, Less and SCSS.
+       */
+      parser({ trivia: customValueGapTrivia }, sequence(literal(':'), g.CustomValue)),
       optional(g.Important),
       optional(literal(';'))
     ),

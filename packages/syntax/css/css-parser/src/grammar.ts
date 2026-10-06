@@ -364,6 +364,12 @@ const whitespace = classifiedTrivia({
 });
 
 /*
+ * The gap between a custom property's `:` and its value: whitespace only, so a
+ * comment there starts the value (ledger F12). Less's twin adds `//` comments.
+ */
+const customValueGapTrivia = classifiedTrivia({ whitespace: whitespaceRun });
+
+/*
  * Value-slot boundaries are authored trivia, not semantic leaves. Capture the
  * complete run so raw ValueSlot arrays can replay comments/newlines/indentation
  * without growing a public `separators` field.
@@ -727,10 +733,16 @@ const enclosedText = regex(/(?:\\[\s\S]|\/(?!\*)|[^\\/'"()[\]{}]+)+/);
  * what makes `--x: a !important !important` strip only the final one.
  */
 const customImportantTail = regex(/[ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*important(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*(?=[;}])/i);
+
+/*
+ * The value's trailing whitespace is not value text (css-syntax-3 §5.5.6 trims
+ * a declaration value's edges), so the scan also stops before a whitespace run
+ * that the declaration's end follows. A comment is not whitespace: one written
+ * last stays in the value, in place.
+ */
 const customValue = scanTo(
   choice(
-    literal(';'),
-    literal('}'),
+    regex(/[ \t\n\r\f]*(?=[;}])/),
     customImportantTail
   ),
   {
@@ -1566,10 +1578,12 @@ const cssFactory = (g: GrammarSelf) => {
 
   /* A custom-property value is one opaque token. Comments the balanced-group
    * scanner steps over inside it are value bytes the token already carries, so
-   * this scope keeps them out of the root capture the renderer replays. */
+   * this scope keeps them out of the root capture the renderer replays. Only a
+   * comment is skipped whole: whitespace is scanned, so the scan can stop before
+   * the whitespace that ends the value, after a final comment too. */
   const CustomValue = node(
     'CustomValue',
-    parser({ trivia: whitespace, rootCapture: 'opaque' }, customValue),
+    parser({ trivia: commentTrivia, rootCapture: 'opaque' }, customValue),
     children => any(children.length === 0 ? '' : tokenText(children[0]))
   );
   const Keyword = node(
@@ -2777,8 +2791,14 @@ const cssFactory = (g: GrammarSelf) => {
     choice(
       sequence(
         g.CustomProperty,
-        literal(':'),
-        g.CustomValue,
+
+        /*
+         * Only whitespace is trivia between the colon and the value, so a
+         * comment written before the value's first part starts the value and
+         * stays in place (`--x: /* c *\/ red`, `--x: /* c *\/;`), as one written
+         * after its last part does (ledger F12).
+         */
+        parser({ trivia: customValueGapTrivia }, sequence(literal(':'), g.CustomValue)),
         optional(g.Important)
       ),
       sequence(
@@ -2814,10 +2834,10 @@ const cssFactory = (g: GrammarSelf) => {
      *
      * The CUSTOM-PROPERTY arm is deliberately left unspanned, exactly as Less
      * leaves its own `CustomDeclaration` unspanned. A custom-property value is
-     * retained as authored bytes, so a comment inside it is already part of the
-     * value; spanning the declaration additionally claims the run that FOLLOWS
-     * the value, and `a{--var:/* 1 *\/}` renders `--var: /* 1 *\/;` instead of
-     * keeping the comment as a body comment the way all four dialects do today.
+     * retained as authored bytes, so a comment at either edge of it is already
+     * part of the value (`a{--var:/* 1 *\/}` writes `--var: /* 1 *\/;`, ledger
+     * F12); spanning the declaration would additionally claim the run that
+     * FOLLOWS the statement.
      */
     (children, _fields, span) => {
       const name = tokenText(children[0]);

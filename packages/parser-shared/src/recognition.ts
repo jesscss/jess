@@ -460,10 +460,13 @@ const customPropertyName = regex(/--(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-
  * that precedes `!` (the value keeps no trailing space), and requires `[;}]` after
  * the marker so a non-final `!important` stays ordinary value text. Only the outer
  * leaf carries this: inside a balanced group the marker is never the declaration's.
- * The `i` flag is inert for the rest of the pattern — its remaining classes are
- * punctuation or already span both cases.
+ * A whitespace run is taken whole, and only when a value character follows it,
+ * so the run also stops before the whitespace that ends the value (`;`, `}`, the
+ * end of input) and the value keeps no trailing space there either (css-syntax-3
+ * §5.5.6, ledger F12). The `i` flag is inert for the rest of the pattern — its
+ * remaining classes are punctuation or already span both cases.
  */
-const customOuterContent = regex(/(?:(?![ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*important(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*[;}])(?:\\[^\n\r\f]|[^(){}[\];'"\\/#$]|\/(?!\*)|#(?!\{)|\$(?![[({])))+/i);
+const customOuterContent = regex(/(?:(?![ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*important(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*[;}])(?:\\[^\n\r\f]|[ \t\n\r\f]+(?=[^ \t\n\r\f;}])|[^(){}[\];'"\\/#$ \t\n\r\f]|\/(?!\*)|#(?!\{)|\$(?![[({])))+/i);
 const customInnerContent = regex(/(?:\\[^\n\r\f]|[^(){}[\]'"\\/#$]|\/(?!\*)|#(?!\{)|\$(?![[({]))+/);
 const customSingleQuoted = regex(/'(?:[^'\n\\]|\\.)*'/);
 const customDoubleQuoted = regex(/"(?:[^"\n\\]|\\.)*"/);
@@ -511,10 +514,13 @@ const lessCustomProperty = regex(/--[-_a-zA-Z0-9\u0080-\uffff]+/);
  * that precedes `!` (the value keeps no trailing space), and requires `[;}]` after
  * the marker so a non-final `!important` stays ordinary value text. Only the outer
  * leaf carries this: inside a balanced group the marker is never the declaration's.
- * The `i` flag is inert for the rest of the pattern — its remaining classes are
- * punctuation or already span both cases.
+ * A whitespace run is taken whole, and only when a value character follows it,
+ * so the run also stops before the whitespace that ends the value (`;`, `}`, the
+ * end of input) and the value keeps no trailing space there either (css-syntax-3
+ * §5.5.6, ledger F12). The `i` flag is inert for the rest of the pattern — its
+ * remaining classes are punctuation or already span both cases.
  */
-const lessCustomOuterContent = regex(/(?:(?![ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*important(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*[;}])(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})(?!@[-_a-zA-Z0-9\u0080-\uffff]+)[^(){}[\];'"`\/\\]))+|\/(?!\*)/i);
+const lessCustomOuterContent = regex(/(?:(?![ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*important(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*[;}])(?:\\[^\n]|[ \t\n\r\f]+(?=[^ \t\n\r\f;}])|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})(?!@[-_a-zA-Z0-9\u0080-\uffff]+)[^(){}[\];'"`\/\\ \t\n\r\f]))+|\/(?!\*)/i);
 const lessCustomInnerContent = regex(/(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})(?!@[-_a-zA-Z0-9\u0080-\uffff]+)[^(){}[\]'"`\/\\])+|\/(?!\*)/i);
 export const cssSyntax = rules(_g => ({
   Identifier: keywordValue,

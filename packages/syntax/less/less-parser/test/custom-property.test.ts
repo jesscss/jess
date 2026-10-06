@@ -153,7 +153,7 @@ describe('Less custom properties', () => {
 
   it('keeps known at-rule-looking custom-property bytes opaque', () => {
     expect(parse('.card { --x:red @media all {x:y} }')).toMatchObject({
-      rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: 'red @media all {x:y} ' } }] }]
+      rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: 'red @media all {x:y}' } }] }]
     });
   });
 
@@ -216,5 +216,22 @@ describe('Less custom properties', () => {
   it('keeps a non-CSS space at a custom-property value edge', () => {
     expect(serialize(parse('.x { --a:\u00a0red; --b: (\u00a0red\u00a0); --c: var(--y, red\u00a0); }')).css)
       .toBe('.x {\n  --a: \u00a0red;\n  --b: (\u00a0red\u00a0);\n  --c: var(--y, red\u00a0);\n}\n');
+  });
+
+  /*
+   * Ledger F12: a comment at either edge of a custom-property value is kept in
+   * the value, in place, and a comment-only value is not the empty value; only
+   * the edge whitespace is dropped (css-syntax-3 §5.5.6). Asserted in all four
+   * dialects.
+   */
+  it.each([
+    ['a{--var:/* 1 */}', 'a {\n  --var: /* 1 */;\n}\n'],
+    ['a { --x: /* lead */ red; }', 'a {\n  --x: /* lead */ red;\n}\n'],
+    ['a { --x: red /* trail */ ; }', 'a {\n  --x: red /* trail */;\n}\n'],
+    ['a { --x:/*g*/red/*h*/; }', 'a {\n  --x: /*g*/red/*h*/;\n}\n'],
+    ['a { --x:   red   ; }', 'a {\n  --x: red;\n}\n'],
+    ['a { --x: /* c */ red /* d */ !important; }', 'a {\n  --x: /* c */ red /* d */ !important;\n}\n']
+  ])('keeps the comments at the edges of a custom-property value in place: %j', (source, expected) => {
+    expect(serialize(parse(source)).css).toBe(expected);
   });
 });

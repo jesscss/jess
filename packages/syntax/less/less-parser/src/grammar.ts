@@ -2545,15 +2545,22 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.CustomAtKeywordText,
     g.VariableReference
   );
-  const CustomValue = node(
-    'CustomValue',
-    parser(
-      { trivia: customValueCommentTrivia },
-      many(g.CustomPart)
-    ),
-    (children, _fields, span, _rawChildren, triviaLog) => withSourceSpan(
-      customValueFromParts(customPartsFromChildren(children), triviaLog),
-      span
+  /*
+   * The value runs under comment-only trivia, and its node takes the comments
+   * written after its last part as trailing trivia: a comment written last
+   * (`--x: red /* c *\/;`, `--x: /* c *\/;`) is inside the value's span and is
+   * replayed in place (ledger F12), as a comment written first already is.
+   */
+  const CustomValue = parser(
+    { trivia: customValueCommentTrivia },
+    node(
+      'CustomValue',
+      many(g.CustomPart),
+      (children, _fields, span, _rawChildren, triviaLog) => withSourceSpan(
+        customValueFromParts(customPartsFromChildren(children), triviaLog),
+        span
+      ),
+      { trailingTrivia: true }
     )
   );
   // A CSS custom-property token is an ordinary component value in Less
