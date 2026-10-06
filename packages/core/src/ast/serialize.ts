@@ -5557,7 +5557,7 @@ function evalInterp(node: Interpolation, frame: Frame | null, e: EvalCtx): Maybe
   const ei = lone !== undefined && 'ref' in lone && lone.ref.type === 'Expression' ? e : spliceCtx(e);
   const pieces: Array<MaybePromise<EvalValue>> = [];
   for (const part of node.parts) {
-    pieces.push('lit' in part ? part.lit : evalValue(part.ref, frame, ei));
+    pieces.push('lit' in part ? part.lit : part.unquote ? unquotedRef(part.ref, frame, ei) : evalValue(part.ref, frame, ei));
   }
   return combineAll(pieces, (values) => {
     let bytes = '';
@@ -5616,8 +5616,7 @@ function evalInterp(node: Interpolation, frame: Frame | null, e: EvalCtx): Maybe
       if (!isLiteral(value)) {
         validateValueGroupUnits(value, e.modes, part.ref, e, part.ref.type === 'Expression');
       }
-      const emitted = emitValue(value);
-      bytes += part.unquote ? stripOuterQuotes(emitted) : emitted;
+      bytes += emitValue(value);
     }
     return elided && values.length > 0
       ? NULL
@@ -5678,14 +5677,11 @@ function resolveEmergentInterp(input: string, frame: Frame | null, e: EvalCtx): 
         if (j > nameStart && j < n && cur.charCodeAt(j) === 0x7d /* } */) {
           const name = cur.slice(i + 2, j).trim();
           const hit = resolveVarRef(frame, name, 'scoped', e);
-          if (hit) {
-            const val = hit.evaluated ?? withExcluded(
-              e,
-              hit.value,
-              () => evalBinding(hit.value, hit.frame, e, hit.evaluated)
-            );
+          const bound = hit?.value;
+          if (hit && bound !== undefined && !isMixinCallValue(bound)) {
+            const val = hit.evaluated ?? withExcluded(e, bound, () => evalTypedSlot(bound, hit.frame, e));
             if (!isThenable(val)) {
-              out += stripOuterQuotes(emitValue(val));
+              out += !isValueGroupArray(val) && val.type === 'Quoted' ? val.value : emitValue(val);
               i = j + 1;
               changed = true;
               continue;
@@ -5704,17 +5700,15 @@ function resolveEmergentInterp(input: string, frame: Frame | null, e: EvalCtx): 
   return cur;
 }
 
-/** Strip ONE matching layer of surrounding `'…'` / `"…"` quotes, including
- * Less's escaped `~"…"` / `~'…'` spelling. */
-function stripOuterQuotes(s: string): string {
-  const offset = s[0] === '~' ? 1 : 0;
-  if (s.length >= offset + 2) {
-    const a = s[offset];
-    if ((a === '"' || a === '\'') && s[s.length - 1] === a) {
-      return s.slice(offset + 1, -1);
-    }
-  }
-  return s;
+/**
+ * A ref an interpolation splices UNQUOTED (Less `@{name}`): a string is its
+ * content, read from the typed string, and an escaped string already is its
+ * content, which is never re-read for a quote (ledger V22). Any other value is
+ * spliced as it emits.
+ */
+function unquotedRef(ref: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
+  return mapMaybe(evalTyped(ref, frame, e), value =>
+    !isValueGroupArray(value) && value.type === 'Quoted' ? literal(value.value) : value);
 }
 
 /* --------------------------------------------------- map / namespace */
@@ -6595,7 +6589,7 @@ function resolveReferenceResult(
          * its resulting bytes name a member of this map. The map owner can be a
          * root/detached closure while `@name` is an each/mixin-local binding.
          */
-        const name = stripOuterQuotes(evalBytesSync(step.name.name, frame ?? valueFrame, e));
+        const name = syncValue(lookupName(step.name, frame ?? valueFrame, e), step.name, e, 'map member name');
         missingSymbol = `@${name}`;
         matched = map.valueEntries?.get(makeKeyword(name))
           ?? mapForKind(map, 'var').get(name)
@@ -8589,16 +8583,20 @@ function evalBytesInterp(node: ValueNode, frame: Frame | null, e: EvalCtx): Mayb
  * Tracked in docs/architecture/core/HANDOFF.md.
  */
 function evalBytesSync(node: ValueSlot, frame: Frame | null, e: EvalCtx): string {
-  const b = evalBytes(node, frame, e);
-  if (isThenable(b)) {
-    observeRejectedThenable(b);
+  return syncValue(evalBytes(node, frame, e), node, e, 'import request / synchronous byte position');
+}
+
+/** `value` in a position confined to the synchronous lane, where an awaitable one is an error. */
+function syncValue<T>(value: MaybePromise<T>, node: object, e: EvalCtx, where: string): T {
+  if (isThenable(value)) {
+    observeRejectedThenable(value);
     throw ERR.asyncInSyncPosition({
       node,
       ...callSiteLocation(node, e),
-      meta: { where: 'import request / synchronous byte position' }
+      meta: { where }
     });
   }
-  return b;
+  return value;
 }
 
 /** A string's content — its authored value, or its template spliced in `frame` — for a path request. */
@@ -8608,16 +8606,7 @@ function quotedContentSync(node: Quoted, frame: Frame | null, e: EvalCtx): strin
 
 /** As {@link evalBytesSync}, for the media tail of an import request. */
 function evalQueryPreludeSync(node: ValueSlot, frame: Frame | null, e: EvalCtx): string {
-  const value = evalQueryPrelude(node, frame, e);
-  if (isThenable(value)) {
-    observeRejectedThenable(value);
-    throw ERR.asyncInSyncPosition({
-      node,
-      ...callSiteLocation(node, e),
-      meta: { where: 'import request media tail' }
-    });
-  }
-  return value;
+  return syncValue(evalQueryPrelude(node, frame, e), node, e, 'import request media tail');
 }
 
 /* ---------------------------------------------------- selector composition */
@@ -8736,8 +8725,7 @@ function loneGroupInterp(c: SelectorBranch, frame: Frame | null, e: EvalCtx): Gr
  * a public async plugin can resolve one slot before the next slot is evaluated in
  * the SAME lexical frame. */
 function resolveRefBytes(part: { ref: ValueNode; unquote: boolean }, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
-  const bytes = evalBytesInterp(part.ref, frame, e);
-  return mapMaybe(bytes, value => part.unquote ? stripOuterQuotes(value) : value);
+  return part.unquote ? mapMaybe(unquotedRef(part.ref, frame, spliceCtx(e)), emitValue) : evalBytesInterp(part.ref, frame, e);
 }
 
 /** [selector-capture] The header/parent branch strings one complex contributes.
@@ -19158,7 +19146,7 @@ function emitHoistedCssImports(rules: Statement[], frame: Frame, e: Emit): void 
  * string literal reports its UNQUOTED text; every other prelude — a list, map,
  * number, bare keyword, or bare `#{…}` — reports its serialized bytes verbatim,
  * INCLUDING any inner quotes. The discriminator is the prelude's AST SHAPE, not
- * its serialized bytes: a byte-level `stripOuterQuotes` over the whole message
+ * its serialized bytes: stripping the quotes off the whole message
  * would wrongly unwrap the list `"a", "b"` to `a", "b`, whereas testing the
  * node keeps the list intact.
  *

@@ -29,6 +29,19 @@ describe('typed reads, not byte scans', () => {
     await expect(render('@color: red; @d: ~\'"color"\'; .x { d: @@d; }')).rejects.toMatchObject({ code: 'resolve/name-not-found' });
   });
 
+  /*
+   * `@{name}` splices a string's content: a quoted string's, read from the
+   * string, and an escaped string's as written, quotes in it included (V22) —
+   * in a template, a selector, and a `@{` token spliced together at runtime.
+   */
+  it('splices an interpolated string by its content, never stripping quotes from bytes', async () => {
+    expect(await render('@q: "x"; @e: ~\'"y"\'; .s-@{q} { v: ~"@{q}"; w: ~"@{e}"; } .t-@{e} { a: 1; }'))
+      .toBe('.s-x { v: x; w: "y"; } .t-"y" { a: 1; }');
+    expect(await render('@a: ~"@{"; @b: ~"}"; @q: "x"; @e: ~\'"y"\'; .x { v: ~"@{a}q@{b}"; w: ~"@{a}e@{b}"; }'))
+      .toBe('.x { v: x; w: "y"; }');
+    expect(await render('@m: { @k: 1px; }; @n: "k"; @o: ~"k"; .x { a: @m[@@n]; b: @m[@@o]; }')).toBe('.x { a: 1px; b: 1px; }');
+  });
+
   it('spreads one value that is not a list as one argument', async () => {
     expect(await render('.m(@x; @y: none) { x: @x; y: @y; } @a: ~"1px 2px"; @l: 1px 2px; .c { .m(@a...); } .d { .m(@l...); }'))
       .toBe('.c { x: 1px 2px; y: none; } .d { x: 1px; y: 2px; }');

@@ -337,7 +337,12 @@ describe('V19 one-evaluator projection ratchet', () => {
     // operand of math kept as written and as a mixin argument (`writtenParens`,
     // `spelledOperand`, `argumentSnapshot`); `groupComputes` became a one-line
     // arrow.
-    expect(occurrences(/^function |^async function /gmu)).toBe(545);
+    // +1 function, net (ledger V22): an interpolation that unquotes reads the
+    // typed string (`unquotedRef`) — in a template, a selector splice and an
+    // emergent `@{…}` — and `[@@name]` names a member by `lookupName`, so
+    // `stripOuterQuotes` is gone; the synchronous positions share one guard
+    // (`syncValue`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(546);
     expect(occurrences(/new Map/gu)).toBe(85);
     expect(occurrences(/new Set/gu)).toBe(41);
     expect(occurrences(/new WeakMap/gu)).toBe(10);
