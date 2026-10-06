@@ -267,9 +267,14 @@ describe('V19 one-evaluator projection ratchet', () => {
     // structurally (`resolvedSelectorList`/`Branch`/`Term`), a glued name joining
     // the name it continues (`resolvedCompoundTokens`), and an imported
     // interpolated rule adds its extend targets to the walk's target atoms.
-    expect(occurrences(/^function |^async function /gmu)).toBe(521);
+    // +2 functions, +1 `new Set` (ledger X16, J15): a called definition's
+    // body-form extend is recorded for the rule the call lands in
+    // (`recordCalledExtends`, sharing `recordDynamicInstruction` with the walk's
+    // other extends); an imported definition carrying one adds its targets to
+    // the walk's target atoms.
+    expect(occurrences(/^function |^async function /gmu)).toBe(523);
     expect(occurrences(/new Map/gu)).toBe(86);
-    expect(occurrences(/new Set/gu)).toBe(41);
+    expect(occurrences(/new Set/gu)).toBe(42);
     expect(occurrences(/new WeakMap/gu)).toBe(8);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

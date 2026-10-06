@@ -68,6 +68,9 @@ type MixinDefinitionFact = {
   readonly params: readonly Param[];
   readonly guard?: MixinGuard;
   readonly rules: readonly Statement[];
+
+  /** Body-form `&:extend()`s the definition carries for its call sites (ledger X16). */
+  readonly extensions: readonly ExtendInstruction[];
   readonly bodySpan?: SourceSpan;
 };
 type MixinCallFact = { readonly args: readonly MixinCallArgument[]; readonly important: boolean };

@@ -5293,7 +5293,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         sequence(g.MixinGuard, optional(mixinSignatureGap), literal('{')),
         literal('{')
       ),
-      g.blockBody,
+      // A ruleset body: a body-form `&:extend()` is as legal here as in the rule
+      // the mixin is called into, and the definition carries it (ledger X16).
+      rulesetBody,
       optional(g.Call),
       literal('}'),
       optional(literal(';'))
@@ -5304,6 +5306,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         params: [],
         ...(children.find(isMixinGuard) === undefined ? {} : { guard: children.find(isMixinGuard) }),
         rules: children.filter(isStatement),
+        extensions: children.filter(isBodyExtendFact).flatMap(fact => fact.bodyExtensions),
         ...(bodySpan === undefined ? {} : { bodySpan })
       };
     }
@@ -5396,7 +5399,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           mixinDefinitionNameFromSelectorBranch(prefix.selector),
           [...definition.params],
           [...definition.rules],
-          definition.guard
+          definition.guard,
+          [...definition.extensions]
         );
         return withSourceSpan(
           definition.bodySpan === undefined ? node : withBodySpan(node, definition.bodySpan),

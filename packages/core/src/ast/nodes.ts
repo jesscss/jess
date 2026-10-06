@@ -1236,6 +1236,15 @@ export interface MixinDefinition extends SpanSlots, BodySpanSlots {
    * identical ruleset-mixin output, so the serializer must tell them apart.
    */
   readonly ruleMixin?: boolean;
+
+  /*
+   * A body-form `&:extend()` written directly in the definition's body (ledger X16):
+   * the rule each call's body lands in extends, as if the extend were written in that
+   * rule's own body. Set only when the body has one. A ruleset called as a mixin
+   * carries its own `extendInstructions` here; its inline ones (with a `subject`) bind
+   * to its own selector and do not travel with the call.
+   */
+  readonly extendInstructions?: ExtendInstruction[];
 }
 
 /**
@@ -1776,8 +1785,20 @@ export const mixinDef = (
   name: string,
   params: Param[],
   rules: Statement[],
-  guard?: GuardNode // [guards]
-): MixinDefinition => ({ type: 'MixinDefinition', name, params, rules, ...(guard !== undefined ? { guard } : {}), _s: NO_SPAN, _e: NO_SPAN, _bs: NO_SPAN, _be: NO_SPAN });
+  guard?: GuardNode, // [guards]
+  extendInstructions?: ExtendInstruction[]
+): MixinDefinition => ({
+  type: 'MixinDefinition',
+  name,
+  params,
+  rules,
+  ...(guard !== undefined ? { guard } : {}),
+  ...(extendInstructions !== undefined && extendInstructions.length > 0 ? { extendInstructions } : {}),
+  _s: NO_SPAN,
+  _e: NO_SPAN,
+  _bs: NO_SPAN,
+  _be: NO_SPAN
+});
 
 /** [guards] Args may be bare value nodes (positional) or {@link CallArg}s.
  *  `content` is the assigned block (`$ > m(): @{ … }`), not an argument. */

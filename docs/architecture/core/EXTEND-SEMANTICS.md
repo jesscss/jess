@@ -96,6 +96,7 @@ gate: the extend paths may not name an evaluator entrypoint).
 | Attached to selector (Less) | `.a:extend(.b) {}` | extend clause must be LAST in the selector |
 | Space before clause (Less) | `.a :extend(.b) {}` | whitespace allowed |
 | Inside a ruleset body (Less) | `.a { &:extend(.b); }` | shorthand for attaching to every selector of the ruleset |
+| Inside a mixin definition body (Less) | `.m() { &:extend(.b); }` | carried on the definition (`MixinDefinition.extendInstructions`); each call extends the rule its body lands in, as if written in that rule's body; a call outside every rule extends nothing (ledger X16, J15) |
 | Multiple targets (Less) | `.a:extend(.b, .c) {}` | == two separate `:extend` clauses |
 | **Jess statement** | `$extend .b;` / `$extend .b !exact;` | Jess-native body statement — see §4 |
 
@@ -360,6 +361,19 @@ scope it is placed in (§8), once per placement:
 .z { .a(); }
 .x:extend(.z .p) {}
 // → .a .p { a: 1; }  .z .p, .x { a: 1; }
+```
+
+A body-form extend the called definition carries — written directly in a mixin
+definition's body, or in the body of a ruleset called as a mixin, with or without
+parentheses — extends the rule the call's body lands in, as if written in that rule's
+own body (ledger X16, J15; lessc copies the Extend into the caller). An inline `:extend()`
+on a called ruleset's selector stays that ruleset's own.
+
+```less
+.m { &:extend(.sm); c: d; }
+.sm { b: 2; }
+.x { .m; }
+// → .m { c: d; }  .sm, .m, .x { b: 2; }  .x { c: d; }
 ```
 
 An interpolated selector in such a body is a target part by part, like any other (ledger

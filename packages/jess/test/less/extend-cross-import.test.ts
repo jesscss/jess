@@ -204,6 +204,13 @@ describe('extend across @import', () => {
    * An extend reached only through a mixin or loop body of the ROOT still makes the import
    * graph extend-bearing, so a compound target in a plain import keeps its extender.
    */
+  // Ledger X16, J15: an imported definition's own body-form extend applies at the call.
+  it('a body-form extend in an imported mixin definition extends the calling rule', async () => {
+    const expected = ['.sm,', '.x {', '  b: 2;', '}', '.x {', '  c: d;', '}'].join('\n');
+    expect(await renderFile('def-extend-main.less')).toBe(expected);
+    expect(await renderFile('def-extend-main.less', false)).toBe(expected);
+  });
+
   describe('extender in a root mixin or loop body', () => {
     const pqX = (...extenders: string[]) =>
       ['.p.q,', '.p.r,', ...extenders.map((x, i) => (i === extenders.length - 1 ? `${x} {` : `${x},`)), '  a: 1;', '}'].join('\n');
