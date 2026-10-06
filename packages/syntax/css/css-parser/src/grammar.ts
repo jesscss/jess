@@ -28,6 +28,7 @@ import {
   authoredText,
   block,
   branchRest,
+  commaListWithComments,
   fallbackCall,
   ifTestCall,
   blockStatements,
@@ -3900,21 +3901,17 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     children => queryConditionChain(children)
   );
+
+  /* The list keeps the comments written either side of a `,` in its layout
+   * (`@media screen /* a *\/, /* b *\/ print`). */
   const QueryPrelude = node(
     'QueryPrelude',
     oneOrMoreSep(
       g.QueryClause,
-      literal(',')
+      field('separator', regex(/,[ \t\n\r\f]*/))
     ),
-    (children) => {
-      const values = valueChildren(children);
-      return values.length === 1
-        ? values[0]!
-        : list(
-            values,
-            ','
-          );
-    }
+    (children, fields, _span, rawChildren, triviaLog, state) =>
+      commaListWithComments(children, fields, rawChildren, triviaLog, state, isValue)
   );
   const containerName = sequence(
     not(g.QueryFunctionOpen),

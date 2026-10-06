@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, atRuleBlock, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorCapture, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
+import { any, atRuleBlock, commaListWithComments, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorCapture, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -40,7 +40,6 @@ import {
   lessBranchSegments,
   callArgumentSource,
   combinatorTailReducer,
-  commaListWithTriviaFromChildren,
   queryListHasImportCondition,
   complexSegmentsFrom,
   customPartsFromChildren,
@@ -384,7 +383,7 @@ type SharedSyntax = {
   LangPseudoArgument: Combinator<List | Interpolation>;
   DirPseudoArgument: Combinator<Keyword>;
   AnPlusB: Combinator<AnPlusB>;
-  /** The CSS base's media query list (`@media`, an import postlude), with Less's comment layout at its commas. */
+  // Inherited from the CSS base: the media query list (`@media`, an import postlude).
   QueryPrelude: Combinator<ValueNode>;
   // Inherited from the CSS base: an only-clause or a chain of media terms.
   QueryClause: Combinator<ValueNode>;
@@ -2433,7 +2432,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       if (referenceValue !== undefined) {
         return referenceValue;
       }
-      return commaListWithTriviaFromChildren(children, fields, triviaLog, state, isLessValueSlotValue, rawChildren);
+      return commaListWithComments(children, fields, rawChildren, triviaLog, state, isLessValueSlotValue);
     }
   );
   // Variable declarations additionally permit Less trivia immediately after
@@ -2450,7 +2449,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(sequence(literal(','), optional(whitespace)))
     ),
     (children, fields, _span, rawChildren, triviaLog, state) =>
-      commaListWithTriviaFromChildren(children, fields, triviaLog, state, isLessValueSlotValue, rawChildren)
+      commaListWithComments(children, fields, rawChildren, triviaLog, state, isLessValueSlotValue)
   );
   // `!important` is a grammar-owned declaration/value modifier.  Variables
   // carry the wrapper so references hoist importance once; declarations expose
@@ -3830,21 +3829,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.QueryIdentOrFunctionTerm
   );
 
-  /*
-   * The CSS base's media query list — the same clauses and commas — overridden
-   * for its reducer only: Less keeps the comments written either side of a `,`
-   * in the list's layout (`@media screen /* a *\/, /* b *\/ print`), which the
-   * CSS list does not record.
-   */
-  const QueryPrelude = node(
-    'QueryPrelude',
-    oneOrMoreSep(
-      g.QueryClause,
-      field('separator', regex(/,[ \t\n\r\f]*/))
-    ),
-    (children, fields, _span, rawChildren, triviaLog, state) =>
-      commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueNode, rawChildren)
-  );
   // A style query is a real typed container-header function. Its argument is a
   // structural custom-property comparison rather than an opaque header slice.
   const styleFunctionOpener = token(noTrivia(sequence(word(
@@ -4022,7 +4006,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       field('separator', regex(/,[ \t\n\r\f]*/))
     ),
     (children, fields, _span, rawChildren, triviaLog, state) =>
-      commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueNode, rawChildren)
+      commaListWithComments(children, fields, rawChildren, triviaLog, state, isValueNode)
   );
   // Media and container headers differ, but their child statement language is
   // one shared grammar production. Keep it shared so a valid nested Less
@@ -5542,7 +5526,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     QueryValue,
     QueryColonFeature,
     MediaTypeTerm,
-    QueryPrelude,
     QueryFeature,
     ContainerStyleQuery,
     ContainerScrollStateQuery,

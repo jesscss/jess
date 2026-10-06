@@ -769,6 +769,17 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
       + 'comment form.'
   },
   {
+    id: 'comments either side of a media query list comma',
+    group: 'value',
+    source: '@media screen /* a */, /* b */ print { a { b: c } }',
+    brokenIn: ['scss'],
+    defect:
+      'css-syntax-3 §5.4.4 skips comments wherever whitespace is allowed. SCSS '
+      + 'reads a block comment as a statement, not trivia, so it rejects one in '
+      + 'any at-rule prelude or selector (`a /* c */ .b {}` too): the SCSS '
+      + 'comment-trivia migration.'
+  },
+  {
     id: '!IMPORTANT case-insensitive',
     group: 'value',
     source: 'a { color: red !IMPORTANT }'

@@ -25,6 +25,21 @@ describe('Less at-rules through the public AST route', () => {
     expect(css).toBe('@property --accent {\n  syntax: "<color>";\n  inherits: false;\n  initial-value: red;\n}\n');
   });
 
+  /*
+   * The CSS base's media query list keeps the comments written either side of a
+   * `,` in its layout; Less and .jess read that list, so they keep them too.
+   * (SCSS rejects a comment in a prelude: css-superset-corpus pins it.)
+   */
+  it('keeps the comments either side of a media query list comma', async () => {
+    for (const language of ['less', 'jess'] as const) {
+      const css = await new Compiler().renderString(
+        '@media screen /* a */, /* b */ print { a { b: c } }',
+        { language, filePath: `/virtual/media.${language}` }
+      );
+      expect(css, language).toBe('@media screen /* a */, /* b */ print {\n  a {\n    b: c;\n  }\n}\n');
+    }
+  });
+
   it('should handle simple at rule', async () => {
     const lessCode = `
       @var: 42;

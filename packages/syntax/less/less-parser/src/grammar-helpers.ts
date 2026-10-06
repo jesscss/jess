@@ -20,7 +20,7 @@
  */
 
 import type { FieldCapture, FieldMap, Span } from 'parseman';
-import { NO_SPAN, any, block, callArg, quoted, condition, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { NO_SPAN, any, block, callArg, quoted, condition, delimiterClose, delimiterOpen, sepGlue, withFirstBranchCondition, expression, funcCall, ifNode, ifValue, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, operation, propertyReference, pseudoSelector, reference, selectorBranchCanonical, selectorTermOf, semanticGapText, simpleSelector, sourceEndOf, sourceSpanOf, sourceStartOf, spaced, triviaTextAt, variableReference, withFunctionScope, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, Block, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, Expression, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, IfValueBranch, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, Operation, Param, Quoted, Reference, ReferenceStep, Ruleset, SelectorBranch, SelectorList, SelectorTerm, SimpleSelector, SimpleToken, SourceSpan, SpannedToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessUnsupportedVariableNameError } from './parse-error.js';
@@ -807,96 +807,24 @@ function lessMathOutsideParens(state: unknown, operator: string): boolean {
   return false;
 }
 
-const lessTriviaKindLabels = ['whitespace', 'lineComment', 'blockComment'] as const;
 const LESS_NODE_TRIVIA_STRIDE = 4;
 
 function lessTriviaEntryCount(triviaLog: readonly number[]): number {
   return Math.trunc(triviaLog.length / LESS_NODE_TRIVIA_STRIDE);
 }
 
-function lessTriviaEntryStart(triviaLog: readonly number[], index: number): number {
-  return triviaLog[index * LESS_NODE_TRIVIA_STRIDE] ?? 0;
-}
-
-function lessTriviaEntryEnd(triviaLog: readonly number[], index: number): number {
-  return triviaLog[index * LESS_NODE_TRIVIA_STRIDE + 1] ?? 0;
-}
-
 function lessTriviaEntryInsertIndex(triviaLog: readonly number[], index: number): number {
   return triviaLog[index * LESS_NODE_TRIVIA_STRIDE + 2] ?? 0;
 }
 
-function lessTriviaEntryKind(triviaLog: readonly number[], index: number): typeof lessTriviaKindLabels[number] | undefined {
-  const kindIndex = triviaLog[index * LESS_NODE_TRIVIA_STRIDE + 3];
-  return kindIndex === undefined ? undefined : lessTriviaKindLabels[kindIndex];
-}
-
-function lessTriviaEntryText(triviaLog: readonly number[], source: string, index: number): string {
-  return source.slice(lessTriviaEntryStart(triviaLog, index), lessTriviaEntryEnd(triviaLog, index));
-}
-
-function lessTriviaEntryHasLineBreak(triviaLog: readonly number[], source: string, index: number): boolean {
-  for (const char of lessTriviaEntryText(triviaLog, source, index)) {
-    if (char === '\n' || char === '\r') {
-      return true;
-    }
-  }
-  return false;
-}
-
+/** The layout text of the trivia before raw child `insertIndex` ({@link triviaTextAt}). */
 function triviaTextAtInsertIndex(
   triviaLog: readonly number[],
   state: unknown,
   insertIndex: number
 ): string {
   const source = sourceFromState(state);
-  if (source === undefined) {
-    return '';
-  }
-
-  const entryCount = lessTriviaEntryCount(triviaLog);
-  const selected: number[] = [];
-  let hasBlockComment = false;
-  let hasLineBreak = false;
-  for (let index = 0; index < entryCount; index += 1) {
-    if (lessTriviaEntryInsertIndex(triviaLog, index) !== insertIndex) {
-      continue;
-    }
-    selected.push(index);
-    if (lessTriviaEntryKind(triviaLog, index) === 'blockComment') {
-      hasBlockComment = true;
-    }
-    if (lessTriviaEntryHasLineBreak(triviaLog, source, index)) {
-      hasLineBreak = true;
-    }
-  }
-
-  if (!hasBlockComment) {
-    return hasLineBreak
-      ? selected.map(index => lessTriviaEntryText(triviaLog, source, index)).join('')
-      : '';
-  }
-
-  const outputEntries = new Set<number>();
-  const selectedEntries = new Set(selected);
-  for (const index of selected) {
-    if (lessTriviaEntryKind(triviaLog, index) !== 'blockComment') {
-      continue;
-    }
-    const previous = index - 1;
-    const next = index + 1;
-    if (selectedEntries.has(previous) && lessTriviaEntryKind(triviaLog, previous) === 'whitespace') {
-      outputEntries.add(previous);
-    }
-    outputEntries.add(index);
-    if (selectedEntries.has(next) && lessTriviaEntryKind(triviaLog, next) === 'whitespace') {
-      outputEntries.add(next);
-    }
-  }
-  return selected
-    .filter(index => outputEntries.has(index))
-    .map(index => lessTriviaEntryText(triviaLog, source, index))
-    .join('');
+  return source === undefined ? '' : triviaTextAt(triviaLog, source, insertIndex);
 }
 
 function rawLeafText(entry: unknown): string | undefined {
@@ -969,32 +897,6 @@ function functionSeparatorsFromFields(
 
 function hasField(fields: FieldMap | undefined, name: string): boolean {
   return fields?.[name] !== undefined;
-}
-
-function commaListWithTriviaFromChildren<T extends ValueSlot>(
-  children: readonly unknown[],
-  fields: FieldMap | undefined,
-  triviaLog: readonly number[],
-  state: unknown,
-  pick: (child: unknown) => child is T,
-  rawChildren: readonly unknown[]
-): T | List {
-  const values = children.filter(pick);
-  if (values.length === 1) {
-    return values[0]!;
-  }
-  const result = list(values, ',');
-  const authoredSeparators = separatorsFromFields(fields);
-  if (authoredSeparators.length !== values.length - 1) {
-    return result;
-  }
-  const separatorIndexes = separatorRawIndexes(rawChildren, authoredSeparators);
-  if (separatorIndexes.length !== authoredSeparators.length) {
-    return result;
-  }
-  const separators = authoredSeparators.map((separator, index) =>
-    separatorWithSurroundingTrivia(separator, separatorIndexes[index]!, triviaLog, state));
-  return withValueLayout(result, separators);
 }
 
 /**
@@ -2701,7 +2603,6 @@ export {
   callArgumentSource,
   callWithLayout,
   combinatorTailReducer,
-  commaListWithTriviaFromChildren,
   queryListHasImportCondition,
   complexSegmentsFrom,
   customPartsFromChildren,
@@ -2791,13 +2692,7 @@ export {
   lessConditionGuard,
   lessMathOutsideParens,
   lessTriviaEntryCount,
-  lessTriviaEntryEnd,
-  lessTriviaEntryHasLineBreak,
   lessTriviaEntryInsertIndex,
-  lessTriviaEntryKind,
-  lessTriviaEntryStart,
-  lessTriviaEntryText,
-  lessTriviaKindLabels,
   lowerLogicalCall,
   lowerLogicalCallStatement,
   mixinArgumentSource,

@@ -525,6 +525,103 @@ export function semanticTextWithTriviaGaps(children: readonly unknown[], triviaL
 }
 
 /**
+ * The authored trivia a node's log records before raw child `insertIndex`, as the
+ * layout of a list keeps it: each block comment with the whitespace either side of
+ * it; with no block comment, the whitespace only where it breaks a line; otherwise
+ * nothing. An entry is classified by its own bytes (`/*` opens a block comment), so
+ * any dialect's trivia scope reads the same.
+ */
+export function triviaTextAt(triviaLog: readonly number[], source: string, insertIndex: number): string {
+  let first = -1;
+  let last = -1;
+  let hasBlockComment = false;
+  let hasLineBreak = false;
+  for (let entry = 0; entry < triviaLog.length; entry += CSS_NODE_TRIVIA_STRIDE) {
+    if (triviaLog[entry + 2] !== insertIndex) {
+      continue;
+    }
+    if (first < 0) {
+      first = entry;
+    }
+    last = entry;
+    const start = triviaLog[entry]!;
+    const end = triviaLog[entry + 1]!;
+    if (source.startsWith('/*', start)) {
+      hasBlockComment = true;
+    } else if (/[\n\r]/u.test(source.slice(start, end))) {
+      hasLineBreak = true;
+    }
+  }
+  if (first < 0 || (!hasBlockComment && !hasLineBreak)) {
+    return '';
+  }
+  let text = '';
+  for (let entry = first; entry <= last; entry += CSS_NODE_TRIVIA_STRIDE) {
+    if (triviaLog[entry + 2] !== insertIndex) {
+      continue;
+    }
+    const start = triviaLog[entry]!;
+    const isComment = (at: number): boolean => at >= first && at <= last
+      && triviaLog[at + 2] === insertIndex && source.startsWith('/*', triviaLog[at]!);
+    if (!hasBlockComment || source.startsWith('/*', start)
+      || (!source.startsWith('//', start) && (isComment(entry - CSS_NODE_TRIVIA_STRIDE) || isComment(entry + CSS_NODE_TRIVIA_STRIDE)))) {
+      text += source.slice(start, triviaLog[entry + 1]);
+    }
+  }
+  return text;
+}
+
+/**
+ * A comma list whose layout keeps the comments written either side of each comma
+ * (`screen /* a *\/, /* b *\/ print`). Its separator field captures the `,` and the
+ * whitespace after it; ambient trivia took the comments, so they are read from the
+ * node's trivia log, before the separator's raw child and before the item after
+ * it. A list whose separators cannot all be placed keeps the plain `, ` glue.
+ */
+export function commaListWithComments<T extends ValueSlot>(
+  children: readonly unknown[],
+  fields: ReducerFields | undefined,
+  rawChildren: readonly unknown[],
+  triviaLog: readonly number[],
+  state: unknown,
+  pick: (child: unknown) => child is T
+): T | List {
+  const values = children.filter(pick);
+  if (values.length === 1) {
+    return values[0]!;
+  }
+  const result = list(values, ',');
+  const separators = authoredSeparators(fields);
+  const source = typeof state === 'object' && state !== null && 'source' in state && typeof state.source === 'string'
+    ? state.source
+    : undefined;
+  if (source === undefined || separators.length !== values.length - 1) {
+    return result;
+  }
+  const layout: string[] = [];
+  let raw = 0;
+  for (const separator of separators) {
+    while (raw < rawChildren.length && rawLeafValue(rawChildren[raw]) !== separator) {
+      raw++;
+    }
+    if (raw === rawChildren.length) {
+      return result;
+    }
+    layout.push(triviaTextAt(triviaLog, source, raw) + separator + triviaTextAt(triviaLog, source, raw + 1));
+    raw++;
+  }
+  return withValueLayout(result, layout);
+}
+
+/** A raw child's text when it is a parseman leaf; a `sepBy` separator is one. */
+function rawLeafValue(entry: unknown): string | undefined {
+  return typeof entry === 'object' && entry !== null && '_tag' in entry && entry._tag === 'leaf'
+    && 'value' in entry && typeof entry.value === 'string'
+    ? entry.value
+    : undefined;
+}
+
+/**
  * An attribute selector keeps its authored whitespace (ledger O7): the tokens
  * as written, and one space wherever the author put whitespace or a comment
  * between two of them — `[ href = "x" i ]`, `[href="x" i]` and `[href="x"i]`
