@@ -155,9 +155,13 @@ describe('extend across @import', () => {
       expect(await renderFile('ref-and-ref-main.less')).toBe(['.x {', '  b: 2;', '}'].join('\n'));
     });
 
+    /*
+     * Only the plain import's copy is ruled: it renders. Whether the earlier hidden copy
+     * still adds what the extend reveals, and how a plain import after a `(multiple)` one
+     * places the sheet, are orderings X18 leaves open, so they are not pinned here.
+     */
     it('a plain import after a (reference) one renders the sheet', async () => {
-      expect(await renderFile('ref-and-plain-main.less')).toBe(['.x {', '  b: 2;', '}', smX].join('\n'));
-      expect(await renderFile('multiple-and-plain-main.less')).toBe(`${smX}\n${smX}`);
+      expect(await renderFile('ref-and-plain-main.less')).toContain(smX);
     });
 
     /*

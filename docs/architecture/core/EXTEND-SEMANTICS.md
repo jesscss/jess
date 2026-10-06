@@ -650,7 +650,9 @@ J14, jess#359; X18, orchestrator judgment under owner delegation 2026-10-06):
 `@import "t.less"; @import (reference) "t.less";` places the sheet once, visibly, and
 `@import (multiple) "t.less"; @import (reference) "t.less";` places only the `(multiple)`
 copy. A `(reference)` import that comes first does not stop a later plain import, which
-renders the sheet the author asked to see as its own visible copy. A sheet a `(reference)` sheet imports is
+renders the sheet the author asked to see as its own visible copy. Whether the earlier
+hidden copy still adds what an extend reveals, and how a plain import after a
+`(multiple)` one places the sheet, are left open (X18). A sheet a `(reference)` sheet imports is
 referenced too, and a reference sheet's rule called as a mixin from outside the import
 renders as normal. A hidden rule that an extend in a mixin or loop body (recorded by the
 render walk) may still reveal renders as a reserved block, which the deferred fold
