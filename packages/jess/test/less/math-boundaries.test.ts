@@ -117,9 +117,27 @@ describe('Less math boundaries', () => {
     }
   });
 
+  /*
+   * A group is consumed only by math that computes in it or with it; a group
+   * around one value nothing computes keeps its parens, in every dialect
+   * (SEMANTIC-INVARIANTS 4; DESIGN-DECISIONS P35, orchestrator judgment under
+   * owner delegation 2026-10-06).
+   */
+  it('emits a paren group around one value identically in every dialect', async () => {
+    const src = '.x { c: (10vh); d: var(--a, (10px)); e: calc(var(--a, ((5vh)))); f: (red) (1px); g: (10px) / 2; }';
+    const css = await renderCss(src);
+    expect(css).toBe('.x { c: (10vh); d: var(--a, (10px)); e: calc(var(--a, ((5vh)))); f: (red) (1px); g: (10px) / 2; }');
+    for (const extension of ['.less', '.scss', '.jess'] as const) {
+      expect(await renderIn(extension, src), extension).toBe(css);
+    }
+    expect(await renderJess('.x { w: min((10px), 1px); }')).toBe('.x { w: min((10px), 1px); }');
+    expect(await render('@w: 10px; .x { a: (@w); b: ((10px)); c: (percentage(0.5)); d: (10px) * 2; e: percentage((0.5)); }'))
+      .toBe('.x { a: (10px); b: ((10px)); c: (50%); d: 20px; e: 50%; }');
+  });
+
   it('still consumes the parens of Less math outside a math function', async () => {
-    expect(await render('@v: 1; .x { a: (1px + 2px) 3px; b: -(@v); c: (10vh); }'))
-      .toBe('.x { a: 3px 3px; b: -1; c: 10vh; }');
+    expect(await render('@v: 1; .x { a: (1px + 2px) 3px; b: -(@v); c: ((1px + 2px)); }'))
+      .toBe('.x { a: 3px 3px; b: -1; c: 3px; }');
     expect(await render('.x { w: 4px * (1 + 1) / 4 + 3px; v: 2 * (1px + 1em); }', { mathMode: 'parens' }))
       .toBe('.x { w: 4px * 2 / 4 + 3px; v: 2 * calc(1px + 1em); }');
   });

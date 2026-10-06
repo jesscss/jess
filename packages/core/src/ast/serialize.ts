@@ -4599,10 +4599,12 @@ function evalTyped(
        * product is merely the one preserve already produced.
        *
        * An inert group has nothing for the frame to compute, so it is not
-       * consumed and keeps its parens ({@link isInertGroup}).
+       * consumed and keeps its parens ({@link isInertGroup}); nor is a group in
+       * an argument of a call written out as-is, which no callable reads, unless
+       * math in it computes ({@link groupComputes}).
        */
-      return isInertGroup(node)
-        ? mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues), v => makeKeyword(`(${emitValue(v)})`))
+      return isInertGroup(node) || (argument === ARG_WRITTEN && !groupComputes(node))
+        ? mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues, argument), v => makeKeyword(`(${emitValue(v)})`))
         : evalTypedSlot(
             node.value,
             frame,
@@ -4734,23 +4736,26 @@ const isParenGroup = (slot: ValueSlot): slot is Block =>
   !isValueSlotArray(slot) && slot.type === 'Block' && slot.delimiter === 'paren' && slot.escaped !== true;
 
 /*
- * Every paren authored inside a math function is kept as written, redundant or
- * not (ledger P35, owner 2026-10-06: "no reason to drop parens. the user wanted
- * to write it that way for a reason."). Nothing computes there, so nothing
- * consumes a group. Two facts carry the rule:
- *
- * - a group around content nothing computes — math kept as written, or raw
- *   bytes — keeps its own parens wherever it is evaluated ({@link isInertGroup});
- * - a group around one value is consumed by evaluation like any paren, so the
- *   positions inside a math function write its levels back: an operand of kept
- *   math and the argument of `calc()` ({@link unconsumedParens}).
- *
- * Not yet covered: a group around one value that is a whole argument of a call
- * written out as-is (`calc(var(--a, (10px)))`, `.jess` `min((10px), 1px)`) is
- * consumed by the typed argument lane, where css keeps it.
+ * A paren group is consumed only by math that computes inside it: `(1px + 2px)`
+ * is `3px`. Every other group keeps its parens wherever it is written — around
+ * one value (`c: (10vh)`, `var(--a, (10px))`), around math kept as written, or
+ * around raw bytes — in every dialect, so valid CSS emits the bytes css does
+ * (SEMANTIC-INVARIANTS 4; ledger P35, owner 2026-10-06: "no reason to drop
+ * parens. the user wanted to write it that way for a reason."). A computing
+ * consumer — an operand of math that operates, an argument a callable reads —
+ * still reads the value inside the group, through the typed lane.
  */
 
-/** A paren group around math kept as written or around raw bytes (see above). */
+/** Whether math inside the group computes, which consumes its parens (see above). */
+function groupComputes(node: Block): boolean {
+  let inner: ValueSlot = node.value;
+  while (isParenGroup(inner)) {
+    inner = inner.value;
+  }
+  return !isValueSlotArray(inner) && inner.type === 'Operation' && !inner.inMathFunction;
+}
+
+/** A paren group around math kept as written or around raw bytes: nothing in it computes. */
 function isInertGroup(node: Block): boolean {
   let inner: ValueSlot = node.value;
   while (isParenGroup(inner)) {
@@ -4760,9 +4765,10 @@ function isInertGroup(node: Block): boolean {
 }
 
 /**
- * How many paren levels the author wrote around `slot` that evaluation drops,
- * or 0 when `slot` is not a group around one value. A group whose operation
- * computes is consumed by it, and an inert group writes its own parens.
+ * How many paren levels the author wrote around `calc()`'s argument that its
+ * typed evaluation drops, or 0 when the argument is not a group around one
+ * value. A group whose operation computes is consumed by it, and an inert group
+ * writes its own parens.
  */
 function unconsumedParens(slot: ValueSlot): number {
   let depth = 0;
@@ -4775,17 +4781,6 @@ function unconsumedParens(slot: ValueSlot): number {
 }
 
 const wrapParens = (bytes: string, depth: number): string => depth === 0 ? bytes : `${'('.repeat(depth)}${bytes}${')'.repeat(depth)}`;
-
-/**
- * The bytes of one operand of an operation that is kept as written: a group
- * around one value gets its authored levels back ({@link unconsumedParens}).
- * Outside a math function a paren group's operation computed, and the group is
- * one value with no precedence left to protect.
- */
-function preservedOperand(parent: Operation, child: ValueNode, value: EvalValue): string {
-  const bytes = emitValue(value);
-  return isLiteral(value) || !parent.inMathFunction ? bytes : wrapParens(bytes, unconsumedParens(child));
-}
 
 /**
  * An `Expression` the author spelled as a paren group — its span opens at the
@@ -5084,10 +5079,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         : e);
 
       /*
-       * Transparent to computed bytes: a materialized (operated) inner strips the
-       * paren (matching the legacy oracle); an un-forced literal keeps its parens,
-       * and so does an inert group ({@link isInertGroup}), whose kept math is
-       * still one expression.
+       * A group is consumed only by math that computes inside it: `(1px + 2px)`
+       * is `3px`. Every other group keeps its parens — around one value, kept
+       * math, or raw bytes ({@link groupComputes}).
        */
       /*
        * §12.6c: a bracketed value emits VERBATIM. Balanced `[ … ]` is a valid
@@ -5104,7 +5098,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         if (node.delimiter !== 'paren') {
           return makeBlock(v, node.delimiter, node.escaped);
         }
-        return isInertGroup(node) ? makeKeyword(`(${emitValue(v)})`) : v;
+        return groupComputes(node) ? v : makeKeyword(`(${emitValue(v)})`);
       });
     }
     case 'Expression': {
@@ -5240,9 +5234,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         const l = evalValue(node.left, frame, e);
         const r = evalValue(node.right, frame, e);
         return combineAll([l, r], (values) => {
-          const left = preservedOperand(node, node.left, values[0]!);
-          const right = preservedOperand(node, node.right, values[1]!);
-          const bytes = `${left} ${node.operator} ${right}`;
+          const bytes = `${emitValue(values[0]!)} ${node.operator} ${emitValue(values[1]!)}`;
 
           /*
            * An operation preserved because it was authored inside a math
