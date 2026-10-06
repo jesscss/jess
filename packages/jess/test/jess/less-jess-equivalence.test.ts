@@ -963,6 +963,28 @@ describe('converted function imports', () => {
   });
 });
 
+/*
+ * The Less corpus has no paren group around one value or a function call outside
+ * `calc()`, so the ratchet cannot see one. Each case renders the Less source and
+ * its converted `.jess` and compares the bytes. (`@@name`, `$prop`, a map member
+ * and a splice of a value holding a comment have no `.jess` spelling yet.)
+ */
+describe('round trip of paren groups', () => {
+  const render = async (source: string, language: 'less' | 'jess'): Promise<string> =>
+    new Compiler().renderString(source, { language, extension: `.${language}` });
+  const cases = [
+    '.x { a: (10vh); b: (percentage(0.5)); c: var(--a, (10px)); d: (10px) * 2; e: (unit(5, px)); }',
+    '@w: 10px; @a: 1px + 2px; @p: percentage(0.5); .x { a: (@w); b: (@a); c: ((10px)); d: (@p); }',
+    '.m(@x) { a: (@x); } .y { .m(1px + 2px); } .z { .m(10px); }'
+  ];
+  for (const less of cases) {
+    it(less, async () => {
+      const jess = emitJess(parseLess(less), { functions: LESS_FUNCTIONS });
+      expect(await render(jess, 'jess'), jess).toBe(await render(less, 'less'));
+    });
+  }
+});
+
 describe('converted custom properties', () => {
   it('prints a custom property\'s value comments in the value, once', () => {
     expect(emitJess(parseLess('.a { --x: /* c */ red; --y: a /* d */ b; /* e */ z: 1; }')))
