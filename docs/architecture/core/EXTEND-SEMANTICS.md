@@ -97,7 +97,7 @@ gate: the extend paths may not name an evaluator entrypoint).
 | Space before clause (Less) | `.a :extend(.b) {}` | whitespace allowed |
 | Inside a ruleset body (Less) | `.a { &:extend(.b); }` | shorthand for attaching to every selector of the ruleset |
 | Inside a mixin definition body (Less) | `.m() { &:extend(.b); }` | carried on the definition (`MixinDefinition.extendInstructions`); each call extends the rule its body lands in, as if written in that rule's body; a call outside every rule extends nothing (ledger X16, J15) |
-| Inside a detached ruleset (Less) | `@r: { &:extend(.b); };` | carried on the block (`AnonymousMixin.extendInstructions`); each `@r()` call extends the rule it lands in, as a mixin definition's does (ledger X19) |
+| Inside a detached ruleset (Less) | `@r: { &:extend(.b); };` | carried on the block (`AnonymousMixin.extendInstructions`); each call — `@r()`, or a mixin calling it as an argument or parameter default — extends the rule it lands in, as a mixin definition's does (ledger X19) |
 | Inside an at-rule block (Less) | `.a { @media print { &:extend(.b); } }` | carried on the block (`AtRuleBlock.extendInstructions`); the rule the block lands in extends, inside the block's scope (§8), as if written in that rule's body within the block; a block outside every rule extends nothing (ledger X19) |
 | Multiple targets (Less) | `.a:extend(.b, .c) {}` | == two separate `:extend` clauses |
 | **Jess statement** | `$extend .b;` / `$extend .b !exact;` | Jess-native body statement — see §4 |
@@ -114,10 +114,18 @@ pre:hover:extend(div pre), .some-class:extend(div pre) {}
 A body-form `&:extend()` parses in every braced Less statement body. One written directly
 in a mixin definition, a detached ruleset or an at-rule block is applied by the render walk
 where that body lands — the innermost open rule extends, at the walk's scope — so
-`@r: { &:extend(.sm); }; .x { @r(); }` gives `.sm, .x`, and
-`.a { @media print { &:extend(.a .b); .b { c: 3; } } }` gives `@media print { .a .b, .a { … } }`
-while a top-level `.sm` stays unextended (the extend is scoped to the block). This is lessc
-4.9.1's output (ledger X19).
+`@r: { &:extend(.sm); }; .x { @r(); }` gives `.sm, .x`, as does a detached ruleset passed
+to a mixin as an argument or a parameter default and called inside `.x`. For a detached
+ruleset this is lessc 4.9.1's output (ledger X19). An at-rule block's extend is scoped to the
+block (§8): `.a { @media print { &:extend(.a .b); .b { c: 3; } } }` gives
+`@media print { .a .b, .a { … } }` while a top-level `.sm` stays unextended. lessc 4.9.1
+agrees inside `@media` and `@supports`, but applies one inside `@container` to the whole
+sheet, which the §8 scope does not.
+
+Known gap (nested output): with `collapseNesting: false`, the Less v5 default, a rule is
+never written as the extender of a rule nested inside it, so the `@media print` example
+above extends nothing there; the inline form `.a:extend(.a .b) { .b { … } }` misses the
+same way. It is pinned in `packages/jess/test/less/mixin-public-semantics.test.ts`.
 
 Grammar: the Jess `$extend` statement is `packages/syntax/jess/jess-parser/src/grammar.ts`
 (search `$extend`); the core node is `Extend { target, flag }` with the parsed

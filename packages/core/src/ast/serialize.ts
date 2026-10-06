@@ -11738,26 +11738,60 @@ interface ExtendClass {
 
 /**
  * The body-form `&:extend()`s a statement carries for the render walk to apply wherever
- * its body lands (see {@link recordBodyExtends}): a mixin definition's (ledger X16), an
- * at-rule block's or a detached ruleset's (X19). Undefined for every other statement.
+ * its body lands (see {@link recordBodyExtends}): a mixin definition's (ledger X16) or
+ * an at-rule block's (X19). A detached ruleset's are its own
+ * ({@link heldAnonymousMixin}). Undefined for every other statement.
  */
 function walkAppliedExtends(st: Statement): readonly ExtendInstruction[] | undefined {
   switch (st.type) {
     case 'MixinDefinition':
     case 'AtRuleBlock':
       return st.extendInstructions;
-    case 'VariableDeclaration':
-      return !isValueSlotArray(st.value) && st.value.type === 'AnonymousMixin' ? st.value.extendInstructions : undefined;
     default:
       return undefined;
   }
 }
 
 /**
+ * The `index`-th detached ruleset a statement holds as a value — a variable's
+ * (`@r: { … }`), a mixin call's argument or content block, a mixin definition's
+ * parameter default. The render walk places its rules, and applies its body-form
+ * `&:extend()`s (ledger X19), wherever it is called, so each classifier reads it as a
+ * placing body. Null past the last one; indexed, so the classifiers allocate nothing.
+ */
+function heldAnonymousMixin(st: Statement, index: number): AnonymousMixin | null {
+  let seen = 0;
+  const nth = (value: ValueSlot | CallValue | null | undefined): AnonymousMixin | null =>
+    value !== null && value !== undefined && !isValueSlotArray(value) && value.type === 'AnonymousMixin' && seen++ === index ? value : null;
+  switch (st.type) {
+    case 'VariableDeclaration':
+      return nth(st.value);
+    case 'MixinCall':
+      for (const arg of st.args) {
+        const held = nth(arg.value);
+        if (held !== null) {
+          return held;
+        }
+      }
+      return nth(st.content);
+    case 'MixinDefinition':
+      for (const param of st.params) {
+        const held = nth(param.default);
+        if (held !== null) {
+          return held;
+        }
+      }
+      return null;
+    default:
+      return null;
+  }
+}
+
+/**
  * Body `index` of a statement that places rules only when the render walk runs it: a
  * `$for`/`each()` loop, a mixin definition, a `$if`/`$while` control block (one body
- * per `$if` branch), or a detached ruleset (`@dr: { … }`). Null past the last body, and
- * for every other statement. Their rules are never static extend subjects; the walk
+ * per `$if` branch). A detached ruleset is {@link heldAnonymousMixin}. Null past the
+ * last body, and for every other statement. Their rules are never static extend subjects; the walk
  * records them where they land. Indexed, so the per-render classifiers allocate nothing.
  */
 function placingBody(st: Statement, index: number): readonly Statement[] | null {
@@ -11768,8 +11802,6 @@ function placingBody(st: Statement, index: number): readonly Statement[] | null 
       return index === 0 ? st.rules : null;
     case 'If':
       return st.branches[index]?.rules ?? null;
-    case 'VariableDeclaration':
-      return index === 0 && !isValueSlotArray(st.value) && st.value.type === 'AnonymousMixin' ? st.value.rules : null;
     default:
       return null;
   }
@@ -11787,6 +11819,12 @@ function classifyExtend(statements: readonly Statement[], inDynamic: boolean, ou
   for (const st of statements) {
     if (out.static && out.dynamic) {
       return;
+    }
+    for (let index = 0, held = heldAnonymousMixin(st, 0); held !== null; held = heldAnonymousMixin(st, ++index)) {
+      if (held.extendInstructions !== undefined) {
+        out.dynamic = true;
+      }
+      classifyExtend(held.rules, true, out);
     }
     if (st.type === 'Ruleset') {
       if (inDynamic) {
@@ -11817,7 +11855,7 @@ function classifyExtend(statements: readonly Statement[], inDynamic: boolean, ou
     } else if (st.type === 'MixinCall' || st.type === 'Apply') {
       out.places = true;
     } else {
-      /* A definition's or detached ruleset's own body-form extend applies wherever it is called (ledgers X16, X19). */
+      /* A definition's own body-form extend applies wherever it is called (ledger X16). */
       if (walkAppliedExtends(st) !== undefined) {
         out.dynamic = true;
       }
@@ -11847,6 +11885,12 @@ function collectDynamicExtendSets(
   targetAtoms: Set<string>
 ): void {
   for (const st of statements) {
+    for (let index = 0, held = heldAnonymousMixin(st, 0); held !== null; held = heldAnonymousMixin(st, ++index)) {
+      if (held.extendInstructions !== undefined) {
+        collectInstructionAtoms(held.extendInstructions, targetAtoms);
+      }
+      collectDynamicExtendSets(held.rules, true, staticRules, targetAtoms);
+    }
     if (st.type === 'Ruleset') {
       if (!inDynamic) {
         staticRules.add(st);
@@ -11888,6 +11932,13 @@ function collectInstructionAtoms(instructions: readonly ExtendInstruction[], ato
 function collectBodyExtendAtoms(statements: readonly Statement[], atoms: Set<string>): boolean {
   let places = false;
   for (const st of statements) {
+    for (let index = 0, held = heldAnonymousMixin(st, 0); held !== null; held = heldAnonymousMixin(st, ++index)) {
+      if (held.extendInstructions !== undefined) {
+        collectInstructionAtoms(held.extendInstructions, atoms);
+        places = true;
+      }
+      places = collectBodyExtendAtoms(held.rules, atoms) || places;
+    }
     if (st.type === 'Ruleset') {
       places = true;
       if (st.extendInstructions?.length) {
@@ -11903,7 +11954,7 @@ function collectBodyExtendAtoms(statements: readonly Statement[], atoms: Set<str
     } else if (st.type === 'StyleImport' || st.type === 'MixinCall' || st.type === 'Apply') {
       places = true;
     } else {
-      /* A definition's or detached ruleset's body-form extend is applied, by the walk, wherever it is called. */
+      /* A definition's body-form extend is applied, by the walk, wherever it is called. */
       const extend = walkAppliedExtends(st);
       if (extend !== undefined) {
         collectInstructionAtoms(extend, atoms);
@@ -12006,6 +12057,15 @@ function planImportedStaticExtend(
     if (applied !== undefined) {
       collectInstructionAtoms(applied, overlay.dynamicTargetAtoms ??= new Set());
       e.importedWalkPlacement = true;
+    }
+    for (let index = 0, held = heldAnonymousMixin(statement, 0); held !== null; held = heldAnonymousMixin(statement, ++index)) {
+      if (held.extendInstructions !== undefined) {
+        collectInstructionAtoms(held.extendInstructions, overlay.dynamicTargetAtoms ??= new Set());
+        e.importedWalkPlacement = true;
+      }
+      if (collectBodyExtendAtoms(held.rules, overlay.dynamicTargetAtoms ??= new Set())) {
+        e.importedWalkPlacement = true;
+      }
     }
     if (statement.type === 'Ruleset' && statement.selector.selectors.some(selectorBranchHasInterp)) {
       /*
@@ -12122,6 +12182,15 @@ function bodyMayPlanExtend(statements: readonly Statement[]): boolean {
   const pending: Statement[] = [...statements];
   while (pending.length) {
     const statement = pending.pop()!;
+    for (let index = 0, held = heldAnonymousMixin(statement, 0); held !== null; held = heldAnonymousMixin(statement, ++index)) {
+      if (held.extendInstructions !== undefined) {
+        recordAstExtendProfile?.('astExtend.preflight.bodyFeatureBearing');
+        return true;
+      }
+      for (const child of held.rules) {
+        pending.push(child);
+      }
+    }
     if (statement.type === 'Ruleset') {
       if (statement.extendInstructions?.length) {
         recordAstExtendProfile?.('astExtend.preflight.bodyFeatureBearing');
@@ -12145,7 +12214,7 @@ function bodyMayPlanExtend(statements: readonly Statement[]): boolean {
        * whose body carries `&:extend()` (e.g. Bootstrap's `#make-grid-columns()` grid
        * columns), or whose definition carries one of its own (ledger X16), arms the
        * walk-time dynamic recorder the same way a loop does. So does an at-rule block's
-       * or a detached ruleset's own (X19).
+       * own (X19); a detached ruleset's is read above, wherever it is held.
        */
       if (walkAppliedExtends(statement) !== undefined) {
         recordAstExtendProfile?.('astExtend.preflight.bodyFeatureBearing');
