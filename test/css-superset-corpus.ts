@@ -51,6 +51,19 @@ export interface CssConstruct {
   readonly defect?: string;
 }
 
+/*
+ * Shared by the glued `b:is(…)` / `src:local(…)` pins: one cause, two spellings.
+ * The spaced forms parse in all four.
+ */
+const GLUED_SELECTOR_FUNCTION_DEFECT =
+  'css-syntax-3 reads a block item that starts `<ident>:` as a declaration '
+  + 'first and as a nested rule only when that fails. Less tries the nested '
+  + 'rule first: `b:is(` reads as a type selector with a `:is()` pseudo, the '
+  + 'argument fails as a selector, and a failed known case of the pseudo '
+  + '`dispatch()` is a committed failure in parseman, so the declaration arm '
+  + 'never runs. Nothing here is specific to the slashes: `a { b:is(c % d) }` '
+  + 'and `@font-face{src:local("Foo")}` fail the same way.';
+
 export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
   // ---------------------------------------------------------------- at-rules
   {
@@ -704,6 +717,30 @@ export const CSS_CONSTRUCTS: readonly CssConstruct[] = [
       + 'component does not admit a punctuation-led run. P33 requires all four '
       + 'to accept it, so this is a superset defect, not a dialect difference. '
       + '(Less accepts it: its fallback is the custom-property value, ledger P2.)'
+  },
+  {
+    id: 'slashes between words in a function argument',
+    group: 'value',
+    source: '@font-face { src: local(Foo/Bar/Baz) }'
+  },
+  {
+    id: 'a spaced /word/ in a selector-named function',
+    group: 'value',
+    source: 'a { b: is(c /d/ e) }'
+  },
+  {
+    id: 'glued colon before a selector-named function',
+    group: 'value',
+    source: 'a { b:is(c /d/ e) }',
+    brokenIn: ['less'],
+    defect: GLUED_SELECTOR_FUNCTION_DEFECT
+  },
+  {
+    id: 'glued colon before local() with slashes',
+    group: 'value',
+    source: '@font-face { src:local(Foo/Bar/Baz) }',
+    brokenIn: ['less'],
+    defect: GLUED_SELECTOR_FUNCTION_DEFECT
   },
   {
     id: '!important with interior whitespace',
