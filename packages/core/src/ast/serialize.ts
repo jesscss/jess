@@ -19167,8 +19167,10 @@ function putImportTail(node: ValueNode, frame: Frame, e: Emit): void {
   }
   put(e, delimiterOpen(node.delimiter));
   put(e, evalQueryPreludeSync(node.value.left, frame, e));
-  put(e, ': ');
-  putValueBoundaryTrivia(e, boundary, '');
+  put(e, ':');
+
+  /* The boundary is the whole authored run after the `:`, its padding included. */
+  putValueBoundaryTrivia(e, boundary, ' ');
   put(e, evalQueryPreludeSync(node.value.right, frame, e));
   put(e, delimiterClose(node.delimiter));
 }

@@ -3312,12 +3312,15 @@ describe('Less AST grammar facts', () => {
      * A pure media query on a legacy compile-time `@import` desugars to a
      * `@media` wrapper (owner 2026-09-02), but a `supports(...)`/`layer`
      * condition has no wrapping and still rejects. This tail carries a
-     * `supports(...)` condition, so it is a parse error rather than a wrap.
+     * `supports(...)` condition, so it is a parse error rather than a wrap. The
+     * query grammar is the CSS base's, which keeps a general-enclosed term's
+     * authored bytes from the parse input, so the state carries the source.
      */
+    const misplacedCondition = '@import (less, multiple) url(theme.css) screen and (min-width: 600px) supports(label: "wide mode");';
     expect(() => run(
       lessGrammar.Document,
-      '@import (less, multiple) url(theme.css) screen and (min-width: 600px) supports(label: "wide mode");',
-      { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
+      misplacedCondition,
+      { trivia: lessGrammar.whitespace, state: { ...LESS_TEST_STATE, source: misplacedCondition } }
     )).toThrow(LessImportPostludeError);
 
     const result = run(
@@ -3353,16 +3356,21 @@ describe('Less AST grammar facts', () => {
       ]
     });
 
+    /*
+     * A CSS import keeps its postlude: the CSS base's media query list, where a
+     * `supports()` written after the query is a general-enclosed term.
+     */
+    const cssImportSource = '@import url(theme.css) screen and (min-width: 600px) supports(label: "wide mode");';
     const cssImport = run(
       lessGrammar.Document,
-      '@import url(theme.css) screen and (min-width: 600px) supports(label: "wide mode");',
-      { trivia: lessGrammar.whitespace, state: LESS_TEST_STATE }
+      cssImportSource,
+      { trivia: lessGrammar.whitespace, state: { ...LESS_TEST_STATE, source: cssImportSource } }
     );
 
     expect(cssImport.ok).toBe(true);
     expect(cssImport.unconsumedFrom).toBeNull();
     expect(isStylesheet(cssImport.value)).toBe(true);
-    expect(bare(cssImport.value)).toEqual({
+    expect(bare(cssImport.value)).toMatchObject({
       type: 'Stylesheet',
       rules: [
         {
@@ -3373,8 +3381,13 @@ describe('Less AST grammar facts', () => {
             parts: [
               { type: 'Url', value: { type: 'Any', src: 'theme.css' } },
               {
-                type: 'Any',
-                src: 'screen and (min-width: 600px) supports(label: "wide mode")'
+                type: 'Sequence',
+                parts: [
+                  { type: 'Keyword', src: 'screen' },
+                  { type: 'Keyword', src: 'and' },
+                  { type: 'Block' },
+                  { type: 'FunctionCall', name: 'supports' }
+                ]
               }
             ]
           }
@@ -3651,15 +3664,11 @@ describe('Less AST grammar facts', () => {
       '@import "theme.less" @media;',
       '@import "theme.less" @@media;',
       '@import "theme.less" @ {media};',
-      '@import "theme.less" @{media} screen;',
-      '@import "theme.less" screen @{media};',
-      '@import "theme.less" @{media}@{print};',
       '@import "theme.less" ${media};',
       '@import "theme.less" screen and (min-width: 600px;',
       '@import "theme.less" screen and [min-width: 600px);',
       '@import "theme.less" screen and [min-width: 600px];',
       '@import "theme.less" screen and {min-width: 600px};',
-      '@import "theme.less" screen and (min-width: {600px});',
       '@import "theme.less" screen and "unterminated;',
       '@import \'theme.less\' screen and \'unterminated;',
       '@import "theme.less" screen and (min-width: 600px));',
@@ -3687,6 +3696,32 @@ describe('Less AST grammar facts', () => {
       ).toBe(false);
       expect(result.ok ? result.unconsumedFrom : result.errors).not.toBeNull();
     }
+  });
+
+  /*
+   * The import postlude reads the CSS base's media query list. Terms juxtaposed
+   * with no connective (`@{media} screen`, two glued interpolations) and a `{}`
+   * block inside a group are that grammar's — a query that matches nothing is
+   * `not all`, never a syntax error — so each parses as a typed query list, as in
+   * css and lessc 4.9.1, and a compile-time import wraps itself in `@media`.
+   */
+  it.each([
+    '@import "theme.less" @{media} screen;',
+    '@import "theme.less" screen @{media};',
+    '@import "theme.less" @{media}@{print};',
+    '@import "theme.less" screen and (min-width: {600px});'
+  ])('reads the import postlude %j as a typed media query list', (source) => {
+    const result = run(lessGrammar.Document, source, {
+      trivia: lessGrammar.whitespace, state: { ...LESS_TEST_STATE, source }
+    });
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(stylesheet(result.value).rules).toMatchObject([{
+      type: 'AtRuleBlock',
+      name: '@media',
+      prelude: { type: 'Sequence' },
+      rules: [{ type: 'StyleImport' }]
+    }]);
   });
 
   it('constructs keyword and variable-reference values without recovering value text', () => {

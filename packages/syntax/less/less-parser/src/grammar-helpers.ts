@@ -992,6 +992,32 @@ function commaListWithTriviaFromChildren<T extends ValueSlot>(
   return withValueLayout(result, separators);
 }
 
+/**
+ * Whether a typed import media list holds a `supports()` or `layer()` term. CSS
+ * places those conditions before the list (`[ layer ]? [ supports() ]?
+ * <media-query-list>`), so one written after it is a misplaced condition, not a
+ * query a compile-time import could wrap in `@media`. Reads the list's own terms
+ * — clause, then term — never its bytes.
+ */
+function queryListHasImportCondition(value: ValueNode): boolean {
+  const clauses = value.type === 'List' ? value.value : [value];
+  for (const clause of clauses) {
+    if (!('type' in clause)) {
+      continue;
+    }
+    const terms = clause.type === 'Sequence' ? clause.parts : [clause];
+    for (const term of terms) {
+      if (term.type === 'FunctionCall') {
+        const name = term.name.toLowerCase();
+        if (name === 'supports' || name === 'layer') {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 function isGluedValueBoundary(child: unknown): boolean {
   return typeof child === 'object'
     && child !== null
@@ -2685,6 +2711,7 @@ export {
   callWithLayout,
   combinatorTailReducer,
   commaListWithTriviaFromChildren,
+  queryListHasImportCondition,
   complexSegmentsFrom,
   customPartsFromChildren,
   customValueFromParts,

@@ -287,6 +287,8 @@ type GrammarRuleName =
   | 'queryUnicodeBound'
   | 'queryFunctionBound'
   | 'MediaTerm'
+  | 'MediaTypeTerm'
+  | 'QueryIdentOrFunctionTerm'
   | 'QueryFeatureContents'
   | 'keyframeSelector'
   | 'stylesheetBodyBlock'
@@ -3773,10 +3775,17 @@ const cssFactory = (g: GrammarSelf) => {
     'QueryTerm',
     choice(
       g.QueryFeature,
-      queryIdentOrFunctionTerm
+      g.QueryIdentOrFunctionTerm
     ),
     { project: 0 }
   );
+
+  /*
+   * A media query's term outside parentheses: a media type, keyword or function.
+   * A named slot: Less adds its `@{…}` and `@name` terms here (ledger P7), and
+   * keeps this one as its last arm.
+   */
+  const MediaTypeTerm = g.QueryIdentOrFunctionTerm;
 
   /*
    * A media query's term: a `<media-in-parens>`, or a media type / keyword /
@@ -3789,7 +3798,7 @@ const cssFactory = (g: GrammarSelf) => {
       g.MediaInParens,
       sequence(
         not(mediaAndOr),
-        queryIdentOrFunctionTerm
+        g.MediaTypeTerm
       )
     ),
     { project: 0 }
@@ -5053,6 +5062,8 @@ const cssFactory = (g: GrammarSelf) => {
     queryUnicodeBound,
     queryFunctionBound,
     MediaTerm,
+    MediaTypeTerm,
+    QueryIdentOrFunctionTerm: queryIdentOrFunctionTerm,
     QueryFeatureContents,
     queryBoundTail,
     QueryFeature,

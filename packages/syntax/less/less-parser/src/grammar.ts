@@ -41,6 +41,7 @@ import {
   callArgumentSource,
   combinatorTailReducer,
   commaListWithTriviaFromChildren,
+  queryListHasImportCondition,
   complexSegmentsFrom,
   customPartsFromChildren,
   customValueFromParts,
@@ -286,12 +287,8 @@ type LessRules = {
   SupportsBlock: Combinator<AtRuleBlock>;
   QueryValue: Combinator<ValueNode>;
   QueryColonFeature: Combinator<ValueNode>;
-  /** A query keyword that is not the `only` modifier. */
-  QueryNonOnlyKeyword: Combinator<Keyword>;
-  /** One term of a query clause. */
-  QueryTerm: Combinator<ValueNode>;
-  /** One term of a media query clause, admitting Less interpolation. */
-  MediaQueryTerm: Combinator<ValueNode>;
+  /** A media query's term outside parentheses: the CSS base's slot, with Less's `@{…}` / `@name` terms. */
+  MediaTypeTerm: Combinator<unknown>;
   QueryFeature: Combinator<ValueNode>;
   ContainerStyleQuery: Combinator<FunctionCall>;
   ContainerScrollStateQuery: Combinator<FunctionCall>;
@@ -357,11 +354,10 @@ type LessRules = {
   ImportTail: Combinator<unknown>;
   ImportTailText: Combinator<unknown>;
   ImportTailGroup: Combinator<unknown>;
-  MediaQueryPrelude: Combinator<ValueSlot>;
   ImportTailParen: Combinator<unknown>;
   whitespace: Combinator<unknown>;
   blockBody: Combinator<unknown>;
-  BareVariableInterpolation: Combinator<unknown>;
+  BareVariableInterpolation: Combinator<never>;
   valuePiece: Combinator<unknown>;
   pseudoArgumentInner: Combinator<unknown>;
   queryLeaf: Combinator<unknown>;
@@ -388,8 +384,12 @@ type SharedSyntax = {
   LangPseudoArgument: Combinator<List | Interpolation>;
   DirPseudoArgument: Combinator<Keyword>;
   AnPlusB: Combinator<AnPlusB>;
-  // Inherited from the CSS base: an only-clause or a chain of QueryTerm (Less's).
+  /** The CSS base's media query list (`@media`, an import postlude), with Less's comment layout at its commas. */
+  QueryPrelude: Combinator<ValueNode>;
+  // Inherited from the CSS base: an only-clause or a chain of media terms.
   QueryClause: Combinator<ValueNode>;
+  // Inherited from the CSS base: a media type, keyword or function term — MediaTypeTerm's last arm.
+  QueryIdentOrFunctionTerm: Combinator<ValueNode>;
   // Inherited from the CSS base: ( <container-condition> ), whose atoms reach Less's QueryFeature and ContainerStyleQuery leaves.
   ContainerQueryInParens: Combinator<ValueNode>;
   // Inherited from the CSS base: a nested group, a feature, or the ContainerStyleQuery leaf Less binds.
@@ -1277,7 +1277,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const ImportTail = node(
     'ImportTail',
     choice(
-      sequence(not(importLayerOrSupports), g.MediaQueryPrelude, peek(literal(';'))),
+      sequence(not(importLayerOrSupports), g.QueryPrelude, peek(literal(';'))),
       g.AtRuleInterpolation,
       g.ImportTailText
     ),
@@ -1431,8 +1431,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           // list has a `@media` desugaring. A pure media-query-list never spells
           // the `supports`/`layer` keyword, so a text tail carrying either is a
           // supports/layer condition (or a malformed mix) and is rejected. A
-          // typed media-query list (`MediaQueryPrelude` Block) carries neither;
-          // an interpolated tail is checked on its literal parts.
+          // typed media-query list (`QueryPrelude`) is checked for a
+          // `supports()`/`layer()` term written after the query, a misplaced
+          // condition; an interpolated tail is checked on its literal parts.
           // `@-import` rejected every tail above, so this is always a bare
           // `@import`; the `!isLegacyImport` guard is defensive against a future
           // keyword (a compile-time `@-compose` admits no media wrap).
@@ -1447,7 +1448,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           const tailText = isAny(tail)
             ? tail.src.toLowerCase()
             : tailTemplate !== null ? tailTemplate.parts.map(part => 'lit' in part ? part.lit : '').join('').toLowerCase() : '';
-          const tailHasSupportsOrLayer = tailText.includes('supports') || tailText.includes('layer');
+          const tailHasSupportsOrLayer = tailText.includes('supports') || tailText.includes('layer') || queryListHasImportCondition(tail);
           if (!isLegacyImport || tailHasSupportsOrLayer) {
             throw new LessImportPostludeError(span.start, span.end);
           }
@@ -3789,77 +3790,36 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     choice(QueryBareFeature, g.QueryColonFeature, QueryComparisonFeature, QueryRangeFeature, QueryLogicalGroup, QueryNegatedFeature),
     children => requireValueNode(children[0])
   );
-  // `only` is a media/query modifier, not an ordinary media-type keyword.
-  const QueryNonOnlyKeyword = node(
-    'QueryNonOnlyKeyword',
-    sequence(not(g.QueryOnly), g.Keyword),
-    children => requireKeyword(children.at(-1))
+  /*
+   * `@media` reads the CSS base's media query list (`QueryPrelude`, with its
+   * `<media-in-parens>` groups and `and`/`or` connectives). Less adds its own
+   * terms at the one slot CSS names for them: a `@{…}` interpolation, a bare
+   * `@name` (rejected by name, ledger P7), a namespace/map read, and a
+   * `<general-enclosed>` function whose payload interpolates (`foo(bar @{x})`,
+   * the same `Enclosed` node `@supports` reads), ahead of the CSS term, whose
+   * function payload is opaque bytes. A read is a whole term only through the
+   * tail-required chain: a term has no Color alternative, so the merged hex arm
+   * would over-accept a bare `#fff`; the `attempt` localizes the shared-head
+   * rollback to that arm.
+   */
+  const MediaTypeTerm = choice(
+    g.AtRuleInterpolation,
+    g.BareVariableInterpolation,
+    attempt(g.MixinReferenceChain),
+    sequence(peek(g.EnclosedFunctionName), g.Enclosed),
+    g.QueryIdentOrFunctionTerm
   );
-  const QueryTerm = node(
-    'QueryTerm',
-    choice(
-      // A namespace/map read is a whole query term only through the tail-required
-      // chain: a query term has no Color alternative, so the merged hex arm would
-      // over-accept a bare `#fff` as a term. Requiring one accessor keeps a bare
-      // hex/mixin prefix falling through to the ordinary query alternatives, and
-      // the `attempt` localizes the shared-head rollback to this arm.
-      attempt(g.MixinReferenceChain),
-      g.QueryFeature,
-      g.VariableReference,
-      // `<general-enclosed>` function form (media-queries-5 §2.1/§3.1:
-      // `<function-token> <any-value> )`), e.g. `@media foo(bar)`. This is the
-      // SAME general-enclosed node `@supports` already reuses; the `peek`
-      // restricts entry to the function arm so a bare `( … )` group still falls
-      // through to `QueryFeature`, matching the CSS base's term-level shape
-      // (which admits the function form but no bare-paren general-enclosed).
-      sequence(peek(g.EnclosedFunctionName), g.Enclosed),
-      g.QueryNonOnlyKeyword
-    ),
-    children => requireValueNode(children[0])
-  );
-  // Less permits a variable interpolation as an ordinary `@media` query term:
-  // `@media @{all} and @{tv}`. That is not a container-query form, so retain
-  // the stricter shared query prelude used by `@container` and construct this
-  // media-only typed sequence from the same structural leaves.
-  const MediaQueryTerm = node(
-    'MediaQueryTerm',
-    choice(g.AtRuleInterpolation, g.BareVariableInterpolation, g.QueryTerm),
-    children => requireValueNode(children[0])
-  );
-  const MediaQueryOnlyClause = node(
-    'MediaQueryOnlyClause',
-    sequence(
-      g.QueryOnly,
-      g.QueryNonOnlyKeyword,
-      many(sequence(g.QueryAndOr, g.MediaQueryTerm))
-    ),
-    (children, _fields, _span, _rawChildren, triviaLog, state) => spacedFromValueChildren(children, triviaLog, state)
-  );
-  const MediaQueryNotClause = node(
-    'MediaQueryNotClause',
-    sequence(
-      g.QueryNot,
-      g.MediaQueryTerm,
-      many(sequence(g.QueryAndOr, g.MediaQueryTerm))
-    ),
-    (children, _fields, _span, _rawChildren, triviaLog, state) => spacedFromValueChildren(children, triviaLog, state)
-  );
-  const MediaQueryClause = node(
-    'MediaQueryClause',
-    choice(
-      MediaQueryOnlyClause,
-      MediaQueryNotClause,
-      sequence(
-        g.MediaQueryTerm,
-        many(sequence(g.QueryAndOr, g.MediaQueryTerm))
-      )
-    ),
-    (children, _fields, _span, _rawChildren, triviaLog, state) => queryClauseReducer(children, triviaLog, state)
-  );
-  const MediaQueryPrelude = node(
-    'MediaQueryPrelude',
+
+  /*
+   * The CSS base's media query list — the same clauses and commas — overridden
+   * for its reducer only: Less keeps the comments written either side of a `,`
+   * in the list's layout (`@media screen /* a *\/, /* b *\/ print`), which the
+   * CSS list does not record.
+   */
+  const QueryPrelude = node(
+    'QueryPrelude',
     oneOrMoreSep(
-      MediaQueryClause,
+      g.QueryClause,
       field('separator', regex(/,[ \t\n\r\f]*/))
     ),
     (children, fields, _span, rawChildren, triviaLog, state) =>
@@ -4063,7 +4023,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       token(noTrivia(g.MediaContainerAtKeyword)),
       caseOf(
         '@media',
-        sequence(routed(), choice(MediaQueryPrelude, g.AtRuleInterpolation), g.MediaContainerBody)
+        sequence(routed(), g.QueryPrelude, g.MediaContainerBody)
       ),
       caseOf(
         '@container',
@@ -5542,9 +5502,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     SupportsBlock,
     QueryValue,
     QueryColonFeature,
-    QueryNonOnlyKeyword,
-    QueryTerm,
-    MediaQueryTerm,
+    MediaTypeTerm,
+    QueryPrelude,
     QueryFeature,
     ContainerStyleQuery,
     ContainerScrollStateQuery,
@@ -5610,7 +5569,6 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ImportTail,
     ImportTailText,
     ImportTailGroup,
-    MediaQueryPrelude,
     ImportTailParen,
     blockBody,
     BareVariableInterpolation,
