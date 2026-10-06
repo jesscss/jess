@@ -146,7 +146,7 @@ describe('Less math boundaries', () => {
       .toBe('.a { b: 1px solid #cc0000; w: 50%; u: 5px; e: x; f: a; }');
     expect(await renderIn('.scss', '.a { w: (percentage(0.5)); b: solid (darken(red, 10%)); }'))
       .toBe('.a { w: 50%; b: solid #cc0000; }');
-    expect(await renderJess('.a { a: ($(1px + 2px)); }')).toBe('.a { a: 3px; }');
+    expect(await renderJess('.a { a: ($(1px + 2px)); b: ($(foo + 1)); }')).toBe('.a { a: 3px; b: (foo + 1); }');
     expect(await render('@a: 1px + 2px; .x { b: (@a); }')).toBe('.x { b: 3px; }');
     expect(await render('@a: 1px + 2px; .x { b: (@a); c: @a; }', { mathMode: 'parens' }))
       .toBe('.x { b: 3px; c: 1px + 2px; }');

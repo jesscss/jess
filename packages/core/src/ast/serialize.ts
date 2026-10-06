@@ -5153,9 +5153,13 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       if (node.escaped) {
         return evalValueSlot(node.value, frame, e);
       }
-      const inner = evalValueSlot(node.value, frame, node.delimiter === 'paren'
-        ? { ...e, parenFrames: pushParenFrame(e, true) }
-        : e);
+      const computation = node.delimiter === 'paren' ? groupComputation(node, frame, e) : null;
+      const ctx = node.delimiter === 'paren' ? { ...e, parenFrames: pushParenFrame(e, true) } : e;
+
+      /* A `.jess` `$( … )` splice is read typed, so math it kept as written is still the kept expression. */
+      const inner = computation !== null && computation.type === 'Interpolation' && e.ev
+        ? evalTypedSlot(node.value, frame, ctx)
+        : evalValueSlot(node.value, frame, ctx);
 
       /*
        * §12.6c: a bracketed value emits VERBATIM. Balanced `[ … ]` is a valid
@@ -5170,9 +5174,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        * kept and a call written out as-is keep the parens
        * ({@link keepAuthoredGroup}), and so does every group nothing computes in.
        * Bytes from a call or an operation are what nothing computed — a call
-       * re-emitted as written, math on the non-evaluating lane; a conditional,
-       * a `.jess` `$( … )` splice or a computed mixin argument computes to its
-       * bytes.
+       * re-emitted as written, math on the non-evaluating lane; a conditional or
+       * a computed mixin argument computes to its bytes.
        */
       return mapMaybe(inner, (v) => {
         if (node.delimiter !== 'paren') {
@@ -5180,7 +5183,6 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
             ? literal(`${delimiterOpen(node.delimiter)}${v}${delimiterClose(node.delimiter)}`)
             : makeBlock(v, node.delimiter, node.escaped);
         }
-        const computation = groupComputation(node, frame, e);
         if (isLiteral(v)) {
           return computation === null || !e.ev || computation.type === 'FunctionCall' || computation.type === 'Operation'
             ? literal(`(${v})`)
