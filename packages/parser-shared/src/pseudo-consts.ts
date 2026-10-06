@@ -21,8 +21,13 @@ import { regex, rules, word } from 'parseman' with { type: 'macro' };
 /** `:nth-child(` / `:nth-last-child(` name, boundary-anchored on the `(`. */
 const nthChildNameWithArg = regex(/nth-(?:last-)?child(?=\()/i);
 
-/** `:nth-of-type(` / `:nth-last-of-type(` name, boundary-anchored on the `(`. */
-const nthTypeNameWithArg = regex(/nth-(?:last-)?of-type(?=\()/i);
+/**
+ * The bare-`<An+B>` family's name, boundary-anchored on the `(`: the typed
+ * child-indexed `:nth-of-type(` / `:nth-last-of-type(` and the grid-structural
+ * `:nth-col(` / `:nth-last-col(` (Selectors-4), none of which takes an `of S`
+ * tail.
+ */
+const nthTypeNameWithArg = regex(/nth-(?:last-)?(?:of-type|col)(?=\()/i);
 
 /**
  * Every `:nth-*` family name, anchored on the IDENTIFIER boundary rather than a
@@ -31,7 +36,7 @@ const nthTypeNameWithArg = regex(/nth-(?:last-)?of-type(?=\()/i);
  * pseudo — it must reach the structured nth arms with an immediate `(` or be
  * rejected. This is the shared form of the former Less-specific nth-name boundary.
  */
-const nthNameBoundary = regex(/nth-(?:last-)?(?:child|of-type)(?![-_a-zA-Z0-9\u0080-\uFFFF])/i);
+const nthNameBoundary = regex(/nth-(?:last-)?(?:child|of-type|col)(?![-_a-zA-Z0-9\u0080-\uFFFF])/i);
 
 /**
  * The selector-argument functional pseudos (`:is`/`:where`/`:not`/`:has`/

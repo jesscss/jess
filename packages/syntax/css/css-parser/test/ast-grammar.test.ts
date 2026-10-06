@@ -161,14 +161,14 @@ describe('CSS canonical-AST grammar', () => {
       type: 'Ruleset',
       selector: { selectors: [{ value: [
         { text: '.card' },
-        { type: 'PseudoSelector', text: null, name: ':nth-child', args: null, arg: { type: 'AnPlusB', a: 0, b: 2, src: '2' } }
+        { type: 'PseudoSelector', text: null, name: ':nth-child', args: null, arg: { type: 'AnPlusB', src: '2' } }
       ] }] }
     });
   });
 
   /*
    * Pseudo-class arguments are structured, never joined text (Selectors-4
-   * §6.6.2, §7.1, §7.2): an `:nth-*()` keeps its An+B as `arg` (value and
+   * §6.6.2, §7.1, §7.2): an `:nth-*()` keeps its An+B as `arg` (its
    * unspaced form, ledger F2/X6) and its `of S` list as `args`; `:lang()` keeps
    * its language ranges as a comma `List`; `:dir()` its direction `Keyword`.
    */
@@ -180,23 +180,28 @@ describe('CSS canonical-AST grammar', () => {
       }
       return rule.selector.selectors[0];
     };
-    expect(pseudo(':nth-child(odd)')).toMatchObject({ arg: { a: 2, b: 1, src: 'odd' }, args: null });
+    expect(pseudo(':nth-child(odd)')).toMatchObject({ arg: { type: 'AnPlusB', src: 'odd' }, args: null });
     expect(pseudo(':nth-last-child(-n + 3 of .a, .b)')).toMatchObject({
       name: ':nth-last-child',
-      arg: { type: 'AnPlusB', a: -1, b: 3, src: '-n+3' },
+      arg: { type: 'AnPlusB', src: '-n+3' },
       args: { type: 'SelectorList', selectors: [{ text: '.a' }, { text: '.b' }] }
     });
-    expect(pseudo(':nth-of-type(+5)')).toMatchObject({ arg: { a: 0, b: 5, src: '+5' } });
+    expect(pseudo(':nth-of-type(+5)')).toMatchObject({ arg: { type: 'AnPlusB', src: '+5' } });
     expect(pseudo(':lang(en, "fr-*")')).toMatchObject({
       name: ':lang',
       args: null,
       arg: { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'en' }, { type: 'Quoted', src: '"fr-*"' }] }
     });
     expect(pseudo(':dir(rtl)')).toMatchObject({ name: ':dir', args: null, arg: { type: 'Keyword', src: 'rtl' } });
+    expect(pseudo(':nth-col(2n + 1)')).toMatchObject({ name: ':nth-col', args: null, arg: { type: 'AnPlusB', src: '2n+1' } });
+    expect(pseudo(':nth-last-col( 3 )')).toMatchObject({ name: ':nth-last-col', arg: { type: 'AnPlusB', src: '3' } });
+    for (const [source, name] of [[':host(.a)', ':host'], [':host-context(.a .b)', ':host-context'], ['::slotted(.a)', '::slotted']]) {
+      expect(pseudo(source), source).toMatchObject({ type: 'PseudoSelector', name, text: null, crossable: false, args: { type: 'SelectorList' } });
+    }
     expect(serialize(parseAst(':nth-child(2n - 1 of .a,.b), :lang( en ,"fr" ), :dir( ltr ) { color: red; }')).css)
       .toBe(':nth-child(2n-1 of .a, .b),\n:lang(en, "fr"),\n:dir(ltr) {\n  color: red;\n}\n');
 
-    for (const source of [':lang(1.5)', ':lang(*-CH)', ':lang()', ':dir(foo bar)', ':dir("rtl")', ':dir()']) {
+    for (const source of [':lang(1.5)', ':lang(*-CH)', ':lang()', ':dir(foo bar)', ':dir("rtl")', ':dir()', ':nth-col(2n of .a)', ':nth-col']) {
       expect(() => parseAst(`${source} { color: red; }`), source).toThrow();
     }
   });

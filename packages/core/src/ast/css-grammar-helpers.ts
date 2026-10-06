@@ -565,11 +565,12 @@ export function isSimpleToken(value: unknown): value is SimpleToken {
 
 /*
  * Selector-function pseudos whose argument is retained as a structured
- * `SelectorList` (P0). Gated on the pseudo NAME (lowercased, colon-stripped),
- * never on colon count — `::slotted()` takes selector args but is absent here,
- * so it stays opaque text. `crossable` (a narrower set) is decided in core.
+ * `SelectorList` (P0): the logical combinations and the shadow-tree
+ * `:host()` / `:host-context()` / `::slotted()`. Gated on the pseudo NAME
+ * (lowercased, colon-stripped), never on colon count. `crossable` (a narrower
+ * set) is decided in core, so the shadow-tree pseudos stay sealed to extend.
  */
-export const STRUCTURED_PSEUDOS = new Set(['is', 'where', 'not', 'has', 'matches']);
+export const STRUCTURED_PSEUDOS = new Set(['is', 'where', 'not', 'has', 'matches', 'host', 'host-context', 'slotted']);
 
 /**
  * A reduced `:nth-*()` argument: its `An+B` and, on the child-indexed pseudos,
@@ -580,9 +581,21 @@ export interface NthArgument {
   readonly of: SelectorList | null;
 }
 
-/** An `:nth-*()` argument from the text of a recognized `<an+b>` and its `of S` list. */
-export function nthArgument(text: string, of: SelectorList | null = null): NthArgument {
-  return { nth: anPlusB(text), of };
+/** An `:nth-*()` argument from its `An+B` and its `of S` list. */
+export function nthArgument(nth: AnPlusB, of: SelectorList | null = null): NthArgument {
+  return { nth, of };
+}
+
+/** The `<an+b>` fact a grammar recognized (css-syntax-3 §6.1). */
+export function anPlusBFrom(child: unknown): AnPlusB {
+  return anPlusB(tokenText(child));
+}
+
+export function isAnPlusB(value: unknown): value is AnPlusB {
+  return isNodeType(
+    value,
+    'AnPlusB'
+  );
 }
 
 export function isNthArgument(value: unknown): value is NthArgument {
@@ -594,7 +607,9 @@ export function isNthArgument(value: unknown): value is NthArgument {
  * `null` when the argument has no structure of its own (an opaque or
  * malformed one, which the caller keeps as text): an `:nth-*()` `An+B`, a
  * `:lang()` range list, a `:dir()` direction, or a selector-function pseudo's
- * selector list.
+ * selector list. A `:lang()` range that interpolates leaves the argument a
+ * template, so the pseudo is an interpolated selector like any other whose
+ * bytes do not exist until evaluation.
  */
 export function structuredPseudoFrom(head: string, name: string, arg: unknown): SimpleToken | null {
   if (isNthArgument(arg)) {
@@ -603,23 +618,66 @@ export function structuredPseudoFrom(head: string, name: string, arg: unknown): 
   if (isList(arg) || isKeyword(arg)) {
     return pseudoSelector(head, null, null, null, arg);
   }
+  if (isInterpolation(arg)) {
+    return interpolatedSimpleSelector(interpolationFromTemplateChildren([{ value: `${head}(` }, arg, { value: ')' }], 'CSS'));
+  }
   if (isSelectorList(arg) && STRUCTURED_PSEUDOS.has(name.toLowerCase())) {
     return pseudoSelector(head, arg);
   }
   return null;
 }
 
-/** A `:lang()` argument (Selectors-4 §7.2): identifiers and strings in a comma list. */
-export function languageRangeList(children: readonly unknown[]): List {
-  const ranges: Array<Keyword | Quoted> = [];
-  for (const child of children) {
-    if (isQuoted(child)) {
-      ranges.push(child);
-    } else if (isToken(child) && child.value !== ',') {
-      ranges.push(keyword(child.value));
+/**
+ * The structured pseudo of a dialect's glued `:name(` opener and its reduced
+ * argument, for a pseudo whose argument grammar admits only structured shapes.
+ */
+export function requireStructuredPseudo(opener: string, arg: unknown): SimpleToken {
+  const head = opener.slice(0, -1);
+  const pseudo = structuredPseudoFrom(head, head.slice(head.startsWith('::') ? 2 : 1), arg);
+  if (pseudo === null) {
+    throw new TypeError('A structured pseudo lost its argument.');
+  }
+  return pseudo;
+}
+
+/**
+ * A `:lang()` argument (Selectors-4 §7.2) from its `range` fields: identifiers
+ * and strings in a comma `List`. A dialect string that interpolates makes the
+ * whole argument a template, its ranges `, `-joined.
+ */
+export function languageRangeList(fields: ReducerFields | undefined): List | Interpolation {
+  const capture = fields?.range;
+  const captures = capture === undefined ? [] : Array.isArray(capture) ? capture : [capture];
+  const ranges: Array<Keyword | Quoted | Interpolation> = [];
+  let interpolated = false;
+  for (const { value } of captures) {
+    if (isInterpolation(value)) {
+      interpolated = true;
+      ranges.push(value);
+    } else {
+      ranges.push(isQuoted(value) ? value : keyword(tokenText(value)));
     }
   }
-  return list(ranges, ',');
+  if (!interpolated) {
+    return list(ranges, ',');
+  }
+  const template: unknown[] = [];
+  for (const range of ranges) {
+    if (template.length > 0) {
+      template.push({ value: ', ' });
+    }
+    template.push(range.type === 'Interpolation' ? range : { value: range.src });
+  }
+  return interpolationFromTemplateChildren(template, 'CSS');
+}
+
+/** A `:dir()` argument (Selectors-4 §7.1): its `direction` field as a `Keyword`. */
+export function directionKeyword(fields: ReducerFields | undefined): Keyword {
+  const capture = fields?.direction;
+  if (capture === undefined || !('value' in capture)) {
+    throw new TypeError('A :dir() argument lost its direction.');
+  }
+  return keyword(tokenText(capture.value));
 }
 
 export function isCompound(value: unknown): value is CompoundSelector {

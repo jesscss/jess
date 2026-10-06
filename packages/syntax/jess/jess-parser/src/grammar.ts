@@ -30,8 +30,8 @@ import type { Combinator } from 'parseman';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, quoted, range, reference, relativeSelector, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isNthArgument, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
-import type { Token, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
+import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, callArg, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, collectionSpread, declarationReference, dimension, expression, forNode, funcCall, ifNode, interpolation, isToken, keyword, keywordOrNull, NULL_NODE, list, lookupStep, mixinCall, mixinDef, moduleImport, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, quoted, range, reference, relativeSelector, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, branchSegments, isSelectorTerm, isSelectorBranch, isSelectorList, isKeyword, isList, isAnPlusB, isNthArgument, nthArgument, structuredPseudoFrom, isParam, isParamArray, isAnonymousMixin, valueSlot, isInterpolation, isQuoted } from '@jesscss/core/ast';
+import type { Token, AnPlusB, AnonymousMixin, List, NthArgument, Apply, AtRuleBlock, AtRuleStatement, Block, Color, Declaration, Collection, CollectionEntry, CollectionItem, CollectionSpread, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, If, IfBranch, InterpPart, Interpolation, Keyword, Null, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, UnknownAtRuleBlock, Param, Quoted, Range, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode, While } from '@jesscss/core/ast';
 import {
   requireToken,
   requireFields,
@@ -308,9 +308,11 @@ type SharedSyntax = {
    */
   QueryPrelude: Combinator<ValueNode>;
 
-  /* Inherited from the CSS base: `:lang()` / `:dir()`'s structured arguments. */
-  LangPseudoArgument: Combinator<List>;
+  /* Inherited from the CSS base: `:lang()` / `:dir()`'s structured arguments and the `<an+b>` fact. */
+  LangPseudoArgument: Combinator<List | Interpolation>;
   DirPseudoArgument: Combinator<Keyword>;
+  AnPlusB: Combinator<AnPlusB>;
+  TypedOfTypePseudoArgument: Combinator<NthArgument>;
 
   /*
    * Converged to the CSS base (inherited via compose): same token rule
@@ -2021,6 +2023,11 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
    * selector fallback keeps a previously-opaque selector arg (`:nth-child(.a)`)
    * accepted as before; typed An+B is tried first so `-n+2` is not claimed as a
    * static `-n` selector.
+   *
+   * Deliberate exception to composing the CSS base's `TypedNthPseudoArgument`
+   * (its `<an+b>` is the CSS `AnPlusB` slot): the `of S` list is Jess's
+   * pseudo-argument selector list, where the CSS arm reads `g.SelectorList`,
+   * and a glued `2n+1of` is rejected here, where the CSS arm accepts it.
    */
   const NthChildArgument = node<SelectorList | NthArgument>(
     'NthChildArgument',
@@ -2033,7 +2040,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
         { trivia: whitespace },
         choice(
           sequence(
-            g.NthExpression,
+            g.AnPlusB,
             optional(sequence(
               g.NthOfKeyword,
               g.PseudoSelectorList
@@ -2053,33 +2060,31 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ),
     (children) => {
       const selector = children.find(isSelectorList);
-      const nth = children.find(isToken);
+      const nth = children.find(isAnPlusB);
       if (nth === undefined) {
         if (selector === undefined) {
           throw new TypeError('Jess nth-child pseudo argument lost its selector.');
         }
         return selector;
       }
-      return nthArgument(nth.value, selector ?? null);
+      return nthArgument(nth, selector ?? null);
     }
   );
 
   /*
-   * `:nth-of-type`/`:nth-last-of-type` argument: a BARE `<An+B>` only — Selectors-4
-   * §6.6.2 defines no `of S` tail for the type-index families. The bare arm's
-   * close-ahead rejects a trailing `of …`, and the selector fallback (which keeps
-   * a previously-opaque `:nth-of-type(.a)` accepted) is guarded by a negative
-   * lookahead for an `<An+B>` immediately followed by `of` so `2n of .a`,
-   * `n of .a`, `-n+3 of .a` fail rather than being re-captured as a descendant
-   * selector — the CSS-aligned owner decision (PSEUDO-ARGUMENT-CONSOLIDATION §7.1).
+   * `:nth-of-type`/`:nth-last-of-type` (and `:nth-col`/`:nth-last-col`) argument: a BARE `<An+B>` only — Selectors-4
+   * §6.6.2 defines no `of S` tail for the type-index families. That arm is the
+   * CSS base's, whose close-ahead rejects a trailing `of …`; the selector
+   * fallback (which keeps a previously-opaque `:nth-of-type(.a)` accepted) is
+   * guarded by a negative lookahead for an `<An+B>` immediately followed by `of`
+   * so `2n of .a`, `n of .a`, `-n+3 of .a` fail rather than being re-captured as
+   * a descendant selector — the CSS-aligned owner decision
+   * (PSEUDO-ARGUMENT-CONSOLIDATION §7.1).
    */
   const NthTypeArgument = node<SelectorList | NthArgument>(
     'NthTypeArgument',
     choice(
-      sequence(
-        g.NthExpression,
-        g.PseudoSelectorCloseAhead
-      ),
+      g.TypedOfTypePseudoArgument,
       parser(
         { trivia: whitespace },
         sequence(
@@ -2102,15 +2107,15 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
       )
     ),
     (children) => {
-      const selector = children.find(isSelectorList);
-      const nth = children.find(isToken);
-      if (nth === undefined) {
-        if (selector === undefined) {
-          throw new TypeError('Jess nth-of-type pseudo argument lost its selector.');
-        }
-        return selector;
+      const nth = children.find(isNthArgument);
+      if (nth !== undefined) {
+        return nth;
       }
-      return nthArgument(nth.value);
+      const selector = children.find(isSelectorList);
+      if (selector === undefined) {
+        throw new TypeError('Jess nth-of-type pseudo argument lost its selector.');
+      }
+      return selector;
     }
   );
   const PseudoSelector = node<SimpleToken>(
@@ -2120,7 +2125,8 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
      * Insignificant whitespace may surround a functional pseudo's argument inside
      * its parens (`:not( .b )`, `:nth-child( 2n+1 )`). Consume it here so valid
      * CSS is accepted in the .jess dialect exactly as the canonical CSS grammar
-     * accepts it; it is trivia, so the serialized argument stays normalized.
+     * accepts it; it is trivia, so the serialized argument stays normalized. The
+     * CSS base's `:lang()` / `:dir()` arguments own their padding themselves.
      * The one glued name/function opener routes nth and selector-only names to
      * their own argument grammars, so `of S` stays child-index-only and
      * `:not(2n+1)` cannot fall through to general-any text. A bare nth or
@@ -2141,7 +2147,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           )
         ),
         caseInsensitiveWhen(
-          ['nth-of-type(', 'nth-last-of-type('],
+          ['nth-of-type(', 'nth-last-of-type(', 'nth-col(', 'nth-last-col('],
           sequence(
             routed(),
             optional(rawWhitespace),
@@ -2151,7 +2157,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           )
         ),
         caseInsensitiveWhen(
-          ['is(', 'where(', 'not(', 'has(', 'matches('],
+          ['is(', 'where(', 'not(', 'has(', 'matches(', 'host(', 'host-context(', 'slotted('],
           sequence(
             routed(),
             optional(rawWhitespace),
@@ -2164,9 +2170,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           ['lang('],
           sequence(
             routed(),
-            optional(rawWhitespace),
             g.LangPseudoArgument,
-            optional(rawWhitespace),
             literal(')')
           )
         ),
@@ -2174,15 +2178,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
           ['dir('],
           sequence(
             routed(),
-            optional(rawWhitespace),
             g.DirPseudoArgument,
-            optional(rawWhitespace),
             literal(')')
           )
         ),
         caseInsensitiveWhen(
           [
-            'nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type',
+            'nth-child', 'nth-last-child', 'nth-of-type', 'nth-last-of-type', 'nth-col', 'nth-last-col',
             'is', 'where', 'not', 'has', 'matches'
           ],
           not(routed())
@@ -2200,7 +2202,7 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     (children) => {
       const pseudoName = jessFunctionOpenName(children[1]);
       const head = `${requireToken(children[0]).value}${pseudoName}`;
-      const arg = children.find(child => isSelectorList(child) || typeof child === 'string' || isNthArgument(child) || isList(child) || isKeyword(child));
+      const arg = children.find(child => isSelectorList(child) || typeof child === 'string' || isNthArgument(child) || isList(child) || isKeyword(child) || isInterpolation(child));
       if (arg === undefined) {
         return simpleSelector(head);
       }

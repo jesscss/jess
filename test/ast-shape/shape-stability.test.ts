@@ -140,8 +140,12 @@ const DISCOVER = process.env.SHAPE_DISCOVER === 'true';
  *
  * `Expression` added: Less math has lowered into it since #277 (ledger P35), so
  * the less corpus constructs it.
+ *
+ * `AnPlusB` added: an `:nth-*()` pseudo keeps its `An+B` as a structured
+ * argument (ledger F2), and the corpus's `:nth-child()` selectors construct it.
  */
 const CORPUS_NODE_TYPES: readonly string[] = [
+  'AnPlusB',
   'AnonymousMixin',
   'Any',
   'Apply',

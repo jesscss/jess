@@ -23,9 +23,9 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { unknownAtRuleRecognition } from '@jesscss/parser-shared/unknown-at-rule';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { anonymousMixin, any, asDiagnostic, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
+import { anonymousMixin, any, asDiagnostic, requireStructuredPseudo, atRuleBlock, atRuleStatement, block, callArg, collection, collectionEntry, comment, condition, selectorBranchOf, decl, dimension, expression, forNode, funcCall, ifNode, interpolation, interpolatedSimpleSelector, isToken, isValueSlotArray, keyword, keywordOrNull, list, mixinCall, mixinDef, moduleImport, nestedPropertyBlock, unknownAtRuleBlock, operation, cssBaseMathOutsideParens, pseudoSelector, quoted, range, reference, relativeSelector, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, whileNode, withBlockBody, withSourceSpan, withValueLayout, appendInterpolationLiteral, branchSegments, isAnonymousMixin, isExtendInstruction, isInterpolation, isParamArray, isQuoted, isSelectorBranch, isSelectorList, isSelectorTerm, isSimpleToken, selectorTermFromTokens, valueSlot } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, AtRuleBlock, AtRuleStatement, Block, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GuardNode, If, IfBranch, IfValue, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, NthArgument, UnknownAtRuleBlock, Param, Quoted, Reference, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, While } from '@jesscss/core/ast';
-import { COMPARISON_OPERATORS, controlBlockStatements, contentArgRaw, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, requireStructuredPseudo, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
+import { COMPARISON_OPERATORS, controlBlockStatements, contentArgRaw, foldLogicalOperation, scssFoldOperation, interpolationFromTemplateChildren, isCollection, isCollectionEntry, isScssDeclaration, isScriptModulePath, scssImportStatementFrom, isScssValuePair, isScssValueTail, isScssValue, isScssValueSlotValue, joinSourceText, joinTokenValue, keyframeSelectorListFromChildren, mapKeyValue, nthPseudoFrom, scssOptionalValue, reduceScssCall, requireForBinding, requireGuardNode, requireInterpolation, requireKeyword, requireScssCallArg, requireSelectorList, requireStatementList, requireString, requireToken, requireValue, requireValueSlot, scssCombinatorText, scssSlashGroupedTerm, scssConditionSource, scssNegation, scssPseudoName, scssRelativeCombinator, scssTruth, statementChildren, statements, staticQuoted, appendCustomValueParts, customValueFromChildren } from './grammar-helpers.js';
 import type { ScssArgumentPair, ScssCallArg, ScssImportListFact, ScssSegmentCombinator, ScssValuePair, ScssValueTail } from './grammar-helpers.js';
 
 type ScssRules = {
@@ -185,11 +185,9 @@ type ScssSharedSyntax = {
    * pseudos (their `of S` list reads this dialect's `SelectorList`) and
    * `:lang()` / `:dir()`'s structured arguments.
    */
-  LeadingDashPseudoArgument: Combinator<NthArgument>;
   TypedNthPseudoArgument: Combinator<NthArgument>;
-  LeadingDashOfTypePseudoArgument: Combinator<NthArgument>;
   TypedOfTypePseudoArgument: Combinator<NthArgument>;
-  LangPseudoArgument: Combinator<List>;
+  LangPseudoArgument: Combinator<List | Interpolation>;
   DirPseudoArgument: Combinator<Keyword>;
 
   /*
@@ -4294,7 +4292,6 @@ const scssFactory = (g: ScssInputRules) => {
     sequence(
       routed(),
       choice(
-        g.LeadingDashPseudoArgument,
         g.TypedNthPseudoArgument,
         sequence(
           not(g.MalformedPseudoSelectorNumericArgument),
@@ -4305,11 +4302,11 @@ const scssFactory = (g: ScssInputRules) => {
     ),
 
     /*
-       * The CSS base's typed An+B arms (`LeadingDashPseudoArgument`,
-       * `TypedNthPseudoArgument`) read a well-formed argument, its `of S` list
-       * through this dialect's `SelectorList`, so the pseudo keeps it
-       * structured (`arg` / `args`) and core spells it, unspaced (ledger F2).
-       * Any other argument is the opaque raw text it always was.
+       * The CSS base's typed An+B arm (`TypedNthPseudoArgument`) reads a
+       * well-formed argument with its padding, its `of S` list through this
+       * dialect's `SelectorList`, so the pseudo keeps it structured (`arg` /
+       * `args`) and core spells it, unspaced (ledger F2). Any other argument
+       * is the opaque raw text it always was.
        */
     children => nthPseudoFrom(requireToken(children[0]).value, children[1])
   );
@@ -4317,7 +4314,7 @@ const scssFactory = (g: ScssInputRules) => {
     'NthTypePseudo',
 
     /*
-       * `:nth-of-type`/`:nth-last-of-type`: a BARE `<An+B>` only — Selectors-4
+       * `:nth-of-type`/`:nth-last-of-type` (and `:nth-col`/`:nth-last-col`): a BARE `<An+B>` only — Selectors-4
        * §6.6.2 defines no `of S` tail for the type-index families. The
        * `not(sequence(g.NthExpression, g.NthOfKeyword))` guard rejects
        * an `<An+B> of …` argument so `:nth-of-type(2n of .a)` fails rather than
@@ -4327,7 +4324,6 @@ const scssFactory = (g: ScssInputRules) => {
     sequence(
       routed(),
       choice(
-        g.LeadingDashOfTypePseudoArgument,
         g.TypedOfTypePseudoArgument,
         sequence(
           not(g.MalformedPseudoSelectorNumericArgument),
@@ -4348,7 +4344,8 @@ const scssFactory = (g: ScssInputRules) => {
 
   /*
    * `:lang()` / `:dir()`: the CSS base's structured arguments (a language
-   * range `List`, a direction `Keyword`), never kept as text.
+   * range `List`, a direction `Keyword`), never kept as text. Each owns the
+   * padding inside its parens.
    */
   const LangPseudo = node<SimpleToken>(
     'LangPseudo',
@@ -4359,6 +4356,8 @@ const scssFactory = (g: ScssInputRules) => {
     ),
     children => requireStructuredPseudo(requireToken(children[0]).value, children[1])
   );
+
+  /* `:dir( <ident> )`, the CSS base's argument. */
   const DirPseudo = node<SimpleToken>(
     'DirPseudo',
     sequence(
@@ -4431,8 +4430,8 @@ const scssFactory = (g: ScssInputRules) => {
   const PseudoSelectorDispatch = dispatch(
     pseudoIdentOrFunction,
     caseInsensitive([':nth-child(', ':nth-last-child('], NthPseudo),
-    caseInsensitive([':nth-of-type(', ':nth-last-of-type('], NthTypePseudo),
-    caseInsensitive([':is(', ':where(', ':not(', ':has(', ':matches('], StructuredPseudo),
+    caseInsensitive([':nth-of-type(', ':nth-last-of-type(', ':nth-col(', ':nth-last-col('], NthTypePseudo),
+    caseInsensitive([':is(', ':where(', ':not(', ':has(', ':matches(', ':host(', ':host-context(', '::slotted('], StructuredPseudo),
     caseInsensitive([':global(', ':local('], GlobalLocalPseudo),
     caseInsensitive(':lang(', LangPseudo),
     caseInsensitive(':dir(', DirPseudo),
@@ -4441,6 +4440,8 @@ const scssFactory = (g: ScssInputRules) => {
       ':nth-last-child',
       ':nth-of-type',
       ':nth-last-of-type',
+      ':nth-col',
+      ':nth-last-col',
       ':is',
       ':where',
       ':not',

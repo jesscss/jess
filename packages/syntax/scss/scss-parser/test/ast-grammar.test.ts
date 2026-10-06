@@ -1991,7 +1991,7 @@ describe('SCSS canonical-AST grammar', () => {
       type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [
         { type: 'SimpleSelector', text: '.card' },
         { type: 'PseudoSelector', name: ':lang', text: null, arg: { type: 'List', value: [{ type: 'Keyword', src: 'en-US' }] } },
-        { type: 'PseudoSelector', name: ':nth-child', text: null, arg: { type: 'AnPlusB', a: -1, b: 2, src: '-n+2' }, args: { selectors: [{ text: '.item' }] } },
+        { type: 'PseudoSelector', name: ':nth-child', text: null, arg: { type: 'AnPlusB', src: '-n+2' }, args: { selectors: [{ text: '.item' }] } },
         { type: 'SimpleSelector', text: '::part(icon)' }
       ] }] } }]
     });
@@ -2031,6 +2031,36 @@ describe('SCSS canonical-AST grammar', () => {
     ] as const) {
       expect(serialize(parse(source)).css, source).toEqual(expected);
     }
+  });
+
+  /*
+   * Whitespace and comments inside a `:lang()` / `:dir()` / `:nth-*()` paren are
+   * insignificant in CSS, so valid CSS stays valid here although SCSS selector
+   * whitespace is a combinator: the CSS base's arguments own that padding, and
+   * a comment there is trivia, never part of a structured argument. A quoted
+   * range that interpolates keeps the argument a template.
+   */
+  it('accepts the padding CSS allows inside structured pseudo arguments', () => {
+    for (const [source, css] of [
+      ['a:lang( en ) { x: y; }', 'a:lang(en)'],
+      ['a:lang(en ) { x: y; }', 'a:lang(en)'],
+      ['a:lang(en /* c */) { x: y; }', 'a:lang(en)'],
+      ['a:lang(/* c */en) { x: y; }', 'a:lang(en)'],
+      ['a:lang( en , "fr" ) { x: y; }', 'a:lang(en, "fr")'],
+      ['a:dir( ltr ) { x: y; }', 'a:dir(ltr)'],
+      ['a:dir(/* c */ltr) { x: y; }', 'a:dir(ltr)'],
+      ['a:nth-child(2n + 1 /* c */) { x: y; }', 'a:nth-child(2n+1)'],
+      ['a:nth-child(/* c */ 2n+1) { x: y; }', 'a:nth-child(2n+1)'],
+      ['a:nth-child(2n+1 of .b /* c */) { x: y; }', 'a:nth-child(2n+1 of .b)'],
+      ['a:nth-of-type( -n+2 /* c */ ) { x: y; }', 'a:nth-of-type(-n+2)'],
+      ['$l: en; a:lang("#{$l}", fr) { x: y; }', 'a:lang("en", fr)']
+    ] as const) {
+      expect(parseScssCst(source).errors, source).toHaveLength(0);
+      expect(serialize(parse(source)).css, source).toBe(`${css} {\n  x: y;\n}\n`);
+    }
+    expect(parse('a:nth-child(/* c */ 2n+1) { x: y; }').rules[0]).toMatchObject({
+      selector: { selectors: [{ value: [{ text: 'a' }, { type: 'PseudoSelector', arg: { type: 'AnPlusB', src: '2n+1' } }] }] }
+    });
   });
 
   it('constructs ordinary SCSS interpolated simple selectors as existing typed SimpleSelector facts', () => {

@@ -3014,7 +3014,7 @@ describe('public Less parse()', () => {
                   text: null,
                   crossable: false
                 },
-                { type: 'PseudoSelector', name: ':nth-child', text: null, arg: { type: 'AnPlusB', a: 2, b: 1, src: '2n+1' } }
+                { type: 'PseudoSelector', name: ':nth-child', text: null, arg: { type: 'AnPlusB', src: '2n+1' } }
               )
             ]
           }

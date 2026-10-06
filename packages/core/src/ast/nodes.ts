@@ -766,15 +766,13 @@ export interface PseudoSelector extends SpanSlots {
 }
 
 /**
- * The `An+B` microsyntax of an `:nth-*()` argument (css-syntax-3 §6): `a` and
- * `b` are its value (`odd` is 2n+1, `even` 2n), `src` the authored form without
- * whitespace. The form is significant (ledger X6: `:nth-child(odd)` is not
- * `:nth-child(2n+1)` to extend) and is emitted unspaced (F2).
+ * The `An+B` microsyntax of an `:nth-*()` argument (css-syntax-3 §6), held as
+ * the authored form without whitespace. The form is significant (ledger X6:
+ * `:nth-child(odd)` is not `:nth-child(2n+1)` to extend) and is emitted
+ * unspaced (F2). Nothing reads its numeric value, so none is computed.
  */
 export interface AnPlusB {
   readonly type: 'AnPlusB';
-  readonly a: number;
-  readonly b: number;
   readonly src: string;
 }
 
@@ -981,27 +979,6 @@ export const selectorBranchCanonical = (branch: SelectorBranch): string =>
       ? relativeCanonical(branch)
       : selectorTermCanonical(branch);
 
-/**
- * The inline canonical spelling of a structured pseudo, e.g. `:is(.a, .b)`. This
- * is the SINGLE core serialization site for the pseudo-arg join: branches join
- * with `, ` (normalized WS, one line) via the core-owned branch canonicalizer. The
- * grammar NEVER computes this — it only supplies `args` (structure) + trivia. The
- * degrade-to-opaque case (`args: null`) falls back to the retained `text`.
- *
- * STATIC ONLY: an interpolated member has `text: null` and contributes `''` here,
- * so this join is correct only when {@link pseudoHasInterp} is false. Every EMIT
- * path gates on that flag and resolves the argument per frame instead; the
- * remaining callers are frame-free ANALYSIS (mixin-index keys, the `&` probe),
- * where an unresolvable interpolation contributing nothing is the existing,
- * symmetric behaviour of every other interpolated token.
- */
-/**
- * The ONE spelling of the structured-pseudo argument join, over already-rendered
- * branches. Both the static path ({@link pseudoCanonical}) and the per-frame
- * resolving path in `serialize.ts` go through here, so the `, ` glue has a
- * single owner and the two cannot drift — the failure mode SEMANTIC-INVARIANTS
- * incident S3 is named for.
- */
 /** A non-selector pseudo argument's spelling: `An+B` unspaced, a `:lang()` list `, `-joined. */
 export const pseudoArgumentText = (arg: PseudoArgument): string => {
   if (arg.type !== 'List') {
@@ -1015,13 +992,34 @@ export const pseudoArgumentText = (arg: PseudoArgument): string => {
   return text;
 };
 
-const isLanguageRange = (slot: ValueSlot): slot is Keyword | Quoted =>
+/** A `:lang()` list member: an identifier or a string range (Selectors-4 §7.2). */
+export const isLanguageRange = (slot: ValueSlot): slot is Keyword | Quoted =>
   'type' in slot && (slot.type === 'Keyword' || slot.type === 'Quoted');
 
-/** A structured pseudo's spelling from its argument branches' spellings: `:is(a, b)`, `:nth-child(2n of a, b)`. */
+/**
+ * The ONE spelling of the structured-pseudo argument join, over already-rendered
+ * branches: `:is(a, b)`, `:nth-child(2n of a, b)`. Both the static path
+ * ({@link pseudoCanonical}) and the per-frame resolving path in `serialize.ts`
+ * go through here, so the `, ` glue has a single owner and the two cannot
+ * drift — the failure mode SEMANTIC-INVARIANTS incident S3 is named for.
+ */
 export const pseudoJoin = (p: PseudoSelector, branches: readonly string[]): string =>
   `${p.name}(${p.arg === null ? '' : `${pseudoArgumentText(p.arg)} of `}${branches.join(', ')})`;
 
+/**
+ * The inline canonical spelling of a structured pseudo, e.g. `:is(.a, .b)`. This
+ * is the SINGLE core serialization site for the pseudo-arg join: branches join
+ * with `, ` (normalized WS, one line) via the core-owned branch canonicalizer. The
+ * grammar NEVER computes this — it only supplies `args` / `arg` (structure) and
+ * trivia. The degrade-to-opaque case falls back to the retained `text`.
+ *
+ * STATIC ONLY: an interpolated member has `text: null` and contributes `''` here,
+ * so this join is correct only when {@link pseudoHasInterp} is false. Every EMIT
+ * path gates on that flag and resolves the argument per frame instead; the
+ * remaining callers are frame-free ANALYSIS (mixin-index keys, the `&` probe),
+ * where an unresolvable interpolation contributing nothing is the existing,
+ * symmetric behaviour of every other interpolated token.
+ */
 export const pseudoCanonical = (p: PseudoSelector): string => {
   if (p.args !== null) {
     return pseudoJoin(p, p.args.selectors.map(selectorBranchCanonical));
@@ -1587,24 +1585,10 @@ export const pseudoSelector = (
 
 /**
  * An `An+B` from the text of a recognized `<an+b>` (css-syntax-3 §6.1): the
- * recognizer owns the shape, this reads its value. Whitespace (which the
- * microsyntax permits around the sign) is not part of the form.
+ * recognizer owns the shape. Whitespace (which the microsyntax permits around
+ * the sign) is not part of the form (F2).
  */
-export const anPlusB = (text: string): AnPlusB => {
-  const src = text.replace(/[ \t\n\r\f]+/g, '');
-  const lower = src.toLowerCase();
-  if (lower === 'odd' || lower === 'even') {
-    return { type: 'AnPlusB', a: 2, b: lower === 'odd' ? 1 : 0, src };
-  }
-  const n = lower.indexOf('n');
-  if (n === -1) {
-    return { type: 'AnPlusB', a: 0, b: Number(lower), src };
-  }
-  const coefficient = lower.slice(0, n);
-  const a = coefficient === '' || coefficient === '+' ? 1 : coefficient === '-' ? -1 : Number(coefficient);
-  const offset = lower.slice(n + 1);
-  return { type: 'AnPlusB', a, b: offset === '' ? 0 : Number(offset), src };
-};
+export const anPlusB = (text: string): AnPlusB => ({ type: 'AnPlusB', src: text.replace(/[ \t\n\r\f]+/g, '') });
 export const interpolation = (parts: InterpPart[]): Interpolation => ({ type: 'Interpolation', parts, _s: NO_SPAN, _e: NO_SPAN });
 export const anonymousMixin = (rules: Statement[], params?: Param[]): AnonymousMixin =>
   params === undefined

@@ -16,7 +16,7 @@
  * parameterised by.
  */
 
-import { appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, isNthArgument, pseudoSelector, simpleSelector, structuredPseudoFrom, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueSlot, withValueLayout } from '@jesscss/core/ast';
+import { appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, isNthArgument, pseudoSelector, simpleSelector, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueSlot, withValueLayout } from '@jesscss/core/ast';
 import type { AtRuleStatement, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { ScssImportPostludeError } from './parse-error.js';
 
@@ -147,16 +147,6 @@ export function nthPseudoFrom(opener: string, arg: unknown): SimpleToken {
     throw new TypeError('SCSS nth pseudo lost its argument.');
   }
   return simpleSelector(`${opener}${arg.trim()})`);
-}
-
-/** A `:lang()` / `:dir()` pseudo from its glued opener and structured argument. */
-export function requireStructuredPseudo(opener: string, arg: unknown): SimpleToken {
-  const name = opener.slice(0, -1);
-  const pseudo = structuredPseudoFrom(name, name.slice(name.startsWith('::') ? 2 : 1), arg);
-  if (pseudo === null) {
-    throw new TypeError('SCSS pseudo lost its structured argument.');
-  }
-  return pseudo;
 }
 
 /**

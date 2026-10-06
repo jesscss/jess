@@ -29,8 +29,8 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, atRuleBlock, nthArgument, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorCapture, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
-import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
+import { any, atRuleBlock, isAnPlusB, nthArgument, requireStructuredPseudo, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorCapture, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
+import type { SourceSpan, SpannedToken, Token, AnPlusB, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, NthArgument, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 import {
@@ -145,7 +145,6 @@ import {
   lessSelectorTermFromTokens,
   spacedFromValueChildren,
   staticNonSelectorPseudoFrom,
-  requireStructuredPseudo,
   staticSelectorPseudoFrom,
   staticText,
   staticTextWithTriviaGaps,
@@ -386,9 +385,10 @@ type LessInputRules = LessRules & typeof lessSyntax;
 type SharedSyntax = {
   // Inherited from the CSS base: the glued `ns|` / `*|` / `|` prefix terminal.
   AttributeNamespace: Combinator<unknown>;
-  // Inherited from the CSS base: `:lang()` / `:dir()`'s structured arguments.
-  LangPseudoArgument: Combinator<List>;
+  // Inherited from the CSS base: `:lang()` / `:dir()`'s structured arguments and the `<an+b>` fact.
+  LangPseudoArgument: Combinator<List | Interpolation>;
   DirPseudoArgument: Combinator<Keyword>;
+  AnPlusB: Combinator<AnPlusB>;
   // Inherited from the CSS base: an only-clause or a chain of QueryTerm (Less's).
   QueryClause: Combinator<ValueNode>;
   // Inherited from the CSS base: ( <container-condition> ), whose atoms reach Less's QueryFeature and ContainerStyleQuery leaves.
@@ -4508,16 +4508,22 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       }
     )
   );
+  /*
+   * Deliberate exception to composing the CSS base's `TypedNthPseudoArgument`:
+   * the `<an+b>` is the CSS `AnPlusB` slot, but the `of S` list is Less's
+   * pseudo-argument selector (which holds a G37 `/word/` until a selector
+   * commits), where the CSS arm reads `g.SelectorList` — Less's RULESET list —
+   * and a `//` comment is trivia here, where the CSS arm's padding is CSS's.
+   */
   const NthPseudoArgument = node(
     'NthChildArgument',
     sequence(
-      g.NthExpression,
+      g.AnPlusB,
       optional(sequence(g.NthOfKeyword, parser({ trivia: staticSelectorTrivia }, g.PseudoArgumentSelector)))
     ),
-    children => nthArgument(requireToken(children[0]).value, children.find(isLessSelectorList) ?? null)
+    children => nthArgument(children.find(isAnPlusB)!, children.find(isLessSelectorList) ?? null)
   );
-  // An `:nth-*()` pseudo keeps its `An+B` (and `of S` list) structured; core
-  // spells it, unspaced (ledger F2).
+  /* An `:nth-*()` pseudo keeps its `An+B` (and `of S` list) structured; core spells it, unspaced (ledger F2). */
   const NthPseudoSelector: Combinator<SimpleToken> = choice(
     node(
       'NthChildPseudo',
@@ -4532,10 +4538,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       'NthTypePseudo',
       parser({ trivia: staticSelectorTrivia }, sequence(
         token(noTrivia(sequence(pseudoDelimiter, g.NthTypePseudoSelectorName, literal('(')))),
-        g.NthExpression,
+        g.AnPlusB,
         literal(')')
       )),
-      children => requireStructuredPseudo(requireToken(children[0]).value, nthArgument(requireToken(children[1]).value))
+      children => requireStructuredPseudo(requireToken(children[0]).value, nthArgument(children.find(isAnPlusB)!))
     )
   );
   // Less permits a variable interpolation as an An+B argument (`:nth-child(@{n})`).
@@ -4711,9 +4717,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     g.LessIdentifier,
     optional(literal('('))
   )));
+  /*
+   * The padding before the `)` is the argument's (`:is( .b )`), not a
+   * descendant combinator, so the close is read under the argument's trivia.
+   */
   const pseudoSelectorRouted = node(
     'PseudoSelector',
-    sequence(routed(), pseudoSelectorArgument, literal(')')),
+    sequence(routed(), parser({ trivia: staticSelectorTrivia }, sequence(pseudoSelectorArgument, literal(')')))),
     children => staticSelectorPseudoFrom(
       requireToken(children[0]).value.slice(0, -1),
       children[1]
@@ -4743,16 +4753,21 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       requireString(children[1])
     )
   );
-  // `:lang()` / `:dir()`: the CSS base's structured arguments. An interpolated
-  // argument (`:lang(@{lang})`) is not one, and stays the interpolated pseudo.
+  /*
+   * `:lang()` / `:dir()`: the CSS base's structured arguments, which own the
+   * padding inside the parens. A bare interpolated argument (`:lang(@{lang})`)
+   * is not one, and stays the interpolated pseudo.
+   */
   const langPseudoRouted = node(
     'LangPseudo',
-    sequence(routed(), parser({ trivia: staticSelectorTrivia }, g.LangPseudoArgument), literal(')')),
+    sequence(routed(), g.LangPseudoArgument, literal(')')),
     children => requireStructuredPseudo(requireToken(children[0]).value, children[1])
   );
+
+  /* `:dir( <ident> )`, the CSS base's argument. */
   const dirPseudoRouted = node(
     'DirPseudo',
-    sequence(routed(), parser({ trivia: staticSelectorTrivia }, g.DirPseudoArgument), literal(')')),
+    sequence(routed(), g.DirPseudoArgument, literal(')')),
     children => requireStructuredPseudo(requireToken(children[0]).value, children[1])
   );
   const staticBarePseudoRouted = node(
@@ -4763,7 +4778,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const pseudo = dispatch(
     pseudoOpen,
     caseOf(
-      [':is(', '::is(', ':not(', '::not(', ':has(', '::has(', ':where(', '::where(', ':matches(', '::matches(', ':global(', '::global(', ':local(', '::local('],
+      [':is(', '::is(', ':not(', '::not(', ':has(', '::has(', ':where(', '::where(', ':matches(', '::matches(', ':host(', '::host(', ':host-context(', '::host-context(', ':slotted(', '::slotted(', ':global(', '::global(', ':local(', '::local('],
       choice(pseudoSelectorRouted, interpolatedArgumentPseudoRouted)
     ),
     caseOf(':lang(', choice(langPseudoRouted, interpolatedArgumentPseudoRouted)),
@@ -4781,7 +4796,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
   const staticPseudoDispatch = dispatch(
     pseudoOpen,
     caseOf(
-      [':is(', '::is(', ':not(', '::not(', ':has(', '::has(', ':where(', '::where(', ':matches(', '::matches(', ':global(', '::global(', ':local(', '::local('],
+      [':is(', '::is(', ':not(', '::not(', ':has(', '::has(', ':where(', '::where(', ':matches(', '::matches(', ':host(', '::host(', ':host-context(', '::host-context(', ':slotted(', '::slotted(', ':global(', '::global(', ':local(', '::local('],
       pseudoSelectorRouted
     ),
     caseOf(':lang(', langPseudoRouted),

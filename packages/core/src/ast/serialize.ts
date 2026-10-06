@@ -54,6 +54,7 @@ import {
   complexCanonical,
   complexHasInterp,
   complexHasAmpersand,
+  isLanguageRange,
   pseudoCanonical,
   pseudoHasInterp,
   pseudoJoin,
@@ -94,6 +95,7 @@ import type {
   MixinDefinition,
   ModuleImport,
   Operation,
+  PseudoArgument,
   PseudoSelector,
   Quoted,
   Range,
@@ -2619,25 +2621,40 @@ function termIsBareAmp(term: SelectorTerm): boolean {
 /**
  * [mixin-match] [C2] The atoms of ONE parsed token, read off the STRUCTURE the
  * parser built — never off a canonical join. A structured pseudo contributes its
- * bare name (`:is` → `is`) then the atoms of each argument branch, which is
- * exactly what the inline `:is(.a, .b)` spelling used to yield; an opaque token
+ * bare name (`:is` → `is`), then its non-selector argument's leaves (an `An+B`,
+ * each `:lang()` range, a `:dir()` direction), then the atoms of each argument
+ * branch, which is what its inline spelling used to yield; an opaque token
  * contributes its retained leaf `text`. An interp-only token (`text: null`)
  * contributes nothing, matching `simpleTokenText`'s `''`.
  */
 function pushTokenAtoms(sim: SimpleToken, out: string[]): void {
-  if (sim.type === 'PseudoSelector' && sim.arg !== null) {
-    pushLeafAtoms(pseudoCanonical(sim), out);
-    return;
-  }
-  if (sim.type === 'PseudoSelector' && sim.args !== null) {
+  if (sim.type === 'PseudoSelector' && (sim.args !== null || sim.arg !== null)) {
     pushLeafAtoms(sim.name, out);
-    for (const branch of sim.args.selectors) {
-      pushBranchAtoms(branch, out);
+    if (sim.arg !== null) {
+      pushArgumentAtoms(sim.arg, out);
+    }
+    if (sim.args !== null) {
+      for (const branch of sim.args.selectors) {
+        pushBranchAtoms(branch, out);
+      }
     }
     return;
   }
   if (sim.text !== null) {
     pushLeafAtoms(sim.text, out);
+  }
+}
+
+/** [mixin-match] [C2] A non-selector pseudo argument's atoms, from its parsed leaves. */
+function pushArgumentAtoms(arg: PseudoArgument, out: string[]): void {
+  if (arg.type !== 'List') {
+    pushLeafAtoms(arg.src, out);
+    return;
+  }
+  for (const range of arg.value) {
+    if (isLanguageRange(range)) {
+      pushLeafAtoms(range.src, out);
+    }
   }
 }
 
@@ -2709,12 +2726,11 @@ function resolvedBranchAtoms(c: SelectorBranch, frame: Frame | null, e: EvalCtx)
  * loss the emit path had.
  */
 function pushResolvedTokenAtoms(sim: SimpleToken, frame: Frame | null, e: EvalCtx, out: string[]): void {
-  if (sim.type === 'PseudoSelector' && sim.arg !== null) {
-    pushLeafAtoms(resolveSimpleTextSync(sim, frame, e), out);
-    return;
-  }
   if (sim.type === 'PseudoSelector' && sim.args !== null) {
     pushLeafAtoms(sim.name, out);
+    if (sim.arg !== null) {
+      pushArgumentAtoms(sim.arg, out);
+    }
     for (const branch of sim.args.selectors) {
       for (const term of selectorBranchTerms(branch)) {
         for (const inner of termTokens(term)) {

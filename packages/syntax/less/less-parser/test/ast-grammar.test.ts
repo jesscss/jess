@@ -9376,15 +9376,15 @@ describe('Less AST grammar facts', () => {
                 type: 'CompoundSelector',
                 value: [
                   { type: 'SimpleSelector', text: '.card' },
-                  { type: 'PseudoSelector', name: ':nth-child', text: null, args: null, arg: { type: 'AnPlusB', a: 2, b: 1, src: 'odd' } },
-                  { type: 'PseudoSelector', name: ':nth-last-child', text: null, args: null, arg: { type: 'AnPlusB', a: 2, b: 1, src: '2n+1' } }
+                  { type: 'PseudoSelector', name: ':nth-child', text: null, args: null, arg: { type: 'AnPlusB', src: 'odd' } },
+                  { type: 'PseudoSelector', name: ':nth-last-child', text: null, args: null, arg: { type: 'AnPlusB', src: '2n+1' } }
                 ]
               },
               {
                 type: 'CompoundSelector',
                 value: [
                   { type: 'SimpleSelector', text: '.note' },
-                  { type: 'PseudoSelector', name: ':nth-child', arg: { a: 2, b: 0, src: 'even' } }
+                  { type: 'PseudoSelector', name: ':nth-child', arg: { type: 'AnPlusB', src: 'even' } }
                 ]
               }
             ]
@@ -9734,6 +9734,37 @@ describe('Less AST grammar facts', () => {
     }
   });
 
+  /*
+   * Whitespace and comments inside a `:lang()` / `:dir()` / `:nth-*()` paren are
+   * insignificant in CSS, so valid CSS stays valid here although Less selector
+   * whitespace is a combinator: the CSS base's arguments own that padding. A
+   * quoted range that interpolates keeps the argument a template.
+   */
+  it('accepts the padding CSS allows inside structured pseudo arguments', () => {
+    for (const [source, css] of [
+      ['a:lang( en ) { x: y; }', 'a:lang(en)'],
+      ['a:lang(en ) { x: y; }', 'a:lang(en)'],
+      ['a:lang(en /* c */) { x: y; }', 'a:lang(en)'],
+      ['a:lang(/* c */en) { x: y; }', 'a:lang(en)'],
+      ['a:lang( en , "fr" ) { x: y; }', 'a:lang(en, "fr")'],
+      ['a:dir( ltr ) { x: y; }', 'a:dir(ltr)'],
+      ['a:dir(rtl /* c */) { x: y; }', 'a:dir(rtl)'],
+      ['a:nth-child(2n + 1 /* c */) { x: y; }', 'a:nth-child(2n+1)'],
+      ['a:nth-child( 2n+1 of .b /* c */ ) { x: y; }', 'a:nth-child(2n+1 of .b)'],
+      ['a:nth-of-type( -n+2 ) { x: y; }', 'a:nth-of-type(-n+2)'],
+      ['a:nth-col( 2n + 1 ) { x: y; }', 'a:nth-col(2n+1)'],
+      ['a:is( .b ) { x: y; }', 'a:is(.b)'],
+      [':host-context( .b .c ) { x: y; }', ':host-context(.b .c)'],
+      ['@l: en; a:lang("@{l}", fr) { x: y; }', 'a:lang("en", fr)']
+    ]) {
+      expect(parseLessCst(source).errors, source).toHaveLength(0);
+      expect(serialize(parse(source)).css, source).toBe(`${css} {\n  x: y;\n}\n`);
+    }
+    expect(parse('a:nth-col(3n) { x: y; }').rules[0]).toMatchObject({
+      selector: { selectors: [{ value: [{ text: 'a' }, { type: 'PseudoSelector', name: ':nth-col', arg: { type: 'AnPlusB', src: '3n' } }] }] }
+    });
+  });
+
   it('constructs the complete static An+B pseudo family without raw fallback', () => {
     const source =
       '.child:nth-child(-n+2 of .item):nth-last-child(2n + 1), .type:nth-of-type(odd):nth-last-of-type(3n) { color: blue; }';
@@ -9754,8 +9785,8 @@ describe('Less AST grammar facts', () => {
                 type: 'CompoundSelector',
                 value: [
                   { text: '.child' },
-                  { name: ':nth-child', arg: { a: -1, b: 2, src: '-n+2' }, args: { selectors: [{ text: '.item' }] } },
-                  { name: ':nth-last-child', arg: { a: 2, b: 1, src: '2n+1' }, args: null }
+                  { name: ':nth-child', arg: { type: 'AnPlusB', src: '-n+2' }, args: { selectors: [{ text: '.item' }] } },
+                  { name: ':nth-last-child', arg: { type: 'AnPlusB', src: '2n+1' }, args: null }
                 ]
               },
               {
@@ -9763,7 +9794,7 @@ describe('Less AST grammar facts', () => {
                 value: [
                   { text: '.type' },
                   { name: ':nth-of-type', arg: { src: 'odd' } },
-                  { name: ':nth-last-of-type', arg: { a: 3, b: 0, src: '3n' } }
+                  { name: ':nth-last-of-type', arg: { type: 'AnPlusB', src: '3n' } }
                 ]
               }
             ]
