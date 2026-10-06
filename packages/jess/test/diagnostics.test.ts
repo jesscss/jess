@@ -119,6 +119,13 @@ describe('Eval error source location', () => {
       expect(err.phase, value).toBe('resolve');
       expect([err.line, err.column], value).toEqual([2, column]);
     }
+
+    /* A statement-position `$fn();` reads its name's span off the parsed token. */
+    const call = await new Compiler().renderToResult(
+      { source: '.a {\n  $fn();\n}', filePath: '/proj/call.jess' },
+      { suppressWarnings: true }
+    );
+    expect(call.errors.map(err => [err.phase, err.line, err.column])).toEqual([['resolve', 2, 3]]);
   });
 
   it('keeps an undefined-variable diagnostic precise through the public file route', async () => {
