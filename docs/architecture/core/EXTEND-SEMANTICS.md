@@ -109,7 +109,13 @@ pre:hover, .some-class { &:extend(div pre); }
 pre:hover:extend(div pre), .some-class:extend(div pre) {}
 ```
 
-Grammar: the Jess `$extend` statement is `packages/jess-parser/src/grammar.ts`
+A body-form `&:extend()` is parsed in a ruleset's body and a mixin definition's, but not in
+a detached ruleset's (`@r: { &:extend(.sm); };`) or in an at-rule block nested in a rule
+or mixin (`.a { @media print { &:extend(.sm); } }`), where it is a parse error today; lessc
+4.9.1 accepts both, and a detached ruleset's extend extends the rule it is called into.
+Where those attach is unruled (ledger X19).
+
+Grammar: the Jess `$extend` statement is `packages/syntax/jess/jess-parser/src/grammar.ts`
 (search `$extend`); the core node is `Extend { target, flag }` with the parsed
 `ExtendInstruction { partial }` surfaced in `packages/core/src/ast/nodes.ts` and
 consumed by the engine under `packages/core/src/ast/extend/`.
@@ -155,7 +161,7 @@ individually fixture-gated here, flagged in §12):
 ## 4. Jess `$extend` — inverted default + `!exact`
 
 The Jess statement form flips the Less default. Per
-`packages/jess-parser/src/grammar.ts`:
+`packages/syntax/jess/jess-parser/src/grammar.ts`:
 
 > `$extend <target> [!exact];` — Jess/Sass default is a partial (`all`) match;
 > `!exact` flips it to Less's exact match.
@@ -213,9 +219,12 @@ the extend engine both call it.
   cascade nor specificity) and emitted in order of first appearance.
 - A member that cannot sit inside `:is()` — a pseudo-element, a pseudo-class outside
   the standard allowlist, a token held as composed header text (its kind would have to
-  be read back out of serialized text), a token an `&` concatenation or a resolved
-  interpolation produced that holds more than one simple (`@v: ~"x.y"; .@{v}`), or a
-  complex member the group does not lead with — is written as its own branch in the Less 4.x expanded form: the simples
+  be read back out of serialized text), an `&` concatenation that does not continue a
+  one-simple class, id or type name (`.x&`; `&-x` under `.a.b`) — one that does
+  (`&-primary` under `.btn`) stands for that parent's token —, a resolved interpolation
+  that holds more than one simple (`@v: ~"x.y"; .@{v}`), or a
+  complex member the group does not lead with (ledger X17 records this reading of X3's
+  provenance clause) — is written as its own branch in the Less 4.x expanded form: the simples
   before the group join the member's FIRST compound and those after it its LAST
   compound (`.a > .m:is(.c, .p .q).n` → `.a > .m.p .q.n`). Each joined compound is made
   valid: the type selector leads and a repeated type is written once (`div` + `div.b`
@@ -343,8 +352,11 @@ counts like any other. The zero-extend fast-reject is per import GRAPH, never pe
 document: a graph with no extend plans nothing and records nothing in the render walk
 (jess#349). A sheet imported inside a ruleset is never planned; when nothing else in the
 graph extends, a statically addressed one is loaded before the walk only to learn whether
-it carries an extend the walk must record, and when no rule the walk recorded can meet an extend target the deferred
-fold re-solves nothing. Interpolated selectors are covered by §10.
+it carries an extend the walk must record (one admission scan of the sheet, which an
+extend-free document pays too; a parse-time "has an extend" fact on the sheet would make it
+O(1)), and one imported through an interpolated path, whose sheet only the walk can
+address, arms the walk recorder outright. When no rule the walk recorded can meet an extend
+target the deferred fold re-solves nothing. Interpolated selectors are covered by §10.
 
 A rule a mixin call places (a ruleset called as a mixin, a detached ruleset's call and
 a Jess `$apply` included; each call or application is its own placement), or a loop or `$if`/`$while` body places — or an `@import` inside a ruleset,
@@ -384,13 +396,28 @@ header and the recorder read that resolution (`serialize.ts` `resolvedSelectorLi
 lone `@{name}` selector (it may expand to a captured selector list) or a resolved `&` the
 template did not write is still held as its composed text and matched whole.
 
-One gap remains. In nested output (`collapseNesting: false`) a placed EXTENDER folds in as its
-composed selector (`.a { .m(); } .b { .m(); }` → `.sm, .a .x, .b .x`), but a placed
-TARGET written inside a parent block is not rewritten when its extender lies outside that
-parent: moving the extender out is restructuring, not a header rewrite (§1a). The same
-holds for a rule of a `(reference)` sheet imported inside a ruleset, which flat output
-reveals under its extender (`.wrap { @import (reference) "t.less"; }` +
-`.x:extend(.wrap .sm) {}` → `.x { b: 2; }`) and nested output leaves hidden.
+Nested output (`collapseNesting: false`) has known gaps; flat output is right in each, and
+each is recorded with its repro in `docs/state/PINNED-DEFECTS-AUDIT.md` ("Deferred, not
+pinned"):
+
+- A placed EXTENDER folds in as its composed selector (`.a { .m(); } .b { .m(); }` →
+  `.sm, .a .x, .b .x`), but a placed TARGET written inside a parent block is not rewritten
+  when its extender lies outside that parent: moving the extender out is restructuring,
+  not a header rewrite (§1a). The same holds for a rule of a `(reference)` sheet imported
+  inside a ruleset, which flat output reveals under its extender
+  (`.wrap { @import (reference) "t.less"; }` + `.x:extend(.wrap .sm) {}` → `.x { b: 2; }`)
+  and nested output leaves hidden, and for a sheet imported inside a ruleset whose rules
+  extend each other.
+- A match of a nested rule's whole selector by a top-level extender that shares none of
+  the rule's parent levels is dropped (`.w { .k { k: 1; } } .w .y:extend(.w .k) {}` →
+  `.w { .k { … } }`; flat `.w .k, .w .y`). An extender nested under the same parent folds
+  in as its own-local remainder (`.w { .y { &:extend(.w .k); } .k {} }` → `.w { .k, .y {…} }`).
+- An `all` extender folded into the header of a rule with child rules joins the header
+  list even when its specificity differs, and native CSS nesting reads that list as one
+  `:is()` for the children, so they gain the extender's specificity
+  (`.b.k { a: 1; .p { m: 1; } } #x:extend(.b all) {}` → `.b.k, #x.k { … .p {…} }`, where
+  `.b.k .p` scores (1,2,0) instead of (0,3,0)); X3's guard holds in the header itself
+  only. Flat output writes `.b.k .p, #x.k .p`.
 
 Extend across `@compose` follows Sass module semantics (ledger X14): the composing
 sheet's extend reaches the composed module's rules, and a module's extend reaches only
