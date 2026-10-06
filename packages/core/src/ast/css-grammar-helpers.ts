@@ -943,15 +943,19 @@ export function queryFeatureBlock(children: readonly unknown[], span: AstSourceS
       only = child;
     }
   }
-  const group = block(generalEnclosedArgument(children) ?? []);
-
   /*
    * Only the group whose own contents are general-enclosed; a group around a
    * marked group is a condition. One whose contents are the dialect's
    * interpolation (SCSS `(#{$q})`) is a template, substituted then printed.
    */
-  const isQuery = count === 1 && isValue(only) && (generalEnclosedSourceOf(only) === undefined || only.type === 'Block');
-  return isQuery ? group : generalEnclosedGroup(group, span, state);
+  if (count === 1 && isValue(only) && (generalEnclosedSourceOf(only) === undefined || only.type === 'Block')) {
+    /*
+     * One query is its own contents — `generalEnclosedArgument` would hand the
+     * same node back — except a comma list, whose items it reads one by one.
+     */
+    return block(isCommaList(only) ? generalEnclosedArgument(children) ?? [] : only);
+  }
+  return generalEnclosedGroup(block(generalEnclosedArgument(children) ?? []), span, state);
 }
 
 /*

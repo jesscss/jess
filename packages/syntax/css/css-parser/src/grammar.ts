@@ -3369,17 +3369,21 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     when(
       startsWith('u+'),
-      g.queryUnicodeBound,
-      { caseInsensitive: true }
+      g.queryUnicodeBound
     ),
     when(
-      matches(/(?:\\\(|[^(])$/),
+      startsWith('U+'),
+      g.queryUnicodeBound
+    ),
+    when(
+      endsWith('\\('),
       queryRangeName
     ),
     when(
       endsWith('('),
       g.queryFunctionBound
-    )
+    ),
+    otherwise(queryRangeName)
   );
 
   /*
@@ -3494,6 +3498,11 @@ const cssFactory = (g: GrammarSelf) => {
    * `routed()`; any other identifier is the feature name (an escaped `\(` ends
    * a name, not a function). A function arm fails after its head only when the
    * function's own arguments do, as a function-valued bound always has.
+   *
+   * The arms past the known cases are plain string tests on the head — both
+   * spellings of `u+`, then the escaped `\(`, then `(` — so a feature name, the
+   * common head, is routed with no case fold and no regex. The same arms open
+   * `queryComparedHead` and `mediaFeatureOpener`.
    */
   const queryFeatureOpener = dispatch(
     queryFeatureOpenerHead,
@@ -3511,17 +3520,21 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     when(
       startsWith('u+'),
-      g.queryUnicodeBound,
-      { caseInsensitive: true }
+      g.queryUnicodeBound
     ),
     when(
-      matches(/(?:\\\(|[^(])$/),
+      startsWith('U+'),
+      g.queryUnicodeBound
+    ),
+    when(
+      endsWith('\\('),
       queryFeatureName
     ),
     when(
       endsWith('('),
       g.queryFunctionBound
-    )
+    ),
+    otherwise(queryFeatureName)
   );
 
   /*
@@ -3590,17 +3603,21 @@ const cssFactory = (g: GrammarSelf) => {
     ),
     when(
       startsWith('u+'),
-      g.queryUnicodeBound,
-      { caseInsensitive: true }
+      g.queryUnicodeBound
     ),
     when(
-      matches(/(?:\\\(|[^(])$/),
+      startsWith('U+'),
+      g.queryUnicodeBound
+    ),
+    when(
+      endsWith('\\('),
       generalFeatureName
     ),
     when(
       endsWith('('),
       g.queryFunctionBound
-    )
+    ),
+    otherwise(generalFeatureName)
   );
   const MediaFeatureContents = node(
     'QueryFeatureContents',
