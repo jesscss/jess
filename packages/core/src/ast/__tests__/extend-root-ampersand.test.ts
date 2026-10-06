@@ -188,8 +188,8 @@ describe('a composed `&` concatenation in an extend group', () => {
 });
 
 describe('the nesting fold of an escaped class name', () => {
+  // `flat` flattens with the default `'native'` fold.
   it('groups an escaped class like any class', () => {
-    expect(serialize(parseLess('.t { .\\31 0, .x { a: 1 } }'), { evaluator, collapseNesting: 'native' }).css)
-      .toBe('.t :is(.\\31 0, .x) {\n  a: 1;\n}\n');
+    expect(flat(parseLess('.t { .\\31 0, .x { a: 1 } }'))).toBe('.t :is(.\\31 0, .x) {\n  a: 1;\n}\n');
   });
 });

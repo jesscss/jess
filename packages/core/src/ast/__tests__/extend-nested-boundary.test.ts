@@ -270,8 +270,7 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
  * has children of its own.
  */
 describe('nested-mode whole-selector extend from a sibling under the same parent', () => {
-  const nestedLess = (src: string): string | undefined =>
-    serialize(parseLess(src), { evaluator, collapseNesting: false }).css;
+  const nestedLess = (src: string): string | undefined => nested(parseLess(src));
 
   it('folds the sibling extender into the local header, exact or all', () => {
     expect(nestedLess('.w { .y { &:extend(.w .k); } .k { k: 1; } }'))
