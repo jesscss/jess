@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { parse as parseCss } from '@jesscss/css-parser';
+import { serialize } from '@jesscss/core';
 import { Compiler } from '../../src/index.js';
 
 /*
@@ -14,6 +16,15 @@ async function render(source: string, compile: { mathMode?: 'always' | 'parens-d
 async function renderJess(source: string): Promise<string> {
   const css = await new Compiler().renderString(source, { language: 'jess', extension: '.jess' });
   return css.replace(/\s+/g, ' ').trim();
+}
+
+async function renderIn(extension: '.less' | '.scss' | '.jess', source: string, compress = false): Promise<string> {
+  const css = await new Compiler({ output: { compress } }).renderString(source, { extension });
+  return css.replace(/\s+/g, ' ').trim();
+}
+
+async function renderCss(source: string, compress = false): Promise<string> {
+  return (await serialize(parseCss(source), { collapseNesting: false, compress })).css.replace(/\s+/g, ' ').trim();
 }
 
 describe('Less math boundaries', () => {
@@ -43,6 +54,59 @@ describe('Less math boundaries', () => {
       .toBe('.x { w: calc(100% - ((10px * 3) + (10px * 2))); }');
     expect(await renderJess('.x { w: calc(10px / (2 * 5)); v: calc(((10vh)) + calc((5vh))); }'))
       .toBe('.x { w: calc(10px / (2 * 5)); v: calc(((10vh)) + calc((5vh))); }');
+  });
+
+  /*
+   * The authored spelling is a property of the value, not of the path that
+   * reached calc(): the same `calc((…))` prints the same bytes in every
+   * position, while a typed consumer still reads its magnitude
+   * (SEMANTIC-INVARIANTS 1 and 2).
+   */
+  it('spells a calc() paren group the same in every position', async () => {
+    for (const v of ['calc((10px))', 'calc((1px + 2vw))', 'calc(100% - (10px))', 'calc(((5vh)))', 'calc((0.5px))']) {
+      const out = await render(`@x: ${v}; @list: ${v}, 2px;
+        .m(@a) { m: @a; } .d(@a: ${v}) { d: @a; } .r(@a...) { r: @a; }
+        .x { decl: ${v}; var: @x; .m(${v}); .d(); .r(${v}); ext: extract(@list, 1); each(@list, { e: @value; }); }`);
+      expect(out, v).toBe(`.x { decl: ${v}; var: ${v}; m: ${v}; d: ${v}; r: ${v}; ext: ${v}; e: ${v}; e: 2px; }`);
+    }
+    expect(await renderJess('$x: calc((10px)); .x { w: calc(min(calc((5vh)), 2px) * 2); v: $x; }'))
+      .toBe('.x { w: calc(min(calc((5vh)), 2px) * 2); v: calc((10px)); }');
+    expect(await render('@x: calc((10px)); .x when (@x = 10px) { a: unit(@x, em); b: @x * 2; c: percentage(calc((0.5))); }'))
+      .toBe('.x { a: 10em; b: 20px; c: 50%; }');
+  });
+
+  /* A group around kept math or around raw bytes holds nothing that computes. */
+  it('keeps a paren group written in a math function argument, as css does', async () => {
+    for (const src of [
+      '.x { w: calc(var(--a, (1px + 2px)) + (3px)); }',
+      '.x { w: calc(var(--a, (1px + 2px))); }',
+      '.x { w: var(--a, (1px + 2px)); }',
+      '.x { w: min((10px + 5px), 20px); }',
+      '.x { w: clamp(1px, (2vw + 1px), 3px); }',
+      '.x { w: calc((1px + 2vw) * 2); v: calc(((1px + 2vw))); }'
+    ]) {
+      expect(await renderJess(src), src).toBe(await renderCss(src));
+    }
+    expect(await render('.x { w: calc(var(--a, (1px + 2px)) + (3px)); }'))
+      .toBe('.x { w: calc(var(--a, (1px + 2px)) + (3px)); }');
+  });
+
+  /* A calc() group is valid CSS with one parse in all four grammars (SEMANTIC-INVARIANTS 4). */
+  it('emits a calc() group around one value identically in every dialect', async () => {
+    const src = '.x { a: calc((10px)); b: calc(((5vh))); }';
+    const css = await renderCss(src);
+    expect(css).toBe('.x { a: calc((10px)); b: calc(((5vh))); }');
+    for (const extension of ['.less', '.scss', '.jess'] as const) {
+      expect(await renderIn(extension, src), extension).toBe(css);
+    }
+  });
+
+  /* The interior of a kept calc() is written as authored under compress, group or not. */
+  it('does not compress inside a kept calc(), with or without a group', async () => {
+    for (const extension of ['.less', '.jess'] as const) {
+      expect(await renderIn(extension, '.x { a: calc((0.5px)); b: calc(1px + (0.5px)); c: calc((0.5px + 1px)); d: calc(0.5px + 1vw); }', true), extension)
+        .toBe('.x{a:calc((0.5px));b:calc(1px + (0.5px));c:calc((0.5px + 1px));d:calc(0.5px + 1vw)}');
+    }
   });
 
   it('still consumes the parens of Less math outside a math function', async () => {

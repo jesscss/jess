@@ -76,6 +76,11 @@ export interface Dimension {
    * computes; they differ only in what an unexpressible RESULT is allowed to look
    * like — `loose` fabricates a unit from `backupUnit`, `preserve` says the
    * expression back, `strict` refuses at the consuming boundary.
+   *
+   * The same spelling is carried, in every unit mode, by a `calc()` written as a
+   * paren group around one value (`calc((10px))` is `10px` spelled `(10px)`):
+   * every paren authored inside a math function is kept (owner 2026-10-06), and
+   * a typed consumer still reads the magnitude.
    */
   readonly preserved?: string;
 

@@ -260,7 +260,10 @@ describe('V19 one-evaluator projection ratchet', () => {
     // math function is written back as authored (`unconsumedParens` replaces
     // `arithmeticTier`), so the operator-tier sets that decided which parens
     // carried precedence are gone.
-    expect(occurrences(/^function |^async function /gmu)).toBe(515);
+    // +1 function: a paren group around kept math or raw bytes keeps its own
+    // parens in both value lanes (`isInertGroup`), so a group that is a whole
+    // function argument inside a math function is no longer dropped.
+    expect(occurrences(/^function |^async function /gmu)).toBe(516);
     expect(occurrences(/new Map/gu)).toBe(85);
     expect(occurrences(/new Set/gu)).toBe(39);
     expect(occurrences(/new WeakMap/gu)).toBe(8);

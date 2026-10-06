@@ -84,6 +84,13 @@ export function makeCompoundDimension(
   return n;
 }
 
+/** `d` with `preserved` as its authored spelling (see {@link Dimension.preserved}); the value is unchanged. */
+export function makeSpelledDimension(d: Dimension, preserved: string): Dimension {
+  const n: Mutable<Dimension> = { ...d, preserved, bytes: '' };
+  n.bytes = serializeDimension(n);
+  return n;
+}
+
 /** Build a color from an RGB source. `src` (verbatim spelling) is optional. */
 export function makeColorRgb(
   rgb: readonly [number, number, number],

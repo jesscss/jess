@@ -69,6 +69,7 @@ import type {
   Any,
   Apply,
   AuthoredCallSlot,
+  Block,
   Collection,
   NestedPropertyBlock,
   Color,
@@ -160,7 +161,7 @@ import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny, sn
 import { namedColor } from './color-names.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
 import { UnitArithmeticError, calcInner, preservedUnitClashes, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
-import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeUrlValue, NULL } from './value-factory.js'; // [calc]
+import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
@@ -4401,13 +4402,18 @@ function evalTyped(
        * makes this the rewrite's defect and not the preserve rule's. Any mode
        * that preserves widens the input set that reaches it; the percentage
        * product is merely the one preserve already produced.
+       *
+       * An inert group has nothing for the frame to compute, so it is not
+       * consumed and keeps its parens ({@link isInertGroup}).
        */
-      return evalTypedSlot(
-        node.value,
-        frame,
-        { ...e, parenFrames: pushParenFrame(e, true) },
-        projectMixinValues
-      );
+      return isInertGroup(node)
+        ? mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues), v => makeKeyword(`(${emitValue(v)})`))
+        : evalTypedSlot(
+            node.value,
+            frame,
+            { ...e, parenFrames: pushParenFrame(e, true) },
+            projectMixinValues
+          );
     case 'Collection':
       /*
        * A map reaching a TYPED position (a function argument, an operation) is
@@ -4492,32 +4498,57 @@ function evalTyped(
   }
 }
 
+const isParenGroup = (slot: ValueSlot): slot is Block =>
+  !isValueSlotArray(slot) && slot.type === 'Block' && slot.delimiter === 'paren' && slot.escaped !== true;
+
+/*
+ * Every paren authored inside a math function is kept as written, redundant or
+ * not (ledger P35, owner 2026-10-06: "no reason to drop parens. the user wanted
+ * to write it that way for a reason."). Nothing computes there, so nothing
+ * consumes a group. Two facts carry the rule:
+ *
+ * - a group around content nothing computes — math kept as written, or raw
+ *   bytes — keeps its own parens wherever it is evaluated ({@link isInertGroup});
+ * - a group around one value is consumed by evaluation like any paren, so the
+ *   positions inside a math function write its levels back: an operand of kept
+ *   math and the argument of `calc()` ({@link unconsumedParens}).
+ *
+ * Not yet covered: a group around one value that is a whole argument of a call
+ * written out as-is (`calc(var(--a, (10px)))`, `.jess` `min((10px), 1px)`) is
+ * consumed by the typed argument lane, where css keeps it.
+ */
+
+/** A paren group around math kept as written or around raw bytes (see above). */
+function isInertGroup(node: Block): boolean {
+  let inner: ValueSlot = node.value;
+  while (isParenGroup(inner)) {
+    inner = inner.value;
+  }
+  return !isValueSlotArray(inner) && (inner.type === 'Any' || (inner.type === 'Operation' && inner.inMathFunction));
+}
+
 /**
- * How many paren levels the author wrote around `slot` that no computation
- * consumed, or 0 when `slot` is not a paren group. Nothing computes inside a
- * math function (ledger P35), so a group written there keeps every paren as
- * written, redundant or not (`calc(100% - ((a)))`, owner 2026-10-06). A group
- * whose operation computes — math outside a math function — is consumed by it.
+ * How many paren levels the author wrote around `slot` that evaluation drops,
+ * or 0 when `slot` is not a group around one value. A group whose operation
+ * computes is consumed by it, and an inert group writes its own parens.
  */
 function unconsumedParens(slot: ValueSlot): number {
   let depth = 0;
   let inner = slot;
-  while (!isValueSlotArray(inner) && inner.type === 'Block' && inner.delimiter === 'paren' && !inner.escaped) {
+  while (isParenGroup(inner)) {
     inner = inner.value;
     depth += 1;
   }
-  return !isValueSlotArray(inner) && inner.type === 'Operation' && !inner.inMathFunction ? 0 : depth;
+  return !isValueSlotArray(inner) && (inner.type === 'Operation' || inner.type === 'Any') ? 0 : depth;
 }
 
 const wrapParens = (bytes: string, depth: number): string => depth === 0 ? bytes : `${'('.repeat(depth)}${bytes}${')'.repeat(depth)}`;
 
 /**
- * The bytes of one operand of an operation that is kept as written. A paren
- * group drops its parens when its inner value is not a literal (a kept
- * math-function operation is a `Keyword`), so inside a math function the group
- * is written back exactly as authored ({@link unconsumedParens}). Outside one,
- * a paren group's operation computed and the group is one value with no
- * precedence left to protect.
+ * The bytes of one operand of an operation that is kept as written: a group
+ * around one value gets its authored levels back ({@link unconsumedParens}).
+ * Outside a math function a paren group's operation computed, and the group is
+ * one value with no precedence left to protect.
  */
 function preservedOperand(parent: Operation, child: ValueNode, value: EvalValue): string {
   const bytes = emitValue(value);
@@ -4843,7 +4874,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
 
       /*
        * Transparent to computed bytes: a materialized (operated) inner strips the
-       * paren (matching the legacy oracle); an un-forced literal keeps its parens.
+       * paren (matching the legacy oracle); an un-forced literal keeps its parens,
+       * and so does an inert group ({@link isInertGroup}), whose kept math is
+       * still one expression.
        */
       /*
        * §12.6c: a bracketed value emits VERBATIM. Balanced `[ … ]` is a valid
@@ -4857,7 +4890,10 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         if (isLiteral(v)) {
           return literal(`${delimiterOpen(node.delimiter)}${v}${delimiterClose(node.delimiter)}`);
         }
-        return node.delimiter === 'paren' ? v : makeBlock(v, node.delimiter, node.escaped);
+        if (node.delimiter !== 'paren') {
+          return makeBlock(v, node.delimiter, node.escaped);
+        }
+        return isInertGroup(node) ? makeKeyword(`(${emitValue(v)})`) : v;
       });
     }
     case 'Expression': {
@@ -6554,17 +6590,22 @@ function evalIntrospection(node: FunctionCall, frame: Frame | null, e: EvalCtx):
  * wrapper. A cross-unit sub-expression arrives already `calc(…)`-wrapped (kept
  * as-is); a preserved non-calc keyword op (`100% - 3`) is wrapped; a fully
  * computed value (`10px * 2` → `20px`) drops the wrapper (less.js `calc()`
- * collapse to a bare Dimension). An argument written as a paren group keeps
- * its parens and so its wrapper (`calc((10vh))`, {@link unconsumedParens}) —
- * unless a typed consumer `demanded` the value, which has no use for its spelling.
+ * collapse to a bare Dimension). An argument written as a paren group around
+ * one value keeps its parens and so its wrapper ({@link unconsumedParens}): a
+ * dimension carries them as its spelling (`calc((10vh))` is `10vh` spelled
+ * `(10vh)`), so every position prints the same bytes and a typed consumer still
+ * reads `10vh`; any other value is the kept `calc(…)` expression.
  */
-function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx, demanded: boolean): MaybePromise<EvalValue> {
+function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<EvalValue> {
   const ce: EvalCtx = { ...e, calcDepth: (e.calcDepth ?? 0) + 1 };
   const arg = node.args[0]!.value;
-  const authored = demanded ? 0 : unconsumedParens(arg);
+  const authored = unconsumedParens(arg);
   return mapMaybe(evalTypedSlot(arg, frame, ce), (v) => {
     if (authored > 0) {
-      return makeKeyword(`calc(${wrapParens(emitValueC(v, e), authored)})`);
+      if (!isValueGroupArray(v) && v.type === 'Dimension') {
+        return makeSpelledDimension(v, wrapParens(v.preserved ?? v.bytes, authored));
+      }
+      return makeKeyword(`calc(${wrapParens(emitValue(v), authored)})`);
     }
     if (!isValueGroupArray(v) && v.type === 'Keyword') {
       return calcInner(v.bytes) !== null ? v : makeKeyword(`calc(${v.bytes})`);
@@ -7660,7 +7701,7 @@ function evalCall(
     return intro;
   }
   if (e.ev && node.args.length === 1 && node.name.toLowerCase() === 'calc') {
-    return evalCalc(node, frame, e, demanded);
+    return evalCalc(node, frame, e);
   }
   if (!e.ev) {
     return preserveCall(node, frame, e);
