@@ -12,7 +12,7 @@ const render = (doc: Stylesheet, collapseNesting = true): string | undefined =>
   serialize(doc, { evaluator, collapseNesting }).css;
 
 const iPlusX = () =>
-  operation('+', variableReference('i', 'live'), variableReference('x', 'live'), false, true);
+  operation('+', variableReference('i', 'live'), variableReference('x', 'live'), false, true, false);
 
 /** `$i: 0; for x in 1..3 { $i (::=) $i + $x } .a { width: $i }` — accumulator. */
 const accumulator = (): Stylesheet => stylesheet([

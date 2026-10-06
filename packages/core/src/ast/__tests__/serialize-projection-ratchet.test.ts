@@ -321,11 +321,18 @@ describe('V19 one-evaluator projection ratchet', () => {
     // +1 function (owner ruling 2026-10-06, ledger P35): an authored paren group
     // around an operation kept as written (`(4 + 3px)` under `preserve`) keeps its
     // parens in both value lanes (`keepAuthoredGroup`), so precedence survives.
-    expect(occurrences(/^function |^async function /gmu)).toBe(540);
+    // +2 functions net and +1 `new WeakSet` (§4.7, no silent rung): the
+    // final-unit predicate moved to value-operate (`isUnexpressible`, the one
+    // walk the strict throw also reads); a `List`, a `Sequence` and a
+    // space-separated slot check their items through one helper
+    // (`validateItemUnits`); a call or a guard operand that consumes a kept
+    // operation warns (`warnConsumedKept`, `warnConsumedOperand`); and each
+    // kept operation warns once (`warnedUnitValues`).
+    expect(occurrences(/^function |^async function /gmu)).toBe(542);
     expect(occurrences(/new Map/gu)).toBe(85);
     expect(occurrences(/new Set/gu)).toBe(39);
     expect(occurrences(/new WeakMap/gu)).toBe(10);
-    expect(occurrences(/new WeakSet/gu)).toBe(0);
+    expect(occurrences(/new WeakSet/gu)).toBe(1);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);
 
     /*

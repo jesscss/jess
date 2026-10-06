@@ -70,7 +70,7 @@ describe('Mixin canonical AST emission', () => {
   it('terminates guarded recursion through direct guard and operation nodes', () => {
     const loop = mixin('.loop', [{ name: 'n' }], [
       decl('step', variableReference('n', 'scoped')),
-      call('.loop', [{ value: operation('-', variableReference('n', 'scoped'), dimension(1), false, cssBaseMathOutsideParens('-')) }])
+      call('.loop', [{ value: operation('-', variableReference('n', 'scoped'), dimension(1), false, cssBaseMathOutsideParens('-'), false) }])
     ], {
       g: 'cmp', op: '>', left: variableReference('n', 'scoped'), right: dimension(0)
     });
@@ -91,7 +91,7 @@ describe('Mixin canonical AST emission', () => {
   });
 
   it('selects an overload while evaluating a default in the callee closure', () => {
-    const small = mixin('.space', [{ name: 'n' }, { name: 'gap', default: operation('+', variableReference('n', 'scoped'), dimension(1), false, cssBaseMathOutsideParens('+')) }], [
+    const small = mixin('.space', [{ name: 'n' }, { name: 'gap', default: operation('+', variableReference('n', 'scoped'), dimension(1), false, cssBaseMathOutsideParens('+'), false) }], [
       decl('kind', { type: 'Keyword', src: 'small' }),
       decl('gap', variableReference('gap', 'scoped'))
     ], { g: 'cmp', op: '<', left: variableReference('n', 'scoped'), right: dimension(10) });

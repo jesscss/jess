@@ -2174,7 +2174,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(literal('('), g.Identifier, regex(/:[ \t\n\r\f]*/), g.MathValue, literal(')')),
     (children, _fields, span, _rawChildren, _triviaLog, state) => withSourceSpan(
       block(operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3]), false,
-        lessMathOutsideParens(state, ':'))),
+        lessMathOutsideParens(state, ':'), false)),
       span
     )
   );
@@ -2295,7 +2295,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
           dimension(-1, '', '-1'),
           requireValueNode(children[1]),
           false,
-          true
+          true,
+          false
         ),
     { collapse: true }
   );
@@ -3665,7 +3666,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       const value = children.find(isValueNode);
       return value === undefined
         ? block(property)
-        : block(operation(':', property, value, false, lessMathOutsideParens(state, ':')));
+        : block(operation(':', property, value, false, lessMathOutsideParens(state, ':'), false));
     }
   );
   const SupportsBlock = node(
@@ -3736,13 +3737,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         throw new TypeError('Less query comparison lost a value or operator.');
       }
       let comparison = operation(operators[0]!, keyword(requireToken(children[1]).value), values[0]!, false,
-        lessMathOutsideParens(state, operators[0]!));
+        lessMathOutsideParens(state, operators[0]!), false);
       if (operators.length === 2) {
         if (values[1] === undefined) {
           throw new TypeError('Less chained query comparison lost its final value.');
         }
         comparison = operation(operators[1]!, comparison, values[1], false,
-          lessMathOutsideParens(state, operators[1]!));
+          lessMathOutsideParens(state, operators[1]!), false);
       }
       return block(comparison);
     }
@@ -3760,13 +3761,13 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         throw new TypeError('Less query range lost a value or operator.');
       }
       let comparison = operation(operators[0]!, values[0]!, keyword(requireToken(children[3]).value), false,
-        lessMathOutsideParens(state, operators[0]!));
+        lessMathOutsideParens(state, operators[0]!), false);
       if (operators.length === 2) {
         if (values[1] === undefined) {
           throw new TypeError('Less chained query range lost its final value.');
         }
         comparison = operation(operators[1]!, comparison, values[1], false,
-          lessMathOutsideParens(state, operators[1]!));
+          lessMathOutsideParens(state, operators[1]!), false);
       }
       return block(comparison);
     }
@@ -3889,7 +3890,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(styleFunctionOpener, styleQueryDeclaration, literal(')')),
     (children, _fields, _span, _rawChildren, _triviaLog, state) =>
       funcCall(functionNameFromOpener(children[0]), [operation(':', keyword(requireToken(children[1]).value),
-        requireValueNode(children[3]), false, lessMathOutsideParens(state, ':'))])
+        requireValueNode(children[3]), false, lessMathOutsideParens(state, ':'), false)])
   );
   /*
    * A style query's `<style-feature>` (CSS's `StyleFeature` slot): the custom
@@ -3904,7 +3905,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       const value = children.find(isValueNode);
       return value === undefined
         ? name
-        : operation(':', name, value, false, lessMathOutsideParens(state, ':'));
+        : operation(':', name, value, false, lessMathOutsideParens(state, ':'), false);
     }
   );
   /*
@@ -3964,7 +3965,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       const slot = children.find(isLessValueSlotValue);
       const value = slot === undefined || isValueNode(slot) ? slot : spaced(slot.map(requireValueNode));
       if (value !== undefined) {
-        return operation(':', property, value, false, lessMathOutsideParens(state, ':'));
+        return operation(':', property, value, false, lessMathOutsideParens(state, ':'), false);
       }
       return children.length === 1 ? property : spaced([property, any(':')]);
     }
@@ -3974,7 +3975,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(scrollStateFunctionOpener, g.Identifier, literal(':'), g.QueryValue, literal(')')),
     (children, _fields, _span, _rawChildren, _triviaLog, state) =>
       funcCall(functionNameFromOpener(children[0]), [operation(':', keyword(requireToken(children[1]).value),
-        requireValueNode(children[3]), false, lessMathOutsideParens(state, ':'))])
+        requireValueNode(children[3]), false, lessMathOutsideParens(state, ':'), false)])
   );
 
   /*

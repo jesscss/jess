@@ -66,7 +66,7 @@ describe('emitJess never approximates', () => {
     }
 
     // Bare math — the shape the Less AST carries until ledger P35 lands.
-    rule.rules[0] = { ...rule.rules[0], value: operation('+', dimension(1), dimension(2), false, true) };
+    rule.rules[0] = { ...rule.rules[0], value: operation('+', dimension(1), dimension(2), false, true, false) };
     expect(() => emitJess(root)).toThrow(NoJessSpelling);
     expect(() => emitJess(root)).toThrow('NoJessSpelling: Operation (math outside an `Expression`');
   });
