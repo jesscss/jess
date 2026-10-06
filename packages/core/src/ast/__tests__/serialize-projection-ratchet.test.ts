@@ -276,7 +276,13 @@ describe('V19 one-evaluator projection ratchet', () => {
     // walk-recorded extend may reveal renders as a reserved container
     // (`referenceAtRuleShown`, `reserveRevealContainer`), collected with the
     // rules to reveal.
-    expect(occurrences(/^function |^async function /gmu)).toBe(525);
+    // +2 functions, net: the reserved container opens and closes in two calls
+    // (`revealContainerStart`/`endRevealContainer`, no closure per at-rule);
+    // the import planner resolves an imported sheet's interpolated rules only
+    // when it has one (`bodyHasInterpRule`); a branch whose attribute token
+    // holds a `&` takes the token walk (`branchHasAttributeAmp`); the one-line
+    // `plannedImportPlacement` wrapper is inlined.
+    expect(occurrences(/^function |^async function /gmu)).toBe(527);
     expect(occurrences(/new Map/gu)).toBe(86);
     expect(occurrences(/new Set/gu)).toBe(43);
     expect(occurrences(/new WeakMap/gu)).toBe(8);

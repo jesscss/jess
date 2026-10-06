@@ -485,7 +485,22 @@ function samePrefix(a: Branch, b: Branch, cut: number): boolean {
   for (let k = 0; k < cut; k++) {
     const as = a.segments[k]!;
     const bs = b.segments[k]!;
-    if (as.combinator !== bs.combinator || compoundText(as.compound) !== compoundText(bs.compound)) {
+    if (as.combinator !== bs.combinator || !sameCompound(as.compound.value, bs.compound.value)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Simple-by-simple compound equality; builds no text for plain tokens. */
+function sameCompound(a: readonly Simple[], b: readonly Simple[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]!;
+    const y = b[i]!;
+    if (x.t === 'text' ? y.t !== 'text' || x.text !== y.text : y.t !== 'is' || simpleText(x) !== simpleText(y)) {
       return false;
     }
   }

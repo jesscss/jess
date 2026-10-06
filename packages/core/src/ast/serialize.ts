@@ -11519,15 +11519,6 @@ interface ImportPlacement {
   boundary: ExtendBoundary | null;
 }
 
-/** The planner's placement of import `node` reached in placement `within`, if any. */
-function plannedImportPlacement(
-  placements: ImportPlacements | null,
-  within: object | undefined,
-  node: StyleImport
-): ImportPlacement | undefined {
-  return placements?.get(within)?.get(node);
-}
-
 /**
  * The ONE extend boundary of the module identity `key`, recording `composer` as a
  * sheet it is loaded from: a module composed by two sheets is reached by the extends
@@ -13927,16 +13918,19 @@ function expandRule(
      * [extend/dynamic] With recording armed, an interpolated selector is resolved once,
      * structurally, and both the header and the recorder read that one resolution.
      */
-    const resolved = e.dynamicExtend !== null && rule.selector.selectors.some(selectorBranchHasInterp)
-      ? resolvedSelectorList(rule.selector, frame, e)
-      : null;
-    return mapMaybe(resolved, (resolved) => {
-      const selector = resolved ?? rule.selector;
-      const rawComposed =
-        parent === null ? rootStrings(selector, frame, e) : compose(parent, selector, frame, e);
-      return mapMaybe(rawComposed, rawComposed =>
-        flattenResolved(rule, selector, resolved !== null, parent, ancestor, frame, e, imp, rawComposed, expandBubbledSelectorList));
-    });
+    if (e.dynamicExtend !== null && rule.selector.selectors.some(selectorBranchHasInterp)) {
+      return mapMaybe(resolvedSelectorList(rule.selector, frame, e), (resolved) => {
+        const selector = resolved ?? rule.selector;
+        const rawComposed =
+          parent === null ? rootStrings(selector, frame, e) : compose(parent, selector, frame, e);
+        return mapMaybe(rawComposed, rawComposed =>
+          flattenResolved(rule, selector, resolved !== null, parent, ancestor, frame, e, imp, rawComposed, expandBubbledSelectorList));
+      });
+    }
+    const rawComposed =
+      parent === null ? rootStrings(rule.selector, frame, e) : compose(parent, rule.selector, frame, e);
+    return mapMaybe(rawComposed, rawComposed =>
+      flattenResolved(rule, rule.selector, false, parent, ancestor, frame, e, imp, rawComposed, expandBubbledSelectorList));
   });
 }
 
@@ -19604,7 +19598,7 @@ function expandStyleImport(
            * records its walk facts inside its own extend boundary (ledger X14).
            */
           const ownReference = importHasOption(request.options, 'reference');
-          const planned = plannedImportPlacement(e.importPlacements, e.importPlacement, node);
+          const planned = e.importPlacements?.get(e.importPlacement)?.get(node);
           const placement = planned?.token
             ?? (ownReference || importHasOption(request.options, 'multiple') ? {} : e.importPlacement);
           const dyn = e.dynamicExtend;
@@ -21722,29 +21716,27 @@ function writeNestedRule(
    * and the recorder alike.
    */
   let resolved: SelectorList | null = null;
-  const ownMaybe = mapMaybe(
-    plan === undefined && placement === null && e.dynamicExtend !== null && rule.selector.selectors.some(selectorBranchHasInterp)
-      ? resolvedSelectorList(rule.selector, frame, e)
-      : null,
-    (copy) => {
-      resolved = copy;
-      const selector = copy ?? rule.selector;
-      return plan
-        ? plan.header
-        : placement === null
-          ? source === null
+  const ownMaybe = plan === undefined && placement === null && e.dynamicExtend !== null
+    && rule.selector.selectors.some(selectorBranchHasInterp)
+    ? mapMaybe(resolvedSelectorList(rule.selector, frame, e), (copy) => {
+        resolved = copy;
+        const selector = copy ?? rule.selector;
+        return source === null ? rootStringsNested(selector, frame, e) : ownStrings(selector, frame, e);
+      })
+    : plan
+      ? plan.header
+      : placement === null
+        ? source === null
 
-            /*
-             * [nesting] ROOT context (no enclosing selector, incl. a bubbled at-rule
-             * body top): a parentless `&` followed by other content drops to that
-             * content; a LONE `&` is preserved (`rootStringsNested`). A real parent
-             * keeps `&` verbatim (`ownStrings`).
-             */
-            ? rootStringsNested(selector, frame, e)
-            : ownStrings(selector, frame, e)
-          : compose(nestedSourceStrings(placement.source, e), rule.selector, placement.callFrame, e);
-    }
-  );
+          /*
+           * [nesting] ROOT context (no enclosing selector, incl. a bubbled at-rule
+           * body top): a parentless `&` followed by other content drops to that
+           * content; a LONE `&` is preserved (`rootStringsNested`). A real parent
+           * keeps `&` verbatim (`ownStrings`).
+           */
+          ? rootStringsNested(rule.selector, frame, e)
+          : ownStrings(rule.selector, frame, e)
+        : compose(nestedSourceStrings(placement.source, e), rule.selector, placement.callFrame, e);
   return mapMaybe(ownMaybe, (ownAll) => {
     /*
      * [placeholder] Nested output is the v5 DEFAULT and never reaches

@@ -70,21 +70,6 @@ export function isTypeSelector(text: string): boolean {
   return classify(text) === Kind.Type;
 }
 
-/** Add a simple's type value (case-folded) or id value (verbatim) into the sets. */
-function collect(text: string, types: Set<string>, ids: Set<string>): void {
-  switch (classify(text)) {
-    case Kind.Type:
-      // CSS element type selectors are ASCII case-insensitive; ids are not.
-      types.add(text.toLowerCase());
-      break;
-    case Kind.Id:
-      ids.add(text);
-      break;
-    default:
-      break;
-  }
-}
-
 /**
  * True when merging the simples on one side of the wrap into the ONE extender compound
  * they join would place >1 distinct element type OR >1 distinct id into a single
@@ -92,28 +77,53 @@ function collect(text: string, types: Set<string>, ids: Set<string>): void {
  *
  * `surrounding` are the matched compound's text simple tokens left OUTSIDE the `:is()`
  * on one side (the wrapped/matched atoms excluded). `extenderTerminal` are the text
- * simple tokens of the extender compound that side joins. Pure and allocation-light: two
- * tiny Sets over O(surrounding + extender) atoms, no serialization.
+ * simple tokens of the extender compound that side joins. Pure, no serialization, and it
+ * allocates nothing: a valid compound holds one type and one id at most, so the first of
+ * each is all a second distinct one is compared against.
  */
 export function wouldConflict(surrounding: readonly string[], extenderTerminal: readonly string[]): boolean {
+  let type: string | undefined;
+  let id: string | undefined;
+  for (const t of extenderTerminal) {
+    const kind = classify(t);
+    if (kind === Kind.Type) {
+      // CSS element type selectors are ASCII case-insensitive; ids are not.
+      const value = t.toLowerCase();
+      if (type !== undefined && type !== value) {
+        return true;
+      }
+      type = value;
+    } else if (kind === Kind.Id) {
+      if (id !== undefined && id !== t) {
+        return true;
+      }
+      id = t;
+    }
+  }
+
   /*
    * tree-v1 precondition: an extender with no type/id can never introduce a conflict
    * (a valid authored `surrounding` already holds ≤1 type and ≤1 id on its own).
    */
-  const extTypes = new Set<string>();
-  const extIds = new Set<string>();
-  for (const t of extenderTerminal) {
-    collect(t, extTypes, extIds);
-  }
-  if (extTypes.size === 0 && extIds.size === 0) {
+  if (type === undefined && id === undefined) {
     return false;
   }
-  const types = new Set(extTypes);
-  const ids = new Set(extIds);
   for (const s of surrounding) {
-    collect(s, types, ids);
+    const kind = classify(s);
+    if (kind === Kind.Type) {
+      const value = s.toLowerCase();
+      if (type !== undefined && type !== value) {
+        return true;
+      }
+      type = value;
+    } else if (kind === Kind.Id) {
+      if (id !== undefined && id !== s) {
+        return true;
+      }
+      id = s;
+    }
   }
-  return types.size > 1 || ids.size > 1;
+  return false;
 }
 
 /** True for a text token that must lead its compound: a type or universal selector. */

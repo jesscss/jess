@@ -1003,8 +1003,10 @@ function substituteMultiCompound(
     let placed = extenders;
     if (before.length > 0 || after.length > 0) {
       placed = [];
+      const beforeText = textSimpleTokens({ value: before });
+      const afterText = textSimpleTokens({ value: after });
       for (const e of extenders) {
-        const p = placeAroundExtender(e, before, after);
+        const p = placeAroundExtender(e, before, after, beforeText, afterText);
         if (p !== null) {
           placed.push(p);
         }
@@ -1056,13 +1058,21 @@ function extraSimples(base: Compound, target: Compound): Simple[] {
 }
 
 /** Extender `e` with `before` joined to its first compound and `after` to its last, or
- * null when either would hold two element types or two ids. Keeps `e`'s provenance. */
-function placeAroundExtender(e: Branch, before: readonly Simple[], after: readonly Simple[]): Branch | null {
+ * null when either would hold two element types or two ids. Keeps `e`'s provenance.
+ * `beforeText`/`afterText` are the two sides' text simples, read once per match. */
+function placeAroundExtender(
+  e: Branch,
+  before: readonly Simple[],
+  after: readonly Simple[],
+  beforeText: readonly string[],
+  afterText: readonly string[]
+): Branch | null {
   const n = e.segments.length;
   const first = e.segments[0]!;
   const last = e.segments[n - 1]!;
-  if (wouldConflict(textOfSimples(before), textSimpleTokens(first.compound))
-    || wouldConflict(textOfSimples(after), textSimpleTokens(last.compound))) {
+  const firstText = textSimpleTokens(first.compound);
+  if (wouldConflict(beforeText, firstText)
+    || wouldConflict(afterText, n === 1 ? firstText : textSimpleTokens(last.compound))) {
     return null;
   }
   const head = mergeCompound(before, first.compound.value, n === 1 ? after : NO_SIMPLES);
@@ -1083,16 +1093,6 @@ function placeAroundExtender(e: Branch, before: readonly Simple[], after: readon
   }
   if (e.hidden) {
     out.hidden = true;
-  }
-  return out;
-}
-
-function textOfSimples(simples: readonly Simple[]): string[] {
-  const out: string[] = [];
-  for (const s of simples) {
-    if (s.t === 'text') {
-      out.push(s.text);
-    }
   }
   return out;
 }
