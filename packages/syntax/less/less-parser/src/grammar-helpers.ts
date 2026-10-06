@@ -1085,20 +1085,6 @@ function layoutFromTriviaBoundaries(
   return separators;
 }
 
-/** Space-join value/terminal children into a single Sequence. */
-function spacedFromValueChildren(
-  children: readonly unknown[],
-  triviaLog: readonly number[] = [],
-  state?: unknown
-): ValueNode {
-  const values = children.map(keywordOrValue);
-  if (values.length === 1) {
-    return values[0]!;
-  }
-  const separators = layoutFromTriviaBoundaries(children, triviaLog, state, () => true);
-  return spaced(values, separators);
-}
-
 function isComplexTailFact(value: unknown): value is ComplexTailFact {
   return typeof value === 'object' && value !== null && 'combinator' in value && 'term' in value;
 }
@@ -2856,7 +2842,6 @@ export {
   separatorWithSurroundingTrivia,
   separatorsFromFields,
   sourceFromState,
-  spacedFromValueChildren,
   staticNonSelectorPseudoFrom,
   staticSelectorPseudoFrom,
   staticText,

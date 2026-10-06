@@ -143,7 +143,6 @@ import {
   requiredTokenStart,
   selectorBranchesFrom,
   lessSelectorTermFromTokens,
-  spacedFromValueChildren,
   staticNonSelectorPseudoFrom,
   staticSelectorPseudoFrom,
   staticText,
