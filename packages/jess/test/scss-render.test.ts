@@ -46,6 +46,25 @@ describe('scss plugin render-through', () => {
       .resolves.toBe('@media (a "x") {\n  x {\n    y: z;\n  }\n}\n');
   });
 
+  /*
+   * Arithmetic in a media feature is a SassScript value, computed as dart-sass
+   * computes it; `-$x` is never written as the `-1 * $x` it is lowered to. A
+   * `/` there is a `<ratio>` (media-queries-4 §2.4), not division.
+   */
+  it.each([
+    ['$x: 10px; @media (min-width: -$x)', '@media (min-width: -10px)'],
+    ['$x: 10px; @media (min-width: $x * 2)', '@media (min-width: 20px)'],
+    ['$x: 10px; @media (min-width: $x + 1px) and (max-width: $x - 1px)', '@media (min-width: 11px) and (max-width: 9px)'],
+    ['$x: 10px; @media (width < $x * 2)', '@media (width < 20px)'],
+    ['@media (min-width: 1px + 1px)', '@media (min-width: 2px)'],
+    ['$x: 10px; @media (foo: -$x baz)', '@media (foo: -10px baz)'],
+    ['$x: 10px; @media (foo: $x * 2 baz)', '@media (foo: 20px baz)'],
+    ['@media (aspect-ratio: 16/9)', '@media (aspect-ratio: 16 / 9)']
+  ])('computes arithmetic in a media feature: %s', async (source, prelude) => {
+    const css = String(await new Compiler().renderString(`${source} { x { y: z; } }`, { extension: '.scss' }));
+    expect(css.slice(0, css.indexOf(' {'))).toBe(prelude);
+  });
+
   it('honors an explicitly configured scss plugin', async () => {
     const compiler = new Compiler({
       compile: { plugins: [scssPlugin()] }

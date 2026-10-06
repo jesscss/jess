@@ -20880,6 +20880,15 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
       return concatPreludeParts([plain(open), evalQueryPreludeParts(node.value, frame, e), plain(close)]);
     }
     case 'Operation':
+      /*
+       * A feature colon and a range comparison are query syntax, and a `/` is a
+       * `<ratio>` (media-queries-4 §2.4). Arithmetic is a value: it is computed
+       * as the node's math policy says, never written as the operands of its
+       * lowering (SCSS `-$x` is `-1 * $x`).
+       */
+      if (node.operator === '+' || node.operator === '-' || node.operator === '*') {
+        return preludeLeaf(node, frame, e);
+      }
       return concatPreludeParts([
         evalQueryPreludeParts(node.left, frame, e),
         plain(node.operator === ':' ? ': ' : ` ${node.operator} `),
