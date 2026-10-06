@@ -10997,7 +10997,10 @@ function resolveCompoundInterpInPlace(comp: CompoundSelector, frame: Frame | nul
  * straight onto a class or id name (`.c-@{n}`) continues that name, as the parser keeps
  * `.c-@{n}` one token everywhere but at the head of a statement-position compound
  * (`.a.c-@{n}`), so the resolved text joins the name (`.c-1`) instead of standing as a
- * token of its own (`1`), which no extend target could name. Emitted bytes are the same.
+ * token of its own (`1`), which no extend target could name. Only text that starts as
+ * a name goes on: a value opening with a selector delimiter (`@v: ~".b"` in `.a@{v}`,
+ * `:hover`, `[x]`) starts a simple of its own and stays a token of its own. Emitted
+ * bytes are the same.
  */
 function resolvedCompoundTokens(value: readonly SimpleToken[], texts: ReadonlyArray<string | undefined>): SimpleToken[] {
   const out: SimpleToken[] = [];
@@ -11009,9 +11012,12 @@ function resolvedCompoundTokens(value: readonly SimpleToken[], texts: ReadonlyAr
     }
     const parts = value[i]!.interp?.parts;
     const prev = out[out.length - 1];
+    const next = text.charCodeAt(0);
     if (prev !== undefined && prev.type === 'SimpleSelector' && prev.interp === null && prev.text !== null
       && (prev.text.charCodeAt(0) === 0x2E /* . */ || prev.text.charCodeAt(0) === 0x23 /* # */)
-      && parts !== undefined && parts.length > 0 && 'ref' in parts[0]!) {
+      && parts !== undefined && parts.length > 0 && 'ref' in parts[0]!
+      && (next === 0x2D /* - */ || next === 0x5F /* _ */ || next === 0x5C /* \ */ || next >= 0x80
+        || (next >= 0x30 && next <= 0x39) || ((next | 32) >= 0x61 && (next | 32) <= 0x7A))) {
       out[out.length - 1] = simpleSelector(prev.text + text);
     } else {
       out.push(simpleSelector(text));

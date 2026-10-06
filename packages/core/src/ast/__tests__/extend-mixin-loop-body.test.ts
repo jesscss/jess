@@ -79,6 +79,14 @@ describe('interpolated rules are extend targets once resolved', () => {
     expect(render('@n: 1; .k.c-@{n} { a: 1; } .x:extend(.c-1 all) {}')).toBe('.k:is(.c-1, .x) {\n  a: 1;\n}\n');
   });
 
+  // A value that opens with a selector delimiter starts a simple of its own.
+  it('at the root, a resolved value opening a simple of its own stays apart', () => {
+    expect(render('@v: ~".b"; .a@{v} { c: d; } .x:extend(.b all) {}')).toBe('.a:is(.b, .x) {\n  c: d;\n}\n');
+    expect(render('@v: ~".b"; .a@{v} { c: d; } .x:extend(.a.b) {}')).toBe('.a.b,\n.x {\n  c: d;\n}\n');
+    expect(render('@v: ~":hover"; #a@{v} { c: d; } .x:extend(#a all) {}')).toBe('#a:hover,\n.x:hover {\n  c: d;\n}\n');
+    expect(render('@v: ~"[x]"; .a@{v} { c: d; } .y:extend(.a all) {}')).toBe(':is(.a, .y)[x] {\n  c: d;\n}\n');
+  });
+
   it('in a mixin body, part by part', () => {
     expect(render('.m(@n) { .k.c-@{n} { a: 1; } } .m(1); .x:extend(.c-1 all) {}'))
       .toBe('.k:is(.c-1, .x) {\n  a: 1;\n}\n');
