@@ -3374,7 +3374,9 @@ const cssFactory = (g: GrammarSelf) => {
    * feature head and routed as `queryFeatureOpener` routes it: an identifier
    * is the range name, and a function or unicode range is another bound with
    * its own tail, so `1px < foo(x)` keeps `foo(x)` one function. Any other
-   * value fails the head at its start and is read as the bound's values.
+   * value fails the head at its start and is read as the bound's values. Its
+   * arms past the known cases are `queryFeatureOpener`'s plain string tests,
+   * both spellings of `u+` included.
    */
   const queryComparedHead = dispatch(
     queryFeatureOpenerHead,
@@ -3599,6 +3601,8 @@ const cssFactory = (g: GrammarSelf) => {
    * the feature named `not`. A glued `not(` is a function token (css-syntax-3
    * §4.3.4) and takes the function arm. Only media reads it, so `@container`
    * and `@supports` keep `(not …)` for their own `( <condition> )` owners.
+   * Its arms past the known cases are `queryFeatureOpener`'s plain string
+   * tests, both spellings of `u+` included.
    */
   const mediaFeatureOpener = dispatch(
     queryFeatureOpenerHead,

@@ -293,7 +293,8 @@ type LessRules = {
   ContainerScrollStateQuery: Combinator<FunctionCall>;
   ContainerName: Combinator<Keyword>;
   ContainerCondition: Combinator<ValueNode>;
-  MediaContainerBody: Combinator<readonly (Statement | BodyExtendFact)[]>;
+  /** A `@media`/`@container` body's children, braces and all: its block reads the statements and extends from them. */
+  MediaContainerBody: Combinator<readonly unknown[]>;
   MediaContainerBlock: Combinator<AtRuleBlock>;
   KeyframeBlock: Combinator<Ruleset>;
   Keyframes: Combinator<AtRuleBlock>;
@@ -3465,10 +3466,14 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     /* The braces are the node's first and last tokens, so its own span gives the
      * body span (where its comments are) with no raw-children capture. A body-form
      * `&:extend()` extends the rule each call lands in (ledger X19). */
-    (children, _fields, span) => withBodySpan(
-      classifyValueBlock(requireValueBlockBody(children.filter(child => !isBodyExtendFact(child))), bodyExtensionsOf(children)),
-      { start: span.start + 1, end: span.end - 1 }
-    )
+    (children, _fields, span) => {
+      const extensions = bodyExtensionsOf(children);
+      const body = extensions.length === 0 ? children : children.filter(child => !isBodyExtendFact(child));
+      return withBodySpan(
+        classifyValueBlock(requireValueBlockBody(body), extensions),
+        { start: span.start + 1, end: span.end - 1 }
+      );
+    }
   );
   const CallArgumentValue = node(
     'CallArgumentValue',
@@ -3680,7 +3685,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     ),
     (children, _fields, span, rawChildren) => withSourceSpan(
       withBlockBody(
-        atRuleBlock(requireToken(children[0]).value, requireValueNode(children[1]), children.filter(isStatement), bodyExtensionsOf(children)),
+        atRuleBlock(
+          requireToken(children[0]).value,
+          requireValueNode(children[1]),
+          children.filter(isStatement),
+          bodyExtensionsOf(children)
+        ),
         rawChildren
       ),
       span
@@ -4017,7 +4027,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       optional(g.Call),
       literal('}')
     ),
-    children => children.filter(child => isStatement(child) || isBodyExtendFact(child))
+    children => children
   );
   const MediaContainerBlock = node(
     'QueryAtRuleBlock',
@@ -4038,7 +4048,12 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         throw new TypeError('Less conditional at-rule lost its body facts.');
       }
       return withSourceSpan(
-        atRuleBlock(requireToken(children[0]).value, requireValueNode(children[1]), requireStatementArray(body.filter(isStatement)), bodyExtensionsOf(body)),
+        atRuleBlock(
+          requireToken(children[0]).value,
+          requireValueNode(children[1]),
+          requireStatementArray(body.filter(isStatement)),
+          bodyExtensionsOf(body)
+        ),
         span
       );
     }
@@ -4297,7 +4312,10 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       // component. Exclude the exact selected prelude object rather than
       // reclassifying it through text or weakening the statement grammar.
       const body = children.filter(isStatement).filter(statement => statement !== prelude);
-      return withSourceSpan(withBlockBody(atRuleBlock(requireToken(children[0]).value, prelude, body, bodyExtensionsOf(children)), rawChildren), span);
+      return withSourceSpan(
+        withBlockBody(atRuleBlock(requireToken(children[0]).value, prelude, body, bodyExtensionsOf(children)), rawChildren),
+        span
+      );
     }
   );
   const UnknownAtPrelude = node(
@@ -4628,7 +4646,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     sequence(
       optional(relativeSelectorCombinator),
       g.PseudoArgumentCompound,
-      many(sequence(not(whenGuardAhead), optional(staticCombinator), parser({ trivia: staticSelectorTrivia }, g.PseudoArgumentCompound)))
+      many(sequence(
+        not(whenGuardAhead),
+        optional(staticCombinator),
+        parser({ trivia: staticSelectorTrivia }, g.PseudoArgumentCompound)
+      ))
     ),
     (children) => {
       const first = children[0];
@@ -5040,6 +5062,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
     (children, _fields, span) => withSourceSpan(selist(...selectorBranchesFrom(children)), span)
   );
   const extendAllFlag = regex(/!?all(?![-_a-zA-Z0-9\u0080-\uffff\\])/i);
+
+  /* The target's `all` flag next, ending it (before its `,` or `)`): a selector compound never takes it. */
+  const extendAllFlagAhead = regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i);
   const InlineExtendSubjectCompound = node(
     'InlineExtendSubjectCompound',
     parser(
@@ -5073,7 +5098,11 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       // An extend target can carry a typed selector interpolation, unlike its
       // inline subject. Keep `.@{name}` in the AST rather than rescanning it.
       g.CompoundSelector,
-      many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), optional(staticCombinator), g.CompoundSelector))
+      many(sequence(
+        not(extendAllFlagAhead),
+        optional(staticCombinator),
+        g.CompoundSelector
+      ))
     ),
     (children, _fields, span) => withSourceSpan(selectorBranchOf(complexSegmentsFrom(children)), span)
   );
