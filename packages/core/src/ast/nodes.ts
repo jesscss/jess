@@ -830,12 +830,25 @@ export const compoundHasInterp = (c: CompoundSelector): boolean => {
   return c._hasInterp;
 };
 
-/** True iff a leaf token's retained text or interpolation template carries `&`. */
+/**
+ * Whether a selector token's text holds a parent reference `&`. The parser builds an
+ * attribute selector as one token from its `[` to its `]`, so a `&` in it is attribute
+ * text (`[title="&"]`), never a parent reference: the token's kind decides, not the
+ * character (SEMANTIC-INVARIANTS S5).
+ */
+export const textHoldsParentRef = (text: string): boolean =>
+  text.charCodeAt(0) !== 0x5B /* [ */ && text.includes('&');
+
+/** True iff a leaf token's retained text or interpolation template carries a parent `&`. */
 const leafHasAmpersand = (sim: SimpleToken): boolean => {
-  if (sim.text?.includes('&') === true) {
+  if (sim.text && textHoldsParentRef(sim.text)) {
     return true;
   }
   if (sim.interp !== null) {
+    const head = sim.interp.parts[0];
+    if (head !== undefined && 'lit' in head && head.lit.charCodeAt(0) === 0x5B /* [ */) {
+      return false;
+    }
     for (const part of sim.interp.parts) {
       if ('lit' in part && part.lit.includes('&')) {
         return true;

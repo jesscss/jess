@@ -158,4 +158,38 @@ describe('fused ampersand under a multi-compound parent', () => {
     expect(renderLess('.x { .arrow { &::before { m: 1 } } } .y:extend(.x all) {}'))
       .toBe(':is(.x, .y) .arrow::before {\n  m: 1;\n}\n');
   });
+
+  // An attribute selector is one token: a `&` in its value is text, not a parent reference.
+  it('leaves a `&` inside an attribute value alone', () => {
+    expect(renderLess('.b { .p { &[title="&"] { m: 1 } } }'))
+      .toBe('.b .p[title="&"] {\n  m: 1;\n}\n');
+    expect(renderLess('.b { .p { &[title="&"] { m: 1 } } } .x:extend(.p all) {}'))
+      .toBe('.b :is(.p, .x)[title="&"] {\n  m: 1;\n}\n');
+    expect(renderLess('.b { [title="&"] { m: 1 } }')).toBe('.b [title="&"] {\n  m: 1;\n}\n');
+  });
+});
+
+/*
+ * An `&` concatenation that continues a one-simple class name is that class to the
+ * `:is()` grouping (ledger X3); one that does not continue a name stays out of groups.
+ */
+describe('a composed `&` concatenation in an extend group', () => {
+  const renderLess = (src: string): string | undefined => flat(parseLess(src));
+
+  it('groups a name continuation as the class it continues', () => {
+    expect(renderLess('.base.k { m: 1 } .btn { &-primary:extend(.base all) {} }'))
+      .toBe(':is(.base, .btn-primary).k {\n  m: 1;\n}\n');
+  });
+
+  it('keeps a join of several simples out of the group', () => {
+    expect(renderLess('.base.k { m: 1 } .a.b { &-x:extend(.base all) {} }'))
+      .toBe('.base.k,\n.a.b-x.k {\n  m: 1;\n}\n');
+  });
+});
+
+describe('the nesting fold of an escaped class name', () => {
+  it('groups an escaped class like any class', () => {
+    expect(serialize(parseLess('.t { .\\31 0, .x { a: 1 } }'), { evaluator, collapseNesting: 'native' }).css)
+      .toBe('.t :is(.\\31 0, .x) {\n  a: 1;\n}\n');
+  });
 });

@@ -61,17 +61,35 @@ function pseudoClassSpecificity(text: string): number {
   return GROUPABLE_PSEUDO_CLASSES.has(text) || GROUPABLE_PSEUDO_CLASSES.has(text.toLowerCase()) ? SPECIFICITY_CLASS : -1;
 }
 
+const isHexCode = (code: number): boolean =>
+  (code >= 48 && code <= 57) || ((code | 32) >= 97 && (code | 32) <= 102);
+
 /**
  * True when `text` from `from` on is the rest of ONE class, id or type name: name
- * characters and escapes only. A parser-built token always is; a token whose text a
- * resolved interpolation or an `&` concatenation produced may hold several simples
- * (`.a.b`), whose specificity no single kind gives, so it stays out of a group.
+ * characters and escapes only (css-syntax-3 §4.3.7: a `\` and up to six hex digits with
+ * one whitespace after them, as in `.\31 0`, or a `\` and any one character). A
+ * parser-built token always is; a token whose text a resolved interpolation produced
+ * may hold several simples (`@v: ~"x.y"; .@{v}` is `.x.y`), whose specificity no single
+ * kind gives, so it stays out of a group.
+ *
+ * ponytail: this scans every class, id and type token it scores, parser-built ones
+ * included, because the AST gives a resolved token no mark of its own (a field would
+ * add a `SimpleSelector` shape, V8 invariant 1). O(token length); a parse- or
+ * resolve-time single-name fact is the upgrade if a profile ever shows it.
  */
 function isName(text: string, from: number): boolean {
   for (let i = from; i < text.length; i++) {
     const code = text.charCodeAt(i);
     if (code === 92 /* \ */) {
-      i++;
+      let hex = 0;
+      while (hex < 6 && i + 1 < text.length && isHexCode(text.charCodeAt(i + 1))) {
+        i++;
+        hex++;
+      }
+      const next = text.charCodeAt(i + 1);
+      if (hex === 0 || next === 32 || next === 9 || next === 10 || next === 12 || next === 13) {
+        i++;
+      }
     } else if (!(code === 45 /* - */ || code === 95 /* _ */ || code >= 128
       || (code >= 48 && code <= 57) || ((code | 32) >= 97 && (code | 32) <= 122))) {
       return false;
@@ -230,11 +248,12 @@ function irSimpleSpecificity(simple: Simple, compoundOnly: boolean): number {
   }
 
   /*
-   * A token held as composed header text (a rule the walk recorded opaquely) has no
-   * `src`: its kind could only be read back out of serialized text, so it stays out of
-   * every group. A token an `&` concatenation or a resolved interpolation produced
-   * stands for the selector token written for it, and scores only when that is one
-   * simple ({@link isName}).
+   * A token held as composed header text (a rule the walk recorded opaquely), or an
+   * `&` concatenation that does not continue a one-simple name, has no `src`: its kind
+   * could only be read back out of serialized text, so it stays out of every group. An
+   * `&` concatenation that continues a class, id or type name stands for that parser
+   * token (`./extend/compose.ts`); a resolved interpolation's token scores only when it
+   * is one simple ({@link isName}).
    */
   const src = simple.src;
   return src === undefined ? -1 : 'value' in src ? irCompoundSpecificity(src, false) : tokenSpecificity(src, false);

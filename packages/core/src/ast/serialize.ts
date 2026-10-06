@@ -69,6 +69,7 @@ import {
   selist,
   simpleSelector,
   simpleTokenHasInterp,
+  textHoldsParentRef,
   branchTextIsPlaceholder
 } from './nodes.js';
 import type {
@@ -8594,7 +8595,7 @@ function resolveTokenAmp(sim: SimpleToken, parents: string[], sub: string, first
     );
   }
   return mapMaybe(resolveSimpleText(sim, frame, e), (text) => {
-    if (!text.includes('&')) {
+    if (!textHoldsParentRef(text)) {
       return [text];
     }
     if (first && text === '&') {
@@ -8670,6 +8671,23 @@ function resolveSelectorListAmp(list: SelectorList, parents: string[], frame: Fr
   return combineAll(list.selectors.map(c => resolveSelectorBranchAmp(c, parents, frame, e)), values => values.flat());
 }
 
+/**
+ * Whether an attribute token of `c` holds a `&`: attribute text, never a parent
+ * reference ({@link textHoldsParentRef}), which the one-parent text splice would
+ * replace, so such a branch takes the token-by-token walk. Allocates nothing.
+ */
+function branchHasAttributeAmp(c: SelectorBranch): boolean {
+  if (c.type === 'ComplexSelector' || c.type === 'RelativeSelector' || c.type === 'CompoundSelector') {
+    for (const part of c.value) {
+      if (typeof part !== 'string' && branchHasAttributeAmp(part)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  return c.type === 'SimpleSelector' && c.text?.charCodeAt(0) === 0x5B /* [ */ && c.text.includes('&');
+}
+
 /** Compose ONE child complex over ALL `parents`. A MULTI-parent `&`-bearing child
  * resolves each `&` by structural position (`resolveComplexAmp`); `&`-less children
  * take an implicit descendant prefix, one branch per parent. A SINGLE parent — the
@@ -8680,7 +8698,7 @@ function composeOne(parents: string[], child: SelectorBranch, frame: Frame | nul
   if (!selectorBranchHasAmpersand(child)) {
     return mapMaybe(resolveSelectorBranch(child, frame, e), text => parents.map(p => p + ' ' + text));
   }
-  if (parents.length >= 2 && !parents.some(hasTopLevelComma)) {
+  if ((parents.length >= 2 || branchHasAttributeAmp(child)) && !parents.some(hasTopLevelComma)) {
     return resolveSelectorBranchAmp(child, parents, frame, e);
   }
   return mapMaybe(resolveSelectorBranch(child, frame, e), (text) => {
@@ -11093,7 +11111,7 @@ function resolvedSelectorTerm(term: SelectorTerm, frame: Frame | null, e: EvalCt
     for (let i = 0; i < tokens.length; i++) {
       const text = resolved[i];
       const sim = tokens[i]!;
-      if (text !== undefined && text.includes('&') && !(sim.type === 'PseudoSelector'
+      if (text !== undefined && textHoldsParentRef(text) && !(sim.type === 'PseudoSelector'
         ? pseudoHasAmpersand(sim)
         : sim.interp?.parts.some(part => 'lit' in part && part.lit.includes('&')) === true)) {
         return null;
