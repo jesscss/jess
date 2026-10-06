@@ -67,5 +67,19 @@ describe('typed reads, not byte scans', () => {
   it('writes an escaped string in a query prelude as written, however it gets there', async () => {
     expect(await render('@r: ~"16/9"; .m(@x) { @media (aspect-ratio: @x) { .b { c: d; } } } @media (aspect-ratio: @r) { .a { b: c; } } .k { .m(@r); }'))
       .toBe('@media (aspect-ratio: 16/9) { .a { b: c; } } .k { @media (aspect-ratio: 16/9) { .b { c: d; } } }');
+    expect(await render('@r: ~"16/9" ~"x"; .m(@x) { @media (aspect-ratio: @x) { .b { c: d; } } } @media (aspect-ratio: @r) { .a { b: c; } } .k { .m(@r); }'))
+      .toBe('@media (aspect-ratio: 16/9 x) { .a { b: c; } } .k { @media (aspect-ratio: 16/9 x) { .b { c: d; } } }');
+  });
+
+  /*
+   * A `style()` query's `--x: value` is a custom-property value, written as the
+   * same value in a declaration is (DESIGN-DECISIONS P2, SEMANTIC-INVARIANTS 2):
+   * a variable is substituted and an escaped string is kept as written.
+   */
+  it('writes a style() query value as the same custom-property value in a declaration', async () => {
+    expect(await render('@a: 3; .d { --x: @a; --y: ~"a/b"; --z: ~\'a b\'; }'))
+      .toBe('.d { --x: 3; --y: ~"a/b"; --z: ~\'a b\'; }');
+    expect(await render('@a: 3; @container style(--x: @a) { .a { b: c; } } @container style(--y: ~"a/b") or style(--z: ~\'a b\') { .a { b: c; } }'))
+      .toBe('@container style(--x: 3) { .a { b: c; } } @container style(--y: ~"a/b") or style(--z: ~\'a b\') { .a { b: c; } }');
   });
 });

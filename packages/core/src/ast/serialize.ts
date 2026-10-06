@@ -20450,11 +20450,13 @@ const leaf = (bytes: string): SupportsPreludePart[] => [{ bytes, protected: true
 
 /**
  * One leaf of a prelude. An `Any` the parser left as a raw prelude fragment is
- * source text nothing structured, so it is spaced like glue; an `Any` that is a
- * mixin argument's snapshot holds the value the argument was evaluated to.
+ * source text nothing structured, so it is spaced like glue; an `Any` evaluation
+ * made — a mixin argument's snapshot, a list included — holds the value the
+ * argument was evaluated to. The parser gives every node it builds a source
+ * span and a snapshot has none, so that provenance fact tells them apart.
  */
 function preludeLeaf(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<SupportsPreludePart[]> {
-  const raw = !isValueSlotArray(node) && node.type === 'Any' && e.snapshotValues?.has(node) !== true;
+  const raw = !isValueSlotArray(node) && node.type === 'Any' && sourceStartOf(node) !== NO_SPAN;
   return mapMaybe(evalBytes(node, frame, e), bytes => [{ bytes, protected: !raw }]);
 }
 
