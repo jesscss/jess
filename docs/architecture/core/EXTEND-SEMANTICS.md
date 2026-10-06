@@ -615,7 +615,8 @@ plain import, which places its own visible copy. A sheet a `(reference)` sheet i
 referenced too, and a reference sheet's rule called as a mixin from outside the import
 renders as normal. A hidden rule that an extend in a mixin or loop body (recorded by the
 render walk) may still reveal renders as a reserved block, which the deferred fold
-rewrites to the extender, or blanks when nothing reveals it.
+rewrites to the extender, or blanks when nothing reveals it; a hidden at-rule around it
+renders as a reserved container that goes with it when nothing in it is revealed.
 
 ---
 

@@ -272,9 +272,13 @@ describe('V19 one-evaluator projection ratchet', () => {
     // (`recordCalledExtends`, sharing `recordDynamicInstruction` with the walk's
     // other extends); an imported definition carrying one adds its targets to
     // the walk's target atoms.
-    expect(occurrences(/^function |^async function /gmu)).toBe(523);
+    // +2 functions, +1 `new Set`: a hidden `(reference)` at-rule around a rule a
+    // walk-recorded extend may reveal renders as a reserved container
+    // (`referenceAtRuleShown`, `reserveRevealContainer`), collected with the
+    // rules to reveal.
+    expect(occurrences(/^function |^async function /gmu)).toBe(525);
     expect(occurrences(/new Map/gu)).toBe(86);
-    expect(occurrences(/new Set/gu)).toBe(42);
+    expect(occurrences(/new Set/gu)).toBe(43);
     expect(occurrences(/new WeakMap/gu)).toBe(8);
     expect(occurrences(/new WeakSet/gu)).toBe(0);
     expect(occurrences(/const group: Leaf\[\] = \[\]/gu)).toBe(9);

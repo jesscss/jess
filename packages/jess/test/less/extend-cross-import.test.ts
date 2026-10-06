@@ -153,6 +153,18 @@ describe('extend across @import', () => {
       expect(await renderFile('ref-uncalled-main.less')).toBe(['.own {', '  a: 1;', '}'].join('\n'));
     });
 
+    /*
+     * A hidden rule inside a hidden `@media` that only a walk-recorded extend reveals
+     * surfaces in its `@media`; the `@media` goes when nothing in it is revealed.
+     */
+    it('(reference) import, @media rule revealed by an extender in a mixin body', async () => {
+      const revealed = ['@media print {', '  .x {', '    b: 2;', '  }', '}'].join('\n');
+      expect(await renderFile('ref-media-reveal-main.less')).toBe(revealed);
+      expect(await renderFile('ref-media-reveal-main.less', false)).toBe(revealed);
+      expect(await renderFile('ref-media-unrevealed-main.less')).toBe(['.own {', '  a: 1;', '}'].join('\n'));
+      expect(await renderFile('ref-media-unrevealed-main.less', false)).toBe(['.own {', '  a: 1;', '}'].join('\n'));
+    });
+
     it('(reference) import, exact extend that misses a nested rule', async () => {
       expect(await renderFile('ref-nested-main.less')).toBe('');
     });
