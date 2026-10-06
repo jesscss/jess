@@ -344,8 +344,8 @@ document: a graph with no extend plans nothing and records nothing in the render
 (jess#349), and when no rule the walk recorded can meet an extend target the deferred
 fold re-solves nothing. Interpolated selectors are covered by §10.
 
-A rule a mixin call places (a ruleset called as a mixin and a detached ruleset's call
-included), or a loop or `$if`/`$while` body places — or an `@import` inside a ruleset,
+A rule a mixin call places (a ruleset called as a mixin, a detached ruleset's call and
+a Jess `$apply` included; each call or application is its own placement), or a loop or `$if`/`$while` body places — or an `@import` inside a ruleset,
 which runs as that ruleset's body (`.wrap { @import "t.less"; }` → `.wrap .sm`; ledger
 A2's source fold, N10's splice at the import position) — extends and is extended where
 it lands: as its selector composed under the rules it is placed in, in the `@media`

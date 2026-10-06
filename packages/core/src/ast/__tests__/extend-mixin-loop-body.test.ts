@@ -53,6 +53,12 @@ describe('extend from mixin-call and loop bodies', () => {
     );
   });
 
+  // Each call of a detached ruleset is its own placement, as each mixin call is.
+  it('places the rules of each detached-ruleset call apart', () => {
+    expect(render('@dr: { .p { a: 1 } }; .a { @dr(); } .b { @dr(); } .x:extend(.a .p) {}'))
+      .toBe('.a .p,\n.x {\n  a: 1;\n}\n.b .p {\n  a: 1;\n}\n');
+  });
+
   it('composes the caller ancestor context of a mixin called inside a rule', () => {
     const src = '.grid-column { width: 1px; }\n'
       + '#make() { .col-x { &:extend(.grid-column); } }\n'

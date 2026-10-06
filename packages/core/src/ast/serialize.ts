@@ -11344,7 +11344,7 @@ function classifyExtend(statements: readonly Statement[], inDynamic: boolean, ou
       if (placed) {
         out.places = true;
       }
-    } else if (st.type === 'MixinCall') {
+    } else if (st.type === 'MixinCall' || st.type === 'Apply') {
       out.places = true;
     } else {
       /* A definition's own body-form extend applies wherever it is called (ledger X16). */
@@ -11422,7 +11422,7 @@ function collectBodyExtendAtoms(statements: readonly Statement[], atoms: Set<str
       collectBodyExtendAtoms(st.rules, atoms);
     } else if (st.type === 'AtRuleBlock') {
       places = collectBodyExtendAtoms(st.rules, atoms) || places;
-    } else if (st.type === 'StyleImport' || st.type === 'MixinCall') {
+    } else if (st.type === 'StyleImport' || st.type === 'MixinCall' || st.type === 'Apply') {
       places = true;
     } else {
       /* A definition's body-form extend is applied, by the walk, wherever it is called. */
@@ -11575,8 +11575,8 @@ function planImportedStaticExtend(
           (overlay.importingRules ??= new Set()).add(parent.rule);
         }
       }
-    } else if (statement.type === 'MixinCall') {
-      /* A call places its callee's rules where it lands (see ExtendClass). */
+    } else if (statement.type === 'MixinCall' || statement.type === 'Apply') {
+      /* A call or `$apply` places its callee's rules where it lands (see ExtendClass). */
       e.importedWalkPlacement = true;
     } else {
       /*
@@ -15793,6 +15793,14 @@ function expandApply(
         declIndex: collectDeclIndex(rule.rules), cells: null, reassign: null,
         statements: rule.rules,
         sourceOwner: sourceOwnerForBody(rule.rules, frame, e),
+
+        /*
+         * [extend/dynamic] Like a ruleset called as a mixin, an applied body splices the
+         * ruleset's own nested rules: each application is its own placement, written at
+         * the composed apply-site selector (Frame.mixinSplice, Frame.extendPlacement).
+         */
+        mixinSplice: true,
+        extendPlacement: e.dynamicExtend === null ? undefined : {},
         ...(home === frame ? {} : { fallback: frame, callerFallback: true })
       };
       const emitted = withSourceOwner(e, applyFrame.sourceOwner, () => mapMaybe(
@@ -16170,7 +16178,8 @@ function referenceCallFrame(
   frame: Frame,
   definitionFrame: Frame | null = frame,
   sourceOwner: object | null = null,
-  bindings: Map<string, CallValue> | null = null
+  bindings: Map<string, CallValue> | null = null,
+  extendPlacement: object | undefined = undefined
 ): { dr: ValueBlock; callFrame: Frame } {
   /*
    * A value-block node is canonical and can be passed through several loop
@@ -16189,7 +16198,10 @@ function referenceCallFrame(
     fallback: frame, // caller scope is the fallback
     callerFallback: true, // [R16] but invisible to plain variable reads by default
     statements: body,
-    sourceOwner
+    sourceOwner,
+
+    /* [extend/dynamic] each call places its body's rules apart (Frame.extendPlacement) */
+    extendPlacement
   };
   publishMixins(frame, own); // unlocking: caller sees the ruleset's mixins
   return { dr, callFrame };
@@ -16285,7 +16297,8 @@ function expandReferenceCall(
       frame,
       definitionFrame,
       binding?.sourceOwner ?? resolved.sourceOwner,
-      bindings
+      bindings,
+      e.dynamicExtend === null ? undefined : {}
     );
     const drBody = valueBlockBody(r.dr);
 
