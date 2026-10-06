@@ -70,4 +70,19 @@ describe('CSS custom properties', () => {
       rules: [{ type: 'Ruleset', rules: [{ type: 'Declaration', name: 'color' }] }]
     });
   });
+
+  /* A whitespace run inside the value is read once: a 64k run that took
+   * quadratic time took seconds, linear time takes about a millisecond. */
+  it('reads a long whitespace run inside the value in linear time', () => {
+    const run = ' '.repeat(64_000);
+    const start = performance.now();
+    const root = parse(`a { --x: a${run}b; --y: a${run}; }`);
+    expect(performance.now() - start).toBeLessThan(500);
+    expect(root).toMatchObject({
+      rules: [{ type: 'Ruleset', rules: [
+        { type: 'Declaration', name: '--x', value: { type: 'Any', src: `a${run}b` } },
+        { type: 'Declaration', name: '--y', value: { type: 'Any', src: 'a' } }
+      ] }]
+    });
+  });
 });

@@ -741,6 +741,11 @@ const customImportantTail = regex(/[ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!
  * last stays in the value, in place. A backslash takes the code point after it
  * (§4.3.7), so the whitespace after a final `\` is kept: trimmed, the `\` would
  * escape the `;` written after the value.
+ * Runs no sentinel or skip can start inside are skipped whole, the way the
+ * dialects' content leaf takes them: a run of plain value characters, and a
+ * whitespace run that a value character follows. Stepped one code point at a
+ * time, each step re-runs every sentinel and skip, and in a whitespace run both
+ * sentinels read to the end of the run, quadratic in its length.
  */
 const customValue = scanTo(
   choice(
@@ -749,6 +754,8 @@ const customValue = scanTo(
   ),
   {
     skip: [
+      regex(/[^ \t\n\r\f;}!\\()[\]{}'"/]+/),
+      regex(/[ \t\n\r\f]+(?![ \t\n\r\f;}])/),
       regex(/\\[\s\S]/),
       balancedParens,
       balancedBrackets,
