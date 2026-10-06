@@ -175,7 +175,7 @@ import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable
 import { colorFromSrc, dimensionFromFields, quotedFromFields, sniffLiteral } from './literal-tag.js'; // [value node model]
 import { namedColor } from './color-names.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
-import { UnitArithmeticError, calcInner, preservedUnitClashes, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
+import { UnitArithmeticError, calcInner, groupAsWritten, preservedUnitClashes, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
 import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeSpelledDimension, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
@@ -4603,12 +4603,12 @@ function evalTyped(
        */
       return isInertGroup(node)
         ? mapMaybe(evalTypedSlot(node.value, frame, e, projectMixinValues), v => makeKeyword(`(${emitValue(v)})`))
-        : evalTypedSlot(
+        : mapMaybe(evalTypedSlot(
             node.value,
             frame,
             { ...e, parenFrames: pushParenFrame(e, true) },
             projectMixinValues
-          );
+          ), keepAuthoredGroup);
     case 'Collection':
       /*
        * A map reaching a TYPED position (a function argument, an operation) is
@@ -4698,7 +4698,8 @@ function evalTyped(
       if (!e.ev) {
         return mapMaybe(evalValue(node, frame, e), v => force(v));
       }
-      return evalTypedSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true }, projectMixinValues, argument);
+      const computed = evalTypedSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true }, projectMixinValues, argument);
+      return isAuthoredGroupExpression(node) ? mapMaybe(computed, keepAuthoredGroup) : computed;
     }
     case 'Interpolation': {
       /*
@@ -4795,6 +4796,16 @@ function preservedOperand(parent: Operation, child: ValueNode, value: EvalValue)
 function isAuthoredGroupExpression(node: Expression): boolean {
   const start = sourceStartOf(node);
   return start !== NO_SPAN && !isValueSlotArray(node.value) && start < sourceStartOf(node.value);
+}
+
+/**
+ * An authored paren group's value once its math has run. A computed inner is
+ * one value and sheds the parens; an operation `operate` kept as written
+ * (`4 + 3px` under `preserve`, `foo + 1`) is still an expression and keeps
+ * them, or `(4 + 3px) * 2` would print as `4 + 3px * 2`.
+ */
+function keepAuthoredGroup<T extends EvalValue>(v: T): T | Value {
+  return isLiteral(v) || isValueGroupArray(v) ? v : groupAsWritten(v);
 }
 
 /** The relations a query grammar builds as `Operation`s: a feature `name: value` and a range comparison. */
@@ -5104,7 +5115,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         if (node.delimiter !== 'paren') {
           return makeBlock(v, node.delimiter, node.escaped);
         }
-        return isInertGroup(node) ? makeKeyword(`(${emitValue(v)})`) : v;
+        return isInertGroup(node) ? makeKeyword(`(${emitValue(v)})`) : keepAuthoredGroup(v);
       });
     }
     case 'Expression': {
@@ -5129,7 +5140,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
          */
         return mapMaybe(evalValueSlot(node.value, frame, e), v => literal(`(${emitValue(v)})`));
       }
-      return evalValueSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true });
+      const computed = evalValueSlot(node.value, frame, { ...e, parenFrames: pushParenFrame(e, true), exprBoundary: true });
+      return isAuthoredGroupExpression(node) ? mapMaybe(computed, keepAuthoredGroup) : computed;
     }
     case 'Condition':
       /*
