@@ -2560,8 +2560,8 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       { trivia: customValueCommentTrivia },
       many(g.CustomPart)
     ),
-    (children, _fields, span) => withSourceSpan(
-      customValueFromParts(customPartsFromChildren(children)),
+    (children, _fields, span, _rawChildren, triviaLog) => withSourceSpan(
+      customValueFromParts(customPartsFromChildren(children), triviaLog),
       span
     )
   );

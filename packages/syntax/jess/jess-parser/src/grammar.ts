@@ -2465,10 +2465,13 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
     ),
     (children) => {
       let separator = '';
+      let comma = false;
       for (let index = 0; index < children.length - 1; index++) {
-        separator += requireToken(children[index]).value;
+        const token = requireToken(children[index]);
+        separator += token.value;
+        comma ||= token.value === ',';
       }
-      if (!separator.includes(',')) {
+      if (!comma) {
         throw new TypeError('Jess call argument lost its comma.');
       }
       const value = children.at(-1);

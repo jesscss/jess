@@ -2003,6 +2003,19 @@ export const importIsCompileTime = (
   return !CSS_TARGET.test(spelling ?? importTargetSpelling(target));
 };
 
+/**
+ * Sass's own URL rule for an `@import` target, exactly as dart-sass applies it
+ * (`isPlainImportUrl`, `lib/src/parse/stylesheet.dart`): a protocol-relative
+ * `//host/x` or an `http://` / `https://` URL is plain CSS. The tests are
+ * case-sensitive — `HTTP://x` is a partial import there — and a target shorter
+ * than five characters is never plain. Less has no such rule (a scheme target
+ * is a plugin's answer at load time, above), so only the SCSS grammar asks; it
+ * sits beside `importIsCompileTime`, the one import-target classification.
+ */
+export const sassImportUrlIsPlainCss = (spelling: string): boolean =>
+  spelling.length >= 5
+  && (spelling.startsWith('//') || spelling.startsWith('http://') || spelling.startsWith('https://'));
+
 export const styleImport = (
   name: string,
   target: Quoted | Url | Interpolation,

@@ -1178,32 +1178,8 @@ function lessQueryComparisonOperators(children: readonly unknown[]): string[] {
     .map(requireTerminalText);
 }
 
-/*
- * css-syntax-3 §4.2 whitespace: space, tab and the newlines. U+00A0, U+FEFF and
- * the other Unicode spaces are ident code points, so a custom-property value
- * keeps them at its edges.
- */
-const isCssWhitespace = (code: number): boolean =>
-  code === 0x20 || code === 0x09 || code === 0x0A || code === 0x0C || code === 0x0D;
-
-function trimCssWhitespaceStart(part: string): string {
-  let start = 0;
-  while (start < part.length && isCssWhitespace(part.charCodeAt(start))) {
-    start++;
-  }
-  return start === 0 ? part : part.slice(start);
-}
-
-function trimCssWhitespaceEnd(part: string): string {
-  let end = part.length;
-  while (end > 0 && isCssWhitespace(part.charCodeAt(end - 1))) {
-    end--;
-  }
-  return end === part.length ? part : part.slice(0, end);
-}
-
 /** Turn grammar-owned custom-property leaves into a canonical value without a source scan. */
-function customValueFromParts(parts: readonly CustomValuePart[]): ValueNode {
+function customValueFromParts(parts: readonly CustomValuePart[], triviaLog: readonly number[] = []): ValueNode {
   const interpolationParts: Interpolation['parts'] = [];
   let hasInterpolation = false;
   const append = (part: CustomValuePart): void => {
@@ -1224,21 +1200,27 @@ function customValueFromParts(parts: readonly CustomValuePart[]): ValueNode {
     }
   };
   /*
-   * The declaration gap already took the whitespace after the `:`, so a value
-   * that opens with whitespace opened with a block comment (`--x: /* c *&#47; red`).
-   * The comment is trivia, replayed from the value's span; the comment-free
-   * value drops the edge whitespace it leaves behind (css-syntax-3 §5.5.6).
+   * Every gap before a value takes the whitespace that opens it (the declaration
+   * gap after `:`, a `var()` fallback's comma), so only a value that opens with a
+   * block comment (`--x: /* c *&#47; red`) has a first part that opens with edge
+   * whitespace. The comment is trivia, replayed from the value's span; the
+   * comment-free value drops that edge whitespace (css-syntax-3 §5.5.6). Any
+   * other first part keeps its opening code point, U+00A0 included (§4.2).
+   *
+   * ponytail: `trimStart()` also drops a non-CSS space (U+00A0, U+FEFF) written
+   * directly after an opening comment; exact §4.2 whitespace there needs the
+   * grammar to stop the value's first part after its edge whitespace.
    */
-  for (let index = 0; index < parts.length; index++) {
-    const part = parts[index]!;
-    if (index !== 0 || typeof part !== 'string') {
-      append(part);
-    } else {
-      const trimmed = trimCssWhitespaceStart(part);
-      if (trimmed !== '') {
-        append(trimmed);
-      }
+  const [first, ...rest] = parts;
+  const opensWithComment = lessTriviaEntryCount(triviaLog) > 0 && lessTriviaEntryInsertIndex(triviaLog, 0) === 0;
+  if (typeof first === 'string' && opensWithComment) {
+    const trimmed = first.trimStart();
+    if (trimmed !== '') {
+      append(trimmed);
     }
+    append(rest);
+  } else {
+    append(parts);
   }
   if (hasInterpolation) {
     return interpolation(interpolationParts);
@@ -1252,17 +1234,21 @@ function customValueFromParts(parts: readonly CustomValuePart[]): ValueNode {
 /**
  * A `var()` fallback's trailing whitespace belongs to the call's `)` boundary,
  * not to the fallback (css-variables-1 §3 trims a `<declaration-value>`'s edge
- * whitespace). Comments are kept, and so is a trailing non-CSS space.
+ * whitespace). Comments are kept.
+ *
+ * ponytail: `trimEnd()` also drops a trailing non-CSS space (U+00A0, U+FEFF)
+ * before `)`; exact css-syntax-3 §4.2 whitespace needs the grammar to stop the
+ * fallback before its edge whitespace, as `CustomValue` does at its leading edge.
  */
 function trimCustomValueEnd(value: ValueNode): ValueNode {
   if (value.type === 'Any') {
-    const trimmed = trimCssWhitespaceEnd(value.src);
+    const trimmed = value.src.trimEnd();
     return trimmed === value.src ? value : any(trimmed);
   }
   if (value.type === 'Interpolation') {
     const last = value.parts.at(-1);
     if (last !== undefined && 'lit' in last) {
-      const trimmed = trimCssWhitespaceEnd(last.lit);
+      const trimmed = last.lit.trimEnd();
       if (trimmed !== last.lit) {
         const parts = value.parts.slice(0, -1);
         if (trimmed !== '') {
