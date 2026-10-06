@@ -42,6 +42,7 @@ import {
   mkBranch,
   multisetSubset,
   simpleText,
+  textSimple,
   textSimpleTokens
 } from './ir.js';
 import type { Branch, Compound, Level, SelectorPart, Simple } from './ir.js';
@@ -840,17 +841,34 @@ function spliceMember(b: Branch, k: number, p: number, member: Branch): Branch |
 
 /* ------------------------------------------------- relative extender folding */
 
-/** Number of leading ancestor levels two paths share BY REFERENCE (the plan walk
- * threads the SAME `Level` object into every descendant path, so identity encodes
- * a shared ancestor). */
+/** Number of leading ancestor levels two paths share. The plan walk threads the SAME
+ * `Level` object into every descendant path, so identity is the cheap answer; a level
+ * the render walk recorded (an at-rule block's extend, a placed body) or an inline
+ * extender's narrowed level is its own object, so an equal selector list shares too —
+ * the composed selector is the same either way. */
 function sharedPrefixLen(a: Level[], b: Level[]): number {
   const n = Math.min(a.length, b.length);
   let i = 0;
-  while (i < n && a[i] === b[i]) {
+  while (i < n && (a[i] === b[i] || sameLevel(a[i]!, b[i]!))) {
     i++;
   }
   return i;
 }
+
+function sameLevel(a: Level, b: Level): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i++) {
+    if (branchText(a[i]!) !== branchText(b[i]!)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** The extender path that is the parent itself, written `&`. composePath clones it. */
+const PARENT_PATH: Level[] = [[mkBranch([{ combinator: ' ', compound: { value: [textSimple('&')] } }])]];
 
 /**
  * Re-express an instruction's extender path RELATIVE to a nested subject's parent
@@ -859,14 +877,16 @@ function sharedPrefixLen(a: Level[], b: Level[]): number {
  * ancestor (`.attributes .attribute-test` folded into `.attributes [data="test"]`)
  * drops the shared levels → the sibling `.attribute-test`. A top-level extender
  * (`.rep_ace`, no shared ancestor) is unchanged. The strip is capped at the parent
- * context depth so a self-extend never slices the path empty.
+ * context depth so a self-extend never slices the path empty. An extender that IS
+ * the shared parent (`.y { &:extend(.y .z); .z {…} }`, or the rule an at-rule block
+ * inside it lands in) has no remainder: relative to the parent it is `&`.
  */
 function relativizeExtender(inst: PlanInstruction, subject: PlanSubject): PlanInstruction {
   const drop = Math.min(sharedPrefixLen(subject.path, inst.extenderPath), subject.path.length - 1);
   if (drop === 0) {
     return inst;
   }
-  return { ...inst, extenderPath: inst.extenderPath.slice(drop) };
+  return { ...inst, extenderPath: drop === inst.extenderPath.length ? PARENT_PATH : inst.extenderPath.slice(drop) };
 }
 
 /* ---------------------------------------------------------------- top level */

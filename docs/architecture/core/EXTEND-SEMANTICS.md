@@ -122,10 +122,13 @@ block (§8): `.a { @media print { &:extend(.a .b); .b { c: 3; } } }` gives
 agrees inside `@media` and `@supports`, but applies one inside `@container` to the whole
 sheet, which the §8 scope does not.
 
-Known gap (nested output): with `collapseNesting: false`, the Less v5 default, a rule is
-never written as the extender of a rule nested inside it, so the `@media print` example
-above extends nothing there; the inline form `.a:extend(.a .b) { .b { … } }` misses the
-same way. It is pinned in `packages/jess/test/less/mixin-public-semantics.test.ts`.
+In nested output (`collapseNesting: false`, the Less v5 default) a rule that extends a
+rule nested inside it is written `&` beside the target (§7a), so the `@media print`
+example gives `.a { @media print { .b, & { … } } }`, the same selectors; so does the
+inline form `.a:extend(.a .b) { .b { … } }`. Known gap: a target that a mixin or a
+detached ruleset PLACES under a rule block is not rewritten in nested output (§6,
+`PINNED-DEFECTS-AUDIT.md` DF6), pinned in
+`packages/jess/test/less/mixin-public-semantics.test.ts`.
 
 Grammar: the Jess `$extend` statement is `packages/syntax/jess/jess-parser/src/grammar.ts`
 (search `$extend`); the core node is `Extend { target, flag }` with the parsed
@@ -413,9 +416,12 @@ each is recorded with its repro in `docs/state/PINNED-DEFECTS-AUDIT.md` ("Deferr
 pinned"):
 
 - A placed EXTENDER folds in as its composed selector (`.a { .m(); } .b { .m(); }` →
-  `.sm, .a .x, .b .x`), but a placed TARGET written inside a parent block is not rewritten
-  when its extender lies outside that parent: moving the extender out is restructuring,
-  not a header rewrite (§1a). The same holds for a rule of a `(reference)` sheet imported
+  `.sm, .a .x, .b .x`), but a placed TARGET written inside a parent block is not rewritten,
+  whoever extends it: a recorded rule under a parent block is no rewritable slot, and
+  moving an extender out is restructuring, not a header rewrite (§1a). So
+  `.m() { @media print { &:extend(.y .z); .z {…} } } .y { .m(); }` keeps `.z` alone,
+  where `.y { @media print { &:extend(.y .z); .z {…} } }` gives `.z, &` (§7a). The same
+  holds for a rule of a `(reference)` sheet imported
   inside a ruleset, which flat output reveals under its extender
   (`.wrap { @import (reference) "t.less"; }` + `.x:extend(.wrap .sm) {}` → `.x { b: 2; }`)
   and nested output leaves hidden, and for a sheet imported inside a ruleset whose rules
@@ -423,7 +429,14 @@ pinned"):
 - A match of a nested rule's whole selector by a top-level extender that shares none of
   the rule's parent levels is dropped (`.w { .k { k: 1; } } .w .y:extend(.w .k) {}` →
   `.w { .k { … } }`; flat `.w .k, .w .y`). An extender nested under the same parent folds
-  in as its own-local remainder (`.w { .y { &:extend(.w .k); } .k {} }` → `.w { .k, .y {…} }`).
+  in as its own-local remainder (`.w { .y { &:extend(.w .k); } .k {} }` → `.w { .k, .y {…} }`),
+  and the parent itself as `&` (§7a). An inline extend on one selector of a list
+  (`.y:extend(.y .z), .q { .z {…} }`) is dropped: `&` would also cover `.q` (DF7).
+- A sub-compound `all` match by an extender that shares the target's parent folds as its
+  own-local remainder in nested output (`.attributes { [data="test"], .attribute-test }`,
+  the extend-selector fixture; `&` for the parent itself) and as the whole extender in
+  flat output (`.attributes .attributes .attribute-test`, lessc's). Here which output is
+  right is undecided (DF8).
 - An `all` extender folded into the header of a rule with child rules joins the header
   list even when its specificity differs, and native CSS nesting reads that list as one
   `:is()` for the children, so they gain the extender's specificity
@@ -474,6 +487,11 @@ STAYS nested and its extend rewrites the local selector in place, with three ref
   remainder — `.attributes .attribute-test` folded into `.attributes [data="test"]`
   surfaces as the sibling `.attribute-test`. A top-level extender (no shared ancestor)
   is unchanged; the strip is capped at parent depth so a self-extend never slices empty.
+  A level the render walk recorded (an at-rule block's extend, a placed body) or an
+  inline extender's narrowed level is its own object, so an equal selector list shares
+  as identity does. An extender that IS the parent has no remainder and is written `&`
+  (`.y { &:extend(.y .z); .z {…} }` → `.y { .z, & {…} }`; an exact one splits off a
+  target with children as `& {…}`).
 - **Flatten triggers** — a rule (and its descendants) FLATTEN to a top-level block when
   the match CROSSES the `&` (the parent-context ↔ child-appended-compound join), which
   nested structure cannot express locally:

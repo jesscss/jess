@@ -284,3 +284,56 @@ describe('nested-mode whole-selector extend from a sibling under the same parent
       .toBe('.w {\n  .k {\n    k: 1;\n    .c {\n      c: 1;\n    }\n  }\n  .y {\n    k: 1;\n  }\n}\n');
   });
 });
+
+/*
+ * An extender that IS the target's parent — a body-form `&:extend()` or an inline
+ * `:extend()` on the rule the target nests in, or the rule an at-rule block inside it
+ * lands in — is `&` in the target's local header, so nested output keeps its block:
+ * `.y { .z, & { … } }` is `.y .z, .y`, the flat output. An exact one splits off a rule
+ * with children as `& { … }`. Before, the relative extender path came out empty and
+ * the render threw in both output modes; a parent recorded by the render walk (an
+ * at-rule block's extend) or narrowed by an inline extend shared no level object with
+ * the target and was dropped.
+ */
+describe('nested-mode extend whose extender is the target\'s parent', () => {
+  const nestedLess = (src: string): string | undefined => nested(parseLess(src));
+  const flatLess = (src: string): string | undefined => flat(parseLess(src));
+  const parentFold = '.y {\n  .z,\n  & {\n    c: 3;\n  }\n}\n';
+
+  it.each([
+    '.y { &:extend(.y .z); .z { c: 3; } }',
+    '.y { .z { c: 3; } &:extend(.y .z); }',
+    '.y:extend(.y .z) { .z { c: 3; } }'
+  ])('writes the parent as `&` beside the target: %s', (src) => {
+    expect(nestedLess(src)).toBe(parentFold);
+    expect(flatLess(src)).toBe('.y .z,\n.y {\n  c: 3;\n}\n');
+  });
+
+  it('writes it one level down, and inside an at-rule block the parent holds', () => {
+    expect(nestedLess('.a { .y { &:extend(.a .y .z); .z { c: 3; } } }'))
+      .toBe('.a {\n  .y {\n    .z,\n    & {\n      c: 3;\n    }\n  }\n}\n');
+    expect(nestedLess('.y { @media print { &:extend(.y .z); .z { c: 3; } } }'))
+      .toBe('.y {\n  @media print {\n    .z,\n    & {\n      c: 3;\n    }\n  }\n}\n');
+    expect(nestedLess('.m() { &:extend(.y .z); }\n.y { @media print { .m(); .z { c: 3; } } }'))
+      .toBe('.y {\n  @media print {\n    .z,\n    & {\n      c: 3;\n    }\n  }\n}\n');
+  });
+
+  it('splits an exact parent extender off a target with children; `all` carries them', () => {
+    expect(nestedLess('.y { &:extend(.y .z); .z { c: 3; .w { d: 4; } } }'))
+      .toBe('.y {\n  .z {\n    c: 3;\n    .w {\n      d: 4;\n    }\n  }\n  & {\n    c: 3;\n  }\n}\n');
+    expect(nestedLess('.y { &:extend(.y .z all); .z { c: 3; .w { d: 4; } } }'))
+      .toBe('.y {\n  .z,\n  & {\n    c: 3;\n    .w {\n      d: 4;\n    }\n  }\n}\n');
+  });
+
+  /*
+   * A sub-compound `all` match folds the parent in as its own-local remainder, as a
+   * sibling's (the extend-selector fixture's `.attributes { [data="test"],
+   * .attribute-test }`): `&` in place of `.z`. The flat output substitutes the whole
+   * extender (`.y .y.k`, lessc's), so the two modes differ here as they do for the
+   * sibling.
+   */
+  it('folds the parent into a sub-compound `all` match as `&`', () => {
+    expect(nestedLess('.y { &:extend(.z all); .z.k { c: 3; } }')).toBe('.y {\n  .z.k,\n  &.k {\n    c: 3;\n  }\n}\n');
+    expect(flatLess('.y { &:extend(.z all); .z.k { c: 3; } }')).toBe('.y :is(.z, .y).k {\n  c: 3;\n}\n');
+  });
+});

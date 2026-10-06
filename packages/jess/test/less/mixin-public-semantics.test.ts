@@ -183,16 +183,25 @@ describe('Less mixin semantic contracts through the public AST route', () => {
       .resolves.toBe(extendedInPrint('.y'));
 
     /*
-     * PINNED DEFECT (nested output): with `collapseNesting: false` — the Less v5
-     * default — a rule never extends a rule nested inside it, so the cases above
-     * extend nothing. It is not X19's: the inline form misses the same way
-     * (`.y:extend(.y .z) { .z { c: 3; } }`). Flip these to `extendedInPrint` output
-     * when the nested emitter writes an ancestor extender.
+     * Nested output (`collapseNesting: false`, the Less v5 default) writes the rule the
+     * block lands in as `&` beside the target, inside the block: the same selectors.
      */
+    const nestedInPrint = (wrapper: string): string =>
+      `.y {\n  ${wrapper} {\n    .z,\n    & {\n      c: 3;\n    }\n  }\n}\n`;
     await expect(parseAndRender('.y { @media print { &:extend(.y .z); .z { c: 3; } } }', false))
+      .resolves.toBe(nestedInPrint('@media print'));
+    await expect(parseAndRender('.y { @supports (display: grid) { &:extend(.y .z); .z { c: 3; } } }', false))
+      .resolves.toBe(nestedInPrint('@supports (display: grid)'));
+
+    /*
+     * PINNED DEFECT (nested output): a target a mixin or detached ruleset PLACES under a
+     * rule block is not rewritten in nested output, whoever extends it — EXTEND-SEMANTICS
+     * §6 "placed TARGET" — so these extend nothing there.
+     */
+    await expect(parseAndRender('.m() { @media print { &:extend(.y .z); .z { c: 3; } } }\n.y { .m(); }', false))
       .resolves.toBe('.y {\n  @media print {\n    .z {\n      c: 3;\n    }\n  }\n}\n');
-    await expect(parseAndRender('.y:extend(.y .z) { .z { c: 3; } }', false))
-      .resolves.toBe('.y {\n  .z {\n    c: 3;\n  }\n}\n');
+    await expect(parseAndRender('@r: { @media print { &:extend(.y .z); .z { c: 3; } } };\n.y { @r(); }', false))
+      .resolves.toBe('.y {\n  @media print {\n    .z {\n      c: 3;\n    }\n  }\n}\n');
   });
 
   /*
