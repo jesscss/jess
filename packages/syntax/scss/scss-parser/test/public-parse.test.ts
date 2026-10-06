@@ -418,7 +418,7 @@ describe('@jesscss/scss-parser public parse API', () => {
         prelude: {
           type: 'Sequence',
           parts: [
-            { type: 'Quoted', src: '"a.css"', value: 'a.css', quote: '"', escaped: false },
+            { type: 'Quoted', src: '"a.css"', value: 'a.css', quote: '"', escaped: false, interp: null },
             {
               type: 'Sequence',
               parts: [
@@ -466,7 +466,7 @@ describe('@jesscss/scss-parser public parse API', () => {
         prelude: {
           type: 'Sequence',
           parts: [
-            { type: 'Quoted', src: '"theme.css"', value: 'theme.css', quote: '"', escaped: false },
+            { type: 'Quoted', src: '"theme.css"', value: 'theme.css', quote: '"', escaped: false, interp: null },
             {
               type: 'FunctionCall', name: 'supports', modern: false,
               args: [{ name: undefined, spread: false, value: { type: 'Block', delimiter: 'paren', value: { type: 'Operation', operator: ':', left: { type: 'Keyword', src: 'display' }, right: { type: 'Keyword', src: 'grid' }, inMathFunction: false, mathOutsideParens: true } } }]
@@ -837,7 +837,7 @@ describe('@jesscss/scss-parser public parse API', () => {
       type: 'Stylesheet',
       rules: [{
         type: 'AtRuleBlock', name: '@property', prelude: { type: 'Keyword', src: '--accent' }, rules: [
-          { type: 'Declaration', name: 'syntax', value: { type: 'Quoted', src: '"<color>"', value: '<color>', quote: '"', escaped: false }, merge: null, important: false },
+          { type: 'Declaration', name: 'syntax', value: { type: 'Quoted', src: '"<color>"', value: '<color>', quote: '"', escaped: false, interp: null }, merge: null, important: false },
           { type: 'Declaration', name: 'inherits', value: { type: 'Keyword', src: 'false' }, merge: null, important: false },
           { type: 'Declaration', name: 'initial-value', value: { type: 'Keyword', src: 'red' }, merge: null, important: false }
         ]
@@ -874,7 +874,7 @@ describe('@jesscss/scss-parser public parse API', () => {
     expect(root).toMatchObject({
       type: 'Stylesheet', rules: [{
         type: 'AtRuleBlock', name: '@keyframes',
-        prelude: { type: 'Quoted', src: '"fade\\20name"', value: 'fade\\20name', quote: '"', escaped: false }
+        prelude: { type: 'Quoted', src: '"fade\\20name"', value: 'fade\\20name', quote: '"', escaped: false, interp: null }
       }]
     });
     expect(serialize(root)).toEqual({ css: '@keyframes "fade\\20name" {\n  to {\n    opacity: 1;\n  }\n}\n' });

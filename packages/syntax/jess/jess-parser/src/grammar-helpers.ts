@@ -20,7 +20,7 @@
  */
 
 import type { FieldCapture, FieldMap } from 'parseman';
-import { any, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, selectorBranchCanonical, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isExtendInstruction, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isParamArray, isQuoted, isReference, isRuleset, isSelectorBranch, isSimpleToken, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotOf, isWhile, keyword, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withBlockBody, withSourceSpan } from '@jesscss/core/ast';
+import { any, anonymousMixin, appendCustomValueParts as appendCustomValuePartsIn, block, escapedTemplate, selectorBranchCanonical, customValueFromChildren as customValueFromChildrenIn, declarationReference, interpolation, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isExtendInstruction, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isParamArray, isQuoted, isReference, isRuleset, isSelectorBranch, isSimpleToken, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotOf, isWhile, keyword, list, lookupStep, operation, cssBaseMathOutsideParens, propertyReference, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selectorTermFromTokens, selist, url, valueSlot, variableDeclaration, variableReference, withBlockBody, withSourceSpan } from '@jesscss/core/ast';
 import type { Token, AnonymousMixin, Apply, Declaration, CollectionItem, ExtendInstruction, ForBinding, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, Quoted, Reference, SelectorBranch, SelectorTerm, SelectorList, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, Lookup, GuardNode } from '@jesscss/core/ast';
 
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
@@ -487,11 +487,12 @@ function quotedInterpolationFromChildren(children: readonly unknown[]): Quoted |
 }
 
 /*
- * `~"…"` drops its quotes, so an escaped string that carries interpolation is
- * exactly the Interpolation of its content — the `~` and both quote tokens are
- * authored escape syntax, not output bytes, and never become literal parts.
+ * An escaped string that interpolates is the same escaped `Quoted` as one that
+ * does not (ledger V3), carrying its content as a template. The `~` and both
+ * quote tokens are escape syntax, not content, so they never become literal
+ * parts; the quote rides on the node.
  */
-function escapedInterpolationFromChildren(children: readonly unknown[]): Interpolation {
+function escapedInterpolationFromChildren(children: readonly unknown[]): Quoted {
   const parts: Interpolation['parts'] = [];
   for (const child of children.slice(
     2,
@@ -503,7 +504,7 @@ function escapedInterpolationFromChildren(children: readonly unknown[]): Interpo
       parts.push({ lit: requireToken(child).value });
     }
   }
-  return interpolation(parts);
+  return escapedTemplate(interpolation(parts), requireToken(children[1]).value);
 }
 
 function quotedExpressionFact(children: readonly unknown[]): ExpressionFact {

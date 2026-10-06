@@ -730,9 +730,8 @@ describe('Jess AST grammar facts', () => {
     );
 
     /*
-     * The static reduction must not claim an escaped string that carries
-     * interpolation: dropping the quotes makes that value exactly the
-     * Interpolation of its content parts, with no `Quoted` wrapper.
+     * An escaped string that carries interpolation is the same escaped
+     * `Quoted`, its content template in `interp` (owner 2026-10-06, D22).
      */
     expect(parse('$theme: dark; .asset { value: ~"${theme}"; }')).toMatchObject({
       rules: [
@@ -740,22 +739,29 @@ describe('Jess AST grammar facts', () => {
         { type: 'Ruleset', rules: [{
           type: 'Declaration',
           name: 'value',
-          value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme' }, unquote: true }] }
+          value: {
+            type: 'Quoted',
+            src: '~""',
+            value: '',
+            quote: '"',
+            escaped: true,
+            interp: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'theme', raw: '@theme' }, unquote: true }] }
+          }
         }] }
       ]
     });
   });
 
   // Documented at docs/jess/02-Language/08-interpolation.mdx ("Any plain output").
-  it('constructs escaped Jess strings that carry interpolation as unwrapped Interpolation values', () => {
+  it('constructs escaped Jess strings that carry interpolation as escaped Quoted templates', () => {
     const source = '$color-name: "red"; $w: 4px; .container { color: ~"${color-name}"; tone: ~\'$($w * 2)\'; }';
     expect(parse(source)).toMatchObject({
       rules: [
         { type: 'VariableDeclaration', name: 'color-name' },
         { type: 'VariableDeclaration', name: 'w' },
         { type: 'Ruleset', rules: [
-          { name: 'color', value: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'color-name', raw: '@color-name' }, unquote: true }] } },
-          { name: 'tone', value: { type: 'Interpolation', parts: [{ ref: { type: 'Expression' }, unquote: true }] } }
+          { name: 'color', value: { type: 'Quoted', escaped: true, quote: '"', interp: { type: 'Interpolation', parts: [{ ref: { type: 'Lookup', kind: 'var', name: 'color-name', raw: '@color-name' }, unquote: true }] } } },
+          { name: 'tone', value: { type: 'Quoted', escaped: true, quote: '\'', interp: { type: 'Interpolation', parts: [{ ref: { type: 'Expression' }, unquote: true }] } } }
         ] }
       ]
     });
@@ -2219,7 +2225,7 @@ describe('Jess AST grammar facts', () => {
     expect(bare(result.value)).toEqual({
       type: 'Stylesheet',
       rules: [
-        { type: 'VariableDeclaration', name: 'base', value: { type: 'Quoted', src: '"dark"', value: 'dark', quote: '"', escaped: false }, write: { mode: 'declare' } },
+        { type: 'VariableDeclaration', name: 'base', value: { type: 'Quoted', src: '"dark"', value: 'dark', quote: '"', escaped: false, interp: null }, write: { mode: 'declare' } },
         { type: 'VariableDeclaration', name: 'tone', value: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base', scope: 'live' }, write: { mode: 'declare' } },
         { type: 'VariableDeclaration', name: 'accent', value: { type: 'Keyword', src: 'blue' }, write: { mode: 'declare' } },
         { type: 'VariableDeclaration', name: 'hex', value: { type: 'Color', src: '#0a1B2c' }, write: { mode: 'declare' } },

@@ -1395,8 +1395,6 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
   );
 
   /*
-   * This is only the already-modelled static escaped-string fact. An escaped
-   * interpolation needs a distinct AST representation for its unquoting mode.
    * Every quoted arm is `noTrivia`: string contents are literal bytes, so the
    * ambient trivia must not reach inside a string and silently drop a leading
    * space or swallow a `//` run as a line comment.
@@ -1446,18 +1444,10 @@ const jessFactory = (g: JessRules & SharedSyntax) => {
 
       /*
        * The same optional `~` leads the interp-bearing arms, so the escape is
-       * written once per quote character rather than once per arm.
-       *
-       * DEFECT, NOT A CONTRACT: the reducer below still DROPS the `~` and both
-       * quote tokens when an escaped string carries interpolation, so
-       * `~"a$(b)"` reduces to a bare `Interpolation` while `"a$(b)"` keeps its
-       * quote literals as parts. What the escape MEANS — that it strips the
-       * delimiters — is an eval-time decision that has leaked into the parser,
-       * and the resulting tree cannot say the escape was written at all. The
-       * fix is one `Quoted` node carrying `escaped`, as the static arm already
-       * does and as `Block` does for `~(`/`~[`; that needs `Quoted.value` to
-       * admit an interpolation, which is an AST model change, not a grammar
-       * one. Left as-is here so this arm collapse stays output-neutral.
+       * written once per quote character rather than once per arm. An escaped
+       * string reduces to one escaped `Quoted` whether or not it interpolates
+       * (`~"a$(b)"` carries its content template in `interp`), so what the
+       * escape means stays an eval-time decision over the same node as `~"a"`.
        */
       noTrivia(sequence(
         optional(literal('~')),

@@ -22,7 +22,7 @@
 
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { CallArg, CallValue, MixinCall, MixinDefinition, ValueSlot } from './nodes.js';
-import { any, isLiteralNode, isTypedLiteral, isValueBlock } from './nodes.js';
+import { any, isLiteralNode, isTypedLiteral, isValueBlock, quoted } from './nodes.js';
 import type { EvalModes, ValueEvaluator } from './value-eval.js';
 import { evalGuard, guardUsesDefault, type TypedResolver, type ValueResolver } from './guard.js';
 
@@ -420,6 +420,20 @@ function resolveEager(v: CallValue, resolveCaller: ValueResolver): MaybePromise<
   if (isTypedCallValue(v)) {
     return v;
   }
+  return resolveEagerBytes(v, resolveCaller);
+}
+
+/**
+ * An escaped string that interpolates (`~"@{x}"`) binds as the escaped string it
+ * spells in the caller frame — the typed literal `~"0.5"` itself binds as (ledger
+ * V3) — so its content is never re-read as a number or colour across the
+ * boundary. Every other computed value binds as its evaluated bytes.
+ */
+function resolveEagerBytes(v: ValueSlot, resolveCaller: ValueResolver): MaybePromise<CallValue> {
+  if ('type' in v && v.type === 'Quoted' && v.escaped) {
+    const quote = v.quote;
+    return mapMaybe(resolveCaller(v), content => quoted(`~${quote}${content}${quote}`, content, quote, true));
+  }
   return mapMaybe(resolveCaller(v), any);
 }
 
@@ -459,7 +473,7 @@ function resolveEagerDefault(
   }
   return resolveDefault
     ? resolveDefault(v, boundSoFar, def)
-    : mapMaybe(resolveCaller(v), any);
+    : resolveEagerBytes(v, resolveCaller);
 }
 
 function valueBytes(v: CallValue): string {

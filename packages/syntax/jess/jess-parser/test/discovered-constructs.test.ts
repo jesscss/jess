@@ -310,25 +310,26 @@ describe('Jess constructs discovered outside the parser suites', () => {
   });
 
   it.each([
-    ['double quotes', 'a { b: ~"x$(1 + 1)y" }'],
-    ['single quotes', 'a { b: ~\'x$(1 + 1)y\' }']
-  ])('PINNED DEFECT — an escaped INTERPOLATED string loses its escape and its quotes (%s)', (_label, source) => {
+    ['double quotes', 'a { b: ~"x$(1 + 1)y" }', '"'],
+    ['single quotes', 'a { b: ~\'x$(1 + 1)y\' }', '\'']
+  ])('records an escaped INTERPOLATED string as the same escaped Quoted node, carrying its template (%s)', (_label, source, quote) => {
     /*
-     * `~"x$(…)y"` reduces to a bare `Interpolation` whose parts carry NO quote
-     * literals and no record that `~` was written, while the plain `"x$(…)y"`
-     * keeps its quote literals as parts. What the escape MEANS — that it
-     * strips the delimiters — is an eval-time decision made at parse time, so
-     * the tree cannot answer "was this escaped?" at all. Correct shape is one
-     * `Quoted` node with `escaped: true`, as the static arms above already
-     * produce and as `Block` does for `~(`/`~[`; that needs `Quoted.value` to
-     * admit an interpolation, which is an AST model change. Pinned so it
-     * changes loudly.
+     * An escaped string is a string whether or not it interpolates (owner
+     * 2026-10-06, ledger D22/V3): `~"x$(…)y"` is the `Quoted` the static arms
+     * produce, with `escaped` and its quote, and its content template — whose
+     * parts carry no quote literals, since the quotes are the node's — in `interp`.
      */
-    const value = (firstRule(source) as { rules: Array<{ value: { type: string; parts: Array<{ lit?: string }> } }> }).rules[0]!.value;
-
-    expect(value.type).toBe('Interpolation');
-    expect(value.parts.some(part => part.lit === '"' || part.lit === '\'')).toBe(false);
-    expect(value).not.toHaveProperty('escaped');
+    expect(firstRule(source)).toMatchObject({
+      rules: [{
+        value: {
+          type: 'Quoted',
+          quote,
+          escaped: true,
+          value: 'xy',
+          interp: { type: 'Interpolation', parts: [{ lit: 'x' }, { ref: { type: 'Expression' }, unquote: true }, { lit: 'y' }] }
+        }
+      }]
+    });
   });
 
   it.each([

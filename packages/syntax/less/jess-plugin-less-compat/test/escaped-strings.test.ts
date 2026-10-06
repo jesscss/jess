@@ -50,12 +50,11 @@ describe('escaped strings at the Less plugin boundary', () => {
   });
 
   /*
-   * Blocked on the AST (PINNED-DEFECTS-AUDIT D22): the parser lowers an escaped
-   * string that interpolates (`~"a @{v}"`) to a bare `Interpolation` with no
-   * quote and no escaped flag, so its value is read back from its text and a
-   * plugin gets a Dimension, a Color or a Keyword.
+   * An escaped string that interpolates is the same escaped string (owner
+   * 2026-10-06, D22): its content is never read back from its text as a
+   * Dimension, a Color or a Keyword.
    */
-  it.fails('hands a plugin an interpolated escaped string as an escaped tree.Quoted', async () => {
+  it('hands a plugin an interpolated escaped string as an escaped tree.Quoted', async () => {
     const seen: string[] = [];
     await render('@n: 4; @c: red; @v: q;\n.x { a: probe(~"@{n}px", ~"@{c}", ~\'a @{v}\'); }', {
       install(_less, _manager, functions) {

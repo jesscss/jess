@@ -338,7 +338,7 @@ describe('SCSS canonical-AST grammar', () => {
     const result = run(scssGrammar.Stylesheet, source, { trivia: scssGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(bare(result.value)).toEqual({ type: 'Stylesheet', rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Quoted', src: '"theme.css"', value: 'theme.css', quote: '"', escaped: false } }] });
+    expect(bare(result.value)).toEqual({ type: 'Stylesheet', rules: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Quoted', src: '"theme.css"', value: 'theme.css', quote: '"', escaped: false, interp: null } }] });
   });
 
   it('constructs static SCSS url imports as typed AtRuleStatement preludes', () => {
@@ -696,16 +696,16 @@ describe('SCSS canonical-AST grammar', () => {
       rules: [
         { type: 'VariableDeclaration', name: 'base', value: { type: 'Keyword', src: 'blue' }, write: { mode: 'declare' } },
         { type: 'VariableDeclaration', name: 'theme', value: { type: 'Lookup', kind: 'var', name: 'base', raw: '@base', scope: 'live' }, write: { mode: 'declare' } },
-        { type: 'VariableDeclaration', name: 'font', value: { type: 'Quoted', src: '"Inter"', value: 'Inter', quote: '"', escaped: false }, write: { mode: 'declare' } },
+        { type: 'VariableDeclaration', name: 'font', value: { type: 'Quoted', src: '"Inter"', value: 'Inter', quote: '"', escaped: false, interp: null }, write: { mode: 'declare' } },
 
         /*
          * Value keywords deliberately preserve CSS escapes. `$` names above use
          * the SCSS-local unescaped terminal instead.
          */
         { type: 'VariableDeclaration', name: 'escaped', value: { type: 'Keyword', src: 'r\\65d' }, write: { mode: 'declare' } },
-        { type: 'VariableDeclaration', name: 'quoted', value: { type: 'Quoted', src: '"a\\\\b"', value: 'a\\\\b', quote: '"', escaped: false }, write: { mode: 'declare' } },
-        { type: 'VariableDeclaration', name: 'hash', value: { type: 'Quoted', src: '"#foo"', value: '#foo', quote: '"', escaped: false }, write: { mode: 'declare' } },
-        { type: 'VariableDeclaration', name: 'singleHash', value: { type: 'Quoted', src: '\'#foo\'', value: '#foo', quote: '\'', escaped: false }, write: { mode: 'declare' } },
+        { type: 'VariableDeclaration', name: 'quoted', value: { type: 'Quoted', src: '"a\\\\b"', value: 'a\\\\b', quote: '"', escaped: false, interp: null }, write: { mode: 'declare' } },
+        { type: 'VariableDeclaration', name: 'hash', value: { type: 'Quoted', src: '"#foo"', value: '#foo', quote: '"', escaped: false, interp: null }, write: { mode: 'declare' } },
+        { type: 'VariableDeclaration', name: 'singleHash', value: { type: 'Quoted', src: '\'#foo\'', value: '#foo', quote: '\'', escaped: false, interp: null }, write: { mode: 'declare' } },
         {
           type: 'VariableDeclaration', name: 'shadow', value: {
             type: 'List', sep: ',', value: [
@@ -715,7 +715,7 @@ describe('SCSS canonical-AST grammar', () => {
           },
           write: { mode: 'declare' }
         },
-        { type: 'VariableDeclaration', name: 'asset', value: { type: 'Url', value: { type: 'Quoted', src: '"font.woff2"', value: 'font.woff2', quote: '"', escaped: false } }, write: { mode: 'declare' } },
+        { type: 'VariableDeclaration', name: 'asset', value: { type: 'Url', value: { type: 'Quoted', src: '"font.woff2"', value: 'font.woff2', quote: '"', escaped: false, interp: null } }, write: { mode: 'declare' } },
         {
           type: 'VariableDeclaration', name: 'gradient', value: {
             type: 'FunctionCall', name: 'linear-gradient', modern: false, args: [
@@ -1576,7 +1576,7 @@ describe('SCSS canonical-AST grammar', () => {
       rules: [{
         type: 'AtRuleBlock', name: '@property', prelude: { type: 'Keyword', src: '--accent' }, rules: [
           { type: 'Comment', text: '/* descriptor */' },
-          { type: 'Declaration', name: 'syntax', value: { type: 'Quoted', src: '"<color>"', value: '<color>', quote: '"', escaped: false }, merge: null, important: false },
+          { type: 'Declaration', name: 'syntax', value: { type: 'Quoted', src: '"<color>"', value: '<color>', quote: '"', escaped: false, interp: null }, merge: null, important: false },
           { type: 'Declaration', name: 'inherits', value: { type: 'Keyword', src: 'false' }, merge: null, important: false },
           { type: 'Declaration', name: 'initial-value', value: { type: 'Keyword', src: 'red' }, merge: null, important: false }
         ]

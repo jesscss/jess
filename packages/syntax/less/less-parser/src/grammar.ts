@@ -29,7 +29,7 @@ import type { Combinator, FieldCapture, FieldMap, Span } from 'parseman';
 import { lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { cssBaseRules } from '@jesscss/css-parser/grammar/base';
-import { any, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorCapture, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, attributeSelectorFrom, block, bodySpanFromRaw, callArg, classifyValueBlock, color, condition, decl, dimension, escapedTemplate, expression, foldOperation, forNode, funcCall, generalEnclosedGroup, ifNode, ifTestCall, ifValue, important, importIsCompileTime, importOptionWords, interpolatedSimpleSelector, interpolation, isForBinding, isSpannedToken, isToken, keyword, list, mixinCall, mixinDef, moduleImport, NO_SPAN, operation, plugin, propertyReference, pseudoSelector, quoted, relativeSelector, rule, selectorBranchCanonical, selectorBranchOf, selectorCapture, selectorTermOf, selist, semanticGapText, simpleSelector, sourceSpanOf, spaced, styleImport, stylesheet, unknownAtRuleBlock, url, valueLayoutOf, variableDeclaration, variableReference, withBlockBody, withBodySpan, withFunctionScope, withImportSourceSpan, withImportTailStart, withSourceSpan, withTriviaGaps, withValueLayout } from '@jesscss/core/ast';
 import type { SourceSpan, SpannedToken, Token, AnonymousMixin, Any, AtRuleBlock, AtRuleStatement, CallArg, Combinator as SelectorCombinator, ComplexSelector, Declaration, ExtendInstruction, For, ForBinding, Expression, FunctionCall, If, IfBranch, IfValueBranch, Block, Important, Interpolation, Keyword, List, Lookup, MixinCall, MixinDefinition, ModuleImport, UnknownAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, StyleImportConfig, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { closeAmbientFunctions, functionScopeOf, requireLessParseState } from './parse-state.js';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessImportPostludeError, LessInlineJavaScriptError, LessLeadingSeparatorValueError, LessSourceImportSyntaxError, LessUncalledMixinReferenceError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
@@ -343,7 +343,7 @@ type LessRules = {
   NestedRulesetWithExtends: Combinator<Ruleset>;
   Quoted: Combinator<Quoted | Interpolation>;
   LiteralQuoted: Combinator<Quoted>;
-  EscapedQuoted: Combinator<Quoted | Interpolation>;
+  EscapedQuoted: Combinator<Quoted>;
   PlainUrl: Combinator<Url>;
   UrlInterpolation: Combinator<Interpolation>;
   VariableUrl: Combinator<Url>;
@@ -1111,9 +1111,9 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
       return quoted(`${open.value}${value}${open.value}`, value, open.value, false);
     }
   );
-  // A non-interpolated Less `~"…"` / `~'…'` is an ordinary quoted value with the
-  // existing escaped flag. Its interpolation-bearing form is a structural,
-  // unquoted template—never a recovered source string.
+  // A Less `~"…"` / `~'…'` is one escaped `Quoted`, whether or not it
+  // interpolates (ledger V3): the interpolating form carries its content as a
+  // structural template beside the same quote and escaped facts.
   const EscapedQuoted = node(
     'Quoted',
     choice(
@@ -1127,7 +1127,7 @@ const lessGrammarFactory = (g: LessInputRules & SharedSyntax) => {
         throw new TypeError('Less escaped quote lost its quote delimiter.');
       }
       if (children.some(isInterpolationFact)) {
-        return interpolation(interpolationPartsFrom(children.slice(1, -1), true));
+        return escapedTemplate(interpolation(interpolationPartsFrom(children.slice(1, -1), true)), quote);
       }
       const value = children.slice(1, -1).map(requireToken).map(token => token.value).join('');
       return quoted(`${opener}${value}${quote}`, value, quote, true);

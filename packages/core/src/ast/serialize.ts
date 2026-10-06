@@ -47,6 +47,8 @@ import {
   anonymousMixin,
   isLiteralNode,
   isTypedLiteral,
+  isStaticQuoted,
+  quoted,
   isValueBlock,
   valueBlockBody,
   compoundCanonical,
@@ -160,7 +162,7 @@ import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny, sn
 import { namedColor } from './color-names.js';
 import { compressDimensionBytes, compressSelectorHeader, emitCompressed, shortestColorFromHex } from './compress.js';
 import { UnitArithmeticError, calcInner, preservedUnitClashes, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
-import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeUrlValue, NULL } from './value-factory.js'; // [calc]
+import { makeAny, makeBlock, makeCollection, makeDimension, makeKeyword, makeBool, makeList, makeNull, makeQuoted, makeUrlValue, NULL } from './value-factory.js'; // [calc]
 import { CollectionOverlay, isCollection } from './value-collection.js';
 import { groupItems } from './value-list.js';
 import { DefaultGuardAmbiguityError, bindArgs, isTypedCallValue, isValueSlot, selectDefinitions, type Selection, type DefaultResolver, type BoundSourceResolver, type BoundSourceResolvers, type RestBoundSourceResolver, type BoundSourceTracker, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
@@ -1328,9 +1330,9 @@ function activateBodyDependencies(
       if (!load) {
         continue;
       }
-      const specifier = statement.target.type === 'Quoted'
+      const specifier = isStaticQuoted(statement.target)
         ? statement.target.value
-        : statement.target.type === 'Url' && statement.target.value.type === 'Quoted'
+        : statement.target.type === 'Url' && isStaticQuoted(statement.target.value)
           ? statement.target.value.value
           : evalBytesSync(statement.target, frame, e);
       const options = statement.options === null ? null : evalBytesSync(statement.options, frame, e);
@@ -3241,6 +3243,8 @@ function callValueHasLookup<C>(value: CallValue, test: (node: Lookup, context: C
       return callValueHasLookup(value.value, test, context);
     case 'Interpolation':
       return value.parts.some(part => 'ref' in part && callValueHasLookup(part.ref, test, context));
+    case 'Quoted':
+      return value.interp !== null && callValueHasLookup(value.interp, test, context);
     case 'Reference':
       return callValueHasLookup(value.base, test, context)
         || value.steps.some((step) => {
@@ -4099,6 +4103,9 @@ const operationSignGlued = (node: Operation): boolean => {
     if (start !== NO_SPAN && end !== NO_SPAN) {
       return end - start;
     }
+    if (n.type === 'Quoted' && n.interp !== null) {
+      return null; // its `src` is the literal text only, not the authored width
+    }
     return 'src' in n && typeof n.src === 'string' ? n.src.length : null;
   };
   const opStart = sourceStartOf(node);
@@ -4314,7 +4321,16 @@ function evalTyped(
        * with a number or a colour. Lowering `~"4"` to a Keyword made `5 > ~"4"`
        * and `1px > red` the same pair, and they are not. The quote rides along
        * as provenance only, for a legacy plugin's `tree.Quoted`.
+       *
+       * An escaped string that interpolates is the same string (ledger V3,
+       * owner 2026-10-06): its spliced content lands as the same `Any`, never
+       * re-read as a number, colour or keyword.
        */
+      if (node.interp !== null) {
+        return mapMaybe(evalInterp(node.interp, frame, e), content => !isLiteral(content)
+          ? content
+          : node.escaped ? makeAny(content, node.quote) : makeQuoted(content, node.quote, false));
+      }
       return node.escaped ? makeAny(node.value, node.quote) : materializeNode(node, e);
     case 'Url':
       /*
@@ -4648,15 +4664,24 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         ? dimensionFromFields(node.number, node.unit, node.src)
         : literal(e.compress === true ? compressDimensionBytes(node.src) : node.src);
     case 'Quoted':
+      if (node.interp !== null) {
+        return mapMaybe(evalInterp(node.interp, frame, e), content => isLiteral(content) && !node.escaped
+          ? literal(`${node.quote}${content}${node.quote}`)
+          : content);
+      }
       return literal(node.escaped ? node.value : node.src);
-    case 'Url':
-      return mapMaybe(evalValue(node.value, frame, e), (value) => {
-        /*
-         * Quoting is syntax, not a URL-path inference problem. Preserve it
-         * structurally while giving the owning plugin only the target bytes.
-         */
-        if (node.value.type === 'Quoted') {
-          const target = e.context?.transformUrl(node.value.value, true) ?? node.value.value;
+    case 'Url': {
+      /*
+       * Quoting is syntax, not a URL-path inference problem. Preserve it
+       * structurally while giving the owning plugin only the target bytes.
+       */
+      const body = node.value;
+      if (body.type === 'Quoted') {
+        return mapMaybe(body.interp === null ? body.value : evalInterp(body.interp, frame, e), (content) => {
+          if (!isLiteral(content)) {
+            return content;
+          }
+          const target = e.context?.transformUrl(content, true) ?? content;
 
           /*
            * Less `~"…"` / `~'…'` is an escaped string value: inside a URL it
@@ -4664,16 +4689,17 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
            * Keep that distinction on the existing typed Quoted node rather
            * than reconstructing or classifying its source bytes.
            */
-          if (node.value.escaped) {
+          if (body.escaped) {
             return literal(`url(${target})`);
           }
-          return literal(`url(${node.value.quote}${target}${node.value.quote})`);
-        }
-        if (node.value.type === 'Any') {
-          const target = e.context?.transformUrl(node.value.src, false) ?? node.value.src;
-          return literal(`url(${target})`);
-        }
-
+          return literal(`url(${body.quote}${target}${body.quote})`);
+        });
+      }
+      if (body.type === 'Any') {
+        const target = e.context?.transformUrl(body.src, false) ?? body.src;
+        return literal(`url(${target})`);
+      }
+      return mapMaybe(evalValue(body, frame, e), (value) => {
         /*
          * Dynamic URL content — `url(@var)` / any non-literal — resolves at eval
          * time to fully-emitted bytes, so the authored node is neither Quoted nor
@@ -4693,6 +4719,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         const target = e.context?.transformUrl(raw, false) ?? raw;
         return literal(`url(${target})`);
       });
+    }
     case 'Lookup': {
       /*
        * All four old reference kinds land here. `kind` is the discriminator that
@@ -6940,8 +6967,19 @@ function carryCompressed(bound: Any, value: ValueGroup, e: EvalCtx): void {
  * and the snapshot carries that value, which a declaration folds by its type
  * ({@link carryCompressed}). Evaluating it a second time for the folded bytes
  * would run its functions twice.
+ *
+ * An escaped string binds as the escaped string it spells here — an
+ * interpolating one as the static string its template evaluates to — so its
+ * content is never re-read as a number or colour across the boundary (ledger V3).
  */
-function eagerSnapshot(source: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<Any> {
+function eagerSnapshot(source: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<Any | Quoted> {
+  if (!isValueSlotArray(source) && source.type === 'Quoted' && source.escaped) {
+    if (source.interp === null) {
+      return source;
+    }
+    const quote = source.quote;
+    return mapMaybe(evalBytes(source, frame, spliceCtx(e)), content => quoted(`~${quote}${content}${quote}`, content, quote, true));
+  }
   if (e.compressedBindings === undefined) {
     return mapMaybe(evalBytes(source, frame, e), any);
   }
@@ -8314,7 +8352,7 @@ function refGroupInterp(ref: ValueNode, frame: Frame | null, e: EvalCtx): GroupI
     const branches = bound.branches.slice();
     return { branches, multi: branches.length > 1, capture: true };
   }
-  if (bound.type === 'Quoted' && bound.escaped && hasTopLevelComma(bound.value)) {
+  if (bound.type === 'Quoted' && bound.escaped && bound.interp === null && hasTopLevelComma(bound.value)) {
     return { branches: [bound.value], multi: true, capture: false };
   }
   return null;
@@ -12304,8 +12342,8 @@ function emitDocumentStatements(
    * mixin definitions, and nested imports still establish lookup facts.
    */
   const hasDynamicImportTarget = rules.some(child => child.type === 'StyleImport'
-    && child.target.type !== 'Quoted'
-    && !(child.target.type === 'Url' && child.target.value.type === 'Quoted'));
+    && !isStaticQuoted(child.target)
+    && !(child.target.type === 'Url' && isStaticQuoted(child.target.value)));
   if (!e.collapse && e.referenceImportDepth === 0 && !hasDynamicImportTarget) {
     /*
      * Keep the nested emitter's merge behavior for contiguous authored runs,
@@ -18245,7 +18283,7 @@ function cssImportKey(node: AtRuleStatement, target: Quoted | Url): string | nul
   let emittedTarget: string;
   if (target.type === 'Quoted') {
     emittedTarget = target.src;
-  } else if (target.value.type === 'Quoted' || target.value.type === 'Any') {
+  } else if (isStaticQuoted(target.value) || target.value.type === 'Any') {
     emittedTarget = `url(${target.value.src})`;
   } else {
     return null;
@@ -18427,7 +18465,7 @@ function cssImportTarget(node: AtRuleStatement): Quoted | Url | null {
     return null;
   }
   const target = node.prelude.type === 'Sequence' ? node.prelude.parts[0] : node.prelude;
-  return target?.type === 'Quoted' || target?.type === 'Url' ? target : null;
+  return target !== undefined && (isStaticQuoted(target) || target.type === 'Url') ? target : null;
 }
 
 /**
@@ -19245,11 +19283,9 @@ class ImportPathNotReady extends Error {
 /** Extract the resolver-facing specifier without reproducing parser recognition. */
 function importSpecifier(node: StyleImport, frame: Frame, e: Emit): string {
   try {
-    if (node.target.type === 'Quoted') {
-      return node.target.value;
-    }
-    if (node.target.type === 'Url' && node.target.value.type === 'Quoted') {
-      return node.target.value.value;
+    const quoted = node.target.type === 'Url' ? node.target.value : node.target;
+    if (quoted.type === 'Quoted') {
+      return quoted.interp === null ? quoted.value : evalBytesSync(quoted.interp, frame, e);
     }
     const bytes = evalBytesSync(node.target, frame, e);
     if (bytes.startsWith('url(') && bytes.endsWith(')')) {
@@ -19886,9 +19922,11 @@ function evalQueryPreludeParts(node: ValueSlot, frame: Frame | null, e: EvalCtx)
        * unwraps an escaped string to its inner bytes, which would drop the marker
        * and expose the value to plain-run spacing. A plain quoted string already
        * keeps its quotes through `evalBytes` (`node.src`), so only the escaped
-       * form needs re-wrapping here.
+       * form needs re-wrapping here — interpolating or not, it is one string.
        */
-      return node.escaped ? plain(`~${node.quote}${node.value}${node.quote}`) : mapMaybe(evalBytes(node, frame, e), plain);
+      return node.escaped
+        ? mapMaybe(evalBytes(node, frame, e), content => plain(`~${node.quote}${content}${node.quote}`))
+        : mapMaybe(evalBytes(node, frame, e), plain);
     default:
       return mapMaybe(evalBytes(node, frame, e), plain);
   }

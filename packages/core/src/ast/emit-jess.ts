@@ -680,10 +680,13 @@ class JessPrinter {
       case 'Null':
         return 'null';
       case 'Quoted':
+        // A template's `value` is its literal text, so this one check covers both forms.
         if (/\$[[({]/u.test(node.value)) {
           return gap('Quoted', 'a string holding `${`/`$(`/`$[`, which `.jess` reads as interpolation');
         }
-        return node.src;
+        return node.interp === null
+          ? node.src
+          : `${node.escaped ? '~' : ''}${node.quote}${this.template(node.interp, 'string')}${node.quote}`;
       case 'Any':
         if (node.src.includes('$')) {
           return gap('Any', 'opaque bytes containing `$`, which `.jess` reads as a sigil');

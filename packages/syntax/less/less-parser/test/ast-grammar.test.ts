@@ -1,6 +1,6 @@
 import { run } from 'parseman';
-import { valueLayoutOf } from '@jesscss/core/ast';
-import type { Ruleset, SelectorBranch, SelectorTerm, Stylesheet } from '@jesscss/core/ast';
+import { quoted, valueLayoutOf } from '@jesscss/core/ast';
+import type { Declaration, Ruleset, SelectorBranch, SelectorTerm, Stylesheet } from '@jesscss/core/ast';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { parseLessCst, type LessCstChild } from '../src/cst.js';
 import { lessGrammar } from '../src/grammar.js';
@@ -1491,7 +1491,8 @@ describe('Less AST grammar facts', () => {
             src: '"dark"',
             value: 'dark',
             quote: '"',
-            escaped: false
+            escaped: false,
+            interp: null
           },
           write: { mode: 'declare' }
         },
@@ -1522,7 +1523,8 @@ describe('Less AST grammar facts', () => {
             src: '"theme.less"',
             value: 'theme.less',
             quote: '"',
-            escaped: false
+            escaped: false,
+            interp: null
           },
           alias: null,
           mode: 'import',
@@ -1539,7 +1541,8 @@ describe('Less AST grammar facts', () => {
             src: '\'tokens.less\'',
             value: 'tokens.less',
             quote: '\'',
-            escaped: false
+            escaped: false,
+            interp: null
           },
           alias: null,
           mode: 'import',
@@ -8536,14 +8539,20 @@ describe('Less AST grammar facts', () => {
     });
   });
 
-  it('constructs escaped quoted Less interpolation as an unquoted structural template', () => {
-    const source = '@tone: red; .x { color: ~"pre-@{tone}"; }';
+  it('constructs an interpolating escaped Less string as the same escaped Quoted, carrying its template', () => {
+    /*
+     * `~"pre-@{tone}"` is one escaped `Quoted`, exactly the node `~"pre-red"`
+     * is (owner 2026-10-06, ledger D22/V3): same `escaped`, same `quote`, with
+     * its content template in `interp` and its literal text in `value`/`src`.
+     */
+    const source = '@tone: red; .x { color: ~"pre-@{tone}"; b: ~\'@{tone}\'; }';
     const result = run(lessGrammar.Document, source, {
       trivia: lessGrammar.whitespace, state: LESS_TEST_STATE
     });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
+    const tone = { type: 'Lookup', kind: 'var', name: 'tone', raw: '@tone', scope: 'scoped' };
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
       rules: [
@@ -8555,27 +8564,34 @@ describe('Less AST grammar facts', () => {
               type: 'Declaration',
               name: 'color',
               value: {
-                type: 'Interpolation',
-                parts: [
-                  { lit: 'pre-' },
-                  {
-                    ref: {
-                      type: 'Lookup', kind: 'var',
-                      name: 'tone',
-                      raw: '@tone',
-                      scope: 'scoped'
-                    },
-                    unquote: true
-                  }
-                ]
+                type: 'Quoted',
+                src: '~"pre-"',
+                value: 'pre-',
+                quote: '"',
+                escaped: true,
+                interp: { type: 'Interpolation', parts: [{ lit: 'pre-' }, { ref: tone, unquote: true }] }
+              }
+            },
+            {
+              type: 'Declaration',
+              name: 'b',
+              value: {
+                type: 'Quoted',
+                quote: '\'',
+                escaped: true,
+                interp: { type: 'Interpolation', parts: [{ ref: tone, unquote: true }] }
               }
             }
           ]
         }
       ]
     });
+
+    /* One shape (V8-ARCHITECTURE invariant 1): the same fields, in the same order, as `~"x"`. */
+    const template = ((result.value as Stylesheet).rules[1] as Ruleset).rules[0] as Declaration;
+    expect(Object.keys(template.value)).toEqual(Object.keys(quoted('~"x"', 'x', '"', true)));
     expect(serialize(stylesheet(result.value)).css).toBe(
-      '.x {\n  color: pre-red;\n}\n'
+      '.x {\n  color: pre-red;\n  b: red;\n}\n'
     );
   });
 

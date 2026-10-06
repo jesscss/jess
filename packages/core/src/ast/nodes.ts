@@ -83,14 +83,27 @@ export interface Color {
   readonly src: string;
 }
 
-/** A quoted string literal leaf, e.g. `"x"`, `'y'`. Pre-split fields ride so a
- *  forced literal materializes by reading them, never re-scanning `src`. */
+/**
+ * A quoted string, e.g. `"x"`, `'y'`, and the escaped Less / `.jess` `~"x"`.
+ * Pre-split fields ride so a forced literal materializes by reading them, never
+ * re-scanning `src`.
+ *
+ * An escaped string that interpolates (`~"@{x}"`, `~"x$(1 + 1)y"`) is the SAME
+ * node as one that does not (`~"0.5"`), so it carries the same `escaped` /
+ * `quote` facts and evaluates to the same kind of value (ledger V3): `interp`
+ * holds its content template, and evaluation splices it. `value` and `src` then
+ * hold only the string's literal text, each hole read as empty (the reading
+ * {@link importTargetSpelling} gives an interpolated path); anything that needs
+ * the string's content evaluates `interp`. `interp` is `null` for every other
+ * string, and is always present so the node keeps one shape.
+ */
 export interface Quoted {
   readonly type: 'Quoted';
   readonly src: string;
   readonly value: string;
   readonly quote: string;
   readonly escaped: boolean;
+  readonly interp: Interpolation | null;
 }
 
 /** Arbitrary / opaque value bytes (raw prelude fragment, computed/joined
@@ -1485,16 +1498,34 @@ export const url = (value: ValueNode): Url => ({ type: 'Url', value });
 export const selectorCapture = (branches: readonly string[], src: string): SelectorCapture =>
   ({ type: 'SelectorCapture', branches, src });
 export const color = (src: string): Color => ({ type: 'Color', src });
-export const quoted = (src: string, value: string, quote: string, escaped: boolean): Quoted =>
-  ({ type: 'Quoted', src, value, quote, escaped });
+export const quoted = (src: string, value: string, quote: string, escaped: boolean, interp: Interpolation | null = null): Quoted =>
+  ({ type: 'Quoted', src, value, quote, escaped, interp });
+
+/** A string whose content is its authored `value` — one that does not interpolate. */
+export const isStaticQuoted = (n: ValueNode): n is Quoted => n.type === 'Quoted' && n.interp === null;
+
+/**
+ * An escaped string whose content interpolates (`~"a @{v}"`): one {@link Quoted}
+ * with its template. `value`/`src` are built from the template's literal parts.
+ */
+export const escapedTemplate = (interp: Interpolation, quote: string): Quoted => {
+  let value = '';
+  for (const part of interp.parts) {
+    if ('lit' in part) {
+      value += part.lit;
+    }
+  }
+  return quoted(`~${quote}${value}${quote}`, value, quote, true, interp);
+};
 export const dimension = (number: number, unit = '', src = `${number}${unit}`): Dimension =>
   ({ type: 'Dimension', number, unit, src });
 
 /** A value literal that emits its `src` verbatim when inert (all five literal
- *  types). Narrows a `ValueNode` to the leaf union. */
+ *  types). Narrows a `ValueNode` to the leaf union. A string that interpolates is
+ *  not a literal: its content is read from the frame it is evaluated in. */
 export const isLiteralNode = (n: ValueNode): n is Keyword | Color | Dimension | Quoted | Any =>
   n.type === 'Keyword' || n.type === 'Color' || n.type === 'Dimension'
-  || n.type === 'Quoted' || n.type === 'Any';
+  || (n.type === 'Quoted' && n.interp === null) || n.type === 'Any';
 
 /** A literal whose VALUE TYPE the parser knows (every literal except opaque `Any`).
  *  Such a literal binds BY REFERENCE across a mixin boundary (its type survives). */
