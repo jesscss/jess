@@ -16,7 +16,7 @@
  * parameterised by.
  */
 
-import { appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, isNthArgument, pseudoSelector, simpleSelector, structuredPseudoFrom, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, keyword, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueSlot, withValueLayout } from '@jesscss/core/ast';
+import { appendCustomValueParts as appendCustomValuePartsIn, atRuleStatement, isNthArgument, pseudoSelector, simpleSelector, structuredPseudoFrom, cssBaseMathOutsideParens, importIsCompileTime, importTargetSpelling, spaced, styleImport, customValueFromChildren as customValueFromChildrenIn, funcCall, ifValue, interpolationFromTemplateChildren as interpolationFromTemplateChildrenIn, isAtRuleBlock, isAtRuleStatement, isFor, isGuardNodeOf, isIf, isInterpolation, isMathOperator, isMixinCall, isMixinDefinition, isModuleImport, isQuoted, isReference, isRuleset, isStyleImport, isToken, isUnknownAtRuleBlock, isValueSlotArray, isValueSlotOf, isWhile, list, operation, quoted, reference, requireForBinding as requireForBindingIn, requireGuardNodeOf, requireInterpolation as requireInterpolationIn, requireSelectorList as requireSelectorListIn, requireString as requireStringIn, requireToken as requireTokenIn, selist, valueSlot, withValueLayout } from '@jesscss/core/ast';
 import type { AtRuleStatement, CallArg, Collection, CollectionEntry, Color, Comment, Declaration, Dimension, ForBinding, FunctionCall, GuardNode, IfValue, Interpolation, Keyword, Lookup, Quoted, Reference, ReferenceStep, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Token, Url, ValueNode, ValueSlot, VariableDeclaration } from '@jesscss/core/ast';
 import { ScssImportPostludeError } from './parse-error.js';
 
@@ -68,12 +68,6 @@ export function scssSourceText(value: unknown): string {
     return value.src;
   }
   return requireToken(value).value;
-}
-
-/** Map query/media-prelude children to value nodes, coercing bare keyword tokens
- *  (`and`/`or`/media types) to `Keyword`s while passing structured values through. */
-export function keywordizeValues(children: readonly unknown[]): ValueNode[] {
-  return children.map(child => isScssValue(child) ? child : keyword(requireToken(child).value));
 }
 
 /** Concatenate the authored spelling of every child. The canonical opaque
